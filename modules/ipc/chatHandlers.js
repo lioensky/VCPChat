@@ -308,7 +308,6 @@ function initialize(mainWindow, context) {
                     const originalName = path.basename(filePath);
                     const ext = path.extname(filePath).toLowerCase();
                     let fileTypeHint = 'application/octet-stream';
-                    if (['.png', '.jpg', '.jpeg', '.gif', '.webp'].includes(ext)) fileTypeHint = `image/${ext.substring(1)}`;
                     if (['.png', '.jpg', '.jpeg', '.gif', '.webp'].includes(ext)) {
                     let mimeExt = ext.substring(1); // 移除点
                     if (mimeExt === 'jpg') {
