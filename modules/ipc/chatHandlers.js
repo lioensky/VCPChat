@@ -309,6 +309,13 @@ function initialize(mainWindow, context) {
                     const ext = path.extname(filePath).toLowerCase();
                     let fileTypeHint = 'application/octet-stream';
                     if (['.png', '.jpg', '.jpeg', '.gif', '.webp'].includes(ext)) fileTypeHint = `image/${ext.substring(1)}`;
+                    if (['.png', '.jpg', '.jpeg', '.gif', '.webp'].includes(ext)) {
+                    let mimeExt = ext.substring(1); // 移除点
+                    if (mimeExt === 'jpg') {
+                    mimeExt = 'jpeg'; // 将 jpg 转换为 jpeg
+                    }
+                    fileTypeHint = `image/${mimeExt}`;}
+
                     else if (['.mp3', '.wav', '.ogg'].includes(ext)) fileTypeHint = `audio/${ext.substring(1)}`;
 
                     const storedFile = await fileManager.storeFile(filePath, originalName, agentId, topicId, fileTypeHint);
@@ -386,7 +393,7 @@ function initialize(mainWindow, context) {
                 `pasted_image_${Date.now()}.${imageData.extension}`,
                 NOTES_AGENT_ID, 
                 noteId,         
-                `image/${imageData.extension}`
+                `image/${imageData.extension === 'jpg' ? 'jpeg' : imageData.extension}`
             );
             return { success: true, attachment: storedFileObject };
         } catch (error) {
