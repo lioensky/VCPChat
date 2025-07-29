@@ -1,4 +1,4 @@
-# VCP 聊天客户端
+# VCPChat 聊天客户端
 
 这是一个为 VCP (Variable & Command Protocol) 服务器打造的 AI 聊天桌面客户端。
 
@@ -7,6 +7,8 @@
 后端链接：https://github.com/lioensky/VCPToolBox
 
 请下载壁纸包以避免元素窗口异常：https://github.com/lioensky/VCPChat/releases
+
+请下载音频解码包：https://github.com/lioensky/VCPChat/releases/tag/%E8%A7%A3%E7%A0%81%E5%99%A8core
 
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/lioensky/VCPChat)
 
@@ -189,6 +191,15 @@ AI在生成表情包的`<img>`标签时，有时会因为模型幻觉或数据�
     *   启用后，允许 VCP 后端调用并利用此客户端（前端设备）的算力来执行任务。
     *   支持 VCP 后端调用在客户端本地加载的 VCP 插件，扩展了工具执行的能力。
     *   此功能可在“全局设置”中方便地开启或关闭。
+ *   **专业级音频引擎**:
+    *   **原创解码核心**: 面对 Electron 环境下 `Audio Worklet` 的跨域限制和 `naudiodon` 等原生模块对现代音频设备支持不足的挑战，我们最终实现了完全原创的音频解码器。它使用独立的 Python 引擎构建，彻底突破了前端环境的束缚，达到了不输 Foobar 的专业级音频播放效果。
+    *   **Hi-Res 音频支持**:
+        *   **WASAPI 独占模式**: 支持通过 WASAPI 进行音频输出，确保信号无损直通，带来最纯净的听感。
+        *   **DSD 硬解码**: 具备 DSD 256bit 硬解码能力，完美呈现母带级高解析度音乐的每一个细节。
+    *   **高级算法实现**:
+        *   **64位双精度解码**: 引擎核心采用64位双精度浮点数进行解码运算，确保了无与伦比的计算精度，从根本上杜绝了音质损失。
+        *   **独创防抖技术**: 集成独家研发的音频防抖算法，能有效消除音频流切换或数据不稳定时可能出现的爆音与卡顿，确保播放体验如丝般顺滑。
+    *   **安装提示**: 为确保音频引擎正常工作，请在启动前务必安装所需的 Python 依赖。在项目根目录下运行命令：`pip install -r requirements.txt`。
  *   **音乐播放器与控制**:
     *   内置一个功能完善的音乐播放器，支持播放本地音乐文件，支持WASPI光纤同轴输出。
     *   提供播放、暂停、上一曲、下一曲、音量控制等基本功能。
@@ -286,6 +297,12 @@ AI在生成表情包的`<img>`标签时，有时会因为模型幻觉或数据�
     *   `mammoth`: 用于解析 DOCX 文件内容以提取文本。
     *   `glob` & `minimatch`: 用于支持文件系统中的模式匹配（由分布式插件使用）。
     *   `node-schedule`: 用于任务调度（由分布式插件使用）。
+*   **Python 音频引擎依赖**:
+    *   `flask` & `flask_cors` & `flask_socketio`: 提供Web服务框架。
+    *   `soundfile` & `sounddevice`: 核心音频处理与播放库。
+    *   `numpy`: 用于高性能科学计算和音频数据处理。
+    *   `pydub`: 用于高级音频操作。
+    *   `gevent` & `gevent-websocket`: 提供异步网络支持。
 *   **前端特性支持**:
     *   `highlight.js`: 用于代码块的语法高亮（通过 CDN 或本地集成）。
     *   `KaTeX`: 用于 LaTeX 数学公式的渲染（通过 CDN 或本地集成）。

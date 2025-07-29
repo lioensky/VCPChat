@@ -48,6 +48,7 @@ const WALLPAPER_THUMBNAIL_CACHE_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'Wallp
 // Define a specific agent ID for notes attachments
 const NOTES_AGENT_ID = 'notes_attachments_agent';
 
+let audioEngineProcess = null; // To hold the python audio engine process
 let mainWindow;
 let vcpLogWebSocket;
 let vcpLogReconnectInterval;
@@ -58,6 +59,43 @@ let networkNotesTreeCache = null; // In-memory cache for the network notes
 let cachedModels = []; // Cache for models fetched from VCP server
 const NOTES_MODULE_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'Notemodules');
 
+// --- Audio Engine Management ---
+function startAudioEngine() {
+    const scriptPath = path.join(__dirname, 'audio_engine', 'main.py');
+    console.log(`[Main] Starting Python Audio Engine from: ${scriptPath}`);
+
+    // Using '-u' for unbuffered output
+    audioEngineProcess = spawn('python', ['-u', scriptPath]);
+
+    audioEngineProcess.stdout.on('data', (data) => {
+        console.log(`[AudioEngine STDOUT]: ${data.toString().trim()}`);
+    });
+
+    audioEngineProcess.stderr.on('data', (data) => {
+        const logLine = data.toString().trim();
+        // 过滤掉来自状态轮询和特定警告的烦人日志
+        if (logLine && !logLine.includes('GET /state HTTP/1.1') && !logLine.includes('AudioEngine STDERR')) {
+            console.error(`[AudioEngine STDERR]: ${logLine}`);
+        }
+    });
+
+    audioEngineProcess.on('close', (code) => {
+        console.log(`[Main] Audio Engine process exited with code ${code}`);
+        audioEngineProcess = null; // Reset the process variable
+    });
+
+    audioEngineProcess.on('error', (err) => {
+        console.error('[Main] Failed to start Audio Engine process.', err);
+    });
+}
+
+function stopAudioEngine() {
+    if (audioEngineProcess) {
+        console.log('[Main] Stopping Python Audio Engine...');
+        audioEngineProcess.kill('SIGTERM'); // Send a termination signal
+        audioEngineProcess = null;
+    }
+}
 
 
 // --- Main Window Creation ---
@@ -154,6 +192,7 @@ if (!gotTheLock) {
 
 
   app.whenReady().then(async () => { // Make the function async
+    startAudioEngine(); // Start the Python Hi-Fi audio engine
     // Register a custom protocol to handle loading local app files securely.
     fs.ensureDirSync(APP_DATA_ROOT_IN_PROJECT); // Ensure the main AppData directory in project exists
     fs.ensureDirSync(AGENT_DIR);
@@ -482,17 +521,20 @@ app.on('will-quit', () => {
         clearTimeout(vcpLogReconnectInterval);
     }
     
-    // 4. Stop the distributed server
+    // 5. Stop the distributed server
     if (distributedServer) {
         console.log('[Main] Stopping distributed server...');
         distributedServer.stop();
         distributedServer = null;
     }
     
-    // 5. Stop the dice server
+    // 6. Stop the dice server
     diceHandlers.stopDiceServer();
 
-    // 5. 强制销毁所有窗口
+    // 7. Stop the Python Audio Engine
+    stopAudioEngine();
+
+    // 8. 强制销毁所有窗口
     console.log('[Main] Destroying all open windows...');
     BrowserWindow.getAllWindows().forEach(win => {
         if (win && !win.isDestroyed()) {

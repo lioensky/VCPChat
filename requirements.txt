@@ -1,0 +1,8 @@
+flask
+flask_cors
+flask_socketio
+soundfile
+sounddevice
+numpy
+pydub
+gevent-websocket

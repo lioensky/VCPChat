@@ -19,14 +19,25 @@ contextBridge.exposeInMainWorld('electron', {
         }
     },
     invoke: (channel, data) => {
-        let validChannels = ['get-music-playlist'];
+        let validChannels = [
+            'get-music-playlist',
+            // 新增的HIFI引擎控制通道
+            'music-load',
+            'music-play',
+            'music-pause',
+            'music-seek',
+            'music-get-state',
+            'music-set-volume'
+        ];
         if (validChannels.includes(channel)) {
             return ipcRenderer.invoke(channel, data);
         }
     },
     on: (channel, func) => {
         let validChannels = [
-            'music-files', 'scan-started', 'scan-progress', 'scan-finished'
+            'music-files', 'scan-started', 'scan-progress', 'scan-finished',
+            'audio-engine-error', // 用于接收来自主进程的引擎错误通知
+            'music-set-track' // 用于从主进程设置当前曲目
         ];
         if (validChannels.includes(channel)) {
             // Deliberately strip event as it includes `sender`
