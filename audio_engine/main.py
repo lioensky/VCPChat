@@ -37,6 +37,8 @@ class AudioEngine:
         self.volume = 1.0  # 音量，范围 0.0 到 1.0
         self.fft_size = 1024  # FFT窗口大小
         self.fft_update_interval = 1.0 / 30.0  # 约每秒30次
+        self.device_id = None # Can be None for default device
+        self.exclusive_mode = False
 
     def _stream_callback(self, outdata, frames, time, status):
         """sounddevice的回调函数，用于填充音频数据"""
@@ -145,12 +147,29 @@ class AudioEngine:
                 logging.info("Playback resumed.")
             elif not self.is_playing: # 从头开始播放
                 self.position = 0
-                self.stream = sd.OutputStream(
-                    samplerate=self.samplerate,
-                    channels=self.channels,
-                    callback=self._stream_callback,
-                    finished_callback=self.stop_event.set # 播放结束时触发事件
-                )
+                
+                # --- New: Configure device and exclusive mode ---
+                stream_args = {
+                    'samplerate': self.samplerate,
+                    'channels': self.channels,
+                    'callback': self._stream_callback,
+                    'finished_callback': self.stop_event.set
+                }
+                if self.device_id is not None:
+                    stream_args['device'] = self.device_id
+                
+                if self.exclusive_mode:
+                    try:
+                        # Attempt to set exclusive mode flags for WASAPI
+                        device_info = sd.query_devices(self.device_id)
+                        hostapi_info = sd.query_hostapis(device_info['hostapi'])
+                        if 'WASAPI' in hostapi_info['name']:
+                            stream_args['extra_settings'] = sd.WasapiSettings(exclusive=True)
+                            logging.info(f"Attempting to open device {self.device_id} in WASAPI Exclusive Mode.")
+                    except Exception as e:
+                        logging.error(f"Could not set WASAPI exclusive mode: {e}")
+
+                self.stream = sd.OutputStream(**stream_args)
                 self.stream.start()
                 self.is_playing = True
                 self.is_paused = False
@@ -211,7 +230,9 @@ class AudioEngine:
                 'duration': duration,
                 'current_time': current_time,
                 'file_path': self.file_path,
-                'volume': self.volume
+                'volume': self.volume,
+                'device_id': self.device_id,
+                'exclusive_mode': self.exclusive_mode
             }
 
     def set_volume(self, volume_level):
@@ -221,10 +242,87 @@ class AudioEngine:
             logging.info(f"Volume set to {self.volume}")
             return True
 
+    def configure_output(self, device_id=None, exclusive=False):
+        """配置音频输出设备和模式"""
+        with self.lock:
+            was_playing = self.is_playing and not self.is_paused
+            
+            # Stop current playback before changing device
+            if self.is_playing:
+                self.stop()
+
+            self.device_id = device_id
+            self.exclusive_mode = exclusive
+            logging.info(f"Audio output configured. Device: {self.device_id}, Exclusive: {self.exclusive_mode}")
+
+            # If a track was playing, reload and play it on the new device
+            if was_playing and self.file_path:
+                current_position_seconds = self.position / self.samplerate if self.samplerate > 0 else 0
+                self.load(self.file_path) # Reload to reset state
+                self.seek(current_position_seconds)
+                self.play()
+        return True
+
 # --- 全局音频引擎实例 ---
 audio_engine = AudioEngine(socketio)
 
+# --- Helper Functions ---
+def get_audio_devices():
+    devices = sd.query_devices()
+    hostapis = sd.query_hostapis()
+    
+    # Find the WASAPI host API index
+    wasapi_index = -1
+    for i, api in enumerate(hostapis):
+        if 'WASAPI' in api['name']:
+            wasapi_index = i
+            break
+            
+    if wasapi_index == -1:
+        logging.warning("WASAPI host API not found.")
+        return {'wasapi': [], 'other': []}
+
+    wasapi_devices = []
+    other_devices = []
+    
+    for device in devices:
+        # We only care about output devices
+        if device['max_output_channels'] > 0:
+            device_info = {
+                'id': device['index'],
+                'name': device['name'],
+                'hostapi': device['hostapi'],
+                'max_output_channels': device['max_output_channels'],
+                'default_samplerate': device['default_samplerate']
+            }
+            if device['hostapi'] == wasapi_index:
+                wasapi_devices.append(device_info)
+            else:
+                other_devices.append(device_info)
+                
+    return {'wasapi': wasapi_devices, 'other': other_devices}
+
 # --- Flask API 路由 ---
+@app.route('/devices', methods=['GET'])
+def list_devices():
+    try:
+        devices = get_audio_devices()
+        return jsonify({'status': 'success', 'devices': devices})
+    except Exception as e:
+        logging.error(f"Failed to list audio devices: {e}", exc_info=True)
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/configure_output', methods=['POST'])
+def configure_output_device():
+    data = request.get_json()
+    device_id = data.get('device_id')
+    exclusive = data.get('exclusive', False)
+    
+    if audio_engine.configure_output(device_id, exclusive):
+        return jsonify({'status': 'success', 'message': 'Output configured', 'state': audio_engine.get_state()})
+    else:
+        return jsonify({'status': 'error', 'message': 'Failed to configure output'}), 500
+
 @app.route('/load', methods=['POST'])
 def load_track():
     data = request.get_json()

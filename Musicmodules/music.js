@@ -25,6 +25,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const visualizerCanvas = document.getElementById('visualizer');
     const visualizerCtx = visualizerCanvas.getContext('2d');
     const shareBtn = document.getElementById('share-btn');
+   // --- New UI Elements for WASAPI ---
+   const deviceSelect = document.getElementById('device-select');
+   const wasapiSwitch = document.getElementById('wasapi-switch');
 
     // --- State Variables ---
     let playlist = [];
@@ -35,6 +38,8 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentTheme = 'dark';
     let visualizerColor = { r: 118, g: 106, b: 226 };
     let statePollInterval; // 用于轮询状态的定时器
+   let currentDeviceId = null;
+   let useWasapiExclusive = false;
 
     // --- Visualizer State ---
     let animationFrameId;
@@ -208,6 +213,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 nextTrack();
             }
         }
+       // Update device selection UI
+       if (deviceSelect.value !== state.device_id) {
+           deviceSelect.value = state.device_id;
+       }
+       if (wasapiSwitch.checked !== state.exclusive_mode) {
+           wasapiSwitch.checked = state.exclusive_mode;
+       }
     };
 
     const pollState = async () => {
@@ -381,6 +393,62 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+   // --- WASAPI and Device Control ---
+   const populateDeviceList = async () => {
+       if (!window.electron) return;
+       const result = await window.electron.invoke('music-get-devices');
+       if (result.status === 'success' && result.devices) {
+           deviceSelect.innerHTML = ''; // Clear existing options
+
+           // Add default device option
+           const defaultOption = document.createElement('option');
+           defaultOption.value = 'default';
+           defaultOption.textContent = '默认设备';
+           deviceSelect.appendChild(defaultOption);
+
+           // Add WASAPI devices
+           if (result.devices.wasapi && result.devices.wasapi.length > 0) {
+               const wasapiGroup = document.createElement('optgroup');
+               wasapiGroup.label = 'WASAPI';
+               result.devices.wasapi.forEach(device => {
+                   const option = document.createElement('option');
+                   option.value = device.id;
+                   option.textContent = device.name;
+                   wasapiGroup.appendChild(option);
+               });
+               deviceSelect.appendChild(wasapiGroup);
+           }
+       } else {
+           console.error("Failed to get audio devices:", result.message);
+       }
+   };
+
+   const configureOutput = async () => {
+       if (!window.electron) return;
+       
+       const selectedDeviceId = deviceSelect.value === 'default' ? null : parseInt(deviceSelect.value, 10);
+       const useExclusive = wasapiSwitch.checked;
+
+       console.log(`Configuring output: Device ID=${selectedDeviceId}, Exclusive=${useExclusive}`);
+       
+       // Prevent re-configuration if nothing changed
+       if (selectedDeviceId === currentDeviceId && useExclusive === useWasapiExclusive) {
+           return;
+       }
+
+       currentDeviceId = selectedDeviceId;
+       useWasapiExclusive = useExclusive;
+
+       await window.electron.invoke('music-configure-output', {
+           device_id: currentDeviceId,
+           exclusive: useWasapiExclusive
+       });
+   };
+
+   deviceSelect.addEventListener('change', configureOutput);
+   wasapiSwitch.addEventListener('change', configureOutput);
+
+
     // --- Electron IPC and Initialization ---
     const setupElectronHandlers = () => {
         if (!window.electron) return;
@@ -513,7 +581,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 volumeSlider.value = initialState.state.volume;
             }
         }
-        
+       
+       // --- New: Populate devices and set initial state ---
+       await populateDeviceList();
+       const initialDeviceState = await window.electron.invoke('music-get-state');
+       if (initialDeviceState && initialDeviceState.state) {
+           currentDeviceId = initialDeviceState.state.device_id;
+           useWasapiExclusive = initialDeviceState.state.exclusive_mode;
+           deviceSelect.value = currentDeviceId === null ? 'default' : currentDeviceId;
+           wasapiSwitch.checked = useWasapiExclusive;
+       }
+
+
         if (window.electron) {
             window.electron.send('music-renderer-ready');
         }

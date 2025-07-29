@@ -71,6 +71,20 @@
                     <button id="add-folder-btn">添加</button>
                 </div>
             </div>
+            <!-- New Settings Section -->
+           <div class="settings-section">
+               <div class="device-selection">
+                   <label for="device-select">音频设备:</label>
+                   <select id="device-select"></select>
+               </div>
+               <div class="wasapi-toggle">
+                   <label for="wasapi-switch">WASAPI独占模式</label>
+                   <label class="switch">
+                       <input type="checkbox" id="wasapi-switch">
+                       <span class="slider round"></span>
+                   </label>
+               </div>
+           </div>
             <ul id="playlist" class="playlist">
                 <!-- 播放列表项将由 JS 动态生成 -->
             </ul>

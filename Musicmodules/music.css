@@ -374,6 +374,98 @@ body.light-theme #search-input:focus {
     filter: brightness(1.15);
 }
 
+/* --- New Settings Section Styles --- */
+.settings-section {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 15px 15px 15px; /* Add padding */
+    gap: 20px;
+    border-bottom: 1px solid var(--glass-border); /* Add a separator */
+    margin-bottom: 10px; /* Space before the list */
+    flex-wrap: wrap; /* Allow items to wrap */
+}
+
+.device-selection {
+    flex-grow: 1; /* Allow it to grow */
+    min-width: 180px; /* Minimum width before it gets too small */
+}
+
+.device-selection, .wasapi-toggle {
+   display: flex;
+   align-items: center;
+   gap: 10px;
+   font-size: 0.9em;
+   color: var(--music-text-secondary);
+}
+
+#device-select {
+    background-color: var(--hover-bg);
+    color: var(--music-text);
+    border: 1px solid var(--glass-border);
+    border-radius: 6px;
+    padding: 5px 8px;
+    outline: none;
+    width: 100%; /* Make it fill the container */
+    box-sizing: border-box; /* Include padding and border in the element's total width and height */
+}
+
+/* --- Toggle Switch Styles --- */
+.switch {
+ position: relative;
+ display: inline-block;
+ width: 44px;
+ height: 24px;
+}
+
+.switch input {
+ opacity: 0;
+ width: 0;
+ height: 0;
+}
+
+.slider {
+ position: absolute;
+ cursor: pointer;
+ top: 0;
+ left: 0;
+ right: 0;
+ bottom: 0;
+ background-color: var(--hover-bg);
+ transition: .4s;
+}
+
+.slider:before {
+ position: absolute;
+ content: "";
+ height: 18px;
+ width: 18px;
+ left: 3px;
+ bottom: 3px;
+ background-color: white;
+ transition: .4s;
+}
+
+input:checked + .slider {
+ background-color: var(--music-highlight);
+}
+
+input:focus + .slider {
+ box-shadow: 0 0 1px var(--music-highlight);
+}
+
+input:checked + .slider:before {
+ transform: translateX(20px);
+}
+
+.slider.round {
+ border-radius: 24px;
+}
+
+.slider.round:before {
+ border-radius: 50%;
+}
+
 .playlist {
     list-style: none;
     padding: 0;

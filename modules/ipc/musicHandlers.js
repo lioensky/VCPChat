@@ -190,6 +190,15 @@ function initialize(options) {
             return audioEngineApi('/volume', 'POST', { volume });
         });
 
+        // --- New handlers for WASAPI and device selection ---
+        ipcMain.handle('music-get-devices', async () => {
+            return await audioEngineApi('/devices', 'GET');
+        });
+
+        ipcMain.handle('music-configure-output', (event, { device_id, exclusive }) => {
+            return audioEngineApi('/configure_output', 'POST', { device_id, exclusive });
+        });
+
         ipcMain.on('open-music-folder', async (event) => {
             const result = await dialog.showOpenDialog(mainWindow, {
                 properties: ['openDirectory']
