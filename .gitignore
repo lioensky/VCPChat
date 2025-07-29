@@ -1,4 +1,67 @@
-gitignore
+# 依赖文件
+node_modules/
+**/node_modules/
+package-lock.json
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# 用户数据和缓存
+AppData/
+**/WallpaperThumbnailCache/
+**/MusicCoverCache/
+**/tts_cache/
+**/UserData/attachments/
+
+# 壁纸和媒体文件
+assets/wallpaper/
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.bmp
+*.tiff
+*.svg
+*.ico
+*.mp4
+*.avi
+*.mov
+*.wmv
+*.flv
+*.mp3
+*.wav
+*.ogg
+
+# 配置文件（个人设置）
+AppData/settings.json
+
+# 日志文件
+*.log
+logs/
+log/
+
+# 临时文件
+*.tmp
+*.temp
+.DS_Store
+Thumbs.db
+
+# IDE 文件
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 构建产物
+dist/
+build/
+.next/
+out/
+
+# 系统文件
+run_silent.vbs
+start.bat
 
 # 不忽略 .gitignore 文件本身（这是Git的常见实践）
 !.gitignore
