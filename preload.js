@@ -32,7 +32,9 @@ contextBridge.exposeInMainWorld('electron', {
             'music-get-devices',
             'music-configure-output',
             'music-set-eq',
-            'music-configure-upsampling' // 新增：升频配置通道
+            'music-configure-upsampling', // 新增：升频配置通道
+            'music-get-lyrics', // 新增：获取歌词
+            'music-fetch-lyrics' // 新增：从网络获取歌词
         ];
         if (validChannels.includes(channel)) {
             return ipcRenderer.invoke(channel, data);
@@ -203,13 +205,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // Image Context Menu
     showImageContextMenu: (imageUrl) => ipcRenderer.send('show-image-context-menu', imageUrl),
     // Open Image in New Window
-    openImageInNewWindow: (imageUrl, imageTitle) => ipcRenderer.send('open-image-in-new-window', imageUrl, imageTitle),
-    openImageViewer: (data) => ipcRenderer.send('open-image-viewer', data), // { src, title }
+    openImageViewer: (data) => ipcRenderer.send('open-image-viewer', data), // { src, title, theme }
     // Open Text in New Window (Read Mode)
-    openTextInNewWindow: async (textContent, windowTitle) => {
-        console.log('[Preload] openTextInNewWindow called (invoke with new channel). Title:', windowTitle, 'Content length:', textContent.length);
+    openTextInNewWindow: async (textContent, windowTitle, theme) => {
+        console.log('[Preload] openTextInNewWindow called (invoke with new channel). Title:', windowTitle, 'Content length:', textContent.length, 'Theme:', theme);
         try {
-            await ipcRenderer.invoke('display-text-content-in-viewer', textContent, windowTitle);
+            await ipcRenderer.invoke('display-text-content-in-viewer', textContent, windowTitle, theme);
             console.log('[Preload] ipcRenderer.invoke("display-text-content-in-viewer") was CALLED and awaited.');
         } catch (e) {
             console.error('[Preload] Error during ipcRenderer.invoke("display-text-content-in-viewer"):', e);

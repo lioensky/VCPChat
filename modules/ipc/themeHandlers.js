@@ -22,6 +22,8 @@ function createThemesWindow() {
         height: 700,
         title: '主题选择',
         modal: false,
+        frame: false, // 移除原生窗口框架
+        titleBarStyle: 'hidden', // 隐藏标题栏
         webPreferences: {
             preload: path.join(PROJECT_ROOT, 'preload.js'),
             contextIsolation: true,

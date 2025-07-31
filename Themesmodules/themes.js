@@ -222,8 +222,25 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // --- Theme Handling for the window itself ---
-    const applyThemeForWindow = (theme) => {
+    // --- Custom Title Bar Listeners ---
+    const minimizeBtn = document.getElementById('minimize-theme-btn');
+    const maximizeBtn = document.getElementById('maximize-theme-btn');
+    const closeBtn = document.getElementById('close-theme-btn');
+
+    minimizeBtn.addEventListener('click', () => {
+        if (window.electronAPI) window.electronAPI.minimizeWindow();
+    });
+
+    maximizeBtn.addEventListener('click', () => {
+        if (window.electronAPI) window.electronAPI.maximizeWindow();
+    });
+
+    closeBtn.addEventListener('click', () => {
+        window.close();
+    });
+ 
+     // --- Theme Handling for the window itself ---
+     const applyThemeForWindow = (theme) => {
         document.body.classList.toggle('light-theme', theme === 'light');
     };
 

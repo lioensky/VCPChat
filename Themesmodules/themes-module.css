@@ -19,8 +19,12 @@ body {
     box-sizing: border-box;
 }
 
-.container {
-    width: 100%;
+body {
+    padding-top: 60px; /* 20px 原有 padding + 40px 标题栏高度 */
+}
+ 
+ .container {
+     width: 100%;
     max-width: 900px;
     margin: 0 auto;
     padding: 30px;
@@ -244,4 +248,58 @@ h1 {
 
 ::-webkit-scrollbar-thumb:hover {
     background: var(--scrollbar-thumb-hover);
+}
+
+/* --- Custom Title Bar --- */
+#custom-title-bar {
+   position: fixed;
+   top: 0;
+   left: 0;
+   right: 0;
+   height: 40px;
+   display: flex;
+   justify-content: space-between;
+   align-items: center;
+   padding: 0 20px;
+   background-color: transparent;
+   z-index: 1000;
+   -webkit-app-region: drag;
+   user-select: none;
+}
+
+#custom-title-bar .title {
+   font-size: 14px;
+   font-weight: 600;
+   color: var(--primary-text);
+   -webkit-app-region: no-drag;
+}
+
+#custom-title-bar .window-controls {
+   display: flex;
+   gap: 10px;
+   -webkit-app-region: no-drag;
+}
+
+.window-control-btn {
+   width: 30px;
+   height: 30px;
+   border: none;
+   background-color: transparent;
+   color: var(--secondary-text);
+   border-radius: 8px;
+   display: flex;
+   align-items: center;
+   justify-content: center;
+   cursor: pointer;
+   transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.window-control-btn:hover {
+   background-color: var(--button-hover-bg);
+   color: var(--primary-text);
+}
+
+#close-theme-btn:hover {
+   background-color: #e81123;
+   color: white;
 }

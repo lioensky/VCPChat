@@ -301,11 +301,13 @@ function initialize(mainWindow, context) {
         });
     });
 
-    ipcMain.handle('display-text-content-in-viewer', async (event, textContent, windowTitle) => {
+    ipcMain.handle('display-text-content-in-viewer', async (event, textContent, windowTitle, theme) => {
         const textViewerWindow = new BrowserWindow({
             width: 800, height: 700, minWidth: 500, minHeight: 400,
             title: decodeURIComponent(windowTitle) || '阅读模式',
             parent: mainWindow, modal: false, show: false,
+            frame: false, // 移除原生窗口框架
+            titleBarStyle: 'hidden', // 隐藏标题栏
             icon: path.join(__dirname, '..', 'assets', 'icon.png'),
             webPreferences: {
                 preload: path.join(__dirname, '..', '..', 'preload.js'),
@@ -314,7 +316,7 @@ function initialize(mainWindow, context) {
         });
 
         const base64Text = Buffer.from(textContent).toString('base64');
-        const viewerUrl = `file://${path.join(__dirname, '..', 'text-viewer.html')}?text=${encodeURIComponent(base64Text)}&title=${encodeURIComponent(windowTitle || '阅读模式')}&encoding=base64`;
+        const viewerUrl = `file://${path.join(__dirname, '..', 'text-viewer.html')}?text=${encodeURIComponent(base64Text)}&title=${encodeURIComponent(windowTitle || '阅读模式')}&encoding=base64&theme=${encodeURIComponent(theme || 'dark')}`;
         
         textViewerWindow.loadURL(viewerUrl).catch(err => console.error(`[Main Process] textViewerWindow FAILED to initiate URL loading`, err));
         

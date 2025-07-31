@@ -355,20 +355,18 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
+    const params = new URLSearchParams(window.location.search);
+    const initialTheme = params.get('theme') || 'dark';
+    applyTheme(initialTheme);
+    console.log(`[TextViewer] Initial theme set from URL: ${initialTheme}`);
+
     if (window.electronAPI) {
-        try {
-            const initialTheme = await window.electronAPI.getCurrentTheme();
-            applyTheme(initialTheme);
-        } catch (e) {
-            console.error("Failed to get initial theme for text viewer", e);
-            applyTheme('dark'); // Fallback
-        }
         window.electronAPI.onThemeUpdated((theme) => {
             console.log(`Theme update received in text viewer: ${theme}`);
             applyTheme(theme);
         });
     } else {
-        applyTheme('dark'); // Fallback for non-electron env
+        console.log('[TextViewer] electronAPI not found. Theme updates will not be received.');
     }
 
     mermaid.initialize({ startOnLoad: false }); // 初始化 Mermaid，但不自动渲染
@@ -550,12 +548,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         return textarea.value;
     }
 
-    const params = new URLSearchParams(window.location.search);
     const textContent = params.get('text');
     const windowTitle = params.get('title') || '文本阅读模式';
     const encoding = params.get('encoding');
+    const decodedTitle = decodeURIComponent(windowTitle);
 
-    document.title = decodeURIComponent(windowTitle);
+    document.title = decodedTitle;
+    document.getElementById('viewer-title-text').textContent = decodedTitle;
     const contentDiv = document.getElementById('textContent');
     const editAllButton = document.getElementById('editAllButton'); // Get the new button
     const shareToNotesButton = document.getElementById('shareToNotesButton');
@@ -1190,4 +1189,23 @@ ${codeContent}
             window.close();
         }
     });
+
+    // --- Custom Title Bar Listeners ---
+    const minimizeBtn = document.getElementById('minimize-viewer-btn');
+    const maximizeBtn = document.getElementById('maximize-viewer-btn');
+    const closeBtn = document.getElementById('close-viewer-btn');
+
+    if (minimizeBtn && maximizeBtn && closeBtn) {
+        minimizeBtn.addEventListener('click', () => {
+            if (window.electronAPI) window.electronAPI.minimizeWindow();
+        });
+
+        maximizeBtn.addEventListener('click', () => {
+            if (window.electronAPI) window.electronAPI.maximizeWindow();
+        });
+
+        closeBtn.addEventListener('click', () => {
+            window.close();
+        });
+    }
 });

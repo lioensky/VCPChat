@@ -4,6 +4,7 @@ const { ipcMain, BrowserWindow, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs-extra');
 const { Worker } = require('worker_threads');
+const lyricFetcher = require('../lyricFetcher'); // Import the new lyric fetcher
 const AUDIO_ENGINE_URL = 'http://127.0.0.1:5555';
 let fetch;
 
@@ -13,6 +14,7 @@ let mainWindow = null; // To be initialized
 let openChildWindows = []; // To be initialized
 let MUSIC_PLAYLIST_FILE;
 let MUSIC_COVER_CACHE_DIR;
+let LYRIC_DIR;
 
 // --- Singleton Music Window Creation Function ---
 function createOrFocusMusicWindow() {
@@ -26,11 +28,13 @@ function createOrFocusMusicWindow() {
 
         console.log('[Music] Creating new music window instance.');
         musicWindow = new BrowserWindow({
-            width: 550,
-            height: 800,
+            width: 900,
+            height: 700,
             minWidth: 400,
             minHeight: 600,
             title: '音乐播放器',
+            frame: false, // 移除原生窗口框架
+            titleBarStyle: 'hidden', // 隐藏标题栏
             modal: false,
             webPreferences: {
                 preload: path.join(__dirname, '..', '..', 'preload.js'),
@@ -156,6 +160,7 @@ function initialize(options) {
     const APP_DATA_ROOT_IN_PROJECT = options.APP_DATA_ROOT_IN_PROJECT;
     MUSIC_PLAYLIST_FILE = path.join(APP_DATA_ROOT_IN_PROJECT, 'songlist.json');
     MUSIC_COVER_CACHE_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'MusicCoverCache');
+    LYRIC_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'lyric');
 
     const registerIpcHandlers = () => {
         ipcMain.on('open-music-window', async () => {
@@ -314,6 +319,48 @@ function initialize(options) {
                 mainWindow.webContents.send('add-file-to-input', filePath);
                 if (mainWindow.isMinimized()) mainWindow.restore();
                 mainWindow.focus();
+            }
+        });
+
+        ipcMain.handle('music-get-lyrics', async (event, { artist, title }) => {
+            if (!title) return null;
+
+            // A simple sanitizer to remove characters that are invalid in file paths.
+            const sanitize = (str) => str.replace(/[\\/:"*?<>|]/g, '_');
+            const sanitizedTitle = sanitize(title);
+            
+            const possiblePaths = [];
+            if (artist) {
+                const sanitizedArtist = sanitize(artist);
+                possiblePaths.push(path.join(LYRIC_DIR, `${sanitizedArtist} - ${sanitizedTitle}.lrc`));
+            }
+            possiblePaths.push(path.join(LYRIC_DIR, `${sanitizedTitle}.lrc`));
+
+            for (const lrcPath of possiblePaths) {
+                try {
+                    if (await fs.pathExists(lrcPath)) {
+                        const content = await fs.readFile(lrcPath, 'utf-8');
+                        return content;
+                    }
+                } catch (error) {
+                    console.error(`[Music] Error reading lyric file ${lrcPath}:`, error);
+                }
+            }
+
+            return null;
+        });
+
+        ipcMain.handle('music-fetch-lyrics', async (event, { artist, title }) => {
+            if (!title) return null;
+            console.log(`[Music] IPC: Received request to fetch lyrics for "${title}" by "${artist}"`);
+            try {
+                // Ensure the lyric directory exists before fetching
+                await fs.ensureDir(LYRIC_DIR);
+                const lrcContent = await lyricFetcher.fetchAndSaveLyrics(artist, title, LYRIC_DIR);
+                return lrcContent;
+            } catch (error) {
+                console.error(`[Music] Error fetching lyrics via IPC for "${title}":`, error);
+                return null;
             }
         });
     };

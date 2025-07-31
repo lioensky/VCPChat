@@ -21,6 +21,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     const modalConfirmBtn = document.getElementById('modalConfirmBtn');
     const modalCancelBtn = document.getElementById('modalCancelBtn');
 
+    // --- Custom Title Bar Elements ---
+    const minimizeNotesBtn = document.getElementById('minimize-notes-btn');
+    const maximizeNotesBtn = document.getElementById('maximize-notes-btn');
+    const closeNotesBtn = document.getElementById('close-notes-btn');
+
     // --- State Management ---
     let localNoteTree = []; // Stores the local note hierarchy
     let networkNoteTree = []; // Stores the network note hierarchy as an array of trees
@@ -1057,6 +1062,19 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         initResizer();
         searchInput.addEventListener('input', debounce(renderTree, 300));
+
+        // --- Custom Title Bar Listeners ---
+        minimizeNotesBtn.addEventListener('click', () => {
+            if (window.electronAPI) window.electronAPI.minimizeWindow();
+        });
+
+        maximizeNotesBtn.addEventListener('click', () => {
+            if (window.electronAPI) window.electronAPI.maximizeWindow();
+        });
+
+        closeNotesBtn.addEventListener('click', () => {
+            window.close();
+        });
 
         // --- Attach Delegated Event Listeners ---
         noteList.addEventListener('click', (e) => {

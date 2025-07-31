@@ -18,34 +18,31 @@ document.addEventListener('DOMContentLoaded', async () => {
         document.body.classList.toggle('light-theme', theme === 'light');
     }
 
-    // Initialize theme and listen for updates
-    if (window.electronAPI) {
-        try {
-            const initialTheme = await window.electronAPI.getCurrentTheme();
-            console.log(`Image Viewer: Initial theme received: ${initialTheme}`); // Add log
-            applyTheme(initialTheme || 'dark');
-        } catch (e) {
-            console.error("Failed to get initial theme for image viewer", e);
-            applyTheme('dark'); // Fallback
-        }
-        window.electronAPI.onThemeUpdated((theme) => {
-            console.log(`Theme update received in image viewer: ${theme}`);
-            applyTheme(theme);
-            console.log(`Image Viewer: Body class list after theme update: ${document.body.classList}`); // Add log
-        });
-    } else {
-        console.log('Image Viewer: electronAPI not found. Applying default dark theme.'); // Add log
-        applyTheme('dark'); // Fallback for non-electron env
-    }
-
     const params = new URLSearchParams(window.location.search);
     const imageUrl = params.get('src');
     const imageTitle = params.get('title') || '图片预览';
-    
-    document.title = decodeURIComponent(imageTitle);
+    const initialTheme = params.get('theme') || 'dark';
 
-    if (imageUrl) {
-        const decodedImageUrl = decodeURIComponent(imageUrl);
+    // Apply initial theme immediately
+    applyTheme(initialTheme);
+    console.log(`Image Viewer: Initial theme set from URL: ${initialTheme}`);
+
+    // Listen for subsequent theme updates
+    if (window.electronAPI) {
+        window.electronAPI.onThemeUpdated((theme) => {
+            console.log(`Theme update received in image viewer: ${theme}`);
+            applyTheme(theme);
+        });
+    } else {
+        console.log('Image Viewer: electronAPI not found. Theme updates will not be received.');
+    }
+    const decodedTitle = decodeURIComponent(imageTitle);
+    
+    document.title = decodedTitle;
+    document.getElementById('image-title-text').textContent = decodedTitle;
+ 
+     if (imageUrl) {
+         const decodedImageUrl = decodeURIComponent(imageUrl);
         console.log('Image Viewer: Loading image -', decodedImageUrl);
         imgElement.src = decodedImageUrl;
         imgElement.alt = decodeURIComponent(imageTitle);
@@ -284,4 +281,21 @@ document.addEventListener('DOMContentLoaded', async () => {
             window.close();
         }
     });
+
+   // --- Custom Title Bar Listeners ---
+   const minimizeBtn = document.getElementById('minimize-viewer-btn');
+   const maximizeBtn = document.getElementById('maximize-viewer-btn');
+   const closeBtn = document.getElementById('close-viewer-btn');
+
+   minimizeBtn.addEventListener('click', () => {
+       if (window.electronAPI) window.electronAPI.minimizeWindow();
+   });
+
+   maximizeBtn.addEventListener('click', () => {
+       if (window.electronAPI) window.electronAPI.maximizeWindow();
+   });
+
+   closeBtn.addEventListener('click', () => {
+       window.close();
+   });
 });

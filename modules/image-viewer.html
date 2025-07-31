@@ -27,9 +27,14 @@
             transition: background-color 0.3s ease, color 0.3s ease;
         }
 
-        body::before {
-            content: '';
-            position: absolute;
+        body {
+            padding-top: 40px; /* Add padding for the custom title bar */
+            box-sizing: border-box;
+        }
+ 
+         body::before {
+             content: '';
+             position: absolute;
             top: 0;
             left: 0;
             right: 0;
@@ -99,9 +104,92 @@
             height: 18px;
             fill: currentColor;
         }
+       /* --- Custom Title Bar --- */
+       #custom-title-bar {
+           position: fixed;
+           top: 0;
+           left: 0;
+           right: 0;
+           height: 40px;
+           display: flex;
+           justify-content: space-between;
+           align-items: center;
+           padding: 0 10px 0 20px;
+           background-color: transparent;
+           z-index: 1000;
+           -webkit-app-region: drag;
+           user-select: none;
+           pointer-events: none; /* Allow clicks to pass through to the image initially */
+       }
+
+       #custom-title-bar > * {
+           pointer-events: auto; /* Re-enable pointer events for children */
+       }
+
+       .title-text-container {
+           overflow: hidden;
+           text-overflow: ellipsis;
+           white-space: nowrap;
+           -webkit-app-region: no-drag;
+       }
+
+       #custom-title-bar .title {
+           font-size: 14px;
+           font-weight: 600;
+           color: var(--primary-text);
+           opacity: 0.7;
+       }
+
+       #custom-title-bar .window-controls {
+           display: flex;
+           gap: 10px;
+           -webkit-app-region: no-drag;
+       }
+
+       .window-control-btn {
+           width: 30px;
+           height: 30px;
+           border: none;
+           background-color: transparent;
+           color: var(--secondary-text);
+           border-radius: 8px;
+           display: flex;
+           align-items: center;
+           justify-content: center;
+           cursor: pointer;
+           transition: background-color 0.2s ease, color 0.2s ease;
+       }
+
+       .window-control-btn:hover {
+           background-color: var(--button-hover-bg);
+           color: var(--primary-text);
+       }
+
+       #close-viewer-btn:hover {
+           background-color: #e81123;
+           color: white;
+       }
     </style>
 </head>
 <body>
+    <!-- Custom Title Bar -->
+    <div id="custom-title-bar">
+        <div class="title-text-container">
+            <span id="image-title-text" class="title">图片预览</span>
+        </div>
+        <div class="window-controls">
+            <button id="minimize-viewer-btn" class="window-control-btn" title="最小化">
+                <svg width="10" height="10" viewBox="0 0 10 10"><line x1="0" y1="5" x2="10" y2="5" stroke="currentColor" stroke-width="1.2"></line></svg>
+            </button>
+            <button id="maximize-viewer-btn" class="window-control-btn" title="最大化">
+                <svg width="10" height="10" viewBox="0 0 10 10"><path fill="none" stroke="currentColor" stroke-width="1" d="M0.5,0.5 h9 v9 h-9 z"></path></svg>
+            </button>
+            <button id="close-viewer-btn" class="window-control-btn" title="关闭">
+                <svg width="10" height="10" viewBox="0 0 10 10"><path fill="currentColor" d="M0.5,0.5 9.5,9.5 M9.5,0.5 0.5,9.5" stroke="currentColor" stroke-width="1.2"></path></svg>
+            </button>
+        </div>
+    </div>
+
     <img id="viewerImage" src="" alt="图片加载中或加载失败..." style="display:none;"/>
     <div class="controls" id="imageControls" style="display:none;">
         <button id="copyButton" class="control-button">

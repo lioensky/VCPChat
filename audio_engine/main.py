@@ -9,6 +9,8 @@ from flask import Flask, request, jsonify
 from flask_socketio import SocketIO, emit
 from flask_cors import CORS
 import logging
+import argparse
+import hashlib
 
 # --- 全局配置 ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -49,6 +51,7 @@ class AudioEngine:
         }
         self.eq_filters = {} # To store SOS filter coefficients
         self.eq_zi = {} # To store initial filter conditions for each channel
+        self.resample_cache_dir = None
 
     def _stream_callback(self, outdata, frames, time, status):
         """sounddevice的回调函数，用于填充音频数据"""
@@ -56,36 +59,35 @@ class AudioEngine:
             logging.warning(f"Stream callback status: {status}")
 
         with self.lock:
-            if self.position + frames <= len(self.data):
-                chunk = self.data[self.position : self.position + frames].copy() # Use a copy to modify
-                
-                # --- Apply EQ if enabled ---
-                if self.eq_enabled and self.eq_filters:
-                    for i in range(self.channels):
-                        # Ensure zi exists for the channel
-                        if i not in self.eq_zi:
-                            self._initialize_eq_zi(i)
-                        
-                        channel_data = chunk[:, i] if self.channels > 1 else chunk
-                        
-                        # Apply each filter band
-                        for band in self.eq_filters:
-                            if self.eq_bands[band] != 0: # Only apply if gain is not 0
-                                channel_data, self.eq_zi[i][band] = sosfilt(self.eq_filters[band], channel_data, zi=self.eq_zi[i][band])
-                        
-                        if self.channels > 1:
-                            chunk[:, i] = channel_data
-                        else:
-                            chunk = channel_data
-
-                # 应用音量
-                outdata[:] = chunk * self.volume
-                self.position += frames
-            else:
+            if self.data is None or self.position + frames > len(self.data):
                 outdata.fill(0)
-                # 标记播放结束
                 self.is_playing = False
-                logging.info("Playback finished.")
+                return
+
+            chunk = self.data[self.position : self.position + frames].copy() # Use a copy to modify
+                
+            # --- Apply EQ if enabled ---
+            if self.eq_enabled and self.eq_filters:
+                for i in range(self.channels):
+                    # Ensure zi exists for the channel
+                    if i not in self.eq_zi:
+                        self._initialize_eq_zi(i)
+                    
+                    channel_data = chunk[:, i] if self.channels > 1 else chunk
+                    
+                    # Apply each filter band
+                    for band in self.eq_filters:
+                        if self.eq_bands[band] != 0: # Only apply if gain is not 0
+                            channel_data, self.eq_zi[i][band] = sosfilt(self.eq_filters[band], channel_data, zi=self.eq_zi[i][band])
+                    
+                    if self.channels > 1:
+                        chunk[:, i] = channel_data
+                    else:
+                        chunk = channel_data
+
+            # 应用音量
+            outdata[:] = chunk * self.volume
+            self.position += frames
 
     def _playback_thread(self):
         """在独立线程中运行播放和FFT计算"""
@@ -97,6 +99,8 @@ class AudioEngine:
                 if current_time - last_fft_time >= self.fft_update_interval:
                     last_fft_time = current_time
                     with self.lock:
+                        if self.data is None:
+                            continue
                         # 获取当前播放位置附近的数据块用于FFT
                         start = self.position
                         end = start + self.fft_size
@@ -128,7 +132,7 @@ class AudioEngine:
 
                 # --- 检查播放是否结束 ---
                 with self.lock:
-                    if self.position >= len(self.data):
+                    if self.data is None or self.position >= len(self.data):
                         self.is_playing = False
                         self.socketio.emit('playback_state', self.get_state())
 
@@ -136,37 +140,53 @@ class AudioEngine:
             time.sleep(0.01)
 
     def load(self, file_path):
-        """加载音频文件"""
+        """加载音频文件，并应用缓存机制"""
         try:
-            logging.info(f"Attempting to read file: {file_path}")
-            # 1. 先读取文件到临时变量
-            data, samplerate = sf.read(file_path, dtype='float64')
-            
-            # 2. 如果读取成功，再获取锁并修改引擎状态
             with self.lock:
                 self.stop() # 先停止当前播放
 
-                # --- 新增：核心升频处理模块 ---
-                # 检查是否需要升频 (目标速率存在，且高于原始速率)
-                if self.target_samplerate and self.target_samplerate > samplerate:
-                    logging.info(f"Applying upsampling from {samplerate} Hz to {self.target_samplerate} Hz...")
+                # --- Determine Target Samplerate ---
+                original_data, original_samplerate = sf.read(file_path, dtype='float64')
+                target_sr = original_samplerate
 
-                    # 1. 计算新数据需要多少个采样点
-                    num_original_samples = len(data)
-                    num_new_samples = int(num_original_samples * self.target_samplerate / samplerate)
+                if self.target_samplerate and self.target_samplerate > target_sr:
+                    target_sr = self.target_samplerate
+                
+                if self.exclusive_mode and self.device_id is not None:
+                    try:
+                        device_info = sd.query_devices(self.device_id)
+                        hostapi_info = sd.query_hostapis(device_info['hostapi'])
+                        if 'WASAPI' in hostapi_info['name']:
+                            target_sr = int(device_info.get('default_samplerate', target_sr))
+                    except Exception as e:
+                        logging.warning(f"Could not query device for WASAPI default samplerate: {e}")
 
-                    # 2. 调用scipy进行高质量重采样
-                    #    scipy.signal.resample 对整个音频数据进行处理
-                    resampled_data = resample(data, num_new_samples)
+                # --- Caching Logic ---
+                cache_key = f"{file_path}_{target_sr}".encode('utf-8')
+                cache_filename = f"{hashlib.md5(cache_key).hexdigest()}.wav"
+                cache_filepath = os.path.join(self.resample_cache_dir, cache_filename) if self.resample_cache_dir else None
 
-                    # 3. 更新引擎的数据和采样率
-                    self.data = resampled_data.astype(np.float64) # 确保数据类型正确
-                    self.samplerate = self.target_samplerate
-                    logging.info("Upsampling complete.")
+                if cache_filepath and os.path.exists(cache_filepath):
+                    logging.info(f"Loading resampled data from cache: {cache_filepath}")
+                    self.data, self.samplerate = sf.read(cache_filepath, dtype='float64')
                 else:
-                    # 不需要升频，直接使用原始数据
-                    self.data = data
-                    self.samplerate = samplerate
+                    # --- Perform Resampling if needed ---
+                    if target_sr != original_samplerate:
+                        logging.info(f"Resampling from {original_samplerate} Hz to {target_sr} Hz...")
+                        num_original_samples = len(original_data)
+                        num_new_samples = int(num_original_samples * target_sr / original_samplerate)
+                        resampled_data = resample(original_data, num_new_samples)
+                        self.data = resampled_data.astype(np.float64)
+                        self.samplerate = target_sr
+                        logging.info("Resampling complete.")
+                        
+                        # Write to cache
+                        if cache_filepath:
+                            logging.info(f"Writing resampled data to cache: {cache_filepath}")
+                            sf.write(cache_filepath, self.data, self.samplerate)
+                    else:
+                        self.data = original_data
+                        self.samplerate = original_samplerate
 
                 self.file_path = file_path
                 self.channels = self.data.shape[1] if len(self.data.shape) > 1 else 1
@@ -176,9 +196,7 @@ class AudioEngine:
                 logging.info(f"Loaded '{file_path}', Samplerate: {self.samplerate}, Channels: {self.channels}, Duration: {len(self.data)/self.samplerate:.2f}s")
             return True
         except Exception as e:
-            # 捕获所有异常，包括 soundfile 可能抛出的底层错误
-            logging.error(f"Failed to load file {file_path}: {e}", exc_info=True) # exc_info=True 会记录堆栈跟踪
-            # 确保即使加载失败，引擎状态也是干净的
+            logging.error(f"Failed to load file {file_path}: {e}", exc_info=True)
             with self.lock:
                 self.file_path = None
                 self.data = None
@@ -210,7 +228,6 @@ class AudioEngine:
                 
                 if self.exclusive_mode:
                     try:
-                        # Attempt to set exclusive mode flags for WASAPI
                         device_info = sd.query_devices(self.device_id)
                         hostapi_info = sd.query_hostapis(device_info['hostapi'])
                         if 'WASAPI' in hostapi_info['name']:
@@ -380,9 +397,10 @@ class AudioEngine:
             # If a track was playing, reload and play it on the new device
             if was_playing and self.file_path:
                 current_position_seconds = self.position / self.samplerate if self.samplerate > 0 else 0
-                self.load(self.file_path) # Reload to reset state
-                self.seek(current_position_seconds)
-                self.play()
+                # Important: Reload the file to apply new device/mode settings (like resampling)
+                if self.load(self.file_path):
+                    self.seek(current_position_seconds)
+                    self.play()
            
             # Redesign filters for the new sample rate if necessary
             self._design_eq_filters()
@@ -399,11 +417,15 @@ class AudioEngine:
             if self.file_path:
                 logging.info("Re-loading current track to apply new upsampling settings...")
                 # 保存当前播放进度
+                was_playing = self.is_playing and not self.is_paused
                 current_position_seconds = self.position / self.samplerate if self.samplerate > 0 else 0
-                # 使用 self.load 会自动处理停止和状态重置
                 original_path = self.file_path
-                self.load(original_path)
-                self.seek(current_position_seconds)
+                
+                # Reload the track. If it was playing, start it again.
+                if self.load(original_path):
+                    self.seek(current_position_seconds)
+                    if was_playing:
+                        self.play()
         return True
  
 # --- 全局音频引擎实例 ---
@@ -557,10 +579,16 @@ def handle_disconnect():
 
 # --- 主程序入口 ---
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Hi-Fi Audio Engine for VCP')
+    parser.add_argument('--resample-cache-dir', type=str, help='Directory to store resampled audio files.')
+    args = parser.parse_args()
+
+    if args.resample_cache_dir:
+        audio_engine.resample_cache_dir = args.resample_cache_dir
+        logging.info(f"Resample cache directory set to: {audio_engine.resample_cache_dir}")
+
     port = 5555
-    # 禁用 werkzeug 的请求日志
     logging.getLogger('werkzeug').disabled = True
     
     logging.info(f"Starting Hi-Fi Audio Engine on http://127.0.0.1:{port}")
-    # 使用 eventlet 或 gevent 运行以获得最佳的WebSocket性能
     socketio.run(app, host='127.0.0.1', port=port, debug=False, log_output=False)

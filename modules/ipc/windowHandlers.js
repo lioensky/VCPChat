@@ -9,28 +9,41 @@ const path = require('path');
  */
 function initialize(mainWindow, openChildWindows) {
     // --- Window Control IPC Handlers ---
-    ipcMain.on('minimize-window', () => {
-        if (mainWindow) {
-            mainWindow.minimize();
+    ipcMain.on('minimize-window', (event) => {
+        const win = BrowserWindow.fromWebContents(event.sender);
+        if (win) {
+            win.minimize();
         }
     });
 
-    ipcMain.on('maximize-window', () => {
-        if (mainWindow) {
-            mainWindow.maximize();
+    ipcMain.on('maximize-window', (event) => {
+        const win = BrowserWindow.fromWebContents(event.sender);
+        if (win) {
+            if (win.isMaximized()) {
+                win.unmaximize();
+            } else {
+                win.maximize();
+            }
         }
     });
 
-    ipcMain.on('unmaximize-window', () => {
-        if (mainWindow) {
-            mainWindow.unmaximize();
+    ipcMain.on('unmaximize-window', (event) => {
+        const win = BrowserWindow.fromWebContents(event.sender);
+        if (win) {
+            win.unmaximize();
         }
     });
 
-    ipcMain.on('close-window', () => {
-        // Directly quit the app. This will trigger the 'will-quit' event
-        // which handles closing all windows and cleaning up resources.
-        app.quit();
+    ipcMain.on('close-window', (event) => {
+        const win = BrowserWindow.fromWebContents(event.sender);
+        if (win) {
+            // If it's the main window, quit the app. Otherwise, just close the child window.
+            if (win === mainWindow) {
+                app.quit();
+            } else {
+                win.close();
+            }
+        }
     });
 
     ipcMain.on('toggle-notifications-sidebar', () => {
@@ -52,7 +65,7 @@ function initialize(mainWindow, openChildWindows) {
         }
     });
 
-    ipcMain.on('open-image-viewer', (event, { src, title }) => {
+    ipcMain.on('open-image-viewer', (event, { src, title, theme }) => {
         const imageViewerWindow = new BrowserWindow({
             width: 1000,
             height: 800,
@@ -60,8 +73,8 @@ function initialize(mainWindow, openChildWindows) {
             minHeight: 500,
             title: title || '图片预览',
             modal: false,
-            // frame: true is the default, so we can remove the false setting.
-            // titleBarStyle: 'hidden' is removed to show the native title bar.
+            frame: false, // 移除原生窗口框架
+            titleBarStyle: 'hidden', // 隐藏标题栏
             webPreferences: {
                 preload: path.join(__dirname, '../../preload.js'), // Correct path from this file's location
                 contextIsolation: true,
@@ -73,10 +86,10 @@ function initialize(mainWindow, openChildWindows) {
 
         imageViewerWindow.setMenu(null);
 
-        const url = `file://${path.join(__dirname, '../../modules/image-viewer.html')}?src=${encodeURIComponent(src)}&title=${encodeURIComponent(title)}`;
+        const url = `file://${path.join(__dirname, '../../modules/image-viewer.html')}?src=${encodeURIComponent(src)}&title=${encodeURIComponent(title)}&theme=${encodeURIComponent(theme || 'dark')}`;
         imageViewerWindow.loadURL(url);
-
-        imageViewerWindow.once('ready-to-show', () => {
+ 
+         imageViewerWindow.once('ready-to-show', () => {
             imageViewerWindow.show();
         });
 

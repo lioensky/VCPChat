@@ -89,7 +89,11 @@ export function setContentAndProcessImages(contentDiv, rawHtml, messageId) {
                 finalImage.addEventListener('click', (e) => {
                     e.stopPropagation();
                     const currentTheme = document.body.classList.contains('light-theme') ? 'light' : 'dark';
-                    imageHandlerRefs.electronAPI.openImageInNewWindow(src, finalImage.alt || src.split('/').pop() || 'AI 图片', currentTheme);
+                    imageHandlerRefs.electronAPI.openImageViewer({
+                        src: src,
+                        title: finalImage.alt || src.split('/').pop() || 'AI 图片',
+                        theme: currentTheme
+                    });
                 });
 
                 finalImage.addEventListener('contextmenu', (e) => {

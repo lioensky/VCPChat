@@ -44,6 +44,7 @@ const MUSIC_PLAYLIST_FILE = path.join(APP_DATA_ROOT_IN_PROJECT, 'songlist.json')
 const MUSIC_COVER_CACHE_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'MusicCoverCache');
 const NETWORK_NOTES_CACHE_FILE = path.join(APP_DATA_ROOT_IN_PROJECT, 'network-notes-cache.json'); // Cache for network notes
 const WALLPAPER_THUMBNAIL_CACHE_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'WallpaperThumbnailCache');
+const RESAMPLE_CACHE_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'ResampleCache');
 
 // Define a specific agent ID for notes attachments
 const NOTES_AGENT_ID = 'notes_attachments_agent';
@@ -64,8 +65,9 @@ function startAudioEngine() {
     const scriptPath = path.join(__dirname, 'audio_engine', 'main.py');
     console.log(`[Main] Starting Python Audio Engine from: ${scriptPath}`);
 
-    // Using '-u' for unbuffered output
-    audioEngineProcess = spawn('python', ['-u', scriptPath]);
+    // Pass the cache directory path to the python script as a command-line argument
+    const args = ['-u', scriptPath, '--resample-cache-dir', RESAMPLE_CACHE_DIR];
+    audioEngineProcess = spawn('python', args);
 
     audioEngineProcess.stdout.on('data', (data) => {
         console.log(`[AudioEngine STDOUT]: ${data.toString().trim()}`);
@@ -199,6 +201,7 @@ if (!gotTheLock) {
     fs.ensureDirSync(USER_DATA_DIR);
     fs.ensureDirSync(MUSIC_COVER_CACHE_DIR);
     fs.ensureDirSync(WALLPAPER_THUMBNAIL_CACHE_DIR); // Ensure the thumbnail cache directory exists
+    fs.ensureDirSync(RESAMPLE_CACHE_DIR); // Ensure the resample cache directory exists
     fileManager.initializeFileManager(USER_DATA_DIR, AGENT_DIR); // Initialize FileManager
     groupChat.initializePaths({ APP_DATA_ROOT_IN_PROJECT, AGENT_DIR, USER_DATA_DIR, SETTINGS_FILE }); // Initialize GroupChat paths
     settingsHandlers.initialize({ SETTINGS_FILE, USER_AVATAR_FILE, AGENT_DIR }); // Initialize settings handlers
@@ -292,6 +295,8 @@ if (!gotTheLock) {
             minWidth: 800,
             minHeight: 600,
             title: '翻译',
+            frame: false, // 移除原生窗口框架
+            titleBarStyle: 'hidden', // 隐藏标题栏
             modal: false,
             webPreferences: {
                 preload: path.join(__dirname, 'preload.js'),

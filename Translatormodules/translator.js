@@ -7,6 +7,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     const translateBtn = document.getElementById('translateBtn');
     const copyBtn = document.getElementById('copyBtn');
 
+    // --- Custom Title Bar Elements ---
+    const minimizeTranslatorBtn = document.getElementById('minimize-translator-btn');
+    const maximizeTranslatorBtn = document.getElementById('maximize-translator-btn');
+    const closeTranslatorBtn = document.getElementById('close-translator-btn');
+
     // 配置和状态变量
     let vcpServerUrl = '';
     let vcpApiKey = '';
@@ -144,6 +149,19 @@ document.addEventListener('DOMContentLoaded', async () => {
         } else {
             console.warn('electronAPI not found. Theme updates will not work.');
         }
+
+        // --- Custom Title Bar Listeners ---
+        minimizeTranslatorBtn.addEventListener('click', () => {
+            if (window.electronAPI) window.electronAPI.minimizeWindow();
+        });
+
+        maximizeTranslatorBtn.addEventListener('click', () => {
+            if (window.electronAPI) window.electronAPI.maximizeWindow();
+        });
+
+        closeTranslatorBtn.addEventListener('click', () => {
+            window.close();
+        });
     }
 
     // --- 为复制按钮添加点击事件 ---

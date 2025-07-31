@@ -43,7 +43,8 @@ parentPort.on('message', async (filePath) => {
                 title: metadata.common.title || path.basename(filePath),
                 artist: metadata.common.artist,
                 album: metadata.common.album,
-                albumArt: coverPath // Now this is a file path, not raw data
+                albumArt: coverPath, // Now this is a file path, not raw data
+                bitrate: metadata.format.bitrate
             }
         });
     } catch (error) {

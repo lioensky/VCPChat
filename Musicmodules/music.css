@@ -60,11 +60,78 @@ body {
 
 .music-player-container {
     display: flex;
-    flex-direction: column;
     height: 100vh;
     padding: 20px;
     box-sizing: border-box;
-    gap: 20px; /* 控制上下两块玻璃的间距 */
+    gap: 20px;
+}
+
+.main-content {
+    flex: 1.618; /* Golden ratio grow */
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    overflow: hidden;
+    min-width: 400px; /* Prevent it from becoming too small */
+}
+
+.right-sidebar {
+    flex: 1; /* Golden ratio grow */
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    min-width: 320px; /* Keep sidebar usable */
+}
+
+.settings-container {
+    flex-shrink: 0;
+}
+
+.lyrics-container {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start; /* 歌词从顶部开始显示 */
+    overflow: hidden; /* Crucial for smooth scrolling */
+    position: relative;
+}
+
+#lyrics-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    text-align: center;
+    transition: transform 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94); /* Smoother transition */
+    width: 100%;
+    /* Add padding to top and bottom to allow first and last lines to reach the golden ratio spot */
+    padding: 0;
+}
+
+#lyrics-list li {
+    font-size: 1.1em;
+    line-height: 2.2;
+    color: var(--music-text-secondary);
+    transition: color 0.4s ease, font-size 0.4s ease, font-weight 0.4s ease, opacity 0.4s ease, transform 0.3s ease;
+    font-weight: 500;
+    padding: 0 15px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    opacity: 0.5; /* Default opacity for non-active lines */
+    transform: scale(0.95);
+}
+
+#lyrics-list li.active {
+    color: var(--music-highlight) !important;
+    font-weight: 700;
+    font-size: 1.3em;
+    opacity: 1;
+    transform: scale(1);
+}
+
+#lyrics-list .no-lyrics {
+    font-size: 1.2em;
+    color: var(--music-text-secondary);
 }
 
 /* 核心玻璃面板样式 */
@@ -144,6 +211,12 @@ body.light-theme .album-art {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+}
+
+.track-bitrate {
+    font-size: 0.9em;
+    color: var(--music-text-secondary);
+    margin-top: 4px;
 }
 
 
@@ -324,6 +397,7 @@ body.light-theme .album-art {
     display: flex;
     flex-direction: column;
     overflow: hidden; /* 防止内容溢出玻璃面板 */
+    padding-top: 15px; /* Add some padding to the top */
 }
 
 .playlist-header {
@@ -377,24 +451,27 @@ body.light-theme #search-input:focus {
 /* --- New Settings Section Styles --- */
 .settings-section {
     display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0 15px 15px 15px; /* Add padding */
-    gap: 20px;
-    border-bottom: 1px solid var(--glass-border); /* Add a separator */
-    margin-bottom: 10px; /* Space before the list */
-    flex-wrap: wrap; /* Allow items to wrap */
-}
-
-.device-selection {
-    flex-grow: 1; /* Allow it to grow */
-    min-width: 180px; /* Minimum width before it gets too small */
+    flex-direction: column; /* Stack items vertically */
+    padding: 0;
+    gap: 15px; /* Adjust gap */
+    border-bottom: 1px solid var(--glass-border);
+    padding-bottom: 15px;
+    margin-bottom: 15px;
 }
 
 .device-selection, .wasapi-toggle, .upsampling-selection {
+    width: 100%; /* Make items take full width */
+}
+
+.wasapi-toggle {
+    justify-content: space-between; /* Push label and switch to opposite ends */
+}
+
+.device-selection, .upsampling-selection {
    display: flex;
-   align-items: center;
-   gap: 10px;
+   flex-direction: column; /* Stack label and select vertically */
+   align-items: flex-start;
+   gap: 8px;
    font-size: 0.9em;
    color: var(--music-text-secondary);
 }
@@ -472,9 +549,7 @@ input:checked + .slider:before {
 
 /* --- New EQ Section Styles --- */
 .eq-section {
-   padding: 15px;
-   border-bottom: 1px solid var(--glass-border);
-   margin-bottom: 10px;
+   padding: 0;
 }
 
 .eq-header {
@@ -584,7 +659,7 @@ input:checked + .slider:before {
 
 .playlist {
     list-style: none;
-    padding: 0;
+    padding: 0 10px 0 0; /* Add some padding to the right for the scrollbar */
     margin: 0;
     overflow-y: auto; /* 列表内容可滚动 */
     flex-grow: 1;
@@ -679,4 +754,66 @@ input:checked + .slider:before {
 .scan-progress-label {
     font-size: 0.9em;
     color: var(--music-text-secondary);
+}
+
+/* ------------------------- */
+/* --- 自定义标题栏 --- */
+/* ------------------------- */
+
+#custom-title-bar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 40px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 15px;
+    background-color: transparent; /* 初始透明，可以根据主题调整 */
+    z-index: 1000;
+    -webkit-app-region: drag; /* 关键：允许拖动窗口 */
+    user-select: none;
+}
+
+#custom-title-bar .title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--music-text);
+    -webkit-app-region: no-drag; /* 标题文字区域不可拖动 */
+}
+
+#custom-title-bar .window-controls {
+    display: flex;
+    gap: 10px;
+    -webkit-app-region: no-drag; /* 按钮区域不可拖动 */
+}
+
+.window-control-btn {
+    width: 30px;
+    height: 30px;
+    border: none;
+    background-color: transparent;
+    color: var(--music-text-secondary);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.window-control-btn:hover {
+    background-color: var(--hover-bg);
+    color: var(--music-text);
+}
+
+#close-music-btn:hover {
+    background-color: #e81123;
+    color: white;
+}
+
+/* 调整主容器，为标题栏留出空间 */
+.music-player-container {
+    padding-top: 60px; /* 20px 原有 padding + 40px 标题栏高度 */
 }
