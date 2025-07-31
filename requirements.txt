@@ -7,4 +7,4 @@ scipy
 numpy
 pydub
 gevent-websocket
-gevent gevent-websocket
+gevent

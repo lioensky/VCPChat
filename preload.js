@@ -227,8 +227,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onAssistantBarData: (callback) => ipcRenderer.on('assistant-bar-data', (_event, data) => callback(data)),
     getAssistantBarInitialData: () => ipcRenderer.invoke('get-assistant-bar-initial-data'), // New: For renderer to request data
     onAssistantData: (callback) => ipcRenderer.on('assistant-data', (_event, data) => callback(data)),
-    onThemeUpdated: (callback) => ipcRenderer.on('theme-updated', (_event, theme) => callback(theme)),
-    getCurrentTheme: () => ipcRenderer.invoke('get-current-theme'), // Add this
+    onThemeUpdated: (callback) => {
+        const subscription = (_event, theme) => callback(theme);
+        ipcRenderer.on('theme-updated', subscription);
+        // Return an unsubscribe function
+        return () => {
+            ipcRenderer.removeListener('theme-updated', subscription);
+        };
+    },
+    getCurrentTheme: () => ipcRenderer.invoke('get-current-theme'),
     setTheme: (theme) => ipcRenderer.send('set-theme', theme),
 
     // Themes

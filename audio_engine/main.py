@@ -11,6 +11,8 @@ from flask_cors import CORS
 import logging
 import argparse
 import hashlib
+import subprocess
+import io
 
 # --- 全局配置 ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -38,8 +40,9 @@ class AudioEngine:
         self.thread = None
         self.stop_event = threading.Event()
         self.volume = 1.0  # 音量，范围 0.0 到 1.0
-        self.fft_size = 1024  # FFT窗口大小
+        self.fft_size = 2048  # FFT窗口大小, for better low-freq resolution
         self.fft_update_interval = 1.0 / 30.0  # 约每秒30次
+        self.num_log_bins = 48 # Number of bars for the visualizer
         self.device_id = None # Can be None for default device
         self.exclusive_mode = False
         self.target_samplerate = None  # None代表不进行升频
@@ -106,7 +109,11 @@ class AudioEngine:
                         end = start + self.fft_size
                         if end > len(self.data):
                             # 如果接近末尾，补零
-                            fft_chunk = np.pad(self.data[start:], (0, end - len(self.data)), 'constant')
+                            pad_width = end - len(self.data)
+                            if self.channels > 1:
+                                fft_chunk = np.pad(self.data[start:], ((0, pad_width), (0, 0)), 'constant')
+                            else:
+                                fft_chunk = np.pad(self.data[start:], (0, pad_width), 'constant')
                         else:
                             fft_chunk = self.data[start:end]
                         
@@ -115,17 +122,51 @@ class AudioEngine:
                             fft_chunk = fft_chunk.mean(axis=1)
 
                         # 应用汉宁窗以减少频谱泄漏
-                        window = np.hanning(len(fft_chunk))
+                        window = np.hanning(self.fft_size)
                         fft_chunk = fft_chunk * window
                         
                         # 执行FFT
                         fft_result = np.fft.rfft(fft_chunk)
                         magnitude = np.abs(fft_result)
                         
+                        # CRITICAL FIX: Normalize the FFT magnitude by the window size.
+                        # This is the root cause of all previous "clipping" and "flat" issues.
+                        # Without this, the magnitude scale is arbitrary and far too large.
+                        magnitude = magnitude / self.fft_size
+
+                        # --- New Logarithmic Binning ---
+                        freqs = np.fft.rfftfreq(self.fft_size, 1.0 / self.samplerate)
+
+                        # Ignore DC component (first bin) and Nyquist
+                        freqs = freqs[1:-1]
+                        magnitude = magnitude[1:-1]
+
+                        log_binned_magnitude = np.zeros(self.num_log_bins)
+                        if len(freqs) > 0:
+                            # Define logarithmic bin edges
+                            min_freq = 20
+                            max_freq = self.samplerate / 2
+                            if max_freq > min_freq:
+                                log_min = np.log10(min_freq)
+                                log_max = np.log10(max_freq)
+                                
+                                log_bin_edges = np.logspace(log_min, log_max, self.num_log_bins + 1)
+                                
+                                # Assign each FFT frequency to a log bin using digitize
+                                bin_indices = np.digitize(freqs, log_bin_edges)
+                                
+                                for i in range(1, self.num_log_bins + 1):
+                                    in_bin_mask = (bin_indices == i)
+                                    if np.any(in_bin_mask):
+                                        # Use Root Mean Square (RMS) for a perceptually accurate representation of power.
+                                        log_binned_magnitude[i-1] = np.sqrt(np.mean(np.square(magnitude[in_bin_mask])))
+
                         # 转换为分贝并归一化
-                        log_magnitude = 20 * np.log10(magnitude + 1e-9) # 避免log(0)
-                        # 将范围从[-180, max_db]映射到[0, 1]
-                        normalized_magnitude = np.clip((log_magnitude + 100) / 100, 0, 1)
+                        log_magnitude = 20 * np.log10(log_binned_magnitude + 1e-9) # 避免log(0)
+                        
+                        # With the FFT properly normalized, we can use a standard 90dB dynamic range.
+                        # This provides a good balance of sensitivity and headroom.
+                        normalized_magnitude = np.clip((log_magnitude + 90) / 90, 0, 1)
 
                     # 通过WebSocket发送频谱数据
                     self.socketio.emit('spectrum_data', {'data': normalized_magnitude.tolist()})
@@ -145,8 +186,54 @@ class AudioEngine:
             with self.lock:
                 self.stop() # 先停止当前播放
 
+                # --- Load Audio Data ---
+                try:
+                    # 尝试直接用 soundfile 加载
+                    logging.info(f"Attempting to load {file_path} with soundfile...")
+                    original_data, original_samplerate = sf.read(file_path, dtype='float64')
+                    logging.info(f"Successfully loaded with soundfile.")
+                except sf.LibsndfileError as e:
+                    # 如果是格式无法识别的错误，则尝试使用 FFmpeg 作为后备方案
+                    if 'Format not recognised' in str(e):
+                        logging.warning(f"Soundfile failed: {e}. Falling back to FFmpeg.")
+                        
+                        # 构建 ffmpeg 的路径
+                        ffmpeg_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'bin', 'ffmpeg.exe'))
+                        
+                        if not os.path.exists(ffmpeg_path):
+                            logging.warning(f"ffmpeg.exe not found at {ffmpeg_path}, assuming it's in PATH.")
+                            ffmpeg_path = 'ffmpeg'
+
+                        command = [
+                            ffmpeg_path,
+                            '-i', file_path,
+                            '-f', 'wav',       # 输出 WAV 格式到 stdout
+                            '-'
+                        ]
+
+                        # 使用 communicate() 来避免死锁，并捕获 stdout 和 stderr
+                        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                        stdout_data, stderr_data = process.communicate()
+
+                        # 检查 ffmpeg 是否成功执行
+                        if process.returncode != 0:
+                            logging.error(f"FFmpeg failed with return code {process.returncode}.")
+                            logging.error(f"FFmpeg stderr: {stderr_data.decode(errors='ignore')}")
+                            # 抛出异常，让外层知道加载失败
+                            raise sf.LibsndfileError(f"FFmpeg decoding failed for {file_path}")
+
+                        # 如果成功，从内存中的 stdout 数据加载
+                        try:
+                            original_data, original_samplerate = sf.read(io.BytesIO(stdout_data), dtype='float64')
+                            logging.info(f"Successfully loaded {file_path} via FFmpeg.")
+                        except Exception as e:
+                            logging.error(f"Failed to read from FFmpeg stdout stream: {e}", exc_info=True)
+                            raise e
+                    else:
+                        # 如果是其他 soundfile 错误，重新抛出
+                        raise e
+
                 # --- Determine Target Samplerate ---
-                original_data, original_samplerate = sf.read(file_path, dtype='float64')
                 target_sr = original_samplerate
 
                 if self.target_samplerate and self.target_samplerate > target_sr:

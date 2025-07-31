@@ -27,6 +27,20 @@
             --viewer-button-active-bg: var(--accent-bg);
             --viewer-top-light-effect-bg: var(--shimmer-color-transparent); /* 使用主题中的透明闪烁色 */
             --viewer-heading-color: var(--highlight-text); /* 新增：深色主题下的标题颜色 */
+
+            /* Tool Result Bubble Dark Theme */
+            --tool-result-bg: linear-gradient(145deg, #2b3a42, #3f5159);
+            --tool-result-border-color: rgba(255, 255, 255, 0.1);
+            --tool-result-text-color: #e0e0e0;
+            --tool-result-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+            --tool-result-header-border-color: rgba(255, 255, 255, 0.15);
+            --tool-result-name-color: #81d4fa;
+            --tool-result-name-bg: rgba(129, 212, 250, 0.1);
+            --tool-result-item-key-color: #90a4ae;
+            --tool-result-item-value-color: #cfd8dc;
+            --tool-result-item-link-color: #82b1ff;
+            --tool-result-item-strong-color: #ffd54f;
+            --tool-result-footer-color: #b0bec5;
         }
 
         /* Define CSS variables for light theme */
@@ -42,6 +56,20 @@
             --viewer-button-active-bg: var(--accent-bg);
             --viewer-top-light-effect-bg: var(--shimmer-color-transparent); /* 使用主题中的透明闪烁色 */
             --viewer-heading-color-light: var(--highlight-text); /* 新增：浅色主题下的标题颜色 */
+
+            /* Tool Result Bubble Light Theme */
+            --tool-result-bg: linear-gradient(145deg, #f4f6f8, #e8eaf0);
+            --tool-result-border-color: rgba(0, 0, 0, 0.1);
+            --tool-result-text-color: #333;
+            --tool-result-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            --tool-result-header-border-color: rgba(0, 0, 0, 0.1);
+            --tool-result-name-color: #0277bd;
+            --tool-result-name-bg: rgba(2, 119, 189, 0.1);
+            --tool-result-item-key-color: #546e7a;
+            --tool-result-item-value-color: #263238;
+            --tool-result-item-link-color: #1976d2;
+            --tool-result-item-strong-color: #b8860b; /* DarkGoldenRod */
+            --tool-result-footer-color: #78909c;
         }
 
         .custom-quote-dark {
@@ -615,6 +643,134 @@
             100% { background-position: 0% 50%; }
         }
         /* --- End: Ported Styles --- */
+
+        /* --- VCP Tool Result Bubble --- */
+        .vcp-tool-result-bubble {
+            display: block !important;
+            background: var(--tool-result-bg, linear-gradient(145deg, #f4f6f8, #e8eaf0)) !important;
+            border-radius: 10px !important;
+            border: 1px solid var(--tool-result-border-color, rgba(0, 0, 0, 0.1));
+            padding: 12px 18px !important;
+            color: var(--tool-result-text-color, #333) !important;
+            box-shadow: var(--tool-result-shadow, 0 4px 12px rgba(0, 0, 0, 0.1));
+            margin-top: 10px !important;
+            margin-bottom: 12px !important;
+            position: relative;
+            font-family: 'Segoe UI', 'Roboto', sans-serif !important;
+            font-size: 0.95em !important;
+            line-height: 1.6;
+            width: fit-content;
+            max-width: 95%;
+            transition: background 0.3s, color 0.3s, border-color 0.3s, box-shadow 0.3s;
+        }
+        .vcp-tool-result-bubble::before {
+            content: "📊";
+            position: absolute;
+            top: 12px;
+            left: 15px;
+            font-size: 16px;
+            opacity: 0.7;
+        }
+        .vcp-tool-result-header {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+            padding-left: 28px; /* Space for the icon */
+            border-bottom: 1px solid var(--tool-result-header-border-color, rgba(0, 0, 0, 0.1));
+            padding-bottom: 8px;
+            margin-bottom: 10px;
+        }
+        .vcp-tool-result-label {
+            font-weight: bold;
+            color: #4caf50;
+            font-size: 1.05em;
+        }
+        .vcp-tool-result-name {
+            font-weight: bold;
+            color: var(--tool-result-name-color, #0277bd);
+            background-color: var(--tool-result-name-bg, rgba(2, 119, 189, 0.1));
+            padding: 2px 6px;
+            border-radius: 4px;
+        }
+        .vcp-tool-result-status {
+            font-weight: bold;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.9em;
+        }
+        .vcp-tool-result-status.status-success {
+            color: #1b5e20;
+            background-color: rgba(76, 175, 80, 0.15);
+        }
+        body:not(.light-theme) .vcp-tool-result-status.status-success {
+            color: #c8e6c9;
+            background-color: rgba(76, 175, 80, 0.2);
+        }
+        .vcp-tool-result-status.status-failure {
+            color: #b71c1c;
+            background-color: rgba(211, 47, 47, 0.15);
+        }
+        body:not(.light-theme) .vcp-tool-result-status.status-failure {
+            color: #ffcdd2;
+            background-color: rgba(211, 47, 47, 0.2);
+        }
+        .vcp-tool-result-details {
+            padding-left: 28px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .vcp-tool-result-item {
+            display: flex;
+            flex-direction: row;
+            align-items: flex-start;
+        }
+        .vcp-tool-result-item-key {
+            font-weight: bold;
+            color: var(--tool-result-item-key-color, #546e7a);
+            margin-right: 8px;
+            white-space: nowrap;
+        }
+        .vcp-tool-result-item-value {
+            color: var(--tool-result-item-value-color, #263238);
+            word-break: break-all;
+        }
+        .vcp-tool-result-item-value a {
+            color: var(--tool-result-item-link-color, #1976d2) !important;
+            text-decoration: underline !important;
+        }
+        .vcp-tool-result-item-value strong {
+            color: var(--tool-result-item-strong-color, #b8860b);
+            font-weight: bold;
+        }
+        .vcp-tool-result-image {
+            max-width: 100%;
+            max-height: 250px;
+            border-radius: 6px;
+            margin-top: 5px;
+            border: 2px solid var(--tool-result-border-color, rgba(0, 0, 0, 0.1));
+            cursor: pointer;
+            transition: transform 0.2s ease;
+        }
+        .vcp-tool-result-image:hover {
+            transform: scale(1.05);
+        }
+        .vcp-tool-result-footer {
+            margin-top: 10px;
+            padding-top: 8px;
+            border-top: 1px solid var(--tool-result-header-border-color, rgba(0, 0, 0, 0.1));
+            font-size: 0.9em;
+            color: var(--tool-result-footer-color, #78909c);
+        }
+        .vcp-tool-result-footer pre {
+            margin: 0;
+            padding: 0;
+            white-space: pre-wrap;
+            word-break: break-word;
+            font-family: inherit;
+            background: none;
+        }
 
        /* --- Custom Title Bar --- */
        #custom-title-bar {

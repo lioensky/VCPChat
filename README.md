@@ -12,6 +12,39 @@
 
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/lioensky/VCPChat)
 
+## 安装与部署
+
+1.  **克隆仓库**
+
+    克隆此项目到您的本地计算机：
+    ```bash
+    git clone https://github.com/lioensky/VCPChat.git
+    cd VCPChat
+    ```
+
+2.  **安装依赖**
+
+    本项目需要 Node.js 和 Python 环境。
+
+    *   **安装 Node.js 依赖:**
+        ```bash
+        npm install
+        ```
+
+    *   **安装 Python 依赖** (用于音频引擎、高级插件等):
+        ```bash
+        pip install -r requirements.txt
+        ```
+
+3.  **启动应用**
+
+    *   **常规启动:**
+        ```bash
+        npm start
+        ```
+
+    *   **静默启动 (可选):**
+        您也可以使用 `run_silent.vbs` 脚本来实现无控制台窗口的静默启动。
 ## 前后端深度协同：释放 AI 的无限潜能
 
 VChat 不仅仅是一个聊天界面，它是强大的 VCP 后端生态（VCPToolBox）的“眼睛”和“画板”。两者深度结合，旨在释放 AI 的无限潜能：

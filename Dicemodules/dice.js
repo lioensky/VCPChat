@@ -29,7 +29,7 @@ Box.init().then(() => {
 
     // Listen for theme changes from the main process
     if (window.electronAPI && window.electronAPI.onThemeUpdated) {
-        window.electronAPI.onThemeUpdated((theme) => applyTheme(theme));
+        window.electronAPI.onThemeUpdated(applyTheme);
     }
 
     // Get the initial theme from the main process

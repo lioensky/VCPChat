@@ -39,7 +39,7 @@ document.addEventListener('DOMContentLoaded', () => {
     window.electronAPI.onThemeUpdated((theme) => {
         console.log(`[Assistant Bar] Theme updated to: ${theme}`);
         document.body.classList.toggle('light-theme', theme === 'light');
-        document.body.classList.toggle('dark-theme', theme === 'dark');
+        document.body.classList.toggle('dark-theme', theme !== 'light');
     });
 
     // 3. 为所有按钮添加点击事件

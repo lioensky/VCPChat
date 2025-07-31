@@ -142,10 +142,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         if (window.electronAPI) {
-            window.electronAPI.onThemeUpdated((theme) => {
-                console.log(`Theme update received in translator: ${theme}`);
-                applyTheme(theme);
-            });
+            window.electronAPI.onThemeUpdated(applyTheme);
         } else {
             console.warn('electronAPI not found. Theme updates will not work.');
         }
