@@ -256,10 +256,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (window.electronAPI) {
         initializeTheme();
-        window.electronAPI.onThemeUpdated((theme) => {
-            console.log(`Theme update received in themes window: ${theme}`);
-            applyThemeForWindow(theme);
-        });
+        window.electronAPI.onThemeUpdated(applyThemeForWindow);
     } else {
         console.warn('electronAPI not found. Theme updates will not work.');
         applyThemeForWindow('dark');

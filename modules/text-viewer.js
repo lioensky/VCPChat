@@ -206,8 +206,74 @@ document.addEventListener('DOMContentLoaded', async () => {
     function transformSpecialBlocksForViewer(text) {
         const toolRegex = /<<<\[TOOL_REQUEST\]>>>(.*?)<<<\[END_TOOL_REQUEST\]>>>/gs;
         const noteRegex = /<<<DailyNoteStart>>>(.*?)<<<DailyNoteEnd>>>/gs;
+        const toolResultRegex = /\[\[VCP调用结果信息汇总:(.*?)\]\]/gs;
 
         let processed = text;
+
+        // Process VCP Tool Results - Viewer Mode (Full Details)
+        processed = processed.replace(toolResultRegex, (match, rawContent) => {
+            const content = rawContent.trim();
+            const lines = content.split('\n').filter(line => line.trim() !== '');
+
+            let toolName = 'Unknown Tool';
+            let status = 'Unknown Status';
+            const details = [];
+            let otherContent = [];
+
+            lines.forEach(line => {
+                const kvMatch = line.match(/-\s*([^:]+):\s*(.*)/);
+                if (kvMatch) {
+                    const key = kvMatch[1].trim();
+                    const value = kvMatch[2].trim();
+                    if (key === '工具名称') {
+                        toolName = value;
+                    } else if (key === '执行状态') {
+                        status = value;
+                    } else {
+                        details.push({ key, value });
+                    }
+                } else {
+                    otherContent.push(line);
+                }
+            });
+
+            let html = `<div class="vcp-tool-result-bubble">`;
+            html += `<div class="vcp-tool-result-header">`;
+            html += `<span class="vcp-tool-result-label">VCP-ToolResult</span>`;
+            html += `<span class="vcp-tool-result-name">${escapeHtml(toolName)}</span>`;
+            html += `<span class="vcp-tool-result-status">${escapeHtml(status)}</span>`;
+            html += `</div>`;
+
+            html += `<div class="vcp-tool-result-details">`;
+            details.forEach(({ key, value }) => {
+                const urlRegex = /(https?:\/\/[^\s]+)/g;
+                let processedValue = escapeHtml(value);
+                
+                if ((key === '可访问URL' || key === '返回内容') && value.match(/\.(jpeg|jpg|png|gif)$/i)) {
+                     processedValue = `<a href="${value}" target="_blank" rel="noopener noreferrer" title="点击预览"><img src="${value}" class="vcp-tool-result-image" alt="Generated Image"></a>`;
+                } else {
+                    processedValue = processedValue.replace(urlRegex, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
+                }
+                
+                if (key === '返回内容') {
+                    processedValue = processedValue.replace(/###(.*?)###/g, '<strong>$1</strong>');
+                }
+
+                html += `<div class="vcp-tool-result-item">`;
+                html += `<span class="vcp-tool-result-item-key">${escapeHtml(key)}:</span> `;
+                html += `<span class="vcp-tool-result-item-value">${processedValue}</span>`;
+                html += `</div>`;
+            });
+            html += `</div>`;
+
+            if (otherContent.length > 0) {
+                html += `<div class="vcp-tool-result-footer"><pre>${escapeHtml(otherContent.join('\n'))}</pre></div>`;
+            }
+
+            html += `</div>`;
+
+            return html;
+        });
 
         // Process Tool Requests - Viewer Mode (Full Details)
         processed = processed.replace(toolRegex, (match, content) => {
@@ -361,10 +427,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     console.log(`[TextViewer] Initial theme set from URL: ${initialTheme}`);
 
     if (window.electronAPI) {
-        window.electronAPI.onThemeUpdated((theme) => {
-            console.log(`Theme update received in text viewer: ${theme}`);
-            applyTheme(theme);
-        });
+        window.electronAPI.onThemeUpdated(applyTheme);
     } else {
         console.log('[TextViewer] electronAPI not found. Theme updates will not be received.');
     }
@@ -665,6 +728,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     async function enhanceRenderedContent(container) {
         // First, fix any broken emoticon URLs
         await fixEmoticonImagesInContainer(container);
+
+        // Style status bubbles based on content
+        container.querySelectorAll('.vcp-tool-result-status').forEach(statusEl => {
+            const statusText = statusEl.textContent.toUpperCase();
+            if (statusText.includes('SUCCESS')) {
+                statusEl.classList.add('status-success');
+            } else if (statusText.includes('FAILURE') || statusText.includes('ERROR')) {
+                statusEl.classList.add('status-failure');
+            }
+        });
 
         const codeBlocksToProcess = [];
         const mermaidBlocksToRender = [];

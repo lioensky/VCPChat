@@ -134,9 +134,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
     
-    if (window.electronAPI) {
-        window.electronAPI.onThemeUpdated(applyTheme);
-    }
 
     // --- Markdown & Preview Rendering ---
     // --- Start: Ported Pre-processing functions ---
@@ -1049,6 +1046,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     async function initializeApp() {
         // Initialize theme first to prevent flash of unstyled content
         if (window.electronAPI) {
+            // Use the new robust theme listener
+            window.electronAPI.onThemeUpdated(applyTheme);
             try {
                 const initialTheme = await window.electronAPI.getCurrentTheme();
                 applyTheme(initialTheme);

@@ -29,10 +29,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Listen for subsequent theme updates
     if (window.electronAPI) {
-        window.electronAPI.onThemeUpdated((theme) => {
-            console.log(`Theme update received in image viewer: ${theme}`);
-            applyTheme(theme);
-        });
+        window.electronAPI.onThemeUpdated(applyTheme);
     } else {
         console.log('Image Viewer: electronAPI not found. Theme updates will not be received.');
     }

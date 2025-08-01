@@ -305,7 +305,7 @@ document.addEventListener('DOMContentLoaded', () => {
     window.electronAPI.onThemeUpdated((theme) => {
         console.log(`[VoiceChat Window] Theme updated to: ${theme}`);
         document.body.classList.toggle('light-theme', theme === 'light');
-        document.body.classList.toggle('dark-theme', theme === 'dark');
+        document.body.classList.toggle('dark-theme', theme !== 'light');
     });
 
     // --- Speech Recognition IPC Listener ---

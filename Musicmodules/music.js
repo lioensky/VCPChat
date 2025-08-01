@@ -366,7 +366,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         let x = 0;
         for (let i = 0; i < bufferLength; i++) {
-            const barHeight = smoothedData[i] * visualizerCanvas.height * 0.9;
+            const barHeight = smoothedData[i] * visualizerCanvas.height * 1.316;
             const y = visualizerCanvas.height - barHeight;
             visualizerCtx.lineTo(x, y);
             x += barWidth;
@@ -827,19 +827,18 @@ document.addEventListener('DOMContentLoaded', () => {
     };
     
     const initializeTheme = async () => {
-        if (!window.electronAPI) {
-            applyTheme('dark');
-            return;
-        }
-        try {
-            const theme = await window.electronAPI.getCurrentTheme();
-            applyTheme(theme || 'dark');
-            window.electronAPI.onThemeUpdated((newTheme) => {
-                applyTheme(newTheme);
-            });
-        } catch (error) {
-            console.error('Failed to initialize theme:', error);
-            applyTheme('dark');
+        if (window.electronAPI) {
+            // Use the new robust theme listener
+            window.electronAPI.onThemeUpdated(applyTheme);
+            try {
+                const theme = await window.electronAPI.getCurrentTheme();
+                applyTheme(theme || 'dark');
+            } catch (error) {
+                console.error('Failed to initialize theme:', error);
+                applyTheme('dark');
+            }
+        } else {
+            applyTheme('dark'); // Fallback for non-electron env
         }
     };
 

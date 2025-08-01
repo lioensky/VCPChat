@@ -12,6 +12,39 @@
 
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/lioensky/VCPChat)
 
+## 安装与部署
+
+1.  **克隆仓库**
+
+    克隆此项目到您的本地计算机：
+    ```bash
+    git clone https://github.com/lioensky/VCPChat.git
+    cd VCPChat
+    ```
+
+2.  **安装依赖**
+
+    本项目需要 Node.js 和 Python 环境。
+
+    *   **安装 Node.js 依赖:**
+        ```bash
+        npm install
+        ```
+
+    *   **安装 Python 依赖** (用于音频引擎、高级插件等):
+        ```bash
+        pip install -r requirements.txt
+        ```
+
+3.  **启动应用**
+
+    *   **常规启动:**
+        ```bash
+        npm start
+        ```
+
+    *   **静默启动 (可选):**
+        您也可以使用 `run_silent.vbs` 脚本来实现无控制台窗口的静默启动。
 ## 前后端深度协同：释放 AI 的无限潜能
 
 VChat 不仅仅是一个聊天界面，它是强大的 VCP 后端生态（VCPToolBox）的“眼睛”和“画板”。两者深度结合，旨在释放 AI 的无限潜能：
@@ -199,6 +232,7 @@ AI在生成表情包的`<img>`标签时，有时会因为模型幻觉或数据�
     *   **高级算法实现**:
         *   **64位双精度解码**: 引擎核心采用64位双精度浮点数进行解码运算，确保了无与伦比的计算精度，从根本上杜绝了音质损失。
         *   **高品质数字重采样**: 新增 96kHz 和 192kHz 两档专业级数字重采样算法。通过高质量的插值滤波器，将标准音源提升至更高。
+        *   **智能重采样**: 在 WASAPI 模式下引入智能重采样。针对不同 DAC 设备的最大音频解码上限，自动将音频重采样到其支持的最佳规格。
     *   **安装提示**: 为确保音频引擎正常工作，请在启动前务必安装所需的 Python 依赖。在项目根目录下运行命令：`pip install -r requirements.txt`。
  *   **音乐播放器与控制**:
     *   内置一个功能完善的音乐播放器，支持播放本地音乐文件，支持WASPI光纤同轴输出。
