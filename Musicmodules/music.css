@@ -109,24 +109,47 @@ body {
 
 #lyrics-list li {
     font-size: 1.1em;
-    line-height: 2.2;
+    line-height: 1.6;
     color: var(--music-text-secondary);
     transition: color 0.4s ease, font-size 0.4s ease, font-weight 0.4s ease, opacity 0.4s ease, transform 0.3s ease;
     font-weight: 500;
-    padding: 0 15px;
+    padding: 5px 15px;
+    opacity: 0.5; /* Default opacity for non-active lines */
+    transform: scale(0.95);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+.lyric-original, .lyric-translation {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    opacity: 0.5; /* Default opacity for non-active lines */
-    transform: scale(0.95);
+    width: 100%;
+}
+
+.lyric-translation {
+    font-size: 0.85em;
+    opacity: 0.8;
+    margin-top: 4px;
 }
 
 #lyrics-list li.active {
-    color: var(--music-highlight) !important;
+    color: var(--music-text) !important;
     font-weight: 700;
     font-size: 1.3em;
     opacity: 1;
     transform: scale(1);
+}
+
+#lyrics-list li.active .lyric-original {
+    color: var(--music-highlight);
+}
+
+#lyrics-list li.active .lyric-translation {
+    color: var(--music-highlight);
+    opacity: 1;
 }
 
 #lyrics-list .no-lyrics {
@@ -329,7 +352,10 @@ body.light-theme .album-art {
     appearance: none;
     width: 80px;
     height: 5px;
-    background: var(--hover-bg);
+    background-color: var(--hover-bg);
+    background-image: linear-gradient(to right, var(--music-highlight), var(--music-highlight));
+    background-repeat: no-repeat;
+    background-size: 0% 100%; /* Default to 0, will be updated by JS */
     border-radius: 3px;
     outline: none;
     transition: opacity 0.2s;
@@ -572,20 +598,24 @@ input:checked + .slider:before {
    gap: 15px;
 }
 
-.eq-reset-btn {
-   background: transparent;
-   border: 1px solid var(--glass-border);
-   color: var(--music-text-secondary);
-   padding: 4px 10px;
-   border-radius: 6px;
-   cursor: pointer;
-   font-size: 0.8em;
-   transition: all 0.2s ease;
+.eq-preset-select {
+    background-color: var(--hover-bg);
+    color: var(--music-text);
+    border: 1px solid var(--glass-border);
+    border-radius: 6px;
+    padding: 4px 8px;
+    font-size: 0.8em;
+    outline: none;
+    cursor: pointer;
+    transition: all 0.2s ease;
 }
 
-.eq-reset-btn:hover {
-   background-color: var(--hover-bg);
-   color: var(--music-text);
+.eq-preset-select:hover {
+    background-color: rgba(255, 255, 255, 0.15);
+}
+
+body.light-theme .eq-preset-select:hover {
+    background-color: rgba(0, 0, 0, 0.1);
 }
 
 .eq-bands {
