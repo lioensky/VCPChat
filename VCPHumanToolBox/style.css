@@ -1,0 +1,215 @@
+/* VCPHumanToolBox/style.css */
+
+html {
+    border-radius: 12px; /* 将圆角应用到根元素 */
+    overflow: hidden;   /* 防止子元素溢出圆角 */
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: transparent; /* 移除背景色以显示透明窗口 */
+    color: var(--primary-text);
+    margin: 0;
+    padding: 0; /* 移除内边距，让标题栏贴顶 */
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.title-bar {
+    height: 32px;
+    background-color: rgba(30, 40, 45, 0.7);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 10px;
+    color: var(--secondary-text);
+    -webkit-app-region: drag; /* 整个标题栏可拖拽 */
+}
+
+.title-bar .title {
+    font-weight: bold;
+}
+
+.window-controls {
+    display: flex;
+    -webkit-app-region: no-drag; /* 控制按钮区域不可拖拽 */
+}
+
+.control-btn {
+    width: 30px;
+    height: 30px;
+    line-height: 30px;
+    text-align: center;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.control-btn:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+#close-btn:hover {
+    background-color: var(--danger-color);
+    color: white;
+}
+
+.container {
+    flex-grow: 1; /* 占据剩余所有空间 */
+    max-width: 100%; /* 宽度占满 */
+    padding: 20px;
+    overflow-y: auto; /* 仅在内容超出时显示滚动条 */
+    background-color: rgba(44, 62, 74, 0.6); /* 使用带alpha通道的颜色 */
+    backdrop-filter: blur(12px) saturate(120%);
+    -webkit-backdrop-filter: blur(12px) saturate(120%);
+}
+
+header {
+    text-align: center;
+    margin-bottom: 30px;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 20px;
+}
+
+header h1 {
+    color: var(--highlight-text);
+    margin: 0;
+}
+
+header p {
+    color: var(--secondary-text);
+}
+
+.tool-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 20px;
+}
+
+.tool-card {
+    background-color: rgba(26, 42, 48, 0.5); /* 使用带alpha通道的颜色 */
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    padding: 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.tool-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 12px 24px rgba(0, 0, 0, 0.2);
+    border-color: var(--highlight-text);
+}
+
+.tool-card h3 {
+    margin: 0 0 10px 0;
+    color: var(--secondary-text);
+}
+
+.tool-card p {
+    font-size: 14px;
+    color: var(--placeholder-text);
+    margin: 0;
+}
+
+.tool-detail-view {
+    padding: 20px;
+    background-color: var(--tertiary-bg);
+    border-radius: 8px;
+}
+
+.back-btn {
+    background-color: var(--button-bg);
+    color: var(--text-on-accent);
+    border: none;
+    padding: 10px 15px;
+    border-radius: 5px;
+    cursor: pointer;
+    margin-bottom: 20px;
+    transition: background-color 0.2s;
+}
+
+.back-btn:hover {
+    background-color: var(--button-hover-bg);
+}
+
+#tool-form {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+#tool-form .form-group {
+    display: flex;
+    flex-direction: column;
+}
+
+#tool-form label {
+    margin-bottom: 5px;
+    color: var(--secondary-text);
+}
+
+#tool-form input,
+#tool-form textarea,
+#tool-form select {
+    background-color: var(--input-bg);
+    color: var(--primary-text);
+    border: 1px solid var(--border-color);
+    border-radius: 5px;
+    padding: 10px;
+    font-size: 16px;
+}
+
+#tool-form textarea {
+    min-height: 120px;
+    resize: vertical;
+}
+
+#tool-form button {
+    align-self: flex-start;
+    padding: 12px 25px;
+    background-color: var(--success-color);
+    color: var(--text-on-accent);
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 16px;
+    transition: background-color 0.2s;
+}
+
+#tool-form button:hover {
+    opacity: 0.9;
+}
+
+.result-container {
+    margin-top: 30px;
+    padding: 20px;
+    background-color: var(--input-bg);
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    min-height: 100px;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+.result-container img,
+.result-container video,
+.result-container audio {
+    max-width: 100%;
+    border-radius: 5px;
+    margin-top: 10px;
+}
+
+.result-container .error {
+    color: var(--danger-color);
+}
+
+.result-container .loading {
+    text-align: center;
+    color: var(--secondary-text);
+}

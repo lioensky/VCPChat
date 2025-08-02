@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VCP 人类工具箱</title>
+    <link rel="stylesheet" href="../styles/themes.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="title-bar">
+        <div class="title">VCP 人类工具箱</div>
+        <div class="window-controls">
+            <div class="control-btn" id="minimize-btn">-</div>
+            <div class="control-btn" id="maximize-btn">□</div>
+            <div class="control-btn" id="close-btn">&times;</div>
+        </div>
+    </div>
+    <div class="container">
+        <header>
+            <h1>工具箱</h1>
+            <p>一个为人类设计的直观工具调用界面。</p>
+        </header>
+
+        <main id="main-content">
+            <div id="tool-grid" class="tool-grid">
+                <!-- 工具卡片将由JS动态生成 -->
+            </div>
+
+            <div id="tool-detail-view" class="tool-detail-view" style="display: none;">
+                <button id="back-to-grid-btn" class="back-btn">&larr; 返回工具列表</button>
+                <h2 id="tool-title"></h2>
+                <p id="tool-description"></p>
+                <form id="tool-form"></form>
+                <div id="result-container" class="result-container"></div>
+            </div>
+        </main>
+    </div>
+
+    <script src="renderer.js"></script>
+</body>
+</html>
