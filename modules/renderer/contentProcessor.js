@@ -210,16 +210,20 @@ function highlightQuotesInMessage(messageElement) {
     const walker = document.createTreeWalker(
         messageElement,
         NodeFilter.SHOW_TEXT,
-        (node) => { // Filter to exclude nodes inside already highlighted quotes or tags, or style/script/pre/code/katex
+        (node) => {
+            // 过滤：已在高亮/KaTeX/代码等环境，或父节点包含内联样式（AI 富文本）
             let parent = node.parentElement;
             while (parent && parent !== messageElement && parent !== document.body) {
-                if (parent.classList.contains('highlighted-quote') ||
-                    parent.classList.contains('highlighted-tag') ||
-                    parent.classList.contains('katex') ||
+                if (
+                    (parent.classList && (parent.classList.contains('highlighted-quote') ||
+                                          parent.classList.contains('highlighted-tag') ||
+                                          parent.classList.contains('katex'))) ||
                     parent.tagName === 'STYLE' ||
                     parent.tagName === 'SCRIPT' ||
                     parent.tagName === 'PRE' ||
-                    parent.tagName === 'CODE') {
+                    parent.tagName === 'CODE' ||
+                    (parent.hasAttribute && parent.hasAttribute('style'))
+                ) {
                     return NodeFilter.FILTER_REJECT;
                 }
                 parent = parent.parentElement;
@@ -233,10 +237,14 @@ function highlightQuotesInMessage(messageElement) {
     const nodesToProcess = [];
 
     while (node = walker.nextNode()) {
-        const text = node.nodeValue;
+        const parentEl = node.parentElement;
+        // 跳过：父元素内含有子元素（复杂富文本），避免跨标签切割
+        if (!parentEl || parentEl.children.length > 0) continue;
+
+        const text = node.nodeValue || '';
         let match;
         const matches = [];
-        quoteRegex.lastIndex = 0; // Reset regex state for each node
+        quoteRegex.lastIndex = 0;
         while ((match = quoteRegex.exec(text)) !== null) {
             const contentGroup1 = match[1];
             const contentGroup2 = match[2];
@@ -253,27 +261,28 @@ function highlightQuotesInMessage(messageElement) {
         }
     }
 
-    // Process nodes in reverse to avoid issues with DOM modification
+    // 逆序处理，避免索引失效
     for (let i = nodesToProcess.length - 1; i >= 0; i--) {
         const { node, matches } = nodesToProcess[i];
         let currentNode = node;
 
-        // Process matches for a single node in reverse to keep indices valid
         for (let j = matches.length - 1; j >= 0; j--) {
             const matchInfo = matches[j];
 
-            // Split the text node after the match
+            // 在匹配末尾切分
             const textAfterNode = currentNode.splitText(matchInfo.index + matchInfo.fullMatch.length);
 
-            // Create the highlighted span
+            // 包裹为可断行的高亮片段
             const span = document.createElement('span');
             span.className = 'highlighted-quote';
             span.textContent = matchInfo.fullMatch;
 
-            // Insert the new span before the text that followed the match
+            // 插入 span 与一个零宽空格，提供断行机会
             currentNode.parentNode.insertBefore(span, textAfterNode);
+            const zwsp = document.createTextNode('\u200B');
+            currentNode.parentNode.insertBefore(zwsp, textAfterNode);
 
-            // Truncate the original node to remove the matched text from its end
+            // 截断原节点
             currentNode.nodeValue = currentNode.nodeValue.substring(0, matchInfo.index);
         }
     }

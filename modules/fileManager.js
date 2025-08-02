@@ -93,7 +93,7 @@ async function storeFile(sourcePathOrBuffer, originalName, agentId, topicId, fil
             case '.aiff': mimeType = 'audio/aiff'; break;
             case '.mp4': mimeType = 'video/mp4'; break;
             case '.webm': mimeType = 'video/webm'; break;
-            case '.bat': case '.sh': case '.py': case '.java': case '.c': case '.cpp': case '.h': case '.hpp': case '.cs': case '.go': case '.rb': case '.php': case '.swift': case '.kt': case '.ts': case '.tsx': case '.jsx': case '.vue': case '.yml': case '.yaml': case '.toml': case '.ini': case '.log': case '.sql': case '.jsonc':
+            case '.bat': case '.sh': case '.py': case '.java': case '.c': case '.cpp': case '.h': case '.hpp': case '.cs': case '.go': case '.rb': case '.php': case '.swift': case '.kt': case '.kts': case '.ts': case '.tsx': case '.jsx': case '.vue': case '.yml': case '.yaml': case '.toml': case '.ini': case '.log': case '.sql': case '.jsonc': case '.rs': case '.dart': case '.lua': case '.r': case '.pl': case '.ex': case '.exs': case '.zig': case '.hs': case '.scala': case '.groovy': case '.d': case '.nim': case '.cr':
                 mimeType = 'text/plain';
                 break;
             default:
@@ -187,7 +187,7 @@ async function getTextContent(internalFilePath, fileType) {
             case '.java': case '.c': case '.cpp': case '.h': case '.hpp': case '.cs':
             case '.go': case '.rb': case '.php': case '.swift': case '.kt': case '.ts':
             case '.tsx': case '.jsx': case '.vue': case '.yml': case '.yaml': case '.toml':
-            case '.ini': case '.log': case '.sql': case '.jsonc':
+            case '.ini': case '.log': case '.sql': case '.jsonc': case '.rs': case '.dart': case '.lua': case '.r': case '.pl': case '.ex': case '.exs': case '.zig': case '.hs': case '.scala': case '.groovy': case '.d': case '.nim': case '.cr':
                 effectiveFileType = 'text/plain';
                 break;
             case '.pdf':

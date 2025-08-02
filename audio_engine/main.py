@@ -42,7 +42,8 @@ class AudioEngine:
         self.stop_event = threading.Event()
         self.volume = 1.0  # 音量，范围 0.0 到 1.0
         self.fft_size = 2048  # FFT窗口大小, for better low-freq resolution
-        self.fft_update_interval = 1.0 / 30.0  # 约每秒30次
+        self.hanning_window = np.hanning(self.fft_size) # 性能优化：预计算汉宁窗
+        self.fft_update_interval = 1.0 / 20.0  # B3: 更新频率降至20Hz，降低前端负载
         self.num_log_bins = 48 # Number of bars for the visualizer
         self.device_id = None # Can be None for default device
         self.exclusive_mode = False
@@ -72,25 +73,39 @@ class AudioEngine:
                 
             # --- Apply EQ if enabled ---
             if self.eq_enabled and self.eq_filters:
-                for i in range(self.channels):
-                    # Ensure zi exists for the channel
-                    if i not in self.eq_zi:
-                        self._initialize_eq_zi(i)
+                # 性能优化 (B2): 将所有启用的SOS滤波器级联后一次性处理
+                active_sos_list = [self.eq_filters[band] for band in self.eq_filters if self.eq_bands.get(band, 0) != 0]
+                if active_sos_list:
+                    cascaded_sos = np.vstack(active_sos_list)
                     
-                    channel_data = chunk[:, i] if self.channels > 1 else chunk
-                    
-                    # Apply each filter band
-                    for band in self.eq_filters:
-                        if self.eq_bands[band] != 0: # Only apply if gain is not 0
-                            channel_data, self.eq_zi[i][band] = sosfilt(self.eq_filters[band], channel_data, zi=self.eq_zi[i][band])
-                    
-                    if self.channels > 1:
-                        chunk[:, i] = channel_data
-                    else:
-                        chunk = channel_data
+                    for i in range(self.channels):
+                        if i not in self.eq_zi:
+                            self._initialize_eq_zi(i)
+                        
+                        channel_data = chunk[:, i] if self.channels > 1 else chunk
+                        
+                        # 从 self.eq_zi 中提取对应激活的滤波器的 zi
+                        active_zi = np.vstack([self.eq_zi[i][band] for band in self.eq_filters if self.eq_bands.get(band, 0) != 0])
+                        
+                        channel_data, updated_zi = sosfilt(cascaded_sos, channel_data, zi=active_zi)
+                        
+                        # 将更新后的 zi 写回 self.eq_zi
+                        zi_counter = 0
+                        for band in self.eq_filters:
+                            if self.eq_bands.get(band, 0) != 0:
+                                num_sections = self.eq_filters[band].shape[0]
+                                self.eq_zi[i][band] = updated_zi[zi_counter : zi_counter + num_sections, :]
+                                zi_counter += num_sections
 
-            # 应用音量
-            outdata[:] = chunk * self.volume
+                        if self.channels > 1:
+                            chunk[:, i] = channel_data
+                        else:
+                            chunk = channel_data
+
+            # 应用音量并进行限幅
+            mixed = chunk * self.volume
+            np.clip(mixed, -1.0, 1.0, out=mixed)
+            outdata[:] = mixed
             self.position += frames
 
     def _playback_thread(self):
@@ -123,8 +138,8 @@ class AudioEngine:
                             fft_chunk = fft_chunk.mean(axis=1)
 
                         # 应用汉宁窗以减少频谱泄漏
-                        window = np.hanning(self.fft_size)
-                        fft_chunk = fft_chunk * window
+                        # 性能优化 (B1): 使用预计算的汉宁窗
+                        fft_chunk = fft_chunk * self.hanning_window
                         
                         # 执行FFT
                         fft_result = np.fft.rfft(fft_chunk)
@@ -182,61 +197,54 @@ class AudioEngine:
             time.sleep(0.01)
 
     def load(self, file_path):
-        """加载音频文件，并应用缓存机制"""
+        """加载音频文件，应用缓存，并为播放做准备。"""
         try:
             with self.lock:
-                self.stop() # 先停止当前播放
+                self.stop()
 
-                # --- Load Audio Data ---
+                # --- 1. Load Audio Data (with FFmpeg fallback) ---
                 try:
-                    # 尝试直接用 soundfile 加载
                     logging.info(f"Attempting to load {file_path} with soundfile...")
                     original_data, original_samplerate = sf.read(file_path, dtype='float64')
-                    logging.info(f"Successfully loaded with soundfile.")
+                    logging.info("Successfully loaded with soundfile.")
                 except sf.LibsndfileError as e:
-                    # 如果是格式无法识别的错误，则尝试使用 FFmpeg 作为后备方案
                     if 'Format not recognised' in str(e):
                         logging.warning(f"Soundfile failed: {e}. Falling back to FFmpeg.")
-                        
-                        # 构建 ffmpeg 的路径
                         ffmpeg_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'bin', 'ffmpeg.exe'))
-                        
                         if not os.path.exists(ffmpeg_path):
                             logging.warning(f"ffmpeg.exe not found at {ffmpeg_path}, assuming it's in PATH.")
                             ffmpeg_path = 'ffmpeg'
-
+                        
+                        # 改进的 FFmpeg 命令：降低日志噪音，并标准化输出为 f32le PCM
                         command = [
-                            ffmpeg_path,
+                            ffmpeg_path, '-v', 'error',
                             '-i', file_path,
-                            '-f', 'wav',       # 输出 WAV 格式到 stdout
-                            '-'
+                            '-acodec', 'pcm_f32le', # 标准化为 32-bit float
+                            '-f', 'wav', '-'
                         ]
-
-                        # 使用 communicate() 来避免死锁，并捕获 stdout 和 stderr
                         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                         stdout_data, stderr_data = process.communicate()
 
-                        # 检查 ffmpeg 是否成功执行
                         if process.returncode != 0:
-                            logging.error(f"FFmpeg failed with return code {process.returncode}.")
-                            logging.error(f"FFmpeg stderr: {stderr_data.decode(errors='ignore')}")
-                            # 抛出异常，让外层知道加载失败
+                            err_msg = f"FFmpeg failed with return code {process.returncode}. Stderr: {stderr_data.decode(errors='ignore')}"
+                            logging.error(err_msg)
                             raise sf.LibsndfileError(f"FFmpeg decoding failed for {file_path}")
 
-                        # 如果成功，从内存中的 stdout 数据加载
                         try:
                             original_data, original_samplerate = sf.read(io.BytesIO(stdout_data), dtype='float64')
                             logging.info(f"Successfully loaded {file_path} via FFmpeg.")
-                        except Exception as e:
-                            logging.error(f"Failed to read from FFmpeg stdout stream: {e}", exc_info=True)
-                            raise e
+                        except Exception as read_e:
+                            logging.error(f"Failed to read from FFmpeg stdout stream: {read_e}", exc_info=True)
+                            raise read_e
                     else:
-                        # 如果是其他 soundfile 错误，重新抛出
                         raise e
 
-                # --- Determine Target Samplerate ---
-                target_sr = original_samplerate
+                # --- 2. Correctly Determine Channels ---
+                # 修复：在读取数据后立即确定通道数
+                channels = original_data.shape[1] if original_data.ndim > 1 else 1
 
+                # --- 3. Determine Target Samplerate ---
+                target_sr = original_samplerate
                 if self.target_samplerate and self.target_samplerate > target_sr:
                     target_sr = self.target_samplerate
                 
@@ -249,38 +257,34 @@ class AudioEngine:
                     except Exception as e:
                         logging.warning(f"Could not query device for WASAPI default samplerate: {e}")
 
-                # --- Caching Logic ---
-                cache_key = f"{file_path}_{target_sr}".encode('utf-8')
-                cache_filename = f"{hashlib.md5(cache_key).hexdigest()}.wav"
+                # --- 4. Robust Caching Logic ---
+                # 修复：使用更健壮的缓存键
+                st = os.stat(file_path)
+                key = f"{file_path}|{st.st_mtime_ns}|{st.st_size}|sr={target_sr}|fmt=f32le|ch={channels}"
+                cache_filename = hashlib.md5(key.encode()).hexdigest() + '.wav'
                 cache_filepath = os.path.join(self.resample_cache_dir, cache_filename) if self.resample_cache_dir else None
 
                 if cache_filepath and os.path.exists(cache_filepath):
                     logging.info(f"Loading resampled data from cache: {cache_filepath}")
                     self.data, self.samplerate = sf.read(cache_filepath, dtype='float64')
                 else:
-                    # --- Perform Resampling if needed ---
+                    # --- 5. Perform Resampling if needed (with correct channel count) ---
                     if target_sr != original_samplerate:
                         logging.info(f"Resampling from {original_samplerate} Hz to {target_sr} Hz...")
-                        num_original_samples = len(original_data)
-                        num_new_samples = int(num_original_samples * target_sr / original_samplerate)
-                        # --- NEW: Use Rust-based resampler ---
-                        # Flatten the array for the Rust function, which expects interleaved audio
                         flat_data = original_data.flatten()
                         
-                        # Call the high-performance Rust resampler
+                        # 修复：将正确的通道数传递给 Rust 重采样器
                         resampled_flat = rust_audio_resampler.resample(
                             flat_data,
                             original_samplerate,
                             target_sr,
-                            self.channels
+                            channels # 使用局部变量 `channels`
                         )
                         
-                        # Reshape the 1D result back to a 2D array (frames, channels)
-                        self.data = resampled_flat.reshape((-1, self.channels))
+                        self.data = resampled_flat.reshape((-1, channels)) # 使用局部变量 `channels`
                         self.samplerate = target_sr
                         logging.info("Resampling complete.")
                         
-                        # Write to cache
                         if cache_filepath:
                             logging.info(f"Writing resampled data to cache: {cache_filepath}")
                             sf.write(cache_filepath, self.data, self.samplerate)
@@ -288,13 +292,18 @@ class AudioEngine:
                         self.data = original_data
                         self.samplerate = original_samplerate
 
+                # --- 6. Finalize State ---
                 self.file_path = file_path
-                self.channels = self.data.shape[1] if len(self.data.shape) > 1 else 1
+                self.channels = channels # 使用我们之前确定的正确通道数
                 self.position = 0
                 self.is_playing = False
                 self.is_paused = False
+                
+                # 为新加载的音轨（可能有多声道）重新初始化EQ状态
+                self._initialize_eq_zi()
+
                 logging.info(f"Loaded '{file_path}', Samplerate: {self.samplerate}, Channels: {self.channels}, Duration: {len(self.data)/self.samplerate:.2f}s")
-            return True
+                return True
         except Exception as e:
             logging.error(f"Failed to load file {file_path}: {e}", exc_info=True)
             with self.lock:
@@ -409,14 +418,13 @@ class AudioEngine:
             return True
 
     def _design_eq_filters(self):
-        """Design IIR filters based on current EQ settings."""
+        """根据当前的EQ设置设计IIR滤波器。"""
         if self.samplerate == 0:
             return
         
         nyquist = 0.5 * self.samplerate
-        self.eq_filters = {}
+        self.eq_filters = {} # 总是重新创建
         
-        # Define band frequencies and Q factor
         bands_config = {
            '31': (31, 1.41), '62': (62, 1.41), '125': (125, 1.41),
            '250': (250, 1.41), '500': (500, 1.41), '1k': (1000, 1.41),
@@ -424,28 +432,40 @@ class AudioEngine:
            '16k': (16000, 1.41)
         }
 
-        for band, (f0, Q) in bands_config.items():
-            gain_db = self.eq_bands.get(band, 0)
-            if gain_db != 0:
-                # Correct implementation for a peaking EQ biquad filter
-                A = 10**(gain_db / 40.0)
-                w0 = 2 * np.pi * f0 / self.samplerate
-                alpha = np.sin(w0) / (2.0 * Q)
+        # 按照频率排序以保证级联处理的顺序
+        sorted_bands = sorted(bands_config.keys(), key=lambda b: bands_config[b][0])
 
-                b0 = 1 + alpha * A
-                b1 = -2 * np.cos(w0)
-                b2 = 1 - alpha * A
-                a0 = 1 + alpha / A
-                a1 = -2 * np.cos(w0)
-                a2 = 1 - alpha / A
-                
-                b = np.array([b0, b1, b2]) / a0
-                a = np.array([a0, a1, a2]) / a0
-                
-                # Convert the transfer function (b, a) to second-order sections (SOS)
-                # This is the numerically stable way to implement higher-order filters.
-                sos = tf2sos(b, a, analog=False)
-                self.eq_filters[band] = sos
+        for band in sorted_bands:
+            f0, Q = bands_config[band]
+            gain_db = self.eq_bands.get(band, 0)
+            
+            # 注意：我们为所有频段都创建滤波器，即使增益为0。
+            # 这样可以确保在回调中 `self.eq_zi[i][band]` 总是存在。
+            # 实际是否应用该滤波器由回调中的 `if self.eq_bands.get(band, 0) != 0:` 决定。
+
+            if f0 >= nyquist * 0.95:
+                logging.warning(f"EQ band {band} ({f0} Hz) is too close to Nyquist frequency ({nyquist} Hz) and will be ignored.")
+                if band in self.eq_filters:
+                    del self.eq_filters[band] #确保它不会被使用
+                continue
+
+            A = 10**(gain_db / 40.0)
+            w0 = 2 * np.pi * f0 / self.samplerate
+            alpha = np.sin(w0) / (2.0 * Q)
+
+            b0 = 1 + alpha * A
+            b1 = -2 * np.cos(w0)
+            b2 = 1 - alpha * A
+            a0 = 1 + alpha / A
+            a1 = -2 * np.cos(w0)
+            a2 = 1 - alpha / A
+            
+            b = np.array([b0, b1, b2]) / a0
+            a = np.array([a0, a1, a2]) / a0
+            
+            sos = tf2sos(b, a, analog=False)
+            self.eq_filters[band] = sos
+            
         self._initialize_eq_zi()
         logging.info(f"Designed EQ filters for bands: {list(self.eq_filters.keys())}")
 
@@ -474,7 +494,8 @@ class AudioEngine:
             if bands:
                 for band, gain in bands.items():
                     if band in self.eq_bands:
-                        self.eq_bands[band] = gain
+                        # D2: 均衡器参数校验，增益限制在[-15, +15] dB
+                        self.eq_bands[band] = np.clip(gain, -15.0, 15.0)
             
             self._design_eq_filters()
             logging.info(f"EQ set. Enabled: {self.eq_enabled}, Bands: {self.eq_bands}")
@@ -495,10 +516,17 @@ class AudioEngine:
 
             # If a track was playing, reload and play it on the new device
             if was_playing and self.file_path:
-                current_position_seconds = self.position / self.samplerate if self.samplerate > 0 else 0
-                # Important: Reload the file to apply new device/mode settings (like resampling)
+                # D1: 修正热切换时的seek逻辑
+                # 保存切换前的采样帧索引和采样率
+                old_position_frames = self.position
+                old_samplerate = self.samplerate if self.samplerate > 0 else 1
+
+                # 重要：重新加载文件以应用新的设备/模式设置（如重采样）
                 if self.load(self.file_path):
-                    self.seek(current_position_seconds)
+                    # 按比例计算新的采样帧索引
+                    new_position_frames = int(old_position_frames * (self.samplerate / old_samplerate))
+                    self.position = new_position_frames
+                    logging.info(f"Reloaded track for device change, mapped position from {old_position_frames} to {self.position}")
                     self.play()
            
             # Redesign filters for the new sample rate if necessary
@@ -517,12 +545,17 @@ class AudioEngine:
                 logging.info("Re-loading current track to apply new upsampling settings...")
                 # 保存当前播放进度
                 was_playing = self.is_playing and not self.is_paused
-                current_position_seconds = self.position / self.samplerate if self.samplerate > 0 else 0
+                # D1: 修正热切换时的seek逻辑
+                old_position_frames = self.position
+                old_samplerate = self.samplerate if self.samplerate > 0 else 1
                 original_path = self.file_path
                 
                 # Reload the track. If it was playing, start it again.
                 if self.load(original_path):
-                    self.seek(current_position_seconds)
+                    # 按比例计算新的采样帧索引
+                    new_position_frames = int(old_position_frames * (self.samplerate / old_samplerate))
+                    self.position = new_position_frames
+                    logging.info(f"Reloaded track for upsampling change, mapped position from {old_position_frames} to {self.position}")
                     if was_playing:
                         self.play()
         return True
