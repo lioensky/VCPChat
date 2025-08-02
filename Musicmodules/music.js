@@ -80,7 +80,45 @@ let isDraggingProgress = false;
     let targetVisualizerData = [];
     let currentVisualizerData = [];
     const easingFactor = 0.2; // 缓动因子，值越小动画越平滑
+    let particles = []; // 用于存储粒子
+    const PARTICLE_COUNT = 80; // 定义粒子数量
 
+    // --- Particle Class ---
+    class Particle {
+        constructor(x, y) {
+            this.x = x;
+            this.y = y;
+            this.targetY = y;
+            this.vy = 0; // Vertical velocity
+            this.size = 1.1;
+            this.spring = 0.08; // Spring stiffness
+            this.friction = 0.85; // Friction/damping
+        }
+
+        update() {
+            // Spring physics for a bouncy effect
+            const dy = this.targetY - this.y;
+            const ay = dy * this.spring;
+            this.vy += ay;
+            this.vy *= this.friction;
+            this.y += this.vy;
+        }
+
+    }
+
+    const recreateParticles = () => {
+        particles.length = 0; // Clear existing particles, more performant
+        if (visualizerCanvas.width > 0) {
+            // Distribute particles across the full width of the canvas
+            for (let i = 0; i < PARTICLE_COUNT; i++) {
+                // This ensures the first particle is at x=0 and the last is at x=width
+                const x = visualizerCanvas.width * (i / (PARTICLE_COUNT - 1));
+                // Initially place them slightly above the bottom
+                particles.push(new Particle(x, visualizerCanvas.height - 10));
+            }
+        }
+    };
+ 
     // --- WebSocket for Visualization ---
     const socket = io("http://127.0.0.1:5555");
 
@@ -309,48 +347,83 @@ let isDraggingProgress = false;
            }
 
             if (targetVisualizerData.length === 0) {
-                visualizerCtx.clearRect(0, 0, visualizerCanvas.width, visualizerCanvas.height);
-                animationFrameId = requestAnimationFrame(draw);
-                return;
-            }
+               visualizerCtx.clearRect(0, 0, visualizerCanvas.width, visualizerCanvas.height);
+               animationFrameId = requestAnimationFrame(draw);
+               return;
+           }
 
-            // 使用缓动公式更新当前数据
-            for (let i = 0; i < targetVisualizerData.length; i++) {
-                if (currentVisualizerData[i] === undefined) {
-                    currentVisualizerData[i] = 0;
-                }
-                currentVisualizerData[i] += (targetVisualizerData[i] - currentVisualizerData[i]) * easingFactor;
-            }
+           // 使用缓动公式更新当前数据
+           for (let i = 0; i < targetVisualizerData.length; i++) {
+               if (currentVisualizerData[i] === undefined) {
+                   currentVisualizerData[i] = 0;
+               }
+               currentVisualizerData[i] += (targetVisualizerData[i] - currentVisualizerData[i]) * easingFactor;
+           }
 
-            // 使用平滑后的当前数据进行绘制
-            drawVisualizer(currentVisualizerData);
-            animationFrameId = requestAnimationFrame(draw);
-        };
+           // 使用平滑后的当前数据进行绘制
+           drawVisualizer(currentVisualizerData);
+
+           // 更新和绘制粒子
+           // 更新和绘制粒子
+           // First, update all particle positions based on the spectrum
+           particles.forEach(p => {
+               // 找到粒子对应的频谱数据点
+               const positionRatio = p.x / visualizerCanvas.width;
+               const dataIndexFloat = positionRatio * (currentVisualizerData.length - 1);
+               const index1 = Math.floor(dataIndexFloat);
+               const index2 = Math.min(index1 + 1, currentVisualizerData.length - 1);
+               
+               // Linear interpolation for smooth height transition between data points
+               const value1 = currentVisualizerData[index1] || 0;
+               const value2 = currentVisualizerData[index2] || 0;
+               const fraction = dataIndexFloat - index1;
+               const interpolatedValue = value1 + (value2 - value1) * fraction;
+
+               // 计算目标Y值，让粒子在频谱线上方一点
+               const spectrumY = visualizerCanvas.height - (interpolatedValue * visualizerCanvas.height * 1.2);
+               p.targetY = spectrumY - 6; // Keep particles a bit higher than the curve
+
+               p.update();
+           });
+
+           // Now, draw a smooth curve connecting the particles
+           if (particles.length > 1) {
+               visualizerCtx.beginPath();
+               visualizerCtx.moveTo(particles[0].x, particles[0].y);
+
+               // Draw segments to midpoints, which creates a smooth chain
+               for (let i = 0; i < particles.length - 2; i++) {
+                   const p1 = particles[i];
+                   const p2 = particles[i+1];
+                   const xc = (p1.x + p2.x) / 2;
+                   const yc = (p1.y + p2.y) / 2;
+                   visualizerCtx.quadraticCurveTo(p1.x, p1.y, xc, yc);
+               }
+               
+               // For the last segment, curve to the last point to make it smooth
+               const secondLast = particles[particles.length - 2];
+               const last = particles[particles.length - 1];
+               visualizerCtx.quadraticCurveTo(secondLast.x, secondLast.y, last.x, last.y);
+
+
+               const { r, g, b } = visualizerColor;
+               visualizerCtx.strokeStyle = `rgba(${r}, ${g}, ${b}, 0.85)`;
+               visualizerCtx.lineWidth = 1.5;
+               visualizerCtx.lineJoin = 'round';
+               visualizerCtx.lineCap = 'round';
+               visualizerCtx.stroke();
+           }
+
+           animationFrameId = requestAnimationFrame(draw);
+       };
         draw();
     };
 
     const drawVisualizer = (data) => {
-        // --- 数据平滑处理 ---
-        const smoothingFactor = 3; // 平滑窗口大小
-        const smoothedData = [];
-        for (let i = 0; i < data.length; i++) {
-            let sum = 0;
-            let count = 0;
-            for (let j = -smoothingFactor; j <= smoothingFactor; j++) {
-                if (i + j >= 0 && i + j < data.length) {
-                    sum += data[i + j];
-                    count++;
-                }
-            }
-            smoothedData.push(sum / count);
-        }
-        
         visualizerCtx.clearRect(0, 0, visualizerCanvas.width, visualizerCanvas.height);
-        
-        const bufferLength = smoothedData.length;
-        if (bufferLength === 0) return;
 
-        const barWidth = visualizerCanvas.width / (bufferLength - 1);
+        const bufferLength = data.length;
+        if (bufferLength === 0) return;
 
         const gradient = visualizerCtx.createLinearGradient(0, 0, 0, visualizerCanvas.height);
         const { r, g, b } = visualizerColor;
@@ -359,15 +432,42 @@ let isDraggingProgress = false;
         gradient.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0.05)`);
         
         visualizerCtx.fillStyle = gradient;
+        visualizerCtx.strokeStyle = gradient;
+        visualizerCtx.lineWidth = 2;
+
         visualizerCtx.beginPath();
         visualizerCtx.moveTo(0, visualizerCanvas.height);
 
-        let x = 0;
-        for (let i = 0; i < bufferLength; i++) {
-            const barHeight = smoothedData[i] * visualizerCanvas.height * 1.316;
-            const y = visualizerCanvas.height - barHeight;
-            visualizerCtx.lineTo(x, y);
-            x += barWidth;
+        const sliceWidth = visualizerCanvas.width / (bufferLength - 1);
+        
+        // Helper to get a point's coordinates
+        const getPoint = (index) => {
+            const value = data[index] || 0;
+            const x = index * sliceWidth;
+            const y = visualizerCanvas.height - (value * visualizerCanvas.height * 1.2);
+            return [x, y];
+        };
+
+        for (let i = 0; i < bufferLength - 1; i++) {
+            const [x1, y1] = getPoint(i);
+            const [x2, y2] = getPoint(i + 1);
+            
+            const [prev_x, prev_y] = i > 0 ? getPoint(i - 1) : [x1, y1];
+            const [next_x, next_y] = i < bufferLength - 2 ? getPoint(i + 2) : [x2, y2];
+
+            const tension = 0.5;
+            const cp1_x = x1 + (x2 - prev_x) / 6 * tension;
+            const cp1_y = y1 + (y2 - prev_y) / 6 * tension;
+            const cp2_x = x2 - (next_x - x1) / 6 * tension;
+            const cp2_y = y2 - (next_y - y1) / 6 * tension;
+
+            if (i === 0) {
+                visualizerCtx.lineTo(x1, y1);
+            }
+            
+            visualizerCtx.bezierCurveTo(cp1_x, cp1_y, cp2_x, cp2_y, x2, y2);
+
+            // --- Particle Generation ---
         }
 
         visualizerCtx.lineTo(visualizerCanvas.width, visualizerCanvas.height);
@@ -498,6 +598,7 @@ let isDraggingProgress = false;
     window.addEventListener('resize', () => {
         visualizerCanvas.width = visualizerCanvas.clientWidth;
         visualizerCanvas.height = visualizerCanvas.clientHeight;
+        recreateParticles(); // Re-distribute particles on resize
     });
 
     shareBtn.addEventListener('click', () => {
@@ -957,6 +1058,10 @@ let isDraggingProgress = false;
     const init = async () => {
         visualizerCanvas.width = visualizerCanvas.clientWidth;
         visualizerCanvas.height = visualizerCanvas.clientHeight;
+
+        // --- Initialize Particles ---
+        recreateParticles();
+
 
         setupElectronHandlers();
         updateModeButton();

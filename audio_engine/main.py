@@ -4,7 +4,7 @@ import time
 import numpy as np
 import soundfile as sf
 import sounddevice as sd
-from scipy.signal import tf2sos, sosfilt, resample
+from scipy.signal import tf2sos, sosfilt # resample is now handled by Rust
 from flask import Flask, request, jsonify
 from flask_socketio import SocketIO, emit
 from flask_cors import CORS
@@ -13,6 +13,7 @@ import argparse
 import hashlib
 import subprocess
 import io
+import rust_audio_resampler # <-- 导入我们新的 Rust 模块
 
 # --- 全局配置 ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -262,8 +263,20 @@ class AudioEngine:
                         logging.info(f"Resampling from {original_samplerate} Hz to {target_sr} Hz...")
                         num_original_samples = len(original_data)
                         num_new_samples = int(num_original_samples * target_sr / original_samplerate)
-                        resampled_data = resample(original_data, num_new_samples)
-                        self.data = resampled_data.astype(np.float64)
+                        # --- NEW: Use Rust-based resampler ---
+                        # Flatten the array for the Rust function, which expects interleaved audio
+                        flat_data = original_data.flatten()
+                        
+                        # Call the high-performance Rust resampler
+                        resampled_flat = rust_audio_resampler.resample(
+                            flat_data,
+                            original_samplerate,
+                            target_sr,
+                            self.channels
+                        )
+                        
+                        # Reshape the 1D result back to a 2D array (frames, channels)
+                        self.data = resampled_flat.reshape((-1, self.channels))
                         self.samplerate = target_sr
                         logging.info("Resampling complete.")
                         
@@ -307,8 +320,7 @@ class AudioEngine:
                 stream_args = {
                     'samplerate': self.samplerate,
                     'channels': self.channels,
-                    'callback': self._stream_callback,
-                    'finished_callback': self.stop_event.set
+                    'callback': self._stream_callback
                 }
                 if self.device_id is not None:
                     stream_args['device'] = self.device_id
@@ -678,4 +690,8 @@ if __name__ == '__main__':
     logging.getLogger('werkzeug').disabled = True
     
     logging.info(f"Starting Hi-Fi Audio Engine on http://127.0.0.1:{port}")
+    # Print a ready signal to stdout so the main process knows the server is up.
+    import sys
+    print("FLASK_SERVER_READY")
+    sys.stdout.flush()
     socketio.run(app, host='127.0.0.1', port=port, debug=False, log_output=False)

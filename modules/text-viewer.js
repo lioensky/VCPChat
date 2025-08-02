@@ -337,42 +337,82 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     function ensureHtmlFenced(text) {
         const doctypeTag = '<!DOCTYPE html>';
-        if (!text.toLowerCase().includes(doctypeTag.toLowerCase())) return text;
+        const lowerText = text.toLowerCase();
+        
+        // Quick exit if no doctype is present.
+        if (!lowerText.includes(doctypeTag.toLowerCase())) {
+            return text;
+        }
+        
+        // If it's already in a proper code block, do nothing.
+        // This regex now checks for any language specifier (or none) after the fences.
+        if (/```\w*\n<!DOCTYPE html>/i.test(text)) {
+            return text;
+        }
+
         let result = '';
         let lastIndex = 0;
         while (true) {
-            const startIndex = text.toLowerCase().indexOf(doctypeTag.toLowerCase(), lastIndex);
+            const startIndex = lowerText.indexOf(doctypeTag.toLowerCase(), lastIndex);
+
             const textSegment = text.substring(lastIndex, startIndex === -1 ? text.length : startIndex);
             result += textSegment;
-            if (startIndex === -1) break;
-            const endIndex = text.toLowerCase().indexOf('</html>', startIndex + doctypeTag.length);
+
+            if (startIndex === -1) {
+                break;
+            }
+
+            const endIndex = lowerText.indexOf('</html>', startIndex + doctypeTag.length);
             if (endIndex === -1) {
                 result += text.substring(startIndex);
                 break;
             }
+
             const block = text.substring(startIndex, endIndex + '</html>'.length);
+            
             const fencesInResult = (result.match(/```/g) || []).length;
+
             if (fencesInResult % 2 === 0) {
                 result += `\n\`\`\`html\n${block}\n\`\`\`\n`;
             } else {
                 result += block;
             }
+
             lastIndex = endIndex + '</html>'.length;
         }
         return result;
     }
 
     function preprocessFullContent(text) {
-        let processed = text;
+        const codeBlockMap = new Map();
+        let placeholderId = 0;
+
+        // Step 1: Find and protect all fenced code blocks.
+        let processed = text.replace(/```\w*([\s\S]*?)```/g, (match) => {
+            const placeholder = `__VCP_CODE_BLOCK_PLACEHOLDER_${placeholderId}__`;
+            codeBlockMap.set(placeholder, match);
+            placeholderId++;
+            return placeholder;
+        });
+
+        // Step 2: Run existing pre-processing on the modified text.
         processed = deIndentHtml(processed);
-        // Directly transform special blocks instead of fencing them
         processed = transformSpecialBlocksForViewer(processed);
         processed = ensureHtmlFenced(processed);
+        
         // Basic content processors from contentProcessor.js
         processed = processed.replace(/^(\s*```)(?![\r\n])/gm, '$1\n'); // ensureNewlineAfterCodeBlock
         processed = processed.replace(/~(?![\s~])/g, '~ '); // ensureSpaceAfterTilde
         processed = processed.replace(/^(\s*)(```.*)/gm, '$2'); // removeIndentationFromCodeBlockMarkers
         processed = processed.replace(/(<img[^>]+>)\s*(```)/g, '$1\n\n<!-- VCP-Renderer-Separator -->\n\n$2'); // ensureSeparatorBetweenImgAndCode
+
+        // Step 3: Restore the protected code blocks.
+        if (codeBlockMap.size > 0) {
+            for (const [placeholder, block] of codeBlockMap.entries()) {
+                processed = processed.replace(placeholder, block);
+            }
+        }
+
         return processed;
     }
 

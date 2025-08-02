@@ -174,7 +174,7 @@ body.light-theme #sendMessageBtn svg {
 /* 悬浮工具条样式 */
 #selection-assistant-bar {
     position: fixed;
-    background-color: var(--secondary-bg);
+    background-color: var(--panel-bg);
     border: 1px solid var(--border-color);
     border-radius: 8px;
     /* box-shadow: 0 4px 12px rgba(0,0,0,0.15); */ /* Removed shadow to prevent rendering artifacts */

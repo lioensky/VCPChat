@@ -21,13 +21,23 @@ parentPort.on('message', async (filePath) => {
 
         const metadata = await Promise.race([parsePromise, timeoutPromise]);
         
-        const picture = metadata.common.picture && metadata.common.picture.length > 0 ? metadata.common.picture[0] : null;
+        // Find the best album art
+        let picture = null;
+        if (metadata.common.picture && metadata.common.picture.length > 0) {
+            // Prefer the 'Cover (front)' picture
+            picture = metadata.common.picture.find(p => p.type === 'Cover (front)');
+            // If no front cover is found, fall back to the first picture
+            if (!picture) {
+                picture = metadata.common.picture[0];
+            }
+        }
+        
         let coverPath = null;
 
         if (picture) {
             // Create a unique filename for the cover art to avoid collisions
             const hash = crypto.createHash('md5').update(picture.data).digest('hex');
-            const extension = picture.format.split('/')[1] || 'jpg';
+            const extension = (picture.format || 'image/jpeg').split('/')[1] || 'jpg';
             const coverFilename = `${hash}.${extension}`;
             const fullCoverPath = path.join(coverCachePath, coverFilename);
 
