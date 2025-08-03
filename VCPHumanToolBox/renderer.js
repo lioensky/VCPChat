@@ -1,5 +1,6 @@
 // VCPHumanToolBox/renderer.js
 const { ipcRenderer } = require('electron');
+const { marked } = require('marked');
 
 document.addEventListener('DOMContentLoaded', () => {
     // --- 元素获取 ---
@@ -18,12 +19,30 @@ document.addEventListener('DOMContentLoaded', () => {
     let VCP_SERVER_URL = '';
     let VCP_API_KEY = '';
     let USER_NAME = 'Human'; // Default value in case it's not found
+    let settings = {}; // Make settings available in a wider scope
+    const settingsPath = path.join(__dirname, '..', 'AppData', 'settings.json');
+
+    function loadSettings() {
+        try {
+            const settingsData = fs.readFileSync(settingsPath, 'utf8');
+            settings = JSON.parse(settingsData);
+        } catch (error) {
+            console.error('Failed to load settings.json:', error);
+            settings = {}; // Reset to empty object on error
+        }
+    }
+
+    function saveSettings() {
+        try {
+            fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 4), 'utf8');
+        } catch (error) {
+            console.error('Failed to save settings.json:', error);
+        }
+    }
 
     try {
-        const settingsPath = path.join(__dirname, '..', 'AppData', 'settings.json');
-        const settingsData = fs.readFileSync(settingsPath, 'utf8');
-        const settings = JSON.parse(settingsData);
-        
+        loadSettings(); // Initial load
+
         if (settings.vcpServerUrl) {
             const url = new URL(settings.vcpServerUrl);
             url.pathname = '/v1/human/tool';
@@ -60,7 +79,7 @@ document.addEventListener('DOMContentLoaded', () => {
             description: '国产文生图，支持中文和任意分辨率，适合平面设计。',
             params: [
                 { name: 'prompt', type: 'textarea', required: true, placeholder: '详细的提示词，可包含中文' },
-                { name: 'resolution', type: 'text', required: true, placeholder: '例如: 800x600' }
+                { name: 'resolution', type: 'text', required: true, placeholder: '例如: 800x600', default: '1024x1024' }
             ]
         },
         'SunoGen': {
@@ -311,6 +330,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (input.tagName !== 'DIV') {
                 input.name = param.name;
                 input.placeholder = param.placeholder || '';
+                if (param.default) input.value = param.default;
                 if (param.required) input.required = true;
             } else {
                 // For radio group, we need a hidden input to carry the name for FormData
@@ -409,8 +429,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function renderResult(data, toolName) {
         resultContainer.innerHTML = '';
-
-        // Check for error status from the plugin
+    
+        // 1. Handle errors first
         if (data.status === 'error' || data.error) {
             const errorMessage = data.error || data.message || '未知错误';
             const pre = document.createElement('pre');
@@ -419,58 +439,118 @@ document.addEventListener('DOMContentLoaded', () => {
             resultContainer.appendChild(pre);
             return;
         }
-
-        // The actual content is in data.result or data.message
+    
         const content = data.result || data.message || data;
-
-        // Special parsing for SciCalculator
-        if (toolName === 'SciCalculator' && content && typeof content.original_plugin_output === 'string') {
-            const output = content.original_plugin_output;
-            const match = output.match(/###(.*?)###/);
-            if (match && match[1]) {
-                const pre = document.createElement('pre');
-                pre.textContent = match[1];
-                resultContainer.appendChild(pre);
-                return; // Parsing is done for this tool
-            }
+    
+        // If content is null or undefined
+        if (content == null) {
+            const p = document.createElement('p');
+            p.textContent = '插件执行完毕，但没有返回明确内容。';
+            resultContainer.appendChild(p);
+            return;
         }
-
-        try {
-            // Check for multi-modal structure
-            if (content && Array.isArray(content.content)) {
-                content.content.forEach(item => {
-                    if (item.type === 'text') {
-                        const textElement = document.createElement('p');
-                        textElement.textContent = item.text;
-                        resultContainer.appendChild(textElement);
-                    } else if (item.type === 'image_url' && item.image_url && item.image_url.url) {
-                        const imgElement = document.createElement('img');
-                        imgElement.src = item.image_url.url;
-                        
-                        // Add context menu for saving the image
-                        imgElement.addEventListener('contextmenu', (e) => {
-                            e.preventDefault();
-                            ipcRenderer.send('show-image-context-menu', imgElement.src);
-                        });
-
-                        resultContainer.appendChild(imgElement);
-                    }
-                    // Future handlers for audio/video can be added here
-                });
-            } else { // Simple text or JSON object
-                const pre = document.createElement('pre');
-                pre.textContent = typeof content === 'object' ? JSON.stringify(content, null, 2) : content;
-                resultContainer.appendChild(pre);
+    
+        // 2. Handle multi-modal content (images, text)
+        if (content && Array.isArray(content.content)) {
+            content.content.forEach(item => {
+                if (item.type === 'text') {
+                    const pre = document.createElement('pre');
+                    pre.textContent = item.text;
+                    resultContainer.appendChild(pre);
+                } else if (item.type === 'image_url' && item.image_url && item.image_url.url) {
+                    const imgElement = document.createElement('img');
+                    imgElement.src = item.image_url.url;
+                    imgElement.addEventListener('contextmenu', (e) => {
+                        e.preventDefault();
+                        ipcRenderer.send('show-image-context-menu', imgElement.src);
+                    });
+                    resultContainer.appendChild(imgElement);
+                }
+            });
+            return; // Handled
+        }
+    
+        // 3. Handle string content (now with Markdown rendering)
+        if (typeof content === 'string') {
+            const renderedHTML = marked(content);
+            const div = document.createElement('div');
+            div.innerHTML = renderedHTML;
+            resultContainer.appendChild(div);
+            return;
+        }
+    
+        // 4. Handle object content
+        if (typeof content === 'object') {
+            // Check for common text fields first, and render them as Markdown
+            if (typeof content.result === 'string') {
+                resultContainer.innerHTML = marked(content.result);
+                return;
             }
-        } catch (e) {
-            // Fallback for unexpected format
+            if (typeof content.message === 'string') {
+                resultContainer.innerHTML = marked(content.message);
+                return;
+            }
+            
+            // Special handling for original_plugin_output
+            if (typeof content.original_plugin_output === 'string') {
+                const sciMatch = content.original_plugin_output.match(/###计算结果：(.*?)###/);
+                if (sciMatch && sciMatch[1]) {
+                     resultContainer.innerHTML = marked(sciMatch[1]);
+                } else {
+                     resultContainer.innerHTML = marked(content.original_plugin_output);
+                }
+                return;
+            }
+    
+            if (typeof content.content === 'string') {
+                resultContainer.innerHTML = marked(content.content);
+                return;
+            }
+    
+            // Fallback for other objects: pretty-print the JSON inside a <pre> tag
             const pre = document.createElement('pre');
-            pre.textContent = `无法解析返回结果: ${JSON.stringify(data, null, 2)}`;
+            pre.textContent = JSON.stringify(content, null, 2);
             resultContainer.appendChild(pre);
+            return;
         }
+    
+        // 5. Fallback for any other data type
+        const pre = document.createElement('pre');
+        pre.textContent = `插件返回了未知类型的数据: ${String(content)}`;
+        resultContainer.appendChild(pre);
     }
 
     // --- 初始化 ---
+    async function loadAndProcessWallpaper() {
+        // Temporarily apply the body style to get the CSS variable value
+        const bodyStyles = getComputedStyle(document.body);
+        let wallpaperUrl = bodyStyles.backgroundImage;
+
+        if (wallpaperUrl && wallpaperUrl !== 'none') {
+            // Extract the path from url("...")
+            const match = wallpaperUrl.match(/url\("(.+)"\)/);
+            if (match && match[1]) {
+                // The path in CSS is relative to the CSS file, so we need to resolve it
+                // from the main process perspective. We assume the path is like '../assets/wallpaper/...'
+                // and renderer.js is in 'VCPHumanToolBox', so we go up one level.
+                let imagePath = match[1];
+                // Decode URI and remove the 'file:///' prefix on Windows
+                if (imagePath.startsWith('file:///')) {
+                    imagePath = decodeURI(imagePath.substring(8)); // Remove 'file:///' and decode
+                }
+
+                try {
+                    const processedImageBase64 = await ipcRenderer.invoke('vcp-ht-process-wallpaper', imagePath);
+                    if (processedImageBase64) {
+                        document.body.style.backgroundImage = `url('${processedImageBase64}')`;
+                    }
+                } catch (error) {
+                    console.error('Wallpaper processing failed:', error);
+                }
+            }
+        }
+    }
+
     function initialize() {
         // Window controls
         document.getElementById('minimize-btn').addEventListener('click', () => {
@@ -483,6 +563,30 @@ document.addEventListener('DOMContentLoaded', () => {
             ipcRenderer.send('window-control', 'close');
         });
 
+        // Theme toggle
+        const themeToggleBtn = document.getElementById('theme-toggle-btn');
+        
+        function applyTheme(theme) {
+            if (theme === 'light') {
+                document.body.classList.add('light-theme');
+                themeToggleBtn.textContent = '☀️';
+            } else {
+                document.body.classList.remove('light-theme');
+                themeToggleBtn.textContent = '🌙';
+            }
+        }
+
+        // Apply initial theme from settings
+        applyTheme(settings.vcpht_theme);
+
+        themeToggleBtn.addEventListener('click', () => {
+            const isLight = document.body.classList.toggle('light-theme');
+            const newTheme = isLight ? 'light' : 'dark';
+            applyTheme(newTheme);
+            settings.vcpht_theme = newTheme;
+            saveSettings();
+        });
+
         // App controls
         backToGridBtn.addEventListener('click', () => {
             toolDetailView.style.display = 'none';
@@ -490,6 +594,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         renderToolGrid();
+        loadAndProcessWallpaper(); // Process the wallpaper on startup
     }
 
     initialize();

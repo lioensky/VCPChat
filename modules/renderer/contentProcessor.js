@@ -320,6 +320,215 @@ function processAllPreBlocksInContentDiv(contentDiv) {
 }
 
 /**
+ * Processes interactive buttons in AI messages
+ * @param {HTMLElement} contentDiv The message content element.
+ */
+function processInteractiveButtons(contentDiv) {
+    if (!contentDiv) return;
+
+    // Find all button elements
+    const buttons = contentDiv.querySelectorAll('button');
+
+    buttons.forEach(button => {
+        // Skip if already processed
+        if (button.dataset.vcpInteractive === 'true') return;
+
+        // Mark as processed
+        button.dataset.vcpInteractive = 'true';
+
+        // Set up button styling
+        setupButtonStyle(button);
+
+        // Add click event listener
+        button.addEventListener('click', handleAIButtonClick);
+
+        console.log('[ContentProcessor] Processed interactive button:', button.textContent.trim());
+    });
+}
+
+/**
+ * Sets up functional properties for interactive buttons (no styling)
+ * @param {HTMLElement} button The button element
+ */
+function setupButtonStyle(button) {
+    // Ensure button looks clickable
+    button.style.cursor = 'pointer';
+
+    // Prevent any form submission or default behavior
+    button.type = 'button';
+    button.setAttribute('type', 'button');
+
+    // Note: Visual styling is left to AI-defined CSS classes and styles
+}
+
+/**
+ * Handles click events on AI-generated buttons
+ * @param {Event} event The click event
+ */
+function handleAIButtonClick(event) {
+    const button = event.target;
+
+    // Completely prevent any default behavior
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
+
+    // Check if button is disabled
+    if (button.disabled) {
+        return false;
+    }
+
+    // Get text to send (priority: data-send attribute > button text)
+    const sendText = button.dataset.send || button.textContent.trim();
+
+    // Validate text
+    if (!sendText || sendText.length === 0) {
+        console.warn('[ContentProcessor] Button has no text to send');
+        return false;
+    }
+
+    // Format the text to be sent
+    let finalSendText = `[[点击按钮:${sendText}]]`;
+
+    // Truncate if the final text is too long
+    if (finalSendText.length > 500) {
+        console.warn('[ContentProcessor] Button text too long, truncating');
+        const maxTextLength = 500 - '[[点击按钮:]]'.length; // Account for '[[点击按钮:' and ']]'
+        const truncatedText = sendText.substring(0, maxTextLength);
+        finalSendText = `[[点击按钮:${truncatedText}]]`;
+    }
+
+    // Disable button to prevent double-click
+    disableButton(button);
+
+    // Send the message asynchronously to avoid blocking
+    setTimeout(() => {
+        sendButtonMessage(finalSendText, button);
+    }, 10);
+
+    return false;
+}
+
+/**
+ * Disables a button and provides visual feedback
+ * @param {HTMLElement} button The button to disable
+ */
+function disableButton(button) {
+    button.disabled = true;
+    button.style.opacity = '0.6';
+    button.style.cursor = 'not-allowed';
+
+    // Add checkmark to indicate it was clicked
+    const originalText = button.textContent;
+    button.textContent = originalText + ' ✓';
+
+    // Store original text for potential restoration
+    button.dataset.originalText = originalText;
+}
+
+/**
+ * Restores a button to its original state
+ * @param {HTMLElement} button The button to restore
+ */
+function restoreButton(button) {
+    button.disabled = false;
+    button.style.opacity = '1';
+    button.style.cursor = 'pointer';
+
+    // Restore original text if available
+    if (button.dataset.originalText) {
+        button.textContent = button.dataset.originalText;
+        delete button.dataset.originalText;
+    }
+}
+
+/**
+ * Sends a message triggered by button click
+ * @param {string} text The text to send
+ * @param {HTMLElement} button The button that triggered the send
+ */
+function sendButtonMessage(text, button) {
+    try {
+        // Check if chatManager is available
+        if (window.chatManager && typeof window.chatManager.handleSendMessage === 'function') {
+            // Use the main chat manager for regular chat
+            sendMessageViaMainChat(text);
+        } else if (window.sendMessage && typeof window.sendMessage === 'function') {
+            // Use direct sendMessage function (for voice chat, assistant modules)
+            window.sendMessage(text);
+        } else {
+            throw new Error('No message sending function available');
+        }
+
+        console.log('[ContentProcessor] Button message sent:', text);
+
+    } catch (error) {
+        console.error('[ContentProcessor] Failed to send button message:', error);
+
+        // Restore button on error
+        restoreButton(button);
+
+        // Show error notification
+        showErrorNotification('发送失败，请重试');
+    }
+}
+
+/**
+ * Sends message via main chat interface
+ * @param {string} text The text to send
+ */
+function sendMessageViaMainChat(text) {
+    // Get the message input element
+    const messageInput = document.getElementById('messageInput');
+    if (!messageInput) {
+        throw new Error('Message input not found');
+    }
+
+    // Set the text in input and trigger send
+    messageInput.value = text;
+    window.chatManager.handleSendMessage();
+
+    // Note: handleSendMessage will clear the input automatically
+}
+
+/**
+ * Shows an error notification to the user
+ * @param {string} message The error message
+ */
+function showErrorNotification(message) {
+    // Try to use existing notification system
+    if (window.uiHelper && typeof window.uiHelper.showToastNotification === 'function') {
+        window.uiHelper.showToastNotification(message, 'error');
+        return;
+    }
+
+    // Fallback: create a simple notification
+    const notification = document.createElement('div');
+    notification.textContent = message;
+    notification.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: #ff4444;
+        color: white;
+        padding: 12px 20px;
+        border-radius: 4px;
+        z-index: 10000;
+        font-size: 14px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    `;
+
+    document.body.appendChild(notification);
+
+    // Auto remove after 3 seconds
+    setTimeout(() => {
+        if (notification.parentNode) {
+            document.body.removeChild(notification);
+        }
+    }, 3000);
+}
+
+/**
  * Applies all post-render processing to the message content.
  * @param {HTMLElement} contentDiv The message content element.
  */
@@ -339,6 +548,9 @@ function processRenderedContent(contentDiv) {
 
     // Special block formatting (VCP/Diary)
     processAllPreBlocksInContentDiv(contentDiv);
+
+    // Process interactive buttons (NEW)
+    processInteractiveButtons(contentDiv);
 
     // Highlighting must run after KaTeX and other DOM manipulations
     highlightTagsInMessage(contentDiv);
@@ -366,5 +578,9 @@ export {
     processAllPreBlocksInContentDiv,
     highlightTagsInMessage,
     highlightQuotesInMessage,
-    processRenderedContent
+    processRenderedContent,
+    processInteractiveButtons,
+    handleAIButtonClick,
+    sendButtonMessage
+
 };

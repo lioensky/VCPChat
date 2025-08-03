@@ -6,6 +6,9 @@
   "scripts": {
     "start": "electron ."
   },
+  "dependencies": {
+    "marked": "^4.3.0"
+  },
   "author": "VCP",
   "license": "MIT"
 }

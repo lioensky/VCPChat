@@ -6,6 +6,7 @@ const path = require('path');
 const fs = require('fs');
 const http = require('http');
 const https = require('https');
+const sharp = require('sharp');
 
 function createWindow() {
     // 创建浏览器窗口。
@@ -14,7 +15,8 @@ function createWindow() {
         height: 800,
         transparent: true,
         frame: false, // 移除原生窗口框架
-        backgroundColor: '#00000000',
+        hasShadow: false, // 禁用原生窗口阴影，这是实现圆角的关键！
+        backgroundColor: '#00000000', // 设置背景色为完全透明，防止伪影
         webPreferences: {
             // 允许在渲染进程中使用Node.js API (如 require)
             nodeIntegration: true,
@@ -162,5 +164,28 @@ ipcMain.on('window-control', (event, action) => {
                 window.close();
                 break;
         }
+    }
+});
+
+// --- Wallpaper Processing Handler ---
+ipcMain.handle('vcp-ht-process-wallpaper', async (event, imagePath) => {
+    try {
+        const roundedCorners = Buffer.from(
+            '<svg><rect x="0" y="0" width="1200" height="800" rx="12" ry="12"/></svg>'
+        );
+
+        const processedImageBuffer = await sharp(imagePath)
+            .resize(1200, 800)
+            .composite([{
+                input: roundedCorners,
+                blend: 'dest-in'
+            }])
+            .png()
+            .toBuffer();
+
+        return `data:image/png;base64,${processedImageBuffer.toString('base64')}`;
+    } catch (error) {
+        console.error('Failed to process wallpaper:', error);
+        return null;
     }
 });

@@ -219,6 +219,19 @@ function transformSpecialBlocks(text) {
     return processed;
 }
 
+/**
+ * Transforms user's "clicked button" indicators into styled bubbles.
+ * @param {string} text The text content.
+ * @returns {string} The processed text.
+ */
+function transformUserButtonClick(text) {
+    const buttonClickRegex = /\[\[点击按钮:(.*?)\]\]/gs;
+    return text.replace(buttonClickRegex, (match, content) => {
+        const escapedContent = escapeHtml(content.trim());
+        return `<span class="user-clicked-button-bubble">${escapedContent}</span>`;
+    });
+}
+
 
 /**
  * Wraps raw HTML documents in markdown code fences if they aren't already.
@@ -701,6 +714,11 @@ async function renderMessage(message, isInitialLoad = false) {
             // Fallback for other unexpected object structures, log and use a placeholder
             console.warn('[MessageRenderer] Unexpected message.content type. Message ID:', message.id, 'Content:', JSON.stringify(message.content));
             textToRender = "[消息内容格式异常]";
+        }
+        
+        // Apply special formatting for user button clicks
+        if (message.role === 'user') {
+            textToRender = transformUserButtonClick(textToRender);
         }
         
         const processedContent = preprocessFullContent(textToRender, globalSettings);
