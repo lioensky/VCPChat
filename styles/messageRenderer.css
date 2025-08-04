@@ -755,3 +755,34 @@ body.light-theme .vcp-tool-result-status:containing("SUCCESS") {
     opacity: 1;
     margin-top: 10px; /* Add space when expanded */
 }
+
+/* --- User Clicked Button Bubble --- */
+.user-clicked-button-bubble {
+    display: inline-block;
+    background: linear-gradient(135deg, #6a11cb 0%, #2575fc 100%);
+    background-size: 200% 200%;
+    animation: vcp-bubble-background-flow-kf 10s ease-in-out infinite;
+    color: #ffffff;
+    padding: 5px 12px;
+    border-radius: 16px;
+    font-size: 0.9em;
+    font-weight: 500;
+    margin: 2px 4px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+    cursor: default;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.user-clicked-button-bubble::before {
+    content: '▶️';
+    margin-right: 6px;
+    font-size: 0.8em;
+    opacity: 0.8;
+}
+
+.user-clicked-button-bubble:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}

@@ -1,0 +1,14 @@
+{
+  "name": "vcp-human-toolbox",
+  "version": "1.0.0",
+  "description": "A graphical user interface for VCP tools, designed for human users.",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "dependencies": {
+    "marked": "^4.3.0"
+  },
+  "author": "VCP",
+  "license": "MIT"
+}

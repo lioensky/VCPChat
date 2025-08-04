@@ -199,7 +199,19 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function preprocessFullContent(text) {
         if (typeof text !== 'string') return text;
-        let processed = text;
+
+        const htmlBlockMap = new Map();
+        let placeholderId = 0;
+
+        // Step 1: Find and protect ```html blocks.
+        let processed = text.replace(/```html([\s\S]*?)```/g, (match) => {
+            const placeholder = `__VCP_HTML_BLOCK_PLACEHOLDER_${placeholderId}__`;
+            htmlBlockMap.set(placeholder, match);
+            placeholderId++;
+            return placeholder;
+        });
+
+        // Step 2: Run existing pre-processing on the text with placeholders.
         processed = deIndentHtml(processed);
         processed = addParserBreakerBetweenDivAndCode(processed);
         processed = ensureSpecialBlockFenced(processed, '<<<[TOOL_REQUEST]>>>', '<<<[END_TOOL_REQUEST]>>>');
@@ -209,6 +221,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         processed = processed.replace(/~(?![\s~])/g, '~ ');
         processed = processed.replace(/^(\s*)(```.*)/gm, '$2');
         processed = processed.replace(/(<img[^>]+>)\s*(```)/g, '$1\n\n<!-- VCP-Renderer-Separator -->\n\n$2');
+        
+        // Step 3: Restore the protected ```html blocks.
+        if (htmlBlockMap.size > 0) {
+            for (const [placeholder, block] of htmlBlockMap.entries()) {
+                processed = processed.replace(placeholder, block);
+            }
+        }
+
         return processed;
     }
     // --- End: Ported functions ---

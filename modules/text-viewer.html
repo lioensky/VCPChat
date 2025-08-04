@@ -167,6 +167,41 @@
         body.light-theme pre .hljs-meta {
             color: #e36209; /* Dark Orange */
         }
+
+        /* Defensive wrapping rules (mirror chat bubble fixes) */
+        /* 1) Only flex-center paragraphs when they contain images only */
+        .content-container p[style*="text-align: center"] {
+            text-align: center;
+        }
+        .content-container p[style*="text-align: center"]:has(img):not(:has(:not(img))) {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 6px;
+            width: 100%;
+            flex-wrap: wrap;
+        }
+        /* 2) Ensure strong/span/em... behave as inline even inside accidental flex containers */
+        .content-container p > strong,
+        .content-container p > b,
+        .content-container p > em,
+        .content-container p > i,
+        .content-container p > u,
+        .content-container p > span {
+            display: inline;
+            flex: 0 0 auto;
+            min-width: 0;
+            white-space: inherit;
+            max-width: 100%;
+        }
+        /* 3) Make custom-quote spans soft-wrap-friendly */
+        .content-container .custom-quote-dark,
+        .content-container .custom-quote-light {
+            white-space: normal;
+            word-break: break-word;
+            overflow-wrap: anywhere;
+            line-break: anywhere;
+        }
         pre {
             background-color: var(--viewer-code-bg);
             color: var(--viewer-code-text);

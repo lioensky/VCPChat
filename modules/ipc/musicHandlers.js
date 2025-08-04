@@ -15,10 +15,28 @@ let openChildWindows = []; // To be initialized
 let MUSIC_PLAYLIST_FILE;
 let MUSIC_COVER_CACHE_DIR;
 let LYRIC_DIR;
+let startAudioEngine; // To hold the function from main.js
+let stopAudioEngine; // To hold the function from main.js
+let audioEngineReadyPromise = null; // Promise to track engine readiness
 
 // --- Singleton Music Window Creation Function ---
 function createOrFocusMusicWindow() {
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
+        try {
+            // Always wait for the engine to be ready before creating/focusing the window.
+            // Thanks to pre-warming in main.js, this should be very fast.
+            if (typeof startAudioEngine === 'function') {
+                await startAudioEngine();
+            } else {
+                throw new Error("startAudioEngine function not provided.");
+            }
+        } catch (error) {
+            console.error('[Music] Failed to ensure audio engine is ready:', error);
+            dialog.showErrorBox('音乐引擎错误', '无法启动或连接后端音频引擎，请检查日志或重启应用。');
+            reject(error);
+            return;
+        }
+
         if (musicWindow && !musicWindow.isDestroyed()) {
             console.log('[Music] Music window already exists. Focusing it.');
             musicWindow.focus();
@@ -65,7 +83,11 @@ function createOrFocusMusicWindow() {
 
         musicWindow.on('closed', () => {
             console.log('[Music] Music window closed. Stopping playback.');
-            audioEngineApi('/stop'); // 发送停止指令
+            // We don't stop the engine when the music window closes anymore,
+            // as it's managed by the main app lifecycle now (pre-warmed).
+            // We just stop the playback.
+            audioEngineApi('/stop').catch(err => console.error("[Music] Failed to send stop command on close:", err));
+
             openChildWindows = openChildWindows.filter(win => win !== musicWindow);
             musicWindow = null;
         });
@@ -79,6 +101,8 @@ function createOrFocusMusicWindow() {
 
 // --- Audio Engine API Helper ---
 async function audioEngineApi(endpoint, method = 'POST', body = null) {
+    // The check for engine readiness is now handled in createOrFocusMusicWindow,
+    // so we can remove the promise check from here, simplifying this function.
     try {
         if (!fetch) throw new Error('node-fetch module is not available yet.');
 
@@ -157,6 +181,8 @@ async function handleMusicControl(args) {
 function initialize(options) {
     mainWindow = options.mainWindow;
     openChildWindows = options.openChildWindows;
+    startAudioEngine = options.startAudioEngine; // Receive the start function
+    stopAudioEngine = options.stopAudioEngine; // Receive the stop function
     const APP_DATA_ROOT_IN_PROJECT = options.APP_DATA_ROOT_IN_PROJECT;
     MUSIC_PLAYLIST_FILE = path.join(APP_DATA_ROOT_IN_PROJECT, 'songlist.json');
     MUSIC_COVER_CACHE_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'MusicCoverCache');

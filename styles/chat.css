@@ -685,13 +685,35 @@ body.light-theme .message-item .md-content pre .hljs-meta {
 }
 /*
  * Final, more robust fix for centering images.
- * Force the paragraph to be a flex container and center its content.
- * This should override any conflicting styles.
+ * Only turn the paragraph into a flex container WHEN it contains images only.
+ * This avoids turning rich-text paragraphs into flex rows which breaks wrapping.
 */
 .message-item .md-content p[style*="text-align: center"] {
+    text-align: center;            /* default center text */
+}
+
+/* Narrow condition: paragraph is centered AND has only images as children -> use flex centering */
+.message-item .md-content p[style*="text-align: center"]:has(img):not(:has(:not(img))) {
     display: flex;
     justify-content: center;
-    width: 100%; /* Ensure the paragraph takes full width to center content */
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    flex-wrap: wrap;
+}
+
+/* In any paragraph that became flex by upstream content, ensure inline formatting contexts for inline pieces */
+.message-item .md-content p > strong,
+.message-item .md-content p > b,
+.message-item .md-content p > em,
+.message-item .md-content p > i,
+.message-item .md-content p > u,
+.message-item .md-content p > span {
+    display: inline;
+    flex: 0 0 auto;        /* do not stretch, behave like inline */
+    min-width: 0;          /* allow wrapping when inside flex by any chance */
+    white-space: inherit;  /* inherit wrapping rules from paragraph */
+    max-width: 100%;
 }
 
 /*
@@ -707,9 +729,17 @@ body.light-theme .message-item .md-content pre .hljs-meta {
     box-sizing: border-box;
 }
 
+/* Allow wrapped quotes to soft-wrap and break within CJK contexts */
+.message-item .md-content .highlighted-quote {
+    white-space: normal;           /* 允许正常换行 */
+    word-break: break-word;        /* 长词/连续中文可断行 */
+    overflow-wrap: anywhere;       /* 现代浏览器任意处断行 */
+    line-break: anywhere;          /* CJK 断行更宽松（若浏览器支持） */
+}
+
 /*
  * Final fix for centering images.
  * When an image is inside a paragraph with `text-align: center`,
  * we turn the paragraph into a flex container to reliably center the image.
 */
-/*
+ /*

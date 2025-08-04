@@ -618,6 +618,22 @@ body.light-theme .eq-preset-select:hover {
     background-color: rgba(0, 0, 0, 0.1);
 }
 
+/* 为下拉菜单选项在深色模式下设置深色背景 */
+#device-select option,
+#upsampling-select option,
+.eq-preset-select option {
+   background-color: #2c2c2c;
+   color: var(--music-text);
+}
+
+/* 浅色主题下恢复默认 */
+body.light-theme #device-select option,
+body.light-theme #upsampling-select option,
+body.light-theme .eq-preset-select option {
+    background-color: white;
+    color: initial;
+}
+
 .eq-bands {
    display: flex;
    justify-content: space-around;

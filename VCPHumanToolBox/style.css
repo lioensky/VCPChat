@@ -1,0 +1,263 @@
+/* VCPHumanToolBox/style.css */
+
+html {
+    /* This is the root element, it MUST define the window shape. */
+    border-radius: 12px;
+    overflow: hidden;
+    background: transparent; /* Ensure no color bleeds at the corners. */
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    color: var(--primary-text);
+    margin: 0;
+    padding: 0;
+    height: 100vh;
+    background-color: transparent; /* Let the processed wallpaper show through. */
+}
+
+.title-bar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
+    height: 40px; /* Increased height for easier dragging */
+    background-color: transparent;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 10px;
+    color: var(--secondary-text);
+    -webkit-app-region: drag; /* 整个标题栏可拖拽 */
+    pointer-events: none; /* Allow clicks to pass through */
+}
+
+.title-bar > * {
+    pointer-events: auto; /* Re-enable events for children */
+}
+
+.title-bar .title {
+    font-weight: bold;
+}
+
+.window-controls {
+    display: flex;
+    -webkit-app-region: no-drag; /* 控制按钮区域不可拖拽 */
+}
+
+.control-btn {
+    width: 30px;
+    height: 30px;
+    line-height: 30px;
+    text-align: center;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.control-btn:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+#close-btn:hover {
+    background-color: var(--danger-color);
+    color: white;
+}
+
+#theme-toggle-btn {
+    font-size: 16px; /* Adjust emoji size */
+}
+
+.container {
+    height: 100vh;
+    box-sizing: border-box;
+    max-width: 100%; /* 宽度占满 */
+    padding: 20px;
+    padding-top: 50px; /* 40px for title bar + 10px margin */
+    overflow-y: auto; /* 仅在内容超出时显示滚动条 */
+    /* This is the element that gets the blur effect */
+    background-color: var(--panel-bg, rgba(44, 62, 74, 0.75));
+    backdrop-filter: blur(12px) saturate(150%);
+    -webkit-backdrop-filter: blur(12px) saturate(150%);
+    /*
+     * The container must also be rounded. Although the <html> tag clips the window,
+     * the container's own border and background need to be rounded to match the window shape visually.
+     */
+    border: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+    border-radius: 12px; /* Match the html element's radius */
+}
+
+header {
+    text-align: center;
+    margin-bottom: 30px;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 20px;
+}
+
+header h1 {
+    color: var(--highlight-text);
+    margin: 0;
+}
+
+header p {
+    color: var(--secondary-text);
+}
+
+.tool-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 20px;
+}
+
+.tool-card {
+    background-color: rgba(26, 42, 48, 0.5); /* 使用带alpha通道的颜色 */
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    padding: 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.tool-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 12px 24px rgba(0, 0, 0, 0.2);
+    border-color: var(--highlight-text);
+}
+
+.tool-card h3 {
+    margin: 0 0 10px 0;
+    color: var(--secondary-text);
+}
+
+.tool-card p {
+    font-size: 14px;
+    color: var(--placeholder-text);
+    margin: 0;
+}
+
+.tool-detail-view {
+    padding: 20px;
+    background-color: var(--tertiary-bg);
+    border-radius: 8px;
+}
+
+.back-btn {
+    background-color: var(--button-bg);
+    color: var(--text-on-accent);
+    border: none;
+    padding: 10px 15px;
+    border-radius: 5px;
+    cursor: pointer;
+    margin-bottom: 20px;
+    transition: background-color 0.2s;
+}
+
+.back-btn:hover {
+    background-color: var(--button-hover-bg);
+}
+
+#tool-form {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+#tool-form .form-group {
+    display: flex;
+    flex-direction: column;
+}
+
+#tool-form label {
+    margin-bottom: 5px;
+    color: var(--secondary-text);
+}
+
+#tool-form input,
+#tool-form textarea,
+#tool-form select {
+    background-color: var(--input-bg);
+    color: var(--primary-text);
+    border: 1px solid var(--border-color);
+    border-radius: 5px;
+    padding: 10px;
+    font-size: 16px;
+}
+
+#tool-form textarea {
+    min-height: 120px;
+    resize: vertical;
+}
+
+#tool-form button {
+    align-self: flex-start;
+    padding: 12px 25px;
+    background-color: var(--success-color);
+    color: var(--text-on-accent);
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 16px;
+    transition: background-color 0.2s;
+}
+
+#tool-form button:hover {
+    opacity: 0.9;
+}
+
+.result-container {
+    margin-top: 30px;
+    padding: 20px;
+    background-color: var(--input-bg);
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    min-height: 100px;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+.result-container img,
+.result-container video,
+.result-container audio {
+    max-width: 100%;
+    border-radius: 5px;
+    margin-top: 10px;
+}
+
+.result-container .error {
+    color: var(--danger-color);
+}
+
+.result-container .loading {
+    text-align: center;
+    color: var(--secondary-text);
+}
+
+/* 确保 <pre> 标签内的内容也能正确换行 */
+.result-container pre {
+    white-space: pre-wrap;   /* CSS3, 允许换行，同时保留空白符序列 */
+    word-wrap: break-word;   /* 强制长单词或URL换行 */
+}
+
+/* --- Modern Scrollbar Styling --- */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent; /* 移除轨道背景 */
+}
+
+::-webkit-scrollbar-thumb {
+    background-color: var(--highlight-text); /* 使用主题高亮色 */
+    border-radius: 10px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background-color: var(--primary-text);
+}

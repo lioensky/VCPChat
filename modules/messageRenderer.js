@@ -219,6 +219,19 @@ function transformSpecialBlocks(text) {
     return processed;
 }
 
+/**
+ * Transforms user's "clicked button" indicators into styled bubbles.
+ * @param {string} text The text content.
+ * @returns {string} The processed text.
+ */
+function transformUserButtonClick(text) {
+    const buttonClickRegex = /\[\[点击按钮:(.*?)\]\]/gs;
+    return text.replace(buttonClickRegex, (match, content) => {
+        const escapedContent = escapeHtml(content.trim());
+        return `<span class="user-clicked-button-bubble">${escapedContent}</span>`;
+    });
+}
+
 
 /**
  * Wraps raw HTML documents in markdown code fences if they aren't already.
@@ -229,9 +242,16 @@ function transformSpecialBlocks(text) {
 function ensureHtmlFenced(text) {
     const doctypeTag = '<!DOCTYPE html>';
     const htmlCloseTag = '</html>';
+    const lowerText = text.toLowerCase();
+
+    // If it's already in a proper html code block, do nothing. This is the fix.
+    // This regex now checks for any language specifier (or none) after the fences.
+    if (/```\w*\n<!DOCTYPE html>/i.test(text)) {
+        return text;
+    }
 
     // Quick exit if no doctype is present.
-    if (!text.toLowerCase().includes(doctypeTag.toLowerCase())) {
+    if (!lowerText.includes(doctypeTag.toLowerCase())) {
         return text;
     }
 
@@ -312,29 +332,43 @@ function deIndentHtml(text) {
  * @returns {string} The processed text.
  */
 function preprocessFullContent(text, settings = {}) {
-   let processed = text;
-   // The order here is critical.
+    const codeBlockMap = new Map();
+    let placeholderId = 0;
 
-   // 1. Fix indented HTML that markdown might misinterpret as code blocks.
-   // This MUST run first, regardless of the theme, to correctly handle indented divs.
-   // The logic inside deIndentHtml is now smart enough to handle this correctly.
-   processed = deIndentHtml(processed);
+    // Step 1: Find and protect all fenced code blocks.
+    // The regex looks for ``` followed by an optional language identifier, then anything until the next ```
+    let processed = text.replace(/```\w*([\s\S]*?)```/g, (match) => {
+        const placeholder = `__VCP_CODE_BLOCK_PLACEHOLDER_${placeholderId}__`;
+        codeBlockMap.set(placeholder, match);
+        placeholderId++;
+        return placeholder;
+    });
 
-   // 2. Directly transform special blocks (Tool/Diary) into styled HTML divs.
-   // This runs before markdown parsing, so the HTML is treated as a block.
-   processed = transformSpecialBlocks(processed);
+    // The order of the remaining operations is critical.
+    // Step 2. Fix indented HTML that markdown might misinterpret as code blocks.
+    processed = deIndentHtml(processed);
 
-   // 3. Ensure raw HTML documents are fenced to be displayed as code.
-   // This is a safety measure for full HTML pages.
-   processed = ensureHtmlFenced(processed);
+    // Step 3. Directly transform special blocks (Tool/Diary) into styled HTML divs.
+    processed = transformSpecialBlocks(processed);
 
-   // 4. Run other standard content processors.
-   processed = contentProcessor.ensureNewlineAfterCodeBlock(processed);
-   processed = contentProcessor.ensureSpaceAfterTilde(processed);
-   processed = contentProcessor.removeIndentationFromCodeBlockMarkers(processed);
-   processed = contentProcessor.removeSpeakerTags(processed);
-   processed = contentProcessor.ensureSeparatorBetweenImgAndCode(processed);
-   return processed;
+    // Step 4. Ensure raw HTML documents are fenced to be displayed as code.
+    processed = ensureHtmlFenced(processed);
+
+    // Step 5. Run other standard content processors.
+    processed = contentProcessor.ensureNewlineAfterCodeBlock(processed);
+    processed = contentProcessor.ensureSpaceAfterTilde(processed);
+    processed = contentProcessor.removeIndentationFromCodeBlockMarkers(processed);
+    processed = contentProcessor.removeSpeakerTags(processed);
+    processed = contentProcessor.ensureSeparatorBetweenImgAndCode(processed);
+
+    // Step 6: Restore the protected code blocks.
+    if (codeBlockMap.size > 0) {
+        for (const [placeholder, block] of codeBlockMap.entries()) {
+            processed = processed.replace(placeholder, block);
+        }
+    }
+
+    return processed;
 }
 
 /**
@@ -680,6 +714,11 @@ async function renderMessage(message, isInitialLoad = false) {
             // Fallback for other unexpected object structures, log and use a placeholder
             console.warn('[MessageRenderer] Unexpected message.content type. Message ID:', message.id, 'Content:', JSON.stringify(message.content));
             textToRender = "[消息内容格式异常]";
+        }
+        
+        // Apply special formatting for user button clicks
+        if (message.role === 'user') {
+            textToRender = transformUserButtonClick(textToRender);
         }
         
         const processedContent = preprocessFullContent(textToRender, globalSettings);
