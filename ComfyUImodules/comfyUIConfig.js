@@ -270,25 +270,28 @@
     }
 
     async openModal() {
-        console.log('[ComfyUI] Opening configuration modal...');
-        
-        // Cancel any ongoing operations
+        console.log('[ComfyUI][Modal] Opening configuration modal...');
+
+        // Cancel any ongoing operations and create a fresh state
         this.cancelOngoingOperations();
-        
+
         // First, generate the modal content
         this.generateModalContent();
-        
-        // 直接从后端加载最新数据 - 不使用缓存
+
+        // 并发加载：优先工作流与配置，模型信息在已连接时并发请求
+        const tasks = [
+            this.loadAvailableWorkflows(),
+            this.populateFormFromBackend()
+        ];
         if (this.isConnected) {
-            await this.loadAvailableModels();
+            tasks.push(this.loadAvailableModels());
         }
-        
-        // Load available workflows from backend
-        await this.loadAvailableWorkflows();
-        
-        // Populate form with current config from backend
-        await this.populateFormFromBackend();
-        
+        try {
+            await Promise.allSettled(tasks);
+        } catch (_) {
+            // ignore; individual fn already logs
+        }
+
         // Open modal using existing UI helper
         if (window.uiHelperFunctions) {
             window.uiHelperFunctions.openModal('comfyUIConfigModal');
@@ -298,20 +301,26 @@
     }
 
     closeModal() {
-        console.log('[ComfyUI] Closing configuration modal...');
-        
-        // Cancel any ongoing operations
+        console.log('[ComfyUI][Modal] Closing configuration modal...');
+
+        // Cancel any ongoing operations (network, timers)
         this.cancelOngoingOperations();
-        
-        // Close all child modals first
+
+        // Close all child modals first and clear stack
         this.closeAllChildModals();
-        
+        this.modalStack = [];
+
+        // Clear DOM cache to avoid stale nodes on next open
+        this.clearDOMCache();
+
+        // Delegate real DOM closing to ui helper (single source of truth)
         if (window.uiHelperFunctions) {
             window.uiHelperFunctions.closeModal('comfyUIConfigModal');
+        } else {
+            // Fallback: remove active class if helper not available
+            const modal = document.getElementById('comfyUIConfigModal');
+            if (modal) modal.classList.remove('active');
         }
-        
-        // Clear modal stack
-        this.modalStack = [];
     }
 
     closeAllChildModals() {
@@ -595,83 +604,42 @@
 
         // Re-bind events after generating content
         this.bindModalEvents();
+        // 标注：本次绑定时间戳用于调试重复绑定问题
+        this._lastBindAt = Date.now();
     }
 
     bindModalEvents() {
-        // Tab switching
-        document.querySelectorAll('.config-tab-button').forEach(button => {
-            button.addEventListener('click', (e) => {
-                this.switchTab(e.target.dataset.tab);
-            });
+        // 使用统一注册器，避免重复绑定模板代码
+        this.registerAll('.config-tab-button', 'click', (e) => {
+            this.switchTab(e.target.dataset.tab);
         });
 
-        // Test connection button
-        const testBtn = document.getElementById('testConnectionBtn');
-        if (testBtn) {
-            testBtn.addEventListener('click', () => this.testConnection());
-        }
+        this.register('testConnectionBtn', 'click', () => this.testConnection());
+        this.register('saveComfyUIConfigBtn', 'click', () => this.saveConfig());
+        this.register('addWorkflowBtn', 'click', () => this.showAddWorkflowDialog());
+        this.register('addLoraBtn', 'click', () => this.addLoraItem());
+        this.register('validateWorkflowBtn', 'click', () => this.validateWorkflowJson());
+        this.register('convertWorkflowBtn', 'click', () => this.convertAndSaveWorkflow());
+        this.register('refreshWorkflowsBtn', 'click', () => this.loadAvailableWorkflows());
 
-        // Save configuration button
-        const saveBtn = document.getElementById('saveComfyUIConfigBtn');
-        if (saveBtn) {
-            saveBtn.addEventListener('click', () => this.saveConfig());
-        }
+        this.registerAll('.preset-btn', 'click', (e) => {
+            const width = e.target.dataset.width;
+            const height = e.target.dataset.height;
+            const widthSelect = document.getElementById('defaultWidth');
+            const heightSelect = document.getElementById('defaultHeight');
 
-        // Add workflow button
-        const addWorkflowBtn = document.getElementById('addWorkflowBtn');
-        if (addWorkflowBtn) {
-            addWorkflowBtn.addEventListener('click', () => this.showAddWorkflowDialog());
-        }
+            if (widthSelect && heightSelect) {
+                widthSelect.value = width;
+                heightSelect.value = height;
 
-        // Add LoRA button
-        const addLoraBtn = document.getElementById('addLoraBtn');
-        if (addLoraBtn) {
-            addLoraBtn.addEventListener('click', () => this.addLoraItem());
-        }
-
-        // Import workflow buttons
-        const validateWorkflowBtn = document.getElementById('validateWorkflowBtn');
-        if (validateWorkflowBtn) {
-            validateWorkflowBtn.addEventListener('click', () => this.validateWorkflowJson());
-        }
-
-        const convertWorkflowBtn = document.getElementById('convertWorkflowBtn');
-        if (convertWorkflowBtn) {
-            convertWorkflowBtn.addEventListener('click', () => this.convertAndSaveWorkflow());
-        }
-
-        // Refresh workflows button
-        const refreshBtn = document.getElementById('refreshWorkflowsBtn');
-        if (refreshBtn) {
-            refreshBtn.addEventListener('click', () => this.loadAvailableWorkflows());
-        }
-
-        // Preset buttons for quick size setting
-        document.querySelectorAll('.preset-btn').forEach(button => {
-            button.addEventListener('click', (e) => {
-                const width = e.target.dataset.width;
-                const height = e.target.dataset.height;
-                
-                const widthSelect = document.getElementById('defaultWidth');
-                const heightSelect = document.getElementById('defaultHeight');
-                
-                if (widthSelect && heightSelect) {
-                    widthSelect.value = width;
-                    heightSelect.value = height;
-                    
-                    // Highlight the selected preset button
-                    document.querySelectorAll('.preset-btn').forEach(btn => btn.classList.remove('active'));
-                    e.target.classList.add('active');
-                }
-            });
+                document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+                e.target.classList.add('active');
+            }
+            this.updateConfigFromForm();
         });
     }
 
-    closeModal() {
-        if (window.uiHelperFunctions) {
-            window.uiHelperFunctions.closeModal('comfyUIConfigModal');
-        }
-    }
+    // removed duplicate closeModal to prevent overriding the full cleanup logic
 
     // 新方法：从后端加载配置并填充表单
     async populateFormFromBackend() {
@@ -734,50 +702,67 @@
         const elements = {
             'comfyUIServerUrl': this.config.serverUrl,
             'comfyUIApiKey': this.config.apiKey,
-            'workflowSelect': this.config.workflow, // 新增工作流选择
+            'workflowSelect': this.config.workflow,
             'defaultModel': this.config.defaultModel,
             'defaultWidth': this.config.defaultWidth,
             'defaultHeight': this.config.defaultHeight,
             'defaultSteps': this.config.defaultSteps,
             'defaultCfg': this.config.defaultCfg,
             'defaultSampler': this.config.defaultSampler,
-            'defaultScheduler': this.config.defaultScheduler, // 新增
-            'defaultSeed': this.config.defaultSeed, // 新增
-            'defaultBatchSize': this.config.defaultBatchSize, // 新增
-            'defaultDenoise': this.config.defaultDenoise, // 新增
-            'qualityTags': this.config.qualityTags || '', // 质量词
-            'negativePrompt': this.config.negativePrompt // 新增
+            'defaultScheduler': this.config.defaultScheduler,
+            'defaultSeed': this.config.defaultSeed,
+            'defaultBatchSize': this.config.defaultBatchSize,
+            'defaultDenoise': this.config.defaultDenoise,
+            'qualityTags': this.config.qualityTags || '',
+            'negativePrompt': this.config.negativePrompt
         };
 
-        Object.entries(elements).forEach(([id, value]) => {
-            const element = document.getElementById(id);
-            if (element) {
-                element.value = value;
+        for (const [id, value] of Object.entries(elements)) {
+            const el = document.getElementById(id);
+            if (!el) continue;
+            // 仅当值变化时才写入，减少无谓的 DOM 回流
+            if (String(el.value) !== String(value)) {
+                el.value = value;
             }
-        });
+        }
     }
 
     updateConfigFromForm() {
-        const serverUrl = document.getElementById('comfyUIServerUrl')?.value || this.config.serverUrl;
-        const apiKey = document.getElementById('comfyUIApiKey')?.value || '';
-        
+        const pick = (id, fallback = undefined) => {
+            const el = document.getElementById(id);
+            return el && el.value !== '' ? el.value : fallback;
+        };
+
+        // 避免 NaN 覆盖已有值
+        const toInt = (v, def) => {
+            const n = parseInt(v, 10);
+            return Number.isFinite(n) ? n : def;
+        };
+        const toFloat = (v, def) => {
+            const n = parseFloat(v);
+            return Number.isFinite(n) ? n : def;
+        };
+
+        const serverUrl = pick('comfyUIServerUrl', this.config.serverUrl);
+        const apiKey = pick('comfyUIApiKey', '');
+
         this.config = {
             serverUrl,
             apiKey,
-            workflow: document.getElementById('workflowSelect')?.value || this.config.workflow, // 新增
-            defaultModel: document.getElementById('defaultModel')?.value || this.config.defaultModel,
-            defaultWidth: parseInt(document.getElementById('defaultWidth')?.value) || this.config.defaultWidth,
-            defaultHeight: parseInt(document.getElementById('defaultHeight')?.value) || this.config.defaultHeight,
-            defaultSteps: parseInt(document.getElementById('defaultSteps')?.value) || this.config.defaultSteps,
-            defaultCfg: parseFloat(document.getElementById('defaultCfg')?.value) || this.config.defaultCfg,
-            defaultSampler: document.getElementById('defaultSampler')?.value || this.config.defaultSampler,
-            defaultScheduler: document.getElementById('defaultScheduler')?.value || this.config.defaultScheduler, // 新增
-            defaultSeed: parseInt(document.getElementById('defaultSeed')?.value) || this.config.defaultSeed, // 新增
-            defaultBatchSize: parseInt(document.getElementById('defaultBatchSize')?.value) || this.config.defaultBatchSize, // 新增
-            defaultDenoise: parseFloat(document.getElementById('defaultDenoise')?.value) || this.config.defaultDenoise, // 新增
-            qualityTags: document.getElementById('qualityTags')?.value || this.config.qualityTags || '', // 质量词
-            negativePrompt: document.getElementById('negativePrompt')?.value || this.config.negativePrompt, // 新增
-            loras: this.config.loras || [], // 保持当前的LoRA配置
+            workflow: pick('workflowSelect', this.config.workflow),
+            defaultModel: pick('defaultModel', this.config.defaultModel),
+            defaultWidth: toInt(pick('defaultWidth', this.config.defaultWidth), this.config.defaultWidth),
+            defaultHeight: toInt(pick('defaultHeight', this.config.defaultHeight), this.config.defaultHeight),
+            defaultSteps: toInt(pick('defaultSteps', this.config.defaultSteps), this.config.defaultSteps),
+            defaultCfg: toFloat(pick('defaultCfg', this.config.defaultCfg), this.config.defaultCfg),
+            defaultSampler: pick('defaultSampler', this.config.defaultSampler),
+            defaultScheduler: pick('defaultScheduler', this.config.defaultScheduler),
+            defaultSeed: toInt(pick('defaultSeed', this.config.defaultSeed), this.config.defaultSeed),
+            defaultBatchSize: toInt(pick('defaultBatchSize', this.config.defaultBatchSize), this.config.defaultBatchSize),
+            defaultDenoise: toFloat(pick('defaultDenoise', this.config.defaultDenoise), this.config.defaultDenoise),
+            qualityTags: pick('qualityTags', this.config.qualityTags || ''),
+            negativePrompt: pick('negativePrompt', this.config.negativePrompt),
+            loras: this.config.loras || [],
             version: '1.0.0',
             lastUpdated: new Date().toISOString()
         };
@@ -787,18 +772,17 @@
         const testBtn = document.getElementById('testConnectionBtn');
         const statusText = document.querySelector('#comfyUIConnectionStatus .status-text');
         const statusIndicator = document.querySelector('#comfyUIConnectionStatus .status-indicator');
-        
+
         if (testBtn) testBtn.disabled = true;
         if (statusText) statusText.textContent = '测试中...';
-        
+
         try {
             this.updateConfigFromForm();
-            const response = await fetch(`${this.config.serverUrl}/system_stats`, {
+            const response = await this.fetchWithTimeout(`${this.config.serverUrl}/system_stats`, {
                 method: 'GET',
-                headers: this.config.apiKey ? { 'Authorization': `Bearer ${this.config.apiKey}` } : {},
-                timeout: 5000
-            });
-            
+                headers: this.config.apiKey ? { 'Authorization': `Bearer ${this.config.apiKey}` } : {}
+            }, 5000);
+
             if (response.ok) {
                 this.isConnected = true;
                 if (statusText) statusText.textContent = '已连接';
@@ -822,19 +806,30 @@
         }
     }
 
-    async loadAvailableModels() {
+    // 简单枚举缓存，60s 内复用，减少重复请求
+    _enumCache = { ts: 0, data: null };
+
+    async loadAvailableModels(force = false) {
         try {
-            const response = await fetch(`${this.config.serverUrl}/object_info`, {
+            const now = Date.now();
+            if (!force && this._enumCache.data && now - this._enumCache.ts < 60000) {
+                this.updateModelOptions(this._enumCache.data);
+                this.updateLoraOptions(this._enumCache.data);
+                return;
+            }
+
+            const response = await this.fetchWithTimeout(`${this.config.serverUrl}/object_info`, {
                 headers: this.config.apiKey ? { 'Authorization': `Bearer ${this.config.apiKey}` } : {}
-            });
-            
+            }, 5000);
+
             if (response.ok) {
                 const data = await response.json();
+                this._enumCache = { ts: now, data };
                 this.updateModelOptions(data);
-                this.updateLoraOptions(data); // 同时加载LoRA选项
+                this.updateLoraOptions(data);
             }
         } catch (error) {
-            console.warn('Failed to load available models:', error);
+            console.warn('[ComfyUI][Network] Failed to load available models:', error);
         }
     }
 
@@ -898,21 +893,8 @@
             if (window.electronAPI && window.electronAPI.saveComfyUIConfig) {
                 await window.electronAPI.saveComfyUIConfig(this.config);
                 
-                // 保存后等待一下再重新加载，避免与文件监听器冲突
-                setTimeout(async () => {
-                    try {
-                        const savedConfig = await window.electronAPI.loadComfyUIConfig();
-                        if (savedConfig) {
-                            this.config = { ...this.config, ...savedConfig };
-                            console.log('[ComfyUI] Config reloaded from backend after save');
-                        }
-                    } catch (error) {
-                        console.error('[ComfyUI] Failed to reload config after save:', error);
-                    } finally {
-                        // 解除锁定
-                        this.isHandlingConfigChange = false;
-                    }
-                }, 500); // 500ms 延迟
+                // 保存后不主动 reload，交由文件监听回调统一刷新，避免重复加载
+                this.isHandlingConfigChange = false;
                 
             } else {
                 // Fallback to localStorage
@@ -935,6 +917,18 @@
     }
 
     // 更新为异步方法，直接从后端加载
+    // 封装支持超时与中止的 fetch
+    async fetchWithTimeout(resource, options = {}, timeoutMs = 8000) {
+        const controller = new AbortController();
+        const id = setTimeout(() => controller.abort(), timeoutMs);
+        try {
+            const response = await fetch(resource, { ...options, signal: controller.signal });
+            return response;
+        } finally {
+            clearTimeout(id);
+        }
+    }
+
     async loadConfig() {
         try {
             // 直接从后端读取配置
@@ -956,20 +950,40 @@
         }
     }
 
+    // 统一事件注册器，避免重复监听叠加
+    register(idOrSelector, event, handler, opts = {}) {
+        const node = idOrSelector.startsWith('#') || idOrSelector.startsWith('.')
+            ? document.querySelector(idOrSelector)
+            : document.getElementById(idOrSelector);
+        if (!node) return null;
+        // 用 cloneNode(true) 替换，清理旧监听
+        const clone = node.cloneNode(true);
+        node.parentNode.replaceChild(clone, node);
+        clone.addEventListener(event, handler, opts);
+        return clone;
+    }
+
+    registerAll(selector, event, handler, opts = {}) {
+        const nodes = Array.from(document.querySelectorAll(selector));
+        return nodes.map(n => {
+            const clone = n.cloneNode(true);
+            n.parentNode.replaceChild(clone, n);
+            clone.addEventListener(event, handler, opts);
+            return clone;
+        });
+    }
+
     showToast(message, type = 'info') {
         try {
-            // Use existing toast notification system if available
-            if (window.uiHelperFunctions && window.uiHelperFunctions.showToastNotification) {
+            if (window.uiHelperFunctions?.showToastNotification) {
                 window.uiHelperFunctions.showToastNotification(message, type);
-            } else if (window.uiHelperFunctions && window.uiHelperFunctions.showToast) {
+            } else if (window.uiHelperFunctions?.showToast) {
                 window.uiHelperFunctions.showToast(message, type);
             } else {
-                // Simple fallback - create a temporary toast
                 this.showFallbackToast(message, type);
             }
         } catch (error) {
             console.error('[ComfyUI] Error showing toast:', error);
-            // Ultra-safe fallback
             this.showFallbackToast(message, type);
         }
     }
