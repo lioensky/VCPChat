@@ -278,6 +278,25 @@ contextBridge.exposeInMainWorld('electronAPI', {
     startSpeechRecognition: () => ipcRenderer.send('start-speech-recognition'),
     stopSpeechRecognition: () => ipcRenderer.send('stop-speech-recognition'),
     onSpeechRecognitionResult: (callback) => ipcRenderer.on('speech-recognition-result', (_event, text) => callback(text)),
+
+    // --- ComfyUI Configuration ---
+    saveComfyUIConfig: (config) => ipcRenderer.invoke('save-comfyui-config', config),
+    loadComfyUIConfig: () => ipcRenderer.invoke('load-comfyui-config'),
+    loadComfyUIWorkflows: () => ipcRenderer.invoke('load-comfyui-workflows'),
+    loadWorkflowContent: (workflowName) => ipcRenderer.invoke('load-workflow-content', workflowName),
+    saveWorkflowContent: (workflowName, content) => ipcRenderer.invoke('save-workflow-content', workflowName, content),
+    deleteWorkflow: (workflowName) => ipcRenderer.invoke('delete-workflow', workflowName),
+    createNewWorkflow: (workflowName, templateType) => ipcRenderer.invoke('create-new-workflow', workflowName, templateType),
+    
+    // --- ComfyUI File Watching ---
+    watchComfyUIConfig: () => ipcRenderer.invoke('watch-comfyui-config'),
+    getComfyUIConfigRealtime: () => ipcRenderer.invoke('get-comfyui-config-realtime'),
+    onComfyUIConfigChanged: (callback) => ipcRenderer.on('comfyui-config-changed', (_event) => callback()),
+
+    // --- ComfyUI Workflow Template Conversion ---
+    convertWorkflowToTemplate: (workflowData, templateName) => ipcRenderer.invoke('convert-workflow-to-template', workflowData, templateName),
+    importAndConvertWorkflow: (workflowData, workflowName) => ipcRenderer.invoke('import-and-convert-workflow', workflowData, workflowName),
+    validateWorkflowTemplate: (workflowData) => ipcRenderer.invoke('validate-workflow-template', workflowData),
 });
 
 // Log the electronAPI object as it's defined in preload.js right after exposing it

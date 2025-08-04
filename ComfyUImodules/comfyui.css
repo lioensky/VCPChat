@@ -1,0 +1,531 @@
+/* ComfyUImodules/comfyui.css - ComfyUI specific styles */
+
+/* --- ComfyUI Configuration Styles --- */
+.config-tabs {
+    display: flex;
+    gap: 0;
+    margin-bottom: 20px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.config-tab-button {
+    background: transparent;
+    border: none;
+    color: var(--secondary-text);
+    padding: 12px 20px;
+    cursor: pointer;
+    font-size: 0.9em;
+    border-bottom: 2px solid transparent;
+    transition: color 0.2s, border-color 0.2s;
+}
+
+.config-tab-button:hover {
+    color: var(--primary-text);
+}
+
+.config-tab-button.active {
+    color: var(--user-bubble-bg);
+    border-bottom-color: var(--user-bubble-bg);
+}
+
+.config-tab-content {
+    display: none;
+}
+
+.config-tab-content.active {
+    display: block;
+}
+
+.config-section {
+    margin-bottom: 20px;
+}
+
+.config-section h3 {
+    margin-bottom: 15px;
+    color: var(--primary-text);
+    font-size: 1.1em;
+}
+
+.section-description {
+    color: var(--secondary-text);
+    font-size: 0.9em;
+    margin-bottom: 15px;
+    line-height: 1.4;
+}
+
+/* --- Import Workflow Styles --- */
+.import-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 15px;
+}
+
+.import-result {
+    margin-top: 15px;
+    padding: 12px;
+    border-radius: 4px;
+    border-left: 4px solid;
+    font-size: 0.9em;
+}
+
+.import-result.success {
+    background-color: rgba(40, 167, 69, 0.1);
+    border-left-color: #28a745;
+    color: #155724;
+}
+
+.import-result.error {
+    background-color: rgba(220, 53, 69, 0.1);
+    border-left-color: #dc3545;
+    color: #721c24;
+}
+
+.import-result.warning {
+    background-color: rgba(255, 193, 7, 0.1);
+    border-left-color: #ffc107;
+    color: #856404;
+}
+
+.result-content {
+    line-height: 1.4;
+}
+
+/* Form styles for workflow import */
+#workflowJson {
+    width: 100%;
+    min-height: 200px;
+    resize: vertical;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 0.85em;
+    background-color: var(--background-color);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 10px;
+    color: var(--primary-text);
+}
+
+#workflowJson:focus {
+    outline: none;
+    border-color: var(--user-bubble-bg);
+    box-shadow: 0 0 0 2px rgba(var(--user-bubble-bg-rgb), 0.2);
+}
+
+.connection-status {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px;
+    background: var(--accent-bg);
+    border-radius: 8px;
+    margin-bottom: 15px;
+}
+
+.status-indicator {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--danger-color);
+    transition: background-color 0.3s;
+}
+
+.status-indicator.online {
+    background: #28a745;
+}
+
+.status-indicator.offline {
+    background: var(--danger-color);
+}
+
+.status-text {
+    flex: 1;
+    color: var(--primary-text);
+    font-weight: 500;
+}
+
+.form-group {
+    margin-bottom: 15px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 5px;
+    color: var(--primary-text);
+    font-weight: 500;
+}
+
+.form-group input,
+.form-group select {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid var(--input-border);
+    border-radius: 6px;
+    background: var(--input-bg);
+    color: var(--primary-text);
+    font-size: 0.9em;
+    transition: border-color 0.2s;
+}
+
+.form-group input:focus,
+.form-group select:focus {
+    outline: none;
+    border-color: var(--user-bubble-bg);
+}
+
+.form-group-inline {
+    display: flex;
+    gap: 15px;
+    margin-bottom: 15px;
+}
+
+.form-group-inline > div {
+    flex: 1;
+}
+
+.form-group-inline label {
+    display: block;
+    margin-bottom: 5px;
+    color: var(--primary-text);
+    font-weight: 500;
+}
+
+.form-group-inline input,
+.form-group-inline select {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid var(--input-border);
+    border-radius: 6px;
+    background: var(--input-bg);
+    color: var(--primary-text);
+    font-size: 0.9em;
+    transition: border-color 0.2s;
+}
+
+.form-group-inline input:focus,
+.form-group-inline select:focus {
+    outline: none;
+    border-color: var(--user-bubble-bg);
+}
+
+.workflow-list {
+    margin-bottom: 15px;
+}
+
+.workflow-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px;
+    background: var(--accent-bg);
+    border-radius: 6px;
+    margin-bottom: 8px;
+}
+
+.workflow-name {
+    color: var(--primary-text);
+    font-weight: 500;
+    flex: 1;
+}
+
+.workflow-actions {
+    display: flex;
+    gap: 6px;
+}
+
+.workflow-loading {
+    text-align: center;
+    color: var(--secondary-text);
+    padding: 20px;
+    font-style: italic;
+}
+
+.small-button {
+    padding: 6px 12px;
+    font-size: 0.8em;
+    border-radius: 4px;
+    background: var(--button-bg);
+    color: var(--primary-text);
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.small-button:hover {
+    background: var(--button-hover-bg);
+}
+
+.small-button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.sidebar-button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    background-color: var(--accent-bg) !important;
+}
+
+.form-group small {
+    display: block;
+    margin-top: 4px;
+}
+
+.small-button.danger {
+    background: var(--danger-color);
+    color: white;
+}
+
+.small-button.danger:hover {
+    background: #dc3545;
+}
+
+/* ComfyUI Preset Buttons */
+.preset-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.preset-btn {
+    padding: 6px 10px;
+    font-size: 0.8em;
+    border-radius: 4px;
+    background: var(--accent-bg);
+    color: var(--secondary-text);
+    border: 1px solid var(--border-color);
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+}
+
+.preset-btn:hover {
+    background: var(--button-hover-bg);
+    color: var(--primary-text);
+    border-color: var(--user-bubble-bg);
+}
+
+.preset-btn.active {
+    background: var(--user-bubble-bg);
+    color: white;
+    border-color: var(--user-bubble-bg);
+}
+
+/* ComfyUI Button in Notification Sidebar */
+.notes-section #openComfyUIConfigBtn {
+    background-color: var(--button-bg);
+    color: var(--secondary-text);
+    border: 1px solid var(--button-bg);
+    padding: 0 5px;
+    height: 32px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.8em; /* Smaller font size */
+    transition: background-color 0.2s, border-color 0.2s;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    margin-left: 5px;
+    width: auto;
+}
+
+.notes-section #openComfyUIConfigBtn:hover {
+    background-color: var(--button-hover-bg);
+    border-color: var(--button-hover-bg);
+    color: var(--primary-text);
+}
+
+.notes-section #openComfyUIConfigBtn svg {
+    stroke: currentColor;
+    width: 16px; /* Smaller icon */
+    height: 16px;
+    margin-right: 2px;
+}
+
+body.light-theme .notes-section #openComfyUIConfigBtn {
+    color: #ffffff;
+    border: 1px solid var(--button-bg-light);
+}
+
+body.light-theme .notes-section #openComfyUIConfigBtn:hover {
+    color: #ffffff;
+    border-color: var(--button-hover-bg-light);
+}
+
+/* LoRA Management Styles */
+.lora-list {
+    margin-bottom: 15px;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.lora-empty {
+    text-align: center;
+    color: var(--secondary-text);
+    padding: 20px;
+    font-style: italic;
+    background: var(--accent-bg);
+    border-radius: 6px;
+}
+
+.lora-item {
+    background: var(--accent-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    margin-bottom: 12px;
+    padding: 15px;
+    transition: border-color 0.2s;
+}
+
+.lora-item:hover {
+    border-color: var(--user-bubble-bg);
+}
+
+.lora-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.lora-name {
+    flex: 1;
+    padding: 8px 12px;
+    border: 1px solid var(--input-border);
+    border-radius: 6px;
+    background: var(--input-bg);
+    color: var(--primary-text);
+    font-size: 0.9em;
+    transition: border-color 0.2s;
+}
+
+.lora-name:focus {
+    outline: none;
+    border-color: var(--user-bubble-bg);
+}
+
+.lora-name-display {
+    flex: 1;
+    padding: 8px 12px;
+    background: var(--accent-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    color: var(--primary-text);
+    font-size: 0.9em;
+    font-weight: 500;
+    word-break: break-all;
+    display: flex;
+    align-items: center;
+}
+
+.lora-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.lora-enabled {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    color: var(--primary-text);
+    font-size: 0.9em;
+    cursor: pointer;
+}
+
+.lora-enabled input[type="checkbox"] {
+    margin: 0;
+    cursor: pointer;
+}
+
+.lora-controls {
+    display: flex;
+    gap: 15px;
+}
+
+.lora-control {
+    flex: 1;
+}
+
+.lora-control label {
+    display: block;
+    margin-bottom: 5px;
+    color: var(--primary-text);
+    font-weight: 500;
+    font-size: 0.85em;
+}
+
+.lora-strength,
+.lora-clip-strength {
+    width: 100%;
+    padding: 6px 10px;
+    border: 1px solid var(--input-border);
+    border-radius: 4px;
+    background: var(--input-bg);
+    color: var(--primary-text);
+    font-size: 0.85em;
+    transition: border-color 0.2s;
+}
+
+.lora-strength:focus,
+.lora-clip-strength:focus {
+    outline: none;
+    border-color: var(--user-bubble-bg);
+}
+
+.lora-add-section {
+    padding: 15px;
+    text-align: center;
+    border: 2px dashed var(--border-color);
+    border-radius: 8px;
+    background: var(--background-color);
+}
+
+.lora-add-section button {
+    padding: 10px 20px;
+    font-size: 0.9em;
+}
+
+/* Quality Tags Textarea */
+#qualityTags {
+    width: 100%;
+    min-height: 80px;
+    resize: vertical;
+    padding: 10px 12px;
+    border: 1px solid var(--input-border);
+    border-radius: 6px;
+    background: var(--input-bg);
+    color: var(--primary-text);
+    font-family: inherit;
+    font-size: 0.9em;
+    line-height: 1.4;
+    transition: border-color 0.2s;
+}
+
+#qualityTags:focus {
+    outline: none;
+    border-color: var(--user-bubble-bg);
+    box-shadow: 0 0 0 2px rgba(var(--user-bubble-bg-rgb), 0.2);
+}
+
+/* Negative Prompt Textarea */
+#negativePrompt {
+    width: 100%;
+    min-height: 100px;
+    resize: vertical;
+    padding: 10px 12px;
+    border: 1px solid var(--input-border);
+    border-radius: 6px;
+    background: var(--input-bg);
+    color: var(--primary-text);
+    font-family: inherit;
+    font-size: 0.9em;
+    line-height: 1.4;
+    transition: border-color 0.2s;
+}
+
+#negativePrompt:focus {
+    outline: none;
+    border-color: var(--user-bubble-bg);
+    box-shadow: 0 0 0 2px rgba(var(--user-bubble-bg-rgb), 0.2);
+}
