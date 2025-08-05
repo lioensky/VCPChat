@@ -129,8 +129,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         if (highlightThemeStyle) {
             highlightThemeStyle.href = currentTheme === 'light'
-                ? "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-light.min.css"
-                : "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css";
+                ? "../vendor/atom-one-light.min.css"
+                : "../vendor/atom-one-dark.min.css";
         }
     }
     

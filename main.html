@@ -5,20 +5,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Content-Security-Policy"
           content="default-src 'self' data:;
-                   script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com;
-                   style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com;
+                   script-src 'self' 'unsafe-inline';
+                   style-src 'self' 'unsafe-inline';
                    img-src * data: file: blob:;
                    media-src * data: file:;
-                   font-src 'self' https://cdn.jsdelivr.net;
+                   font-src 'self';
                    connect-src * ws: wss:;">
     <title>VCPChat</title>
     <link rel="stylesheet" href="style.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" crossorigin="anonymous">
-    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js" crossorigin="anonymous"></script>
-    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script> <!-- 添加 marked.js -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.1/anime.min.js"></script>
+    <link rel="stylesheet" href="vendor/katex.min.css" crossorigin="anonymous">
+    <script defer src="vendor/katex.min.js" crossorigin="anonymous"></script>
+    <script defer src="vendor/auto-render.min.js" crossorigin="anonymous"></script>
+    <script src="vendor/marked.min.js"></script> <!-- 添加 marked.js -->
+    <script src="vendor/highlight.min.js"></script>
+    <script src="vendor/anime.min.js"></script>
 </head>
 <body>
     <div class="title-bar">
@@ -475,7 +475,7 @@
     <script src="modules/uiManager.js"></script>
     <script src="modules/settingsManager.js"></script>
     <script src="modules/ui-helpers.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+    <script src="vendor/Sortable.min.js"></script>
     <script src="Groupmodules/grouprenderer.js"></script>
     <script type="module" src="modules/renderer/colorUtils.js"></script>
     <script type="module" src="modules/renderer/imageHandler.js"></script>

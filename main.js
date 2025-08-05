@@ -592,8 +592,7 @@ function formatTimestampForFilename(timestamp) {
     const hours = date.getHours().toString().padStart(2, '0');
     const minutes = date.getMinutes().toString().padStart(2, '0');
     const seconds = date.getSeconds().toString().padStart(2, '0');
-    const milliseconds = date.getMilliseconds().toString().padStart(3, '0');
-    return `${year}${month}${day}_${hours}${minutes}${seconds}_${milliseconds}`;
+    return `${year}${month}${day}_${hours}${minutes}${seconds}`;
 }
 
 // --- IPC Handlers ---
@@ -745,4 +744,38 @@ ipcMain.on('start-speech-recognition', (event) => {
 
 ipcMain.on('stop-speech-recognition', () => {
     speechRecognizer.stop();
+});
+
+ipcMain.handle('export-topic-as-markdown', async (event, exportData) => {
+    const { topicName, markdownContent } = exportData;
+
+    if (!topicName || !markdownContent) {
+        return { success: false, error: '缺少导出所需的必要信息（话题名称或内容）。' };
+    }
+
+    // 1. Show Save Dialog
+    const safeTopicName = topicName.replace(/[/\\?%*:|"<>]/g, '-');
+    const defaultFileName = `${safeTopicName}-${formatTimestampForFilename(Date.now())}.md`;
+    const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
+        title: '导出话题为 Markdown',
+        defaultPath: defaultFileName,
+        filters: [
+            { name: 'Markdown 文件', extensions: ['md'] },
+            { name: '所有文件', extensions: ['*'] }
+        ]
+    });
+
+    if (canceled || !filePath) {
+        return { success: false, error: '用户取消了导出操作。' };
+    }
+
+    // 2. Write to File
+    try {
+        await fs.writeFile(filePath, markdownContent, 'utf8');
+        shell.showItemInFolder(filePath); // Open the folder containing the file
+        return { success: true, path: filePath };
+    } catch (e) {
+        console.error(`[Export] 写入Markdown文件失败:`, e);
+        return { success: false, error: `写入文件失败: ${e.message}` };
+    }
 });
