@@ -7,8 +7,13 @@
     "start": "electron ."
   },
   "dependencies": {
-    "marked": "^4.3.0"
+    "marked": "^4.3.0",
+    "fs-extra": "^11.2.0",
+    "sharp": "^0.33.4"
   },
   "author": "VCP",
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^30.0.0"
+  }
 }

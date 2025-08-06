@@ -8,9 +8,14 @@ const http = require('http');
 const https = require('https');
 const sharp = require('sharp');
 
+// 导入 ComfyUI IPC 处理器
+const { registerComfyUIIpcHandlers } = require('./ComfyUImodules/comfyui-ipc');
+
+let mainWindow = null;
+
 function createWindow() {
     // 创建浏览器窗口。
-    const mainWindow = new BrowserWindow({
+    mainWindow = new BrowserWindow({
         width: 1200,
         height: 800,
         transparent: true,
@@ -18,7 +23,9 @@ function createWindow() {
         hasShadow: false, // 禁用原生窗口阴影，这是实现圆角的关键！
         backgroundColor: '#00000000', // 设置背景色为完全透明，防止伪影
         webPreferences: {
-            // 允许在渲染进程中使用Node.js API (如 require)
+            // 使用 preload 脚本来安全地暴露 API
+            preload: path.join(__dirname, 'preload.js'),
+            // 保持 nodeIntegration 为 true 以兼容现有代码
             nodeIntegration: true,
             contextIsolation: false
         }
@@ -32,8 +39,16 @@ function createWindow() {
 }
 
 // Electron会在初始化完成并且准备好创建浏览器窗口时调用这个方法
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
     createWindow();
+    
+    // 注册 ComfyUI IPC handlers
+    try {
+        await registerComfyUIIpcHandlers(mainWindow);
+        console.log('[Main] ComfyUI IPC handlers registered successfully');
+    } catch (error) {
+        console.error('[Main] Failed to register ComfyUI IPC handlers:', error);
+    }
 
     app.on('activate', function () {
         // 在macOS上，当单击dock图标并且没有其他窗口打开时，

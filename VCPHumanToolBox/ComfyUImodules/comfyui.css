@@ -1,0 +1,855 @@
+/* ComfyUImodules/comfyui.css - ComfyUI specific styles */
+
+/* --- ComfyUI Configuration Styles --- */
+.config-tabs {
+    display: flex;
+    gap: 0;
+    margin-bottom: 20px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.config-tab-button {
+    background: transparent;
+    border: none;
+    color: var(--secondary-text);
+    padding: 12px 20px;
+    cursor: pointer;
+    font-size: 0.9em;
+    border-bottom: 2px solid transparent;
+    transition: color 0.2s, border-color 0.2s;
+}
+
+.config-tab-button:hover {
+    color: var(--primary-text);
+}
+
+.config-tab-button.active {
+    color: var(--user-bubble-bg);
+    border-bottom-color: var(--user-bubble-bg);
+}
+
+.config-tab-content {
+    display: none;
+}
+
+.config-tab-content.active {
+    display: block;
+}
+
+.config-section {
+    margin-bottom: 20px;
+}
+
+.config-section h3 {
+    margin-bottom: 15px;
+    color: var(--primary-text);
+    font-size: 1.1em;
+}
+
+.section-description {
+    color: var(--secondary-text);
+    font-size: 0.9em;
+    margin-bottom: 15px;
+    line-height: 1.4;
+}
+
+/* --- Import Workflow Styles --- */
+.import-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 15px;
+}
+
+.import-result {
+    margin-top: 15px;
+    padding: 12px;
+    border-radius: 4px;
+    border-left: 4px solid;
+    font-size: 0.9em;
+}
+
+.import-result.success {
+    background-color: rgba(40, 167, 69, 0.1);
+    border-left-color: #28a745;
+    color: #155724;
+}
+
+.import-result.error {
+    background-color: rgba(220, 53, 69, 0.1);
+    border-left-color: #dc3545;
+    color: #721c24;
+}
+
+.import-result.warning {
+    background-color: rgba(255, 193, 7, 0.1);
+    border-left-color: #ffc107;
+    color: #856404;
+}
+
+.result-content {
+    line-height: 1.4;
+}
+
+/* Form styles for workflow import */
+#workflowJson {
+    width: 100%;
+    min-height: 200px;
+    resize: vertical;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 0.85em;
+    background-color: var(--background-color);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 10px;
+    color: var(--primary-text);
+}
+
+#workflowJson:focus {
+    outline: none;
+    border-color: var(--user-bubble-bg);
+    box-shadow: 0 0 0 2px rgba(var(--user-bubble-bg-rgb), 0.2);
+}
+
+.connection-status {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px;
+    background: var(--accent-bg);
+    border-radius: 8px;
+    margin-bottom: 15px;
+}
+
+.status-indicator {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--danger-color);
+    transition: background-color 0.3s;
+}
+
+.status-indicator.online {
+    background: #28a745;
+}
+
+.status-indicator.offline {
+    background: var(--danger-color);
+}
+
+.status-text {
+    flex: 1;
+    color: var(--primary-text);
+    font-weight: 500;
+}
+
+/* Remove duplicate or conflicting styles that are now handled by style.css */
+.form-group, .form-group-inline {
+    margin-bottom: 0; /* Let the grid handle the gap */
+}
+
+.config-section {
+    padding: 15px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background-color: rgba(0,0,0,0.1);
+}
+
+.workflow-list {
+    margin-bottom: 15px;
+}
+
+.workflow-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px;
+    background: var(--accent-bg);
+    border-radius: 6px;
+    margin-bottom: 8px;
+}
+
+.workflow-name {
+    color: var(--primary-text);
+    font-weight: 500;
+    flex: 1;
+}
+
+.workflow-actions {
+    display: flex;
+    gap: 6px;
+}
+
+.workflow-loading {
+    text-align: center;
+    color: var(--secondary-text);
+    padding: 20px;
+    font-style: italic;
+}
+
+/* Small button styles are now inherited from the main style.css.
+   This block is removed to ensure consistency. */
+
+
+.form-group small {
+    display: block;
+    margin-top: 4px;
+}
+
+.small-button.danger {
+    background: var(--danger-color);
+    color: white;
+}
+
+.small-button.danger:hover {
+    background: #dc3545;
+}
+
+/* Remove duplicate preset button styles */
+
+
+/* ComfyUI Button in Notification Sidebar */
+.notes-section #openComfyUIConfigBtn {
+    background-color: var(--button-bg);
+    color: var(--secondary-text);
+    border: 1px solid var(--button-bg);
+    padding: 0 5px;
+    height: 32px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.8em; /* Smaller font size */
+    transition: background-color 0.2s, border-color 0.2s;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    margin-left: 5px;
+    width: auto;
+}
+
+.notes-section #openComfyUIConfigBtn:hover {
+    background-color: var(--button-hover-bg);
+    border-color: var(--button-hover-bg);
+    color: var(--primary-text);
+}
+
+.notes-section #openComfyUIConfigBtn svg {
+    stroke: currentColor;
+    width: 16px; /* Smaller icon */
+    height: 16px;
+    margin-right: 2px;
+}
+
+body.light-theme .notes-section #openComfyUIConfigBtn {
+    color: #ffffff;
+    border: 1px solid var(--button-bg-light);
+}
+
+body.light-theme .notes-section #openComfyUIConfigBtn:hover {
+    color: #ffffff;
+    border-color: var(--button-hover-bg-light);
+}
+
+/* LoRA Management Styles */
+.lora-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 15px;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.lora-empty {
+    text-align: center;
+    color: var(--secondary-text);
+    padding: 20px;
+    font-style: italic;
+    background: var(--accent-bg);
+    border-radius: 6px;
+}
+
+.lora-item {
+    background: var(--tertiary-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 5px;
+    padding: 15px;
+    transition: border-color 0.2s;
+}
+
+.lora-item:hover {
+    border-color: var(--user-bubble-bg);
+}
+
+.lora-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.lora-name-display {
+    font-weight: bold;
+    color: var(--highlight-text);
+}
+
+.lora-actions {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.lora-enabled {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
+}
+
+.lora-enabled input[type="checkbox"] {
+    margin: 0;
+    cursor: pointer;
+}
+
+.lora-controls {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 15px;
+}
+
+.lora-control {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.lora-control label {
+    display: block;
+    margin-bottom: 5px;
+    color: var(--primary-text);
+    font-weight: 500;
+    font-size: 0.85em;
+}
+
+.lora-strength,
+.lora-clip-strength {
+    width: 100%;
+    padding: 6px 10px;
+    border: 1px solid var(--input-border);
+    border-radius: 4px;
+    background: var(--input-bg);
+    color: var(--primary-text);
+    font-size: 0.85em;
+    transition: border-color 0.2s;
+}
+
+.lora-strength:focus,
+.lora-clip-strength:focus {
+    outline: none;
+    border-color: var(--user-bubble-bg);
+}
+
+.lora-add-section {
+    margin-top: 15px;
+    padding: 15px;
+    text-align: center;
+    border: 2px dashed var(--border-color);
+    border-radius: 8px;
+    background: var(--background-color);
+    border-top: 1px solid var(--border-color);
+    padding-top: 15px;
+}
+
+.lora-add-section button {
+    padding: 10px 20px;
+    font-size: 0.9em;
+}
+
+/* Preset Buttons */
+.preset-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.preset-btn {
+    background-color: var(--button-bg);
+    color: var(--text-on-accent);
+    border: 1px solid var(--border-color);
+    padding: 5px 10px;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.preset-btn:hover, .preset-btn.active {
+    background-color: var(--highlight-text);
+    color: var(--panel-bg);
+    border-color: var(--highlight-text);
+}
+
+/* --- Drawer Panel Styling (Migrated from style.css) --- */
+.drawer-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 22px;
+    border-bottom: 1px solid var(--border-color);
+    position: sticky;
+    top: 0;
+    background: var(--panel-bg);
+    z-index: 10;
+}
+.drawer-header .close-button {
+    background: rgba(255,255,255,0.06);
+    color: var(--primary-text);
+    border: 1px solid var(--border-color);
+    width: 32px;
+    height: 32px;
+    line-height: 30px;
+    text-align: center;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background-color .15s ease, border-color .15s ease, transform .12s ease;
+}
+.drawer-header .close-button:hover {
+    background: var(--button-hover-bg);
+    border-color: var(--highlight-text);
+    transform: scale(1.04);
+}
+
+.drawer-header h2 {
+    margin: 0;
+    font-size: 1.2em;
+}
+
+.drawer-footer {
+    padding: 15px 25px;
+    border-top: 1px solid var(--border-color);
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    position: sticky;
+    bottom: 0;
+    background: var(--panel-bg);
+    z-index: 10;
+}
+
+.drawer-overlay {
+    position: fixed;
+    inset: 0;
+    background-color: rgba(0, 0, 0, 0.6);
+    z-index: 1000;
+    opacity: 0;
+    transition: opacity 160ms ease;
+    pointer-events: none;
+}
+
+.drawer-overlay:not(.hidden) {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.drawer-panel {
+    position: fixed;
+    top: 0;
+    right: 0; /* 固定在右侧，用 transform 控制进出，避免布局跳变 */
+    width: 640px;           /* 增大抽屉宽度 */
+    max-width: 92vw;        /* 更宽的视口占比 */
+    height: 100%;
+    background: var(--panel-bg, rgba(24,28,37,0.7));
+    backdrop-filter: blur(16px) saturate(180%);
+    -webkit-backdrop-filter: blur(16px) saturate(180%);
+    border-left: 1px solid var(--border-color);
+    box-shadow: -8px 0 24px rgba(0,0,0,0.35);
+    z-index: 1001;
+    display: flex;
+    flex-direction: column;
+    transform: translateX(100%);
+    transition: transform 200ms ease;
+    will-change: transform; /* 提前告知浏览器，减少闪烁 */
+    contain: layout paint;  /* 限制重绘传播，进一步减少闪烁 */
+}
+
+.drawer-panel.open {
+    transform: translateX(0);
+}
+
+.drawer-content {
+    flex-grow: 1;
+    overflow-y: auto;
+    padding: 25px;
+    min-height: 0; /* 防止首次渲染高度跳变 */
+}
+
+.form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 15px 20px;
+}
+
+.config-section-collapsible {
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    margin-bottom: 15px;
+    overflow: hidden;
+}
+
+.config-section-collapsible summary {
+    cursor: pointer;
+    padding: 15px;
+    font-weight: bold;
+    background-color: rgba(255, 255, 255, 0.05);
+}
+
+.config-section-collapsible[open] > div {
+    padding: 15px;
+    border-top: 1px solid var(--border-color);
+}
+
+.preset-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+/* 统一按钮风格（含小按钮、页脚按钮、测试连接） */
+.sidebar-button,
+.small-button,
+.preset-btn {
+    background-color: var(--button-bg);
+    color: var(--text-on-accent);
+    border: 1px solid var(--border-color);
+    padding: 8px 14px;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: background-color .15s ease, border-color .15s ease, transform .12s ease, box-shadow .15s ease;
+    box-shadow: 0 1px 0 rgba(255,255,255,0.06) inset;
+}
+.sidebar-button.primary {
+    background: linear-gradient(180deg, var(--highlight-text), #f0b25a);
+    color: #1e222a;
+    border-color: rgba(0,0,0,0.12);
+}
+.sidebar-button:hover,
+.small-button:hover,
+.preset-btn:hover {
+    background-color: var(--button-hover-bg);
+    border-color: var(--highlight-text);
+    transform: translateY(-1px);
+}
+.sidebar-button:active,
+.small-button:active,
+.preset-btn:active {
+    transform: translateY(0);
+}
+
+.preset-btn:hover {
+    background-color: var(--button-hover-bg);
+    border-color: var(--highlight-text);
+}
+
+/* 抽屉作用域内的输入统一皮肤，消除白框 */
+.drawer-panel .drawer-content input[type="text"],
+.drawer-panel .drawer-content input[type="number"],
+.drawer-panel .drawer-content input[type="search"],
+.drawer-panel .drawer-content input[type="password"],
+.drawer-panel .drawer-content input[type="url"],
+.drawer-panel .drawer-content select,
+.drawer-panel .drawer-content option,
+.drawer-panel .drawer-content textarea {
+    appearance: none;
+    -webkit-appearance: none;
+    background-color: var(--input-bg, rgba(255,255,255,0.06));
+    color: var(--primary-text);
+    border: 1px solid var(--border-color, rgba(255,255,255,0.12));
+    border-radius: 8px;
+    padding: 8px 12px;
+    height: 40px;
+    line-height: 24px;
+    outline: none;
+    transition: border-color 120ms ease, box-shadow 120ms ease, background-color 120ms ease;
+    width: 100%;
+    box-sizing: border-box;
+}
+.drawer-panel .drawer-content textarea {
+    min-height: 88px;
+    height: auto;
+    resize: vertical;
+}
+
+.drawer-panel .drawer-content select {
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+    background-position: right 0.5rem center;
+    background-repeat: no-repeat;
+    background-size: 1.5em 1.5em;
+    padding-right: 2.5rem;
+}
+
+/* Ensure dropdown options also have dark background */
+.drawer-panel .drawer-content option {
+    background-color: var(--input-bg, #2c2c2e); /* A slightly different dark color for options */
+    color: var(--primary-text);
+}
+.drawer-panel .drawer-content input::placeholder,
+.drawer-panel .drawer-content textarea::placeholder {
+    color: rgba(230,234,242,0.45);
+}
+.drawer-panel .drawer-content input:focus,
+.drawer-panel .drawer-content select:focus,
+.drawer-panel .drawer-content textarea:focus {
+    border-color: var(--highlight-text);
+    box-shadow: 0 0 0 3px rgba(255,204,102,0.16);
+    background-color: rgba(255,255,255,0.08);
+}
+
+/* 分组与网格间距统一，移除额外空白 */
+.drawer-panel .config-section {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 12px;
+    padding: 12px;
+    margin: 12px 0;
+}
+.drawer-panel .form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+.drawer-panel .form-group {
+    margin: 0; /* 由 grid 控制间距，避免"空白块" */
+}
+
+/* 打开抽屉时禁止背景滚动，避免闪烁错觉 */
+body.drawer-open {
+    overflow: hidden;
+}
+
+/* --- LoRA Row Specific Styles --- */
+.lora-row {
+    display: grid;
+    grid-template-columns: auto 1fr auto auto auto;
+    gap: 10px;
+    align-items: center;
+}
+
+.lora-row .lora-enabled {
+    width: 20px;
+    height: 20px;
+}
+
+.lora-row .lora-select-wrapper {
+    position: relative;
+}
+
+.lora-row .lora-name { /* This is now a select */
+    width: 100%;
+}
+
+.lora-row .lora-strength,
+.lora-row .lora-clip {
+    width: 70px; /* Fixed width for number inputs */
+}
+
+.lora-row .lora-remove {
+    padding: 6px 10px;
+    font-size: 12px;
+}
+
+/* Generation styles */
+.mode-options {
+    margin: 20px 0;
+    padding: 15px;
+    background-color: rgba(255,255,255,0.03);
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+}
+
+.info-box {
+    padding: 12px;
+    background-color: rgba(255,204,102,0.1);
+    border-left: 3px solid var(--highlight-text);
+    border-radius: 4px;
+    font-size: 0.9em;
+    color: var(--text-secondary);
+}
+
+.info-box p {
+    margin: 5px 0;
+}
+
+.generate-actions {
+    margin: 20px 0;
+    display: flex;
+    gap: 10px;
+}
+
+.generate-progress {
+    margin: 20px 0;
+    padding: 15px;
+    background-color: var(--bg-secondary);
+    border-radius: 8px;
+}
+
+.progress-bar {
+    width: 100%;
+    height: 20px;
+    background-color: var(--input-bg);
+    border-radius: 10px;
+    overflow: hidden;
+    margin-bottom: 10px;
+}
+
+.progress-fill {
+    height: 100%;
+    background-color: var(--success-color);
+    transition: width 0.3s ease;
+}
+
+.progress-text {
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 14px;
+}
+
+.generate-result {
+    margin-top: 20px;
+    padding: 20px;
+    background-color: var(--bg-secondary);
+    border-radius: 8px;
+}
+
+.generate-result h4 {
+    margin-top: 0;
+    color: var(--highlight-text);
+}
+
+.result-images {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 15px;
+    margin-top: 15px;
+}
+
+.result-image {
+    position: relative;
+    border-radius: 8px;
+    overflow: hidden;
+    background-color: var(--input-bg);
+}
+
+.result-image img {
+    width: 100%;
+    height: auto;
+    display: block;
+}
+
+.result-image .image-actions {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: linear-gradient(to top, rgba(0,0,0,0.8), transparent);
+    padding: 10px;
+    display: flex;
+    gap: 5px;
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+
+.result-image:hover .image-actions {
+    opacity: 1;
+}
+
+.image-actions button {
+    padding: 5px 10px;
+    font-size: 12px;
+    background-color: rgba(255,255,255,0.2);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.image-actions button:hover {
+    background-color: rgba(255,255,255,0.3);
+}
+
+/* Danger button style */
+.sidebar-button.danger {
+    background-color: var(--danger-color);
+    color: white;
+    border-color: var(--danger-color);
+}
+
+.sidebar-button.danger:hover {
+    background-color: #dc3545;
+    border-color: #dc3545;
+}
+
+/* Generation history styles */
+.generate-history {
+    margin-top: 30px;
+    padding: 20px;
+    background-color: rgba(255,255,255,0.03);
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+}
+
+.generate-history h4 {
+    margin-top: 0;
+    margin-bottom: 15px;
+    color: var(--primary-text);
+}
+
+.history-list {
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.history-item {
+    display: flex;
+    align-items: center;
+    padding: 10px;
+    margin-bottom: 10px;
+    background-color: var(--input-bg);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.history-item:hover {
+    background-color: rgba(255,255,255,0.08);
+}
+
+.history-thumbnail {
+    width: 60px;
+    height: 60px;
+    margin-right: 15px;
+    border-radius: 4px;
+    object-fit: cover;
+}
+
+.history-info {
+    flex: 1;
+}
+
+.history-prompt {
+    font-size: 0.9em;
+    color: var(--primary-text);
+    margin-bottom: 5px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.history-time {
+    font-size: 0.8em;
+    color: var(--text-secondary);
+}
+
+.empty-history {
+    text-align: center;
+    color: var(--text-secondary);
+    font-style: italic;
+    padding: 20px;
+}

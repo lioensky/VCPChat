@@ -2,6 +2,22 @@
 const { ipcRenderer } = require('electron');
 const { marked } = require('marked');
 
+// 创建 electronAPI 对象以支持 ComfyUI 模块
+window.electronAPI = {
+    invoke: (channel, ...args) => ipcRenderer.invoke(channel, ...args),
+    send: (channel, ...args) => ipcRenderer.send(channel, ...args),
+    on: (channel, callback) => {
+        // 为了安全，只允许特定的通道
+        const validChannels = ['comfyui:config-changed', 'comfyui:workflows-changed'];
+        if (validChannels.includes(channel)) {
+            ipcRenderer.on(channel, callback);
+        }
+    },
+    removeListener: (channel, callback) => {
+        ipcRenderer.removeListener(channel, callback);
+    }
+};
+
 document.addEventListener('DOMContentLoaded', () => {
     // --- 元素获取 ---
     const toolGrid = document.getElementById('tool-grid');
@@ -200,6 +216,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     ]
                 }
             }
+        },
+        // ComfyUI 图像生成
+        'ComfyUIGen': {
+            displayName: 'ComfyUI 生成',
+            description: '使用本地 ComfyUI 后端进行图像生成',
+            params: [
+                { name: 'prompt', type: 'textarea', required: true, placeholder: '详细的提示词描述' }
+            ]
         }
     };
 
@@ -268,10 +292,27 @@ document.addEventListener('DOMContentLoaded', () => {
             renderFormParams(tool.params, paramsContainer);
         }
 
+        // 添加按钮容器
+        const buttonContainer = document.createElement('div');
+        buttonContainer.style.cssText = 'display: flex; gap: 10px; margin-top: 15px;';
+        
         const submitButton = document.createElement('button');
         submitButton.type = 'submit';
         submitButton.textContent = '执行';
-        toolForm.appendChild(submitButton);
+        buttonContainer.appendChild(submitButton);
+
+        // 为 ComfyUI 工具添加设置按钮
+        if (toolName === 'ComfyUIGen') {
+            const settingsButton = document.createElement('button');
+            settingsButton.type = 'button';
+            settingsButton.textContent = '⚙️ 设置';
+            settingsButton.className = 'back-btn';
+            settingsButton.style.cssText = 'margin-left: auto;';
+            settingsButton.addEventListener('click', () => openComfyUISettings());
+            buttonContainer.appendChild(settingsButton);
+        }
+
+        toolForm.appendChild(buttonContainer);
 
         toolForm.onsubmit = (e) => {
             e.preventDefault();
@@ -598,4 +639,117 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     initialize();
+
+    // --- ComfyUI 集成功能 ---
+    let comfyUIDrawer = null;
+    let comfyUILoaded = false;
+
+    // 创建抽屉容器
+    function createComfyUIDrawer() {
+        // 创建遮罩层
+        const overlay = document.createElement('div');
+        overlay.className = 'drawer-overlay hidden';
+        overlay.addEventListener('click', closeComfyUISettings);
+
+        // 创建抽屉面板
+        const drawer = document.createElement('div');
+        drawer.className = 'drawer-panel';
+        drawer.innerHTML = `
+            <div class="drawer-content" id="comfyui-drawer-content">
+                <div style="text-align: center; padding: 50px; color: var(--secondary-text);">
+                    正在加载 ComfyUI 配置...
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(overlay);
+        document.body.appendChild(drawer);
+
+        return { overlay, drawer };
+    }
+
+    // 打开 ComfyUI 设置
+    async function openComfyUISettings() {
+        if (!comfyUIDrawer) {
+            comfyUIDrawer = createComfyUIDrawer();
+        }
+
+        // 显示抽屉
+        comfyUIDrawer.overlay.classList.remove('hidden');
+        comfyUIDrawer.drawer.classList.add('open');
+        document.body.classList.add('drawer-open');
+
+        // 动态加载 ComfyUI 模块
+        if (!comfyUILoaded) {
+            try {
+                // 加载 ComfyUILoader
+                await loadComfyUIModules();
+                
+                // 等待 ComfyUILoader 可用
+                if (window.ComfyUILoader) {
+                    await window.ComfyUILoader.load();
+                    
+                    // 创建配置 UI
+                    const drawerContent = document.getElementById('comfyui-drawer-content');
+                    if (window.comfyUI && drawerContent) {
+                        window.comfyUI.createUI(drawerContent, {
+                            defaultTab: 'connection',
+                            onClose: closeComfyUISettings
+                        });
+                    }
+                    
+                    comfyUILoaded = true;
+                } else {
+                    throw new Error('ComfyUILoader 未能正确加载');
+                }
+            } catch (error) {
+                console.error('加载 ComfyUI 模块失败:', error);
+                const drawerContent = document.getElementById('comfyui-drawer-content');
+                if (drawerContent) {
+                    drawerContent.innerHTML = `
+                        <div style="text-align: center; padding: 50px; color: var(--danger-color);">
+                            加载 ComfyUI 配置失败: ${error.message}
+                        </div>
+                    `;
+                }
+            }
+        }
+
+        // 绑定 ESC 键关闭
+        document.addEventListener('keydown', handleEscKey);
+    }
+
+    // 关闭 ComfyUI 设置
+    function closeComfyUISettings() {
+        if (comfyUIDrawer) {
+            comfyUIDrawer.overlay.classList.add('hidden');
+            comfyUIDrawer.drawer.classList.remove('open');
+            document.body.classList.remove('drawer-open');
+        }
+        document.removeEventListener('keydown', handleEscKey);
+    }
+
+    // ESC 键处理
+    function handleEscKey(e) {
+        if (e.key === 'Escape') {
+            closeComfyUISettings();
+        }
+    }
+
+    // 动态加载 ComfyUI 模块
+    async function loadComfyUIModules() {
+        // 首先加载 ComfyUILoader 脚本
+        const loaderScript = document.createElement('script');
+        loaderScript.src = 'ComfyUImodules/ComfyUILoader.js';
+        
+        return new Promise((resolve, reject) => {
+            loaderScript.onload = resolve;
+            loaderScript.onerror = () => reject(new Error('无法加载 ComfyUILoader.js'));
+            document.head.appendChild(loaderScript);
+        });
+    }
+
+    // 将函数暴露到全局作用域，以便按钮点击时调用
+    window.openComfyUISettings = openComfyUISettings;
+    window.closeComfyUISettings = closeComfyUISettings;
 });
