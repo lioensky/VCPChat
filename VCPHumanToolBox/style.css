@@ -261,3 +261,21 @@ header p {
 ::-webkit-scrollbar-thumb:hover {
     background-color: var(--primary-text);
 }
+
+/* --- Info Box Style --- */
+.info-box {
+    padding: 15px;
+    background-color: rgba(255, 204, 102, 0.1);
+    border-left: 4px solid var(--highlight-text);
+    border-radius: 4px;
+    margin: 10px 0;
+}
+
+.info-box p {
+    margin: 5px 0;
+    line-height: 1.5;
+}
+
+.info-box strong {
+    color: var(--highlight-text);
+}

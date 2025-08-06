@@ -22,8 +22,6 @@
                 defaultSeed: -1,
                 defaultBatchSize: 1,
                 defaultDenoise: 1.0,
-                defaultLoRA: '',
-                defaultLoRAStrength: 1.0,
                 negativePrompt: 'lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality, normal quality, jpeg artifacts, signature, watermark, username, blurry',
                 qualityTags: 'masterpiece, best quality, high resolution, detailed',
                 loras: []
@@ -33,7 +31,8 @@
             this.isConnected = false;
             this.isLoading = false;
             this.isHandlingConfigChange = false;
-            this.availableLoRA = [];
+            // 运行时可用 LoRA 列表，不持久化进 config
+            this._availableLoRAs = [];
 
             ComfyUI_StateManager.instance = this;
         }
@@ -71,8 +70,13 @@
             this.isConnected = status;
         }
         
+        // 统一的运行时可用 LoRA 访问器
         setAvailableLoRAs(loras) {
-            this.availableLoRA = loras;
+            this._availableLoRAs = Array.isArray(loras) ? loras : [];
+        }
+        
+        getAvailableLoRAs() {
+            return Array.isArray(this._availableLoRAs) ? this._availableLoRAs : [];
         }
 
         // --- Async Operations ---
@@ -82,7 +86,6 @@
                     const loadedConfig = await window.electronAPI.loadComfyUIConfig();
                     if (loadedConfig) {
                         this.updateConfig(loadedConfig);
-                        console.log('[ComfyUI State] Config loaded from backend');
                     }
                 } else {
                     // Fallback to localStorage
@@ -108,7 +111,6 @@
                     localStorage.setItem('comfyui-config', JSON.stringify(configToSave));
                 }
                 
-                console.log('[ComfyUI State] Config saved successfully.');
                 
             } catch (error) {
                 console.error('[ComfyUI State] Failed to save config:', error);

@@ -2,10 +2,11 @@
 const fs = require('fs-extra');
 const path = require('path');
 const os = require('os');
+const { app } = require('electron');
 
 class PathResolver {
     constructor() {
-        this.searchPaths = [];
+        this.cachedPath = null; // 缓存已发现的路径
         this.configFileName = 'comfyui-settings.json';
         this.toolboxDirName = 'VCPToolBox';
         this.pluginDirName = 'ComfyUIGen';
@@ -13,11 +14,16 @@ class PathResolver {
 
     /**
      * 多策略路径发现
-     * 按优先级尝试不同的路径解析策略
+     * 按优先级尝试不同的路径解析策略，并缓存结果
      */
     async findVCPToolBoxPath() {
+        if (this.cachedPath) {
+            return this.cachedPath;
+        }
+
         const strategies = [
             this.findByEnvironmentVariable.bind(this),
+            this.findByAppPath.bind(this), // 新增：基于 app.getAppPath()
             this.findByRelativePath.bind(this),
             this.findByCommonLocations.bind(this),
             this.findBySearchUp.bind(this),
@@ -28,7 +34,7 @@ class PathResolver {
             try {
                 const result = await strategy();
                 if (result) {
-                    console.log(`[PathResolver] Found VCPToolBox using strategy: ${strategy.name}`);
+                    this.cachedPath = result; // 缓存结果
                     return result;
                 }
             } catch (error) {
@@ -54,15 +60,34 @@ class PathResolver {
     }
 
     /**
-     * 策略2: 相对路径 (当前使用的方式)
+     * 新策略: 基于 Electron App Path
+     * 通常在打包后，资源文件会与可执行文件放在一起
+     */
+    async findByAppPath() {
+        const appPath = app.getAppPath();
+        const candidatePaths = [
+            path.resolve(appPath, '..', this.toolboxDirName), // 可执行文件旁边
+            path.resolve(appPath, this.toolboxDirName) // 在 resources/app 目录内
+        ];
+        for (const testPath of candidatePaths) {
+            if (await this.validateToolboxPath(testPath)) {
+                return testPath;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 策略3: 相对路径 (作为开发环境的回退)
      */
     async findByRelativePath() {
         // 从当前模块位置向上查找
         const relativePaths = [
-            path.resolve(__dirname, '..', '..', this.toolboxDirName),
+            // For VCPHumanToolBox context
             path.resolve(__dirname, '..', '..', '..', this.toolboxDirName),
-            path.resolve(process.cwd(), this.toolboxDirName),
-            path.resolve(process.cwd(), '..', this.toolboxDirName)
+            // For general project structure
+            path.resolve(process.cwd(), '..', this.toolboxDirName),
+            path.resolve(process.cwd(), this.toolboxDirName)
         ];
 
         for (const testPath of relativePaths) {
@@ -156,15 +181,9 @@ class PathResolver {
     async validateToolboxPath(toolboxPath) {
         try {
             const pluginPath = path.join(toolboxPath, 'Plugin', this.pluginDirName);
-            const exists = await fs.pathExists(pluginPath);
-            if (exists) {
-                // 进一步验证是否是正确的插件目录
-                const manifestPath = path.join(pluginPath, 'plugin-manifest.json');
-                if (await fs.pathExists(manifestPath)) {
-                    return true;
-                }
-            }
-            return false;
+            // We only check if the ComfyUIGen plugin directory exists,
+            // as not all plugins might have a manifest file. This is more robust.
+            return await fs.pathExists(pluginPath);
         } catch (error) {
             return false;
         }
@@ -184,6 +203,15 @@ class PathResolver {
     async getWorkflowsPath() {
         const toolboxPath = await this.findVCPToolBoxPath();
         return path.join(toolboxPath, 'Plugin', this.pluginDirName, 'workflows');
+    }
+
+    async getWorkflowProcessorPath() {
+        const base = await this.findVCPToolBoxPath();
+        const processorPath = path.join(base, 'Plugin', 'ComfyUIGen', 'WorkflowTemplateProcessor.js');
+        if (!fs.existsSync(processorPath)) {
+            throw new Error(`WorkflowTemplateProcessor.js not found at ${processorPath}`);
+        }
+        return processorPath;
     }
 
     /**

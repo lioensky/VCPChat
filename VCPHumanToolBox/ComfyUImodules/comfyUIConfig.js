@@ -29,107 +29,59 @@
         }
         
         async init() {
-            console.log('[ComfyUI] Initializing ComfyUI Configuration Manager...');
+            // Defer initialization until createUI is called
+        }
+
+        async createUI(container, options = {}) {
             try {
-                await this.loadConfig();
-                this.setupFileWatcher();
+                this.onCloseCallback = options.onClose; // Store the close callback
+                await this.loadConfig(); // Load config first
+
+                // Create the basic UI structure
+                const defaultTab = options.defaultTab || 'connection';
+                this.uiManager.createPanelContent(container, this, { defaultTab });
+
+                // Populate the form with loaded data
+                this.uiManager.populateForm(this.stateManager.getConfig());
+                
+                // Populate dynamic lists
+                this.populateLoraList();
+                this.populateWorkflowSelect();
+                this.loadAvailableWorkflows(); // This populates the management list
+
+                // Update initial UI states
                 this.uiManager.updateConnectionStatus(this.stateManager.isConnectionActive());
+                this.uiManager.setTestConnectionButtonState(true); // Ready to test
 
-                const openBtn = document.getElementById('openComfyUIConfigBtn');
-                if (openBtn) {
-                    openBtn.addEventListener('click', () => this.openModal());
-                } else {
-                    console.warn('[ComfyUI] openComfyUIConfigBtn not found during init.');
-                }
+                // Bind events after UI is fully rendered
+                this.uiManager.register('testConnectionBtn', 'click', () => this.testConnection());
                 
-                console.log('[ComfyUI] ComfyUI Configuration Manager initialized successfully');
-            } catch (error) {
-                console.error('[ComfyUI] Failed to initialize:', error);
-            }
-        }
-
-        async setupFileWatcher() {
-            try {
-                if (window.electronAPI && window.electronAPI.watchComfyUIConfig) {
-                    const result = await window.electronAPI.watchComfyUIConfig();
-                    if (result.success) {
-                        console.log('[ComfyUI] File watcher setup successful');
-                        window.electronAPI.onComfyUIConfigChanged?.(() => {
-                            console.log('[ComfyUI] Config file changed, reloading...');
-                            this.handleConfigFileChanged();
-                        });
-                    } else {
-                        console.warn('[ComfyUI] File watcher setup failed:', result.error);
-                    }
-                }
-            } catch (error) {
-                console.error('[ComfyUI] Failed to setup file watcher:', error);
-            }
-        }
-
-        async handleConfigFileChanged() {
-            try {
-                if (this.stateManager.isHandlingConfigChange) {
-                    return;
-                }
-                this.stateManager.isHandlingConfigChange = true;
-                
-                const newConfig = await window.electronAPI.getComfyUIConfigRealtime?.();
-                if (newConfig) {
-                    this.stateManager.updateConfig(newConfig);
-                    const modal = this.uiManager.getElement('comfyUIConfigModal');
-                    if (modal && modal.style.display !== 'none' && !modal.classList.contains('hidden')) {
-                        this.uiManager.populateForm(this.stateManager.getConfig());
-                        this.uiManager.showToast('配置已自动更新', 'info');
-                    }
-                }
-                
-                setTimeout(() => {
-                    this.stateManager.isHandlingConfigChange = false;
-                }, 1000);
-                
-            } catch (error) {
-                console.error('[ComfyUI] Failed to handle config file change:', error);
-                this.stateManager.isHandlingConfigChange = false;
-            }
-        }
-
-        async openModal() {
-            try {
-                // Ensure backend handlers are ready before proceeding
-                if (window.electronAPI && window.electronAPI.ensureComfyUIHandlersReady) {
-                    const result = await window.electronAPI.ensureComfyUIHandlersReady();
-                    if (!result.success) {
-                        console.error('[ComfyUI] Backend handlers failed to initialize:', result.error);
-                        this.uiManager.showToast('无法初始化ComfyUI模块，请检查主进程日志。', 'error');
-                        return; // Stop if backend is not ready
-                    }
+                // 订阅主进程工作流变更事件，事件驱动刷新
+                if (window.electronAPI?.on) {
+                    window.electronAPI.on('comfyui:workflows-changed', () => {
+                        this.loadAvailableWorkflows();
+                        this.populateWorkflowSelect();
+                    });
                 }
 
-                this.cancelOngoingOperations();
-                this.uiManager.generateModalContent(this);
-
-                const tasks = [
-                    this.loadAvailableWorkflows(),
-                    this.populateFormFromBackend()
-                ];
+                // If already connected, try to load models
                 if (this.stateManager.isConnectionActive()) {
-                    tasks.push(this.loadAvailableModels());
+                    this.loadAvailableModels();
                 }
-                await Promise.allSettled(tasks);
 
-                this.uiManager.openModal('comfyUIConfigModal');
             } catch (error) {
-                console.error('[ComfyUI] Error opening modal:', error);
-                this.uiManager.showToast('打开配置时出错，请查看控制台。', 'error');
+                console.error('[ComfyUI] Failed to create UI:', error);
+                container.innerHTML = `<div class="error">Failed to load ComfyUI configuration. See console for details.</div>`;
             }
         }
 
-        closeModal() {
+        close() {
             this.cancelOngoingOperations();
-            this.uiManager.closeAllModals();
             this.uiManager.clearDOMCache();
-            this.uiManager.closeModal('comfyUIConfigModal');
+            // The DrawerController in renderer.js will handle the visual closing
+            if (this.onCloseCallback) {
+                this.onCloseCallback();
+            }
         }
 
         cancelOngoingOperations() {
@@ -144,36 +96,73 @@
             }
         }
 
-        async populateFormFromBackend() {
+        async populateFormFromState() {
+            // This function is now effectively replaced by the logic in createUI
+            // but we keep it in case it's called from somewhere else.
+            this.uiManager.populateForm(this.stateManager.getConfig());
+        }
+
+        async loadAvailableWorkflows() {
+            if (!window.electronAPI?.invoke) {
+                this.uiManager.showToast('IPC未就绪，无法加载工作流列表', 'error');
+                return;
+            }
             try {
-                await this.stateManager.loadConfig();
-                await this.populateWorkflowSelect();
-                this.uiManager.populateForm(this.stateManager.getConfig());
-                this.populateLoraList();
-            } catch (error) {
-                console.error('[ComfyUI] Failed to load config from backend:', error);
-                this.uiManager.populateForm(this.stateManager.getConfig());
-                this.populateLoraList();
+                const resp = await window.electronAPI.invoke('comfyui:get-workflows');
+                if (resp.success) {
+                    // The response from main.js is already an array of objects
+                    this.uiManager.updateWorkflowList(resp.workflows, this);
+                } else {
+                    throw new Error(resp.error || '获取工作流失败');
+                }
+            } catch (e) {
+                this.uiManager.showToast(`加载工作流列表失败: ${e.message}`, 'error');
+                this.uiManager.updateWorkflowList([], this); // Show empty list on error
             }
         }
 
         async populateWorkflowSelect() {
+            const workflowSelect = this.uiManager.getElement('workflowSelect');
+            if (!workflowSelect) return;
+
             try {
-                if (window.electronAPI && window.electronAPI.loadComfyUIWorkflows) {
-                    const workflows = await window.electronAPI.loadComfyUIWorkflows();
-                    const workflowSelect = this.uiManager.getElement('workflowSelect');
-                    if (workflowSelect && workflows && workflows.length > 0) {
-                        workflowSelect.innerHTML = '';
-                        workflows.forEach(workflow => {
-                            const option = document.createElement('option');
-                            option.value = workflow.name;
-                            option.textContent = workflow.displayName || workflow.name;
-                            workflowSelect.appendChild(option);
-                        });
-                    }
+                if (!window.electronAPI?.invoke) {
+                    this.uiManager.showToast('IPC未就绪,无法加载工作流', 'error');
+                    workflowSelect.innerHTML = '<option value="">IPC未就绪</option>';
+                    return;
                 }
+                
+                const resp = await window.electronAPI.invoke('comfyui:get-workflows');
+                if (!resp.success) {
+                    throw new Error(resp.error || '主进程未能获取工作流列表');
+                }
+
+                const workflows = resp.workflows || [];
+                workflowSelect.innerHTML = ''; // Clear previous options
+                if (workflows.length === 0) {
+                    workflowSelect.innerHTML = '<option value="">无可用工作流</option>';
+                    return;
+                }
+
+                workflows.forEach(workflow => {
+                    const option = document.createElement('option');
+                    option.value = workflow.name;
+                    option.textContent = workflow.displayName || workflow.name;
+                    workflowSelect.appendChild(option);
+                });
+                
+                // Reselect the stored value
+                const storedWorkflow = this.stateManager.get('workflow');
+                if (storedWorkflow) {
+                    workflowSelect.value = storedWorkflow;
+                }
+
             } catch (error) {
                 console.error('[ComfyUI] Failed to load workflows for select:', error);
+                this.uiManager.showToast(`加载工作流失败: ${error.message}`, 'error');
+                if (workflowSelect) {
+                    workflowSelect.innerHTML = '<option value="">加载失败</option>';
+                }
             }
         }
 
@@ -235,27 +224,57 @@
             try {
                 const response = await this.fetchWithTimeout(`${this.stateManager.get('serverUrl')}/object_info`, {
                     headers: this.stateManager.get('apiKey') ? { 'Authorization': `Bearer ${this.stateManager.get('apiKey')}` } : {}
-                }, 5000);
+                }, 8000);
 
                 if (response.ok) {
                     const data = await response.json();
-                    this.uiManager.updateModelOptions(data.CheckpointLoaderSimple?.input?.required?.ckpt_name?.[0] || [], this.stateManager.get('defaultModel'));
-                    this.stateManager.setAvailableLoRAs(data.LoraLoader?.input?.required?.lora_name?.[0] || []);
+                    const currentState = this.stateManager.getConfig();
+
+                    // Models
+                    const models = data.CheckpointLoaderSimple?.input?.required?.ckpt_name?.[0] || [];
+                    this.uiManager.updateModelOptions(models, currentState.defaultModel);
+
+                    // Samplers and Schedulers from KSampler
+                    const samplers = data.KSampler?.input?.required?.sampler_name?.[0] || [];
+                    const schedulers = data.KSampler?.input?.required?.scheduler?.[0] || [];
+                    this.uiManager.updateSamplerOptions(samplers, currentState.defaultSampler);
+                    this.uiManager.updateSchedulerOptions(schedulers, currentState.defaultScheduler);
+
+                    // Available LoRAs for reference (e.g., autocomplete in future)
+                    const loras = data.LoraLoader?.input?.required?.lora_name?.[0] || [];
+                    // 将可用 LoRA 列表作为运行时数据存放，不写入 config
+                    this.stateManager.setAvailableLoRAs(loras);
+                    
+                    this.uiManager.showToast('模型/采样器列表已更新', 'success');
+                } else {
+                     this.uiManager.showToast(`加载模型列表失败: HTTP ${response.status}`, 'error');
                 }
             } catch (error) {
                 console.warn('[ComfyUI][Network] Failed to load available models:', error);
+                this.uiManager.showToast(`加载模型列表失败: ${error.message}`, 'error');
             }
         }
 
         async saveConfig() {
             this.updateConfigFromForm();
             try {
-                await this.stateManager.saveConfig();
-                this.uiManager.showToast('配置已保存', 'success');
-                this.closeModal();
+                if (!window.electronAPI?.invoke) {
+                    this.uiManager.showToast('IPC未就绪,无法保存配置', 'error');
+                    // Fallback to local storage if needed, but warn the user
+                    await this.stateManager.saveConfig();
+                    this.uiManager.showToast('配置已临时保存至本地存储', 'warning');
+                    return;
+                }
+                const data = this.stateManager.getConfig();
+                const resp = await window.electronAPI.invoke('comfyui:save-config', data);
+                if (resp.success) {
+                    this.uiManager.showToast('配置已保存', 'success');
+                } else {
+                    throw new Error(resp.error || '主进程保存失败');
+                }
             } catch (error) {
                 console.error('Failed to save ComfyUI config:', error);
-                this.uiManager.showToast('保存配置失败', 'error');
+                this.uiManager.showToast(`保存配置失败: ${error.message}`, 'error');
             }
         }
 
@@ -270,59 +289,58 @@
         }
 
         async loadConfig() {
-            await this.stateManager.loadConfig();
-        }
-
-        async loadAvailableWorkflows() {
-            if (this.stateManager.isLoading) return;
-            
             try {
-                this.stateManager.isLoading = true;
-                this.abortController = new AbortController();
-                
-                const workflowList = this.uiManager.getElement('workflowList');
-                if (workflowList) workflowList.innerHTML = '<div class="workflow-loading">正在加载工作流...</div>';
-                
-                if (window.electronAPI && window.electronAPI.loadComfyUIWorkflows) {
-                    const workflows = await this.callWithTimeout(
-                        () => window.electronAPI.loadComfyUIWorkflows(),
-                        5000,
-                        this.abortController.signal
-                    );
-                    if (this.abortController.signal.aborted) return;
-                    this.uiManager.updateWorkflowList(workflows, this);
+                if (!window.electronAPI?.invoke) {
+                    this.uiManager.showToast('IPC未就绪,回退至本地配置', 'warning');
+                    await this.stateManager.loadConfig(); // Fallback to localStorage
+                    return;
+                }
+
+                const resp = await window.electronAPI.invoke('comfyui:get-config');
+                if (resp?.success && resp.data) {
+                    this.stateManager.updateConfig(resp.data);
+                    return;
                 } else {
-                    if (workflowList) this.uiManager.updateWorkflowList([], this);
+                     throw new Error(resp.error || '主进程未能获取配置');
                 }
-            } catch (error) {
-                if (error.name !== 'AbortError') {
-                    console.warn('Failed to load workflows:', error);
-                    this.uiManager.updateWorkflowList(null, this);
-                }
-            } finally {
-                this.stateManager.isLoading = false;
-                this.abortController = null;
+            } catch (e) {
+                console.error('[ComfyUI] IPC get-config failed, falling back to localStorage.', e);
+                this.uiManager.showToast(`无法从文件加载配置: ${e.message}, 已回退至本地缓存`, 'error');
+                await this.stateManager.loadConfig(); // Fallback to localStorage
             }
         }
 
-        async callWithTimeout(fn, timeout, signal) {
-            return new Promise((resolve, reject) => {
-                const timeoutId = setTimeout(() => reject(new Error('Operation timed out')), timeout);
-                if (signal) {
-                    signal.addEventListener('abort', () => {
-                        clearTimeout(timeoutId);
-                        reject(new DOMException('Operation was aborted', 'AbortError'));
-                    });
-                }
-                fn().then(
-                    result => { clearTimeout(timeoutId); resolve(result); },
-                    error => { clearTimeout(timeoutId); reject(error); }
-                );
-            });
+
+        applyPreset(dataset) {
+            const { width, height, steps, cfg } = dataset;
+            const config = {
+                defaultWidth: parseInt(width, 10),
+                defaultHeight: parseInt(height, 10),
+                defaultSteps: parseInt(steps, 10),
+                defaultCfg: parseFloat(cfg)
+            };
+            this.stateManager.updateConfig(config);
+            this.uiManager.populateForm(this.stateManager.getConfig());
+            this.uiManager.showToast('预设已应用', 'info');
+        }
+
+        populateLoraList() {
+            const loras = this.stateManager.get('loras') || [];
+            this.uiManager.updateLoraList(loras, this);
         }
 
         // ... [Workflow and LoRA methods remain, as they are business logic]
     }
 
-    window.comfyUIConfigManager = ComfyUIConfigManager.getInstance();
+    // Expose a single, clean interface to the main renderer
+    window.comfyUI = {
+        createUI: (container, options = {}) => {
+            const manager = ComfyUIConfigManager.getInstance();
+            manager.createUI(container, options);
+        },
+        destroyUI: () => {
+            const manager = ComfyUIConfigManager.getInstance();
+            manager.close();
+        },
+    };
 })();
