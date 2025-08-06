@@ -9,7 +9,7 @@ const https = require('https');
 const sharp = require('sharp');
 
 // 导入 ComfyUI IPC 处理器
-const { registerComfyUIIpcHandlers } = require('../modules/ipc/comfyui-ipc');
+const { registerComfyUIIpcHandlers } = require('./ComfyUImodules/comfyui-ipc');
 
 let mainWindow = null;
 

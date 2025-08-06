@@ -3,8 +3,8 @@ const { ipcMain } = require('electron');
 const fs = require('fs').promises;
 const path = require('path');
 
-// 使用 PathResolver 来定位 VCPToolBox
-const PathResolver = require('../../VCPHumanToolBox/ComfyUImodules/PathResolver');
+// 使用本地的 PathResolver
+const PathResolver = require('./PathResolver');
 
 class ComfyUIIpcHandler {
     constructor() {
