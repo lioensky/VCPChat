@@ -364,21 +364,47 @@
                         this.showToast('IPC未就绪，无法保存工作流', 'error');
                         return;
                     }
-                    const resp = await window.electronAPI.invoke('comfyui:save-workflow', { name, data: parsed });
+
+                    // 显示转换状态
+                    const result = this.getElement('importResult');
+                    if (result) {
+                        result.style.display = 'block';
+                        result.innerHTML = '<div style="color: #007cba;">🔄 正在转换并保存工作流...</div>';
+                    }
+
+                    console.log('[VCPHumanToolBox] 调用模板转换接口');
+                    console.log('[VCPHumanToolBox] name:', name);
+                    console.log('[VCPHumanToolBox] workflowData type:', typeof parsed);
+
+                    // 使用新的模板转换接口
+                    const resp = await window.electronAPI.invoke('import-and-convert-workflow', parsed, name);
+                    
                     if (resp?.success) {
-                        this.showToast('工作流已保存', 'success');
+                        this.showToast('工作流转换并保存成功！', 'success');
                         setTimeout(() => coordinator.populateWorkflowSelect(), 300);
                         setTimeout(() => coordinator.loadAvailableWorkflows(), 300);
-                        const result = this.getElement('importResult');
+                        
+                        // 显示成功结果
                         if (result) {
-                            result.style.display = 'block';
-                            result.textContent = `已保存到: ${resp.path}`;
+                            result.innerHTML = `<div style="color: #28a745;">✅ ${resp.message || '转换并保存成功！'}<br>保存位置: ${resp.path || '未知'}</div>`;
                         }
+
+                        // 清空输入框
+                        this.getElement('workflowName').value = '';
+                        this.getElement('workflowJson').value = '';
+
+                        console.log('[VCPHumanToolBox] 转换保存成功:', resp);
                     } else {
-                        throw new Error(resp?.error || '未能保存工作流');
+                        throw new Error(resp?.error || '模板转换失败');
                     }
                 } catch (e) {
-                    this.showToast(`保存失败: ${e.message}`, 'error');
+                    console.error('[VCPHumanToolBox] 转换保存失败:', e);
+                    this.showToast(`转换保存失败: ${e.message}`, 'error');
+                    
+                    const result = this.getElement('importResult');
+                    if (result) {
+                        result.innerHTML = `<div style="color: #dc3545;">❌ 转换失败: ${e.message}</div>`;
+                    }
                 }
             });
         }

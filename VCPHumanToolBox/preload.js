@@ -13,6 +13,12 @@ contextBridge.exposeInMainWorld('comfyuiAPI', {
     saveWorkflow: (name, data) => ipcRenderer.invoke('comfyui:save-workflow', { name, data }),
     deleteWorkflow: (name) => ipcRenderer.invoke('comfyui:delete-workflow', { name }),
     
+    // 工作流模板转换
+    importAndConvertWorkflow: (workflowData, workflowName) => 
+        ipcRenderer.invoke('import-and-convert-workflow', workflowData, workflowName),
+    validateWorkflowTemplate: (workflowData) =>
+        ipcRenderer.invoke('validate-workflow-template', workflowData),
+    
     // 路径查询
     getPluginPath: () => ipcRenderer.invoke('comfyui:get-plugin-path'),
     
@@ -44,7 +50,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
             'comfyui:read-workflow',
             'comfyui:save-workflow',
             'comfyui:delete-workflow',
-            'comfyui:get-plugin-path'
+            'comfyui:get-plugin-path',
+            'import-and-convert-workflow',
+            'validate-workflow-template'
         ];
         
         if (allowedChannels.includes(channel)) {

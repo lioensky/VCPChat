@@ -211,6 +211,122 @@ class ComfyUIIpcHandler {
                 return { success: false, error: error.message };
             }
         });
+
+        // 新增：导入原版工作流并自动转换
+        ipcMain.handle('import-and-convert-workflow', async (event, workflowData, workflowName) => {
+            try {
+                console.log(`[ComfyUI IPC] Importing and converting workflow: ${workflowName}`);
+                console.log(`[ComfyUI IPC] workflowData type: ${typeof workflowData}`);
+                
+                // 参数验证
+                if (!workflowName || typeof workflowName !== 'string') {
+                    throw new Error(`工作流名称无效: ${workflowName} (类型: ${typeof workflowName})`);
+                }
+                
+                if (!workflowData) {
+                    throw new Error(`工作流数据为空或未定义`);
+                }
+                
+                // 处理workflowData
+                if (typeof workflowData === 'string') {
+                    try {
+                        workflowData = JSON.parse(workflowData);
+                    } catch (parseError) {
+                        throw new Error(`工作流数据不是有效的JSON格式: ${parseError.message}`);
+                    }
+                }
+                
+                if (typeof workflowData !== 'object') {
+                    throw new Error(`工作流数据无效: ${typeof workflowData}`);
+                }
+
+                // 使用PathResolver获取VCPToolBox路径
+                const toolboxPath = await this.pathResolver.findVCPToolBoxPath();
+                const processorPath = path.join(toolboxPath, 'Plugin', 'ComfyUIGen', 'WorkflowTemplateProcessor.js');
+
+                // 动态导入WorkflowTemplateProcessor
+                const WorkflowTemplateProcessor = require(processorPath);
+                const processor = new WorkflowTemplateProcessor();
+
+                // 转换为模板
+                const template = processor.convertToTemplate(workflowData);
+
+                // 移除模板元数据，保存为标准模板工作流
+                delete template._template_metadata;
+
+                // 保存到workflows目录
+                const workflowFile = path.join(this.workflowsPath, `${workflowName}.json`);
+                const content = JSON.stringify(template, null, 2);
+                await fs.writeFile(workflowFile, content, 'utf8');
+
+                console.log(`[ComfyUI IPC] Converted workflow saved to: ${workflowFile}`);
+
+                // 广播工作流变更事件
+                try {
+                    if (this.mainWindow && this.mainWindow.webContents) {
+                        this.mainWindow.webContents.send('comfyui:workflows-changed');
+                    }
+                } catch (broadcastErr) {
+                    console.warn('[ComfyUI IPC] Failed to broadcast workflows-changed:', broadcastErr);
+                }
+
+                return { 
+                    success: true, 
+                    path: workflowFile,
+                    message: `工作流 "${workflowName}" 已成功转换并保存`
+                };
+            } catch (error) {
+                console.error(`[ComfyUI IPC] Error importing and converting workflow:`, error);
+                return { success: false, error: error.message };
+            }
+        });
+
+        // 新增：验证工作流是否为模板格式
+        ipcMain.handle('validate-workflow-template', async (event, workflowData) => {
+            try {
+                console.log(`[ComfyUI IPC] Validating workflow template`);
+                
+                // 参数验证
+                if (!workflowData) {
+                    throw new Error(`工作流数据为空或未定义`);
+                }
+                
+                // 处理workflowData
+                if (typeof workflowData === 'string') {
+                    try {
+                        workflowData = JSON.parse(workflowData);
+                    } catch (parseError) {
+                        throw new Error(`工作流数据不是有效的JSON格式: ${parseError.message}`);
+                    }
+                }
+                
+                if (typeof workflowData !== 'object') {
+                    throw new Error(`工作流数据无效: ${typeof workflowData}`);
+                }
+
+                // 使用PathResolver获取VCPToolBox路径
+                const toolboxPath = await this.pathResolver.findVCPToolBoxPath();
+                const processorPath = path.join(toolboxPath, 'Plugin', 'ComfyUIGen', 'WorkflowTemplateProcessor.js');
+
+                // 动态导入WorkflowTemplateProcessor
+                const WorkflowTemplateProcessor = require(processorPath);
+                const processor = new WorkflowTemplateProcessor();
+
+                // 检查是否包含占位符
+                const placeholders = processor.getTemplatePlaceholders(workflowData);
+                const isTemplate = placeholders.length > 0;
+
+                return {
+                    success: true,
+                    isTemplate,
+                    placeholders,
+                    hasMetadata: !!workflowData._template_metadata
+                };
+            } catch (error) {
+                console.error(`[ComfyUI IPC] Error validating workflow template:`, error);
+                return { success: false, error: error.message };
+            }
+        });
     }
 
     // 验证文件名安全性
