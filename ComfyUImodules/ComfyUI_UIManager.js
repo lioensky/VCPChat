@@ -8,7 +8,6 @@
                 return ComfyUI_UIManager.instance;
             }
             this.domCache = new Map();
-            this.modalStack = [];
             ComfyUI_UIManager.instance = this;
         }
 
@@ -43,10 +42,8 @@
         register(idOrSelector, event, handler, opts = {}) {
             const node = typeof idOrSelector === 'string' ? this.getElement(idOrSelector) : idOrSelector;
             if (!node) return null;
-            const clone = node.cloneNode(true);
-            node.parentNode.replaceChild(clone, node);
-            clone.addEventListener(event, handler, opts);
-            return clone;
+            node.addEventListener(event, handler, opts);
+            return node;
         }
 
         registerAll(selector, event, handler, opts = {}) {
@@ -65,7 +62,6 @@
                     this.showFallbackToast(message, type);
                 }
             } catch (error) {
-                console.error('[ComfyUI UI] Error showing toast:', error);
                 this.showFallbackToast(message, type);
             }
         }
@@ -95,9 +91,6 @@
                 const modal = this.getElement(modalId);
                 if (modal) modal.classList.add('active');
             }
-            if (!this.modalStack.includes(modalId)) {
-                this.modalStack.push(modalId);
-            }
         }
 
         closeModal(modalId) {
@@ -107,17 +100,10 @@
                 const modal = this.getElement(modalId);
                 if (modal) modal.classList.remove('active');
             }
-            const index = this.modalStack.indexOf(modalId);
-            if (index > -1) {
-                this.modalStack.splice(index, 1);
-            }
         }
 
         closeAllModals() {
-            while (this.modalStack.length > 0) {
-                const modalId = this.modalStack.pop();
-                this.closeModal(modalId);
-            }
+            document.querySelectorAll('.modal.active').forEach(modal => modal.classList.remove('active'));
         }
         
         // --- UI Updates ---
@@ -140,32 +126,95 @@
         }
 
         // --- UI Generation and Population ---
-        generateModalContent(coordinator) {
-            const modal = this.getElement('comfyUIConfigModal');
-            if (!modal) {
-                console.error('[ComfyUI UI] Modal element not found');
+        createPanelContent(container, coordinator, options = {}) {
+            if (!container) {
                 return;
             }
 
-            const modalContent = modal.querySelector('.modal-content');
-            if (!modalContent) {
-                console.error('[ComfyUI UI] Modal content element not found');
-                return;
-            }
-
-            modalContent.innerHTML = `
-                <span class="close-button">&times;</span>
-                <h2>ComfyUI 图像生成配置</h2>
+            container.innerHTML = `
+                <div class="drawer-header">
+                    <h2>ComfyUI 图像生成配置</h2>
+                    <button class="close-button" id="drawer-close-btn">&times;</button>
+                </div>
                 
                 <div class="config-tabs">
-                    <button class="config-tab-button active" data-tab="connection">连接设置</button>
-                    <button class="config-tab-button" data-tab="parameters">生成参数</button>
-                    <button class="config-tab-button" data-tab="prompt">提示词配置</button>
-                    <button class="config-tab-button" data-tab="workflows">工作流管理</button>
-                    <button class="config-tab-button" data-tab="import">导入工作流</button>
+                    <button class="config-tab-button ${ (options.defaultTab||'connection')==='parameters' ? 'active' : '' }" data-tab="parameters">生成参数</button>
+                    <button class="config-tab-button ${ (options.defaultTab||'connection')==='connection' ? 'active' : '' }" data-tab="connection">连接设置</button>
+                    <button class="config-tab-button ${ (options.defaultTab||'connection')==='prompt' ? 'active' : '' }" data-tab="prompt">提示词配置</button>
+                    <button class="config-tab-button ${ (options.defaultTab||'connection')==='workflows' ? 'active' : '' }" data-tab="workflows">工作流管理</button>
+                    <button class="config-tab-button ${ (options.defaultTab||'connection')==='import' ? 'active' : '' }" data-tab="import">导入工作流</button>
+                </div>
+                
+                <div class="config-tab-content ${ (options.defaultTab||'connection')==='parameters' ? 'active' : '' }" id="parametersTab">
+                    <div class="config-section">
+                        <h3>尺寸预设</h3>
+                        <div class="preset-buttons" id="sizePresetButtons">
+                            <button type="button" class="preset-btn" data-width="512" data-height="512" title="1:1 正方形">512 x 512<br><small>1:1</small></button>
+                            <button type="button" class="preset-btn" data-width="768" data-height="768" title="1:1 正方形">768 x 768<br><small>1:1</small></button>
+                            <button type="button" class="preset-btn" data-width="1024" data-height="1024" title="1:1 正方形">1024 x 1024<br><small>1:1</small></button>
+                            <button type="button" class="preset-btn" data-width="1152" data-height="896" title="9:7 横向">1152 x 896<br><small>9:7 横向</small></button>
+                            <button type="button" class="preset-btn" data-width="896" data-height="1152" title="7:9 纵向">896 x 1152<br><small>7:9 纵向</small></button>
+                            <button type="button" class="preset-btn" data-width="1440" data-height="1024" title="45:32 宽屏">1440 x 1024<br><small>45:32 宽屏</small></button>
+                            <button type="button" class="preset-btn" data-width="1024" data-height="1440" title="32:45 竖屏">1024 x 1440<br><small>32:45 竖屏</small></button>
+                        </div>
+                    </div>
+                    <div class="config-section">
+                        <h3>核心参数</h3>
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="workflowSelect">工作流模板:</label>
+                                <select id="workflowSelect"></select>
+                            </div>
+                            <div class="form-group">
+                                <label for="defaultModel">默认模型:</label>
+                                <select id="defaultModel"></select>
+                            </div>
+                            <div class="form-group">
+                                <label for="defaultWidth">宽度:</label>
+                                <input type="number" id="defaultWidth" step="64">
+                            </div>
+                            <div class="form-group">
+                                <label for="defaultHeight">高度:</label>
+                                <input type="number" id="defaultHeight" step="64">
+                            </div>
+                            <div class="form-group">
+                                <label for="defaultSteps">采样步数:</label>
+                                <input type="number" id="defaultSteps" min="1" max="150">
+                            </div>
+                            <div class="form-group">
+                                <label for="defaultCfg">CFG Scale:</label>
+                                <input type="number" id="defaultCfg" min="1" max="30" step="0.5">
+                            </div>
+                            <div class="form-group">
+                                <label for="defaultSampler">采样器:</label>
+                                <select id="defaultSampler"></select>
+                            </div>
+                            <div class="form-group">
+                                <label for="defaultScheduler">调度器:</label>
+                                <select id="defaultScheduler"></select>
+                            </div>
+                        </div>
+                    </div>
+                     <details class="config-section-collapsible">
+                        <summary>其他参数</summary>
+                        <div class="form-grid">
+                           <div class="form-group">
+                                <label for="defaultSeed">随机种子 (-1为随机):</label>
+                                <input type="number" id="defaultSeed">
+                            </div>
+                            <div class="form-group">
+                                <label for="defaultBatchSize">生成数量:</label>
+                                <input type="number" id="defaultBatchSize" min="1" max="10">
+                            </div>
+                            <div class="form-group">
+                                <label for="defaultDenoise">去噪强度:</label>
+                                <input type="number" id="defaultDenoise" min="0" max="1" step="0.01">
+                            </div>
+                        </div>
+                    </details>
                 </div>
 
-                <div class="config-tab-content active" id="connectionTab">
+                <div class="config-tab-content ${ (options.defaultTab||'connection')==='connection' ? 'active' : '' }" id="connectionTab">
                     <div class="config-section">
                         <h3>ComfyUI 连接配置</h3>
                         <div class="connection-status" id="comfyUIConnectionStatus">
@@ -184,100 +233,29 @@
                     </div>
                 </div>
 
-                <div class="config-tab-content" id="parametersTab">
-                    <div class="config-section">
-                        <h3>基础生成参数</h3>
-                        <div class="form-group">
-                            <label for="workflowSelect">工作流模板:</label>
-                            <select id="workflowSelect"></select>
-                            <small>选择Agent调用插件时使用的默认工作流</small>
-                        </div>
-                        <div class="form-group">
-                            <label for="defaultModel">默认模型:</label>
-                            <select id="defaultModel"></select>
-                        </div>
-                        <div class="form-group-inline">
-                            <div>
-                                <label for="defaultWidth">宽度:</label>
-                                <select id="defaultWidth">
-                                    <option value="1024">1024px</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label for="defaultHeight">高度:</label>
-                                <select id="defaultHeight">
-                                    <option value="1024">1024px</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div class="form-group">
-                            <label>快速尺寸预设:</label>
-                            <div class="preset-buttons">
-                                 <button type="button" class="preset-btn" data-width="1024" data-height="1024">1:1 (1024)</button>
-                            </div>
-                        </div>
-                        <div class="form-group-inline">
-                            <div>
-                                <label for="defaultSteps">采样步数:</label>
-                                <input type="number" id="defaultSteps" min="1" max="150">
-                            </div>
-                            <div>
-                                <label for="defaultCfg">CFG Scale:</label>
-                                <input type="number" id="defaultCfg" min="1" max="30" step="0.5">
-                            </div>
-                        </div>
-                         <div class="form-group-inline">
-                            <div>
-                                <label for="defaultSeed">随机种子:</label>
-                                <input type="number" id="defaultSeed">
-                                <small>-1 为随机</small>
-                            </div>
-                            <div>
-                                <label for="defaultBatchSize">生成数量:</label>
-                                <input type="number" id="defaultBatchSize" min="1" max="10">
-                            </div>
-                        </div>
-                        <div class="form-group-inline">
-                            <div>
-                                <label for="defaultSampler">采样器:</label>
-                                <select id="defaultSampler"></select>
-                            </div>
-                            <div>
-                                <label for="defaultScheduler">调度器:</label>
-                                <select id="defaultScheduler"></select>
-                            </div>
-                        </div>
-                        <div class="form-group">
-                            <label for="defaultDenoise">去噪强度:</label>
-                            <input type="number" id="defaultDenoise" min="0" max="1" step="0.01">
-                        </div>
-                    </div>
-                </div>
-                <div class="config-tab-content" id="promptTab">
-                    <div class="config-section">
-                        <h3>LoRA 管理</h3>
+                <div class="config-tab-content ${ (options.defaultTab||'connection')==='prompt' ? 'active' : '' }" id="promptTab">
+                    <details class="config-section-collapsible open">
+                        <summary>LoRA 管理</summary>
                         <p class="section-description">管理LoRA模型...</p>
                         <div id="loraList" class="lora-list"></div>
                         <div class="lora-add-section">
                             <button id="addLoraBtn" class="sidebar-button">+ 添加 LoRA</button>
                         </div>
-                    </div>
-                    <div class="config-section">
-                        <h3>质量增强词</h3>
+                    </details>
+                    <details class="config-section-collapsible open">
+                        <summary>提示词</summary>
                         <div class="form-group">
                             <label for="qualityTags">质量增强词:</label>
                             <textarea id="qualityTags" rows="3"></textarea>
                         </div>
-                    </div>
-                    <div class="config-section">
-                        <h3>负面提示词</h3>
                         <div class="form-group">
                             <label for="negativePrompt">默认负面提示词:</label>
                             <textarea id="negativePrompt" rows="4"></textarea>
                         </div>
-                    </div>
+                    </details>
                 </div>
-                <div class="config-tab-content" id="workflowsTab">
+                
+                <div class="config-tab-content ${ (options.defaultTab||'connection')==='workflows' ? 'active' : '' }" id="workflowsTab">
                      <div class="config-section">
                         <h3>工作流模板</h3>
                         <div class="workflow-list" id="workflowList">
@@ -286,7 +264,7 @@
                         <button id="addWorkflowBtn" class="sidebar-button">添加新工作流</button>
                     </div>
                 </div>
-                <div class="config-tab-content" id="importTab">
+                <div class="config-tab-content ${ (options.defaultTab||'connection')==='import' ? 'active' : '' }" id="importTab">
                     <div class="config-section">
                         <h3>导入ComfyUI工作流</h3>
                         <div class="form-group">
@@ -305,24 +283,139 @@
                     </div>
                 </div>
 
-                <div class="form-actions" style="margin-top: 20px;">
-                    <button type="button" id="saveComfyUIConfigBtn" class="sidebar-button">保存配置</button>
+                <div class="drawer-footer">
+                    <button type="button" id="saveComfyUIConfigBtn" class="sidebar-button primary">保存配置</button>
                     <button type="button" id="cancelComfyUIConfigBtn" class="sidebar-button">取消</button>
                 </div>
             `;
 
             // Bind general events
-            this.register(modal.querySelector('.close-button'), 'click', () => coordinator.closeModal());
+            this.register('drawer-close-btn', 'click', () => coordinator.close());
             this.registerAll('.config-tab-button', 'click', (e) => this.switchTab(e.target.dataset.tab));
             this.register('saveComfyUIConfigBtn', 'click', () => coordinator.saveConfig());
-            this.register('cancelComfyUIConfigBtn', 'click', () => coordinator.closeModal());
+            this.register('cancelComfyUIConfigBtn', 'click', () => coordinator.close());
+            this.registerAll('#sizePresetButtons .preset-btn', 'click', (e) => {
+                const { width, height } = e.target.dataset;
+                if (width) this.getElement('defaultWidth').value = width;
+                if (height) this.getElement('defaultHeight').value = height;
+            });
+
+            // Prompt tab: LoRA add button
+            this.register('addLoraBtn', 'click', () => {
+                const loras = coordinator.stateManager.get('loras') || [];
+                const newItem = { name: '', strength: 1.0, clipStrength: 1.0, enabled: true };
+                loras.push(newItem);
+                coordinator.stateManager.set('loras', loras);
+                this.updateLoraList(loras, coordinator);
+            });
+
+            // Workflows tab: actions
+            this.register('addWorkflowBtn', 'click', () => {
+                this.switchTab('import');
+                const nameInput = this.getElement('workflowName');
+                if (nameInput) nameInput.focus();
+            });
+            
+            // Import tab actions
+            this.register('validateWorkflowBtn', 'click', () => {
+                const jsonText = this.getElement('workflowJson')?.value || '';
+                try {
+                    JSON.parse(jsonText);
+                    this.showToast('JSON 格式有效', 'success');
+                    const result = this.getElement('importResult');
+                    if (result) {
+                        result.style.display = 'block';
+                        result.textContent = '校验通过';
+                    }
+                } catch (e) {
+                    this.showToast(`JSON 格式错误: ${e.message}`, 'error');
+                }
+            });
+
+            this.register('convertWorkflowBtn', 'click', async () => {
+                try {
+                    const nameElement = this.getElement('workflowName');
+                    const jsonElement = this.getElement('workflowJson');
+                    
+                    console.log('[ComfyUI_UIManager] 调试信息:');
+                    console.log('- nameElement:', nameElement);
+                    console.log('- nameElement.value:', nameElement?.value);
+                    console.log('- jsonElement:', jsonElement);
+                    console.log('- jsonElement.value length:', jsonElement?.value?.length);
+                    
+                    const name = (nameElement?.value || '').trim();
+                    const jsonText = jsonElement?.value || '';
+                    
+                    console.log('- 处理后的name:', name);
+                    console.log('- name类型:', typeof name);
+                    console.log('- name长度:', name.length);
+                    
+                    if (!name) {
+                        this.showToast('请输入工作流名称', 'error');
+                        return;
+                    }
+                    
+                    let originalWorkflow;
+                    try {
+                        originalWorkflow = JSON.parse(jsonText);
+                    } catch (e) {
+                        this.showToast(`JSON 格式错误: ${e.message}`, 'error');
+                        return;
+                    }
+                    
+                    if (!window.electronAPI?.invoke) {
+                        this.showToast('IPC未就绪，无法保存工作流', 'error');
+                        return;
+                    }
+                    
+                    // 显示转换状态
+                    const result = this.getElement('importResult');
+                    if (result) {
+                        result.style.display = 'block';
+                        result.innerHTML = '<div style="color: #007cba;">🔄 正在转换并保存工作流...</div>';
+                    }
+                    
+                    // 使用正确的 API 名称（注意是小写 ui）
+                    const resp = await window.comfyuiAPI.importAndConvertWorkflow(originalWorkflow, name);
+                    
+                    if (resp?.success) {
+                        this.showToast('工作流转换并保存成功！', 'success');
+                        
+                        // 显示成功结果
+                        if (result) {
+                            result.innerHTML = `<div style="color: #28a745;">✅ ${resp.message || '转换并保存成功！'}<br>保存位置: ${resp.workflowPath || '未知'}</div>`;
+                        }
+                        
+                        // 刷新界面
+                        setTimeout(() => coordinator.populateWorkflowSelect(), 300);
+                        setTimeout(() => coordinator.loadAvailableWorkflows(), 300);
+                        
+                        // 清空输入框
+                        this.getElement('workflowName').value = '';
+                        this.getElement('workflowJson').value = '';
+                        
+                    } else {
+                        throw new Error(resp?.error || '后端转换失败');
+                    }
+                    
+                } catch (e) {
+                    this.showToast(`转换保存失败: ${e.message}`, 'error');
+                    
+                    const result = this.getElement('importResult');
+                    if (result) {
+                        result.innerHTML = `<div style="color: #dc3545;">❌ 转换失败: ${e.message}</div>`;
+                    }
+                }
+            });
         }
 
         switchTab(tabName) {
             document.querySelectorAll('.config-tab-button').forEach(btn => btn.classList.remove('active'));
-            document.querySelector(`[data-tab="${tabName}"]`).classList.add('active');
+            const targetBtn = document.querySelector(`[data-tab="${tabName}"]`);
+            if (targetBtn) targetBtn.classList.add('active');
             document.querySelectorAll('.config-tab-content').forEach(content => content.classList.remove('active'));
-            this.getElement(`${tabName}Tab`).classList.add('active');
+            const targetTab = this.getElement(`${tabName}Tab`);
+            if (targetTab) targetTab.classList.add('active');
         }
 
         populateForm(config) {
@@ -368,16 +461,39 @@
                 item.innerHTML = `
                     <span class="workflow-name">${workflow.displayName || workflow.name}</span>
                     <div class="workflow-actions">
-                        <button class="small-button view-workflow">查看</button>
-                        <button class="small-button edit-workflow">编辑</button>
-                        ${workflow.isCustom ? `<button class="small-button danger delete-workflow">删除</button>` : ''}
+                        <button class="small-button view-workflow" title="将该工作流JSON加载到编辑器以查看与修改">查看/编辑</button>
+                        <button class="small-button danger delete-workflow">删除</button>
                     </div>
                 `;
-                this.register(item.querySelector('.view-workflow'), 'click', () => coordinator.viewWorkflow(workflow.name));
-                this.register(item.querySelector('.edit-workflow'), 'click', () => coordinator.editWorkflow(workflow.name));
-                if (workflow.isCustom) {
-                    this.register(item.querySelector('.delete-workflow'), 'click', () => coordinator.deleteWorkflow(workflow.name));
-                }
+
+                this.register(item.querySelector('.view-workflow'), 'click', () => {
+                    if (coordinator.viewWorkflow) {
+                        coordinator.viewWorkflow(workflow.name);
+                    } else {
+                        this.showToast('查看功能未实现', 'warning');
+                    }
+                });
+                
+                this.register(item.querySelector('.delete-workflow'), 'click', async () => {
+                    try {
+                        if (!confirm(`确定要删除工作流 "${workflow.displayName || workflow.name}" 吗？`)) return;
+                        if (!window.electronAPI?.invoke) {
+                            this.showToast('IPC未就绪', 'error');
+                            return;
+                        }
+                        const resp = await window.electronAPI.invoke('comfyui:delete-workflow', { name: workflow.name });
+                        if (resp?.success) {
+                            this.showToast('工作流已删除', 'success');
+                            coordinator.loadAvailableWorkflows();
+                            coordinator.populateWorkflowSelect();
+                        } else {
+                            throw new Error(resp?.error || '删除失败');
+                        }
+                    } catch (e) {
+                        this.showToast(`删除工作流失败: ${e.message}`, 'error');
+                    }
+                });
+
                 workflowList.appendChild(item);
             });
         }
@@ -397,6 +513,125 @@
                 modelSelect.appendChild(option);
             });
         }
+
+        updateLoraList(loras, coordinator) {
+            const loraList = this.getElement('loraList');
+            if (!loraList) return;
+
+            const availableLoras = coordinator.stateManager.getAvailableLoRAs();
+
+            if (!Array.isArray(loras) || loras.length === 0) {
+                loraList.innerHTML = '<div class="lora-empty">暂无 LoRA</div>';
+                return;
+            }
+
+            loraList.innerHTML = '';
+            loras.forEach((lora, idx) => {
+                const item = document.createElement('div');
+                item.className = 'lora-item';
+                
+                const selectId = `lora-name-${idx}`;
+
+                item.innerHTML = `
+                    <div class="lora-header">
+                        <div class="lora-name-display">${lora.name || '未选择 LoRA'}</div>
+                        <div class="lora-actions">
+                            <label class="lora-enabled">
+                                <input type="checkbox" ${lora.enabled ? 'checked' : ''}> 启用
+                            </label>
+                            <button class="small-button danger lora-remove">删除</button>
+                        </div>
+                    </div>
+                    <div class="lora-controls">
+                        <div class="lora-control">
+                            <label for="${selectId}">LoRA 模型:</label>
+                            <select id="${selectId}" class="lora-name"></select>
+                        </div>
+                        <div class="lora-control">
+                            <label>强度:</label>
+                            <input class="lora-strength" type="number" step="0.05" min="0" max="2" value="${lora.strength ?? 1.0}">
+                        </div>
+                    </div>
+                `;
+
+                const select = item.querySelector(`#${selectId}`);
+                const placeholder = document.createElement('option');
+                placeholder.value = '';
+                placeholder.textContent = '选择一个LoRA模型...';
+                placeholder.disabled = true;
+                if (!lora.name) placeholder.selected = true;
+                select.appendChild(placeholder);
+
+                availableLoras.forEach(loraName => {
+                    const option = document.createElement('option');
+                    option.value = loraName;
+                    option.textContent = loraName;
+                    if (loraName === lora.name) option.selected = true;
+                    select.appendChild(option);
+                });
+
+                const updateState = (key, value) => {
+                    const currentLoras = coordinator.stateManager.get('loras') || [];
+                    currentLoras[idx] = { ...currentLoras[idx], [key]: value };
+                    coordinator.stateManager.set('loras', currentLoras);
+                    if (key === 'name') {
+                        item.querySelector('.lora-name-display').textContent = value || '未选择 LoRA';
+                    }
+                };
+
+                this.register(item.querySelector('input[type="checkbox"]'), 'change', (e) => updateState('enabled', e.target.checked));
+                this.register(select, 'change', (e) => updateState('name', e.target.value));
+                this.register(item.querySelector('.lora-strength'), 'input', (e) => updateState('strength', parseFloat(e.target.value) || 1.0));
+                this.register(item.querySelector('.lora-remove'), 'click', () => {
+                    const currentLoras = (coordinator.stateManager.get('loras') || []).slice();
+                    currentLoras.splice(idx, 1);
+                    coordinator.stateManager.set('loras', currentLoras);
+                    this.updateLoraList(currentLoras, coordinator);
+                });
+
+                loraList.appendChild(item);
+            });
+        }
+
+        updateSamplerOptions(samplers, currentSampler) {
+            const samplerSelect = this.getElement('defaultSampler');
+            if (!samplerSelect) return;
+            this.populateSelect(samplerSelect, samplers, currentSampler);
+        }
+
+        updateSchedulerOptions(schedulers, currentScheduler) {
+            const schedulerSelect = this.getElement('defaultScheduler');
+            if (!schedulerSelect) return;
+            this.populateSelect(schedulerSelect, schedulers, currentScheduler);
+        }
+
+        populateSelect(selectElement, options, currentValue, fallbackOptions = []) {
+            if (!selectElement) return;
+            selectElement.innerHTML = '';
+            
+            // 如果没有选项，使用兜底列表
+            const finalOptions = options && options.length > 0 ? options : fallbackOptions;
+            
+            if (finalOptions.length === 0) {
+                const option = document.createElement('option');
+                option.value = '';
+                option.textContent = '(无可用选项)';
+                option.disabled = true;
+                selectElement.appendChild(option);
+                return;
+            }
+            
+            finalOptions.forEach(opt => {
+                const option = document.createElement('option');
+                option.value = opt;
+                option.textContent = opt;
+                if (opt === currentValue) {
+                    option.selected = true;
+                }
+                selectElement.appendChild(option);
+            });
+        }
+        
     }
 
     window.ComfyUI_UIManager = ComfyUI_UIManager.getInstance();

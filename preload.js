@@ -1,3 +1,4 @@
+/* eslint-disable */
 // preload.js
 const { contextBridge, ipcRenderer } = require('electron');
 
@@ -174,7 +175,6 @@ exportTopicAsMarkdown: (exportData) => ipcRenderer.invoke('export-topic-as-markd
     },
 
     readTextFromClipboard: async () => {
-        console.log('[Preload - readTextFromClipboard] Function called.');
         console.log('[Preload - readTextFromClipboard] Function called. Invoking main process handler.');
         try {
             const result = await ipcRenderer.invoke('read-text-from-clipboard-main');
@@ -280,59 +280,90 @@ exportTopicAsMarkdown: (exportData) => ipcRenderer.invoke('export-topic-as-markd
     stopSpeechRecognition: () => ipcRenderer.send('stop-speech-recognition'),
     onSpeechRecognitionResult: (callback) => ipcRenderer.on('speech-recognition-result', (_event, text) => callback(text)),
 
-    // --- ComfyUI Configuration ---
+    // --- ComfyUI Configuration (Unified comfyui:* channels) ---
     ensureComfyUIHandlersReady: () => ipcRenderer.invoke('ensure-comfyui-handlers-ready'),
-    saveComfyUIConfig: (config) => ipcRenderer.invoke('save-comfyui-config', config),
-    loadComfyUIConfig: () => ipcRenderer.invoke('load-comfyui-config'),
-    loadComfyUIWorkflows: () => ipcRenderer.invoke('load-comfyui-workflows'),
-    loadWorkflowContent: (workflowName) => ipcRenderer.invoke('load-workflow-content', workflowName),
-    saveWorkflowContent: (workflowName, content) => ipcRenderer.invoke('save-workflow-content', workflowName, content),
-    deleteWorkflow: (workflowName) => ipcRenderer.invoke('delete-workflow', workflowName),
-    createNewWorkflow: (workflowName, templateType) => ipcRenderer.invoke('create-new-workflow', workflowName, templateType),
-    
-    // --- ComfyUI File Watching ---
-    watchComfyUIConfig: () => ipcRenderer.invoke('watch-comfyui-config'),
-    getComfyUIConfigRealtime: () => ipcRenderer.invoke('get-comfyui-config-realtime'),
-    onComfyUIConfigChanged: (callback) => ipcRenderer.on('comfyui-config-changed', (_event) => callback()),
-
-    // --- ComfyUI Workflow Template Conversion ---
-    importAndConvertWorkflow: (workflowData, workflowName) => ipcRenderer.invoke('import-and-convert-workflow', workflowData, workflowName),
-    validateWorkflowTemplate: (workflowData) => ipcRenderer.invoke('validate-workflow-template', workflowData),
+    // Expose comfyui unified invoke/on helpers to renderer modules
+    invoke: (channel, data) => {
+        // whitelist comfyui:* channels we support
+        const comfyChannels = new Set([
+            'comfyui:get-config',
+            'comfyui:save-config',
+            'comfyui:get-workflows',
+            'comfyui:read-workflow',
+            'comfyui:save-workflow',
+            'comfyui:delete-workflow',
+            'watch-comfyui-config',
+            'get-comfyui-config-realtime',
+            'import-and-convert-workflow',
+            'convert-workflow-to-template', 
+            'validate-workflow-template'
+        ]);
+        if (comfyChannels.has(channel)) {
+            return ipcRenderer.invoke(channel, data);
+        }
+        console.warn('[Preload] Blocked invoke on channel:', channel);
+        return Promise.reject(new Error('Channel not allowed: ' + channel));
+    },
+    on: (channel, callback) => {
+        // whitelist comfyui event channels
+        const comfyEventChannels = new Set([
+            'comfyui-config-changed',
+            'comfyui:workflows-changed'
+        ]);
+        if (comfyEventChannels.has(channel)) {
+            const listener = (_event, ...args) => callback(...args);
+            ipcRenderer.on(channel, listener);
+            // return unsubscribe
+            return () => ipcRenderer.removeListener(channel, listener);
+        }
+        console.warn('[Preload] Blocked on() subscription for channel:', channel);
+        return () => {};
+    },
 });
 
-// Log the electronAPI object as it's defined in preload.js right after exposing it
-const electronAPIForLogging = {
-    loadSettings: "function", saveSettings: "function", getAgents: "function", getAgentConfig: "function",
-    saveAgentConfig: "function", selectAvatar: "function", saveAvatar: "function", createAgent: "function",
-    deleteAgent: "function", getAgentTopics: "function", createNewTopicForAgent: "function",
-    saveAgentTopicTitle: "function", deleteTopic: "function", getChatHistory: "function",
-    saveChatHistory: "function", handleFilePaste: "function", selectFilesToSend: "function",
-    getFileAsBase64: "function", getTextContent: "function", handleTextPasteAsFile: "function",
-    handleFileDrop: "function",
-    readTxtNotes: "function",
-    writeTxtNote: "function",
-    deleteTxtNote: "function",
-    openNotesWindow: "function",
-    openNotesWithContent: "function",
-    saveAgentOrder: "function",
-    saveTopicOrder: "function",
-    sendToVCP: "function", onVCPStreamChunk: "function",
-    connectVCPLog: "function", disconnectVCPLog: "function", onVCPLogMessage: "function",
-    onVCPLogStatus: "function", readImageFromClipboard: "function", readTextFromClipboard: "function",
-    minimizeWindow: "function", maximizeWindow: "function", unmaximizeWindow: "function", closeWindow: "function",
-    openDevTools: "function",
-    openAdminPanel: "function",
-    onWindowMaximized: "function", onWindowUnmaximized: "function",
-    showImageContextMenu: "function",
-    openImageInNewWindow: "function", saveAvatarColor: "function",
-    saveUserAvatar: "function",
-    // ComfyUI functions
-    ensureComfyUIHandlersReady: "function",
-    saveComfyUIConfig: "function",
-    loadComfyUIConfig: "function",
-    loadComfyUIWorkflows: "function",
-    importAndConvertWorkflow: "function",
-    validateWorkflowTemplate: "function"
-};
-console.log('[Preload] electronAPI object that *should* be exposed (structure check):', electronAPIForLogging);
-console.log('preload.js loaded and contextBridge exposure attempted.');
+/**
+ * ComfyUI专用 API 暴露（对齐用户提供的参考结构）
+ */
+contextBridge.exposeInMainWorld('comfyuiAPI', {
+    // 配置管理
+    getConfig: () => ipcRenderer.invoke('comfyui:get-config'),
+    saveConfig: (config) => ipcRenderer.invoke('comfyui:save-config', config),
+
+    // 工作流管理
+    getWorkflows: () => ipcRenderer.invoke('comfyui:get-workflows'),
+    readWorkflow: (name) => ipcRenderer.invoke('comfyui:read-workflow', { name }),
+    saveWorkflow: (name, data) => ipcRenderer.invoke('comfyui:save-workflow', { name, data }),
+    deleteWorkflow: (name) => ipcRenderer.invoke('comfyui:delete-workflow', { name }),
+
+    // 工作流模板转换
+    importAndConvertWorkflow: (workflowData, workflowName) => 
+        ipcRenderer.invoke('import-and-convert-workflow', workflowData, workflowName),
+    convertWorkflowToTemplate: (workflowData, templateName) =>
+        ipcRenderer.invoke('convert-workflow-to-template', workflowData, templateName),
+    validateWorkflowTemplate: (workflowData) =>
+        ipcRenderer.invoke('validate-workflow-template', workflowData),
+
+    // 路径查询（若主进程已实现）
+    getPluginPath: () => ipcRenderer.invoke('comfyui:get-plugin-path'),
+
+    // 事件监听
+    on: (channel, callback) => {
+        const validChannels = ['comfyui:config-changed', 'comfyui:workflows-changed'];
+        if (validChannels.includes(channel)) {
+            ipcRenderer.on(channel, (_event, ...args) => callback(...args));
+        } else {
+            console.warn('[Preload][comfyuiAPI.on] Blocked channel:', channel);
+        }
+    },
+
+    // 取消监听
+    removeAllListeners: (channel) => {
+        const validChannels = ['comfyui:config-changed', 'comfyui:workflows-changed'];
+        if (validChannels.includes(channel)) {
+            ipcRenderer.removeAllListeners(channel);
+        }
+    }
+});
+
+
+console.log('[Preload] ComfyUI preload bindings loaded');

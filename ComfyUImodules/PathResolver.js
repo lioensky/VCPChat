@@ -16,6 +16,7 @@ class PathResolver {
      * 按优先级尝试不同的路径解析策略
      */
     async findVCPToolBoxPath() {
+        // 优先: 环境变量 → 就近相对路径 → 常见位置 → 向上搜索 → 用户目录兜底
         const strategies = [
             this.findByEnvironmentVariable.bind(this),
             this.findByRelativePath.bind(this),
@@ -23,20 +24,15 @@ class PathResolver {
             this.findBySearchUp.bind(this),
             this.findByUserDataDir.bind(this)
         ];
-
         for (const strategy of strategies) {
             try {
                 const result = await strategy();
-                if (result) {
-                    console.log(`[PathResolver] Found VCPToolBox using strategy: ${strategy.name}`);
-                    return result;
-                }
-            } catch (error) {
-                console.warn(`[PathResolver] Strategy ${strategy.name} failed:`, error.message);
+                if (result) return result;
+            } catch {
+                // 忽略单策略失败
             }
         }
-
-        throw new Error('Could not locate VCPToolBox directory in any known location');
+        throw new Error('VCPToolBox directory not found');
     }
 
     /**
@@ -60,7 +56,6 @@ class PathResolver {
         // 从当前模块位置向上查找
         const relativePaths = [
             path.resolve(__dirname, '..', '..', this.toolboxDirName),
-            path.resolve(__dirname, '..', '..', '..', this.toolboxDirName),
             path.resolve(process.cwd(), this.toolboxDirName),
             path.resolve(process.cwd(), '..', this.toolboxDirName)
         ];
@@ -157,14 +152,10 @@ class PathResolver {
         try {
             const pluginPath = path.join(toolboxPath, 'Plugin', this.pluginDirName);
             const exists = await fs.pathExists(pluginPath);
-            if (exists) {
-                // 进一步验证是否是正确的插件目录
-                const manifestPath = path.join(pluginPath, 'plugin-manifest.json');
-                if (await fs.pathExists(manifestPath)) {
-                    return true;
-                }
-            }
-            return false;
+            if (!exists) return false;
+            // 进一步验证是否是正确的插件目录，manifest 可选
+            const manifestPath = path.join(pluginPath, 'plugin-manifest.json');
+            return await fs.pathExists(manifestPath) || await fs.pathExists(path.join(pluginPath, 'workflows'));
         } catch (error) {
             return false;
         }

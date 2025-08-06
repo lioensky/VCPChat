@@ -492,7 +492,7 @@
     <script type="module" src="renderer.js" defer></script>
     <script src="ComfyUImodules/ComfyUI_StateManager.js"></script>
     <script src="ComfyUImodules/ComfyUI_UIManager.js"></script>
-    <script src="ComfyUImodules/comfyUIConfig.js"></script>
+    <script src="modules/comfyUIInitializer.js"></script>
 
     <!-- Model Selection Modal -->
     <div class="modal" id="modelSelectModal">
@@ -530,11 +530,11 @@
 
     <div id="floating-toast-notifications-container"></div>
 
-    <!-- ComfyUI Configuration Modal -->
-    <div class="modal" id="comfyUIConfigModal">
-        <div class="modal-content" style="max-width: 600px;">
-            <!-- Modal content will be populated by JavaScript -->
-        </div>
+    <!-- ComfyUI Drawer Host (preferred over modal) -->
+    <div id="comfyuiDrawerOverlay" class="drawer-overlay hidden" style="display:none;"></div>
+    <div id="comfyuiDrawerPanel" class="drawer-panel">
+        <div id="comfyuiDrawerContent" class="drawer-content"><!-- Drawer content will be populated by JS --></div>
     </div>
+
 </body>
 </html>

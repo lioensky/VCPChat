@@ -4,8 +4,14 @@ const fs = require('fs-extra');
 const path = require('path');
 const PathResolver = require('./PathResolver');
 
-// 创建路径解析器实例
-const pathResolver = new PathResolver();
+// 延迟创建路径解析器实例（按需）
+let pathResolverInstance = null;
+function getPathResolver() {
+    if (!pathResolverInstance) {
+        pathResolverInstance = new PathResolver();
+    }
+    return pathResolverInstance;
+}
 
 /**
  * 加载配置
@@ -13,7 +19,7 @@ const pathResolver = new PathResolver();
 async function loadConfig() {
     try {
         // 使用PathResolver获取配置文件路径
-        const configFile = await pathResolver.getConfigFilePath();
+        const configFile = await getPathResolver().getConfigFilePath();
         
         console.log('[Main] Attempting to load config from:', configFile);
         
@@ -56,12 +62,12 @@ async function loadConfig() {
  */
 function initialize(mainWindow) {
     // ComfyUI Configuration Handlers
-    ipcMain.handle('save-comfyui-config', async (event, config) => {
+    ipcMain.handle('comfyui:save-config', async (event, config) => {
         try {
             // 使用路径解析器获取配置文件路径
             let configFile;
             try {
-                configFile = await pathResolver.getConfigFilePath();
+                configFile = await getPathResolver().getConfigFilePath();
                 // 确保目录存在
                 await fs.ensureDir(path.dirname(configFile));
             } catch (pathError) {
@@ -86,26 +92,22 @@ function initialize(mainWindow) {
         }
     });
 
-    ipcMain.handle('load-comfyui-config', async () => {
+    ipcMain.handle('comfyui:get-config', async () => {
         try {
             const config = await loadConfig();
             if (config) {
-                console.log('[Main] ComfyUI configuration loaded successfully');
-                return config;
-            } else {
-                console.error('[Main] Failed to load ComfyUI configuration');
-                return null;
+                return { success: true, data: config };
             }
+            return { success: false, error: 'Failed to load configuration' };
         } catch (error) {
-            console.error('Error loading ComfyUI configuration:', error);
-            return null;
+            return { success: false, error: error.message };
         }
     });
 
     // ComfyUI 文件监听相关处理器
     ipcMain.handle('watch-comfyui-config', async () => {
         try {
-            const configFile = await pathResolver.getConfigFilePath();
+            const configFile = await getPathResolver().getConfigFilePath();
             
             console.log('[Main] Setting up file watcher for:', configFile);
             
@@ -135,50 +137,38 @@ function initialize(mainWindow) {
 
     ipcMain.handle('get-comfyui-config-realtime', async () => {
         try {
-            // 实时读取，不使用缓存，用于文件变化后的实时更新
-            const configFile = await pathResolver.getConfigFilePath();
-            
-            console.log('[Main] Real-time loading config from:', configFile);
-            
+            const configFile = await getPathResolver().getConfigFilePath();
             if (await fs.pathExists(configFile)) {
-                const config = await fs.readJson(configFile);
-                
-                console.log('[Main] Real-time ComfyUI configuration loaded successfully');
-                return config;
-            } else {
-                console.log('[Main] Config file not found for real-time load, using defaults');
-                // 默认配置
-                const defaultConfig = {
-                    serverUrl: 'http://localhost:8188',
-                    apiKey: '',
-                    workflow: 'text2img_basic',
-                    defaultModel: 'sd_xl_base_1.0.safetensors',
-                    defaultWidth: 1024,
-                    defaultHeight: 1024,
-                    defaultSteps: 30,
-                    defaultCfg: 7.5,
-                    defaultSampler: 'dpmpp_2m',
-                    defaultScheduler: 'normal',
-                    defaultSeed: -1,
-                    defaultBatchSize: 1,
-                    defaultDenoise: 1.0,
-                    defaultLoRA: '',
-                    defaultLoRAStrength: 1.0,
-                    negativePrompt: 'lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality, normal quality, jpeg artifacts, signature, watermark, username, blurry'
-                };
-                
-                return defaultConfig;
+                return await fs.readJson(configFile);
             }
-        } catch (error) {
-            console.error('Error loading real-time ComfyUI configuration:', error);
+            // 与 loadConfig 默认保持一致，去除重复定义
+            return {
+                serverUrl: 'http://localhost:8188',
+                apiKey: '',
+                workflow: 'text2img_basic',
+                defaultModel: 'sd_xl_base_1.0.safetensors',
+                defaultWidth: 1024,
+                defaultHeight: 1024,
+                defaultSteps: 30,
+                defaultCfg: 7.5,
+                defaultSampler: 'dpmpp_2m',
+                defaultScheduler: 'normal',
+                defaultSeed: -1,
+                defaultBatchSize: 1,
+                defaultDenoise: 1.0,
+                defaultLoRA: '',
+                defaultLoRAStrength: 1.0,
+                negativePrompt: 'lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality, normal quality, jpeg artifacts, signature, watermark, username, blurry'
+            };
+        } catch {
             return null;
         }
     });
 
     // ComfyUI Workflow Management Handlers
-    ipcMain.handle('load-comfyui-workflows', async () => {
+    ipcMain.handle('comfyui:get-workflows', async () => {
         try {
-            const workflowsDir = await pathResolver.getWorkflowsPath();
+            const workflowsDir = await getPathResolver().getWorkflowsPath();
             
             // Ensure workflows directory exists
             await fs.ensureDir(workflowsDir);
@@ -205,76 +195,73 @@ function initialize(mainWindow) {
                 }
             }
             
-            console.log(`[Main] Loaded ${workflows.length} ComfyUI workflows`);
-            return workflows;
+            return { success: true, workflows };
         } catch (error) {
             console.error('Error loading ComfyUI workflows:', error);
-            return [];
+            return { success: false, error: error.message, workflows: [] };
         }
     });
 
-    ipcMain.handle('load-workflow-content', async (event, workflowName) => {
+    ipcMain.handle('comfyui:read-workflow', async (event, { name }) => {
         try {
-            const workflowsDir = await pathResolver.getWorkflowsPath();
-            const workflowFile = path.join(workflowsDir, `${workflowName}.json`);
+            const workflowsDir = await getPathResolver().getWorkflowsPath();
+            const workflowFile = path.join(workflowsDir, `${name}.json`);
             
             if (await fs.pathExists(workflowFile)) {
                 const content = await fs.readJson(workflowFile);
-                console.log(`[Main] Loaded workflow content for: ${workflowName}`);
-                return content;
+                console.log(`[Main] Loaded workflow content for: ${name}`);
+                return { success: true, data: content };
             } else {
-                throw new Error(`Workflow ${workflowName} not found`);
+                throw new Error(`Workflow ${name} not found`);
             }
         } catch (error) {
-            console.error(`Error loading workflow content for ${workflowName}:`, error);
-            throw error;
+            console.error(`Error loading workflow content for ${name}:`, error);
+            return { success: false, error: error.message };
         }
     });
 
-    ipcMain.handle('save-workflow-content', async (event, workflowName, content) => {
+    ipcMain.handle('comfyui:save-workflow', async (event, { name, data }) => {
         try {
-            const workflowsDir = await pathResolver.getWorkflowsPath();
-            const workflowFile = path.join(workflowsDir, `${workflowName}.json`);
+            const workflowsDir = await getPathResolver().getWorkflowsPath();
+            const workflowFile = path.join(workflowsDir, `${name}.json`);
             
             // Ensure directory exists
             await fs.ensureDir(workflowsDir);
             
             // Save workflow content
-            await fs.writeJson(workflowFile, content, { spaces: 2 });
-            console.log(`[Main] Saved workflow: ${workflowName}`);
-            return { success: true };
+            await fs.writeJson(workflowFile, data, { spaces: 2 });
+            return { success: true, path: workflowFile };
         } catch (error) {
-            console.error(`Error saving workflow ${workflowName}:`, error);
+            console.error(`Error saving workflow ${name}:`, error);
             return { success: false, error: error.message };
         }
     });
 
-    ipcMain.handle('delete-workflow', async (event, workflowName) => {
+    ipcMain.handle('comfyui:delete-workflow', async (event, { name }) => {
         try {
             // Prevent deletion of built-in workflows
-            if (['text2img_basic', 'img2img_basic'].includes(workflowName)) {
+            if (['text2img_basic', 'img2img_basic'].includes(name)) {
                 throw new Error('Cannot delete built-in workflows');
             }
             
-            const workflowsDir = await pathResolver.getWorkflowsPath();
-            const workflowFile = path.join(workflowsDir, `${workflowName}.json`);
+            const workflowsDir = await getPathResolver().getWorkflowsPath();
+            const workflowFile = path.join(workflowsDir, `${name}.json`);
             
             if (await fs.pathExists(workflowFile)) {
                 await fs.remove(workflowFile);
-                console.log(`[Main] Deleted workflow: ${workflowName}`);
                 return { success: true };
             } else {
-                throw new Error(`Workflow ${workflowName} not found`);
+                throw new Error(`Workflow ${name} not found`);
             }
         } catch (error) {
-            console.error(`Error deleting workflow ${workflowName}:`, error);
+            console.error(`Error deleting workflow ${name}:`, error);
             return { success: false, error: error.message };
         }
     });
 
     ipcMain.handle('create-new-workflow', async (event, workflowName, templateType = 'text2img_basic') => {
         try {
-            const workflowsDir = await pathResolver.getWorkflowsPath();
+            const workflowsDir = await getPathResolver().getWorkflowsPath();
             const newWorkflowFile = path.join(workflowsDir, `${workflowName}.json`);
             
             // Check if workflow already exists
@@ -371,34 +358,103 @@ function initialize(mainWindow) {
         }
     });
 
-    // 新增：导入原版工作流并自动转换
-    ipcMain.handle('import-and-convert-workflow', async (event, workflowData, workflowName) => {
+    // 工作流模板转换处理器
+    ipcMain.handle('convert-workflow-to-template', async (event, workflowData, templateName) => {
         try {
-            console.log(`[Main] Importing and converting workflow: ${workflowName}`);
+            // 参数验证
+            if (!templateName || typeof templateName !== 'string') {
+                throw new Error(`模板名称无效: ${templateName} (类型: ${typeof templateName})`);
+            }
+            
+            if (!workflowData || typeof workflowData !== 'object') {
+                if (typeof workflowData === 'string') {
+                    try {
+                        workflowData = JSON.parse(workflowData);
+                    } catch (parseError) {
+                        throw new Error(`工作流数据不是有效的JSON格式: ${parseError.message}`);
+                    }
+                } else {
+                    throw new Error(`工作流数据无效: ${typeof workflowData}`);
+                }
+            }
             
             // 使用PathResolver获取VCPToolBox路径
-            const toolboxPath = await pathResolver.findVCPToolBoxPath();
+            const toolboxPath = await getPathResolver().findVCPToolBoxPath();
             const processorPath = path.join(toolboxPath, 'Plugin', 'ComfyUIGen', 'WorkflowTemplateProcessor.js');
             
             // 动态导入WorkflowTemplateProcessor
             const WorkflowTemplateProcessor = require(processorPath);
             const processor = new WorkflowTemplateProcessor();
             
-            // 转换为模板
+            // 转换工作流为模板
             const template = processor.convertToTemplate(workflowData);
             
-            // 保存到workflows目录
-            const workflowsDir = await pathResolver.getWorkflowsPath();
-            const workflowFile = path.join(workflowsDir, `${workflowName}.json`);
+            // 保存到templates目录
+            const workflowsDir = await getPathResolver().getWorkflowsPath();
+            const templatesDir = path.join(path.dirname(workflowsDir), 'templates');
+            const templateFile = path.join(templatesDir, `${templateName}.json`);
             
+            await fs.ensureDir(templatesDir);
+            await fs.writeJson(templateFile, template, { spaces: 2 });
+            
+            return { 
+                success: true, 
+                templatePath: templateFile,
+                replacements: template._template_metadata ? template._template_metadata.replacementsMade.length : 0,
+                preserved: template._template_metadata ? template._template_metadata.preservedNodes.length : 0
+            };
+        } catch (error) {
+            console.error(`Error converting workflow to template:`, error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    // 导入原版工作流并自动转换
+    ipcMain.handle('import-and-convert-workflow', async (event, workflowData, workflowName) => {
+        try {
+            // 参数验证
+            if (!workflowName || typeof workflowName !== 'string') {
+                throw new Error(`工作流名称无效: ${workflowName} (类型: ${typeof workflowName})`);
+            }
+            
+            if (!workflowData) {
+                throw new Error(`工作流数据为空或未定义`);
+            }
+            
+            // 处理workflowData
+            if (typeof workflowData === 'string') {
+                try {
+                    workflowData = JSON.parse(workflowData);
+                } catch (parseError) {
+                    throw new Error(`工作流数据不是有效的JSON格式: ${parseError.message}`);
+                }
+            }
+            
+            if (typeof workflowData !== 'object') {
+                throw new Error(`工作流数据无效: ${typeof workflowData}`);
+            }
+
+            // 使用PathResolver获取VCPToolBox路径
+            const toolboxPath = await getPathResolver().findVCPToolBoxPath();
+            const processorPath = path.join(toolboxPath, 'Plugin', 'ComfyUIGen', 'WorkflowTemplateProcessor.js');
+
+            // 动态导入WorkflowTemplateProcessor
+            const WorkflowTemplateProcessor = require(processorPath);
+            const processor = new WorkflowTemplateProcessor();
+
+            // 转换为模板
+            const template = processor.convertToTemplate(workflowData);
+
+            // 保存到workflows目录
+            const workflowsDir = await getPathResolver().getWorkflowsPath();
+            const workflowFile = path.join(workflowsDir, `${workflowName}.json`);
+
             // 移除模板元数据，保存为标准模板工作流
             delete template._template_metadata;
-            
+
             await fs.ensureDir(workflowsDir);
             await fs.writeJson(workflowFile, template, { spaces: 2 });
-            
-            console.log(`[Main] Converted workflow saved to: ${workflowFile}`);
-            
+
             return { 
                 success: true, 
                 workflowPath: workflowFile,
@@ -410,21 +466,34 @@ function initialize(mainWindow) {
         }
     });
 
-    // 新增：验证工作流是否为模板格式
+    // 验证工作流是否为模板格式
     ipcMain.handle('validate-workflow-template', async (event, workflowData) => {
         try {
-            // 使用PathResolver获取VCPToolBox路径
-            const toolboxPath = await pathResolver.findVCPToolBoxPath();
-            const processorPath = path.join(toolboxPath, 'Plugin', 'ComfyUIGen', 'WorkflowTemplateProcessor.js');
+            // 参数验证
+            if (!workflowData || typeof workflowData !== 'object') {
+                if (typeof workflowData === 'string') {
+                    try {
+                        workflowData = JSON.parse(workflowData);
+                    } catch (parseError) {
+                        throw new Error(`工作流数据不是有效的JSON格式: ${parseError.message}`);
+                    }
+                } else {
+                    throw new Error(`工作流数据无效: ${typeof workflowData}`);
+                }
+            }
             
+            // 使用PathResolver获取VCPToolBox路径
+            const toolboxPath = await getPathResolver().findVCPToolBoxPath();
+            const processorPath = path.join(toolboxPath, 'Plugin', 'ComfyUIGen', 'WorkflowTemplateProcessor.js');
+
             // 动态导入WorkflowTemplateProcessor
             const WorkflowTemplateProcessor = require(processorPath);
             const processor = new WorkflowTemplateProcessor();
-            
+
             // 检查是否包含占位符
             const placeholders = processor.getTemplatePlaceholders(workflowData);
             const isTemplate = placeholders.length > 0;
-            
+
             return {
                 success: true,
                 isTemplate,
