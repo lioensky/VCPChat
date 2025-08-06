@@ -7,87 +7,10 @@ const PathResolver = require('./PathResolver');
 // 创建路径解析器实例
 const pathResolver = new PathResolver();
 
-// 后端配置缓存，提高性能
-let configCache = null;
-let configCacheTimestamp = 0;
-const CONFIG_CACHE_TIMEOUT = 30000; // 30秒缓存超时
-
 /**
- * 降级策略：在用户目录创建配置
+ * 加载配置
  */
-async function loadConfigFallback() {
-    const os = require('os');
-    const fallbackDir = path.join(os.homedir(), '.vcpchat', 'VCPToolBox', 'Plugin', 'ComfyUIGen');
-    const fallbackConfigFile = path.join(fallbackDir, 'comfyui-settings.json');
-    
-    console.log('[Main] Using fallback config location:', fallbackConfigFile);
-    
-    try {
-        // 确保目录存在
-        await fs.ensureDir(fallbackDir);
-        
-        // 如果文件存在，读取它
-        if (await fs.pathExists(fallbackConfigFile)) {
-            const config = await fs.readJson(fallbackConfigFile);
-            configCache = config;
-            configCacheTimestamp = Date.now();
-            return config;
-        } else {
-            // 创建默认配置
-            const defaultConfig = {
-                serverUrl: 'http://localhost:8188',
-                apiKey: '',
-                workflow: 'text2img_basic',
-                defaultModel: 'sd_xl_base_1.0.safetensors',
-                defaultWidth: 1024,
-                defaultHeight: 1024,
-                defaultSteps: 30,
-                defaultCfg: 7.5,
-                defaultSampler: 'dpmpp_2m',
-                defaultScheduler: 'normal',
-                defaultSeed: -1,
-                defaultBatchSize: 1,
-                defaultDenoise: 1.0,
-                defaultLoRA: '',
-                defaultLoRAStrength: 1.0,
-                negativePrompt: 'lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality, normal quality, jpeg artifacts, signature, watermark, username, blurry',
-                version: '1.0.0',
-                lastUpdated: new Date().toISOString()
-            };
-            
-            await fs.writeJson(fallbackConfigFile, defaultConfig, { spaces: 2 });
-            configCache = defaultConfig;
-            configCacheTimestamp = Date.now();
-            return defaultConfig;
-        }
-    } catch (error) {
-        console.error('[Main] Fallback config creation failed:', error);
-        // 返回内存中的默认配置
-        return {
-            serverUrl: 'http://localhost:8188',
-            apiKey: '',
-            workflow: 'text2img_basic',
-            defaultModel: 'sd_xl_base_1.0.safetensors',
-            defaultWidth: 1024,
-            defaultHeight: 1024,
-            defaultSteps: 30,
-            defaultCfg: 7.5,
-            defaultSampler: 'dpmpp_2m'
-        };
-    }
-}
-
-/**
- * 加载配置（带缓存）
- */
-async function loadConfigWithCache() {
-    const now = Date.now();
-    
-    // 检查缓存是否有效
-    if (configCache && (now - configCacheTimestamp) < CONFIG_CACHE_TIMEOUT) {
-        return configCache;
-    }
-    
+async function loadConfig() {
     try {
         // 使用PathResolver获取配置文件路径
         const configFile = await pathResolver.getConfigFilePath();
@@ -96,17 +19,12 @@ async function loadConfigWithCache() {
         
         if (await fs.pathExists(configFile)) {
             const config = await fs.readJson(configFile);
-            
-            // 更新缓存
-            configCache = config;
-            configCacheTimestamp = now;
-            
             console.log('[Main] Successfully loaded config from file');
             return config;
         } else {
             console.log('[Main] Config file does not exist, using defaults');
             // 更新的默认配置（包含所有新字段）
-            const defaultConfig = {
+            return {
                 serverUrl: 'http://localhost:8188',
                 apiKey: '',
                 workflow: 'text2img_basic',
@@ -126,26 +44,11 @@ async function loadConfigWithCache() {
                 version: '1.0.0',
                 lastUpdated: new Date().toISOString()
             };
-            
-            // 缓存默认配置
-            configCache = defaultConfig;
-            configCacheTimestamp = now;
-            
-            return defaultConfig;
         }
     } catch (error) {
         console.error('Error loading configuration:', error);
         return null;
     }
-}
-
-/**
- * 清理配置缓存
- */
-function clearConfigCache() {
-    configCache = null;
-    configCacheTimestamp = 0;
-    console.log('[Main] ComfyUI config cache cleared');
 }
 
 /**
@@ -175,9 +78,6 @@ function initialize(mainWindow) {
             // Save configuration
             await fs.writeJson(configFile, config, { spaces: 2 });
             
-            // 清理缓存，下次读取时会从文件加载
-            clearConfigCache();
-            
             console.log('[Main] ComfyUI configuration saved successfully to:', configFile);
             return { success: true };
         } catch (error) {
@@ -188,9 +88,9 @@ function initialize(mainWindow) {
 
     ipcMain.handle('load-comfyui-config', async () => {
         try {
-            const config = await loadConfigWithCache();
+            const config = await loadConfig();
             if (config) {
-                console.log('[Main] ComfyUI configuration loaded successfully (with cache)');
+                console.log('[Main] ComfyUI configuration loaded successfully');
                 return config;
             } else {
                 console.error('[Main] Failed to load ComfyUI configuration');
@@ -243,10 +143,6 @@ function initialize(mainWindow) {
             if (await fs.pathExists(configFile)) {
                 const config = await fs.readJson(configFile);
                 
-                // 更新缓存
-                configCache = config;
-                configCacheTimestamp = Date.now();
-                
                 console.log('[Main] Real-time ComfyUI configuration loaded successfully');
                 return config;
             } else {
@@ -270,10 +166,6 @@ function initialize(mainWindow) {
                     defaultLoRAStrength: 1.0,
                     negativePrompt: 'lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality, normal quality, jpeg artifacts, signature, watermark, username, blurry'
                 };
-                
-                // 更新缓存
-                configCache = defaultConfig;
-                configCacheTimestamp = Date.now();
                 
                 return defaultConfig;
             }
@@ -475,44 +367,6 @@ function initialize(mainWindow) {
             return { success: true };
         } catch (error) {
             console.error(`Error creating workflow ${workflowName}:`, error);
-            return { success: false, error: error.message };
-        }
-    });
-
-    // 新增：工作流模板转换处理器
-    ipcMain.handle('convert-workflow-to-template', async (event, workflowData, templateName) => {
-        try {
-            console.log(`[Main] Converting workflow to template: ${templateName}`);
-            
-            // 使用PathResolver获取VCPToolBox路径
-            const toolboxPath = await pathResolver.findVCPToolBoxPath();
-            const processorPath = path.join(toolboxPath, 'Plugin', 'ComfyUIGen', 'WorkflowTemplateProcessor.js');
-            
-            // 动态导入WorkflowTemplateProcessor
-            const WorkflowTemplateProcessor = require(processorPath);
-            const processor = new WorkflowTemplateProcessor();
-            
-            // 转换工作流为模板
-            const template = processor.convertToTemplate(workflowData);
-            
-            // 保存到templates目录
-            const workflowsDir = await pathResolver.getWorkflowsPath();
-            const templatesDir = path.join(path.dirname(workflowsDir), 'templates');
-            const templateFile = path.join(templatesDir, `${templateName}.json`);
-            
-            await fs.ensureDir(templatesDir);
-            await fs.writeJson(templateFile, template, { spaces: 2 });
-            
-            console.log(`[Main] Template saved to: ${templateFile}`);
-            
-            return { 
-                success: true, 
-                templatePath: templateFile,
-                replacements: template._template_metadata.replacementsMade.length,
-                preserved: template._template_metadata.preservedNodes.length
-            };
-        } catch (error) {
-            console.error(`Error converting workflow to template:`, error);
             return { success: false, error: error.message };
         }
     });
