@@ -388,6 +388,15 @@ window.topicListManager = (() => {
             }
         };
         menu.appendChild(deleteTopicPermanentlyOption);
+
+        const exportTopicOption = document.createElement('div');
+        exportTopicOption.classList.add('context-menu-item');
+        exportTopicOption.innerHTML = `<i class="fas fa-file-export"></i> 导出此话题`;
+        exportTopicOption.onclick = () => {
+            closeTopicContextMenu();
+            handleExportTopic(itemFullConfig.id, itemType, topic.id, topic.name);
+        };
+        menu.appendChild(exportTopicOption);
         
 
         document.body.appendChild(menu);
@@ -406,6 +415,81 @@ window.topicListManager = (() => {
         const menu = document.getElementById('topicContextMenu');
         if (menu && !menu.contains(event.target)) {
             closeTopicContextMenu();
+        }
+    }
+
+    async function handleExportTopic(itemId, itemType, topicId, topicName) {
+        const currentTopicId = currentTopicIdRef.get();
+        if (topicId !== currentTopicId) {
+            uiHelper.showToastNotification('请先点击并加载此话题，然后再导出。', 'info');
+            return;
+        }
+
+        console.log(`[TopicListManager] Exporting currently visible topic: ${topicName} (ID: ${topicId})`);
+
+        try {
+            const chatMessagesDiv = document.getElementById('chatMessages');
+            if (!chatMessagesDiv) {
+                console.error('[Export Debug] chatMessagesDiv not found!');
+                uiHelper.showToastNotification('错误：找不到聊天内容容器。', 'error');
+                return;
+            }
+
+            const messageItems = chatMessagesDiv.querySelectorAll('.message-item');
+            console.log(`[Export Debug] Found ${messageItems.length} message items.`);
+            if (messageItems.length === 0) {
+                uiHelper.showToastNotification('此话题没有可见的聊天内容可导出。', 'info');
+                return;
+            }
+
+            let markdownContent = `# 话题: ${topicName}\n\n`;
+            let extractedCount = 0;
+
+            messageItems.forEach((item, index) => {
+                if (item.classList.contains('system') || item.classList.contains('thinking')) {
+                    console.log(`[Export Debug] Skipping system/thinking message at index ${index}.`);
+                    return;
+                }
+
+                const senderElement = item.querySelector('.sender-name');
+                const contentElement = item.querySelector('.md-content');
+
+                if (senderElement && contentElement) {
+                    const sender = senderElement.textContent.trim().replace(':', '');
+                    let content = contentElement.innerText || contentElement.textContent || "";
+                    content = content.trim();
+
+                    if (sender && content) {
+                        markdownContent += `**${sender}**: ${content}\n\n---\n\n`;
+                        extractedCount++;
+                    } else {
+                        console.log(`[Export Debug] Skipping message at index ${index} due to empty sender or content. Sender: "${sender}", Content: "${content}"`);
+                    }
+                } else {
+                    console.log(`[Export Debug] Skipping message at index ${index} because sender or content element was not found.`);
+                }
+            });
+
+            console.log(`[Export Debug] Extracted ${extractedCount} messages. Final markdown length: ${markdownContent.length}`);
+
+            if (extractedCount === 0) {
+                uiHelper.showToastNotification('未能从当前话题中提取任何有效对话内容。', 'warning');
+                return;
+            }
+
+            const result = await electronAPI.exportTopicAsMarkdown({
+                topicName: topicName,
+                markdownContent: markdownContent
+            });
+
+            if (result.success) {
+                uiHelper.showToastNotification(`话题 "${topicName}" 已成功导出到: ${result.path}`);
+            } else {
+                uiHelper.showToastNotification(`导出话题失败: ${result.error}`, 'error');
+            }
+        } catch (error) {
+            console.error(`[TopicListManager] 导出话题时发生错误:`, error);
+            uiHelper.showToastNotification(`导出话题时发生前端错误: ${error.message}`, 'error');
         }
     }
 

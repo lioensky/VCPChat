@@ -1,0 +1,23 @@
+[tool.poetry]
+name = "vcp-chat"
+version = "1.0.0"
+description = "VCP聊天客户端Python后端"
+authors = ["莱恩"]
+package-mode = false
+
+[tool.poetry.dependencies]
+python = "^3.8"
+flask = "*"
+flask-cors = "*"
+flask-socketio = "*"
+soundfile = "*"
+sounddevice = "*"
+numpy = "*"
+pydub = "*"
+gevent-websocket = "*"
+scipy = "*"
+gevent = "*"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

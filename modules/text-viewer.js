@@ -456,8 +456,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         const highlightThemeStyle = document.getElementById('highlight-theme-style');
         if (highlightThemeStyle) {
             highlightThemeStyle.href = currentTheme === 'light'
-                ? "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-light.min.css"
-                : "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css";
+                ? "../vendor/atom-one-light.min.css"
+                : "../vendor/atom-one-dark.min.css";
         }
     }
 
@@ -501,7 +501,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             statusElement.textContent = 'Loading Pyodide script...';
             if (!window.loadPyodide) {
                 const script = document.createElement('script');
-                script.src = 'https://cdn.jsdelivr.net/pyodide/v0.25.1/full/pyodide.js';
+                script.src = '../vendor/pyodide.js';
                 document.head.appendChild(script);
                 await new Promise((resolve, reject) => {
                     script.onload = resolve;
@@ -904,10 +904,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                         const bodyStyles = document.body.classList.contains('light-theme')
                             ? 'color: #2c3e50; background-color: #ffffff;'
                             : 'color: #abb2bf; background-color: #282c34;';
-                        finalHtml = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>HTML Preview</title><script src="https://cdn.jsdelivr.net/npm/animejs@3.2.1/lib/anime.min.js"><\/script><style>body { font-family: sans-serif; padding: 15px; margin: 0; ${bodyStyles} }</style></head><body>${codeContent}</body></html>`;
+                        finalHtml = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>HTML Preview</title><script src="../vendor/anime.min.js"><\/script><style>body { font-family: sans-serif; padding: 15px; margin: 0; ${bodyStyles} }</style></head><body>${codeContent}</body></html>`;
                     } else {
                         // If it's a full document, inject anime.js before the closing </head> tag
-                        finalHtml = finalHtml.replace('</head>', '<script src="https://cdn.jsdelivr.net/npm/animejs@3.2.1/lib/anime.min.js"><\/script></head>');
+                        finalHtml = finalHtml.replace('</head>', '<script src="../vendor/anime.min.js"><\/script></head>');
                     }
                     iframeDoc.write(finalHtml);
                     iframeDoc.close();
@@ -981,7 +981,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                             <script type="importmap">
                             {
                                 "imports": {
-                                    "three": "https://cdn.jsdelivr.net/npm/three@0.166.1/build/three.module.js",
+                                    "three": "../vendor/three.module.js",
                                     "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.166.1/examples/jsm/"
                                 }
                             }
