@@ -376,7 +376,7 @@
                     }
                     
                     // 使用正确的 API 名称（注意是小写 ui）
-                    const resp = await window.comfyuiAPI.importAndConvertWorkflow(originalWorkflow, name);
+                    const resp = await window.electronAPI.invoke('import-and-convert-workflow', originalWorkflow, name);
                     
                     if (resp?.success) {
                         this.showToast('工作流转换并保存成功！', 'success');

@@ -283,7 +283,7 @@ exportTopicAsMarkdown: (exportData) => ipcRenderer.invoke('export-topic-as-markd
     // --- ComfyUI Configuration (Unified comfyui:* channels) ---
     ensureComfyUIHandlersReady: () => ipcRenderer.invoke('ensure-comfyui-handlers-ready'),
     // Expose comfyui unified invoke/on helpers to renderer modules
-    invoke: (channel, data) => {
+    invoke: (channel, ...args) => {
         // whitelist comfyui:* channels we support
         const comfyChannels = new Set([
             'comfyui:get-config',
@@ -295,11 +295,11 @@ exportTopicAsMarkdown: (exportData) => ipcRenderer.invoke('export-topic-as-markd
             'watch-comfyui-config',
             'get-comfyui-config-realtime',
             'import-and-convert-workflow',
-            'convert-workflow-to-template', 
+            'convert-workflow-to-template',
             'validate-workflow-template'
         ]);
         if (comfyChannels.has(channel)) {
-            return ipcRenderer.invoke(channel, data);
+            return ipcRenderer.invoke(channel, ...args);
         }
         console.warn('[Preload] Blocked invoke on channel:', channel);
         return Promise.reject(new Error('Channel not allowed: ' + channel));
@@ -321,49 +321,100 @@ exportTopicAsMarkdown: (exportData) => ipcRenderer.invoke('export-topic-as-markd
     },
 });
 
-/**
- * ComfyUI专用 API 暴露（对齐用户提供的参考结构）
- */
-contextBridge.exposeInMainWorld('comfyuiAPI', {
-    // 配置管理
-    getConfig: () => ipcRenderer.invoke('comfyui:get-config'),
-    saveConfig: (config) => ipcRenderer.invoke('comfyui:save-config', config),
-
-    // 工作流管理
-    getWorkflows: () => ipcRenderer.invoke('comfyui:get-workflows'),
-    readWorkflow: (name) => ipcRenderer.invoke('comfyui:read-workflow', { name }),
-    saveWorkflow: (name, data) => ipcRenderer.invoke('comfyui:save-workflow', { name, data }),
-    deleteWorkflow: (name) => ipcRenderer.invoke('comfyui:delete-workflow', { name }),
-
-    // 工作流模板转换
-    importAndConvertWorkflow: (workflowData, workflowName) => 
-        ipcRenderer.invoke('import-and-convert-workflow', workflowData, workflowName),
-    convertWorkflowToTemplate: (workflowData, templateName) =>
-        ipcRenderer.invoke('convert-workflow-to-template', workflowData, templateName),
-    validateWorkflowTemplate: (workflowData) =>
-        ipcRenderer.invoke('validate-workflow-template', workflowData),
-
-    // 路径查询（若主进程已实现）
-    getPluginPath: () => ipcRenderer.invoke('comfyui:get-plugin-path'),
-
-    // 事件监听
-    on: (channel, callback) => {
-        const validChannels = ['comfyui:config-changed', 'comfyui:workflows-changed'];
-        if (validChannels.includes(channel)) {
-            ipcRenderer.on(channel, (_event, ...args) => callback(...args));
-        } else {
-            console.warn('[Preload][comfyuiAPI.on] Blocked channel:', channel);
-        }
-    },
-
-    // 取消监听
-    removeAllListeners: (channel) => {
-        const validChannels = ['comfyui:config-changed', 'comfyui:workflows-changed'];
-        if (validChannels.includes(channel)) {
-            ipcRenderer.removeAllListeners(channel);
-        }
-    }
-});
-
-
 console.log('[Preload] ComfyUI preload bindings loaded');
+
+// 用于调试和验证的 electronAPI 结构检查
+const electronAPIForLogging = {
+    // Settings
+    loadSettings: "function", saveSettings: "function", saveUserAvatar: "function", saveAvatarColor: "function",
+    
+    // Agents
+    getAgents: "function", getAgentConfig: "function", saveAgentConfig: "function", selectAvatar: "function", 
+    saveAvatar: "function", createAgent: "function", deleteAgent: "function", getCachedModels: "function",
+    
+    // Topics
+    getAgentTopics: "function", createNewTopicForAgent: "function", saveAgentTopicTitle: "function", 
+    deleteTopic: "function", getChatHistory: "function", saveChatHistory: "function", 
+    getOriginalMessageContent: "function",
+    
+    // File Handling
+    handleFilePaste: "function", selectFilesToSend: "function", getFileAsBase64: "function", 
+    getTextContent: "function", handleTextPasteAsFile: "function", handleFileDrop: "function",
+    
+    // Notes
+    readNotesTree: "function", writeTxtNote: "function", deleteItem: "function", createNoteFolder: "function",
+    renameItem: "function", savePastedImageToFile: "function", getNotesRootDir: "function", 
+    copyNoteContent: "function", scanNetworkNotes: "function", getCachedNetworkNotes: "function", searchNotes: "function",
+    
+    // Windows
+    openNotesWindow: "function", openNotesWithContent: "function", openTranslatorWindow: "function",
+    
+    // Order Management
+    saveAgentOrder: "function", saveTopicOrder: "function", saveCombinedItemOrder: "function",
+    
+    // VCP Communication
+    sendToVCP: "function", onVCPStreamEvent: "function", interruptVcpRequest: "function",
+    
+    // Group Chat
+    createAgentGroup: "function", getAgentGroups: "function", getAgentGroupConfig: "function",
+    saveAgentGroupConfig: "function", deleteAgentGroup: "function", saveAgentGroupAvatar: "function",
+    getGroupTopics: "function", createNewTopicForGroup: "function", deleteGroupTopic: "function",
+    saveGroupTopicTitle: "function", getGroupChatHistory: "function", saveGroupChatHistory: "function",
+    sendGroupChatMessage: "function", saveGroupTopicOrder: "function", searchTopicsByContent: "function",
+    inviteAgentToSpeak: "function", exportTopicAsMarkdown: "function",
+    
+    // VCPLog & Clipboard
+    connectVCPLog: "function", disconnectVCPLog: "function", onVCPLogMessage: "function", 
+    onVCPLogStatus: "function", readImageFromClipboard: "function", readTextFromClipboard: "function",
+    
+    // Window Controls
+    minimizeWindow: "function", maximizeWindow: "function", unmaximizeWindow: "function", closeWindow: "function",
+    openDevTools: "function", sendToggleNotificationsSidebar: "function", openAdminPanel: "function",
+    onWindowMaximized: "function", onWindowUnmaximized: "function",
+    
+    // Context & Viewers
+    showImageContextMenu: "function", openImageViewer: "function", openTextInNewWindow: "function",
+    sendOpenExternalLink: "function",
+    
+    // Assistant & Theme
+    toggleSelectionListener: "function", assistantAction: "function", closeAssistantBar: "function",
+    onAssistantBarData: "function", getAssistantBarInitialData: "function", onAssistantData: "function",
+    onThemeUpdated: "function", getCurrentTheme: "function", setTheme: "function",
+    openThemesWindow: "function", getThemes: "function", applyTheme: "function", getWallpaperThumbnail: "function",
+    
+    // Music & Python & Dice
+    onMusicCommand: "function", executePythonCode: "function", openDiceWindow: "function",
+    onRollDice: "function", sendDiceModuleReady: "function", sendDiceRollComplete: "function",
+    
+    // Sovits TTS
+    sovitsGetModels: "function", sovitsSpeak: "function", sovitsStop: "function", 
+    onPlayTtsAudio: "function", onStopTtsAudio: "function",
+    
+    // Emoticons & Voice Chat
+    getEmoticonLibrary: "function", openVoiceChatWindow: "function", onVoiceChatData: "function",
+    sendVoiceChatMessage: "function", onVoiceChatReply: "function",
+    
+    // Speech Recognition
+    startSpeechRecognition: "function", stopSpeechRecognition: "function", onSpeechRecognitionResult: "function",
+    
+    // ComfyUI Functions
+    ensureComfyUIHandlersReady: "function", invoke: "function", on: "function"
+};
+
+const comfyuiAPIForLogging = {
+    // Configuration
+    getConfig: "function", saveConfig: "function",
+    
+    // Workflow Management
+    getWorkflows: "function", readWorkflow: "function", saveWorkflow: "function", deleteWorkflow: "function",
+    
+    // Template Conversion
+    importAndConvertWorkflow: "function", convertWorkflowToTemplate: "function", validateWorkflowTemplate: "function",
+    
+    // Path & Events
+    getPluginPath: "function", on: "function", removeAllListeners: "function"
+};
+
+console.log('[Preload] electronAPI object that *should* be exposed (structure check):', electronAPIForLogging);
+console.log('[Preload] comfyuiAPI object that *should* be exposed (structure check):', comfyuiAPIForLogging);
+console.log('preload.js loaded and contextBridge exposure attempted.');
