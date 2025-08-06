@@ -1,3 +1,4 @@
+/* eslint-disable */
 // preload.js
 const { contextBridge, ipcRenderer } = require('electron');
 
@@ -174,7 +175,6 @@ exportTopicAsMarkdown: (exportData) => ipcRenderer.invoke('export-topic-as-markd
     },
 
     readTextFromClipboard: async () => {
-        console.log('[Preload - readTextFromClipboard] Function called.');
         console.log('[Preload - readTextFromClipboard] Function called. Invoking main process handler.');
         try {
             const result = await ipcRenderer.invoke('read-text-from-clipboard-main');
@@ -279,34 +279,142 @@ exportTopicAsMarkdown: (exportData) => ipcRenderer.invoke('export-topic-as-markd
     startSpeechRecognition: () => ipcRenderer.send('start-speech-recognition'),
     stopSpeechRecognition: () => ipcRenderer.send('stop-speech-recognition'),
     onSpeechRecognitionResult: (callback) => ipcRenderer.on('speech-recognition-result', (_event, text) => callback(text)),
+
+    // --- ComfyUI Configuration (Unified comfyui:* channels) ---
+    ensureComfyUIHandlersReady: () => ipcRenderer.invoke('ensure-comfyui-handlers-ready'),
+    // Expose comfyui unified invoke/on helpers to renderer modules
+    invoke: (channel, ...args) => {
+        // whitelist comfyui:* channels we support
+        const comfyChannels = new Set([
+            'comfyui:get-config',
+            'comfyui:save-config',
+            'comfyui:get-workflows',
+            'comfyui:read-workflow',
+            'comfyui:save-workflow',
+            'comfyui:delete-workflow',
+            'watch-comfyui-config',
+            'get-comfyui-config-realtime',
+            'import-and-convert-workflow',
+            'convert-workflow-to-template',
+            'validate-workflow-template'
+        ]);
+        if (comfyChannels.has(channel)) {
+            return ipcRenderer.invoke(channel, ...args);
+        }
+        console.warn('[Preload] Blocked invoke on channel:', channel);
+        return Promise.reject(new Error('Channel not allowed: ' + channel));
+    },
+    on: (channel, callback) => {
+        // whitelist comfyui event channels
+        const comfyEventChannels = new Set([
+            'comfyui-config-changed',
+            'comfyui:workflows-changed'
+        ]);
+        if (comfyEventChannels.has(channel)) {
+            const listener = (_event, ...args) => callback(...args);
+            ipcRenderer.on(channel, listener);
+            // return unsubscribe
+            return () => ipcRenderer.removeListener(channel, listener);
+        }
+        console.warn('[Preload] Blocked on() subscription for channel:', channel);
+        return () => {};
+    },
 });
 
-// Log the electronAPI object as it's defined in preload.js right after exposing it
+console.log('[Preload] ComfyUI preload bindings loaded');
+
+// 用于调试和验证的 electronAPI 结构检查
 const electronAPIForLogging = {
-    loadSettings: "function", saveSettings: "function", getAgents: "function", getAgentConfig: "function",
-    saveAgentConfig: "function", selectAvatar: "function", saveAvatar: "function", createAgent: "function",
-    deleteAgent: "function", getAgentTopics: "function", createNewTopicForAgent: "function",
-    saveAgentTopicTitle: "function", deleteTopic: "function", getChatHistory: "function",
-    saveChatHistory: "function", handleFilePaste: "function", selectFilesToSend: "function",
-    getFileAsBase64: "function", getTextContent: "function", handleTextPasteAsFile: "function",
-    handleFileDrop: "function",
-    readTxtNotes: "function", 
-    writeTxtNote: "function", 
-    deleteTxtNote: "function", 
-    openNotesWindow: "function",
-    openNotesWithContent: "function", 
-    saveAgentOrder: "function", 
-    saveTopicOrder: "function", 
-    sendToVCP: "function", onVCPStreamChunk: "function",
-    connectVCPLog: "function", disconnectVCPLog: "function", onVCPLogMessage: "function",
+    // Settings
+    loadSettings: "function", saveSettings: "function", saveUserAvatar: "function", saveAvatarColor: "function",
+    
+    // Agents
+    getAgents: "function", getAgentConfig: "function", saveAgentConfig: "function", selectAvatar: "function", 
+    saveAvatar: "function", createAgent: "function", deleteAgent: "function", getCachedModels: "function",
+    
+    // Topics
+    getAgentTopics: "function", createNewTopicForAgent: "function", saveAgentTopicTitle: "function", 
+    deleteTopic: "function", getChatHistory: "function", saveChatHistory: "function", 
+    getOriginalMessageContent: "function",
+    
+    // File Handling
+    handleFilePaste: "function", selectFilesToSend: "function", getFileAsBase64: "function", 
+    getTextContent: "function", handleTextPasteAsFile: "function", handleFileDrop: "function",
+    
+    // Notes
+    readNotesTree: "function", writeTxtNote: "function", deleteItem: "function", createNoteFolder: "function",
+    renameItem: "function", savePastedImageToFile: "function", getNotesRootDir: "function", 
+    copyNoteContent: "function", scanNetworkNotes: "function", getCachedNetworkNotes: "function", searchNotes: "function",
+    
+    // Windows
+    openNotesWindow: "function", openNotesWithContent: "function", openTranslatorWindow: "function",
+    
+    // Order Management
+    saveAgentOrder: "function", saveTopicOrder: "function", saveCombinedItemOrder: "function",
+    
+    // VCP Communication
+    sendToVCP: "function", onVCPStreamEvent: "function", interruptVcpRequest: "function",
+    
+    // Group Chat
+    createAgentGroup: "function", getAgentGroups: "function", getAgentGroupConfig: "function",
+    saveAgentGroupConfig: "function", deleteAgentGroup: "function", saveAgentGroupAvatar: "function",
+    getGroupTopics: "function", createNewTopicForGroup: "function", deleteGroupTopic: "function",
+    saveGroupTopicTitle: "function", getGroupChatHistory: "function", saveGroupChatHistory: "function",
+    sendGroupChatMessage: "function", saveGroupTopicOrder: "function", searchTopicsByContent: "function",
+    inviteAgentToSpeak: "function", exportTopicAsMarkdown: "function",
+    
+    // VCPLog & Clipboard
+    connectVCPLog: "function", disconnectVCPLog: "function", onVCPLogMessage: "function", 
     onVCPLogStatus: "function", readImageFromClipboard: "function", readTextFromClipboard: "function",
+    
+    // Window Controls
     minimizeWindow: "function", maximizeWindow: "function", unmaximizeWindow: "function", closeWindow: "function",
-    openDevTools: "function",
-    openAdminPanel: "function",
+    openDevTools: "function", sendToggleNotificationsSidebar: "function", openAdminPanel: "function",
     onWindowMaximized: "function", onWindowUnmaximized: "function",
-    showImageContextMenu: "function",
-    openImageInNewWindow: "function", saveAvatarColor: "function",
-    saveUserAvatar: "function" // Added
+    
+    // Context & Viewers
+    showImageContextMenu: "function", openImageViewer: "function", openTextInNewWindow: "function",
+    sendOpenExternalLink: "function",
+    
+    // Assistant & Theme
+    toggleSelectionListener: "function", assistantAction: "function", closeAssistantBar: "function",
+    onAssistantBarData: "function", getAssistantBarInitialData: "function", onAssistantData: "function",
+    onThemeUpdated: "function", getCurrentTheme: "function", setTheme: "function",
+    openThemesWindow: "function", getThemes: "function", applyTheme: "function", getWallpaperThumbnail: "function",
+    
+    // Music & Python & Dice
+    onMusicCommand: "function", executePythonCode: "function", openDiceWindow: "function",
+    onRollDice: "function", sendDiceModuleReady: "function", sendDiceRollComplete: "function",
+    
+    // Sovits TTS
+    sovitsGetModels: "function", sovitsSpeak: "function", sovitsStop: "function", 
+    onPlayTtsAudio: "function", onStopTtsAudio: "function",
+    
+    // Emoticons & Voice Chat
+    getEmoticonLibrary: "function", openVoiceChatWindow: "function", onVoiceChatData: "function",
+    sendVoiceChatMessage: "function", onVoiceChatReply: "function",
+    
+    // Speech Recognition
+    startSpeechRecognition: "function", stopSpeechRecognition: "function", onSpeechRecognitionResult: "function",
+    
+    // ComfyUI Functions
+    ensureComfyUIHandlersReady: "function", invoke: "function", on: "function"
 };
+
+const comfyuiAPIForLogging = {
+    // Configuration
+    getConfig: "function", saveConfig: "function",
+    
+    // Workflow Management
+    getWorkflows: "function", readWorkflow: "function", saveWorkflow: "function", deleteWorkflow: "function",
+    
+    // Template Conversion
+    importAndConvertWorkflow: "function", convertWorkflowToTemplate: "function", validateWorkflowTemplate: "function",
+    
+    // Path & Events
+    getPluginPath: "function", on: "function", removeAllListeners: "function"
+};
+
 console.log('[Preload] electronAPI object that *should* be exposed (structure check):', electronAPIForLogging);
+console.log('[Preload] comfyuiAPI object that *should* be exposed (structure check):', comfyuiAPIForLogging);
 console.log('preload.js loaded and contextBridge exposure attempted.');
