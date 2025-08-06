@@ -59,6 +59,7 @@ let translatorWindow = null; // To hold the single instance of the translator wi
 let networkNotesTreeCache = null; // In-memory cache for the network notes
 let cachedModels = []; // Cache for models fetched from VCP server
 const NOTES_MODULE_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'Notemodules');
+let comfyUIHandlers = null; // Deferred initialization for ComfyUI
 
 // --- Audio Engine Management ---
 function startAudioEngine() {
@@ -442,9 +443,9 @@ if (!gotTheLock) {
     emoticonHandlers.initialize({ SETTINGS_FILE, APP_DATA_ROOT_IN_PROJECT });
     emoticonHandlers.setupEmoticonHandlers();
 
-    // Initialize ComfyUI handlers
-    const comfyUIHandlers = require('./ComfyUImodules/comfyUIHandlers');
-    comfyUIHandlers.initialize(mainWindow);
+    // ComfyUI handlers are now initialized on-demand.
+    // const comfyUIHandlers = require('./ComfyUImodules/comfyUIHandlers');
+    // comfyUIHandlers.initialize(mainWindow);
  
      // --- Distributed Server Initialization ---
      (async () => {
@@ -497,6 +498,24 @@ if (!gotTheLock) {
 
     // --- Theme IPC Handlers are now in modules/ipc/themeHandlers.js ---
 });
+
+    // --- ComfyUI On-Demand Handler ---
+    ipcMain.handle('ensure-comfyui-handlers-ready', async () => {
+        if (!comfyUIHandlers) {
+            console.log('[Main] Initializing ComfyUI handlers on-demand...');
+            try {
+                comfyUIHandlers = require('./ComfyUImodules/comfyUIHandlers');
+                comfyUIHandlers.initialize(mainWindow);
+                console.log('[Main] ComfyUI handlers initialized successfully.');
+                return { success: true };
+            } catch (error) {
+                console.error('[Main] Failed to initialize ComfyUI handlers:', error);
+                comfyUIHandlers = null; // Reset on failure
+                return { success: false, error: error.message };
+            }
+        }
+        return { success: true }; // Already initialized
+    });
 
     // --- Python Execution IPC Handler ---
     ipcMain.handle('execute-python-code', (event, code) => {

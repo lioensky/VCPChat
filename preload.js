@@ -280,6 +280,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onSpeechRecognitionResult: (callback) => ipcRenderer.on('speech-recognition-result', (_event, text) => callback(text)),
 
     // --- ComfyUI Configuration ---
+    ensureComfyUIHandlersReady: () => ipcRenderer.invoke('ensure-comfyui-handlers-ready'),
     saveComfyUIConfig: (config) => ipcRenderer.invoke('save-comfyui-config', config),
     loadComfyUIConfig: () => ipcRenderer.invoke('load-comfyui-config'),
     loadComfyUIWorkflows: () => ipcRenderer.invoke('load-comfyui-workflows'),
@@ -294,7 +295,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onComfyUIConfigChanged: (callback) => ipcRenderer.on('comfyui-config-changed', (_event) => callback()),
 
     // --- ComfyUI Workflow Template Conversion ---
-    convertWorkflowToTemplate: (workflowData, templateName) => ipcRenderer.invoke('convert-workflow-to-template', workflowData, templateName),
     importAndConvertWorkflow: (workflowData, workflowName) => ipcRenderer.invoke('import-and-convert-workflow', workflowData, workflowName),
     validateWorkflowTemplate: (workflowData) => ipcRenderer.invoke('validate-workflow-template', workflowData),
 });
@@ -308,13 +308,13 @@ const electronAPIForLogging = {
     saveChatHistory: "function", handleFilePaste: "function", selectFilesToSend: "function",
     getFileAsBase64: "function", getTextContent: "function", handleTextPasteAsFile: "function",
     handleFileDrop: "function",
-    readTxtNotes: "function", 
-    writeTxtNote: "function", 
-    deleteTxtNote: "function", 
+    readTxtNotes: "function",
+    writeTxtNote: "function",
+    deleteTxtNote: "function",
     openNotesWindow: "function",
-    openNotesWithContent: "function", 
-    saveAgentOrder: "function", 
-    saveTopicOrder: "function", 
+    openNotesWithContent: "function",
+    saveAgentOrder: "function",
+    saveTopicOrder: "function",
     sendToVCP: "function", onVCPStreamChunk: "function",
     connectVCPLog: "function", disconnectVCPLog: "function", onVCPLogMessage: "function",
     onVCPLogStatus: "function", readImageFromClipboard: "function", readTextFromClipboard: "function",
@@ -324,7 +324,14 @@ const electronAPIForLogging = {
     onWindowMaximized: "function", onWindowUnmaximized: "function",
     showImageContextMenu: "function",
     openImageInNewWindow: "function", saveAvatarColor: "function",
-    saveUserAvatar: "function" // Added
+    saveUserAvatar: "function",
+    // ComfyUI functions
+    ensureComfyUIHandlersReady: "function",
+    saveComfyUIConfig: "function",
+    loadComfyUIConfig: "function",
+    loadComfyUIWorkflows: "function",
+    importAndConvertWorkflow: "function",
+    validateWorkflowTemplate: "function"
 };
 console.log('[Preload] electronAPI object that *should* be exposed (structure check):', electronAPIForLogging);
 console.log('preload.js loaded and contextBridge exposure attempted.');
