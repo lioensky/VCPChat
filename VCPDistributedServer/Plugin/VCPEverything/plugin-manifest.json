@@ -10,7 +10,8 @@
     "command": "node local-search-controller.js"
   },
   "communication": {
-    "protocol": "stdio"
+    "protocol": "stdio",
+    "timeout": 30000
   },
   "configSchema": {
     "EVERYTHING_ES_PATH": {

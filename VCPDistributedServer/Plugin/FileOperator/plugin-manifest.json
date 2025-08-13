@@ -19,6 +19,11 @@
       "description": "逗号分隔的允许进行文件操作的目录绝对路径列表。留空表示允许所有。",
       "default": ""
     },
+    "DEFAULT_DOWNLOAD_DIR": {
+      "type": "string",
+      "description": "DownloadFile命令的默认下载目录绝对路径。如果不设置，默认为AppData/file目录。",
+      "default": ""
+    },
     "MAX_FILE_SIZE": {
       "type": "integer",
       "description": "允许操作的最大文件大小（字节）。",
@@ -100,7 +105,7 @@
       },
       {
         "command": "DownloadFile",
-        "description": "功能: (异步) 从一个URL地址下载文件到固定的用户数据目录（AppData/file）中。插件会自动从URL中解析文件名。这是一个异步操作，命令会立即返回，告知AI下载已在后台开始以及文件的最终保存路径，AI无需等待下载完成。如果目标路径已存在同名文件，会自动重命名以防止覆盖。\n参数:\n- url (字符串, 必需): 要下载的文件的完整URL地址。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」FileOperator「末」,\ncommand:「始」DownloadFile「末」,\nurl:「始」http://example.com/archive.zip「末」\n<<<[END_TOOL_REQUEST]>>>"
+        "description": "功能: (异步) 从一个URL地址下载文件到指定目录或默认下载目录中。插件会自动从URL中解析文件名。这是一个异步操作，命令会立即返回，告知AI下载已在后台开始以及文件的最终保存路径，AI无需等待下载完成。如果目标路径已存在同名文件，会自动重命名以防止覆盖。\n参数:\n- url (字符串, 必需): 要下载的文件的完整URL地址。\n- downloadDir (字符串, 可选): 指定下载目录的绝对路径。如果不提供，将使用.env配置中的DEFAULT_DOWNLOAD_DIR，若未配置则默认为AppData/file目录。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」FileOperator「末」,\ncommand:「始」DownloadFile「末」,\nurl:「始」http://example.com/archive.zip「末」,\ndownloadDir:「始」/path/to/custom/download/folder「末」\n<<<[END_TOOL_REQUEST]>>>\n或使用默认目录:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」FileOperator「末」,\ncommand:「始」DownloadFile「末」,\nurl:「始」http://example.com/archive.zip「末」\n<<<[END_TOOL_REQUEST]>>>"
       },
       {
         "command": "ApplyDiff",
