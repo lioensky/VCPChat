@@ -12,10 +12,10 @@ flask-cors = "*"
 flask-socketio = "*"
 soundfile = "*"
 sounddevice = "*"
+scipy = "*"
 numpy = "*"
 pydub = "*"
 gevent-websocket = "*"
-scipy = "*"
 gevent = "*"
 
 [build-system]
