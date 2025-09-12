@@ -35,7 +35,7 @@ function createWindow() {
     mainWindow.loadFile(path.join(__dirname, 'index.html'));
 
     // 打开开发者工具（可选）
-    // mainWindow.webContents.openDevTools();
+   // mainWindow.webContents.openDevTools();
 }
 
 // Electron会在初始化完成并且准备好创建浏览器窗口时调用这个方法

@@ -146,15 +146,42 @@
                 inputs: ['input'],
                 outputs: ['output', 'matches'],
                 configSchema: {
-                    pattern: { type: 'string', required: true, default: '' },
-                    flags: { type: 'string', default: 'g' },
+                    pattern: { 
+                        type: 'string', 
+                        required: true, 
+                        default: '',
+                        label: '正则表达式 (Pattern)',
+                        description: '用于匹配或替换的正则表达式模式，如: \\d+ 匹配数字，[a-zA-Z]+ 匹配字母',
+                        placeholder: '例如: https?://[^\\s]+ 匹配URL'
+                    },
+                    flags: { 
+                        type: 'string', 
+                        default: 'g',
+                        label: '正则标志 (Flags)',
+                        description: '正则表达式标志：g=全局匹配，i=忽略大小写，m=多行模式，s=单行模式',
+                        placeholder: '例如: gi 表示全局忽略大小写'
+                    },
                     operation: { 
                         type: 'enum', 
                         options: ['match', 'replace', 'test', 'split'],
-                        default: 'match'
+                        default: 'match',
+                        label: '操作类型 (Operation)',
+                        description: '选择正则操作：match=匹配提取，replace=替换文本，test=测试匹配，split=分割字符串'
                     },
-                    replacement: { type: 'string', default: '' },
-                    outputParamName: { type: 'string', default: 'regexResult', placeholder: '例如: extractedUrl' }
+                    replacement: { 
+                        type: 'string', 
+                        default: '',
+                        label: '替换文本 (Replacement)',
+                        description: '替换操作时的目标文本，支持 $1, $2 等捕获组引用',
+                        placeholder: '例如: $1 引用第一个捕获组'
+                    },
+                    outputParamName: { 
+                        type: 'string', 
+                        default: 'regexResult',
+                        label: '输出参数名 (Output Param Name)',
+                        description: '输出结果的参数名称，用于下游节点引用处理结果',
+                        placeholder: '例如: extractedUrl 或 matchedText'
+                    }
                 }
             });
 
@@ -167,10 +194,24 @@
                     transformType: {
                         type: 'enum',
                         options: ['json-parse', 'json-stringify', 'to-string', 'to-number', 'to-array', 'custom'],
-                        default: 'json-parse'
+                        default: 'json-parse',
+                        label: '转换类型 (Transform Type)',
+                        description: '数据转换方式：json-parse=解析JSON，json-stringify=转为JSON字符串，to-string=转为字符串，to-number=转为数字，to-array=转为数组，custom=自定义脚本'
                     },
-                    customScript: { type: 'string', default: '' },
-                    outputParamName: { type: 'string', default: 'transformedData', placeholder: '例如: processedArray' }
+                    customScript: { 
+                        type: 'string', 
+                        default: '',
+                        label: '自定义脚本 (Custom Script)',
+                        description: '自定义JavaScript代码进行数据转换，输入数据通过 input 变量访问，返回转换结果',
+                        placeholder: '例如: return input.map(item => item.toUpperCase())'
+                    },
+                    outputParamName: { 
+                        type: 'string', 
+                        default: 'transformedData',
+                        label: '输出参数名 (Output Param Name)',
+                        description: '输出结果的参数名称，用于下游节点引用转换后的数据',
+                        placeholder: '例如: processedArray 或 convertedData'
+                    }
                 }
             });
 
@@ -183,13 +224,23 @@
                     language: {
                         type: 'enum',
                         options: ['javascript', 'python', 'html', 'css', 'json'],
-                        default: 'javascript'
+                        default: 'javascript',
+                        label: '编程语言 (Language)',
+                        description: '选择代码的编程语言类型，影响语法高亮和处理方式'
                     },
-                    code: { type: 'string', default: '' },
+                    code: { 
+                        type: 'string', 
+                        default: '',
+                        label: '代码内容 (Code)',
+                        description: '要处理的代码内容，支持多行输入和语法高亮显示',
+                        placeholder: '输入您的代码...'
+                    },
                     operation: {
                         type: 'enum',
                         options: ['format', 'minify', 'validate', 'execute'],
-                        default: 'format'
+                        default: 'format',
+                        label: '操作类型 (Operation)',
+                        description: '代码处理操作：format=格式化美化，minify=压缩代码，validate=语法验证，execute=执行代码'
                     }
                 }
             });
@@ -200,13 +251,28 @@
                 inputs: ['input'],
                 outputs: ['true', 'false'],
                 configSchema: {
-                    condition: { type: 'string', required: true, default: '' },
+                    condition: { 
+                        type: 'string', 
+                        required: true, 
+                        default: '',
+                        label: '条件表达式 (Condition)',
+                        description: '要判断的条件表达式或字段路径，如: input.status 或 input.length',
+                        placeholder: '例如: input.status 或 input.data.length'
+                    },
                     operator: {
                         type: 'enum',
                         options: ['==', '!=', '>', '<', '>=', '<=', 'contains', 'startsWith', 'endsWith'],
-                        default: '=='
+                        default: '==',
+                        label: '比较运算符 (Operator)',
+                        description: '条件比较运算符：==等于，!=不等于，>大于，<小于，>=大于等于，<=小于等于，contains包含，startsWith开头匹配，endsWith结尾匹配'
                     },
-                    value: { type: 'string', default: '' }
+                    value: { 
+                        type: 'string', 
+                        default: '',
+                        label: '比较值 (Value)',
+                        description: '用于比较的目标值，支持字符串、数字等类型',
+                        placeholder: '例如: success 或 100 或 error'
+                    }
                 }
             });
 
@@ -219,9 +285,18 @@
                     loopType: {
                         type: 'enum',
                         options: ['forEach', 'times', 'while'],
-                        default: 'forEach'
+                        default: 'forEach',
+                        label: '循环类型 (Loop Type)',
+                        description: '循环执行方式：forEach=遍历数组每个元素，times=指定次数循环，while=条件循环'
                     },
-                    maxIterations: { type: 'number', default: 100 }
+                    maxIterations: { 
+                        type: 'number', 
+                        default: 100,
+                        label: '最大迭代次数 (Max Iterations)',
+                        description: '循环的最大执行次数，防止无限循环导致系统卡死',
+                        min: 1,
+                        max: 10000
+                    }
                 }
             });
 
@@ -231,11 +306,20 @@
                 inputs: ['input'],
                 outputs: ['output'],
                 configSchema: {
-                    delay: { type: 'number', default: 1000, min: 0 },
+                    delay: { 
+                        type: 'number', 
+                        default: 1000, 
+                        min: 0,
+                        label: '延时时长 (Delay Duration)',
+                        description: '等待的时间长度，配合时间单位使用，用于控制执行节奏',
+                        placeholder: '例如: 1000 (毫秒) 或 5 (秒)'
+                    },
                     unit: {
                         type: 'enum',
                         options: ['milliseconds', 'seconds', 'minutes'],
-                        default: 'milliseconds'
+                        default: 'milliseconds',
+                        label: '时间单位 (Time Unit)',
+                        description: '延时的时间单位：milliseconds=毫秒，seconds=秒，minutes=分钟'
                     }
                 }
             });
@@ -250,19 +334,80 @@
                         type: 'string', 
                         default: 'url', 
                         required: false,
-                        description: 'JSON中URL字段的路径，如: url 或 data.imageUrl 或 result.images[0]'
+                        label: 'URL路径 (URL Path)',
+                        description: 'JSON中URL字段的路径，如: url 或 data.imageUrl 或 result.images[0]，支持数组路径如: images',
+                        placeholder: '例如: {{input.extractedUrls}} 或 url 或 data.imageUrl'
                     },
                     renderType: {
                         type: 'enum',
                         options: ['auto', 'image', 'video', 'iframe', 'text'],
-                        default: 'auto'
+                        default: 'auto',
+                        label: '渲染类型 (Render Type)',
+                        description: '选择URL内容的渲染方式：auto=自动检测，image=图片，video=视频，iframe=网页嵌入，text=纯文本链接'
                     },
-                    width: { type: 'number', default: 300, min: 50, max: 800 },
-                    height: { type: 'number', default: 200, min: 50, max: 600 },
-                    autoRefresh: { type: 'boolean', default: true },
-                    showControls: { type: 'boolean', default: true },
-                    allowFullscreen: { type: 'boolean', default: true },
-                    outputParamName: { type: 'string', default: 'renderedUrl', placeholder: '例如: displayedImage' }
+                    batchMode: {
+                        type: 'boolean',
+                        default: true,
+                        label: '批量模式 (Batch Mode)',
+                        description: '启用批量渲染模式，自动检测单个URL或URL数组，支持多图片网格显示'
+                    },
+                    maxItems: {
+                        type: 'number',
+                        default: 10,
+                        min: 1,
+                        max: 50,
+                        label: '最大项目数 (Max Items)',
+                        description: '批量渲染时的最大项目数量，超出部分将被截断以避免性能问题'
+                    },
+                    gridColumns: {
+                        type: 'number',
+                        default: 3,
+                        min: 1,
+                        max: 6,
+                        label: '网格列数 (Grid Columns)',
+                        description: '多图片显示时的网格布局列数，1-6列可选，影响图片排列方式'
+                    },
+                    width: { 
+                        type: 'number', 
+                        default: 300, 
+                        min: 50, 
+                        max: 800,
+                        label: '显示宽度 (Width)',
+                        description: '渲染区域的宽度（像素），影响图片和视频的显示尺寸'
+                    },
+                    height: { 
+                        type: 'number', 
+                        default: 200, 
+                        min: 50, 
+                        max: 600,
+                        label: '显示高度 (Height)',
+                        description: '渲染区域的高度（像素），影响图片和视频的显示尺寸'
+                    },
+                    autoRefresh: { 
+                        type: 'boolean', 
+                        default: true,
+                        label: '自动刷新 (Auto Refresh)',
+                        description: '当输入数据变化时自动刷新显示内容，建议保持开启'
+                    },
+                    showControls: { 
+                        type: 'boolean', 
+                        default: true,
+                        label: '显示控件 (Show Controls)',
+                        description: '显示图片缩放、网格调整等交互控件，提供更好的用户体验'
+                    },
+                    allowFullscreen: { 
+                        type: 'boolean', 
+                        default: true,
+                        label: '允许全屏 (Allow Fullscreen)',
+                        description: '允许点击图片进入全屏查看模式，方便查看大图'
+                    },
+                    outputParamName: { 
+                        type: 'string', 
+                        default: 'renderedUrl', 
+                        label: '输出参数名 (Output Param Name)',
+                        description: '输出结果的参数名称，用于下游节点引用渲染结果',
+                        placeholder: '例如: displayedImage 或 renderedContent'
+                    }
                 }
             });
 
@@ -278,7 +423,9 @@
                         type: 'string',
                         default: '',
                         required: false,
-                        description: '输入任意文本内容，支持字符串、URL、JSON等',
+                        label: '输入内容 (Content)',
+                        description: '输入任意文本内容，支持字符串、URL、JSON等格式，作为工作流的起始数据源',
+                        placeholder: '输入文本、URL、JSON数据等...',
                         ui: {
                             component: 'textarea', // 使用多行文本框
                             rows: 5
@@ -287,12 +434,105 @@
                     outputParamName: { // 移动到 configSchema 内部
                         type: 'string', 
                         default: 'output', 
-                        required: false, 
-                        description: '自定义输出参数名', 
-                        placeholder: '例如: myContent' 
+                        required: false,
+                        label: '输出参数名 (Output Param Name)',
+                        description: '自定义输出参数名称，用于下游节点引用此内容',
+                        placeholder: '例如: myContent 或 inputData'
                     }
                 },
                 properties: { content: '' } // 兼容旧版，保留properties
+            });
+
+            // URL提取器节点
+            this.registerNodeType('urlExtractor', {
+                label: 'URL提取器',
+                category: 'auxiliary',
+                inputs: ['input'],
+                outputs: ['urls', 'result'],
+                configSchema: {
+                    urlTypes: {
+                        type: 'multiselect',
+                        options: ['image', 'video', 'audio', 'all'],
+                        default: ['image'],
+                        label: 'URL类型 (URL Types)',
+                        description: '要提取的URL类型：image=图片链接，video=视频链接，audio=音频链接，all=所有类型'
+                    },
+                    deduplication: {
+                        type: 'boolean',
+                        default: true,
+                        label: '去重处理 (Deduplication)',
+                        description: '是否对提取的URL进行去重处理，避免重复链接'
+                    },
+                    outputFormat: {
+                        type: 'enum',
+                        options: ['array', 'single', 'object'],
+                        default: 'array',
+                        label: '输出格式 (Output Format)',
+                        description: '输出格式：array=URL数组，single=单个URL（取第一个），object=详细信息对象'
+                    },
+                    outputParamName: {
+                        type: 'string',
+                        default: 'extractedUrls',
+                        label: '输出参数名 (Output Param Name)',
+                        description: '输出结果的参数名称，用于下游节点引用提取的URL',
+                        placeholder: '例如: imageUrls 或 videoLinks'
+                    }
+                }
+            });
+
+            // 图片上传节点
+            this.registerNodeType('imageUpload', {
+                label: '图片上传器',
+                category: 'auxiliary',
+                inputs: [], // 作为起始节点，没有输入
+                outputs: ['imageData'],
+                configSchema: {
+                    outputParamName: {
+                        type: 'string',
+                        default: 'imageBase64',
+                        label: '输出参数名 (Output Param Name)',
+                        description: '输出结果的参数名称，用于下游节点引用上传的图片数据',
+                        placeholder: '例如: uploadedImage 或 imageData'
+                    },
+                    maxFileSize: {
+                        type: 'number',
+                        default: 10,
+                        min: 1,
+                        max: 50,
+                        label: '最大文件大小 (Max File Size)',
+                        description: '允许上传的最大文件大小限制（MB），超出将被拒绝'
+                    },
+                    acceptedFormats: {
+                        type: 'multiselect',
+                        options: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'],
+                        default: ['jpg', 'jpeg', 'png', 'gif', 'webp'],
+                        label: '支持格式 (Accepted Formats)',
+                        description: '允许上传的图片格式类型，可多选'
+                    },
+                    compressionQuality: {
+                        type: 'number',
+                        default: 0.8,
+                        min: 0.1,
+                        max: 1.0,
+                        step: 0.1,
+                        label: '压缩质量 (Compression Quality)',
+                        description: '图片压缩质量（0.1-1.0），1.0为无损，数值越小文件越小但质量越低'
+                    },
+                    maxWidth: {
+                        type: 'number',
+                        default: 1920,
+                        min: 100,
+                        max: 4096,
+                        description: '最大宽度（像素）'
+                    },
+                    maxHeight: {
+                        type: 'number',
+                        default: 1080,
+                        min: 100,
+                        max: 4096,
+                        description: '最大高度（像素）'
+                    }
+                }
             });
         }
 
@@ -325,6 +565,8 @@
             this.registerNodeExecutor('loop', this.executeLoopNode.bind(this));
             this.registerNodeExecutor('delay', this.executeDelayNode.bind(this));
             this.registerNodeExecutor('urlRenderer', this.executeUrlRendererNode.bind(this));
+            this.registerNodeExecutor('urlExtractor', this.executeUrlExtractorNode.bind(this));
+            this.registerNodeExecutor('imageUpload', this.executeImageUploadNode.bind(this));
         }
 
         // 注册节点执行器
@@ -1221,6 +1463,186 @@
         getDynamicInputsForAuxiliary(nodeTypeDef) {
             // 辅助节点不需要动态输入端点功能，直接返回空数组
             return [];
+        }
+
+        // 执行图片上传节点
+        async executeImageUploadNode(node, inputData = {}) {
+            console.log('[NodeManager] 执行图片上传节点:', node.id);
+            
+            const config = node.config || {};
+            const {
+                outputParamName = 'imageBase64',
+                maxFileSize = 10,
+                acceptedFormats = ['jpg', 'jpeg', 'png', 'gif', 'webp'],
+                compressionQuality = 0.8,
+                maxWidth = 1920,
+                maxHeight = 1080
+            } = config;
+
+            // 检查节点是否已经有上传的图片数据
+            if (node.uploadedImageData) {
+                console.log('[NodeManager] 使用已上传的图片数据');
+                
+                const result = {
+                    [outputParamName]: node.uploadedImageData,
+                    fileName: node.uploadedFileName || 'uploaded_image',
+                    fileSize: node.uploadedFileSize || 0,
+                    timestamp: new Date().toISOString(),
+                    success: true
+                };
+
+                console.log('[NodeManager] 图片上传节点执行完成:', result);
+                return result;
+            } else {
+                // 如果没有上传的图片，返回等待上传的状态
+                console.log('[NodeManager] 等待用户上传图片');
+                
+                const result = {
+                    [outputParamName]: null,
+                    message: '请上传图片文件',
+                    success: false,
+                    waiting: true,
+                    timestamp: new Date().toISOString()
+                };
+
+                return result;
+            }
+        }
+
+        // 处理图片上传（由UI调用）
+        async handleImageUpload(nodeId, file) {
+            console.log('[NodeManager] 处理图片上传:', { nodeId, fileName: file.name, fileSize: file.size });
+            
+            const node = this.stateManager.getNode(nodeId);
+            if (!node) {
+                throw new Error(`节点 ${nodeId} 不存在`);
+            }
+
+            const config = node.config || {};
+            const {
+                maxFileSize = 10,
+                acceptedFormats = ['jpg', 'jpeg', 'png', 'gif', 'webp'],
+                compressionQuality = 0.8,
+                maxWidth = 1920,
+                maxHeight = 1080
+            } = config;
+
+            // 验证文件类型
+            const fileExtension = file.name.split('.').pop().toLowerCase();
+            if (!acceptedFormats.includes(fileExtension)) {
+                throw new Error(`不支持的文件格式: ${fileExtension}。支持的格式: ${acceptedFormats.join(', ')}`);
+            }
+
+            // 验证文件大小
+            const fileSizeMB = file.size / (1024 * 1024);
+            if (fileSizeMB > maxFileSize) {
+                throw new Error(`文件大小超过限制: ${fileSizeMB.toFixed(2)}MB > ${maxFileSize}MB`);
+            }
+
+            try {
+                // 读取文件并转换为base64
+                const imageData = await this.processImageFile(file, {
+                    compressionQuality,
+                    maxWidth,
+                    maxHeight
+                });
+
+                // 保存到节点数据中
+                this.stateManager.updateNode(nodeId, {
+                    uploadedImageData: imageData,
+                    uploadedFileName: file.name,
+                    uploadedFileSize: file.size,
+                    uploadedTimestamp: new Date().toISOString()
+                });
+
+                console.log('[NodeManager] 图片上传处理完成');
+                return {
+                    success: true,
+                    fileName: file.name,
+                    fileSize: file.size,
+                    dataUrl: imageData
+                };
+
+            } catch (error) {
+                console.error('[NodeManager] 图片处理失败:', error);
+                throw new Error(`图片处理失败: ${error.message}`);
+            }
+        }
+
+        // 处理图片文件（压缩和转换）
+        async processImageFile(file, options = {}) {
+            const {
+                compressionQuality = 0.8,
+                maxWidth = 1920,
+                maxHeight = 1080
+            } = options;
+
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                
+                reader.onload = (e) => {
+                    const img = new Image();
+                    
+                    img.onload = () => {
+                        try {
+                            // 创建canvas进行图片处理
+                            const canvas = document.createElement('canvas');
+                            const ctx = canvas.getContext('2d');
+
+                            // 计算新的尺寸（保持宽高比）
+                            let { width, height } = this.calculateNewDimensions(
+                                img.width, 
+                                img.height, 
+                                maxWidth, 
+                                maxHeight
+                            );
+
+                            canvas.width = width;
+                            canvas.height = height;
+
+                            // 绘制图片
+                            ctx.drawImage(img, 0, 0, width, height);
+
+                            // 转换为base64
+                            const dataUrl = canvas.toDataURL('image/jpeg', compressionQuality);
+                            resolve(dataUrl);
+
+                        } catch (error) {
+                            reject(error);
+                        }
+                    };
+
+                    img.onerror = () => {
+                        reject(new Error('图片加载失败'));
+                    };
+
+                    img.src = e.target.result;
+                };
+
+                reader.onerror = () => {
+                    reject(new Error('文件读取失败'));
+                };
+
+                reader.readAsDataURL(file);
+            });
+        }
+
+        // 计算新的图片尺寸（保持宽高比）
+        calculateNewDimensions(originalWidth, originalHeight, maxWidth, maxHeight) {
+            let width = originalWidth;
+            let height = originalHeight;
+
+            // 如果图片尺寸超过限制，按比例缩放
+            if (width > maxWidth || height > maxHeight) {
+                const widthRatio = maxWidth / width;
+                const heightRatio = maxHeight / height;
+                const ratio = Math.min(widthRatio, heightRatio);
+
+                width = Math.round(width * ratio);
+                height = Math.round(height * ratio);
+            }
+
+            return { width, height };
         }
     }
 

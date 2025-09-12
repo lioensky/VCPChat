@@ -10,13 +10,18 @@
    
             this.requiredScripts = [
                 'WorkflowEditormodules/WorkflowEditor_StateManager.js',
+                'WorkflowEditormodules/WorkflowEditor_ConnectionManager.js',
                 'WorkflowEditormodules/WorkflowEditor_PluginManager.js',
                 'WorkflowEditormodules/WorkflowEditor_PluginDialog.js',
                 'WorkflowEditormodules/WorkflowEditor_UIManager.js',
                 'WorkflowEditormodules/WorkflowEditor_CanvasManager_JSPlumb.js',
                 'WorkflowEditormodules/WorkflowEditor_NodeManager.js',
                 'WorkflowEditormodules/WorkflowEditor_ExecutionEngine.js',
-                'WorkflowEditormodules/WorkflowEditor_Config.js'
+                'WorkflowEditormodules/WorkflowEditor_Config.js',
+                // URL相关功能模块
+                'WorkflowEditormodules/WorkflowEditor_NodeManager_URLRenderer_Patch.js',
+                'WorkflowEditormodules/WorkflowEditor_NodeManager_URLExtractor.js',
+                'WorkflowEditormodules/WorkflowEditor_NodeManager_URLExtractor_Integration.js'
             ];
             this.requiredStyles = [
                 'WorkflowEditormodules/workflow-editor.css'
@@ -119,25 +124,82 @@
 
         // 等待模块准备就绪
         async _waitForModulesReady() {
-            const maxAttempts = 50;
+            const maxAttempts = 100; // 增加尝试次数从50到100
             const checkInterval = 100;
 
             for (let i = 0; i < maxAttempts; i++) {
-                if (window.WorkflowEditor_StateManager && 
-              
-                    window.WorkflowEditor_PluginManager &&
-                    window.WorkflowEditor_PluginDialog &&
-                    window.WorkflowEditor_UIManager && 
-                    window.WorkflowEditor_CanvasManager &&
-                    window.WorkflowEditor_NodeManager &&
-                    window.WorkflowEditor_ExecutionEngine &&
-                    window.workflowEditor) {
-                    return true;
+                const iteration = i + 1;
+                console.log(`[WorkflowEditorLoader] Waiting for modules (${iteration}/${maxAttempts}): checking dependencies...`);
+
+                const moduleStatus = {
+                    stateManager: !!window.WorkflowEditor_StateManager,
+                    connectionManager: !!window.WorkflowEditor_ConnectionManager,
+                    pluginManager: !!window.WorkflowEditor_PluginManager,
+                    pluginDialog: !!window.WorkflowEditor_PluginDialog,
+                    uiManager: !!window.WorkflowEditor_UIManager,
+                    canvasManager: !!window.WorkflowEditor_CanvasManager,
+                    nodeManager: !!window.WorkflowEditor_NodeManager,
+                    executionEngine: !!window.WorkflowEditor_ExecutionEngine,
+                    workflowEditor: !!window.workflowEditor
+                };
+
+                console.log(`[WorkflowEditorLoader] Module status (${iteration}/${maxAttempts}):`, moduleStatus);
+
+                if (window.WorkflowEditor_StateManager &&
+                      window.WorkflowEditor_ConnectionManager &&
+                      window.WorkflowEditor_PluginManager &&
+                      window.WorkflowEditor_PluginDialog &&
+                      window.WorkflowEditor_UIManager &&
+                      window.WorkflowEditor_CanvasManager &&
+                      window.WorkflowEditor_NodeManager &&
+                      window.WorkflowEditor_ExecutionEngine &&
+                      window.workflowEditor) {
+
+                    console.log('[WorkflowEditorLoader] All modules loaded, initializing workflow editor...');
+
+                    // 初始化workflowEditor - 添加超时控制
+                    try {
+                        const initPromise = window.workflowEditor.init();
+                        const initTimeout = new Promise((_, reject) => {
+                            setTimeout(() => reject(new Error('Workflow editor initialization timeout')), 10000); // 10秒超时
+                        });
+
+                        const initSuccess = await Promise.race([initPromise, initTimeout]);
+                        if (initSuccess) {
+                            console.log('[WorkflowEditorLoader] Workflow editor initialization successful');
+                            return true;
+                        } else {
+                            throw new Error('Workflow editor initialization returned false');
+                        }
+                    } catch (initError) {
+                        console.error('[WorkflowEditorLoader] Workflow editor initialization failed:', initError);
+
+                        // 如果是超时错误，提供更友好的消息
+                        if (initError.message.includes('timeout')) {
+                            console.warn('[WorkflowEditorLoader] Initialization timeout - this may be due to network issues when loading plugins');
+                        }
+
+                        throw initError;
+                    }
                 }
+
                 await new Promise(resolve => setTimeout(resolve, checkInterval));
             }
 
-            throw new Error('WorkflowEditor modules did not initialize in time');
+            // 如果最后一次循环也没有成功，记录失败状态
+            console.error('[WorkflowEditorLoader] Final module status:', {
+                stateManager: !!window.WorkflowEditor_StateManager,
+                connectionManager: !!window.WorkflowEditor_ConnectionManager,
+                pluginManager: !!window.WorkflowEditor_PluginManager,
+                pluginDialog: !!window.WorkflowEditor_PluginDialog,
+                uiManager: !!window.WorkflowEditor_UIManager,
+                canvasManager: !!window.WorkflowEditor_CanvasManager,
+                nodeManager: !!window.WorkflowEditor_NodeManager,
+                executionEngine: !!window.WorkflowEditor_ExecutionEngine,
+                workflowEditor: !!window.workflowEditor
+            });
+
+            throw new Error('WorkflowEditor modules did not initialize in time (50 attempts failed)');
         }
 
         // 卸载模块（可选功能）

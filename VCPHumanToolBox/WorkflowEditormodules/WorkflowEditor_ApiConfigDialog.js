@@ -30,16 +30,9 @@
                         <div class="dialog-body">
                             <form id="api-config-form">
                                 <div class="form-group">
-                                    <label for="api-protocol">协议:</label>
-                                    <select id="api-protocol" name="protocol">
-                                        <option value="http://">http://</option>
-                                        <option value="https://">https://</option>
-                                    </select>
-                                </div>
-                                <div class="form-group">
-                                    <label for="api-host">服务器地址 (IP或域名):</label>
+                                    <label for="api-host">服务器地址:</label>
                                     <input type="text" id="api-host" name="host" placeholder="例如: 49.235.138.100" required>
-                                    <small class="form-help">请勿在此处填写 http:// 或端口号</small>
+                                    <small class="form-help">输入插件服务器的IP地址或域名</small>
                                 </div>
                                 
                                 <div class="form-group">
@@ -49,15 +42,15 @@
                                 </div>
                                 
                                 <div class="form-group">
-                                    <label for="api-username">管理员用户名:</label>
+                                    <label for="api-username">用户名:</label>
                                     <input type="text" id="api-username" name="username" placeholder="可选">
-                                    <small class="form-help">VCP Distributed Server 管理员面板的登录用户名</small>
+                                    <small class="form-help">如果服务器需要认证，请输入用户名</small>
                                 </div>
                                 
                                 <div class="form-group">
-                                    <label for="api-password">管理员密码:</label>
+                                    <label for="api-password">密码:</label>
                                     <input type="password" id="api-password" name="password" placeholder="可选">
-                                    <small class="form-help">VCP Distributed Server 管理员面板的登录密码</small>
+                                    <small class="form-help">如果服务器需要认证，请输入密码</small>
                                 </div>
                                 
                                 <div class="form-group">
@@ -163,7 +156,6 @@
 
             const config = this.pluginManager.getApiConfig();
             
-            document.getElementById('api-protocol').value = config.protocol || 'http://';
             document.getElementById('api-host').value = config.host || '';
             document.getElementById('api-port').value = config.port || '';
             document.getElementById('api-username').value = config.username || '';
@@ -183,7 +175,6 @@
             const formData = new FormData(form);
             
             const config = {
-                protocol: formData.get('protocol'),
                 host: formData.get('host').trim(),
                 port: formData.get('port').trim(),
                 username: formData.get('username').trim(),
@@ -228,7 +219,6 @@
             const formData = new FormData(form);
             
             const config = {
-                protocol: formData.get('protocol'),
                 host: formData.get('host').trim(),
                 port: formData.get('port').trim(),
                 username: formData.get('username').trim(),
@@ -249,7 +239,7 @@
             testBtn.textContent = '测试中...';
 
             try {
-                const apiUrl = `${config.protocol}${config.host}:${config.port}/admin_api/plugins`;
+                const apiUrl = `http://${config.host}:${config.port}/admin_api/plugins`;
                 
                 const controller = new AbortController();
                 const timeoutId = setTimeout(() => controller.abort(), 10000);
@@ -259,7 +249,7 @@
                     headers: {
                         'Content-Type': 'application/json',
                         ...(config.username && config.password ? {
-                            'Authorization': 'Basic ' + this.safeBtoa(`${config.username}:${config.password}`)
+                            'Authorization': 'Basic ' + btoa(`${config.username}:${config.password}`)
                         } : {})
                     },
                     signal: controller.signal
@@ -401,18 +391,6 @@
         isConfigured() {
             const config = this.getCurrentConfig();
             return config && config.host && config.port;
-        }
-
-        // 安全的 btoa 函数，支持UTF-8字符
-        safeBtoa(str) {
-            try {
-                // 优先尝试原生btoa，这是最高效的方式
-                return btoa(str);
-            } catch (e) {
-                // 如果原生btoa失败（通常是因为包含非Latin1字符），则使用更可靠的回退方案
-                // 这个方法可以正确处理多字节的UTF-8字符
-                return btoa(unescape(encodeURIComponent(str)));
-            }
         }
     }
 
