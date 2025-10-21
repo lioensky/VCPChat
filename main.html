@@ -770,13 +770,19 @@
                             <p><strong>样式规则使用说明：</strong></p>
                             <p>• <strong>源模式：</strong>用于匹配VCPLog消息中的内容的正则表达式</p>
                             <p>• <strong>替换为：</strong>将匹配的内容替换为指定格式，支持使用捕获组（如$1, $2）</p>
+                            <p>• <strong>标题条件：</strong>可选的标题匹配条件，只有满足条件的消息才会应用替换规则</p>
+                            <p>• <strong>多条件支持：</strong>可以添加多个标题条件，任一满足即可（"或"关系）</p>
                             <p>• <strong>优先级：</strong>规则顺序决定应用优先级，数字越小优先级越高</p>
                             <p>• <strong>VCPLog JSON示例：</strong></p>
                             <p style="margin-left: 15px; background: var(--bg-secondary); padding: 10px; border-radius: 4px; font-family: monospace; font-size: 0.8em;">
                                 源模式：<code>/"recipient":\s*null/g</code><br>
                                 替换为：<code>recipient〉null</code><br><br>
                                 源模式：<code>/"originalContent":\s*"([^"]*)"/g</code><br>
-                                替换为：<code>originalContent〉$1</code>
+                                替换为：<code>originalContent〉$1</code><br><br>
+                                <strong>带标题条件示例：</strong><br>
+                                条件1：标题模式：<code>VCP.*消息</code> 匹配位置：<code>标题包含</code><br>
+                                条件2：标题模式：<code>系统</code> 匹配位置：<code>标题开头</code><br>
+                                <em>只要满足任意条件就会应用替换规则</em>
                             </p>
                         </div>
                     </div>
@@ -882,6 +888,29 @@
                     <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
                         替换格式，支持捕获组引用（如$1, $2）。留空则删除匹配内容。
                     </small>
+                </div>
+
+                <div class="form-fieldset">
+                    <label for="regexReplaceRuleTitleConditionEnabled" style="display: flex; align-items: center; gap: 5px;">
+                        <input type="checkbox" id="regexReplaceRuleTitleConditionEnabled" name="titleConditionEnabled">
+                        启用标题匹配条件（可选）
+                    </label>
+                    <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
+                        只有当消息标题满足条件时，才会应用此正则替换规则
+                    </small>
+                </div>
+
+                <div id="regexReplaceRuleTitleConditionContainer" style="display: none; margin-top: 15px; padding: 15px; background: var(--bg-secondary); border-radius: 4px;">
+                    <div style="margin-bottom: 15px;">
+                        <label>标题匹配条件（任一满足即可）:</label>
+                        <div id="titleConditionsList">
+                            <!-- 标题条件将动态添加在这里 -->
+                        </div>
+                        <button type="button" id="addTitleConditionBtn" class="small-button" style="margin-top: 8px;">添加标题条件</button>
+                        <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
+                            支持简单的关键字匹配或正则表达式（无需/包围）。多个条件之间是"或"的关系，任一满足即可。
+                        </small>
+                    </div>
                 </div>
 
                 <div>

@@ -146,7 +146,7 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
         if (mainContent) {
             // 应用VCPLog样式规则（统一的正则替换逻辑）
             if (typeof window.filterManager !== 'undefined' && window.filterManager.applyVCPLogStyleRules) {
-                mainContent = window.filterManager.applyVCPLogStyleRules(mainContent);
+                mainContent = window.filterManager.applyVCPLogStyleRules(mainContent, titleText);
             }
    
             if (contentIsPreformatted) {

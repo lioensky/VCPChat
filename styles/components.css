@@ -404,32 +404,36 @@ body.light-theme .modal-content .danger-button {
 
 .sidebar .agent-list::-webkit-scrollbar,
 .sidebar .topic-list::-webkit-scrollbar {
-    width: 8px;
+    width: 12px; /* 固定宽度，避免布局变化 */
     height: 8px;
 }
 
 .sidebar .agent-list::-webkit-scrollbar-thumb,
 .sidebar .topic-list::-webkit-scrollbar-thumb {
-    background-color: transparent; 
-    border-radius: 4px;
-    transition: background-color 0.3s ease-in-out;
+    background-color: rgba(255, 255, 255, 0.1); /* 轻微透明背景，始终占用空间 */
+    border-radius: 6px;
+    border: 2px solid rgba(255, 255, 255, 0.05); /* 轻微边框 */
+    transition: background-color 0.3s ease-in-out, opacity 0.3s ease-in-out;
 }
 
 .sidebar .agent-list::-webkit-scrollbar-track,
 .sidebar .topic-list::-webkit-scrollbar-track {
-    background-color: transparent; 
-    border-radius: 4px;
-    transition: background-color 0.3s ease-in-out;
+    background-color: rgba(255, 255, 255, 0.05); /* 轻微透明背景，始终占用空间 */
+    border-radius: 6px;
+    transition: background-color 0.3s ease-in-out, opacity 0.3s ease-in-out;
 }
 
 .sidebar .agent-list:hover::-webkit-scrollbar-thumb,
 .sidebar .topic-list:hover::-webkit-scrollbar-thumb {
-    background-color: var(--scrollbar-thumb); 
+    background-color: var(--scrollbar-thumb);
+    border-color: var(--scrollbar-track);
+    opacity: 1; /* 完全不透明 */
 }
 
 .sidebar .agent-list:hover::-webkit-scrollbar-track,
 .sidebar .topic-list:hover::-webkit-scrollbar-track {
-    background-color: var(--scrollbar-track); 
+    background-color: var(--scrollbar-track);
+    opacity: 1; /* 完全不透明 */
 }
 
 .sidebar .agent-list:hover::-webkit-scrollbar-thumb:hover,

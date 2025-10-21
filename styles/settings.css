@@ -68,39 +68,41 @@
     box-sizing: border-box;
 }
 
-/* 视觉隐藏滚动条，但保持布局稳定 */
+/* 始终显示滚动条轨道，避免布局动态变化 */
 .sidebar-tab-content.active::-webkit-scrollbar {
-    width: 0px; /* 视觉上隐藏 */
-    background: transparent; /* 透明背景 */
+    width: 12px; /* 固定宽度，避免布局变化 */
+    background: rgba(255, 255, 255, 0.05); /* 轻微透明背景 */
 }
 
 .sidebar-tab-content.active::-webkit-scrollbar-thumb {
-    background: transparent; /* 透明滑块 */
+    background: rgba(255, 255, 255, 0.1); /* 轻微透明滑块 */
+    border-radius: 6px;
+    border: 2px solid rgba(255, 255, 255, 0.05);
 }
 
 .sidebar-tab-content.active::-webkit-scrollbar-track {
-    background: transparent; /* 透明轨道 */
+    background: rgba(255, 255, 255, 0.05); /* 轻微透明轨道 */
+    border-radius: 6px;
 }
 
-/* 鼠标悬停时显示滚动条 */
+/* 鼠标悬停时显示完整滚动条 */
 .sidebar-tab-content.active:hover::-webkit-scrollbar {
     width: 12px;
 }
 
 .sidebar-tab-content.active:hover::-webkit-scrollbar-thumb {
     background: var(--scrollbar-thumb, #c1c1c1);
-    border-radius: 6px;
-    border: 2px solid var(--scrollbar-track, #f1f1f1);
+    border-color: var(--scrollbar-track, #f1f1f1);
 }
 
 .sidebar-tab-content.active:hover::-webkit-scrollbar-track {
     background: var(--scrollbar-track, #f1f1f1);
-    border-radius: 6px;
 }
 
 /* Firefox滚动条样式 */
 .sidebar-tab-content.active {
-    scrollbar-width: none; /* 默认隐藏 */
+    scrollbar-width: thin; /* 始终显示细滚动条 */
+    scrollbar-color: rgba(255, 255, 255, 0.1) rgba(255, 255, 255, 0.05);
 }
 
 .sidebar-tab-content.active:hover {

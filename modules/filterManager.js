@@ -33,6 +33,11 @@ window.filterManager = (() => {
      * @property {boolean} enabled - 是否启用此规则
      * @property {number} order - 规则顺序（数字越小优先级越高）
      * @property {string} description - 规则描述
+     * @property {Object} titleConditions - 标题匹配条件
+     * @property {Object[]} titleConditions.conditions - 多个标题匹配条件数组
+     * @property {string} titleConditions.conditions[].pattern - 标题匹配的正则表达式模式
+     * @property {string[]} titleConditions.conditions[].matchPositions - 匹配位置：['start', 'end', 'contain']
+     * @property {boolean} titleConditions.enabled - 是否启用标题条件检查
      */
 
      /**
@@ -355,12 +360,41 @@ window.filterManager = (() => {
             return;
         }
 
-        // 按顺序排序规则
+        // 按顺序排序规则，并为向后兼容添加titleConditions字段
         const sortedRules = [...settings.regexReplaceRules].sort((a, b) => a.order - b.order);
+        sortedRules.forEach(rule => {
+            if (!rule.titleConditions) {
+                rule.titleConditions = {
+                    enabled: false,
+                    conditions: []
+                };
+            }
+            // 处理旧格式的向后兼容（旧版本可能直接有pattern和matchPositions字段）
+            else if (rule.titleConditions.pattern && !rule.titleConditions.conditions) {
+                rule.titleConditions.conditions = [{
+                    pattern: rule.titleConditions.pattern,
+                    matchPositions: rule.titleConditions.matchPositions || []
+                }];
+            }
+        });
         console.log('排序后的规则:', sortedRules);
 
         sortedRules.forEach((rule, index) => {
             console.log(`渲染规则 ${index + 1}:`, rule);
+            // 为向后兼容，确保规则有titleConditions字段
+            if (!rule.titleConditions) {
+                rule.titleConditions = {
+                    enabled: false,
+                    conditions: []
+                };
+            }
+            // 处理旧格式的向后兼容（旧版本可能直接有pattern和matchPositions字段）
+            else if (rule.titleConditions.pattern && !rule.titleConditions.conditions) {
+                rule.titleConditions.conditions = [{
+                    pattern: rule.titleConditions.pattern,
+                    matchPositions: rule.titleConditions.matchPositions || []
+                }];
+            }
             const ruleElement = createRegexReplaceRuleElement(rule);
             rulesList.appendChild(ruleElement);
         });
@@ -427,9 +461,22 @@ window.filterManager = (() => {
 
         const ruleDetails = document.createElement('div');
         ruleDetails.className = 'filter-rule-details';
+
+        let titleConditionHtml = '';
+        const titleConditions = rule.titleConditions || { enabled: false, conditions: [] };
+        if (titleConditions.enabled && titleConditions.conditions.length > 0) {
+            const conditionsText = titleConditions.conditions.map((condition, index) =>
+                `条件${index + 1}: ${condition.pattern} (${condition.matchPositions.join(', ')})`
+            ).join('<br>');
+            titleConditionHtml = `
+                <div class="rule-title-conditions">标题条件:<br>${conditionsText}</div>
+            `;
+        }
+
         ruleDetails.innerHTML = `
             <div class="rule-pattern">源模式: ${rule.sourcePattern}</div>
             <div class="rule-replacement">替换为: ${rule.replacement || '（空）'}</div>
+            ${titleConditionHtml}
             <div class="rule-description">描述: ${rule.description || '无描述'}</div>
         `;
 
@@ -461,6 +508,21 @@ window.filterManager = (() => {
         const settings = getGlobalSettings();
         const rule = settings.regexReplaceRules.find(r => r.id === ruleId);
         if (rule) {
+            // 为向后兼容，确保规则有titleConditions字段
+            if (!rule.titleConditions) {
+                rule.titleConditions = {
+                    enabled: false,
+                    conditions: []
+                };
+            }
+            // 处理旧格式的向后兼容（旧版本可能直接有pattern和matchPositions字段）
+            else if (rule.titleConditions.pattern && !rule.titleConditions.conditions) {
+                rule.titleConditions.conditions = [{
+                    pattern: rule.titleConditions.pattern,
+                    matchPositions: rule.titleConditions.matchPositions || []
+                }];
+            }
+
             console.log('找到规则:', rule);
             openRegexReplaceRuleEditor(rule);
         } else {
@@ -509,6 +571,21 @@ window.filterManager = (() => {
 
         const rule = settings.regexReplaceRules.find(r => r.id === ruleId);
         if (rule) {
+            // 为向后兼容，确保规则有titleConditions字段
+            if (!rule.titleConditions) {
+                rule.titleConditions = {
+                    enabled: false,
+                    conditions: []
+                };
+            }
+            // 处理旧格式的向后兼容（旧版本可能直接有pattern和matchPositions字段）
+            else if (rule.titleConditions.pattern && !rule.titleConditions.conditions) {
+                rule.titleConditions.conditions = [{
+                    pattern: rule.titleConditions.pattern,
+                    matchPositions: rule.titleConditions.matchPositions || []
+                }];
+            }
+
             const oldState = rule.enabled;
             rule.enabled = !rule.enabled;
             console.log(`切换规则 "${rule.name}": ${oldState} -> ${rule.enabled}`);
@@ -548,6 +625,16 @@ window.filterManager = (() => {
             document.getElementById('regexReplaceRuleDescription').value = ruleToEdit.description || '';
             document.getElementById('regexReplaceRuleEnabled').checked = ruleToEdit.enabled;
 
+            // 填充标题匹配条件（向后兼容）
+            const titleConditions = ruleToEdit.titleConditions || { enabled: false, conditions: [] };
+            document.getElementById('regexReplaceRuleTitleConditionEnabled').checked = titleConditions.enabled || false;
+
+            // 渲染标题条件列表
+            renderTitleConditionsList(titleConditions.conditions || []);
+
+            // 显示/隐藏标题条件容器
+            toggleTitleConditionVisibility(titleConditions.enabled || false);
+
             console.log('表单填充完成:', {
                 id: ruleToEdit.id,
                 name: ruleToEdit.name,
@@ -561,10 +648,26 @@ window.filterManager = (() => {
             document.getElementById('editingRegexReplaceRuleId').value = '';
             form.reset();
             document.getElementById('regexReplaceRuleEnabled').checked = true;
+
+            // 重置标题条件
+            document.getElementById('regexReplaceRuleTitleConditionEnabled').checked = false;
+            renderTitleConditionsList([]);
+            toggleTitleConditionVisibility(false);
         }
 
         _uiHelper.openModal('regexReplaceRuleEditorModal');
         console.log('=== 打开编辑器结束 ===');
+    }
+
+    /**
+     * 切换标题条件容器显示/隐藏
+     * @param {boolean} enabled - 是否启用标题条件
+     */
+    function toggleTitleConditionVisibility(enabled) {
+        const titleConditionContainer = document.getElementById('regexReplaceRuleTitleConditionContainer');
+        if (titleConditionContainer) {
+            titleConditionContainer.style.display = enabled ? 'block' : 'none';
+        }
     }
 
     /**
@@ -576,6 +679,10 @@ window.filterManager = (() => {
         const ruleId = document.getElementById('editingRegexReplaceRuleId').value;
         const settings = getGlobalSettings();
 
+        const titleConditionEnabled = document.getElementById('regexReplaceRuleTitleConditionEnabled')?.checked || false;
+        const titleConditions = titleConditionEnabled ?
+            getTitleConditionsFromForm() : [];
+
         const ruleData = {
             name: document.getElementById('regexReplaceRuleName').value.trim(),
             type: 'regex_replace',
@@ -583,7 +690,30 @@ window.filterManager = (() => {
             replacement: document.getElementById('regexReplaceRuleReplacement').value,
             description: document.getElementById('regexReplaceRuleDescription').value.trim(),
             enabled: document.getElementById('regexReplaceRuleEnabled').checked,
-            order: ruleId ? settings.regexReplaceRules.find(r => r.id === ruleId)?.order : Date.now()
+            order: ruleId ? settings.regexReplaceRules.find(r => {
+                // 为向后兼容，确保规则有titleConditions字段
+                if (!r.titleConditions) {
+                    r.titleConditions = {
+                        enabled: false,
+                        conditions: []
+                    };
+                }
+                // 处理旧格式的向后兼容（旧版本可能直接有pattern和matchPositions字段）
+                else if (r.titleConditions.pattern && !r.titleConditions.conditions) {
+                    r.titleConditions.conditions = [{
+                        pattern: r.titleConditions.pattern,
+                        matchPositions: r.titleConditions.matchPositions || []
+                    }];
+                }
+                return r.id === ruleId;
+            })?.order : Date.now(),
+            titleConditions: titleConditionEnabled ? {
+                enabled: titleConditionEnabled,
+                conditions: titleConditions
+            } : {
+                enabled: false,
+                conditions: []
+            }
         };
 
         console.log('表单数据:', {
@@ -597,6 +727,25 @@ window.filterManager = (() => {
         if (!ruleData.name || !ruleData.sourcePattern) {
             _uiHelper.showToastNotification('请填写规则名称和源正则表达式', 'error');
             return;
+        }
+
+        // 验证标题条件
+        if (ruleData.titleConditions.enabled) {
+            if (ruleData.titleConditions.conditions.length === 0) {
+                _uiHelper.showToastNotification('请至少添加一个标题匹配条件', 'error');
+                return;
+            }
+            for (let i = 0; i < ruleData.titleConditions.conditions.length; i++) {
+                const condition = ruleData.titleConditions.conditions[i];
+                if (!condition.pattern) {
+                    _uiHelper.showToastNotification(`请填写第${i + 1}个标题匹配条件`, 'error');
+                    return;
+                }
+                if (condition.matchPositions.length === 0) {
+                    _uiHelper.showToastNotification(`请为第${i + 1}个标题匹配条件选择至少一个匹配位置`, 'error');
+                    return;
+                }
+            }
         }
 
         // 验证正则表达式是否有效
@@ -651,6 +800,21 @@ window.filterManager = (() => {
             .sort((a, b) => a.order - b.order);
 
         enabledRules.forEach(rule => {
+            // 为向后兼容，确保规则有titleConditions字段
+            if (!rule.titleConditions) {
+                rule.titleConditions = {
+                    enabled: false,
+                    conditions: []
+                };
+            }
+            // 处理旧格式的向后兼容（旧版本可能直接有pattern和matchPositions字段）
+            else if (rule.titleConditions.pattern && !rule.titleConditions.conditions) {
+                rule.titleConditions.conditions = [{
+                    pattern: rule.titleConditions.pattern,
+                    matchPositions: rule.titleConditions.matchPositions || []
+                }];
+            }
+
             try {
                 const regex = new RegExp(rule.sourcePattern, 'g');
                 processedContent = processedContent.replace(regex, rule.replacement);
@@ -663,11 +827,158 @@ window.filterManager = (() => {
     }
 
     /**
-     * 应用VCPLog样式规则（简化版）
-     * @param {string} content - 原始消息内容
-     * @returns {string} - 替换后的消息内容
-     */
-    function applyVCPLogStyleRules(content) {
+       * 检查标题是否匹配多个条件中的任意一个
+       * @param {string} messageTitle - 消息标题
+       * @param {Object[]} titleConditions - 多个标题匹配条件
+       * @returns {boolean} - 是否匹配任意条件
+       */
+    function checkTitleConditions(messageTitle, titleConditions) {
+        if (!titleConditions || titleConditions.length === 0) {
+            return false;
+        }
+
+        for (const condition of titleConditions) {
+            if (checkSingleTitleCondition(messageTitle, condition)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+       * 检查标题是否匹配单个条件
+       * @param {string} messageTitle - 消息标题
+       * @param {Object} titleCondition - 单个标题匹配条件
+       * @returns {boolean} - 是否匹配
+       */
+    function checkSingleTitleCondition(messageTitle, titleCondition) {
+        if (!titleCondition.pattern || !titleCondition.matchPositions) {
+            return false;
+        }
+
+        for (const position of titleCondition.matchPositions) {
+            if (position === 'contain' && messageTitle.includes(titleCondition.pattern)) {
+                return true;
+            } else if (position === 'start' && messageTitle.startsWith(titleCondition.pattern)) {
+                return true;
+            } else if (position === 'end' && messageTitle.endsWith(titleCondition.pattern)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+       * 从表单获取标题条件列表
+       * @returns {Object[]} - 标题条件数组
+       */
+    function getTitleConditionsFromForm() {
+        const conditions = [];
+        document.querySelectorAll('.title-condition-item').forEach((item, index) => {
+            const pattern = item.querySelector('.title-condition-pattern').value.trim();
+            const matchPositions = Array.from(item.querySelectorAll('input[name="titleConditionMatchPosition"]:checked')).map(cb => cb.value);
+
+            if (pattern && matchPositions.length > 0) {
+                conditions.push({
+                    pattern: pattern,
+                    matchPositions: matchPositions
+                });
+            }
+        });
+        return conditions;
+    }
+
+    /**
+       * 渲染标题条件列表
+       * @param {Object[]} conditions - 标题条件数组
+       */
+    function renderTitleConditionsList(conditions) {
+        const container = document.getElementById('titleConditionsList');
+        if (!container) return;
+
+        container.innerHTML = '';
+
+        if (conditions.length === 0) {
+            // 添加一个空的条件项
+            addTitleConditionItem(container, '', []);
+        } else {
+            conditions.forEach((condition, index) => {
+                addTitleConditionItem(container, condition.pattern, condition.matchPositions, index);
+            });
+        }
+    }
+
+    /**
+       * 添加标题条件项到容器
+       * @param {HTMLElement} container - 容器元素
+       * @param {string} pattern - 匹配模式
+       * @param {string[]} matchPositions - 匹配位置数组
+       * @param {number} index - 索引（用于删除按钮）
+       */
+    function addTitleConditionItem(container, pattern, matchPositions, index = 0) {
+        const conditionDiv = document.createElement('div');
+        conditionDiv.className = 'title-condition-item';
+        conditionDiv.style.cssText = `
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 8px;
+            padding: 8px;
+            background: var(--bg-primary);
+            border-radius: 4px;
+            border: 1px solid var(--border-color);
+        `;
+
+        conditionDiv.innerHTML = `
+            <span style="font-size: 0.9em; color: var(--text-secondary); min-width: 60px;">条件${index + 1}:</span>
+            <input type="text" class="title-condition-pattern" placeholder="标题匹配模式" value="${pattern}" style="flex: 1; margin-right: 10px;">
+            <div style="display: flex; gap: 15px; font-size: 0.9em;">
+                <label style="display: flex; align-items: center; gap: 3px;">
+                    <input type="checkbox" name="titleConditionMatchPosition" value="start" ${matchPositions.includes('start') ? 'checked' : ''}> 开头
+                </label>
+                <label style="display: flex; align-items: center; gap: 3px;">
+                    <input type="checkbox" name="titleConditionMatchPosition" value="end" ${matchPositions.includes('end') ? 'checked' : ''}> 结尾
+                </label>
+                <label style="display: flex; align-items: center; gap: 3px;">
+                    <input type="checkbox" name="titleConditionMatchPosition" value="contain" ${matchPositions.includes('contain') ? 'checked' : ''}> 包含
+                </label>
+            </div>
+            <button type="button" class="small-button danger-button remove-title-condition" style="margin-left: 5px; padding: 2px 8px; font-size: 0.8em;">删除</button>
+        `;
+
+        // 添加删除按钮事件监听器
+        const removeBtn = conditionDiv.querySelector('.remove-title-condition');
+        removeBtn.addEventListener('click', () => {
+            container.removeChild(conditionDiv);
+            updateTitleConditionIndexes(container);
+        });
+
+        container.appendChild(conditionDiv);
+    }
+
+    /**
+       * 更新标题条件索引编号
+       * @param {HTMLElement} container - 容器元素
+       */
+    function updateTitleConditionIndexes(container) {
+        const items = container.querySelectorAll('.title-condition-item');
+        items.forEach((item, index) => {
+            const label = item.querySelector('span');
+            if (label) {
+                label.textContent = `条件${index + 1}:`;
+            }
+        });
+    }
+
+    /**
+      * 应用VCPLog样式规则（简化版）
+      * @param {string} content - 原始消息内容
+      * @param {string} messageTitle - 消息标题（用于标题条件检查）
+      * @returns {string} - 替换后的消息内容
+      */
+    function applyVCPLogStyleRules(content, messageTitle = '') {
         console.log('=== VCPLog样式规则调试开始 ===');
         console.log('输入内容:', content);
 
@@ -696,6 +1007,36 @@ window.filterManager = (() => {
         }
 
         enabledRules.forEach((rule, index) => {
+            console.log(`检查规则 ${index + 1}:`, rule.name);
+
+            // 为向后兼容，确保规则有titleConditions字段
+            if (!rule.titleConditions) {
+                rule.titleConditions = {
+                    enabled: false,
+                    conditions: []
+                };
+            }
+            // 处理旧格式的向后兼容（旧版本可能直接有pattern和matchPositions字段）
+            else if (rule.titleConditions.pattern && !rule.titleConditions.conditions) {
+                rule.titleConditions.conditions = [{
+                    pattern: rule.titleConditions.pattern,
+                    matchPositions: rule.titleConditions.matchPositions || []
+                }];
+            }
+
+            // 检查标题条件（如果启用）
+            if (rule.titleConditions.enabled && rule.titleConditions.conditions.length > 0) {
+                const titleMatch = checkTitleConditions(messageTitle, rule.titleConditions.conditions);
+                if (!titleMatch) {
+                    console.log(`规则 "${rule.name}" 标题条件不匹配，跳过`);
+                    return;
+                }
+                console.log(`规则 "${rule.name}" 标题条件匹配，继续处理`);
+            } else {
+                // 如果没有启用标题条件或titleConditions不存在（向后兼容），直接继续处理
+                console.log(`规则 "${rule.name}" 无标题条件或条件已禁用，继续处理`);
+            }
+
             console.log(`应用规则 ${index + 1}:`, rule.name);
             console.log('源模式:', rule.sourcePattern);
             console.log('替换为:', rule.replacement);
@@ -864,6 +1205,33 @@ window.filterManager = (() => {
         if (closeRegexReplaceRuleEditorBtn) {
             closeRegexReplaceRuleEditorBtn.addEventListener('click', () => {
                 _uiHelper.closeModal('regexReplaceRuleEditorModal');
+            });
+        }
+
+        // 标题条件启用/禁用切换
+        const titleConditionEnabledCheckbox = document.getElementById('regexReplaceRuleTitleConditionEnabled');
+        if (titleConditionEnabledCheckbox) {
+            titleConditionEnabledCheckbox.addEventListener('change', () => {
+                toggleTitleConditionVisibility(titleConditionEnabledCheckbox.checked);
+                if (titleConditionEnabledCheckbox.checked) {
+                    // 启用时，如果没有条件，添加一个空的
+                    const container = document.getElementById('titleConditionsList');
+                    if (container && container.children.length === 0) {
+                        addTitleConditionItem(container, '', []);
+                    }
+                }
+            });
+        }
+
+        // 添加标题条件按钮
+        const addTitleConditionBtn = document.getElementById('addTitleConditionBtn');
+        if (addTitleConditionBtn) {
+            addTitleConditionBtn.addEventListener('click', () => {
+                const container = document.getElementById('titleConditionsList');
+                if (container) {
+                    const currentCount = container.children.length;
+                    addTitleConditionItem(container, '', [], currentCount);
+                }
             });
         }
 
