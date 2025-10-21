@@ -918,17 +918,14 @@ function prepareGroupSettingsDOM() {
         }
     }
      // Ensure createNewGroupBtn has its text updated
-    if (createNewAgentBtn) {
-        createNewAgentBtn.textContent = '创建 Agent';
-        createNewAgentBtn.style.width = 'calc(50% - 5px)'; // Adjust width to make space
-        createNewAgentBtn.style.marginRight = '5px';
-    }
-    if (createNewGroupBtn) {
-        createNewGroupBtn.textContent = '创建 Group';
-        console.log('[Renderer prepareGroupSettingsDOM] createNewGroupBtn textContent set to:', createNewGroupBtn.textContent);
-        createNewGroupBtn.style.display = 'inline-block'; // Make it visible
-        createNewGroupBtn.style.width = 'calc(50% - 5px)';
-    }
+     if (createNewAgentBtn) {
+         createNewAgentBtn.textContent = '创建 Agent';
+     }
+     if (createNewGroupBtn) {
+         createNewGroupBtn.textContent = '创建 Group';
+         console.log('[Renderer prepareGroupSettingsDOM] createNewGroupBtn textContent set to:', createNewGroupBtn.textContent);
+         createNewGroupBtn.style.display = 'inline-block'; // Make it visible
+     }
 }
 
 

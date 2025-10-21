@@ -270,6 +270,10 @@ const uiManager = (() => {
                             window.settingsManager.displaySettingsForItem();
                         }
                     } else if (targetTab === 'agents') { // Assuming 'agents' is the ID for the items list tab content
+                        // 重置鼠标事件状态，确保双击功能正常工作
+                        if (window.itemListManager && typeof window.itemListManager.resetMouseEventStates === 'function') {
+                            window.itemListManager.resetMouseEventStates();
+                        }
                         // The items list (agents & groups) is always visible in a way,
                         // but this ensures other tab contents are hidden.
                         // loadItems() is usually called on init or after create/delete.

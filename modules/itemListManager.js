@@ -209,9 +209,56 @@ window.itemListManager = (() => {
 
                 li.appendChild(avatarImg);
                 li.appendChild(nameSpan);
-                li.addEventListener('click', () => {
-                    if (mainRendererFunctions && typeof mainRendererFunctions.selectItem === 'function') {
-                        mainRendererFunctions.selectItem(item.id, item.type, item.name, item.avatarUrl, item.config || item);
+
+                // 为每个项目添加独立的状态管理
+                li._lastClickTime = 0;
+                li._middleClickHandled = false;
+
+                // 添加鼠标事件监听器
+                // 专门处理中键点击的辅助事件
+                li.addEventListener('auxclick', (e) => {
+                    if (e.button === 1) { // 中键
+                        console.log('[ItemListManager] 检测到中键auxclick事件');
+                        e.preventDefault();
+                        e.stopPropagation();
+                        li._middleClickHandled = true;
+                        handleMiddleClick(item);
+                    }
+                });
+
+                // 普通点击事件（左键双击检测）
+                li.addEventListener('click', (e) => {
+                    // 如果是中键点击，已经被auxclick处理了，直接返回
+                    if (li._middleClickHandled) {
+                        li._middleClickHandled = false;
+                        return;
+                    }
+
+                    const currentTime = Date.now();
+                    const timeDiff = currentTime - li._lastClickTime;
+
+                    if (e.button === 0 && timeDiff < 300) {
+                        // 双击 - 打开设置页面
+                        console.log('[ItemListManager] 检测到双击');
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleDoubleClick(item);
+                    } else if (e.button === 0) {
+                        // 普通左键点击 - 选择项目
+                        console.log('[ItemListManager] 普通左键点击');
+                        if (mainRendererFunctions && typeof mainRendererFunctions.selectItem === 'function') {
+                            mainRendererFunctions.selectItem(item.id, item.type, item.name, item.avatarUrl, item.config || item);
+                        }
+                    }
+
+                    li._lastClickTime = currentTime;
+                });
+
+                // 防止中键点击的默认行为
+                li.addEventListener('contextmenu', (e) => {
+                    // 不阻止右键菜单，但记录中键状态
+                    if (e.button === 1) {
+                        console.log('[ItemListManager] 中键contextmenu事件');
                     }
                 });
                 itemListUl.appendChild(li);
@@ -230,10 +277,145 @@ window.itemListManager = (() => {
         }
     }
 
+    /**
+     * 处理双击事件 - 打开设置页面
+     * @param {object} item - 项目对象
+     */
+    function handleDoubleClick(item) {
+        console.log('[ItemListManager] 双击项目:', item.name, '类型:', item.type);
+
+        // 选择项目
+        if (mainRendererFunctions && typeof mainRendererFunctions.selectItem === 'function') {
+            mainRendererFunctions.selectItem(item.id, item.type, item.name, item.avatarUrl, item.config || item);
+        }
+
+        // 切换到设置页面 - 使用延时确保项目选择完成
+        setTimeout(() => {
+            try {
+                // 方法1：尝试使用uiManager.switchToTab
+                if (window.uiManager && typeof window.uiManager.switchToTab === 'function') {
+                    console.log('[ItemListManager] 使用uiManager.switchToTab切换到设置页面');
+                    window.uiManager.switchToTab('settings');
+                } else {
+                    // 方法2：直接操作DOM元素
+                    console.log('[ItemListManager] uiManager不可用，直接操作DOM');
+
+                    // 激活设置按钮
+                    const settingsTabBtn = document.querySelector('.sidebar-tab-button[data-tab="settings"]');
+                    if (settingsTabBtn) {
+                        settingsTabBtn.click();
+                        console.log('[ItemListManager] 直接点击设置按钮');
+                    } else {
+                        console.warn('[ItemListManager] 找不到设置按钮');
+
+                        // 方法3：手动切换标签页显示
+                        console.log('[ItemListManager] 尝试手动切换到设置标签页');
+
+                        // 隐藏所有标签内容
+                        document.querySelectorAll('.sidebar-tab-content').forEach(content => {
+                            content.classList.remove('active');
+                        });
+
+                        // 显示设置标签内容
+                        const settingsContent = document.getElementById('tabContentSettings');
+                        if (settingsContent) {
+                            settingsContent.classList.add('active');
+                            console.log('[ItemListManager] 手动激活设置标签内容');
+                        }
+
+                        // 更新按钮状态
+                        document.querySelectorAll('.sidebar-tab-button').forEach(btn => {
+                            btn.classList.toggle('active', btn.dataset.tab === 'settings');
+                        });
+                    }
+                }
+            } catch (error) {
+                console.error('[ItemListManager] 切换到设置页面时出错:', error);
+            }
+        }, 100); // 增加延时到100ms
+    }
+
+    /**
+     * 处理中键点击事件 - 打开话题页面
+     * @param {object} item - 项目对象
+     */
+    function handleMiddleClick(item) {
+        console.log('[ItemListManager] 中键点击项目:', item.name, '类型:', item.type);
+
+        // 选择项目
+        if (mainRendererFunctions && typeof mainRendererFunctions.selectItem === 'function') {
+            mainRendererFunctions.selectItem(item.id, item.type, item.name, item.avatarUrl, item.config || item);
+        }
+
+        // 切换到话题页面 - 使用延时确保项目选择完成
+        setTimeout(() => {
+            try {
+                // 方法1：尝试使用uiManager.switchToTab
+                if (window.uiManager && typeof window.uiManager.switchToTab === 'function') {
+                    console.log('[ItemListManager] 使用uiManager.switchToTab切换到话题页面');
+                    window.uiManager.switchToTab('topics');
+                } else {
+                    // 方法2：直接操作DOM元素
+                    console.log('[ItemListManager] uiManager不可用，直接操作DOM');
+
+                    // 激活话题按钮
+                    const topicsTabBtn = document.querySelector('.sidebar-tab-button[data-tab="topics"]');
+                    if (topicsTabBtn) {
+                        topicsTabBtn.click();
+                        console.log('[ItemListManager] 直接点击话题按钮');
+                    } else {
+                        console.warn('[ItemListManager] 找不到话题按钮');
+
+                        // 方法3：手动切换标签页显示
+                        console.log('[ItemListManager] 尝试手动切换标签页');
+
+                        // 隐藏所有标签内容
+                        document.querySelectorAll('.sidebar-tab-content').forEach(content => {
+                            content.classList.remove('active');
+                        });
+
+                        // 显示话题标签内容
+                        const topicsContent = document.getElementById('tabContentTopics');
+                        if (topicsContent) {
+                            topicsContent.classList.add('active');
+                            console.log('[ItemListManager] 手动激活话题标签内容');
+                        }
+
+                        // 更新按钮状态
+                        document.querySelectorAll('.sidebar-tab-button').forEach(btn => {
+                            btn.classList.toggle('active', btn.dataset.tab === 'topics');
+                        });
+                    }
+                }
+            } catch (error) {
+                console.error('[ItemListManager] 切换到话题页面时出错:', error);
+            }
+        }, 100); // 增加延时到100ms
+    }
+
+    /**
+     * 重置鼠标事件状态，用于页面切换时清理状态
+     */
+    function resetMouseEventStates() {
+        // 重置所有Agent项目的鼠标事件状态
+        const agentItems = document.querySelectorAll('#agentList li');
+        agentItems.forEach(item => {
+            // 重置每个项目的鼠标事件状态（如果有的话）
+            if (item._lastClickTime !== undefined) {
+                item._lastClickTime = 0;
+            }
+            if (item._middleClickHandled !== undefined) {
+                item._middleClickHandled = false;
+            }
+        });
+        console.log('[ItemListManager] 鼠标事件状态已重置');
+    }
+
     // --- Public API ---
     return {
         init,
         loadItems,
-        highlightActiveItem
+        highlightActiveItem,
+        resetMouseEventStates
     };
 })();

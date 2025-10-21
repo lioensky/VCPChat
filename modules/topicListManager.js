@@ -31,6 +31,9 @@ window.topicListManager = (() => {
         uiHelper = config.uiHelper;
         mainRendererFunctions = config.mainRendererFunctions;
 
+        // 设置鼠标快捷键
+        setupMouseShortcuts();
+
         console.log('[TopicListManager] Initialized successfully.');
     }
 
@@ -493,11 +496,77 @@ window.topicListManager = (() => {
         }
     }
 
+    /**
+     * 设置鼠标快捷键事件监听器
+     */
+    function setupMouseShortcuts() {
+        const topicsContainer = document.getElementById('tabContentTopics');
+        if (!topicsContainer) {
+            console.warn('[TopicListManager] 话题容器未找到，跳过鼠标快捷键设置');
+            return;
+        }
+
+        let lastLeftClickTime = 0;
+
+        // 双击左键：进入设置页面
+        topicsContainer.addEventListener('click', (e) => {
+            if (e.button === 0) { // 左键
+                const currentTime = Date.now();
+                const timeDiff = currentTime - lastLeftClickTime;
+
+                if (timeDiff < 300) { // 双击检测（300ms内）
+                    console.log('[TopicListManager] 检测到双击左键，进入设置页面');
+                    e.preventDefault();
+                    e.stopPropagation();
+
+                    // 切换到设置页面
+                    if (window.uiManager && typeof window.uiManager.switchToTab === 'function') {
+                        window.uiManager.switchToTab('settings');
+                    } else {
+                        console.warn('[TopicListManager] uiManager不可用，无法切换到设置页面');
+                    }
+                }
+
+                lastLeftClickTime = currentTime;
+            }
+        });
+
+        // 中键点击：返回助手页面
+        topicsContainer.addEventListener('auxclick', (e) => {
+            if (e.button === 1) { // 中键
+                console.log('[TopicListManager] 检测到中键点击，返回助手页面');
+                e.preventDefault();
+                e.stopPropagation();
+
+                // 切换到助手页面
+                if (window.uiManager && typeof window.uiManager.switchToTab === 'function') {
+                    window.uiManager.switchToTab('agents');
+                    // 重置助手页面的鼠标事件状态，确保双击功能正常工作
+                    if (window.itemListManager && typeof window.itemListManager.resetMouseEventStates === 'function') {
+                        window.itemListManager.resetMouseEventStates();
+                    }
+                } else {
+                    console.warn('[TopicListManager] uiManager不可用，无法切换到助手页面');
+                }
+            }
+        });
+
+        // 防止中键点击的默认行为
+        topicsContainer.addEventListener('mousedown', (e) => {
+            if (e.button === 1) { // 中键
+                e.preventDefault();
+            }
+        });
+
+        console.log('[TopicListManager] 鼠标快捷键设置完成');
+    }
+
     // --- Public API ---
     return {
         init,
         loadTopicList,
         setupTopicSearch,
-        showTopicContextMenu
+        showTopicContextMenu,
+        setupMouseShortcuts
     };
 })();

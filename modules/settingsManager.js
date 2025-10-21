@@ -371,6 +371,69 @@ const settingsManager = (() => {
         }
     }
 
+    /**
+     * 设置鼠标快捷键事件监听器
+     */
+    function setupMouseShortcuts() {
+        const settingsContainer = document.getElementById('tabContentSettings');
+        if (!settingsContainer) {
+            console.warn('[SettingsManager] 设置容器未找到，跳过鼠标快捷键设置');
+            return;
+        }
+
+        let lastRightClickTime = 0;
+
+        // 双击右键：返回助手页面
+        settingsContainer.addEventListener('contextmenu', (e) => {
+            const currentTime = Date.now();
+            const timeDiff = currentTime - lastRightClickTime;
+
+            if (timeDiff < 300) { // 双击检测（300ms内）
+                console.log('[SettingsManager] 检测到双击右键，返回助手页面');
+                e.preventDefault();
+                e.stopPropagation();
+
+                // 切换到助手页面
+                if (window.uiManager && typeof window.uiManager.switchToTab === 'function') {
+                    window.uiManager.switchToTab('agents');
+                    // 重置助手页面的鼠标事件状态，确保双击功能正常工作
+                    if (window.itemListManager && typeof window.itemListManager.resetMouseEventStates === 'function') {
+                        window.itemListManager.resetMouseEventStates();
+                    }
+                } else {
+                    console.warn('[SettingsManager] uiManager不可用，无法切换到助手页面');
+                }
+            }
+
+            lastRightClickTime = currentTime;
+        });
+
+        // 中键点击：进入话题页面
+        settingsContainer.addEventListener('auxclick', (e) => {
+            if (e.button === 1) { // 中键
+                console.log('[SettingsManager] 检测到中键点击，进入话题页面');
+                e.preventDefault();
+                e.stopPropagation();
+
+                // 切换到话题页面
+                if (window.uiManager && typeof window.uiManager.switchToTab === 'function') {
+                    window.uiManager.switchToTab('topics');
+                } else {
+                    console.warn('[SettingsManager] uiManager不可用，无法切换到话题页面');
+                }
+            }
+        });
+
+        // 防止中键点击的默认行为
+        settingsContainer.addEventListener('mousedown', (e) => {
+            if (e.button === 1) { // 中键
+                e.preventDefault();
+            }
+        });
+
+        console.log('[SettingsManager] 鼠标快捷键设置完成');
+    }
+
     // --- Public API ---
     return {
         init: (options) => {
@@ -512,6 +575,9 @@ const settingsManager = (() => {
 
             // 添加Agent设置滚动条粘性按钮逻辑
             setupAgentSettingsStickyButtons();
+
+            // 设置鼠标快捷键
+            setupMouseShortcuts();
 
             console.log('settingsManager initialized.');
 

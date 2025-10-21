@@ -52,6 +52,21 @@
     max-width: 140px; /* Increase max-width slightly */
     flex-shrink: 0;
 }
+
+/* 确保创建按钮始终相邻显示 */
+.sidebar-actions {
+    display: flex;
+    gap: 10px;
+    width: 100%;
+    margin-top: auto;
+}
+
+.sidebar-actions .sidebar-button {
+    flex: 1;
+    margin: 0;
+    min-width: 0; /* 允许缩小 */
+    max-width: none; /* 移除最大宽度限制 */
+}
 .sidebar-button:hover {
     background-color: var(--button-hover-bg);
     border-color: var(--button-hover-bg);
