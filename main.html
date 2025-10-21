@@ -280,7 +280,7 @@
                             <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"></path>
                         </svg>
                     </button>
-                    <button id="doNotDisturbBtn" class="header-button" title="过滤模式（启用后可通过右键设置详细过滤规则）">过滤</button>
+                    <button id="doNotDisturbBtn" class="header-button" title="过滤模式（右键单击设置详细过滤规则）">过滤</button>
                     <button id="clearNotificationsBtn" title="清空通知">清空</button>
                 </div>
             </header>
@@ -712,7 +712,7 @@
 
     <!-- Filter Rules Modal -->
     <div class="modal" id="filterRulesModal">
-        <div class="modal-content" style="max-width: 900px; height: 600px; overflow: hidden; display: flex; flex-direction: column;">
+        <div class="modal-content" style="max-width: 900px; height: 1000px; overflow: hidden; display: flex; flex-direction: column;">
             <div style="display: flex; justify-content: space-between; align-items: center; padding: 15px 20px; border-bottom: 1px solid var(--border-color); flex-shrink: 0;">
                 <h2 style="margin: 0;">过滤和样式设置</h2>
                 <span class="close-button" id="closeFilterRulesModal" style="cursor: pointer; font-size: 20px; padding: 5px;">×</span>
@@ -773,17 +773,6 @@
                             <p>• <strong>标题条件：</strong>可选的标题匹配条件，只有满足条件的消息才会应用替换规则</p>
                             <p>• <strong>多条件支持：</strong>可以添加多个标题条件，任一满足即可（"或"关系）</p>
                             <p>• <strong>优先级：</strong>规则顺序决定应用优先级，数字越小优先级越高</p>
-                            <p>• <strong>VCPLog JSON示例：</strong></p>
-                            <p style="margin-left: 15px; background: var(--bg-secondary); padding: 10px; border-radius: 4px; font-family: monospace; font-size: 0.8em;">
-                                源模式：<code>/"recipient":\s*null/g</code><br>
-                                替换为：<code>recipient〉null</code><br><br>
-                                源模式：<code>/"originalContent":\s*"([^"]*)"/g</code><br>
-                                替换为：<code>originalContent〉$1</code><br><br>
-                                <strong>带标题条件示例：</strong><br>
-                                条件1：标题模式：<code>VCP.*消息</code> 匹配位置：<code>标题包含</code><br>
-                                条件2：标题模式：<code>系统</code> 匹配位置：<code>标题开头</code><br>
-                                <em>只要满足任意条件就会应用替换规则</em>
-                            </p>
                         </div>
                     </div>
                 </div>
