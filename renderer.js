@@ -1048,6 +1048,13 @@ async function loadAndApplyGlobalSettings() {
             globalSettings.filterRules = [];
         }
 
+        // Load regex replace rules
+        if (!Array.isArray(globalSettings.regexReplaceRules)) {
+            globalSettings.regexReplaceRules = [];
+        }
+
+        // 不再自动添加默认规则，用户需要手动创建规则
+
         // Load middle click quick action settings
         document.getElementById('enableMiddleClickQuickAction').checked = globalSettings.enableMiddleClickQuickAction === true;
         document.getElementById('middleClickQuickAction').value = globalSettings.middleClickQuickAction || '';

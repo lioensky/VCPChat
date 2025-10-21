@@ -712,31 +712,74 @@
 
     <!-- Filter Rules Modal -->
     <div class="modal" id="filterRulesModal">
-        <div class="modal-content" style="max-width: 800px; max-height: 80vh; overflow-y: auto;">
-            <span class="close-button" id="closeFilterRulesModal">×</span>
-            <h2>过滤规则设置</h2>
+        <div class="modal-content" style="max-width: 900px; height: 600px; overflow: hidden; display: flex; flex-direction: column;">
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 15px 20px; border-bottom: 1px solid var(--border-color); flex-shrink: 0;">
+                <h2 style="margin: 0;">过滤和样式设置</h2>
+                <span class="close-button" id="closeFilterRulesModal" style="cursor: pointer; font-size: 20px; padding: 5px;">×</span>
+            </div>
 
-            <div class="filter-rules-header" style="margin-bottom: 20px;">
-                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
-                    <label for="globalFilterEnabled" style="display: flex; align-items: center; gap: 5px; font-weight: bold;">
-                        <input type="checkbox" id="globalFilterEnabled" style="margin: 0;">
-                        启用过滤总开关
-                    </label>
-                    <span id="filterStatus" style="color: var(--text-secondary); font-size: 0.9em;"></span>
+            <!-- Tab Navigation -->
+            <div class="filter-tabs" style="display: flex; border-bottom: 1px solid var(--border-color); padding: 0 20px; flex-shrink: 0;">
+                <button class="filter-tab-btn active" data-tab="filter" style="padding: 12px 20px; border: none; background: var(--success-color); color: white; cursor: pointer; border-radius: 4px 4px 0 0; margin-right: 2px; font-weight: bold;">过滤规则</button>
+                <button class="filter-tab-btn" data-tab="regex_replace" style="padding: 12px 20px; border: none; background: var(--button-secondary-bg); color: var(--secondary-text); cursor: pointer; border-radius: 4px 4px 0 0; margin-right: 2px;">VCPLog样式</button>
+            </div>
+
+            <!-- Tab Content Container -->
+            <div style="flex: 1; overflow-y: auto; padding: 20px;">
+
+                <!-- Filter Rules Tab Content -->
+                <div id="filterTabContent" class="filter-tab-content">
+                    <div class="filter-rules-header" style="margin-bottom: 20px;">
+                        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
+                            <span style="font-weight: bold; color: var(--success-color);">过滤状态:</span>
+                            <span id="filterStatus" style="color: var(--text-secondary); font-size: 0.9em; padding: 4px 12px; background: var(--success-color); color: white; border-radius: 12px;">已启用</span>
+                        </div>
+                        <button type="button" id="addFilterRuleBtn" class="sidebar-button small-button">添加过滤规则</button>
+                    </div>
+
+                    <div id="filterRulesList" class="filter-rules-list">
+                        <!-- 过滤规则将在这里动态显示 -->
+                    </div>
+
+                    <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid var(--border-color);">
+                        <div style="font-size: 0.9em; color: var(--text-secondary);">
+                            <p><strong>过滤规则使用说明：</strong></p>
+                            <p>• <strong>过滤已启用：</strong>只显示白名单规则匹配的消息，其他消息都被过滤掉</p>
+                            <p>• <strong>停留时间：</strong>可设置每条规则对应的通知显示时长，支持永久显示</p>
+                        </div>
+                    </div>
                 </div>
-                <button type="button" id="addFilterRuleBtn" class="sidebar-button small-button">添加过滤规则</button>
-            </div>
 
-            <div id="filterRulesList" class="filter-rules-list">
-                <!-- 过滤规则将在这里动态显示 -->
-            </div>
+                <!-- Regex Replace Rules Tab Content -->
+                <div id="regexReplaceTabContent" class="filter-tab-content" style="display: none;">
+                    <div class="filter-rules-header" style="margin-bottom: 20px;">
+                        <div style="margin-bottom: 10px;">
+                            <p style="color: var(--text-secondary); font-size: 0.9em; margin: 0;">
+                                <strong>VCPLog 自定义正则替换样式：</strong>为VCPLog消息内容设置美化替换规则，支持正则表达式
+                            </p>
+                        </div>
+                        <button type="button" id="addRegexReplaceRuleBtn" class="sidebar-button small-button">添加样式规则</button>
+                    </div>
 
-            <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid var(--border-color);">
-                <div style="font-size: 0.9em; color: var(--text-secondary);">
-                    <p><strong>使用说明：</strong></p>
-                    <p>• <strong>过滤总开关关闭：</strong>显示所有通知</p>
-                    <p>• <strong>过滤总开关开启：</strong>只显示白名单规则匹配的消息，其他消息都被过滤掉</p>
-                    <p>• <strong>停留时间：</strong>可设置每条规则对应的通知显示时长，支持永久显示</p>
+                    <div id="regexReplaceRulesList" class="filter-rules-list">
+                        <!-- 自定义正则替换规则将在这里动态显示 -->
+                    </div>
+
+                    <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid var(--border-color);">
+                        <div style="font-size: 0.9em; color: var(--text-secondary);">
+                            <p><strong>样式规则使用说明：</strong></p>
+                            <p>• <strong>源模式：</strong>用于匹配VCPLog消息中的内容的正则表达式</p>
+                            <p>• <strong>替换为：</strong>将匹配的内容替换为指定格式，支持使用捕获组（如$1, $2）</p>
+                            <p>• <strong>优先级：</strong>规则顺序决定应用优先级，数字越小优先级越高</p>
+                            <p>• <strong>VCPLog JSON示例：</strong></p>
+                            <p style="margin-left: 15px; background: var(--bg-secondary); padding: 10px; border-radius: 4px; font-family: monospace; font-size: 0.8em;">
+                                源模式：<code>/"recipient":\s*null/g</code><br>
+                                替换为：<code>recipient〉null</code><br><br>
+                                源模式：<code>/"originalContent":\s*"([^"]*)"/g</code><br>
+                                替换为：<code>originalContent〉$1</code>
+                            </p>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -806,6 +849,55 @@
 
                 <div class="form-actions">
                     <button type="button" id="cancelFilterRuleEditor" class="button-secondary">取消</button>
+                    <button type="submit" class="button-primary">保存规则</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Regex Replace Rule Editor Modal -->
+    <div class="modal" id="regexReplaceRuleEditorModal">
+        <div class="modal-content">
+            <span class="close-button" id="closeRegexReplaceRuleEditorModal">×</span>
+            <h2 id="regexReplaceRuleEditorTitle">添加自定义正则替换规则</h2>
+            <form id="regexReplaceRuleEditorForm">
+                <input type="hidden" id="editingRegexReplaceRuleId">
+
+                <div>
+                    <label for="regexReplaceRuleName">规则名称:</label>
+                    <input type="text" id="regexReplaceRuleName" name="name" placeholder="例如：JSON字段格式化">
+                </div>
+
+                <div>
+                    <label for="regexReplaceRuleSourcePattern">源正则表达式:</label>
+                    <input type="text" id="regexReplaceRuleSourcePattern" name="sourcePattern" placeholder="例如：/\\\\n\\s*\"([^\"]+)\":\\s*\"([^\"]*)\"/g">
+                    <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
+                        用于匹配VCPLog消息中需要美化的内容的正则表达式
+                    </small>
+                </div>
+
+                <div>
+                    <label for="regexReplaceRuleReplacement">替换内容:</label>
+                    <input type="text" id="regexReplaceRuleReplacement" name="replacement" placeholder="例如：$1〉$2">
+                    <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
+                        替换格式，支持捕获组引用（如$1, $2）。留空则删除匹配内容。
+                    </small>
+                </div>
+
+                <div>
+                    <label for="regexReplaceRuleDescription">规则描述（可选）:</label>
+                    <input type="text" id="regexReplaceRuleDescription" name="description" placeholder="描述此规则的作用和用途">
+                </div>
+
+                <div class="form-fieldset">
+                    <label for="regexReplaceRuleEnabled" style="display: flex; align-items: center; gap: 5px;">
+                        <input type="checkbox" id="regexReplaceRuleEnabled" name="enabled" checked>
+                        启用此规则
+                    </label>
+                </div>
+
+                <div class="form-actions">
+                    <button type="button" id="cancelRegexReplaceRuleEditor" class="button-secondary">取消</button>
                     <button type="submit" class="button-primary">保存规则</button>
                 </div>
             </form>
