@@ -332,7 +332,7 @@ window.itemListManager = (() => {
             } catch (error) {
                 console.error('[ItemListManager] 切换到设置页面时出错:', error);
             }
-        }, 100); // 增加延时到100ms
+        }, 50); // 延时50ms
     }
 
     /**
@@ -390,7 +390,7 @@ window.itemListManager = (() => {
             } catch (error) {
                 console.error('[ItemListManager] 切换到话题页面时出错:', error);
             }
-        }, 100); // 增加延时到100ms
+        }, 50); // 延时50ms
     }
 
     /**
