@@ -328,7 +328,15 @@ function initializeInputEnhancer(refs) {
         notes.forEach((note, index) => {
             const item = document.createElement('div');
             item.className = 'suggestion-item';
-            item.textContent = note.name;
+            
+            // 提取相对路径  
+            const relativePath = note.path.replace(/\\/g, '/').split('/').slice(-3, -1).join('/');  
+            
+            item.innerHTML = `  
+                <span class="suggestion-name">${note.name}</span>  
+                <span class="suggestion-path">${relativePath}</span>  
+            `;  
+            
             item.dataset.filePath = note.path;
             item.addEventListener('click', () => selectNoteSuggestion(note));
             noteSuggestionPopup.appendChild(item);

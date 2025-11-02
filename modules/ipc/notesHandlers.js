@@ -679,38 +679,89 @@ function initialize(options) {
         });
     });
 
-    // IPC handler for searching notes
-    ipcMain.handle('search-notes', async (event, query) => {
-        if (!query) {
-            return [];
-        }
-        const lowerCaseQuery = query.toLowerCase();
-        const results = [];
-        const NOTES_MODULE_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'Notemodules');
-
-        async function searchInDirectory(directory) {
-            try {
-                const files = await fs.readdir(directory, { withFileTypes: true });
-                for (const file of files) {
-                    const fullPath = path.join(directory, file.name);
-                    if (file.isDirectory()) {
-                        await searchInDirectory(fullPath);
-                    } else if (file.isFile() && (file.name.endsWith('.md') || file.name.endsWith('.txt'))) {
-                        if (file.name.toLowerCase().includes(lowerCaseQuery)) {
-                            results.push({
-                                name: file.name,
-                                path: fullPath,
-                            });
-                        }
-                    }
-                }
-            } catch (error) {
-                console.error(`Error searching for notes in directory ${directory}:`, error);
-            }
-        }
-
-        await searchInDirectory(NOTES_MODULE_DIR);
-        return results;
+    // IPC handler for searching notes  
+    ipcMain.handle('search-notes', async (event, query) => {  
+        if (!query) {  
+            return [];  
+        }  
+        const lowerCaseQuery = query.toLowerCase();  
+        const results = [];  
+        const NOTES_MODULE_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'Notemodules');  
+    
+        // 递归搜索函数  
+        async function searchInDirectory(directory) {  
+            try {  
+                const files = await fs.readdir(directory, { withFileTypes: true });  
+                for (const file of files) {  
+                    const fullPath = path.join(directory, file.name);  
+                    if (file.isDirectory()) {  
+                        await searchInDirectory(fullPath);  
+                    } else if (file.isFile() && (file.name.endsWith('.md') || file.name.endsWith('.txt'))) {  
+                        if (file.name.toLowerCase().includes(lowerCaseQuery)) {  
+                            results.push({  
+                                name: file.name,  
+                                path: fullPath,  
+                            });  
+                        }  
+                    }  
+                }  
+            } catch (error) {  
+                console.error(`Error searching for notes in directory ${directory}:`, error);  
+            }  
+        }  
+    
+        // 性能优化：优先从缓存中搜索网络笔记  
+        async function searchInNetworkCache() {  
+            if (!networkNotesTreeCache || networkNotesTreeCache.length === 0) {  
+                return;  
+            }  
+    
+            function searchTreeNode(node) {  
+                if (node.type === 'note' && node.fileName && node.fileName.toLowerCase().includes(lowerCaseQuery)) {  
+                    results.push({  
+                        name: node.fileName,  
+                        path: node.path,  
+                    });  
+                }  
+                if (node.children && Array.isArray(node.children)) {  
+                    for (const child of node.children) {  
+                        searchTreeNode(child);  
+                    }  
+                }  
+            }  
+    
+            for (const rootNode of networkNotesTreeCache) {  
+                searchTreeNode(rootNode);  
+            }  
+        }  
+    
+        // 1. 搜索本地笔记  
+        await searchInDirectory(NOTES_MODULE_DIR);  
+    
+        // 2. 优先从缓存搜索网络笔记（性能优化）  
+        await searchInNetworkCache();  
+    
+        // 3. 如果缓存不存在，则实时扫描网络路径（降级方案）  
+        if (!networkNotesTreeCache || networkNotesTreeCache.length === 0) {  
+            try {  
+                if (await fs.pathExists(SETTINGS_FILE)) {  
+                    const settings = await fs.readJson(SETTINGS_FILE);  
+                    const networkPaths = Array.isArray(settings.networkNotesPaths)   
+                        ? settings.networkNotesPaths   
+                        : (settings.networkNotesPath ? [settings.networkNotesPath] : []);  
+                    
+                    for (const networkPath of networkPaths) {  
+                        if (networkPath && await fs.pathExists(networkPath)) {  
+                            await searchInDirectory(networkPath);  
+                        }  
+                    }  
+                }  
+            } catch (error) {  
+                console.error('Error searching network notes:', error);  
+            }  
+        }  
+    
+        return results;  
     });
 }
 

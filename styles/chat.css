@@ -681,6 +681,35 @@ body.light-theme .suggestion-item {
     background-color: var(--accent-bg);
     color: var(--highlight-text);
 }
+.suggestion-item {  
+    padding: 8px 12px;  
+    color: var(--primary-text);  
+    cursor: pointer;  
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);  
+    font-size: 14px;  
+    display: flex;  
+    justify-content: space-between;  
+    align-items: center;  
+    gap: 12px;  
+}  
+  
+.suggestion-name {  
+    flex-shrink: 0;  
+    white-space: nowrap;  
+    overflow: hidden;  
+    text-overflow: ellipsis;  
+}  
+  
+.suggestion-path {  
+    color: var(--secondary-text);  
+    opacity: 0.6;  
+    font-size: 0.85em;  
+    text-align: right;  
+    white-space: nowrap;  
+    overflow: hidden;  
+    text-overflow: ellipsis;  
+    flex-shrink: 1;  
+}
 /* --- Light Theme Code Block Styles --- */
 body.light-theme .message-item .md-content pre {
     background-color: rgba(255, 250, 240, 0.85); /* 米白磨砂背景 */
