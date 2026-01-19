@@ -68,7 +68,7 @@ fn resample(
     
     // Fast path: 如果采样率相同，直接返回，无需处理
     if original_sr == target_sr {
-        return Ok(PyArray::from_slice_bound(py, slice).to_owned().into());
+        return Ok(PyArray::from_slice(py, slice).to_owned().into());
     }
 
     let ratio = target_sr as f64 / original_sr as f64;
@@ -112,7 +112,7 @@ fn resample(
     })
     .map_err(|e: String| pyo3::exceptions::PyValueError::new_err(e))?;
 
-    Ok(PyArray::from_vec_bound(py, resampled_output).to_owned().into())
+    Ok(PyArray::from_vec(py, resampled_output).to_owned().into())
 }
 
 /// A Python module implemented in Rust.
