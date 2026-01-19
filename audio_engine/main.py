@@ -118,6 +118,10 @@ class AudioEngine:
         if not self.dither_enabled or not RUST_RESAMPLER_AVAILABLE:
             return audio_data
         
+        # 检查 Rust 模块是否包含该函数
+        if not hasattr(rust_audio_resampler, 'apply_noise_shaping_high_order'):
+            return audio_data
+
         if self.ns_state is None or len(self.ns_state) != self.channels * 5:
             self._initialize_ns_state()
         
