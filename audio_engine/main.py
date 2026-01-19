@@ -526,7 +526,8 @@ class AudioEngine:
                 stream_args = {
                     'samplerate': self.samplerate,
                     'channels': self.channels,
-                    'callback': self._stream_callback
+                    'callback': self._stream_callback,
+                    'blocksize': 0, # 让 PortAudio 自动选择最优块大小
                 }
                 if self.device_id is not None:
                     stream_args['device'] = self.device_id
@@ -541,7 +542,14 @@ class AudioEngine:
                     except Exception as e:
                         logging.error(f"Could not set WASAPI exclusive mode: {e}")
 
-                self.stream = sd.OutputStream(**stream_args)
+                # macOS 蓝牙耳机兼容性优化：如果采样率不匹配，尝试强制使用设备默认采样率
+                try:
+                    self.stream = sd.OutputStream(**stream_args)
+                except Exception as e:
+                    logging.warning(f"Failed to open stream with {self.samplerate}Hz: {e}. Trying device default rate.")
+                    device_info = sd.query_devices(self.device_id if self.device_id is not None else sd.default.device[1])
+                    stream_args['samplerate'] = int(device_info['default_samplerate'])
+                    self.stream = sd.OutputStream(**stream_args)
                 self.stream.start()
                 self.is_playing = True
                 self.is_paused = False
@@ -611,10 +619,11 @@ class AudioEngine:
             }
 
     def _get_system_mixer_samplerate(self):
-        """获取Windows混音器的当前采样率"""
+        """获取系统混音器的当前采样率"""
         try:
             # 查询默认输出设备
             device_info = sd.query_devices(kind='output')
+            # macOS 下蓝牙耳机等设备可能返回 44100 或 48000
             return int(device_info.get('default_samplerate', 48000))
         except Exception as e:
             logging.warning(f"Could not query system mixer samplerate: {e}")
@@ -837,16 +846,17 @@ def get_audio_devices():
     devices = sd.query_devices()
     hostapis = sd.query_hostapis()
     
-    # Find the WASAPI host API index
+    # Find the WASAPI host API index (Windows specific)
     wasapi_index = -1
+    core_audio_index = -1
     for i, api in enumerate(hostapis):
         if 'WASAPI' in api['name']:
             wasapi_index = i
-            break
+        if 'Core Audio' in api['name']:
+            core_audio_index = i
             
-    if wasapi_index == -1:
-        logging.warning("WASAPI host API not found.")
-        return {'wasapi': [], 'other': []}
+    # macOS 兼容性：如果没找到 WASAPI 但找到了 Core Audio，则认为是在 macOS
+    is_macos = (core_audio_index != -1)
 
     wasapi_devices = []
     other_devices = []
@@ -861,7 +871,10 @@ def get_audio_devices():
                 'max_output_channels': device['max_output_channels'],
                 'default_samplerate': device['default_samplerate']
             }
-            if device['hostapi'] == wasapi_index:
+            # 如果是 macOS，我们将 Core Audio 设备放入 wasapi 列表（前端可能期望这个分类）
+            # 或者统一放入 other 列表。为了最小化前端改动，这里做逻辑兼容。
+            if (wasapi_index != -1 and device['hostapi'] == wasapi_index) or \
+               (is_macos and device['hostapi'] == core_audio_index):
                 wasapi_devices.append(device_info)
             else:
                 other_devices.append(device_info)
