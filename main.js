@@ -145,6 +145,7 @@ let ragObserverWindow = null; // To hold the single instance of the RAG observer
 let networkNotesTreeCache = null; // In-memory cache for the network notes
 let cachedModels = []; // Cache for models fetched from VCP server
 const NOTES_MODULE_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'Notemodules');
+const isRagObserverOnly = process.argv.includes('--rag-observer-only');
 
 // --- Audio Engine Management ---
 function startAudioEngine() {
@@ -364,7 +365,12 @@ if (!gotTheLock) {
 } else {
   app.on('second-instance', (event, commandLine, workingDirectory) => {
     // 有人试图运行第二个实例，我们应该聚焦于我们的窗口
-    if (mainWindow && !mainWindow.isDestroyed()) {
+    if (isRagObserverOnly && ragObserverWindow && !ragObserverWindow.isDestroyed()) {
+      if (!ragObserverWindow.isVisible()) {
+        ragObserverWindow.show();
+      }
+      ragObserverWindow.focus();
+    } else if (mainWindow && !mainWindow.isDestroyed()) {
       if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.focus();
     }
@@ -394,33 +400,39 @@ if (!gotTheLock) {
 
     // The native splash screen is started by the batch file, so no action is needed here.
 
-    // Pre-warm the audio engine in the background. This doesn't block the main window.
-    startAudioEngine().catch(err => {
-        console.error('[Main] Failed to pre-warm audio engine on startup:', err);
-        // We don't need to show a dialog here, as it will be handled when the
-        // music window is actually opened.
-    });
+    if (!isRagObserverOnly) {
+        // Pre-warm the audio engine in the background. This doesn't block the main window.
+        startAudioEngine().catch(err => {
+            console.error('[Main] Failed to pre-warm audio engine on startup:', err);
+            // We don't need to show a dialog here, as it will be handled when the
+            // music window is actually opened.
+        });
+    }
     // Register a custom protocol to handle loading local app files securely.
     fs.ensureDirSync(APP_DATA_ROOT_IN_PROJECT); // Ensure the main AppData directory in project exists
-    fs.ensureDirSync(AGENT_DIR);
-    fs.ensureDirSync(USER_DATA_DIR);
-    fs.ensureDirSync(MUSIC_COVER_CACHE_DIR);
-    fs.ensureDirSync(WALLPAPER_THUMBNAIL_CACHE_DIR); // Ensure the thumbnail cache directory exists
-    fs.ensureDirSync(RESAMPLE_CACHE_DIR); // Ensure the resample cache directory exists
-    fs.ensureDirSync(CANVAS_CACHE_DIR); // Ensure the canvas cache directory exists
-    fileManager.initializeFileManager(USER_DATA_DIR, AGENT_DIR); // Initialize FileManager
-    groupChat.initializePaths({ APP_DATA_ROOT_IN_PROJECT, AGENT_DIR, USER_DATA_DIR, SETTINGS_FILE }); // Initialize GroupChat paths
+    if (!isRagObserverOnly) {
+        fs.ensureDirSync(AGENT_DIR);
+        fs.ensureDirSync(USER_DATA_DIR);
+        fs.ensureDirSync(MUSIC_COVER_CACHE_DIR);
+        fs.ensureDirSync(WALLPAPER_THUMBNAIL_CACHE_DIR); // Ensure the thumbnail cache directory exists
+        fs.ensureDirSync(RESAMPLE_CACHE_DIR); // Ensure the resample cache directory exists
+        fs.ensureDirSync(CANVAS_CACHE_DIR); // Ensure the canvas cache directory exists
+        fileManager.initializeFileManager(USER_DATA_DIR, AGENT_DIR); // Initialize FileManager
+        groupChat.initializePaths({ APP_DATA_ROOT_IN_PROJECT, AGENT_DIR, USER_DATA_DIR, SETTINGS_FILE }); // Initialize GroupChat paths
+    }
 
     const AppSettingsManager = require('./modules/utils/appSettingsManager');
-    const AgentConfigManager = require('./modules/utils/agentConfigManager');
     const appSettingsManager = new AppSettingsManager(SETTINGS_FILE);
-    const agentConfigManager = new AgentConfigManager(AGENT_DIR);
+    const AgentConfigManager = require('./modules/utils/agentConfigManager');
+    const agentConfigManager = isRagObserverOnly ? null : new AgentConfigManager(AGENT_DIR);
     
-    appSettingsManager.startCleanupTimer();
-    appSettingsManager.startAutoBackup(USER_DATA_DIR); // Start auto backup
-    agentConfigManager.startCleanupTimer(); // Start agent config cleanup
+    if (!isRagObserverOnly) {
+        appSettingsManager.startCleanupTimer();
+        appSettingsManager.startAutoBackup(USER_DATA_DIR); // Start auto backup
+        agentConfigManager.startCleanupTimer(); // Start agent config cleanup
 
-    settingsHandlers.initialize({ SETTINGS_FILE, USER_AVATAR_FILE, AGENT_DIR, settingsManager: appSettingsManager, agentConfigManager }); // Initialize settings handlers
+        settingsHandlers.initialize({ SETTINGS_FILE, USER_AVATAR_FILE, AGENT_DIR, settingsManager: appSettingsManager, agentConfigManager }); // Initialize settings handlers
+    }
 
    // Function to fetch and cache models from the VCP server
    async function fetchAndCacheModels() {
@@ -456,6 +468,77 @@ if (!gotTheLock) {
            console.error('[Main] Failed to fetch and cache models:', error);
            cachedModels = []; // Clear cache on error
        }
+   }
+
+   const createOrFocusRagObserverWindow = async () => {
+        if (ragObserverWindow && !ragObserverWindow.isDestroyed()) {
+            if (!ragObserverWindow.isVisible()) {
+                ragObserverWindow.show();
+            }
+            ragObserverWindow.focus();
+            return;
+        }
+
+        let settings = {};
+        try {
+            settings = await appSettingsManager.readSettings();
+        } catch (readError) {
+            console.error('Failed to read settings file for RAG observer window:', readError);
+        }
+
+        nativeTheme.themeSource = settings.currentThemeMode || 'system';
+
+        ragObserverWindow = new BrowserWindow({
+            width: 500,
+            height: 900,
+            minWidth: 300,
+            minHeight: 600,
+            title: 'VCP - 信息流监听器',
+            frame: false,
+            ...(process.platform === 'darwin' ? {} : { titleBarStyle: 'hidden' }),
+            webPreferences: {
+                preload: path.join(__dirname, 'preload.js'),
+                contextIsolation: true,
+                nodeIntegration: false,
+            },
+            icon: path.join(__dirname, 'assets', 'icon.png'),
+            show: false
+        });
+
+        const vcpLogUrl = settings.vcpLogUrl || '';
+        const vcpLogKey = settings.vcpLogKey || '';
+        const currentThemeMode = settings.currentThemeMode || 'dark';
+        const observerUrl = `file://${path.join(__dirname, 'RAGmodules', 'RAG_Observer.html')}?vcpLogUrl=${encodeURIComponent(vcpLogUrl)}&vcpLogKey=${encodeURIComponent(vcpLogKey)}&currentThemeMode=${encodeURIComponent(currentThemeMode)}`;
+
+        ragObserverWindow.loadURL(observerUrl);
+        ragObserverWindow.setMenu(null);
+
+        ragObserverWindow.once('ready-to-show', () => {
+            ragObserverWindow.show();
+        });
+
+        openChildWindows.push(ragObserverWindow);
+
+        ragObserverWindow.on('close', (event) => {
+            if (process.platform === 'darwin' && !app.isQuitting) {
+                event.preventDefault();
+                ragObserverWindow.hide();
+            }
+        });
+
+        ragObserverWindow.on('closed', () => {
+            openChildWindows = openChildWindows.filter(win => win !== ragObserverWindow);
+            ragObserverWindow = null;
+        });
+   };
+
+   ipcMain.handle('open-rag-observer-window', createOrFocusRagObserverWindow);
+
+   if (isRagObserverOnly) {
+        windowHandlers.initialize(null, openChildWindows);
+        themeHandlers.initialize({ mainWindow: null, openChildWindows, projectRoot: PROJECT_ROOT, APP_DATA_ROOT_IN_PROJECT, settingsManager: appSettingsManager });
+        await createOrFocusRagObserverWindow();
+        return;
    }
 
    // Create the main window first to give immediate feedback to the user.
@@ -717,72 +800,6 @@ if (!gotTheLock) {
             if (mainWindow && !mainWindow.isDestroyed()) {
                 mainWindow.focus(); // 聚焦主窗口
             }
-        });
-    });
-
-    // 新增：处理打开RAG Observer窗口的请求
-    ipcMain.handle('open-rag-observer-window', async () => {
-        // 检查窗口是否已存在，如果存在则聚焦
-        if (ragObserverWindow && !ragObserverWindow.isDestroyed()) {
-            if (!ragObserverWindow.isVisible()) {
-                ragObserverWindow.show();
-            }
-            ragObserverWindow.focus();
-            return;
-        }
-
-        ragObserverWindow = new BrowserWindow({
-            width: 500,
-            height: 900,
-            minWidth: 300,
-            minHeight: 600,
-            title: 'VCP - 信息流监听器',
-            frame: false, // 移除原生窗口框架
-            ...(process.platform === 'darwin' ? {} : { titleBarStyle: 'hidden' }),
-            webPreferences: {
-                preload: path.join(__dirname, 'preload.js'),
-                contextIsolation: true,
-                nodeIntegration: false,
-            },
-            icon: path.join(__dirname, 'assets', 'icon.png'),
-            show: false
-        });
-
-        let settings = {};
-        try {
-            const AppSettingsManager = require('./modules/utils/appSettingsManager');
-            const sm = new AppSettingsManager(SETTINGS_FILE);
-            settings = await sm.readSettings();
-        } catch (readError) {
-            console.error('Failed to read settings file for RAG observer window:', readError);
-        }
-
-        const vcpLogUrl = settings.vcpLogUrl || '';
-        const vcpLogKey = settings.vcpLogKey || '';
-        const currentThemeMode = settings.currentThemeMode || 'dark';
-
-        // 通过URL查询参数传递配置
-        const observerUrl = `file://${path.join(__dirname, 'RAGmodules', 'RAG_Observer.html')}?vcpLogUrl=${encodeURIComponent(vcpLogUrl)}&vcpLogKey=${encodeURIComponent(vcpLogKey)}&currentThemeMode=${encodeURIComponent(currentThemeMode)}`;
-        
-        ragObserverWindow.loadURL(observerUrl);
-        ragObserverWindow.setMenu(null);
-
-        ragObserverWindow.once('ready-to-show', () => {
-            ragObserverWindow.show();
-        });
-
-        openChildWindows.push(ragObserverWindow);
-
-        ragObserverWindow.on('close', (event) => {
-            if (process.platform === 'darwin' && !app.isQuitting) {
-                event.preventDefault();
-                ragObserverWindow.hide();
-            }
-        });
-
-        ragObserverWindow.on('closed', () => {
-            openChildWindows = openChildWindows.filter(win => win !== ragObserverWindow);
-            ragObserverWindow = null;
         });
     });
 

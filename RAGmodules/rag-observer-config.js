@@ -5,10 +5,15 @@ class RAGObserverConfig {
     constructor() {
         this.settings = null;
         this.wsConnection = null;
+        this.logConnection = null;
         this.reconnectAttempts = 0;
         this.maxReconnectAttempts = 10;
         this.reconnectDelay = 3000; // 3秒
         this.isConnecting = false;
+        this.logReconnectAttempts = 0;
+        this.maxLogReconnectAttempts = 10;
+        this.logReconnectDelay = 3000;
+        this.isLogConnecting = false;
     }
 
     // 从URL查询参数读取settings
@@ -101,6 +106,47 @@ class RAGObserverConfig {
             // 错误处理：在 onclose 中处理重连，这里只更新状态
             updateStatus('error', '连接发生错误！请检查服务器或配置。');
         };
+
+        this.connectVcpLog(wsUrl, vcpKey);
+    }
+
+    connectVcpLog(wsUrl, vcpKey, isReconnect = false) {
+        if (this.isLogConnecting) return;
+        this.isLogConnecting = true;
+
+        if (!wsUrl || !vcpKey) {
+            this.isLogConnecting = false;
+            return;
+        }
+
+        const wsUrlLog = `${wsUrl}/VCPlog/VCP_Key=${vcpKey}`;
+        this.logConnection = new WebSocket(wsUrlLog);
+
+        this.logConnection.onopen = () => {
+            this.logReconnectAttempts = 0;
+            this.isLogConnecting = false;
+        };
+
+        this.logConnection.onmessage = (event) => {
+            const rawMessage = typeof event.data === 'string' ? event.data : String(event.data);
+            let data = rawMessage;
+            try {
+                data = JSON.parse(rawMessage);
+            } catch (e) {
+            }
+            if (typeof displayNotification === 'function') {
+                displayNotification(data, rawMessage);
+            }
+        };
+
+        this.logConnection.onclose = () => {
+            this.isLogConnecting = false;
+            this.reconnectLog(wsUrl, vcpKey);
+        };
+
+        this.logConnection.onerror = () => {
+            this.isLogConnecting = false;
+        };
     }
 
     // 尝试重新连接
@@ -114,6 +160,15 @@ class RAGObserverConfig {
         } else {
             updateStatus('error', '连接失败，已达到最大重连次数。请检查配置或服务器状态。');
             console.error('已达到最大重连次数，停止重连。');
+        }
+    }
+
+    reconnectLog(wsUrl, vcpKey) {
+        if (this.logReconnectAttempts < this.maxLogReconnectAttempts) {
+            this.logReconnectAttempts++;
+            setTimeout(() => {
+                this.connectVcpLog(wsUrl, vcpKey, true);
+            }, this.logReconnectDelay);
         }
     }
 
@@ -185,16 +240,24 @@ window.addEventListener('DOMContentLoaded', async () => {
 
     // --- Custom Title Bar Listeners ---
     const minimize = () => window.electronAPI?.minimizeWindow();
-    const maximize = () => window.electronAPI?.maximizeWindow();
+    let isPinned = false;
+    const togglePin = () => {
+        isPinned = !isPinned;
+        window.electronAPI?.setAlwaysOnTop?.(isPinned);
+        const macPinBtn = document.getElementById('mac-pin-btn');
+        const winPinBtn = document.getElementById('win-pin-btn');
+        if (macPinBtn) macPinBtn.classList.toggle('pin-active', isPinned);
+        if (winPinBtn) winPinBtn.classList.toggle('pin-active', isPinned);
+    };
     const close = () => window.close();
 
     // Mac Controls
     document.getElementById('mac-minimize-btn').addEventListener('click', minimize);
-    document.getElementById('mac-maximize-btn').addEventListener('click', maximize);
+    document.getElementById('mac-pin-btn').addEventListener('click', togglePin);
     document.getElementById('mac-close-btn').addEventListener('click', close);
 
     // Windows Controls
     document.getElementById('win-minimize-btn').addEventListener('click', minimize);
-    document.getElementById('win-maximize-btn').addEventListener('click', maximize);
+    document.getElementById('win-pin-btn').addEventListener('click', togglePin);
     document.getElementById('win-close-btn').addEventListener('click', close);
 });

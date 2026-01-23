@@ -6,6 +6,7 @@
   "scripts": {
     "postinstall": "electron-rebuild -f -w selection-hook",
     "start": "electron .",
+    "start:info-listener": "electron . --rag-observer-only",
     "pack": "electron-rebuild -f -w selection-hook && electron-builder --dir",
     "dist": "electron-rebuild -f -w selection-hook && electron-builder"
   },

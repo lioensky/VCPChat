@@ -48,6 +48,13 @@ function initialize(mainWindow, openChildWindows) {
         }
     });
 
+    ipcMain.on('set-always-on-top', (event, enabled) => {
+        const win = BrowserWindow.fromWebContents(event.sender);
+        if (win) {
+            win.setAlwaysOnTop(!!enabled);
+        }
+    });
+
     ipcMain.on('hide-window', (event) => {
         const win = BrowserWindow.fromWebContents(event.sender);
         if (win) {

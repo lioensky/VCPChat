@@ -16,6 +16,7 @@
             --accent-chain: #9b59b6;
             --accent-agent: #f1c40f;
             --accent-memo: #1abc9c;
+            --accent-notification: #4a90e2;
         }
 
         body {
@@ -75,7 +76,7 @@
         .window-control-btn:hover { transform: scale(1.2); opacity: 1; }
         #mac-close-btn { background: #ff5f56; }
         #mac-minimize-btn { background: #ffbd2e; }
-        #mac-maximize-btn { background: #27c93f; }
+        #mac-pin-btn { background: #5dade2; }
 
         /* --- Windows Controls --- */
         .window-controls-win {
@@ -96,7 +97,9 @@
         }
         .win-control-btn:hover { background: rgba(255,255,255,0.1); color: #fff; }
         #win-close-btn:hover { background: #e81123; color: #fff; }
-        .win-control-btn svg { width: 12px; height: 12px; }
+        .win-control-btn svg { width: 12px; height: 12px; fill: none; }
+        .pin-active { color: #fff; }
+        .pin-active svg { fill: currentColor; }
 
         /* --- Platform Specific Layout --- */
         .window-controls-mac, .window-controls-win { display: none; }
@@ -348,6 +351,7 @@
         .type-chain { --accent-color: var(--accent-chain); }
         .type-chat { --accent-color: var(--accent-agent); }
         .type-memo { --accent-color: var(--accent-memo); }
+        .type-notification { --accent-color: var(--accent-notification); }
 
         /* RAG Item */
         .rag-sub-item {
@@ -447,13 +451,13 @@
     <script>marked.setOptions({ gfm: true, breaks: true });</script>
     <script src="./rag-observer-config.js"></script>
 </head>
-<body>
+<body class="platform-win">
     <!-- Title Bar -->
     <div id="custom-title-bar">
         <div class="window-controls window-controls-mac">
             <button id="mac-close-btn" class="window-control-btn" title="关闭"></button>
             <button id="mac-minimize-btn" class="window-control-btn" title="最小化"></button>
-            <button id="mac-maximize-btn" class="window-control-btn" title="最大化"></button>
+            <button id="mac-pin-btn" class="window-control-btn" title="置顶"></button>
         </div>
         <div class="title">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="4"></circle></svg>
@@ -461,7 +465,7 @@
         </div>
         <div class="window-controls window-controls-win">
             <button id="win-minimize-btn" class="win-control-btn" title="最小化"><svg><use href="#icon-win-minimize"></use></svg></button>
-            <button id="win-maximize-btn" class="win-control-btn" title="最大化"><svg><use href="#icon-win-maximize"></use></svg></button>
+            <button id="win-pin-btn" class="win-control-btn" title="置顶"><svg><use href="#icon-pin"></use></svg></button>
             <button id="win-close-btn" class="win-control-btn" title="关闭"><svg><use href="#icon-win-close"></use></svg></button>
         </div>
     </div>
@@ -482,6 +486,7 @@
                 <button class="filter-btn" data-type="chain" onclick="filterLogs('chain', this)">元思考链</button>
                 <button class="filter-btn" data-type="chat" onclick="filterLogs('chat', this)">Agent会话</button>
                 <button class="filter-btn" data-type="memo" onclick="filterLogs('memo', this)">记忆检索</button>
+                <button class="filter-btn" data-type="notification" onclick="filterLogs('notification', this)">通知消息</button>
                 <button class="filter-btn" onclick="clearLogs()" style="margin-left: 10px; color: #ff5f56;">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
                 </button>
@@ -504,6 +509,10 @@
         <symbol id="icon-win-minimize" viewBox="0 0 10 10"><path stroke="currentColor" stroke-width="1.2" d="M0 5 H10"></path></symbol>
         <symbol id="icon-win-maximize" viewBox="0 0 10 10"><path fill="none" stroke="currentColor" stroke-width="1.2" d="M1,1 h8 v8 h-8 z"></path></symbol>
         <symbol id="icon-win-close" viewBox="0 0 10 10"><path stroke="currentColor" stroke-width="1.2" d="M1,1 L9,9 M9,1 L1,9"></path></symbol>
+        <symbol id="icon-pin" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="17" x2="12" y2="22"></line>
+            <path d="M5 17h14v-2l-1-1V5a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v9l-1 1v2z"></path>
+        </symbol>
     </svg>
 
     <script>
@@ -542,7 +551,8 @@
                 'rag': 'rgba(52, 152, 219, 0.4)', // --accent-rag
                 'chain': 'rgba(155, 89, 182, 0.4)', // --accent-chain
                 'chat': 'rgba(241, 196, 15, 0.4)', // --accent-agent
-                'memo': 'rgba(26, 188, 156, 0.4)' // --accent-memo
+                'memo': 'rgba(26, 188, 156, 0.4)', // --accent-memo
+                'notification': 'rgba(74, 144, 226, 0.4)'
             };
             highlight.style.backgroundColor = typeColors[type] || typeColors['all'];
 
@@ -836,12 +846,142 @@
             prependCard(block);
         }
 
+        function normalizeNotification(logData, rawMessage) {
+            if (logData && typeof logData === 'object' && logData.type === 'connection_ack' && logData.message === 'WebSocket connection successful for VCPLog.') {
+                return null;
+            }
+
+            let titleText = 'VCP 通知:';
+            let mainContent = '';
+            let contentIsPreformatted = false;
+            let typeLabel = 'notification';
+
+            if (logData && typeof logData === 'object' && logData.type === 'vcp_log' && logData.data && typeof logData.data === 'object') {
+                typeLabel = logData.type;
+                const vcpData = logData.data;
+                if (vcpData.tool_name && vcpData.status) {
+                    titleText = `${vcpData.tool_name} ${vcpData.status}`;
+                    if (typeof vcpData.content !== 'undefined') {
+                        let rawContentString = String(vcpData.content);
+                        mainContent = rawContentString;
+                        contentIsPreformatted = true;
+                        try {
+                            const parsedInnerContent = JSON.parse(rawContentString);
+                            let titleSuffix = '';
+                            if (parsedInnerContent.MaidName) {
+                                titleSuffix += ` by ${parsedInnerContent.MaidName}`;
+                            }
+                            if (parsedInnerContent.timestamp && typeof parsedInnerContent.timestamp === 'string' && parsedInnerContent.timestamp.length >= 16) {
+                                const timePart = parsedInnerContent.timestamp.substring(11, 16);
+                                titleSuffix += `${parsedInnerContent.MaidName ? ' ' : ''}@ ${timePart}`;
+                            }
+                            if (titleSuffix) {
+                                titleText += ` (${titleSuffix.trim()})`;
+                            }
+                            if (typeof parsedInnerContent.original_plugin_output !== 'undefined') {
+                                if (typeof parsedInnerContent.original_plugin_output === 'object' && parsedInnerContent.original_plugin_output !== null) {
+                                    mainContent = JSON.stringify(parsedInnerContent.original_plugin_output, null, 2);
+                                } else {
+                                    mainContent = String(parsedInnerContent.original_plugin_output);
+                                    contentIsPreformatted = false;
+                                }
+                            }
+                        } catch (e) {
+                        }
+                    } else {
+                        mainContent = '(无内容)';
+                    }
+                } else if (vcpData.source === 'DistPluginManager' && vcpData.content) {
+                    titleText = '分布式服务器:';
+                    mainContent = vcpData.content;
+                    contentIsPreformatted = false;
+                } else {
+                    titleText = 'VCP 日志条目:';
+                    mainContent = JSON.stringify(vcpData, null, 2);
+                    contentIsPreformatted = true;
+                }
+            } else if (logData && typeof logData === 'object' && logData.type === 'video_generation_status' && logData.data && typeof logData.data === 'object') {
+                typeLabel = logData.type;
+                titleText = '视频生成状态:';
+                if (logData.data.original_plugin_output && typeof logData.data.original_plugin_output.message === 'string') {
+                    mainContent = logData.data.original_plugin_output.message;
+                    contentIsPreformatted = false;
+                } else if (logData.data.original_plugin_output) {
+                    mainContent = JSON.stringify(logData.data.original_plugin_output, null, 2);
+                    contentIsPreformatted = true;
+                } else {
+                    mainContent = JSON.stringify(logData.data, null, 2);
+                    contentIsPreformatted = true;
+                }
+                if (logData.data.timestamp && typeof logData.data.timestamp === 'string' && logData.data.timestamp.length >= 16) {
+                    const timePart = logData.data.timestamp.substring(11, 16);
+                    titleText += ` (@ ${timePart})`;
+                }
+            } else if (logData && typeof logData === 'object' && logData.type === 'daily_note_created' && logData.data && typeof logData.data === 'object') {
+                typeLabel = logData.type;
+                const noteData = logData.data;
+                titleText = `日记: ${noteData.maidName || 'N/A'} (${noteData.dateString || 'N/A'})`;
+                if (noteData.status === 'success') {
+                    mainContent = noteData.message || '日记已成功创建。';
+                } else {
+                    mainContent = noteData.message || `日记处理状态: ${noteData.status || '未知'}`;
+                }
+            } else if (logData && typeof logData === 'object' && logData.type === 'connection_ack' && logData.message) {
+                typeLabel = logData.type;
+                titleText = 'VCP 连接:';
+                mainContent = String(logData.message);
+            } else if (logData && typeof logData === 'object' && logData.type && logData.message) {
+                typeLabel = logData.type;
+                titleText = `类型: ${logData.type}`;
+                mainContent = String(logData.message);
+                if (logData.data) {
+                    mainContent += `\n数据: ${JSON.stringify(logData.data, null, 2)}`;
+                    contentIsPreformatted = true;
+                }
+            } else {
+                if (logData && typeof logData === 'object' && logData.type) {
+                    typeLabel = logData.type;
+                }
+                titleText = 'VCP 消息:';
+                mainContent = typeof logData === 'object' && logData !== null ? JSON.stringify(logData, null, 2) : String(logData);
+                contentIsPreformatted = typeof logData === 'object';
+            }
+
+            const contentText = contentIsPreformatted ? `\`\`\`\n${mainContent}\n\`\`\`` : mainContent;
+            const timeText = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+            const rawText = rawMessage !== null ? rawMessage : (typeof logData === 'object' && logData !== null ? JSON.stringify(logData, null, 2) : String(logData));
+
+            return { titleText, contentText, timeText, typeLabel, rawText };
+        }
+
+        function displayNotification(logData, rawMessage = null) {
+            const normalized = normalizeNotification(logData, rawMessage);
+            if (!normalized) return;
+
+            const block = document.createElement('div');
+            block.className = 'card-base type-notification card-enter';
+            block.innerHTML = `
+                <h3 style="color: var(--accent-notification);">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+                    ${normalized.titleText}
+                </h3>
+                <div class="meta-info">
+                    <span class="meta-pill">Type: ${normalized.typeLabel}</span>
+                    <span class="meta-pill">Time: ${normalized.timeText}</span>
+                </div>
+                ${createContentHTML(normalized.contentText)}
+            `;
+            block.dataset.rawNotification = normalized.rawText;
+            prependCard(block);
+        }
+
         function prependCard(element) {
             // Check filter before adding
             const type = element.classList.contains('type-rag') ? 'rag' :
                          element.classList.contains('type-chain') ? 'chain' :
                          element.classList.contains('type-chat') ? 'chat' :
-                         element.classList.contains('type-memo') ? 'memo' : 'all';
+                         element.classList.contains('type-memo') ? 'memo' :
+                         element.classList.contains('type-notification') ? 'notification' : 'all';
             
             if (currentFilter !== 'all' && currentFilter !== type) {
                 element.style.display = 'none';
