@@ -14,6 +14,7 @@ class RAGObserverConfig {
         this.maxLogReconnectAttempts = 10;
         this.logReconnectDelay = 3000;
         this.isLogConnecting = false;
+        this.floatingState = 'passthrough';
     }
 
     // 从URL查询参数读取settings
@@ -77,19 +78,23 @@ class RAGObserverConfig {
         };
 
         this.wsConnection.onmessage = (event) => {
+            const rawMessage = typeof event.data === 'string' ? event.data : String(event.data);
+            let data = rawMessage;
             try {
-                const data = JSON.parse(event.data);
-                console.log('DEBUG: [RAG Observer] Received WebSocket Data:', data);
-                
-                // 检查是否为RAG、元思考链或Agent私聊预览的详细信息
-                if (data.type === 'RAG_RETRIEVAL_DETAILS' || data.type === 'META_THINKING_CHAIN' || data.type === 'AGENT_PRIVATE_CHAT_PREVIEW' || data.type === 'AI_MEMO_RETRIEVAL') {
-                    if (window.startSpectrumAnimation) {
-                        window.startSpectrumAnimation(3000); // 动画持续3秒
-                    }
-                    displayRagInfo(data); // displayRagInfo内部会处理这两种类型
-                }
+                data = JSON.parse(rawMessage);
             } catch (e) {
-                console.error('解析消息失败:', e);
+            }
+            console.log('DEBUG: [RAG Observer] Received WebSocket Data:', data);
+
+            if (this.floatingState !== 'off' && typeof window.showFloatingToast === 'function') {
+                window.showFloatingToast({ source: 'vcpinfo', data, rawMessage });
+            }
+
+            if (data && typeof data === 'object' && (data.type === 'RAG_RETRIEVAL_DETAILS' || data.type === 'META_THINKING_CHAIN' || data.type === 'AGENT_PRIVATE_CHAT_PREVIEW' || data.type === 'AI_MEMO_RETRIEVAL')) {
+                if (window.startSpectrumAnimation) {
+                    window.startSpectrumAnimation(3000);
+                }
+                displayRagInfo(data);
             }
         };
 
@@ -133,6 +138,9 @@ class RAGObserverConfig {
             try {
                 data = JSON.parse(rawMessage);
             } catch (e) {
+            }
+            if (this.floatingState !== 'off' && typeof window.showFloatingToast === 'function') {
+                window.showFloatingToast({ source: 'log', data, rawMessage });
             }
             if (typeof displayNotification === 'function') {
                 displayNotification(data, rawMessage);
@@ -240,6 +248,14 @@ window.addEventListener('DOMContentLoaded', async () => {
 
     // --- Custom Title Bar Listeners ---
     const minimize = () => window.electronAPI?.minimizeWindow();
+    const minimizeToTray = () => {
+        if (window.electronAPI?.minimizeToTray) {
+            window.electronAPI.minimizeToTray();
+            return;
+        }
+        window.electronAPI?.hideWindow?.();
+    };
+    
     let isPinned = false;
     const togglePin = () => {
         isPinned = !isPinned;
@@ -249,15 +265,37 @@ window.addEventListener('DOMContentLoaded', async () => {
         if (macPinBtn) macPinBtn.classList.toggle('pin-active', isPinned);
         if (winPinBtn) winPinBtn.classList.toggle('pin-active', isPinned);
     };
+
+    const normalizeFloatingState = (state) => {
+        if (state === 'off' || state === 'passthrough' || state === 'draggable') return state;
+        if (state === false) return 'off';
+        if (state === true) return 'passthrough';
+        return 'passthrough';
+    };
+
+    const setFloatingState = (state) => {
+        config.floatingState = normalizeFloatingState(state);
+    };
+
+    const getFloatingState = () => normalizeFloatingState(config.floatingState);
+
+    window.setRagFloatingState = setFloatingState;
+    window.getRagFloatingState = getFloatingState;
+    if (typeof window.syncFloatingStateFromConfig === 'function') {
+        window.syncFloatingStateFromConfig();
+    }
+
     const close = () => window.close();
 
     // Mac Controls
     document.getElementById('mac-minimize-btn').addEventListener('click', minimize);
+    document.getElementById('mac-tray-btn').addEventListener('click', minimizeToTray);
     document.getElementById('mac-pin-btn').addEventListener('click', togglePin);
     document.getElementById('mac-close-btn').addEventListener('click', close);
 
     // Windows Controls
     document.getElementById('win-minimize-btn').addEventListener('click', minimize);
+    document.getElementById('win-tray-btn').addEventListener('click', minimizeToTray);
     document.getElementById('win-pin-btn').addEventListener('click', togglePin);
     document.getElementById('win-close-btn').addEventListener('click', close);
 });

@@ -30,6 +30,94 @@
             overflow: hidden;
             transition: background-color 0.3s ease;
         }
+        body.floating-mode {
+            background: transparent !important;
+            background-image: none !important;
+        }
+        body.floating-mode #custom-title-bar,
+        body.floating-mode .main-wrapper,
+        body.floating-mode #spectrum-canvas {
+            display: none;
+        }
+        #floatingToastContainer {
+            position: fixed;
+            top: 16px;
+            right: 16px;
+            display: none;
+            flex-direction: column;
+            gap: 10px;
+            align-items: flex-end;
+            pointer-events: none;
+            width: calc(100% - 32px);
+            box-sizing: border-box;
+            z-index: 3000;
+        }
+        body.floating-mode #floatingToastContainer {
+            display: flex;
+        }
+        body.floating-draggable::before {
+            content: '拖拽此处调整位置';
+            position: fixed;
+            inset: 0;
+            background: rgba(30, 30, 30, 0.45);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.4);
+            pointer-events: none;
+            z-index: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 14px;
+            letter-spacing: 2px;
+            backdrop-filter: blur(8px);
+            border-radius: 12px;
+        }
+        .floating-toast {
+            max-width: 360px;
+            min-width: 240px;
+            background: rgba(25, 25, 25, 0.75);
+            backdrop-filter: blur(10px);
+            color: var(--primary-text);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 10px 12px;
+            opacity: 0;
+            transform: translateY(-6px);
+            transition: opacity 0.2s ease, transform 0.2s ease;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+        }
+        body.floating-draggable .floating-toast {
+            background: rgba(35, 35, 35, 0.85);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+        }
+        .floating-toast.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        .floating-toast .title {
+            font-size: 0.85rem;
+            font-weight: 600;
+            margin-bottom: 4px;
+            display: flex;
+            gap: 6px;
+            align-items: center;
+        }
+        .floating-toast .meta {
+            font-size: 0.72rem;
+            color: var(--secondary-text);
+            opacity: 0.8;
+            margin-bottom: 6px;
+        }
+        .floating-toast .content {
+            font-size: 0.8rem;
+            line-height: 1.4;
+            white-space: pre-wrap;
+            word-break: break-word;
+            max-height: 120px;
+            overflow: hidden;
+        }
 
         /* --- Custom Title Bar --- */
         #custom-title-bar {
@@ -72,11 +160,47 @@
             cursor: pointer;
             transition: transform 0.2s, opacity 0.2s;
             opacity: 0.8;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
+        .window-control-btn svg {
+            width: 8px;
+            height: 8px;
+            opacity: 0;
+            transition: opacity 0.2s;
+            fill: none;
+            stroke: #000;
+            stroke-width: 2;
+        }
+        .window-control-btn.pin-active svg { opacity: 1; fill: #000; }
+        #mac-tray-btn svg { opacity: 1; fill: #000; stroke: none; }
+        .window-control-btn:hover svg {
+            opacity: 1;
+        }
+        .window-control-btn svg polygon { fill: #000; stroke: none; }
         .window-control-btn:hover { transform: scale(1.2); opacity: 1; }
         #mac-close-btn { background: #ff5f56; }
         #mac-minimize-btn { background: #ffbd2e; }
+        #mac-tray-btn { background: #28c940; }
         #mac-pin-btn { background: #5dade2; }
+        .floating-state-trigger {
+            height: 38px;
+            padding: 0 10px;
+            font-size: 11px;
+            color: rgba(255,255,255,0.7);
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            transition: all 0.2s;
+        }
+        .floating-state-trigger:hover { background: rgba(255,255,255,0.1); color: #fff; }
+        .window-controls-mac .floating-state-trigger { height: 38px; font-size: 10px; padding: 0 8px; }
+        .window-controls-win .floating-state-trigger { height: 38px; font-size: 11px; }
 
         /* --- Windows Controls --- */
         .window-controls-win {
@@ -97,11 +221,14 @@
         }
         .win-control-btn:hover { background: rgba(255,255,255,0.1); color: #fff; }
         #win-close-btn:hover { background: #e81123; color: #fff; }
-        .win-control-btn svg { width: 12px; height: 12px; fill: none; }
-        .pin-active { color: #fff; }
-        .pin-active svg { fill: currentColor; }
-
-        /* --- Platform Specific Layout --- */
+        .win-control-btn svg { width: 12px; height: 12px; fill: none; display: block; }
+        .win-control-btn svg path, .win-control-btn svg polyline, .win-control-btn svg line, .win-control-btn svg rect { fill: none; stroke: currentColor; stroke-width: 1.2; }
+        /* Windows 托盘图标是一个实心三角，必须有 fill */
+        #win-tray-btn svg { fill: currentColor !important; }
+        #win-tray-btn svg polygon { fill: currentColor !important; }
+        .pin-active { color: #fff !important; }
+        .pin-active svg { fill: currentColor !important; }
+        .pin-active svg path { fill: currentColor !important; }
         .window-controls-mac, .window-controls-win { display: none; }
         .platform-mac .window-controls-mac { display: flex; }
         .platform-win .window-controls-win { display: flex; }
@@ -113,6 +240,43 @@
         /* Win: [title] [controls] */
         .platform-win #custom-title-bar { justify-content: flex-start; }
         .platform-win .title { flex-grow: 1; }
+        .floating-state-menu {
+            position: fixed;
+            display: none;
+            flex-direction: column;
+            background: rgba(18, 18, 18, 0.95);
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 10px;
+            padding: 6px;
+            min-width: 170px;
+            z-index: 4000;
+            backdrop-filter: blur(8px);
+        }
+        .floating-state-menu.open { display: flex; }
+        .floating-state-item {
+            background: transparent;
+            border: none;
+            color: rgba(255,255,255,0.8);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 8px;
+            border-radius: 8px;
+            font-size: 12px;
+            cursor: pointer;
+            text-align: left;
+        }
+        .floating-state-item:hover { background: rgba(255,255,255,0.08); color: #fff; }
+        .state-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            border: 1px solid rgba(255,255,255,0.85);
+            display: inline-block;
+            box-sizing: border-box;
+        }
+        .floating-state-item.active .state-dot { background: currentColor; }
+        body.floating-draggable { -webkit-app-region: drag; }
 
         /* --- Main Container --- */
         .main-wrapper {
@@ -300,6 +464,7 @@
 
         .snippet {
             display: -webkit-box;
+            line-clamp: 3;
             -webkit-line-clamp: 3;
             -webkit-box-orient: vertical;
             overflow: hidden;
@@ -455,22 +620,32 @@
     <!-- Title Bar -->
     <div id="custom-title-bar">
         <div class="window-controls window-controls-mac">
+            <button id="mac-floating-menu-btn" class="floating-state-trigger" title="悬浮窗状态">状态 ∨</button>
             <button id="mac-close-btn" class="window-control-btn" title="关闭"></button>
             <button id="mac-minimize-btn" class="window-control-btn" title="最小化"></button>
-            <button id="mac-pin-btn" class="window-control-btn" title="置顶"></button>
+            <button id="mac-tray-btn" class="window-control-btn" title="最小化到托盘"><svg><use href="#icon-win-tray"></use></svg></button>
+            <button id="mac-pin-btn" class="window-control-btn" title="置顶"><svg><use href="#icon-pin"></use></svg></button>
         </div>
         <div class="title">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="4"></circle></svg>
             VCP 信息流监听器
         </div>
         <div class="window-controls window-controls-win">
+            <button id="win-floating-menu-btn" class="floating-state-trigger" title="悬浮窗状态">状态 ∨</button>
             <button id="win-minimize-btn" class="win-control-btn" title="最小化"><svg><use href="#icon-win-minimize"></use></svg></button>
+            <button id="win-tray-btn" class="win-control-btn" title="最小化到托盘"><svg><use href="#icon-win-tray"></use></svg></button>
             <button id="win-pin-btn" class="win-control-btn" title="置顶"><svg><use href="#icon-pin"></use></svg></button>
             <button id="win-close-btn" class="win-control-btn" title="关闭"><svg><use href="#icon-win-close"></use></svg></button>
         </div>
     </div>
+    <div id="floating-state-menu" class="floating-state-menu">
+        <button class="floating-state-item" data-state="off"><span class="state-dot"></span><span class="state-text">关闭</span></button>
+        <button class="floating-state-item" data-state="passthrough"><span class="state-dot"></span><span class="state-text">显示·鼠标穿透</span></button>
+        <button class="floating-state-item" data-state="draggable"><span class="state-dot"></span><span class="state-text">显示·可拖拽</span></button>
+    </div>
 
     <canvas id="spectrum-canvas"></canvas>
+    <div id="floatingToastContainer"></div>
 
     <div class="main-wrapper">
         <div class="header-section">
@@ -506,6 +681,14 @@
         <symbol id="icon-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></symbol>
         <symbol id="icon-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></symbol>
         <symbol id="icon-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></symbol>
+        <symbol id="icon-win-tray" viewBox="0 0 10 10">
+            <polygon points="5,8 0,2 10,2"></polygon>
+        </symbol>
+        <symbol id="icon-floating-toggle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect class="floating-fill" x="3" y="6" width="14" height="11" rx="2"></rect>
+            <rect x="3" y="6" width="14" height="11" rx="2"></rect>
+            <rect x="9" y="3" width="12" height="9" rx="2"></rect>
+        </symbol>
         <symbol id="icon-win-minimize" viewBox="0 0 10 10"><path stroke="currentColor" stroke-width="1.2" d="M0 5 H10"></path></symbol>
         <symbol id="icon-win-maximize" viewBox="0 0 10 10"><path fill="none" stroke="currentColor" stroke-width="1.2" d="M1,1 h8 v8 h-8 z"></path></symbol>
         <symbol id="icon-win-close" viewBox="0 0 10 10"><path stroke="currentColor" stroke-width="1.2" d="M1,1 L9,9 M9,1 L1,9"></path></symbol>
@@ -516,9 +699,219 @@
     </svg>
 
     <script>
-        // --- Visuals & Utils ---
         const infoContainer = document.getElementById('infoContainer');
+        const urlParams = new URLSearchParams(window.location.search);
+        
+        // mode=floating 表示当前窗口是独立的透明悬浮窗
+        const isFloatingWindow = urlParams.get('mode') === 'floating';
+        if (isFloatingWindow) {
+            document.body.classList.add('floating-mode');
+        }
+
+        const floatingToastContainer = document.getElementById('floatingToastContainer');
         let currentFilter = 'all';
+
+        const normalizeFloatingState = (state) => {
+            if (state === 'off' || state === 'passthrough' || state === 'draggable') return state;
+            if (state === false) return 'off';
+            if (state === true) return 'passthrough';
+            return 'passthrough';
+        };
+
+        let floatingState = normalizeFloatingState(
+            typeof window.getRagFloatingState === 'function' ? window.getRagFloatingState() : 'passthrough'
+        );
+
+        const floatingMenu = document.getElementById('floating-state-menu');
+        const floatingMenuButtons = [
+            document.getElementById('mac-floating-menu-btn'),
+            document.getElementById('win-floating-menu-btn')
+        ].filter(Boolean);
+
+        function updateFloatingMenuUI() {
+            const items = document.querySelectorAll('.floating-state-item');
+            items.forEach(item => {
+                const state = item.getAttribute('data-state');
+                item.classList.toggle('active', state === floatingState);
+            });
+        }
+
+        function applyFloatingState(state) {
+            floatingState = normalizeFloatingState(state);
+            document.body.classList.toggle('floating-draggable', isFloatingWindow && floatingState === 'draggable');
+            updateFloatingMenuUI();
+        }
+
+        function setFloatingState(state) {
+            applyFloatingState(state);
+            if (typeof window.setRagFloatingState === 'function') {
+                window.setRagFloatingState(floatingState);
+            }
+            if (!isFloatingWindow && window.electronAPI?.setRagToastState) {
+                window.electronAPI.setRagToastState(floatingState);
+            }
+        }
+
+        window.syncFloatingStateFromConfig = function() {
+            if (typeof window.getRagFloatingState === 'function') {
+                applyFloatingState(window.getRagFloatingState());
+            }
+        };
+
+        function openFloatingMenu(anchor) {
+            if (!floatingMenu || !anchor) return;
+            floatingMenu.classList.add('open');
+            floatingMenu.style.visibility = 'hidden';
+            requestAnimationFrame(() => {
+                const rect = anchor.getBoundingClientRect();
+                const menuRect = floatingMenu.getBoundingClientRect();
+                const left = Math.min(Math.max(8, rect.left), window.innerWidth - menuRect.width - 8);
+                const top = rect.bottom + 6;
+                floatingMenu.style.left = `${left}px`;
+                floatingMenu.style.top = `${top}px`;
+                floatingMenu.style.visibility = 'visible';
+            });
+        }
+
+        function closeFloatingMenu() {
+            if (!floatingMenu) return;
+            floatingMenu.classList.remove('open');
+            floatingMenu.style.visibility = '';
+        }
+
+        floatingMenuButtons.forEach(btn => {
+            btn.addEventListener('click', (event) => {
+                event.stopPropagation();
+                if (!floatingMenu) return;
+                if (floatingMenu.classList.contains('open')) {
+                    closeFloatingMenu();
+                } else {
+                    openFloatingMenu(btn);
+                }
+            });
+        });
+
+        if (floatingMenu) {
+            floatingMenu.addEventListener('click', (event) => {
+                const item = event.target.closest('.floating-state-item');
+                if (!item) return;
+                const state = item.getAttribute('data-state');
+                setFloatingState(state);
+                closeFloatingMenu();
+            });
+        }
+
+        document.addEventListener('click', (event) => {
+            if (!floatingMenu || !floatingMenu.classList.contains('open')) return;
+            if (floatingMenu.contains(event.target)) return;
+            if (floatingMenuButtons.some(btn => btn.contains(event.target))) return;
+            closeFloatingMenu();
+        });
+
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') closeFloatingMenu();
+        });
+
+        if (window.electronAPI?.onRagToastStateChanged) {
+            window.electronAPI.onRagToastStateChanged((state) => {
+                applyFloatingState(state);
+                if (typeof window.setRagFloatingState === 'function') {
+                    window.setRagFloatingState(state);
+                }
+            });
+        }
+
+        applyFloatingState(floatingState);
+
+        function resolveFloatingAccent(typeLabel, source) {
+            const upper = (typeLabel || '').toUpperCase();
+            if (source === 'log') return 'var(--accent-notification)';
+            if (upper.includes('RAG')) return 'var(--accent-rag)';
+            if (upper.includes('CHAIN') || upper.includes('THINK')) return 'var(--accent-chain)';
+            if (upper.includes('CHAT') || upper.includes('AGENT')) return 'var(--accent-agent)';
+            if (upper.includes('MEMO')) return 'var(--accent-memo)';
+            return 'rgba(255, 255, 255, 0.35)';
+        }
+
+        function normalizeFloatingPayload(payload) {
+            if (!payload) return null;
+            if (payload.source === 'log') {
+                const normalized = normalizeNotification(payload.data, payload.rawMessage);
+                if (!normalized) return null;
+                return {
+                    titleText: normalized.titleText,
+                    contentText: normalized.contentText.replace(/```/g, '').trim(),
+                    timeText: normalized.timeText,
+                    typeLabel: normalized.typeLabel || 'notification',
+                    accent: 'var(--accent-notification)'
+                };
+            }
+
+            const data = payload.data;
+            let typeLabel = '';
+            let titleText = '信息流提醒';
+            let contentText = '';
+            if (data && typeof data === 'object') {
+                typeLabel = data.type || payload.source || 'message';
+                if (data.type === 'RAG_RETRIEVAL_DETAILS') titleText = 'RAG 检索';
+                else if (data.type === 'META_THINKING_CHAIN') titleText = '元思考链';
+                else if (data.type === 'AGENT_PRIVATE_CHAT_PREVIEW') titleText = 'Agent 会话';
+                else if (data.type === 'AI_MEMO_RETRIEVAL') titleText = '记忆检索';
+                else if (data.type) titleText = `类型: ${data.type}`;
+                const candidate = data.query || data.userQuery || data.question || data.message || data.text || data.content || (data.data && (data.data.message || data.data.content || data.data.text));
+                if (typeof candidate === 'string') contentText = candidate;
+                else if (candidate && typeof candidate === 'object') contentText = JSON.stringify(candidate);
+                else if (data.data && typeof data.data === 'string') contentText = data.data;
+                else contentText = JSON.stringify(data);
+            } else {
+                typeLabel = payload.source || 'message';
+                contentText = typeof data === 'string' ? data : String(data);
+            }
+            if (typeof contentText !== 'string') contentText = String(contentText);
+            if (contentText.length > 300) contentText = `${contentText.slice(0, 300)}...`;
+            const timeText = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+            const accent = resolveFloatingAccent(typeLabel, payload.source);
+            return { titleText, contentText, timeText, typeLabel, accent };
+        }
+
+        function showFloatingToast(payload) {
+            if (floatingState === 'off' || !floatingToastContainer) return;
+            const normalized = normalizeFloatingPayload(payload);
+            if (!normalized) return;
+            const toast = document.createElement('div');
+            toast.className = 'floating-toast';
+
+            const title = document.createElement('div');
+            title.className = 'title';
+            title.textContent = normalized.titleText;
+
+            const meta = document.createElement('div');
+            meta.className = 'meta';
+            meta.textContent = `${normalized.typeLabel} · ${normalized.timeText}`;
+
+            const content = document.createElement('div');
+            content.className = 'content';
+            content.textContent = normalized.contentText || '';
+
+            toast.appendChild(title);
+            toast.appendChild(meta);
+            toast.appendChild(content);
+            floatingToastContainer.prepend(toast);
+
+            requestAnimationFrame(() => {
+                toast.classList.add('visible');
+            });
+            setTimeout(() => {
+                toast.classList.remove('visible');
+                setTimeout(() => {
+                    if (toast.parentNode) {
+                        toast.parentNode.removeChild(toast);
+                    }
+                }, 200);
+            }, 5000);
+        }
+
+        window.showFloatingToast = showFloatingToast;
 
         function updateStatus(status, message) {
             const dot = document.getElementById('statusDot');

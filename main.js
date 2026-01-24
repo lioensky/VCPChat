@@ -142,6 +142,8 @@ let openChildWindows = [];
 let distributedServer = null; // To hold the distributed server instance
 let translatorWindow = null; // To hold the single instance of the translator window
 let ragObserverWindow = null; // To hold the single instance of the RAG observer window
+let ragObserverToastWindow = null;
+let ragObserverToastState = 'passthrough';
 let networkNotesTreeCache = null; // In-memory cache for the network notes
 let cachedModels = []; // Cache for models fetched from VCP server
 const NOTES_MODULE_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'Notemodules');
@@ -315,9 +317,10 @@ function createTray() {
         {
             label: '显示/隐藏',
             click: () => {
-                // 修复 TypeError: Cannot read properties of null (reading 'isVisible')
-                if (mainWindow && !mainWindow.isDestroyed()) {
-                    mainWindow.isVisible() ? mainWindow.hide() : mainWindow.show();
+                const win = (mainWindow && !mainWindow.isDestroyed()) ? mainWindow : 
+                            (ragObserverWindow && !ragObserverWindow.isDestroyed()) ? ragObserverWindow : null;
+                if (win) {
+                    win.isVisible() ? win.hide() : win.show();
                 }
             }
         },
@@ -335,8 +338,10 @@ function createTray() {
     if (process.platform === 'darwin') {
         // macOS: 左键点击 (tray.on('click')) 负责显示/隐藏窗口
         tray.on('click', () => {
-            if (mainWindow && !mainWindow.isDestroyed()) {
-                mainWindow.isVisible() ? mainWindow.hide() : mainWindow.show();
+            const win = (mainWindow && !mainWindow.isDestroyed()) ? mainWindow : 
+                        (ragObserverWindow && !ragObserverWindow.isDestroyed()) ? ragObserverWindow : null;
+            if (win) {
+                win.isVisible() ? win.hide() : win.show();
             }
         });
         
@@ -350,8 +355,10 @@ function createTray() {
         // Windows/Linux: 默认行为。
         tray.setContextMenu(contextMenu);
         tray.on('click', () => {
-            if (mainWindow && !mainWindow.isDestroyed()) {
-                mainWindow.isVisible() ? mainWindow.hide() : mainWindow.show();
+            const win = (mainWindow && !mainWindow.isDestroyed()) ? mainWindow : 
+                        (ragObserverWindow && !ragObserverWindow.isDestroyed()) ? ragObserverWindow : null;
+            if (win) {
+                win.isVisible() ? win.hide() : win.show();
             }
         });
     }
@@ -524,13 +531,171 @@ if (!gotTheLock) {
                 event.preventDefault();
                 ragObserverWindow.hide();
             }
+            closeRagObserverToastWindow();
         });
 
         ragObserverWindow.on('closed', () => {
             openChildWindows = openChildWindows.filter(win => win !== ragObserverWindow);
             ragObserverWindow = null;
+            closeRagObserverToastWindow();
         });
    };
+
+   const closeRagObserverToastWindow = () => {
+        if (ragObserverToastWindow && !ragObserverToastWindow.isDestroyed()) {
+            ragObserverToastWindow.close();
+        }
+   };
+
+   const normalizeRagToastState = (state) => {
+        if (state === 'off' || state === 'passthrough' || state === 'draggable') return state;
+        if (state === false) return 'off';
+        if (state === true) return 'passthrough';
+        return 'passthrough';
+   };
+
+   const syncRagToastStateToRenderer = () => {
+        if (ragObserverToastWindow && !ragObserverToastWindow.isDestroyed()) {
+            ragObserverToastWindow.webContents.send('rag-toast-state-changed', ragObserverToastState);
+        }
+   };
+
+   const applyRagToastWindowState = (state) => {
+        if (!ragObserverToastWindow || ragObserverToastWindow.isDestroyed()) return;
+        const nextState = normalizeRagToastState(state);
+        if (nextState === 'draggable') {
+            ragObserverToastWindow.setIgnoreMouseEvents(false);
+            ragObserverToastWindow.setFocusable(true);
+        } else {
+            ragObserverToastWindow.setIgnoreMouseEvents(true, { forward: true });
+            ragObserverToastWindow.setFocusable(false);
+        }
+   };
+
+   const createOrFocusRagObserverToastWindow = async () => {
+        if (ragObserverToastWindow && !ragObserverToastWindow.isDestroyed()) {
+            if (!ragObserverToastWindow.isVisible()) {
+                if (typeof ragObserverToastWindow.showInactive === 'function') {
+                    ragObserverToastWindow.showInactive();
+                } else {
+                    ragObserverToastWindow.show();
+                }
+            }
+            return;
+        }
+
+        let settings = {};
+        try {
+            settings = await appSettingsManager.readSettings();
+        } catch (readError) {
+            console.error('Failed to read settings file for RAG observer toast window:', readError);
+        }
+
+        nativeTheme.themeSource = settings.currentThemeMode || 'system';
+
+        const toastWidth = 380;
+        const toastHeight = 220;
+        const { x, y, width, height } = screen.getPrimaryDisplay().workArea;
+        const posX = Math.max(x + width - toastWidth - 20, x);
+        const posY = y + 20;
+
+        ragObserverToastWindow = new BrowserWindow({
+            width: toastWidth,
+            height: toastHeight,
+            x: posX,
+            y: posY,
+            frame: false,
+            transparent: true,
+            resizable: false,
+            focusable: false,
+            show: false,
+            skipTaskbar: true,
+            hasShadow: false,
+            backgroundColor: '#00000000',
+            webPreferences: {
+                preload: path.join(__dirname, 'preload.js'),
+                contextIsolation: true,
+                nodeIntegration: false,
+            },
+            icon: path.join(__dirname, 'assets', 'icon.png')
+        });
+
+        const vcpLogUrl = settings.vcpLogUrl || '';
+        const vcpLogKey = settings.vcpLogKey || '';
+        const currentThemeMode = settings.currentThemeMode || 'dark';
+        const observerUrl = `file://${path.join(__dirname, 'RAGmodules', 'RAG_Observer.html')}?vcpLogUrl=${encodeURIComponent(vcpLogUrl)}&vcpLogKey=${encodeURIComponent(vcpLogKey)}&currentThemeMode=${encodeURIComponent(currentThemeMode)}&mode=floating`;
+
+        ragObserverToastWindow.loadURL(observerUrl);
+        ragObserverToastWindow.setMenu(null);
+        ragObserverToastWindow.setAlwaysOnTop(true, 'screen-saver');
+        applyRagToastWindowState(ragObserverToastState);
+
+        ragObserverToastWindow.webContents.once('did-finish-load', () => {
+            syncRagToastStateToRenderer();
+        });
+
+        ragObserverToastWindow.once('ready-to-show', () => {
+            if (ragObserverToastState !== 'off') {
+                if (typeof ragObserverToastWindow.showInactive === 'function') {
+                    ragObserverToastWindow.showInactive();
+                } else {
+                    ragObserverToastWindow.show();
+                }
+            }
+        });
+
+        openChildWindows.push(ragObserverToastWindow);
+
+        ragObserverToastWindow.on('closed', () => {
+            openChildWindows = openChildWindows.filter(win => win !== ragObserverToastWindow);
+            ragObserverToastWindow = null;
+        });
+   };
+
+   const applyRagToastState = async (state) => {
+        ragObserverToastState = normalizeRagToastState(state);
+        if (ragObserverToastState === 'off') {
+            if (ragObserverToastWindow && !ragObserverToastWindow.isDestroyed()) {
+                applyRagToastWindowState(ragObserverToastState);
+                ragObserverToastWindow.hide();
+                syncRagToastStateToRenderer();
+            }
+            return;
+        }
+
+        try {
+            await createOrFocusRagObserverToastWindow();
+        } catch (error) {
+            console.error('Failed to show RAG observer toast window:', error);
+        }
+
+        if (ragObserverToastWindow && !ragObserverToastWindow.isDestroyed()) {
+            applyRagToastWindowState(ragObserverToastState);
+            if (!ragObserverToastWindow.isVisible()) {
+                if (typeof ragObserverToastWindow.showInactive === 'function') {
+                    ragObserverToastWindow.showInactive();
+                } else {
+                    ragObserverToastWindow.show();
+                }
+            }
+            syncRagToastStateToRenderer();
+        }
+   };
+
+   ipcMain.on('minimize-to-tray', (event) => {
+        const win = BrowserWindow.fromWebContents(event.sender);
+        if (win) {
+            win.hide();
+        }
+   });
+
+   ipcMain.on('toggle-rag-toast-window', async (_event, enabled) => {
+        await applyRagToastState(enabled ? 'passthrough' : 'off');
+   });
+
+   ipcMain.on('set-rag-toast-state', async (_event, state) => {
+        await applyRagToastState(state);
+   });
 
    ipcMain.handle('open-rag-observer-window', createOrFocusRagObserverWindow);
 
@@ -538,6 +703,8 @@ if (!gotTheLock) {
         windowHandlers.initialize(null, openChildWindows);
         themeHandlers.initialize({ mainWindow: null, openChildWindows, projectRoot: PROJECT_ROOT, APP_DATA_ROOT_IN_PROJECT, settingsManager: appSettingsManager });
         await createOrFocusRagObserverWindow();
+        await applyRagToastState(ragObserverToastState);
+        createTray();
         return;
    }
 
@@ -876,13 +1043,9 @@ if (!gotTheLock) {
     canvasHandlers.initialize({ mainWindow, openChildWindows, CANVAS_CACHE_DIR });
     promptHandlers.initialize({ AGENT_DIR, APP_DATA_ROOT_IN_PROJECT });
 
-    ipcMain.on('minimize-to-tray', () => {
-        if (mainWindow) {
-            mainWindow.hide();
-        }
-    });
  
-     // --- Distributed Server Initialization ---
+
+    // --- Distributed Server Initialization ---
      (async () => {
         try {
             const settings = await appSettingsManager.readSettings();

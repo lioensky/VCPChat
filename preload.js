@@ -235,6 +235,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onWindowMaximized: (callback) => ipcRenderer.on('window-maximized', (_event) => callback()),
     onWindowUnmaximized: (callback) => ipcRenderer.on('window-unmaximized', (_event) => callback()),
     minimizeToTray: () => ipcRenderer.send('minimize-to-tray'),
+    toggleRagToastWindow: (enabled) => ipcRenderer.send('toggle-rag-toast-window', enabled),
+    setRagToastState: (state) => ipcRenderer.send('set-rag-toast-state', state),
+    onRagToastStateChanged: (callback) => ipcRenderer.on('rag-toast-state-changed', (_event, state) => callback(state)),
     // Splash Screen Close
     closeApp: () => ipcRenderer.send('close-app'),
  
