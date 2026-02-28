@@ -454,6 +454,36 @@ audio[controls]::-webkit-media-controls-volume-slider::-webkit-slider-thumb {
 }
 
 /* Context Menu Item Colors */
+#chatContextMenu .context-menu-item:not(.danger-item):not(.info-item):not(.regenerate-text):not(.context-menu-item-speak) {
+   color: #f3f6fb !important;
+   border-left: 2px solid transparent;
+}
+
+#chatContextMenu .context-menu-item:not(.danger-item):not(.info-item):not(.regenerate-text):not(.context-menu-item-speak):hover {
+   color: #ffffff !important;
+   background-color: rgba(255, 255, 255, 0.12) !important;
+   border-left-color: rgba(255, 255, 255, 0.38);
+}
+
+#chatContextMenu .context-menu-item:not(.danger-item):not(.info-item):not(.regenerate-text):not(.context-menu-item-speak):focus-visible {
+   outline: 2px solid rgba(255, 255, 255, 0.58);
+   outline-offset: -2px;
+}
+
+body.light-theme #chatContextMenu .context-menu-item:not(.danger-item):not(.info-item):not(.regenerate-text):not(.context-menu-item-speak) {
+   color: #1f2a37 !important;
+}
+
+body.light-theme #chatContextMenu .context-menu-item:not(.danger-item):not(.info-item):not(.regenerate-text):not(.context-menu-item-speak):hover {
+   color: #111827 !important;
+   background-color: rgba(17, 24, 39, 0.08) !important;
+   border-left-color: rgba(17, 24, 39, 0.26);
+}
+
+body.light-theme #chatContextMenu .context-menu-item:not(.danger-item):not(.info-item):not(.regenerate-text):not(.context-menu-item-speak):focus-visible {
+   outline: 2px solid rgba(17, 24, 39, 0.38);
+}
+
 .context-menu-item.danger-item {
    color:hsl(1, 83.80%, 61.20%) !important; /* Red */
 }

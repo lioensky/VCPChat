@@ -891,3 +891,47 @@ body.light-theme .message-item .md-content pre .hljs-meta {
    resize: vertical;
    min-height: 60px;
 }
+
+/* Keep the forward confirm action legible across themes, even if bubble colors are translucent. */
+#forwardMessageModal #confirmForwardBtn {
+   background-color: var(--button-bg);
+   color: var(--text-on-accent, #ffffff);
+   border: 1px solid var(--border-color);
+   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.12), 0 4px 10px rgba(0, 0, 0, 0.18);
+}
+
+#forwardMessageModal #confirmForwardBtn:hover:not(:disabled) {
+   background-color: var(--button-hover-bg);
+   border-color: var(--button-hover-bg);
+}
+
+#forwardMessageModal #confirmForwardBtn:focus-visible {
+   outline: 2px solid var(--highlight-text);
+   outline-offset: 2px;
+}
+
+#forwardMessageModal #confirmForwardBtn:disabled {
+   background-color: var(--secondary-bg);
+   color: var(--secondary-text);
+   border-color: var(--border-color);
+   box-shadow: none;
+   opacity: 0.9;
+   cursor: not-allowed;
+}
+
+#forwardMessageModal .form-actions .button-secondary {
+   background-color: var(--secondary-bg);
+   color: var(--primary-text);
+   border: 1px solid var(--border-color);
+   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08);
+}
+
+#forwardMessageModal .form-actions .button-secondary:hover {
+   background-color: var(--accent-bg);
+   color: var(--highlight-text);
+}
+
+#forwardMessageModal .form-actions .button-secondary:focus-visible {
+   outline: 2px solid var(--highlight-text);
+   outline-offset: 2px;
+}
