@@ -261,6 +261,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // Assistant specific
     toggleSelectionListener: (enable) => ipcRenderer.send('toggle-selection-listener', enable),
     getSelectionListenerStatus: () => ipcRenderer.invoke('get-selection-listener-status'),
+    suspendAssistantListener: (durationMs) => ipcRenderer.invoke('assistant-suspend-listener', durationMs),
+    getAssistantRuntimeStatus: () => ipcRenderer.invoke('get-assistant-runtime-status'),
+    getRustAssistantConfig: () => ipcRenderer.invoke('get-rust-assistant-config'),
+    saveRustAssistantConfig: (configPatch) => ipcRenderer.invoke('save-rust-assistant-config', configPatch),
     assistantAction: (action) => ipcRenderer.send('assistant-action', action),
     closeAssistantBar: () => ipcRenderer.send('close-assistant-bar'),
     onAssistantBarData: (callback) => ipcRenderer.on('assistant-bar-data', (_event, data) => callback(data)),

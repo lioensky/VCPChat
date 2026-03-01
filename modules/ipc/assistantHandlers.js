@@ -1,45 +1,56 @@
 // modules/ipc/assistantHandlers.js
 
-const { ipcMain, BrowserWindow, screen, nativeTheme, globalShortcut, clipboard } = require('electron');
+const { ipcMain, BrowserWindow, screen, nativeTheme, globalShortcut } = require('electron');
 const path = require('path');
+const os = require('os');
 const fs = require('fs-extra');
-const { getAgentConfigById } = require('./agentHandlers'); // Assuming agentHandlers is where this now lives
+const { getAgentConfigById } = require('./agentHandlers');
 const notesHandlers = require('./notesHandlers');
-
-let SelectionHook = null;
+const { createNodeAssistantAdapter } = require('../assistant/assistant-node-adapter');
+const { createRustAssistantAdapter } = require('../assistant/assistant-rust-adapter');
 
 let assistantWindow = null;
 let assistantBarWindow = null;
 let lastProcessedSelection = '';
 let selectionListenerActive = false;
-let selectionHookInstance = null;
 let mouseListener = null;
 let hideBarTimeout = null;
 let SETTINGS_FILE;
+let isWindowHidingInProgress = false;
+let rustHealthMonitorTimer = null;
+let rustHealthCheckRunning = false;
+let rustSuspendHotkeyRegistered = false;
 
-// Defensive logic variables
-let suspendUntil = 0; // 暂停到某个时间戳
-let lastClipboardContent = '';
-let clipChecker = null;
+let listenerAdapter = null;
+let listenerMode = 'node';
+let integrationTrace = {
+    receivedSelectionCount: 0,
+    showAttemptCount: 0,
+    lastSelectionText: null,
+    lastSelectionTs: 0,
+    lastShowAttemptTs: 0,
+    lastShowError: null
+};
+let runtimeFallbackTrace = {
+    autoFallbackCount: 0,
+    lastAutoFallbackReason: null,
+    lastAutoFallbackTs: 0
+};
+
+function getRustAssistantConfigPath() {
+    return path.join(__dirname, '..', '..', 'AppData', 'rust-assistant-config.json');
+}
 
 function processSelectedText(selectionData) {
-    // 🔥 关键：检查是否应该暂停
-    if (Date.now() < suspendUntil) {
-        console.log('[Assistant] Suspended, ignoring selection');
-        return;
-    }
-    
-    
-    // 检测是否在截图（常见截图工具的进程名）
-    const foregroundApp = getForegroundAppName();
-    const screenshotApps = ['SnippingTool', 'Snipaste', 'ShareX', 'QQ', 'WeChat'];
-    if (screenshotApps.some(app => foregroundApp.includes(app))) {
-        console.log('[Assistant] Screenshot tool active, suspending for 3s');
-        suspendUntil = Date.now() + 3000;
+    // 若窗口隐藏流程已启动，则不再处理新的选区（避免重新定位窗口）
+    if (isWindowHidingInProgress) {
         return;
     }
 
-    const selectedText = selectionData.text;
+    integrationTrace.receivedSelectionCount += 1;
+    integrationTrace.lastSelectionTs = Date.now();
+
+    const selectedText = selectionData?.text;
     if (!selectedText || selectedText.trim() === '') {
         if (assistantBarWindow && !assistantBarWindow.isDestroyed() && assistantBarWindow.isVisible()) {
             assistantBarWindow.hide();
@@ -52,9 +63,11 @@ function processSelectedText(selectionData) {
         return;
     }
     lastProcessedSelection = selectedText;
+    integrationTrace.lastSelectionText = selectedText.substring(0, 120);
     console.log('[Assistant] New text captured:', selectedText);
 
     if (!assistantBarWindow || assistantBarWindow.isDestroyed()) {
+        integrationTrace.lastShowError = 'assistantBarWindow 不存在或已销毁';
         console.error('[Assistant] Assistant bar window is not available.');
         return;
     }
@@ -75,6 +88,9 @@ function processSelectedText(selectionData) {
     const finalY = Math.round(dipPoint.y);
 
     setImmediate(() => {
+        integrationTrace.showAttemptCount += 1;
+        integrationTrace.lastShowAttemptTs = Date.now();
+        integrationTrace.lastShowError = null;
         assistantBarWindow.setPosition(finalX, finalY);
         assistantBarWindow.showInactive();
         startGlobalMouseListener();
@@ -90,52 +106,408 @@ function processSelectedText(selectionData) {
                     });
                 }
             } catch (error) {
+                integrationTrace.lastShowError = `assistant-bar-data 发送失败: ${error.message || error}`;
                 console.error('[Assistant] Error sending data to assistant bar:', error);
             }
         })();
     });
 }
 
-// 获取前台应用名称（Windows）
-function getForegroundAppName() {
-    if (process.platform !== 'win32') return '';
+async function loadRustAssistantConfig() {
+    const configPath = getRustAssistantConfigPath();
+    const defaults = {
+        version: 1,
+        useRustAssistant: false,
+        debugMode: false,
+        forceNode: false,
+        forceRust: false,
+        rollout: {
+            enabled: false,
+            percentage: 0,
+            seed: 'vcp-assistant'
+        },
+        whitelist: [],
+        blacklist: [],
+        screenshotApps: [],
+        fallback: {
+            onError: true,
+            onCrash: true,
+            onTimeout: true
+        },
+        metrics: {
+            enabled: true,
+            sampleRate: 1
+        }
+    };
+
     try {
-        const { execSync } = require('child_process');
-        const result = execSync(
-            'powershell "Get-Process | Where-Object {$_.MainWindowHandle -ne 0} | Select-Object -First 1 ProcessName"',
-            { encoding: 'utf8' }
-        );
-        return result.trim();
-    } catch {
-        return '';
+        if (await fs.pathExists(configPath)) {
+            const rawConfig = await fs.readJson(configPath);
+            return {
+                ...defaults,
+                ...rawConfig,
+                rollout: {
+                    ...defaults.rollout,
+                    ...(rawConfig.rollout || {})
+                },
+                fallback: {
+                    ...defaults.fallback,
+                    ...(rawConfig.fallback || {})
+                },
+                metrics: {
+                    ...defaults.metrics,
+                    ...(rawConfig.metrics || {})
+                },
+                whitelist: Array.isArray(rawConfig.whitelist) ? rawConfig.whitelist : [],
+                blacklist: Array.isArray(rawConfig.blacklist) ? rawConfig.blacklist : [],
+                debugMode: rawConfig.debugMode === true,
+                screenshotApps: Array.isArray(rawConfig.screenshotApps)
+                    ? rawConfig.screenshotApps
+                    : (Array.isArray(rawConfig.screenshot_apps) ? rawConfig.screenshot_apps : [])
+            };
+        }
+    } catch (error) {
+        console.error('[Assistant] Failed to read rust assistant config:', error);
+    }
+    return defaults;
+}
+
+async function saveRustAssistantConfig(partialConfig = {}) {
+    const configPath = getRustAssistantConfigPath();
+    const current = await loadRustAssistantConfig();
+
+    const merged = {
+        ...current,
+        ...partialConfig,
+        rollout: {
+            ...(current.rollout || {}),
+            ...((partialConfig && partialConfig.rollout) || {})
+        },
+        fallback: {
+            ...(current.fallback || {}),
+            ...((partialConfig && partialConfig.fallback) || {})
+        },
+        metrics: {
+            ...(current.metrics || {}),
+            ...((partialConfig && partialConfig.metrics) || {})
+        },
+        whitelist: Array.isArray(partialConfig.whitelist)
+            ? partialConfig.whitelist
+            : current.whitelist,
+        blacklist: Array.isArray(partialConfig.blacklist)
+            ? partialConfig.blacklist
+            : current.blacklist,
+        screenshotApps: Array.isArray(partialConfig.screenshotApps)
+            ? partialConfig.screenshotApps
+            : current.screenshotApps,
+        debugMode: partialConfig.debugMode === undefined
+            ? current.debugMode
+            : partialConfig.debugMode === true,
+    };
+
+    await fs.ensureDir(path.dirname(configPath));
+    await fs.writeJson(configPath, merged, { spaces: 2 });
+    return merged;
+}
+
+async function applyRustGuardRules(adapter, rustConfig) {
+    if (!adapter || typeof adapter.setGuardRules !== 'function') {
+        return;
+    }
+
+    try {
+        await adapter.setGuardRules({
+            whitelist: Array.isArray(rustConfig?.whitelist) ? rustConfig.whitelist : [],
+            blacklist: Array.isArray(rustConfig?.blacklist) ? rustConfig.blacklist : [],
+            screenshot_apps: Array.isArray(rustConfig?.screenshotApps) ? rustConfig.screenshotApps : []
+        });
+        console.log('[Assistant] Rust guard rules synced from rust-assistant-config.json');
+    } catch (error) {
+        console.warn('[Assistant] Failed to sync Rust guard rules:', error.message || error);
     }
 }
 
-
-// 检测剪贴板是否被其他程序使用
-function detectClipboardConflict() {
-    const currentClip = clipboard.readText();
-    if (currentClip !== lastClipboardContent) {
-        // 剪贴板被外部改变，暂停1秒
-        console.log('[Assistant] External clipboard change, suspending');
-        suspendUntil = Date.now() + 1000;
-        lastClipboardContent = currentClip;
+function hashString(input) {
+    let hash = 0;
+    for (let i = 0; i < input.length; i++) {
+        hash = ((hash << 5) - hash) + input.charCodeAt(i);
+        hash |= 0;
     }
+    return Math.abs(hash);
 }
 
-// 注册全局快捷键：Ctrl+Shift+P 临时暂停
-function registerSuspendHotkey() {
-    globalShortcut.register('CommandOrControl+Shift+P', () => {
-        suspendUntil = Date.now() + 10000; // 暂停10秒
-        console.log('[Assistant] Manually suspended for 10s');
+function shouldUseRustAssistant(config) {
+    if (config.forceNode === true) {
+        return false;
+    }
+
+    if (config.forceRust === true) {
+        return true;
+    }
+
+    if (config.useRustAssistant === true) {
+        return true;
+    }
+
+    if (config.rollout?.enabled) {
+        const percentage = Math.max(0, Math.min(100, Number(config.rollout.percentage) || 0));
+        const seed = String(config.rollout.seed || 'vcp-assistant');
+        const machineId = `${os.hostname()}|${os.userInfo().username}|${seed}`;
+        const bucket = hashString(machineId) % 100;
+        return bucket < percentage;
+    }
+
+    return false;
+}
+
+async function createPreferredAdapter() {
+    const rustConfig = await loadRustAssistantConfig();
+    const preferRust = process.platform === 'win32' && shouldUseRustAssistant(rustConfig);
+
+    console.log('[Assistant] Effective Rust config:', {
+        useRustAssistant: rustConfig.useRustAssistant,
+        forceNode: rustConfig.forceNode,
+        forceRust: rustConfig.forceRust,
+        rollout: rustConfig.rollout,
+        preferRust
     });
+
+    if (preferRust) {
+        const rustAdapter = createRustAssistantAdapter({
+            projectRoot: path.join(__dirname, '..', '..'),
+            logger: console,
+            debugMode: rustConfig.debugMode === true
+        });
+        await rustAdapter.initialize();
+        rustAdapter.onSelection(processSelectedText);
+        listenerMode = 'rust';
+        return rustAdapter;
+    }
+
+    const nodeAdapter = createNodeAssistantAdapter({ logger: console });
+    await nodeAdapter.initialize();
+    nodeAdapter.onSelection(processSelectedText);
+    listenerMode = 'node';
+    return nodeAdapter;
+}
+
+async function ensureListenerAdapter() {
+    if (listenerAdapter) {
+        return listenerAdapter;
+    }
+
+    try {
+        listenerAdapter = await createPreferredAdapter();
+        console.log(`[Assistant] Listener adapter initialized: ${listenerMode}`);
+    } catch (error) {
+        console.error('[Assistant] Failed to initialize preferred adapter:', error);
+
+        const nodeAdapter = createNodeAssistantAdapter({ logger: console });
+        await nodeAdapter.initialize();
+        nodeAdapter.onSelection(processSelectedText);
+        listenerAdapter = nodeAdapter;
+        listenerMode = 'node';
+        console.log('[Assistant] Fallback to Node adapter.');
+    }
+
+    return listenerAdapter;
+}
+
+async function reconcileListenerModeAfterConfig(config) {
+    const desiredMode = (process.platform === 'win32' && shouldUseRustAssistant(config)) ? 'rust' : 'node';
+    const wasActive = selectionListenerActive || (listenerAdapter ? listenerAdapter.isActive() : false);
+    const modeChanged = desiredMode !== listenerMode;
+
+    if (modeChanged) {
+        console.log(`[Assistant] Listener mode change detected: ${listenerMode} -> ${desiredMode}`);
+
+        stopSelectionListener();
+        listenerAdapter = null;
+        listenerMode = desiredMode;
+
+        if (wasActive) {
+            await startSelectionListener();
+            return {
+                modeChanged: true,
+                restarted: true,
+                mode: listenerMode,
+                active: selectionListenerActive
+            };
+        }
+
+        return {
+            modeChanged: true,
+            restarted: false,
+            mode: listenerMode,
+            active: false
+        };
+    }
+
+    if (desiredMode === 'rust' && listenerAdapter && typeof listenerAdapter.setGuardRules === 'function') {
+        await applyRustGuardRules(listenerAdapter, config);
+        if (typeof listenerAdapter.setDebugMode === 'function') {
+            listenerAdapter.setDebugMode(config.debugMode === true);
+        }
+    }
+
+    return {
+        modeChanged: false,
+        restarted: false,
+        mode: listenerMode,
+        active: wasActive
+    };
+}
+
+async function fallbackToNodeRuntime(reason = '未知原因') {
+    try {
+        console.warn(`[Assistant] Auto fallback to Node triggered: ${reason}`);
+
+        runtimeFallbackTrace.autoFallbackCount += 1;
+        runtimeFallbackTrace.lastAutoFallbackReason = reason;
+        runtimeFallbackTrace.lastAutoFallbackTs = Date.now();
+
+        if (listenerAdapter) {
+            try {
+                listenerAdapter.stop();
+            } catch (stopError) {
+                console.warn('[Assistant] Failed to stop current adapter during fallback:', stopError);
+            }
+        }
+
+        const nodeAdapter = createNodeAssistantAdapter({ logger: console });
+        await nodeAdapter.initialize();
+        nodeAdapter.onSelection(processSelectedText);
+
+        listenerAdapter = nodeAdapter;
+        listenerMode = 'node';
+        selectionListenerActive = nodeAdapter.start();
+
+        if (selectionListenerActive) {
+            console.log('[Assistant] Auto fallback listener started (node).');
+        } else {
+            console.error('[Assistant] Auto fallback to node failed to start listener.');
+        }
+    } catch (error) {
+        console.error('[Assistant] Auto fallback to node failed:', error);
+        selectionListenerActive = false;
+    }
+}
+
+function startRustHealthMonitor() {
+    if (rustHealthMonitorTimer) {
+        return;
+    }
+
+    rustHealthMonitorTimer = setInterval(async () => {
+        if (rustHealthCheckRunning) {
+            return;
+        }
+
+        if (listenerMode !== 'rust' || !listenerAdapter || !selectionListenerActive) {
+            return;
+        }
+
+        rustHealthCheckRunning = true;
+
+        try {
+            const rustConfig = await loadRustAssistantConfig();
+            const fallbackConfig = rustConfig?.fallback || {};
+            const diagnostics = (typeof listenerAdapter.getDiagnostics === 'function')
+                ? listenerAdapter.getDiagnostics()
+                : {};
+
+            const debugReason = String(diagnostics?.lastDebugReason || '').toLowerCase();
+            const rustPanicDetected = debugReason.includes('panic') || debugReason.includes('panicked');
+
+            if (fallbackConfig.onError !== false && rustPanicDetected) {
+                await fallbackToNodeRuntime('Rust 监听线程异常（panic）');
+                return;
+            }
+
+            if (fallbackConfig.onCrash !== false && diagnostics.processAlive === false) {
+                await fallbackToNodeRuntime('Rust sidecar 进程已退出');
+                return;
+            }
+
+            if (fallbackConfig.onTimeout !== false && typeof listenerAdapter.getStatus === 'function') {
+                let unhealthy = false;
+                try {
+                    const statusResp = await listenerAdapter.getStatus();
+                    const listenerActive = statusResp?.status === 200 && statusResp?.data?.listener_active === true;
+                    if (!listenerActive) {
+                        unhealthy = true;
+                    }
+                } catch (statusError) {
+                    unhealthy = true;
+                }
+
+                if (unhealthy) {
+                    await fallbackToNodeRuntime('Rust /status 不健康或超时');
+                }
+            }
+        } catch (monitorError) {
+            console.warn('[Assistant] Rust health monitor check failed:', monitorError.message || monitorError);
+        } finally {
+            rustHealthCheckRunning = false;
+        }
+    }, 5000);
+}
+
+function stopRustHealthMonitor() {
+    if (rustHealthMonitorTimer) {
+        clearInterval(rustHealthMonitorTimer);
+        rustHealthMonitorTimer = null;
+    }
+    rustHealthCheckRunning = false;
+}
+
+function registerRustSuspendHotkey() {
+    if (rustSuspendHotkeyRegistered) {
+        return;
+    }
+
+    try {
+        const ok = globalShortcut.register('CommandOrControl+Shift+P', async () => {
+            try {
+                if (listenerMode !== 'rust' || !listenerAdapter || typeof listenerAdapter.suspend !== 'function') {
+                    return;
+                }
+                await listenerAdapter.suspend(10000);
+                console.log('[Assistant] Rust listener manually suspended for 10s by hotkey.');
+            } catch (error) {
+                console.warn('[Assistant] Failed to suspend Rust listener by hotkey:', error.message || error);
+            }
+        });
+
+        rustSuspendHotkeyRegistered = ok === true;
+        if (!rustSuspendHotkeyRegistered) {
+            console.warn('[Assistant] Failed to register Rust suspend hotkey CommandOrControl+Shift+P');
+        }
+    } catch (error) {
+        rustSuspendHotkeyRegistered = false;
+        console.warn('[Assistant] Error registering Rust suspend hotkey:', error.message || error);
+    }
+}
+
+function unregisterRustSuspendHotkey() {
+    if (!rustSuspendHotkeyRegistered) {
+        return;
+    }
+
+    try {
+        globalShortcut.unregister('CommandOrControl+Shift+P');
+    } catch (error) {
+        console.warn('[Assistant] Error unregistering Rust suspend hotkey:', error.message || error);
+    } finally {
+        rustSuspendHotkeyRegistered = false;
+    }
 }
 
 function startGlobalMouseListener() {
     if (mouseListener) return;
     const { GlobalKeyboardListener } = require('node-global-key-listener');
     mouseListener = new GlobalKeyboardListener();
-    mouseListener.addListener((e, down) => {
+    mouseListener.addListener((e) => {
         if (e.state === 'DOWN') {
             if (hideBarTimeout) clearTimeout(hideBarTimeout);
             hideBarTimeout = setTimeout(() => {
@@ -146,6 +518,8 @@ function startGlobalMouseListener() {
 }
 
 function hideAssistantBarAndStopListener() {
+    isWindowHidingInProgress = true;
+
     if (hideBarTimeout) {
         clearTimeout(hideBarTimeout);
         hideBarTimeout = null;
@@ -157,63 +531,93 @@ function hideAssistantBarAndStopListener() {
         mouseListener.kill();
         mouseListener = null;
     }
+
+    // 下一微任务时重置标志，允许再次处理新的选区
+    setImmediate(() => {
+        isWindowHidingInProgress = false;
+    });
 }
 
-function startSelectionListener() {
-    if (selectionListenerActive || !SelectionHook) {
+async function startSelectionListener() {
+    const adapter = await ensureListenerAdapter();
+    if (!adapter) {
+        selectionListenerActive = false;
         return;
     }
+
     try {
-        selectionHookInstance = new SelectionHook();
-        selectionHookInstance.on('text-selection', processSelectedText);
-        selectionHookInstance.on('error', (error) => console.error('Error in SelectionHook:', error));
-
-        // 🔥 启动时初始化剪贴板状态
-        lastClipboardContent = clipboard.readText();
-        
-        
-        // 每500ms检测剪贴板冲突
-        clipChecker = setInterval(() => {
-            if (!selectionListenerActive) {
-                clearInterval(clipChecker);
-                clipChecker = null;
-                return;
-            }
-            detectClipboardConflict();
-        }, 500);
-
-        if (selectionHookInstance.start({ debug: false })) {
-            selectionListenerActive = true;
-            registerSuspendHotkey();
-            console.log('[Assistant] Listener started with smart suspension');
-        } else {
-            console.error('[Assistant] Failed to start selection-hook listener.');
-            selectionHookInstance = null;
+        const started = adapter.start();
+        if (!started && listenerMode === 'rust') {
+            throw new Error('Rust adapter start returned false');
         }
-    } catch (e) {
-        console.error('[Assistant] Failed to instantiate or start selection-hook listener:', e);
-        selectionHookInstance = null;
+
+        if (listenerMode === 'rust') {
+            const ready = typeof adapter.waitUntilReady === 'function'
+                ? await adapter.waitUntilReady(10000)
+                : adapter.isActive();
+
+            if (ready) {
+                const rustConfig = await loadRustAssistantConfig();
+                await applyRustGuardRules(adapter, rustConfig);
+            }
+        }
+
+        selectionListenerActive = adapter.isActive();
+
+        if (!selectionListenerActive && listenerMode === 'rust') {
+            console.warn('[Assistant] Rust adapter did not become active, switching to Node adapter.');
+            listenerAdapter = createNodeAssistantAdapter({ logger: console });
+            await listenerAdapter.initialize();
+            listenerAdapter.onSelection(processSelectedText);
+            listenerMode = 'node';
+            selectionListenerActive = listenerAdapter.start();
+        }
+
+        if (selectionListenerActive) {
+            console.log(`[Assistant] Listener started (${listenerMode}).`);
+        }
+
+        if (selectionListenerActive && listenerMode === 'rust') {
+            startRustHealthMonitor();
+            registerRustSuspendHotkey();
+        } else {
+            stopRustHealthMonitor();
+            unregisterRustSuspendHotkey();
+        }
+    } catch (error) {
+        console.error('[Assistant] Failed to start listener adapter:', error);
+
+        if (listenerMode !== 'node') {
+            try {
+                listenerAdapter = createNodeAssistantAdapter({ logger: console });
+                await listenerAdapter.initialize();
+                listenerAdapter.onSelection(processSelectedText);
+                listenerMode = 'node';
+                selectionListenerActive = listenerAdapter.start();
+                if (selectionListenerActive) {
+                    console.log('[Assistant] Fallback listener started (node).');
+                }
+                stopRustHealthMonitor();
+                unregisterRustSuspendHotkey();
+            } catch (fallbackError) {
+                console.error('[Assistant] Node fallback start failed:', fallbackError);
+                selectionListenerActive = false;
+            }
+        }
     }
 }
 
 function stopSelectionListener() {
-    if (!selectionListenerActive || !selectionHookInstance) {
-        return;
-    }
-    try {
-        selectionHookInstance.stop();
-        globalShortcut.unregister('CommandOrControl+Shift+P');
-        if (clipChecker) {
-            clearInterval(clipChecker);
-            clipChecker = null;
+    if (listenerAdapter) {
+        try {
+            listenerAdapter.stop();
+        } catch (error) {
+            console.error('[Assistant] Failed to stop listener adapter:', error);
         }
-        console.log('[Assistant] selection-hook listener stopped.');
-    } catch (e) {
-        console.error('[Assistant] Failed to stop selection-hook listener:', e);
-    } finally {
-        selectionHookInstance = null;
-        selectionListenerActive = false;
     }
+    selectionListenerActive = false;
+    stopRustHealthMonitor();
+    unregisterRustSuspendHotkey();
 }
 
 function createAssistantBarWindow() {
@@ -284,21 +688,7 @@ function createAssistantWindow(data) {
 async function initialize(options) {
     SETTINGS_FILE = options.SETTINGS_FILE;
 
-    // Asynchronously load selection-hook at startup
-    if (process.platform === 'win32') {
-        try {
-            // Dynamic import returns a promise
-            const selectionHookModule = await import('selection-hook');
-            SelectionHook = selectionHookModule.default || selectionHookModule;
-            console.log('selection-hook loaded asynchronously.');
-        } catch (error) {
-            console.error('Failed to load selection-hook asynchronously:', error);
-            SelectionHook = null; // Ensure it's null on failure
-        }
-    } else {
-        console.log('selection-hook is only available on Windows, text selection feature will be disabled.');
-    }
-
+    await ensureListenerAdapter();
     createAssistantBarWindow();
 
     ipcMain.handle('get-assistant-bar-initial-data', async () => {
@@ -321,16 +711,123 @@ async function initialize(options) {
         };
     });
 
-    ipcMain.on('toggle-selection-listener', (event, enable) => {
+    ipcMain.on('toggle-selection-listener', async (_event, enable) => {
         if (enable) {
-            startSelectionListener();
+            await startSelectionListener();
         } else {
             stopSelectionListener();
         }
     });
 
+    ipcMain.on('close-assistant-bar', () => {
+        hideAssistantBarAndStopListener();
+    });
+
     ipcMain.handle('get-selection-listener-status', () => {
-        return selectionListenerActive;
+        return selectionListenerActive || (listenerAdapter ? listenerAdapter.isActive() : false);
+    });
+
+    ipcMain.handle('assistant-suspend-listener', async (_event, durationMs) => {
+        try {
+            const ms = Math.max(0, Number(durationMs) || 0);
+            const adapter = await ensureListenerAdapter();
+            if (!adapter || typeof adapter.suspend !== 'function') {
+                return { success: false, error: '当前监听实现不支持 suspend' };
+            }
+
+            await adapter.suspend(ms);
+            return { success: true, durationMs: ms, mode: listenerMode };
+        } catch (error) {
+            return { success: false, error: error.message || String(error) };
+        }
+    });
+
+    ipcMain.handle('get-assistant-runtime-status', async () => {
+        try {
+            const rustConfig = await loadRustAssistantConfig();
+            const active = selectionListenerActive || (listenerAdapter ? listenerAdapter.isActive() : false);
+            const desiredMode = (process.platform === 'win32' && shouldUseRustAssistant(rustConfig)) ? 'rust' : 'node';
+            const diagnostics = (listenerAdapter && typeof listenerAdapter.getDiagnostics === 'function')
+                ? listenerAdapter.getDiagnostics()
+                : null;
+            let rustSidecarListenerActive = null;
+
+            if (listenerMode === 'rust' && listenerAdapter && typeof listenerAdapter.getStatus === 'function') {
+                try {
+                    const statusResp = await listenerAdapter.getStatus();
+                    if (statusResp && statusResp.status === 200 && statusResp.data && typeof statusResp.data.listener_active === 'boolean') {
+                        rustSidecarListenerActive = statusResp.data.listener_active;
+                    }
+                } catch (statusError) {
+                    rustSidecarListenerActive = null;
+                    console.warn('[Assistant] Failed to query Rust sidecar /status:', statusError.message || statusError);
+                }
+            }
+
+            let lastDebugReason = diagnostics?.lastDebugReason || null;
+            if (!lastDebugReason) {
+                if (!listenerAdapter) {
+                    lastDebugReason = '监听器适配器尚未初始化';
+                } else if (listenerMode !== 'rust') {
+                    lastDebugReason = '当前为 Node 实现，Rust 诊断不可用';
+                } else if (!active) {
+                    lastDebugReason = 'Rust 监听器未运行';
+                } else {
+                    lastDebugReason = '尚未收到可诊断事件';
+                }
+            }
+
+            return {
+                success: true,
+                mode: listenerMode,
+                desiredMode,
+                active,
+                rustConfigured: desiredMode === 'rust',
+                adapterReady: !!listenerAdapter,
+                debugMode: rustConfig.debugMode === true,
+                lastDebugReason,
+                lastDebugTimestamp: diagnostics?.lastDebugTimestamp || 0,
+                forwardedEventCount: diagnostics?.forwardedEventCount || 0,
+                rustSidecarListenerActive,
+                adapterProcessAlive: diagnostics?.processAlive === true,
+                adapterProcessPid: diagnostics?.processPid || null,
+                adapterPending: diagnostics?.pending === true,
+                runtimeFallbackTrace,
+                integrationTrace: {
+                    ...integrationTrace,
+                    assistantBarWindowExists: !!assistantBarWindow,
+                    assistantBarWindowVisible: !!(assistantBarWindow && !assistantBarWindow.isDestroyed() && assistantBarWindow.isVisible())
+                }
+            };
+        } catch (error) {
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('get-rust-assistant-config', async () => {
+        try {
+            return await loadRustAssistantConfig();
+        } catch (error) {
+            console.error('[Assistant] Failed to load rust assistant config via IPC:', error);
+            return { error: error.message };
+        }
+    });
+
+    ipcMain.handle('save-rust-assistant-config', async (_event, configPatch) => {
+        try {
+            const saved = await saveRustAssistantConfig(configPatch || {});
+
+            const reconcileResult = await reconcileListenerModeAfterConfig(saved);
+
+            return {
+                success: true,
+                config: saved,
+                reconcile: reconcileResult
+            };
+        } catch (error) {
+            console.error('[Assistant] Failed to save rust assistant config via IPC:', error);
+            return { success: false, error: error.message };
+        }
     });
 
     ipcMain.on('assistant-action', async (event, action) => {
@@ -384,7 +881,7 @@ module.exports = {
     initialize,
     startSelectionListener,
     stopSelectionListener,
-    getSelectionListenerStatus: () => selectionListenerActive,
+    getSelectionListenerStatus: () => selectionListenerActive || (listenerAdapter ? listenerAdapter.isActive() : false),
     getAssistantWindows: () => ({ assistantWindow, assistantBarWindow }),
     hideAssistantBarAndStopListener,
     stopMouseListener: () => {

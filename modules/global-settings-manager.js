@@ -49,6 +49,13 @@ export async function handleSaveGlobalSettings(e, deps) {
         contextSanitizerDepth: parseInt(document.getElementById('contextSanitizerDepth').value, 10) || 0,
         enableAiMessageButtons: document.getElementById('enableAiMessageButtons').checked,
     };
+
+    const rustConfigPatch = {
+        useRustAssistant: document.getElementById('rustUseAssistant')?.checked || false,
+        debugMode: document.getElementById('rustDebugMode')?.checked || false,
+        forceNode: document.getElementById('rustForceNode')?.checked || false,
+        forceRust: document.getElementById('rustForceRust')?.checked || false,
+    };
  
      const userAvatarCropped = getCroppedFile('user');
     if (userAvatarCropped) {
@@ -103,6 +110,17 @@ export async function handleSaveGlobalSettings(e, deps) {
 
     const result = await window.electronAPI.saveSettings(newSettings);
     if (result.success) {
+        if (window.electronAPI?.saveRustAssistantConfig) {
+            const rustSaveResult = await window.electronAPI.saveRustAssistantConfig(rustConfigPatch);
+            if (!rustSaveResult?.success) {
+                uiHelperFunctions.showToastNotification(`Rust助手配置保存失败: ${rustSaveResult?.error || '未知错误'}`, 'warning');
+            } else if (rustSaveResult.reconcile?.modeChanged) {
+                const modeLabel = rustSaveResult.reconcile.mode === 'rust' ? 'Rust' : 'Node';
+                const restartText = rustSaveResult.reconcile.restarted ? '并已热重启监听器' : '将在下次启用监听器时生效';
+                uiHelperFunctions.showToastNotification(`划词监听已切换到 ${modeLabel} 实现，${restartText}`, 'success');
+            }
+        }
+
         Object.assign(refs.globalSettings.get(), newSettings);
         uiHelperFunctions.showToastNotification('全局设置已保存！部分设置（如通知URL/Key）可能需要重新连接生效。');
         uiHelperFunctions.closeModal('globalSettingsModal');

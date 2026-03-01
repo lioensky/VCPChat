@@ -559,6 +559,59 @@
                         </select>
                     </div>
 
+                    <div id="rustAssistantConfigContainer" style="margin-top: 15px; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px;">
+                        <h4 style="margin: 0 0 10px 0;">Rust 划词助手配置</h4>
+
+                        <div id="rustDebugPanel" style="display: none; margin-bottom: 10px; padding: 8px; border-radius: 6px; background: var(--bg-secondary, rgba(127,127,127,0.08));">
+                            <div><strong>当前生效实现:</strong> <span id="assistantRuntimeMode">未知</span></div>
+                            <div><strong>监听状态:</strong> <span id="assistantRuntimeActive">未知</span></div>
+                            <div><strong>期望实现:</strong> <span id="assistantRuntimeDesiredMode">未知</span></div>
+                            <div><strong>最近诊断:</strong> <span id="assistantRuntimeDebugReason">无</span></div>
+                            <div><strong>Rust事件转发数:</strong> <span id="assistantRuntimeForwardedCount">0</span></div>
+                            <div><strong>Rust监听活跃(sidecar):</strong> <span id="assistantRuntimeSidecarActive">未知</span></div>
+                            <div><strong>Rust进程状态:</strong> <span id="assistantRuntimeProcessAlive">未知</span></div>
+                            <div><strong>Rust进程PID:</strong> <span id="assistantRuntimeProcessPid">未知</span></div>
+                            <div><strong>自动回退次数:</strong> <span id="assistantRuntimeAutoFallbackCount">0</span></div>
+                            <div><strong>最近自动回退原因:</strong> <span id="assistantRuntimeAutoFallbackReason">无</span></div>
+                            <div><strong>主进程收到选区数:</strong> <span id="assistantRuntimeReceivedCount">0</span></div>
+                            <div><strong>弹窗尝试次数:</strong> <span id="assistantRuntimeShowAttemptCount">0</span></div>
+                            <div><strong>最近弹窗错误:</strong> <span id="assistantRuntimeShowError">无</span></div>
+                        </div>
+
+                        <div class="form-group-inline" style="justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                            <label for="rustDebugMode">调试模式（输出诊断）</label>
+                            <label class="switch">
+                                <input type="checkbox" id="rustDebugMode" name="rustDebugMode">
+                                <span class="slider round"></span>
+                            </label>
+                        </div>
+
+                        <div class="form-group-inline" style="justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                            <label for="rustUseAssistant">启用 Rust 划词助手</label>
+                            <label class="switch">
+                                <input type="checkbox" id="rustUseAssistant" name="rustUseAssistant">
+                                <span class="slider round"></span>
+                            </label>
+                        </div>
+
+                        <div class="form-group-inline" style="justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                            <label for="rustForceNode">强制 Node 实现</label>
+                            <label class="switch">
+                                <input type="checkbox" id="rustForceNode" name="rustForceNode">
+                                <span class="slider round"></span>
+                            </label>
+                        </div>
+
+                        <div class="form-group-inline" style="justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                            <label for="rustForceRust">强制 Rust 实现</label>
+                            <label class="switch">
+                                <input type="checkbox" id="rustForceRust" name="rustForceRust">
+                                <span class="slider round"></span>
+                            </label>
+                        </div>
+
+                    </div>
+
                     <div id="topicSummaryModelContainer" style="margin-top: 15px;">
                         <label for="topicSummaryModel">话题总结模型:</label>
                         <div class="model-input-container">
