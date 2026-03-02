@@ -192,6 +192,13 @@ function processSelectedText(selectionData) {
             if (settings.assistantEnabled && settings.assistantAgent) {
                 const agentConfig = await getAgentConfigById(settings.assistantAgent);
 
+                // ⚠️ 检查 agentConfig 是否返回错误
+                if (agentConfig.error) {
+                    integrationTrace.lastShowError = `获取 Agent 配置失败: ${agentConfig.error}`;
+                    console.error('[Assistant] Failed to get agent config:', agentConfig.error);
+                    return;
+                }
+
                 if (currentToken !== selectionUpdateToken) {
                     return;
                 }
@@ -922,6 +929,17 @@ async function initialize(options) {
             const settings = await fs.readJson(SETTINGS_FILE);
             if (settings.assistantEnabled && settings.assistantAgent) {
                 const agentConfig = await getAgentConfigById(settings.assistantAgent);
+                
+                // ⚠️ 检查 agentConfig 是否返回错误
+                if (agentConfig.error) {
+                    console.error('[Assistant] Failed to get agent config for initial data:', agentConfig.error);
+                    return {
+                        agentAvatarUrl: null,
+                        theme: nativeTheme.shouldUseDarkColors ? 'dark' : 'light',
+                        error: agentConfig.error
+                    };
+                }
+                
                 return {
                     agentAvatarUrl: agentConfig.avatarUrl,
                     theme: nativeTheme.shouldUseDarkColors ? 'dark' : 'light'
