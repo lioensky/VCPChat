@@ -610,6 +610,92 @@
                             </label>
                         </div>
 
+                        <div id="rustGuardRulesContainer" style="display: none; margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border-color);">
+                            <!-- 自定义阈值部分 -->
+                            <div class="form-group-inline" style="justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                                <label for="rustEnableCustomThresholds">启用自定义阈值</label>
+                                <label class="switch">
+                                    <input type="checkbox" id="rustEnableCustomThresholds" name="rustEnableCustomThresholds">
+                                    <span class="slider round"></span>
+                                </label>
+                            </div>
+
+                            <div id="rustCustomThresholdsPanel" style="display: none; margin-bottom: 15px; padding: 10px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-secondary, rgba(127,127,127,0.05));">
+                                <div class="form-group" style="margin-bottom: 8px;">
+                                    <label for="rustMinEventIntervalMs">最小事件间隔 (ms):</label>
+                                    <input type="number" id="rustMinEventIntervalMs" name="rustMinEventIntervalMs" min="0" value="80" style="width: 100px;">
+                                    <small style="color: var(--text-secondary); margin-top: 3px; display: block;">选区事件的最小时间间隔，防止重复触发</small>
+                                </div>
+
+                                <div class="form-group" style="margin-bottom: 8px;">
+                                    <label for="rustMinDistance">最小位移距离 (px):</label>
+                                    <input type="number" id="rustMinDistance" name="rustMinDistance" min="0" value="0" style="width: 100px;">
+                                    <small style="color: var(--text-secondary); margin-top: 3px; display: block;">鼠标释放点距离按下点的最小像素数（0 = 禁用此检查）</small>
+                                </div>
+
+                                <div class="form-group" style="margin-bottom: 8px;">
+                                    <label for="rustScreenshotSuspendMs">截图暂停时长 (ms):</label>
+                                    <input type="number" id="rustScreenshotSuspendMs" name="rustScreenshotSuspendMs" min="0" value="3000" style="width: 100px;">
+                                    <small style="color: var(--text-secondary); margin-top: 3px; display: block;">检测到截图软件后，暂停的时长</small>
+                                </div>
+
+                                <div class="form-group" style="margin-bottom: 8px;">
+                                    <label for="rustClipboardConflictSuspendMs">剪贴板冲突暂停 (ms):</label>
+                                    <input type="number" id="rustClipboardConflictSuspendMs" name="rustClipboardConflictSuspendMs" min="0" value="1000" style="width: 100px;">
+                                    <small style="color: var(--text-secondary); margin-top: 3px; display: block;">检测到剪贴板冲突后，暂停的时长</small>
+                                </div>
+
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label for="rustClipboardCheckIntervalMs">剪贴板检查间隔 (ms):</label>
+                                    <input type="number" id="rustClipboardCheckIntervalMs" name="rustClipboardCheckIntervalMs" min="50" value="500" style="width: 100px;">
+                                    <small style="color: var(--text-secondary); margin-top: 3px; display: block;">后台剪贴板监控的检查间隔（最小50ms）</small>
+                                </div>
+                            </div>
+
+                            <!-- 规则模式选择部分 -->
+                            <div class="form-group" style="margin-bottom: 10px;">
+                                <label for="rustRuleMode">规则模式:</label>
+                                <select id="rustRuleMode" name="rustRuleMode" style="width: 100%; padding: 6px; border: 1px solid var(--border-color); border-radius: 4px;">
+                                    <option value="none">不使用规则</option>
+                                    <option value="whitelist">白名单模式（只在匹配的应用中启用）</option>
+                                    <option value="blacklist">黑名单模式（在非匹配的应用中启用）</option>
+                                </select>
+                                <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
+                                    提示：白名单和黑名单不能同时使用，选择一种模式
+                                </small>
+                            </div>
+
+                            <div id="rustWhitelistPanel" style="display: none; margin-bottom: 10px;">
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label for="rustWhitelistKeywords">白名单关键词（每行一个）</label>
+                                    <textarea id="rustWhitelistKeywords" name="rustWhitelistKeywords" rows="3" placeholder="例如：visual studio code&#10;chrome"></textarea>
+                                    <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
+                                        只在包含这些关键词的窗口中启用划词助手
+                                    </small>
+                                </div>
+                            </div>
+
+                            <div id="rustBlacklistPanel" style="display: none; margin-bottom: 10px;">
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label for="rustBlacklistKeywords">黑名单关键词（每行一个）</label>
+                                    <textarea id="rustBlacklistKeywords" name="rustBlacklistKeywords" rows="4" placeholder="例如：password&#10;credential&#10;secret"></textarea>
+                                    <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
+                                        在包含这些关键词的窗口中禁用划词助手
+                                    </small>
+                                </div>
+                            </div>
+
+                            <div id="rustScreenshotAppsPanel" style="margin-bottom: 0;">
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label for="rustScreenshotApps">截图软件关键词（每行一个）</label>
+                                    <textarea id="rustScreenshotApps" name="rustScreenshotApps" rows="3" placeholder="例如：snippingtool&#10;snipaste&#10;capturescreen"></textarea>
+                                    <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
+                                        检测到这些窗口时，暂停导词助手以避免冲突
+                                    </small>
+                                </div>
+                            </div>
+                        </div>
+
                     </div>
 
                     <div id="topicSummaryModelContainer" style="margin-top: 15px;">

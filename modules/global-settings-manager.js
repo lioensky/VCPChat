@@ -15,6 +15,13 @@ export async function handleSaveGlobalSettings(e, deps) {
     const networkNotesPathsContainer = document.getElementById('networkNotesPathsContainer');
     const pathInputs = networkNotesPathsContainer.querySelectorAll('input[name="networkNotesPath"]');
     const networkNotesPaths = Array.from(pathInputs).map(input => input.value.trim()).filter(path => path);
+    const parseMultilineKeywords = (id) => {
+        const value = document.getElementById(id)?.value || '';
+        return value
+            .split(/\r?\n|,|，|;|；/)
+            .map(item => item.trim())
+            .filter(Boolean);
+    };
 
     const newSettings = {
         userName: document.getElementById('userName').value.trim() || '用户',
@@ -50,11 +57,41 @@ export async function handleSaveGlobalSettings(e, deps) {
         enableAiMessageButtons: document.getElementById('enableAiMessageButtons').checked,
     };
 
+    // 处理规则模式选择
+    const ruleMode = document.getElementById('rustRuleMode')?.value || 'none';
+    const whitelist = ruleMode === 'whitelist' ? parseMultilineKeywords('rustWhitelistKeywords') : [];
+    const blacklist = ruleMode === 'blacklist' ? parseMultilineKeywords('rustBlacklistKeywords') : [];
+    const screenshotApps = parseMultilineKeywords('rustScreenshotApps');
+
+    // 处理自定义阈值
+    const enableCustomThresholds = document.getElementById('rustEnableCustomThresholds')?.checked || false;
+    let runtimeThresholds = {
+        minEventIntervalMs: 80,
+        minDistance: 0,
+        screenshotSuspendMs: 3000,
+        clipboardConflictSuspendMs: 1000,
+        clipboardCheckIntervalMs: 500
+    };
+
+    if (enableCustomThresholds) {
+        runtimeThresholds = {
+            minEventIntervalMs: Math.max(0, parseInt(document.getElementById('rustMinEventIntervalMs')?.value || 80, 10)),
+            minDistance: Math.max(0, parseInt(document.getElementById('rustMinDistance')?.value || 0, 10)),
+            screenshotSuspendMs: Math.max(0, parseInt(document.getElementById('rustScreenshotSuspendMs')?.value || 3000, 10)),
+            clipboardConflictSuspendMs: Math.max(0, parseInt(document.getElementById('rustClipboardConflictSuspendMs')?.value || 1000, 10)),
+            clipboardCheckIntervalMs: Math.max(50, parseInt(document.getElementById('rustClipboardCheckIntervalMs')?.value || 500, 10))
+        };
+    }
+
     const rustConfigPatch = {
         useRustAssistant: document.getElementById('rustUseAssistant')?.checked || false,
         debugMode: document.getElementById('rustDebugMode')?.checked || false,
         forceNode: document.getElementById('rustForceNode')?.checked || false,
         forceRust: document.getElementById('rustForceRust')?.checked || false,
+        whitelist: whitelist,
+        blacklist: blacklist,
+        screenshotApps: screenshotApps,
+        runtimeThresholds: runtimeThresholds,
     };
  
      const userAvatarCropped = getCroppedFile('user');

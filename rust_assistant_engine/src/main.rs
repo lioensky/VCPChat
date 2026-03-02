@@ -1,25 +1,20 @@
 mod capture;
-mod screenshot;
-mod table_detection;
-mod history;
+mod windows_event_source;
+mod uia_selection_provider;
 mod metrics;
 
 use actix_web::{web, App, HttpResponse, HttpServer};
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
+use std::time::{SystemTime, UNIX_EPOCH};
 use log::info;
 use lazy_static::lazy_static;
-use capture::{GuardRules, SelectionListener, SelectionEvent, SelectionRecord};
-use history::SelectionHistory;
+use capture::{GuardRules, SelectionListener, SelectionEvent};
 use metrics::MetricsCollector;
 
 lazy_static! {
     static ref SELECTION_LISTENER: Arc<SelectionListener> = {
         Arc::new(SelectionListener::new())
-    };
-    
-    static ref SELECTION_HISTORY: Arc<Mutex<SelectionHistory>> = {
-        Arc::new(Mutex::new(SelectionHistory::new(100)))
     };
     
     static ref METRICS: Arc<Mutex<MetricsCollector>> = {
@@ -102,23 +97,6 @@ async fn get_metrics() -> HttpResponse {
     HttpResponse::Ok().json(report)
 }
 
-async fn get_history() -> HttpResponse {
-    let history = SELECTION_HISTORY.lock().unwrap();
-    let json_str = history.export_json().unwrap_or_else(|_| "[]".to_string());
-    match serde_json::from_str::<serde_json::Value>(&json_str) {
-        Ok(value) => HttpResponse::Ok().json(value),
-        Err(_) => HttpResponse::InternalServerError().json(
-            serde_json::json!({"error": "Failed to parse history"})
-        ),
-    }
-}
-
-async fn get_context() -> HttpResponse {
-    let history = SELECTION_HISTORY.lock().unwrap();
-    let stats = history.get_stats();
-    HttpResponse::Ok().json(stats)
-}
-
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
@@ -135,7 +113,6 @@ async fn main() -> std::io::Result<()> {
 
     // Start selection monitoring in background thread
     let listener_clone = Arc::clone(&SELECTION_LISTENER);
-    let history_clone = Arc::clone(&SELECTION_HISTORY);
     let metrics_clone = Arc::clone(&METRICS);
     
     std::thread::spawn(move || {
@@ -144,27 +121,23 @@ async fn main() -> std::io::Result<()> {
         info!("[Main] Selection monitoring loop started");
         listener_clone.run_loop(
                 |event: SelectionEvent| {
-                // 记录到历史对话
-                {
-                    let mut history = history_clone.lock().unwrap();
-                    history.push(SelectionRecord {
-                        text: event.text.clone(),
-                        window_title: event.window_title.clone(),
-                        timestamp: event.timestamp,
-                        mouse_x: event.mouse_x,
-                        mouse_y: event.mouse_y,
-                    });
-                }
-                
                 // 记录指标（固定为0ms延迟，实际应该从事件创建时戳）
                 {
+                    let now_ms = current_timestamp();
+                    let latency_ms = now_ms.saturating_sub(event.timestamp);
                     let mut metrics = metrics_clone.lock().unwrap();
-                    metrics.record_latency(0);
+                    metrics.record_latency(latency_ms);
                 }
                 
                 // 输出事件到 stdout
-                let json_str = serde_json::to_string(&event)
-                    .unwrap_or_else(|_| "{}".to_string());
+                let json_str = match serde_json::to_string(&event) {
+                    Ok(value) => value,
+                    Err(error) => {
+                        let mut metrics = metrics_clone.lock().unwrap();
+                        metrics.record_error("event_serialize_failed", &error.to_string());
+                        "{}".to_string()
+                    }
+                };
                 println!("ASSISTANT_EVENT {}", json_str);
 
                 let text_preview: String = event.text.chars().take(40).collect();
@@ -192,11 +165,16 @@ async fn main() -> std::io::Result<()> {
             .route("/listener/suspend", web::post().to(suspend_listener))
             .route("/guard/rules", web::get().to(get_guard_rules))
             .route("/guard/rules", web::post().to(set_guard_rules))
-            .route("/metrics", web::get().to(get_metrics))
-            .route("/history", web::get().to(get_history))
-            .route("/context", web::get().to(get_context))
+                .route("/metrics", web::get().to(get_metrics))
     })
     .bind(("127.0.0.1", port))?
     .run()
     .await
+}
+
+fn current_timestamp() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
 }

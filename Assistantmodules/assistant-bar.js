@@ -3,6 +3,7 @@
 document.addEventListener('DOMContentLoaded', () => {
     const assistantAvatar = document.getElementById('assistantAvatar');
     const buttons = document.querySelectorAll('.assistant-button');
+    let closeOnLeaveTimer = null;
 
     // 1. 主动从主进程获取初始数据
     const initialize = async () => {
@@ -52,8 +53,21 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // 当鼠标离开窗口时，自动关闭
+    // 当鼠标离开窗口时，延迟关闭，避免快速划词时的误触发闪烁
     document.body.addEventListener('mouseleave', () => {
-        window.electronAPI.closeAssistantBar();
+        if (closeOnLeaveTimer) {
+            clearTimeout(closeOnLeaveTimer);
+        }
+        closeOnLeaveTimer = setTimeout(() => {
+            window.electronAPI.closeAssistantBar();
+            closeOnLeaveTimer = null;
+        }, 180);
+    });
+
+    document.body.addEventListener('mouseenter', () => {
+        if (closeOnLeaveTimer) {
+            clearTimeout(closeOnLeaveTimer);
+            closeOnLeaveTimer = null;
+        }
     });
 });

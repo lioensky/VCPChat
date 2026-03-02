@@ -1,7 +1,6 @@
 use serde::{Deserialize, Serialize};
 use log::info;
 use std::collections::VecDeque;
-use std::time::Instant;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LatencySample {
@@ -33,25 +32,16 @@ pub struct MetricsCollector {
     latency_samples: VecDeque<LatencySample>,
     selection_count: u64,
     error_counts: std::collections::HashMap<String, ErrorRecord>,
-    start_time: u64,
     max_samples: usize,
 }
 
 impl MetricsCollector {
     /// 创建新的指标收集器
     pub fn new() -> Self {
-        use std::time::{SystemTime, UNIX_EPOCH};
-        
-        let start_time = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis() as u64;
-
         Self {
             latency_samples: VecDeque::with_capacity(1000),
             selection_count: 0,
             error_counts: std::collections::HashMap::new(),
-            start_time,
             max_samples: 1000,
         }
     }
@@ -158,54 +148,6 @@ impl MetricsCollector {
         }
     }
 
-    /// 导出为JSON字符串
-    pub fn export_json(&self) -> Result<String, String> {
-        let report = self.export_report();
-        serde_json::to_string_pretty(&report)
-            .map_err(|e| format!("JSON serialization failed: {}", e))
-    }
-
-    /// 清空所有指标
-    pub fn reset(&mut self) {
-        self.latency_samples.clear();
-        self.selection_count = 0;
-        self.error_counts.clear();
-        
-        use std::time::{SystemTime, UNIX_EPOCH};
-        self.start_time = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis() as u64;
-        
-        info!("[MetricsCollector] Metrics reset");
-    }
-
-    /// 获取运行时间（毫秒）
-    pub fn uptime_ms(&self) -> u64 {
-        use std::time::{SystemTime, UNIX_EPOCH};
-        
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis() as u64;
-        
-        now.saturating_sub(self.start_time)
-    }
-
-    /// 获取事件吞吐量（每小时事件数）
-    pub fn events_per_hour(&self) -> f64 {
-        let uptime_hours = self.uptime_ms() as f64 / 3_600_000.0;
-        if uptime_hours < 0.001 {
-            0.0
-        } else {
-            self.selection_count as f64 / uptime_hours
-        }
-    }
-
-    /// 样本数
-    pub fn sample_count(&self) -> usize {
-        self.latency_samples.len()
-    }
 }
 
 impl Default for MetricsCollector {
@@ -222,7 +164,7 @@ mod tests {
     fn test_metrics_creation() {
         let metrics = MetricsCollector::new();
         assert_eq!(metrics.selection_count, 0);
-        assert_eq!(metrics.sample_count(), 0);
+        assert_eq!(metrics.latency_samples.len(), 0);
     }
 
     #[test]
@@ -234,7 +176,7 @@ mod tests {
         metrics.record_latency(300);
 
         assert_eq!(metrics.selection_count, 3);
-        assert_eq!(metrics.sample_count(), 3);
+        assert_eq!(metrics.latency_samples.len(), 3);
 
         let report = metrics.export_report();
         assert_eq!(report.selection_count, 3);
@@ -267,38 +209,5 @@ mod tests {
         let report = metrics.export_report();
         assert_eq!(report.error_count, 3);
         assert!(report.errors.len() >= 2);
-    }
-
-    #[test]
-    fn test_export_json() {
-        let mut metrics = MetricsCollector::new();
-        
-        metrics.record_latency(150);
-        metrics.record_error("test_error", "Test error message");
-
-        let json = metrics.export_json().unwrap();
-        assert!(json.contains("selection_count"));
-        assert!(json.contains("test_error"));
-    }
-
-    #[test]
-    fn test_reset() {
-        let mut metrics = MetricsCollector::new();
-        
-        metrics.record_latency(100);
-        metrics.record_error("error", "message");
-
-        assert!(metrics.selection_count > 0);
-
-        metrics.reset();
-        assert_eq!(metrics.selection_count, 0);
-        assert_eq!(metrics.sample_count(), 0);
-    }
-
-    #[test]
-    fn test_throughput_calculation() {
-        let metrics = MetricsCollector::new();
-        let throughput = metrics.events_per_hour();
-        assert!(throughput >= 0.0);
     }
 }

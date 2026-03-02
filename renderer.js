@@ -1452,6 +1452,19 @@ async function syncGlobalSettingsToUI() {
             rustDebugPanelEl.style.display = rustDebugModeEl?.checked ? 'block' : 'none';
         }
     };
+    const joinKeywords = (value) => Array.isArray(value) ? value.join('\n') : '';
+    const shouldShowRustGuardRules = () => {
+        const useRust = document.getElementById('rustUseAssistant')?.checked === true;
+        const forceRust = document.getElementById('rustForceRust')?.checked === true;
+        const forceNode = document.getElementById('rustForceNode')?.checked === true;
+        return (useRust || forceRust) && !forceNode;
+    };
+    const syncRustGuardRulesVisibility = () => {
+        const container = document.getElementById('rustGuardRulesContainer');
+        if (container) {
+            container.style.display = shouldShowRustGuardRules() ? 'block' : 'none';
+        }
+    };
 
     safeSet('userName', globalSettings.userName || '用户');
     
@@ -1540,12 +1553,34 @@ async function syncGlobalSettingsToUI() {
                 safeCheck('rustDebugMode', rustConfig.debugMode === true);
                 safeCheck('rustForceNode', rustConfig.forceNode === true);
                 safeCheck('rustForceRust', rustConfig.forceRust === true);
+                safeSet('rustWhitelistKeywords', joinKeywords(rustConfig.whitelist || []));
+                safeSet('rustBlacklistKeywords', joinKeywords(rustConfig.blacklist || []));
+                safeSet('rustScreenshotApps', joinKeywords(rustConfig.screenshotApps || []));
                 syncRustDebugPanelVisibility();
+                syncRustGuardRulesVisibility();
 
                 const rustDebugModeEl = document.getElementById('rustDebugMode');
                 if (rustDebugModeEl && !rustDebugModeEl.dataset.debugPanelBound) {
                     rustDebugModeEl.addEventListener('change', syncRustDebugPanelVisibility);
                     rustDebugModeEl.dataset.debugPanelBound = 'true';
+                }
+
+                const rustUseAssistantEl = document.getElementById('rustUseAssistant');
+                if (rustUseAssistantEl && !rustUseAssistantEl.dataset.guardPanelBound) {
+                    rustUseAssistantEl.addEventListener('change', syncRustGuardRulesVisibility);
+                    rustUseAssistantEl.dataset.guardPanelBound = 'true';
+                }
+
+                const rustForceNodeEl = document.getElementById('rustForceNode');
+                if (rustForceNodeEl && !rustForceNodeEl.dataset.guardPanelBound) {
+                    rustForceNodeEl.addEventListener('change', syncRustGuardRulesVisibility);
+                    rustForceNodeEl.dataset.guardPanelBound = 'true';
+                }
+
+                const rustForceRustEl = document.getElementById('rustForceRust');
+                if (rustForceRustEl && !rustForceRustEl.dataset.guardPanelBound) {
+                    rustForceRustEl.addEventListener('change', syncRustGuardRulesVisibility);
+                    rustForceRustEl.dataset.guardPanelBound = 'true';
                 }
             }
         } catch (error) {
