@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -14,6 +15,7 @@
     <!-- CodeMirror Merge Addon -->
     <link rel="stylesheet" href="../node_modules/codemirror/addon/merge/merge.css">
 </head>
+
 <body>
     <div id="custom-title-bar">
         <div class="title-text-container">
@@ -21,13 +23,20 @@
         </div>
         <div class="window-controls">
             <button id="minimize-btn" class="window-control-btn" title="最小化">
-                <svg width="10" height="10" viewBox="0 0 10 10"><line x1="0" y1="5" x2="10" y2="5" stroke="currentColor" stroke-width="1.2"></line></svg>
+                <svg width="10" height="10" viewBox="0 0 10 10">
+                    <line x1="0" y1="5" x2="10" y2="5" stroke="currentColor" stroke-width="1.2"></line>
+                </svg>
             </button>
             <button id="maximize-btn" class="window-control-btn" title="最大化">
-                <svg width="10" height="10" viewBox="0 0 10 10"><path fill="none" stroke="currentColor" stroke-width="1" d="M0.5,0.5 h9 v9 h-9 z"></path></svg>
+                <svg width="10" height="10" viewBox="0 0 10 10">
+                    <path fill="none" stroke="currentColor" stroke-width="1" d="M0.5,0.5 h9 v9 h-9 z"></path>
+                </svg>
             </button>
             <button id="close-btn" class="window-control-btn" title="关闭">
-                <svg width="10" height="10" viewBox="0 0 10 10"><path fill="currentColor" d="M0.5,0.5 9.5,9.5 M9.5,0.5 0.5,9.5" stroke="currentColor" stroke-width="1.2"></path></svg>
+                <svg width="10" height="10" viewBox="0 0 10 10">
+                    <path fill="currentColor" d="M0.5,0.5 9.5,9.5 M9.5,0.5 0.5,9.5" stroke="currentColor"
+                        stroke-width="1.2"></path>
+                </svg>
             </button>
         </div>
     </div>
@@ -54,6 +63,30 @@
                 <button id="render-md-btn" class="action-btn">渲染</button>
                 <button id="render-html-btn" class="action-btn">渲染</button>
                 <button id="toggle-wrap-btn" class="action-btn" style="display: block;">自动换行: 关</button>
+            </div>
+            <div id="editor-search-bar" class="search-bar" style="display: none;">
+                <div class="search-input-container">
+                    <input type="text" id="editorSearchInput" placeholder="查找...">
+                    <span id="search-count" class="search-count">0/0</span>
+                </div>
+                <div class="search-actions">
+                    <button id="search-prev-btn" class="search-btn" title="上一个 (Shift+Enter)">
+                        <svg width="12" height="12" viewBox="0 0 16 16">
+                            <path fill="currentColor" d="M7.004 4L13 10l-1.414 1.414L7.004 6.828l-4.581 4.586L1 10z" />
+                        </svg>
+                    </button>
+                    <button id="search-next-btn" class="search-btn" title="下一个 (Enter)">
+                        <svg width="12" height="12" viewBox="0 0 16 16">
+                            <path fill="currentColor" d="M7.004 12L1 6l1.414-1.414l4.59 4.591L11.586 4.59L13 6z" />
+                        </svg>
+                    </button>
+                    <button id="search-close-btn" class="search-btn" title="关闭 (Esc)">
+                        <svg width="12" height="12" viewBox="0 0 16 16">
+                            <path fill="currentColor"
+                                d="M1.293 1.293a1 1 0 0 1 1.414 0L8 6.586l5.293-5.293a1 1 0 1 1 1.414 1.414L9.414 8l5.293 5.293a1 1 0 0 1-1.414 1.414L8 9.414l-5.293 5.293a1 1 0 0 1-1.414-1.414L6.586 8 1.293 2.707a1 1 0 0 1 0-1.414z" />
+                        </svg>
+                    </button>
+                </div>
             </div>
             <div class="editor-wrapper">
                 <textarea id="editor"></textarea> <!-- CodeMirror 5 will replace this -->
@@ -109,7 +142,8 @@
     <script src="../node_modules/codemirror/mode/htmlmixed/htmlmixed.js"></script>
     <script src="../node_modules/codemirror/mode/markdown/markdown.js"></script>
     <script src="../node_modules/codemirror/mode/rust/rust.js"></script>
-    <script src="../node_modules/codemirror/mode/javascript/javascript.js"></script> <!-- TS mode is often part of JS, let's revert to the original that worked -->
+    <script src="../node_modules/codemirror/mode/javascript/javascript.js"></script>
+    <!-- TS mode is often part of JS, let's revert to the original that worked -->
     <script src="../node_modules/codemirror/mode/clike/clike.js"></script>
     <script src="../node_modules/codemirror/mode/go/go.js"></script>
     <script src="../node_modules/codemirror/mode/ruby/ruby.js"></script>
@@ -123,6 +157,8 @@
     <script src="../node_modules/codemirror/mode/jsx/jsx.js"></script>
     <script src="../node_modules/codemirror/mode/dockerfile/dockerfile.js"></script>
     <script src="../node_modules/codemirror/addon/comment/continuecomment.js"></script>
+    <!-- CodeMirror Search Addon -->
+    <script src="../node_modules/codemirror/addon/search/searchcursor.js"></script>
     <!-- CodeMirror Merge Addon -->
     <script src="vendor/diff_match_patch.js"></script>
     <script>
@@ -132,4 +168,5 @@
     <script src="../node_modules/codemirror/addon/merge/merge.js"></script>
     <script src="canvas.js"></script>
 </body>
+
 </html>

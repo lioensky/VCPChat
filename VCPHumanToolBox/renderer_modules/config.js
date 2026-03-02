@@ -3,6 +3,16 @@
 // --- 工具定义 (基于 supertool.txt) ---
 export const tools = {
     // 多媒体生成类
+    'ZImageGen': {
+        displayName: '通义 Qwen 生图',
+        description: '国产生图开源模型，性能不错，支持NSFW。',
+        params: [
+            { name: 'prompt', type: 'textarea', required: true, placeholder: '(必需) 用于图片生成的详细提示词。' },
+            { name: 'resolution', type: 'select', required: false, options: ['1024x1024', '1280x720', '720x1280', '1152x864', '864x1152'], default: '1024x1024' },
+            { name: 'steps', type: 'number', required: false, placeholder: '推荐8-20步' },
+            { name: 'showbase64', type: 'checkbox', required: false, default: false }
+        ]
+    },
     'FluxGen': {
         displayName: 'Flux 图片生成',
         description: '艺术风格多变，仅支持英文提示词。',
@@ -26,10 +36,21 @@ export const tools = {
                 description: '豆包修图',
                 params: [
                     { name: 'prompt', type: 'textarea', required: true, placeholder: '(必需) 用于指导图片修改的详细提示词。' },
-                    { name: 'image', type: 'dragdrop_image', required: true, placeholder: '(必需) 用于图生图的图片来源，可以是公网可访问的 https URL，或者是分布式服务器的本地文件路径 (格式为 file:///...)。也可以是直接的database64url' },
-                    { name: 'resolution', type: 'text', required: true, placeholder: '(必需) 图片分辨率，格式为“宽x高”，可设为“adaptive”以自适应原图尺寸。', default: 'adaptive' },
-                    { name: 'guidance_scale', type: 'number', required: false, placeholder: '范围0-10，控制与原图的相似度，值越小越相似。' }
+                    { name: 'image', type: 'dragdrop_image', required: true, placeholder: '(必需) 来源图片URL或file://本地路径' },
+                    { name: 'resolution', type: 'text', required: true, placeholder: '(必需) 2K, 4K 或 宽x高', default: '2K' },
+                    { name: 'guidance_scale', type: 'number', required: false, placeholder: '范围0-10，值越小越相似。' }
                 ]
+            },
+            'DoubaoComposeImage': {
+                description: '豆包多图合成',
+                params: [
+                    { name: 'prompt', type: 'textarea', required: true, placeholder: '(必需) 用于指导图片融合或对话的详细提示词。' },
+                    { name: 'image_1', type: 'dragdrop_image', required: true, placeholder: '(必需) 第1张图片来源' },
+                    { name: 'image_2', type: 'dragdrop_image', required: false, placeholder: '(可选) 第2张图片来源' },
+                    { name: 'resolution', type: 'text', required: true, placeholder: '(必需) 宽x高 或 adaptive', default: 'adaptive' },
+                    { name: 'guidance_scale', type: 'number', required: false, placeholder: '范围0-10，值越小越相似。' }
+                ],
+                dynamicImages: true
             }
         }
     },
@@ -82,11 +103,55 @@ export const tools = {
             }
         }
     },
+    'GrokVideoGen': {
+        displayName: 'Grok 视频生成',
+        description: '马斯克家的图生视频大模型，超快且含配音。',
+        commands: {
+            'submit': {
+                description: '提交视频任务',
+                params: [
+                    { name: 'image_url', type: 'dragdrop_image', required: true, placeholder: '必需，要有底图' },
+                    { name: 'prompt', type: 'textarea', required: true, placeholder: '英文提示词描述内容，支持配音' },
+                    { name: 'video_url', type: 'text', required: false, placeholder: '可选，用于视频续写' }
+                ]
+            },
+            'concat': {
+                description: '视频拼接',
+                params: [
+                    { name: 'video_urls', type: 'textarea', required: true, placeholder: '每行一个视频URL' }
+                ],
+                dynamicParams: true
+            }
+        }
+    },
+    'WebUIGen': {
+        displayName: '喵喵 WebUI',
+        description: '每一路模型独立部署，支持多种艺术风格。',
+        params: [
+            { name: 'prompt', type: 'textarea', required: true, placeholder: '生成提示词' },
+            { name: 'negative_prompt', type: 'textarea', required: false, placeholder: '负面提示词' },
+            { name: 'resolution', type: 'text', required: false, placeholder: '如 1024x1024, landscape', default: '512x512' },
+            { name: 'steps', type: 'number', required: false, default: 20 },
+            { name: 'cfg', type: 'number', required: false, default: 7.0 },
+            { name: 'model_index', type: 'number', required: false, default: 0 },
+            { name: 'showbase64', type: 'checkbox', required: false, default: false }
+        ]
+    },
     // 工具类
     'SciCalculator': {
         displayName: '科学计算器',
         description: '支持基础运算、函数、统计和微积分。',
         params: [{ name: 'expression', type: 'textarea', required: true, placeholder: "例如: integral('x**2', 0, 1)" }]
+    },
+    // 联网类
+    'VSearch': {
+        displayName: 'V-Search 穿透检索',
+        description: 'VCP家语义级穿透联网检索引擎，支持并发检索。',
+        params: [
+            { name: 'SearchTopic', type: 'text', required: true, placeholder: '研究主题' },
+            { name: 'Keywords', type: 'textarea', required: true, placeholder: '多检索词，用逗号隔开' },
+            { name: 'ShowURL', type: 'checkbox', required: false, default: false }
+        ]
     },
     'TavilySearch': {
         displayName: 'Tavily 联网搜索',
@@ -115,6 +180,12 @@ export const tools = {
                     { name: 'q', type: 'text', required: true, placeholder: '需要搜索的关键词' },
                     { name: 'kl', type: 'text', required: false, placeholder: 'us-en' }
                 ]
+            },
+            'google_reverse_image_search': {
+                description: '谷歌以图搜图',
+                params: [
+                    { name: 'image_url', type: 'dragdrop_image', required: true, placeholder: '本地或远程图片链接' }
+                ]
             }
         }
     },
@@ -128,8 +199,37 @@ export const tools = {
     },
     'BilibiliFetch': {
         displayName: 'B站内容获取',
-        description: '获取B站视频的TTS转化文本内容。',
-        params: [{ name: 'url', type: 'text', required: true, placeholder: 'Bilibili 视频的 URL' }]
+        description: '获取B站视频文本、弹幕、评论及快照。',
+        commands: {
+            'fetch': {
+                description: '获取视频内容',
+                params: [
+                    { name: 'url', type: 'text', required: true, placeholder: 'Bilibili 视频的 URL' },
+                    { name: 'lang', type: 'text', required: false, placeholder: 'ai-zh' },
+                    { name: 'danmaku_num', type: 'number', required: false, default: 0 },
+                    { name: 'comment_num', type: 'number', required: false, default: 0 },
+                    { name: 'snapshots', type: 'text', required: false, placeholder: '10,60,120' },
+                    { name: 'hd_snapshot', type: 'checkbox', required: false, default: false },
+                    { name: 'need_subs', type: 'checkbox', required: false, default: true }
+                ]
+            },
+            'search': {
+                description: '搜索视频/用户',
+                params: [
+                    { name: 'keyword', type: 'text', required: true },
+                    { name: 'search_type', type: 'select', options: ['video', 'bili_user'], default: 'video' },
+                    { name: 'page', type: 'number', default: 1 }
+                ]
+            },
+            'get_up_videos': {
+                description: '获取UP主视频列表',
+                params: [
+                    { name: 'mid', type: 'text', required: true },
+                    { name: 'pn', type: 'number', default: 1 },
+                    { name: 'ps', type: 'number', default: 30 }
+                ]
+            }
+        }
     },
     'FlashDeepSearch': {
         displayName: '深度信息研究',
@@ -163,8 +263,9 @@ export const tools = {
         displayName: '女仆通讯器',
         description: '用于联络别的女仆Agent。',
         params: [
-            { name: 'agent_name', type: 'text', required: true, placeholder: '例如: 小娜, 小克...' },
-            { name: 'prompt', type: 'textarea', required: true, placeholder: '我是[您的名字]，我想请你...' }
+            { name: 'agent_name', type: 'text', required: true, placeholder: '小娜, 小克, Nova...' },
+            { name: 'prompt', type: 'textarea', required: true, placeholder: '我是[您的名字]，我想请你...' },
+            { name: 'temporary_contact', type: 'checkbox', required: false, default: false }
         ]
     },
     'AgentMessage': {
@@ -215,10 +316,12 @@ export const tools = {
         description: '主动检索日记本或者知识库。',
         params: [
             { name: 'maid', type: 'text', required: true, placeholder: 'Nova' },
-            { name: 'query', type: 'textarea', required: true, placeholder: '关于上次项目会议的讨论内容' },
-            { name: 'k', type: 'number', required: false, placeholder: '3 (默认5)' },
-            { name: 'rerank', type: 'checkbox', required: false, default: false },
-            { name: 'search_all_knowledge_bases', type: 'checkbox', required: false, default: false }
+            { name: 'folder', type: 'text', required: false, placeholder: '特定的索引文件夹' },
+            { name: 'query', type: 'textarea', required: true, placeholder: '记忆检索内容' },
+            { name: 'k', type: 'number', required: false, default: 5 },
+            { name: 'rerank', type: 'checkbox', required: false, default: true },
+            { name: 'tag_boost', type: 'number', required: false, placeholder: '0.1-0.9' },
+            { name: 'search_all_knowledge_bases', type: 'checkbox', required: false, default: true }
         ]
     },
     // 物联网插件
@@ -260,37 +363,37 @@ export const tools = {
         ]
     },
     // NanoBanana 图像生成
-    'NanoBananaGen': {
-        displayName: 'NanoBanana 图像编辑',
-        description: '地球最强的图像编辑AI，支持中英文tag，支持多语种自然语言描述，英文效果好。',
+    'NanoBananaGen2': {
+        displayName: 'NanoBanana 图像编辑 (V2)',
+        description: '地球最强的图像编辑AI，2025年11月更新2代。支持中英文。',
         commands: {
             'generate': {
-                description: '生成一张全新的图片',
+                description: '生成图片',
                 params: [
-                    { name: 'enable_translation', type: 'checkbox', description: '启用提示词翻译(中文→英文)', default: false },
-                    { name: 'prompt', type: 'textarea', required: true, placeholder: '详细的提示词，用于图片生成。例如：一个美丽的日落山景，色彩绒烂，云彩壮观' }
+                    { name: 'prompt', type: 'textarea', required: true, placeholder: '详细提示词' },
+                    { name: 'image_size', type: 'select', options: ['1K', '2K', '4K'], default: '2K' }
                 ]
             },
             'edit': {
-                description: '编辑一张现有的图片',
+                description: '编辑图片',
                 params: [
-                    { name: 'enable_translation', type: 'checkbox', description: '启用提示词翻译(中文→英文)', default: false },
-                    { name: 'prompt', type: 'textarea', required: true, placeholder: '描述如何编辑图片的详细指令。例如：在天空中添加一道彩虹，让颜色更加鲜艳' },
-                    { name: 'image_url', type: 'dragdrop_image', required: true, placeholder: '要编辑的图片URL或拖拽图片文件到此处' }
+                    { name: 'prompt', type: 'textarea', required: true, placeholder: '编辑指令' },
+                    { name: 'image_url', type: 'dragdrop_image', required: true },
+                    { name: 'image_size', type: 'select', options: ['1K', '2K', '4K'], default: '2K' }
                 ]
             },
             'compose': {
-                description: '合成多张图片',
+                description: '合成图片',
                 params: [
-                    { name: 'enable_translation', type: 'checkbox', description: '启用提示词翻译(中文→英文)', default: false },
-                    { name: 'prompt', type: 'textarea', required: true, placeholder: '描述如何合成多张图片的详细指令。例如：使用第一张图的背景和第二张图的人物创建一个奇幻场景' },
-                    { name: 'image_url_1', type: 'dragdrop_image', required: true, placeholder: '第一张图片' }
+                    { name: 'prompt', type: 'textarea', required: true, placeholder: '合成指令' },
+                    { name: 'image_url_1', type: 'dragdrop_image', required: true },
+                    { name: 'image_url_2', type: 'dragdrop_image', required: false },
+                    { name: 'image_size', type: 'select', options: ['1K', '2K', '4K'], default: '2K' }
                 ],
                 dynamicImages: true
             }
         }
     },
-
     // VCP思考自进化插件
     'ThoughtClusterManager': {
         displayName: '思维簇管理器',
@@ -381,5 +484,43 @@ export const tools = {
             { name: 'whole_word', type: 'checkbox', required: false, default: false },
             { name: 'context_lines', type: 'number', required: false, placeholder: '2' }
         ]
+    },
+    'ScheduleManager': {
+        displayName: '日程管理器',
+        description: '辅助日程管理。',
+        commands: {
+            'AddSchedule': {
+                params: [
+                    { name: 'time', type: 'text', required: true, placeholder: '2025-12-31 10:00' },
+                    { name: 'content', type: 'textarea', required: true }
+                ]
+            },
+            'ListSchedules': { params: [] },
+            'DeleteSchedule': {
+                params: [{ name: 'id', type: 'text', required: true }]
+            }
+        }
+    },
+    'TopicMemo': {
+        displayName: '话题回忆',
+        description: '回忆具体的聊天话题。',
+        commands: {
+            'ListTopics': { params: [] },
+            'GetTopicContent': {
+                params: [{ name: 'topic_id', type: 'text', required: true }]
+            }
+        }
+    },
+    'AgentTopicCreator': {
+        displayName: '话题发起人',
+        description: '发起一个全新的聊天话题。',
+        commands: {
+            'CreateTopic': {
+                params: [
+                    { name: 'topic_name', type: 'text', required: true },
+                    { name: 'initial_message', type: 'textarea', required: true }
+                ]
+            }
+        }
     }
 };
