@@ -99,6 +99,13 @@ async fn get_metrics() -> HttpResponse {
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
+    #[cfg(target_os = "windows")]
+    unsafe {
+        // Enforce DPI awareness so that we capture real physical coordinates
+        use winapi::um::winuser::SetProcessDPIAware;
+        SetProcessDPIAware();
+    }
+
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
         .format_timestamp_millis()
         .init();
