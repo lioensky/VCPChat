@@ -1445,6 +1445,26 @@ async function syncGlobalSettingsToUI() {
         const el = document.getElementById(id);
         if (el) el.checked = !!checked;
     };
+    const syncRustDebugPanelVisibility = () => {
+        const rustDebugModeEl = document.getElementById('rustDebugMode');
+        const rustDebugPanelEl = document.getElementById('rustDebugPanel');
+        if (rustDebugPanelEl) {
+            rustDebugPanelEl.style.display = rustDebugModeEl?.checked ? 'block' : 'none';
+        }
+    };
+    const joinKeywords = (value) => Array.isArray(value) ? value.join('\n') : '';
+    const shouldShowRustGuardRules = () => {
+        const useRust = document.getElementById('rustUseAssistant')?.checked === true;
+        const forceRust = document.getElementById('rustForceRust')?.checked === true;
+        const forceNode = document.getElementById('rustForceNode')?.checked === true;
+        return (useRust || forceRust) && !forceNode;
+    };
+    const syncRustGuardRulesVisibility = () => {
+        const container = document.getElementById('rustGuardRulesContainer');
+        if (container) {
+            container.style.display = shouldShowRustGuardRules() ? 'block' : 'none';
+        }
+    };
 
     safeSet('userName', globalSettings.userName || '用户');
     
@@ -1524,6 +1544,87 @@ async function syncGlobalSettingsToUI() {
     safeCheck('enableMiddleClickAdvanced', globalSettings.enableMiddleClickAdvanced === true);
     safeSet('middleClickAdvancedDelay', Math.max(1000, globalSettings.middleClickAdvancedDelay ?? 1000));
     safeCheck('enableRegenerateConfirmation', globalSettings.enableRegenerateConfirmation !== false);
+
+    if (window.electronAPI?.getRustAssistantConfig) {
+        try {
+            const rustConfig = await window.electronAPI.getRustAssistantConfig();
+            if (rustConfig && !rustConfig.error) {
+                safeCheck('rustUseAssistant', rustConfig.useRustAssistant === true);
+                safeCheck('rustDebugMode', rustConfig.debugMode === true);
+                safeCheck('rustForceNode', rustConfig.forceNode === true);
+                safeCheck('rustForceRust', rustConfig.forceRust === true);
+                safeSet('rustWhitelistKeywords', joinKeywords(rustConfig.whitelist || []));
+                safeSet('rustBlacklistKeywords', joinKeywords(rustConfig.blacklist || []));
+                safeSet('rustScreenshotApps', joinKeywords(rustConfig.screenshotApps || []));
+                syncRustDebugPanelVisibility();
+                syncRustGuardRulesVisibility();
+
+                const rustDebugModeEl = document.getElementById('rustDebugMode');
+                if (rustDebugModeEl && !rustDebugModeEl.dataset.debugPanelBound) {
+                    rustDebugModeEl.addEventListener('change', syncRustDebugPanelVisibility);
+                    rustDebugModeEl.dataset.debugPanelBound = 'true';
+                }
+
+                const rustUseAssistantEl = document.getElementById('rustUseAssistant');
+                if (rustUseAssistantEl && !rustUseAssistantEl.dataset.guardPanelBound) {
+                    rustUseAssistantEl.addEventListener('change', syncRustGuardRulesVisibility);
+                    rustUseAssistantEl.dataset.guardPanelBound = 'true';
+                }
+
+                const rustForceNodeEl = document.getElementById('rustForceNode');
+                if (rustForceNodeEl && !rustForceNodeEl.dataset.guardPanelBound) {
+                    rustForceNodeEl.addEventListener('change', syncRustGuardRulesVisibility);
+                    rustForceNodeEl.dataset.guardPanelBound = 'true';
+                }
+
+                const rustForceRustEl = document.getElementById('rustForceRust');
+                if (rustForceRustEl && !rustForceRustEl.dataset.guardPanelBound) {
+                    rustForceRustEl.addEventListener('change', syncRustGuardRulesVisibility);
+                    rustForceRustEl.dataset.guardPanelBound = 'true';
+                }
+            }
+        } catch (error) {
+            console.warn('[Renderer] Failed to sync Rust assistant config:', error);
+        }
+    }
+
+    if (window.electronAPI?.getAssistantRuntimeStatus && document.getElementById('rustDebugMode')?.checked) {
+        try {
+            const runtime = await window.electronAPI.getAssistantRuntimeStatus();
+            if (runtime && runtime.success) {
+                const modeText = runtime.mode === 'rust' ? 'Rust' : 'Node';
+                const desiredText = runtime.desiredMode === 'rust' ? 'Rust' : 'Node';
+                const activeText = runtime.active ? '运行中' : '未运行';
+                const debugReasonText = runtime.lastDebugReason || '无';
+                const forwardedCount = runtime.forwardedEventCount || 0;
+                const sidecarActiveText = runtime.rustSidecarListenerActive === null
+                    ? '未知'
+                    : (runtime.rustSidecarListenerActive ? '是' : '否');
+                const processAliveText = runtime.adapterProcessAlive ? '运行中' : '未运行';
+                const processPidText = runtime.adapterProcessPid ? String(runtime.adapterProcessPid) : '无';
+                const autoFallbackCount = runtime.runtimeFallbackTrace?.autoFallbackCount || 0;
+                const autoFallbackReason = runtime.runtimeFallbackTrace?.lastAutoFallbackReason || '无';
+                const receivedCount = runtime.integrationTrace?.receivedSelectionCount || 0;
+                const showAttemptCount = runtime.integrationTrace?.showAttemptCount || 0;
+                const showErrorText = runtime.integrationTrace?.lastShowError || '无';
+                safeSet('assistantRuntimeMode', modeText, 'textContent');
+                safeSet('assistantRuntimeDesiredMode', desiredText, 'textContent');
+                safeSet('assistantRuntimeActive', activeText, 'textContent');
+                safeSet('assistantRuntimeDebugReason', debugReasonText, 'textContent');
+                safeSet('assistantRuntimeForwardedCount', String(forwardedCount), 'textContent');
+                safeSet('assistantRuntimeSidecarActive', sidecarActiveText, 'textContent');
+                safeSet('assistantRuntimeProcessAlive', processAliveText, 'textContent');
+                safeSet('assistantRuntimeProcessPid', processPidText, 'textContent');
+                safeSet('assistantRuntimeAutoFallbackCount', String(autoFallbackCount), 'textContent');
+                safeSet('assistantRuntimeAutoFallbackReason', autoFallbackReason, 'textContent');
+                safeSet('assistantRuntimeReceivedCount', String(receivedCount), 'textContent');
+                safeSet('assistantRuntimeShowAttemptCount', String(showAttemptCount), 'textContent');
+                safeSet('assistantRuntimeShowError', showErrorText, 'textContent');
+            }
+        } catch (error) {
+            console.warn('[Renderer] Failed to load assistant runtime status:', error);
+        }
+    }
 
     // Visibility toggles
     const middleClickContainer = document.getElementById('middleClickQuickActionContainer');

@@ -477,6 +477,9 @@ export function setupEventListeners(deps) {
 
             // 绑定颜色选择器同步
             setupColorSyncListeners();
+
+            // 绑定 Rust 助手配置相关的事件
+            setupRustAssistantConfigListeners();
         }
     });
 
@@ -578,6 +581,139 @@ export function setupEventListeners(deps) {
         };
         sync('userAvatarBorderColor', 'userAvatarBorderColorText', 'userAvatarPreview');
         sync('userNameTextColor', 'userNameTextColorText');
+    }
+
+    // Rust助手配置UI交互处理
+    async function setupRustAssistantConfigListeners() {
+        // 首先加载当前的Rust配置并填充表单
+        await loadAndPopulateRustConfig();
+
+        // 启用Rust助手时，显示规则容器
+        const rustUseAssistantCheckbox = document.getElementById('rustUseAssistant');
+        const rustGuardRulesContainer = document.getElementById('rustGuardRulesContainer');
+        
+        if (rustUseAssistantCheckbox && rustGuardRulesContainer) {
+            const toggleRustGuardRules = () => {
+                rustGuardRulesContainer.style.display = rustUseAssistantCheckbox.checked ? 'block' : 'none';
+            };
+            rustUseAssistantCheckbox.addEventListener('change', toggleRustGuardRules);
+            // 初始化时设置一次
+            toggleRustGuardRules();
+        }
+
+        // 启用自定义阈值时，显示阈值配置面板
+        const rustEnableCustomThresholdsCheckbox = document.getElementById('rustEnableCustomThresholds');
+        const rustCustomThresholdsPanel = document.getElementById('rustCustomThresholdsPanel');
+        
+        if (rustEnableCustomThresholdsCheckbox && rustCustomThresholdsPanel) {
+            const toggleThresholdsPanel = () => {
+                rustCustomThresholdsPanel.style.display = rustEnableCustomThresholdsCheckbox.checked ? 'block' : 'none';
+            };
+            rustEnableCustomThresholdsCheckbox.addEventListener('change', toggleThresholdsPanel);
+            // 初始化时设置一次
+            toggleThresholdsPanel();
+        }
+
+        // 规则模式选择时，切换白名单/黑名单面板的显示
+        const rustRuleModeSelect = document.getElementById('rustRuleMode');
+        const rustWhitelistPanel = document.getElementById('rustWhitelistPanel');
+        const rustBlacklistPanel = document.getElementById('rustBlacklistPanel');
+        
+        if (rustRuleModeSelect && rustWhitelistPanel && rustBlacklistPanel) {
+            const updateRulePanels = () => {
+                const mode = rustRuleModeSelect.value;
+                rustWhitelistPanel.style.display = mode === 'whitelist' ? 'block' : 'none';
+                rustBlacklistPanel.style.display = mode === 'blacklist' ? 'block' : 'none';
+            };
+            rustRuleModeSelect.addEventListener('change', updateRulePanels);
+            // 初始化时设置一次
+            updateRulePanels();
+        }
+    }
+
+    async function loadAndPopulateRustConfig() {
+        try {
+            if (!window.electronAPI) {
+                console.warn('[EventListeners] electronAPI not available, skipping rust config load');
+                return;
+            }
+
+            const result = await window.electronAPI.getRustAssistantConfig?.() || {};
+            if (result.error) {
+                console.warn('[EventListeners] Failed to load rust config:', result.error);
+                return;
+            }
+
+            // 填充基本开关
+            const rustUseAssistantCheckbox = document.getElementById('rustUseAssistant');
+            const rustDebugModeCheckbox = document.getElementById('rustDebugMode');
+            const rustForceNodeCheckbox = document.getElementById('rustForceNode');
+            const rustForceRustCheckbox = document.getElementById('rustForceRust');
+
+            if (rustUseAssistantCheckbox) rustUseAssistantCheckbox.checked = result.useRustAssistant === true;
+            if (rustDebugModeCheckbox) rustDebugModeCheckbox.checked = result.debugMode === true;
+            if (rustForceNodeCheckbox) rustForceNodeCheckbox.checked = result.forceNode === true;
+            if (rustForceRustCheckbox) rustForceRustCheckbox.checked = result.forceRust === true;
+
+            // 填充自定义阈值
+            const hasCustomThresholds = result.runtimeThresholds && 
+                                      (result.runtimeThresholds.minEventIntervalMs !== 80 ||
+                                       result.runtimeThresholds.minDistance !== 0 ||
+                                       result.runtimeThresholds.screenshotSuspendMs !== 3000 ||
+                                       result.runtimeThresholds.clipboardConflictSuspendMs !== 1000 ||
+                                       result.runtimeThresholds.clipboardCheckIntervalMs !== 500);
+
+            const rustEnableCustomThresholdsCheckbox = document.getElementById('rustEnableCustomThresholds');
+            if (rustEnableCustomThresholdsCheckbox) {
+                rustEnableCustomThresholdsCheckbox.checked = hasCustomThresholds;
+            }
+
+            if (result.runtimeThresholds) {
+                const minEventIntervalMs = document.getElementById('rustMinEventIntervalMs');
+                const minDistance = document.getElementById('rustMinDistance');
+                const screenshotSuspendMs = document.getElementById('rustScreenshotSuspendMs');
+                const clipboardConflictSuspendMs = document.getElementById('rustClipboardConflictSuspendMs');
+                const clipboardCheckIntervalMs = document.getElementById('rustClipboardCheckIntervalMs');
+
+                if (minEventIntervalMs) minEventIntervalMs.value = result.runtimeThresholds.minEventIntervalMs || 80;
+                if (minDistance) minDistance.value = result.runtimeThresholds.minDistance || 0;
+                if (screenshotSuspendMs) screenshotSuspendMs.value = result.runtimeThresholds.screenshotSuspendMs || 3000;
+                if (clipboardConflictSuspendMs) clipboardConflictSuspendMs.value = result.runtimeThresholds.clipboardConflictSuspendMs || 1000;
+                if (clipboardCheckIntervalMs) clipboardCheckIntervalMs.value = result.runtimeThresholds.clipboardCheckIntervalMs || 500;
+            }
+
+            // 填充规则选择
+            const rustRuleModeSelect = document.getElementById('rustRuleMode');
+            let ruleMode = 'none';
+            if (result.whitelist && result.whitelist.length > 0) {
+                ruleMode = 'whitelist';
+            } else if (result.blacklist && result.blacklist.length > 0) {
+                ruleMode = 'blacklist';
+            }
+
+            if (rustRuleModeSelect) {
+                rustRuleModeSelect.value = ruleMode;
+            }
+
+            // 填充白名单和黑名单
+            const rustWhitelistKeywords = document.getElementById('rustWhitelistKeywords');
+            const rustBlacklistKeywords = document.getElementById('rustBlacklistKeywords');
+            const rustScreenshotApps = document.getElementById('rustScreenshotApps');
+
+            if (rustWhitelistKeywords && result.whitelist && Array.isArray(result.whitelist)) {
+                rustWhitelistKeywords.value = result.whitelist.join('\n');
+            }
+            if (rustBlacklistKeywords && result.blacklist && Array.isArray(result.blacklist)) {
+                rustBlacklistKeywords.value = result.blacklist.join('\n');
+            }
+            if (rustScreenshotApps && result.screenshotApps && Array.isArray(result.screenshotApps)) {
+                rustScreenshotApps.value = result.screenshotApps.join('\n');
+            }
+
+            console.log('[EventListeners] Rust config loaded and form populated successfully');
+        } catch (error) {
+            console.error('[EventListeners] Error loading rust config:', error);
+        }
     }
     
     // 用户样式设置折叠功能

@@ -15,6 +15,13 @@ export async function handleSaveGlobalSettings(e, deps) {
     const networkNotesPathsContainer = document.getElementById('networkNotesPathsContainer');
     const pathInputs = networkNotesPathsContainer.querySelectorAll('input[name="networkNotesPath"]');
     const networkNotesPaths = Array.from(pathInputs).map(input => input.value.trim()).filter(path => path);
+    const parseMultilineKeywords = (id) => {
+        const value = document.getElementById(id)?.value || '';
+        return value
+            .split(/\r?\n|,|，|;|；/)
+            .map(item => item.trim())
+            .filter(Boolean);
+    };
 
     const newSettings = {
         userName: document.getElementById('userName').value.trim() || '用户',
@@ -48,6 +55,43 @@ export async function handleSaveGlobalSettings(e, deps) {
         enableContextSanitizer: document.getElementById('enableContextSanitizer').checked,
         contextSanitizerDepth: parseInt(document.getElementById('contextSanitizerDepth').value, 10) || 0,
         enableAiMessageButtons: document.getElementById('enableAiMessageButtons').checked,
+    };
+
+    // 处理规则模式选择
+    const ruleMode = document.getElementById('rustRuleMode')?.value || 'none';
+    const whitelist = ruleMode === 'whitelist' ? parseMultilineKeywords('rustWhitelistKeywords') : [];
+    const blacklist = ruleMode === 'blacklist' ? parseMultilineKeywords('rustBlacklistKeywords') : [];
+    const screenshotApps = parseMultilineKeywords('rustScreenshotApps');
+
+    // 处理自定义阈值
+    const enableCustomThresholds = document.getElementById('rustEnableCustomThresholds')?.checked || false;
+    let runtimeThresholds = {
+        minEventIntervalMs: 80,
+        minDistance: 0,
+        screenshotSuspendMs: 3000,
+        clipboardConflictSuspendMs: 1000,
+        clipboardCheckIntervalMs: 500
+    };
+
+    if (enableCustomThresholds) {
+        runtimeThresholds = {
+            minEventIntervalMs: Math.max(0, parseInt(document.getElementById('rustMinEventIntervalMs')?.value || 80, 10)),
+            minDistance: Math.max(0, parseInt(document.getElementById('rustMinDistance')?.value || 0, 10)),
+            screenshotSuspendMs: Math.max(0, parseInt(document.getElementById('rustScreenshotSuspendMs')?.value || 3000, 10)),
+            clipboardConflictSuspendMs: Math.max(0, parseInt(document.getElementById('rustClipboardConflictSuspendMs')?.value || 1000, 10)),
+            clipboardCheckIntervalMs: Math.max(50, parseInt(document.getElementById('rustClipboardCheckIntervalMs')?.value || 500, 10))
+        };
+    }
+
+    const rustConfigPatch = {
+        useRustAssistant: document.getElementById('rustUseAssistant')?.checked || false,
+        debugMode: document.getElementById('rustDebugMode')?.checked || false,
+        forceNode: document.getElementById('rustForceNode')?.checked || false,
+        forceRust: document.getElementById('rustForceRust')?.checked || false,
+        whitelist: whitelist,
+        blacklist: blacklist,
+        screenshotApps: screenshotApps,
+        runtimeThresholds: runtimeThresholds,
     };
  
      const userAvatarCropped = getCroppedFile('user');
@@ -103,6 +147,17 @@ export async function handleSaveGlobalSettings(e, deps) {
 
     const result = await window.electronAPI.saveSettings(newSettings);
     if (result.success) {
+        if (window.electronAPI?.saveRustAssistantConfig) {
+            const rustSaveResult = await window.electronAPI.saveRustAssistantConfig(rustConfigPatch);
+            if (!rustSaveResult?.success) {
+                uiHelperFunctions.showToastNotification(`Rust助手配置保存失败: ${rustSaveResult?.error || '未知错误'}`, 'warning');
+            } else if (rustSaveResult.reconcile?.modeChanged) {
+                const modeLabel = rustSaveResult.reconcile.mode === 'rust' ? 'Rust' : 'Node';
+                const restartText = rustSaveResult.reconcile.restarted ? '并已热重启监听器' : '将在下次启用监听器时生效';
+                uiHelperFunctions.showToastNotification(`划词监听已切换到 ${modeLabel} 实现，${restartText}`, 'success');
+            }
+        }
+
         Object.assign(refs.globalSettings.get(), newSettings);
         uiHelperFunctions.showToastNotification('全局设置已保存！部分设置（如通知URL/Key）可能需要重新连接生效。');
         uiHelperFunctions.closeModal('globalSettingsModal');

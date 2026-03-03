@@ -270,7 +270,12 @@ window.chatManager = (() => {
             } else {
                 if (itemType === 'agent') {
                     const agentConfig = await electronAPI.getAgentConfig(itemId);
-                    if (agentConfig && (!agentConfig.topics || agentConfig.topics.length === 0)) {
+                    // ⚠️ 检查是否返回错误对象
+                    if (agentConfig && agentConfig.error) {
+                        console.error(`[ChatManager] Failed to get agent config for ${itemId}:`, agentConfig.error);
+                        if (messageRenderer) messageRenderer.renderMessage({ role: 'system', content: `加载助手配置失败: ${agentConfig.error}`, timestamp: Date.now() });
+                        await loadChatHistory(itemId, itemType, null);
+                    } else if (agentConfig && (!agentConfig.topics || agentConfig.topics.length === 0)) {
                         const defaultTopicResult = await electronAPI.createNewTopicForAgent(itemId, "主要对话");
                         if (defaultTopicResult.success) {
                             currentTopicIdRef.set(defaultTopicResult.topicId);

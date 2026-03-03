@@ -833,6 +833,21 @@ if (!gotTheLock) {
         windowHandlers.initialize(mainWindow, openChildWindows);
         forumHandlers.initialize({ USER_DATA_DIR }); // Initialize forum handlers
         memoHandlers.initialize({ USER_DATA_DIR }); // Initialize memo handlers
+        
+        // ⚠️ agentHandlers 必须在 assistantHandlers 之前初始化
+        // 因为 assistantHandlers 依赖 getAgentConfigById 函数，该函数需要 AGENT_DIR_CACHE 已被初始化
+        agentHandlers.initialize({
+            AGENT_DIR,
+            USER_DATA_DIR,
+            SETTINGS_FILE,
+            USER_AVATAR_FILE,
+            getSelectionListenerStatus: assistantHandlers.getSelectionListenerStatus,
+            stopSelectionListener: assistantHandlers.stopSelectionListener,
+            startSelectionListener: assistantHandlers.startSelectionListener,
+            settingsManager: appSettingsManager,
+            agentConfigManager
+        });
+        
         await assistantHandlers.initialize({ SETTINGS_FILE });
         fileDialogHandlers.initialize(mainWindow, {
             getSelectionListenerStatus: assistantHandlers.getSelectionListenerStatus,
@@ -847,17 +862,6 @@ if (!gotTheLock) {
             stopSelectionListener: assistantHandlers.stopSelectionListener,
             startSelectionListener: assistantHandlers.startSelectionListener,
             fileWatcher // Inject fileWatcher here as well
-        });
-        agentHandlers.initialize({
-            AGENT_DIR,
-            USER_DATA_DIR,
-            SETTINGS_FILE,
-            USER_AVATAR_FILE,
-            getSelectionListenerStatus: assistantHandlers.getSelectionListenerStatus,
-            stopSelectionListener: assistantHandlers.stopSelectionListener,
-            startSelectionListener: assistantHandlers.startSelectionListener,
-            settingsManager: appSettingsManager,
-            agentConfigManager
         });
         regexHandlers.initialize({ AGENT_DIR });
         chatHandlers.initialize(mainWindow, {
