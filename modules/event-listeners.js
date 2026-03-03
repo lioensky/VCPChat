@@ -104,7 +104,13 @@ export function setupEventListeners(deps) {
 
                 if (senderElement && contentElement) {
                     const sender = senderElement.textContent.trim().replace(':', '');
-                    let content = contentElement.innerText || contentElement.textContent || "";
+                    // 克隆节点，移除思维链气泡后再取文本（<think> 已渲染为 DOM 节点）
+                    const contentClone = contentElement.cloneNode(true);
+                    contentClone.querySelectorAll('.vcp-thought-chain-bubble').forEach(el => el.remove());
+                    let content = contentClone.innerText || contentClone.textContent || "";
+                    // 兜底：清理明文形式思维链
+                    content = content.replace(/\[--- VCP元思考链(?::\s*"[^"]*")?\s*---\][\s\S]*?\[--- 元思考链结束 ---\]/gs, '');
+                    content = content.replace(/<think>[\s\S]*?<\/think>/gi, '');
                     content = content.trim();
 
                     if (sender && content) {
@@ -151,20 +157,20 @@ export function setupEventListeners(deps) {
             uiHelperFunctions.showToastNotification('请先选择一个项目和话题', 'warning');
             return;
         }
-        
+
         if (!globalSettings.vcpServerUrl) {
             uiHelperFunctions.showToastNotification('请先在全局设置中配置VCP服务器URL！', 'error');
             uiHelperFunctions.openModal('globalSettingsModal');
             return;
         }
-        
+
         if (currentSelectedItem.type === 'group') {
             uiHelperFunctions.showToastNotification('群组聊天暂不支持续写功能', 'warning');
             return;
         }
-        
+
         const lastAiMessage = [...currentChatHistory].reverse().find(msg => msg.role === 'assistant' && !msg.isThinking);
-        
+
         // 改进：即使没有AI消息，也允许续写（让当前Agent开始发言）
         // 区分两种情况：
         // 1. 有AI消息：使用续写提示词（附加提示词或默认续写提示词）
@@ -178,7 +184,7 @@ export function setupEventListeners(deps) {
             // 有AI消息时，使用续写逻辑：优先使用附加提示词，否则使用默认续写提示词
             temporaryPrompt = additionalPrompt || globalSettings.continueWritingPrompt || '请继续';
         }
-        
+
         const thinkingMessageId = `regen_${Date.now()}`;
         const thinkingMessage = {
             role: 'assistant',
@@ -190,24 +196,24 @@ export function setupEventListeners(deps) {
             avatarUrl: currentSelectedItem.avatarUrl,
             avatarColor: (currentSelectedItem.config || currentSelectedItem)?.avatarCalculatedColor
         };
-        
+
         let thinkingMessageItem = null;
         if (window.messageRenderer) {
             thinkingMessageItem = await window.messageRenderer.renderMessage(thinkingMessage);
         }
         currentChatHistory.push(thinkingMessage);
-        
+
         try {
             const agentConfig = currentSelectedItem.config || currentSelectedItem;
             let historySnapshotForVCP = currentChatHistory.filter(msg => msg.id !== thinkingMessage.id && !msg.isThinking);
-            
+
             // 只有当有提示词时才添加临时用户消息
             // 如果 temporaryPrompt 为空，说明是无AI消息且无输入的情况，让AI基于现有上下文自然开始
             if (temporaryPrompt && temporaryPrompt.trim()) {
                 const temporaryUserMessage = { role: 'user', content: temporaryPrompt };
                 historySnapshotForVCP = [...historySnapshotForVCP, temporaryUserMessage];
             }
-            
+
             const messagesForVCP = await Promise.all(historySnapshotForVCP.map(async msg => {
                 let currentMessageTextContent = '';
                 if (typeof msg.content === 'string') {
@@ -224,16 +230,16 @@ export function setupEventListeners(deps) {
                 }
                 return { role: msg.role, content: currentMessageTextContent };
             }));
-            
+
             if (agentConfig && agentConfig.systemPrompt) {
                 let systemPromptContent = agentConfig.systemPrompt.replace(/\{\{AgentName\}\}/g, agentConfig.name || currentSelectedItem.id);
                 const prependedContent = [];
-                
+
                 if (agentConfig.agentDataPath && currentTopicId) {
                     const historyPath = `${agentConfig.agentDataPath}\\topics\\${currentTopicId}\\history.json`;
                     prependedContent.push(`当前聊天记录文件路径: ${historyPath}`);
                 }
-                
+
                 if (agentConfig.topics && currentTopicId) {
                     const currentTopicObj = agentConfig.topics.find(t => t.id === currentTopicId);
                     if (currentTopicObj && currentTopicObj.createdAt) {
@@ -242,14 +248,14 @@ export function setupEventListeners(deps) {
                         prependedContent.push(`当前话题创建于: ${formattedDate}`);
                     }
                 }
-                
+
                 if (prependedContent.length > 0) {
                     systemPromptContent = prependedContent.join('\n') + '\n\n' + systemPromptContent;
                 }
-                
+
                 messagesForVCP.unshift({ role: 'system', content: systemPromptContent });
             }
-            
+
             const useStreaming = (agentConfig?.streamOutput !== false);
             const modelConfigForVCP = {
                 model: agentConfig?.model || 'gemini-pro',
@@ -258,21 +264,21 @@ export function setupEventListeners(deps) {
                 ...(agentConfig?.contextTokenLimit && { contextTokenLimit: parseInt(agentConfig.contextTokenLimit) }),
                 stream: useStreaming
             };
-            
+
             if (useStreaming) {
                 if (window.messageRenderer) {
                     await new Promise(resolve => setTimeout(resolve, 500));
                     await window.messageRenderer.startStreamingMessage({ ...thinkingMessage, content: "" }, thinkingMessageItem);
                 }
             }
-            
+
             const context = {
                 agentId: currentSelectedItem.id,
                 agentName: currentSelectedItem.name || currentSelectedItem.id,
                 topicId: currentTopicId,
                 isGroupMessage: false
             };
-            
+
             const vcpResponse = await window.electronAPI.sendToVCP(
                 globalSettings.vcpServerUrl,
                 globalSettings.vcpApiKey,
@@ -282,15 +288,15 @@ export function setupEventListeners(deps) {
                 false,
                 context
             );
-            
+
             if (!useStreaming) {
                 const { response, context } = vcpResponse;
                 const isForActiveChat = context && context.agentId === currentSelectedItem.id && context.topicId === currentTopicId;
-                
+
                 if (isForActiveChat) {
                     if (window.messageRenderer) window.messageRenderer.removeMessageById(thinkingMessage.id);
                 }
-                
+
                 if (response.error) {
                     if (isForActiveChat && window.messageRenderer) {
                         window.messageRenderer.renderMessage({ role: 'system', content: `VCP错误: ${response.error}`, timestamp: Date.now() });
@@ -307,13 +313,13 @@ export function setupEventListeners(deps) {
                         timestamp: Date.now(),
                         id: response.id || `regen_nonstream_${Date.now()}`
                     };
-                    
+
                     const historyForSave = await window.electronAPI.getChatHistory(context.agentId, context.topicId);
                     if (historyForSave && !historyForSave.error) {
                         const finalHistory = historyForSave.filter(msg => msg.id !== thinkingMessage.id && !msg.isThinking);
                         finalHistory.push(assistantMessage);
                         await window.electronAPI.saveChatHistory(context.agentId, context.topicId, finalHistory);
-                        
+
                         if (isForActiveChat) {
                             currentChatHistory.length = 0;
                             currentChatHistory.push(...finalHistory);
@@ -327,7 +333,7 @@ export function setupEventListeners(deps) {
                     console.error("[ContinueWriting] Streaming setup failed:", vcpResponse.errorDetail || vcpResponse.error);
                 }
             }
-            
+
         } catch (error) {
             console.error('[ContinueWriting] 续写时出错:', error);
             if (window.messageRenderer) window.messageRenderer.removeMessageById(thinkingMessage.id);
@@ -398,20 +404,20 @@ export function setupEventListeners(deps) {
         if (e.button === 1) { // 中键
             e.preventDefault();
             e.stopPropagation();
-            
+
             // 检查心流锁是否激活
             if (window.flowlockManager && window.flowlockManager.getState().isActive) {
                 uiHelperFunctions.showToastNotification('心流锁已启用，无法手动续写', 'warning');
                 return;
             }
-            
+
             const currentSelectedItem = refs.currentSelectedItem.get();
             const currentTopicId = refs.currentTopicId.get();
             if (!currentSelectedItem.id || !currentTopicId) {
                 uiHelperFunctions.showToastNotification('请先选择一个项目和话题', 'warning');
                 return;
             }
-            
+
             const currentInputText = messageInput.value.trim();
             await handleContinueWriting(currentInputText);
         }
@@ -447,20 +453,20 @@ export function setupEventListeners(deps) {
             uiHelperFunctions.showToastNotification(`选择文件时出错: ${result.error}`, 'error');
         }
     });
-    
- 
+
+
     globalSettingsBtn.addEventListener('click', () => uiHelperFunctions.openModal('globalSettingsModal'));
-    
+
     // 🟢 优化：监听模态框就绪事件，动态绑定内部元素的事件
     document.addEventListener('modal-ready', (e) => {
         const { modalId } = e.detail;
         if (modalId === 'globalSettingsModal') {
             const form = document.getElementById('globalSettingsForm');
             if (form) form.addEventListener('submit', (ev) => handleSaveGlobalSettings(ev, deps));
-            
+
             const addPathBtn = document.getElementById('addNetworkPathBtn');
             if (addPathBtn) addPathBtn.addEventListener('click', () => addNetworkPathInput());
-            
+
             const avatarInput = document.getElementById('userAvatarInput');
             if (avatarInput) setupUserAvatarListener(avatarInput);
 
@@ -494,14 +500,14 @@ export function setupEventListeners(deps) {
                         const previewUrl = URL.createObjectURL(croppedFile);
                         userAvatarPreview.src = previewUrl;
                         userAvatarPreview.style.display = 'block';
-                        
+
                         if (window.getDominantAvatarColor) {
                             window.getDominantAvatarColor(previewUrl).then((avgColor) => {
                                 const userAvatarBorderColorInput = document.getElementById('userAvatarBorderColor');
                                 const userAvatarBorderColorTextInput = document.getElementById('userAvatarBorderColorText');
                                 const userNameTextColorInput = document.getElementById('userNameTextColor');
                                 const userNameTextColorTextInput = document.getElementById('userNameTextColorText');
-                                
+
                                 if (avgColor && userAvatarBorderColorInput && userNameTextColorInput) {
                                     const rgbMatch = avgColor.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
                                     if (rgbMatch) {
@@ -512,7 +518,7 @@ export function setupEventListeners(deps) {
                                             const hex = x.toString(16);
                                             return hex.length === 1 ? '0' + hex : hex;
                                         }).join('');
-                                        
+
                                         userAvatarBorderColorInput.value = hexColor;
                                         userAvatarBorderColorTextInput.value = hexColor;
                                         userNameTextColorInput.value = hexColor;
@@ -591,7 +597,7 @@ export function setupEventListeners(deps) {
         // 启用Rust助手时，显示规则容器
         const rustUseAssistantCheckbox = document.getElementById('rustUseAssistant');
         const rustGuardRulesContainer = document.getElementById('rustGuardRulesContainer');
-        
+
         if (rustUseAssistantCheckbox && rustGuardRulesContainer) {
             const toggleRustGuardRules = () => {
                 rustGuardRulesContainer.style.display = rustUseAssistantCheckbox.checked ? 'block' : 'none';
@@ -604,7 +610,7 @@ export function setupEventListeners(deps) {
         // 启用自定义阈值时，显示阈值配置面板
         const rustEnableCustomThresholdsCheckbox = document.getElementById('rustEnableCustomThresholds');
         const rustCustomThresholdsPanel = document.getElementById('rustCustomThresholdsPanel');
-        
+
         if (rustEnableCustomThresholdsCheckbox && rustCustomThresholdsPanel) {
             const toggleThresholdsPanel = () => {
                 rustCustomThresholdsPanel.style.display = rustEnableCustomThresholdsCheckbox.checked ? 'block' : 'none';
@@ -618,7 +624,7 @@ export function setupEventListeners(deps) {
         const rustRuleModeSelect = document.getElementById('rustRuleMode');
         const rustWhitelistPanel = document.getElementById('rustWhitelistPanel');
         const rustBlacklistPanel = document.getElementById('rustBlacklistPanel');
-        
+
         if (rustRuleModeSelect && rustWhitelistPanel && rustBlacklistPanel) {
             const updateRulePanels = () => {
                 const mode = rustRuleModeSelect.value;
@@ -656,12 +662,12 @@ export function setupEventListeners(deps) {
             if (rustForceRustCheckbox) rustForceRustCheckbox.checked = result.forceRust === true;
 
             // 填充自定义阈值
-            const hasCustomThresholds = result.runtimeThresholds && 
-                                      (result.runtimeThresholds.minEventIntervalMs !== 80 ||
-                                       result.runtimeThresholds.minDistance !== 0 ||
-                                       result.runtimeThresholds.screenshotSuspendMs !== 3000 ||
-                                       result.runtimeThresholds.clipboardConflictSuspendMs !== 1000 ||
-                                       result.runtimeThresholds.clipboardCheckIntervalMs !== 500);
+            const hasCustomThresholds = result.runtimeThresholds &&
+                (result.runtimeThresholds.minEventIntervalMs !== 80 ||
+                    result.runtimeThresholds.minDistance !== 0 ||
+                    result.runtimeThresholds.screenshotSuspendMs !== 3000 ||
+                    result.runtimeThresholds.clipboardConflictSuspendMs !== 1000 ||
+                    result.runtimeThresholds.clipboardCheckIntervalMs !== 500);
 
             const rustEnableCustomThresholdsCheckbox = document.getElementById('rustEnableCustomThresholds');
             if (rustEnableCustomThresholdsCheckbox) {
@@ -715,7 +721,7 @@ export function setupEventListeners(deps) {
             console.error('[EventListeners] Error loading rust config:', error);
         }
     }
-    
+
     // 用户样式设置折叠功能
     const userStyleCollapseHeader = document.getElementById('userStyleCollapseHeader');
     if (userStyleCollapseHeader) {
@@ -726,13 +732,13 @@ export function setupEventListeners(deps) {
             }
         });
     }
-    
+
     // 用户颜色选择器同步
     const userAvatarBorderColorInput = document.getElementById('userAvatarBorderColor');
     const userAvatarBorderColorTextInput = document.getElementById('userAvatarBorderColorText');
     const userNameTextColorInput = document.getElementById('userNameTextColor');
     const userNameTextColorTextInput = document.getElementById('userNameTextColorText');
-    
+
     if (userAvatarBorderColorInput && userAvatarBorderColorTextInput) {
         userAvatarBorderColorInput.addEventListener('input', (e) => {
             userAvatarBorderColorTextInput.value = e.target.value;
@@ -741,7 +747,7 @@ export function setupEventListeners(deps) {
                 userAvatarPreview.style.borderColor = e.target.value;
             }
         });
-        
+
         userAvatarBorderColorTextInput.addEventListener('input', (e) => {
             const color = e.target.value.trim();
             if (/^#[0-9A-F]{6}$/i.test(color)) {
@@ -752,7 +758,7 @@ export function setupEventListeners(deps) {
                 }
             }
         });
-        
+
         userAvatarBorderColorTextInput.addEventListener('blur', (e) => {
             const color = e.target.value.trim();
             if (!/^#[0-9A-F]{6}$/i.test(color)) {
@@ -761,19 +767,19 @@ export function setupEventListeners(deps) {
             }
         });
     }
-    
+
     if (userNameTextColorInput && userNameTextColorTextInput) {
         userNameTextColorInput.addEventListener('input', (e) => {
             userNameTextColorTextInput.value = e.target.value;
         });
-        
+
         userNameTextColorTextInput.addEventListener('input', (e) => {
             const color = e.target.value.trim();
             if (/^#[0-9A-F]{6}$/i.test(color)) {
                 userNameTextColorInput.value = color;
             }
         });
-        
+
         userNameTextColorTextInput.addEventListener('blur', (e) => {
             const color = e.target.value.trim();
             if (!/^#[0-9A-F]{6}$/i.test(color)) {
@@ -782,18 +788,18 @@ export function setupEventListeners(deps) {
             }
         });
     }
-    
+
     // 用户重置颜色按钮
     const resetUserAvatarColorsBtn = document.getElementById('resetUserAvatarColorsBtn');
     if (resetUserAvatarColorsBtn) {
         resetUserAvatarColorsBtn.addEventListener('click', () => {
             const userAvatarPreview = document.getElementById('userAvatarPreview');
-            
+
             if (!userAvatarPreview || !userAvatarPreview.src || userAvatarPreview.src === '#' || userAvatarPreview.src.includes('default_user_avatar.png')) {
                 uiHelperFunctions.showToastNotification('请先上传头像后再重置颜色', 'warning');
                 return;
             }
-            
+
             if (window.getDominantAvatarColor) {
                 window.getDominantAvatarColor(userAvatarPreview.src).then((avgColor) => {
                     if (avgColor && userAvatarBorderColorInput && userNameTextColorInput) {
@@ -806,13 +812,13 @@ export function setupEventListeners(deps) {
                                 const hex = x.toString(16);
                                 return hex.length === 1 ? '0' + hex : hex;
                             }).join('');
-                            
+
                             userAvatarBorderColorInput.value = hexColor;
                             userAvatarBorderColorTextInput.value = hexColor;
                             userNameTextColorInput.value = hexColor;
                             userNameTextColorTextInput.value = hexColor;
                             userAvatarPreview.style.borderColor = hexColor;
-                            
+
                             uiHelperFunctions.showToastNotification('已重置为头像默认颜色', 'success');
                             console.log('[EventListeners] User colors reset to avatar default:', hexColor);
                         }
@@ -844,7 +850,7 @@ export function setupEventListeners(deps) {
             }
         });
     }
-    
+
     if (createNewGroupBtn) {
         createNewGroupBtn.style.display = 'inline-block';
     }
@@ -861,12 +867,12 @@ export function setupEventListeners(deps) {
     // 【新建话题】按钮右键菜单 - 创建未锁定话题
     currentItemActionBtn.addEventListener('contextmenu', (e) => {
         e.preventDefault();
-        
+
         const currentSelectedItem = refs.currentSelectedItem.get();
         if (!currentSelectedItem.id || currentSelectedItem.type !== 'agent') {
             return; // 仅对 Agent 显示右键菜单
         }
-        
+
         showNewTopicButtonMenu(e, currentSelectedItem);
     });
 
@@ -895,7 +901,7 @@ export function setupEventListeners(deps) {
         menu.appendChild(createUnlockedOption);
 
         document.body.appendChild(menu);
-        
+
         // 点击外部关闭菜单
         const closeMenu = (e) => {
             if (!menu.contains(e.target)) {
@@ -917,11 +923,11 @@ export function setupEventListeners(deps) {
             uiHelperFunctions.showToastNotification("请先选择一个Agent。", 'error');
             return;
         }
-        
+
         const newTopicName = `新话题 ${new Date().toLocaleTimeString([], {
             hour: '2-digit', minute: '2-digit', second: '2-digit'
         })}`;
-        
+
         try {
             // 调用后端 API 创建话题，传入 locked 参数
             const result = await window.electronAPI.createNewTopicForAgent(
@@ -930,7 +936,7 @@ export function setupEventListeners(deps) {
                 false, // isBranch
                 locked // 指定锁定状态
             );
-            
+
             if (result && result.success && result.topicId) {
                 // 使用 chatManager 的 selectTopic 方法来切换到新创建的话题
                 // 这会触发所有必要的状态更新、UI刷新和文件监听器启动
@@ -942,7 +948,7 @@ export function setupEventListeners(deps) {
                 if (topicListManager && topicListManager.loadTopicList) {
                     await topicListManager.loadTopicList();
                 }
-                
+
                 uiHelperFunctions.showToastNotification(
                     locked ? '已创建新话题（已锁定）' : '已创建新话题（未锁定，AI可查看）',
                     'success'
@@ -1101,7 +1107,7 @@ export function setupEventListeners(deps) {
                 mainContent.classList.toggle('notifications-sidebar-active', isActive);
             }
             if (isActive && refs.globalSettings.get().notificationsSidebarWidth) {
-                 notificationsSidebar.style.width = `${refs.globalSettings.get().notificationsSidebarWidth}px`;
+                notificationsSidebar.style.width = `${refs.globalSettings.get().notificationsSidebarWidth}px`;
             }
         });
     }
@@ -1167,11 +1173,11 @@ export function setupEventListeners(deps) {
                 if (toggleSidebarBtn) {
                     toggleSidebarBtn.classList.toggle('active', isActive);
                 }
-                
+
                 // 保存侧边栏状态到设置
                 const globalSettings = refs.globalSettings.get();
                 globalSettings.sidebarActive = isActive;
-                
+
                 // 异步保存设置
                 if (window.electronAPI && window.electronAPI.saveSettings) {
                     window.electronAPI.saveSettings(globalSettings).then(result => {
@@ -1182,7 +1188,7 @@ export function setupEventListeners(deps) {
                         console.error('保存侧边栏状态时出错:', error);
                     });
                 }
-                
+
                 // 显示操作提示
                 // uiHelperFunctions.showToastNotification(`侧边栏已${isActive ? '显示' : '隐藏'}`, 'info');
             }
@@ -1251,13 +1257,13 @@ export function setupEventListeners(deps) {
 
         if ((e.ctrlKey || e.metaKey) && e.key === 'd') {
             e.preventDefault();
-            
+
             // 检查心流锁是否激活
             if (window.flowlockManager && window.flowlockManager.getState().isActive) {
                 uiHelperFunctions.showToastNotification('心流锁已启用，无法手动续写', 'warning');
                 return;
             }
-            
+
             if (!refs.currentSelectedItem.get().id || !refs.currentTopicId.get()) {
                 uiHelperFunctions.showToastNotification('请先选择一个项目和话题', 'warning');
                 return;
@@ -1268,18 +1274,18 @@ export function setupEventListeners(deps) {
 
         if ((e.ctrlKey || e.metaKey) && (e.key === 'n' || e.key === 'N')) {
             e.preventDefault();
-            
+
             const currentSelectedItem = refs.currentSelectedItem.get();
             if (!currentSelectedItem.id) {
                 uiHelperFunctions.showToastNotification('请先选择一个Agent', 'warning');
                 return;
             }
-            
+
             if (currentSelectedItem.type !== 'agent') {
                 uiHelperFunctions.showToastNotification('此快捷键仅适用于Agent，不适用于群组', 'warning');
                 return;
             }
-            
+
             // 检查是否按下 Shift 键
             if (e.shiftKey) {
                 // Ctrl/Command + Shift + N: 创建未上锁的话题

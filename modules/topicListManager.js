@@ -45,10 +45,10 @@ window.topicListManager = (() => {
      */
     function shouldActivateCount(history) {
         if (!history || history.length === 0) return false;
-        
+
         // 过滤掉系统消息
         const nonSystemMessages = history.filter(msg => msg.role !== 'system');
-        
+
         // 必须有且只有一条消息，且该消息是 AI 回复
         return nonSystemMessages.length === 1 && nonSystemMessages[0].role === 'assistant';
     }
@@ -79,7 +79,7 @@ window.topicListManager = (() => {
         if (topic.unread === true) {
             return -1; // 仅显示小点，不显示数字
         }
-        
+
         return 0; // 不显示
     }
 
@@ -101,7 +101,7 @@ window.topicListManager = (() => {
                 const newTopicSearchInput = topicsHeader.querySelector('#topicSearchInput');
                 if (newTopicSearchInput) setupTopicSearchListener(newTopicSearchInput);
             }
-            
+
             topicListUl = document.createElement('ul');
             topicListUl.className = 'topic-list';
             topicListUl.id = 'topicList';
@@ -125,28 +125,28 @@ window.topicListManager = (() => {
         } else {
             topicListUl.innerHTML = '';
         }
-        
+
         if (currentSelectedItem.type === 'agent') {
             itemConfigFull = await electronAPI.getAgentConfig(currentSelectedItem.id);
         } else if (currentSelectedItem.type === 'group') {
             itemConfigFull = await electronAPI.getAgentGroupConfig(currentSelectedItem.id);
         }
-        
+
         if (itemConfigFull && !itemConfigFull.error) {
             mainRendererFunctions.updateCurrentItemConfig(itemConfigFull);
         }
-        
+
         if (!itemConfigFull || itemConfigFull.error) {
             topicListUl.innerHTML = `<li><p>无法加载 ${itemNameForLoading} 的配置信息: ${itemConfigFull?.error || '未知错误'}</p></li>`;
         } else {
             let topicsToProcess = itemConfigFull.topics || [];
             if (currentSelectedItem.type === 'agent' && topicsToProcess.length === 0) {
-                 const defaultAgentTopic = { id: "default", name: "主要对话", createdAt: Date.now() };
-                 topicsToProcess.push(defaultAgentTopic);
+                const defaultAgentTopic = { id: "default", name: "主要对话", createdAt: Date.now() };
+                topicsToProcess.push(defaultAgentTopic);
             }
 
             // topicsToProcess.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-            
+
             if (searchTerm) {
                 let frontendFilteredTopics = topicsToProcess.filter(topic => {
                     const nameMatch = topic.name.toLowerCase().includes(searchTerm);
@@ -174,7 +174,7 @@ window.topicListManager = (() => {
 
                 const finalFilteredTopicIds = new Set(frontendFilteredTopics.map(t => t.id));
                 contentMatchedTopicIds.forEach(id => finalFilteredTopicIds.add(id));
-                
+
                 topicsToProcess = topicsToProcess.filter(topic => finalFilteredTopicIds.has(topic.id));
             }
 
@@ -183,7 +183,7 @@ window.topicListManager = (() => {
             } else {
                 topicListUl.innerHTML = '';
                 const currentTopicId = currentTopicIdRef.get();
-                
+
                 // --- 优化：分批渲染话题列表 ---
                 const BATCH_SIZE = 20;
                 let currentIndex = 0;
@@ -191,7 +191,7 @@ window.topicListManager = (() => {
                 const renderBatch = () => {
                     const fragment = document.createDocumentFragment();
                     const end = Math.min(currentIndex + BATCH_SIZE, topicsToProcess.length);
-                    
+
                     for (; currentIndex < end; currentIndex++) {
                         const topic = topicsToProcess[currentIndex];
                         const li = document.createElement('li');
@@ -219,7 +219,7 @@ window.topicListManager = (() => {
                         messageCountSpan.textContent = '...';
 
                         li.appendChild(avatarImg);
-                        
+
                         if (topic.locked === false) {
                             const unlockedIndicator = document.createElement('span');
                             unlockedIndicator.classList.add('unlocked-indicator');
@@ -227,21 +227,21 @@ window.topicListManager = (() => {
                             unlockedIndicator.title = 'AI可以查看和回复此话题';
                             li.appendChild(unlockedIndicator);
                         }
-                        
+
                         li.appendChild(topicTitleDisplay);
                         li.appendChild(messageCountSpan);
 
                         // 优化：延迟加载计数逻辑，避免瞬间爆发大量 IPC 请求
                         setTimeout(() => {
                             if (!li.isConnected) return; // 如果节点已从 DOM 移除，则跳过
-                            
+
                             let historyPromise;
                             if (currentSelectedItem.type === 'agent') {
                                 historyPromise = electronAPI.getChatHistory(currentSelectedItem.id, topic.id);
                             } else if (currentSelectedItem.type === 'group') {
                                 historyPromise = electronAPI.getGroupChatHistory(currentSelectedItem.id, topic.id);
                             }
-                            
+
                             if (historyPromise) {
                                 historyPromise.then(historyResult => {
                                     if (historyResult && !historyResult.error && Array.isArray(historyResult)) {
@@ -274,7 +274,7 @@ window.topicListManager = (() => {
                         });
                         fragment.appendChild(li);
                     }
-                    
+
                     topicListUl.appendChild(fragment);
 
                     if (currentIndex < topicsToProcess.length) {
@@ -292,7 +292,7 @@ window.topicListManager = (() => {
                 renderBatch();
             }
             if (currentSelectedItem.id && topicsToProcess && topicsToProcess.length > 0 && typeof Sortable !== 'undefined') {
-               initializeTopicSortable(currentSelectedItem.id, currentSelectedItem.type);
+                initializeTopicSortable(currentSelectedItem.id, currentSelectedItem.type);
             }
         }
     }
@@ -334,7 +334,7 @@ window.topicListManager = (() => {
             ghostClass: 'sortable-ghost-topic',
             chosenClass: 'sortable-chosen-topic',
             dragClass: 'sortable-drag-topic',
-            onStart: async function(evt) {
+            onStart: async function (evt) {
                 // Check original state, store it, and then disable if it was active.
                 if (window.electronAPI && window.electronAPI.getSelectionListenerStatus) {
                     wasSelectionListenerActive = await window.electronAPI.getSelectionListenerStatus();
@@ -550,7 +550,7 @@ window.topicListManager = (() => {
             handleExportTopic(itemFullConfig.id, itemType, topic.id, topic.name);
         };
         menu.appendChild(exportTopicOption);
-        
+
         // 智能定位逻辑：先隐藏菜单以测量尺寸
         menu.style.visibility = 'hidden';
         menu.style.position = 'absolute';
@@ -585,7 +585,7 @@ window.topicListManager = (() => {
         menu.style.top = `${top}px`;
         menu.style.left = `${left}px`;
         menu.style.visibility = 'visible';
-        
+
         document.addEventListener('click', closeTopicContextMenuOnClickOutside, true);
     }
 
@@ -642,7 +642,13 @@ window.topicListManager = (() => {
 
                 if (senderElement && contentElement) {
                     const sender = senderElement.textContent.trim().replace(':', '');
-                    let content = contentElement.innerText || contentElement.textContent || "";
+                    // 克隆节点，移除思维链气泡（<think> 已被渲染为 DOM 节点，innerText 会包含其文本）
+                    const contentClone = contentElement.cloneNode(true);
+                    contentClone.querySelectorAll('.vcp-thought-chain-bubble').forEach(el => el.remove());
+                    let content = contentClone.innerText || contentClone.textContent || "";
+                    // 兜底：清理可能残留的明文形式思维链
+                    content = content.replace(/\[--- VCP元思考链(?::\s*"[^"]*")?\s*---\][\s\S]*?\[--- 元思考链结束 ---\]/gs, '');
+                    content = content.replace(/<think>[\s\S]*?<\/think>/gi, '');
                     content = content.trim();
 
                     if (sender && content) {

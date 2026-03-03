@@ -135,21 +135,21 @@ class ContextSanitizer {
         this.turndownService.addRule('vcpPrettifiedBlocks', {
             filter: (node) => {
                 if (node.nodeName !== 'PRE') return false;
-                
+
                 // ✅ jsdom 支持 classList
-                return node.classList.contains('vcp-tool-use-bubble') || 
-                       node.classList.contains('maid-diary-bubble');
+                return node.classList.contains('vcp-tool-use-bubble') ||
+                    node.classList.contains('maid-diary-bubble');
             },
             replacement: (content, node) => {
                 // ✅ 从 data-raw-content 获取原始内容
                 const rawContent = node.getAttribute('data-raw-content');
-                
+
                 if (rawContent) {
                     // ✅ 直接返回原始内容，Turndown 不会对其进行转义
                     return rawContent;
                 }
-                
-                console.warn('[ContextSanitizer] VCP special block missing data-raw-content:', 
+
+                console.warn('[ContextSanitizer] VCP special block missing data-raw-content:',
                     node.className, node.textContent.substring(0, 50));
                 return ''; // 返回空，避免污染
             }
@@ -159,17 +159,17 @@ class ContextSanitizer {
         this.turndownService.addRule('vcpRawBlocks', {
             filter: (node) => {
                 if (node.nodeName !== 'PRE') return false;
-                
+
                 // 排除已美化的（由上面的规则处理）
-                if (node.classList.contains('vcp-tool-use-bubble') || 
+                if (node.classList.contains('vcp-tool-use-bubble') ||
                     node.classList.contains('maid-diary-bubble')) {
                     return false;
                 }
-                
+
                 // 检查是否包含特殊标记
                 const text = node.textContent || '';
-                return text.includes('<<<[TOOL_REQUEST]>>>') || 
-                       text.includes('<<<DailyNoteStart>>>');
+                return text.includes('<<<[TOOL_REQUEST]>>>') ||
+                    text.includes('<<<DailyNoteStart>>>');
             },
             replacement: (content, node) => {
                 const text = node.textContent || '';
@@ -231,7 +231,7 @@ class ContextSanitizer {
      */
     containsHTML(content) {
         if (typeof content !== 'string') return false;
-        
+
         // 简单检查：是否包含 HTML 标签
         const htmlRegex = /<[^>]+>/;
         return htmlRegex.test(content);
@@ -262,7 +262,7 @@ class ContextSanitizer {
 
         try {
             this._ensureService();
-            
+
             // ✅ 使用 jsdom 解析
             const dom = new JSDOM(content);
             const body = dom.window.document.body;
@@ -317,7 +317,7 @@ class ContextSanitizer {
         // startDepth = 1: 跳过最后 1 条 AI 消息
         // startDepth = 2: 跳过最后 2 条 AI 消息（即从倒数第3条开始）
         const indicesToSanitize = new Set();
-        
+
         if (startDepth === 0) {
             // 处理所有 AI 消息
             aiMessageIndices.forEach(idx => indicesToSanitize.add(idx));
@@ -325,7 +325,7 @@ class ContextSanitizer {
             // 只处理较早的 AI 消息
             const skipCount = Math.min(startDepth, aiMessageIndices.length);
             const processCount = aiMessageIndices.length - skipCount;
-            
+
             for (let i = 0; i < processCount; i++) {
                 indicesToSanitize.add(aiMessageIndices[i]);
             }
