@@ -4,11 +4,19 @@ use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use active_win_pos_rs::get_active_window;
-use clipboard_win::{formats, get_clipboard, set_clipboard};
+use arboard::Clipboard;
 use log::info;
 use serde::{Deserialize, Serialize};
 
+#[cfg(target_os = "macos")]
+use crate::capture_macos::MacosEventSource;
+#[cfg(target_os = "linux")]
+use crate::capture_linux_wayland::LinuxWaylandEventSource;
+#[cfg(target_os = "linux")]
+use crate::capture_linux_x11::LinuxX11EventSource;
 use crate::uia_selection_provider::UiaSelectionProvider;
+use crate::windows_event_source::SelectionSignal;
+#[cfg(target_os = "windows")]
 use crate::windows_event_source::WindowsEventSource;
 
 const MIN_EVENT_INTERVAL_MS: u64 = 80;
@@ -104,26 +112,69 @@ pub struct SelectionContext {
     pub last_clipboard_snapshot: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CaptureCapability {
+    pub platform: String,
+    pub backend: String,
+    pub mode: String,
+    pub limited: bool,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone)]
+enum PlatformEventSource {
+    #[cfg(target_os = "windows")]
+    Windows(WindowsEventSource),
+    #[cfg(target_os = "macos")]
+    Macos(MacosEventSource),
+    #[cfg(target_os = "linux")]
+    LinuxX11(LinuxX11EventSource),
+    #[cfg(target_os = "linux")]
+    LinuxWayland(LinuxWaylandEventSource),
+    #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
+    Noop,
+}
+
+impl PlatformEventSource {
+    fn poll_signal(&mut self) -> Option<SelectionSignal> {
+        match self {
+            #[cfg(target_os = "windows")]
+            Self::Windows(source) => source.poll_signal(),
+            #[cfg(target_os = "macos")]
+            Self::Macos(source) => source.poll_signal(),
+            #[cfg(target_os = "linux")]
+            Self::LinuxX11(source) => source.poll_signal(),
+            #[cfg(target_os = "linux")]
+            Self::LinuxWayland(source) => source.poll_signal(),
+            #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
+            Self::Noop => None,
+        }
+    }
+}
+
 pub struct SelectionListener {
     context: Arc<Mutex<SelectionContext>>,
     active: Arc<Mutex<bool>>,
     guard_rules: Arc<Mutex<GuardRules>>,
-    event_source: Arc<Mutex<WindowsEventSource>>,
+    event_source: Arc<Mutex<PlatformEventSource>>,
     uia_provider: Arc<UiaSelectionProvider>,
     clipboard_monitor_running: Arc<AtomicBool>,
     clipboard_monitor_stop_signal: Arc<(Mutex<bool>, Condvar)>,
+    capability: CaptureCapability,
 }
 
 impl SelectionListener {
     pub fn new() -> Self {
+        let (event_source, capability) = create_platform_event_source();
         Self {
             context: Arc::new(Mutex::new(SelectionContext::default())),
             active: Arc::new(Mutex::new(false)),
             guard_rules: Arc::new(Mutex::new(GuardRules::default())),
-            event_source: Arc::new(Mutex::new(WindowsEventSource::new())),
+            event_source: Arc::new(Mutex::new(event_source)),
             uia_provider: Arc::new(UiaSelectionProvider::new()),
             clipboard_monitor_running: Arc::new(AtomicBool::new(false)),
             clipboard_monitor_stop_signal: Arc::new((Mutex::new(false), Condvar::new())),
+            capability,
         }
     }
 
@@ -157,6 +208,10 @@ impl SelectionListener {
 
     pub fn get_guard_rules(&self) -> GuardRules {
         self.guard_rules.lock().unwrap().clone()
+    }
+
+    pub fn get_capability(&self) -> CaptureCapability {
+        self.capability.clone()
     }
 
     #[allow(dead_code)]
@@ -205,6 +260,24 @@ impl SelectionListener {
                 );
                 return None;
             }
+
+            if signal.mouse_origin_known && guard_rules.min_distance > 0 {
+                let distance = mouse_displacement(
+                    signal.mouse_start_x,
+                    signal.mouse_start_y,
+                    signal.mouse_x,
+                    signal.mouse_y,
+                );
+                if distance < guard_rules.min_distance {
+                    context.last_event_time = now;
+                    info!(
+                        "[SelectionListener] Skipped by displacement pre-check. distance={} < {}",
+                        distance,
+                        guard_rules.min_distance
+                    );
+                    return None;
+                }
+            }
         }
 
         let (window_title, window_class) = get_active_window_info();
@@ -245,25 +318,6 @@ impl SelectionListener {
                 return None;
             }
         };
-
-        if !signal.keyboard_triggered {
-            let distance = mouse_displacement(signal.mouse_start_x, signal.mouse_start_y, signal.mouse_x, signal.mouse_y);
-            let selected_text_len = selected_text.chars().count();
-            if signal.mouse_origin_known
-                && guard_rules.min_distance > 0
-                && distance < guard_rules.min_distance
-                && selected_text_len <= 1
-            {
-                context.last_event_time = now;
-                info!(
-                    "[SelectionListener] Skipped by displacement threshold. distance={} < {}, text_len={}",
-                    distance,
-                    guard_rules.min_distance,
-                    selected_text_len
-                );
-                return None;
-            }
-        }
 
         if selected_text == context.last_text {
             return None;
@@ -400,7 +454,7 @@ fn get_active_window_info() -> (String, String) {
     match get_active_window() {
         Ok(monitor) => {
             let title = monitor.title;
-            let window_class = format!("win_{}", monitor.window_id);
+            let window_class = format!("window_{}", monitor.window_id);
             (title, window_class)
         }
         Err(_) => (String::from("Unknown"), String::from("Unknown")),
@@ -452,13 +506,11 @@ fn mouse_displacement(start_x: i32, start_y: i32, end_x: i32, end_y: i32) -> i32
 
 #[cfg(target_os = "windows")]
 fn is_release_on_own_window(mouse_x: i32, mouse_y: i32, rules: &GuardRules) -> bool {
-    if let Some((hwnd_u64, process_id, _title, _class_name)) = get_window_info_at_point(mouse_x, mouse_y) {
+    if let Some((hwnd_u64, _process_id, _title, _class_name)) = get_window_info_at_point(mouse_x, mouse_y) {
         let hwnd_key = hwnd_u64.to_string();
         if rules.own_window_handles.iter().any(|value| value == &hwnd_key) {
             return true;
         }
-
-        let _ = process_id;
     }
 
     false
@@ -511,8 +563,87 @@ fn get_window_info_at_point(mouse_x: i32, mouse_y: i32) -> Option<(u64, u32, Str
 }
 
 #[cfg(target_os = "windows")]
+fn create_platform_event_source() -> (PlatformEventSource, CaptureCapability) {
+    (
+        PlatformEventSource::Windows(WindowsEventSource::new()),
+        CaptureCapability {
+            platform: "windows".to_string(),
+            backend: "capture_windows".to_string(),
+            mode: "full".to_string(),
+            limited: false,
+            reason: "Win32 + UIA full mode".to_string(),
+        },
+    )
+}
+
+#[cfg(target_os = "macos")]
+fn create_platform_event_source() -> (PlatformEventSource, CaptureCapability) {
+    (
+        PlatformEventSource::Macos(MacosEventSource::new()),
+        CaptureCapability {
+            platform: "macos".to_string(),
+            backend: "capture_macos".to_string(),
+            mode: "full".to_string(),
+            limited: false,
+            reason: "Mouse and copy-key capture via DeviceQuery".to_string(),
+        },
+    )
+}
+
+#[cfg(target_os = "linux")]
+fn create_platform_event_source() -> (PlatformEventSource, CaptureCapability) {
+    if is_wayland_session() {
+        return (
+            PlatformEventSource::LinuxWayland(LinuxWaylandEventSource::new()),
+            CaptureCapability {
+                platform: "linux".to_string(),
+                backend: "capture_linux_wayland".to_string(),
+                mode: "limited".to_string(),
+                limited: true,
+                reason: "Wayland global selection limitations; copy-key restricted mode".to_string(),
+            },
+        );
+    }
+
+    (
+        PlatformEventSource::LinuxX11(LinuxX11EventSource::new()),
+        CaptureCapability {
+            platform: "linux".to_string(),
+            backend: "capture_linux_x11".to_string(),
+            mode: "full".to_string(),
+            limited: false,
+            reason: "X11 event capture mode".to_string(),
+        },
+    )
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
+fn create_platform_event_source() -> (PlatformEventSource, CaptureCapability) {
+    (
+        PlatformEventSource::Noop,
+        CaptureCapability {
+            platform: std::env::consts::OS.to_string(),
+            backend: "noop".to_string(),
+            mode: "limited".to_string(),
+            limited: true,
+            reason: "Unsupported platform backend".to_string(),
+        },
+    )
+}
+
+#[cfg(target_os = "linux")]
+fn is_wayland_session() -> bool {
+    std::env::var("WAYLAND_DISPLAY")
+        .map(|value| !value.trim().is_empty())
+        .unwrap_or(false)
+        || std::env::var("XDG_SESSION_TYPE")
+            .map(|value| value.eq_ignore_ascii_case("wayland"))
+            .unwrap_or(false)
+}
+
+#[cfg(target_os = "windows")]
 fn capture_selected_text_fallback() -> Option<String> {
-    let previous_clipboard = get_clipboard::<String, _>(formats::Unicode).ok();
+    let previous_clipboard = read_clipboard_text_snapshot();
 
     unsafe {
         const VK_C_CODE: u8 = 0x43;
@@ -527,10 +658,7 @@ fn capture_selected_text_fallback() -> Option<String> {
     for _ in 0..8 {
         thread::sleep(Duration::from_millis(40));
 
-        let current = get_clipboard::<String, _>(formats::Unicode)
-            .ok()
-            .map(|value| value.trim().to_string())
-            .filter(|value| !value.is_empty());
+        let current = read_clipboard_text_snapshot();
 
         match (&previous_clipboard, &current) {
             (Some(prev), Some(curr)) if curr != prev => {
@@ -546,7 +674,7 @@ fn capture_selected_text_fallback() -> Option<String> {
     }
 
     if let Some(previous) = previous_clipboard {
-        let _ = set_clipboard(formats::Unicode, previous);
+        write_clipboard_text_snapshot(&previous);
     }
 
     selected
@@ -554,7 +682,7 @@ fn capture_selected_text_fallback() -> Option<String> {
 
 #[cfg(not(target_os = "windows"))]
 fn capture_selected_text_fallback() -> Option<String> {
-    None
+    read_clipboard_text_snapshot()
 }
 
 fn current_timestamp() -> u64 {
@@ -564,17 +692,19 @@ fn current_timestamp() -> u64 {
         .as_millis() as u64
 }
 
-#[cfg(target_os = "windows")]
 fn read_clipboard_text_snapshot() -> Option<String> {
-    get_clipboard::<String, _>(formats::Unicode)
+    let mut clipboard = Clipboard::new().ok()?;
+    clipboard
+        .get_text()
         .ok()
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
 }
 
-#[cfg(not(target_os = "windows"))]
-fn read_clipboard_text_snapshot() -> Option<String> {
-    None
+fn write_clipboard_text_snapshot(value: &str) {
+    if let Ok(mut clipboard) = Clipboard::new() {
+        let _ = clipboard.set_text(value.to_string());
+    }
 }
 
 #[cfg(test)]

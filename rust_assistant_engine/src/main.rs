@@ -2,6 +2,12 @@ mod capture;
 mod windows_event_source;
 mod uia_selection_provider;
 mod metrics;
+#[cfg(target_os = "macos")]
+mod capture_macos;
+#[cfg(target_os = "linux")]
+mod capture_linux_x11;
+#[cfg(target_os = "linux")]
+mod capture_linux_wayland;
 
 use actix_web::{web, App, HttpResponse, HttpServer};
 use serde::{Deserialize, Serialize};
@@ -32,6 +38,11 @@ struct HealthResponse {
 #[derive(Serialize)]
 struct StatusResponse {
     listener_active: bool,
+    platform: String,
+    backend: String,
+    capability_mode: String,
+    limited: bool,
+    capability_reason: String,
 }
 
 #[derive(Deserialize)]
@@ -48,8 +59,14 @@ async fn health() -> HttpResponse {
 }
 
 async fn status() -> HttpResponse {
+    let capability = SELECTION_LISTENER.get_capability();
     HttpResponse::Ok().json(StatusResponse {
         listener_active: SELECTION_LISTENER.is_active(),
+        platform: capability.platform,
+        backend: capability.backend,
+        capability_mode: capability.mode,
+        limited: capability.limited,
+        capability_reason: capability.reason,
     })
 }
 
@@ -117,6 +134,16 @@ async fn main() -> std::io::Result<()> {
         .and_then(|i| args.get(i + 1))
         .and_then(|p| p.parse::<u16>().ok())
         .unwrap_or(63791);
+
+    let capability = SELECTION_LISTENER.get_capability();
+    info!(
+        "[Main] Capture capability platform={} backend={} mode={} limited={} reason={}",
+        capability.platform,
+        capability.backend,
+        capability.mode,
+        capability.limited,
+        capability.reason
+    );
 
     // Start selection monitoring in background thread
     let listener_clone = Arc::clone(&SELECTION_LISTENER);
