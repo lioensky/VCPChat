@@ -2,8 +2,9 @@ use device_query::{DeviceQuery, DeviceState, Keycode};
 
 use crate::windows_event_source::SelectionSignal;
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct MacosEventSource {
+    device_state: DeviceState,
     last_left_pressed: bool,
     last_copy_pressed: bool,
     mouse_press_origin: Option<(i32, i32)>,
@@ -12,6 +13,7 @@ pub struct MacosEventSource {
 impl MacosEventSource {
     pub fn new() -> Self {
         Self {
+            device_state: DeviceState::new(),
             last_left_pressed: false,
             last_copy_pressed: false,
             mouse_press_origin: None,
@@ -19,9 +21,8 @@ impl MacosEventSource {
     }
 
     pub fn poll_signal(&mut self) -> Option<SelectionSignal> {
-        let device_state = DeviceState::new();
-        let mouse_state = device_state.get_mouse();
-        let keys = device_state.get_keys();
+        let mouse_state = self.device_state.get_mouse();
+        let keys = self.device_state.get_keys();
 
         let left_pressed = mouse_state.button_pressed.get(0).copied().unwrap_or(false);
         let copy_pressed = is_copy_pressed(&keys);
@@ -69,16 +70,12 @@ impl MacosEventSource {
 }
 
 fn is_copy_pressed(keys: &[Keycode]) -> bool {
-    let has_c = has_key(keys, "C");
-    let has_command = has_any_key(keys, &["LMeta", "RMeta", "Meta", "Command"]);
-    let has_control = has_any_key(keys, &["LControl", "RControl", "Control"]);
+    let has_c = keys.contains(&Keycode::C);
+    let has_command = keys
+        .iter()
+        .any(|key| matches!(key, Keycode::LMeta | Keycode::RMeta | Keycode::Command));
+    let has_control = keys
+        .iter()
+        .any(|key| matches!(key, Keycode::LControl | Keycode::RControl));
     has_c && (has_command || has_control)
-}
-
-fn has_any_key(keys: &[Keycode], names: &[&str]) -> bool {
-    names.iter().any(|name| has_key(keys, name))
-}
-
-fn has_key(keys: &[Keycode], name: &str) -> bool {
-    keys.iter().any(|key| format!("{:?}", key).eq_ignore_ascii_case(name))
 }

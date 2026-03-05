@@ -8,12 +8,20 @@ use arboard::Clipboard;
 use log::info;
 use serde::{Deserialize, Serialize};
 
+#[cfg(all(
+    unix,
+    not(any(target_os = "macos", target_os = "android", target_os = "emscripten"))
+))]
+use arboard::{GetExtLinux, LinuxClipboardKind};
+
 #[cfg(target_os = "macos")]
 use crate::capture_macos::MacosEventSource;
 #[cfg(target_os = "linux")]
 use crate::capture_linux_wayland::LinuxWaylandEventSource;
 #[cfg(target_os = "linux")]
 use crate::capture_linux_x11::LinuxX11EventSource;
+#[cfg(target_os = "macos")]
+use crate::uia_selection_provider::macos_ax_trusted;
 use crate::uia_selection_provider::UiaSelectionProvider;
 use crate::windows_event_source::SelectionSignal;
 #[cfg(target_os = "windows")]
@@ -121,7 +129,7 @@ pub struct CaptureCapability {
     pub reason: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 enum PlatformEventSource {
     #[cfg(target_os = "windows")]
     Windows(WindowsEventSource),
@@ -307,7 +315,7 @@ impl SelectionListener {
         let selected_text = self
             .uia_provider
             .get_selected_text()
-            .or_else(capture_selected_text_fallback)
+            .or_else(|| capture_selected_text_fallback(signal.keyboard_triggered))
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty());
 
@@ -578,14 +586,31 @@ fn create_platform_event_source() -> (PlatformEventSource, CaptureCapability) {
 
 #[cfg(target_os = "macos")]
 fn create_platform_event_source() -> (PlatformEventSource, CaptureCapability) {
+    let ax_trusted = macos_ax_trusted();
+    let (mode, limited, reason) = if ax_trusted {
+        (
+            "full".to_string(),
+            false,
+            "DeviceQuery trigger mode; AX direct selected-text enabled with clipboard fallback"
+                .to_string(),
+        )
+    } else {
+        (
+            "partial".to_string(),
+            true,
+            "DeviceQuery trigger mode; AX permission missing, using clipboard fallback only"
+                .to_string(),
+        )
+    };
+
     (
         PlatformEventSource::Macos(MacosEventSource::new()),
         CaptureCapability {
             platform: "macos".to_string(),
             backend: "capture_macos".to_string(),
-            mode: "full".to_string(),
-            limited: false,
-            reason: "Mouse and copy-key capture via DeviceQuery".to_string(),
+            mode,
+            limited,
+            reason,
         },
     )
 }
@@ -610,9 +635,9 @@ fn create_platform_event_source() -> (PlatformEventSource, CaptureCapability) {
         CaptureCapability {
             platform: "linux".to_string(),
             backend: "capture_linux_x11".to_string(),
-            mode: "full".to_string(),
-            limited: false,
-            reason: "X11 event capture mode".to_string(),
+            mode: "partial".to_string(),
+            limited: true,
+            reason: "X11 trigger mode; text capture via clipboard/primary fallback".to_string(),
         },
     )
 }
@@ -642,7 +667,7 @@ fn is_wayland_session() -> bool {
 }
 
 #[cfg(target_os = "windows")]
-fn capture_selected_text_fallback() -> Option<String> {
+fn capture_selected_text_fallback(_keyboard_triggered: bool) -> Option<String> {
     let previous_clipboard = read_clipboard_text_snapshot();
 
     unsafe {
@@ -681,8 +706,49 @@ fn capture_selected_text_fallback() -> Option<String> {
 }
 
 #[cfg(not(target_os = "windows"))]
-fn capture_selected_text_fallback() -> Option<String> {
-    read_clipboard_text_snapshot()
+fn capture_selected_text_fallback(keyboard_triggered: bool) -> Option<String> {
+    #[cfg(all(
+        unix,
+        not(any(target_os = "macos", target_os = "android", target_os = "emscripten"))
+    ))]
+    {
+        let prefer_primary = !keyboard_triggered;
+        return read_linux_clipboard_text(prefer_primary);
+    }
+
+    #[cfg(not(all(
+        unix,
+        not(any(target_os = "macos", target_os = "android", target_os = "emscripten"))
+    )))]
+    {
+        let _ = keyboard_triggered;
+        read_clipboard_text_snapshot()
+    }
+}
+
+#[cfg(all(
+    unix,
+    not(any(target_os = "macos", target_os = "android", target_os = "emscripten"))
+))]
+fn read_linux_clipboard_text(prefer_primary: bool) -> Option<String> {
+    let mut clipboard = Clipboard::new().ok()?;
+
+    let clipboard_text = clipboard
+        .get()
+        .clipboard(LinuxClipboardKind::Clipboard)
+        .text()
+        .ok();
+    let primary_text = clipboard
+        .get()
+        .clipboard(LinuxClipboardKind::Primary)
+        .text()
+        .ok();
+
+    if prefer_primary {
+        normalize_text_option(primary_text).or_else(|| normalize_text_option(clipboard_text))
+    } else {
+        normalize_text_option(clipboard_text).or_else(|| normalize_text_option(primary_text))
+    }
 }
 
 fn current_timestamp() -> u64 {
@@ -694,11 +760,13 @@ fn current_timestamp() -> u64 {
 
 fn read_clipboard_text_snapshot() -> Option<String> {
     let mut clipboard = Clipboard::new().ok()?;
-    clipboard
-        .get_text()
-        .ok()
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
+    normalize_text_option(clipboard.get_text().ok())
+}
+
+fn normalize_text_option(value: Option<String>) -> Option<String> {
+    value
+        .map(|content| content.trim().to_string())
+        .filter(|content| !content.is_empty())
 }
 
 fn write_clipboard_text_snapshot(value: &str) {
