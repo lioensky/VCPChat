@@ -265,6 +265,15 @@ class RustAssistantAdapter {
                 candidates.push(path.join(runtimeDir, exactDir, binaryName));
                 candidates.push(path.join(runtimeDir, exactDir, 'dist', binaryName));
 
+                // Support binaries with platform suffix (e.g., assistant_core_server-windows-x64.exe)
+                const platformSuffix = `${platformLabel}-${archLabel}`.toLowerCase();
+                const baseName = binaryName.replace(/\.exe$/, '');
+                const ext = binaryName.endsWith('.exe') ? '.exe' : '';
+                const suffixedBinaryName = `${baseName}-${platformSuffix}${ext}`;
+
+                candidates.push(path.join(runtimeDir, exactDir, suffixedBinaryName));
+                candidates.push(path.join(runtimeDir, exactDir, 'dist', suffixedBinaryName));
+
                 if (platformLabel === 'macOS') {
                     const universalDir = 'assistant_core_server-macOS-Universal';
                     candidates.push(path.join(runtimeDir, universalDir, binaryName));
