@@ -1,14 +1,27 @@
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Condvar, Mutex};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use active_win_pos_rs::get_active_window;
-use clipboard_win::{formats, get_clipboard, set_clipboard};
+use arboard::Clipboard;
 use log::info;
 use serde::{Deserialize, Serialize};
 
+#[cfg(target_os = "macos")]
+use crate::capture_macos::MacosEventSource;
+#[cfg(target_os = "linux")]
+use crate::linux_platform::{
+    create_linux_selection_event_provider, ActiveWinPosWindowInfoProvider,
+    EnvLinuxSessionDetector, LinuxClipboardSelectionProvider, LinuxSelectionEventProvider,
+    LinuxSessionDetector, LinuxSessionInfo, LinuxSessionKind, LinuxTextProvider,
+    LinuxWindowInfoProvider,
+};
+#[cfg(target_os = "macos")]
+use crate::uia_selection_provider::macos_ax_trusted;
 use crate::uia_selection_provider::UiaSelectionProvider;
+use crate::windows_event_source::SelectionSignal;
+#[cfg(target_os = "windows")]
 use crate::windows_event_source::WindowsEventSource;
 
 const MIN_EVENT_INTERVAL_MS: u64 = 80;
@@ -104,31 +117,207 @@ pub struct SelectionContext {
     pub last_clipboard_snapshot: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CaptureCapability {
+    pub platform: String,
+    pub backend: String,
+    pub mode: String,
+    pub limited: bool,
+    pub reason: String,
+    #[serde(default)]
+    pub session_kind: Option<String>,
+    #[serde(default)]
+    pub session_confidence: Option<u8>,
+    #[serde(default)]
+    pub window_info_available: Option<bool>,
+    #[serde(default)]
+    pub selection_read_mode: Option<String>,
+    #[serde(default)]
+    pub global_selection_event: Option<bool>,
+}
+
+#[derive(Debug)]
+enum PlatformEventSource {
+    #[cfg(target_os = "windows")]
+    Windows(WindowsEventSource),
+    #[cfg(target_os = "macos")]
+    Macos(MacosEventSource),
+    #[cfg(target_os = "linux")]
+    Linux(Box<dyn LinuxSelectionEventProvider>),
+    #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
+    Noop,
+}
+
+impl PlatformEventSource {
+    fn poll_signal(&mut self) -> Option<SelectionSignal> {
+        match self {
+            #[cfg(target_os = "windows")]
+            Self::Windows(source) => source.poll_signal(),
+            #[cfg(target_os = "macos")]
+            Self::Macos(source) => source.poll_signal(),
+            #[cfg(target_os = "linux")]
+            Self::Linux(source) => source.poll_signal(),
+            #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
+            Self::Noop => None,
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    fn has_global_selection_event(&self) -> bool {
+        match self {
+            Self::Linux(source) => source.has_global_selection_event(),
+        }
+    }
+}
+
+#[cfg(target_os = "linux")]
+trait LinuxEventSourceFactory: Send + Sync {
+    fn create_event_source(&self, session_kind: LinuxSessionKind) -> PlatformEventSource;
+    fn build_capability(
+        &self,
+        session: &LinuxSessionInfo,
+        window_info_available: bool,
+        window_info_reason: &str,
+        global_selection_event: bool,
+    ) -> CaptureCapability;
+}
+
+#[cfg(target_os = "linux")]
+#[derive(Debug, Default)]
+struct DefaultLinuxEventSourceFactory;
+
+#[cfg(target_os = "linux")]
+impl LinuxEventSourceFactory for DefaultLinuxEventSourceFactory {
+    fn create_event_source(&self, session_kind: LinuxSessionKind) -> PlatformEventSource {
+        PlatformEventSource::Linux(create_linux_selection_event_provider(session_kind))
+    }
+
+    fn build_capability(
+        &self,
+        session: &LinuxSessionInfo,
+        window_info_available: bool,
+        window_info_reason: &str,
+        global_selection_event: bool,
+    ) -> CaptureCapability {
+        let (backend, mode, limited, base_reason) = match session.kind {
+            LinuxSessionKind::X11 if global_selection_event => (
+                "capture_linux_x11_event",
+                "partial",
+                true,
+                "X11 XFixes selection-event mode; text capture via primary/clipboard fallback",
+            ),
+            LinuxSessionKind::X11 => (
+                "capture_linux_x11",
+                "partial",
+                true,
+                "X11 polling trigger mode; text capture via primary/clipboard fallback",
+            ),
+            LinuxSessionKind::Wayland => (
+                "capture_linux_wayland",
+                "limited",
+                true,
+                "Wayland global selection limitations; copy-key restricted mode",
+            ),
+            LinuxSessionKind::Unknown => (
+                "capture_linux_wayland",
+                "limited",
+                true,
+                "Unknown Linux session; using restricted wayland-safe mode",
+            ),
+        };
+
+        let reason = format!(
+            "{} | detect={} (confidence={}%) | window_info={} ({}) | global_event={}",
+            base_reason,
+            session.reason,
+            session.confidence,
+            if window_info_available {
+                "available"
+            } else {
+                "unavailable"
+            },
+            window_info_reason,
+            global_selection_event
+        );
+
+        let mut capability = capture_capability_base(
+            "linux",
+            backend,
+            mode,
+            limited,
+            reason,
+        );
+
+        capability.session_kind = Some(match session.kind {
+                LinuxSessionKind::X11 => "x11".to_string(),
+                LinuxSessionKind::Wayland => "wayland".to_string(),
+                LinuxSessionKind::Unknown => "unknown".to_string(),
+            });
+        capability.session_confidence = Some(session.confidence);
+        capability.window_info_available = Some(window_info_available);
+        capability.selection_read_mode = Some(match session.kind {
+                LinuxSessionKind::X11 => "primary_then_clipboard".to_string(),
+                LinuxSessionKind::Wayland | LinuxSessionKind::Unknown => {
+                    "clipboard_only".to_string()
+                }
+            });
+        capability.global_selection_event = Some(global_selection_event);
+        capability
+    }
+}
+
 pub struct SelectionListener {
     context: Arc<Mutex<SelectionContext>>,
     active: Arc<Mutex<bool>>,
     guard_rules: Arc<Mutex<GuardRules>>,
-    event_source: Arc<Mutex<WindowsEventSource>>,
+    event_source: Arc<Mutex<PlatformEventSource>>,
     uia_provider: Arc<UiaSelectionProvider>,
+    #[cfg(target_os = "linux")]
+    linux_text_provider: Arc<Mutex<Box<dyn LinuxTextProvider>>>,
+    #[cfg(target_os = "linux")]
+    linux_window_info_provider: Arc<dyn LinuxWindowInfoProvider>,
     clipboard_monitor_running: Arc<AtomicBool>,
     clipboard_monitor_stop_signal: Arc<(Mutex<bool>, Condvar)>,
+    capability: CaptureCapability,
 }
 
 impl SelectionListener {
+    #[cfg(target_os = "linux")]
     pub fn new() -> Self {
+        let (event_source, capability, linux_text_provider, linux_window_info_provider) =
+            create_linux_platform_runtime();
+
         Self {
             context: Arc::new(Mutex::new(SelectionContext::default())),
             active: Arc::new(Mutex::new(false)),
             guard_rules: Arc::new(Mutex::new(GuardRules::default())),
-            event_source: Arc::new(Mutex::new(WindowsEventSource::new())),
+            event_source: Arc::new(Mutex::new(event_source)),
+            uia_provider: Arc::new(UiaSelectionProvider::new()),
+            linux_text_provider: Arc::new(Mutex::new(linux_text_provider)),
+            linux_window_info_provider,
+            clipboard_monitor_running: Arc::new(AtomicBool::new(false)),
+            clipboard_monitor_stop_signal: Arc::new((Mutex::new(false), Condvar::new())),
+            capability,
+        }
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    pub fn new() -> Self {
+        let (event_source, capability) = create_platform_event_source();
+        Self {
+            context: Arc::new(Mutex::new(SelectionContext::default())),
+            active: Arc::new(Mutex::new(false)),
+            guard_rules: Arc::new(Mutex::new(GuardRules::default())),
+            event_source: Arc::new(Mutex::new(event_source)),
             uia_provider: Arc::new(UiaSelectionProvider::new()),
             clipboard_monitor_running: Arc::new(AtomicBool::new(false)),
             clipboard_monitor_stop_signal: Arc::new((Mutex::new(false), Condvar::new())),
+            capability,
         }
     }
 
     pub fn start(&self) {
-        let mut active = self.active.lock().unwrap();
+        let mut active = lock_or_recover(&self.active, "active");
         *active = true;
         info!("[SelectionListener] Started");
         
@@ -137,7 +326,7 @@ impl SelectionListener {
     }
 
     pub fn stop(&self) {
-        let mut active = self.active.lock().unwrap();
+        let mut active = lock_or_recover(&self.active, "active");
         *active = false;
         info!("[SelectionListener] Stopped");
         
@@ -146,23 +335,60 @@ impl SelectionListener {
     }
 
     pub fn is_active(&self) -> bool {
-        *self.active.lock().unwrap()
+        *lock_or_recover(&self.active, "active")
     }
 
     pub fn set_guard_rules(&self, rules: GuardRules) {
-        let mut guard_rules = self.guard_rules.lock().unwrap();
+        let mut guard_rules = lock_or_recover(&self.guard_rules, "guard_rules");
         *guard_rules = rules;
         info!("[SelectionListener] Guard rules updated");
     }
 
     pub fn get_guard_rules(&self) -> GuardRules {
-        self.guard_rules.lock().unwrap().clone()
+        lock_or_recover(&self.guard_rules, "guard_rules").clone()
+    }
+
+    pub fn get_capability(&self) -> CaptureCapability {
+        self.capability.clone()
+    }
+
+    #[cfg(target_os = "linux")]
+    fn resolve_active_window_info(&self) -> (String, String) {
+        self.linux_window_info_provider
+            .get_active_window_info()
+            .unwrap_or_else(|| (String::from("Unknown"), String::from("Unknown")))
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    fn resolve_active_window_info(&self) -> (String, String) {
+        get_active_window_info()
+    }
+
+    #[cfg(target_os = "linux")]
+    fn capture_selected_text_fallback_by_provider(&self, keyboard_triggered: bool) -> Option<String> {
+        let mut provider = lock_or_recover(&self.linux_text_provider, "linux_text_provider");
+        provider.read_selected_text(keyboard_triggered)
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    fn capture_selected_text_fallback_by_provider(&self, keyboard_triggered: bool) -> Option<String> {
+        capture_selected_text_fallback(keyboard_triggered)
+    }
+
+    #[cfg(target_os = "linux")]
+    fn is_window_info_available(&self) -> bool {
+        self.linux_window_info_provider.is_window_info_available()
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    fn is_window_info_available(&self) -> bool {
+        true
     }
 
     #[allow(dead_code)]
     pub fn suspend(&self, duration_ms: u64) {
         let now = current_timestamp();
-        let mut context = self.context.lock().unwrap();
+        let mut context = lock_or_recover(&self.context, "context");
         context.suspension_end_time = now + duration_ms;
         info!("[SelectionListener] Suspended for {} ms", duration_ms);
     }
@@ -173,7 +399,7 @@ impl SelectionListener {
         }
 
         let signal = {
-            let mut source = self.event_source.lock().unwrap();
+            let mut source = lock_or_recover(&self.event_source, "event_source");
             source.poll_signal()
         };
 
@@ -183,8 +409,8 @@ impl SelectionListener {
         };
 
         let now = current_timestamp();
-        let mut context = self.context.lock().unwrap();
-        let guard_rules = self.guard_rules.lock().unwrap().clone();
+        let mut context = lock_or_recover(&self.context, "context");
+        let guard_rules = lock_or_recover(&self.guard_rules, "guard_rules").clone();
 
         // Check if suspended (by clipboard monitor or other triggers)
         if now < context.suspension_end_time {
@@ -205,36 +431,61 @@ impl SelectionListener {
                 );
                 return None;
             }
+
+            if signal.mouse_origin_known && guard_rules.min_distance > 0 {
+                let distance = mouse_displacement(
+                    signal.mouse_start_x,
+                    signal.mouse_start_y,
+                    signal.mouse_x,
+                    signal.mouse_y,
+                );
+                if distance < guard_rules.min_distance {
+                    context.last_event_time = now;
+                    info!(
+                        "[SelectionListener] Skipped by displacement pre-check. distance={} < {}",
+                        distance,
+                        guard_rules.min_distance
+                    );
+                    return None;
+                }
+            }
         }
 
-        let (window_title, window_class) = get_active_window_info();
+        let (window_title, window_class) = self.resolve_active_window_info();
+        let window_info_available = self.is_window_info_available();
 
-        if should_suspend_for_screenshot_app(&window_title, &window_class, &guard_rules) {
-            context.suspension_end_time = now + guard_rules.screenshot_suspend_ms;
-            context.last_event_time = now;
-            info!(
-                "[SelectionListener] Screenshot app detected. Suspended for {} ms. window='{}' class='{}'",
-                guard_rules.screenshot_suspend_ms,
-                window_title,
-                window_class
-            );
-            return None;
-        }
+        if window_info_available {
+            if should_suspend_for_screenshot_app(&window_title, &window_class, &guard_rules) {
+                context.suspension_end_time = now + guard_rules.screenshot_suspend_ms;
+                context.last_event_time = now;
+                info!(
+                    "[SelectionListener] Screenshot app detected. Suspended for {} ms. window='{}' class='{}'",
+                    guard_rules.screenshot_suspend_ms,
+                    window_title,
+                    window_class
+                );
+                return None;
+            }
 
-        if should_skip_app(&window_title, &window_class, &guard_rules) {
-            context.last_event_time = now;
+            if should_skip_app(&window_title, &window_class, &guard_rules) {
+                context.last_event_time = now;
+                info!(
+                    "[SelectionListener] Skipped by guard rules. window='{}' class='{}'",
+                    window_title,
+                    window_class
+                );
+                return None;
+            }
+        } else {
             info!(
-                "[SelectionListener] Skipped by guard rules. window='{}' class='{}'",
-                window_title,
-                window_class
+                "[SelectionListener] Window metadata unavailable; guard-rule window filtering degraded"
             );
-            return None;
         }
 
         let selected_text = self
             .uia_provider
             .get_selected_text()
-            .or_else(capture_selected_text_fallback)
+            .or_else(|| self.capture_selected_text_fallback_by_provider(signal.keyboard_triggered))
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty());
 
@@ -245,25 +496,6 @@ impl SelectionListener {
                 return None;
             }
         };
-
-        if !signal.keyboard_triggered {
-            let distance = mouse_displacement(signal.mouse_start_x, signal.mouse_start_y, signal.mouse_x, signal.mouse_y);
-            let selected_text_len = selected_text.chars().count();
-            if signal.mouse_origin_known
-                && guard_rules.min_distance > 0
-                && distance < guard_rules.min_distance
-                && selected_text_len <= 1
-            {
-                context.last_event_time = now;
-                info!(
-                    "[SelectionListener] Skipped by displacement threshold. distance={} < {}, text_len={}",
-                    distance,
-                    guard_rules.min_distance,
-                    selected_text_len
-                );
-                return None;
-            }
-        }
 
         if selected_text == context.last_text {
             return None;
@@ -308,7 +540,7 @@ impl SelectionListener {
 
         {
             let (lock, _) = &*self.clipboard_monitor_stop_signal;
-            let mut stop = lock.lock().unwrap();
+            let mut stop = lock_or_recover(lock, "clipboard_stop_signal");
             *stop = false;
         }
         
@@ -317,7 +549,7 @@ impl SelectionListener {
             
             // Initialize clipboard snapshot
             if let Some(initial_clipboard) = read_clipboard_text_snapshot() {
-                let mut ctx = context.lock().unwrap();
+                let mut ctx = lock_or_recover(&context, "context");
                 if ctx.last_clipboard_snapshot.is_empty() {
                     ctx.last_clipboard_snapshot = initial_clipboard;
                 }
@@ -325,27 +557,28 @@ impl SelectionListener {
             
             while running.load(Ordering::SeqCst) {
                 let interval_ms = {
-                    let rules = guard_rules.lock().unwrap();
+                    let rules = lock_or_recover(&guard_rules, "guard_rules");
                     rules.clipboard_check_interval_ms.max(50)
                 };
 
                 let (lock, cvar) = &*stop_signal;
-                let stop_guard = lock.lock().unwrap();
-                let wait_result = cvar
+                let stop_guard = lock_or_recover(lock, "clipboard_stop_signal");
+                let wait_result = lock_result_or_recover(
+                    cvar
                     .wait_timeout_while(
                         stop_guard,
                         Duration::from_millis(interval_ms),
                         |should_stop| !*should_stop,
                     )
-                    .unwrap();
+                , "clipboard_stop_signal_wait");
 
                 if *wait_result.0 || !running.load(Ordering::SeqCst) {
                     break;
                 }
                 
                 if let Some(current_clipboard) = read_clipboard_text_snapshot() {
-                    let mut ctx = context.lock().unwrap();
-                    let rules = guard_rules.lock().unwrap();
+                    let mut ctx = lock_or_recover(&context, "context");
+                    let rules = lock_or_recover(&guard_rules, "guard_rules");
                     
                     if !ctx.last_clipboard_snapshot.is_empty() 
                         && current_clipboard != ctx.last_clipboard_snapshot {
@@ -369,7 +602,7 @@ impl SelectionListener {
     fn stop_clipboard_monitor(&self) {
         self.clipboard_monitor_running.store(false, Ordering::SeqCst);
         let (lock, cvar) = &*self.clipboard_monitor_stop_signal;
-        let mut stop = lock.lock().unwrap();
+        let mut stop = lock_or_recover(lock, "clipboard_stop_signal");
         *stop = true;
         cvar.notify_all();
     }
@@ -400,7 +633,7 @@ fn get_active_window_info() -> (String, String) {
     match get_active_window() {
         Ok(monitor) => {
             let title = monitor.title;
-            let window_class = format!("win_{}", monitor.window_id);
+            let window_class = format!("window_{}", monitor.window_id);
             (title, window_class)
         }
         Err(_) => (String::from("Unknown"), String::from("Unknown")),
@@ -452,13 +685,11 @@ fn mouse_displacement(start_x: i32, start_y: i32, end_x: i32, end_y: i32) -> i32
 
 #[cfg(target_os = "windows")]
 fn is_release_on_own_window(mouse_x: i32, mouse_y: i32, rules: &GuardRules) -> bool {
-    if let Some((hwnd_u64, process_id, _title, _class_name)) = get_window_info_at_point(mouse_x, mouse_y) {
+    if let Some((hwnd_u64, _process_id, _title, _class_name)) = get_window_info_at_point(mouse_x, mouse_y) {
         let hwnd_key = hwnd_u64.to_string();
         if rules.own_window_handles.iter().any(|value| value == &hwnd_key) {
             return true;
         }
-
-        let _ = process_id;
     }
 
     false
@@ -511,8 +742,132 @@ fn get_window_info_at_point(mouse_x: i32, mouse_y: i32) -> Option<(u64, u32, Str
 }
 
 #[cfg(target_os = "windows")]
-fn capture_selected_text_fallback() -> Option<String> {
-    let previous_clipboard = get_clipboard::<String, _>(formats::Unicode).ok();
+fn create_platform_event_source() -> (PlatformEventSource, CaptureCapability) {
+    (
+        PlatformEventSource::Windows(WindowsEventSource::new()),
+        capture_capability_base(
+            "windows",
+            "capture_windows",
+            "full",
+            false,
+            "Win32 + UIA full mode".to_string(),
+        ),
+    )
+}
+
+#[cfg(target_os = "macos")]
+fn create_platform_event_source() -> (PlatformEventSource, CaptureCapability) {
+    let ax_trusted = macos_ax_trusted();
+    let (mode, limited, reason) = if ax_trusted {
+        (
+            "full".to_string(),
+            false,
+            "DeviceQuery trigger mode; AX direct selected-text enabled with clipboard fallback"
+                .to_string(),
+        )
+    } else {
+        (
+            "partial".to_string(),
+            true,
+            "DeviceQuery trigger mode; AX permission missing, using clipboard fallback only"
+                .to_string(),
+        )
+    };
+
+    (
+        PlatformEventSource::Macos(MacosEventSource::new()),
+        capture_capability_base("macos", "capture_macos", &mode, limited, reason),
+    )
+}
+
+#[cfg(target_os = "linux")]
+fn create_linux_platform_runtime(
+) -> (
+    PlatformEventSource,
+    CaptureCapability,
+    Box<dyn LinuxTextProvider>,
+    Arc<dyn LinuxWindowInfoProvider>,
+) {
+    let detector: Box<dyn LinuxSessionDetector> = Box::new(EnvLinuxSessionDetector::default());
+    let session = detector.detect_session();
+
+    let factory: Box<dyn LinuxEventSourceFactory> = Box::new(DefaultLinuxEventSourceFactory::default());
+    let window_info_provider: Arc<dyn LinuxWindowInfoProvider> =
+        Arc::new(ActiveWinPosWindowInfoProvider::new(session.kind));
+    let text_provider: Box<dyn LinuxTextProvider> =
+        Box::new(LinuxClipboardSelectionProvider::new(session.kind));
+
+    let event_source = factory.create_event_source(session.kind);
+    let global_selection_event = event_source.has_global_selection_event();
+
+    let capability = factory.build_capability(
+        &session,
+        window_info_provider.is_window_info_available(),
+        window_info_provider.availability_reason(),
+        global_selection_event,
+    );
+
+    (event_source, capability, text_provider, window_info_provider)
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
+fn create_platform_event_source() -> (PlatformEventSource, CaptureCapability) {
+    (
+        PlatformEventSource::Noop,
+        capture_capability_base(
+            std::env::consts::OS,
+            "noop",
+            "limited",
+            true,
+            "Unsupported platform backend".to_string(),
+        ),
+    )
+}
+
+fn capture_capability_base(
+    platform: &str,
+    backend: &str,
+    mode: &str,
+    limited: bool,
+    reason: String,
+) -> CaptureCapability {
+    CaptureCapability {
+        platform: platform.to_string(),
+        backend: backend.to_string(),
+        mode: mode.to_string(),
+        limited,
+        reason,
+        session_kind: None,
+        session_confidence: None,
+        window_info_available: None,
+        selection_read_mode: None,
+        global_selection_event: None,
+    }
+}
+
+fn lock_or_recover<'a, T>(mutex: &'a Mutex<T>, name: &str) -> MutexGuard<'a, T> {
+    match mutex.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            info!("[Lock] Poisoned mutex recovered: {}", name);
+            poisoned.into_inner()
+        }
+    }
+}
+
+fn lock_result_or_recover<T>(result: std::sync::LockResult<T>, name: &str) -> T {
+    match result {
+        Ok(value) => value,
+        Err(poisoned) => {
+            info!("[Lock] Poisoned wait result recovered: {}", name);
+            poisoned.into_inner()
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn capture_selected_text_fallback(_keyboard_triggered: bool) -> Option<String> {
+    let previous_clipboard = read_clipboard_text_snapshot();
 
     unsafe {
         const VK_C_CODE: u8 = 0x43;
@@ -527,10 +882,7 @@ fn capture_selected_text_fallback() -> Option<String> {
     for _ in 0..8 {
         thread::sleep(Duration::from_millis(40));
 
-        let current = get_clipboard::<String, _>(formats::Unicode)
-            .ok()
-            .map(|value| value.trim().to_string())
-            .filter(|value| !value.is_empty());
+        let current = read_clipboard_text_snapshot();
 
         match (&previous_clipboard, &current) {
             (Some(prev), Some(curr)) if curr != prev => {
@@ -546,15 +898,16 @@ fn capture_selected_text_fallback() -> Option<String> {
     }
 
     if let Some(previous) = previous_clipboard {
-        let _ = set_clipboard(formats::Unicode, previous);
+        write_clipboard_text_snapshot(&previous);
     }
 
     selected
 }
 
-#[cfg(not(target_os = "windows"))]
-fn capture_selected_text_fallback() -> Option<String> {
-    None
+#[cfg(all(not(target_os = "windows"), not(target_os = "linux")))]
+fn capture_selected_text_fallback(keyboard_triggered: bool) -> Option<String> {
+    let _ = keyboard_triggered;
+    read_clipboard_text_snapshot()
 }
 
 fn current_timestamp() -> u64 {
@@ -564,17 +917,21 @@ fn current_timestamp() -> u64 {
         .as_millis() as u64
 }
 
-#[cfg(target_os = "windows")]
 fn read_clipboard_text_snapshot() -> Option<String> {
-    get_clipboard::<String, _>(formats::Unicode)
-        .ok()
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
+    let mut clipboard = Clipboard::new().ok()?;
+    normalize_text_option(clipboard.get_text().ok())
 }
 
-#[cfg(not(target_os = "windows"))]
-fn read_clipboard_text_snapshot() -> Option<String> {
-    None
+fn normalize_text_option(value: Option<String>) -> Option<String> {
+    value
+        .map(|content| content.trim().to_string())
+        .filter(|content| !content.is_empty())
+}
+
+fn write_clipboard_text_snapshot(value: &str) {
+    if let Ok(mut clipboard) = Clipboard::new() {
+        let _ = clipboard.set_text(value.to_string());
+    }
 }
 
 #[cfg(test)]

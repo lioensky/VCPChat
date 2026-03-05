@@ -24,6 +24,8 @@ let currentSelectedItem = {
 };
 let currentTopicId = null;
 let currentChatHistory = [];
+window.__vcpRendererReady = false;
+window.__vcpPendingTopicSelection = null;
 
 // 暴露到window对象以便其他模块访问
 window.currentSelectedItem = currentSelectedItem;
@@ -984,7 +986,26 @@ import { setupEventListeners } from './modules/event-listeners.js';
         }
 
        // Emoticon URL fixer is now initialized within messageRenderer
+        window.__vcpRendererReady = true;
+
+        window.electronAPI.toggleSelectionListener(!!globalSettings.assistantEnabled);
+
+        if (window.__vcpPendingTopicSelection && window.chatManager) {
+            const pending = window.__vcpPendingTopicSelection;
+            window.__vcpPendingTopicSelection = null;
+            const matchesCurrentItem =
+                currentSelectedItem &&
+                currentSelectedItem.id === pending.itemId &&
+                currentSelectedItem.type === pending.itemType;
+
+            if (matchesCurrentItem) {
+                Promise.resolve(window.chatManager.selectTopic(pending.topicId)).catch((error) => {
+                    console.error('[Renderer] Failed to replay pending topic selection:', error);
+                });
+            }
+        }
     } catch (error) {
+        window.__vcpRendererReady = false;
         console.error('Error during DOMContentLoaded initialization:', error);
         chatMessagesDiv.innerHTML = `<div class="message-item system">初始化失败: ${error.message}</div>`;
     }
@@ -1408,7 +1429,7 @@ async function loadAndApplyGlobalSettings() {
         if (toggleAssistantBtn) {
             toggleAssistantBtn.classList.toggle('active', !!globalSettings.assistantEnabled);
         }
-        window.electronAPI.toggleSelectionListener(!!globalSettings.assistantEnabled);
+        // Selection listener startup moved to post-renderer-ready stage.
 
         // Load filter mode setting
         let filterEnabled = globalSettings.filterEnabled ?? globalSettings.doNotDisturbLogMode ?? (localStorage.getItem('doNotDisturbLogMode') === 'true');
@@ -1455,9 +1476,7 @@ async function syncGlobalSettingsToUI() {
     const joinKeywords = (value) => Array.isArray(value) ? value.join('\n') : '';
     const shouldShowRustGuardRules = () => {
         const useRust = document.getElementById('rustUseAssistant')?.checked === true;
-        const forceRust = document.getElementById('rustForceRust')?.checked === true;
-        const forceNode = document.getElementById('rustForceNode')?.checked === true;
-        return (useRust || forceRust) && !forceNode;
+        return useRust;
     };
     const syncRustGuardRulesVisibility = () => {
         const container = document.getElementById('rustGuardRulesContainer');
@@ -1551,8 +1570,6 @@ async function syncGlobalSettingsToUI() {
             if (rustConfig && !rustConfig.error) {
                 safeCheck('rustUseAssistant', rustConfig.useRustAssistant === true);
                 safeCheck('rustDebugMode', rustConfig.debugMode === true);
-                safeCheck('rustForceNode', rustConfig.forceNode === true);
-                safeCheck('rustForceRust', rustConfig.forceRust === true);
                 safeSet('rustWhitelistKeywords', joinKeywords(rustConfig.whitelist || []));
                 safeSet('rustBlacklistKeywords', joinKeywords(rustConfig.blacklist || []));
                 safeSet('rustScreenshotApps', joinKeywords(rustConfig.screenshotApps || []));
@@ -1571,17 +1588,6 @@ async function syncGlobalSettingsToUI() {
                     rustUseAssistantEl.dataset.guardPanelBound = 'true';
                 }
 
-                const rustForceNodeEl = document.getElementById('rustForceNode');
-                if (rustForceNodeEl && !rustForceNodeEl.dataset.guardPanelBound) {
-                    rustForceNodeEl.addEventListener('change', syncRustGuardRulesVisibility);
-                    rustForceNodeEl.dataset.guardPanelBound = 'true';
-                }
-
-                const rustForceRustEl = document.getElementById('rustForceRust');
-                if (rustForceRustEl && !rustForceRustEl.dataset.guardPanelBound) {
-                    rustForceRustEl.addEventListener('change', syncRustGuardRulesVisibility);
-                    rustForceRustEl.dataset.guardPanelBound = 'true';
-                }
             }
         } catch (error) {
             console.warn('[Renderer] Failed to sync Rust assistant config:', error);
@@ -1592,8 +1598,12 @@ async function syncGlobalSettingsToUI() {
         try {
             const runtime = await window.electronAPI.getAssistantRuntimeStatus();
             if (runtime && runtime.success) {
-                const modeText = runtime.mode === 'rust' ? 'Rust' : 'Node';
-                const desiredText = runtime.desiredMode === 'rust' ? 'Rust' : 'Node';
+                const modeText = runtime.mode === 'rust'
+                    ? 'Rust'
+                    : (runtime.mode === 'disabled' ? 'Disabled' : runtime.mode || 'Unknown');
+                const desiredText = runtime.desiredMode === 'rust'
+                    ? 'Rust'
+                    : (runtime.desiredMode === 'disabled' ? 'Disabled' : runtime.desiredMode || 'Unknown');
                 const activeText = runtime.active ? '运行中' : '未运行';
                 const debugReasonText = runtime.lastDebugReason || '无';
                 const forwardedCount = runtime.forwardedEventCount || 0;

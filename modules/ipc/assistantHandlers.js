@@ -2,11 +2,9 @@
 
 const { ipcMain, BrowserWindow, screen, nativeTheme, globalShortcut } = require('electron');
 const path = require('path');
-const os = require('os');
 const fs = require('fs-extra');
 const { getAgentConfigById } = require('./agentHandlers');
 const notesHandlers = require('./notesHandlers');
-const { createNodeAssistantAdapter } = require('../assistant/assistant-node-adapter');
 const { createRustAssistantAdapter } = require('../assistant/assistant-rust-adapter');
 
 let assistantWindow = null;
@@ -30,7 +28,7 @@ let rustHealthCheckRunning = false;
 let rustSuspendHotkeyRegistered = false;
 
 let listenerAdapter = null;
-let listenerMode = 'node';
+let listenerMode = 'rust';
 let integrationTrace = {
     receivedSelectionCount: 0,
     showAttemptCount: 0,
@@ -45,8 +43,92 @@ let runtimeFallbackTrace = {
     lastAutoFallbackTs: 0
 };
 
+const ASSISTANT_RUNTIME_CACHE_TTL_MS = 1500;
+let assistantRuntimeCache = {
+    settings: null,
+    settingsLoadedAt: 0,
+    settingsMtimeMs: 0,
+    agentId: null,
+    agentConfig: null,
+    agentConfigLoadedAt: 0
+};
+
 function getRustAssistantConfigPath() {
     return path.join(__dirname, '..', '..', 'AppData', 'rust-assistant-config.json');
+}
+
+function invalidateAssistantRuntimeCache({ settings = false, agent = false, all = false } = {}) {
+    if (all || settings) {
+        assistantRuntimeCache.settings = null;
+        assistantRuntimeCache.settingsLoadedAt = 0;
+        assistantRuntimeCache.settingsMtimeMs = 0;
+    }
+
+    if (all || agent || settings) {
+        assistantRuntimeCache.agentId = null;
+        assistantRuntimeCache.agentConfig = null;
+        assistantRuntimeCache.agentConfigLoadedAt = 0;
+    }
+}
+
+async function loadAssistantSettingsCached() {
+    if (!SETTINGS_FILE) {
+        return null;
+    }
+
+    const now = Date.now();
+    if (assistantRuntimeCache.settings && (now - assistantRuntimeCache.settingsLoadedAt) < ASSISTANT_RUNTIME_CACHE_TTL_MS) {
+        return assistantRuntimeCache.settings;
+    }
+
+    const stat = await fs.stat(SETTINGS_FILE);
+    if (
+        assistantRuntimeCache.settings &&
+        assistantRuntimeCache.settingsMtimeMs === stat.mtimeMs
+    ) {
+        assistantRuntimeCache.settingsLoadedAt = now;
+        return assistantRuntimeCache.settings;
+    }
+
+    const previousAgentId = assistantRuntimeCache.settings?.assistantAgent || null;
+    const settings = await fs.readJson(SETTINGS_FILE);
+    const nextAgentId = settings?.assistantAgent || null;
+
+    assistantRuntimeCache.settings = settings;
+    assistantRuntimeCache.settingsLoadedAt = now;
+    assistantRuntimeCache.settingsMtimeMs = stat.mtimeMs;
+
+    if (previousAgentId !== nextAgentId) {
+        invalidateAssistantRuntimeCache({ agent: true });
+    }
+
+    return settings;
+}
+
+async function loadAssistantAgentConfigCached(agentId) {
+    if (!agentId) {
+        return null;
+    }
+
+    const now = Date.now();
+    if (
+        assistantRuntimeCache.agentConfig &&
+        assistantRuntimeCache.agentId === agentId &&
+        (now - assistantRuntimeCache.agentConfigLoadedAt) < ASSISTANT_RUNTIME_CACHE_TTL_MS
+    ) {
+        return assistantRuntimeCache.agentConfig;
+    }
+
+    const agentConfig = await getAgentConfigById(agentId);
+    if (agentConfig && !agentConfig.error) {
+        assistantRuntimeCache.agentId = agentId;
+        assistantRuntimeCache.agentConfig = agentConfig;
+        assistantRuntimeCache.agentConfigLoadedAt = now;
+    } else {
+        invalidateAssistantRuntimeCache({ agent: true });
+    }
+
+    return agentConfig;
 }
 
 function getBrowserWindowHandleString(win) {
@@ -188,9 +270,9 @@ function processSelectedText(selectionData) {
             }
             
             // 3. 读取配置并发送数据
-            const settings = await fs.readJson(SETTINGS_FILE);
+            const settings = await loadAssistantSettingsCached();
             if (settings.assistantEnabled && settings.assistantAgent) {
-                const agentConfig = await getAgentConfigById(settings.assistantAgent);
+                const agentConfig = await loadAssistantAgentConfigCached(settings.assistantAgent);
 
                 // ⚠️ 检查 agentConfig 是否返回错误
                 if (agentConfig.error) {
@@ -239,18 +321,17 @@ function processSelectedText(selectionData) {
 async function loadRustAssistantConfig() {
     const configPath = getRustAssistantConfigPath();
     const defaults = {
-        version: 1,
-        useRustAssistant: false,
+        version: 2,
+        useRustAssistant: true,
         debugMode: false,
-        forceNode: false,
-        forceRust: false,
         whitelist: [],
         blacklist: [],
         screenshotApps: [],
         fallback: {
             onError: true,
             onCrash: true,
-            onTimeout: true
+            onTimeout: true,
+            mode: 'rust-restart-or-stop'
         },
         runtimeThresholds: {
             minEventIntervalMs: 80,
@@ -283,6 +364,8 @@ async function loadRustAssistantConfig() {
                     ...defaults.metrics,
                     ...(rawConfig.metrics || {})
                 },
+                version: 2,
+                useRustAssistant: rawConfig.useRustAssistant !== false,
                 whitelist: Array.isArray(rawConfig.whitelist) ? rawConfig.whitelist : [],
                 blacklist: Array.isArray(rawConfig.blacklist) ? rawConfig.blacklist : [],
                 debugMode: rawConfig.debugMode === true,
@@ -304,6 +387,10 @@ async function saveRustAssistantConfig(partialConfig = {}) {
     const merged = {
         ...current,
         ...partialConfig,
+        version: 2,
+        useRustAssistant: partialConfig.useRustAssistant === undefined
+            ? current.useRustAssistant
+            : partialConfig.useRustAssistant === true,
         fallback: {
             ...(current.fallback || {}),
             ...((partialConfig && partialConfig.fallback) || {})
@@ -330,6 +417,9 @@ async function saveRustAssistantConfig(partialConfig = {}) {
             : partialConfig.debugMode === true,
     };
 
+    delete merged.forceNode;
+    delete merged.forceRust;
+
     await fs.ensureDir(path.dirname(configPath));
     await fs.writeJson(configPath, merged, { spaces: 2 });
     return merged;
@@ -354,7 +444,7 @@ async function applyRustGuardRules(adapter, rustConfig) {
             clipboard_conflict_suspend_ms: thresholds.clipboardConflictSuspendMs,
             clipboard_check_interval_ms: thresholds.clipboardCheckIntervalMs,
             own_window_handles: identity.ownWindowHandles,
-            own_process_ids: []
+            own_process_ids: identity.ownProcessIds
         });
         console.log('[Assistant] Rust guard rules synced from rust-assistant-config.json', {
             ownWindowHandles: identity.ownWindowHandles.length,
@@ -367,49 +457,32 @@ async function applyRustGuardRules(adapter, rustConfig) {
 }
 
 function shouldUseRustAssistant(config) {
-    if (config.forceNode === true) {
-        return false;
-    }
-
-    if (config.forceRust === true) {
-        return true;
-    }
-
-    if (config.useRustAssistant === true) {
-        return true;
-    }
-
-    return false;
+    return config?.useRustAssistant === true;
 }
 
 async function createPreferredAdapter() {
     const rustConfig = await loadRustAssistantConfig();
-    const preferRust = process.platform === 'win32' && shouldUseRustAssistant(rustConfig);
+    const rustEnabled = shouldUseRustAssistant(rustConfig);
 
     console.log('[Assistant] Effective Rust config:', {
         useRustAssistant: rustConfig.useRustAssistant,
-        forceNode: rustConfig.forceNode,
-        forceRust: rustConfig.forceRust,
-        preferRust
+        rustEnabled
     });
 
-    if (preferRust) {
-        const rustAdapter = createRustAssistantAdapter({
-            projectRoot: path.join(__dirname, '..', '..'),
-            logger: console,
-            debugMode: rustConfig.debugMode === true
-        });
-        await rustAdapter.initialize();
-        rustAdapter.onSelection(processSelectedText);
-        listenerMode = 'rust';
-        return rustAdapter;
+    if (!rustEnabled) {
+        listenerMode = 'disabled';
+        return null;
     }
 
-    const nodeAdapter = createNodeAssistantAdapter({ logger: console });
-    await nodeAdapter.initialize();
-    nodeAdapter.onSelection(processSelectedText);
-    listenerMode = 'node';
-    return nodeAdapter;
+    const rustAdapter = createRustAssistantAdapter({
+        projectRoot: path.join(__dirname, '..', '..'),
+        logger: console,
+        debugMode: rustConfig.debugMode === true
+    });
+    await rustAdapter.initialize();
+    rustAdapter.onSelection(processSelectedText);
+    listenerMode = 'rust';
+    return rustAdapter;
 }
 
 async function ensureListenerAdapter() {
@@ -419,23 +492,22 @@ async function ensureListenerAdapter() {
 
     try {
         listenerAdapter = await createPreferredAdapter();
-        console.log(`[Assistant] Listener adapter initialized: ${listenerMode}`);
+        if (listenerAdapter) {
+            console.log(`[Assistant] Listener adapter initialized: ${listenerMode}`);
+        } else {
+            console.warn('[Assistant] Rust assistant is disabled by config.');
+        }
     } catch (error) {
         console.error('[Assistant] Failed to initialize preferred adapter:', error);
-
-        const nodeAdapter = createNodeAssistantAdapter({ logger: console });
-        await nodeAdapter.initialize();
-        nodeAdapter.onSelection(processSelectedText);
-        listenerAdapter = nodeAdapter;
-        listenerMode = 'node';
-        console.log('[Assistant] Fallback to Node adapter.');
+        listenerAdapter = null;
+        listenerMode = 'rust';
     }
 
     return listenerAdapter;
 }
 
 async function reconcileListenerModeAfterConfig(config) {
-    const desiredMode = (process.platform === 'win32' && shouldUseRustAssistant(config)) ? 'rust' : 'node';
+    const desiredMode = shouldUseRustAssistant(config) ? 'rust' : 'disabled';
     const wasActive = selectionListenerActive || (listenerAdapter ? listenerAdapter.isActive() : false);
     const modeChanged = desiredMode !== listenerMode;
 
@@ -479,9 +551,9 @@ async function reconcileListenerModeAfterConfig(config) {
     };
 }
 
-async function fallbackToNodeRuntime(reason = '未知原因') {
+async function recoverRustRuntime(reason = 'unknown') {
     try {
-        console.warn(`[Assistant] Auto fallback to Node triggered: ${reason}`);
+        console.warn(`[Assistant] Rust runtime recovery triggered: ${reason}`);
 
         runtimeFallbackTrace.autoFallbackCount += 1;
         runtimeFallbackTrace.lastAutoFallbackReason = reason;
@@ -491,25 +563,54 @@ async function fallbackToNodeRuntime(reason = '未知原因') {
             try {
                 listenerAdapter.stop();
             } catch (stopError) {
-                console.warn('[Assistant] Failed to stop current adapter during fallback:', stopError);
+                console.warn('[Assistant] Failed to stop current adapter during recovery:', stopError);
             }
         }
 
-        const nodeAdapter = createNodeAssistantAdapter({ logger: console });
-        await nodeAdapter.initialize();
-        nodeAdapter.onSelection(processSelectedText);
+        const rustConfig = await loadRustAssistantConfig();
+        if (!shouldUseRustAssistant(rustConfig)) {
+            listenerAdapter = null;
+            listenerMode = 'disabled';
+            selectionListenerActive = false;
+            console.warn('[Assistant] Rust assistant disabled by config, stop recovery.');
+            return;
+        }
 
-        listenerAdapter = nodeAdapter;
-        listenerMode = 'node';
-        selectionListenerActive = nodeAdapter.start();
+        const rustAdapter = createRustAssistantAdapter({
+            projectRoot: path.join(__dirname, '..', '..'),
+            logger: console,
+            debugMode: rustConfig.debugMode === true
+        });
+
+        await rustAdapter.initialize();
+        rustAdapter.onSelection(processSelectedText);
+        listenerAdapter = rustAdapter;
+        listenerMode = 'rust';
+
+        const started = rustAdapter.start();
+        if (!started) {
+            throw new Error('Rust adapter start returned false during recovery');
+        }
+
+        const ready = typeof rustAdapter.waitUntilReady === 'function'
+            ? await rustAdapter.waitUntilReady(10000)
+            : rustAdapter.isActive();
+        if (!ready) {
+            throw new Error('Rust adapter did not become ready during recovery');
+        }
+
+        await applyRustGuardRules(rustAdapter, rustConfig);
+        selectionListenerActive = rustAdapter.isActive();
 
         if (selectionListenerActive) {
-            console.log('[Assistant] Auto fallback listener started (node).');
+            console.log('[Assistant] Rust runtime recovered and listener restarted.');
         } else {
-            console.error('[Assistant] Auto fallback to node failed to start listener.');
+            console.error('[Assistant] Rust recovery finished but listener is not active.');
         }
     } catch (error) {
-        console.error('[Assistant] Auto fallback to node failed:', error);
+        console.error('[Assistant] Rust runtime recovery failed:', error);
+        listenerAdapter = null;
+        listenerMode = 'rust';
         selectionListenerActive = false;
     }
 }
@@ -542,17 +643,17 @@ function startRustHealthMonitor() {
             const lifecycleState = diagnostics?.lifecycleState || 'unknown';
 
             if (fallbackConfig.onError !== false && rustPanicDetected) {
-                await fallbackToNodeRuntime('Rust 监听线程异常（panic）');
+                await recoverRustRuntime('Rust listener panic');
                 return;
             }
 
             if (fallbackConfig.onError !== false && lifecycleState === 'degraded') {
-                await fallbackToNodeRuntime('Rust sidecar 生命周期进入 degraded');
+                await recoverRustRuntime('Rust sidecar lifecycle degraded');
                 return;
             }
 
             if (fallbackConfig.onCrash !== false && diagnostics.processAlive === false) {
-                await fallbackToNodeRuntime('Rust sidecar 进程已退出');
+                await recoverRustRuntime('Rust sidecar process exited');
                 return;
             }
 
@@ -569,7 +670,7 @@ function startRustHealthMonitor() {
                 }
 
                 if (unhealthy) {
-                    await fallbackToNodeRuntime('Rust /status 不健康或超时');
+                    await recoverRustRuntime('Rust /status unhealthy or timeout');
                 }
             }
         } catch (monitorError) {
@@ -782,12 +883,7 @@ async function startSelectionListener() {
         selectionListenerActive = adapter.isActive();
 
         if (!selectionListenerActive && listenerMode === 'rust') {
-            console.warn('[Assistant] Rust adapter did not become active, switching to Node adapter.');
-            listenerAdapter = createNodeAssistantAdapter({ logger: console });
-            await listenerAdapter.initialize();
-            listenerAdapter.onSelection(processSelectedText);
-            listenerMode = 'node';
-            selectionListenerActive = listenerAdapter.start();
+            await recoverRustRuntime('Rust adapter did not become active after start');
         }
 
         if (selectionListenerActive) {
@@ -803,24 +899,9 @@ async function startSelectionListener() {
         }
     } catch (error) {
         console.error('[Assistant] Failed to start listener adapter:', error);
-
-        if (listenerMode !== 'node') {
-            try {
-                listenerAdapter = createNodeAssistantAdapter({ logger: console });
-                await listenerAdapter.initialize();
-                listenerAdapter.onSelection(processSelectedText);
-                listenerMode = 'node';
-                selectionListenerActive = listenerAdapter.start();
-                if (selectionListenerActive) {
-                    console.log('[Assistant] Fallback listener started (node).');
-                }
-                stopRustHealthMonitor();
-                unregisterRustSuspendHotkey();
-            } catch (fallbackError) {
-                console.error('[Assistant] Node fallback start failed:', fallbackError);
-                selectionListenerActive = false;
-            }
-        }
+        selectionListenerActive = false;
+        stopRustHealthMonitor();
+        unregisterRustSuspendHotkey();
     }
 }
 
@@ -855,7 +936,7 @@ function createAssistantBarWindow() {
             contextIsolation: true,
         }
     });
-    assistantBarWindow.loadFile(path.join(__dirname, '..', '..', 'Assistantmodules/assistant-bar.html'));
+    assistantBarWindow.loadFile(path.join(__dirname, '..', '..', 'rust_assistant_engine', 'ui', 'assistant-bar.html'));
     
     // ⏱️ 改进：ready-to-show 事件触发时，标记窗口已准备好，并唤醒所有等待的 Promise
     assistantBarWindow.once('ready-to-show', () => {
@@ -908,7 +989,7 @@ function createAssistantWindow(data) {
         resizable: true,
         alwaysOnTop: false,
     });
-    assistantWindow.loadFile(path.join(__dirname, '..', '..', 'Assistantmodules/assistant.html'));
+    assistantWindow.loadFile(path.join(__dirname, '..', '..', 'rust_assistant_engine', 'ui', 'assistant.html'));
     assistantWindow.once('ready-to-show', () => {
         assistantWindow.show();
         assistantWindow.webContents.send('assistant-data', data);
@@ -920,15 +1001,16 @@ function createAssistantWindow(data) {
 
 async function initialize(options) {
     SETTINGS_FILE = options.SETTINGS_FILE;
+    invalidateAssistantRuntimeCache({ all: true });
 
     await ensureListenerAdapter();
     createAssistantBarWindow();
 
     ipcMain.handle('get-assistant-bar-initial-data', async () => {
         try {
-            const settings = await fs.readJson(SETTINGS_FILE);
+            const settings = await loadAssistantSettingsCached();
             if (settings.assistantEnabled && settings.assistantAgent) {
-                const agentConfig = await getAgentConfigById(settings.assistantAgent);
+                const agentConfig = await loadAssistantAgentConfigCached(settings.assistantAgent);
                 
                 // ⚠️ 检查 agentConfig 是否返回错误
                 if (agentConfig.error) {
@@ -956,6 +1038,14 @@ async function initialize(options) {
     });
 
     ipcMain.on('toggle-selection-listener', async (_event, enable) => {
+        if (assistantRuntimeCache.settings) {
+            assistantRuntimeCache.settings = {
+                ...assistantRuntimeCache.settings,
+                assistantEnabled: enable === true
+            };
+            assistantRuntimeCache.settingsLoadedAt = Date.now();
+        }
+
         if (enable) {
             await startSelectionListener();
         } else {
@@ -990,7 +1080,7 @@ async function initialize(options) {
         try {
             const rustConfig = await loadRustAssistantConfig();
             const active = selectionListenerActive || (listenerAdapter ? listenerAdapter.isActive() : false);
-            const desiredMode = (process.platform === 'win32' && shouldUseRustAssistant(rustConfig)) ? 'rust' : 'node';
+            const desiredMode = shouldUseRustAssistant(rustConfig) ? 'rust' : 'disabled';
             const diagnostics = (listenerAdapter && typeof listenerAdapter.getDiagnostics === 'function')
                 ? listenerAdapter.getDiagnostics()
                 : null;
@@ -1013,7 +1103,7 @@ async function initialize(options) {
                 if (!listenerAdapter) {
                     lastDebugReason = '监听器适配器尚未初始化';
                 } else if (listenerMode !== 'rust') {
-                    lastDebugReason = '当前为 Node 实现，Rust 诊断不可用';
+                    lastDebugReason = 'Rust assistant disabled by config';
                 } else if (!active) {
                     lastDebugReason = 'Rust 监听器未运行';
                 } else {
@@ -1110,7 +1200,7 @@ async function initialize(options) {
         }
         
         try {
-            const settings = await fs.readJson(SETTINGS_FILE);
+            const settings = await loadAssistantSettingsCached();
             createAssistantWindow({
                 selectedText: action === 'open' ? '' : lastProcessedSelection,
                 action: action,
