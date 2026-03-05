@@ -1,0 +1,64 @@
+在现有基础上添加 release 编译和产物上传：
+yamlname: Rust Assistant Engine CI
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'rust_assistant_engine/**'
+      - '.github/workflows/rust_assistant_engine_ci.yml'
+  pull_request:
+    paths:
+      - 'rust_assistant_engine/**'
+      - '.github/workflows/rust_assistant_engine_ci.yml'
+jobs:
+  rust-assistant-check:
+    name: Rust Check (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact_name: rust_assistant_engine-linux
+            binary_name: rust_assistant_engine
+          - os: macos-latest
+            artifact_name: rust_assistant_engine-macos
+            binary_name: rust_assistant_engine
+          - os: windows-latest
+            artifact_name: rust_assistant_engine-windows
+            binary_name: rust_assistant_engine.exe
+    defaults:
+      run:
+        shell: bash
+        working-directory: rust_assistant_engine
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust_assistant_engine
+      - name: Install Linux system deps
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            pkg-config \
+            libx11-dev \
+            libxfixes-dev \
+            libxcb1-dev \
+            libwayland-dev \
+            libxkbcommon-dev
+      - name: Cargo check
+        run: cargo check
+      - name: Cargo test
+        run: cargo test --no-fail-fast
+      - name: Cargo build release
+        run: cargo build --release
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: rust_assistant_engine/target/release/${{ matrix.binary_name }}
