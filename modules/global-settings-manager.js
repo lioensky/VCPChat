@@ -86,8 +86,6 @@ export async function handleSaveGlobalSettings(e, deps) {
     const rustConfigPatch = {
         useRustAssistant: document.getElementById('rustUseAssistant')?.checked || false,
         debugMode: document.getElementById('rustDebugMode')?.checked || false,
-        forceNode: document.getElementById('rustForceNode')?.checked || false,
-        forceRust: document.getElementById('rustForceRust')?.checked || false,
         whitelist: whitelist,
         blacklist: blacklist,
         screenshotApps: screenshotApps,
@@ -152,7 +150,7 @@ export async function handleSaveGlobalSettings(e, deps) {
             if (!rustSaveResult?.success) {
                 uiHelperFunctions.showToastNotification(`Rust助手配置保存失败: ${rustSaveResult?.error || '未知错误'}`, 'warning');
             } else if (rustSaveResult.reconcile?.modeChanged) {
-                const modeLabel = rustSaveResult.reconcile.mode === 'rust' ? 'Rust' : 'Node';
+                const modeLabel = rustSaveResult.reconcile.mode === 'rust' ? 'Rust' : 'Disabled';
                 const restartText = rustSaveResult.reconcile.restarted ? '并已热重启监听器' : '将在下次启用监听器时生效';
                 uiHelperFunctions.showToastNotification(`划词监听已切换到 ${modeLabel} 实现，${restartText}`, 'success');
             }

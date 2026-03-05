@@ -653,13 +653,9 @@ export function setupEventListeners(deps) {
             // 填充基本开关
             const rustUseAssistantCheckbox = document.getElementById('rustUseAssistant');
             const rustDebugModeCheckbox = document.getElementById('rustDebugMode');
-            const rustForceNodeCheckbox = document.getElementById('rustForceNode');
-            const rustForceRustCheckbox = document.getElementById('rustForceRust');
 
             if (rustUseAssistantCheckbox) rustUseAssistantCheckbox.checked = result.useRustAssistant === true;
             if (rustDebugModeCheckbox) rustDebugModeCheckbox.checked = result.debugMode === true;
-            if (rustForceNodeCheckbox) rustForceNodeCheckbox.checked = result.forceNode === true;
-            if (rustForceRustCheckbox) rustForceRustCheckbox.checked = result.forceRust === true;
 
             // 填充自定义阈值
             const hasCustomThresholds = result.runtimeThresholds &&

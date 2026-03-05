@@ -1455,9 +1455,7 @@ async function syncGlobalSettingsToUI() {
     const joinKeywords = (value) => Array.isArray(value) ? value.join('\n') : '';
     const shouldShowRustGuardRules = () => {
         const useRust = document.getElementById('rustUseAssistant')?.checked === true;
-        const forceRust = document.getElementById('rustForceRust')?.checked === true;
-        const forceNode = document.getElementById('rustForceNode')?.checked === true;
-        return (useRust || forceRust) && !forceNode;
+        return useRust;
     };
     const syncRustGuardRulesVisibility = () => {
         const container = document.getElementById('rustGuardRulesContainer');
@@ -1551,8 +1549,6 @@ async function syncGlobalSettingsToUI() {
             if (rustConfig && !rustConfig.error) {
                 safeCheck('rustUseAssistant', rustConfig.useRustAssistant === true);
                 safeCheck('rustDebugMode', rustConfig.debugMode === true);
-                safeCheck('rustForceNode', rustConfig.forceNode === true);
-                safeCheck('rustForceRust', rustConfig.forceRust === true);
                 safeSet('rustWhitelistKeywords', joinKeywords(rustConfig.whitelist || []));
                 safeSet('rustBlacklistKeywords', joinKeywords(rustConfig.blacklist || []));
                 safeSet('rustScreenshotApps', joinKeywords(rustConfig.screenshotApps || []));
@@ -1571,17 +1567,6 @@ async function syncGlobalSettingsToUI() {
                     rustUseAssistantEl.dataset.guardPanelBound = 'true';
                 }
 
-                const rustForceNodeEl = document.getElementById('rustForceNode');
-                if (rustForceNodeEl && !rustForceNodeEl.dataset.guardPanelBound) {
-                    rustForceNodeEl.addEventListener('change', syncRustGuardRulesVisibility);
-                    rustForceNodeEl.dataset.guardPanelBound = 'true';
-                }
-
-                const rustForceRustEl = document.getElementById('rustForceRust');
-                if (rustForceRustEl && !rustForceRustEl.dataset.guardPanelBound) {
-                    rustForceRustEl.addEventListener('change', syncRustGuardRulesVisibility);
-                    rustForceRustEl.dataset.guardPanelBound = 'true';
-                }
             }
         } catch (error) {
             console.warn('[Renderer] Failed to sync Rust assistant config:', error);
@@ -1592,8 +1577,12 @@ async function syncGlobalSettingsToUI() {
         try {
             const runtime = await window.electronAPI.getAssistantRuntimeStatus();
             if (runtime && runtime.success) {
-                const modeText = runtime.mode === 'rust' ? 'Rust' : 'Node';
-                const desiredText = runtime.desiredMode === 'rust' ? 'Rust' : 'Node';
+                const modeText = runtime.mode === 'rust'
+                    ? 'Rust'
+                    : (runtime.mode === 'disabled' ? 'Disabled' : runtime.mode || 'Unknown');
+                const desiredText = runtime.desiredMode === 'rust'
+                    ? 'Rust'
+                    : (runtime.desiredMode === 'disabled' ? 'Disabled' : runtime.desiredMode || 'Unknown');
                 const activeText = runtime.active ? '运行中' : '未运行';
                 const debugReasonText = runtime.lastDebugReason || '无';
                 const forwardedCount = runtime.forwardedEventCount || 0;
