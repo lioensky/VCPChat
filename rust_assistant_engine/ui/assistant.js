@@ -128,7 +128,7 @@ window.electronAPI.onAssistantData(async (data) => {
 
         document.body.classList.toggle('light-theme', theme === 'light');
         document.body.classList.toggle('dark-theme', theme === 'dark');
-        agentAvatarImg.src = agentConfig.avatarUrl || '../assets/default_avatar.png';
+        agentAvatarImg.src = agentConfig.avatarUrl || '../../assets/default_avatar.png';
         agentNameSpan.textContent = agentConfig.name;
 
         // --- Initialize Shared Renderer ---
