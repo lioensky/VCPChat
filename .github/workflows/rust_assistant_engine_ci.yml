@@ -104,7 +104,11 @@ jobs:
           else
             cp target/release/assistant_core_server dist/
           fi
-          cp README.md dist/
+          if [ -f README.md ]; then
+            cp README.md dist/
+          elif [ -f ../README.md ]; then
+            cp ../README.md dist/
+          fi
 
       - name: Upload binary artifact
         uses: actions/upload-artifact@v4
