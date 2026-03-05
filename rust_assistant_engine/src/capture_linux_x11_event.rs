@@ -158,5 +158,5 @@ fn intern_atom(connection: &RustConnection, name: &[u8]) -> Option<u32> {
         .reply()
         .ok()
         .map(|reply| reply.atom)
-        .filter(|atom| *atom != AtomEnum::NONE.into())
+        .filter(|atom| *atom != u32::from(AtomEnum::NONE))
 }
