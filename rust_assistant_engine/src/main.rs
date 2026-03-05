@@ -8,6 +8,10 @@ mod capture_macos;
 mod capture_linux_x11;
 #[cfg(target_os = "linux")]
 mod capture_linux_wayland;
+#[cfg(target_os = "linux")]
+mod capture_linux_x11_event;
+#[cfg(target_os = "linux")]
+mod linux_platform;
 
 use actix_web::{web, App, HttpResponse, HttpServer};
 use serde::{Deserialize, Serialize};
@@ -43,6 +47,11 @@ struct StatusResponse {
     capability_mode: String,
     limited: bool,
     capability_reason: String,
+    session_kind: Option<String>,
+    session_confidence: Option<u8>,
+    window_info_available: Option<bool>,
+    selection_read_mode: Option<String>,
+    global_selection_event: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -67,6 +76,11 @@ async fn status() -> HttpResponse {
         capability_mode: capability.mode,
         limited: capability.limited,
         capability_reason: capability.reason,
+        session_kind: capability.session_kind,
+        session_confidence: capability.session_confidence,
+        window_info_available: capability.window_info_available,
+        selection_read_mode: capability.selection_read_mode,
+        global_selection_event: capability.global_selection_event,
     })
 }
 
@@ -137,11 +151,16 @@ async fn main() -> std::io::Result<()> {
 
     let capability = SELECTION_LISTENER.get_capability();
     info!(
-        "[Main] Capture capability platform={} backend={} mode={} limited={} reason={}",
+        "[Main] Capture capability platform={} backend={} mode={} limited={} session={:?} confidence={:?} window_info={:?} read_mode={:?} global_event={:?} reason={}",
         capability.platform,
         capability.backend,
         capability.mode,
         capability.limited,
+        capability.session_kind,
+        capability.session_confidence,
+        capability.window_info_available,
+        capability.selection_read_mode,
+        capability.global_selection_event,
         capability.reason
     );
 

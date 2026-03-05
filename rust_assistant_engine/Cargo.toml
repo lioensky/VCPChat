@@ -28,3 +28,6 @@ windows = { version = "0.58", features = [
 	"Win32_System_Com",
 	"Win32_UI_Accessibility"
 ] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+x11rb = { version = "0.13", features = ["xfixes"] }
