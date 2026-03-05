@@ -19,7 +19,7 @@
   "author": "莱恩 (由小吉辅助生成)",
   "license": "MIT",
   "devDependencies": {
-    "@electron/rebuild": "^3.7.2",
+    "@electron/rebuild": "^4.0.3",
     "electron": "^37.2.6",
     "electron-builder": "^26.0.12",
     "node-addon-api": "^8.3.1",
