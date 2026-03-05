@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>VChat 划词助手</title>
+<link rel="stylesheet" href="../styles/themes.css"> <!-- 引用主题样式 -->
+    <link rel="stylesheet" href="../style.css">
+    <link rel="stylesheet" href="assistant.css">
+    <style>
+        html, body {
+            background-color: transparent !important;
+            background-image: none !important;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            display: flex; /* Use flexbox */
+            justify-content: center; /* Center horizontally */
+            align-items: center; /* Center vertically */
+            height: 100vh;
+            -webkit-app-region: drag; /* 允许整个窗口拖动 */
+        }
+        #selection-assistant-bar {
+            position: static; /* 在这个窗口里是静态的 */
+            opacity: 1;
+            transform: none;
+            pointer-events: auto;
+            -webkit-app-region: no-drag; /* 按钮区域不可拖动 */
+            flex-shrink: 0; /* Prevent the bar from shrinking */
+        }
+    </style>
+</head>
+<body>
+    <div id="selection-assistant-bar">
+        <img id="assistantAvatar" src="../assets/default_avatar.png" alt="Agent" class="assistant-avatar">
+        <button class="assistant-button" data-action="translate">翻译</button>
+        <button class="assistant-button" data-action="summarize">总结</button>
+        <button class="assistant-button" data-action="explain">解释</button>
+        <button class="assistant-button" data-action="search">搜索</button>
+        <button class="assistant-button" data-action="image">配图</button>
+        <button class="assistant-button" data-action="table">制表</button>
+        <button class="assistant-button" data-action="note">笔记</button>
+    </div>
+    <script src="assistant-bar.js"></script>
+</body>
+</html>

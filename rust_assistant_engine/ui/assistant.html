@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy"
+          content="default-src 'self' data:;
+                   script-src 'self' 'unsafe-inline';
+                   style-src 'self' 'unsafe-inline';
+                   img-src * data: file: blob:;
+                   font-src 'self';
+                   connect-src * ws: wss:;">
+    <title>划词助手</title>
+<link rel="stylesheet" href="../styles/themes.css"> <!-- 引用主题样式 -->
+    <link rel="stylesheet" href="../style.css"> <!-- 引用主样式 -->
+    <link rel="stylesheet" href="assistant.css">
+    <link rel="stylesheet" href="../styles/messageRenderer.css"> <!-- 添加对渲染器样式的引用 -->
+    <script src="../vendor/marked.min.js"></script>
+    <script src="../vendor/morphdom.min.js"></script>
+    <script src="../modules/topicSummarizer.js"></script>
+    <script defer src="../vendor/katex.min.js" crossorigin="anonymous"></script>
+    <script defer src="../vendor/auto-render.min.js" crossorigin="anonymous"></script>
+</head>
+<body id="assistant-window-body" class="main-content">
+    <div class="title-bar-assistant">
+        <div class="title-bar-text-assistant">
+            <img id="agentAvatar" src="" alt="Agent" class="avatar">
+            <span id="currentChatAgentName">划词助手</span>
+        </div>
+        <div class="title-bar-controls-assistant">
+            <button id="close-btn-assistant" class="title-bar-button-assistant close-button-assistant" title="关闭">
+                <svg viewBox="0 0 10 10"><polygon points="10,1.01 8.99,0 5,3.99 1.01,0 0,1.01 3.99,5 0,8.99 1.01,10 5,6.01 8.99,10 10,8.99 6.01,5"></polygon></svg>
+            </button>
+        </div>
+    </div>
+    <div class="chat-messages-container">
+        <div class="chat-messages" id="chatMessages">
+            <!-- 聊天消息将在这里动态生成 -->
+        </div>
+    </div>
+    <footer class="chat-input-area">
+        <div class="attachment-preview-area" id="attachmentPreviewArea"></div>
+        <textarea id="messageInput" placeholder="输入消息... (Shift+Enter 换行)" rows="1"></textarea>
+        <button id="sendMessageBtn" title="发送消息 (Ctrl+Enter)">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="24" height="24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+        </button>
+        <button id="attachFileBtn" title="发送文件">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="4 4 56 56" fill="currentColor"><path d="M 18.505859 9.4140625 C 15.577379 9.4140625 13.181641 11.809801 13.181641 14.738281 L 13.181641 50.154297 C 13.181641 53.082777 15.577379 55.478516 18.505859 55.478516 L 46.644531 55.478516 C 49.573011 55.478516 51.96875 53.082777 51.96875 50.154297 L 51.96875 29.148438 A 1.0001 1.0001 0 1 0 49.96875 29.148438 L 49.96875 50.154297 C 49.96875 52.001817 48.492051 53.478516 46.644531 53.478516 L 18.505859 53.478516 C 16.65834 53.478516 15.181641 52.001817 15.181641 50.154297 L 15.181641 14.738281 C 15.181641 12.890761 16.65834 11.414062 18.505859 11.414062 L 36.712891 11.414062 L 48.449219 24.03125 L 39.064453 24.03125 C 38.283048 24.03125 37.669922 23.420077 37.669922 22.638672 L 37.669922 16.798828 A 1.0001 1.0001 0 1 0 35.669922 16.798828 L 35.669922 22.638672 C 35.669922 24.501267 37.201858 26.03125 39.064453 26.03125 L 50.744141 26.03125 A 1.0001 1.0001 0 0 0 51.476562 24.351562 L 37.880859 9.734375 A 1.0001 1.0001 0 0 0 37.148438 9.4140625 L 18.505859 9.4140625 z"></path></svg>
+        </button>
+    </footer>
+    <script src="../modules/ui-helpers.js"></script> <!-- 添加 ui-helpers -->
+    <script type="module" src="../modules/renderer/colorUtils.js"></script>
+    <script type="module" src="../modules/renderer/imageHandler.js"></script>
+    <script type="module" src="../modules/renderer/domBuilder.js"></script>
+    <script type="module" src="../modules/renderer/streamManager.js"></script>
+    <script type="module" src="../modules/renderer/contentProcessor.js"></script>
+    <script type="module" src="../modules/renderer/messageContextMenu.js"></script>
+    <script type="module" src="../modules/messageRenderer.js"></script>
+    <script src="assistant.js" defer></script>
+</body>
+</html>
