@@ -1,4 +1,4 @@
-yamlname: Rust Assistant Engine CI
+name: Rust Assistant Engine CI
 on:
   workflow_dispatch:
   push:
@@ -60,7 +60,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: "${{ matrix.artifact_name }}"
-          path: rust_assistant_engine/target/release/${{ matrix.binary_name }}
-        with:
-          name: ${{ matrix.artifact_name }}
           path: rust_assistant_engine/target/release/${{ matrix.binary_name }}
