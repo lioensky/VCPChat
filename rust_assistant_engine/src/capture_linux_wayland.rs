@@ -4,21 +4,20 @@ use crate::windows_event_source::SelectionSignal;
 
 #[derive(Debug)]
 pub struct LinuxWaylandEventSource {
-    device_state: DeviceState,
     last_copy_pressed: bool,
 }
 
 impl LinuxWaylandEventSource {
     pub fn new() -> Self {
         Self {
-            device_state: DeviceState::new(),
             last_copy_pressed: false,
         }
     }
 
     pub fn poll_signal(&mut self) -> Option<SelectionSignal> {
-        let mouse_state = self.device_state.get_mouse();
-        let keys = self.device_state.get_keys();
+        let device_state = DeviceState::new();
+        let mouse_state = device_state.get_mouse();
+        let keys = device_state.get_keys();
 
         let copy_pressed = is_copy_pressed(&keys);
         let keyboard_copy_triggered = self.last_copy_pressed && !copy_pressed;
