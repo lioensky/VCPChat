@@ -988,6 +988,8 @@ import { setupEventListeners } from './modules/event-listeners.js';
        // Emoticon URL fixer is now initialized within messageRenderer
         window.__vcpRendererReady = true;
 
+        window.electronAPI.toggleSelectionListener(!!globalSettings.assistantEnabled);
+
         if (window.__vcpPendingTopicSelection && window.chatManager) {
             const pending = window.__vcpPendingTopicSelection;
             window.__vcpPendingTopicSelection = null;
@@ -1427,7 +1429,7 @@ async function loadAndApplyGlobalSettings() {
         if (toggleAssistantBtn) {
             toggleAssistantBtn.classList.toggle('active', !!globalSettings.assistantEnabled);
         }
-        window.electronAPI.toggleSelectionListener(!!globalSettings.assistantEnabled);
+        // Selection listener startup moved to post-renderer-ready stage.
 
         // Load filter mode setting
         let filterEnabled = globalSettings.filterEnabled ?? globalSettings.doNotDisturbLogMode ?? (localStorage.getItem('doNotDisturbLogMode') === 'true');

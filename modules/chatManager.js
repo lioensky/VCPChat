@@ -22,6 +22,7 @@ window.chatManager = (() => {
     // Functions from main renderer
     let mainRendererFunctions = {};
     let isCanvasWindowOpen = false; // State to track if the canvas window is open
+    let lastAssistantSuspendAt = 0;
 
 
 
@@ -164,6 +165,31 @@ window.chatManager = (() => {
                 console.error('[ChatManager] Failed to save last open state:', err);
             });
         }
+    }
+
+    function suspendAssistantListenerForTopicLoad(topicId) {
+        if (!topicId || !electronAPI || typeof electronAPI.suspendAssistantListener !== 'function') {
+            return;
+        }
+
+        const now = Date.now();
+        if (now - lastAssistantSuspendAt < 200) {
+            return;
+        }
+
+        const globalSettings = globalSettingsRef && typeof globalSettingsRef.get === 'function'
+            ? globalSettingsRef.get()
+            : null;
+
+        if (!globalSettings || globalSettings.assistantEnabled !== true) {
+            return;
+        }
+
+        lastAssistantSuspendAt = now;
+        const durationMs = 800 + Math.floor(Math.random() * 701);
+        Promise.resolve(electronAPI.suspendAssistantListener(durationMs)).catch((error) => {
+            console.warn('[ChatManager] Failed to suspend assistant listener before topic load:', error);
+        });
     }
  
     // --- Functions moved from renderer.js ---
@@ -389,6 +415,8 @@ window.chatManager = (() => {
     }
 
     async function loadChatHistory(itemId, itemType, topicId) {
+        suspendAssistantListenerForTopicLoad(topicId);
+
         if (messageRenderer) messageRenderer.clearChat();
         currentChatHistoryRef.set([]);
     

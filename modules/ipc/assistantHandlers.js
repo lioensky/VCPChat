@@ -43,8 +43,92 @@ let runtimeFallbackTrace = {
     lastAutoFallbackTs: 0
 };
 
+const ASSISTANT_RUNTIME_CACHE_TTL_MS = 1500;
+let assistantRuntimeCache = {
+    settings: null,
+    settingsLoadedAt: 0,
+    settingsMtimeMs: 0,
+    agentId: null,
+    agentConfig: null,
+    agentConfigLoadedAt: 0
+};
+
 function getRustAssistantConfigPath() {
     return path.join(__dirname, '..', '..', 'AppData', 'rust-assistant-config.json');
+}
+
+function invalidateAssistantRuntimeCache({ settings = false, agent = false, all = false } = {}) {
+    if (all || settings) {
+        assistantRuntimeCache.settings = null;
+        assistantRuntimeCache.settingsLoadedAt = 0;
+        assistantRuntimeCache.settingsMtimeMs = 0;
+    }
+
+    if (all || agent || settings) {
+        assistantRuntimeCache.agentId = null;
+        assistantRuntimeCache.agentConfig = null;
+        assistantRuntimeCache.agentConfigLoadedAt = 0;
+    }
+}
+
+async function loadAssistantSettingsCached() {
+    if (!SETTINGS_FILE) {
+        return null;
+    }
+
+    const now = Date.now();
+    if (assistantRuntimeCache.settings && (now - assistantRuntimeCache.settingsLoadedAt) < ASSISTANT_RUNTIME_CACHE_TTL_MS) {
+        return assistantRuntimeCache.settings;
+    }
+
+    const stat = await fs.stat(SETTINGS_FILE);
+    if (
+        assistantRuntimeCache.settings &&
+        assistantRuntimeCache.settingsMtimeMs === stat.mtimeMs
+    ) {
+        assistantRuntimeCache.settingsLoadedAt = now;
+        return assistantRuntimeCache.settings;
+    }
+
+    const previousAgentId = assistantRuntimeCache.settings?.assistantAgent || null;
+    const settings = await fs.readJson(SETTINGS_FILE);
+    const nextAgentId = settings?.assistantAgent || null;
+
+    assistantRuntimeCache.settings = settings;
+    assistantRuntimeCache.settingsLoadedAt = now;
+    assistantRuntimeCache.settingsMtimeMs = stat.mtimeMs;
+
+    if (previousAgentId !== nextAgentId) {
+        invalidateAssistantRuntimeCache({ agent: true });
+    }
+
+    return settings;
+}
+
+async function loadAssistantAgentConfigCached(agentId) {
+    if (!agentId) {
+        return null;
+    }
+
+    const now = Date.now();
+    if (
+        assistantRuntimeCache.agentConfig &&
+        assistantRuntimeCache.agentId === agentId &&
+        (now - assistantRuntimeCache.agentConfigLoadedAt) < ASSISTANT_RUNTIME_CACHE_TTL_MS
+    ) {
+        return assistantRuntimeCache.agentConfig;
+    }
+
+    const agentConfig = await getAgentConfigById(agentId);
+    if (agentConfig && !agentConfig.error) {
+        assistantRuntimeCache.agentId = agentId;
+        assistantRuntimeCache.agentConfig = agentConfig;
+        assistantRuntimeCache.agentConfigLoadedAt = now;
+    } else {
+        invalidateAssistantRuntimeCache({ agent: true });
+    }
+
+    return agentConfig;
 }
 
 function getBrowserWindowHandleString(win) {
@@ -186,9 +270,9 @@ function processSelectedText(selectionData) {
             }
             
             // 3. 读取配置并发送数据
-            const settings = await fs.readJson(SETTINGS_FILE);
+            const settings = await loadAssistantSettingsCached();
             if (settings.assistantEnabled && settings.assistantAgent) {
-                const agentConfig = await getAgentConfigById(settings.assistantAgent);
+                const agentConfig = await loadAssistantAgentConfigCached(settings.assistantAgent);
 
                 // ⚠️ 检查 agentConfig 是否返回错误
                 if (agentConfig.error) {
@@ -917,15 +1001,16 @@ function createAssistantWindow(data) {
 
 async function initialize(options) {
     SETTINGS_FILE = options.SETTINGS_FILE;
+    invalidateAssistantRuntimeCache({ all: true });
 
     await ensureListenerAdapter();
     createAssistantBarWindow();
 
     ipcMain.handle('get-assistant-bar-initial-data', async () => {
         try {
-            const settings = await fs.readJson(SETTINGS_FILE);
+            const settings = await loadAssistantSettingsCached();
             if (settings.assistantEnabled && settings.assistantAgent) {
-                const agentConfig = await getAgentConfigById(settings.assistantAgent);
+                const agentConfig = await loadAssistantAgentConfigCached(settings.assistantAgent);
                 
                 // ⚠️ 检查 agentConfig 是否返回错误
                 if (agentConfig.error) {
@@ -953,6 +1038,14 @@ async function initialize(options) {
     });
 
     ipcMain.on('toggle-selection-listener', async (_event, enable) => {
+        if (assistantRuntimeCache.settings) {
+            assistantRuntimeCache.settings = {
+                ...assistantRuntimeCache.settings,
+                assistantEnabled: enable === true
+            };
+            assistantRuntimeCache.settingsLoadedAt = Date.now();
+        }
+
         if (enable) {
             await startSelectionListener();
         } else {
@@ -1107,7 +1200,7 @@ async function initialize(options) {
         }
         
         try {
-            const settings = await fs.readJson(SETTINGS_FILE);
+            const settings = await loadAssistantSettingsCached();
             createAssistantWindow({
                 selectedText: action === 'open' ? '' : lastProcessedSelection,
                 action: action,
