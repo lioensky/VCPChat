@@ -247,28 +247,34 @@ class RustAssistantAdapter {
     }
 
     resolveArtifactExecutablePath(binaryName) {
-        const assistantEngineDir = path.join(this.projectRoot, 'assistant_engine');
-        if (!fs.existsSync(assistantEngineDir)) {
+        const runtimeDirs = [
+            path.join(this.projectRoot, 'rust_assistant_engine', 'runtime'),
+            path.join(this.projectRoot, 'assistant_engine')
+        ].filter(dir => fs.existsSync(dir));
+
+        if (!runtimeDirs.length) {
             return null;
         }
 
         const { platformLabel, archLabel } = this.getRuntimeTargetLabels();
         const candidates = [];
 
-        if (platformLabel && archLabel) {
-            const exactDir = `assistant_core_server-${platformLabel}-${archLabel}`;
-            candidates.push(path.join(assistantEngineDir, exactDir, binaryName));
-            candidates.push(path.join(assistantEngineDir, exactDir, 'dist', binaryName));
+        for (const runtimeDir of runtimeDirs) {
+            if (platformLabel && archLabel) {
+                const exactDir = `assistant_core_server-${platformLabel}-${archLabel}`;
+                candidates.push(path.join(runtimeDir, exactDir, binaryName));
+                candidates.push(path.join(runtimeDir, exactDir, 'dist', binaryName));
 
-            if (platformLabel === 'macOS') {
-                const universalDir = 'assistant_core_server-macOS-Universal';
-                candidates.push(path.join(assistantEngineDir, universalDir, binaryName));
-                candidates.push(path.join(assistantEngineDir, universalDir, 'dist', binaryName));
+                if (platformLabel === 'macOS') {
+                    const universalDir = 'assistant_core_server-macOS-Universal';
+                    candidates.push(path.join(runtimeDir, universalDir, binaryName));
+                    candidates.push(path.join(runtimeDir, universalDir, 'dist', binaryName));
+                }
             }
-        }
 
-        candidates.push(path.join(assistantEngineDir, binaryName));
-        candidates.push(path.join(assistantEngineDir, 'dist', binaryName));
+            candidates.push(path.join(runtimeDir, binaryName));
+            candidates.push(path.join(runtimeDir, 'dist', binaryName));
+        }
 
         return candidates.find(candidate => fs.existsSync(candidate)) || null;
     }
@@ -306,7 +312,7 @@ class RustAssistantAdapter {
 
         const executablePath = this.resolveExecutablePath();
         if (!executablePath) {
-            throw new Error('Rust assistant binary not found. Expected assistant_core_server in assistant_engine/assistant_core_server-<OS>-<ARCH>/, assistant_engine/, or rust_assistant_engine/target/*');
+            throw new Error('Rust assistant binary not found. Expected assistant_core_server in rust_assistant_engine/runtime/assistant_core_server-<OS>-<ARCH>/ (or legacy assistant_engine/), or rust_assistant_engine/target/*');
         }
 
         if (this.debugMode) {
