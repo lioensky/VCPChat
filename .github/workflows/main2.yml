@@ -56,8 +56,10 @@ jobs:
         run: cargo test --no-fail-fast
       - name: Cargo build release
         run: cargo build --release
+      - name: Check build output
+        run: ls -la target/release/
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: "${{ matrix.artifact_name }}"
-          path: rust_assistant_engine/target/release/${{ matrix.binary_name }}
+          path: ${{ github.workspace }}/rust_assistant_engine/target/release/${{ matrix.binary_name }}
