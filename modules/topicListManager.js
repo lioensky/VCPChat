@@ -263,8 +263,29 @@ window.topicListManager = (() => {
                         }, 100 + (currentIndex * 10)); // 阶梯式延迟请求
 
                         li.addEventListener('click', async () => {
-                            if (currentTopicIdRef.get() !== topic.id) {
-                                mainRendererFunctions.selectTopic(topic.id);
+                            if (currentTopicIdRef.get() === topic.id) {
+                                return;
+                            }
+
+                            if (window.__vcpRendererReady === false) {
+                                window.__vcpPendingTopicSelection = {
+                                    itemId: currentSelectedItem.id,
+                                    itemType: currentSelectedItem.type,
+                                    topicId: topic.id,
+                                };
+                                if (uiHelper && uiHelper.showToastNotification) {
+                                    uiHelper.showToastNotification('正在初始化界面，稍后自动打开该话题', 'info');
+                                }
+                                return;
+                            }
+
+                            try {
+                                await Promise.resolve(mainRendererFunctions.selectTopic(topic.id));
+                            } catch (error) {
+                                console.error('[TopicListManager] Failed to select topic:', error);
+                                if (uiHelper && uiHelper.showToastNotification) {
+                                    uiHelper.showToastNotification(`打开话题失败: ${error.message}`, 'error');
+                                }
                             }
                         });
 

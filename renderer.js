@@ -24,6 +24,8 @@ let currentSelectedItem = {
 };
 let currentTopicId = null;
 let currentChatHistory = [];
+window.__vcpRendererReady = false;
+window.__vcpPendingTopicSelection = null;
 
 // 暴露到window对象以便其他模块访问
 window.currentSelectedItem = currentSelectedItem;
@@ -984,7 +986,24 @@ import { setupEventListeners } from './modules/event-listeners.js';
         }
 
        // Emoticon URL fixer is now initialized within messageRenderer
+        window.__vcpRendererReady = true;
+
+        if (window.__vcpPendingTopicSelection && window.chatManager) {
+            const pending = window.__vcpPendingTopicSelection;
+            window.__vcpPendingTopicSelection = null;
+            const matchesCurrentItem =
+                currentSelectedItem &&
+                currentSelectedItem.id === pending.itemId &&
+                currentSelectedItem.type === pending.itemType;
+
+            if (matchesCurrentItem) {
+                Promise.resolve(window.chatManager.selectTopic(pending.topicId)).catch((error) => {
+                    console.error('[Renderer] Failed to replay pending topic selection:', error);
+                });
+            }
+        }
     } catch (error) {
+        window.__vcpRendererReady = false;
         console.error('Error during DOMContentLoaded initialization:', error);
         chatMessagesDiv.innerHTML = `<div class="message-item system">初始化失败: ${error.message}</div>`;
     }

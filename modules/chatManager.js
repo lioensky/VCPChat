@@ -324,13 +324,20 @@ window.chatManager = (() => {
         }
         
         let currentTopicId = currentTopicIdRef.get();
-        if (currentTopicId !== topicId) {
+        if (currentTopicId === topicId) {
+            return;
+        }
+
+        const currentSelectedItem = currentSelectedItemRef.get();
+        if (!currentSelectedItem || !currentSelectedItem.id || !currentSelectedItem.type) {
+            console.warn('[ChatManager] Ignored selectTopic: no active item selected yet.');
+            return;
+        }
+
+        try {
             currentTopicIdRef.set(topicId);
             if (messageRenderer) messageRenderer.setCurrentTopicId(topicId);
-            
-            const currentSelectedItem = currentSelectedItemRef.get();
-            
-            // Explicitly start watcher for the new topic
+
             const agentConfigForWatcher = currentSelectedItem.config || currentSelectedItem;
             if (electronAPI.watcherStart && agentConfigForWatcher?.agentDataPath) {
                 const historyFilePath = `${agentConfigForWatcher.agentDataPath}\\topics\\${topicId}\\history.json`;
@@ -342,9 +349,19 @@ window.chatManager = (() => {
                 item.classList.toggle('active', isClickedItem);
                 item.classList.toggle('active-topic-glowing', isClickedItem);
             });
+
             await loadChatHistory(currentSelectedItem.id, currentSelectedItem.type, topicId);
             localStorage.setItem(`lastActiveTopic_${currentSelectedItem.id}_${currentSelectedItem.type}`, topicId);
-            _saveLastOpenState(); // Save state when a new topic is selected
+            _saveLastOpenState();
+        } catch (error) {
+            console.error('[ChatManager] Failed to select topic:', error);
+            if (messageRenderer) {
+                messageRenderer.renderMessage({
+                    role: 'system',
+                    content: `打开话题失败: ${error.message}`,
+                    timestamp: Date.now()
+                });
+            }
         }
     }
 

@@ -1,5 +1,5 @@
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Condvar, Mutex};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -240,27 +240,29 @@ impl LinuxEventSourceFactory for DefaultLinuxEventSourceFactory {
             global_selection_event
         );
 
-        CaptureCapability {
-            platform: "linux".to_string(),
-            backend: backend.to_string(),
-            mode: mode.to_string(),
+        let mut capability = capture_capability_base(
+            "linux",
+            backend,
+            mode,
             limited,
             reason,
-            session_kind: Some(match session.kind {
+        );
+
+        capability.session_kind = Some(match session.kind {
                 LinuxSessionKind::X11 => "x11".to_string(),
                 LinuxSessionKind::Wayland => "wayland".to_string(),
                 LinuxSessionKind::Unknown => "unknown".to_string(),
-            }),
-            session_confidence: Some(session.confidence),
-            window_info_available: Some(window_info_available),
-            selection_read_mode: Some(match session.kind {
+            });
+        capability.session_confidence = Some(session.confidence);
+        capability.window_info_available = Some(window_info_available);
+        capability.selection_read_mode = Some(match session.kind {
                 LinuxSessionKind::X11 => "primary_then_clipboard".to_string(),
                 LinuxSessionKind::Wayland | LinuxSessionKind::Unknown => {
                     "clipboard_only".to_string()
                 }
-            }),
-            global_selection_event: Some(global_selection_event),
-        }
+            });
+        capability.global_selection_event = Some(global_selection_event);
+        capability
     }
 }
 
@@ -315,7 +317,7 @@ impl SelectionListener {
     }
 
     pub fn start(&self) {
-        let mut active = self.active.lock().unwrap();
+        let mut active = lock_or_recover(&self.active, "active");
         *active = true;
         info!("[SelectionListener] Started");
         
@@ -324,7 +326,7 @@ impl SelectionListener {
     }
 
     pub fn stop(&self) {
-        let mut active = self.active.lock().unwrap();
+        let mut active = lock_or_recover(&self.active, "active");
         *active = false;
         info!("[SelectionListener] Stopped");
         
@@ -333,17 +335,17 @@ impl SelectionListener {
     }
 
     pub fn is_active(&self) -> bool {
-        *self.active.lock().unwrap()
+        *lock_or_recover(&self.active, "active")
     }
 
     pub fn set_guard_rules(&self, rules: GuardRules) {
-        let mut guard_rules = self.guard_rules.lock().unwrap();
+        let mut guard_rules = lock_or_recover(&self.guard_rules, "guard_rules");
         *guard_rules = rules;
         info!("[SelectionListener] Guard rules updated");
     }
 
     pub fn get_guard_rules(&self) -> GuardRules {
-        self.guard_rules.lock().unwrap().clone()
+        lock_or_recover(&self.guard_rules, "guard_rules").clone()
     }
 
     pub fn get_capability(&self) -> CaptureCapability {
@@ -364,7 +366,7 @@ impl SelectionListener {
 
     #[cfg(target_os = "linux")]
     fn capture_selected_text_fallback_by_provider(&self, keyboard_triggered: bool) -> Option<String> {
-        let mut provider = self.linux_text_provider.lock().unwrap();
+        let mut provider = lock_or_recover(&self.linux_text_provider, "linux_text_provider");
         provider.read_selected_text(keyboard_triggered)
     }
 
@@ -386,7 +388,7 @@ impl SelectionListener {
     #[allow(dead_code)]
     pub fn suspend(&self, duration_ms: u64) {
         let now = current_timestamp();
-        let mut context = self.context.lock().unwrap();
+        let mut context = lock_or_recover(&self.context, "context");
         context.suspension_end_time = now + duration_ms;
         info!("[SelectionListener] Suspended for {} ms", duration_ms);
     }
@@ -397,7 +399,7 @@ impl SelectionListener {
         }
 
         let signal = {
-            let mut source = self.event_source.lock().unwrap();
+            let mut source = lock_or_recover(&self.event_source, "event_source");
             source.poll_signal()
         };
 
@@ -407,8 +409,8 @@ impl SelectionListener {
         };
 
         let now = current_timestamp();
-        let mut context = self.context.lock().unwrap();
-        let guard_rules = self.guard_rules.lock().unwrap().clone();
+        let mut context = lock_or_recover(&self.context, "context");
+        let guard_rules = lock_or_recover(&self.guard_rules, "guard_rules").clone();
 
         // Check if suspended (by clipboard monitor or other triggers)
         if now < context.suspension_end_time {
@@ -538,7 +540,7 @@ impl SelectionListener {
 
         {
             let (lock, _) = &*self.clipboard_monitor_stop_signal;
-            let mut stop = lock.lock().unwrap();
+            let mut stop = lock_or_recover(lock, "clipboard_stop_signal");
             *stop = false;
         }
         
@@ -547,7 +549,7 @@ impl SelectionListener {
             
             // Initialize clipboard snapshot
             if let Some(initial_clipboard) = read_clipboard_text_snapshot() {
-                let mut ctx = context.lock().unwrap();
+                let mut ctx = lock_or_recover(&context, "context");
                 if ctx.last_clipboard_snapshot.is_empty() {
                     ctx.last_clipboard_snapshot = initial_clipboard;
                 }
@@ -555,27 +557,28 @@ impl SelectionListener {
             
             while running.load(Ordering::SeqCst) {
                 let interval_ms = {
-                    let rules = guard_rules.lock().unwrap();
+                    let rules = lock_or_recover(&guard_rules, "guard_rules");
                     rules.clipboard_check_interval_ms.max(50)
                 };
 
                 let (lock, cvar) = &*stop_signal;
-                let stop_guard = lock.lock().unwrap();
-                let wait_result = cvar
+                let stop_guard = lock_or_recover(lock, "clipboard_stop_signal");
+                let wait_result = lock_result_or_recover(
+                    cvar
                     .wait_timeout_while(
                         stop_guard,
                         Duration::from_millis(interval_ms),
                         |should_stop| !*should_stop,
                     )
-                    .unwrap();
+                , "clipboard_stop_signal_wait");
 
                 if *wait_result.0 || !running.load(Ordering::SeqCst) {
                     break;
                 }
                 
                 if let Some(current_clipboard) = read_clipboard_text_snapshot() {
-                    let mut ctx = context.lock().unwrap();
-                    let rules = guard_rules.lock().unwrap();
+                    let mut ctx = lock_or_recover(&context, "context");
+                    let rules = lock_or_recover(&guard_rules, "guard_rules");
                     
                     if !ctx.last_clipboard_snapshot.is_empty() 
                         && current_clipboard != ctx.last_clipboard_snapshot {
@@ -599,7 +602,7 @@ impl SelectionListener {
     fn stop_clipboard_monitor(&self) {
         self.clipboard_monitor_running.store(false, Ordering::SeqCst);
         let (lock, cvar) = &*self.clipboard_monitor_stop_signal;
-        let mut stop = lock.lock().unwrap();
+        let mut stop = lock_or_recover(lock, "clipboard_stop_signal");
         *stop = true;
         cvar.notify_all();
     }
@@ -742,18 +745,13 @@ fn get_window_info_at_point(mouse_x: i32, mouse_y: i32) -> Option<(u64, u32, Str
 fn create_platform_event_source() -> (PlatformEventSource, CaptureCapability) {
     (
         PlatformEventSource::Windows(WindowsEventSource::new()),
-        CaptureCapability {
-            platform: "windows".to_string(),
-            backend: "capture_windows".to_string(),
-            mode: "full".to_string(),
-            limited: false,
-            reason: "Win32 + UIA full mode".to_string(),
-            session_kind: None,
-            session_confidence: None,
-            window_info_available: None,
-            selection_read_mode: None,
-            global_selection_event: None,
-        },
+        capture_capability_base(
+            "windows",
+            "capture_windows",
+            "full",
+            false,
+            "Win32 + UIA full mode".to_string(),
+        ),
     )
 }
 
@@ -778,18 +776,7 @@ fn create_platform_event_source() -> (PlatformEventSource, CaptureCapability) {
 
     (
         PlatformEventSource::Macos(MacosEventSource::new()),
-        CaptureCapability {
-            platform: "macos".to_string(),
-            backend: "capture_macos".to_string(),
-            mode,
-            limited,
-            reason,
-            session_kind: None,
-            session_confidence: None,
-            window_info_available: None,
-            selection_read_mode: None,
-            global_selection_event: None,
-        },
+        capture_capability_base("macos", "capture_macos", &mode, limited, reason),
     )
 }
 
@@ -827,19 +814,55 @@ fn create_linux_platform_runtime(
 fn create_platform_event_source() -> (PlatformEventSource, CaptureCapability) {
     (
         PlatformEventSource::Noop,
-        CaptureCapability {
-            platform: std::env::consts::OS.to_string(),
-            backend: "noop".to_string(),
-            mode: "limited".to_string(),
-            limited: true,
-            reason: "Unsupported platform backend".to_string(),
-            session_kind: None,
-            session_confidence: None,
-            window_info_available: None,
-            selection_read_mode: None,
-            global_selection_event: None,
-        },
+        capture_capability_base(
+            std::env::consts::OS,
+            "noop",
+            "limited",
+            true,
+            "Unsupported platform backend".to_string(),
+        ),
     )
+}
+
+fn capture_capability_base(
+    platform: &str,
+    backend: &str,
+    mode: &str,
+    limited: bool,
+    reason: String,
+) -> CaptureCapability {
+    CaptureCapability {
+        platform: platform.to_string(),
+        backend: backend.to_string(),
+        mode: mode.to_string(),
+        limited,
+        reason,
+        session_kind: None,
+        session_confidence: None,
+        window_info_available: None,
+        selection_read_mode: None,
+        global_selection_event: None,
+    }
+}
+
+fn lock_or_recover<'a, T>(mutex: &'a Mutex<T>, name: &str) -> MutexGuard<'a, T> {
+    match mutex.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            info!("[Lock] Poisoned mutex recovered: {}", name);
+            poisoned.into_inner()
+        }
+    }
+}
+
+fn lock_result_or_recover<T>(result: std::sync::LockResult<T>, name: &str) -> T {
+    match result {
+        Ok(value) => value,
+        Err(poisoned) => {
+            info!("[Lock] Poisoned wait result recovered: {}", name);
+            poisoned.into_inner()
+        }
+    }
 }
 
 #[cfg(target_os = "windows")]
