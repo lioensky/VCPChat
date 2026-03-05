@@ -30,7 +30,15 @@ impl X11SelectionEventBackend {
             }
         };
 
-        if let Err(error) = connection.xfixes_query_version(5, 0).and_then(|cookie| cookie.reply()) {
+        let xfixes_version_cookie = match connection.xfixes_query_version(5, 0) {
+            Ok(cookie) => cookie,
+            Err(error) => {
+                info!("[LinuxX11Event] XFixes query failed: {}", error);
+                return None;
+            }
+        };
+
+        if let Err(error) = xfixes_version_cookie.reply() {
             info!("[LinuxX11Event] XFixes unavailable: {}", error);
             return None;
         }
@@ -63,10 +71,17 @@ impl X11SelectionEventBackend {
             | SelectionEventMask::SELECTION_WINDOW_DESTROY
             | SelectionEventMask::SELECTION_CLIENT_CLOSE;
 
-        if let Err(error) = connection
-            .xfixes_select_selection_input(root, primary_atom, mask)
-            .and_then(|cookie| cookie.check())
-        {
+        let primary_subscribe_cookie = match connection.xfixes_select_selection_input(root, primary_atom, mask) {
+            Ok(cookie) => cookie,
+            Err(error) => {
+                info!(
+                    "[LinuxX11Event] Subscribe PRIMARY request failed (fallback to polling): {}",
+                    error
+                );
+                return None;
+            }
+        };
+        if let Err(error) = primary_subscribe_cookie.check() {
             info!(
                 "[LinuxX11Event] Subscribe PRIMARY failed (fallback to polling): {}",
                 error
@@ -74,10 +89,18 @@ impl X11SelectionEventBackend {
             return None;
         }
 
-        if let Err(error) = connection
-            .xfixes_select_selection_input(root, clipboard_atom, mask)
-            .and_then(|cookie| cookie.check())
-        {
+        let clipboard_subscribe_cookie =
+            match connection.xfixes_select_selection_input(root, clipboard_atom, mask) {
+                Ok(cookie) => cookie,
+                Err(error) => {
+                    info!(
+                        "[LinuxX11Event] Subscribe CLIPBOARD request failed (fallback to polling): {}",
+                        error
+                    );
+                    return None;
+                }
+            };
+        if let Err(error) = clipboard_subscribe_cookie.check() {
             info!(
                 "[LinuxX11Event] Subscribe CLIPBOARD failed (fallback to polling): {}",
                 error
@@ -130,7 +153,15 @@ impl X11SelectionEventBackend {
 
         self.last_signal_at = Some(Instant::now());
 
-        let pointer = match self.connection.query_pointer(self.root).and_then(|cookie| cookie.reply()) {
+        let pointer_cookie = match self.connection.query_pointer(self.root) {
+            Ok(cookie) => cookie,
+            Err(error) => {
+                info!("[LinuxX11Event] query_pointer request failed: {}", error);
+                return None;
+            }
+        };
+
+        let pointer = match pointer_cookie.reply() {
             Ok(reply) => reply,
             Err(error) => {
                 info!("[LinuxX11Event] query_pointer failed: {}", error);
