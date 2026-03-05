@@ -182,6 +182,10 @@ class RustAssistantAdapter {
         return this.request('GET', '/status');
     }
 
+    async getMetrics() {
+        return this.request('GET', '/metrics');
+    }
+
     async suspend(durationMs) {
         return this.request('POST', '/listener/suspend', {
             duration_ms: Math.max(0, Number(durationMs) || 0)
@@ -222,10 +226,62 @@ class RustAssistantAdapter {
         return this.active;
     }
 
+    getRuntimeTargetLabels() {
+        const platformMap = {
+            win32: 'Windows',
+            linux: 'Linux',
+            darwin: 'macOS'
+        };
+
+        const archMap = {
+            x64: 'X64',
+            arm64: 'ARM64',
+            ia32: 'X86',
+            arm: 'ARM'
+        };
+
+        return {
+            platformLabel: platformMap[process.platform] || null,
+            archLabel: archMap[process.arch] || null
+        };
+    }
+
+    resolveArtifactExecutablePath(binaryName) {
+        const assistantEngineDir = path.join(this.projectRoot, 'assistant_engine');
+        if (!fs.existsSync(assistantEngineDir)) {
+            return null;
+        }
+
+        const { platformLabel, archLabel } = this.getRuntimeTargetLabels();
+        const candidates = [];
+
+        if (platformLabel && archLabel) {
+            const exactDir = `assistant_core_server-${platformLabel}-${archLabel}`;
+            candidates.push(path.join(assistantEngineDir, exactDir, binaryName));
+            candidates.push(path.join(assistantEngineDir, exactDir, 'dist', binaryName));
+
+            if (platformLabel === 'macOS') {
+                const universalDir = 'assistant_core_server-macOS-Universal';
+                candidates.push(path.join(assistantEngineDir, universalDir, binaryName));
+                candidates.push(path.join(assistantEngineDir, universalDir, 'dist', binaryName));
+            }
+        }
+
+        candidates.push(path.join(assistantEngineDir, binaryName));
+        candidates.push(path.join(assistantEngineDir, 'dist', binaryName));
+
+        return candidates.find(candidate => fs.existsSync(candidate)) || null;
+    }
+
     resolveExecutablePath() {
         const binaryName = process.platform === 'win32' ? 'assistant_core_server.exe' : 'assistant_core_server';
+
+        const artifactBinary = this.resolveArtifactExecutablePath(binaryName);
+        if (artifactBinary) {
+            return artifactBinary;
+        }
+
         const candidates = [
-            path.join(this.projectRoot, 'assistant_engine', binaryName),
             path.join(this.projectRoot, 'rust_assistant_engine', 'target', 'release', binaryName),
             path.join(this.projectRoot, 'rust_assistant_engine', 'target', 'debug', binaryName)
         ];
@@ -250,7 +306,11 @@ class RustAssistantAdapter {
 
         const executablePath = this.resolveExecutablePath();
         if (!executablePath) {
-            throw new Error('Rust assistant binary not found. Expected assistant_core_server in assistant_engine/ or rust_assistant_engine/target/*');
+            throw new Error('Rust assistant binary not found. Expected assistant_core_server in assistant_engine/assistant_core_server-<OS>-<ARCH>/, assistant_engine/, or rust_assistant_engine/target/*');
+        }
+
+        if (this.debugMode) {
+            this.logger.log(`[Assistant][RustAdapter] Using executable: ${executablePath}`);
         }
 
         this.pending = true;
