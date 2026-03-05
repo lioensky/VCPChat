@@ -19,13 +19,13 @@ jobs:
         include:
           - os: ubuntu-latest
             artifact_name: rust_assistant_engine-linux
-            binary_name: rust_assistant_engine
+            binary_name: assistant_core_server
           - os: macos-latest
             artifact_name: rust_assistant_engine-macos
-            binary_name: rust_assistant_engine
+            binary_name: assistant_core_server
           - os: windows-latest
             artifact_name: rust_assistant_engine-windows
-            binary_name: rust_assistant_engine.exe
+            binary_name: assistant_core_server.exe
     defaults:
       run:
         shell: bash
