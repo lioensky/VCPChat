@@ -110,7 +110,7 @@ export function setupEventListeners(deps) {
                     let content = contentClone.innerText || contentClone.textContent || "";
                     // 兜底：清理明文形式思维链
                     content = content.replace(/\[--- VCP元思考链(?::\s*"[^"]*")?\s*---\][\s\S]*?\[--- 元思考链结束 ---\]/gs, '');
-                    content = content.replace(/<think>[\s\S]*?<\/think>/gi, '');
+                    content = content.replace(/<think(?:ing)?>[\s\S]*?<\/think(?:ing)?>/gi, '');
                     content = content.trim();
 
                     if (sender && content) {
