@@ -82,11 +82,12 @@ class RAGObserverConfig {
                     data.type === 'AGENT_PRIVATE_CHAT_PREVIEW' ||
                     data.type === 'AI_MEMO_RETRIEVAL' ||
                     data.type === 'DailyNote' ||
+                    data.source === 'AgentAssistant' ||
                     (data.type && data.type.startsWith('AGENT_DREAM_'))) {
                     if (window.startSpectrumAnimation) {
                         window.startSpectrumAnimation(3000); // 动画持续3秒
                     }
-                    displayRagInfo(data); // displayRagInfo内部会处理这两种类型
+                    displayRagInfo(data); // displayRagInfo内部会处理这些类型
                 }
             } catch (e) {
                 console.error('解析消息失败:', e);

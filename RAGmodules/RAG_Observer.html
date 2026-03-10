@@ -665,6 +665,7 @@
             if (data.type === 'AI_MEMO_RETRIEVAL') return displayMemo(data);
             if (data.type.startsWith('AGENT_DREAM_')) return displayDreamInfo(data);
             if (data.type === 'DailyNote') return displayDailyNote(data);
+            if (data.source === 'AgentAssistant') return displayAgentAssistantNotification(data);
 
             const block = document.createElement('div');
             block.className = 'card-base type-rag card-enter';
@@ -941,6 +942,34 @@
                     <span class="meta-pill">Time: ${new Date(data.timestamp).toLocaleTimeString()}</span>
                 </div>
                 ${contentHTML}
+            `;
+            prependCard(block);
+        }
+
+        // 7. AGENT ASSISTANT NOTIFICATION BLOCK
+        function displayAgentAssistantNotification(data) {
+            const block = document.createElement('div');
+            block.className = 'card-base type-chat card-enter'; // Use chat style for agent category
+            
+            const isSucceed = data.message.includes('Succeed');
+            const isFailed = data.message.includes('Failed');
+            const dotClass = isSucceed ? 'dot-green' : (isFailed ? 'dot-red' : 'dot-orange');
+            
+            block.innerHTML = `
+                <h3 style="color: var(--accent-agent);">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="8.5" cy="7" r="4"></circle><polyline points="17 11 19 13 23 9"></polyline></svg>
+                    Agent 助手通知
+                </h3>
+                <div class="meta-info">
+                    <span class="status-pill" style="margin-bottom:0; background:transparent; border:none; padding:0;">
+                        <div class="status-dot ${dotClass}"></div>
+                        <span style="color:var(--accent-agent);">${data.source}</span>
+                    </span>
+                    <span class="meta-pill">Time: ${new Date().toLocaleTimeString()}</span>
+                </div>
+                <div style="margin-top:10px; padding:12px; background:rgba(241, 196, 15, 0.1); border-radius:8px; border-left:3px solid var(--accent-agent); color:rgba(255,255,255,0.9); font-size:0.95rem;">
+                    ${marked.parse(data.message)}
+                </div>
             `;
             prependCard(block);
         }
