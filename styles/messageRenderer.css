@@ -2,66 +2,121 @@
 
 /* Keyframes for animations */
 @keyframes vcp-bubble-background-flow-kf {
-    0% { background-position: 0% 50%; }
-    50% { background-position: 100% 50%; }
-    100% { background-position: 0% 50%; }
+    0% {
+        background-position: 0% 50%;
+    }
+
+    50% {
+        background-position: 100% 50%;
+    }
+
+    100% {
+        background-position: 0% 50%;
+    }
 }
 
 @keyframes vcp-bubble-border-flow-kf {
-    0% { background-position: 0% 50%; }
-    50% { background-position: 200% 50%; } /* Adjusted for more color travel */
-    100% { background-position: 0% 50%; }
+    0% {
+        background-position: 0% 50%;
+    }
+
+    50% {
+        background-position: 200% 50%;
+    }
+
+    /* Adjusted for more color travel */
+    100% {
+        background-position: 0% 50%;
+    }
 }
 
 @keyframes vcp-icon-rotate {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
+    0% {
+        transform: rotate(0deg);
+    }
+
+    100% {
+        transform: rotate(360deg);
+    }
 }
 
 @keyframes vcp-icon-heartbeat {
-    0% { transform: scale(1); opacity: 0.6; }
-    50% { transform: scale(1.15); opacity: 0.9; }
-    100% { transform: scale(1); opacity: 0.6; }
+    0% {
+        transform: scale(1);
+        opacity: 0.6;
+    }
+
+    50% {
+        transform: scale(1.15);
+        opacity: 0.9;
+    }
+
+    100% {
+        transform: scale(1);
+        opacity: 0.6;
+    }
 }
 
 @keyframes vcp-toolname-color-flow-kf {
-    0% { background-position: 0% 50%; }
-    50% { background-position: 150% 50%; } /* Adjusted for smoother flow with 300% background-size */
-    100% { background-position: 0% 50%; }
+    0% {
+        background-position: 0% 50%;
+    }
+
+    50% {
+        background-position: 150% 50%;
+    }
+
+    /* Adjusted for smoother flow with 300% background-size */
+    100% {
+        background-position: 0% 50%;
+    }
 }
 
 /* Loading dots animation */
 @keyframes vcp-loading-dots {
-  0%, 20% {
-    color: rgba(0,0,0,0);
-    text-shadow:
-      .25em 0 0 rgba(0,0,0,0),
-      .5em 0 0 rgba(0,0,0,0);
-  }
-  40% {
-    color: currentColor; /* Or a specific color */
-    text-shadow:
-      .25em 0 0 rgba(0,0,0,0),
-      .5em 0 0 rgba(0,0,0,0);
-  }
-  60% {
-    text-shadow:
-      .25em 0 0 currentColor, /* Or a specific color */
-      .5em 0 0 rgba(0,0,0,0);
-  }
-  80%, 100% {
-    text-shadow:
-      .25em 0 0 currentColor, /* Or a specific color */
-      .5em 0 0 currentColor; /* Or a specific color */
-  }
+
+    0%,
+    20% {
+        color: rgba(0, 0, 0, 0);
+        text-shadow:
+            .25em 0 0 rgba(0, 0, 0, 0),
+            .5em 0 0 rgba(0, 0, 0, 0);
+    }
+
+    40% {
+        color: currentColor;
+        /* Or a specific color */
+        text-shadow:
+            .25em 0 0 rgba(0, 0, 0, 0),
+            .5em 0 0 rgba(0, 0, 0, 0);
+    }
+
+    60% {
+        text-shadow:
+            .25em 0 0 currentColor,
+            /* Or a specific color */
+            .5em 0 0 rgba(0, 0, 0, 0);
+    }
+
+    80%,
+    100% {
+        text-shadow:
+            .25em 0 0 currentColor,
+            /* Or a specific color */
+            .5em 0 0 currentColor;
+        /* Or a specific color */
+    }
 }
 
 .thinking-indicator-dots {
-  display: inline-block;
-  font-size: 1em; /* Match parent font-size by default */
-  line-height: 1; /* Ensure it doesn't add extra height */
-  vertical-align: baseline; /* Align with the text */
-  animation: vcp-loading-dots 1.4s infinite;
+    display: inline-block;
+    font-size: 1em;
+    /* Match parent font-size by default */
+    line-height: 1;
+    /* Ensure it doesn't add extra height */
+    vertical-align: baseline;
+    /* Align with the text */
+    animation: vcp-loading-dots 1.4s infinite;
 }
 
 /* 主气泡样式 - VCP ToolUse */
@@ -73,7 +128,8 @@
     padding: 8px 15px 8px 35px !important;
     color: #ffffff !important;
     box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
-    margin-top: 5px !important; /* Add space above the tool bubble */
+    margin-top: 5px !important;
+    /* Add space above the tool bubble */
     margin-bottom: 10px !important;
     position: relative;
     overflow: hidden;
@@ -84,20 +140,28 @@
     max-width: 100%;
     font-family: 'Consolas', 'Monaco', 'Courier New', monospace !important;
     font-size: 0.95em !important;
-    white-space: pre-wrap !important; /* Restore: Allow wrapping but preserve whitespace */
-    word-break: break-all !important; /* Restore: Break long strings */
-    transition: all 0.4s ease-in-out; /* Add transition for smooth hover effect */
-    will-change: transform; /* 优化：工具气泡通常包含动画，提升为独立层 */
+    white-space: pre-wrap !important;
+    /* Restore: Allow wrapping but preserve whitespace */
+    word-break: break-all !important;
+    /* Restore: Break long strings */
+    transition: all 0.4s ease-in-out;
+    /* Add transition for smooth hover effect */
+    will-change: transform;
+    /* 优化：工具气泡通常包含动画，提升为独立层 */
 }
 
 /* Animated Border for VCP ToolUse */
 .vcp-tool-use-bubble::after {
     content: "";
     position: absolute;
-    box-sizing: border-box; 
-    top: 0; left: 0; width: 100%; height: 100%;
+    box-sizing: border-box;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
     border-radius: inherit;
-    padding: 2px; /* Border thickness */
+    padding: 2px;
+    /* Border thickness */
     background: linear-gradient(60deg, #76c4f7, #00d2ff, #3a7bd5, #ffffff, #3a7bd5, #00d2ff, #76c4f7);
     background-size: 300% 300%;
     animation: vcp-bubble-border-flow-kf 7s linear infinite;
@@ -105,14 +169,15 @@
     mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
     -webkit-mask-composite: xor;
     mask-composite: exclude;
-    z-index: 0; 
+    z-index: 0;
     pointer-events: none;
 }
 
 /* On hover, we don't need to force a width. `fit-content` will adjust to the new content. */
 /* We can keep a max-width to prevent it from becoming too wide. */
 .vcp-tool-use-bubble:hover {
-    max-width: 90%; /* Just constrain the max width on hover */
+    max-width: 90%;
+    /* Just constrain the max width on hover */
 }
 
 /* New styles for summary and details sections */
@@ -126,7 +191,8 @@
     max-height: 0;
     opacity: 0;
     overflow: hidden;
-    font-size: 0; /* Use font-size to collapse content, preventing width issues */
+    font-size: 0;
+    /* Use font-size to collapse content, preventing width issues */
     transition: max-height 0.5s ease-in-out, opacity 0.5s ease-in-out, margin-top 0.5s ease-in-out;
     background-color: rgba(0, 0, 0, 0.2);
     border-radius: 6px;
@@ -134,10 +200,13 @@
 }
 
 .vcp-tool-use-bubble:hover .vcp-tool-details {
-    max-height: 500px; /* Allow space for content to show */
+    max-height: 500px;
+    /* Allow space for content to show */
     opacity: 1;
-    margin-top: 10px; /* Add space between summary and details */
-    font-size: initial; /* Restore font-size on hover */
+    margin-top: 10px;
+    /* Add space between summary and details */
+    font-size: initial;
+    /* Restore font-size on hover */
 }
 
 .vcp-tool-details pre {
@@ -161,8 +230,10 @@
     box-shadow: none !important;
     color: inherit !important;
     display: inline !important;
-    font-family: inherit !important; /* Inherit from parent bubble */
-    font-size: inherit !important; /* Inherit from parent bubble */
+    font-family: inherit !important;
+    /* Inherit from parent bubble */
+    font-size: inherit !important;
+    /* Inherit from parent bubble */
     vertical-align: baseline;
     position: relative;
     z-index: 1;
@@ -170,23 +241,25 @@
 
 /* "VCP-ToolUse:" 标签 */
 .vcp-tool-use-bubble .vcp-tool-label {
-    font-weight: bold; color: #f1c40f; margin-right: 6px;
+    font-weight: bold;
+    color: #f1c40f;
+    margin-right: 6px;
 }
 
 /* 工具名高亮 - VCP ToolUse */
 .vcp-tool-use-bubble .vcp-tool-name-highlight {
-    background: linear-gradient(90deg, #f1c40f, #ffffff, #00d2ff, #f1c40f) !important; 
-    background-size: 300% 100% !important; 
+    background: linear-gradient(90deg, #f1c40f, #ffffff, #00d2ff, #f1c40f) !important;
+    background-size: 300% 100% !important;
     -webkit-background-clip: text !important;
     background-clip: text !important;
     -webkit-text-fill-color: transparent !important;
     text-fill-color: transparent !important;
     font-style: normal !important;
     font-weight: bold !important;
-    padding: 1px 3px !important; 
+    padding: 1px 3px !important;
     border-radius: 4px !important;
-    animation: vcp-toolname-color-flow-kf 4s linear infinite; 
-    margin-left: 2px; 
+    animation: vcp-toolname-color-flow-kf 4s linear infinite;
+    margin-left: 2px;
 }
 
 /* 左上角齿轮图标 - VCP ToolUse */
@@ -196,50 +269,66 @@
     top: 8px;
     left: 10px;
     font-size: 14px;
-    color: rgba(255, 255, 255, 0.75); 
-    z-index: 2; 
+    color: rgba(255, 255, 255, 0.75);
+    z-index: 2;
     animation: vcp-icon-rotate 4s linear infinite;
-    transform-origin: center center; 
+    transform-origin: center center;
 }
 
 /* 隐藏 VCP 气泡内的复制按钮 */
-.vcp-tool-use-bubble .code-copy { /* This might target <code> inside <pre class="vcp-tool-use-bubble"> */
+.vcp-tool-use-bubble .code-copy {
+    /* This might target <code> inside <pre class="vcp-tool-use-bubble"> */
     display: none !important;
 }
- /* Also hide if copy button is direct child of the bubble (if no inner code element) */
-.vcp-tool-use-bubble > .code-copy {
+
+/* Also hide if copy button is direct child of the bubble (if no inner code element) */
+.vcp-tool-use-bubble>.code-copy {
     display: none !important;
 }
-.vcp-tool-request-bubble > strong { display: none !important; } /* Hide "VCP工具调用:" strong tag if it was ever added */
+
+.vcp-tool-request-bubble>strong {
+    display: none !important;
+}
+
+/* Hide "VCP工具调用:" strong tag if it was ever added */
 
 /* --- Maid Diary Bubble Redesign --- */
 
 /* Main container for the diary entry */
 .maid-diary-bubble {
-    background: #fdfaf6 !important; /* A very light, warm parchment color */
-    border: 1px solid #eaddd0; /* A soft, paper-like border */
+    background: #fdfaf6 !important;
+    /* A very light, warm parchment color */
+    border: 1px solid #eaddd0;
+    /* A soft, paper-like border */
     border-radius: 8px !important;
-    padding: 12px 18px 15px 48px !important; /* Adjusted padding for new icon placement */
-    color: #5d4037 !important; /* A warm, dark brown for text */
+    padding: 12px 18px 15px 48px !important;
+    /* Adjusted padding for new icon placement */
+    color: #5d4037 !important;
+    /* A warm, dark brown for text */
     box-shadow: 0 3px 8px rgba(0, 0, 0, 0.08);
-    margin-top: 10px !important; /* Add space above the diary bubble */
+    margin-top: 10px !important;
+    /* Add space above the diary bubble */
     margin-bottom: 12px !important;
     position: relative;
-    overflow: visible; /* Allow for potential pseudo-elements to peek out */
+    overflow: visible;
+    /* Allow for potential pseudo-elements to peek out */
     line-height: 1.7;
     display: block !important;
     font-family: 'Georgia', 'Times New Roman', serif !important;
     font-size: 1em !important;
-    white-space: normal !important; /* Allow text to wrap naturally */
+    white-space: normal !important;
+    /* Allow text to wrap naturally */
     word-break: break-word !important;
-    will-change: transform; /* 优化：日记气泡提升为独立层 */
+    will-change: transform;
+    /* 优化：日记气泡提升为独立层 */
 }
 
 /* Remove extra spacing in diary content caused by markdown paragraphs */
-.diary-content > p:first-child {
+.diary-content>p:first-child {
     margin-top: 0;
 }
-.diary-content > p:last-child {
+
+.diary-content>p:last-child {
     margin-bottom: 0;
 }
 
@@ -252,8 +341,10 @@
     font-size: 22px;
     opacity: 0.6;
     z-index: 2;
-    transform: rotate(-15deg); /* Tilted for a more dynamic look */
-    animation: none !important; /* Removing previous animation for a more static, elegant feel */
+    transform: rotate(-15deg);
+    /* Tilted for a more dynamic look */
+    animation: none !important;
+    /* Removing previous animation for a more static, elegant feel */
 }
 
 /* Removing the animated border for a cleaner look */
@@ -266,7 +357,8 @@
     display: flex;
     justify-content: space-between;
     align-items: baseline;
-    border-bottom: 1px solid #d7ccc8; /* A subtle separator line */
+    border-bottom: 1px solid #d7ccc8;
+    /* A subtle separator line */
     padding-bottom: 6px;
     margin-bottom: 10px;
 }
@@ -275,14 +367,16 @@
 .diary-title {
     font-weight: bold;
     font-size: 1.1em;
-    color: #6d4c41; /* A rich, brownish color */
+    color: #6d4c41;
+    /* A rich, brownish color */
     font-family: 'Georgia', 'Times New Roman', serif !important;
 }
 
 /* Date on the top right */
 .diary-date {
     font-size: 0.85em;
-    color: #a1887f; /* Lighter brown for secondary info */
+    color: #a1887f;
+    /* Lighter brown for secondary info */
     font-style: italic;
 }
 
@@ -308,20 +402,25 @@
 /* The main content of the diary entry */
 .diary-content {
     font-size: 0.95em;
-    color: #4e342e; /* A dark, rich brown for readability */
-    white-space: normal; /* Changed from pre-wrap to normal to avoid extra line breaks from MD */
+    color: #4e342e;
+    /* A dark, rich brown for readability */
+    white-space: normal;
+    /* Changed from pre-wrap to normal to avoid extra line breaks from MD */
     word-break: break-word;
 }
 
 /* Hide copy button as it's not a code block */
-.maid-diary-bubble > .code-copy {
+.maid-diary-bubble>.code-copy {
     display: none !important;
 }
+
 /* --- Maid Diary Dark Theme Overrides --- */
 body:not(.light-theme) .maid-diary-bubble {
-    background: #2c2a3a !important; /* A deep, slightly magical purple-gray */
+    background: #2c2a3a !important;
+    /* A deep, slightly magical purple-gray */
     border-color: #4a485f;
-    color: #d8d2c9 !important; /* A soft, parchment-like off-white */
+    color: #d8d2c9 !important;
+    /* A soft, parchment-like off-white */
     box-shadow: 0 3px 10px rgba(0, 0, 0, 0.25);
 }
 
@@ -330,11 +429,13 @@ body:not(.light-theme) .diary-header {
 }
 
 body:not(.light-theme) .diary-title {
-    color: #ffb74d; /* A warm, golden-orange for the title */
+    color: #ffb74d;
+    /* A warm, golden-orange for the title */
 }
 
 body:not(.light-theme) .diary-date {
-    color: #a0a0b0; /* A muted gray for secondary info */
+    color: #a0a0b0;
+    /* A muted gray for secondary info */
 }
 
 body:not(.light-theme) .diary-maid-info {
@@ -342,18 +443,22 @@ body:not(.light-theme) .diary-maid-info {
 }
 
 body:not(.light-theme) .diary-maid-name {
-    color: #ffcc80; /* Lighter shade of the title color */
+    color: #ffcc80;
+    /* Lighter shade of the title color */
     background: rgba(255, 183, 77, 0.1);
 }
 
 body:not(.light-theme) .diary-content {
-    color: #c5c8c6; /* A clear, readable light gray for the main content */
+    color: #c5c8c6;
+    /* A clear, readable light gray for the main content */
 }
 
 /* HTML5 音频播放器样式 */
 audio[controls] {
-    background: transparent !important; /* 将背景设置为透明 */
-    border: none !important; /* 移除边框 */
+    background: transparent !important;
+    /* 将背景设置为透明 */
+    border: none !important;
+    /* 移除边框 */
     border-radius: 10px !important;
     padding: 10px 15px !important;
     color: #ffffff !important;
@@ -361,9 +466,12 @@ audio[controls] {
     margin-bottom: 10px !important;
     display: block;
     width: 350px;
-    position: relative; /* Added for pseudo-element positioning */
-    overflow: hidden; /* Added to contain the pseudo-element */
-    z-index: 1; /* Ensure audio player is above the pseudo-element */
+    position: relative;
+    /* Added for pseudo-element positioning */
+    overflow: hidden;
+    /* Added to contain the pseudo-element */
+    z-index: 1;
+    /* Ensure audio player is above the pseudo-element */
 }
 
 /* Animated Border for Audio Player */
@@ -371,17 +479,24 @@ audio[controls]::after {
     content: "";
     position: absolute;
     box-sizing: border-box;
-    top: 0; left: 0; width: 100%; height: 100%;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
     border-radius: inherit;
-    padding: 2px; /* Border thickness */
-    background: linear-gradient(60deg, #76c4f7, #00d2ff, #3a7bd5, #ffffff, #3a7bd5, #00d2ff, #76c4f7); /* Same gradient as VCP ToolUse bubble */
+    padding: 2px;
+    /* Border thickness */
+    background: linear-gradient(60deg, #76c4f7, #00d2ff, #3a7bd5, #ffffff, #3a7bd5, #00d2ff, #76c4f7);
+    /* Same gradient as VCP ToolUse bubble */
     background-size: 300% 300%;
-    animation: vcp-bubble-border-flow-kf 7s linear infinite; /* Same animation as VCP ToolUse bubble */
+    animation: vcp-bubble-border-flow-kf 7s linear infinite;
+    /* Same animation as VCP ToolUse bubble */
     -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
     mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
     -webkit-mask-composite: xor;
     mask-composite: exclude;
-    z-index: 0; /* Place behind the actual audio controls */
+    z-index: 0;
+    /* Place behind the actual audio controls */
     pointer-events: none;
 }
 
@@ -391,8 +506,10 @@ audio[controls]::-webkit-media-controls-panel {
     margin: 5px !important;
     padding: 5px !important;
     box-sizing: border-box !important;
-    position: relative; /* Ensure panel is above the pseudo-element */
-    z-index: 2; /* Increase z-index for the panel to be on top of the pseudo-element */
+    position: relative;
+    /* Ensure panel is above the pseudo-element */
+    z-index: 2;
+    /* Increase z-index for the panel to be on top of the pseudo-element */
 }
 
 audio[controls]::-webkit-media-controls-play-button,
@@ -409,7 +526,7 @@ audio[controls]::-webkit-media-controls-time-remaining-display {
 }
 
 audio[controls]::-webkit-media-controls-timeline {
-    background-color:rgb(255, 255, 255) !important;
+    background-color: rgb(255, 255, 255) !important;
     border-radius: 4px !important;
     height: 6px !important;
     margin: 0 5px !important;
@@ -418,7 +535,7 @@ audio[controls]::-webkit-media-controls-timeline {
 audio[controls]::-webkit-media-controls-timeline::-webkit-slider-thumb {
     background-color: #555555 !important;
     border: 1px solid rgba(0, 0, 0, 0.3) !important;
-    box-shadow: 0 0 2px rgba(0,0,0,0.3) !important;
+    box-shadow: 0 0 2px rgba(0, 0, 0, 0.3) !important;
     height: 12px !important;
     width: 12px !important;
     border-radius: 50% !important;
@@ -433,13 +550,13 @@ audio[controls]::-webkit-media-controls-timeline::-moz-range-thumb {
 }
 
 audio[controls]::-webkit-media-controls-timeline::-moz-range-track {
-    background-color:rgb(255, 255, 255) !important;
+    background-color: rgb(255, 255, 255) !important;
     border-radius: 4px !important;
     height: 6px !important;
 }
 
 audio[controls]::-webkit-media-controls-volume-slider {
-    background-color:rgb(255, 255, 255) !important;
+    background-color: rgb(255, 255, 255) !important;
     border-radius: 3px !important;
     height: 4px !important;
     margin: 0 5px !important;
@@ -447,7 +564,7 @@ audio[controls]::-webkit-media-controls-volume-slider {
 
 audio[controls]::-webkit-media-controls-volume-slider::-webkit-slider-thumb {
     background-color: #555555 !important;
-    border: 1px solid rgba(0,0,0,0.3) !important;
+    border: 1px solid rgba(0, 0, 0, 0.3) !important;
     height: 10px !important;
     width: 10px !important;
     border-radius: 50% !important;
@@ -455,57 +572,66 @@ audio[controls]::-webkit-media-controls-volume-slider::-webkit-slider-thumb {
 
 /* Context Menu Item Colors */
 #chatContextMenu .context-menu-item:not(.danger-item):not(.info-item):not(.regenerate-text):not(.context-menu-item-speak) {
-   color: #f3f6fb !important;
-   border-left: 2px solid transparent;
+    color: #f3f6fb !important;
+    border-left: 2px solid transparent;
 }
 
 #chatContextMenu .context-menu-item:not(.danger-item):not(.info-item):not(.regenerate-text):not(.context-menu-item-speak):hover {
-   color: #ffffff !important;
-   background-color: rgba(255, 255, 255, 0.12) !important;
-   border-left-color: rgba(255, 255, 255, 0.38);
+    color: #ffffff !important;
+    background-color: rgba(255, 255, 255, 0.12) !important;
+    border-left-color: rgba(255, 255, 255, 0.38);
 }
 
 #chatContextMenu .context-menu-item:not(.danger-item):not(.info-item):not(.regenerate-text):not(.context-menu-item-speak):focus-visible {
-   outline: 2px solid rgba(255, 255, 255, 0.58);
-   outline-offset: -2px;
+    outline: 2px solid rgba(255, 255, 255, 0.58);
+    outline-offset: -2px;
 }
 
 body.light-theme #chatContextMenu .context-menu-item:not(.danger-item):not(.info-item):not(.regenerate-text):not(.context-menu-item-speak) {
-   color: #1f2a37 !important;
+    color: #1f2a37 !important;
 }
 
 body.light-theme #chatContextMenu .context-menu-item:not(.danger-item):not(.info-item):not(.regenerate-text):not(.context-menu-item-speak):hover {
-   color: #111827 !important;
-   background-color: rgba(17, 24, 39, 0.08) !important;
-   border-left-color: rgba(17, 24, 39, 0.26);
+    color: #111827 !important;
+    background-color: rgba(17, 24, 39, 0.08) !important;
+    border-left-color: rgba(17, 24, 39, 0.26);
 }
 
 body.light-theme #chatContextMenu .context-menu-item:not(.danger-item):not(.info-item):not(.regenerate-text):not(.context-menu-item-speak):focus-visible {
-   outline: 2px solid rgba(17, 24, 39, 0.38);
+    outline: 2px solid rgba(17, 24, 39, 0.38);
 }
 
 .context-menu-item.danger-item {
-   color:hsl(1, 83.80%, 61.20%) !important; /* Red */
+    color: hsl(1, 83.80%, 61.20%) !important;
+    /* Red */
 }
+
 .context-menu-item.danger-item:hover {
-   background-color: rgba(229, 57, 53, 0.1) !important;
+    background-color: rgba(229, 57, 53, 0.1) !important;
 }
+
 .context-menu-item.info-item {
-   color:rgb(90, 171, 238) !important; /* Lighter Blue */
+    color: rgb(90, 171, 238) !important;
+    /* Lighter Blue */
 }
+
 .context-menu-item.info-item:hover {
-   background-color: rgba(30, 136, 229, 0.1) !important;
+    background-color: rgba(30, 136, 229, 0.1) !important;
 }
+
 .context-menu-item.regenerate-text {
-   color: #43A047 !important; /* Green for regenerate */
+    color: #43A047 !important;
+    /* Green for regenerate */
 }
+
 .context-menu-item.regenerate-text:hover {
-   background-color: rgba(67, 160, 71, 0.1) !important;
+    background-color: rgba(67, 160, 71, 0.1) !important;
 }
 
 /* Highlight for @tags */
 .md-content .highlighted-tag {
-    color: #00a99d; /* A distinct teal color */
+    color: #00a99d;
+    /* A distinct teal color */
     font-weight: 500;
     background-color: rgba(0, 169, 157, 0.1);
     padding: 1px 4px;
@@ -521,16 +647,22 @@ body.light-theme .md-content .highlighted-tag {
 
 
 /* Highlight for quoted text */
-.md-content .highlighted-quote { /* Increased specificity */
-   color: var(--quoted-text, #ff7f50) !important; /* Use CSS variable with a Coral fallback color */
-   display: inline !important; /* Ensure it behaves as an inline element and does not break the line */
-   vertical-align: baseline; /* Align properly with the surrounding text */
-   word-break: break-all; /* Allow breaking within the quote to prevent overflow and layout issues */
+.md-content .highlighted-quote {
+    /* Increased specificity */
+    color: var(--quoted-text, #ff7f50) !important;
+    /* Use CSS variable with a Coral fallback color */
+    display: inline !important;
+    /* Ensure it behaves as an inline element and does not break the line */
+    vertical-align: baseline;
+    /* Align properly with the surrounding text */
+    word-break: break-all;
+    /* Allow breaking within the quote to prevent overflow and layout issues */
 }
 
 /* AI 发送的链接样式 */
 .md-content a {
-   color: #87CEEB !important; /* 柔和的天蓝色 */
+    color: #87CEEB !important;
+    /* 柔和的天蓝色 */
 }
 
 /* Markdown Table Styles (Theme Aware) */
@@ -546,7 +678,8 @@ body.light-theme .md-content .highlighted-tag {
 }
 
 /* Define dark theme variables when .dark-theme (or lack of .light-theme) is active */
-body:not(.light-theme) { /* Or just .dark-theme if that's how your theme switching works */
+body:not(.light-theme) {
+    /* Or just .dark-theme if that's how your theme switching works */
     --table-border-color: var(--border-color);
     --table-text-color: var(--primary-text);
     --table-bg-color: rgba(var(--rgb-secondary-bg-dark, 40, 40, 44), 0.2);
@@ -594,7 +727,8 @@ body.light-theme {
     --tool-result-item-key-color: #546e7a;
     --tool-result-item-value-color: #263238;
     --tool-result-item-link-color: #1976d2;
-    --tool-result-item-strong-color: #b8860b; /* DarkGoldenRod */
+    --tool-result-item-strong-color: #b8860b;
+    /* DarkGoldenRod */
     --tool-result-footer-color: #78909c;
     --vcp-canvas-bg: #f7fafc;
     --vcp-canvas-text-color: #2d3748;
@@ -611,7 +745,8 @@ body.light-theme {
     background-color: var(--table-bg-color);
 }
 
-.md-content th, .md-content td {
+.md-content th,
+.md-content td {
     border: 1px solid var(--table-border-color);
     padding: 10px 15px;
     text-align: left;
@@ -625,37 +760,38 @@ body.light-theme {
 
 /* Optional: Re-enable for alternating rows if desired for both themes */
 .md-content tr:nth-child(even) td {
-   /* background-color: var(--table-row-even-bg-color); */ /* Commented out for now, can be enabled */
+    /* background-color: var(--table-row-even-bg-color); */
+    /* Commented out for now, can be enabled */
 }
 
 .md-content tr:hover td {
-     background-color: var(--table-row-hover-bg-color);
+    background-color: var(--table-row-hover-bg-color);
 }
 
 /* NEW STYLES FOR IMAGE PLACEHOLDERS */
 .image-placeholder {
-     background-color: rgba(128, 128, 128, 0.1);
-     border: 1px dashed rgba(128, 128, 128, 0.3);
-     border-radius: 8px;
-     display: flex;
-     align-items: center;
-     justify-content: center;
-     font-size: 13px;
-     color: #888;
-     /* 过渡效果，让替换更平滑 */
-     transition: all 0.3s ease;
+    background-color: rgba(128, 128, 128, 0.1);
+    border: 1px dashed rgba(128, 128, 128, 0.3);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    color: #888;
+    /* 过渡效果，让替换更平滑 */
+    transition: all 0.3s ease;
 }
 
 .image-placeholder::before {
-     /* content: "正在加载图片..."; */
-     content: '';
-     display: block;
-     width: 24px;
-     height: 24px;
-     border: 3px solid rgba(128, 128, 128, 0.3);
-     border-top-color: #888;
-     border-radius: 50%;
-     animation: vcp-icon-rotate 1s linear infinite;
+    /* content: "正在加载图片..."; */
+    content: '';
+    display: block;
+    width: 24px;
+    height: 24px;
+    border: 3px solid rgba(128, 128, 128, 0.3);
+    border-top-color: #888;
+    border-radius: 50%;
+    animation: vcp-icon-rotate 1s linear infinite;
 }
 
 /* --- VCP Tool Result Bubble --- */
@@ -676,8 +812,10 @@ body.light-theme {
     width: -moz-fit-content;
     width: fit-content;
     max-width: 95%;
-    transition: background 0.3s, color 0.3s, border-color 0.3s, box-shadow 0.3s; /* Add transition for smooth theme change */
-    will-change: transform; /* 优化：结果气泡提升为独立层 */
+    transition: background 0.3s, color 0.3s, border-color 0.3s, box-shadow 0.3s;
+    /* Add transition for smooth theme change */
+    will-change: transform;
+    /* 优化：结果气泡提升为独立层 */
 }
 
 .vcp-tool-result-bubble::before {
@@ -694,7 +832,8 @@ body.light-theme {
     align-items: center;
     flex-wrap: wrap;
     gap: 8px;
-    padding-left: 28px; /* Space for the icon */
+    padding-left: 28px;
+    /* Space for the icon */
     border-bottom: 1px solid var(--tool-result-header-border-color);
     padding-bottom: 8px;
     margin-bottom: 10px;
@@ -702,7 +841,8 @@ body.light-theme {
 
 .vcp-tool-result-label {
     font-weight: bold;
-    color: #4caf50; /* Green for success */
+    color: #4caf50;
+    /* Green for success */
     font-size: 1.05em;
 }
 
@@ -723,7 +863,8 @@ body.light-theme {
 
 /* NEW: Toggle Icon for Collapsible Result Bubble */
 .vcp-result-toggle-icon {
-    margin-left: auto; /* Pushes the icon to the far right */
+    margin-left: auto;
+    /* Pushes the icon to the far right */
     width: 16px;
     height: 16px;
     cursor: pointer;
@@ -765,19 +906,22 @@ body.light-theme {
     transform: translate(-50%, -50%) rotateZ(90deg);
 }
 
-.vcp-tool-result-status:containing("SUCCESS") { /* This is a pseudo-selector, might not work directly in CSS */
+.vcp-tool-result-status:containing("SUCCESS") {
+    /* This is a pseudo-selector, might not work directly in CSS */
     color: #c8e6c9;
     background-color: rgba(76, 175, 80, 0.2);
 }
 
 /* Specific style for SUCCESS status in light theme */
 body.light-theme .vcp-tool-result-status:containing("SUCCESS") {
-    color: #1b5e20; /* Dark green text */
+    color: #1b5e20;
+    /* Dark green text */
     background-color: rgba(76, 175, 80, 0.15);
 }
 
 .vcp-tool-result-details {
-    padding-left: 28px; /* Align with header content */
+    padding-left: 28px;
+    /* Align with header content */
     display: flex;
     flex-direction: column;
     gap: 6px;
@@ -802,12 +946,13 @@ body.light-theme .vcp-tool-result-status:containing("SUCCESS") {
 }
 
 /* Markdown support inside tool result bubble */
-.vcp-tool-result-item-value > p:first-child,
-.vcp-tool-result-footer > p:first-child {
+.vcp-tool-result-item-value>p:first-child,
+.vcp-tool-result-footer>p:first-child {
     margin-top: 0;
 }
-.vcp-tool-result-item-value > p:last-child,
-.vcp-tool-result-footer > p:last-child {
+
+.vcp-tool-result-item-value>p:last-child,
+.vcp-tool-result-footer>p:last-child {
     margin-bottom: 0;
 }
 
@@ -882,10 +1027,12 @@ body:not(.light-theme) .vcp-tool-result-bubble th {
     max-height: 0;
     opacity: 0;
     overflow-x: hidden;
-    overflow-y: auto; /* Enable vertical scrolling */
+    overflow-y: auto;
+    /* Enable vertical scrolling */
     transition: max-height 0.5s ease-in-out, opacity 0.4s ease-in-out, margin-top 0.5s ease-in-out;
     margin-top: 0;
-    scrollbar-width: thin; /* Firefox */
+    scrollbar-width: thin;
+    /* Firefox */
     scrollbar-color: var(--tool-result-item-key-color) transparent;
 }
 
@@ -893,9 +1040,11 @@ body:not(.light-theme) .vcp-tool-result-bubble th {
 .vcp-tool-result-collapsible-content::-webkit-scrollbar {
     width: 4px;
 }
+
 .vcp-tool-result-collapsible-content::-webkit-scrollbar-track {
     background: transparent;
 }
+
 .vcp-tool-result-collapsible-content::-webkit-scrollbar-thumb {
     background-color: var(--tool-result-item-key-color);
     border-radius: 10px;
@@ -903,9 +1052,11 @@ body:not(.light-theme) .vcp-tool-result-bubble th {
 }
 
 .vcp-tool-result-bubble.expanded .vcp-tool-result-collapsible-content {
-    max-height: 500px; /* Set a reasonable max height for scrolling */
+    max-height: 500px;
+    /* Set a reasonable max height for scrolling */
     opacity: 1;
-    margin-top: 10px; /* Add space when expanded */
+    margin-top: 10px;
+    /* Add space when expanded */
 }
 
 /* --- User Clicked Button Bubble --- */
@@ -941,9 +1092,17 @@ body:not(.light-theme) .vcp-tool-result-bubble th {
 
 /* --- VCPChatCanvas Placeholder (Mini IDE Style) --- */
 @keyframes vcp-canvas-border-pulse {
-    0% { border-color: var(--vcp-canvas-border-color); }
-    50% { border-color: var(--vcp-canvas-dots-color); }
-    100% { border-color: var(--vcp-canvas-border-color); }
+    0% {
+        border-color: var(--vcp-canvas-border-color);
+    }
+
+    50% {
+        border-color: var(--vcp-canvas-dots-color);
+    }
+
+    100% {
+        border-color: var(--vcp-canvas-border-color);
+    }
 }
 
 .vcp-chat-canvas-placeholder {
@@ -954,8 +1113,10 @@ body:not(.light-theme) .vcp-tool-result-bubble th {
     color: var(--vcp-canvas-text-color);
     border: 1px solid var(--vcp-canvas-border-color);
     padding: 8px 15px;
-    border-radius: 6px; /* More rectangular */
-    font-family: 'Consolas', 'Monaco', 'Courier New', monospace; /* IDE font */
+    border-radius: 6px;
+    /* More rectangular */
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    /* IDE font */
     font-size: 0.9em;
     box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
     position: relative;
@@ -998,11 +1159,13 @@ body:not(.light-theme) .vcp-tool-result-bubble th {
     padding: 10px;
     background-color: var(--bg-color);
     border-radius: 8px;
-    text-align: center; /* Center the diagram */
+    text-align: center;
+    /* Center the diagram */
 }
 
 .mermaid svg {
-    max-width: 100%; /* Ensure SVG is responsive */
+    max-width: 100%;
+    /* Ensure SVG is responsive */
     height: auto;
 }
 
@@ -1027,7 +1190,7 @@ body:not(.light-theme) .mermaid-error {
     word-break: break-all;
     margin-top: 10px;
     padding: 8px;
-    background-color: rgba(0,0,0,0.1);
+    background-color: rgba(0, 0, 0, 0.1);
     border-radius: 4px;
 }
 
@@ -1042,6 +1205,7 @@ body:not(.light-theme) .mermaid-error {
         opacity: 0;
         transform: translateX(20px);
     }
+
     to {
         opacity: 1;
         transform: translateX(0);
@@ -1052,9 +1216,11 @@ body:not(.light-theme) .mermaid-error {
     0% {
         background-color: transparent;
     }
+
     50% {
         background-color: rgba(59, 130, 246, 0.08);
     }
+
     100% {
         background-color: transparent;
     }
@@ -1073,11 +1239,15 @@ body:not(.light-theme) .mermaid-error {
 /* --- Fix for streaming EMOTICON size flickering --- */
 /* Specifically constrain emoticons in a streaming message to prevent flashing */
 .message-item.streaming .md-content img[src*="表情包"] {
-    max-width: 150px;  /* A sensible max size for emoticons */
+    max-width: 150px;
+    /* A sensible max size for emoticons */
     max-height: 150px;
-    height: auto;     /* Maintain aspect ratio */
-    display: inline-block; /* Emoticons are usually inline */
-    vertical-align: middle; /* Align nicely with text */
+    height: auto;
+    /* Maintain aspect ratio */
+    display: inline-block;
+    /* Emoticons are usually inline */
+    vertical-align: middle;
+    /* Align nicely with text */
 }
 
 /* --- HTML Preview Container & Toggle --- */
@@ -1124,7 +1294,8 @@ body:not(.light-theme) .mermaid-error {
 .vcp-html-preview-frame {
     width: 100%;
     min-height: 100px;
-    max-height: 100vh; /* 稍微增加最大高度 */
+    max-height: 100vh;
+    /* 稍微增加最大高度 */
     border: none;
     background: white;
     display: block;
@@ -1238,4 +1409,41 @@ body.light-theme .vcp-thought-chain-bubble {
 /* Reuse the toggle icon from tool results */
 .vcp-thought-chain-bubble .vcp-result-toggle-icon {
     margin-left: 10px;
+}
+
+/* --- Role Divider --- */
+.vcp-role-divider {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 15px 0;
+    font-size: 0.85em;
+    color: var(--primary-text);
+    opacity: 0.7;
+    user-select: none;
+    clear: both;
+}
+
+.vcp-role-divider::before,
+.vcp-role-divider::after {
+    content: "";
+    flex: 1;
+    border-bottom: 1px dashed var(--border-color, #ccc);
+    margin: 0 15px;
+}
+
+.vcp-role-divider.role-system {
+    color: #e67e22;
+}
+
+.vcp-role-divider.role-assistant {
+    color: #3498db;
+}
+
+.vcp-role-divider.role-user {
+    color: #2ecc71;
+}
+
+.vcp-role-divider.type-end {
+    opacity: 0.5;
 }

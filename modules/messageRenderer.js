@@ -42,6 +42,7 @@ const MERMAID_FENCE_REGEX = /```(mermaid|flowchart|graph)\n([\s\S]*?)```/g;
 const CODE_FENCE_REGEX = /```\w*([\s\S]*?)```/g;
 const THOUGHT_CHAIN_REGEX = /\[--- VCP元思考链(?::\s*"([^"]*)")?\s*---\]([\s\S]*?)\[--- 元思考链结束 ---\]/gs;
 const CONVENTIONAL_THOUGHT_REGEX = /<think(?:ing)?>([\s\S]*?)<\/think(?:ing)?>/gi;
+const ROLE_DIVIDER_REGEX = /<<<\[(END_)?ROLE_DIVIDE_(SYSTEM|ASSISTANT|USER)\]>>>/g;
 
 
 // --- Enhanced Rendering Styles (from UserScript) ---
@@ -517,6 +518,21 @@ function transformSpecialBlocks(text, codeBlockMap) {
     // Process Conventional Thought Chains (<think>...</think>)
     processed = processed.replace(CONVENTIONAL_THOUGHT_REGEX, (match, rawContent) => {
         return renderThoughtChain("思维链", rawContent);
+    });
+
+    // Process Role Dividers
+    processed = processed.replace(ROLE_DIVIDER_REGEX, (match, isEnd, role) => {
+        const isEndMarker = !!isEnd;
+        const roleLower = role.toLowerCase();
+
+        let label = '';
+        if (roleLower === 'system') label = 'System';
+        else if (roleLower === 'assistant') label = 'Assistant';
+        else if (roleLower === 'user') label = 'User';
+
+        const actionText = isEndMarker ? '结束' : '起始';
+
+        return `<div class="vcp-role-divider role-${roleLower} type-${isEndMarker ? 'end' : 'start'}"><span class="divider-text">角色分界: ${label} [${actionText}]</span></div>`;
     });
 
     return processed;
