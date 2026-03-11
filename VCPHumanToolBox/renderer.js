@@ -314,6 +314,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             } else {
                 input = document.createElement('input');
                 input.type = param.type || 'text';
+                
+                // 为数字类型添加属性支持
+                if (input.type === 'number') {
+                    if (param.min !== undefined) input.min = param.min;
+                    if (param.max !== undefined) input.max = param.max;
+                    // 默认步长为 any，允许输入小数，除非另有指定
+                    input.step = param.step || 'any';
+                }
             }
             
             if (input.tagName !== 'DIV' || param.type === 'dragdrop_image') {
