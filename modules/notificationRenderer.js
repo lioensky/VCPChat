@@ -62,6 +62,24 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
                 let rawContentString = String(vcpData.content);
                 mainContent = rawContentString;
                 contentIsPreformatted = true;
+
+                // Handle common error pattern: "执行错误: {"plugin_error": "..."}"
+                if (vcpData.status === 'error' && rawContentString.includes('{')) {
+                    const jsonStart = rawContentString.indexOf('{');
+                    const prefix = rawContentString.substring(0, jsonStart);
+                    const jsonPart = rawContentString.substring(jsonStart);
+                    try {
+                        const parsed = JSON.parse(jsonPart);
+                        const displayError = parsed.plugin_error || parsed.error || parsed.message;
+                        if (displayError) {
+                            mainContent = prefix.trim() + (prefix.trim().endsWith(':') ? ' ' : ': ') + displayError;
+                            contentIsPreformatted = false;
+                        }
+                    } catch (e) {
+                        // Not valid JSON or parsing failed, keep raw content
+                    }
+                }
+
                 try {
                     const parsedInnerContent = JSON.parse(rawContentString);
                     let titleSuffix = '';
@@ -83,6 +101,10 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
                             mainContent = String(parsedInnerContent.original_plugin_output);
                             contentIsPreformatted = false; // If it's not an object, treat as plain text
                         }
+                    } else if (vcpData.tool_name === 'DailyNote' && vcpData.status === 'success') {
+                        // For DailyNote, if there's no original_plugin_output but we parsed the metadata, show a friendly message
+                        mainContent = '✅ 日记内容已成功记录到本地知识库。';
+                        contentIsPreformatted = false;
                     }
                 } catch (e) {
                     // console.warn('VCP Notifier: Could not parse vcpData.content as JSON:', e, rawContentString);
@@ -134,6 +156,11 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
             mainContent += `\n数据: ${JSON.stringify(logData.data, null, 2)}`;
             contentIsPreformatted = true;
         }
+    } else if (logData && typeof logData === 'object' && logData.type === 'tool_approval_request' && logData.data && typeof logData.data === 'object') {
+        const approvalData = logData.data;
+        titleText = `🛠️ 审核请求: ${approvalData.toolName}`;
+        mainContent = `助手: ${approvalData.maid}\n命令: ${approvalData.args?.command || JSON.stringify(approvalData.args)}\n时间: ${approvalData.timestamp}`;
+        contentIsPreformatted = true;
     } else { // Fallback for other structures or plain string
         titleText = 'VCP 消息:';
         mainContent = typeof logData === 'object' && logData !== null ? JSON.stringify(logData, null, 2) : String(logData);
@@ -164,6 +191,54 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
             }
         }
         element.appendChild(contentDiv);
+
+        // Special handling for approval requests - Moved here to be before timestamp
+        if (logData && logData.type === 'tool_approval_request') {
+            const approvalActions = document.createElement('div');
+            approvalActions.classList.add('notification-actions');
+
+            const allowBtn = document.createElement('button');
+            allowBtn.textContent = '允许';
+            allowBtn.classList.add('vcp-btn', 'vcp-btn-success');
+            allowBtn.onclick = (e) => {
+                e.stopPropagation();
+                window.electronAPI.sendVCPLogMessage({
+                    type: 'tool_approval_response',
+                    data: {
+                        requestId: logData.data.requestId,
+                        approved: true
+                    }
+                });
+                if (isToast) closeToastNotification(element);
+                else {
+                    element.style.opacity = '0';
+                    setTimeout(() => element.remove(), 500);
+                }
+            };
+
+            const rejectBtn = document.createElement('button');
+            rejectBtn.textContent = '拒绝';
+            rejectBtn.classList.add('vcp-btn', 'vcp-btn-danger');
+            rejectBtn.onclick = (e) => {
+                e.stopPropagation();
+                window.electronAPI.sendVCPLogMessage({
+                    type: 'tool_approval_response',
+                    data: {
+                        requestId: logData.data.requestId,
+                        approved: false
+                    }
+                });
+                if (isToast) closeToastNotification(element);
+                else {
+                    element.style.opacity = '0';
+                    setTimeout(() => element.remove(), 500);
+                }
+            };
+
+            approvalActions.appendChild(allowBtn);
+            approvalActions.appendChild(rejectBtn);
+            element.appendChild(approvalActions);
+        }
 
         const timestampSpan = document.createElement('span');
         timestampSpan.classList.add('notification-timestamp');
@@ -212,8 +287,12 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
                 });
             };
             element.appendChild(copyButton);
+
             // Click to dismiss for list items
             element.onclick = () => {
+                // If it's an approval request, don't dismiss on body click to avoid misoperation
+                if (logData && logData.type === 'tool_approval_request') return;
+
                 element.style.opacity = '0';
                 element.style.transform = 'translateX(100%)'; // Assuming this is the desired animation for list items
                 setTimeout(() => {
@@ -261,14 +340,39 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
         // 添加创建时间戳
         toastBubble.dataset.createdAt = Date.now().toString();
         populateNotificationElement(toastBubble, true);
+
+        // For approval requests, add a manual close button and disable auto-dismiss/click-to-close
+        if (logData && logData.type === 'tool_approval_request') {
+            const closeBtn = document.createElement('button');
+            closeBtn.innerHTML = '&times;';
+            closeBtn.classList.add('toast-manual-close');
+            closeBtn.style.position = 'absolute';
+            closeBtn.style.right = '5px';
+            closeBtn.style.top = '2px';
+            closeBtn.style.background = 'none';
+            closeBtn.style.border = 'none';
+            closeBtn.style.cursor = 'pointer';
+            closeBtn.style.fontSize = '16px';
+            closeBtn.onclick = (e) => {
+                e.stopPropagation();
+                closeToastNotification(toastBubble);
+            };
+            toastBubble.appendChild(closeBtn);
+            
+            // Override the default onclick provided by populateNotificationElement (which is applied when isToast=true)
+            toastBubble.onclick = null; 
+        }
+
         toastContainer.prepend(toastBubble);
         setTimeout(() => toastBubble.classList.add('visible'), 50);
         
         // 增强自动消失逻辑，支持自定义停留时间
         let autoDismissDelay = 7000; // 默认7秒
 
-        // 检查是否有过滤规则指定了停留时间
-        if (typeof window.checkMessageFilter === 'function') {
+        // 审核类通知永不自动消失
+        if (logData && logData.type === 'tool_approval_request') {
+            autoDismissDelay = Infinity;
+        } else if (typeof window.checkMessageFilter === 'function') {
             const filterResult = window.checkMessageFilter(titleText);
             if (filterResult && filterResult.duration !== undefined) {
                 autoDismissDelay = filterResult.duration === 0 ? Infinity : filterResult.duration * 1000;

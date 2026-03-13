@@ -1186,6 +1186,15 @@ if (!gotTheLock) {
         if (mainWindow) mainWindow.webContents.send('vcp-log-status', { source: 'VCPLog', status: 'closed', message: '已手动断开' });
         console.log('VCPLog 已手动断开');
     });
+
+    ipcMain.on('send-vcplog-message', (event, data) => {
+        if (vcpLogWebSocket && vcpLogWebSocket.readyState === 1) { // 1 is WebSocket.OPEN
+            console.log('VCPLog 发送消息:', data);
+            vcpLogWebSocket.send(JSON.stringify(data));
+        } else {
+            console.warn('VCPLog WebSocket 未连接或未就绪，无法发送消息:', data);
+        }
+    });
 }
 // --- Voice Chat IPC Handler ---
 ipcMain.on('open-voice-chat-window', (event, { agentId }) => {
