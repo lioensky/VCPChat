@@ -14,15 +14,21 @@ class AgentConfigManager extends EventEmitter {
         this.cacheTimestamps = new Map(); // 每个agent的缓存时间戳
     }
 
+    normalizeId(agentId) {
+        return agentId ? agentId.toLowerCase() : agentId;
+    }
+
     getAgentPaths(agentId) {
-        const agentPath = path.join(this.agentDir, agentId);
+        const id = this.normalizeId(agentId);
+        const agentPath = path.join(this.agentDir, id);
         const configPath = path.join(agentPath, 'config.json');
         const lockFile = configPath + '.lock';
         return { agentPath, configPath, lockFile };
     }
 
     async acquireLock(agentId, timeout = 5000) {
-        const { lockFile } = this.getAgentPaths(agentId);
+        const id = this.normalizeId(agentId);
+        const { lockFile } = this.getAgentPaths(id);
         const startTime = Date.now();
 
         while (true) {
@@ -34,7 +40,7 @@ class AgentConfigManager extends EventEmitter {
                 if (error.code === 'EEXIST') {
                     // 锁文件已存在，检查是否超时
                     if (Date.now() - startTime > timeout) {
-                        console.warn(`Agent ${agentId} lock acquisition timeout, removing stale lock`);
+                        console.warn(`Agent ${id} lock acquisition timeout, removing stale lock`);
                         await fs.remove(lockFile).catch(() => { });
                         // 继续循环尝试重新创建
                     } else {
@@ -50,17 +56,19 @@ class AgentConfigManager extends EventEmitter {
     }
 
     async releaseLock(agentId) {
-        const { lockFile } = this.getAgentPaths(agentId);
+        const id = this.normalizeId(agentId);
+        const { lockFile } = this.getAgentPaths(id);
         await fs.remove(lockFile).catch(() => { });
     }
 
-    async readAgentConfig(agentId, { allowDefault = false } = {}) {
-        const { configPath } = this.getAgentPaths(agentId);
+    async readAgentConfig(agentId, { allowDefault = false, retryCount = 0 } = {}) {
+        const id = this.normalizeId(agentId);
+        const { configPath } = this.getAgentPaths(id);
 
         try {
             // 使用缓存机制减少文件读取
             const stats = await fs.stat(configPath).catch(() => null);
-            const cacheKey = agentId;
+            const cacheKey = id;
             const cachedConfig = this.caches.get(cacheKey);
             const cacheTimestamp = this.cacheTimestamps.get(cacheKey) || 0;
 
@@ -69,6 +77,9 @@ class AgentConfigManager extends EventEmitter {
             }
 
             const content = await fs.readFile(configPath, 'utf8');
+            if (!content.trim()) {
+                throw new Error('CONFIG_EMPTY');
+            }
             const config = JSON.parse(content);
 
             // 更新缓存
@@ -77,34 +88,31 @@ class AgentConfigManager extends EventEmitter {
 
             return { ...config };
         } catch (error) {
-            if (error.code === 'ENOENT') {
-                // 文件可能正处于原子性替换（fs.move）的瞬间，使用指数退避重试
-                const retryDelays = [50, 100, 200];
-                for (const delay of retryDelays) {
-                    await new Promise(resolve => setTimeout(resolve, delay));
-                    if (await fs.pathExists(configPath)) {
-                        try {
-                            return await this.readAgentConfig(agentId, { allowDefault });
-                        } catch (retryError) {
-                            // 重试也失败，继续下一次尝试
-                            console.warn(`Agent ${agentId} config retry failed (delay=${delay}ms):`, retryError.message);
-                        }
-                    }
-                }
+            const isTransient = error.code === 'ENOENT' || error instanceof SyntaxError || error.message === 'CONFIG_EMPTY';
+            if (isTransient && retryCount < 3) {
+                // 文件可能正处于原子性替换（fs.move）或 非原子写入（fs.writeFile）过程中的瞬间
+                const retryDelays = [100, 200, 500];
+                const delay = retryDelays[retryCount];
+                
+                await new Promise(resolve => setTimeout(resolve, delay));
+                console.warn(`Agent ${id} config read failed (${error.message || error.code}), retrying (${retryCount + 1}/3)...`);
+                return await this.readAgentConfig(id, { allowDefault, retryCount: retryCount + 1 });
+            }
 
+            if (error.code === 'ENOENT') {
                 // 所有重试都失败后，优先返回缓存数据
-                const cachedConfig = this.caches.get(agentId);
+                const cachedConfig = this.caches.get(id);
                 if (cachedConfig) {
-                    console.warn(`Agent ${agentId} config file not found after retries, using cached data`);
+                    console.warn(`Agent ${id} config file not found after retries, using cached data`);
                     return { ...cachedConfig };
                 }
 
                 // 仅在明确允许的场景（如新建Agent）才返回默认配置
                 if (allowDefault) {
                     const defaultConfig = {
-                        name: agentId,
-                        systemPrompt: `你是 ${agentId}。`,
-                        model: 'gemini-2.5-flash-preview-05-20',
+                        name: id,
+                        systemPrompt: `你是 ${id}。`,
+                        model: 'gemini-2.0-flash-exp',
                         temperature: 0.7,
                         contextTokenLimit: 1000000,
                         maxOutputTokens: 60000,
@@ -114,7 +122,7 @@ class AgentConfigManager extends EventEmitter {
                 }
 
                 // 严禁悄悄返回默认配置，抛出错误以防止覆盖用户数据
-                throw new Error(`Agent config for ${agentId} not found after retries and no cache available`);
+                throw new Error(`Agent config for ${id} not found after retries and no cache available`);
             }
 
             console.error(`Error reading agent ${agentId} config, attempting recovery:`, error);
@@ -157,7 +165,8 @@ class AgentConfigManager extends EventEmitter {
     }
 
     async writeAgentConfig(agentId, config) {
-        const { agentPath, configPath } = this.getAgentPaths(agentId);
+        const id = this.normalizeId(agentId);
+        const { agentPath, configPath } = this.getAgentPaths(id);
         const tempFile = configPath + '.tmp';
         const backupFile = configPath + '.backup';
 
@@ -182,15 +191,15 @@ class AgentConfigManager extends EventEmitter {
 
             // 更新缓存（使用实际文件的修改时间，而非 Date.now()，确保与 readAgentConfig 的 stat 比较一致）
             const newStats = await fs.stat(configPath).catch(() => null);
-            this.caches.set(agentId, { ...config });
-            this.cacheTimestamps.set(agentId, newStats ? newStats.mtimeMs : Date.now());
+            this.caches.set(id, { ...config });
+            this.cacheTimestamps.set(id, newStats ? newStats.mtimeMs : Date.now());
 
             // 触发更新事件
-            this.emit('agent-config-updated', agentId, config);
+            this.emit('agent-config-updated', id, config);
 
             return true;
         } catch (error) {
-            console.error(`Error writing agent ${agentId} config:`, error);
+            console.error(`Error writing agent ${id} config:`, error);
 
             // 清理临时文件
             await fs.remove(tempFile).catch(() => { });
@@ -200,14 +209,15 @@ class AgentConfigManager extends EventEmitter {
     }
 
     async updateAgentConfig(agentId, updater) {
+        const id = this.normalizeId(agentId);
         return new Promise((resolve, reject) => {
             // 为每个agent维护独立的队列
-            if (!this.queues.has(agentId)) {
-                this.queues.set(agentId, []);
+            if (!this.queues.has(id)) {
+                this.queues.set(id, []);
             }
 
-            this.queues.get(agentId).push({ updater, resolve, reject });
-            this.processQueue(agentId);
+            this.queues.get(id).push({ updater, resolve, reject });
+            this.processQueue(id);
         });
     }
 
@@ -269,8 +279,9 @@ class AgentConfigManager extends EventEmitter {
 
     // 清理指定agent的缓存
     clearCache(agentId) {
-        this.caches.delete(agentId);
-        this.cacheTimestamps.delete(agentId);
+        const id = this.normalizeId(agentId);
+        this.caches.delete(id);
+        this.cacheTimestamps.delete(id);
     }
 
     // 清理所有缓存

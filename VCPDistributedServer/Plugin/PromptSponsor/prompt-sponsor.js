@@ -31,14 +31,19 @@ function debugLog(message, data = null) {
   }
 }
 
+function normalizeId(agentId) {
+  return agentId ? agentId.toLowerCase() : agentId;
+}
+
 function generateBlockId() {
   return 'block_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
 }
 
 // Agent configuration helpers
 async function getAgentConfigPath(agentId) {
+  const id = normalizeId(agentId);
   // Support both formats: with or without directory structure
-  let configPath = path.join(AGENT_DIR, agentId, 'config.json');
+  let configPath = path.join(AGENT_DIR, id, 'config.json');
   
   // Check if file exists in directory structure
   if (await fs.access(configPath).then(() => true).catch(() => false)) {
@@ -46,34 +51,85 @@ async function getAgentConfigPath(agentId) {
   }
   
   // Fallback to flat file structure
-  configPath = path.join(AGENT_DIR, `${agentId}.json`);
+  configPath = path.join(AGENT_DIR, `${id}.json`);
   return configPath;
 }
 
 async function loadAgentConfig(agentId) {
+  const id = normalizeId(agentId);
   try {
-    const configPath = await getAgentConfigPath(agentId);
+    const configPath = await getAgentConfigPath(id);
     
     if (!await fs.access(configPath).then(() => true).catch(() => false)) {
-      throw new Error(`Agent configuration not found: ${agentId}`);
+      throw new Error(`Agent configuration not found: ${id}`);
     }
     
-    const configData = await fs.readFile(configPath, 'utf-8');
-    return JSON.parse(configData);
+    let lastError = null;
+    for (let i = 0; i < 3; i++) {
+        try {
+            const configData = await fs.readFile(configPath, 'utf-8');
+            if (!configData.trim()) throw new Error('Empty config file');
+            return JSON.parse(configData);
+        } catch (e) {
+            lastError = e;
+            await new Promise(r => setTimeout(r, 100 * (i + 1)));
+        }
+    }
+    throw lastError;
   } catch (error) {
-    debugLog('Error loading agent config', { agentId, error: error.message });
+    debugLog('Error loading agent config', { id, error: error.message });
     throw error;
   }
 }
 
 async function saveAgentConfig(agentId, config) {
+  const id = normalizeId(agentId);
+  const configPath = await getAgentConfigPath(id);
+  const lockFile = configPath + '.lock';
+  const tempFile = configPath + '.tmp';
+  const startTime = Date.now();
+  const timeout = 5000;
+
   try {
-    const configPath = await getAgentConfigPath(agentId);
-    await fs.writeFile(configPath, JSON.stringify(config, null, 2), 'utf-8');
-    debugLog('Agent config saved', { agentId, configPath });
+    // Acquire Lock
+    let locked = false;
+    while (!locked && (Date.now() - startTime < timeout)) {
+        try {
+            await fs.writeFile(lockFile, `${process.pid}-${Date.now()}`, { flag: 'wx' });
+            locked = true;
+        } catch (e) {
+            if (e.code === 'EEXIST') {
+                await new Promise(r => setTimeout(r, 100));
+            } else {
+                throw e;
+            }
+        }
+    }
+
+    if (!locked) {
+        // Fallback: try to remove stale lock
+        await fs.unlink(lockFile).catch(() => {});
+        await fs.writeFile(lockFile, `${process.pid}-${Date.now()}`, { flag: 'wx' });
+    }
+
+    // Atomic write
+    await fs.writeFile(tempFile, JSON.stringify(config, null, 2), 'utf-8');
+    
+    // Create backup if possible
+    if (await fs.access(configPath).then(() => true).catch(() => false)) {
+        await fs.copyFile(configPath, configPath + '.backup').catch(() => {});
+    }
+
+    // Atomically move
+    await fs.rename(tempFile, configPath);
+    
+    debugLog('Agent config saved atomically', { id, configPath });
   } catch (error) {
-    debugLog('Error saving agent config', { agentId, error: error.message });
+    debugLog('Error saving agent config', { id, error: error.message });
     throw error;
+  } finally {
+    await fs.unlink(lockFile).catch(() => {});
+    await fs.unlink(tempFile).catch(() => {});
   }
 }
 

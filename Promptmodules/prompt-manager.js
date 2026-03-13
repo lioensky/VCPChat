@@ -310,24 +310,30 @@ class PromptManager {
         // 【防竞态】在切换开始时锁定agentId，防止异步操作期间用户切换Agent导致写入错误目标
         const lockedAgentId = this.agentId;
 
-        // 保存当前模式的数据
-        await this.saveCurrentModeData();
+        // 1. 获取最新提示词内容
+        const systemPrompt = await this.getCurrentSystemPrompt();
 
-        // 更新模式
+        // 2. 更新模式
         this.currentMode = mode;
 
-        // 保存模式选择到配置（使用锁定的agentId）
+        // 3. 执行合并保存：一次性更新模式和系统提示词，避免多次磁盘操作
+        // 注意：这里我们主动更新 agentConfig 里的 promptMode 和 systemPrompt 两个关键字段
         await this.electronAPI.updateAgentConfig(lockedAgentId, {
-            promptMode: mode
+            promptMode: mode,
+            systemPrompt: systemPrompt
         });
 
-        // 更新UI
+        // 4. 更新UI
         this.updateModeButtons();
         this.renderCurrentMode();
 
-        // 触发Agent设置的完整保存（传入锁定的agentId）
+        // 5. 偶尔可能需要触发全面保存（例如子模块有自己的特殊配置项需要同步）
+        // 但我们在上面已经更新了最关键的 mode+prompt，这里可以异步进行或由子模块自行负责
         if (window.settingsManager && typeof window.settingsManager.triggerAgentSave === 'function') {
-            await window.settingsManager.triggerAgentSave(lockedAgentId);
+            // 注意：这里不再 await，减少阻塞感，因为关键数据已经通过 updateAgentConfig 落地了
+            window.settingsManager.triggerAgentSave(lockedAgentId).catch(err => {
+                console.error('[PromptManager] Trigger full save failed:', err);
+            });
         }
     }
 
