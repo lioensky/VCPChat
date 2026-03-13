@@ -645,6 +645,25 @@ body.light-theme .md-content .highlighted-tag {
     background-color: rgba(0, 121, 107, 0.08);
 }
 
+/* Highlight for @!alert-tags */
+.md-content .highlighted-alert-tag {
+    color: #f1c40f;
+    /* A soft golden color */
+    font-weight: 600;
+    background-color: rgba(241, 196, 15, 0.12);
+    padding: 1px 4px;
+    border-radius: 4px;
+    display: inline-block;
+    line-height: 1.4;
+    border: 1px solid rgba(241, 196, 15, 0.2);
+}
+
+body.light-theme .md-content .highlighted-alert-tag {
+    color: #b8860b;
+    /* DarkGoldenRod for better contrast in light theme */
+    background-color: rgba(184, 134, 11, 0.1);
+    border-color: rgba(184, 134, 11, 0.15);
+}
 
 /* Highlight for quoted text */
 .md-content .highlighted-quote {

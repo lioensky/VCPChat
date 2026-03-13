@@ -239,6 +239,7 @@ function prettifySinglePreElement(preElement, type, relevantContent) {
 }
 
 const TAG_REGEX = /@([\u4e00-\u9fa5A-Za-z0-9_]+)/g;
+const ALERT_TAG_REGEX = /@!([\u4e00-\u9fa5A-Za-z0-9_]+)/g;
 const BOLD_REGEX = /\*\*([^\*]+)\*\*/g;
 const QUOTE_REGEX = /(?:"([^"]*)"|“([^”]*)”)/g; // Matches English "..." and Chinese “...”
 
@@ -280,6 +281,9 @@ function highlightAllPatternsInMessage(messageElement) {
             let match;
             while ((match = TAG_REGEX.exec(text)) !== null) {
                 matches.push({ type: 'tag', index: match.index, length: match[0].length, content: match[0] });
+            }
+            while ((match = ALERT_TAG_REGEX.exec(text)) !== null) {
+                matches.push({ type: 'alert-tag', index: match.index, length: match[0].length, content: match[0] });
             }
             while ((match = BOLD_REGEX.exec(text)) !== null) {
                 matches.push({ type: 'bold', index: match.index, length: match[0].length, content: match[1] });
@@ -334,6 +338,9 @@ function highlightAllPatternsInMessage(messageElement) {
             const span = document.createElement(match.type === 'bold' ? 'strong' : 'span');
             if (match.type === 'tag') {
                 span.className = 'highlighted-tag';
+                span.textContent = match.content;
+            } else if (match.type === 'alert-tag') {
+                span.className = 'highlighted-alert-tag';
                 span.textContent = match.content;
             } else if (match.type === 'quote') {
                 span.className = 'highlighted-quote';
