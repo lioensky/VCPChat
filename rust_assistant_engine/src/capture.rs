@@ -173,7 +173,6 @@ impl PlatformEventSource {
     fn has_global_selection_event(&self) -> bool {
         match self {
             Self::Linux(source) => source.has_global_selection_event(),
-            _ => false,
         }
     }
 }
@@ -361,9 +360,8 @@ impl SelectionListener {
         #[cfg(target_os = "linux")]
         {
             let mut source = lock_or_recover(&self.event_source, "event_source");
-            if let PlatformEventSource::Linux(provider) = &mut *source {
-                provider.set_debounce_ms(debounce_ms);
-            }
+            let PlatformEventSource::Linux(provider) = &mut *source else { return };
+            provider.set_debounce_ms(debounce_ms);
         }
         
         info!("[SelectionListener] Guard rules updated");
