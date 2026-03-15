@@ -9,8 +9,6 @@ use x11rb::rust_connection::RustConnection;
 
 use crate::windows_event_source::SelectionSignal;
 
-const X11_EVENT_DEBOUNCE_MS: u64 = 40;
-
 #[derive(Debug)]
 pub struct X11SelectionEventBackend {
     connection: RustConnection,
@@ -124,7 +122,7 @@ impl X11SelectionEventBackend {
         })
     }
 
-    pub fn poll_signal(&mut self) -> Option<SelectionSignal> {
+    pub fn poll_signal(&mut self, debounce_ms: u64) -> Option<SelectionSignal> {
         let event = match self.connection.poll_for_event() {
             Ok(event) => event,
             Err(error) => {
@@ -145,8 +143,9 @@ impl X11SelectionEventBackend {
             return None;
         }
 
+        // 问题4修复：使用传入的 debounce_ms 参数
         if let Some(last_signal_at) = self.last_signal_at {
-            if last_signal_at.elapsed() < Duration::from_millis(X11_EVENT_DEBOUNCE_MS) {
+            if last_signal_at.elapsed() < Duration::from_millis(debounce_ms) {
                 return None;
             }
         }

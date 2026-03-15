@@ -16,8 +16,6 @@ pub struct PerformanceMetrics {
     pub p99_latency_ms: u64,
     pub error_count: u64,
     pub errors: Vec<ErrorRecord>,
-    pub cpu_avg_percent: f32,
-    pub memory_avg_mb: f32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -143,8 +141,6 @@ impl MetricsCollector {
             p99_latency_ms: self.calculate_percentile(99.0),
             error_count,
             errors,
-            cpu_avg_percent: 0.0,  // TODO: 集成系统 CPU 监控
-            memory_avg_mb: 0.0,    // TODO: 集成系统内存监控
         }
     }
 
