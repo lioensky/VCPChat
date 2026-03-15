@@ -1,10 +1,11 @@
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Condvar, Mutex, MutexGuard};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard, RwLock};
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use active_win_pos_rs::get_active_window;
 use arboard::Clipboard;
+use lazy_static::lazy_static;
 use log::info;
 use serde::{Deserialize, Serialize};
 
@@ -30,8 +31,10 @@ const SCREENSHOT_SUSPEND_MS: u64 = 3000;
 const CLIPBOARD_CONFLICT_SUSPEND_MS: u64 = 1000;
 const CLIPBOARD_CHECK_INTERVAL_MS: u64 = 500;
 
-#[cfg(target_os = "windows")]
-use winapi::um::winuser::{keybd_event, KEYEVENTF_KEYUP, VK_CONTROL};
+// 问题2修复：存储本程序最近写入剪贴板的内容，用于区分本程序写入和外部写入
+lazy_static! {
+    static ref OWN_CLIPBOARD_CONTENT: RwLock<Option<String>> = RwLock::new(None);
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SelectionEvent {
@@ -62,6 +65,8 @@ pub struct GuardRules {
     pub own_window_handles: Vec<String>,
     #[serde(default)]
     pub own_process_ids: Vec<u32>,
+    #[serde(default = "default_x11_debounce_ms")]
+    pub x11_debounce_ms: u64,
 }
 
 fn default_min_event_interval_ms() -> u64 { MIN_EVENT_INTERVAL_MS }
@@ -69,6 +74,7 @@ fn default_min_distance() -> i32 { MIN_DISTANCE }
 fn default_screenshot_suspend_ms() -> u64 { SCREENSHOT_SUSPEND_MS }
 fn default_clipboard_conflict_suspend_ms() -> u64 { CLIPBOARD_CONFLICT_SUSPEND_MS }
 fn default_clipboard_check_interval_ms() -> u64 { CLIPBOARD_CHECK_INTERVAL_MS }
+fn default_x11_debounce_ms() -> u64 { 80 }
 
 impl Default for GuardRules {
     fn default() -> Self {
@@ -105,6 +111,7 @@ impl Default for GuardRules {
             clipboard_check_interval_ms: CLIPBOARD_CHECK_INTERVAL_MS,
             own_window_handles: vec![],
             own_process_ids: vec![],
+            x11_debounce_ms: 80,
         }
     }
 }
@@ -279,6 +286,7 @@ pub struct SelectionListener {
     clipboard_monitor_running: Arc<AtomicBool>,
     clipboard_monitor_stop_signal: Arc<(Mutex<bool>, Condvar)>,
     capability: CaptureCapability,
+    run_loop_active: Arc<AtomicBool>,
 }
 
 impl SelectionListener {
@@ -298,6 +306,7 @@ impl SelectionListener {
             clipboard_monitor_running: Arc::new(AtomicBool::new(false)),
             clipboard_monitor_stop_signal: Arc::new((Mutex::new(false), Condvar::new())),
             capability,
+            run_loop_active: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -313,6 +322,7 @@ impl SelectionListener {
             clipboard_monitor_running: Arc::new(AtomicBool::new(false)),
             clipboard_monitor_stop_signal: Arc::new((Mutex::new(false), Condvar::new())),
             capability,
+            run_loop_active: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -339,8 +349,21 @@ impl SelectionListener {
     }
 
     pub fn set_guard_rules(&self, rules: GuardRules) {
+        #[cfg(target_os = "linux")]
+        let debounce_ms = rules.x11_debounce_ms;
+        
         let mut guard_rules = lock_or_recover(&self.guard_rules, "guard_rules");
         *guard_rules = rules;
+        drop(guard_rules);
+        
+        // 问题4修复：同步更新 X11 provider 的 debounce 值
+        #[cfg(target_os = "linux")]
+        {
+            let mut source = lock_or_recover(&self.event_source, "event_source");
+            let PlatformEventSource::Linux(provider) = &mut *source else { return };
+            provider.set_debounce_ms(debounce_ms);
+        }
+        
         info!("[SelectionListener] Guard rules updated");
     }
 
@@ -577,6 +600,24 @@ impl SelectionListener {
                 }
                 
                 if let Some(current_clipboard) = read_clipboard_text_snapshot() {
+                    // 问题2修复：原子性地检测本程序写入并清除标记
+                    let is_own_write = {
+                        if let Ok(mut content) = OWN_CLIPBOARD_CONTENT.write() {
+                            if content.as_ref().map(|c| c == &current_clipboard).unwrap_or(false) {
+                                *content = None;  // 消费后清除
+                                true
+                            } else {
+                                false
+                            }
+                        } else {
+                            false
+                        }
+                    };
+
+                    if is_own_write {
+                        continue;
+                    }
+
                     let mut ctx = lock_or_recover(&context, "context");
                     let rules = lock_or_recover(&guard_rules, "guard_rules");
                     
@@ -611,6 +652,15 @@ impl SelectionListener {
     where
         F: FnMut(SelectionEvent),
     {
+        // 问题3修复：防止重入
+        if self.run_loop_active
+            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+            .is_err()
+        {
+            info!("[SelectionListener] run_loop already active, skipping duplicate call");
+            return;
+        }
+
         info!(
             "[SelectionListener] Starting monitoring loop ({}ms interval)",
             poll_interval_ms
@@ -625,6 +675,7 @@ impl SelectionListener {
             thread::sleep(poll_duration);
         }
 
+        self.run_loop_active.store(false, Ordering::Release);
         info!("[SelectionListener] Monitoring loop stopped");
     }
 }
@@ -867,17 +918,41 @@ fn lock_result_or_recover<T>(result: std::sync::LockResult<T>, name: &str) -> T 
 
 #[cfg(target_os = "windows")]
 fn capture_selected_text_fallback(_keyboard_triggered: bool) -> Option<String> {
+    use winapi::um::winuser::{SendInput, INPUT, INPUT_KEYBOARD, KEYEVENTF_KEYUP};
+    use winapi::um::winuser::GetClipboardSequenceNumber;
+    use winapi::um::winuser::VK_CONTROL;
+
+    const VK_C: u16 = 0x43;
+
     let previous_clipboard = read_clipboard_text_snapshot();
 
+    // 问题1修复：使用 SendInput 替代废弃的 keybd_event
     unsafe {
-        const VK_C_CODE: u8 = 0x43;
-        keybd_event(VK_CONTROL as u8, 0, 0, 0);
-        keybd_event(VK_C_CODE, 0, 0, 0);
-        keybd_event(VK_C_CODE, 0, KEYEVENTF_KEYUP, 0);
-        keybd_event(VK_CONTROL as u8, 0, KEYEVENTF_KEYUP, 0);
+        let mut inputs: [INPUT; 4] = std::mem::zeroed();
+
+        // Ctrl down
+        inputs[0].type_ = INPUT_KEYBOARD;
+        inputs[0].u.ki_mut().wVk = VK_CONTROL as u16;
+
+        // C down
+        inputs[1].type_ = INPUT_KEYBOARD;
+        inputs[1].u.ki_mut().wVk = VK_C;
+
+        // C up
+        inputs[2].type_ = INPUT_KEYBOARD;
+        inputs[2].u.ki_mut().wVk = VK_C;
+        inputs[2].u.ki_mut().dwFlags = KEYEVENTF_KEYUP;
+
+        // Ctrl up
+        inputs[3].type_ = INPUT_KEYBOARD;
+        inputs[3].u.ki_mut().wVk = VK_CONTROL as u16;
+        inputs[3].u.ki_mut().dwFlags = KEYEVENTF_KEYUP;
+
+        SendInput(4, inputs.as_mut_ptr(), std::mem::size_of::<INPUT>() as i32);
     }
 
     let mut selected: Option<String> = None;
+    let mut seq_at_capture: Option<u32> = None;
 
     for _ in 0..8 {
         thread::sleep(Duration::from_millis(40));
@@ -887,18 +962,31 @@ fn capture_selected_text_fallback(_keyboard_triggered: bool) -> Option<String> {
         match (&previous_clipboard, &current) {
             (Some(prev), Some(curr)) if curr != prev => {
                 selected = Some(curr.clone());
+                seq_at_capture = Some(unsafe { GetClipboardSequenceNumber() });
                 break;
             }
             (None, Some(curr)) => {
                 selected = Some(curr.clone());
+                seq_at_capture = Some(unsafe { GetClipboardSequenceNumber() });
                 break;
             }
             _ => {}
         }
     }
 
-    if let Some(previous) = previous_clipboard {
-        write_clipboard_text_snapshot(&previous);
+    // 问题1修复：使用序列号判断是否安全恢复
+    if let (Some(previous), Some(seq_captured)) = (&previous_clipboard, seq_at_capture) {
+        let seq_now = unsafe { GetClipboardSequenceNumber() };
+        if seq_now == seq_captured {
+            // 从捕获到此刻无外部写入，安全恢复
+            write_clipboard_text_snapshot_with_record(previous);
+        }
+        // 否则外部已修改，放弃恢复
+    } else {
+        // 未捕获到内容，无条件恢复
+        if let Some(previous) = previous_clipboard {
+            write_clipboard_text_snapshot_with_record(&previous);
+        }
     }
 
     selected
@@ -910,7 +998,8 @@ fn capture_selected_text_fallback(keyboard_triggered: bool) -> Option<String> {
     read_clipboard_text_snapshot()
 }
 
-fn current_timestamp() -> u64 {
+// 问题7修复：导出为公共函数，供 main.rs 使用
+pub fn current_timestamp() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
@@ -928,9 +1017,21 @@ fn normalize_text_option(value: Option<String>) -> Option<String> {
         .filter(|content| !content.is_empty())
 }
 
+#[allow(dead_code)]
 fn write_clipboard_text_snapshot(value: &str) {
     if let Ok(mut clipboard) = Clipboard::new() {
         let _ = clipboard.set_text(value.to_string());
+    }
+}
+
+// 问题2修复：写入剪贴板时记录内容，用于区分本程序写入和外部写入
+fn write_clipboard_text_snapshot_with_record(value: &str) {
+    if let Ok(mut clipboard) = Clipboard::new() {
+        if clipboard.set_text(value.to_string()).is_ok() {
+            if let Ok(mut content) = OWN_CLIPBOARD_CONTENT.write() {
+                *content = Some(value.to_string());
+            }
+        }
     }
 }
 
