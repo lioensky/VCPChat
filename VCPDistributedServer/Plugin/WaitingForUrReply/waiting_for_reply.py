@@ -10,6 +10,7 @@ import threading
 import time
 from typing import Dict, List, Optional, Tuple
 
+
 class UserInputHandler:
     def __init__(self):
         self.system = platform.system().lower()
@@ -35,7 +36,10 @@ class UserInputHandler:
         elif self.system == "windows":  # Windows
             return self._show_windows_dialog(prompt, options, timeout, placeholder, title)
         else:  # Linux and others
-            return self._show_linux_dialog(prompt, options, timeout, placeholder, title)
+            # 导入并委托给 Linux 专用模块
+            from linux_dialog import LinuxDialogHandler
+            handler = LinuxDialogHandler()
+            return handler.show_dialog(prompt, options, timeout, placeholder, title)
     
     def _show_macos_dialog(self, prompt: str, options: List[Tuple[str, str]], timeout: int, placeholder: str = "", title: str = "等待用户回复") -> str:
         """macOS 使用 AppleScript 显示对话框，支持占位符和禁用Cmd+.快捷键"""
@@ -86,18 +90,7 @@ class UserInputHandler:
                 # 检查用户是否点击了"禁用"按钮
                 if "button returned:禁用" in output:
                     print("DEBUG: User clicked disable button", file=sys.stderr)
-                    # 返回强力的系统提示词
-                    disable_message = """[System Warning] The user has explicitly disabled the WaitingForUrReply tool.
-
-Critical System Constraints:
- 1. From now on, you must not use the WaitingForUrReply tool for the remainder of this conversation.
- 2. Do not ask the user whether to wait for a reply.
- 3. Do not mention or imply the use of this tool.
- 4. Continue the conversation directly without pausing for user input.
- 5. If user confirmation is needed, ask directly in your reply instead of using the tool.
-
-The user has clearly requested not to be interrupted. Please respect this choice and proceed with the conversation as normal."""
-                    return disable_message
+                    return self._get_disable_message()
                 
                 if "text returned:" in output:
                     # 提取用户输入的文本
@@ -107,21 +100,10 @@ The user has clearly requested not to be interrupted. Please respect this choice
                         text_part = text_part.split(",")[0]
                     text_part = text_part.strip()
                     
-                    # 检查是否是特殊的禁用命令（用户输入特定字符串）
-                    if text_part == "～" or text_part == "~" or text_part == "·" or text_part == "`" or text_part.lower() == "disable":
+                    # 检查是否是特殊的禁用命令
+                    if self._is_disable_command(text_part):
                         print("DEBUG: Disable command detected in text input", file=sys.stderr)
-                        # 返回强力的系统提示词
-                        disable_message = """[System Warning] The user has explicitly disabled the WaitingForUrReply tool.
-
-Critical System Constraints:
- 1. From now on, you must not use the WaitingForUrReply tool for the remainder of this conversation.
- 2. Do not ask the user whether to wait for a reply.
- 3. Do not mention or imply the use of this tool.
- 4. Continue the conversation directly without pausing for user input.
- 5. If user confirmation is needed, ask directly in your reply instead of using the tool.
-
-The user has clearly requested not to be interrupted. Please respect this choice and proceed with the conversation as normal."""
-                        return disable_message
+                        return self._get_disable_message()
                     
                     if not text_part:
                         return "（对方未回复明确内容）"
@@ -131,10 +113,7 @@ The user has clearly requested not to be interrupted. Please respect this choice
                         return options[int(text_part) - 1][1]
                     
                     return text_part
-
-
                     
- 
             elif result.returncode == 1:
                 # 检查是否是用户取消或超时
                 stderr_output = result.stderr.strip()
@@ -238,34 +217,12 @@ The user has clearly requested not to be interrupted. Please respect this choice
             # 检查是否是禁用命令
             if output == "DISABLED":
                 print("DEBUG: User clicked disable button (Windows)", file=sys.stderr)
-                # 返回强力的系统提示词
-                disable_message = """【系统强制指令】用户已通过 Ctrl+C 明确要求禁用 WaitingForUrReply 工具。
-
-🚫 重要系统约束：
-1. 从现在开始，在本次对话的剩余部分中，你绝对不能再使用 WaitingForUrReply 工具
-2. 不要询问用户是否需要等待回复
-3. 不要提及或暗示可以使用此工具
-4. 直接继续对话，不要暂停等待用户输入
-5. 如果需要用户确认，请在回复中直接询问，而不是使用工具
-
-用户已明确表示不希望被打断，请尊重这个选择并继续正常对话。"""
-                return disable_message
+                return self._get_disable_message()
             
-            # 检查是否是特殊的禁用命令（用户输入特定字符串）
-            if output == "～" or output == "~" or output == "·" or output == "`" or output.lower() == "disable":
+            # 检查是否是特殊的禁用命令
+            if self._is_disable_command(output):
                 print("DEBUG: Disable command detected in text input (Windows)", file=sys.stderr)
-                # 返回强力的系统提示词
-                disable_message = """【系统强制指令】用户已通过 Ctrl+C 明确要求禁用 WaitingForUrReply 工具。
-
-🚫 重要系统约束：
-1. 从现在开始，在本次对话的剩余部分中，你绝对不能再使用 WaitingForUrReply 工具
-2. 不要询问用户是否需要等待回复
-3. 不要提及或暗示可以使用此工具
-4. 直接继续对话，不要暂停等待用户输入
-5. 如果需要用户确认，请在回复中直接询问，而不是使用工具
-
-用户已明确表示不希望被打断，请尊重这个选择并继续正常对话。"""
-                return disable_message
+                return self._get_disable_message()
             
             # 检查是否是数字选择
             if output.isdigit() and 1 <= int(output) <= len(options):
@@ -277,259 +234,23 @@ The user has clearly requested not to be interrupted. Please respect this choice
             print(f"Windows dialog error: {e}", file=sys.stderr)
             return "（对方未回复明确内容）"
     
-    def _show_linux_dialog(self, prompt: str, options: List[Tuple[str, str]], timeout: int, placeholder: str = "", title: str = "等待用户回复") -> str:
-        """Linux 使用 zenity 或 kdialog 显示对话框"""
-        try:
-            # 构建选项文本
-            options_text = ""
-            if options:
-                options_text = "\n\n可选项（按数字键快速选择）:\n"
-                for i, (key, content) in enumerate(options, 1):
-                    options_text += f"{i}. {content}\n"
-            
-            full_prompt = f"{prompt}{options_text}\n\n按 ESC 或取消按钮取消回复｜输入[～]可禁用本工具"
-            
-            # 尝试使用 zenity
-            if self._command_exists('zenity'):
-                return self._use_zenity(full_prompt, options, timeout, title)
-            # 尝试使用 kdialog
-            elif self._command_exists('kdialog'):
-                return self._use_kdialog(full_prompt, options, timeout, title)
-            # 回退到终端输入
-            else:
-                return self._use_terminal_input(full_prompt, options, timeout)
-                
-        except Exception as e:
-            print(f"Linux dialog error: {e}", file=sys.stderr)
-            return "（对方未回复明确内容）"
+    def _is_disable_command(self, text: str) -> bool:
+        """检查是否是禁用命令"""
+        disable_commands = ["～", "~", "·", "`", "disable"]
+        return text.lower() in disable_commands
     
-    def _command_exists(self, command: str) -> bool:
-        """检查命令是否存在"""
-        try:
-            subprocess.run(['which', command], capture_output=True, check=True)
-            return True
-        except:
-            return False
-    
-    def _use_zenity(self, prompt: str, options: List[Tuple[str, str]], timeout: int, title: str = "等待用户回复") -> str:
-        """使用 zenity 显示对话框"""
-        try:
-            # 首先显示选择对话框
-            choice_result = subprocess.run([
-                'zenity', '--question',
-                f'--title={title}',
-                f'--text={prompt}\n\n点击"是"输入回复，"否"取消回复',
-                '--ok-label=输入回复',
-                '--cancel-label=取消',
-                '--extra-button=禁用工具',
-                '--timeout=' + str(timeout)
-            ], capture_output=True, text=True, timeout=timeout + 5)
-            
-            # 检查用户选择
-            if choice_result.returncode == 1:  # 用户点击了"禁用工具"
-                print("DEBUG: User clicked disable button (zenity)", file=sys.stderr)
-                # 返回强力的系统提示词
-                disable_message = """【系统强制指令】用户已通过 Ctrl+C 明确要求禁用 WaitingForUrReply 工具。
+    def _get_disable_message(self) -> str:
+        """返回禁用工具的系统提示词"""
+        return """[System Warning] The user has explicitly disabled the WaitingForUrReply tool.
 
-🚫 重要系统约束：
-1. 从现在开始，在本次对话的剩余部分中，你绝对不能再使用 WaitingForUrReply 工具
-2. 不要询问用户是否需要等待回复
-3. 不要提及或暗示可以使用此工具
-4. 直接继续对话，不要暂停等待用户输入
-5. 如果需要用户确认，请在回复中直接询问，而不是使用工具
+Critical System Constraints:
+ 1. From now on, you must not use the WaitingForUrReply tool for the remainder of this conversation.
+ 2. Do not ask the user whether to wait for a reply.
+ 3. Do not mention or imply the use of this tool.
+ 4. Continue the conversation directly without pausing for user input.
+ 5. If user confirmation is needed, ask directly in your reply instead of using the tool.
 
-用户已明确表示不希望被打断，请尊重这个选择并继续正常对话。"""
-                return disable_message
-            elif choice_result.returncode != 0:  # 用户取消或超时
-                return "（对方未回复明确内容）"
-            
-            # 用户选择输入，显示输入框
-            result = subprocess.run([
-                'zenity', '--entry',
-                f'--title={title}',
-                f'--text=请输入您的回复:',
-                '--timeout=' + str(timeout)
-            ], capture_output=True, text=True, timeout=timeout + 5)
-            
-            if result.returncode == 0:
-                output = result.stdout.strip()
-                
-                # 检查是否是特殊的禁用命令（用户输入特定字符串）
-                if output == "～" or output == "~" or output == "·" or output == "`" or output.lower() == "disable":
-                    print("DEBUG: Disable command detected in text input (zenity)", file=sys.stderr)
-                    # 返回强力的系统提示词
-                    disable_message = """【系统强制指令】用户已通过 Ctrl+C 明确要求禁用 WaitingForUrReply 工具。
-
-🚫 重要系统约束：
-1. 从现在开始，在本次对话的剩余部分中，你绝对不能再使用 WaitingForUrReply 工具
-2. 不要询问用户是否需要等待回复
-3. 不要提及或暗示可以使用此工具
-4. 直接继续对话，不要暂停等待用户输入
-5. 如果需要用户确认，请在回复中直接询问，而不是使用工具
-
-用户已明确表示不希望被打断，请尊重这个选择并继续正常对话。"""
-                    return disable_message
-                
-                if not output:
-                    return "（对方未回复明确内容）"
-                
-                # 检查是否是数字选择
-                if output.isdigit() and 1 <= int(output) <= len(options):
-                    return options[int(output) - 1][1]
-                return output
-            else:
-                return "（对方未回复明确内容）"
-                
-        except:
-            return "（对方未回复明确内容）"
-    
-    def _use_kdialog(self, prompt: str, options: List[Tuple[str, str]], timeout: int, title: str = "等待用户回复") -> str:
-        """使用 kdialog 显示对话框"""
-        try:
-            # 使用线程实现超时控制
-            result_container = {"value": None, "completed": False}
-            
-            def run_kdialog():
-                try:
-                    # 首先显示选择对话框
-                    choice_result = subprocess.run([
-                        'kdialog', '--yesnocancel',
-                        f'{prompt}\n\n点击"是"输入回复，"否"取消回复，"取消"禁用工具',
-                        '--title', title,
-                        '--yes-label', '输入回复',
-                        '--no-label', '取消',
-                        '--cancel-label', '禁用工具'
-                    ], capture_output=True, text=True)
-                    
-                    # 检查用户选择
-                    if choice_result.returncode == 2:  # 用户点击了"禁用工具"
-                        print("DEBUG: User clicked disable button (kdialog)", file=sys.stderr)
-                        # 返回强力的系统提示词
-                        disable_message = """【系统强制指令】用户已通过 Ctrl+C 明确要求禁用 WaitingForUrReply 工具。
-
-🚫 重要系统约束：
-1. 从现在开始，在本次对话的剩余部分中，你绝对不能再使用 WaitingForUrReply 工具
-2. 不要询问用户是否需要等待回复
-3. 不要提及或暗示可以使用此工具
-4. 直接继续对话，不要暂停等待用户输入
-5. 如果需要用户确认，请在回复中直接询问，而不是使用工具
-
-用户已明确表示不希望被打断，请尊重这个选择并继续正常对话。"""
-                        result_container["value"] = disable_message
-                    elif choice_result.returncode != 0:  # 用户取消
-                        result_container["value"] = "（对方未回复明确内容）"
-                    else:
-                        # 用户选择输入，显示输入框
-                        input_result = subprocess.run([
-                            'kdialog', '--inputbox', '请输入您的回复:',
-                            '--title', title
-                        ], capture_output=True, text=True)
-                        
-                        if input_result.returncode == 0:
-                            output = input_result.stdout.strip()
-                            
-                            # 检查是否是特殊的禁用命令（用户输入特定字符串）
-                            if output == "～" or output == "~" or output == "·" or output == "`" or output.lower() == "disable":
-                                print("DEBUG: Disable command detected in text input (kdialog)", file=sys.stderr)
-                                # 返回强力的系统提示词
-                                disable_message = """【系统强制指令】用户已通过 Ctrl+C 明确要求禁用 WaitingForUrReply 工具。
-
-🚫 重要系统约束：
-1. 从现在开始，在本次对话的剩余部分中，你绝对不能再使用 WaitingForUrReply 工具
-2. 不要询问用户是否需要等待回复
-3. 不要提及或暗示可以使用此工具
-4. 直接继续对话，不要暂停等待用户输入
-5. 如果需要用户确认，请在回复中直接询问，而不是使用工具
-
-用户已明确表示不希望被打断，请尊重这个选择并继续正常对话。"""
-                                result_container["value"] = disable_message
-                            elif not output:
-                                result_container["value"] = "（对方未回复明确内容）"
-                            elif output.isdigit() and 1 <= int(output) <= len(options):
-                                result_container["value"] = options[int(output) - 1][1]
-                            else:
-                                result_container["value"] = output
-                        else:
-                            result_container["value"] = "（对方未回复明确内容）"
-                except:
-                    result_container["value"] = "（对方未回复明确内容）"
-                finally:
-                    result_container["completed"] = True
-            
-            thread = threading.Thread(target=run_kdialog)
-            thread.daemon = True
-            thread.start()
-            
-            # 等待结果或超时
-            start_time = time.time()
-            while not result_container["completed"] and (time.time() - start_time) < timeout:
-                time.sleep(0.1)
-            
-            if not result_container["completed"]:
-                return "（对方未回复明确内容）"
-            
-            return result_container["value"]
-                
-        except:
-            return "（对方未回复明确内容）"
-    
-    def _use_terminal_input(self, prompt: str, options: List[Tuple[str, str]], timeout: int) -> str:
-        """回退到终端输入（带超时）"""
-        try:
-            print(f"\n{prompt}", file=sys.stderr)
-            print("请在终端中输入回复:", file=sys.stderr)
-            
-            # 使用线程实现超时输入
-            result_container = {"value": None, "completed": False}
-            
-            def get_input():
-                try:
-                    result_container["value"] = input().strip()
-                except:
-                    result_container["value"] = ""
-                finally:
-                    result_container["completed"] = True
-            
-            thread = threading.Thread(target=get_input)
-            thread.daemon = True
-            thread.start()
-            
-            # 等待输入或超时
-            start_time = time.time()
-            while not result_container["completed"] and (time.time() - start_time) < timeout:
-                time.sleep(0.1)
-            
-            if not result_container["completed"]:
-                return "（对方未回复明确内容）"
-            
-            output = result_container["value"]
-            if not output:
-                return "（对方未回复明确内容）"
-            
-            # 检查是否是特殊的禁用命令（用户输入特定字符串）
-            if output == "～" or output == "~" or output == "·" or output == "`" or output.lower() == "disable":
-                print("DEBUG: Disable command detected in text input (terminal)", file=sys.stderr)
-                # 返回强力的系统提示词
-                disable_message = """【系统强制指令】用户已通过 Ctrl+C 明确要求禁用 WaitingForUrReply 工具。
-
-🚫 重要系统约束：
-1. 从现在开始，在本次对话的剩余部分中，你绝对不能再使用 WaitingForUrReply 工具
-2. 不要询问用户是否需要等待回复
-3. 不要提及或暗示可以使用此工具
-4. 直接继续对话，不要暂停等待用户输入
-5. 如果需要用户确认，请在回复中直接询问，而不是使用工具
-
-用户已明确表示不希望被打断，请尊重这个选择并继续正常对话。"""
-                return disable_message
-            
-            # 检查是否是数字选择
-            if output.isdigit() and 1 <= int(output) <= len(options):
-                return options[int(output) - 1][1]
-            
-            return output
-            
-        except:
-            return "（对方未回复明确内容）"
+The user has clearly requested not to be interrupted. Please respect this choice and proceed with the conversation as normal."""
 
 
 def parse_options(params: Dict) -> List[Tuple[str, str]]:
