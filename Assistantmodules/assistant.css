@@ -1,0 +1,333 @@
+/* assistant.css */
+
+/* 确保容器占满整个窗口，并继承基础字体和颜色 */
+html, body {
+    height: 100%;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background-color: transparent;
+    color: var(--primary-text);
+    display: flex;
+    flex-direction: column;
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+}
+
+/* 根据主题设置不同的壁纸, 这部分逻辑将由JS动态添加class到body上实现 */
+#assistant-window-body.dark-theme {
+    background-image: var(--chat-wallpaper-dark);
+}
+
+#assistant-window-body.light-theme {
+    background-image: var(--chat-wallpaper-light);
+}
+
+
+/* 自定义标题栏样式 */
+.title-bar-assistant {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    height: 32px;
+    padding: 0 0 0 8px;
+    background-color: var(--secondary-bg);
+    border-bottom: 1px solid var(--border-color);
+    flex-shrink: 0;
+    -webkit-app-region: drag; /* 允许整个标题栏拖动 */
+}
+
+.title-bar-text-assistant {
+    display: flex;
+    align-items: center;
+    font-size: 0.9em;
+    color: var(--secondary-text);
+}
+
+.title-bar-text-assistant .avatar {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    margin-right: 8px;
+    object-fit: cover;
+}
+
+.title-bar-controls-assistant {
+    display: flex;
+    height: 100%;
+    -webkit-app-region: no-drag; /* 控制按钮区域不可拖动 */
+}
+
+.title-bar-button-assistant {
+    display: inline-flex;
+    justify-content: center;
+    align-items: center;
+    width: 40px;
+    height: 100%;
+    border: none;
+    background-color: transparent;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+.title-bar-button-assistant:hover {
+    background-color: var(--button-hover-bg);
+}
+
+.close-button-assistant:hover {
+    background-color: var(--danger-hover-bg);
+}
+
+.title-bar-button-assistant svg {
+    width: 10px;
+    height: 10px;
+    fill: var(--primary-text);
+}
+
+.close-button-assistant:hover svg {
+    fill: var(--text-on-accent);
+}
+
+/* 聊天消息区域，直接沿用主样式 */
+.chat-messages-container {
+    flex: 1;
+    overflow-y: auto;
+    /* 为了让消息气泡的 backdrop-filter 生效，这里不能有背景色 */
+}
+
+.chat-messages {
+    padding: 15px 20px;
+    display: flex;
+    flex-direction: column;
+}
+
+/* 聊天输入区域，沿用主样式 */
+.chat-input-area {
+    display: flex;
+    align-items: flex-end;
+    padding: 10px 15px;
+    border-top: none;
+    background-color: var(--panel-bg-dark); /* Use semi-transparent panel color */
+    -webkit-backdrop-filter: blur(12px) saturate(120%);
+    backdrop-filter: blur(12px) saturate(120%);
+    flex-shrink: 0;
+    flex-wrap: wrap;
+}
+
+#messageInput {
+    flex-grow: 1;
+    padding: 8px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 20px; 
+    background-color: var(--input-bg);
+    color: var(--primary-text);
+    font-size: 1em;
+    resize: none; 
+    margin-right: 10px;
+    max-height: 120px; 
+    overflow-y: auto;
+    line-height: 1.4;
+}
+
+#messageInput:focus {
+    outline: none;
+    border-color: var(--user-bubble-bg);
+    box-shadow: 0 0 0 2px rgba(61, 90, 128, 0.3);
+}
+
+#sendMessageBtn {
+    background-color: var(--button-bg); 
+    border: none;
+    border-radius: 50%; 
+    width: 38px;
+    height: 38px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+    padding: 0;
+}
+
+#sendMessageBtn svg {
+    width: 22px; 
+    height: 22px; 
+    fill: var(--secondary-text);   
+}
+
+body.light-theme #sendMessageBtn svg {
+    fill: var(--text-on-accent);
+}
+
+#sendMessageBtn:hover {
+    background-color: var(--button-hover-bg);
+}
+
+#sendMessageBtn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+#attachFileBtn {
+    background-color: var(--button-bg);
+    border: none;
+    border-radius: 50%;
+    width: 38px;
+    height: 38px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+    padding: 0;
+    margin-left: 8px;
+    flex-shrink: 0;
+}
+
+#attachFileBtn svg {
+    width: 20px;
+    height: 20px;
+    fill: var(--secondary-text);
+}
+
+body.light-theme #attachFileBtn svg {
+    fill: var(--text-on-accent);
+}
+
+#attachFileBtn:hover {
+    background-color: var(--button-hover-bg);
+}
+
+#attachFileBtn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.attachment-preview-area {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    width: 100%;
+    order: -1;
+    margin-bottom: 8px;
+    padding: 0;
+}
+
+.attachment-preview-item {
+    background-color: var(--accent-bg);
+    color: var(--primary-text);
+    border-radius: 8px;
+    padding: 6px 10px;
+    display: flex;
+    align-items: center;
+    font-size: 0.9em;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    transition: all 0.2s ease-in-out;
+    cursor: default;
+    max-width: 200px;
+}
+
+.attachment-preview-item img {
+    width: 32px;
+    height: 32px;
+    object-fit: cover;
+    border-radius: 4px;
+    margin-right: 8px;
+    border: 1px solid var(--border-color);
+}
+
+.attachment-preview-item .file-icon {
+    margin-right: 8px;
+    font-size: 1.2em;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.attachment-preview-item .remove-attachment {
+    background: transparent;
+    border: none;
+    color: var(--secondary-text);
+    margin-left: 8px;
+    cursor: pointer;
+    font-size: 1.3em;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.2s ease;
+    width: 20px;
+    height: 20px;
+}
+
+.attachment-preview-item .remove-attachment:hover {
+    color: var(--danger-color);
+}
+
+/* 悬浮工具条样式 */
+#selection-assistant-bar {
+    position: fixed;
+    background-color: var(--panel-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    /* box-shadow: 0 4px 12px rgba(0,0,0,0.15); */ /* Removed shadow to prevent rendering artifacts */
+    padding: 5px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    z-index: 2147483647; /* 确保在最顶层 */
+    transition: opacity 0.2s ease-in-out, transform 0.2s ease-in-out;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(10px);
+}
+
+#selection-assistant-bar.visible {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateY(0);
+}
+
+#selection-assistant-bar .assistant-avatar {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+#selection-assistant-bar .assistant-button {
+    background: none;
+    border: 1px solid var(--border-color);
+    color: var(--secondary-text);
+    padding: 4px 8px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 0.9em;
+    transition: background-color 0.2s, color 0.2s;
+}
+
+#selection-assistant-bar .assistant-button:hover {
+    background-color: var(--accent-bg);
+    color: var(--primary-text);
+}
+
+/* 浅色主题下悬浮按钮的特定样式 */
+body.light-theme #selection-assistant-bar .assistant-button {
+    color: var(--highlight-text);
+    border-color: var(--highlight-text);
+}
+
+body.light-theme #selection-assistant-bar .assistant-button:hover {
+    background-color: var(--highlight-text);
+    color: var(--text-on-accent);
+}
+
+/* Light theme override for input area */
+body.light-theme .chat-input-area {
+    background-color: var(--panel-bg-light);
+}
