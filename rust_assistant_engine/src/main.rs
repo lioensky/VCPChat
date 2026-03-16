@@ -16,10 +16,9 @@ mod linux_platform;
 use actix_web::{web, App, HttpResponse, HttpServer};
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
-use std::time::{SystemTime, UNIX_EPOCH};
 use log::info;
 use lazy_static::lazy_static;
-use capture::{GuardRules, SelectionListener, SelectionEvent};
+use capture::{GuardRules, SelectionListener, SelectionEvent, current_timestamp};
 use metrics::MetricsCollector;
 
 lazy_static! {
@@ -223,11 +222,4 @@ async fn main() -> std::io::Result<()> {
     .bind(("127.0.0.1", port))?
     .run()
     .await
-}
-
-fn current_timestamp() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis() as u64
 }

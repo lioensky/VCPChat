@@ -25,6 +25,8 @@ pub enum LinuxSessionKind {
 pub trait LinuxSelectionEventProvider: Send + std::fmt::Debug {
     fn poll_signal(&mut self) -> Option<SelectionSignal>;
     fn has_global_selection_event(&self) -> bool;
+    // 问题4修复：添加 set_debounce_ms 方法
+    fn set_debounce_ms(&mut self, _ms: u64) {}
 }
 
 #[derive(Debug, Default)]
@@ -121,6 +123,7 @@ pub struct LinuxX11SelectionEventProvider {
     fallback: LinuxX11EventSource,
     shadow_stats: X11ShadowStats,
     mode: X11SelectionMode,
+    debounce_ms: u64,
 }
 
 impl LinuxX11SelectionEventProvider {
@@ -145,6 +148,7 @@ impl LinuxX11SelectionEventProvider {
             } else {
                 X11SelectionMode::PollingFallback
             },
+            debounce_ms: 80,
         }
     }
 
@@ -183,7 +187,8 @@ impl LinuxX11SelectionEventProvider {
 impl LinuxSelectionEventProvider for LinuxX11SelectionEventProvider {
     fn poll_signal(&mut self) -> Option<SelectionSignal> {
         if let Some(backend) = &mut self.event_backend {
-            let backend_signal = backend.poll_signal();
+            // 问题4修复：传递 debounce_ms 给 backend
+            let backend_signal = backend.poll_signal(self.debounce_ms);
             let fallback_signal = self.fallback.poll_signal();
 
             self.shadow_stats
@@ -204,6 +209,10 @@ impl LinuxSelectionEventProvider for LinuxX11SelectionEventProvider {
 
     fn has_global_selection_event(&self) -> bool {
         self.event_backend.is_some() || self.mode == X11SelectionMode::EventPreferred
+    }
+
+    fn set_debounce_ms(&mut self, ms: u64) {
+        self.debounce_ms = ms;
     }
 }
 
