@@ -210,10 +210,16 @@ function processSelectedText(selectionData) {
     }
 
     const selectedText = selectionData?.text;
+
+    // 优化：在 Rust 模式下，如果收到空文本（通常意味着点击了非文本区域或取消了选区），立即隐藏悬浮条
     if (!selectedText || selectedText.trim() === '') {
-        const shouldHide = (Date.now() - lastAssistantBarShownAt) >= ASSISTANT_BAR_HIDE_GRACE_MS;
+        const now = Date.now();
+        const shouldHide = (now - lastAssistantBarShownAt) >= ASSISTANT_BAR_HIDE_GRACE_MS;
+        
         if (shouldHide && assistantBarWindow && !assistantBarWindow.isDestroyed() && assistantBarWindow.isVisible()) {
-            hideAssistantBarWithAnimation('empty-selection');
+            // 如果是 Rust 模式，我们更积极地响应“空选区”信号来隐藏窗口
+            const reason = listenerMode === 'rust' ? 'rust-empty-selection' : 'empty-selection';
+            hideAssistantBarWithAnimation(reason);
         }
         lastProcessedSelection = '';
         return;
