@@ -314,7 +314,11 @@ function processSelectedText(selectionData) {
             console.error('[Assistant] Error showing assistant bar:', error);
         }
         
-        startGlobalMouseListener();
+        // 只有在非 Rust 模式下才启动 Node 端的全局鼠标监听器
+        // Rust 模式下，侧边栏程序（Sidecar）会自行处理点击外部隐藏逻辑
+        if (listenerMode !== 'rust') {
+            startGlobalMouseListener();
+        }
     });
 }
 
