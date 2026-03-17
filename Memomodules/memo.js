@@ -11,6 +11,7 @@ let currentFolder = '';
 let allMemos = [];
 let currentMemo = null; // 当前正在编辑的日记 { folder, file, content }
 let searchScope = 'folder'; // 'folder' or 'global'
+let searchAbortController = null; // 搜索请求控制器
 let isBatchMode = false;
 let selectedMemos = new Set(); // Set of "folder:::name" strings
 let hiddenFolders = new Set(); // Set of hidden folder names
@@ -137,12 +138,16 @@ function setupEventListeners() {
         if (term) searchMemos(term);
     };
 
-    // 搜索
+    // 搜索 (增加防抖保护)
+    const debouncedSearch = debounce((term) => {
+        searchMemos(term);
+    }, 300);
+
     searchInput.onkeydown = (e) => {
         if (e.key === 'Enter') {
             const term = searchInput.value.trim();
             if (term) {
-                searchMemos(term);
+                debouncedSearch(term);
             } else if (currentFolder) {
                 loadMemos(currentFolder);
             }
@@ -339,7 +344,7 @@ async function apiFetch(endpoint, options = {}) {
         headers: {
             'Authorization': apiAuthHeader,
             'Content-Type': 'application/json',
-            ...options.headers
+            ...(options.headers || {})
         }
     });
 
@@ -772,6 +777,12 @@ Content:「始」${content}「末」
 }
 
 async function searchMemos(term) {
+    // 如果有正在进行的搜索，立即取消它
+    if (searchAbortController) {
+        searchAbortController.abort();
+    }
+    searchAbortController = new AbortController();
+
     try {
         memoGridEl.innerHTML = '<div style="padding: 20px;">搜索中...</div>';
         let url = `/search?term=${encodeURIComponent(term)}`;
@@ -781,7 +792,7 @@ async function searchMemos(term) {
             url += `&folder=${encodeURIComponent(currentFolder)}`;
         }
 
-        const data = await apiFetch(url);
+        const data = await apiFetch(url, { signal: searchAbortController.signal });
         
         // 过滤掉来自 MusicDiary 和隐藏文件夹的搜索结果
         const filteredNotes = data.notes.filter(note =>
@@ -793,7 +804,16 @@ async function searchMemos(term) {
         currentFolderNameEl.textContent = `${scopeText}: ${term}`;
         renderMemos(filteredNotes);
     } catch (error) {
+        if (error.name === 'AbortError') {
+            console.log('搜索请求已取消:', term);
+            return;
+        }
         memoGridEl.innerHTML = `<div style="padding: 20px; color: var(--danger-color);">搜索失败: ${error.message}</div>`;
+    } finally {
+        // 如果当前 controller 还是自己，则清空
+        if (searchAbortController && !searchAbortController.signal.aborted) {
+            // 这里不直接置空，因为可能已经有新的搜索发起了
+        }
     }
 }
 
