@@ -889,6 +889,56 @@ function scopeCss(cssString, scopeId) {
 
 
 /**
+ * Fixes broken Markdown tables where the separator row has a different number of columns than the header.
+ * AI often skips segments in the separator row, which breaks standard Markdown rendering.
+ * @param {string} text The input string.
+ * @returns {string} The processed string with fixed table headers.
+ */
+function fixBrokenMarkdownTables(text) {
+    if (typeof text !== 'string' || !text.includes('---')) return text;
+
+    const lines = text.split('\n');
+    let modified = false;
+
+    // We start from the second line because a separator needs a header above it
+    for (let i = 1; i < lines.length; i++) {
+        const line = lines[i].trim();
+        
+        // Check if this line looks like a table separator: |---|---| or ---|--- or |---|
+        // Must contain at least one sequence of 3 or more hyphens, and can contain |, :, and spaces.
+        // It must NOT be a horizontal rule (which is usually just --- on its own or with spaces)
+        if (/^\|?([\s\-\:]+\|)+[\s\-\:]*\|?$/.test(line) && line.includes('---')) {
+            const headerLine = lines[i - 1].trim();
+            
+            // Count columns in header and separator
+            // We count segments separated by |
+            const headerColumns = headerLine.split('|').filter(col => col.trim().length > 0 || (headerLine.startsWith('|') && headerLine.endsWith('|'))).length;
+            const separatorColumns = line.split('|').filter(col => col.trim().length > 0).length;
+
+            if (headerColumns > separatorColumns && headerColumns > 0) {
+                console.debug(`[TableFix] Fixing table at line ${i}. Header columns: ${headerColumns}, Separator columns: ${separatorColumns}`);
+                
+                // Construct a fixed separator
+                let fixedSeparator = line;
+                const missingCount = headerColumns - separatorColumns;
+                
+                for (let j = 0; j < missingCount; j++) {
+                    if (!fixedSeparator.endsWith('|')) {
+                        fixedSeparator += '|';
+                    }
+                    fixedSeparator += '---|';
+                }
+                
+                lines[i] = fixedSeparator;
+                modified = true;
+            }
+        }
+    }
+
+    return modified ? lines.join('\n') : text;
+}
+
+/**
  * Applies a series of common text processing rules in a single pass.
  * @param {string} text The input string.
  * @returns {string} The processed string.
@@ -902,6 +952,9 @@ function applyContentProcessors(text) {
     // Use the proper function for code block markers (preserves content formatting)
     processedText = removeIndentationFromCodeBlockMarkers(processedText);
     
+    // Fix broken tables before other regex replacements
+    processedText = fixBrokenMarkdownTables(processedText);
+
     // Then apply simple regex replacements
     return processedText
         // ensureNewlineAfterCodeBlock
@@ -994,6 +1047,7 @@ export {
     sendButtonMessage,
     scopeCss, // Export the new CSS scoping function
     applyContentProcessors, // Export the new batch processor
+    fixBrokenMarkdownTables,
     escapeHtml,
     processStartEndMarkers
 };
