@@ -81,6 +81,7 @@ body {
     flex: 1; /* Each button takes a third of the space */
     padding: 3px 10px; /* Reduced padding for a more compact look */
     font-size: 0.9em; /* Slightly smaller font size */
+    color: var(--secondary-text);
 }
 
 /* Common input styling */
@@ -131,7 +132,7 @@ textarea:focus {
 .button-primary {
     background-color: var(--button-bg);
     border-color: var(--border-color);
-    color: var(--primary-text);
+    color: var(--secondary-text);
 }
 
 .button-primary:hover {
