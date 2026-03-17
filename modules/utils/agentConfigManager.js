@@ -15,7 +15,8 @@ class AgentConfigManager extends EventEmitter {
     }
 
     normalizeId(agentId) {
-        return agentId ? agentId.toLowerCase() : agentId;
+        //return agentId ? agentId.toLowerCase() : agentId;
+        return agentId; //修复在linux上无法保存agent的bug
     }
 
     getAgentPaths(agentId) {
