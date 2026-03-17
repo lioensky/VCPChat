@@ -83,7 +83,7 @@ body {
 
 .folder-item.active {
     background: var(--accent-color);
-    color: var(--text-on-accent);
+    color: var(--secondary-text);
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
 }
 
@@ -325,7 +325,7 @@ body {
 
 .glass-btn.primary {
     background: var(--accent-color);
-    color: var(--text-on-accent);
+    color: var(--secondary-text);
     border: none;
 }
 

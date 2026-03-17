@@ -315,7 +315,7 @@ body.light-theme #board-filter:focus {
     border: none;
     border-radius: 12px;
     background: var(--accent-color);
-    color: var(--text-on-accent);
+    color: var(--secondary-text);
     font-size: 1rem;
     font-weight: bold;
     cursor: pointer;
@@ -387,6 +387,7 @@ body.light-theme #board-filter:focus {
 }
 .post-badge {
     background: var(--accent-color);
+    color: var(--secondary-text);
     font-size: 0.7rem;
     padding: 3px 8px;
     border-radius: 10px;
