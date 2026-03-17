@@ -222,7 +222,7 @@ function stopAudioEngine() {
 // --- Main Window Creation ---
 function createWindow() {
     mainWindow = new BrowserWindow({
-        width: 1200,
+        width: 1300,
         height: 800,
         minWidth: 900,
         minHeight: 600,
