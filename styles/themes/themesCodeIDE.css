@@ -1,0 +1,136 @@
+/*
+ * styles/themes/themesCodeIDE.css
+ * Curated by Coco for Professor Ryan
+ * Code IDE Theme - 代码编辑器风格
+ * A clean, professional theme inspired by modern IDEs.
+ */
+
+/* * =================================================================* Dark Theme: Code Dark (代码深色)
+ * Inspired by VS Code and modern IDE aesthetics.
+ * Black, Gray, and IDE Yellow color scheme.
+ * =================================================================
+ */
+:root {
+    /* --- Wallpaper --- */
+    --chat-wallpaper-dark: url('../assets/wallpaper/code-dark.jpeg');
+
+    /* --- Base Colors --- */
+    --primary-bg: #1a1d23;
+    --secondary-bg: #252830;
+    --tertiary-bg: #1e2127;
+    --accent-bg: #2c313a;
+    --border-color: #3e4451;
+    --input-bg: #21252b;
+    --panel-bg-dark: rgba(37, 40, 48, 0.8);
+
+    /* --- Text Colors --- */
+    --primary-text: #abb2bf;
+    --secondary-text: #5c6370;
+    --highlight-text: #E5C07B;
+    --text-on-accent: #1a1d23;
+    --placeholder-text: #5c6370;
+    --quoted-text: #E5C07B;
+    --user-text: #abb2bf;
+    --agent-text: #abb2bf;
+
+    /* --- Bubble Colors --- */
+    --user-bubble-bg: rgba(229, 192, 123, 0.12);
+    --assistant-bubble-bg: rgba(255, 255, 255, 0.06);
+
+    /* --- UI Element Colors --- */
+    --button-bg: #E5C07B;
+    --button-hover-bg: #d9b56f;
+    --danger-color: #e06c75;
+    --danger-hover-bg: #d45a62;
+    --success-color: #98c379;
+    --notification-bg: #252830;
+    --notification-header-bg: #2c313a;
+    --notification-border: #E5C07B;
+    --tool-bubble-bg: rgba(229, 192, 123, 0.08);
+    --tool-bubble-border: #E5C07B;
+
+    /* --- Scrollbar --- */
+    --scrollbar-track: rgba(30, 33, 39, 0.6);
+    --scrollbar-thumb: rgba(229, 192, 123, 0.4);
+    --scrollbar-thumb-hover: rgba(229, 192, 123, 0.6);
+
+    /* --- Shimmer Effect --- */
+    --shimmer-color-transparent: rgba(171, 178, 191, 0.3);
+    --shimmer-color-highlight: rgba(229, 192, 123, 0.6);
+
+    /* --- Text Shadow --- */
+    --panel-text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+
+    /* --- Unified Panel Background --- */
+    --panel-bg: var(--panel-bg-dark);
+}
+
+body {
+    background-image: var(--chat-wallpaper-dark);
+    background-size: cover;
+    background-position: center;
+    background-attachment: fixed;
+}
+
+/* * =================================================================
+ * Light Theme: Code Light (代码浅色)
+ * Clean and professional light theme.
+ * Inspired by light IDE color schemes.
+ * =================================================================
+ */
+body.light-theme {
+    background-image: var(--chat-wallpaper-light);
+    background-size: cover;
+    background-position: center;
+    background-attachment: fixed;
+
+    /* --- Wallpaper --- */
+    --chat-wallpaper-light: url('../assets/wallpaper/code-light.jpeg');
+
+    /* --- Base Colors --- */
+    --primary-bg: #f5f3ed;
+    --secondary-bg: #ffffff;
+    --tertiary-bg: #fafaf8;
+    --accent-bg: #e8e6e0;
+    --border-color: #d4d2cc;
+    --input-bg: #ffffff;
+    --panel-bg-light: rgba(255, 255, 255, 0.85);
+
+    /* --- Text Colors --- */
+    --primary-text: #383a42;
+    --secondary-text: #9ca0a4;
+    --highlight-text: #4b6f85;
+    --text-on-accent: #ffffff;
+    --placeholder-text: #9ca0a4;
+    --quoted-text: #4b6f85;
+    --user-text: #383a42;
+    --agent-text: #383a42;
+
+    /* --- Bubble Colors --- */
+    --user-bubble-bg: rgba(75, 111, 133, 0.08);
+    --assistant-bubble-bg: rgba(255, 255, 255, 0.7);
+
+    /* --- UI Element Colors --- */
+    --button-bg: #4b6f85;
+    --button-hover-bg: #3d5a6d;
+    --danger-color: #e45649;
+    --danger-hover-bg: #d44437;
+    --success-color: #50a14f;
+    --notification-bg: #f5f3ed;
+    --notification-header-bg: #ffffff;
+    --notification-border: #4b6f85;
+    --tool-bubble-bg: rgba(75, 111, 133, 0.06);
+    --tool-bubble-border: #4b6f85;
+
+    /* --- Scrollbar --- */
+    --scrollbar-track: rgba(212, 210, 204, 0.5);
+    --scrollbar-thumb: rgba(75, 111, 133, 0.4);
+    --scrollbar-thumb-hover: rgba(75, 111, 133, 0.6);
+
+    /* --- Shimmer Effect --- */
+    --shimmer-color-transparent: rgba(56, 58, 66, 0.2);
+    --shimmer-color-highlight: rgba(75, 111, 133, 0.4);
+
+    /* --- Unified Panel Background --- */
+    --panel-bg: var(--panel-bg-light);
+}

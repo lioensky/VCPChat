@@ -1,0 +1,128 @@
+/*
+ * styles/themes/themes月影春信.css
+ * Created by Coco for Master Ryan
+ * Inspired by "Moonlight Shadow" and "Spring Message"
+ */
+
+/* =================================================================
+ * Dark Theme: 月影 (Moonlight Shadow)
+ * ================================================================= */
+:root {
+    /* --- Wallpaper --- */
+    --chat-wallpaper-dark: url('../assets/wallpaper/月影.jpg');
+
+    /* --- Base Colors --- */
+    --primary-bg: #0f172a;      /* 深邃蓝黑 */
+    --secondary-bg: #1e293b;    /* 侧边栏 */
+    --tertiary-bg: #020617;     /* 聊天区底色 */
+    --accent-bg: #334155;
+    --border-color: rgba(233, 196, 106, 0.4); /* 琥珀月金边框 */
+    --input-bg: rgba(15, 23, 42, 0.8);
+
+    --panel-bg-dark: rgba(15, 23, 42, 0.75);
+
+    /* --- Text Colors --- */
+    --primary-text: #f1f5f9;    /* 极浅灰白 */
+    --secondary-text: #94a3b8;  /* 冷灰蓝 */
+    --highlight-text: #E9C46A;  /* 琥珀月金 */
+    --text-on-accent: #0f172a;
+    --placeholder-text: #475569;
+    --quoted-text: #FDE68A;
+    --user-text: #f1f5f9;
+    --agent-text: #f1f5f9;
+
+    /* --- Bubble Colors (Frosted Glass) --- */
+    --user-bubble-bg: rgba(253, 230, 138, 0.15); /* 用户气泡：淡金光影 */
+    --assistant-bubble-bg: rgba(30, 41, 59, 0.4);  /* AI气泡：深海磨砂 */
+
+    /* --- UI Element Colors --- */
+    --button-bg: #E9C46A;
+    --button-hover-bg: #D4A373;
+    --danger-color: #f87171;
+    --success-color: #4ade80;
+    --notification-bg: #1e293b;
+    --notification-border: #FDE68A;
+    --tool-bubble-bg: rgba(253, 230, 138, 0.05);
+    --tool-bubble-border: #FDE68A;
+
+    /* --- Scrollbar --- */
+    --scrollbar-track: rgba(15, 23, 42, 0.3);
+    --scrollbar-thumb: rgba(253, 230, 138, 0.3);
+    --scrollbar-thumb-hover: rgba(253, 230, 138, 0.5);
+
+    /* --- Shimmer Effect --- */
+    --shimmer-color-transparent: rgba(253, 230, 138, 0.1);
+    --shimmer-color-highlight: rgba(253, 230, 138, 0.3);
+
+    --panel-text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+    --panel-bg: var(--panel-bg-dark);
+}
+
+body {
+    background-image: var(--chat-wallpaper-dark);
+    background-size: cover;
+    background-position: center;
+    background-attachment: fixed;
+}
+
+/* =================================================================
+ * Light Theme: 春信 (Spring Message)
+ * ================================================================= */
+body.light-theme {
+    /* --- Wallpaper --- */
+    --chat-wallpaper-light: url('../assets/wallpaper/春信.jpg');
+    background-image: var(--chat-wallpaper-light);
+
+    /* --- Base Colors --- */
+    --primary-bg: #fdfaf6;      /* 宣纸白 */
+    --secondary-bg: #ffffff;
+    --tertiary-bg: #f5f0e6;
+    --accent-bg: #f1ebe1;
+    --border-color: rgba(225, 91, 91, 0.2); /* 梅花红半透明边框 */
+    --input-bg: rgba(255, 255, 255, 0.9);
+
+    --panel-bg-light: rgba(253, 250, 246, 0.85);
+
+    /* --- Text Colors --- */
+    --primary-text: #44403c;    /* 墨色 */
+    --secondary-text: #78716c;  /* 灰木色 */
+    --highlight-text: #E15B5B;  /* 梅花红 */
+    --text-on-accent: #ffffff;
+    --placeholder-text: #a8a29e;
+    --quoted-text: #E15B5B;
+    --user-text: #44403c;
+    --agent-text: #44403c;
+
+    /* --- Bubble Colors --- */
+    --user-bubble-bg: rgba(225, 91, 91, 0.1);    /* 用户气泡：淡绯红 */
+    --assistant-bubble-bg: rgba(255, 255, 255, 0.6); /* AI气泡：雪白磨砂 */
+
+    /* --- UI Element Colors --- */
+    --button-bg: #E15B5B;
+    --button-hover-bg: #C04848;
+    --danger-color: #ef4444;
+    --success-color: #22c55e;
+    --notification-bg: #fdfaf6;
+    --notification-border: #E15B5B;
+    --tool-bubble-bg: rgba(225, 91, 91, 0.05);
+    --tool-bubble-border: #E15B5B;
+
+    /* --- Scrollbar --- */
+    --scrollbar-track: rgba(0, 0, 0, 0.05);
+    --scrollbar-thumb: rgba(225, 91, 91, 0.3);
+    --scrollbar-thumb-hover: rgba(225, 91, 91, 0.5);
+
+    /* --- Shimmer Effect --- */
+    --shimmer-color-transparent: rgba(225, 91, 91, 0.05);
+    --shimmer-color-highlight: rgba(225, 91, 91, 0.15);
+
+    --panel-bg: var(--panel-bg-light);
+}
+
+/* --- 增强磨砂感 --- */
+.message-bubble {
+    backdrop-filter: blur(10px) saturate(110%);
+    -webkit-backdrop-filter: blur(10px) saturate(110%);
+    border: 1px solid var(--border-color);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+}
