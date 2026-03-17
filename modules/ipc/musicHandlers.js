@@ -1,10 +1,11 @@
-// modules/ipc/musicHandlers.js
+﻿// modules/ipc/musicHandlers.js
 
 const { ipcMain, BrowserWindow, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs-extra');
 const { Worker } = require('worker_threads');
 const lyricFetcher = require('../lyricFetcher'); // Import the new lyric fetcher
+const webdavManager = require('../webdavManager'); // WebDAV support
 const AUDIO_ENGINE_URL = 'http://127.0.0.1:63789';
 let fetch;
 
@@ -190,6 +191,8 @@ async function handleMusicControl(args) {
 }
 
 function initialize(options) {
+    console.error('[Music] ========== INITIALIZE CALLED ==========');
+    console.log('[Music] initialize called');
     mainWindow = options.mainWindow;
     openChildWindows = options.openChildWindows;
     startAudioEngine = options.startAudioEngine; // Receive the start function
@@ -200,6 +203,7 @@ function initialize(options) {
     LYRIC_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'lyric');
 
     const registerIpcHandlers = () => {
+        console.log('[Music] registerIpcHandlers called');
         ipcMain.on('open-music-window', async () => {
             try {
                 await createOrFocusMusicWindow();
@@ -208,13 +212,41 @@ function initialize(options) {
             }
         });
 
-        ipcMain.handle('music-load', (event, track) => {
+        ipcMain.handle('music-load', async (event, track) => {
             if (track && track.path) {
                 currentSongInfo = {
                     title: track.title || '未知标题',
                     artist: track.artist || '未知艺术家',
                     album: track.album || '未知专辑'
                 };
+                
+                // 检查是否是 WebDAV 远程曲目
+                if (track.isRemote || track.path.startsWith('http://') || track.path.startsWith('https://')) {
+                    // 如果有 serverId，使用它获取凭据
+                    if (track.serverId) {
+                        return await webdavManager.configureAndLoad({
+                            url: track.path,
+                            serverId: track.serverId
+                        });
+                    }
+                    // 否则尝试通过 URL 匹配服务器
+                    const path = track.path;
+                    const matchingServer = webdavManager.listServers().find(s => {
+                        return path.startsWith(s.url);
+                    });
+                    if (matchingServer) {
+                        const creds = webdavManager.getServerCredentials(matchingServer.id);
+                        if (creds) {
+                            return await webdavManager.configureAndLoad({
+                                url: track.path,
+                                username: creds.username,
+                                password: creds.password
+                            });
+                        }
+                    }
+                }
+                
+                // 本地文件或无法匹配的远程文件
                 return audioEngineApi('/load', 'POST', { path: track.path });
             }
             return { status: 'error', message: 'Invalid track data provided.' };
@@ -264,12 +296,124 @@ function initialize(options) {
             return audioEngineApi('/configure_upsampling', 'POST', { target_samplerate });
         });
 
-        ipcMain.handle('music-set-eq-type', (event, { type }) => {
-            return audioEngineApi('/set_eq_type', 'POST', { type });
+        // --- Resampling Settings Handler ---
+        ipcMain.handle('music-configure-resampling', (event, { quality, use_cache, preemptive_resample }) => {
+            return audioEngineApi('/configure_resampling', 'POST', { quality, use_cache, preemptive_resample });
+        });
+
+        ipcMain.handle('music-set-eq-type', (event, { type, fir_taps }) => {
+            return audioEngineApi('/set_eq_type', 'POST', { type, fir_taps });
         });
 
         ipcMain.handle('music-configure-optimizations', (event, data) => {
             return audioEngineApi('/configure_optimizations', 'POST', data);
+        });
+
+        // --- Loudness Normalization Handlers ---
+        ipcMain.handle('music-configure-normalization', async (event, data) => {
+            console.log('[Music] configure_normalization request:', JSON.stringify(data));
+            const result = await audioEngineApi('/configure_normalization', 'POST', data);
+            console.log('[Music] configure_normalization response:', JSON.stringify(result));
+            return result;
+        });
+
+        ipcMain.handle('music-get-loudness-info', async () => {
+            return await audioEngineApi('/loudness_info', 'GET');
+        });
+
+        ipcMain.handle('music-scan-loudness', (event, { path }) => {
+            return audioEngineApi('/scan_loudness', 'POST', { path });
+        });
+
+        ipcMain.handle('music-scan-loudness-background', (event, { path, store }) => {
+            return audioEngineApi('/scan_loudness_background', 'POST', { path, store });
+        });
+
+        // --- Saturation Effect Handlers ---
+        ipcMain.handle('music-get-saturation', async () => {
+            return await audioEngineApi('/saturation', 'GET');
+        });
+
+        ipcMain.handle('music-set-saturation', (event, data) => {
+            return audioEngineApi('/set_saturation', 'POST', data);
+        });
+
+        // --- Crossfeed Handlers ---
+        ipcMain.handle('music-get-crossfeed', async () => {
+            return await audioEngineApi('/crossfeed', 'GET');
+        });
+
+        ipcMain.handle('music-set-crossfeed', (event, data) => {
+            return audioEngineApi('/set_crossfeed', 'POST', data);
+        });
+
+        // --- Dynamic Loudness Handlers ---
+        ipcMain.handle('music-get-dynamic-loudness', async () => {
+            return await audioEngineApi('/dynamic_loudness', 'GET');
+        });
+
+        ipcMain.handle('music-set-dynamic-loudness', (event, data) => {
+            return audioEngineApi('/set_dynamic_loudness', 'POST', data);
+        });
+
+        // --- Noise Shaper Handlers ---
+        ipcMain.handle('music-get-noise-shaper-curve', async () => {
+            return await audioEngineApi('/noise_shaper_curve', 'GET');
+        });
+
+        ipcMain.handle('music-set-noise-shaper-curve', (event, { curve }) => {
+            return audioEngineApi('/set_noise_shaper_curve', 'POST', { curve });
+        });
+
+        ipcMain.handle('music-configure-output-bits', (event, { bits }) => {
+            return audioEngineApi('/configure_output_bits', 'POST', { bits });
+        });
+
+        // --- IR Status Handler ---
+        ipcMain.handle('music-get-ir-status', async () => {
+            return await audioEngineApi('/ir_status', 'GET');
+        });
+        
+        // --- Settings Persistence ---
+        ipcMain.handle('music-get-settings', async () => {
+            return await audioEngineApi('/settings', 'GET');
+        });
+
+        ipcMain.handle('music-save-settings', (event, data) => {
+            return audioEngineApi('/save_settings', 'POST', data);
+        });
+
+        // --- Gapless Playback Handlers ---
+        ipcMain.handle('music-queue-next', (event, { path, username, password }) => {
+            return audioEngineApi('/queue_next', 'POST', { path, username, password });
+        });
+
+        ipcMain.handle('music-cancel-preload', () => {
+            return audioEngineApi('/cancel_preload', 'POST');
+        });
+
+        // --- FIR IR Convolver Handlers ---
+        ipcMain.handle('music-load-ir', (event, { path }) => {
+            return audioEngineApi('/load_ir', 'POST', { path });
+        });
+
+        ipcMain.handle('music-unload-ir', () => {
+            return audioEngineApi('/unload_ir', 'POST');
+        });
+
+        // --- IR File Selection Dialog ---
+        ipcMain.handle('select-ir-file', async () => {
+            const result = await dialog.showOpenDialog(musicWindow || mainWindow, {
+                title: '选择脉冲响应文件 (IR)',
+                filters: [
+                    { name: '音频文件', extensions: ['wav', 'flac', 'mp3', 'ogg'] },
+                    { name: 'WAV', extensions: ['wav'] },
+                    { name: 'FLAC', extensions: ['flac'] },
+                    { name: '所有文件', extensions: ['*'] }
+                ],
+                properties: ['openFile']
+            });
+            return result;
         });
 
         ipcMain.on('open-music-folder', async (event) => {
@@ -444,13 +588,107 @@ function initialize(options) {
                 return null;
             }
         });
+
+        // ============ WebDAV IPC Handlers ============
+        // 前端直接传递完整凭据 {url, username, password, path}
+
+        ipcMain.handle('webdav-add-server', (event, config) => {
+            return webdavManager.addServer(config);
+        });
+
+        ipcMain.handle('webdav-remove-server', (event, { id }) => {
+            webdavManager.removeServer(id);
+            return { ok: true };
+        });
+
+        ipcMain.handle('webdav-list-servers', () => {
+            return webdavManager.listServers();
+        });
+
+        // 前端传递: { url, username, password }
+        ipcMain.handle('webdav-test-connection', async (event, config) => {
+            return await webdavManager.testConnection(config);
+        });
+
+        // 前端传递: { serverId?, url, username?, password?, path }
+        ipcMain.handle('webdav-list-directory', async (event, config) => {
+            // 如果提供了 serverId，从后端获取完整凭据
+            if (config.serverId) {
+                const serverCreds = webdavManager.getServerCredentials(config.serverId);
+                if (serverCreds) {
+                    config.url = serverCreds.url;
+                    config.username = serverCreds.username;
+                    config.password = serverCreds.password;
+                }
+            }
+            return await webdavManager.listDirectory(config);
+        });
+
+        // 前端传递: { serverId?, url, username?, password?, path? }
+        ipcMain.handle('webdav-scan-audio', async (event, config) => {
+            console.log('[Music] webdav-scan-audio called with config:', { serverId: config.serverId, url: config.url });
+            // 如果提供了 serverId，从后端获取完整凭据
+            if (config.serverId) {
+                const serverCreds = webdavManager.getServerCredentials(config.serverId);
+                console.log('[Music] serverCreds found:', !!serverCreds, 'hasPassword:', !!(serverCreds?.password));
+                if (serverCreds) {
+                    config.url = serverCreds.url;
+                    config.username = serverCreds.username;
+                    config.password = serverCreds.password;
+                }
+            }
+            const results = await webdavManager.scanAudioFiles(config, (count) => {
+                if (musicWindow && !musicWindow.isDestroyed()) {
+                    musicWindow.webContents.send('webdav-scan-progress', { count });
+                }
+            });
+            console.log('[Music] scanAudioFiles returned:', results?.status, 'tracks:', results?.tracks?.length);
+            return results;
+        });
+
+        // 前端传递: { url, serverId?, remotePath? }
+        ipcMain.handle('webdav-get-file-url', (event, config) => {
+            return webdavManager.getFileUrl(config);
+        });
+
+        // 获取服务器完整凭据（包含密码）
+        ipcMain.handle('webdav-get-server-credentials', (event, { serverId }) => {
+            return webdavManager.getServerCredentials(serverId);
+        });
+
+        // Load a WebDAV file: 前端传递 { url, serverId?, username?, password?, trackMeta? }
+        // 如果提供 serverId，则从后端获取完整凭据（包含密码）
+        ipcMain.handle('webdav-load-track', async (event, config) => {
+            if (!config.url) return { status: 'error', message: 'No URL provided' };
+            
+            // 如果提供了 serverId，从后端获取完整凭据
+            if (config.serverId && !config.password) {
+                const serverCreds = webdavManager.getServerCredentials(config.serverId);
+                if (serverCreds) {
+                    config.username = serverCreds.username;
+                    config.password = serverCreds.password;
+                }
+            }
+            
+            currentSongInfo = {
+                title: config.trackMeta?.title || config.url.split('/').pop().split('?')[0],
+                artist: config.trackMeta?.artist || '未知艺术家',
+                album: config.trackMeta?.album || '未知专辑',
+            };
+            return await webdavManager.configureAndLoad(config);
+        });
     };
 
     // 使用动态导入，并在成功后注册所有IPC处理器
+    // 先注册 IPC 处理器，再异步加载 node-fetch
+    console.error('[Music] About to call registerIpcHandlers...');
+    registerIpcHandlers();
+    console.error('[Music] IPC handlers registered.');
+    console.log('[Music] IPC handlers registered.');
+    
     import('node-fetch').then(module => {
         fetch = module.default;
         console.log('[Music] node-fetch loaded successfully.');
-        registerIpcHandlers();
     }).catch(err => {
         console.error('[Music] Failed to load node-fetch:', err);
     });

@@ -38,21 +38,46 @@
     <div id="player-background"></div>
 
     <div class="music-player-container">
-        <!-- 左侧边栏 -->
+        <!-- 左侧边栏 - 整合播放列表 -->
         <div id="left-sidebar" class="left-sidebar glass-panel">
+            <!-- 顶部操作区 -->
+            <div class="sidebar-actions">
+                <input type="text" id="search-input" placeholder="搜索歌曲...">
+                <div class="sidebar-action-btns">
+                    <button id="add-folder-btn" title="添加本地音乐">本地</button>
+                    <button id="add-webdav-btn" title="从 WebDAV 云端导入">云端导入</button>
+                </div>
+            </div>
+            <!-- 分类标签 -->
             <div class="sidebar-tabs">
-                <button class="sidebar-tab active" data-view="all">全部</button>
+                <button class="sidebar-tab active" data-view="all">全部 <span class="tab-count" id="all-count">0</span></button>
                 <button class="sidebar-tab" data-view="albums">专辑</button>
                 <button class="sidebar-tab" data-view="artists">歌手</button>
                 <button class="sidebar-tab" data-view="playlists">歌单</button>
             </div>
-            <div class="sidebar-content" id="sidebar-content">
-                <!-- 动态内容由 JS 渲染 -->
+            <!-- 播放列表/分类内容 -->
+            <div class="sidebar-list-container">
+                <ul id="playlist" class="playlist sidebar-playlist">
+                    <!-- 播放列表项将由 JS 动态生成 -->
+                </ul>
+                <div class="sidebar-category-view" id="sidebar-category-view" style="display:none;">
+                    <!-- 分类内容由 JS 渲染 -->
+                </div>
             </div>
             <div class="sidebar-footer" id="sidebar-footer" style="display:none;">
                 <button id="create-playlist-btn" class="create-playlist-btn">
                     <span>+</span> 新建歌单
                 </button>
+            </div>
+            <div id="loading-indicator" class="loading-indicator" style="display: none;">
+                <div class="spinner"></div>
+                <div class="loading-text">
+                    <span>正在扫描音乐...</span>
+                    <div class="scan-progress-container" style="display: none;">
+                        <div class="scan-progress-bar"></div>
+                    </div>
+                    <span class="scan-progress-label"></span>
+                </div>
             </div>
         </div>
 
@@ -137,40 +162,13 @@
                 </div>
             </div>
 
-            <!-- 下方的播放列表区 -->
-            <div class="playlist-container glass-panel">
-                <div class="playlist-header">
-                    <h3>播放列表</h3>
-                    <div class="playlist-actions">
-                        <input type="text" id="search-input" placeholder="搜索...">
-                        <button id="add-folder-btn">添加</button>
-                    </div>
-                </div>
-                <ul id="playlist" class="playlist">
-                    <!-- 播放列表项将由 JS 动态生成 -->
-                </ul>
-                <div id="loading-indicator" class="loading-indicator" style="display: none;">
-                    <div class="spinner"></div>
-                    <div class="loading-text">
-                        <span>正在扫描音乐...</span>
-                        <div class="scan-progress-container" style="display: none;">
-                            <div class="scan-progress-bar"></div>
-                        </div>
-                        <span class="scan-progress-label"></span>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="right-sidebar">
+            <!-- 高级设置面板 - 位于播放控件下方 -->
             <div class="settings-container glass-panel">
                 <!-- 顶部：音频设备 (单独一行，因为设备名可能很长) -->
                 <div class="setting-row full-width">
                     <label for="device-select">音频设备</label>
                     <select id="device-select"></select>
                 </div>
-
-                <div class="divider"></div>
 
                 <!-- 中部：紧凑网格布局 -->
                 <div class="settings-grid">
@@ -212,34 +210,306 @@
                     </div>
                 </div>
 
-                <div class="divider"></div>
-
-                <!-- 底部：EQ 部分 -->
-                <div id="eq-section" class="eq-section">
-                    <div class="eq-header">
-                        <div class="eq-title-group">
-                            <h4>均衡器</h4>
-                            <label class="switch compact scale-80">
+                <!-- 手风琴折叠区域 -->
+                <div class="accordion-container">
+                    <!-- EQ 部分 -->
+                    <div id="eq-section" class="accordion-section">
+                        <div class="accordion-header" data-target="eq-content">
+                            <div class="accordion-title-group">
+                                <svg class="accordion-arrow" viewBox="0 0 24 24" width="16" height="16">
+                                    <path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z" fill="currentColor"/>
+                                </svg>
+                                <h4>均衡器</h4>
+                            </div>
+                            <label class="switch compact scale-80" onclick="event.stopPropagation()">
                                 <input type="checkbox" id="eq-switch">
                                 <span class="slider round"></span>
                             </label>
                         </div>
-
-                        <div class="eq-controls-row">
-                            <select id="eq-type-select" class="eq-type-select">
-                                <option value="IIR">IIR (低延迟)</option>
-                                <option value="FIR">FIR (线性)</option>
-                            </select>
-                            <select id="eq-preset-select" class="eq-preset-select">
-                                <!-- Presets populated by JS -->
-                            </select>
+                        <div class="accordion-content" id="eq-content">
+                            <div class="eq-controls-row">
+                                <select id="eq-type-select" class="eq-type-select">
+                                    <option value="IIR">IIR (低延迟)</option>
+                                    <option value="FIR">FIR (线性相位)</option>
+                                </select>
+                                <select id="fir-taps-select" class="eq-type-select" style="display:none;" title="FIR 滤波器阶数">
+                                    <option value="511">511 taps</option>
+                                    <option value="1023" selected>1023 taps</option>
+                                    <option value="2047">2047 taps</option>
+                                    <option value="4095">4095 taps</option>
+                                </select>
+                                <select id="eq-preset-select" class="eq-preset-select">
+                                    <!-- Presets populated by JS -->
+                                </select>
+                            </div>
+                            <div id="eq-bands" class="eq-bands">
+                                <!-- EQ Bands generated by JS -->
+                            </div>
                         </div>
                     </div>
-                    <div id="eq-bands" class="eq-bands">
-                        <!-- EQ Bands generated by JS -->
+
+                    <!-- IR Convolver 部分 -->
+                    <div id="ir-section" class="accordion-section">
+                        <div class="accordion-header" data-target="ir-content">
+                            <div class="accordion-title-group">
+                                <svg class="accordion-arrow" viewBox="0 0 24 24" width="16" height="16">
+                                    <path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z" fill="currentColor"/>
+                                </svg>
+                                <h4>脉冲响应</h4>
+                            </div>
+                            <label class="switch compact scale-80" onclick="event.stopPropagation()">
+                                <input type="checkbox" id="ir-switch">
+                                <span class="slider round"></span>
+                            </label>
+                        </div>
+                        <div class="accordion-content" id="ir-content">
+                            <div class="ir-controls">
+                                <select id="ir-preset-select" class="ir-preset-select">
+                                    <option value="">-- 选择预设 --</option>
+                                    <option value="hrtf">HRTF 虚拟环绕</option>
+                                    <option value="headphone_correct">耳机频响校正</option>
+                                    <option value="room_correct">房间声学校正</option>
+                                    <option value="custom">自定义 IR 文件</option>
+                                </select>
+                                <button id="ir-load-btn" class="ir-load-btn" style="display: none;">
+                                    <svg viewBox="0 0 24 24" width="14" height="14">
+                                        <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" fill="currentColor"/>
+                                    </svg>
+                                    加载 IR
+                                </button>
+                            </div>
+                            <div id="ir-status" class="ir-status">
+                                <span class="ir-status-text">未加载</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Loudness Normalization 部分 -->
+                    <div id="loudness-section" class="accordion-section">
+                        <div class="accordion-header" data-target="loudness-content">
+                            <div class="accordion-title-group">
+                                <svg class="accordion-arrow" viewBox="0 0 24 24" width="16" height="16">
+                                    <path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z" fill="currentColor"/>
+                                </svg>
+                                <h4>响度归一化</h4>
+                            </div>
+                            <label class="switch compact scale-80" onclick="event.stopPropagation()">
+                                <input type="checkbox" id="loudness-switch" checked>
+                                <span class="slider round"></span>
+                            </label>
+                        </div>
+                        <div class="accordion-content" id="loudness-content">
+                            <div class="loudness-controls">
+                                <div class="setting-item">
+                                    <label for="loudness-mode-select">模式</label>
+                                    <select id="loudness-mode-select" class="compact-select">
+                                        <option value="track">单曲 (EBU R128)</option>
+                                        <option value="album">专辑 (EBU R128)</option>
+                                        <option value="streaming">流媒体</option>
+                                        <option value="replaygain_track">RG 单曲</option>
+                                        <option value="replaygain_album">RG 专辑</option>
+                                    </select>
+                                </div>
+                                <div class="setting-item loudness-lufs-item">
+                                    <label for="loudness-lufs-slider">目标 LUFS</label>
+                                    <div class="slider-with-value">
+                                        <input type="range" id="loudness-lufs-slider" min="-23" max="-9" step="0.5" value="-12">
+                                        <span id="loudness-lufs-value">-12</span>
+                                    </div>
+                                </div>
+                                <div class="setting-item loudness-preamp-item">
+                                    <label for="loudness-preamp-slider">前置增益</label>
+                                    <div class="slider-with-value">
+                                        <input type="range" id="loudness-preamp-slider" min="-12" max="12" step="0.5" value="0">
+                                        <span id="loudness-preamp-value">0 dB</span>
+                                    </div>
+                                </div>
+                                <div id="loudness-info" class="loudness-info" style="display: none;">
+                                    <span class="loudness-info-label">当前曲目:</span>
+                                    <span id="loudness-current-lufs">--</span> LUFS
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Dynamic Loudness 部分 -->
+                    <div id="dynamic-loudness-section" class="accordion-section">
+                        <div class="accordion-header" data-target="dynamic-loudness-content">
+                            <div class="accordion-title-group">
+                                <svg class="accordion-arrow" viewBox="0 0 24 24" width="16" height="16">
+                                    <path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z" fill="currentColor"/>
+                                </svg>
+                                <h4>动态等响度</h4>
+                            </div>
+                            <label class="switch compact scale-80" onclick="event.stopPropagation()">
+                                <input type="checkbox" id="dynamic-loudness-switch">
+                                <span class="slider round"></span>
+                            </label>
+                        </div>
+                        <div class="accordion-content" id="dynamic-loudness-content">
+                            <div class="dynamic-loudness-controls">
+                                <div class="setting-item dynamic-loudness-strength-item">
+                                    <label for="dynamic-loudness-strength-slider">强度</label>
+                                    <div class="slider-with-value">
+                                        <input type="range" id="dynamic-loudness-strength-slider" min="0" max="100" step="1" value="100">
+                                        <span id="dynamic-loudness-strength-value">100%</span>
+                                    </div>
+                                </div>
+                                <div id="dynamic-loudness-info" class="dynamic-loudness-info">
+                                    <span class="dynamic-loudness-info-label">补偿因子:</span>
+                                    <span id="dynamic-loudness-factor">--</span>
+                                </div>
+                                <div class="dynamic-loudness-hint">根据音量自动补偿低频和高频，模拟等响度曲线</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Saturation Effect 部分 -->
+                    <div id="saturation-section" class="accordion-section">
+                        <div class="accordion-header" data-target="saturation-content">
+                            <div class="accordion-title-group">
+                                <svg class="accordion-arrow" viewBox="0 0 24 24" width="16" height="16">
+                                    <path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z" fill="currentColor"/>
+                                </svg>
+                                <h4>饱和效果</h4>
+                            </div>
+                            <label class="switch compact scale-80" onclick="event.stopPropagation()">
+                                <input type="checkbox" id="saturation-switch">
+                                <span class="slider round"></span>
+                            </label>
+                        </div>
+                        <div class="accordion-content" id="saturation-content">
+                            <div class="saturation-controls">
+                                <div class="setting-item">
+                                    <label for="saturation-type-select">类型</label>
+                                    <select id="saturation-type-select" class="compact-select">
+                                        <option value="tube">电子管</option>
+                                        <option value="tape">磁带</option>
+                                    </select>
+                                </div>
+                                <div class="setting-item saturation-drive-item">
+                                    <label for="saturation-drive-slider">驱动</label>
+                                    <div class="slider-with-value">
+                                        <input type="range" id="saturation-drive-slider" min="0" max="100" step="1" value="25">
+                                        <span id="saturation-drive-value">25%</span>
+                                    </div>
+                                </div>
+                                <div class="setting-item saturation-mix-item">
+                                    <label for="saturation-mix-slider">混合</label>
+                                    <div class="slider-with-value">
+                                        <input type="range" id="saturation-mix-slider" min="0" max="100" step="1" value="20">
+                                        <span id="saturation-mix-value">20%</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Crossfeed 部分 -->
+                    <div id="crossfeed-section" class="accordion-section">
+                        <div class="accordion-header" data-target="crossfeed-content">
+                            <div class="accordion-title-group">
+                                <svg class="accordion-arrow" viewBox="0 0 24 24" width="16" height="16">
+                                    <path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z" fill="currentColor"/>
+                                </svg>
+                                <h4>交叉馈送</h4>
+                            </div>
+                            <label class="switch compact scale-80" onclick="event.stopPropagation()">
+                                <input type="checkbox" id="crossfeed-switch">
+                                <span class="slider round"></span>
+                            </label>
+                        </div>
+                        <div class="accordion-content" id="crossfeed-content">
+                            <div class="crossfeed-controls">
+                                <div class="setting-item crossfeed-mix-item">
+                                    <label for="crossfeed-mix-slider">混合比例</label>
+                                    <div class="slider-with-value">
+                                        <input type="range" id="crossfeed-mix-slider" min="0" max="100" step="1" value="30">
+                                        <span id="crossfeed-mix-value">30%</span>
+                                    </div>
+                                </div>
+                                <div class="crossfeed-hint">适用于耳机，模拟音箱声场</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Noise Shaper 部分 -->
+                    <div id="noise-shaper-section" class="accordion-section">
+                        <div class="accordion-header" data-target="noise-shaper-content">
+                            <div class="accordion-title-group">
+                                <svg class="accordion-arrow" viewBox="0 0 24 24" width="16" height="16">
+                                    <path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z" fill="currentColor"/>
+                                </svg>
+                                <h4>噪声整形</h4>
+                            </div>
+                        </div>
+                        <div class="accordion-content" id="noise-shaper-content">
+                            <div class="noise-shaper-controls">
+                                <div class="setting-item">
+                                    <label for="output-bits-select">输出位深</label>
+                                    <select id="output-bits-select" class="compact-select">
+                                        <option value="32">32-bit</option>
+                                        <option value="24">24-bit</option>
+                                        <option value="16">16-bit</option>
+                                    </select>
+                                </div>
+                                <div class="setting-item">
+                                    <label for="noise-shaper-curve-select">整形曲线</label>
+                                    <select id="noise-shaper-curve-select" class="compact-select">
+                                        <option value="TpdfOnly">TPDF (96kHz+)</option>
+                                        <option value="Lipshitz5">Lipshitz (44.1/48k)</option>
+                                        <option value="FWeighted9">F-Weighted</option>
+                                        <option value="ModifiedE9">Modified E</option>
+                                        <option value="ImprovedE9">Improved E</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 重采样设置部分 -->
+                    <div id="resampling-section" class="accordion-section">
+                        <div class="accordion-header" data-target="resampling-content">
+                            <div class="accordion-title-group">
+                                <svg class="accordion-arrow" viewBox="0 0 24 24" width="16" height="16">
+                                    <path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z" fill="currentColor"/>
+                                </svg>
+                                <h4>重采样</h4>
+                            </div>
+                        </div>
+                        <div class="accordion-content" id="resampling-content">
+                            <div class="resampling-controls">
+                                <div class="setting-item">
+                                    <label for="resample-quality-select">质量</label>
+                                    <select id="resample-quality-select" class="compact-select">
+                                        <option value="low">低 (最低延迟)</option>
+                                        <option value="std">标准</option>
+                                        <option value="hq" selected>高</option>
+                                        <option value="uhq">超高 (最高CPU)</option>
+                                    </select>
+                                </div>
+                                <div class="setting-item toggle-item">
+                                    <label for="resample-cache-switch">磁盘缓存</label>
+                                    <label class="switch compact">
+                                        <input type="checkbox" id="resample-cache-switch">
+                                        <span class="slider round"></span>
+                                    </label>
+                                </div>
+                                <div class="setting-item toggle-item">
+                                    <label for="preemptive-resample-switch">预重采样</label>
+                                    <label class="switch compact">
+                                        <input type="checkbox" id="preemptive-resample-switch" checked>
+                                        <span class="slider round"></span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
+        </div>
+
+        <div class="right-sidebar">
             <div id="lyrics-container" class="lyrics-container glass-panel">
                 <!-- 歌词渲染区域 -->
                 <ul id="lyrics-list">
@@ -288,6 +558,50 @@
                     fill="currentColor" />
             </svg>
             <span>从列表中移除</span>
+        </div>
+    </div>
+
+    <!-- WebDAV 管理模态框 -->
+    <div id="webdav-modal" class="music-modal-overlay">
+        <div class="music-modal webdav-modal">
+            <div class="music-modal-header">
+                <h3>从云端导入 (WebDAV)</h3>
+                <button class="music-modal-close-btn" id="webdav-modal-close">✕</button>
+            </div>
+            <div class="webdav-modal-body">
+                <!-- 左侧：服务器列表 -->
+                <div class="webdav-server-panel">
+                    <div class="webdav-server-list" id="webdav-server-list"></div>
+                    <button class="dialog-btn confirm" id="webdav-add-server-btn" style="margin-top:8px;width:100%;flex:none;">+ 添加服务器</button>
+                </div>
+                <!-- 右侧：文件浏览 -->
+                <div class="webdav-file-panel">
+                    <div class="webdav-breadcrumb" id="webdav-breadcrumb"></div>
+                    <div class="webdav-file-list" id="webdav-file-list">
+                        <div class="no-lyrics" style="padding:20px;">请先选择或添加一个 WebDAV 服务器</div>
+                    </div>
+                                    <div class="webdav-file-actions">
+                                        <button class="dialog-btn" id="webdav-scan-btn" disabled>扫描全部音频</button>
+                                        <button class="dialog-btn confirm" id="webdav-import-btn" disabled>导入到全部</button>
+                                    </div>                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- WebDAV 添加服务器对话框 -->
+    <div id="webdav-server-dialog" class="dialog-overlay">
+        <div class="dialog glass-panel">
+            <h3>添加 WebDAV 服务器</h3>
+            <input type="text" id="webdav-server-name" placeholder="名称 (如：我的 NAS)" style="margin-bottom:8px;">
+            <input type="url" id="webdav-server-url" placeholder="URL (如：http://nas.local/dav/)" style="margin-bottom:8px;">
+            <input type="text" id="webdav-server-username" placeholder="用户名 (可选)" style="margin-bottom:8px;">
+            <input type="password" id="webdav-server-password" placeholder="密码 (可选)" style="margin-bottom:8px;">
+            <div class="dialog-actions">
+                <button class="dialog-btn cancel" id="webdav-dialog-cancel">取消</button>
+                <button class="dialog-btn" id="webdav-dialog-test">测试连接</button>
+                <button class="dialog-btn confirm" id="webdav-dialog-confirm">添加</button>
+            </div>
+            <div id="webdav-dialog-status" style="margin-top:6px;font-size:12px;"></div>
         </div>
     </div>
 

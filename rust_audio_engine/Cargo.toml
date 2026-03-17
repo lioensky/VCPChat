@@ -38,6 +38,14 @@ serde_json = "1"
 # --- DSP ---
 rustfft = "6.2"
 rand = "0.8"
+ebur128 = "0.1"           # EBU R128 loudness measurement
+atomic_float = "1.0"      # Atomic floating point types
+
+# --- Debug: Allocation tracking in audio callback ---
+assert_no_alloc = "1.1"
+
+# --- Database ---
+rusqlite = { version = "0.32", features = ["bundled"] }  # Loudness metadata persistence
 
 # --- Utilities ---
 log = "0.4"
@@ -46,6 +54,9 @@ thiserror = "2"
 dotenv = "0.15"
 sha2 = "0.10"
 hex = "0.4"
+crc32fast = "1.4"
+reqwest = { version = "0.12", features = ["blocking"] }
+quick-xml = { version = "0.36", features = ["serialize"] }
 
 # --- Optional: PyO3 for backward compat ---
 pyo3 = { version = "0.23", features = ["extension-module"], optional = true }
@@ -60,6 +71,13 @@ lto = "fat"
 codegen-units = 1
 panic = "abort"
 opt-level = 3
+# Use RUSTFLAGS="-C target-cpu=native" for CPU-specific optimizations
 
 [profile.release.build-override]
 opt-level = 3
+
+[package.metadata.vcpkg]
+dependencies = ["soxr"]
+
+[build-dependencies]
+pkg-config = "0.3"

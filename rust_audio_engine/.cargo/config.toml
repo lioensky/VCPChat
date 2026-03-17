@@ -1,0 +1,5 @@
+[target.x86_64-pc-windows-msvc]
+rustflags = [
+    "-L", "native=D:/AI/VCPChat/rust_audio_engine/vcpkg/installed/x64-windows/lib",
+    "-l", "soxr"
+]

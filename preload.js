@@ -36,7 +36,47 @@ contextBridge.exposeInMainWorld('electron', {
             'music-configure-optimizations',
             'music-configure-upsampling', // 新增：升频配置通道
             'music-get-lyrics', // 新增：获取歌词
-            'music-fetch-lyrics' // 新增：从网络获取歌词
+            'music-fetch-lyrics', // 新增：从网络获取歌词
+            // --- WebDAV channels ---
+            'webdav-add-server',
+            'webdav-remove-server',
+            'webdav-list-servers',
+            'webdav-test-connection',
+            'webdav-list-directory',
+            'webdav-scan-audio',
+            'webdav-get-file-url',
+            'webdav-load-track',
+            // --- Gapless Playback ---
+            'music-queue-next',
+            'music-cancel-preload',
+            // --- FIR IR Convolver ---
+            'music-load-ir',
+            'music-unload-ir',
+            'select-ir-file',
+            // --- Loudness Normalization ---
+            'music-configure-normalization',
+            'music-get-loudness-info',
+            'music-scan-loudness',
+            'music-scan-loudness-background',
+            // --- Saturation Effect ---
+            'music-get-saturation',
+            'music-set-saturation',
+            // --- Crossfeed ---
+            'music-get-crossfeed',
+            'music-set-crossfeed',
+            // --- Dynamic Loudness ---
+            'music-get-dynamic-loudness',
+            'music-set-dynamic-loudness',
+            // --- Noise Shaper ---
+            'music-configure-output-bits',
+            'music-set-noise-shaper-curve',
+            // --- IR Status ---
+            'music-get-ir-status',
+            // --- Resampling Settings ---
+            'music-configure-resampling',
+            // --- Settings Persistence ---
+            'music-get-settings',
+            'music-save-settings'
         ];
         if (validChannels.includes(channel)) {
             return ipcRenderer.invoke(channel, data);
@@ -46,7 +86,8 @@ contextBridge.exposeInMainWorld('electron', {
         let validChannels = [
             'music-files', 'scan-started', 'scan-progress', 'scan-finished',
             'audio-engine-error', // 用于接收来自主进程的引擎错误通知
-            'music-set-track' // 用于从主进程设置当前曲目
+            'music-set-track', // 用于从主进程设置当前曲目
+            'webdav-scan-progress' // WebDAV 扫描进度
         ];
         if (validChannels.includes(channel)) {
             // Deliberately strip event as it includes `sender`
