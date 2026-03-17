@@ -5,7 +5,8 @@
  * A clean, professional theme inspired by modern IDEs.
  */
 
-/* * =================================================================* Dark Theme: Code Dark (代码深色)
+/* * =================================================================
+ * Dark Theme: Code Dark (代码深色)
  * Inspired by VS Code and modern IDE aesthetics.
  * Black, Gray, and IDE Yellow color scheme.
  * =================================================================
@@ -94,7 +95,7 @@ body.light-theme {
     --accent-bg: #e8e6e0;
     --border-color: #d4d2cc;
     --input-bg: #ffffff;
-    --panel-bg-light: rgba(255, 255, 255, 0.85);
+    --panel-bg-light: rgba(255, 255, 255, 0.5);
 
     /* --- Text Colors --- */
     --primary-text: #383a42;
@@ -108,7 +109,7 @@ body.light-theme {
 
     /* --- Bubble Colors --- */
     --user-bubble-bg: rgba(75, 111, 133, 0.08);
-    --assistant-bubble-bg: rgba(255, 255, 255, 0.7);
+    --assistant-bubble-bg: rgba(255, 255, 255, 0.35);
 
     /* --- UI Element Colors --- */
     --button-bg: #4b6f85;
