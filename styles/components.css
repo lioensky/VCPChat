@@ -205,6 +205,7 @@ body.light-theme .chat-actions .header-button:hover {
     height: 24px;
     stroke: var(--secondary-text);
     fill: var(--secondary-text);
+    color: var(--secondary-text);
 }
 body.light-theme #sendMessageBtn svg, body.light-theme #attachFileBtn svg {
     stroke: #ffffff; 

@@ -970,7 +970,7 @@ textarea::placeholder {
     padding: 0;
     background-color: var(--button-bg);
     border: 1px solid var(--button-bg);
-    color: var(--primary-text);
+    color: var(--secondary-text);
     border-radius: 6px;
     cursor: pointer;
     display: flex;
@@ -1065,7 +1065,7 @@ textarea::placeholder {
     padding: 0;
     background-color: var(--button-bg);
     border: 1px solid var(--button-bg);
-    color: var(--primary-text);
+    color: var(--secondary-text);
     border-radius: 6px;
     /* Match search input border-radius */
     cursor: pointer;
@@ -1424,7 +1424,7 @@ textarea::placeholder {
     border: 1px solid var(--button-bg);
     cursor: pointer;
     background-color: var(--button-bg);
-    color: var(--primary-text);
+    color: var(--secondary-text);
     transition: background-color 0.2s ease, border-color 0.2s ease;
     width: 100%;
 }
