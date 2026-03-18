@@ -865,6 +865,8 @@ impl AudioPlayer {
         path: &str,
         credentials: Option<crate::decoder::HttpCredentials>,
     ) -> Result<(), String> {
+        // Get current normalization mode from config
+        let mode = self.config.loudness.mode;
         GaplessManager::queue_next(
             &self.shared_state,
             &self.loudness_normalizer,
@@ -872,6 +874,7 @@ impl AudioPlayer {
             path,
             credentials,
             self.loudness_enabled,
+            mode,
         )
     }
 

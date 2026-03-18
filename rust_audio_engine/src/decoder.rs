@@ -127,21 +127,6 @@ fn extract_metadata(probed: &mut ProbeResult) -> TrackMetadata {
                             "replaygain_album_peak" => {
                                 metadata.rg_album_peak = tag_value_to_f64(&tag.value);
                             }
-                            // Also handle TXXX frame format (MP3 ID3v2)
-                            "txxx" => {
-                                // TXXX frames may contain ReplayGain info in the value
-                                if let Some(s) = tag_value_to_string(&tag.value) {
-                                    if s.contains("replaygain_track_gain") {
-                                        metadata.rg_track_gain = parse_rg_gain_str(&s);
-                                    } else if s.contains("replaygain_album_gain") {
-                                        metadata.rg_album_gain = parse_rg_gain_str(&s);
-                                    } else if s.contains("replaygain_track_peak") {
-                                        metadata.rg_track_peak = parse_rg_peak_str(&s);
-                                    } else if s.contains("replaygain_album_peak") {
-                                        metadata.rg_album_peak = parse_rg_peak_str(&s);
-                                    }
-                                }
-                            }
                             _ => {}
                         }
                     }

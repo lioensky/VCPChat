@@ -825,6 +825,54 @@ impl LoudnessNormalizer {
         }
     }
     
+    /// Calculate gain for gapless preload with mode awareness (Bug-4 fix)
+    ///
+    /// For ReplayGain modes, reads gain from metadata tags instead of EBU R128 analysis.
+    /// Falls back to EBU R128 if tags are missing.
+    pub fn calculate_gain_with_mode(
+        &mut self,
+        samples: &[f64],
+        mode: NormalizationMode,
+        metadata: &crate::decoder::TrackMetadata,
+    ) -> f64 {
+        match mode {
+            NormalizationMode::ReplayGainTrack => {
+                // Use ReplayGain track gain from tag
+                if let Some(rg_gain) = metadata.rg_track_gain {
+                    // ReplayGain reference is -18 LUFS ( ReplayGain 2.0 uses -18 LUFS)
+                    // Convert to our target LUFS
+                    let gain_db = rg_gain + (self.config.target_lufs + 18.0);
+                    log::info!(
+                        "Gapless preload: Using ReplayGain track tag: {:.2} dB -> target gain: {:.2} dB",
+                        rg_gain, gain_db
+                    );
+                    return gain_db;
+                }
+                // Fallback to EBU R128 if no tag
+                log::warn!("Gapless preload: No ReplayGain track tag, falling back to EBU R128");
+                self.calculate_gain(samples)
+            }
+            NormalizationMode::ReplayGainAlbum => {
+                // Use ReplayGain album gain (fallback to track)
+                let rg_gain = metadata.rg_album_gain.or(metadata.rg_track_gain);
+                if let Some(gain) = rg_gain {
+                    let gain_db = gain + (self.config.target_lufs + 18.0);
+                    log::info!(
+                        "Gapless preload: Using ReplayGain album tag: {:.2} dB -> target gain: {:.2} dB",
+                        gain, gain_db
+                    );
+                    return gain_db;
+                }
+                log::warn!("Gapless preload: No ReplayGain album/track tag, falling back to EBU R128");
+                self.calculate_gain(samples)
+            }
+            _ => {
+                // Track/Album/Streaming modes: use EBU R128 analysis
+                self.calculate_gain(samples)
+            }
+        }
+    }
+    
     pub fn reset(&mut self) {
         self.meter.reset();
         self.limiter.reset();

@@ -445,7 +445,21 @@ pub fn audio_thread_main(
                                     let _ = s.play();
                                     stream = Some(s);
                                     *shared_state.state.write() = PlayerState::Playing;
-                                    log::info!("Stream started with device default config");
+                                    
+                                    // FIX for Defect-37 residual: Detect output bit depth in fallback path
+                                    let detected_bits: u32 = match device.default_output_config() {
+                                        Ok(cfg) => match cfg.sample_format() {
+                                            cpal::SampleFormat::I16 => 16,
+                                            cpal::SampleFormat::I32 => 24,
+                                            cpal::SampleFormat::F32 => 24,
+                                            _ => 24,
+                                        },
+                                        Err(_) => 24,
+                                    };
+                                    shared_state.output_bits.store(detected_bits, Ordering::Relaxed);
+                                    noise_shaper.lock().set_bits(detected_bits);
+                                    
+                                    log::info!("Stream started with device default config, {}-bit output", detected_bits);
                                 }
                                 Err(e2) => {
                                     log::error!("Failed to start stream even with device default: {}", e2);

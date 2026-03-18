@@ -10,6 +10,7 @@ use std::thread;
 use super::state::SharedState;
 use super::callback::normalize_channels;
 use crate::config::AppConfig;
+use crate::config::NormalizationMode;
 use crate::decoder::StreamingDecoder;
 use crate::processor::StreamingResampler;
 
@@ -29,6 +30,7 @@ impl GaplessManager {
         path: &str,
         credentials: Option<crate::decoder::HttpCredentials>,
         loudness_enabled: bool,
+        normalization_mode: NormalizationMode,
     ) -> Result<(), String> {
         // Ignore if pending buffer is already ready
         if shared.pending_ready.load(Ordering::Relaxed) {
@@ -40,6 +42,7 @@ impl GaplessManager {
         let shared_clone = Arc::clone(shared);
         let loudness_normalizer_clone = Arc::clone(loudness_normalizer);
         let config_clone = config.clone();
+        let mode_for_thread = normalization_mode;
 
         // Get target sample rate and channels from current playback state
         let target_sr = shared.sample_rate.load(Ordering::Relaxed) as u32;
@@ -81,11 +84,12 @@ impl GaplessManager {
                     
                     let total_frames = samples.len() / channels;
 
-                    // Analyze loudness (before move) - FIX for Defect 22:
-                    // Use calculate_gain() to get the gain without updating atomic state.
+                    // Analyze loudness (before move) - FIX for Defect 22 and Bug-4:
+                    // Use calculate_gain_with_mode() to respect ReplayGain mode.
                     // Store in pending_target_gain_db for application after buffer swap.
                     if loudness_enabled {
-                        let pending_gain_db = loudness_normalizer_clone.lock().calculate_gain(&samples);
+                        let pending_gain_db = loudness_normalizer_clone.lock()
+                            .calculate_gain_with_mode(&samples, mode_for_thread, &metadata);
                         shared_clone.pending_target_gain_db.store(pending_gain_db.to_bits(), Ordering::Relaxed);
                     } else {
                         shared_clone.pending_target_gain_db.store(0.0_f64.to_bits(), Ordering::Relaxed);

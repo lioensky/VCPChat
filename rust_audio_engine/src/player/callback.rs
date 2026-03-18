@@ -265,6 +265,9 @@ pub fn audio_callback(
         // Compensates for ear's reduced sensitivity at low frequencies/high frequencies
         // when listening at low volumes
         if let Some(mut locked_dl) = dynamic_loudness.try_lock() {
+            // FIX: Pass current volume to processor before processing
+            let vol = shared.volume.load(Ordering::Relaxed) as f64 / 1_000_000.0;
+            locked_dl.set_volume(vol);
             locked_dl.process(process_buf);
         }
 

@@ -134,7 +134,7 @@ impl BiquadFilter {
     }
     
     /// Calculate low shelf filter coefficients
-    /// Using RBJ cookbook with S=1 (shelf slope)
+    /// Using RBJ cookbook with S=1 (shelf slope, 12dB/octave)
     fn calc_low_shelf_coeffs(freq: f64, gain_db: f64, sample_rate: f64) -> BiquadCoeffs {
         if gain_db.abs() < 0.0001 {
             return BiquadCoeffs::default();
@@ -145,9 +145,11 @@ impl BiquadFilter {
         let cos_w0 = w0.cos();
         let sin_w0 = w0.sin();
         
-        // S = 1 (shelf slope parameter)
-        let alpha = sin_w0 / 2.0 * ((a + 1.0/a) * (1.0/0.9 - 1.0) + 2.0).sqrt();
-        let beta = 2.0 * a * a.sqrt();
+        // RBJ cookbook: S=1 (shelf slope), alpha and beta formulas
+        // alpha = sin(w0)/2 * sqrt(2) when S=1
+        // beta = 2 * sqrt(A) * alpha
+        let alpha = sin_w0 / std::f64::consts::SQRT_2;
+        let beta = 2.0 * a.sqrt() * alpha;
         
         let b0 = a * ((a + 1.0) - (a - 1.0) * cos_w0 + beta * sin_w0);
         let b1 = 2.0 * a * ((a - 1.0) - (a + 1.0) * cos_w0);
@@ -166,6 +168,7 @@ impl BiquadFilter {
     }
     
     /// Calculate high shelf filter coefficients
+    /// Using RBJ cookbook with S=1 (shelf slope, 12dB/octave)
     fn calc_high_shelf_coeffs(freq: f64, gain_db: f64, sample_rate: f64) -> BiquadCoeffs {
         if gain_db.abs() < 0.0001 {
             return BiquadCoeffs::default();
@@ -176,8 +179,9 @@ impl BiquadFilter {
         let cos_w0 = w0.cos();
         let sin_w0 = w0.sin();
         
-        let alpha = sin_w0 / 2.0 * ((a + 1.0/a) * (1.0/0.9 - 1.0) + 2.0).sqrt();
-        let beta = 2.0 * a * a.sqrt();
+        // RBJ cookbook: S=1 (shelf slope), alpha and beta formulas
+        let alpha = sin_w0 / std::f64::consts::SQRT_2;
+        let beta = 2.0 * a.sqrt() * alpha;
         
         let b0 = a * ((a + 1.0) + (a - 1.0) * cos_w0 + beta * sin_w0);
         let b1 = -2.0 * a * ((a - 1.0) + (a + 1.0) * cos_w0);
@@ -537,7 +541,7 @@ impl DynamicLoudness {
             1.0
         };
         
-        // Process in blocks for efficient coefficient updates
+        // Update filter coefficients once per block for CPU efficiency
         for chunk_start in (0..frames).step_by(BLOCK_SIZE) {
             let chunk_end = (chunk_start + BLOCK_SIZE).min(frames);
             let chunk_frames = chunk_end - chunk_start;
@@ -551,23 +555,9 @@ impl DynamicLoudness {
                     }
                 }
             }
-            
-            // Process samples in the block
-            for frame in chunk_start..chunk_end {
-                for ch in 0..self.channels {
-                    let idx = frame * self.channels + ch;
-                    let mut sample = buffer[idx] * pre_gain;
-                    
-                    // Apply all filters for this channel
-                    if let Some(ch_filters) = self.filters.get(ch) {
-                        // Need mutable access, so we process through the chain
-                        // This is safe because each channel's filters are independent
-                    }
-                }
-            }
         }
         
-        // Actually process the samples (separate loop for clarity)
+        // Process all samples
         self.process_samples(buffer, pre_gain);
     }
     
