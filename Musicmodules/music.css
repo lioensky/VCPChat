@@ -218,6 +218,68 @@ body {
     min-height: 300px;
 }
 
+/* 人声可视化器样式 */
+.vocal-visualizer-container {
+    flex-shrink: 0;
+    height: 100px;
+    padding: 12px 20px !important;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    position: relative;
+    overflow: hidden;
+    margin-bottom: 0px; /* 紧贴歌词 */
+    border-bottom: none;
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+}
+
+.lyrics-container {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    /* 歌词从顶部开始显示 */
+    overflow: hidden;
+    /* Crucial for smooth scrolling */
+    position: relative;
+    min-height: 300px;
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+}
+
+.vocal-viz-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+    z-index: 1;
+}
+
+.vocal-viz-title {
+    font-size: 10px;
+    font-weight: 800;
+    color: var(--music-highlight);
+    letter-spacing: 2px;
+    opacity: 0.8;
+}
+
+.vocal-viz-status {
+    font-size: 9px;
+    font-weight: 700;
+    padding: 2px 6px;
+    background: rgba(var(--music-highlight-rgb, 0, 180, 255), 0.1);
+    color: var(--music-highlight);
+    border-radius: 4px;
+    border: 1px solid rgba(var(--music-highlight-rgb, 0, 180, 255), 0.2);
+}
+
+#vocal-visualizer {
+    width: 100%;
+    height: 50px;
+    filter: drop-shadow(0 0 8px rgba(var(--music-highlight-rgb, 255, 255, 255), 0.3));
+}
+
 #lyrics-list {
     list-style: none;
     padding: 0;
@@ -668,69 +730,54 @@ body.light-theme #search-input:focus {
 /* --- 极简设置面板样式 --- */
 /* ------------------------- */
 
-/* ===== 手风琴折叠样式 ===== */
-.accordion-container {
+/* ===== 设置面板新布局 (V2) ===== */
+.settings-sections {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 12px;
     margin-top: 12px;
 }
 
-.accordion-section {
-    background: rgba(0, 0, 0, 0.15);
-    border-radius: 10px;
-    overflow: hidden;
+.settings-grid-v2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
 }
 
-.accordion-header {
+.settings-block {
+    background: rgba(0, 0, 0, 0.15);
+    border-radius: 12px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    border: 1px solid var(--glass-border);
+}
+
+.settings-block.full-width {
+    grid-column: span 2;
+}
+
+.block-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 12px 14px;
-    cursor: pointer;
-    transition: background 0.2s ease;
-    user-select: none;
+    margin-bottom: 4px;
 }
 
-.accordion-header:hover {
-    background: var(--hover-bg);
-}
-
-.accordion-title-group {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.accordion-title-group h4 {
+.block-title-group h4 {
     margin: 0;
-    font-size: 0.85em;
-    font-weight: 600;
-    color: var(--music-text);
+    font-size: 0.8em;
+    font-weight: 700;
+    color: var(--music-highlight);
     text-transform: uppercase;
     letter-spacing: 0.5px;
 }
 
-.accordion-arrow {
-    transition: transform 0.25s ease;
-    color: var(--music-text);
-}
-
-.accordion-section.expanded .accordion-arrow {
-    transform: rotate(90deg);
-}
-
-.accordion-content {
-    max-height: 0;
-    overflow: hidden;
-    transition: max-height 0.3s ease, padding 0.3s ease, opacity 0.3s ease;
-    opacity: 0;
-}
-
-.accordion-section.expanded .accordion-content {
-    max-height: 500px;
-    opacity: 1;
-    padding: 0 14px 14px 14px;
+.block-content {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
 }
 
 /* 通用行样式 */
@@ -895,31 +942,6 @@ input:checked+.slider:before {
 }
 
 /* --- EQ Section 重构 --- */
-.eq-section {
-    /* 手风琴section样式已在accordion-section中定义 */
-}
-
-.eq-header {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-}
-
-/* 标题和开关一行 */
-.eq-title-group {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-
-.eq-title-group h4 {
-    margin: 0;
-    font-size: 0.9em;
-    font-weight: 600;
-    color: var(--music-text);
-    text-transform: uppercase;
-    letter-spacing: 1px;
-}
 
 /* 控件一行 */
 .eq-controls-row {
@@ -1013,33 +1035,6 @@ input:checked+.slider:before {
 }
 
 /* --- IR Convolver Section --- */
-.ir-section {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    padding-top: 5px;
-}
-
-.ir-header {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-}
-
-.ir-title-group {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-
-.ir-title-group h4 {
-    margin: 0;
-    font-size: 0.9em;
-    font-weight: 600;
-    color: var(--music-text);
-    text-transform: uppercase;
-    letter-spacing: 1px;
-}
 
 .ir-controls {
     display: flex;
@@ -1125,33 +1120,6 @@ input:checked+.slider:before {
 }
 
 /* --- Loudness Normalization Section --- */
-.loudness-section {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    padding-top: 5px;
-}
-
-.loudness-header {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-}
-
-.loudness-title-group {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-
-.loudness-title-group h4 {
-    margin: 0;
-    font-size: 0.9em;
-    font-weight: 600;
-    color: var(--music-text);
-    text-transform: uppercase;
-    letter-spacing: 1px;
-}
 
 .loudness-controls {
     display: flex;
@@ -1192,33 +1160,6 @@ input:checked+.slider:before {
 }
 
 /* --- Saturation Effect Section --- */
-.saturation-section {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    padding-top: 5px;
-}
-
-.saturation-header {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-}
-
-.saturation-title-group {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-
-.saturation-title-group h4 {
-    margin: 0;
-    font-size: 0.9em;
-    font-weight: 600;
-    color: var(--music-text);
-    text-transform: uppercase;
-    letter-spacing: 1px;
-}
 
 .saturation-controls {
     display: flex;
@@ -1239,33 +1180,6 @@ input:checked+.slider:before {
 }
 
 /* --- Crossfeed Section --- */
-.crossfeed-section {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    padding-top: 5px;
-}
-
-.crossfeed-header {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-}
-
-.crossfeed-title-group {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-
-.crossfeed-title-group h4 {
-    margin: 0;
-    font-size: 0.9em;
-    font-weight: 600;
-    color: var(--music-text);
-    text-transform: uppercase;
-    letter-spacing: 1px;
-}
 
 .crossfeed-controls {
     display: flex;
