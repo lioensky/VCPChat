@@ -612,34 +612,15 @@ body.light-theme .album-art {
 
 /* 播放模式按钮 */
 #mode-btn {
-    -webkit-mask-size: cover;
-    mask-size: cover;
-    background-color: var(--music-text-secondary);
-    width: 24px;
-    height: 24px;
+    color: var(--music-text-secondary);
 }
 
 #mode-btn:hover {
-    background-color: var(--music-text);
+    color: var(--music-text);
 }
 
 #mode-btn.active {
-    background-color: var(--music-highlight);
-}
-
-#mode-btn.repeat {
-    -webkit-mask-image: url('../assets/repeat.svg');
-    mask-image: url('../assets/repeat.svg');
-}
-
-#mode-btn.repeat-one {
-    -webkit-mask-image: url('../assets/repeat-one.svg');
-    mask-image: url('../assets/repeat-one.svg');
-}
-
-#mode-btn.shuffle {
-    -webkit-mask-image: url('../assets/shuffle.svg');
-    mask-image: url('../assets/shuffle.svg');
+    color: var(--music-highlight);
 }
 
 
