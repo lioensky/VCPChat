@@ -46,19 +46,57 @@ body {
 /* --- 布局和背景 --- */
 /* ------------------------- */
 
+/* 双层背景容器 - 用于交叉淡入淡出 */
 #player-background {
     position: fixed;
     top: -20px;
     left: -20px;
     right: -20px;
     bottom: -20px;
+    z-index: -1;
+    overflow: hidden;
+}
+
+/* 双层背景层 */
+#player-background .bg-layer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-size: cover;
+    background-position: center;
+    filter: blur(25px) brightness(0.6);
+    transform: scale(1.1);
+    transition: opacity 0.8s ease-in-out;
+}
+
+#player-background .bg-layer.current {
+    opacity: 1;
+    z-index: 1;
+}
+
+#player-background .bg-layer.next {
+    opacity: 0;
+    z-index: 2;
+}
+
+/* 切换状态 */
+#player-background.switching .bg-layer.current {
+    opacity: 0;
+}
+
+#player-background.switching .bg-layer.next {
+    opacity: 1;
+}
+
+/* 旧版兼容 - 单层背景（已弃用，但保留以防JS未初始化） */
+#player-background.fallback {
     background-size: cover;
     background-position: center;
     filter: blur(25px) brightness(0.6);
     transform: scale(1.1);
     transition: background-image 0.8s ease-in-out;
-    z-index: -1;
-    /* 置于最底层 */
 }
 
 
@@ -152,7 +190,20 @@ body {
 }
 
 .settings-container {
-    flex-shrink: 0;
+    flex-shrink: 1;
+    flex-grow: 1;
+    overflow-y: auto;
+    padding: 20px;
+    min-height: 0;
+}
+
+.settings-container::-webkit-scrollbar {
+    width: 4px;
+}
+
+.settings-container::-webkit-scrollbar-thumb {
+    background: var(--hover-bg);
+    border-radius: 2px;
 }
 
 .lyrics-container {
@@ -164,6 +215,7 @@ body {
     overflow: hidden;
     /* Crucial for smooth scrolling */
     position: relative;
+    min-height: 300px;
 }
 
 #lyrics-list {
@@ -563,7 +615,8 @@ body.light-theme .album-art {
 }
 
 #search-input,
-#add-folder-btn {
+#add-folder-btn,
+#add-webdav-btn {
     border: none;
     border-radius: 8px;
     padding: 8px 12px;
@@ -597,14 +650,87 @@ body.light-theme #search-input:focus {
     filter: brightness(1.15);
 }
 
+#add-webdav-btn {
+    background-color: var(--hover-bg);
+    color: var(--music-text);
+    cursor: pointer;
+    transition: filter 0.2s ease, background-color 0.2s ease;
+    border: 1px solid var(--glass-border);
+}
+
+#add-webdav-btn:hover {
+    background-color: var(--music-highlight);
+    color: white;
+    border-color: transparent;
+}
+
 /* ------------------------- */
 /* --- 极简设置面板样式 --- */
 /* ------------------------- */
 
-.settings-container {
-    padding: 20px;
-    /* 增加一点内边距让呼吸感更强 */
-    flex-shrink: 0;
+/* ===== 手风琴折叠样式 ===== */
+.accordion-container {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-top: 12px;
+}
+
+.accordion-section {
+    background: rgba(0, 0, 0, 0.15);
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.accordion-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 14px;
+    cursor: pointer;
+    transition: background 0.2s ease;
+    user-select: none;
+}
+
+.accordion-header:hover {
+    background: var(--hover-bg);
+}
+
+.accordion-title-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.accordion-title-group h4 {
+    margin: 0;
+    font-size: 0.85em;
+    font-weight: 600;
+    color: var(--music-text);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.accordion-arrow {
+    transition: transform 0.25s ease;
+    color: var(--music-text);
+}
+
+.accordion-section.expanded .accordion-arrow {
+    transform: rotate(90deg);
+}
+
+.accordion-content {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease, padding 0.3s ease, opacity 0.3s ease;
+    opacity: 0;
+}
+
+.accordion-section.expanded .accordion-content {
+    max-height: 500px;
+    opacity: 1;
+    padding: 0 14px 14px 14px;
 }
 
 /* 通用行样式 */
@@ -617,7 +743,7 @@ body.light-theme #search-input:focus {
 
 .setting-row label {
     font-size: 0.85em;
-    color: var(--music-text-secondary);
+    color: var(--music-text);
     font-weight: 500;
     margin-left: 2px;
 }
@@ -650,7 +776,7 @@ body.light-theme #search-input:focus {
 
 .setting-item label {
     font-size: 0.85em;
-    color: var(--music-text-secondary);
+    color: var(--music-text);
     cursor: default;
 }
 
@@ -770,10 +896,7 @@ input:checked+.slider:before {
 
 /* --- EQ Section 重构 --- */
 .eq-section {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    padding-top: 5px;
+    /* 手风琴section样式已在accordion-section中定义 */
 }
 
 .eq-header {
@@ -793,7 +916,7 @@ input:checked+.slider:before {
     margin: 0;
     font-size: 0.9em;
     font-weight: 600;
-    color: var(--music-text-secondary);
+    color: var(--music-text);
     text-transform: uppercase;
     letter-spacing: 1px;
 }
@@ -811,21 +934,11 @@ input:checked+.slider:before {
     padding: 4px 8px;
 }
 
-/* 展开动画 */
+/* EQ bands 在手风琴内容中显示 */
 .eq-bands {
     display: flex;
     justify-content: space-between;
     gap: 2px;
-    max-height: 0;
-    opacity: 0;
-    overflow: hidden;
-    transition: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
-    margin-top: 0;
-}
-
-.eq-section.expanded .eq-bands {
-    max-height: 160px;
-    opacity: 1;
     margin-top: 10px;
 }
 
@@ -855,9 +968,32 @@ input:checked+.slider:before {
 }
 
 .eq-band input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
     width: 12px;
     height: 12px;
+    background: var(--music-text);
+    border-radius: 50%;
     box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+    cursor: pointer;
+}
+
+.eq-band input[type="range"]::-webkit-slider-thumb:hover {
+    background: var(--music-highlight);
+}
+
+.eq-band input[type="range"]::-moz-range-thumb {
+    width: 12px;
+    height: 12px;
+    background: var(--music-text);
+    border-radius: 50%;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+    cursor: pointer;
+    border: none;
+}
+
+.eq-band input[type="range"]::-moz-range-thumb:hover {
+    background: var(--music-highlight);
 }
 
 /* 暗色模式下的选项背景 */
@@ -866,6 +1002,357 @@ input:checked+.slider:before {
 .eq-controls-row select option {
     background-color: #1a1a1a;
     color: #fff;
+}
+
+/* 禁用选项样式 */
+#device-select option:disabled,
+.compact-select option:disabled,
+.eq-controls-row select option:disabled {
+    color: #666;
+    font-style: italic;
+}
+
+/* --- IR Convolver Section --- */
+.ir-section {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding-top: 5px;
+}
+
+.ir-header {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.ir-title-group {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.ir-title-group h4 {
+    margin: 0;
+    font-size: 0.9em;
+    font-weight: 600;
+    color: var(--music-text);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.ir-controls {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.ir-preset-select {
+    flex: 1;
+    font-size: 0.8em;
+    padding: 4px 8px;
+}
+
+.ir-load-btn {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background-color: var(--hover-bg);
+    color: var(--music-text);
+    border: 1px solid transparent;
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 0.8em;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.ir-load-btn:hover {
+    background-color: rgba(255, 255, 255, 0.15);
+    border-color: var(--glass-border);
+}
+
+.ir-load-btn svg {
+    flex-shrink: 0;
+}
+
+.ir-status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    background-color: rgba(0, 0, 0, 0.2);
+    border-radius: 6px;
+    font-size: 0.75em;
+    color: var(--music-text-secondary);
+}
+
+.ir-status.loaded {
+    background-color: rgba(76, 175, 80, 0.15);
+    color: #81c784;
+}
+
+.ir-status.error {
+    background-color: rgba(244, 67, 54, 0.15);
+    color: #e57373;
+}
+
+.ir-status-indicator {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background-color: var(--music-text-secondary);
+}
+
+.ir-status.loaded .ir-status-indicator {
+    background-color: #81c784;
+    box-shadow: 0 0 6px rgba(129, 199, 132, 0.5);
+}
+
+.ir-status.error .ir-status-indicator {
+    background-color: #e57373;
+}
+
+.ir-status-text {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.ir-preset-select option {
+    background-color: #1a1a1a;
+    color: #fff;
+}
+
+/* --- Loudness Normalization Section --- */
+.loudness-section {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding-top: 5px;
+}
+
+.loudness-header {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.loudness-title-group {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.loudness-title-group h4 {
+    margin: 0;
+    font-size: 0.9em;
+    font-weight: 600;
+    color: var(--music-text);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.loudness-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.loudness-lufs-item,
+.loudness-preamp-item {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+}
+
+.loudness-lufs-item label,
+.loudness-preamp-item label {
+    font-size: 0.8em;
+}
+
+.loudness-info {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    background-color: rgba(0, 0, 0, 0.2);
+    border-radius: 6px;
+    font-size: 0.75em;
+    color: var(--music-text-secondary);
+}
+
+.loudness-info-label {
+    color: var(--music-text-secondary);
+}
+
+#loudness-current-lufs {
+    color: var(--music-highlight);
+    font-weight: 600;
+}
+
+/* --- Saturation Effect Section --- */
+.saturation-section {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding-top: 5px;
+}
+
+.saturation-header {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.saturation-title-group {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.saturation-title-group h4 {
+    margin: 0;
+    font-size: 0.9em;
+    font-weight: 600;
+    color: var(--music-text);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.saturation-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.saturation-drive-item,
+.saturation-mix-item {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+}
+
+.saturation-drive-item label,
+.saturation-mix-item label {
+    font-size: 0.8em;
+}
+
+/* --- Crossfeed Section --- */
+.crossfeed-section {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding-top: 5px;
+}
+
+.crossfeed-header {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.crossfeed-title-group {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.crossfeed-title-group h4 {
+    margin: 0;
+    font-size: 0.9em;
+    font-weight: 600;
+    color: var(--music-text);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.crossfeed-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.crossfeed-mix-item {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+}
+
+.crossfeed-mix-item label {
+    font-size: 0.8em;
+}
+
+.crossfeed-hint {
+    font-size: 0.7em;
+    color: var(--music-text-secondary);
+    opacity: 0.7;
+    font-style: italic;
+}
+
+/* --- Noise Shaper Section --- */
+.noise-shaper-section {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding-top: 5px;
+}
+
+.noise-shaper-header h4 {
+    margin: 0;
+    font-size: 0.9em;
+    font-weight: 600;
+    color: var(--music-text);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.noise-shaper-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+/* --- Slider with Value Display --- */
+.slider-with-value {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.slider-with-value input[type="range"] {
+    flex: 1;
+    height: 4px;
+    -webkit-appearance: none;
+    appearance: none;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 2px;
+    outline: none;
+}
+
+.slider-with-value input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--music-highlight);
+    cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.slider-with-value input[type="range"]::-webkit-slider-thumb:hover {
+    transform: scale(1.15);
+    box-shadow: 0 0 8px rgba(var(--music-highlight-rgb, 118, 106, 226), 0.4);
+}
+
+.slider-with-value span {
+    min-width: 50px;
+    text-align: right;
+    font-size: 0.8em;
+    color: var(--music-highlight);
+    font-weight: 500;
+    font-family: 'SF Mono', 'Consolas', monospace;
 }
 
 body.light-theme option {
@@ -1053,14 +1540,76 @@ body.light-theme option {
     /* 20px 原有 padding + 40px 标题栏高度 */
 }
 
-/* ===== 左侧边栏 ===== */
+/* ===== 左侧边栏 - 整合播放列表 ===== */
 .left-sidebar {
-    width: 260px;
+    width: 320px;
     flex-shrink: 0;
     display: flex;
     flex-direction: column;
     overflow: hidden;
     padding: 15px;
+}
+
+/* 顶部操作区 */
+.sidebar-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex-shrink: 0;
+    margin-bottom: 12px;
+}
+
+.sidebar-actions #search-input {
+    width: 100%;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 0.9em;
+    background-color: var(--hover-bg);
+    color: var(--music-text);
+    transition: background-color 0.3s ease;
+    box-sizing: border-box;
+}
+
+.sidebar-actions #search-input:focus {
+    outline: none;
+    background-color: rgba(255, 255, 255, 0.15);
+}
+
+.sidebar-action-btns {
+    display: flex;
+    gap: 8px;
+}
+
+.sidebar-action-btns button {
+    flex: 1;
+    border: none;
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 0.85em;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.sidebar-action-btns #add-folder-btn {
+    background-color: var(--music-highlight);
+    color: white;
+}
+
+.sidebar-action-btns #add-folder-btn:hover {
+    filter: brightness(1.15);
+}
+
+.sidebar-action-btns #add-webdav-btn {
+    background-color: var(--hover-bg);
+    color: var(--music-text);
+    border: 1px solid var(--glass-border);
+}
+
+.sidebar-action-btns #add-webdav-btn:hover {
+    background-color: var(--music-highlight);
+    color: white;
+    border-color: transparent;
 }
 
 .sidebar-tabs {
@@ -1082,6 +1631,10 @@ body.light-theme option {
     font-size: 0.8em;
     font-weight: 500;
     transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
 }
 
 .sidebar-tab:hover {
@@ -1091,6 +1644,66 @@ body.light-theme option {
 .sidebar-tab.active {
     background: var(--music-highlight);
     color: white;
+}
+
+.sidebar-tab .tab-count {
+    font-size: 0.85em;
+    opacity: 0.8;
+}
+
+/* 播放列表容器 */
+.sidebar-list-container {
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+/* 侧边栏内的播放列表样式 */
+.sidebar-playlist {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0;
+    margin: 0;
+}
+
+.sidebar-playlist li {
+    padding: 10px 12px;
+    cursor: pointer;
+    border-radius: 8px;
+    margin-bottom: 4px;
+    transition: background-color 0.2s ease;
+    font-size: 0.85em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.sidebar-playlist li:hover {
+    background-color: var(--hover-bg);
+}
+
+.sidebar-playlist li.active {
+    background-color: var(--music-highlight);
+    color: white;
+    font-weight: 500;
+}
+
+/* 分类视图容器 */
+.sidebar-category-view {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px 0;
+}
+
+.sidebar-category-view::-webkit-scrollbar {
+    width: 4px;
+}
+
+.sidebar-category-view::-webkit-scrollbar-thumb {
+    background: var(--hover-bg);
+    border-radius: 2px;
 }
 
 .sidebar-content {
@@ -1359,7 +1972,7 @@ body.light-theme option {
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 10001;
+    z-index: 10010;
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.2s ease;
@@ -1421,8 +2034,20 @@ body.light-theme option {
 }
 
 .dialog-btn.cancel {
-    background: var(--hover-bg);
-    color: var(--music-text-secondary);
+    background: #dc3c3c;
+    color: white;
+    border: none;
+}
+
+.dialog-btn.cancel:hover {
+    background: #dc3c3c;
+    filter: brightness(1.15);
+}
+
+body.light-theme .dialog-btn.cancel {
+    background: #dc3c3c;
+    color: white;
+    border: none;
 }
 
 .dialog-btn.confirm {
@@ -1659,4 +2284,181 @@ body.light-theme option {
     text-align: center;
     color: var(--music-text-secondary);
     font-size: 0.9em;
+}
+
+/* ===== WebDAV 模态框 ===== */
+/* 用 .active 激活 (JS 使用 classList.add('active')) */
+.music-modal-overlay.active {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.music-modal-overlay.active .music-modal {
+    transform: scale(1) translateY(0);
+}
+
+.dialog-overlay.active {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.dialog-overlay.active .dialog {
+    transform: scale(1);
+}
+
+.webdav-modal {
+    width: 720px;
+    max-width: 95vw;
+    max-height: 80vh;
+}
+
+.webdav-modal-body {
+    display: flex;
+    gap: 0;
+    flex: 1;
+    overflow: hidden;
+    min-height: 0;
+}
+
+.webdav-server-panel {
+    width: 180px;
+    flex-shrink: 0;
+    border-right: 1px solid var(--glass-border);
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+}
+
+.webdav-server-list {
+    flex: 1;
+    overflow-y: auto;
+}
+
+.webdav-server-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.15s;
+    font-size: 0.85em;
+}
+
+.webdav-server-item:hover {
+    background: var(--hover-bg);
+}
+
+.webdav-server-item.active {
+    background: rgba(118, 106, 226, 0.2);
+    color: var(--music-highlight);
+}
+
+.webdav-server-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.webdav-server-remove {
+    background: none;
+    border: none;
+    color: var(--music-text-secondary);
+    cursor: pointer;
+    padding: 0 4px;
+    font-size: 12px;
+    opacity: 0.6;
+    flex-shrink: 0;
+}
+
+.webdav-server-remove:hover {
+    opacity: 1;
+    color: #e55;
+}
+
+.webdav-file-panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-width: 0;
+}
+
+.webdav-breadcrumb {
+    padding: 8px 14px;
+    font-size: 0.78em;
+    color: var(--music-text-secondary);
+    border-bottom: 1px solid var(--glass-border);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex-shrink: 0;
+}
+
+.webdav-crumb {
+    cursor: pointer;
+    color: var(--music-highlight);
+    opacity: 0.85;
+}
+
+.webdav-crumb:hover {
+    opacity: 1;
+    text-decoration: underline;
+}
+
+.webdav-file-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 6px 0;
+}
+
+.webdav-file-list::-webkit-scrollbar { width: 4px; }
+.webdav-file-list::-webkit-scrollbar-thumb { background: var(--glass-border); border-radius: 2px; }
+
+.webdav-file-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px;
+    font-size: 0.85em;
+    cursor: default;
+    transition: background 0.12s;
+    border-radius: 4px;
+    margin: 0 4px;
+}
+
+.webdav-file-item:hover {
+    background: var(--hover-bg);
+}
+
+.webdav-file-item.is-dir {
+    cursor: pointer;
+    font-weight: 500;
+}
+
+.webdav-file-item.is-audio {
+    cursor: pointer;
+    color: var(--music-highlight);
+}
+
+.webdav-file-icon {
+    flex-shrink: 0;
+    font-size: 14px;
+}
+
+.webdav-file-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.webdav-file-actions {
+    display: flex;
+    gap: 8px;
+    padding: 10px 14px;
+    border-top: 1px solid var(--glass-border);
+    flex-shrink: 0;
+    justify-content: flex-end;
 }

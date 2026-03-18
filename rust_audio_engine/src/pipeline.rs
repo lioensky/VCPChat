@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::thread::{self, JoinHandle};
 use parking_lot::RwLock;
-use crossbeam::channel::{Sender, Receiver, bounded};
+// Channel imports unused in current implementation
 
 use crate::decoder::StreamingDecoder;
 use crate::processor::StreamingResampler;
@@ -57,36 +57,64 @@ pub struct AudioPipeline {
 }
 
 /// Simple ring buffer for audio data
+/// Uses monotonic counters (frames_written, frames_consumed) for clean overflow handling.
 pub struct RingBuffer {
     data: Vec<f64>,
-    write_pos: usize,
     capacity_frames: usize,
     channels: usize,
+    /// Total frames written (monotonically increasing)
     frames_written: u64,
+    /// Total frames consumed by readers (monotonically increasing)
+    frames_consumed: u64,
+    /// Number of overflow events
+    overflow_count: u64,
 }
 
 impl RingBuffer {
     pub fn new(capacity_frames: usize, channels: usize) -> Self {
         Self {
             data: vec![0.0; capacity_frames * channels],
-            write_pos: 0,
             capacity_frames,
             channels,
             frames_written: 0,
+            frames_consumed: 0,
+            overflow_count: 0,
         }
     }
     
     /// Write frames to the buffer, returns number of frames written
+    /// If buffer would overflow, drops the oldest data (ring buffer behavior)
     pub fn write(&mut self, samples: &[f64]) -> usize {
         let frames_to_write = samples.len() / self.channels;
         let samples_to_write = frames_to_write * self.channels;
         
+        if frames_to_write == 0 {
+            return 0;
+        }
+        
+        // Check for potential overflow
+        let frames_in_buffer = self.frames_written.saturating_sub(self.frames_consumed);
+        let available_space = self.capacity_frames.saturating_sub(frames_in_buffer as usize);
+        
+        if frames_to_write > available_space {
+            // Overflow detected - advance consumer position to make room
+            // This effectively drops the oldest frames
+            let overflow_frames = frames_to_write - available_space;
+            self.frames_consumed = self.frames_consumed.saturating_add(overflow_frames as u64);
+            self.overflow_count = self.overflow_count.saturating_add(1);
+            log::warn!(
+                "RingBuffer overflow: dropping {} frames (total overflows: {})",
+                overflow_frames, self.overflow_count
+            );
+        }
+        
+        // Write samples using monotonically increasing write position
         for (i, &sample) in samples[..samples_to_write].iter().enumerate() {
-            let buffer_idx = (self.write_pos * self.channels + i % self.channels) % self.data.len();
+            let frame_offset = i / self.channels;
+            let write_frame = (self.frames_written as usize + frame_offset) % self.capacity_frames;
+            let ch = i % self.channels;
+            let buffer_idx = write_frame * self.channels + ch;
             self.data[buffer_idx] = sample;
-            if i % self.channels == self.channels - 1 {
-                self.write_pos = (self.write_pos + 1) % self.capacity_frames;
-            }
         }
         
         self.frames_written += frames_to_write as u64;
@@ -103,18 +131,21 @@ impl RingBuffer {
             return 0;
         }
         
-        let start_pos = (start_frame % self.capacity_frames as u64) as usize;
-        
         for frame in 0..actual_frames {
-            let read_pos = (start_pos + frame) % self.capacity_frames;
+            let read_frame = ((start_frame as usize + frame) % self.capacity_frames) as usize;
             for ch in 0..self.channels {
-                let buffer_idx = read_pos * self.channels + ch;
+                let buffer_idx = read_frame * self.channels + ch;
                 let output_idx = frame * self.channels + ch;
                 output[output_idx] = self.data[buffer_idx];
             }
         }
         
         actual_frames
+    }
+    
+    /// Update consumed position (call after reading)
+    pub fn advance_read_pos(&mut self, frames: u64) {
+        self.frames_consumed = self.frames_consumed.saturating_add(frames);
     }
     
     /// Get number of frames available for reading from a given position
@@ -126,6 +157,11 @@ impl RingBuffer {
     pub fn total_written(&self) -> u64 {
         self.frames_written
     }
+    
+    /// Get overflow count
+    pub fn overflow_count(&self) -> u64 {
+        self.overflow_count
+    }
 }
 
 impl AudioPipeline {
@@ -133,7 +169,7 @@ impl AudioPipeline {
     pub fn new(
         path: &str,
         target_sample_rate: Option<u32>,
-        resample_quality: ResampleQuality,
+        _resample_quality: ResampleQuality,
     ) -> Result<Self, String> {
         let decoder = StreamingDecoder::open(path)
             .map_err(|e| format!("Failed to open decoder: {}", e))?;
@@ -242,7 +278,13 @@ impl AudioPipeline {
         
         // Create resampler if needed
         let mut resampler = if target_sr != original_sr {
-            Some(StreamingResampler::new(channels, original_sr, target_sr))
+            match StreamingResampler::new(channels, original_sr, target_sr) {
+                Ok(rs) => Some(rs),
+                Err(e) => {
+                    log::error!("Failed to create pipeline resampler: {}", e);
+                    return;
+                }
+            }
         } else {
             None
         };

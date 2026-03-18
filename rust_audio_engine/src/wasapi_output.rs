@@ -14,7 +14,7 @@ pub mod wasapi_exclusive {
     
     use wasapi::{
         initialize_mta, DeviceEnumerator, Direction, WaveFormat, SampleType,
-        StreamMode, WasapiError, calculate_period_100ns,
+        StreamMode, calculate_period_100ns,
     };
     
     /// Commands for the WASAPI playback thread
@@ -229,14 +229,34 @@ pub mod wasapi_exclusive {
         cmd_rx: &Receiver<WasapiCommand>,
         sample_rate: usize,
         channels: usize,
-        _device_id: Option<usize>,
+        device_id: Option<usize>,
     ) -> Result<(), String> {
         let enumerator = DeviceEnumerator::new()
             .map_err(|e| format!("Failed to create device enumerator: {:?}", e))?;
         
-        // Get the default render device (TODO: support device selection)
-        let device = enumerator.get_default_device(&Direction::Render)
-            .map_err(|e| format!("Failed to get default device: {:?}", e))?;
+        // Select device by ID if specified, otherwise use default
+        let device = match device_id {
+            Some(id) => {
+                // Get device collection and select by index
+                let collection = enumerator.get_device_collection(&Direction::Render)
+                    .map_err(|e| format!("Failed to get device collection: {:?}", e))?;
+                
+                let count = collection.get_nbr_devices()
+                    .map_err(|e| format!("Failed to get device count: {:?}", e))?;
+                
+                if id >= count as usize {
+                    return Err(format!("Device ID {} not found (only {} devices available)", id, count));
+                }
+                
+                collection.get_device_at_index(id as u32)
+                    .map_err(|e| format!("Failed to get device at index {}: {:?}", id, e))?
+            }
+            None => {
+                // Use default device
+                enumerator.get_default_device(&Direction::Render)
+                    .map_err(|e| format!("Failed to get default device: {:?}", e))?
+            }
+        };
         
         let device_name = device.get_friendlyname().unwrap_or_else(|_| "Unknown".to_string());
         log::info!("WASAPI: Opening device '{}' in exclusive mode", device_name);
@@ -257,7 +277,7 @@ pub mod wasapi_exclusive {
         };
         
         // Try to find a supported format across all sample rates
-        let mut desired_format = None;
+        let mut desired_format: Option<WaveFormat> = None;
         let mut actual_sample_rate = sample_rate;
         
         'outer: for &try_rate in &candidate_sample_rates {
@@ -307,20 +327,31 @@ pub mod wasapi_exclusive {
             if !original_buffer.is_empty() {
                 use crate::processor::StreamingResampler;
                 
-                let mut resampler = StreamingResampler::new(channels, sample_rate as u32, actual_sample_rate as u32);
-                let mut resampled = resampler.process_chunk(&original_buffer);
-                resampled.extend(resampler.flush());
-                
-                // Update shared state with resampled data
-                let new_total_frames = resampled.len() / channels;
-                *shared_state.audio_buffer.write() = resampled;
-                shared_state.total_frames.store(new_total_frames as u64, Ordering::Relaxed);
-                shared_state.sample_rate.store(actual_sample_rate as u64, Ordering::Relaxed);
-                
-                log::info!(
-                    "WASAPI: Resampled {} -> {} frames for exclusive mode",
-                    original_buffer.len() / channels, new_total_frames
-                );
+                match StreamingResampler::new(channels, sample_rate as u32, actual_sample_rate as u32) {
+                    Ok(mut resampler) => {
+                        let mut resampled = resampler.process_chunk(&original_buffer);
+                        resampled.extend(resampler.flush());
+                        
+                        // Update shared state with resampled data
+                        let new_total_frames = resampled.len() / channels;
+                        *shared_state.audio_buffer.write() = resampled;
+                        shared_state.total_frames.store(new_total_frames as u64, Ordering::Relaxed);
+                        shared_state.sample_rate.store(actual_sample_rate as u64, Ordering::Relaxed);
+                        
+                        log::info!(
+                            "WASAPI: Resampled {} -> {} frames for exclusive mode",
+                            original_buffer.len() / channels, new_total_frames
+                        );
+                    }
+                    Err(e) => {
+                        log::error!("WASAPI: Failed to create resampler: {}. Using original buffer.", e);
+                        // Continue with original buffer, will have sample rate mismatch
+                        let orig_frames = original_buffer.len() / channels;
+                        *shared_state.audio_buffer.write() = original_buffer;
+                        shared_state.total_frames.store(orig_frames as u64, Ordering::Relaxed);
+                        // Audio will play at wrong pitch, but at least won't crash
+                    }
+                }
             }
         }
         
@@ -330,6 +361,10 @@ pub mod wasapi_exclusive {
         let is_float = desired_format.get_subformat()
             .map(|st| st == SampleType::Float)
             .unwrap_or(false);
+        
+        // Store actual output bit depth for NoiseShaper (Defect 37 fix)
+        // Note: We need to pass this to AudioPlayer, but this thread doesn't have direct access.
+        // The caller (audio_thread) should check this and update NoiseShaper.
         
         log::info!(
             "WASAPI: Using format: {} Hz, {} ch, {}-bit {}, blockalign={}",
@@ -437,8 +472,15 @@ pub mod wasapi_exclusive {
                         let total = shared_state.total_frames.load(Ordering::Relaxed);
                         let new_pos = frame.min(total);
                         shared_state.position_frames.store(new_pos, Ordering::Relaxed);
-                        // Don't just continue, we need to respect the change in the next read cycle
-                        // But we don't need to restart stream
+                        
+                        // Flush hardware buffer: stop -> start
+                        // This effectively clears the buffer by letting the old data play out
+                        // while the position has been updated
+                        let _ = audio_client.stop_stream();
+                        // Small delay to ensure buffer is cleared
+                        std::thread::sleep(std::time::Duration::from_millis(1));
+                        let _ = audio_client.start_stream();
+                        log::debug!("WASAPI: Stream restarted after seek");
                         continue;
                     }
                     WasapiCommand::Stop | WasapiCommand::Shutdown => {
