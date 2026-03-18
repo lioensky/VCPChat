@@ -15,7 +15,14 @@ class AgentConfigManager extends EventEmitter {
     }
 
     normalizeId(agentId) {
-        return agentId ? agentId.toLowerCase() : agentId;
+        if (!agentId) return agentId;
+        // 在 Linux 等大小写敏感的系统上，必须保持原始大小写以匹配目录名。
+        // 在 Windows 上，原本强制转小写是为了避免同一目录因大小写差异产生多个锁/缓存。
+        // 为了兼容多系统，我们仅在 Windows 系统上保持强制转换。
+        if (process.platform === 'win32') {
+            return agentId.toLowerCase();
+        }
+        return agentId;
     }
 
     getAgentPaths(agentId) {

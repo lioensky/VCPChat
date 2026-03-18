@@ -39,6 +39,90 @@ function debugLog(message, data = null) {
   }
 }
 
+/**
+ * CRLF line ending detection and handling utility
+ * @param {string} content - Original file content
+ * @returns {Object} Object containing normalization and restoration methods
+ */
+function createLineEndingHelper(content) {
+  const crlfCount = (content.match(/\r\n/g) || []).length;
+
+  // Improved LF counting: [^\r]\n handles most cases, plus check file start
+  let lfCount = (content.match(/[^\r]\n/g) || []).length;
+  if (content.startsWith('\n')) {
+    lfCount += 1;
+  }
+
+  const crCount = (content.match(/\r(?!\n)/g) || []).length;
+
+  let lineEnding = '\n';
+  if (crlfCount > lfCount && crlfCount > crCount) {
+    lineEnding = '\r\n';
+  } else if (crCount > lfCount && crCount > crlfCount) {
+    lineEnding = '\r';
+  }
+
+  const hasCRLF = crlfCount > 0;
+
+  if (DEBUG_MODE) {
+    console.error(`[CRLF Detect] CRLF=${crlfCount}, LF=${lfCount}, CR=${crCount}, using=${JSON.stringify(lineEnding)}`);
+  }
+
+  return {
+    normalize: (str) => str.replace(/\r\n/g, '\n').replace(/\r/g, '\n'),
+
+    denormalize: (str) => {
+      if (lineEnding === '\r\n') {
+        return str.replace(/\n/g, '\r\n');
+      } else if (lineEnding === '\r') {
+        return str.replace(/\n/g, '\r');
+      }
+      return str;
+    },
+
+    includes: (cnt, search) => {
+      const normContent = cnt.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+      const normSearch = search.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+      return normContent.includes(normSearch);
+    },
+
+    safeReplace: (originalContent, searchStr, replaceStr) => {
+      const normContent = originalContent.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+      const normSearch = searchStr.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+      const normReplace = replaceStr.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+
+      if (!normContent.includes(normSearch)) {
+        return {
+          success: false,
+          error: 'Search string not found after CRLF normalization'
+        };
+      }
+
+      const normResult = normContent.replace(normSearch, normReplace);
+
+      let result = normResult;
+      if (lineEnding === '\r\n') {
+        result = normResult.replace(/\n/g, '\r\n');
+      } else if (lineEnding === '\r') {
+        result = normResult.replace(/\n/g, '\r');
+      }
+
+      return { success: true, result };
+    },
+
+    getDebugInfo: () => ({
+      crlfCount,
+      lfCount,
+      crCount,
+      chosen: lineEnding === '\r\n' ? 'CRLF' : (lineEnding === '\r' ? 'CR' : 'LF'),
+      totalSize: content.length
+    }),
+
+    hasCRLF,
+    lineEnding: JSON.stringify(lineEnding)
+  };
+}
+
 function isPathAllowed(targetPath, operationType = 'generic') {
   const resolvedPath = path.resolve(targetPath);
 
@@ -99,12 +183,11 @@ function getUniqueFilePath(filePath) {
 }
 
 function applyDiffLogic(originalContent, diffContent) {
+  const helper = createLineEndingHelper(originalContent);
   const diffBlocks = diffContent.split('<<<<<<< SEARCH').slice(1);
   if (diffBlocks.length === 0) {
     throw new Error('Invalid diff format: No SEARCH blocks found.');
   }
-
-  let modifiedContent = originalContent;
 
   // Per user feedback, only process the first SEARCH block.
   const block = diffBlocks[0];
@@ -120,14 +203,12 @@ function applyDiffLogic(originalContent, diffContent) {
   const searchContent = searchPart.substring(searchPart.indexOf('-------') + '-------'.length).trim();
   const replaceContent = replacePart.trim();
 
-  if (modifiedContent.includes(searchContent)) {
-    // .replace() will only replace the first occurrence found in the file.
-    modifiedContent = modifiedContent.replace(searchContent, replaceContent);
-  } else {
-    throw new Error(`Diff application failed: SEARCH content not found in the original file. Content not found: "${searchContent}"`);
+  const replaceResult = helper.safeReplace(originalContent, searchContent, replaceContent);
+  if (!replaceResult.success) {
+    throw new Error(`Diff application failed: ${replaceResult.error}. Content not found: "${searchContent}"`);
   }
 
-  return modifiedContent;
+  return replaceResult.result;
 }
 
 // Helper function to run validation and attach results
@@ -1021,12 +1102,17 @@ async function updateHistory(filePath, searchString, replaceString, encoding = '
     // 3. Iterate through the history to find and replace the content
     for (let i = 0; i < history.length; i++) {
       const entry = history[i];
-      if (entry.role === 'assistant' && typeof entry.content === 'string' && entry.content.includes(searchString)) {
-        // Replace only the first occurrence found
-        entry.content = entry.content.replace(searchString, replaceString);
-        updateApplied = true;
-        debugLog(`Found and replaced content in message at index ${i}.`);
-        break; // Stop after the first successful replacement
+      if (entry.role === 'assistant' && typeof entry.content === 'string') {
+        const helper = createLineEndingHelper(entry.content);
+        if (helper.includes(entry.content, searchString)) {
+          const replaceResult = helper.safeReplace(entry.content, searchString, replaceString);
+          if (replaceResult.success) {
+            entry.content = replaceResult.result;
+            updateApplied = true;
+            debugLog(`Found and replaced content in message at index ${i}.`);
+            break; // Stop after the first successful replacement
+          }
+        }
       }
     }
 
@@ -1092,12 +1178,13 @@ async function applyDiff(parameters) {
       newContent = applyDiffLogic(originalContent, diffContent);
     } else if (searchString !== undefined && replaceString !== undefined) {
       // Handle the legacy format with searchString and replaceString
-      if (!originalContent.includes(searchString)) {
+      const helper = createLineEndingHelper(originalContent);
+      const replaceResult = helper.safeReplace(originalContent, searchString, replaceString);
+      if (!replaceResult.success) {
         // Make error more specific for debugging
-        throw new Error(`Diff application failed: searchString content not found in the original file. Content not found: "${searchString}"`);
+        throw new Error(`Diff application failed: ${replaceResult.error}. Content not found: "${searchString}"`);
       }
-      // Per user feedback, use .replace() to only replace the first occurrence.
-      newContent = originalContent.replace(searchString, replaceString);
+      newContent = replaceResult.result;
     } else {
       throw new Error('ApplyDiff requires either "diffContent" or both "searchString" and "replaceString" parameters.');
     }
