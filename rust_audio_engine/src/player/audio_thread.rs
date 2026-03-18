@@ -769,6 +769,10 @@ fn handle_wasapi_exclusive(
                         AudioCommand::Seek(time) => {
                             let sr = shared_state.sample_rate.load(Ordering::Relaxed) as f64;
                             let frame = (time * sr) as u64;
+                            let total = shared_state.total_frames.load(Ordering::Relaxed);
+                            // Update PlayerSharedState position so audio_callback jumps immediately
+                            shared_state.position_frames.store(frame.min(total), Ordering::Relaxed);
+                            // Tell WASAPI thread to clear its internal hardware buffer
                             let _ = wasapi_player.seek(frame);
                         }
                         AudioCommand::Stop => {

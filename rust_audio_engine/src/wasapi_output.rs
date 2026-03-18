@@ -435,9 +435,9 @@ pub mod wasapi_exclusive {
                     }
                     WasapiCommand::Seek(frame) => {
                         log::info!("WASAPI: Seek to frame {}", frame);
-                        let total = shared_state.total_frames.load(Ordering::Relaxed);
-                        let new_pos = frame.min(total);
-                        shared_state.position_frames.store(new_pos, Ordering::Relaxed);
+                        
+                        // Clear out our internal left-over resampling buffer so we don't play stale audio
+                        resample_leftover.clear();
                         
                         // Flush hardware buffer: stop -> start
                         // This effectively clears the buffer by letting the old data play out
