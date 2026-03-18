@@ -7,7 +7,7 @@ function setupSidebar(app) {
     };
 
     app.saveCustomPlaylists = () => {
-        if (window.electron) window.electron.send('save-custom-playlists', app.customPlaylists);
+        if (window.electron) window.electron.invoke('save-custom-playlists', app.customPlaylists);
     };
 
     app.getAlbumGroups = () => {

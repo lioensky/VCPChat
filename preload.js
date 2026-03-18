@@ -11,8 +11,8 @@ contextBridge.exposeInMainWorld('electron', {
     send: (channel, data) => {
         // whitelist channels
         let validChannels = [
-            'open-music-folder', 'open-music-window', 'save-music-playlist', 'save-custom-playlists',
-            'music-track-changed', 'music-renderer-ready', 'share-file-to-main'
+            'open-music-window',
+            'music-track-changed', 'music-renderer-ready'
         ];
         if (validChannels.includes(channel)) {
             ipcRenderer.send(channel, data);
@@ -28,6 +28,10 @@ contextBridge.exposeInMainWorld('electron', {
             'music-seek',
             'music-get-state',
             'music-set-volume',
+            'music-add-folder',
+            'music-share-track',
+            'save-music-playlist',
+            'save-custom-playlists',
             // --- New channels for WASAPI and device selection ---
             'music-get-devices',
             'music-configure-output',

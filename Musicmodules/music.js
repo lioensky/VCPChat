@@ -264,7 +264,7 @@ document.addEventListener('DOMContentLoaded', () => {
         app.volumeSlider.oninput = (e) => {
             const val = parseFloat(e.target.value);
             app.updateVolumeSliderBackground(val);
-            if (window.electron) window.electron.send('music-set-volume', val);
+            if (window.electron) window.electron.invoke('music-set-volume', val);
             if (app.wnpAdapter) app.wnpAdapter.sendUpdate();
         };
 
@@ -308,9 +308,9 @@ document.addEventListener('DOMContentLoaded', () => {
         };
 
 
-        app.addFolderBtn.onclick = () => window.electron.send('music-add-folder');
+        app.addFolderBtn.onclick = () => window.electron.invoke('music-add-folder');
         app.shareBtn.onclick = () => {
-            if (app.pendingTrackPath) window.electron.send('music-share-track', app.pendingTrackPath);
+            if (app.pendingTrackPath) window.electron.invoke('music-share-track', app.pendingTrackPath);
         };
 
         app.deviceSelect.onchange = () => app.configureOutput();
@@ -343,7 +343,7 @@ document.addEventListener('DOMContentLoaded', () => {
             else { app.irLoadBtn.style.display = 'none'; if (val) app.loadIrFile(val); else app.unloadIr(); }
         };
         app.irLoadBtn.onclick = async () => {
-            const filePath = await window.electron.invoke('music-select-ir-file');
+            const filePath = await window.electron.invoke('select-ir-file');
             if (filePath) app.loadIrFile(filePath);
         };
 
@@ -423,7 +423,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         app.playlist.splice(app.contextMenuTrackIndex, 1);
                         if (app.currentTrackIndex === app.contextMenuTrackIndex) app.nextTrack();
                         else if (app.currentTrackIndex > app.contextMenuTrackIndex) app.currentTrackIndex--;
-                        app.renderPlaylist(); window.electron.send('save-music-playlist', app.playlist);
+                        app.renderPlaylist(); window.electron.invoke('save-music-playlist', app.playlist);
                     }
                 }
                 app.contextMenu.classList.remove('visible');
@@ -548,7 +548,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (app.saveSettingsTimer) clearTimeout(app.saveSettingsTimer);
         app.saveSettingsTimer = setTimeout(() => {
             if (window.electron) {
-                window.electron.send('music-save-settings', {
+                window.electron.invoke('music-save-settings', {
                     upsampling: app.targetUpsamplingRate,
                     loudness: { enabled: app.loudnessEnabled, mode: app.loudnessMode, target_lufs: app.targetLufs, preamp: app.loudnessPreampDb },
                     saturation: { enabled: app.saturationEnabled, type: app.saturationType, drive: app.saturationDrive, mix: app.saturationMix },

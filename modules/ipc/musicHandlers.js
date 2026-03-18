@@ -416,7 +416,7 @@ function initialize(options) {
             return result;
         });
 
-        ipcMain.on('open-music-folder', async (event) => {
+        ipcMain.handle('music-add-folder', async (event) => {
             const result = await dialog.showOpenDialog(mainWindow, {
                 properties: ['openDirectory']
             });
@@ -507,11 +507,13 @@ function initialize(options) {
             }
         });
 
-        ipcMain.on('save-music-playlist', async (event, playlist) => {
+        ipcMain.handle('save-music-playlist', async (event, playlist) => {
             try {
                 await fs.writeJson(MUSIC_PLAYLIST_FILE, playlist, { spaces: 2 });
+                return { success: true };
             } catch (error) {
                 console.error('Error saving music playlist:', error);
+                return { success: false, error: error.message };
             }
         });
 
@@ -530,15 +532,17 @@ function initialize(options) {
             }
         });
 
-        ipcMain.on('save-custom-playlists', async (event, playlists) => {
+        ipcMain.handle('save-custom-playlists', async (event, playlists) => {
             try {
                 await fs.writeJson(CUSTOM_PLAYLISTS_FILE, playlists, { spaces: 2 });
+                return { success: true };
             } catch (error) {
                 console.error('[Music] Error saving custom playlists:', error);
+                return { success: false, error: error.message };
             }
         });
 
-        ipcMain.on('share-file-to-main', (event, filePath) => {
+        ipcMain.handle('music-share-track', (event, filePath) => {
             if (mainWindow && !mainWindow.isDestroyed()) {
                 console.log(`[Music] Forwarding shared file to renderer: ${filePath}`);
                 mainWindow.webContents.send('add-file-to-input', filePath);
