@@ -18,13 +18,12 @@ pub mod wasapi_exclusive {
     };
     
     /// Commands for the WASAPI playback thread
-    #[derive(Debug, Clone)]
     pub enum WasapiCommand {
         Play,
         Pause,
         Stop,
         Shutdown,
-        Seek(u64),
+        Seek(u64), // Used purely for notifying the UI/logs if needed, actual seek is handled by `audio_callback`
     }
     
     /// State of WASAPI playback
@@ -42,7 +41,6 @@ pub mod wasapi_exclusive {
         pub sample_rate: AtomicU64,
         pub channels: AtomicU64,
         pub total_frames: AtomicU64,
-        pub audio_buffer: RwLock<Vec<f64>>,
         pub is_active: AtomicBool,
     }
     
@@ -54,7 +52,6 @@ pub mod wasapi_exclusive {
                 sample_rate: AtomicU64::new(44100),
                 channels: AtomicU64::new(2),
                 total_frames: AtomicU64::new(0),
-                audio_buffer: RwLock::new(Vec::new()),
                 is_active: AtomicBool::new(false),
             }
         }
@@ -66,7 +63,8 @@ pub mod wasapi_exclusive {
         }
     }
     
-    /// WASAPI Exclusive Mode Player
+    pub type DspCallback = Box<dyn FnMut(&mut [f32], usize) -> bool + Send>;
+    
     pub struct WasapiExclusivePlayer {
         shared_state: Arc<WasapiSharedState>,
         cmd_tx: Sender<WasapiCommand>,
@@ -77,8 +75,11 @@ pub mod wasapi_exclusive {
     
     impl WasapiExclusivePlayer {
         /// Create a new WASAPI exclusive mode player
-        pub fn new(device_id: Option<usize>) -> Result<Self, String> {
+        pub fn new(device_id: Option<usize>, sample_rate: u32, channels: usize, dsp_callback: DspCallback) -> Result<Self, String> {
             let shared_state = Arc::new(WasapiSharedState::new());
+            shared_state.sample_rate.store(sample_rate as u64, Ordering::Relaxed);
+            shared_state.channels.store(channels as u64, Ordering::Relaxed);
+            
             let (cmd_tx, cmd_rx) = bounded(16);
             
             let state_clone = Arc::clone(&shared_state);
@@ -87,7 +88,7 @@ pub mod wasapi_exclusive {
             let thread_handle = thread::Builder::new()
                 .name("wasapi-exclusive".to_string())
                 .spawn(move || {
-                    wasapi_thread_main(cmd_rx, state_clone, dev_id);
+                    wasapi_thread_main(cmd_rx, state_clone, dev_id, dsp_callback);
                 })
                 .map_err(|e| format!("Failed to spawn WASAPI thread: {}", e))?;
             
@@ -102,18 +103,6 @@ pub mod wasapi_exclusive {
         /// Get shared state reference
         pub fn shared_state(&self) -> Arc<WasapiSharedState> {
             Arc::clone(&self.shared_state)
-        }
-        
-        /// Load audio data into the player
-        pub fn load(&self, samples: Vec<f64>, sample_rate: u32, channels: usize) {
-            let total_frames = samples.len() / channels;
-            
-            self.shared_state.sample_rate.store(sample_rate as u64, Ordering::Relaxed);
-            self.shared_state.channels.store(channels as u64, Ordering::Relaxed);
-            self.shared_state.total_frames.store(total_frames as u64, Ordering::Relaxed);
-            self.shared_state.position_frames.store(0, Ordering::Relaxed);
-            *self.shared_state.audio_buffer.write() = samples;
-            *self.shared_state.state.write() = WasapiState::Stopped;
         }
         
         /// Start playback
@@ -167,6 +156,7 @@ pub mod wasapi_exclusive {
         cmd_rx: Receiver<WasapiCommand>,
         shared_state: Arc<WasapiSharedState>,
         device_id: Option<usize>,
+        mut dsp_callback: DspCallback,
     ) {
         log::info!("WASAPI exclusive thread started");
         
@@ -192,7 +182,7 @@ pub mod wasapi_exclusive {
                     }
                     
                     // Start exclusive playback
-                    match start_exclusive_playback(&shared_state, &cmd_rx, sample_rate, channels, device_id) {
+                    match start_exclusive_playback(&shared_state, &cmd_rx, sample_rate, channels, device_id, &mut dsp_callback) {
                         Ok(()) => log::info!("WASAPI: Exclusive playback completed"),
                         Err(e) => log::error!("WASAPI: Playback error: {}", e),
                     }
@@ -230,6 +220,7 @@ pub mod wasapi_exclusive {
         sample_rate: usize,
         channels: usize,
         device_id: Option<usize>,
+        dsp_callback: &mut DspCallback,
     ) -> Result<(), String> {
         let enumerator = DeviceEnumerator::new()
             .map_err(|e| format!("Failed to create device enumerator: {:?}", e))?;
@@ -312,48 +303,21 @@ pub mod wasapi_exclusive {
         let desired_format = desired_format
             .ok_or_else(|| "No supported exclusive format found at any sample rate".to_string())?;
         
-        // Check if we need to resample the audio data
-        let need_resample = actual_sample_rate != sample_rate;
-        if need_resample {
-            log::info!(
-                "WASAPI: Device doesn't support {} Hz, using {} Hz with SoX VHQ resampling",
-                sample_rate, actual_sample_rate
-            );
-            
-            // Resample the audio buffer using SoX VHQ
-            let original_buffer = shared_state.audio_buffer.read().clone();
-            drop(shared_state.audio_buffer.read()); // Release read lock
-            
-            if !original_buffer.is_empty() {
-                use crate::processor::StreamingResampler;
-                
-                match StreamingResampler::new(channels, sample_rate as u32, actual_sample_rate as u32) {
-                    Ok(mut resampler) => {
-                        let mut resampled = resampler.process_chunk(&original_buffer);
-                        resampled.extend(resampler.flush());
-                        
-                        // Update shared state with resampled data
-                        let new_total_frames = resampled.len() / channels;
-                        *shared_state.audio_buffer.write() = resampled;
-                        shared_state.total_frames.store(new_total_frames as u64, Ordering::Relaxed);
-                        shared_state.sample_rate.store(actual_sample_rate as u64, Ordering::Relaxed);
-                        
-                        log::info!(
-                            "WASAPI: Resampled {} -> {} frames for exclusive mode",
-                            original_buffer.len() / channels, new_total_frames
-                        );
-                    }
-                    Err(e) => {
-                        log::error!("WASAPI: Failed to create resampler: {}. Using original buffer.", e);
-                        // Continue with original buffer, will have sample rate mismatch
-                        let orig_frames = original_buffer.len() / channels;
-                        *shared_state.audio_buffer.write() = original_buffer;
-                        shared_state.total_frames.store(orig_frames as u64, Ordering::Relaxed);
-                        // Audio will play at wrong pitch, but at least won't crash
-                    }
+        // Initialize resampler if actual format is different from source
+        let mut resampler = if actual_sample_rate != sample_rate {
+            use crate::processor::StreamingResampler;
+            use crate::config::PhaseResponse;
+            log::info!("WASAPI: Intrinsic streaming resampling {} -> {} Hz", sample_rate, actual_sample_rate);
+            match StreamingResampler::with_phase(channels, sample_rate as u32, actual_sample_rate as u32, PhaseResponse::Linear) {
+                Ok(r) => Some(r),
+                Err(e) => {
+                    log::error!("WASAPI: Failed to create StreamingResampler: {:?}", e);
+                    None
                 }
             }
-        }
+        } else {
+            None
+        };
         
         let blockalign = desired_format.get_blockalign();
         let bits_per_sample = desired_format.get_bitspersample();
@@ -444,6 +408,8 @@ pub mod wasapi_exclusive {
         
         // Playback loop
         let mut paused = false;
+        let mut resample_leftover: Vec<f32> = Vec::new();
+        let mut resample_output_f64: Vec<f64> = Vec::with_capacity(8192 * channels);
         
         loop {
             // Check for commands (non-blocking)
@@ -514,33 +480,67 @@ pub mod wasapi_exclusive {
                 continue;
             }
             
-            // Read audio data and convert to output format
-            let audio_buf = shared_state.audio_buffer.read();
-            let current_pos = shared_state.position_frames.load(Ordering::Relaxed) as usize;
-            let total_frames = shared_state.total_frames.load(Ordering::Relaxed) as usize;
+            let frames_to_write = buffer_frame_count as usize;
+            let samples_to_write = frames_to_write * channels;
             
-            if current_pos >= total_frames {
-                // Playback complete
-                log::info!("WASAPI: Playback complete");
+            let mut output_f32_buffer = vec![0.0f32; samples_to_write];
+            let mut is_eof = false;
+            
+            if let Some(ref mut rs) = resampler {
+                let mut samples_written = 0;
+                while samples_written < samples_to_write {
+                    if !resample_leftover.is_empty() {
+                        let take = resample_leftover.len().min(samples_to_write - samples_written);
+                        output_f32_buffer[samples_written..samples_written + take].copy_from_slice(&resample_leftover[0..take]);
+                        resample_leftover.drain(0..take);
+                        samples_written += take;
+                    }
+                    
+                    if samples_written == samples_to_write {
+                        break;
+                    }
+                    
+                    let source_frames_to_request = 4096;
+                    let mut temp_f32 = vec![0.0f32; source_frames_to_request * channels];
+                    let chunk_eof = dsp_callback(&mut temp_f32, channels);
+                    if chunk_eof {
+                        is_eof = true;
+                    }
+                    
+                    let temp_f64: Vec<f64> = temp_f32.into_iter().map(|f| f as f64).collect();
+                    
+                    resample_output_f64.clear();
+                    resample_output_f64.resize(temp_f64.len() * 2 + 256, 0.0);
+                    let written_frames = rs.process_chunk_into(&temp_f64, &mut resample_output_f64);
+                    
+                    let new_samples = written_frames * channels;
+                    for i in 0..new_samples {
+                        resample_leftover.push(resample_output_f64[i] as f32);
+                    }
+                    
+                    if is_eof && new_samples == 0 {
+                        break;
+                    }
+                }
+            } else {
+                is_eof = dsp_callback(&mut output_f32_buffer, channels);
+            }
+            
+            if is_eof && output_f32_buffer.iter().all(|&x| x == 0.0) {
+                log::info!("WASAPI: Playback complete (EOF)");
                 let _ = audio_client.stop_stream();
                 break;
             }
             
-            let frames_to_write = buffer_frame_count as usize;
-            let samples_to_write = frames_to_write * channels;
-            let start_sample = current_pos * channels;
-            let end_sample = (start_sample + samples_to_write).min(audio_buf.len());
-            let actual_samples = end_sample - start_sample;
-            let actual_frames = actual_samples / channels;
+            let actual_frames = frames_to_write;
             
-            // Convert f64 samples to output format
+            // Convert f32 samples to output byte format
             let mut data = vec![0u8; actual_frames * blockalign as usize];
             
             if is_float && bits_per_sample == 32 {
                 // 32-bit float
-                for (i, sample) in audio_buf[start_sample..end_sample].iter().enumerate() {
-                    let sample_f32 = *sample as f32;
-                    let bytes = sample_f32.to_le_bytes();
+                for (i, sample) in output_f32_buffer.iter().enumerate() {
+                    let bytes = sample.to_le_bytes();
                     let offset = i * 4;
                     if offset + 4 <= data.len() {
                         data[offset..offset + 4].copy_from_slice(&bytes);
@@ -548,8 +548,8 @@ pub mod wasapi_exclusive {
                 }
             } else if bits_per_sample == 24 {
                 // 24-bit integer
-                for (i, sample) in audio_buf[start_sample..end_sample].iter().enumerate() {
-                    let sample_i32 = (*sample * 8388607.0).clamp(-8388607.0, 8388607.0) as i32;
+                for (i, sample) in output_f32_buffer.iter().enumerate() {
+                    let sample_i32 = (*sample as f64 * 8388607.0).clamp(-8388607.0, 8388607.0) as i32;
                     let bytes = sample_i32.to_le_bytes();
                     let offset = i * 3;
                     if offset + 3 <= data.len() {
@@ -558,8 +558,8 @@ pub mod wasapi_exclusive {
                 }
             } else if bits_per_sample == 16 {
                 // 16-bit integer
-                for (i, sample) in audio_buf[start_sample..end_sample].iter().enumerate() {
-                    let sample_i16 = (*sample * 32767.0).clamp(-32767.0, 32767.0) as i16;
+                for (i, sample) in output_f32_buffer.iter().enumerate() {
+                    let sample_i16 = (*sample as f64 * 32767.0).clamp(-32767.0, 32767.0) as i16;
                     let bytes = sample_i16.to_le_bytes();
                     let offset = i * 2;
                     if offset + 2 <= data.len() {
@@ -568,17 +568,11 @@ pub mod wasapi_exclusive {
                 }
             }
             
-            drop(audio_buf);
-            
             // Write to device
             if let Err(e) = render_client.write_to_device(actual_frames, &data, None) {
                 log::error!("WASAPI: Failed to write to device: {:?}", e);
                 break;
             }
-            
-            // Update position
-            let new_pos = current_pos + actual_frames;
-            shared_state.position_frames.store(new_pos as u64, Ordering::Relaxed);
             
             // Wait for next buffer request
             if h_event.wait_for_event(1000).is_err() {

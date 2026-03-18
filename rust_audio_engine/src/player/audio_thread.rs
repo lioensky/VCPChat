@@ -72,9 +72,11 @@ pub fn audio_thread_main(
                         &spectrum_tx,
                         &eq,
                         &volume,
+                        &noise_shaper,
                         &loudness_state,
                         &peak_limiter,
                         &convolver,
+                        &fir_convolver,
                         &saturation,
                         &crossfeed,
                         &dynamic_loudness,
@@ -646,94 +648,79 @@ fn handle_wasapi_exclusive(
     spectrum_tx: &Sender<f64>,
     eq: &Arc<Mutex<Equalizer>>,
     volume: &Arc<Mutex<VolumeController>>,
+    noise_shaper: &Arc<Mutex<NoiseShaper>>,
     loudness_state: &Arc<AtomicLoudnessState>,
     peak_limiter: &Arc<Mutex<PeakLimiter>>,
     convolver: &Arc<Mutex<Option<crate::processor::FFTConvolver>>>,
+    fir_convolver: &Arc<Mutex<Option<crate::processor::FFTConvolver>>>,
     saturation: &Arc<Mutex<Saturation>>,
     crossfeed: &Arc<Mutex<Crossfeed>>,
     dynamic_loudness: &Arc<Mutex<DynamicLoudness>>,
 ) -> bool {
     log::info!("Starting TRUE WASAPI exclusive mode playback...");
 
-    let audio_buffer = shared_state.audio_buffer.read();
     let sample_rate = shared_state.sample_rate.load(Ordering::Relaxed) as u32;
     let channels = shared_state.channels.load(Ordering::Relaxed) as usize;
 
-    if audio_buffer.is_empty() || channels == 0 {
-        log::error!("No audio data loaded or invalid channels");
+    if channels == 0 {
+        log::error!("Invalid channels");
         *shared_state.state.write() = PlayerState::Stopped;
         return true;
     }
 
-    // === Apply DSP chain in CHUNKS (not entire buffer at once) ===
-    // This avoids memory spike and ensures PeakLimiter release works correctly.
-    // Chunk size matches callback path for consistency.
-    const DSP_CHUNK_FRAMES: usize = 4096;
-    
-    // Pre-allocate output buffer (no cloning of entire audio_buffer)
-    let total_frames = audio_buffer.len() / channels;
-    let mut processed_samples: Vec<f64> = Vec::with_capacity(audio_buffer.len());
-    
-    log::info!("WASAPI: Applying DSP chain in chunks ({} frames/chunk)...", DSP_CHUNK_FRAMES);
+    // Construct the live DSP callback
+    let cb_shared = Arc::clone(shared_state);
+    let cb_eq = Arc::clone(eq);
+    let cb_volume = Arc::clone(volume);
+    let cb_ns = Arc::clone(noise_shaper);
+    let cb_loudness_state = Arc::clone(loudness_state);
+    let cb_peak_limiter = Arc::clone(peak_limiter);
+    let cb_convolver = Arc::clone(convolver);
+    let cb_fir_convolver = Arc::clone(fir_convolver);
+    let cb_saturation = Arc::clone(saturation);
+    let cb_crossfeed = Arc::clone(crossfeed);
+    let cb_dynamic_loudness = Arc::clone(dynamic_loudness);
+    let cb_spectrum_tx = spectrum_tx.clone();
 
-    for chunk_start in (0..total_frames).step_by(DSP_CHUNK_FRAMES) {
-        let chunk_end = (chunk_start + DSP_CHUNK_FRAMES).min(total_frames);
-        let chunk_frames = chunk_end - chunk_start;
-        
-        // Copy chunk to mutable buffer for DSP processing
-        let start_sample = chunk_start * channels;
-        let end_sample = chunk_end * channels;
-        let mut chunk: Vec<f64> = audio_buffer[start_sample..end_sample].to_vec();
-        
-        // 1. EQ processing
-        if let Some(mut locked_eq) = eq.try_lock() {
-            locked_eq.process(&mut chunk);
-        }
-        
-        // 2. FIR Convolution (IR processing)
-        if let Some(mut guard) = convolver.try_lock() {
-            if let Some(ref mut conv) = *guard {
-                conv.process_inplace(&mut chunk);
-            }
-        }
-        
-        // 3. Crossfeed (headphone virtual speaker)
-        if let Some(mut locked_cf) = crossfeed.try_lock() {
-            locked_cf.process(&mut chunk, channels);
-        }
-        
-        // 4. Loudness normalization (per-chunk gain)
-        let linear_gain = loudness_state.process_gain(chunk_frames);
-        for sample in chunk.iter_mut() {
-            *sample *= linear_gain;
-        }
-        
-        // 5. Dynamic Loudness Compensation (ISO 226 Fletcher-Munson)
-        if let Some(mut locked_dl) = dynamic_loudness.try_lock() {
-            locked_dl.process(&mut chunk);
-        }
-        
-        // 6. Saturation
-        if let Some(mut locked_sat) = saturation.try_lock() {
-            locked_sat.process_with_channels(&mut chunk, channels);
-        }
-        
-        // 7. Peak limiting (per-chunk, release works correctly now)
-        if let Some(mut locked_limiter) = peak_limiter.try_lock() {
-            locked_limiter.process(&mut chunk);
-        }
-        
-        // 8. Volume control
-        if let Some(mut locked_vol) = volume.try_lock() {
-            locked_vol.process(&mut chunk, channels);
-        }
-        
-        // Append processed chunk to output
-        processed_samples.extend_from_slice(&chunk);
-    }
+    // Allocate persistent buffers for the closure
+    let mut process_buffer = Vec::with_capacity(8192 * channels);
+    process_buffer.resize(8192 * channels, 0.0);
     
-    drop(audio_buffer);
-    log::info!("WASAPI: DSP chain complete, loading {} processed samples", processed_samples.len());
+    // WASAPI inner loop handles resampling now, so `audio_callback` resampler args are unused!
+    let mut unused_resampler = None;
+    let mut unused_leftover = Vec::new();
+    let mut unused_output = Vec::new();
+
+    let dsp_callback = Box::new(move |data: &mut [f32], cb_channels: usize| -> bool {
+        let mut is_eof = false;
+        
+        crate::player::callback::audio_callback(
+            data,
+            &cb_shared,
+            &cb_eq,
+            &cb_volume,
+            &cb_ns,
+            &cb_loudness_state,
+            &cb_peak_limiter,
+            &cb_convolver,
+            &cb_fir_convolver,
+            &cb_saturation,
+            &cb_crossfeed,
+            &cb_dynamic_loudness,
+            &cb_spectrum_tx,
+            cb_channels,
+            &mut process_buffer,
+            &mut unused_resampler,
+            &mut unused_leftover,
+            &mut unused_output,
+        );
+        
+        if *cb_shared.state.read() == PlayerState::Stopped {
+            is_eof = true;
+        }
+        
+        is_eof
+    });
 
     let device_id_value = shared_state.device_id.load(Ordering::Relaxed);
     let wasapi_device_id = if device_id_value >= 0 {
@@ -742,11 +729,8 @@ fn handle_wasapi_exclusive(
         None
     };
 
-    match WasapiExclusivePlayer::new(wasapi_device_id) {
+    match WasapiExclusivePlayer::new(wasapi_device_id, sample_rate, channels, dsp_callback) {
         Ok(wasapi_player) => {
-            wasapi_player.load(processed_samples, sample_rate, channels);
-            let wasapi_state = wasapi_player.shared_state();
-
             if let Err(e) = wasapi_player.play() {
                 log::error!("Failed to start WASAPI playback: {}", e);
                 *shared_state.state.write() = PlayerState::Stopped;
@@ -757,7 +741,7 @@ fn handle_wasapi_exclusive(
 
             // Wait for WASAPI to start
             let mut wait_count = 0;
-            while wasapi_player.get_state() == WasapiState::Stopped && wait_count < 100 {
+            while wasapi_player.get_state() == WasapiState::Stopped && wait_count < 300 {
                 std::thread::sleep(std::time::Duration::from_millis(10));
                 wait_count += 1;
             }
@@ -770,7 +754,6 @@ fn handle_wasapi_exclusive(
 
             log::info!("WASAPI: Playback started, entering monitoring loop");
 
-            let mut last_spectrum_pos: usize = 0;
             loop {
                 // Check for commands
                 if let Ok(cmd) = cmd_rx.try_recv() {
@@ -798,51 +781,18 @@ fn handle_wasapi_exclusive(
                             drop(wasapi_player);
                             return false; // Signal shutdown
                         }
-                        // LoadComplete/LoadError are handled in main audio thread loop,
-                        // ignore them here during WASAPI playback
-                        AudioCommand::LoadComplete(_) | AudioCommand::LoadError(_) => {
-                            log::debug!("WASAPI: Ignoring load command during playback");
-                        }
+                        _ => {}
                     }
                 }
 
-                // Sync position
-                let wasapi_pos = wasapi_state.position_frames.load(Ordering::Relaxed);
-                shared_state.position_frames.store(wasapi_pos, Ordering::Relaxed);
-
-                // Send spectrum data
-                if wasapi_player.get_state() == WasapiState::Playing {
-                    let current_frame = wasapi_pos as usize;
-                    if current_frame > last_spectrum_pos {
-                        let audio_buf = shared_state.audio_buffer.read();
-                        let samples_to_send = ((current_frame - last_spectrum_pos) * channels).min(4096);
-                        let start_sample = last_spectrum_pos * channels;
-
-                        for i in 0..samples_to_send {
-                            let idx = start_sample + i;
-                            if idx + channels <= audio_buf.len() && i % channels == 0 {
-                                let mono = if channels == 2 {
-                                    (audio_buf[idx] + audio_buf[idx + 1]) * 0.5
-                                } else {
-                                    audio_buf[idx]
-                                };
-                                let _ = spectrum_tx.try_send(mono);
-                            }
-                        }
-                        drop(audio_buf);
-                        last_spectrum_pos = current_frame;
-                    }
-                }
-
-                // Check if finished
-                let current_state = wasapi_player.get_state();
-                if current_state == WasapiState::Stopped && wasapi_pos > 0 {
-                    log::info!("WASAPI playback finished at position {}", wasapi_pos);
-                    *shared_state.state.write() = PlayerState::Stopped;
+                // Check if finished (detected by audio_callback hitting EOF)
+                if *shared_state.state.read() == PlayerState::Stopped {
+                    log::info!("WASAPI playback finished");
+                    let _ = wasapi_player.stop();
                     break;
                 }
 
-                std::thread::sleep(std::time::Duration::from_millis(10));
+                std::thread::sleep(std::time::Duration::from_millis(50));
             }
 
             true // Playback finished normally
