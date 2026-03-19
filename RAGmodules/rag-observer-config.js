@@ -5,8 +5,11 @@ class RAGObserverConfig {
     constructor() {
         this.settings = null;
         this.wsConnection = null;
+        this.vcpLogConnection = null;
         this.reconnectAttempts = 0;
         this.maxReconnectAttempts = 10;
+        this.vcpLogReconnectAttempts = 0;
+        this.maxVcpLogReconnectAttempts = 10;
         this.reconnectDelay = 3000; // 3秒
         this.isConnecting = false;
     }
@@ -107,6 +110,71 @@ class RAGObserverConfig {
             // 错误处理：在 onclose 中处理重连，这里只更新状态
             updateStatus('error', '连接发生错误！请检查服务器或配置。');
         };
+        // 连接通知栏专用通道（与主界面通知栏一致）
+        this.connectVcpLogChannel(wsUrl, vcpKey);
+    }
+
+    // 连接通知栏专用WebSocket（主界面通知接口: /VCPlog）
+    connectVcpLogChannel(wsUrl, vcpKey, isReconnect = false) {
+        const WebSocketState = window.WebSocket;
+        if (this.vcpLogConnection &&
+            (this.vcpLogConnection.readyState === WebSocketState.OPEN ||
+             this.vcpLogConnection.readyState === WebSocketState.CONNECTING)) {
+            return;
+        }
+
+        const wsLogUrl = `${wsUrl}/VCPlog/VCP_Key=${vcpKey}`;
+        this.vcpLogConnection = new WebSocket(wsLogUrl);
+
+        this.vcpLogConnection.onopen = () => {
+            this.vcpLogReconnectAttempts = 0;
+            console.log(`[RAG Observer] VCPLog 通知通道已连接: ${wsLogUrl}`);
+        };
+
+        this.vcpLogConnection.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                const notificationTypes = new Set([
+                    'vcp_log',
+                    'daily_note_created',
+                    'video_generation_status',
+                    'tool_approval_request',
+                    'tool_approval_response',
+                    'connection_ack',
+                    'notification',
+                    'error'
+                ]);
+
+                if (data?.type && notificationTypes.has(data.type)) {
+                    if (window.startSpectrumAnimation) {
+                        window.startSpectrumAnimation(3000);
+                    }
+                    displayRagInfo(data);
+                }
+            } catch (e) {
+                console.error('[RAG Observer] 解析 VCPLog 消息失败:', e);
+            }
+        };
+
+        this.vcpLogConnection.onclose = () => {
+            console.warn('[RAG Observer] VCPLog 通知通道已断开，准备重连...');
+            this.reconnectVcpLog(wsUrl, vcpKey);
+        };
+
+        this.vcpLogConnection.onerror = (error) => {
+            console.error('[RAG Observer] VCPLog 通知通道错误:', error);
+        };
+    }
+
+    reconnectVcpLog(wsUrl, vcpKey) {
+        if (this.vcpLogReconnectAttempts < this.maxVcpLogReconnectAttempts) {
+            this.vcpLogReconnectAttempts++;
+            setTimeout(() => {
+                this.connectVcpLogChannel(wsUrl, vcpKey, true);
+            }, this.reconnectDelay);
+        } else {
+            console.error('[RAG Observer] VCPLog 通知通道重连次数已达上限。');
+        }
     }
 
     // 尝试重新连接

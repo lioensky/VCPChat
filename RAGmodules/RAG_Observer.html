@@ -17,6 +17,7 @@
             --accent-agent: #f1c40f;
             --accent-memo: #1abc9c;
             --accent-dream: #e84393;
+            --accent-notification: #ff9f43;
         }
 
         body {
@@ -298,9 +299,11 @@
 
         .snippet {
             display: -webkit-box;
+            line-clamp: 3;
             -webkit-line-clamp: 3;
             -webkit-box-orient: vertical;
             overflow: hidden;
+            -webkit-mask-image: linear-gradient(180deg, #000 60%, transparent);
             mask-image: linear-gradient(180deg, #000 60%, transparent);
         }
         
@@ -350,6 +353,7 @@
         .type-chat { --accent-color: var(--accent-agent); }
         .type-memo { --accent-color: var(--accent-memo); }
         .type-dream { --accent-color: var(--accent-dream); }
+        .type-notification { --accent-color: var(--accent-notification); }
 
         /* RAG Item */
         .rag-sub-item {
@@ -485,6 +489,7 @@
                 <button class="filter-btn" data-type="chat" onclick="filterLogs('chat', this)">Agent会话</button>
                 <button class="filter-btn" data-type="memo" onclick="filterLogs('memo', this)">记忆检索</button>
                 <button class="filter-btn" data-type="dream" onclick="filterLogs('dream', this)">Agent梦境</button>
+                <button class="filter-btn" data-type="notification" onclick="filterLogs('notification', this)">通知消息</button>
                 <button class="filter-btn" onclick="clearLogs()" style="margin-left: 10px; color: #ff5f56;">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
                 </button>
@@ -543,10 +548,11 @@
             const typeColors = {
                 'all': 'rgba(255, 255, 255, 0.15)',
                 'rag': 'rgba(52, 152, 219, 0.4)', // --accent-rag
-                'chain': 'rgba(155, 89, 182, 0.4)', // --accent-chain
-                'chat': 'rgba(241, 196, 15, 0.4)', // --accent-agent
-                'memo': 'rgba(26, 188, 156, 0.4)', // --accent-memo
-                'dream': 'rgba(232, 67, 147, 0.4)' // --accent-dream
+                'chain': 'rgba(52, 152, 219, 0.4)', // --accent-chain
+                'chat': 'rgba(52, 152, 219, 0.4)', // --accent-chat
+                'memo': 'rgba(52, 152, 219, 0.4)', // --accent-memo
+                'dream': 'rgba(52, 152, 219, 0.4)', // --accent-dream
+                'notification': 'rgba(52, 152, 219, 0.4)' // --notification
             };
             highlight.style.backgroundColor = typeColors[type] || typeColors['all'];
 
@@ -666,6 +672,7 @@
             if (data.type.startsWith('AGENT_DREAM_')) return displayDreamInfo(data);
             if (data.type === 'DailyNote') return displayDailyNote(data);
             if (data.source === 'AgentAssistant') return displayAgentAssistantNotification(data);
+            if (isNotificationData(data)) return displaySystemNotification(data);
 
             const block = document.createElement('div');
             block.className = 'card-base type-rag card-enter';
@@ -946,13 +953,80 @@
             prependCard(block);
         }
 
-        // 7. AGENT ASSISTANT NOTIFICATION BLOCK
+        // 7. NOTIFICATION HELPERS
+        function isNotificationData(data) {
+            if (!data || typeof data !== 'object') return false;
+            const notificationTypes = new Set([
+                'vcp_log',
+                'daily_note_created',
+                'video_generation_status',
+                'tool_approval_request',
+                'tool_approval_response',
+                'connection_ack',
+                'notification'
+            ]);
+            return notificationTypes.has(data.type);
+        }
+
+        function normalizeNotificationContent(data) {
+            if (!data || typeof data !== 'object') {
+                return {
+                    title: '通知消息',
+                    source: 'System',
+                    status: 'info',
+                    content: String(data || '收到一条空通知')
+                };
+            }
+
+            if (data.type === 'vcp_log' && data.data && typeof data.data === 'object') {
+                const payload = data.data;
+                const title = payload.tool_name ? `${payload.tool_name} ${payload.status || ''}`.trim() : 'VCP 日志通知';
+                const source = payload.source || 'VCPLog';
+                const status = payload.status || 'info';
+                const content = typeof payload.content === 'undefined'
+                    ? JSON.stringify(payload, null, 2)
+                    : (typeof payload.content === 'string' ? payload.content : JSON.stringify(payload.content, null, 2));
+                return { title, source, status, content };
+            }
+
+            if (data.type === 'daily_note_created' && data.data && typeof data.data === 'object') {
+                const note = data.data;
+                return {
+                    title: `日记通知: ${note.maidName || 'N/A'}`,
+                    source: 'DailyNote',
+                    status: note.status || 'info',
+                    content: note.message || JSON.stringify(note, null, 2)
+                };
+            }
+
+            if (data.type === 'video_generation_status' && data.data && typeof data.data === 'object') {
+                const video = data.data;
+                const message = video?.original_plugin_output?.message || JSON.stringify(video, null, 2);
+                return {
+                    title: '视频生成状态',
+                    source: 'VideoGenerator',
+                    status: video.status || 'info',
+                    content: typeof message === 'string' ? message : JSON.stringify(message, null, 2)
+                };
+            }
+
+            const fallbackContent = data.message || (data.data ? JSON.stringify(data.data, null, 2) : JSON.stringify(data, null, 2));
+            return {
+                title: `通知: ${data.type || 'unknown'}`,
+                source: data.source || 'System',
+                status: data.status || 'info',
+                content: fallbackContent
+            };
+        }
+
+        // 8. AGENT ASSISTANT NOTIFICATION BLOCK
         function displayAgentAssistantNotification(data) {
             const block = document.createElement('div');
-            block.className = 'card-base type-chat card-enter'; // Use chat style for agent category
+            block.className = 'card-base type-chat card-enter';
             
-            const isSucceed = data.message.includes('Succeed');
-            const isFailed = data.message.includes('Failed');
+            const messageText = String(data.message || '收到一条 Agent 助手通知');
+            const isSucceed = messageText.includes('Succeed') || messageText.includes('success');
+            const isFailed = messageText.includes('Failed') || messageText.includes('error');
             const dotClass = isSucceed ? 'dot-green' : (isFailed ? 'dot-red' : 'dot-orange');
             
             block.innerHTML = `
@@ -963,14 +1037,44 @@
                 <div class="meta-info">
                     <span class="status-pill" style="margin-bottom:0; background:transparent; border:none; padding:0;">
                         <div class="status-dot ${dotClass}"></div>
-                        <span style="color:var(--accent-agent);">${data.source}</span>
+                        <span style="color:var(--accent-agent);">${data.source || 'AgentAssistant'}</span>
                     </span>
                     <span class="meta-pill">Time: ${new Date().toLocaleTimeString()}</span>
                 </div>
                 <div style="margin-top:10px; padding:12px; background:rgba(241, 196, 15, 0.1); border-radius:8px; border-left:3px solid var(--accent-agent); color:rgba(255,255,255,0.9); font-size:0.95rem;">
-                    ${marked.parse(data.message)}
+                    ${marked.parse(messageText)}
                 </div>
             `;
+            prependCard(block);
+        }
+
+        // 9. GENERIC NOTIFICATION BLOCK
+        function displaySystemNotification(data) {
+            const block = document.createElement('div');
+            block.className = 'card-base type-notification card-enter';
+
+            const normalized = normalizeNotificationContent(data);
+            const contentString = String(normalized.content || '');
+            const isSucceed = /success|succeed|ok/i.test(normalized.status) || /success|succeed/i.test(contentString);
+            const isFailed = /error|failed|fail/i.test(normalized.status) || /error|failed|fail/i.test(contentString);
+            const dotClass = isSucceed ? 'dot-green' : (isFailed ? 'dot-red' : 'dot-orange');
+
+            block.innerHTML = `
+                <h3 style="color: var(--accent-notification);">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+                    ${normalized.title}
+                </h3>
+                <div class="meta-info">
+                    <span class="status-pill" style="margin-bottom:0; background:transparent; border:none; padding:0;">
+                        <div class="status-dot ${dotClass}"></div>
+                        <span style="color:var(--accent-notification);">${normalized.source}</span>
+                    </span>
+                    <span class="meta-pill">Status: ${normalized.status}</span>
+                    <span class="meta-pill">Time: ${new Date().toLocaleTimeString()}</span>
+                </div>
+                ${createContentHTML(contentString)}
+            `;
+
             prependCard(block);
         }
 
@@ -980,7 +1084,8 @@
                          element.classList.contains('type-chain') ? 'chain' :
                          element.classList.contains('type-chat') ? 'chat' :
                          element.classList.contains('type-memo') ? 'memo' :
-                         element.classList.contains('type-dream') ? 'dream' : 'all';
+                         element.classList.contains('type-dream') ? 'dream' :
+                         element.classList.contains('type-notification') ? 'notification' : 'all';
             
             if (currentFilter !== 'all' && currentFilter !== type) {
                 element.style.display = 'none';
