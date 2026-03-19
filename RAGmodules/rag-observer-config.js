@@ -177,6 +177,21 @@ class RAGObserverConfig {
         }
     }
 
+    sendVcpLogMessage(data) {
+        if (!this.vcpLogConnection || this.vcpLogConnection.readyState !== WebSocket.OPEN) {
+            console.warn('[RAG Observer] VCPLog 通道未连接，无法发送消息:', data);
+            return false;
+        }
+
+        try {
+            this.vcpLogConnection.send(JSON.stringify(data));
+            return true;
+        } catch (error) {
+            console.error('[RAG Observer] 发送 VCPLog 消息失败:', error);
+            return false;
+        }
+    }
+
     // 尝试重新连接
     reconnect() {
         if (this.reconnectAttempts < this.maxReconnectAttempts) {
@@ -233,6 +248,9 @@ window.addEventListener('DOMContentLoaded', async () => {
         const theme = params.get('currentThemeMode') || 'dark';
         config.applyTheme(theme);
     }
+
+    // Expose sender for inline handlers in RAG_Observer.html
+    window.sendVcpLogMessageFromObserver = (data) => config.sendVcpLogMessage(data);
 
     // Now connect to WebSocket
     config.autoConnect();

@@ -342,6 +342,46 @@
 
         .icon-btn svg { width: 16px; height: 16px; }
 
+        /* --- Notification Approval Actions --- */
+        .approval-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 12px;
+        }
+
+        .approval-btn {
+            border: 1px solid rgba(255,255,255,0.2);
+            color: #fff;
+            padding: 6px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.82rem;
+            transition: all 0.2s ease;
+            background: rgba(255,255,255,0.08);
+        }
+
+        .approval-btn:hover:not(:disabled) {
+            transform: translateY(-1px);
+            filter: brightness(1.08);
+        }
+
+        .approval-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .approval-btn.approve {
+            background: rgba(76, 175, 80, 0.2);
+            border-color: rgba(76, 175, 80, 0.5);
+            color: #9be7a5;
+        }
+
+        .approval-btn.reject {
+            background: rgba(244, 67, 54, 0.2);
+            border-color: rgba(244, 67, 54, 0.5);
+            color: #ff9a94;
+        }
+
         .toggle-arrow {
             transition: transform 0.3s var(--ease-elastic);
         }
@@ -672,6 +712,7 @@
             if (data.type.startsWith('AGENT_DREAM_')) return displayDreamInfo(data);
             if (data.type === 'DailyNote') return displayDailyNote(data);
             if (data.source === 'AgentAssistant') return displayAgentAssistantNotification(data);
+            if (data.type === 'tool_approval_request') return displayToolApprovalRequest(data);
             if (isNotificationData(data)) return displaySystemNotification(data);
 
             const block = document.createElement('div');
@@ -1048,7 +1089,87 @@
             prependCard(block);
         }
 
-        // 9. GENERIC NOTIFICATION BLOCK
+        function handleToolApprovalAction(encodedRequestId, approved, btnElement) {
+            const requestId = decodeURIComponent(encodedRequestId || '');
+            if (!requestId) {
+                console.error('[RAG Observer] 工具审核缺少 requestId，无法提交。');
+                return;
+            }
+
+            const payload = {
+                type: 'tool_approval_response',
+                data: {
+                    requestId,
+                    approved: !!approved
+                }
+            };
+
+            let sendOk = false;
+            if (typeof window.sendVcpLogMessageFromObserver === 'function') {
+                sendOk = window.sendVcpLogMessageFromObserver(payload) === true;
+            }
+
+            if (!sendOk && window.electronAPI && typeof window.electronAPI.sendVCPLogMessage === 'function') {
+                // 兜底：如果直连通道未就绪，尝试主进程中转通道
+                window.electronAPI.sendVCPLogMessage(payload);
+                sendOk = true;
+            }
+
+            if (!sendOk) {
+                console.error('[RAG Observer] 无可用发送通道，工具审核响应未发出。');
+                return;
+            }
+
+            const actions = btnElement?.closest('.approval-actions');
+            if (actions) {
+                actions.querySelectorAll('button').forEach(btn => {
+                    btn.disabled = true;
+                    if (btn !== btnElement) {
+                        btn.style.opacity = '0.45';
+                    }
+                });
+            }
+
+            btnElement.textContent = approved ? '已允许' : '已拒绝';
+        }
+
+        // 9. TOOL APPROVAL REQUEST BLOCK
+        function displayToolApprovalRequest(data) {
+            const block = document.createElement('div');
+            block.className = 'card-base type-notification card-enter';
+
+            const approvalData = (data && typeof data.data === 'object' && data.data) ? data.data : {};
+            const requestId = String(approvalData.requestId || '');
+            const toolName = approvalData.toolName || '未知工具';
+            const maidName = approvalData.maid || '未知助手';
+            const command = approvalData.args?.command || JSON.stringify(approvalData.args || {}, null, 2);
+            const requestTime = approvalData.timestamp || new Date().toLocaleString();
+            const encodedRequestId = encodeURIComponent(requestId);
+
+            block.innerHTML = `
+                <h3 style="color: var(--accent-notification);">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l7 4v6c0 5-3.5 8.5-7 10-3.5-1.5-7-5-7-10V6l7-4z"></path><path d="M9 12l2 2 4-4"></path></svg>
+                    工具调用审核请求
+                </h3>
+                <div class="meta-info">
+                    <span class="meta-pill">工具: ${toolName}</span>
+                    <span class="meta-pill">助手: ${maidName}</span>
+                    <span class="meta-pill">Time: ${requestTime}</span>
+                </div>
+                <div class="rag-sub-item" style="margin-top:8px; border-left: 2px solid var(--accent-notification);">
+                    <div style="font-size:0.8em; opacity:0.7; margin-bottom:6px;">命令预览</div>
+                    ${createContentHTML(String(command || '(empty command)'))}
+                </div>
+                <div class="approval-actions">
+                    <button class="approval-btn approve" onclick="handleToolApprovalAction('${encodedRequestId}', true, this)" ${requestId ? '' : 'disabled'}>允许</button>
+                    <button class="approval-btn reject" onclick="handleToolApprovalAction('${encodedRequestId}', false, this)" ${requestId ? '' : 'disabled'}>拒绝</button>
+                </div>
+            `;
+
+            prependCard(block);
+        }
+
+        // 10. GENERIC NOTIFICATION BLOCK
         function displaySystemNotification(data) {
             const block = document.createElement('div');
             block.className = 'card-base type-notification card-enter';
