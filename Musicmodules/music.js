@@ -537,8 +537,13 @@ document.addEventListener('DOMContentLoaded', () => {
             app.scanProgressLabel.textContent = `正在扫描: ${data.current} / ${data.total}`;
         });
         window.electron.on('music-scan-complete', (newPlaylist) => {
-            app.loadingIndicator.style.display = 'none'; app.playlist = newPlaylist;
+            app.loadingIndicator.style.display = 'none';
+            // Merge new tracks, avoiding duplicates by path
+            const existingPaths = new Set(app.playlist.map(t => t.path));
+            const brandNewTracks = newPlaylist.filter(t => !existingPaths.has(t.path));
+            app.playlist = [...app.playlist, ...brandNewTracks];
             app.renderPlaylist(); app.renderSidebarContent(app.currentSidebarView);
+            window.electron.invoke('save-music-playlist', app.playlist);
         });
         window.electron.on('theme-updated', (theme) => app.applyTheme(theme));
         window.electron.on('music-control', (command) => {
