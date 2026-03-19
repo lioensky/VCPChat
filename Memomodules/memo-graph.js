@@ -10,6 +10,7 @@ let graphState = {
     links: [],
     transform: { x: 0, y: 0, scale: 1 },
     selectedNode: null,
+    selectedNodes: new Set(), // 多选支持
     hoveredNode: null,
     isDragging: false,
     dragNode: null,
@@ -272,9 +273,29 @@ function startGraphEngine(canvas, ctx) {
         if (node) {
             graphState.dragNode = node;
             graphState.isDragging = true;
-            selectGraphNode(node);
+            
+            // 多选逻辑 (Ctrl/Cmd 键)
+            if (e.ctrlKey || e.metaKey) {
+                if (graphState.selectedNodes.has(node)) {
+                    graphState.selectedNodes.delete(node);
+                } else {
+                    graphState.selectedNodes.add(node);
+                }
+                updateGraphStats();
+            } else {
+                // 普通点击，如果点击的是未选中的节点，则清除其他选中
+                if (!graphState.selectedNodes.has(node)) {
+                    graphState.selectedNodes.clear();
+                    graphState.selectedNodes.add(node);
+                }
+                selectGraphNode(node);
+            }
         } else {
             graphState.isDragging = false;
+            if (!e.ctrlKey && !e.metaKey) {
+                graphState.selectedNodes.clear();
+                updateGraphStats();
+            }
         }
     };
 
@@ -424,7 +445,7 @@ function startGraphEngine(canvas, ctx) {
         // 绘制节点
         graphState.nodes.forEach(node => {
             const isHovered = graphState.hoveredNode === node;
-            const isSelected = graphState.selectedNode === node;
+            const isSelected = graphState.selectedNode === node || graphState.selectedNodes.has(node);
             
             // 计算卡片尺寸
             const width = node.isSource ? 220 : 200;
@@ -546,8 +567,35 @@ function findNodeAt(x, y) {
     });
 }
 
+function updateGraphStats() {
+    const nodeCount = graphState.nodes.length;
+    const linkCount = graphState.links.length;
+    const selectedCount = graphState.selectedNodes.size;
+    
+    let statText = `${nodeCount} 节点 / ${linkCount} 连线`;
+    if (selectedCount > 0) {
+        statText += ` (已选 ${selectedCount})`;
+    }
+    document.getElementById('node-count-stat').textContent = statText;
+
+    // 更新详情面板中的“加入工作台”按钮文本
+    const addBtn = document.getElementById('node-add-workbench-btn');
+    if (addBtn) {
+        addBtn.textContent = selectedCount > 1 ? `🛠️ 批量加入工作台 (${selectedCount})` : `🛠️ 加入工作台`;
+        addBtn.onclick = async () => {
+            if (window.DiaryWorkbench) {
+                const nodesToAdd = selectedCount > 0 ? Array.from(graphState.selectedNodes) : [graphState.selectedNode];
+                await window.DiaryWorkbench.addMemos(nodesToAdd);
+                // 加入后自动打开工作台，提供即时反馈
+                window.DiaryWorkbench.overlay.style.display = 'flex';
+            }
+        };
+    }
+}
+
 async function selectGraphNode(node) {
     graphState.selectedNode = node;
+    updateGraphStats();
     
     document.getElementById('detail-title').textContent = node.name;
     document.getElementById('detail-path').textContent = node.path;
@@ -591,6 +639,16 @@ async function selectGraphNode(node) {
     chunkList.innerHTML = '<div class="loading-spinner">加载中...</div>';
     
     document.getElementById('node-detail-panel').classList.remove('hidden');
+
+    // 绑定加入工作台按钮
+    const addWorkbenchBtn = document.getElementById('node-add-workbench-btn');
+    if (addWorkbenchBtn) {
+        addWorkbenchBtn.onclick = () => {
+            if (window.DiaryWorkbench) {
+                window.DiaryWorkbench.open([node]);
+            }
+        };
+    }
 
     try {
         // 如果是源节点或者没有 chunks，尝试加载完整内容

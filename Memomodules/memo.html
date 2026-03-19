@@ -89,6 +89,7 @@
                             </select>
                         </div>
                         <button id="batch-delete-btn" class="glass-btn danger" style="padding: 5px 12px; font-size: 0.85rem;">🗑️ 批量删除</button>
+                        <button id="batch-workbench-btn" class="glass-btn primary" style="padding: 5px 12px; font-size: 0.85rem;">🛠️ 进入工作台</button>
                         <button id="cancel-batch-btn" class="nav-icon-btn" title="取消">&times;</button>
                     </div>
                 </div>
@@ -197,8 +198,63 @@
         </div>
     </div>
 
+    <!-- 日记工作台 (Diary Workbench) 顶格模态框 -->
+    <div id="workbench-overlay" class="workbench-overlay" style="display: none;">
+        <div class="workbench-container glass">
+            <div class="workbench-header">
+                <div class="header-left">
+                    <h2 style="margin: 0; display: flex; align-items: center; gap: 10px;">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg>
+                        日记工作台
+                    </h2>
+                    <span id="workbench-count-tag" class="workbench-count-tag">共引用 0 篇日记</span>
+                </div>
+                <button id="close-workbench-btn" class="nav-icon-btn" style="font-size: 1.5rem;">&times;</button>
+            </div>
+            
+            <div class="workbench-body">
+                <!-- 上半部分：参考区 -->
+                <div class="workbench-reference-section">
+                    <div class="section-header">
+                        <span>📚 参考资料 (点击卡片可编辑/查看全文)</span>
+                    </div>
+                    <div id="workbench-reference-grid" class="workbench-reference-grid">
+                        <!-- 参考卡片动态生成 -->
+                    </div>
+                </div>
+
+                <!-- 下半部分：创作区 -->
+                <div class="workbench-creation-section">
+                    <div class="section-header">
+                        <span>✍️ 整合创作</span>
+                    </div>
+                    <div class="creation-form glass">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>日期</label>
+                                <input type="date" id="workbench-new-date" class="glass-input">
+                            </div>
+                            <div class="form-group">
+                                <label>目标文件夹</label>
+                                <input type="text" id="workbench-new-folder" class="glass-input" placeholder="例如：整合记忆">
+                            </div>
+                        </div>
+                        <div class="form-group" style="flex: 1; display: flex; flex-direction: column;">
+                            <label>整合内容</label>
+                            <textarea id="workbench-new-content" class="glass-input" style="flex: 1; min-height: 200px; resize: none;" placeholder="基于上方参考资料，写下你的整合发现..."></textarea>
+                        </div>
+                        <div class="form-footer">
+                            <button id="workbench-submit-btn" class="jelly-btn" style="width: auto; padding: 12px 40px;">🚀 发布整合日记</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="memo.js"></script>
     <script src="memo-graph.js"></script>
+    <script src="memo-workbench.js"></script>
 
     <!-- 联想配置弹窗 (提升 z-index 并优化尺寸) -->
     <div id="assoc-config-modal" class="modal" style="display: none; align-items: center; justify-content: center; position: fixed; top:0; left:0; right:0; bottom:0; z-index: 6800; background: rgba(0,0,0,0.6); backdrop-filter: blur(15px);">
@@ -313,6 +369,7 @@
                 <button id="node-edit-btn" class="glass-btn">✏️ 编辑内容</button>
                 <button id="node-relink-btn" class="glass-btn primary">🧠 继续联想</button>
                 <button id="node-delete-btn" class="glass-btn danger">🗑️ 删除</button>
+                <button id="node-add-workbench-btn" class="glass-btn primary">🛠️ 加入工作台</button>
             </div>
         </div>
 

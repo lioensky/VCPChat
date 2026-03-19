@@ -61,6 +61,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // 绑定事件
     setupEventListeners();
+
+    // 初始化工作台
+    if (window.DiaryWorkbench) {
+        window.DiaryWorkbench.init();
+    }
 });
 
 async function initApp() {
@@ -179,6 +184,15 @@ function setupEventListeners() {
 
     document.getElementById('batch-delete-btn').onclick = handleBatchDelete;
     document.getElementById('batch-move-select').onchange = handleBatchMove;
+    document.getElementById('batch-workbench-btn').onclick = () => {
+        const selected = allMemos.filter(m => {
+            const memoId = `${m.folderName || currentFolder}:::${m.name}`;
+            return selectedMemos.has(memoId);
+        });
+        if (window.DiaryWorkbench) {
+            window.DiaryWorkbench.open(selected);
+        }
+    };
 
     // 悬浮条清空
     document.getElementById('batch-bar-clear').onclick = () => {

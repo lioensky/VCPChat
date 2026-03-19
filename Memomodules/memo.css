@@ -209,7 +209,7 @@ body {
     bottom: 0;
     background: rgba(0, 0, 0, 0.8);
     backdrop-filter: blur(20px);
-    z-index: 7000;
+    z-index: 10000;
     display: none;
     justify-content: center;
     align-items: center;
@@ -428,7 +428,7 @@ body {
     display: none;
     flex-direction: column;
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-    z-index: 1500;
+    z-index: 9500;
     animation: slideUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
@@ -885,4 +885,212 @@ body {
     display: flex;
     flex-direction: column;
     gap: 10px;
-}
+}
+/* --- Diary Workbench Styles --- */
+.workbench-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.85);
+    backdrop-filter: blur(25px);
+    z-index: 9800;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
+    animation: fadeIn 0.4s ease;
+}
+
+.workbench-container {
+    width: 100%;
+    max-width: 1600px;
+    height: 95vh;
+    display: flex;
+    flex-direction: column;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 24px;
+    overflow: hidden;
+    box-shadow: 0 30px 60px rgba(0, 0, 0, 0.6);
+}
+
+.workbench-header {
+    padding: 20px 30px;
+    border-bottom: 1px solid var(--glass-border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.workbench-header .header-left {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+}
+
+.workbench-count-tag {
+    padding: 4px 12px;
+    background: rgba(var(--accent-color-rgb, 74, 144, 226), 0.15);
+    border: 1px solid var(--accent-color);
+    color: var(--accent-color);
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: bold;
+}
+
+.workbench-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding: 20px;
+    gap: 20px;
+}
+
+.workbench-reference-section {
+    flex: 0.4;
+    display: flex;
+    flex-direction: column;
+    min-height: 200px;
+}
+
+.workbench-creation-section {
+    flex: 0.6;
+    display: flex;
+    flex-direction: column;
+}
+
+.section-header {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.workbench-reference-grid {
+    flex: 1;
+    display: flex;
+    gap: 15px;
+    overflow-x: auto;
+    padding: 5px 5px 15px 5px;
+}
+
+.workbench-memo-card {
+    min-width: 260px;
+    max-width: 260px;
+    padding: 15px;
+    border-radius: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    border: 1px solid var(--glass-border);
+}
+
+.workbench-memo-card:hover {
+    transform: translateY(-5px);
+    background: rgba(255, 255, 255, 0.08);
+    border-color: var(--accent-color);
+}
+
+.workbench-memo-card .card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.workbench-memo-card .folder-tag {
+    font-size: 0.7rem;
+    opacity: 0.6;
+}
+
+.workbench-memo-card .card-actions {
+    display: flex;
+    gap: 5px;
+}
+
+.workbench-memo-card .icon-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 2px;
+    font-size: 0.9rem;
+    transition: color 0.2s;
+}
+
+.workbench-memo-card .icon-btn:hover {
+    color: var(--accent-color);
+}
+
+.workbench-memo-card h4 {
+    margin: 0;
+    font-size: 1rem;
+    color: var(--accent-color);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.workbench-memo-card .preview {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    line-height: 1.5;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    margin: 0;
+}
+
+.workbench-memo-card .card-footer {
+    margin-top: auto;
+    font-size: 0.7rem;
+    opacity: 0.5;
+    padding-bottom: 5px;
+}
+
+.creation-form {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 25px;
+    border-radius: 20px;
+    gap: 20px;
+}
+
+.form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.form-group label {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.form-footer {
+    display: flex;
+    justify-content: flex-end;
+    padding-top: 10px;
+}
+
+/* 优化滚动条 */
+.workbench-reference-grid::-webkit-scrollbar {
+    height: 6px;
+}
