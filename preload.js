@@ -240,6 +240,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // RAG 悬浮通知窗（附属于监听器窗口）
     ragOverlayShow: (payload) => ipcRenderer.send('rag-overlay-show', payload),
     ragOverlayHide: () => ipcRenderer.send('rag-overlay-hide'),
+    ragOverlaySetEnabled: (enabled) => ipcRenderer.send('rag-overlay-set-enabled', enabled),
     ragOverlaySetOpacity: (opacity) => ipcRenderer.send('rag-overlay-set-opacity', opacity),
     ragOverlaySetPassThrough: (passThrough) => ipcRenderer.send('rag-overlay-set-pass-through', passThrough),
     ragOverlayResize: (payload) => ipcRenderer.send('rag-overlay-resize', payload),

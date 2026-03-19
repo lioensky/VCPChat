@@ -113,6 +113,38 @@
         .platform-win #custom-title-bar { justify-content: flex-start; }
         .platform-win .title { flex-grow: 1; }
 
+        /* --- Title Toolbar Toggles --- */
+        .title-toolbar {
+            -webkit-app-region: no-drag;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            margin-left: 12px;
+        }
+
+        .toolbar-switch {
+            border: 1px solid rgba(255, 255, 255, 0.22);
+            background: rgba(255, 255, 255, 0.08);
+            color: rgba(255, 255, 255, 0.9);
+            border-radius: 999px;
+            padding: 2px 10px;
+            font-size: 11px;
+            line-height: 1.8;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            white-space: nowrap;
+        }
+
+        .toolbar-switch:hover {
+            background: rgba(255, 255, 255, 0.16);
+        }
+
+        .toolbar-switch.is-off {
+            color: rgba(255, 255, 255, 0.45);
+            border-color: rgba(255, 255, 255, 0.14);
+            background: rgba(255, 255, 255, 0.03);
+        }
+
         /* --- Main Container --- */
         .main-wrapper {
             width: 100%;
@@ -562,6 +594,10 @@
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="4"></circle></svg>
             VCP 信息流监听器
         </div>
+        <div class="title-toolbar">
+            <button id="notificationCategoryToggle" class="toolbar-switch" type="button" aria-pressed="true" onclick="toggleNotificationCategory()">通知分类：开</button>
+            <button id="overlayFeatureToggle" class="toolbar-switch" type="button" aria-pressed="true" onclick="toggleOverlayFeature()">悬浮窗：开</button>
+        </div>
         <div class="window-controls window-controls-win">
             <button id="win-tray-btn" class="win-control-btn" title="最小化到系统托盘" aria-label="最小化到系统托盘"><svg><use href="#icon-win-tray"></use></svg></button>
             <button id="win-minimize-btn" class="win-control-btn" title="最小化"><svg><use href="#icon-win-minimize"></use></svg></button>
@@ -638,6 +674,100 @@
             lastPayload: null
         };
 
+        const observerRuntimeState = {
+            notificationsEnabled: true,
+            overlayEnabled: true,
+            mounted: true
+        };
+
+        function updateToolbarSwitch(buttonId, enabled, label) {
+            const button = document.getElementById(buttonId);
+            if (!button) return;
+            const isOn = !!enabled;
+            button.classList.toggle('is-off', !isOn);
+            button.setAttribute('aria-pressed', String(isOn));
+            button.textContent = `${label}：${isOn ? '开' : '关'}`;
+        }
+
+        function removeCardsByType(typeClass) {
+            if (!typeClass) return;
+            const cards = infoContainer.querySelectorAll(`.card-base.${typeClass}`);
+            cards.forEach(card => card.remove());
+
+            if (infoContainer.children.length === 0) {
+                infoContainer.innerHTML = `
+                    <div style="text-align:center; color:rgba(255,255,255,0.3); margin-top: 50px; font-size: 0.9rem;">
+                        <p>等待数据接入...</p>
+                        <p style="font-size: 0.8em;">System Ready</p>
+                    </div>`;
+            }
+        }
+
+        function syncNotificationFilterVisibility() {
+            const notificationBtn = document.querySelector('.filter-btn[data-type="notification"]');
+            if (!notificationBtn) return;
+
+            notificationBtn.style.display = observerRuntimeState.notificationsEnabled ? '' : 'none';
+
+            if (!observerRuntimeState.notificationsEnabled && currentFilter === 'notification') {
+                const allBtn = document.querySelector('.filter-btn[data-type="all"]');
+                if (allBtn) {
+                    filterLogs('all', allBtn);
+                }
+            }
+        }
+
+        function setNotificationCategoryEnabled(enabled, shouldSyncToConfig = true) {
+            observerRuntimeState.notificationsEnabled = !!enabled;
+            updateToolbarSwitch('notificationCategoryToggle', observerRuntimeState.notificationsEnabled, '通知分类');
+            syncNotificationFilterVisibility();
+
+            if (!observerRuntimeState.notificationsEnabled) {
+                removeCardsByType('type-notification');
+                overlayState.pendingApprovalIds.clear();
+                hideOverlayNotification();
+            }
+
+            if (shouldSyncToConfig && typeof window.setNotificationChannelEnabledFromObserver === 'function') {
+                window.setNotificationChannelEnabledFromObserver(observerRuntimeState.notificationsEnabled);
+            }
+        }
+
+        function setOverlayEnabled(enabled, shouldSyncToMain = true) {
+            observerRuntimeState.overlayEnabled = !!enabled;
+            updateToolbarSwitch('overlayFeatureToggle', observerRuntimeState.overlayEnabled, '悬浮窗');
+
+            if (!observerRuntimeState.overlayEnabled) {
+                clearOverlayHideTimer();
+                overlayState.pendingApprovalIds.clear();
+                overlayState.lastPayload = null;
+                if (window.electronAPI?.ragOverlayHide) {
+                    window.electronAPI.ragOverlayHide();
+                }
+            }
+
+            if (shouldSyncToMain && window.electronAPI?.ragOverlaySetEnabled) {
+                window.electronAPI.ragOverlaySetEnabled(observerRuntimeState.overlayEnabled);
+            }
+
+            if (observerRuntimeState.overlayEnabled) {
+                if (window.electronAPI?.ragOverlaySetPassThrough) {
+                    window.electronAPI.ragOverlaySetPassThrough(overlayState.passThrough);
+                }
+                if (window.electronAPI?.ragOverlaySetOpacity) {
+                    window.electronAPI.ragOverlaySetOpacity(overlayState.opacity);
+                }
+            }
+        }
+
+        function toggleNotificationCategory() {
+            setNotificationCategoryEnabled(!observerRuntimeState.notificationsEnabled, true);
+        }
+
+        function toggleOverlayFeature() {
+            setOverlayEnabled(!observerRuntimeState.overlayEnabled, true);
+        }
+
         function updateOverlayControlButtons() {
             const passBtn = document.getElementById('overlayPassThroughBtn');
             const interactiveBtn = document.getElementById('overlayInteractiveBtn');
@@ -653,7 +783,7 @@
 
             if (!overlayState.passThrough) {
                 clearOverlayHideTimer();
-                if (window.electronAPI?.ragOverlayShow) {
+                if (observerRuntimeState.overlayEnabled && window.electronAPI?.ragOverlayShow) {
                     const payloadToShow = overlayState.lastPayload
                         ? {
                             ...overlayState.lastPayload,
@@ -677,7 +807,7 @@
                 hideOverlayNotification();
             }
 
-            if (shouldSyncToMain && window.electronAPI?.ragOverlaySetPassThrough) {
+            if (shouldSyncToMain && observerRuntimeState.overlayEnabled && window.electronAPI?.ragOverlaySetPassThrough) {
                 window.electronAPI.ragOverlaySetPassThrough(overlayState.passThrough);
             }
         }
@@ -696,7 +826,7 @@
                 opacityValue.textContent = `${numeric}%`;
             }
 
-            if (shouldSyncToMain && window.electronAPI?.ragOverlaySetOpacity) {
+            if (shouldSyncToMain && observerRuntimeState.overlayEnabled && window.electronAPI?.ragOverlaySetOpacity) {
                 window.electronAPI.ragOverlaySetOpacity(overlayState.opacity);
             }
         }
@@ -712,7 +842,7 @@
             clearOverlayHideTimer();
             if (overlayState.pendingApprovalIds.size > 0) return;
             if (!overlayState.passThrough) return; // 可交互模式下保持显示
-            if (window.electronAPI?.ragOverlayHide) {
+            if (observerRuntimeState.overlayEnabled && window.electronAPI?.ragOverlayHide) {
                 window.electronAPI.ragOverlayHide();
             }
         }
@@ -801,7 +931,11 @@
         }
 
         function notifyOverlayFromData(data) {
-            if (!window.electronAPI?.ragOverlayShow || !data) return;
+            if (!observerRuntimeState.overlayEnabled || !window.electronAPI?.ragOverlayShow || !data) return;
+
+            if (!observerRuntimeState.notificationsEnabled && isNotificationData(data)) {
+                return;
+            }
 
             const payload = buildOverlayPayload(data);
             const isApprovalRequest = data.type === 'tool_approval_request';
@@ -984,6 +1118,10 @@
 
         // 1. RAG BLOCK
         function displayRagInfo(data) {
+            if (!observerRuntimeState.notificationsEnabled && isNotificationData(data)) {
+                return;
+            }
+
             // 所有消息统一驱动外部悬浮通知窗（仅消息到达时显现）
             notifyOverlayFromData(data);
 
@@ -1581,11 +1719,20 @@
                 }, 100); // A small delay to ensure layout is calculated
             }
 
+            // 初始化开关状态
+            setNotificationCategoryEnabled(true, false);
+
             // 初始化悬浮通知窗控制（从主进程恢复持久化状态）
             try {
                 if (window.electronAPI?.ragOverlayGetState) {
                     const restoredState = await window.electronAPI.ragOverlayGetState();
                     if (restoredState && typeof restoredState === 'object') {
+                        if (typeof restoredState.enabled === 'boolean') {
+                            setOverlayEnabled(restoredState.enabled, false);
+                        } else {
+                            setOverlayEnabled(true, false);
+                        }
+
                         if (typeof restoredState.passThrough === 'boolean') {
                             setOverlayPassThrough(restoredState.passThrough, false);
                         } else {
@@ -1599,30 +1746,45 @@
                             setOverlayOpacity(92, false);
                         }
                     } else {
+                        setOverlayEnabled(true, false);
                         updateOverlayControlButtons();
                         setOverlayOpacity(92, false);
                     }
                 } else {
+                    setOverlayEnabled(true, false);
                     updateOverlayControlButtons();
                     setOverlayOpacity(92, false);
                 }
             } catch (overlayStateError) {
                 console.warn('[RAG Observer] 读取悬浮窗持久化状态失败，回退默认值:', overlayStateError);
+                setOverlayEnabled(true, false);
                 updateOverlayControlButtons();
                 setOverlayOpacity(92, false);
             }
 
-            if (window.electronAPI?.ragOverlayHide) {
+            if (observerRuntimeState.overlayEnabled && window.electronAPI?.ragOverlayHide) {
                 window.electronAPI.ragOverlayHide();
             }
 
             // 当从悬浮窗点击审核按钮时，复用监听器内审核逻辑
             if (window.electronAPI?.onRagOverlayApprovalAction) {
                 window.electronAPI.onRagOverlayApprovalAction((payload) => {
+                    if (!observerRuntimeState.overlayEnabled) return;
                     if (!payload || !payload.requestId) return;
                     submitToolApproval(String(payload.requestId), !!payload.approved, null);
                 });
             }
+
+            window.addEventListener('beforeunload', () => {
+                observerRuntimeState.mounted = false;
+                clearOverlayHideTimer();
+                if (window.electronAPI?.ragOverlaySetEnabled) {
+                    window.electronAPI.ragOverlaySetEnabled(false);
+                }
+                if (typeof window.setNotificationChannelEnabledFromObserver === 'function') {
+                    window.setNotificationChannelEnabledFromObserver(false);
+                }
+            });
         });
     </script>
 </body>

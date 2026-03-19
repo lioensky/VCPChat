@@ -12,6 +12,7 @@ class RAGObserverConfig {
         this.maxVcpLogReconnectAttempts = 10;
         this.reconnectDelay = 3000; // 3秒
         this.isConnecting = false;
+        this.isNotificationChannelEnabled = true;
     }
 
     // 从URL查询参数读取settings
@@ -111,11 +112,17 @@ class RAGObserverConfig {
             updateStatus('error', '连接发生错误！请检查服务器或配置。');
         };
         // 连接通知栏专用通道（与主界面通知栏一致）
-        this.connectVcpLogChannel(wsUrl, vcpKey);
+        if (this.isNotificationChannelEnabled) {
+            this.connectVcpLogChannel(wsUrl, vcpKey);
+        }
     }
 
     // 连接通知栏专用WebSocket（主界面通知接口: /VCPlog）
     connectVcpLogChannel(wsUrl, vcpKey, isReconnect = false) {
+        if (!this.isNotificationChannelEnabled) {
+            return;
+        }
+
         const WebSocketState = window.WebSocket;
         if (this.vcpLogConnection &&
             (this.vcpLogConnection.readyState === WebSocketState.OPEN ||
@@ -157,6 +164,10 @@ class RAGObserverConfig {
         };
 
         this.vcpLogConnection.onclose = () => {
+            if (!this.isNotificationChannelEnabled) {
+                console.log('[RAG Observer] VCPLog 通知通道已关闭（通知分类已禁用）。');
+                return;
+            }
             console.warn('[RAG Observer] VCPLog 通知通道已断开，准备重连...');
             this.reconnectVcpLog(wsUrl, vcpKey);
         };
@@ -167,6 +178,10 @@ class RAGObserverConfig {
     }
 
     reconnectVcpLog(wsUrl, vcpKey) {
+        if (!this.isNotificationChannelEnabled) {
+            return;
+        }
+
         if (this.vcpLogReconnectAttempts < this.maxVcpLogReconnectAttempts) {
             this.vcpLogReconnectAttempts++;
             setTimeout(() => {
@@ -190,6 +205,39 @@ class RAGObserverConfig {
             console.error('[RAG Observer] 发送 VCPLog 消息失败:', error);
             return false;
         }
+    }
+
+    setNotificationChannelEnabled(enabled) {
+        const nextEnabled = !!enabled;
+        this.isNotificationChannelEnabled = nextEnabled;
+
+        if (!nextEnabled) {
+            this.vcpLogReconnectAttempts = 0;
+            if (this.vcpLogConnection) {
+                try {
+                    this.vcpLogConnection.onopen = null;
+                    this.vcpLogConnection.onmessage = null;
+                    this.vcpLogConnection.onclose = null;
+                    this.vcpLogConnection.onerror = null;
+                    this.vcpLogConnection.close();
+                } catch (error) {
+                    console.warn('[RAG Observer] 关闭 VCPLog 通道时出现异常:', error);
+                }
+                this.vcpLogConnection = null;
+            }
+            console.log('[RAG Observer] 通知分类已关闭，VCPLog 通道已释放。');
+            return;
+        }
+
+        const settings = this.settings || this.loadSettings();
+        const wsUrl = settings.vcpLogUrl || 'ws://127.0.0.1:5890';
+        const vcpKey = settings.vcpLogKey || '';
+        if (!vcpKey) {
+            console.warn('[RAG Observer] VCPLog 通道恢复失败：VCP Key 未设置。');
+            return;
+        }
+
+        this.connectVcpLogChannel(wsUrl, vcpKey);
     }
 
     // 尝试重新连接
@@ -249,8 +297,9 @@ window.addEventListener('DOMContentLoaded', async () => {
         config.applyTheme(theme);
     }
 
-    // Expose sender for inline handlers in RAG_Observer.html
+    // Expose sender/control for inline handlers in RAG_Observer.html
     window.sendVcpLogMessageFromObserver = (data) => config.sendVcpLogMessage(data);
+    window.setNotificationChannelEnabledFromObserver = (enabled) => config.setNotificationChannelEnabled(enabled);
 
     // Now connect to WebSocket
     config.autoConnect();

@@ -148,6 +148,7 @@ let appSettingsManager = null;
 let ragOverlayPersistTimer = null;
 let ragOverlayAutoPositioning = false;
 const DEFAULT_RAG_OVERLAY_STATE = {
+    enabled: true,
     passThrough: true,
     opacity: 0.92,
     bounds: null,
@@ -181,6 +182,7 @@ function normalizeRagOverlayState(rawState = {}) {
     }
 
     return {
+        enabled: state.enabled !== undefined ? !!state.enabled : DEFAULT_RAG_OVERLAY_STATE.enabled,
         passThrough: state.passThrough !== undefined ? !!state.passThrough : DEFAULT_RAG_OVERLAY_STATE.passThrough,
         opacity,
         bounds,
@@ -196,6 +198,7 @@ function schedulePersistRagOverlayState(immediate = false) {
             await appSettingsManager.updateSettings(prevSettings => ({
                 ...prevSettings,
                 ragOverlaySettings: {
+                    enabled: ragOverlayState.enabled !== undefined ? !!ragOverlayState.enabled : DEFAULT_RAG_OVERLAY_STATE.enabled,
                     passThrough: !!ragOverlayState.passThrough,
                     opacity: Math.min(1, Math.max(0.15, Number(ragOverlayState.opacity) || DEFAULT_RAG_OVERLAY_STATE.opacity)),
                     bounds: ragOverlayState.bounds ? {
@@ -540,6 +543,10 @@ function positionRagOverlayNearObserver() {
 }
 
 function ensureRagOverlayWindow() {
+    if (ragOverlayState.enabled === false) {
+        return null;
+    }
+
     if (ragOverlayWindow && !ragOverlayWindow.isDestroyed()) {
         return ragOverlayWindow;
     }
@@ -1495,6 +1502,8 @@ if (!gotTheLock) {
     });
 
     ipcMain.on('rag-overlay-show', (event, payload = {}) => {
+        if (ragOverlayState.enabled === false) return;
+
         const overlayWin = ensureRagOverlayWindow();
         if (!overlayWin || overlayWin.isDestroyed()) return;
 
@@ -1543,6 +1552,20 @@ if (!gotTheLock) {
         }
     });
 
+    ipcMain.on('rag-overlay-set-enabled', (event, enabled) => {
+        ragOverlayState.enabled = !!enabled;
+
+        if (!ragOverlayState.enabled) {
+            if (ragOverlayWindow && !ragOverlayWindow.isDestroyed()) {
+                ragOverlayReady = false;
+                ragOverlayWindow.destroy();
+                ragOverlayWindow = null;
+            }
+        }
+
+        schedulePersistRagOverlayState();
+    });
+
     ipcMain.on('rag-overlay-set-opacity', (event, opacity) => {
         const nextOpacity = Number(opacity);
         if (!Number.isFinite(nextOpacity)) return;
@@ -1575,6 +1598,7 @@ if (!gotTheLock) {
 
     ipcMain.handle('rag-overlay-get-state', () => {
         return {
+            enabled: ragOverlayState.enabled !== undefined ? !!ragOverlayState.enabled : DEFAULT_RAG_OVERLAY_STATE.enabled,
             passThrough: !!ragOverlayState.passThrough,
             opacity: Math.min(1, Math.max(0.15, Number(ragOverlayState.opacity) || DEFAULT_RAG_OVERLAY_STATE.opacity)),
             bounds: ragOverlayState.bounds ? { ...ragOverlayState.bounds } : null,
