@@ -80,6 +80,9 @@ function setupPlayer(app) {
         if (app.playlist.length === 0 || app.isTrackLoading) return;
         const result = await window.electron.invoke('music-play');
         if (result.status === 'success') {
+            app.isChangingState = true;
+            app.lastCommandTime = Date.now();
+            app.expectedPlayingState = true;
             app.isPlaying = true;
             app.playPauseBtn.classList.add('is-playing');
             app.phantomAudio.loop = true;
@@ -94,6 +97,9 @@ function setupPlayer(app) {
     app.pauseTrack = async () => {
         const result = await window.electron.invoke('music-pause');
         if (result.status === 'success') {
+            app.isChangingState = true;
+            app.lastCommandTime = Date.now();
+            app.expectedPlayingState = false;
             app.isPlaying = false;
             app.playPauseBtn.classList.remove('is-playing');
             app.phantomAudio.pause();

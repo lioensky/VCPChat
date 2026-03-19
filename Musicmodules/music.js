@@ -195,6 +195,9 @@ document.addEventListener('DOMContentLoaded', () => {
         lastShuffleList: null,
         wnpAdapter: null,
         dragInProgress: false,
+        isChangingState: false,
+        lastCommandTime: 0,
+        expectedPlayingState: false,
     };
 
 
@@ -481,6 +484,17 @@ document.addEventListener('DOMContentLoaded', () => {
             app.durationEl.textContent = app.formatTime(state.duration);
         }
         if (state.is_playing !== app.isPlaying) {
+            // Optimistic UI guard: Ignore polled state if we just sent a command
+            const now = Date.now();
+            if (app.isChangingState && (now - app.lastCommandTime < 800)) {
+                if (state.is_playing === app.expectedPlayingState) {
+                    app.isChangingState = false;
+                } else {
+                    // Skip update to prevent flickering
+                    return;
+                }
+            }
+
             app.isPlaying = state.is_playing;
             app.playPauseBtn.classList.toggle('is-playing', app.isPlaying);
             if (app.isPlaying) app.startStatePolling(); else app.stopStatePolling();
@@ -531,6 +545,48 @@ document.addEventListener('DOMContentLoaded', () => {
             app.preemptiveResampleSwitch._programmaticUpdate = true; app.preemptiveResampleSwitch.checked = s.preemptive_resample;
             Promise.resolve().then(() => app.preemptiveResampleSwitch._programmaticUpdate = false);
         }
+
+        // Restore missing effects settings (Structural Fix)
+        if (s.loudness_enabled !== undefined) {
+            app.loudnessEnabled = s.loudness_enabled;
+            app.loudnessSwitch.checked = s.loudness_enabled;
+            app.loudnessMode = s.loudness_mode;
+            app.loudnessModeSelect.value = s.loudness_mode;
+            app.targetLufs = s.target_lufs;
+            app.loudnessLufsSlider.value = s.target_lufs;
+            app.loudnessPreampDb = s.preamp_db;
+            app.loudnessPreampSlider.value = s.preamp_db;
+            app.updateLoudnessLufsDisplay();
+            app.updateLoudnessPreampDisplay();
+            app.updateLoudnessSettings(); // Sync to engine
+        }
+        if (s.saturation_enabled !== undefined) {
+            app.saturationEnabled = s.saturation_enabled;
+            app.saturationSwitch.checked = s.saturation_enabled;
+            app.saturationDrive = s.saturation_drive;
+            app.saturationDriveSlider.value = s.saturation_drive * 100;
+            app.saturationMix = s.saturation_mix;
+            app.saturationMixSlider.value = s.saturation_mix * 100;
+            app.updateSaturationDriveDisplay();
+            app.updateSaturationMixDisplay();
+            app.updateSaturationSettings(); // Sync to engine
+        }
+        if (s.crossfeed_enabled !== undefined) {
+            app.crossfeedEnabled = s.crossfeed_enabled;
+            app.crossfeedSwitch.checked = s.crossfeed_enabled;
+            app.crossfeedMix = s.crossfeed_mix;
+            app.crossfeedMixSlider.value = s.crossfeed_mix * 100;
+            app.updateCrossfeedMixDisplay();
+            app.updateCrossfeedSettings(); // Sync to engine
+        }
+        if (s.dynamic_loudness_enabled !== undefined) {
+            app.dynamicLoudnessEnabled = s.dynamic_loudness_enabled;
+            app.dynamicLoudnessSwitch.checked = s.dynamic_loudness_enabled;
+            app.dynamicLoudnessStrength = s.dynamic_loudness_strength;
+            app.dynamicLoudnessStrengthSlider.value = s.dynamic_loudness_strength * 100;
+            app.updateDynamicLoudnessStrengthDisplay();
+            app.updateDynamicLoudnessSettings(); // Sync to engine
+        }
     };
 
     app.updateModeButton = () => {
@@ -549,11 +605,20 @@ document.addEventListener('DOMContentLoaded', () => {
         app.saveSettingsTimer = setTimeout(() => {
             if (window.electron) {
                 window.electron.invoke('music-save-settings', {
-                    upsampling: app.targetUpsamplingRate,
-                    loudness: { enabled: app.loudnessEnabled, mode: app.loudnessMode, target_lufs: app.targetLufs, preamp: app.loudnessPreampDb },
-                    saturation: { enabled: app.saturationEnabled, type: app.saturationType, drive: app.saturationDrive, mix: app.saturationMix },
-                    crossfeed: { enabled: app.crossfeedEnabled, mix: app.crossfeedMix },
-                    dynamic_loudness: { enabled: app.dynamicLoudnessEnabled, strength: app.dynamicLoudnessStrength }
+                    settings: {
+                        target_samplerate: app.targetUpsamplingRate,
+                        loudness_enabled: app.loudnessEnabled,
+                        loudness_mode: app.loudnessMode,
+                        target_lufs: app.targetLufs,
+                        preamp_db: app.loudnessPreampDb,
+                        saturation_enabled: app.saturationEnabled,
+                        saturation_drive: app.saturationDrive,
+                        saturation_mix: app.saturationMix,
+                        crossfeed_enabled: app.crossfeedEnabled,
+                        crossfeed_mix: app.crossfeedMix,
+                        dynamic_loudness_enabled: app.dynamicLoudnessEnabled,
+                        dynamic_loudness_strength: app.dynamicLoudnessStrength
+                    }
                 });
             }
         }, 1000);
