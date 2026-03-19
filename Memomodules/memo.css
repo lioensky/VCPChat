@@ -535,7 +535,7 @@ body {
 .glass-range {
     -webkit-appearance: none;
     appearance: none;
-    background: rgba(255, 255, 255, 0.05);
+    background: var(--input-bg, rgba(255, 255, 255, 0.05));
     height: 6px;
     border-radius: 3px;
     outline: none;
@@ -564,7 +564,7 @@ body {
     flex-wrap: wrap;
     gap: 8px;
     padding: 10px;
-    background: rgba(0, 0, 0, 0.1);
+    background: var(--input-bg, rgba(0, 0, 0, 0.1));
     border-radius: 12px;
     border: 1px solid var(--glass-border);
     max-height: 150px;
@@ -573,13 +573,13 @@ body {
 
 .folder-tag {
     padding: 6px 12px;
-    background: rgba(255, 255, 255, 0.05);
+    background: var(--secondary-bg, rgba(255, 255, 255, 0.05));
     border: 1px solid var(--glass-border);
     border-radius: 20px;
     font-size: 0.8rem;
     cursor: pointer;
     transition: all 0.2s;
-    color: var(--text-secondary);
+    color: var(--secondary-text, var(--text-secondary));
 }
 
 .folder-tag:hover {
@@ -601,10 +601,57 @@ body {
     left: 0;
     right: 0;
     bottom: 0;
-    background: #0a0c0e;
+    background: var(--primary-bg, #0a0c0e);
     z-index: 6000;
     overflow: hidden;
     user-select: none;
+}
+
+/* 简约动画背景 - 动态网格感 */
+.graph-overlay::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-image:
+        linear-gradient(var(--glass-border) 1px, transparent 1px),
+        linear-gradient(90deg, var(--glass-border) 1px, transparent 1px);
+    background-size: 50px 50px;
+    opacity: 0.15;
+    mask-image: radial-gradient(circle at center, black 30%, transparent 90%);
+    -webkit-mask-image: radial-gradient(circle at center, black 30%, transparent 90%);
+    animation: gridMove 20s linear infinite;
+    pointer-events: none;
+}
+
+/* 漂浮的微光粒子 */
+.graph-overlay::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-image:
+        radial-gradient(circle at 20% 30%, var(--accent-color) 0.5px, transparent 1px),
+        radial-gradient(circle at 80% 70%, var(--accent-color) 0.5px, transparent 1px),
+        radial-gradient(circle at 40% 80%, var(--accent-color) 0.5px, transparent 1px);
+    background-size: 100px 100px;
+    opacity: 0.2;
+    animation: particleFloat 15s ease-in-out infinite alternate;
+    pointer-events: none;
+}
+
+@keyframes gridMove {
+    from { background-position: 0 0; }
+    to { background-position: 50px 50px; }
+}
+
+@keyframes particleFloat {
+    from { transform: translate(0, 0) scale(1); }
+    to { transform: translate(20px, 20px) scale(1.1); }
 }
 
 /* --- Neural Loading Animation --- */
@@ -614,7 +661,7 @@ body {
     left: 0;
     right: 0;
     bottom: 0;
-    background: rgba(10, 12, 14, 0.85);
+    background: var(--glass-bg, rgba(10, 12, 14, 0.85));
     backdrop-filter: blur(15px);
     z-index: 6500;
     display: none;
@@ -628,8 +675,8 @@ body {
     text-align: center;
     padding: 40px;
     border-radius: 30px;
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: var(--glass-bg, rgba(255, 255, 255, 0.03));
+    border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.08));
     box-shadow: 0 30px 60px rgba(0, 0, 0, 0.5);
     animation: scaleIn 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
@@ -682,7 +729,7 @@ body {
 
 .loader-text h3 {
     margin: 0 0 10px 0;
-    background: linear-gradient(90deg, #fff, var(--accent-color));
+    background: linear-gradient(90deg, var(--text-primary, #fff), var(--accent-color));
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     font-size: 1.4rem;
@@ -721,7 +768,7 @@ body {
     padding: 0 20px;
     z-index: 5010;
     border-bottom: 1px solid var(--glass-border);
-    background: rgba(10, 11, 13, 0.5);
+    background: var(--panel-bg, rgba(10, 11, 13, 0.5));
     backdrop-filter: blur(10px);
 }
 

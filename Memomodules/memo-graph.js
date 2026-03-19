@@ -410,6 +410,14 @@ function startGraphEngine(canvas, ctx) {
     function draw() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         
+        // 获取当前主题颜色
+        const style = getComputedStyle(document.documentElement);
+        const accentColor = style.getPropertyValue('--accent-color').trim() || '#4a90e2';
+        const accentColorRGB = style.getPropertyValue('--accent-color-rgb').trim() || '74, 144, 226';
+        const textPrimary = style.getPropertyValue('--primary-text').trim() || style.getPropertyValue('--text-primary').trim() || '#ffffff';
+        const textSecondary = style.getPropertyValue('--secondary-text').trim() || style.getPropertyValue('--text-secondary').trim() || 'rgba(255,255,255,0.6)';
+        const isLightTheme = document.body.classList.contains('light-theme');
+
         ctx.save();
         ctx.translate(canvas.width / 2 + graphState.transform.x, canvas.height / 2 + graphState.transform.y);
         ctx.scale(graphState.transform.scale, graphState.transform.scale);
@@ -418,8 +426,8 @@ function startGraphEngine(canvas, ctx) {
         graphState.links.forEach(link => {
             const grad = ctx.createLinearGradient(link.source.x, link.source.y, link.target.x, link.target.y);
             const intensity = 0.1 + link.score * 0.8;
-            grad.addColorStop(0, `rgba(74, 144, 226, ${intensity * 0.5})`);
-            grad.addColorStop(1, `rgba(74, 144, 226, ${intensity})`);
+            grad.addColorStop(0, `rgba(${accentColorRGB}, ${intensity * 0.5})`);
+            grad.addColorStop(1, `rgba(${accentColorRGB}, ${intensity})`);
             
             ctx.beginPath();
             ctx.moveTo(link.source.x, link.source.y);
@@ -436,9 +444,9 @@ function startGraphEngine(canvas, ctx) {
             
             ctx.beginPath();
             ctx.arc(lx, ly, 2, 0, Math.PI * 2);
-            ctx.fillStyle = '#fff';
+            ctx.fillStyle = isLightTheme ? accentColor : '#fff';
             ctx.shadowBlur = 10;
-            ctx.shadowColor = '#4a90e2';
+            ctx.shadowColor = accentColor;
             ctx.fill();
         });
 
@@ -458,7 +466,7 @@ function startGraphEngine(canvas, ctx) {
             if (isHovered || isSelected || node.isSource) {
                 ctx.beginPath();
                 ctx.roundRect(x - 5, y - 5, width + 10, height + 10, radius + 5);
-                ctx.fillStyle = node.isSource ? 'rgba(255, 215, 0, 0.15)' : 'rgba(74, 144, 226, 0.2)';
+                ctx.fillStyle = node.isSource ? 'rgba(255, 215, 0, 0.15)' : `rgba(${accentColorRGB}, 0.2)`;
                 ctx.fill();
             }
 
@@ -479,15 +487,22 @@ function startGraphEngine(canvas, ctx) {
                 ctx.quadraticCurveTo(x, y, x + radius, y);
                 ctx.closePath();
             }
-            ctx.fillStyle = isSelected ? 'rgba(255, 255, 255, 0.15)' : 'rgba(20, 22, 25, 0.85)';
+            
+            // 根据主题调整背景色
+            if (isLightTheme) {
+                ctx.fillStyle = isSelected ? 'rgba(255, 255, 255, 0.98)' : 'rgba(255, 255, 255, 0.85)';
+            } else {
+                ctx.fillStyle = isSelected ? 'rgba(255, 255, 255, 0.15)' : 'rgba(20, 22, 25, 0.85)';
+            }
+            
             ctx.shadowBlur = (isHovered || isSelected) ? 20 : 0;
-            ctx.shadowColor = node.isSource ? '#ffd700' : '#4a90e2';
+            ctx.shadowColor = node.isSource ? '#ffd700' : accentColor;
             ctx.fill();
             ctx.shadowBlur = 0;
 
             // 3. 边框
             ctx.lineWidth = (isSelected || node.isSource) ? 2 : 1;
-            ctx.strokeStyle = node.isSource ? '#ffd700' : (isSelected ? '#fff' : 'rgba(255,255,255,0.1)');
+            ctx.strokeStyle = node.isSource ? '#ffd700' : (isSelected ? (isLightTheme ? accentColor : '#fff') : (isLightTheme ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)'));
             ctx.stroke();
 
             // 4. 文字内容
@@ -495,13 +510,13 @@ function startGraphEngine(canvas, ctx) {
             ctx.textBaseline = 'top';
             
             // 标题
-            ctx.fillStyle = node.isSource ? '#ffd700' : '#fff';
+            ctx.fillStyle = node.isSource ? (isLightTheme ? '#b8860b' : '#ffd700') : textPrimary;
             ctx.font = `bold ${node.isSource ? '13px' : '11px'} 'Segoe UI', system-ui`;
             const title = node.name.length > 18 ? node.name.slice(0, 16) + '...' : node.name;
             ctx.fillText(title, x + 12, y + 12);
 
             // 摘要 (从 chunks 中取一小段)
-            ctx.fillStyle = node.isSource ? 'rgba(255,215,0,0.7)' : 'rgba(255,255,255,0.6)';
+            ctx.fillStyle = node.isSource ? (isLightTheme ? 'rgba(184,134,11,0.8)' : 'rgba(255,215,0,0.7)') : textSecondary;
             ctx.font = "9px 'Segoe UI', system-ui";
             const summary = (node.chunks && node.chunks[0])
                 ? node.chunks[0].slice(0, 160).replace(/\n/g, ' ') + '...'
@@ -528,14 +543,14 @@ function startGraphEngine(canvas, ctx) {
             if (lineCount < 4) ctx.fillText(line, x + 12, textY);
 
             if (node.isSource) {
-                ctx.fillStyle = 'rgba(255,215,0,0.5)';
+                ctx.fillStyle = isLightTheme ? 'rgba(184,134,11,0.6)' : 'rgba(255,215,0,0.5)';
                 ctx.font = "italic 8px 'Segoe UI', system-ui";
                 ctx.fillText(`[核心源] 文件夹: ${node.folder || '根目录'}`, x + 12, y + height - 12);
             }
 
             // 5. 分数标签 (右下角)
             if (!node.isSource) {
-                ctx.fillStyle = 'rgba(74, 144, 226, 0.8)';
+                ctx.fillStyle = accentColor;
                 ctx.font = "bold 9px 'Segoe UI'";
                 ctx.textAlign = 'right';
                 ctx.fillText(node.score.toFixed(2), x + width - 10, y + height - 12);

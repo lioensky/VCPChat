@@ -270,26 +270,26 @@
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-bottom: 30px;">
                 <div class="assoc-input-group">
                     <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                        <label style="font-size: 0.9rem; color: var(--text-secondary);">联想深度 (Recall Count)</label>
+                        <label style="font-size: 0.9rem; color: var(--secondary-text, var(--text-secondary));">联想深度 (Recall Count)</label>
                         <span id="label-k-value" style="color: var(--accent-color); font-weight: bold;">10</span>
                     </div>
                     <input type="range" id="input-assoc-k" min="1" max="100" value="10" class="glass-range" style="width: 100%;">
-                    <p class="small-text" style="margin-top: 5px;">控制返回的关联日记数量上限</p>
+                    <p class="small-text" style="margin-top: 5px; color: var(--secondary-text, var(--text-secondary));">控制返回的关联日记数量上限</p>
                 </div>
 
                 <div class="assoc-input-group">
                     <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                        <label style="font-size: 0.9rem; color: var(--text-secondary);">联想强度 (Tag Boost)</label>
+                        <label style="font-size: 0.9rem; color: var(--secondary-text, var(--text-secondary));">联想强度 (Tag Boost)</label>
                         <span id="label-boost-value" style="color: var(--accent-color); font-weight: bold;">0.15</span>
                     </div>
                     <input type="range" id="input-assoc-boost" min="0" max="1" step="0.01" value="0.15" class="glass-range" style="width: 100%;">
-                    <p class="small-text" style="margin-top: 5px;">调节标签匹配的权重影响</p>
+                    <p class="small-text" style="margin-top: 5px; color: var(--secondary-text, var(--text-secondary));">调节标签匹配的权重影响</p>
                 </div>
             </div>
 
             <div style="margin-bottom: 25px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                    <label style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 0;">搜索文件夹范围</label>
+                    <label style="font-size: 0.9rem; color: var(--secondary-text, var(--text-secondary)); margin-bottom: 0;">搜索文件夹范围</label>
                     <input type="text" id="assoc-folder-search" placeholder="快速过滤文件夹..." class="glass-input" style="width: 200px; padding: 5px 12px; font-size: 0.8rem; margin-bottom: 0;">
                 </div>
                 <div id="assoc-folder-tags" class="folder-tag-cloud" style="max-height: 200px;">
