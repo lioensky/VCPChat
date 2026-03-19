@@ -237,6 +237,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onVCPLogStatus: (callback) => ipcRenderer.on('vcp-log-status', (_event, value) => callback(value)),
     sendVCPLogMessage: (data) => ipcRenderer.send('send-vcplog-message', data),
 
+    // RAG 悬浮通知窗（附属于监听器窗口）
+    ragOverlayShow: (payload) => ipcRenderer.send('rag-overlay-show', payload),
+    ragOverlayHide: () => ipcRenderer.send('rag-overlay-hide'),
+    ragOverlaySetOpacity: (opacity) => ipcRenderer.send('rag-overlay-set-opacity', opacity),
+    ragOverlaySetPassThrough: (passThrough) => ipcRenderer.send('rag-overlay-set-pass-through', passThrough),
+    ragOverlayResize: (payload) => ipcRenderer.send('rag-overlay-resize', payload),
+    ragOverlayGetBounds: () => ipcRenderer.invoke('rag-overlay-get-bounds'),
+    ragOverlayGetState: () => ipcRenderer.invoke('rag-overlay-get-state'),
+    sendRagOverlayApprovalAction: (payload) => ipcRenderer.send('rag-overlay-approval-action', payload),
+    onRagOverlayPayload: (callback) => ipcRenderer.on('rag-overlay-payload', (_event, payload) => callback(payload)),
+    onRagOverlayPassThroughChanged: (callback) => ipcRenderer.on('rag-overlay-pass-through-changed', (_event, payload) => callback(payload)),
+    onRagOverlayApprovalAction: (callback) => ipcRenderer.on('rag-overlay-approval-action', (_event, payload) => callback(payload)),
+
     // Clipboard functions
     readImageFromClipboard: async () => {
         console.log('[Preload - readImageFromClipboard] Function called. Invoking main process handler.');
@@ -427,7 +440,11 @@ const electronAPIForLogging = {
     saveTopicOrder: "function",
     sendToVCP: "function", onVCPStreamChunk: "function",
     connectVCPLog: "function", disconnectVCPLog: "function", onVCPLogMessage: "function",
-    onVCPLogStatus: "function", readImageFromClipboard: "function", readTextFromClipboard: "function",
+    onVCPLogStatus: "function", ragOverlayShow: "function", ragOverlayHide: "function",
+    ragOverlaySetOpacity: "function", ragOverlaySetPassThrough: "function", ragOverlayResize: "function",
+    ragOverlayGetBounds: "function", sendRagOverlayApprovalAction: "function", onRagOverlayPayload: "function",
+    onRagOverlayPassThroughChanged: "function", onRagOverlayApprovalAction: "function",
+    readImageFromClipboard: "function", readTextFromClipboard: "function",
     minimizeWindow: "function", maximizeWindow: "function", unmaximizeWindow: "function", closeWindow: "function",
     openDevTools: "function",
     openAdminPanel: "function",

@@ -447,6 +447,63 @@
 
         @keyframes pulse { 0% { opacity: 0.5; transform: scale(0.9); } 50% { opacity: 1; transform: scale(1.1); } 100% { opacity: 0.5; transform: scale(0.9); } }
 
+        /* --- Overlay Control Bar --- */
+        .overlay-control-bar {
+            margin-top: 6px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+            padding: 8px 12px;
+            border-radius: 12px;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.08);
+            backdrop-filter: blur(10px);
+        }
+
+        .overlay-toggle-group {
+            display: inline-flex;
+            gap: 6px;
+        }
+
+        .overlay-toggle-btn {
+            border: 1px solid rgba(255,255,255,0.2);
+            background: rgba(255,255,255,0.05);
+            color: rgba(255,255,255,0.85);
+            border-radius: 8px;
+            padding: 4px 10px;
+            font-size: 0.76rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .overlay-toggle-btn.active {
+            background: rgba(52, 152, 219, 0.22);
+            border-color: rgba(52, 152, 219, 0.7);
+            color: #cfe9ff;
+        }
+
+        .overlay-opacity-wrap {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.76rem;
+            color: rgba(255,255,255,0.75);
+        }
+
+        #overlayOpacityRange {
+            width: 140px;
+            accent-color: #3498db;
+        }
+
+        #overlayOpacityValue {
+            font-family: 'JetBrains Mono', monospace;
+            min-width: 42px;
+            text-align: right;
+            color: rgba(255,255,255,0.9);
+        }
+ 
         /* --- Core Tag Highlighting --- */
         .core-tags-container {
             display: flex;
@@ -521,6 +578,18 @@
                 <span id="statusText">未连接</span>
             </div>
 
+            <div class="overlay-control-bar">
+                <div class="overlay-toggle-group">
+                    <button id="overlayPassThroughBtn" class="overlay-toggle-btn active" onclick="setOverlayPassThrough(true)">鼠标穿透</button>
+                    <button id="overlayInteractiveBtn" class="overlay-toggle-btn" onclick="setOverlayPassThrough(false)">可交互</button>
+                </div>
+                <div class="overlay-opacity-wrap">
+                    <span>悬浮窗透明度</span>
+                    <input id="overlayOpacityRange" type="range" min="20" max="100" step="1" value="92" oninput="setOverlayOpacity(this.value)">
+                    <span id="overlayOpacityValue">92%</span>
+                </div>
+            </div>
+ 
             <div class="filter-bar">
                 <div class="filter-highlight"></div>
                 <button class="filter-btn active" data-type="all" onclick="filterLogs('all', this)">全部</button>
@@ -559,6 +628,214 @@
         const infoContainer = document.getElementById('infoContainer');
         let currentFilter = 'all';
 
+        const overlayState = {
+            passThrough: true,
+            opacity: 0.92,
+            hideTimer: null,
+            pendingApprovalIds: new Set(),
+            lastPayload: null
+        };
+
+        function updateOverlayControlButtons() {
+            const passBtn = document.getElementById('overlayPassThroughBtn');
+            const interactiveBtn = document.getElementById('overlayInteractiveBtn');
+            if (!passBtn || !interactiveBtn) return;
+            passBtn.classList.toggle('active', overlayState.passThrough);
+            interactiveBtn.classList.toggle('active', !overlayState.passThrough);
+        }
+
+        function setOverlayPassThrough(passThrough, shouldSyncToMain = true) {
+            const previousPassThrough = overlayState.passThrough;
+            overlayState.passThrough = !!passThrough;
+            updateOverlayControlButtons();
+
+            if (!overlayState.passThrough) {
+                clearOverlayHideTimer();
+                if (window.electronAPI?.ragOverlayShow) {
+                    const payloadToShow = overlayState.lastPayload
+                        ? {
+                            ...overlayState.lastPayload,
+                            passThrough: false,
+                            opacity: overlayState.opacity,
+                            timestamp: new Date().toLocaleTimeString()
+                        }
+                        : {
+                            title: '悬浮窗已切换为可交互',
+                            content: '当前为可交互模式，将保持显示。',
+                            type: 'overlay_mode_change',
+                            level: 'info',
+                            timestamp: new Date().toLocaleTimeString(),
+                            passThrough: false,
+                            opacity: overlayState.opacity
+                        };
+                    overlayState.lastPayload = payloadToShow;
+                    window.electronAPI.ragOverlayShow(payloadToShow);
+                }
+            } else if (previousPassThrough !== overlayState.passThrough && overlayState.pendingApprovalIds.size === 0) {
+                hideOverlayNotification();
+            }
+
+            if (shouldSyncToMain && window.electronAPI?.ragOverlaySetPassThrough) {
+                window.electronAPI.ragOverlaySetPassThrough(overlayState.passThrough);
+            }
+        }
+
+        function setOverlayOpacity(opacityPercent, shouldSyncToMain = true) {
+            const numeric = Math.max(20, Math.min(100, Number(opacityPercent) || 92));
+            overlayState.opacity = numeric / 100;
+
+            const opacityRange = document.getElementById('overlayOpacityRange');
+            if (opacityRange && String(opacityRange.value) !== String(numeric)) {
+                opacityRange.value = String(numeric);
+            }
+
+            const opacityValue = document.getElementById('overlayOpacityValue');
+            if (opacityValue) {
+                opacityValue.textContent = `${numeric}%`;
+            }
+
+            if (shouldSyncToMain && window.electronAPI?.ragOverlaySetOpacity) {
+                window.electronAPI.ragOverlaySetOpacity(overlayState.opacity);
+            }
+        }
+
+        function clearOverlayHideTimer() {
+            if (overlayState.hideTimer) {
+                clearTimeout(overlayState.hideTimer);
+                overlayState.hideTimer = null;
+            }
+        }
+
+        function hideOverlayNotification() {
+            clearOverlayHideTimer();
+            if (overlayState.pendingApprovalIds.size > 0) return;
+            if (!overlayState.passThrough) return; // 可交互模式下保持显示
+            if (window.electronAPI?.ragOverlayHide) {
+                window.electronAPI.ragOverlayHide();
+            }
+        }
+
+        function scheduleOverlayHide(delay = 2000) {
+            clearOverlayHideTimer();
+            if (overlayState.pendingApprovalIds.size > 0) return;
+            if (!overlayState.passThrough) return; // 可交互模式下不自动隐藏
+            overlayState.hideTimer = setTimeout(() => {
+                overlayState.hideTimer = null;
+                if (overlayState.pendingApprovalIds.size === 0 && overlayState.passThrough) {
+                    hideOverlayNotification();
+                }
+            }, delay);
+        }
+
+        function buildOverlayPayload(data) {
+            const now = new Date().toLocaleTimeString();
+            const type = data?.type || 'unknown';
+            let title = `信息流通知: ${type}`;
+            let content = '';
+            let level = 'info';
+            let approval = null;
+
+            if (type === 'tool_approval_request') {
+                const req = data?.data || {};
+                title = '工具调用审核请求';
+                content = `${req.maid || '未知助手'} 请求调用 ${req.toolName || '未知工具'}`;
+                approval = {
+                    requestId: String(req.requestId || ''),
+                    toolName: req.toolName || '未知工具',
+                    maid: req.maid || '未知助手',
+                    command: String(req.args?.command || JSON.stringify(req.args || {}, null, 2) || ''),
+                    timestamp: req.timestamp || now
+                };
+                level = 'warning';
+            } else if (type === 'tool_approval_response') {
+                const resp = data?.data || {};
+                title = '工具审核结果';
+                content = `${resp.approved ? '已允许' : '已拒绝'} ${resp.requestId ? `(ID: ${resp.requestId})` : ''}`.trim();
+                level = resp.approved ? 'success' : 'error';
+            } else if (type === 'vcp_log' && data?.data) {
+                title = 'VCP 日志';
+                content = typeof data.data.content === 'string' ? data.data.content : JSON.stringify(data.data, null, 2);
+            } else if (type === 'notification' || type === 'error' || type === 'connection_ack') {
+                title = `系统通知: ${type}`;
+                content = data.message || JSON.stringify(data.data || data, null, 2);
+                if (type === 'error') level = 'error';
+            } else if (type === 'RAG_RETRIEVAL_DETAILS') {
+                title = `RAG 检索: ${data.dbName || 'Unknown'}`;
+                content = data.query || '收到一条 RAG 检索信息';
+            } else if (type === 'META_THINKING_CHAIN') {
+                title = `元思考链: ${data.chainName || 'Unknown'}`;
+                content = data.query || '收到一条元思考链信息';
+            } else if (type === 'AGENT_PRIVATE_CHAT_PREVIEW') {
+                title = `Agent 私聊: ${data.agentName || 'Unknown'}`;
+                content = data.response || data.query || '收到一条 Agent 私聊预览';
+            } else if (type === 'AI_MEMO_RETRIEVAL') {
+                title = '记忆检索';
+                content = data.extractedMemories || '收到一条记忆检索信息';
+            } else if (type === 'DailyNote') {
+                title = `日记召回: ${data.dbName || 'Unknown'}`;
+                content = data.message || '收到一条日记召回信息';
+            } else if (type.startsWith('AGENT_DREAM_')) {
+                title = `Agent 梦境: ${data.agentName || 'Unknown'}`;
+                content = data.message || data.error || data.narrative || '收到一条 Agent 梦境信息';
+            } else {
+                content = data.message || JSON.stringify(data?.data || data, null, 2);
+            }
+
+            content = String(content || '').trim();
+            if (content.length > 280) {
+                content = `${content.slice(0, 280)}...`;
+            }
+
+            return {
+                title,
+                content,
+                type,
+                level,
+                timestamp: now,
+                opacity: overlayState.opacity,
+                passThrough: overlayState.passThrough,
+                approval
+            };
+        }
+
+        function notifyOverlayFromData(data) {
+            if (!window.electronAPI?.ragOverlayShow || !data) return;
+
+            const payload = buildOverlayPayload(data);
+            const isApprovalRequest = data.type === 'tool_approval_request';
+            const isApprovalResponse = data.type === 'tool_approval_response';
+
+            if (isApprovalRequest) {
+                const requestId = String(data?.data?.requestId || '');
+                if (requestId) {
+                    overlayState.pendingApprovalIds.add(requestId);
+                }
+                // 审核消息强制本次为可交互，方便直接点击允许/拒绝；但不改变用户已保存模式
+                payload.passThrough = false;
+            } else {
+                payload.passThrough = overlayState.passThrough;
+            }
+
+            if (isApprovalResponse) {
+                const requestId = String(data?.data?.requestId || '');
+                if (requestId) {
+                    overlayState.pendingApprovalIds.delete(requestId);
+                } else {
+                    overlayState.pendingApprovalIds.clear();
+                }
+            }
+
+            payload.opacity = overlayState.opacity;
+            overlayState.lastPayload = { ...payload };
+            window.electronAPI.ragOverlayShow(payload);
+
+            if (overlayState.pendingApprovalIds.size === 0) {
+                scheduleOverlayHide(2000);
+            } else {
+                clearOverlayHideTimer();
+            }
+        }
+ 
         function updateStatus(status, message) {
             const dot = document.getElementById('statusDot');
             const text = document.getElementById('statusText');
@@ -705,6 +982,9 @@
 
         // 1. RAG BLOCK
         function displayRagInfo(data) {
+            // 所有消息统一驱动外部悬浮通知窗（仅消息到达时显现）
+            notifyOverlayFromData(data);
+
             // Handle specialized types first
             if (data.type === 'AGENT_PRIVATE_CHAT_PREVIEW') return displayAgentChat(data);
             if (data.type === 'META_THINKING_CHAIN') return displayChain(data);
@@ -1089,11 +1369,10 @@
             prependCard(block);
         }
 
-        function handleToolApprovalAction(encodedRequestId, approved, btnElement) {
-            const requestId = decodeURIComponent(encodedRequestId || '');
+        function submitToolApproval(requestId, approved, btnElement = null) {
             if (!requestId) {
                 console.error('[RAG Observer] 工具审核缺少 requestId，无法提交。');
-                return;
+                return false;
             }
 
             const payload = {
@@ -1117,7 +1396,12 @@
 
             if (!sendOk) {
                 console.error('[RAG Observer] 无可用发送通道，工具审核响应未发出。');
-                return;
+                return false;
+            }
+
+            overlayState.pendingApprovalIds.delete(requestId);
+            if (overlayState.pendingApprovalIds.size === 0) {
+                scheduleOverlayHide(2000);
             }
 
             const actions = btnElement?.closest('.approval-actions');
@@ -1130,7 +1414,16 @@
                 });
             }
 
-            btnElement.textContent = approved ? '已允许' : '已拒绝';
+            if (btnElement) {
+                btnElement.textContent = approved ? '已允许' : '已拒绝';
+            }
+
+            return true;
+        }
+
+        function handleToolApprovalAction(encodedRequestId, approved, btnElement) {
+            const requestId = decodeURIComponent(encodedRequestId || '');
+            submitToolApproval(requestId, approved, btnElement);
         }
 
         // 9. TOOL APPROVAL REQUEST BLOCK
@@ -1267,7 +1560,7 @@
         }
 
         // --- UI Initialization ---
-        document.addEventListener('DOMContentLoaded', () => {
+        document.addEventListener('DOMContentLoaded', async () => {
             const activeButton = document.querySelector('.filter-btn.active');
             if (activeButton) {
                 setTimeout(() => {
@@ -1284,6 +1577,49 @@
                     // Re-enable transitions
                     highlight.style.transition = 'all 0.4s var(--ease-elastic)';
                 }, 100); // A small delay to ensure layout is calculated
+            }
+
+            // 初始化悬浮通知窗控制（从主进程恢复持久化状态）
+            try {
+                if (window.electronAPI?.ragOverlayGetState) {
+                    const restoredState = await window.electronAPI.ragOverlayGetState();
+                    if (restoredState && typeof restoredState === 'object') {
+                        if (typeof restoredState.passThrough === 'boolean') {
+                            setOverlayPassThrough(restoredState.passThrough, false);
+                        } else {
+                            updateOverlayControlButtons();
+                        }
+
+                        const opacityPercent = Number(restoredState.opacity) * 100;
+                        if (Number.isFinite(opacityPercent)) {
+                            setOverlayOpacity(opacityPercent, false);
+                        } else {
+                            setOverlayOpacity(92, false);
+                        }
+                    } else {
+                        updateOverlayControlButtons();
+                        setOverlayOpacity(92, false);
+                    }
+                } else {
+                    updateOverlayControlButtons();
+                    setOverlayOpacity(92, false);
+                }
+            } catch (overlayStateError) {
+                console.warn('[RAG Observer] 读取悬浮窗持久化状态失败，回退默认值:', overlayStateError);
+                updateOverlayControlButtons();
+                setOverlayOpacity(92, false);
+            }
+
+            if (window.electronAPI?.ragOverlayHide) {
+                window.electronAPI.ragOverlayHide();
+            }
+
+            // 当从悬浮窗点击审核按钮时，复用监听器内审核逻辑
+            if (window.electronAPI?.onRagOverlayApprovalAction) {
+                window.electronAPI.onRagOverlayApprovalAction((payload) => {
+                    if (!payload || !payload.requestId) return;
+                    submitToolApproval(String(payload.requestId), !!payload.approved, null);
+                });
             }
         });
     </script>
