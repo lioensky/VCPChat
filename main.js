@@ -418,16 +418,58 @@ function createTray() {
 
     tray = new Tray(icon);
 
+    const toggleMainWindowVisibility = () => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            if (mainWindow.isVisible()) {
+                mainWindow.hide();
+            } else {
+                if (mainWindow.isMinimized()) mainWindow.restore();
+                mainWindow.show();
+                mainWindow.focus();
+            }
+            return true;
+        }
+        return false;
+    };
+
+    const toggleRagObserverVisibility = async () => {
+        if (ragObserverWindow && !ragObserverWindow.isDestroyed()) {
+            if (ragObserverWindow.isVisible()) {
+                ragObserverWindow.hide();
+                if (ragOverlayWindow && !ragOverlayWindow.isDestroyed()) {
+                    ragOverlayWindow.hide();
+                }
+            } else {
+                if (ragObserverWindow.isMinimized()) ragObserverWindow.restore();
+                ragObserverWindow.show();
+                ragObserverWindow.focus();
+            }
+            return true;
+        }
+
+        await openRagObserverWindow();
+        return true;
+    };
+
+    const handleTrayPrimaryAction = async () => {
+        if (toggleMainWindowVisibility()) return;
+        await toggleRagObserverVisibility();
+    };
+
     const contextMenu = Menu.buildFromTemplate([
         {
-            label: '显示/隐藏',
+            label: '显示/隐藏主窗口',
             click: () => {
-                // 修复 TypeError: Cannot read properties of null (reading 'isVisible')
-                if (mainWindow && !mainWindow.isDestroyed()) {
-                    mainWindow.isVisible() ? mainWindow.hide() : mainWindow.show();
-                }
+                toggleMainWindowVisibility();
             }
         },
+        {
+            label: '显示/隐藏信息流监听器',
+            click: () => {
+                void toggleRagObserverVisibility();
+            }
+        },
+        { type: 'separator' },
         {
             label: '退出',
             click: () => {
@@ -442,9 +484,7 @@ function createTray() {
     if (process.platform === 'darwin') {
         // macOS: 左键点击 (tray.on('click')) 负责显示/隐藏窗口
         tray.on('click', () => {
-            if (mainWindow && !mainWindow.isDestroyed()) {
-                mainWindow.isVisible() ? mainWindow.hide() : mainWindow.show();
-            }
+            void handleTrayPrimaryAction();
         });
 
         // macOS: 右键点击 (tray.on('right-click')) 负责显示菜单
@@ -457,9 +497,7 @@ function createTray() {
         // Windows/Linux: 默认行为。
         tray.setContextMenu(contextMenu);
         tray.on('click', () => {
-            if (mainWindow && !mainWindow.isDestroyed()) {
-                mainWindow.isVisible() ? mainWindow.hide() : mainWindow.show();
-            }
+            void handleTrayPrimaryAction();
         });
     }
 }
@@ -749,6 +787,10 @@ if (!gotTheLock) {
             windowHandlers.initialize(mainWindow, openChildWindows);
             themeHandlers.initialize({ mainWindow, openChildWindows, projectRoot: PROJECT_ROOT, APP_DATA_ROOT_IN_PROJECT, settingsManager: appSettingsManager });
             ipcMain.handle('get-platform', () => process.platform);
+
+            // 关键：独立模式也必须创建系统托盘，否则“最小化到托盘”后无法召回窗口。
+            createTray();
+
             await openRagObserverWindow();
             return;
         }

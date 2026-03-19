@@ -277,6 +277,14 @@ window.addEventListener('DOMContentLoaded', async () => {
 
     // --- Custom Title Bar Listeners ---
     const minimize = () => window.electronAPI?.minimizeWindow();
+    const minimizeToTray = () => {
+        // 对子窗口（如信息流监听器）优先使用 hide-window，避免误操作主窗口的 minimize-to-tray 逻辑
+        if (window.electronAPI?.hideWindow) {
+            window.electronAPI.hideWindow();
+        } else if (window.electronAPI?.minimizeToTray) {
+            window.electronAPI.minimizeToTray();
+        }
+    };
     const maximize = () => window.electronAPI?.maximizeWindow();
     const close = () => window.close();
 
@@ -286,6 +294,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('mac-close-btn').addEventListener('click', close);
 
     // Windows Controls
+    document.getElementById('win-tray-btn').addEventListener('click', minimizeToTray);
     document.getElementById('win-minimize-btn').addEventListener('click', minimize);
     document.getElementById('win-maximize-btn').addEventListener('click', maximize);
     document.getElementById('win-close-btn').addEventListener('click', close);
