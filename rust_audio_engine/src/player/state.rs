@@ -3,7 +3,9 @@
 //! Contains shared state, commands, device info, and cache utilities.
 
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::Arc;
 use parking_lot::{Mutex, RwLock};
+use arc_swap::ArcSwap;
 use serde::Serialize;
 use std::path::Path;
 use std::fs;
@@ -81,8 +83,12 @@ pub fn save_cache_with_header(
 }
 
 /// Load samples from cache with header validation
-/// 
+///
 /// FIX for Defect 34: Actually verify the CRC32 checksum instead of ignoring it.
+/// FIX for Defect 6: Compute CRC32 incrementally while reading samples from file,
+/// avoiding a separate full pass over potentially huge buffers (e.g., 1.8 GB for
+/// 10 min 192kHz stereo). This eliminates the startup lag from the previous
+/// two-pass approach (read all → checksum all).
 pub fn load_cache_with_header(
     path: &Path,
     expected_sr: u32,
@@ -105,7 +111,7 @@ pub fn load_cache_with_header(
     let sample_rate = read_u32_from_bytes(&header_bytes, 8);
     let channels = read_u32_from_bytes(&header_bytes, 12);
     let frame_count = read_u64_from_bytes(&header_bytes, 16);
-    let stored_checksum = read_u32_from_bytes(&header_bytes, 24);  // Defect 34 fix: actually use it
+    let stored_checksum = read_u32_from_bytes(&header_bytes, 24);
 
     if magic != CACHE_MAGIC {
         log::warn!("Invalid cache magic: {:?}", magic);
@@ -134,8 +140,11 @@ pub fn load_cache_with_header(
         return None;
     }
 
+    // FIX for Defect 6: Stream CRC32 computation while reading samples
+    // in a single pass, instead of reading all then checksumming all.
     let sample_count = frame_count as usize * channels as usize;
     let mut samples = Vec::with_capacity(sample_count);
+    let mut hasher = crc32fast::Hasher::new();
     let mut sample_bytes = [0u8; 8];
 
     for _ in 0..sample_count {
@@ -143,11 +152,12 @@ pub fn load_cache_with_header(
             log::warn!("Failed to read all samples from cache");
             return None;
         }
+        hasher.update(&sample_bytes);
         samples.push(f64::from_le_bytes(sample_bytes));
     }
 
-    // Defect 34 fix: Verify checksum
-    let computed_checksum = calculate_checksum(&samples);
+    // Verify checksum computed during read
+    let computed_checksum = hasher.finalize();
     if computed_checksum != stored_checksum {
         log::warn!(
             "Cache checksum mismatch: stored={}, computed={}. File may be corrupted.",
@@ -156,7 +166,7 @@ pub fn load_cache_with_header(
         return None;
     }
 
-    log::info!("Loaded {} samples from validated cache (checksum verified)", samples.len());
+    log::info!("Loaded {} samples from validated cache (streaming checksum verified)", samples.len());
     Some(samples)
 }
 
@@ -208,7 +218,10 @@ pub struct SharedState {
     pub channels: AtomicU64,
     pub total_frames: AtomicU64,
     pub spectrum_data: Mutex<Vec<f32>>,
-    pub audio_buffer: RwLock<Vec<f64>>,
+    /// Audio sample buffer — lock-free via ArcSwap for realtime-safe reads
+    /// from the audio callback. Writers (load, gapless swap) call .store()
+    /// which is an atomic pointer swap; readers call .load() which never blocks.
+    pub audio_buffer: ArcSwap<Vec<f64>>,
     pub exclusive_mode: AtomicBool,
     pub device_id: std::sync::atomic::AtomicI64,
     pub volume: std::sync::atomic::AtomicU64,
@@ -217,7 +230,10 @@ pub struct SharedState {
     pub noise_shaper_curve: RwLock<NoiseShaperCurve>,
 
     // Gapless playback fields
-    pub pending_buffer: RwLock<Option<Vec<f64>>>,
+    /// Pending audio buffer for gapless transition — lock-free via ArcSwap.
+    /// The preload thread stores the decoded next-track samples here;
+    /// the audio callback atomically swaps it into audio_buffer at track boundary.
+    pub pending_buffer: ArcSwap<Option<Vec<f64>>>,
     pub pending_total_frames: AtomicU64,
     pub pending_sample_rate: AtomicU64,
     pub pending_channels: AtomicU64,
@@ -259,7 +275,7 @@ impl SharedState {
             channels: AtomicU64::new(2),
             total_frames: AtomicU64::new(0),
             spectrum_data: Mutex::new(vec![0.0; 64]),
-            audio_buffer: RwLock::new(Vec::new()),
+            audio_buffer: ArcSwap::new(Arc::new(Vec::new())),
             exclusive_mode: AtomicBool::new(false),
             device_id: std::sync::atomic::AtomicI64::new(-1),
             volume: std::sync::atomic::AtomicU64::new(1_000_000),
@@ -267,7 +283,7 @@ impl SharedState {
             eq_type: RwLock::new("IIR".to_string()),
             noise_shaper_curve: RwLock::new(NoiseShaperCurve::Lipshitz5),
 
-            pending_buffer: RwLock::new(None),
+            pending_buffer: ArcSwap::new(Arc::new(None)),
             pending_total_frames: AtomicU64::new(0),
             pending_sample_rate: AtomicU64::new(44100),
             pending_channels: AtomicU64::new(2),

@@ -102,8 +102,8 @@ impl GaplessManager {
                     *shared_clone.pending_file_path.write() = Some(path.clone());
                     *shared_clone.pending_metadata.write() = Some(metadata);
 
-                    // Move samples into pending buffer (zero-copy)
-                    *shared_clone.pending_buffer.write() = Some(samples);
+                    // Move samples into pending buffer (lock-free atomic swap)
+                    shared_clone.pending_buffer.store(Arc::new(Some(samples)));
 
                     // Signal ready (Release ordering ensures buffer is visible)
                     shared_clone.pending_ready.store(true, Ordering::Release);
@@ -131,24 +131,12 @@ impl GaplessManager {
     pub fn cancel_preload(shared: &SharedState) {
         // Signal the preload thread to stop (Defect 31 fix)
         shared.cancel_preload_signal.store(true, Ordering::Release);
-        *shared.pending_buffer.write() = None;
+        // Clear pending buffer (lock-free atomic swap)
+        shared.pending_buffer.store(Arc::new(None));
         shared.pending_ready.store(false, Ordering::Relaxed);
         shared.needs_preload.store(false, Ordering::Relaxed);
         log::info!("Gapless preload cancelled");
     }
-}
-
-/// Decode audio file to f64 sample buffer
-///
-/// Auto-resamples to target_sr, normalizes channels to target_channels
-fn decode_to_buffer(
-    path: &str,
-    target_sr: u32,
-    target_channels: usize,
-    credentials: Option<&crate::decoder::HttpCredentials>,
-    config: &AppConfig,
-) -> Result<(Vec<f64>, u32, usize, crate::decoder::TrackMetadata), String> {
-    decode_to_buffer_with_cancel(path, target_sr, target_channels, credentials, config, &std::sync::atomic::AtomicBool::new(false))
 }
 
 /// Decode audio file to f64 sample buffer with cancellation support

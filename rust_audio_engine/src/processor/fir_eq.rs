@@ -227,15 +227,24 @@ impl FirEq {
             }
         }
         
-        // 2. IFFT of log magnitude
+        // 2. IFFT of log magnitude to get cepstral coefficients
         let mut spectrum: Vec<Complex<f64>> = log_mag.iter()
             .map(|&lm| Complex::new(lm, 0.0))
             .collect();
-        
+
         let mut planner = FftPlanner::new();
         let ifft = planner.plan_fft_inverse(fft_size);
         ifft.process(&mut spectrum);
-        
+
+        // FIX for Defect 7: rustfft's IFFT does not apply 1/N normalization.
+        // Without this, cepstral coefficients are amplified by N, which propagates
+        // through FFT→exp→IFFT and distorts the frequency response shape
+        // (gains raised to the N-th power instead of being preserved).
+        let inv_n = 1.0 / fft_size as f64;
+        for s in spectrum.iter_mut() {
+            *s *= inv_n;
+        }
+
         // 3. Apply cepstral window (keep positive frequencies, double, zero negative)
         let half = fft_size / 2;
         for (i, s) in spectrum.iter_mut().enumerate() {
@@ -349,13 +358,37 @@ mod tests {
     #[test]
     fn test_interpolate_gain() {
         let fir = FirEq::new(44100.0, 1023);
-        
+
         // Test interpolation between bands
         let gain_750 = fir.interpolate_gain(750.0);
         let gain_500 = fir.interpolate_gain(500.0);  // 0 dB (standard band)
         let gain_1000 = fir.interpolate_gain(1000.0); // 0 dB (standard band)
-        
+
         // At 750 Hz (between 500 and 1000, both 0 dB), should be 0 dB
         assert!((gain_750 - 0.0).abs() < 0.01, "Gain at 750 Hz should be ~0 dB");
+    }
+
+    #[test]
+    fn test_minimum_phase_flat() {
+        // Flat response in minimum phase mode should also produce near-unity sum
+        let mut fir = FirEq::new(44100.0, 1023);
+        fir.set_phase_mode(FirPhaseMode::Minimum);
+
+        let sum: f64 = fir.cached_ir.iter().sum();
+        assert!((sum - 1.0).abs() < 0.15, "Minimum phase flat IR sum should be ~1.0, got {}", sum);
+    }
+
+    #[test]
+    fn test_minimum_phase_boost_bounded() {
+        // Defect 7 regression test: with 1/N normalization, a 6 dB bass boost
+        // should produce a reasonable IR sum, not one amplified by N.
+        let mut fir = FirEq::new(44100.0, 1023);
+        fir.set_phase_mode(FirPhaseMode::Minimum);
+        fir.set_band(0, 6.0); // Boost 31 Hz by 6 dB
+
+        let sum: f64 = fir.cached_ir.iter().sum();
+        // The sum should be in a reasonable range (not blown up by N ~= 4096)
+        assert!(sum.abs() < 100.0, "Minimum phase boosted IR sum should be bounded, got {}", sum);
+        assert!(sum > 0.5, "Minimum phase boosted IR sum should be positive and > 0.5, got {}", sum);
     }
 }

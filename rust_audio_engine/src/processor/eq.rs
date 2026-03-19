@@ -172,6 +172,11 @@ impl Equalizer {
     }
     
     /// Process a single sample (legacy API, updates counter per-sample)
+    ///
+    /// DEPRECATED: Use `process()` for buffer-based processing instead.
+    /// This method duplicates logic from `process()` + `process_sample_no_counter_update()`.
+    /// Kept for backward compatibility only.
+    #[deprecated(note = "Use process() for buffer-based processing instead")]
     #[inline]
     pub fn process_sample(&mut self, mut sample: f64, ch: usize) -> f64 {
         if !self.enabled || ch >= self.channels { return sample; }

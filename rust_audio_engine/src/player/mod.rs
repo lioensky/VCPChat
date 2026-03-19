@@ -167,7 +167,8 @@ impl AudioPlayer {
         let lf_dl_telemetry = Arc::clone(&dynamic_loudness_telemetry);
         let lf_loudness_state = Arc::clone(&loudness_state);
         let phase_response = config.phase_response;
-        
+        let target_lufs = config.loudness.target_lufs;
+
         let audio_thread = thread::spawn(move || {
             audio_thread_main(
                 cmd_rx,
@@ -184,6 +185,7 @@ impl AudioPlayer {
                 24,  // noise shaper bits
                 spectrum_tx,
                 phase_response,
+                target_lufs,
             );
         });
 
