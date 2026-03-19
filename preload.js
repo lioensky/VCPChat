@@ -76,6 +76,9 @@ contextBridge.exposeInMainWorld('electron', {
             'music-set-noise-shaper-curve',
             // --- IR Status ---
             'music-get-ir-status',
+            // --- IR Presets ---
+            'music-list-ir-presets',
+            'music-get-ir-preset-path',
             // --- Resampling Settings ---
             'music-configure-resampling',
             // --- Settings Persistence ---

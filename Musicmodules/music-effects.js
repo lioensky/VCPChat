@@ -75,7 +75,7 @@ function setupEffects(app) {
                 app.irLoadedPath = filePath;
                 app.irEnabled = true;
                 app.irSwitch.checked = true;
-                app.updateIrStatus(`已加载: ${filePath.split(/[/\\]/).pop()}`, 'loaded');
+                app.updateIrStatus('加载成功', 'loaded');
             } else {
                 app.updateIrStatus(`错误: ${result.message}`, 'error');
                 app.irEnabled = false; app.irSwitch.checked = false;

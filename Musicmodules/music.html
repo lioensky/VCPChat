@@ -251,7 +251,7 @@
                         <div id="ir-section" class="settings-block">
                             <div class="block-header">
                                 <div class="block-title-group">
-                                    <h4>脉冲响应</h4>
+                                    <h4>脉冲响应 <span class="help-icon" id="ir-help-icon" title="获取帮助">?</span></h4>
                                 </div>
                                 <label class="switch compact scale-80">
                                     <input type="checkbox" id="ir-switch">
@@ -262,10 +262,8 @@
                                 <div class="ir-controls">
                                     <select id="ir-preset-select" class="ir-preset-select">
                                         <option value="">-- 选择预设 --</option>
-                                        <option value="hrtf">HRTF 虚拟环绕</option>
-                                        <option value="headphone_correct">耳机频响校正</option>
-                                        <option value="room_correct">房间声学校正</option>
-                                        <option value="custom">自定义 IR 文件</option>
+                                        <!-- 动态加载 IRPreset 文件夹内容 -->
+                                        <option value="custom">自定义 IR 文件...</option>
                                     </select>
                                     <button id="ir-load-btn" class="ir-load-btn" style="display: none;">
                                         <svg viewBox="0 0 24 24" width="14" height="14">
@@ -275,6 +273,16 @@
                                 </div>
                                 <div id="ir-status" class="ir-status">
                                     <span class="ir-status-text">未加载</span>
+                                </div>
+                                <!-- IR 帮助提示框 -->
+                                <div id="ir-help-tip" class="help-tip-box" style="display: none;">
+                                    <div class="tip-content">
+                                        <p>1. 您可以在 <a href="#" id="ir-autoeq-link">AutoEq.app</a> 搜索耳机型号，下载 <b>Convolution EQ</b> 对应的 .wav 文件。</p>
+                                        <p style="margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.1);">
+                                            2. 您也可以将 .wav 文件存放在 <code>audio_engine/IRPreset</code> 目录，随后即可在预设下拉框中选择。
+                                        </p>
+                                    </div>
+                                    <div class="tip-arrow"></div>
                                 </div>
                             </div>
                         </div>

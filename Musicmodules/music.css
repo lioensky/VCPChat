@@ -733,6 +733,7 @@ body.light-theme #search-input:focus {
     flex-direction: column;
     gap: 10px;
     border: 1px solid var(--glass-border);
+    position: relative;
 }
 
 .settings-block.full-width {
@@ -2357,3 +2358,93 @@ body.light-theme .dialog-btn.cancel {
     flex-shrink: 0;
     justify-content: flex-end;
 }
+
+/* --- Help Icon & Tooltip --- */
+.help-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--glass-border);
+    color: var(--music-text-secondary);
+    font-size: 10px;
+    cursor: pointer;
+    margin-left: 6px;
+    transition: all 0.2s ease;
+    vertical-align: middle;
+}
+
+.help-icon:hover {
+    background: var(--music-highlight);
+    color: white;
+    border-color: transparent;
+}
+
+.help-tip-box {
+    position: absolute;
+    top: -85px; /* Adjust based on layout */
+    right: 10px;
+    background: var(--glass-bg);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid var(--glass-border);
+    border-radius: 12px;
+    padding: 12px;
+    z-index: 1000;
+    width: 200px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    font-size: 11px;
+    color: var(--music-text);
+    pointer-events: auto;
+    animation: fadeInScale 0.2s ease-out;
+}
+
+@keyframes fadeInScale {
+    from { opacity: 0; transform: scale(0.95) translateY(5px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.help-tip-box a {
+    color: var(--music-highlight);
+    text-decoration: none;
+    font-weight: 600;
+}
+
+.help-tip-box a:hover {
+    text-decoration: underline;
+}
+
+.tip-content p {
+    margin: 0 0 8px 0;
+    line-height: 1.5;
+}
+
+.tip-content p:last-child {
+    margin-bottom: 0;
+}
+
+.tip-arrow {
+    position: absolute;
+    bottom: -6px;
+    right: 20px;
+    width: 100%;
+    height: 10px;
+    pointer-events: none;
+    background: transparent;
+}
+
+.tip-arrow::after {
+    content: '';
+    position: absolute;
+    bottom: 5px;
+    right: 20px;
+    width: 10px;
+    height: 10px;
+    background: var(--glass-bg);
+    border-right: 1px solid var(--glass-border);
+    border-bottom: 1px solid var(--glass-border);
+    transform: rotate(45deg);
+}

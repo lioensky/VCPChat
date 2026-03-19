@@ -340,15 +340,91 @@ document.addEventListener('DOMContentLoaded', () => {
             if (app.irSwitch.checked) { if (app.irLoadedPath) app.loadIrFile(app.irLoadedPath); else app.irLoadBtn.click(); }
             else app.unloadIr();
         };
-        app.irPresetSelect.onchange = (e) => {
+        app.irPresetSelect.onchange = async (e) => {
             const val = e.target.value;
-            if (val === 'custom') { app.irLoadBtn.style.display = 'block'; app.irLoadBtn.click(); }
-            else { app.irLoadBtn.style.display = 'none'; if (val) app.loadIrFile(val); else app.unloadIr(); }
+            if (val === 'custom') { 
+                app.irLoadBtn.style.display = 'block'; 
+                app.irLoadBtn.click(); 
+            } else if (val === '') {
+                app.irLoadBtn.style.display = 'none';
+                app.unloadIr();
+            } else {
+                app.irLoadBtn.style.display = 'none';
+                try {
+                    const filePath = await window.electron.invoke('music-get-ir-preset-path', val);
+                    if (filePath) app.loadIrFile(filePath);
+                    else app.updateIrStatus('预设文件未找到', 'error');
+                } catch (err) {
+                    console.error('[Music] Failed to load IR preset:', err);
+                    app.updateIrStatus('加载预设失败', 'error');
+                }
+            }
         };
+
+        app.loadAvailableIrPresets = async () => {
+            try {
+                const presets = await window.electron.invoke('music-list-ir-presets');
+                if (presets && presets.length > 0) {
+                    const select = app.irPresetSelect;
+                    // 保留第一个和最后一个选项
+                    const customOption = select.options[select.options.length - 1];
+                    const defaultOption = select.options[0];
+                    
+                    select.innerHTML = '';
+                    select.add(defaultOption);
+                    
+                    presets.forEach(p => {
+                        const opt = document.createElement('option');
+                        opt.value = p;
+                        opt.textContent = p;
+                        select.add(opt);
+                    });
+                    
+                    select.add(customOption);
+                }
+            } catch (err) {
+                console.error('[Music] Failed to update IR presets list:', err);
+            }
+        };
+        app.loadAvailableIrPresets();
         app.irLoadBtn.onclick = async () => {
             const filePath = await window.electron.invoke('select-ir-file');
             if (filePath) app.loadIrFile(filePath);
         };
+
+        // --- IR Help Tip Logic ---
+        const irHelpIcon = document.getElementById('ir-help-icon');
+        const irHelpTip = document.getElementById('ir-help-tip');
+        const irAutoEqLink = document.getElementById('ir-autoeq-link');
+
+        console.log('[IR Help] Found elements:', { irHelpIcon: !!irHelpIcon, irHelpTip: !!irHelpTip });
+
+        if (irHelpIcon && irHelpTip) {
+            irHelpIcon.onclick = (e) => {
+                console.log('[IR Help] Icon clicked');
+                e.stopPropagation();
+                const isHidden = irHelpTip.style.display === 'none';
+                irHelpTip.style.display = isHidden ? 'block' : 'none';
+                console.log('[IR Help] Tooltip display set to:', irHelpTip.style.display);
+            };
+            
+            if (irAutoEqLink) {
+                irAutoEqLink.onclick = (e) => {
+                    e.preventDefault();
+                    console.log('[IR Help] AutoEq link clicked');
+                    if (window.electronAPI && window.electronAPI.sendOpenExternalLink) {
+                        window.electronAPI.sendOpenExternalLink('https://autoeq.app/');
+                    }
+                };
+            }
+
+            // 点击外部关闭提示
+            document.addEventListener('click', (e) => {
+                if (irHelpTip.style.display === 'block' && !irHelpTip.contains(e.target) && e.target !== irHelpIcon) {
+                    irHelpTip.style.display = 'none';
+                }
+            });
+        }
 
         app.loudnessSwitch.onchange = () => app.updateLoudnessSettings();
         app.loudnessModeSelect.onchange = () => app.updateLoudnessSettings();
