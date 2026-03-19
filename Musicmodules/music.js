@@ -269,6 +269,7 @@ document.addEventListener('DOMContentLoaded', () => {
             app.updateVolumeSliderBackground(val);
             if (window.electron) window.electron.invoke('music-set-volume', val);
             if (app.wnpAdapter) app.wnpAdapter.sendUpdate();
+            app.saveSettings();
         };
 
         app.handleProgressUpdate = async (e, shouldSeek = false) => {
@@ -687,6 +688,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (window.electron) {
                 window.electron.invoke('music-save-settings', {
                     settings: {
+                        volume: parseFloat(app.volumeSlider.value),
                         target_samplerate: app.targetUpsamplingRate,
                         loudness_enabled: app.loudnessEnabled,
                         loudness_mode: app.loudnessMode,
