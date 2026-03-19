@@ -8,6 +8,7 @@ use serde::Serialize;
 use std::path::Path;
 use std::fs;
 use std::io::{Read, Write};
+use crate::processor::NoiseShaperCurve;
 
 // ============ Cache System ============
 
@@ -182,6 +183,11 @@ pub enum AudioCommand {
     Stop,
     Shutdown,
     Seek(f64),
+    SetExternalIrConvolver { ir_data: Vec<f64>, channels: usize },
+    ClearExternalIrConvolver,
+    SetFirConvolver { ir_data: Vec<f64>, channels: usize },
+    ClearFirConvolver,
+    SetNoiseShaperCurve { curve: NoiseShaperCurve },
     LoadComplete(LoadResult),
     LoadError(String),
 }
@@ -208,6 +214,7 @@ pub struct SharedState {
     pub volume: std::sync::atomic::AtomicU64,
     pub file_path: RwLock<Option<String>>,
     pub eq_type: RwLock<String>,
+    pub noise_shaper_curve: RwLock<NoiseShaperCurve>,
 
     // Gapless playback fields
     pub pending_buffer: RwLock<Option<Vec<f64>>>,
@@ -258,6 +265,7 @@ impl SharedState {
             volume: std::sync::atomic::AtomicU64::new(1_000_000),
             file_path: RwLock::new(None),
             eq_type: RwLock::new("IIR".to_string()),
+            noise_shaper_curve: RwLock::new(NoiseShaperCurve::Lipshitz5),
 
             pending_buffer: RwLock::new(None),
             pending_total_frames: AtomicU64::new(0),

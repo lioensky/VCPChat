@@ -1,7 +1,7 @@
 //! VCP Hi-Fi Audio Engine - Audio Player Module
 //!
-//! Native audio playback using cpal with WASAPI exclusive mode support.
-//! Upgraded to f64 full-stack path for maximum transparency.
+//! Native audio playback using cpal with lock-free DSP processing.
+//! Uses f64 full-stack path for maximum transparency.
 
 mod state;
 mod gapless;
@@ -12,6 +12,7 @@ mod spectrum;
 // Re-exports
 pub use state::{AudioCommand, PlayerState, SharedState, AudioDeviceInfo};
 pub use gapless::GaplessManager;
+pub use callback::{LockfreeDspContext, audio_callback_lockfree, normalize_channels};
 
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
@@ -24,10 +25,14 @@ use cpal::traits::{HostTrait, DeviceTrait};
 
 use crate::config::{AppConfig, ResampleQuality};
 use crate::processor::{
-    Equalizer, VolumeController, NoiseShaper, SpectrumAnalyzer,
-    LoudnessNormalizer, LoudnessInfo, AtomicLoudnessState, PeakLimiter,
-    Saturation, Crossfeed, FirEq, FFTConvolver,
-    DynamicLoudness, AtomicDynamicLoudnessState,
+    SpectrumAnalyzer,
+    LoudnessNormalizer, LoudnessInfo, AtomicLoudnessState,
+    // Lock-free parameters
+    AtomicEqParams, AtomicSaturationParams, AtomicCrossfeedParams,
+    AtomicPeakLimiterParams, AtomicVolumeParams, AtomicNoiseShaperParams,
+    AtomicDynamicLoudnessParams, AtomicDynamicLoudnessTelemetry,
+    NoiseShaperCurve,
+    FirPhaseMode, STANDARD_BANDS,
 };
 
 // Import internal modules
@@ -35,43 +40,40 @@ use state::{save_cache_with_header, load_cache_with_header};
 use audio_thread::audio_thread_main;
 use spectrum::spectrum_thread_main;
 
-// Re-export wasapi for downstream use
-#[cfg(windows)]
-pub use crate::wasapi_output::WasapiState;
-
 /// The main audio player - thread-safe wrapper
 pub struct AudioPlayer {
     shared_state: Arc<SharedState>,
     cmd_tx: Sender<AudioCommand>,
     audio_thread: Option<JoinHandle<()>>,
 
-    // Processors (shared with audio callback)
-    eq: Arc<Mutex<Equalizer>>,
-    volume: Arc<Mutex<VolumeController>>,
-    noise_shaper: Arc<Mutex<NoiseShaper>>,
+    // Spectrum analyzer for visualization
     spectrum_analyzer: Arc<SpectrumAnalyzer>,
+    
+    // Loudness normalizer for main thread operations
     loudness_normalizer: Arc<Mutex<LoudnessNormalizer>>,
     loudness_state: Arc<AtomicLoudnessState>,
 
-    // Peak limiter for audio thread
-    peak_limiter: Arc<Mutex<PeakLimiter>>,
-
-    // FIR Convolver for IR-based processing (user-loaded IR)
-    convolver: Arc<Mutex<Option<FFTConvolver>>>,
-
-    // FIR EQ generator and convolver (separate from user IR)
-    fir_eq: Arc<Mutex<Option<FirEq>>>,
-    fir_convolver: Arc<Mutex<Option<FFTConvolver>>>,
-
-    // Saturation for analog warmth (Mutex for HPF state)
-    saturation: Arc<Mutex<Saturation>>,
-
-    // Crossfeed for headphone listening
-    crossfeed: Arc<Mutex<Crossfeed>>,
-
-    // Dynamic Loudness Compensation (ISO 226 Fletcher-Munson)
-    dynamic_loudness: Arc<Mutex<DynamicLoudness>>,
-    dynamic_loudness_state: Arc<AtomicDynamicLoudnessState>,
+    // ═══════════════════════════════════════════════════════════════
+    // Lock-free Parameter Structures
+    // These allow main thread to set parameters without blocking audio thread
+    // ═══════════════════════════════════════════════════════════════
+    
+    /// Lock-free EQ parameters - use this for real-time EQ updates
+    pub lockfree_eq_params: Arc<AtomicEqParams>,
+    /// Lock-free saturation parameters
+    pub lockfree_saturation_params: Arc<AtomicSaturationParams>,
+    /// Lock-free crossfeed parameters
+    pub lockfree_crossfeed_params: Arc<AtomicCrossfeedParams>,
+    /// Lock-free peak limiter parameters
+    pub lockfree_limiter_params: Arc<AtomicPeakLimiterParams>,
+    /// Lock-free volume parameters (includes mute)
+    pub lockfree_volume_params: Arc<AtomicVolumeParams>,
+    /// Lock-free noise shaper parameters
+    pub lockfree_noise_shaper_params: Arc<AtomicNoiseShaperParams>,
+    /// Lock-free dynamic loudness parameters
+    pub lockfree_dynamic_loudness_params: Arc<AtomicDynamicLoudnessParams>,
+    /// Real-time dynamic loudness telemetry from audio thread
+    dynamic_loudness_telemetry: Arc<AtomicDynamicLoudnessTelemetry>,
 
     // Config
     pub exclusive_mode: bool,
@@ -80,21 +82,26 @@ pub struct AudioPlayer {
     pub replaygain_enabled: bool,
     pub loudness_enabled: bool,
 
+    // FIR EQ emulation state (maps FIR API onto lock-free EQ runtime)
+    fir_eq_enabled: bool,
+    fir_taps: usize,
+    fir_bands: [(f64, f64); 10],
+    fir_phase_mode: FirPhaseMode,
+    ir_loaded: bool,
+    ir_path: Option<String>,
+
     config: AppConfig,
     device_id: Option<usize>,
 }
 
 impl AudioPlayer {
     pub fn new(config: AppConfig) -> Self {
-        log::info!("Initializing AudioPlayer...");
+        log::info!("Initializing AudioPlayer (lock-free mode)...");
         let shared_state = Arc::new(SharedState::new());
         let (cmd_tx, cmd_rx) = unbounded::<AudioCommand>();
 
         let thread_state = Arc::clone(&shared_state);
 
-        let eq = Arc::new(Mutex::new(Equalizer::new(2, 44100.0)));
-        let volume = Arc::new(Mutex::new(VolumeController::new()));
-        let noise_shaper = Arc::new(Mutex::new(NoiseShaper::new(2, 44100, 24)));
         let spectrum_analyzer = Arc::new(SpectrumAnalyzer::new(2048, 64));
 
         let loudness_normalizer = Arc::new(Mutex::new(LoudnessNormalizer::new(
@@ -104,60 +111,6 @@ impl AudioPlayer {
         )));
         let loudness_state = loudness_normalizer.lock().atomic_state();
 
-        let peak_limiter = Arc::new(Mutex::new(PeakLimiter::new(
-            2,
-            44100,
-            config.loudness.true_peak_limit_db,
-            10.0,
-            150.0,
-        )));
-
-        let convolver = Arc::new(Mutex::new(None::<FFTConvolver>));
-
-        // Initialize FIR EQ (disabled by default)
-        let fir_eq = Arc::new(Mutex::new(None::<FirEq>));
-        let fir_convolver = Arc::new(Mutex::new(None::<FFTConvolver>));
-
-        // Initialize saturation processor (wrapped in Mutex for HPF state)
-        let mut saturation = Saturation::new();
-        if config.saturation.enabled {
-            saturation.set_enabled(true);
-            saturation.set_drive(config.saturation.drive);
-            saturation.set_threshold(config.saturation.threshold);
-            saturation.set_mix(config.saturation.mix);
-            saturation.set_input_gain(config.saturation.input_gain_db);
-            saturation.set_output_gain(config.saturation.output_gain_db);
-        }
-        let saturation = Arc::new(Mutex::new(saturation));
-
-        // Initialize crossfeed processor for headphone listening
-        let crossfeed = Arc::new(Mutex::new(Crossfeed::new(44100.0)));
-
-        // Initialize Dynamic Loudness Compensation (ISO 226 Fletcher-Munson)
-        let dynamic_loudness = Arc::new(Mutex::new(DynamicLoudness::new(2, 44100.0)));
-        let dynamic_loudness_state = Arc::new(AtomicDynamicLoudnessState::new());
-        
-        // Apply config settings
-        {
-            let mut dl = dynamic_loudness.lock();
-            dl.set_enabled(config.dynamic_loudness.enabled);
-            dl.set_strength(config.dynamic_loudness.strength);
-            dl.set_reference_volume_db(config.dynamic_loudness.ref_volume_db);
-            dl.set_transition_db(config.dynamic_loudness.transition_db);
-        }
-
-        let thread_eq = Arc::clone(&eq);
-        let thread_volume = Arc::clone(&volume);
-        let thread_noise_shaper = Arc::clone(&noise_shaper);
-        let thread_loudness_state = Arc::clone(&loudness_state);
-        let thread_peak_limiter = Arc::clone(&peak_limiter);
-        let thread_convolver = Arc::clone(&convolver);
-        let thread_fir_convolver = Arc::clone(&fir_convolver);
-        let thread_saturation = Arc::clone(&saturation);
-        let thread_crossfeed = Arc::clone(&crossfeed);
-        let thread_dynamic_loudness = Arc::clone(&dynamic_loudness);
-        let phase_response = config.phase_response;
-
         let (spectrum_tx, spectrum_rx) = crossbeam::channel::bounded::<f64>(4096);
 
         let spec_state = Arc::clone(&shared_state);
@@ -166,85 +119,138 @@ impl AudioPlayer {
             spectrum_thread_main(spectrum_rx, spec_state, spec_analyzer);
         });
 
+        let loudness_enabled = config.loudness.enabled;
+
+        // ═══════════════════════════════════════════════════════════════
+        // Initialize lock-free parameter structures
+        // ═══════════════════════════════════════════════════════════════
+        let lockfree_eq_params = Arc::new(AtomicEqParams::new());
+        let lockfree_saturation_params = Arc::new(AtomicSaturationParams::new());
+        let lockfree_crossfeed_params = Arc::new(AtomicCrossfeedParams::new());
+        let lockfree_limiter_params = Arc::new(AtomicPeakLimiterParams::new());
+        let lockfree_volume_params = Arc::new(AtomicVolumeParams::new());
+        let lockfree_noise_shaper_params = Arc::new(AtomicNoiseShaperParams::new());
+        let lockfree_dynamic_loudness_params = Arc::new(AtomicDynamicLoudnessParams::new());
+        let dynamic_loudness_telemetry = Arc::new(AtomicDynamicLoudnessTelemetry::new());
+
+        // Sync initial saturation config to lockfree params
+        {
+            lockfree_saturation_params.set_drive(config.saturation.drive);
+            lockfree_saturation_params.set_threshold(config.saturation.threshold);
+            lockfree_saturation_params.set_mix(config.saturation.mix);
+            lockfree_saturation_params.set_enabled(config.saturation.enabled);
+        }
+
+        // Sync initial dynamic loudness config to lockfree params
+        {
+            lockfree_dynamic_loudness_params.set_enabled(config.dynamic_loudness.enabled);
+            lockfree_dynamic_loudness_params.set_strength(config.dynamic_loudness.strength);
+            lockfree_dynamic_loudness_params.set_ref_volume_db(config.dynamic_loudness.ref_volume_db);
+        }
+
+        {
+            lockfree_noise_shaper_params.set_enabled(true);
+            lockfree_noise_shaper_params.set_bits(24);
+            lockfree_noise_shaper_params.set_curve(NoiseShaperCurve::Lipshitz5);
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // Spawn audio thread (lock-free only)
+        // ═══════════════════════════════════════════════════════════════
+        let lf_eq = Arc::clone(&lockfree_eq_params);
+        let lf_sat = Arc::clone(&lockfree_saturation_params);
+        let lf_cross = Arc::clone(&lockfree_crossfeed_params);
+        let lf_limiter = Arc::clone(&lockfree_limiter_params);
+        let lf_vol = Arc::clone(&lockfree_volume_params);
+        let lf_ns = Arc::clone(&lockfree_noise_shaper_params);
+        let lf_dl = Arc::clone(&lockfree_dynamic_loudness_params);
+        let lf_dl_telemetry = Arc::clone(&dynamic_loudness_telemetry);
+        let lf_loudness_state = Arc::clone(&loudness_state);
+        let phase_response = config.phase_response;
+        
         let audio_thread = thread::spawn(move || {
             audio_thread_main(
                 cmd_rx,
                 thread_state,
-                thread_eq,
-                thread_volume,
-                thread_noise_shaper,
-                thread_loudness_state,
-                thread_peak_limiter,
-                thread_convolver,
-                thread_fir_convolver,
-                thread_saturation,
-                thread_crossfeed,
-                thread_dynamic_loudness,
+                lf_eq,
+                lf_sat,
+                lf_cross,
+                lf_limiter,
+                lf_vol,
+                lf_ns,
+                lf_dl,
+                lf_dl_telemetry,
+                lf_loudness_state,
+                24,  // noise shaper bits
                 spectrum_tx,
                 phase_response,
             );
         });
 
-        let loudness_enabled = config.loudness.enabled;
-
         Self {
             shared_state,
             cmd_tx,
             audio_thread: Some(audio_thread),
-            eq,
-            volume,
-            noise_shaper,
             spectrum_analyzer,
             loudness_normalizer,
             loudness_state,
-            peak_limiter,
-            convolver,
-            fir_eq,
-            fir_convolver,
-            saturation,
-            crossfeed,
-            dynamic_loudness,
-            dynamic_loudness_state,
+            // Lock-free parameters
+            lockfree_eq_params,
+            lockfree_saturation_params,
+            lockfree_crossfeed_params,
+            lockfree_limiter_params,
+            lockfree_volume_params,
+            lockfree_noise_shaper_params,
+            lockfree_dynamic_loudness_params,
+            dynamic_loudness_telemetry,
             exclusive_mode: false,
             target_sample_rate: config.target_samplerate,
             dither_enabled: true,
             replaygain_enabled: true,
             loudness_enabled,
+            fir_eq_enabled: false,
+            fir_taps: 1023,
+            fir_bands: STANDARD_BANDS,
+            fir_phase_mode: FirPhaseMode::Linear,
+            ir_loaded: false,
+            ir_path: None,
             config,
             device_id: None,
         }
     }
 
-            pub fn list_devices(&self) -> Vec<AudioDeviceInfo> {
-                log::info!("Listing audio devices...");
-                let host = cpal::default_host();
-                let mut all_devices = Vec::new();
-                let default_device = host.default_output_device();
-                let default_name = default_device.as_ref().and_then(|d| d.name().ok());
-        
-                if let Ok(devices) = host.output_devices() {
-                    for (idx, device) in devices.enumerate() {
-                        if let Ok(name) = device.name() {
-                            let config = device.default_output_config().ok();
-                            let is_default = Some(&name) == default_name.as_ref();
-                            all_devices.push(AudioDeviceInfo {
-                                id: idx,
-                                name,
-                                is_default,
-                                sample_rate: config.map(|c| c.sample_rate().0),
-                            });
-                        }
-                    }
+    pub fn list_devices(&self) -> Vec<AudioDeviceInfo> {
+        log::info!("Listing audio devices...");
+        let host = cpal::default_host();
+        let mut all_devices = Vec::new();
+        let default_device = host.default_output_device();
+        let default_name = default_device.as_ref().and_then(|d| d.name().ok());
+
+        if let Ok(devices) = host.output_devices() {
+            for (idx, device) in devices.enumerate() {
+                if let Ok(name) = device.name() {
+                    let config = device.default_output_config().ok();
+                    let is_default = Some(&name) == default_name.as_ref();
+                    all_devices.push(AudioDeviceInfo {
+                        id: idx,
+                        name,
+                        is_default,
+                        sample_rate: config.map(|c| c.sample_rate().0),
+                    });
                 }
-        
-                if all_devices.is_empty() {
-                    log::warn!("No audio output devices found!");
-                } else {
-                    log::info!("Found {} audio devices", all_devices.len());
-                }
-        
-                all_devices
-            }    pub fn select_device(&mut self, device_id: Option<usize>) -> Result<(), String> {
+            }
+        }
+
+        if all_devices.is_empty() {
+            log::warn!("No audio output devices found!");
+        } else {
+            log::info!("Found {} audio devices", all_devices.len());
+        }
+
+        all_devices
+    }
+
+    pub fn select_device(&mut self, device_id: Option<usize>) -> Result<(), String> {
         self.device_id = device_id;
         let id_value = device_id.map(|i| i as i64).unwrap_or(-1);
         self.shared_state.device_id.store(id_value, Ordering::Relaxed);
@@ -264,9 +270,6 @@ impl AudioPlayer {
         path: &str,
         credentials: Option<&crate::decoder::HttpCredentials>,
     ) -> Result<(), String> {
-        use crate::decoder::StreamingDecoder;
-        use crate::processor::StreamingResampler;
-
         log::info!("Loading track async (credentials={}): {}", credentials.is_some(), path);
         self.stop();
         GaplessManager::cancel_preload(&self.shared_state);
@@ -351,7 +354,6 @@ impl AudioPlayer {
         let estimated_input_frames = info.total_frames.unwrap_or(0) as usize;
         
         // If preemptive_resample is false, skip pre-resampling and keep original sample rate
-        // This is useful when you want to minimize load time at the cost of real-time resampling
         let (final_target_sr, final_need_resample) = if need_resample && !config.preemptive_resample {
             log::info!("preemptive_resample=false: keeping original {} Hz (will resample at playback)", original_sr);
             (original_sr, false)
@@ -374,7 +376,6 @@ impl AudioPlayer {
             };
             hasher.update(&[q_byte]);
             hasher.update(estimated_input_frames.to_le_bytes());
-            // Add phase_response to hash
             hasher.update(&[config.phase_response as u8]);
 
             if !path.starts_with("http://") && !path.starts_with("https://") {
@@ -406,7 +407,7 @@ impl AudioPlayer {
                         channels,
                         total_frames: total_frames as u64,
                         file_path: path.to_string(),
-                        loudness_info: None, // Will be analyzed separately
+                        loudness_info: None,
                         metadata: info.metadata,
                     });
                 } else {
@@ -529,16 +530,12 @@ impl AudioPlayer {
     }
 
     pub fn set_volume(&mut self, vol: f64) {
-        // FIX for Defect 46: Clamp volume to [0.0, 1.0] before storing to atomic u64
-        // to prevent integer wraparound with negative values which would cause
-        // get_volume() to report incorrect values.
         let clamped_vol = vol.clamp(0.0, 1.0);
-        self.volume.lock().set_target(clamped_vol);
         self.shared_state.volume.store((clamped_vol * 1_000_000.0) as u64, Ordering::Relaxed);
         
-        // Update Dynamic Loudness with current volume
-        self.dynamic_loudness.lock().set_volume(clamped_vol);
-        self.dynamic_loudness_state.set_volume(clamped_vol as f32);
+        // Update lock-free volume params
+        self.lockfree_volume_params.set_volume(clamped_vol);
+        self.lockfree_dynamic_loudness_params.set_volume(clamped_vol);
     }
 
     pub fn get_volume(&self) -> f64 {
@@ -553,24 +550,8 @@ impl AudioPlayer {
         Arc::clone(&self.shared_state)
     }
 
-    pub fn eq(&self) -> Arc<Mutex<Equalizer>> {
-        Arc::clone(&self.eq)
-    }
-
-    pub fn noise_shaper(&self) -> Arc<Mutex<NoiseShaper>> {
-        Arc::clone(&self.noise_shaper)
-    }
-
     pub fn loudness_normalizer(&self) -> Arc<Mutex<LoudnessNormalizer>> {
         Arc::clone(&self.loudness_normalizer)
-    }
-
-    pub fn crossfeed(&self) -> Arc<Mutex<Crossfeed>> {
-        Arc::clone(&self.crossfeed)
-    }
-
-    pub fn saturation(&self) -> Arc<Mutex<Saturation>> {
-        Arc::clone(&self.saturation)
     }
 
     pub fn set_loudness_enabled(&mut self, enabled: bool) {
@@ -604,41 +585,41 @@ impl AudioPlayer {
 
     /// Get saturation settings
     pub fn get_saturation_info(&self) -> crate::processor::SaturationSettings {
-        self.saturation.lock().get_settings()
+        self.lockfree_saturation_params.get_settings()
     }
 
     /// Set saturation enabled
     pub fn set_saturation_enabled(&self, enabled: bool) {
-        self.saturation.lock().set_enabled(enabled);
+        self.lockfree_saturation_params.set_enabled(enabled);
         log::info!("Saturation {}", if enabled { "enabled" } else { "disabled" });
     }
 
     /// Set saturation drive (0.0 - 2.0)
     pub fn set_saturation_drive(&self, drive: f64) {
-        self.saturation.lock().set_drive(drive);
+        self.lockfree_saturation_params.set_drive(drive);
         log::info!("Saturation drive set to: {}", drive);
     }
 
     /// Set saturation mix (0.0 - 1.0)
     pub fn set_saturation_mix(&self, mix: f64) {
-        self.saturation.lock().set_mix(mix);
+        self.lockfree_saturation_params.set_mix(mix);
         log::info!("Saturation mix set to: {}", mix);
     }
 
     /// Get crossfeed settings
     pub fn get_crossfeed_info(&self) -> crate::processor::CrossfeedSettings {
-        self.crossfeed.lock().get_settings()
+        self.lockfree_crossfeed_params.get_settings()
     }
 
     /// Set crossfeed enabled
     pub fn set_crossfeed_enabled(&self, enabled: bool) {
-        self.crossfeed.lock().set_enabled(enabled);
+        self.lockfree_crossfeed_params.set_enabled(enabled);
         log::info!("Crossfeed {}", if enabled { "enabled" } else { "disabled" });
     }
 
     /// Set crossfeed mix (0.0 - 1.0)
     pub fn set_crossfeed_mix(&self, mix: f64) {
-        self.crossfeed.lock().set_mix(mix);
+        self.lockfree_crossfeed_params.set_mix(mix);
         log::info!("Crossfeed mix set to: {}", mix);
     }
 
@@ -646,63 +627,123 @@ impl AudioPlayer {
 
     /// Get Dynamic Loudness enabled state
     pub fn is_dynamic_loudness_enabled(&self) -> bool {
-        self.dynamic_loudness.lock().is_enabled()
+        self.lockfree_dynamic_loudness_params.is_enabled()
     }
 
     /// Set Dynamic Loudness enabled
     pub fn set_dynamic_loudness_enabled(&self, enabled: bool) {
-        self.dynamic_loudness.lock().set_enabled(enabled);
-        self.dynamic_loudness_state.set_enabled(enabled);
+        self.lockfree_dynamic_loudness_params.set_enabled(enabled);
         log::info!("Dynamic Loudness {}", if enabled { "enabled" } else { "disabled" });
     }
 
     /// Get Dynamic Loudness strength (0.0 - 1.0)
     pub fn get_dynamic_loudness_strength(&self) -> f64 {
-        self.dynamic_loudness.lock().strength()
+        self.lockfree_dynamic_loudness_params.strength()
     }
 
     /// Set Dynamic Loudness strength (0.0 - 1.0)
     pub fn set_dynamic_loudness_strength(&self, strength: f64) {
-        self.dynamic_loudness.lock().set_strength(strength);
-        self.dynamic_loudness_state.set_strength(strength as f32);
+        self.lockfree_dynamic_loudness_params.set_strength(strength);
         log::info!("Dynamic Loudness strength: {:.0}%", strength * 100.0);
     }
 
     /// Get current loudness factor (for display)
     pub fn get_dynamic_loudness_factor(&self) -> f64 {
-        self.dynamic_loudness.lock().loudness_factor()
+        self.dynamic_loudness_telemetry.factor()
     }
 
     /// Get current band gains (for display/metering)
     pub fn get_dynamic_loudness_gains(&self) -> [f64; 7] {
-        self.dynamic_loudness.lock().get_band_gains()
+        self.dynamic_loudness_telemetry.band_gains()
     }
 
-    /// Get noise shaper curve name
+    // ============ Backward Compatibility Methods ============
+    // These methods provide compatibility with legacy API
+
+    /// Get a snapshot noise shaper instance for backward compatibility.
+    ///
+    /// Note: This instance is NOT wired into the real-time lock-free DSP chain.
+    pub fn noise_shaper(&self) -> Arc<Mutex<crate::processor::NoiseShaper>> {
+        let channels = self.shared_state.channels.load(Ordering::Relaxed).max(1) as usize;
+        let sample_rate = self.shared_state.sample_rate.load(Ordering::Relaxed).max(1) as u32;
+        let bits = self.get_output_bits();
+
+        let mut shaper = crate::processor::NoiseShaper::new(channels, sample_rate, bits);
+        shaper.set_enabled(self.dither_enabled);
+        Arc::new(Mutex::new(shaper))
+    }
+
+    /// Get noise shaper curve name.
     pub fn get_noise_shaper_curve(&self) -> String {
-        let ns = self.noise_shaper.lock();
-        match ns.curve() {
-            crate::processor::NoiseShaperCurve::Lipshitz5 => "Lipshitz5".to_string(),
-            crate::processor::NoiseShaperCurve::FWeighted9 => "FWeighted9".to_string(),
-            crate::processor::NoiseShaperCurve::ModifiedE9 => "ModifiedE9".to_string(),
-            crate::processor::NoiseShaperCurve::ImprovedE9 => "ImprovedE9".to_string(),
-            crate::processor::NoiseShaperCurve::TpdfOnly => "TpdfOnly".to_string(),
+        format!("{:?}", *self.shared_state.noise_shaper_curve.read())
+    }
+
+    /// Set noise shaper curve.
+    pub fn set_noise_shaper_curve(&self, curve: NoiseShaperCurve) -> Result<(), String> {
+        self.lockfree_noise_shaper_params.set_curve(curve);
+        *self.shared_state.noise_shaper_curve.write() = curve;
+        self.cmd_tx
+            .send(AudioCommand::SetNoiseShaperCurve { curve })
+            .map_err(|e| format!("Failed to send SetNoiseShaperCurve command: {}", e))
+    }
+
+    /// Get an EQ snapshot instance for backward compatibility.
+    ///
+    /// Note: This instance is NOT wired into the real-time lock-free DSP chain.
+    pub fn eq(&self) -> Arc<Mutex<crate::processor::Equalizer>> {
+        let channels = self.shared_state.channels.load(Ordering::Relaxed).max(1) as usize;
+        let sample_rate = self.shared_state.sample_rate.load(Ordering::Relaxed).max(1) as f64;
+        let snapshot = self.lockfree_eq_params.read();
+
+        let mut eq = crate::processor::Equalizer::new(channels, sample_rate);
+        eq.set_all_bands(&snapshot.gains, sample_rate);
+        eq.set_enabled(snapshot.enabled);
+        Arc::new(Mutex::new(eq))
+    }
+
+    /// Get a crossfeed snapshot instance for backward compatibility.
+    ///
+    /// Note: This instance is NOT wired into the real-time lock-free DSP chain.
+    pub fn crossfeed(&self) -> Arc<Mutex<crate::processor::Crossfeed>> {
+        let sample_rate = self.shared_state.sample_rate.load(Ordering::Relaxed).max(1) as f64;
+        let snapshot = self.lockfree_crossfeed_params.read();
+
+        let mut crossfeed = crate::processor::Crossfeed::new(sample_rate);
+        crossfeed.set_mix(snapshot.mix);
+        crossfeed.set_sample_rate(sample_rate, snapshot.cutoff_hz);
+        crossfeed.set_enabled(snapshot.enabled);
+        Arc::new(Mutex::new(crossfeed))
+    }
+
+    /// Get a saturation snapshot instance for backward compatibility.
+    ///
+    /// Note: This instance is NOT wired into the real-time lock-free DSP chain.
+    pub fn saturation(&self) -> Arc<Mutex<crate::processor::Saturation>> {
+        let sample_rate = self.shared_state.sample_rate.load(Ordering::Relaxed).max(1) as f64;
+        let snapshot = self.lockfree_saturation_params.read();
+
+        let mut saturation = crate::processor::Saturation::new();
+        saturation.set_sample_rate(sample_rate);
+        saturation.set_drive(snapshot.drive);
+        saturation.set_threshold(snapshot.threshold);
+        saturation.set_mix(snapshot.mix);
+        saturation.set_input_gain(snapshot.input_gain_db);
+        saturation.set_output_gain(snapshot.output_gain_db);
+        saturation.set_highpass_mode(snapshot.highpass_mode);
+        saturation.set_highpass_cutoff(snapshot.highpass_cutoff);
+        saturation.set_enabled(snapshot.enabled);
+        match snapshot.sat_type {
+            crate::processor::SaturationTypeValue::Tape => {
+                saturation.set_type(crate::processor::SaturationType::Tape)
+            }
+            crate::processor::SaturationTypeValue::Tube => {
+                saturation.set_type(crate::processor::SaturationType::Tube)
+            }
+            crate::processor::SaturationTypeValue::Transistor => {
+                saturation.set_type(crate::processor::SaturationType::Transistor)
+            }
         }
-    }
-
-    /// Get output bit depth
-    pub fn get_output_bits(&self) -> u32 {
-        self.noise_shaper.lock().bits()
-    }
-
-    /// Get normalization mode
-    pub fn get_normalization_mode(&self) -> crate::config::NormalizationMode {
-        self.config.loudness.mode
-    }
-
-    /// Get target LUFS
-    pub fn get_target_lufs(&self) -> f64 {
-        self.config.loudness.target_lufs
+        Arc::new(Mutex::new(saturation))
     }
 
     // ============ Resampling Config Methods ============
@@ -745,115 +786,55 @@ impl AudioPlayer {
         log::info!("Preemptive resample {}", if enabled { "enabled" } else { "disabled" });
     }
 
-    pub fn load_ir(&self, path: &str) -> Result<(), String> {
+    pub fn load_ir(&mut self, path: &str) -> Result<(), String> {
         use crate::decoder::StreamingDecoder;
-        use crate::processor::StreamingResampler;
 
-        log::info!("Loading IR file: {}", path);
-
-        let channels = self.shared_state.channels.load(Ordering::Relaxed) as usize;
-        let channels = if channels == 0 { 2 } else { channels };
-        let target_sr = self.shared_state.sample_rate.load(Ordering::Relaxed) as u32;
+        const MAX_IR_BYTES: usize = 64 * 1024 * 1024;
 
         let mut decoder = StreamingDecoder::open(path)
-            .map_err(|e| format!("IR load failed: {}", e))?;
+            .map_err(|e| format!("Failed to open IR file '{}': {}", path, e))?;
+        let info = decoder.info.clone();
+        let ir_data = decoder
+            .decode_all()
+            .map_err(|e| format!("Failed to decode IR file '{}': {}", path, e))?;
 
-        let ir_channels = decoder.info.channels;
-        let ir_sample_rate = decoder.info.sample_rate;
-
-        let mut ir_samples = decoder.decode_all()
-            .map_err(|e| format!("IR decode failed: {}", e))?;
-
-        if ir_sample_rate != target_sr && target_sr > 0 {
-            log::info!("IR resampling: {} Hz -> {} Hz", ir_sample_rate, target_sr);
-            let mut resampler = StreamingResampler::new(ir_channels, ir_sample_rate, target_sr)
-                .map_err(|e| format!("Failed to create IR resampler: {}", e))?;
-            ir_samples = resampler.process_chunk(&ir_samples);
-            ir_samples.extend(resampler.flush());
+        if ir_data.is_empty() {
+            return Err("IR file decoded to empty buffer".to_string());
         }
 
-        // FIX for Defect 35: Handle all channel conversion cases, not just 1ch↔2ch
-        if ir_channels != channels {
-            log::info!("IR channel conversion: {} ch -> {} ch", ir_channels, channels);
-            
-            let ir_frames = ir_samples.len() / ir_channels;
-            
-            if ir_channels == 1 && channels > 1 {
-                // Mono to multi-channel: duplicate mono to all channels
-                let mono = ir_samples.clone();
-                ir_samples = Vec::with_capacity(ir_frames * channels);
-                for &sample in &mono {
-                    for _ in 0..channels {
-                        ir_samples.push(sample);
-                    }
-                }
-            } else if ir_channels > 1 && channels == 1 {
-                // Multi-channel to mono: average all channels
-                let mut mono = Vec::with_capacity(ir_frames);
-                for frame in 0..ir_frames {
-                    let mut sum = 0.0;
-                    for ch in 0..ir_channels {
-                        sum += ir_samples[frame * ir_channels + ch];
-                    }
-                    mono.push(sum / ir_channels as f64);
-                }
-                ir_samples = mono;
-            } else {
-                // Both multi-channel but different counts: use matrix conversion
-                // For simplicity, we convert to mono first then expand
-                // This is not ideal for true multi-channel convolution but prevents crashes
-                log::warn!(
-                    "IR has {} channels but player has {} channels. Converting via mono.",
-                    ir_channels, channels
-                );
-                
-                // Convert IR to mono
-                let mut mono = Vec::with_capacity(ir_frames);
-                for frame in 0..ir_frames {
-                    let mut sum = 0.0;
-                    for ch in 0..ir_channels {
-                        sum += ir_samples[frame * ir_channels + ch];
-                    }
-                    mono.push(sum / ir_channels as f64);
-                }
-                
-                // Expand mono to target channels
-                ir_samples = Vec::with_capacity(ir_frames * channels);
-                for &sample in &mono {
-                    for _ in 0..channels {
-                        ir_samples.push(sample);
-                    }
-                }
-            }
+        let ir_bytes = ir_data.len().saturating_mul(std::mem::size_of::<f64>());
+        if ir_bytes > MAX_IR_BYTES {
+            return Err(format!(
+                "IR data too large: {:.1} MB (max: {:.1} MB)",
+                ir_bytes as f64 / (1024.0 * 1024.0),
+                MAX_IR_BYTES as f64 / (1024.0 * 1024.0)
+            ));
         }
 
-        let taps = ir_samples.len() / channels;
-        if taps == 0 {
-            return Err("IR file is empty or too short".to_string());
-        }
+        self.cmd_tx
+            .send(AudioCommand::SetExternalIrConvolver {
+                ir_data,
+                channels: info.channels.max(1),
+            })
+            .map_err(|e| format!("Failed to send IR command to audio thread: {}", e))?;
 
-        let conv = crate::processor::FFTConvolver::new(&ir_samples, channels);
-        *self.convolver.lock() = Some(conv);
-
-        log::info!("IR loaded: {} taps, {} channels", taps, channels);
+        self.ir_loaded = true;
+        self.ir_path = Some(path.to_string());
+        log::info!("IR loaded and activated: '{}'", path);
         Ok(())
     }
 
-    pub fn unload_ir(&self) {
-        *self.convolver.lock() = None;
-        log::info!("IR unloaded, convolver bypassed");
+    pub fn unload_ir(&mut self) {
+        if let Err(e) = self.cmd_tx.send(AudioCommand::ClearExternalIrConvolver) {
+            log::warn!("Failed to send ClearExternalIrConvolver command: {}", e);
+        }
+        self.ir_loaded = false;
+        self.ir_path = None;
+        log::info!("IR unloaded");
     }
 
     pub fn is_ir_loaded(&self) -> bool {
-        self.convolver.lock().is_some()
-    }
-
-    pub fn reset_convolver(&self) {
-        if let Some(mut guard) = self.convolver.try_lock() {
-            if let Some(ref mut conv) = *guard {
-                conv.reset();
-            }
-        }
+        self.ir_loaded
     }
 
     pub fn queue_next(&self, path: &str) -> Result<(), String> {
@@ -865,7 +846,6 @@ impl AudioPlayer {
         path: &str,
         credentials: Option<crate::decoder::HttpCredentials>,
     ) -> Result<(), String> {
-        // Get current normalization mode from config
         let mode = self.config.loudness.mode;
         GaplessManager::queue_next(
             &self.shared_state,
@@ -882,129 +862,134 @@ impl AudioPlayer {
         GaplessManager::cancel_preload(&self.shared_state);
     }
     
-    /// Set output bit depth for NoiseShaper (Defect 37 fix)
-    /// Call this when the audio device format is known (e.g., 16, 24, or 32 bits)
+    /// Set output bit depth for NoiseShaper
     pub fn set_output_bits(&self, bits: u32) {
+        self.lockfree_noise_shaper_params.set_bits(bits);
         self.shared_state.output_bits.store(bits, Ordering::Relaxed);
-        self.noise_shaper.lock().set_bits(bits);
         log::info!("Output bit depth set to {} bits", bits);
+    }
+    
+    /// Get output bit depth
+    pub fn get_output_bits(&self) -> u32 {
+        self.shared_state.output_bits.load(Ordering::Relaxed)
+    }
+    
+    /// Get normalization mode
+    pub fn get_normalization_mode(&self) -> crate::config::NormalizationMode {
+        self.config.loudness.mode
+    }
+
+    /// Get target LUFS
+    pub fn get_target_lufs(&self) -> f64 {
+        self.config.loudness.target_lufs
     }
     
     // ============ FIR EQ Methods ============
     
-    /// Enable FIR EQ with specified number of taps
-    /// 
-    /// # Arguments
-    /// * `num_taps` - Number of FIR taps (will be forced to odd for linear phase)
-    /// 
-    /// # Returns
-    /// Ok(()) on success, Err on failure
+    /// Enable FIR EQ (real convolution backend)
     pub fn enable_fir_eq(&mut self, num_taps: usize) -> Result<(), String> {
-        let sr = self.shared_state.sample_rate.load(Ordering::Relaxed) as f64;
-        let channels = self.shared_state.channels.load(Ordering::Relaxed) as usize;
-        let channels = if channels == 0 { 2 } else { channels };
-        
-        let mut fir = FirEq::new(sr, num_taps);
-        let ir = fir.get_ir(channels);
-        let conv = FFTConvolver::new(&ir, channels);
-        
-        *self.fir_eq.lock() = Some(fir);
-        *self.fir_convolver.lock() = Some(conv);
+        let normalized_taps = if num_taps == 0 {
+            1023
+        } else if num_taps % 2 == 0 {
+            num_taps + 1
+        } else {
+            num_taps
+        };
+
+        self.fir_eq_enabled = true;
+        self.fir_taps = normalized_taps;
+        self.lockfree_eq_params.set_enabled(false);
         *self.shared_state.eq_type.write() = "FIR".to_string();
-        
-        log::info!("FIR EQ enabled: {} taps @ {} Hz, {} channels", num_taps, sr, channels);
+        self.apply_fir_convolver()?;
+
+        log::info!("FIR EQ enabled (real convolution, taps={})", self.fir_taps);
         Ok(())
     }
     
-    /// Disable FIR EQ (revert to IIR)
+    /// Disable FIR EQ
     pub fn disable_fir_eq(&mut self) {
-        *self.fir_eq.lock() = None;
-        *self.fir_convolver.lock() = None;
+        self.fir_eq_enabled = false;
+        if let Err(e) = self.cmd_tx.send(AudioCommand::ClearFirConvolver) {
+            log::warn!("Failed to clear FIR convolver: {}", e);
+        }
         *self.shared_state.eq_type.write() = "IIR".to_string();
-        log::info!("FIR EQ disabled, reverted to IIR");
+        log::info!("FIR EQ disabled");
     }
     
     /// Check if FIR EQ is enabled
     pub fn is_fir_eq_enabled(&self) -> bool {
-        self.fir_eq.lock().is_some()
+        self.fir_eq_enabled
     }
     
     /// Set FIR EQ band gain
-    /// 
-    /// # Arguments
-    /// * `band_idx` - Band index (0-9 for standard 10-band EQ)
-    /// * `gain_db` - Gain in dB (-15 to +15)
     pub fn set_fir_band_gain(&mut self, band_idx: usize, gain_db: f64) -> Result<(), String> {
-        let channels = self.shared_state.channels.load(Ordering::Relaxed) as usize;
-        let channels = if channels == 0 { 2 } else { channels };
-        
-        let mut fir_guard = self.fir_eq.lock();
-        let fir = fir_guard.as_mut().ok_or("FIR EQ not enabled")?;
-        
-        fir.set_band(band_idx, gain_db);
-        
-        // Regenerate IR and update convolver
-        let ir = fir.get_ir(channels);
-        let conv = FFTConvolver::new(&ir, channels);
-        
-        drop(fir_guard);  // Release lock before acquiring another
-        
-        *self.fir_convolver.lock() = Some(conv);
+        if band_idx >= self.fir_bands.len() {
+            return Err(format!("FIR band index out of range: {}", band_idx));
+        }
+
+        let clamped = gain_db.clamp(-15.0, 15.0);
+        self.fir_bands[band_idx].1 = clamped;
+        if self.fir_eq_enabled {
+            self.apply_fir_convolver()?;
+        }
         Ok(())
     }
     
-    /// Set all FIR EQ band gains at once (more efficient than individual calls)
+    /// Set all FIR EQ band gains at once
     pub fn set_fir_bands(&mut self, gains_db: &[f64; 10]) -> Result<(), String> {
-        let channels = self.shared_state.channels.load(Ordering::Relaxed) as usize;
-        let channels = if channels == 0 { 2 } else { channels };
-        
-        let mut fir_guard = self.fir_eq.lock();
-        let fir = fir_guard.as_mut().ok_or("FIR EQ not enabled")?;
-        
-        fir.set_bands(gains_db);
-        
-        let ir = fir.get_ir(channels);
-        let conv = FFTConvolver::new(&ir, channels);
-        
-        drop(fir_guard);
-        
-        *self.fir_convolver.lock() = Some(conv);
-        log::info!("FIR EQ bands updated: {:?}", gains_db);
+        for (idx, gain) in gains_db.iter().enumerate() {
+            let clamped = gain.clamp(-15.0, 15.0);
+            self.fir_bands[idx].1 = clamped;
+        }
+        if self.fir_eq_enabled {
+            self.apply_fir_convolver()?;
+        }
         Ok(())
     }
     
     /// Get current FIR EQ band gains
     pub fn get_fir_bands(&self) -> Option<[(f64, f64); 10]> {
-        self.fir_eq.lock().as_ref().map(|fir| fir.get_bands())
+        Some(self.fir_bands)
     }
     
     /// Set FIR EQ phase mode
     pub fn set_fir_phase_mode(&mut self, mode: crate::processor::FirPhaseMode) -> Result<(), String> {
-        let channels = self.shared_state.channels.load(Ordering::Relaxed) as usize;
-        let channels = if channels == 0 { 2 } else { channels };
-        
-        let mut fir_guard = self.fir_eq.lock();
-        let fir = fir_guard.as_mut().ok_or("FIR EQ not enabled")?;
-        
-        fir.set_phase_mode(mode);
-        
-        let ir = fir.get_ir(channels);
-        let conv = FFTConvolver::new(&ir, channels);
-        
-        drop(fir_guard);
-        
-        *self.fir_convolver.lock() = Some(conv);
-        log::info!("FIR EQ phase mode set to: {:?}", mode);
+        self.fir_phase_mode = mode;
+        if self.fir_eq_enabled {
+            self.apply_fir_convolver()?;
+        }
+        log::info!("FIR phase mode set to {:?}", self.fir_phase_mode);
         Ok(())
     }
     
-    /// Reset FIR convolver state (call when seeking or changing tracks)
+    /// Reset FIR convolver state
     pub fn reset_fir_convolver(&self) {
-        if let Some(mut guard) = self.fir_convolver.try_lock() {
-            if let Some(ref mut conv) = *guard {
-                conv.reset();
+        if self.fir_eq_enabled {
+            if let Err(e) = self.apply_fir_convolver() {
+                log::warn!("Failed to reset FIR convolver: {}", e);
             }
         }
+    }
+
+    fn current_output_channels(&self) -> usize {
+        self.shared_state.channels.load(Ordering::Relaxed).max(1) as usize
+    }
+
+    fn build_fir_ir(&self, channels: usize) -> Vec<f64> {
+        let sample_rate = self.shared_state.sample_rate.load(Ordering::Relaxed).max(1) as f64;
+        let mut fir = crate::processor::FirEq::new(sample_rate, self.fir_taps);
+        fir.set_phase_mode(self.fir_phase_mode);
+        let gains = std::array::from_fn(|i| self.fir_bands[i].1);
+        fir.set_bands(&gains);
+        fir.get_ir(channels)
+    }
+
+    fn apply_fir_convolver(&self) -> Result<(), String> {
+        let channels = self.current_output_channels();
+        let ir_data = self.build_fir_ir(channels);
+        self.cmd_tx
+            .send(AudioCommand::SetFirConvolver { ir_data, channels })
+            .map_err(|e| format!("Failed to send FIR convolver update: {}", e))
     }
 }
 

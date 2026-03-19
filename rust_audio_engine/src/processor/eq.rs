@@ -121,6 +121,10 @@ impl Equalizer {
         self.enabled = enabled;
     }
 
+    pub fn is_enabled(&self) -> bool {
+        self.enabled
+    }
+
     pub fn process(&mut self, buffer: &mut [f64]) {
         if !self.enabled { return; }
         let frames = buffer.len() / self.channels;

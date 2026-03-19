@@ -839,9 +839,8 @@ impl LoudnessNormalizer {
             NormalizationMode::ReplayGainTrack => {
                 // Use ReplayGain track gain from tag
                 if let Some(rg_gain) = metadata.rg_track_gain {
-                    // ReplayGain reference is -18 LUFS ( ReplayGain 2.0 uses -18 LUFS)
-                    // Convert to our target LUFS
-                    let gain_db = rg_gain + (self.config.target_lufs + 18.0);
+                    // Convert ReplayGain tag gain to current target LUFS using configurable reference
+                    let gain_db = rg_gain + (self.config.target_lufs - self.config.replaygain_reference_lufs);
                     log::info!(
                         "Gapless preload: Using ReplayGain track tag: {:.2} dB -> target gain: {:.2} dB",
                         rg_gain, gain_db
@@ -856,7 +855,7 @@ impl LoudnessNormalizer {
                 // Use ReplayGain album gain (fallback to track)
                 let rg_gain = metadata.rg_album_gain.or(metadata.rg_track_gain);
                 if let Some(gain) = rg_gain {
-                    let gain_db = gain + (self.config.target_lufs + 18.0);
+                    let gain_db = gain + (self.config.target_lufs - self.config.replaygain_reference_lufs);
                     log::info!(
                         "Gapless preload: Using ReplayGain album tag: {:.2} dB -> target gain: {:.2} dB",
                         gain, gain_db

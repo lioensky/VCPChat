@@ -63,6 +63,11 @@ pub struct LoudnessConfig {
     
     /// Enable loudness normalization
     pub enabled: bool,
+
+    /// ReplayGain reference loudness in LUFS
+    /// - -18 LUFS: ReplayGain 2.0 reference
+    /// - -14 LUFS: common legacy ReplayGain 1.0 tagging practice
+    pub replaygain_reference_lufs: f64,
 }
 
 impl Default for LoudnessConfig {
@@ -73,6 +78,7 @@ impl Default for LoudnessConfig {
             smoothing_time_ms: 200.0,
             mode: NormalizationMode::Track,
             enabled: true,
+            replaygain_reference_lufs: -18.0,
         }
     }
 }
@@ -253,6 +259,11 @@ impl AppConfig {
             enabled: env::var("VCP_AUDIO_LOUDNESS_NORMALIZATION")
                 .map(|s| s.to_lowercase() == "true")
                 .unwrap_or(true),
+            replaygain_reference_lufs: env::var("VCP_AUDIO_REPLAYGAIN_REFERENCE_LUFS")
+                .ok()
+                .and_then(|s| s.parse::<f64>().ok())
+                .unwrap_or(-18.0)
+                .clamp(-23.0, -12.0),
         };
         
         // Load phase response setting
