@@ -414,6 +414,7 @@ pub fn audio_callback_lockfree(
 
                 shared.pending_ready.store(false, Ordering::Release);
                 shared.needs_preload.store(false, Ordering::Relaxed);
+                shared.event_track_changed.store(true, Ordering::Release);
                 shared.dsp_reset_pending.store(true, Ordering::Release);
 
                 let pending_gain_bits = shared.pending_target_gain_db.load(Ordering::Relaxed);
@@ -438,6 +439,7 @@ pub fn audio_callback_lockfree(
         if let Some(mut state) = shared.state.try_write() {
             if *state == PlayerState::Playing {
                 *state = PlayerState::Stopped;
+                shared.event_playback_ended.store(true, Ordering::Release);
             }
         }
         return;

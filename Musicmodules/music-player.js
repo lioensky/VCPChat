@@ -162,7 +162,7 @@ function setupPlayer(app) {
     app.handleNeedsPreload = async () => {
         if (app.isPreloadingNext) return;
         const activeList = app.currentFilteredTracks || app.playlist;
-        if (activeList.length <= 1) return;
+        if (activeList.length === 0) return;
 
         let nextTrackToPreload = null;
         switch (app.playModes[app.currentPlayMode]) {
@@ -189,6 +189,13 @@ function setupPlayer(app) {
         }
 
         if (nextTrackToPreload && nextTrackToPreload.path) {
+            // If we are in repeat-one mode and there's only one track,
+            // we still want to preload it for gapless looping.
+            // But if we are NOT in repeat-one and there's only one track, we don't need to preload.
+            if (activeList.length <= 1 && app.playModes[app.currentPlayMode] !== 'repeat-one') {
+                return;
+            }
+
             app.isPreloadingNext = true;
             try {
                 await window.electron.invoke('music-queue-next', {
@@ -211,6 +218,34 @@ function setupPlayer(app) {
 
     app.startStatePolling = () => {
         if (app.statePollInterval) clearInterval(app.statePollInterval);
+    app.syncTrackIndexByPath = (path) => {
+        if (!path) return;
+        const index = app.playlist.findIndex(t => app.normalizePathForCompare(t.path) === app.normalizePathForCompare(path));
+        if (index !== -1) {
+            console.log('[Music.js] Syncing track index to:', index);
+            app.currentTrackIndex = index;
+            const track = app.playlist[index];
+            app.pendingTrackPath = track.path;
+            app.trackTitle.textContent = track.title || '未知标题';
+            app.trackArtist.textContent = track.artist || '未知艺术家';
+            app.trackBitrate.textContent = track.bitrate ? `${Math.round(track.bitrate / 1000)} kbps` : '';
+            
+            const defaultArtUrl = `url('../assets/${app.currentTheme === 'light' ? 'musiclight.jpeg' : 'musicdark.jpeg'}')`;
+            if (track.albumArt) {
+                const albumArtUrl = `url('file://${track.albumArt.replace(/\\/g, '/')}')`;
+                app.albumArt.style.backgroundImage = albumArtUrl;
+                app.updateBlurredBackground(albumArtUrl);
+            } else {
+                app.albumArt.style.backgroundImage = defaultArtUrl;
+                app.updateBlurredBackground(defaultArtUrl);
+            }
+            
+            app.renderPlaylist(app.currentFilteredTracks);
+            app.fetchAndDisplayLyrics(track.artist, track.title);
+            app.updateMediaSessionMetadata();
+            if (app.wnpAdapter) app.wnpAdapter.sendUpdate();
+        }
+    };
         app.statePollInterval = setInterval(app.pollState, 250);
     };
 

@@ -121,6 +121,12 @@ function setupVisualizer(app) {
                 } else if (message.type === 'needs_preload') {
                     console.log('[Music.js] Received needs_preload event, remaining:', message.remaining_secs?.toFixed(1), 's');
                     app.handleNeedsPreload();
+                } else if (message.type === 'playback_ended') {
+                    console.log('[Music.js] Playback ended, moving to next track');
+                    app.nextTrack();
+                } else if (message.type === 'track_changed') {
+                    console.log('[Music.js] Gapless track changed:', message.file_path);
+                    app.syncTrackIndexByPath(message.file_path);
                 }
             } catch (e) {
                 console.error('[Music.js] Failed to parse WebSocket message:', e);
