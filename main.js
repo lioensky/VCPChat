@@ -145,6 +145,7 @@ let ragObserverWindow = null; // To hold the single instance of the RAG observer
 let networkNotesTreeCache = null; // In-memory cache for the network notes
 let cachedModels = []; // Cache for models fetched from VCP server
 const NOTES_MODULE_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'Notemodules');
+const isRagObserverOnlyMode = process.argv.includes('--rag-observer-only');
 
 // --- Audio Engine Management ---
 // Now uses the Rust native audio engine instead of Python
@@ -262,10 +263,10 @@ function createWindow() {
 
     // This will be triggered when the app is quitting, after the window is closed.
     mainWindow.on('closed', () => {
-        // When the main window is closed, we quit the app on non-macOS platforms.
-        // This ensures that any child windows are also closed and the process terminates.
+        // When the main window is closed, we should only quit on non-macOS
+        // when there are no remaining windows (e.g. RAG Observer may still be open).
         mainWindow = null;
-        if (process.platform !== 'darwin') {
+        if (process.platform !== 'darwin' && BrowserWindow.getAllWindows().length === 0) {
             app.quit();
         }
     });
@@ -367,17 +368,97 @@ function createTray() {
     }
 }
 
+async function openRagObserverWindow() {
+    // 检查窗口是否已存在，如果存在则聚焦
+    if (ragObserverWindow && !ragObserverWindow.isDestroyed()) {
+        if (!ragObserverWindow.isVisible()) {
+            ragObserverWindow.show();
+        }
+        ragObserverWindow.focus();
+        return;
+    }
+
+    ragObserverWindow = new BrowserWindow({
+        width: 500,
+        height: 900,
+        minWidth: 300,
+        minHeight: 600,
+        title: 'VCP - 信息流监听器',
+        frame: false, // 移除原生窗口框架
+        ...(process.platform === 'darwin' ? {} : { titleBarStyle: 'hidden' }),
+        webPreferences: {
+            preload: path.join(__dirname, 'preload.js'),
+            contextIsolation: true,
+            nodeIntegration: false,
+        },
+        icon: path.join(__dirname, 'assets', 'icon.png'),
+        show: false
+    });
+
+    let settings = {};
+    try {
+        const AppSettingsManager = require('./modules/utils/appSettingsManager');
+        const sm = new AppSettingsManager(SETTINGS_FILE);
+        settings = await sm.readSettings();
+    } catch (readError) {
+        console.error('Failed to read settings file for RAG observer window:', readError);
+    }
+
+    const vcpLogUrl = settings.vcpLogUrl || '';
+    const vcpLogKey = settings.vcpLogKey || '';
+    const currentThemeMode = settings.currentThemeMode || 'dark';
+
+    // 通过URL查询参数传递配置
+    const observerUrl = `file://${path.join(__dirname, 'RAGmodules', 'RAG_Observer.html')}?vcpLogUrl=${encodeURIComponent(vcpLogUrl)}&vcpLogKey=${encodeURIComponent(vcpLogKey)}&currentThemeMode=${encodeURIComponent(currentThemeMode)}`;
+
+    ragObserverWindow.loadURL(observerUrl);
+    ragObserverWindow.setMenu(null);
+
+    ragObserverWindow.once('ready-to-show', () => {
+        ragObserverWindow.show();
+    });
+
+    openChildWindows.push(ragObserverWindow);
+
+    ragObserverWindow.on('close', (event) => {
+        if (process.platform === 'darwin' && !app.isQuitting) {
+            event.preventDefault();
+            ragObserverWindow.hide();
+        }
+    });
+
+    ragObserverWindow.on('closed', () => {
+        openChildWindows = openChildWindows.filter(win => win !== ragObserverWindow);
+        ragObserverWindow = null;
+    });
+}
+
 // --- App Lifecycle ---
 const gotTheLock = app.requestSingleInstanceLock();
 
 if (!gotTheLock) {
     app.quit();
 } else {
-    app.on('second-instance', (event, commandLine, workingDirectory) => {
-        // 有人试图运行第二个实例，我们应该聚焦于我们的窗口
+    app.on('second-instance', async (event, commandLine, workingDirectory) => {
+        const wantsRagOnly = commandLine.includes('--rag-observer-only');
+
+        // 如果第二实例请求的是 RAG 独立模式，则直接打开/聚焦 RAG 窗口
+        if (wantsRagOnly) {
+            await openRagObserverWindow();
+            return;
+        }
+
+        // 默认聚焦主窗口
         if (mainWindow && !mainWindow.isDestroyed()) {
             if (mainWindow.isMinimized()) mainWindow.restore();
             mainWindow.focus();
+            return;
+        }
+
+        if (ragObserverWindow && !ragObserverWindow.isDestroyed()) {
+            if (ragObserverWindow.isMinimized()) ragObserverWindow.restore();
+            if (!ragObserverWindow.isVisible()) ragObserverWindow.show();
+            ragObserverWindow.focus();
         }
     });
 
@@ -432,6 +513,17 @@ if (!gotTheLock) {
         agentConfigManager.startCleanupTimer(); // Start agent config cleanup
 
         settingsHandlers.initialize({ SETTINGS_FILE, USER_AVATAR_FILE, AGENT_DIR, settingsManager: appSettingsManager, agentConfigManager }); // Initialize settings handlers
+        ipcMain.handle('open-rag-observer-window', openRagObserverWindow);
+
+        // RAG 独立模式：不创建主窗口，仅初始化 RAG 所需 IPC 并直接打开 RAG 窗口
+        if (isRagObserverOnlyMode) {
+            console.log('[Main] Starting in RAG observer only mode.');
+            windowHandlers.initialize(mainWindow, openChildWindows);
+            themeHandlers.initialize({ mainWindow, openChildWindows, projectRoot: PROJECT_ROOT, APP_DATA_ROOT_IN_PROJECT, settingsManager: appSettingsManager });
+            ipcMain.handle('get-platform', () => process.platform);
+            await openRagObserverWindow();
+            return;
+        }
 
         // Function to fetch and cache models from the VCP server
         async function fetchAndCacheModels() {
@@ -764,71 +856,7 @@ if (!gotTheLock) {
             });
         });
 
-        // 新增：处理打开RAG Observer窗口的请求
-        ipcMain.handle('open-rag-observer-window', async () => {
-            // 检查窗口是否已存在，如果存在则聚焦
-            if (ragObserverWindow && !ragObserverWindow.isDestroyed()) {
-                if (!ragObserverWindow.isVisible()) {
-                    ragObserverWindow.show();
-                }
-                ragObserverWindow.focus();
-                return;
-            }
-
-            ragObserverWindow = new BrowserWindow({
-                width: 500,
-                height: 900,
-                minWidth: 300,
-                minHeight: 600,
-                title: 'VCP - 信息流监听器',
-                frame: false, // 移除原生窗口框架
-                ...(process.platform === 'darwin' ? {} : { titleBarStyle: 'hidden' }),
-                webPreferences: {
-                    preload: path.join(__dirname, 'preload.js'),
-                    contextIsolation: true,
-                    nodeIntegration: false,
-                },
-                icon: path.join(__dirname, 'assets', 'icon.png'),
-                show: false
-            });
-
-            let settings = {};
-            try {
-                const AppSettingsManager = require('./modules/utils/appSettingsManager');
-                const sm = new AppSettingsManager(SETTINGS_FILE);
-                settings = await sm.readSettings();
-            } catch (readError) {
-                console.error('Failed to read settings file for RAG observer window:', readError);
-            }
-
-            const vcpLogUrl = settings.vcpLogUrl || '';
-            const vcpLogKey = settings.vcpLogKey || '';
-            const currentThemeMode = settings.currentThemeMode || 'dark';
-
-            // 通过URL查询参数传递配置
-            const observerUrl = `file://${path.join(__dirname, 'RAGmodules', 'RAG_Observer.html')}?vcpLogUrl=${encodeURIComponent(vcpLogUrl)}&vcpLogKey=${encodeURIComponent(vcpLogKey)}&currentThemeMode=${encodeURIComponent(currentThemeMode)}`;
-
-            ragObserverWindow.loadURL(observerUrl);
-            ragObserverWindow.setMenu(null);
-
-            ragObserverWindow.once('ready-to-show', () => {
-                ragObserverWindow.show();
-            });
-
-            openChildWindows.push(ragObserverWindow);
-
-            ragObserverWindow.on('close', (event) => {
-                if (process.platform === 'darwin' && !app.isQuitting) {
-                    event.preventDefault();
-                    ragObserverWindow.hide();
-                }
-            });
-
-            ragObserverWindow.on('closed', () => {
-                openChildWindows = openChildWindows.filter(win => win !== ragObserverWindow);
-                ragObserverWindow = null;
-            });
-        });
+        // open-rag-observer-window handler is registered once above and reuses openRagObserverWindow()
 
         windowHandlers.initialize(mainWindow, openChildWindows);
         forumHandlers.initialize({ USER_DATA_DIR }); // Initialize forum handlers
