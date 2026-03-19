@@ -198,6 +198,7 @@
     </div>
 
     <script src="memo.js"></script>
+    <script src="memo-graph.js"></script>
 
     <!-- 联想配置弹窗 (提升 z-index 并优化尺寸) -->
     <div id="assoc-config-modal" class="modal" style="display: none; align-items: center; justify-content: center; position: fixed; top:0; left:0; right:0; bottom:0; z-index: 6800; background: rgba(0,0,0,0.6); backdrop-filter: blur(15px);">
@@ -300,12 +301,12 @@
                     </div>
                 </div>
                 <div class="detail-section">
-                    <label>匹配标签:</label>
-                    <div id="detail-tags" class="tag-list"></div>
-                </div>
-                <div class="detail-section">
                     <label>联想片段 / 完整文本:</label>
                     <div id="detail-chunks" class="chunks-list" style="white-space: pre-wrap; font-family: var(--font-family); line-height: 1.6; max-height: 400px; overflow-y: auto; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 8px;"></div>
+                </div>
+                <div class="detail-section">
+                    <label>匹配标签:</label>
+                    <div id="detail-tags" class="tag-list"></div>
                 </div>
             </div>
             <div class="panel-footer">
