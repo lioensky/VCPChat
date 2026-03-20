@@ -17,6 +17,7 @@
             --accent-agent: #f1c40f;
             --accent-memo: #1abc9c;
             --accent-dream: #e84393;
+            --accent-notification: #ff9f43;
         }
 
         body {
@@ -111,6 +112,38 @@
         /* Win: [title] [controls] */
         .platform-win #custom-title-bar { justify-content: flex-start; }
         .platform-win .title { flex-grow: 1; }
+
+        /* --- Title Toolbar Toggles --- */
+        .title-toolbar {
+            -webkit-app-region: no-drag;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            margin-left: 12px;
+        }
+
+        .toolbar-switch {
+            border: 1px solid rgba(255, 255, 255, 0.22);
+            background: rgba(255, 255, 255, 0.08);
+            color: rgba(255, 255, 255, 0.9);
+            border-radius: 999px;
+            padding: 2px 10px;
+            font-size: 11px;
+            line-height: 1.8;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            white-space: nowrap;
+        }
+
+        .toolbar-switch:hover {
+            background: rgba(255, 255, 255, 0.16);
+        }
+
+        .toolbar-switch.is-off {
+            color: rgba(255, 255, 255, 0.45);
+            border-color: rgba(255, 255, 255, 0.14);
+            background: rgba(255, 255, 255, 0.03);
+        }
 
         /* --- Main Container --- */
         .main-wrapper {
@@ -298,9 +331,11 @@
 
         .snippet {
             display: -webkit-box;
+            line-clamp: 3;
             -webkit-line-clamp: 3;
             -webkit-box-orient: vertical;
             overflow: hidden;
+            -webkit-mask-image: linear-gradient(180deg, #000 60%, transparent);
             mask-image: linear-gradient(180deg, #000 60%, transparent);
         }
         
@@ -339,6 +374,46 @@
 
         .icon-btn svg { width: 16px; height: 16px; }
 
+        /* --- Notification Approval Actions --- */
+        .approval-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 12px;
+        }
+
+        .approval-btn {
+            border: 1px solid rgba(255,255,255,0.2);
+            color: #fff;
+            padding: 6px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.82rem;
+            transition: all 0.2s ease;
+            background: rgba(255,255,255,0.08);
+        }
+
+        .approval-btn:hover:not(:disabled) {
+            transform: translateY(-1px);
+            filter: brightness(1.08);
+        }
+
+        .approval-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .approval-btn.approve {
+            background: rgba(76, 175, 80, 0.2);
+            border-color: rgba(76, 175, 80, 0.5);
+            color: #9be7a5;
+        }
+
+        .approval-btn.reject {
+            background: rgba(244, 67, 54, 0.2);
+            border-color: rgba(244, 67, 54, 0.5);
+            color: #ff9a94;
+        }
+
         .toggle-arrow {
             transition: transform 0.3s var(--ease-elastic);
         }
@@ -350,6 +425,7 @@
         .type-chat { --accent-color: var(--accent-agent); }
         .type-memo { --accent-color: var(--accent-memo); }
         .type-dream { --accent-color: var(--accent-dream); }
+        .type-notification { --accent-color: var(--accent-notification); }
 
         /* RAG Item */
         .rag-sub-item {
@@ -403,6 +479,63 @@
 
         @keyframes pulse { 0% { opacity: 0.5; transform: scale(0.9); } 50% { opacity: 1; transform: scale(1.1); } 100% { opacity: 0.5; transform: scale(0.9); } }
 
+        /* --- Overlay Control Bar --- */
+        .overlay-control-bar {
+            margin-top: 6px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+            padding: 8px 12px;
+            border-radius: 12px;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.08);
+            backdrop-filter: blur(10px);
+        }
+
+        .overlay-toggle-group {
+            display: inline-flex;
+            gap: 6px;
+        }
+
+        .overlay-toggle-btn {
+            border: 1px solid rgba(255,255,255,0.2);
+            background: rgba(255,255,255,0.05);
+            color: rgba(255,255,255,0.85);
+            border-radius: 8px;
+            padding: 4px 10px;
+            font-size: 0.76rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .overlay-toggle-btn.active {
+            background: rgba(52, 152, 219, 0.22);
+            border-color: rgba(52, 152, 219, 0.7);
+            color: #cfe9ff;
+        }
+
+        .overlay-opacity-wrap {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.76rem;
+            color: rgba(255,255,255,0.75);
+        }
+
+        #overlayOpacityRange {
+            width: 140px;
+            accent-color: #3498db;
+        }
+
+        #overlayOpacityValue {
+            font-family: 'JetBrains Mono', monospace;
+            min-width: 42px;
+            text-align: right;
+            color: rgba(255,255,255,0.9);
+        }
+ 
         /* --- Core Tag Highlighting --- */
         .core-tags-container {
             display: flex;
@@ -461,7 +594,12 @@
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="4"></circle></svg>
             VCP 信息流监听器
         </div>
+        <div class="title-toolbar">
+            <button id="notificationCategoryToggle" class="toolbar-switch" type="button" aria-pressed="true" onclick="toggleNotificationCategory()">通知分类：开</button>
+            <button id="overlayFeatureToggle" class="toolbar-switch" type="button" aria-pressed="true" onclick="toggleOverlayFeature()">悬浮窗：开</button>
+        </div>
         <div class="window-controls window-controls-win">
+            <button id="win-tray-btn" class="win-control-btn" title="最小化到系统托盘" aria-label="最小化到系统托盘"><svg><use href="#icon-win-tray"></use></svg></button>
             <button id="win-minimize-btn" class="win-control-btn" title="最小化"><svg><use href="#icon-win-minimize"></use></svg></button>
             <button id="win-maximize-btn" class="win-control-btn" title="最大化"><svg><use href="#icon-win-maximize"></use></svg></button>
             <button id="win-close-btn" class="win-control-btn" title="关闭"><svg><use href="#icon-win-close"></use></svg></button>
@@ -477,6 +615,18 @@
                 <span id="statusText">未连接</span>
             </div>
 
+            <div class="overlay-control-bar">
+                <div class="overlay-toggle-group">
+                    <button id="overlayPassThroughBtn" class="overlay-toggle-btn active" onclick="setOverlayPassThrough(true)">鼠标穿透</button>
+                    <button id="overlayInteractiveBtn" class="overlay-toggle-btn" onclick="setOverlayPassThrough(false)">可交互</button>
+                </div>
+                <div class="overlay-opacity-wrap">
+                    <span>悬浮窗透明度</span>
+                    <input id="overlayOpacityRange" type="range" min="20" max="100" step="1" value="92" oninput="setOverlayOpacity(this.value)">
+                    <span id="overlayOpacityValue">92%</span>
+                </div>
+            </div>
+ 
             <div class="filter-bar">
                 <div class="filter-highlight"></div>
                 <button class="filter-btn active" data-type="all" onclick="filterLogs('all', this)">全部</button>
@@ -485,6 +635,7 @@
                 <button class="filter-btn" data-type="chat" onclick="filterLogs('chat', this)">Agent会话</button>
                 <button class="filter-btn" data-type="memo" onclick="filterLogs('memo', this)">记忆检索</button>
                 <button class="filter-btn" data-type="dream" onclick="filterLogs('dream', this)">Agent梦境</button>
+                <button class="filter-btn" data-type="notification" onclick="filterLogs('notification', this)">通知消息</button>
                 <button class="filter-btn" onclick="clearLogs()" style="margin-left: 10px; color: #ff5f56;">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
                 </button>
@@ -504,6 +655,7 @@
         <symbol id="icon-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></symbol>
         <symbol id="icon-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></symbol>
         <symbol id="icon-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></symbol>
+        <symbol id="icon-win-tray" viewBox="0 0 10 10"><polygon points="5,8 0,2 10,2" fill="currentColor"></polygon></symbol>
         <symbol id="icon-win-minimize" viewBox="0 0 10 10"><path stroke="currentColor" stroke-width="1.2" d="M0 5 H10"></path></symbol>
         <symbol id="icon-win-maximize" viewBox="0 0 10 10"><path fill="none" stroke="currentColor" stroke-width="1.2" d="M1,1 h8 v8 h-8 z"></path></symbol>
         <symbol id="icon-win-close" viewBox="0 0 10 10"><path stroke="currentColor" stroke-width="1.2" d="M1,1 L9,9 M9,1 L1,9"></path></symbol>
@@ -514,6 +666,312 @@
         const infoContainer = document.getElementById('infoContainer');
         let currentFilter = 'all';
 
+        const overlayState = {
+            passThrough: true,
+            opacity: 0.92,
+            hideTimer: null,
+            pendingApprovalIds: new Set(),
+            lastPayload: null
+        };
+
+        const observerRuntimeState = {
+            notificationsEnabled: true,
+            overlayEnabled: true,
+            mounted: true
+        };
+
+        function updateToolbarSwitch(buttonId, enabled, label) {
+            const button = document.getElementById(buttonId);
+            if (!button) return;
+            const isOn = !!enabled;
+            button.classList.toggle('is-off', !isOn);
+            button.setAttribute('aria-pressed', String(isOn));
+            button.textContent = `${label}：${isOn ? '开' : '关'}`;
+        }
+
+        function removeCardsByType(typeClass) {
+            if (!typeClass) return;
+            const cards = infoContainer.querySelectorAll(`.card-base.${typeClass}`);
+            cards.forEach(card => card.remove());
+
+            if (infoContainer.children.length === 0) {
+                infoContainer.innerHTML = `
+                    <div style="text-align:center; color:rgba(255,255,255,0.3); margin-top: 50px; font-size: 0.9rem;">
+                        <p>等待数据接入...</p>
+                        <p style="font-size: 0.8em;">System Ready</p>
+                    </div>`;
+            }
+        }
+
+        function syncNotificationFilterVisibility() {
+            const notificationBtn = document.querySelector('.filter-btn[data-type="notification"]');
+            if (!notificationBtn) return;
+
+            notificationBtn.style.display = observerRuntimeState.notificationsEnabled ? '' : 'none';
+
+            if (!observerRuntimeState.notificationsEnabled && currentFilter === 'notification') {
+                const allBtn = document.querySelector('.filter-btn[data-type="all"]');
+                if (allBtn) {
+                    filterLogs('all', allBtn);
+                }
+            }
+        }
+
+        function setNotificationCategoryEnabled(enabled, shouldSyncToConfig = true) {
+            observerRuntimeState.notificationsEnabled = !!enabled;
+            updateToolbarSwitch('notificationCategoryToggle', observerRuntimeState.notificationsEnabled, '通知分类');
+            syncNotificationFilterVisibility();
+
+            if (!observerRuntimeState.notificationsEnabled) {
+                removeCardsByType('type-notification');
+                overlayState.pendingApprovalIds.clear();
+                hideOverlayNotification();
+            }
+
+            if (shouldSyncToConfig && typeof window.setNotificationChannelEnabledFromObserver === 'function') {
+                window.setNotificationChannelEnabledFromObserver(observerRuntimeState.notificationsEnabled);
+            }
+        }
+
+        function setOverlayEnabled(enabled, shouldSyncToMain = true) {
+            observerRuntimeState.overlayEnabled = !!enabled;
+            updateToolbarSwitch('overlayFeatureToggle', observerRuntimeState.overlayEnabled, '悬浮窗');
+
+            if (!observerRuntimeState.overlayEnabled) {
+                clearOverlayHideTimer();
+                overlayState.pendingApprovalIds.clear();
+                overlayState.lastPayload = null;
+                if (window.electronAPI?.ragOverlayHide) {
+                    window.electronAPI.ragOverlayHide();
+                }
+            }
+
+            if (shouldSyncToMain && window.electronAPI?.ragOverlaySetEnabled) {
+                window.electronAPI.ragOverlaySetEnabled(observerRuntimeState.overlayEnabled);
+            }
+
+            if (observerRuntimeState.overlayEnabled) {
+                if (window.electronAPI?.ragOverlaySetPassThrough) {
+                    window.electronAPI.ragOverlaySetPassThrough(overlayState.passThrough);
+                }
+                if (window.electronAPI?.ragOverlaySetOpacity) {
+                    window.electronAPI.ragOverlaySetOpacity(overlayState.opacity);
+                }
+            }
+        }
+
+        function toggleNotificationCategory() {
+            setNotificationCategoryEnabled(!observerRuntimeState.notificationsEnabled, true);
+        }
+
+        function toggleOverlayFeature() {
+            setOverlayEnabled(!observerRuntimeState.overlayEnabled, true);
+        }
+
+        function updateOverlayControlButtons() {
+            const passBtn = document.getElementById('overlayPassThroughBtn');
+            const interactiveBtn = document.getElementById('overlayInteractiveBtn');
+            if (!passBtn || !interactiveBtn) return;
+            passBtn.classList.toggle('active', overlayState.passThrough);
+            interactiveBtn.classList.toggle('active', !overlayState.passThrough);
+        }
+
+        function setOverlayPassThrough(passThrough, shouldSyncToMain = true) {
+            const previousPassThrough = overlayState.passThrough;
+            overlayState.passThrough = !!passThrough;
+            updateOverlayControlButtons();
+
+            if (!overlayState.passThrough) {
+                clearOverlayHideTimer();
+                if (observerRuntimeState.overlayEnabled && window.electronAPI?.ragOverlayShow) {
+                    const payloadToShow = overlayState.lastPayload
+                        ? {
+                            ...overlayState.lastPayload,
+                            passThrough: false,
+                            opacity: overlayState.opacity,
+                            timestamp: new Date().toLocaleTimeString()
+                        }
+                        : {
+                            title: '悬浮窗已切换为可交互',
+                            content: '当前为可交互模式，将保持显示。',
+                            type: 'overlay_mode_change',
+                            level: 'info',
+                            timestamp: new Date().toLocaleTimeString(),
+                            passThrough: false,
+                            opacity: overlayState.opacity
+                        };
+                    overlayState.lastPayload = payloadToShow;
+                    window.electronAPI.ragOverlayShow(payloadToShow);
+                }
+            } else if (previousPassThrough !== overlayState.passThrough && overlayState.pendingApprovalIds.size === 0) {
+                hideOverlayNotification();
+            }
+
+            if (shouldSyncToMain && observerRuntimeState.overlayEnabled && window.electronAPI?.ragOverlaySetPassThrough) {
+                window.electronAPI.ragOverlaySetPassThrough(overlayState.passThrough);
+            }
+        }
+
+        function setOverlayOpacity(opacityPercent, shouldSyncToMain = true) {
+            const numeric = Math.max(20, Math.min(100, Number(opacityPercent) || 92));
+            overlayState.opacity = numeric / 100;
+
+            const opacityRange = document.getElementById('overlayOpacityRange');
+            if (opacityRange && String(opacityRange.value) !== String(numeric)) {
+                opacityRange.value = String(numeric);
+            }
+
+            const opacityValue = document.getElementById('overlayOpacityValue');
+            if (opacityValue) {
+                opacityValue.textContent = `${numeric}%`;
+            }
+
+            if (shouldSyncToMain && observerRuntimeState.overlayEnabled && window.electronAPI?.ragOverlaySetOpacity) {
+                window.electronAPI.ragOverlaySetOpacity(overlayState.opacity);
+            }
+        }
+
+        function clearOverlayHideTimer() {
+            if (overlayState.hideTimer) {
+                clearTimeout(overlayState.hideTimer);
+                overlayState.hideTimer = null;
+            }
+        }
+
+        function hideOverlayNotification() {
+            clearOverlayHideTimer();
+            if (overlayState.pendingApprovalIds.size > 0) return;
+            if (!overlayState.passThrough) return; // 可交互模式下保持显示
+            if (observerRuntimeState.overlayEnabled && window.electronAPI?.ragOverlayHide) {
+                window.electronAPI.ragOverlayHide();
+            }
+        }
+
+        function scheduleOverlayHide(delay = 2000) {
+            clearOverlayHideTimer();
+            if (overlayState.pendingApprovalIds.size > 0) return;
+            if (!overlayState.passThrough) return; // 可交互模式下不自动隐藏
+            overlayState.hideTimer = setTimeout(() => {
+                overlayState.hideTimer = null;
+                if (overlayState.pendingApprovalIds.size === 0 && overlayState.passThrough) {
+                    hideOverlayNotification();
+                }
+            }, delay);
+        }
+
+        function buildOverlayPayload(data) {
+            const now = new Date().toLocaleTimeString();
+            const type = data?.type || 'unknown';
+            let title = `信息流通知: ${type}`;
+            let content = '';
+            let level = 'info';
+            let approval = null;
+
+            if (type === 'tool_approval_request') {
+                const req = data?.data || {};
+                title = '工具调用审核请求';
+                content = `${req.maid || '未知助手'} 请求调用 ${req.toolName || '未知工具'}`;
+                approval = {
+                    requestId: String(req.requestId || ''),
+                    toolName: req.toolName || '未知工具',
+                    maid: req.maid || '未知助手',
+                    command: String(req.args?.command || JSON.stringify(req.args || {}, null, 2) || ''),
+                    timestamp: req.timestamp || now
+                };
+                level = 'warning';
+            } else if (type === 'tool_approval_response') {
+                const resp = data?.data || {};
+                title = '工具审核结果';
+                content = `${resp.approved ? '已允许' : '已拒绝'} ${resp.requestId ? `(ID: ${resp.requestId})` : ''}`.trim();
+                level = resp.approved ? 'success' : 'error';
+            } else if (type === 'vcp_log' && data?.data) {
+                title = 'VCP 日志';
+                content = typeof data.data.content === 'string' ? data.data.content : JSON.stringify(data.data, null, 2);
+            } else if (type === 'notification' || type === 'error' || type === 'connection_ack') {
+                title = `系统通知: ${type}`;
+                content = data.message || JSON.stringify(data.data || data, null, 2);
+                if (type === 'error') level = 'error';
+            } else if (type === 'RAG_RETRIEVAL_DETAILS') {
+                title = `RAG 检索: ${data.dbName || 'Unknown'}`;
+                content = data.query || '收到一条 RAG 检索信息';
+            } else if (type === 'META_THINKING_CHAIN') {
+                title = `元思考链: ${data.chainName || 'Unknown'}`;
+                content = data.query || '收到一条元思考链信息';
+            } else if (type === 'AGENT_PRIVATE_CHAT_PREVIEW') {
+                title = `Agent 私聊: ${data.agentName || 'Unknown'}`;
+                content = data.response || data.query || '收到一条 Agent 私聊预览';
+            } else if (type === 'AI_MEMO_RETRIEVAL') {
+                title = '记忆检索';
+                content = data.extractedMemories || '收到一条记忆检索信息';
+            } else if (type === 'DailyNote') {
+                title = `日记召回: ${data.dbName || 'Unknown'}`;
+                content = data.message || '收到一条日记召回信息';
+            } else if (type.startsWith('AGENT_DREAM_')) {
+                title = `Agent 梦境: ${data.agentName || 'Unknown'}`;
+                content = data.message || data.error || data.narrative || '收到一条 Agent 梦境信息';
+            } else {
+                content = data.message || JSON.stringify(data?.data || data, null, 2);
+            }
+
+            content = String(content || '').trim();
+            if (content.length > 280) {
+                content = `${content.slice(0, 280)}...`;
+            }
+
+            return {
+                title,
+                content,
+                type,
+                level,
+                timestamp: now,
+                opacity: overlayState.opacity,
+                passThrough: overlayState.passThrough,
+                approval
+            };
+        }
+
+        function notifyOverlayFromData(data) {
+            if (!observerRuntimeState.overlayEnabled || !window.electronAPI?.ragOverlayShow || !data) return;
+
+            if (!observerRuntimeState.notificationsEnabled && isNotificationData(data)) {
+                return;
+            }
+
+            const payload = buildOverlayPayload(data);
+            const isApprovalRequest = data.type === 'tool_approval_request';
+            const isApprovalResponse = data.type === 'tool_approval_response';
+
+            if (isApprovalRequest) {
+                const requestId = String(data?.data?.requestId || '');
+                if (requestId) {
+                    overlayState.pendingApprovalIds.add(requestId);
+                }
+                // 审核消息强制本次为可交互，方便直接点击允许/拒绝；但不改变用户已保存模式
+                payload.passThrough = false;
+            } else {
+                payload.passThrough = overlayState.passThrough;
+            }
+
+            if (isApprovalResponse) {
+                const requestId = String(data?.data?.requestId || '');
+                if (requestId) {
+                    overlayState.pendingApprovalIds.delete(requestId);
+                } else {
+                    overlayState.pendingApprovalIds.clear();
+                }
+            }
+
+            payload.opacity = overlayState.opacity;
+            overlayState.lastPayload = { ...payload };
+            window.electronAPI.ragOverlayShow(payload);
+
+            if (overlayState.pendingApprovalIds.size === 0) {
+                scheduleOverlayHide(2000);
+            } else {
+                clearOverlayHideTimer();
+            }
+        }
+ 
         function updateStatus(status, message) {
             const dot = document.getElementById('statusDot');
             const text = document.getElementById('statusText');
@@ -543,10 +1001,11 @@
             const typeColors = {
                 'all': 'rgba(255, 255, 255, 0.15)',
                 'rag': 'rgba(52, 152, 219, 0.4)', // --accent-rag
-                'chain': 'rgba(155, 89, 182, 0.4)', // --accent-chain
-                'chat': 'rgba(241, 196, 15, 0.4)', // --accent-agent
-                'memo': 'rgba(26, 188, 156, 0.4)', // --accent-memo
-                'dream': 'rgba(232, 67, 147, 0.4)' // --accent-dream
+                'chain': 'rgba(52, 152, 219, 0.4)', // --accent-chain
+                'chat': 'rgba(52, 152, 219, 0.4)', // --accent-chat
+                'memo': 'rgba(52, 152, 219, 0.4)', // --accent-memo
+                'dream': 'rgba(52, 152, 219, 0.4)', // --accent-dream
+                'notification': 'rgba(52, 152, 219, 0.4)' // --notification
             };
             highlight.style.backgroundColor = typeColors[type] || typeColors['all'];
 
@@ -659,6 +1118,13 @@
 
         // 1. RAG BLOCK
         function displayRagInfo(data) {
+            if (!observerRuntimeState.notificationsEnabled && isNotificationData(data)) {
+                return;
+            }
+
+            // 所有消息统一驱动外部悬浮通知窗（仅消息到达时显现）
+            notifyOverlayFromData(data);
+
             // Handle specialized types first
             if (data.type === 'AGENT_PRIVATE_CHAT_PREVIEW') return displayAgentChat(data);
             if (data.type === 'META_THINKING_CHAIN') return displayChain(data);
@@ -666,6 +1132,8 @@
             if (data.type.startsWith('AGENT_DREAM_')) return displayDreamInfo(data);
             if (data.type === 'DailyNote') return displayDailyNote(data);
             if (data.source === 'AgentAssistant') return displayAgentAssistantNotification(data);
+            if (data.type === 'tool_approval_request') return displayToolApprovalRequest(data);
+            if (isNotificationData(data)) return displaySystemNotification(data);
 
             const block = document.createElement('div');
             block.className = 'card-base type-rag card-enter';
@@ -946,13 +1414,80 @@
             prependCard(block);
         }
 
-        // 7. AGENT ASSISTANT NOTIFICATION BLOCK
+        // 7. NOTIFICATION HELPERS
+        function isNotificationData(data) {
+            if (!data || typeof data !== 'object') return false;
+            const notificationTypes = new Set([
+                'vcp_log',
+                'daily_note_created',
+                'video_generation_status',
+                'tool_approval_request',
+                'tool_approval_response',
+                'connection_ack',
+                'notification'
+            ]);
+            return notificationTypes.has(data.type);
+        }
+
+        function normalizeNotificationContent(data) {
+            if (!data || typeof data !== 'object') {
+                return {
+                    title: '通知消息',
+                    source: 'System',
+                    status: 'info',
+                    content: String(data || '收到一条空通知')
+                };
+            }
+
+            if (data.type === 'vcp_log' && data.data && typeof data.data === 'object') {
+                const payload = data.data;
+                const title = payload.tool_name ? `${payload.tool_name} ${payload.status || ''}`.trim() : 'VCP 日志通知';
+                const source = payload.source || 'VCPLog';
+                const status = payload.status || 'info';
+                const content = typeof payload.content === 'undefined'
+                    ? JSON.stringify(payload, null, 2)
+                    : (typeof payload.content === 'string' ? payload.content : JSON.stringify(payload.content, null, 2));
+                return { title, source, status, content };
+            }
+
+            if (data.type === 'daily_note_created' && data.data && typeof data.data === 'object') {
+                const note = data.data;
+                return {
+                    title: `日记通知: ${note.maidName || 'N/A'}`,
+                    source: 'DailyNote',
+                    status: note.status || 'info',
+                    content: note.message || JSON.stringify(note, null, 2)
+                };
+            }
+
+            if (data.type === 'video_generation_status' && data.data && typeof data.data === 'object') {
+                const video = data.data;
+                const message = video?.original_plugin_output?.message || JSON.stringify(video, null, 2);
+                return {
+                    title: '视频生成状态',
+                    source: 'VideoGenerator',
+                    status: video.status || 'info',
+                    content: typeof message === 'string' ? message : JSON.stringify(message, null, 2)
+                };
+            }
+
+            const fallbackContent = data.message || (data.data ? JSON.stringify(data.data, null, 2) : JSON.stringify(data, null, 2));
+            return {
+                title: `通知: ${data.type || 'unknown'}`,
+                source: data.source || 'System',
+                status: data.status || 'info',
+                content: fallbackContent
+            };
+        }
+
+        // 8. AGENT ASSISTANT NOTIFICATION BLOCK
         function displayAgentAssistantNotification(data) {
             const block = document.createElement('div');
-            block.className = 'card-base type-chat card-enter'; // Use chat style for agent category
+            block.className = 'card-base type-chat card-enter';
             
-            const isSucceed = data.message.includes('Succeed');
-            const isFailed = data.message.includes('Failed');
+            const messageText = String(data.message || '收到一条 Agent 助手通知');
+            const isSucceed = messageText.includes('Succeed') || messageText.includes('success');
+            const isFailed = messageText.includes('Failed') || messageText.includes('error');
             const dotClass = isSucceed ? 'dot-green' : (isFailed ? 'dot-red' : 'dot-orange');
             
             block.innerHTML = `
@@ -963,14 +1498,137 @@
                 <div class="meta-info">
                     <span class="status-pill" style="margin-bottom:0; background:transparent; border:none; padding:0;">
                         <div class="status-dot ${dotClass}"></div>
-                        <span style="color:var(--accent-agent);">${data.source}</span>
+                        <span style="color:var(--accent-agent);">${data.source || 'AgentAssistant'}</span>
                     </span>
                     <span class="meta-pill">Time: ${new Date().toLocaleTimeString()}</span>
                 </div>
                 <div style="margin-top:10px; padding:12px; background:rgba(241, 196, 15, 0.1); border-radius:8px; border-left:3px solid var(--accent-agent); color:rgba(255,255,255,0.9); font-size:0.95rem;">
-                    ${marked.parse(data.message)}
+                    ${marked.parse(messageText)}
                 </div>
             `;
+            prependCard(block);
+        }
+
+        function submitToolApproval(requestId, approved, btnElement = null) {
+            if (!requestId) {
+                console.error('[RAG Observer] 工具审核缺少 requestId，无法提交。');
+                return false;
+            }
+
+            const payload = {
+                type: 'tool_approval_response',
+                data: {
+                    requestId,
+                    approved: !!approved
+                }
+            };
+
+            let sendOk = false;
+            if (typeof window.sendVcpLogMessageFromObserver === 'function') {
+                sendOk = window.sendVcpLogMessageFromObserver(payload) === true;
+            }
+
+            if (!sendOk && window.electronAPI && typeof window.electronAPI.sendVCPLogMessage === 'function') {
+                // 兜底：如果直连通道未就绪，尝试主进程中转通道
+                window.electronAPI.sendVCPLogMessage(payload);
+                sendOk = true;
+            }
+
+            if (!sendOk) {
+                console.error('[RAG Observer] 无可用发送通道，工具审核响应未发出。');
+                return false;
+            }
+
+            overlayState.pendingApprovalIds.delete(requestId);
+            if (overlayState.pendingApprovalIds.size === 0) {
+                scheduleOverlayHide(2000);
+            }
+
+            const actions = btnElement?.closest('.approval-actions');
+            if (actions) {
+                actions.querySelectorAll('button').forEach(btn => {
+                    btn.disabled = true;
+                    if (btn !== btnElement) {
+                        btn.style.opacity = '0.45';
+                    }
+                });
+            }
+
+            if (btnElement) {
+                btnElement.textContent = approved ? '已允许' : '已拒绝';
+            }
+
+            return true;
+        }
+
+        function handleToolApprovalAction(encodedRequestId, approved, btnElement) {
+            const requestId = decodeURIComponent(encodedRequestId || '');
+            submitToolApproval(requestId, approved, btnElement);
+        }
+
+        // 9. TOOL APPROVAL REQUEST BLOCK
+        function displayToolApprovalRequest(data) {
+            const block = document.createElement('div');
+            block.className = 'card-base type-notification card-enter';
+
+            const approvalData = (data && typeof data.data === 'object' && data.data) ? data.data : {};
+            const requestId = String(approvalData.requestId || '');
+            const toolName = approvalData.toolName || '未知工具';
+            const maidName = approvalData.maid || '未知助手';
+            const command = approvalData.args?.command || JSON.stringify(approvalData.args || {}, null, 2);
+            const requestTime = approvalData.timestamp || new Date().toLocaleString();
+            const encodedRequestId = encodeURIComponent(requestId);
+
+            block.innerHTML = `
+                <h3 style="color: var(--accent-notification);">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l7 4v6c0 5-3.5 8.5-7 10-3.5-1.5-7-5-7-10V6l7-4z"></path><path d="M9 12l2 2 4-4"></path></svg>
+                    工具调用审核请求
+                </h3>
+                <div class="meta-info">
+                    <span class="meta-pill">工具: ${toolName}</span>
+                    <span class="meta-pill">助手: ${maidName}</span>
+                    <span class="meta-pill">Time: ${requestTime}</span>
+                </div>
+                <div class="rag-sub-item" style="margin-top:8px; border-left: 2px solid var(--accent-notification);">
+                    <div style="font-size:0.8em; opacity:0.7; margin-bottom:6px;">命令预览</div>
+                    ${createContentHTML(String(command || '(empty command)'))}
+                </div>
+                <div class="approval-actions">
+                    <button class="approval-btn approve" onclick="handleToolApprovalAction('${encodedRequestId}', true, this)" ${requestId ? '' : 'disabled'}>允许</button>
+                    <button class="approval-btn reject" onclick="handleToolApprovalAction('${encodedRequestId}', false, this)" ${requestId ? '' : 'disabled'}>拒绝</button>
+                </div>
+            `;
+
+            prependCard(block);
+        }
+
+        // 10. GENERIC NOTIFICATION BLOCK
+        function displaySystemNotification(data) {
+            const block = document.createElement('div');
+            block.className = 'card-base type-notification card-enter';
+
+            const normalized = normalizeNotificationContent(data);
+            const contentString = String(normalized.content || '');
+            const isSucceed = /success|succeed|ok/i.test(normalized.status) || /success|succeed/i.test(contentString);
+            const isFailed = /error|failed|fail/i.test(normalized.status) || /error|failed|fail/i.test(contentString);
+            const dotClass = isSucceed ? 'dot-green' : (isFailed ? 'dot-red' : 'dot-orange');
+
+            block.innerHTML = `
+                <h3 style="color: var(--accent-notification);">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+                    ${normalized.title}
+                </h3>
+                <div class="meta-info">
+                    <span class="status-pill" style="margin-bottom:0; background:transparent; border:none; padding:0;">
+                        <div class="status-dot ${dotClass}"></div>
+                        <span style="color:var(--accent-notification);">${normalized.source}</span>
+                    </span>
+                    <span class="meta-pill">Status: ${normalized.status}</span>
+                    <span class="meta-pill">Time: ${new Date().toLocaleTimeString()}</span>
+                </div>
+                ${createContentHTML(contentString)}
+            `;
+
             prependCard(block);
         }
 
@@ -980,7 +1638,8 @@
                          element.classList.contains('type-chain') ? 'chain' :
                          element.classList.contains('type-chat') ? 'chat' :
                          element.classList.contains('type-memo') ? 'memo' :
-                         element.classList.contains('type-dream') ? 'dream' : 'all';
+                         element.classList.contains('type-dream') ? 'dream' :
+                         element.classList.contains('type-notification') ? 'notification' : 'all';
             
             if (currentFilter !== 'all' && currentFilter !== type) {
                 element.style.display = 'none';
@@ -1041,7 +1700,7 @@
         }
 
         // --- UI Initialization ---
-        document.addEventListener('DOMContentLoaded', () => {
+        document.addEventListener('DOMContentLoaded', async () => {
             const activeButton = document.querySelector('.filter-btn.active');
             if (activeButton) {
                 setTimeout(() => {
@@ -1059,6 +1718,73 @@
                     highlight.style.transition = 'all 0.4s var(--ease-elastic)';
                 }, 100); // A small delay to ensure layout is calculated
             }
+
+            // 初始化开关状态
+            setNotificationCategoryEnabled(true, false);
+
+            // 初始化悬浮通知窗控制（从主进程恢复持久化状态）
+            try {
+                if (window.electronAPI?.ragOverlayGetState) {
+                    const restoredState = await window.electronAPI.ragOverlayGetState();
+                    if (restoredState && typeof restoredState === 'object') {
+                        if (typeof restoredState.enabled === 'boolean') {
+                            setOverlayEnabled(restoredState.enabled, false);
+                        } else {
+                            setOverlayEnabled(true, false);
+                        }
+
+                        if (typeof restoredState.passThrough === 'boolean') {
+                            setOverlayPassThrough(restoredState.passThrough, false);
+                        } else {
+                            updateOverlayControlButtons();
+                        }
+
+                        const opacityPercent = Number(restoredState.opacity) * 100;
+                        if (Number.isFinite(opacityPercent)) {
+                            setOverlayOpacity(opacityPercent, false);
+                        } else {
+                            setOverlayOpacity(92, false);
+                        }
+                    } else {
+                        setOverlayEnabled(true, false);
+                        updateOverlayControlButtons();
+                        setOverlayOpacity(92, false);
+                    }
+                } else {
+                    setOverlayEnabled(true, false);
+                    updateOverlayControlButtons();
+                    setOverlayOpacity(92, false);
+                }
+            } catch (overlayStateError) {
+                console.warn('[RAG Observer] 读取悬浮窗持久化状态失败，回退默认值:', overlayStateError);
+                setOverlayEnabled(true, false);
+                updateOverlayControlButtons();
+                setOverlayOpacity(92, false);
+            }
+
+            if (observerRuntimeState.overlayEnabled && window.electronAPI?.ragOverlayHide) {
+                window.electronAPI.ragOverlayHide();
+            }
+
+            // 当从悬浮窗点击审核按钮时，复用监听器内审核逻辑
+            if (window.electronAPI?.onRagOverlayApprovalAction) {
+                window.electronAPI.onRagOverlayApprovalAction((payload) => {
+                    if (!observerRuntimeState.overlayEnabled) return;
+                    if (!payload || !payload.requestId) return;
+                    submitToolApproval(String(payload.requestId), !!payload.approved, null);
+                });
+            }
+
+            window.addEventListener('beforeunload', () => {
+                observerRuntimeState.mounted = false;
+                clearOverlayHideTimer();
+                if (window.electronAPI?.ragOverlaySetEnabled) {
+                    window.electronAPI.ragOverlaySetEnabled(false);
+                }
+                if (typeof window.setNotificationChannelEnabledFromObserver === 'function') {
+                    window.setNotificationChannelEnabledFromObserver(false);
+                }
+            });
         });
     </script>
 </body>

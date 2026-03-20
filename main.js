@@ -142,9 +142,109 @@ let openChildWindows = [];
 let distributedServer = null; // To hold the distributed server instance
 let translatorWindow = null; // To hold the single instance of the translator window
 let ragObserverWindow = null; // To hold the single instance of the RAG observer window
+let ragOverlayWindow = null; // 附属于RAG监听器的悬浮通知窗
+let ragOverlayReady = false;
+let appSettingsManager = null;
+let ragOverlayPersistTimer = null;
+let ragOverlayAutoPositioning = false;
+const DEFAULT_RAG_OVERLAY_STATE = {
+    enabled: true,
+    passThrough: true,
+    opacity: 0.92,
+    bounds: null,
+    useCustomBounds: false
+};
+let ragOverlayState = { ...DEFAULT_RAG_OVERLAY_STATE };
 let networkNotesTreeCache = null; // In-memory cache for the network notes
 let cachedModels = []; // Cache for models fetched from VCP server
 const NOTES_MODULE_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'Notemodules');
+const isRagObserverOnlyMode = process.argv.includes('--rag-observer-only');
+
+function normalizeRagOverlayState(rawState = {}) {
+    const state = rawState && typeof rawState === 'object' ? rawState : {};
+    const opacityRaw = Number(state.opacity);
+    const opacity = Number.isFinite(opacityRaw) ? Math.min(1, Math.max(0.15, opacityRaw)) : DEFAULT_RAG_OVERLAY_STATE.opacity;
+
+    let bounds = null;
+    if (state.bounds && typeof state.bounds === 'object') {
+        const x = Number(state.bounds.x);
+        const y = Number(state.bounds.y);
+        const width = Number(state.bounds.width);
+        const height = Number(state.bounds.height);
+        if ([x, y, width, height].every(Number.isFinite)) {
+            bounds = {
+                x: Math.round(x),
+                y: Math.round(y),
+                width: Math.max(300, Math.round(width)),
+                height: Math.max(140, Math.round(height))
+            };
+        }
+    }
+
+    return {
+        enabled: state.enabled !== undefined ? !!state.enabled : DEFAULT_RAG_OVERLAY_STATE.enabled,
+        passThrough: state.passThrough !== undefined ? !!state.passThrough : DEFAULT_RAG_OVERLAY_STATE.passThrough,
+        opacity,
+        bounds,
+        useCustomBounds: state.useCustomBounds !== undefined ? !!state.useCustomBounds : !!bounds
+    };
+}
+
+function schedulePersistRagOverlayState(immediate = false) {
+    if (!appSettingsManager) return;
+
+    const persist = async () => {
+        try {
+            await appSettingsManager.updateSettings(prevSettings => ({
+                ...prevSettings,
+                ragOverlaySettings: {
+                    enabled: ragOverlayState.enabled !== undefined ? !!ragOverlayState.enabled : DEFAULT_RAG_OVERLAY_STATE.enabled,
+                    passThrough: !!ragOverlayState.passThrough,
+                    opacity: Math.min(1, Math.max(0.15, Number(ragOverlayState.opacity) || DEFAULT_RAG_OVERLAY_STATE.opacity)),
+                    bounds: ragOverlayState.bounds ? {
+                        x: Math.round(ragOverlayState.bounds.x),
+                        y: Math.round(ragOverlayState.bounds.y),
+                        width: Math.max(300, Math.round(ragOverlayState.bounds.width)),
+                        height: Math.max(140, Math.round(ragOverlayState.bounds.height))
+                    } : null,
+                    useCustomBounds: !!ragOverlayState.useCustomBounds
+                }
+            }));
+        } catch (error) {
+            console.error('[RAG Overlay] Failed to persist overlay settings:', error);
+        }
+    };
+
+    if (immediate) {
+        if (ragOverlayPersistTimer) {
+            clearTimeout(ragOverlayPersistTimer);
+            ragOverlayPersistTimer = null;
+        }
+        void persist();
+        return;
+    }
+
+    if (ragOverlayPersistTimer) {
+        clearTimeout(ragOverlayPersistTimer);
+    }
+    ragOverlayPersistTimer = setTimeout(() => {
+        ragOverlayPersistTimer = null;
+        void persist();
+    }, 220);
+}
+
+function captureOverlayBoundsAndPersist(windowInstance) {
+    if (!windowInstance || windowInstance.isDestroyed()) return;
+    const bounds = windowInstance.getBounds();
+    ragOverlayState.bounds = {
+        x: Math.round(bounds.x),
+        y: Math.round(bounds.y),
+        width: Math.max(300, Math.round(bounds.width)),
+        height: Math.max(140, Math.round(bounds.height))
+    };
+    ragOverlayState.useCustomBounds = true;
+    schedulePersistRagOverlayState();
+}
 
 // --- Audio Engine Management ---
 // Now uses the Rust native audio engine instead of Python
@@ -262,10 +362,10 @@ function createWindow() {
 
     // This will be triggered when the app is quitting, after the window is closed.
     mainWindow.on('closed', () => {
-        // When the main window is closed, we quit the app on non-macOS platforms.
-        // This ensures that any child windows are also closed and the process terminates.
+        // When the main window is closed, we should only quit on non-macOS
+        // when there are no remaining windows (e.g. RAG Observer may still be open).
         mainWindow = null;
-        if (process.platform !== 'darwin') {
+        if (process.platform !== 'darwin' && BrowserWindow.getAllWindows().length === 0) {
             app.quit();
         }
     });
@@ -321,16 +421,58 @@ function createTray() {
 
     tray = new Tray(icon);
 
+    const toggleMainWindowVisibility = () => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            if (mainWindow.isVisible()) {
+                mainWindow.hide();
+            } else {
+                if (mainWindow.isMinimized()) mainWindow.restore();
+                mainWindow.show();
+                mainWindow.focus();
+            }
+            return true;
+        }
+        return false;
+    };
+
+    const toggleRagObserverVisibility = async () => {
+        if (ragObserverWindow && !ragObserverWindow.isDestroyed()) {
+            if (ragObserverWindow.isVisible()) {
+                ragObserverWindow.hide();
+                if (ragOverlayWindow && !ragOverlayWindow.isDestroyed()) {
+                    ragOverlayWindow.hide();
+                }
+            } else {
+                if (ragObserverWindow.isMinimized()) ragObserverWindow.restore();
+                ragObserverWindow.show();
+                ragObserverWindow.focus();
+            }
+            return true;
+        }
+
+        await openRagObserverWindow();
+        return true;
+    };
+
+    const handleTrayPrimaryAction = async () => {
+        if (toggleMainWindowVisibility()) return;
+        await toggleRagObserverVisibility();
+    };
+
     const contextMenu = Menu.buildFromTemplate([
         {
-            label: '显示/隐藏',
+            label: '显示/隐藏主窗口',
             click: () => {
-                // 修复 TypeError: Cannot read properties of null (reading 'isVisible')
-                if (mainWindow && !mainWindow.isDestroyed()) {
-                    mainWindow.isVisible() ? mainWindow.hide() : mainWindow.show();
-                }
+                toggleMainWindowVisibility();
             }
         },
+        {
+            label: '显示/隐藏信息流监听器',
+            click: () => {
+                void toggleRagObserverVisibility();
+            }
+        },
+        { type: 'separator' },
         {
             label: '退出',
             click: () => {
@@ -345,9 +487,7 @@ function createTray() {
     if (process.platform === 'darwin') {
         // macOS: 左键点击 (tray.on('click')) 负责显示/隐藏窗口
         tray.on('click', () => {
-            if (mainWindow && !mainWindow.isDestroyed()) {
-                mainWindow.isVisible() ? mainWindow.hide() : mainWindow.show();
-            }
+            void handleTrayPrimaryAction();
         });
 
         // macOS: 右键点击 (tray.on('right-click')) 负责显示菜单
@@ -360,11 +500,210 @@ function createTray() {
         // Windows/Linux: 默认行为。
         tray.setContextMenu(contextMenu);
         tray.on('click', () => {
-            if (mainWindow && !mainWindow.isDestroyed()) {
-                mainWindow.isVisible() ? mainWindow.hide() : mainWindow.show();
+            void handleTrayPrimaryAction();
+        });
+    }
+}
+
+function positionRagOverlayNearObserver() {
+    if (!ragOverlayWindow || ragOverlayWindow.isDestroyed()) return;
+    if (ragOverlayState.useCustomBounds) return;
+
+    const overlayBounds = ragOverlayWindow.getBounds();
+
+    if (ragObserverWindow && !ragObserverWindow.isDestroyed()) {
+        const observerBounds = ragObserverWindow.getBounds();
+        const observerCenterPoint = {
+            x: Math.round(observerBounds.x + observerBounds.width / 2),
+            y: Math.round(observerBounds.y + observerBounds.height / 2)
+        };
+        const display = screen.getDisplayNearestPoint(observerCenterPoint);
+        const workArea = display?.workArea || { x: 0, y: 0, width: 1920, height: 1080 };
+        const x = Math.min(
+            Math.max(workArea.x, observerBounds.x + observerBounds.width + 14),
+            workArea.x + workArea.width - overlayBounds.width
+        );
+        const y = Math.min(
+            Math.max(workArea.y, observerBounds.y + 54),
+            workArea.y + workArea.height - overlayBounds.height
+        );
+        ragOverlayAutoPositioning = true;
+        ragOverlayWindow.setPosition(x, y);
+        ragOverlayAutoPositioning = false;
+        return;
+    }
+
+    const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+    const workArea = display?.workArea || { x: 0, y: 0, width: 1920, height: 1080 };
+    const fallbackX = workArea.x + workArea.width - overlayBounds.width - 18;
+    const fallbackY = workArea.y + 18;
+    ragOverlayAutoPositioning = true;
+    ragOverlayWindow.setPosition(fallbackX, fallbackY);
+    ragOverlayAutoPositioning = false;
+}
+
+function ensureRagOverlayWindow() {
+    if (ragOverlayState.enabled === false) {
+        return null;
+    }
+
+    if (ragOverlayWindow && !ragOverlayWindow.isDestroyed()) {
+        return ragOverlayWindow;
+    }
+
+    const initialBounds = ragOverlayState.bounds;
+    const windowConfig = {
+        width: initialBounds?.width || 420,
+        height: initialBounds?.height || 220,
+        minWidth: 300,
+        minHeight: 140,
+        frame: false,
+        transparent: true,
+        resizable: true,
+        skipTaskbar: true,
+        show: false,
+        alwaysOnTop: true,
+        hasShadow: true,
+        webPreferences: {
+            preload: path.join(__dirname, 'preload.js'),
+            contextIsolation: true,
+            nodeIntegration: false,
+        },
+        icon: path.join(__dirname, 'assets', 'icon.png')
+    };
+
+    if (ragOverlayState.useCustomBounds && initialBounds) {
+        windowConfig.x = initialBounds.x;
+        windowConfig.y = initialBounds.y;
+    }
+
+    ragOverlayWindow = new BrowserWindow(windowConfig);
+
+    const overlayUrl = `file://${path.join(__dirname, 'RAGmodules', 'RAG_Overlay.html')}`;
+    ragOverlayReady = false;
+    ragOverlayWindow.loadURL(overlayUrl);
+    ragOverlayWindow.setAlwaysOnTop(true, 'screen-saver');
+    ragOverlayWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+    ragOverlayWindow.setMenu(null);
+    ragOverlayWindow.setOpacity(ragOverlayState.opacity);
+    ragOverlayWindow.setIgnoreMouseEvents(ragOverlayState.passThrough, { forward: true });
+
+    if (!ragOverlayState.useCustomBounds) {
+        positionRagOverlayNearObserver();
+    }
+
+    ragOverlayWindow.webContents.once('did-finish-load', () => {
+        ragOverlayReady = true;
+        if (!ragOverlayWindow || ragOverlayWindow.isDestroyed()) return;
+        ragOverlayWindow.webContents.send('rag-overlay-pass-through-changed', { passThrough: ragOverlayState.passThrough });
+    });
+
+    ragOverlayWindow.on('move', () => {
+        if (ragOverlayAutoPositioning) return;
+        captureOverlayBoundsAndPersist(ragOverlayWindow);
+    });
+
+    ragOverlayWindow.on('resize', () => {
+        if (ragOverlayAutoPositioning) return;
+        captureOverlayBoundsAndPersist(ragOverlayWindow);
+    });
+
+    ragOverlayWindow.on('closed', () => {
+        ragOverlayReady = false;
+        ragOverlayWindow = null;
+    });
+
+    return ragOverlayWindow;
+}
+
+async function openRagObserverWindow() {
+    // 检查窗口是否已存在，如果存在则聚焦
+    if (ragObserverWindow && !ragObserverWindow.isDestroyed()) {
+        if (!ragObserverWindow.isVisible()) {
+            ragObserverWindow.show();
+        }
+        ragObserverWindow.focus();
+        return;
+    }
+
+    ragObserverWindow = new BrowserWindow({
+        width: 500,
+        height: 900,
+        minWidth: 300,
+        minHeight: 600,
+        title: 'VCP - 信息流监听器',
+        frame: false, // 移除原生窗口框架
+        ...(process.platform === 'darwin' ? {} : { titleBarStyle: 'hidden' }),
+        webPreferences: {
+            preload: path.join(__dirname, 'preload.js'),
+            contextIsolation: true,
+            nodeIntegration: false,
+        },
+        icon: path.join(__dirname, 'assets', 'icon.png'),
+        show: false
+    });
+
+    let settings = {};
+    try {
+        if (appSettingsManager) {
+            settings = await appSettingsManager.readSettings();
+        } else {
+            const AppSettingsManager = require('./modules/utils/appSettingsManager');
+            const sm = new AppSettingsManager(SETTINGS_FILE);
+            settings = await sm.readSettings();
+        }
+    } catch (readError) {
+        console.error('Failed to read settings file for RAG observer window:', readError);
+    }
+
+    ragOverlayState = normalizeRagOverlayState(settings.ragOverlaySettings || {});
+
+    const vcpLogUrl = settings.vcpLogUrl || '';
+    const vcpLogKey = settings.vcpLogKey || '';
+    const currentThemeMode = settings.currentThemeMode || 'dark';
+
+    // 通过URL查询参数传递配置
+    const observerUrl = `file://${path.join(__dirname, 'RAGmodules', 'RAG_Observer.html')}?vcpLogUrl=${encodeURIComponent(vcpLogUrl)}&vcpLogKey=${encodeURIComponent(vcpLogKey)}&currentThemeMode=${encodeURIComponent(currentThemeMode)}`;
+
+    ragObserverWindow.loadURL(observerUrl);
+    ragObserverWindow.setMenu(null);
+
+    ragObserverWindow.once('ready-to-show', () => {
+        ragObserverWindow.show();
+    });
+
+    openChildWindows.push(ragObserverWindow);
+
+    if (ragObserverWindow && !ragObserverWindow.isDestroyed()) {
+        ragObserverWindow.on('move', () => {
+            if (!ragOverlayState.useCustomBounds) {
+                positionRagOverlayNearObserver();
+            }
+        });
+        ragObserverWindow.on('resize', () => {
+            if (!ragOverlayState.useCustomBounds) {
+                positionRagOverlayNearObserver();
             }
         });
     }
+
+    ragObserverWindow.on('close', (event) => {
+        if (process.platform === 'darwin' && !app.isQuitting) {
+            event.preventDefault();
+            ragObserverWindow.hide();
+        }
+    });
+
+    ragObserverWindow.on('closed', () => {
+        openChildWindows = openChildWindows.filter(win => win !== ragObserverWindow);
+        ragObserverWindow = null;
+
+        if (ragOverlayWindow && !ragOverlayWindow.isDestroyed()) {
+            ragOverlayWindow.close();
+            ragOverlayReady = false;
+            ragOverlayWindow = null;
+        }
+    });
 }
 
 // --- App Lifecycle ---
@@ -373,11 +712,26 @@ const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
     app.quit();
 } else {
-    app.on('second-instance', (event, commandLine, workingDirectory) => {
-        // 有人试图运行第二个实例，我们应该聚焦于我们的窗口
+    app.on('second-instance', async (event, commandLine, workingDirectory) => {
+        const wantsRagOnly = commandLine.includes('--rag-observer-only');
+
+        // 如果第二实例请求的是 RAG 独立模式，则直接打开/聚焦 RAG 窗口
+        if (wantsRagOnly) {
+            await openRagObserverWindow();
+            return;
+        }
+
+        // 默认聚焦主窗口
         if (mainWindow && !mainWindow.isDestroyed()) {
             if (mainWindow.isMinimized()) mainWindow.restore();
             mainWindow.focus();
+            return;
+        }
+
+        if (ragObserverWindow && !ragObserverWindow.isDestroyed()) {
+            if (ragObserverWindow.isMinimized()) ragObserverWindow.restore();
+            if (!ragObserverWindow.isVisible()) ragObserverWindow.show();
+            ragObserverWindow.focus();
         }
     });
 
@@ -424,7 +778,7 @@ if (!gotTheLock) {
 
         const AppSettingsManager = require('./modules/utils/appSettingsManager');
         const AgentConfigManager = require('./modules/utils/agentConfigManager');
-        const appSettingsManager = new AppSettingsManager(SETTINGS_FILE);
+        appSettingsManager = new AppSettingsManager(SETTINGS_FILE);
         const agentConfigManager = new AgentConfigManager(AGENT_DIR);
 
         appSettingsManager.startCleanupTimer();
@@ -432,6 +786,21 @@ if (!gotTheLock) {
         agentConfigManager.startCleanupTimer(); // Start agent config cleanup
 
         settingsHandlers.initialize({ SETTINGS_FILE, USER_AVATAR_FILE, AGENT_DIR, settingsManager: appSettingsManager, agentConfigManager }); // Initialize settings handlers
+        ipcMain.handle('open-rag-observer-window', openRagObserverWindow);
+
+        // RAG 独立模式：不创建主窗口，仅初始化 RAG 所需 IPC 并直接打开 RAG 窗口
+        if (isRagObserverOnlyMode) {
+            console.log('[Main] Starting in RAG observer only mode.');
+            windowHandlers.initialize(mainWindow, openChildWindows);
+            themeHandlers.initialize({ mainWindow, openChildWindows, projectRoot: PROJECT_ROOT, APP_DATA_ROOT_IN_PROJECT, settingsManager: appSettingsManager });
+            ipcMain.handle('get-platform', () => process.platform);
+
+            // 关键：独立模式也必须创建系统托盘，否则“最小化到托盘”后无法召回窗口。
+            createTray();
+
+            await openRagObserverWindow();
+            return;
+        }
 
         // Function to fetch and cache models from the VCP server
         async function fetchAndCacheModels() {
@@ -764,71 +1133,7 @@ if (!gotTheLock) {
             });
         });
 
-        // 新增：处理打开RAG Observer窗口的请求
-        ipcMain.handle('open-rag-observer-window', async () => {
-            // 检查窗口是否已存在，如果存在则聚焦
-            if (ragObserverWindow && !ragObserverWindow.isDestroyed()) {
-                if (!ragObserverWindow.isVisible()) {
-                    ragObserverWindow.show();
-                }
-                ragObserverWindow.focus();
-                return;
-            }
-
-            ragObserverWindow = new BrowserWindow({
-                width: 500,
-                height: 900,
-                minWidth: 300,
-                minHeight: 600,
-                title: 'VCP - 信息流监听器',
-                frame: false, // 移除原生窗口框架
-                ...(process.platform === 'darwin' ? {} : { titleBarStyle: 'hidden' }),
-                webPreferences: {
-                    preload: path.join(__dirname, 'preload.js'),
-                    contextIsolation: true,
-                    nodeIntegration: false,
-                },
-                icon: path.join(__dirname, 'assets', 'icon.png'),
-                show: false
-            });
-
-            let settings = {};
-            try {
-                const AppSettingsManager = require('./modules/utils/appSettingsManager');
-                const sm = new AppSettingsManager(SETTINGS_FILE);
-                settings = await sm.readSettings();
-            } catch (readError) {
-                console.error('Failed to read settings file for RAG observer window:', readError);
-            }
-
-            const vcpLogUrl = settings.vcpLogUrl || '';
-            const vcpLogKey = settings.vcpLogKey || '';
-            const currentThemeMode = settings.currentThemeMode || 'dark';
-
-            // 通过URL查询参数传递配置
-            const observerUrl = `file://${path.join(__dirname, 'RAGmodules', 'RAG_Observer.html')}?vcpLogUrl=${encodeURIComponent(vcpLogUrl)}&vcpLogKey=${encodeURIComponent(vcpLogKey)}&currentThemeMode=${encodeURIComponent(currentThemeMode)}`;
-
-            ragObserverWindow.loadURL(observerUrl);
-            ragObserverWindow.setMenu(null);
-
-            ragObserverWindow.once('ready-to-show', () => {
-                ragObserverWindow.show();
-            });
-
-            openChildWindows.push(ragObserverWindow);
-
-            ragObserverWindow.on('close', (event) => {
-                if (process.platform === 'darwin' && !app.isQuitting) {
-                    event.preventDefault();
-                    ragObserverWindow.hide();
-                }
-            });
-
-            ragObserverWindow.on('closed', () => {
-                openChildWindows = openChildWindows.filter(win => win !== ragObserverWindow);
-                ragObserverWindow = null;
-            });
-        });
+        // open-rag-observer-window handler is registered once above and reuses openRagObserverWindow()
 
         windowHandlers.initialize(mainWindow, openChildWindows);
         forumHandlers.initialize({ USER_DATA_DIR }); // Initialize forum handlers
@@ -1193,6 +1498,151 @@ if (!gotTheLock) {
             vcpLogWebSocket.send(JSON.stringify(data));
         } else {
             console.warn('VCPLog WebSocket 未连接或未就绪，无法发送消息:', data);
+        }
+    });
+
+    ipcMain.on('rag-overlay-show', (event, payload = {}) => {
+        if (ragOverlayState.enabled === false) return;
+
+        const overlayWin = ensureRagOverlayWindow();
+        if (!overlayWin || overlayWin.isDestroyed()) return;
+
+        if (typeof payload.passThrough === 'boolean') {
+            ragOverlayState.passThrough = !!payload.passThrough;
+        }
+        if (typeof payload.opacity === 'number' && Number.isFinite(payload.opacity)) {
+            ragOverlayState.opacity = Math.min(1, Math.max(0.15, Number(payload.opacity)));
+        }
+
+        const renderPayload = () => {
+            if (!overlayWin || overlayWin.isDestroyed()) return;
+
+            const isPassThrough = ragOverlayState.passThrough === true;
+            overlayWin.setOpacity(ragOverlayState.opacity);
+            overlayWin.setIgnoreMouseEvents(isPassThrough, { forward: true });
+            overlayWin.webContents.send('rag-overlay-pass-through-changed', { passThrough: isPassThrough });
+            overlayWin.webContents.send('rag-overlay-payload', {
+                ...payload,
+                passThrough: isPassThrough,
+                opacity: ragOverlayState.opacity
+            });
+
+            positionRagOverlayNearObserver();
+            if (!overlayWin.isVisible()) {
+                overlayWin.show();
+            } else {
+                overlayWin.moveTop();
+            }
+        };
+
+        if (!ragOverlayReady || overlayWin.webContents.isLoadingMainFrame()) {
+            overlayWin.webContents.once('did-finish-load', () => {
+                ragOverlayReady = true;
+                renderPayload();
+            });
+            return;
+        }
+
+        renderPayload();
+    });
+
+    ipcMain.on('rag-overlay-hide', () => {
+        if (ragOverlayWindow && !ragOverlayWindow.isDestroyed()) {
+            ragOverlayWindow.hide();
+        }
+    });
+
+    ipcMain.on('rag-overlay-set-enabled', (event, enabled) => {
+        ragOverlayState.enabled = !!enabled;
+
+        if (!ragOverlayState.enabled) {
+            if (ragOverlayWindow && !ragOverlayWindow.isDestroyed()) {
+                ragOverlayReady = false;
+                ragOverlayWindow.destroy();
+                ragOverlayWindow = null;
+            }
+        }
+
+        schedulePersistRagOverlayState();
+    });
+
+    ipcMain.on('rag-overlay-set-opacity', (event, opacity) => {
+        const nextOpacity = Number(opacity);
+        if (!Number.isFinite(nextOpacity)) return;
+        ragOverlayState.opacity = Math.min(1, Math.max(0.15, nextOpacity));
+
+        if (ragOverlayWindow && !ragOverlayWindow.isDestroyed()) {
+            ragOverlayWindow.setOpacity(ragOverlayState.opacity);
+        }
+
+        schedulePersistRagOverlayState();
+    });
+
+    ipcMain.on('rag-overlay-set-pass-through', (event, passThrough) => {
+        const value = !!passThrough;
+        ragOverlayState.passThrough = value;
+
+        if (ragOverlayWindow && !ragOverlayWindow.isDestroyed()) {
+            ragOverlayWindow.setIgnoreMouseEvents(value, { forward: true });
+            ragOverlayWindow.webContents.send('rag-overlay-pass-through-changed', { passThrough: value });
+        }
+
+        schedulePersistRagOverlayState();
+    });
+
+    ipcMain.handle('rag-overlay-get-bounds', (event) => {
+        const senderWin = BrowserWindow.fromWebContents(event.sender);
+        if (!senderWin || senderWin.isDestroyed()) return null;
+        return senderWin.getBounds();
+    });
+
+    ipcMain.handle('rag-overlay-get-state', () => {
+        return {
+            enabled: ragOverlayState.enabled !== undefined ? !!ragOverlayState.enabled : DEFAULT_RAG_OVERLAY_STATE.enabled,
+            passThrough: !!ragOverlayState.passThrough,
+            opacity: Math.min(1, Math.max(0.15, Number(ragOverlayState.opacity) || DEFAULT_RAG_OVERLAY_STATE.opacity)),
+            bounds: ragOverlayState.bounds ? { ...ragOverlayState.bounds } : null,
+            useCustomBounds: !!ragOverlayState.useCustomBounds
+        };
+    });
+
+    ipcMain.on('rag-overlay-resize', (event, payload = {}) => {
+        const senderWin = BrowserWindow.fromWebContents(event.sender);
+        if (!senderWin || senderWin.isDestroyed()) return;
+
+        const edge = String(payload.edge || '').toLowerCase();
+        const dx = Number(payload.dx) || 0;
+        const dy = Number(payload.dy) || 0;
+        const bounds = senderWin.getBounds();
+
+        let { x, y, width, height } = bounds;
+
+        if (edge.includes('e')) width += dx;
+        if (edge.includes('s')) height += dy;
+        if (edge.includes('w')) {
+            width -= dx;
+            x += dx;
+        }
+        if (edge.includes('n')) {
+            height -= dy;
+            y += dy;
+        }
+
+        const minWidth = 300;
+        const minHeight = 140;
+        width = Math.max(minWidth, Math.round(width));
+        height = Math.max(minHeight, Math.round(height));
+
+        senderWin.setBounds({ x: Math.round(x), y: Math.round(y), width, height });
+        captureOverlayBoundsAndPersist(senderWin);
+    });
+
+    ipcMain.on('rag-overlay-approval-action', (event, payload = {}) => {
+        if (ragObserverWindow && !ragObserverWindow.isDestroyed()) {
+            ragObserverWindow.webContents.send('rag-overlay-approval-action', {
+                requestId: payload.requestId,
+                approved: !!payload.approved
+            });
         }
     });
 }

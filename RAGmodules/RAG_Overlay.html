@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RAG Overlay Notification</title>
+    <style>
+        :root {
+            --bg: rgba(18, 20, 26, 0.78);
+            --border: rgba(255, 255, 255, 0.18);
+            --text: #f4f7ff;
+            --sub: rgba(235, 240, 255, 0.72);
+            --accent: #5ab2ff;
+            --warning: #ffb347;
+            --success: #69d28a;
+            --error: #ff7d7d;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            overflow: hidden;
+            background: transparent;
+            color: var(--text);
+            font-family: 'JetBrains Mono', 'Segoe UI', sans-serif;
+            user-select: none;
+        }
+
+        #overlayRoot {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            border-radius: 14px;
+            border: 1px solid var(--border);
+            background: var(--bg);
+            backdrop-filter: blur(12px) saturate(140%);
+            box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+            overflow: hidden;
+        }
+
+        #overlayRoot.interactive {
+            border-color: rgba(90, 178, 255, 0.46);
+            box-shadow: 0 0 0 1px rgba(90, 178, 255, 0.24) inset, 0 12px 30px rgba(0, 0, 0, 0.45);
+        }
+
+        .overlay-header {
+            height: 34px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 10px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            background: linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0));
+            -webkit-app-region: drag;
+        }
+
+        .left {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 0;
+        }
+
+        .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 999px;
+            background: var(--accent);
+            box-shadow: 0 0 8px var(--accent);
+        }
+
+        .header-title {
+            font-size: 12px;
+            letter-spacing: 0.3px;
+            color: #d6e9ff;
+            white-space: nowrap;
+        }
+
+        .header-meta {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 11px;
+            color: var(--sub);
+            -webkit-app-region: no-drag;
+        }
+
+        .pill {
+            border: 1px solid rgba(255,255,255,0.24);
+            border-radius: 999px;
+            padding: 1px 8px;
+            line-height: 1.6;
+        }
+
+        .content {
+            padding: 10px 12px 12px;
+            height: calc(100% - 34px);
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .title {
+            font-size: 14px;
+            font-weight: 700;
+            line-height: 1.4;
+            color: #fff;
+            word-break: break-word;
+        }
+
+        .message {
+            flex: 1;
+            min-height: 0;
+            font-size: 12px;
+            line-height: 1.55;
+            color: rgba(244, 247, 255, 0.92);
+            white-space: pre-wrap;
+            word-break: break-word;
+            overflow: auto;
+            padding-right: 2px;
+        }
+
+        .message::-webkit-scrollbar { width: 6px; }
+        .message::-webkit-scrollbar-thumb {
+            background: rgba(255,255,255,0.2);
+            border-radius: 4px;
+        }
+
+        .approval-actions {
+            display: none;
+            gap: 8px;
+            -webkit-app-region: no-drag;
+        }
+
+        .approval-actions.visible {
+            display: flex;
+        }
+
+        .btn {
+            border: 1px solid rgba(255,255,255,0.26);
+            border-radius: 8px;
+            padding: 6px 12px;
+            cursor: pointer;
+            font-size: 12px;
+            color: #fff;
+            background: rgba(255,255,255,0.08);
+            transition: all 0.2s ease;
+        }
+
+        .btn:hover:not(:disabled) {
+            transform: translateY(-1px);
+            filter: brightness(1.08);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn.approve {
+            border-color: rgba(105, 210, 138, 0.62);
+            background: rgba(105, 210, 138, 0.2);
+            color: #c8ffd9;
+        }
+
+        .btn.reject {
+            border-color: rgba(255, 125, 125, 0.62);
+            background: rgba(255, 125, 125, 0.2);
+            color: #ffd2d2;
+        }
+
+        .resize-handle {
+            position: absolute;
+            z-index: 20;
+            -webkit-app-region: no-drag;
+            display: none;
+        }
+
+        #overlayRoot.interactive .resize-handle { display: block; }
+
+        .resize-handle.n, .resize-handle.s { left: 10px; right: 10px; height: 6px; cursor: ns-resize; }
+        .resize-handle.n { top: 0; }
+        .resize-handle.s { bottom: 0; }
+
+        .resize-handle.e, .resize-handle.w { top: 10px; bottom: 10px; width: 6px; cursor: ew-resize; }
+        .resize-handle.e { right: 0; }
+        .resize-handle.w { left: 0; }
+
+        .resize-handle.nw, .resize-handle.ne, .resize-handle.sw, .resize-handle.se {
+            width: 12px;
+            height: 12px;
+        }
+        .resize-handle.nw { left: 0; top: 0; cursor: nwse-resize; }
+        .resize-handle.ne { right: 0; top: 0; cursor: nesw-resize; }
+        .resize-handle.sw { left: 0; bottom: 0; cursor: nesw-resize; }
+        .resize-handle.se { right: 0; bottom: 0; cursor: nwse-resize; }
+    </style>
+</head>
+<body>
+    <div id="overlayRoot">
+        <div class="overlay-header">
+            <div class="left">
+                <span class="dot" id="statusDot"></span>
+                <span class="header-title">信息流通知</span>
+            </div>
+            <div class="header-meta">
+                <span class="pill" id="modePill">穿透</span>
+                <span id="timeText">--:--:--</span>
+            </div>
+        </div>
+
+        <div class="content">
+            <div class="title" id="titleText">等待通知</div>
+            <div class="message" id="messageText">当有消息时，此悬浮通知窗会短暂显示。</div>
+            <div class="approval-actions" id="approvalActions">
+                <button class="btn approve" id="approveBtn">允许</button>
+                <button class="btn reject" id="rejectBtn">拒绝</button>
+            </div>
+        </div>
+
+        <div class="resize-handle n" data-edge="n"></div>
+        <div class="resize-handle s" data-edge="s"></div>
+        <div class="resize-handle e" data-edge="e"></div>
+        <div class="resize-handle w" data-edge="w"></div>
+        <div class="resize-handle nw" data-edge="nw"></div>
+        <div class="resize-handle ne" data-edge="ne"></div>
+        <div class="resize-handle sw" data-edge="sw"></div>
+        <div class="resize-handle se" data-edge="se"></div>
+    </div>
+
+    <script>
+        const overlayRoot = document.getElementById('overlayRoot');
+        const statusDot = document.getElementById('statusDot');
+        const modePill = document.getElementById('modePill');
+        const timeText = document.getElementById('timeText');
+        const titleText = document.getElementById('titleText');
+        const messageText = document.getElementById('messageText');
+        const approvalActions = document.getElementById('approvalActions');
+        const approveBtn = document.getElementById('approveBtn');
+        const rejectBtn = document.getElementById('rejectBtn');
+
+        const state = {
+            passThrough: true,
+            approvalRequestId: ''
+        };
+
+        function setDotColor(level) {
+            let color = '#5ab2ff';
+            if (level === 'warning') color = '#ffb347';
+            else if (level === 'success') color = '#69d28a';
+            else if (level === 'error') color = '#ff7d7d';
+            statusDot.style.background = color;
+            statusDot.style.boxShadow = `0 0 8px ${color}`;
+        }
+
+        function setPassThroughState(passThrough) {
+            state.passThrough = !!passThrough;
+            modePill.textContent = state.passThrough ? '穿透' : '可交互';
+            overlayRoot.classList.toggle('interactive', !state.passThrough);
+        }
+
+        function renderPayload(payload) {
+            const title = String(payload?.title || '信息流通知');
+            const content = String(payload?.content || '收到一条新消息');
+            const level = String(payload?.level || 'info');
+            const time = String(payload?.timestamp || new Date().toLocaleTimeString());
+            const approval = payload?.approval || null;
+
+            titleText.textContent = title;
+            messageText.textContent = content;
+            timeText.textContent = time;
+            setDotColor(level);
+
+            if (approval && approval.requestId) {
+                state.approvalRequestId = String(approval.requestId);
+                approvalActions.classList.add('visible');
+                approveBtn.disabled = false;
+                rejectBtn.disabled = false;
+                approveBtn.textContent = '允许';
+                rejectBtn.textContent = '拒绝';
+            } else {
+                state.approvalRequestId = '';
+                approvalActions.classList.remove('visible');
+            }
+        }
+
+        function sendApprovalAction(approved, btn) {
+            if (!state.approvalRequestId || !window.electronAPI?.sendRagOverlayApprovalAction) return;
+
+            window.electronAPI.sendRagOverlayApprovalAction({
+                requestId: state.approvalRequestId,
+                approved: !!approved
+            });
+
+            approveBtn.disabled = true;
+            rejectBtn.disabled = true;
+            btn.textContent = approved ? '已允许' : '已拒绝';
+        }
+
+        approveBtn.addEventListener('click', () => sendApprovalAction(true, approveBtn));
+        rejectBtn.addEventListener('click', () => sendApprovalAction(false, rejectBtn));
+
+        function setupResizeHandles() {
+            const handles = overlayRoot.querySelectorAll('.resize-handle');
+            handles.forEach((handle) => {
+                handle.addEventListener('mousedown', (event) => {
+                    if (state.passThrough) return;
+                    const edge = handle.dataset.edge;
+                    if (!edge || !window.electronAPI?.ragOverlayResize) return;
+
+                    event.preventDefault();
+                    let lastX = event.screenX;
+                    let lastY = event.screenY;
+
+                    const onMove = (moveEvent) => {
+                        const dx = moveEvent.screenX - lastX;
+                        const dy = moveEvent.screenY - lastY;
+                        lastX = moveEvent.screenX;
+                        lastY = moveEvent.screenY;
+
+                        window.electronAPI.ragOverlayResize({ edge, dx, dy });
+                    };
+
+                    const onUp = () => {
+                        window.removeEventListener('mousemove', onMove);
+                        window.removeEventListener('mouseup', onUp);
+                    };
+
+                    window.addEventListener('mousemove', onMove);
+                    window.addEventListener('mouseup', onUp);
+                });
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            setPassThroughState(true);
+            setupResizeHandles();
+
+            if (window.electronAPI?.onRagOverlayPayload) {
+                window.electronAPI.onRagOverlayPayload((payload) => {
+                    if (typeof payload?.opacity === 'number') {
+                        const v = Math.max(0.15, Math.min(1, payload.opacity));
+                        document.body.style.opacity = String(v);
+                    }
+                    if (typeof payload?.passThrough === 'boolean') {
+                        setPassThroughState(payload.passThrough);
+                    }
+                    renderPayload(payload || {});
+                });
+            }
+
+            if (window.electronAPI?.onRagOverlayPassThroughChanged) {
+                window.electronAPI.onRagOverlayPassThroughChanged((payload) => {
+                    setPassThroughState(!!payload?.passThrough);
+                });
+            }
+        });
+    </script>
+</body>
+</html>
