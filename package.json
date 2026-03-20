@@ -1,14 +1,13 @@
 {
   "name": "vcp-chat-desktop",
-  "version": "1.0.0",
+  "version": "4.4.2",
   "description": "一个为VCP服务器打造的AI聊天桌面客户端",
   "main": "main.js",
   "scripts": {
-    "postinstall": "electron-rebuild -f -w selection-hook",
     "start": "electron .",
     "start:rag-observer": "electron . --rag-observer-only",
-    "pack": "electron-rebuild -f -w selection-hook && electron-builder --dir",
-    "dist": "electron-rebuild -f -w selection-hook && electron-builder"
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder"
   },
   "keywords": [
     "VCP",
@@ -62,7 +61,6 @@
     "pdf-poppler": "^0.2.1",
     "portfinder": "^1.0.37",
     "puppeteer": "^24.15.0",
-    "selection-hook": "^0.9.23",
     "sharp": "^0.34.2",
     "stylelint": "^16.25.0",
     "tesseract.js": "^6.0.1",
