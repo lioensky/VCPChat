@@ -47,6 +47,7 @@ async fn websocket(
         let mut last_spectrum: Vec<f32> = Vec::new();
         let mut idle_ticks: u32 = 0;
         let mut last_load_progress: u64 = 0;
+        let mut last_preload_sent = false;  // FIX for Defect 4: track if preload was already sent
 
         loop {
             tokio::select! {
@@ -125,7 +126,12 @@ async fn websocket(
                         idle_ticks = 0;
                     }
 
-                    if shared_state.needs_preload.load(std::sync::atomic::Ordering::Acquire) {
+                    // FIX for Defect 4: Use load() but only send if we haven't sent
+                    // for this preload cycle already. Reset tracking when needs_preload
+                    // goes from true→false (i.e., gapless system clears it).
+                    let needs_preload_now = shared_state.needs_preload.load(std::sync::atomic::Ordering::Acquire);
+                    if needs_preload_now && !last_preload_sent {
+                        last_preload_sent = true;
                         let pos = shared_state.position_frames.load(std::sync::atomic::Ordering::Relaxed);
                         let total = shared_state.total_frames.load(std::sync::atomic::Ordering::Relaxed);
                         let sr = shared_state.sample_rate.load(std::sync::atomic::Ordering::Relaxed).max(1);
@@ -138,6 +144,10 @@ async fn websocket(
                         if session.text(msg.to_string()).await.is_err() {
                             break;
                         }
+                    }
+                    if !needs_preload_now && last_preload_sent {
+                        // Reset once gapless system clears the flag, ready for next cycle
+                        last_preload_sent = false;
                     }
 
                     let spectrum = shared_state.spectrum_data.lock().clone();

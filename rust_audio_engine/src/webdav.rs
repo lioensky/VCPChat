@@ -19,12 +19,24 @@ pub enum WebDavError {
 }
 
 /// WebDAV server configuration
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+///
+/// FIX for Defect 10: Custom Debug impl to mask password in log output.
+#[derive(Clone, Default, Serialize, Deserialize)]
 pub struct WebDavConfig {
     /// Base URL, e.g. "https://nas.local/music" (no trailing slash)
     pub base_url: String,
     pub username: Option<String>,
     pub password: Option<String>,
+}
+
+impl std::fmt::Debug for WebDavConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("WebDavConfig")
+            .field("base_url", &self.base_url)
+            .field("username", &self.username)
+            .field("password", &self.password.as_ref().map(|_| "********"))
+            .finish()
+    }
 }
 
 /// A single entry returned by PROPFIND

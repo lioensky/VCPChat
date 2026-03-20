@@ -1,7 +1,0 @@
-[target.x86_64-pc-windows-msvc]
-# Use vcpkg integration or environment variables for library paths to support collaborative development.
-# Hardcoded paths like "D:/AI/..." are removed to prevent build failures on different machines.
-rustflags = [
-    "-L", "native=H:/VCP/vcpkg/installed/x64-windows-static/lib",
-    "-l", "static=soxr"
-]

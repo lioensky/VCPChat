@@ -17,6 +17,7 @@ node_modules/
 # Rust build artifacts
 **/target/
 **/Cargo.lock
+rust_audio_engine/.cargo/
 
 # Reports and logs
 **/reports/

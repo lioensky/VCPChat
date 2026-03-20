@@ -40,6 +40,7 @@ rustfft = "6.2"
 rand = "0.8"
 ebur128 = "0.1"           # EBU R128 loudness measurement
 atomic_float = "1.0"      # Atomic floating point types
+arc-swap = "1.7"           # Lock-free Arc pointer swapping for audio buffers
 
 # --- Debug: Allocation tracking in audio callback ---
 assert_no_alloc = "1.1"

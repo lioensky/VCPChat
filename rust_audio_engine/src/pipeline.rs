@@ -84,19 +84,21 @@ impl RingBuffer {
     
     /// Write frames to the buffer, returns number of frames written
     /// If buffer would overflow, drops the oldest data (ring buffer behavior)
-    pub fn write(&mut self, samples: &[f64]) -> usize {
+    /// Returns (frames_written, overflow_new_consumed) — overflow_new_consumed is
+    /// the updated frames_consumed value that external read positions must respect.
+    pub fn write(&mut self, samples: &[f64]) -> (usize, Option<u64>) {
         let frames_to_write = samples.len() / self.channels;
         let samples_to_write = frames_to_write * self.channels;
-        
+
         if frames_to_write == 0 {
-            return 0;
+            return (0, None);
         }
-        
+
         // Check for potential overflow
         let frames_in_buffer = self.frames_written.saturating_sub(self.frames_consumed);
         let available_space = self.capacity_frames.saturating_sub(frames_in_buffer as usize);
-        
-        if frames_to_write > available_space {
+
+        let overflow_consumed = if frames_to_write > available_space {
             // Overflow detected - advance consumer position to make room
             // This effectively drops the oldest frames
             let overflow_frames = frames_to_write - available_space;
@@ -106,8 +108,12 @@ impl RingBuffer {
                 "RingBuffer overflow: dropping {} frames (total overflows: {})",
                 overflow_frames, self.overflow_count
             );
-        }
-        
+            // FIX for Defect 5: Return new consumed position so external read_pos can be updated
+            Some(self.frames_consumed)
+        } else {
+            None
+        };
+
         // Write samples using monotonically increasing write position
         for (i, &sample) in samples[..samples_to_write].iter().enumerate() {
             let frame_offset = i / self.channels;
@@ -116,9 +122,9 @@ impl RingBuffer {
             let buffer_idx = write_frame * self.channels + ch;
             self.data[buffer_idx] = sample;
         }
-        
+
         self.frames_written += frames_to_write as u64;
-        frames_to_write
+        (frames_to_write, overflow_consumed)
     }
     
     /// Read frames from the buffer at a given position
@@ -231,10 +237,11 @@ impl AudioPipeline {
         let is_finished = Arc::clone(&self.is_finished);
         let buffered_frames = Arc::clone(&self.buffered_frames);
         let total_frames = Arc::clone(&self.total_frames);
+        let current_read_pos = Arc::clone(&self.current_read_pos);
         let channels = self.channels;
         let original_sr = self.original_sample_rate;
         let target_sr = target_sample_rate.unwrap_or(original_sr);
-        
+
         let handle = thread::spawn(move || {
             Self::worker_loop(
                 path,
@@ -246,6 +253,7 @@ impl AudioPipeline {
                 is_finished,
                 buffered_frames,
                 total_frames,
+                current_read_pos,
             );
         });
         
@@ -263,6 +271,7 @@ impl AudioPipeline {
         is_finished: Arc<AtomicBool>,
         buffered_frames: Arc<AtomicU64>,
         total_frames: Arc<AtomicU64>,
+        current_read_pos: Arc<AtomicU64>,
     ) {
         log::info!("Pipeline worker started for: {}", path);
         
@@ -302,7 +311,11 @@ impl AudioPipeline {
                         let flushed = rs.flush();
                         if !flushed.is_empty() {
                             let frames = flushed.len() / channels;
-                            ring_buffer.write().write(&flushed);
+                            let (_, overflow) = ring_buffer.write().write(&flushed);
+                            // FIX for Defect 5: Sync external read position on overflow
+                            if let Some(min_pos) = overflow {
+                                current_read_pos.fetch_max(min_pos, Ordering::Relaxed);
+                            }
                             total_output_frames += frames as u64;
                             buffered_frames.store(total_output_frames, Ordering::Relaxed);
                         }
@@ -324,7 +337,11 @@ impl AudioPipeline {
             
             if !output.is_empty() {
                 let frames = output.len() / channels;
-                ring_buffer.write().write(&output);
+                let (_, overflow) = ring_buffer.write().write(&output);
+                // FIX for Defect 5: Sync external read position on overflow
+                if let Some(min_pos) = overflow {
+                    current_read_pos.fetch_max(min_pos, Ordering::Relaxed);
+                }
                 total_output_frames += frames as u64;
                 buffered_frames.store(total_output_frames, Ordering::Relaxed);
             }

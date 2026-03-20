@@ -328,4 +328,97 @@ mod tests {
         // Just verify it doesn't crash
         assert!(output.iter().any(|&x| x != 0.0));
     }
+
+    // === FIX for Defect 8: Boundary unit tests for process_inplace ===
+
+    #[test]
+    fn test_inplace_identity() {
+        // Identity IR: process_inplace should preserve input
+        let ir = vec![1.0, 0.0, 0.0, 0.0]; // 4 taps mono
+        let mut conv = FFTConvolver::new(&ir, 1);
+
+        let original = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0];
+        let mut buf = original.clone();
+
+        conv.process_inplace(&mut buf);
+
+        for i in 0..original.len() {
+            assert!((buf[i] - original[i]).abs() < 1e-10,
+                "Inplace identity mismatch at {}: {} vs {}", i, buf[i], original[i]);
+        }
+    }
+
+    #[test]
+    fn test_inplace_matches_process_into() {
+        // Verify process_inplace produces same output as process_into
+        let ir: Vec<f64> = (0..32).map(|i| (i as f64 / 32.0).sin() * 0.1).collect();
+        let input: Vec<f64> = (0..256).map(|i| (i as f64 * 0.05).sin()).collect();
+
+        let mut conv1 = FFTConvolver::new(&ir, 1);
+        let mut conv2 = FFTConvolver::new(&ir, 1);
+
+        let mut output_into = vec![0.0; input.len()];
+        conv1.process_into(&input, &mut output_into);
+
+        let mut buf_inplace = input.clone();
+        conv2.process_inplace(&mut buf_inplace);
+
+        for i in 0..input.len() {
+            assert!((output_into[i] - buf_inplace[i]).abs() < 1e-10,
+                "Mismatch at {}: into={} vs inplace={}", i, output_into[i], buf_inplace[i]);
+        }
+    }
+
+    #[test]
+    fn test_inplace_small_buffer() {
+        // Buffer smaller than IR length
+        let ir = vec![1.0, 0.5, 0.25, 0.125, 0.0, 0.0, 0.0, 0.0]; // 8 taps mono
+        let mut conv = FFTConvolver::new(&ir, 1);
+
+        // Only 4 samples (less than 8-tap IR)
+        let mut buf = vec![1.0, 0.0, 0.0, 0.0];
+        conv.process_inplace(&mut buf);
+
+        // Should produce convolution of delta with IR, truncated to 4 samples
+        // Result: [1.0, 0.5, 0.25, 0.125]
+        assert!((buf[0] - 1.0).abs() < 1e-10, "Expected 1.0, got {}", buf[0]);
+        assert!((buf[1] - 0.5).abs() < 1e-10, "Expected 0.5, got {}", buf[1]);
+        assert!((buf[2] - 0.25).abs() < 1e-10, "Expected 0.25, got {}", buf[2]);
+        assert!((buf[3] - 0.125).abs() < 1e-10, "Expected 0.125, got {}", buf[3]);
+    }
+
+    #[test]
+    fn test_inplace_stereo_identity() {
+        // Stereo identity IR
+        let ir = vec![1.0, 1.0, 0.0, 0.0]; // 2 taps stereo identity
+        let mut conv = FFTConvolver::new(&ir, 2);
+
+        let original = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]; // 4 frames stereo
+        let mut buf = original.clone();
+
+        conv.process_inplace(&mut buf);
+
+        for i in 0..original.len() {
+            assert!((buf[i] - original[i]).abs() < 1e-10,
+                "Stereo inplace identity mismatch at {}: {} vs {}", i, buf[i], original[i]);
+        }
+    }
+
+    #[test]
+    fn test_inplace_multi_chunk() {
+        // Multiple consecutive calls with continuity
+        let ir = vec![1.0, 0.5, 0.0, 0.0]; // 4 taps mono
+        let mut conv = FFTConvolver::new(&ir, 1);
+
+        let mut buf1 = vec![1.0, 0.0, 0.0, 0.0];
+        conv.process_inplace(&mut buf1);
+
+        // Second chunk should carry overlap from first
+        let mut buf2 = vec![0.0, 0.0, 0.0, 0.0];
+        conv.process_inplace(&mut buf2);
+
+        // buf1 should be [1.0, 0.5, 0.0, 0.0]
+        assert!((buf1[0] - 1.0).abs() < 1e-10);
+        assert!((buf1[1] - 0.5).abs() < 1e-10);
+    }
 }

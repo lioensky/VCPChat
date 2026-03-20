@@ -47,6 +47,7 @@ pub fn audio_thread_main(
     noise_shaper_bits: u32,
     spectrum_tx: Sender<f64>,
     phase_response: PhaseResponse,
+    target_lufs: f64,
 ) {
     log::info!("Audio thread started, initializing cpal host...");
     let mut stream: Option<Stream> = None;
@@ -496,15 +497,19 @@ pub fn audio_thread_main(
                     .store(result.total_frames, Ordering::Relaxed);
                 shared_state.position_frames.store(0, Ordering::Relaxed);
                 *shared_state.state.write() = PlayerState::Stopped;
-                *shared_state.audio_buffer.write() = result.samples.clone();
-                *shared_state.file_path.write() = Some(result.file_path.clone());
-
-                *shared_state.track_metadata.write() = result.metadata.clone();
-                *shared_state.current_track_path.write() = Some(result.file_path);
-
                 let channels = result.channels;
                 let sr = result.sample_rate as f64;
                 let sr_u32 = result.sample_rate;
+                let metadata = result.metadata;
+                let file_path = result.file_path;
+
+                // Lock-free buffer swap via ArcSwap — move samples into Arc
+                let samples_arc = Arc::new(result.samples);
+                shared_state.audio_buffer.store(Arc::clone(&samples_arc));
+                *shared_state.file_path.write() = Some(file_path.clone());
+
+                *shared_state.track_metadata.write() = metadata.clone();
+                *shared_state.current_track_path.write() = Some(file_path);
 
                 dsp_ctx.set_sample_rate(sr);
                 dsp_ctx.reset();
@@ -544,8 +549,8 @@ pub fn audio_thread_main(
 
                 match mode_val {
                     3 => {
-                        if let Some(rg_gain) = result.metadata.rg_track_gain {
-                            let peak = result.metadata.rg_track_peak;
+                        if let Some(rg_gain) = metadata.rg_track_gain {
+                            let peak = metadata.rg_track_peak;
                             let effective_gain = calc_safe_gain(rg_gain, peak, preamp);
                             loudness_state.set_target_gain(effective_gain);
                             log::info!(
@@ -558,15 +563,17 @@ pub fn audio_thread_main(
                         } else {
                             log::warn!("No ReplayGain track gain found, falling back to EBU R128 analysis");
                             let mut meter = crate::processor::LoudnessMeter::new(channels, sr_u32);
-                            meter.process(&result.samples);
+                            meter.process(&samples_arc);
                             let loudness = meter.integrated_loudness();
                             if loudness.is_finite() {
-                                let gain = -12.0 - loudness + preamp;
+                                // FIX for Defect 3: Use user-configured target_lufs instead of hardcoded -12
+                                let gain = target_lufs - loudness + preamp;
                                 loudness_state.set_target_gain(gain);
                                 log::info!(
-                                    "EBU R128 fallback: {:.2} LUFS -> gain {:.2} dB",
+                                    "EBU R128 fallback: {:.2} LUFS -> gain {:.2} dB (target: {:.2} LUFS)",
                                     loudness,
-                                    gain
+                                    gain,
+                                    target_lufs
                                 );
                             } else {
                                 loudness_state.set_target_gain(preamp);
@@ -578,8 +585,8 @@ pub fn audio_thread_main(
                         }
                     }
                     4 => {
-                        let rg_gain = result.metadata.rg_album_gain.or(result.metadata.rg_track_gain);
-                        let peak = result.metadata.rg_album_peak.or(result.metadata.rg_track_peak);
+                        let rg_gain = metadata.rg_album_gain.or(metadata.rg_track_gain);
+                        let peak = metadata.rg_album_peak.or(metadata.rg_track_peak);
                         if let Some(gain) = rg_gain {
                             let effective_gain = calc_safe_gain(gain, peak, preamp);
                             loudness_state.set_target_gain(effective_gain);
@@ -593,15 +600,17 @@ pub fn audio_thread_main(
                         } else {
                             log::warn!("No ReplayGain gain found, falling back to EBU R128 analysis");
                             let mut meter = crate::processor::LoudnessMeter::new(channels, sr_u32);
-                            meter.process(&result.samples);
+                            meter.process(&samples_arc);
                             let loudness = meter.integrated_loudness();
                             if loudness.is_finite() {
-                                let gain = -12.0 - loudness + preamp;
+                                // FIX for Defect 3: Use user-configured target_lufs instead of hardcoded -12
+                                let gain = target_lufs - loudness + preamp;
                                 loudness_state.set_target_gain(gain);
                                 log::info!(
-                                    "EBU R128 fallback: {:.2} LUFS -> gain {:.2} dB",
+                                    "EBU R128 fallback: {:.2} LUFS -> gain {:.2} dB (target: {:.2} LUFS)",
                                     loudness,
-                                    gain
+                                    gain,
+                                    target_lufs
                                 );
                             } else {
                                 loudness_state.set_target_gain(preamp);
