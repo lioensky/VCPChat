@@ -168,6 +168,7 @@ export const tools = {
             { name: 'maid', type: 'text', required: true, placeholder: '你的名字' },
             { name: 'SearchTopic', type: 'text', required: true, placeholder: '研究主题' },
             { name: 'Keywords', type: 'textarea', required: true, placeholder: '多检索词，用逗号隔开' },
+            { name: 'SearchMode', type: 'select', required: false, options: ['grounding', 'grok', 'tavily'], default: 'grounding' },
             { name: 'ShowURL', type: 'checkbox', required: false, default: false }
         ]
     },
