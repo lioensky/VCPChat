@@ -107,6 +107,7 @@ document.addEventListener('DOMContentLoaded', () => {
         webdavDialogConfirm: document.getElementById('webdav-dialog-confirm'),
         webdavDialogStatus: document.getElementById('webdav-dialog-status'),
         addWebDavBtn: document.getElementById('add-webdav-btn'),
+        semanticSearchBtn: document.getElementById('semantic-search-btn'),
 
         // --- State Variables ---
         playlist: [],
@@ -198,6 +199,8 @@ document.addEventListener('DOMContentLoaded', () => {
         isChangingState: false,
         lastCommandTime: 0,
         expectedPlayingState: false,
+        isSemanticSearchActive: false,
+        isSemanticSearching: false,
     };
 
 
@@ -511,9 +514,30 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         app.searchInput.oninput = (e) => {
+            if (app.isSemanticSearchActive) return; // 语义搜索模式下不进行实时过滤
             const query = e.target.value.toLowerCase();
             app.currentFilteredTracks = query ? app.playlist.filter(t => (t.title || '').toLowerCase().includes(query) || (t.artist || '').toLowerCase().includes(query)) : null;
             app.renderPlaylist(app.currentFilteredTracks);
+        };
+
+        app.searchInput.onkeydown = (e) => {
+            if (e.key === 'Enter' && app.isSemanticSearchActive) {
+                const query = app.searchInput.value.trim();
+                if (query) app.performSemanticSearch(query);
+            }
+        };
+
+        app.semanticSearchBtn.onclick = () => {
+            app.isSemanticSearchActive = !app.isSemanticSearchActive;
+            app.semanticSearchBtn.classList.toggle('active', app.isSemanticSearchActive);
+            app.searchInput.placeholder = app.isSemanticSearchActive ? "输入描述进行语义搜索..." : "搜索歌曲...";
+            
+            if (!app.isSemanticSearchActive) {
+                // 退出语义搜索时恢复普通搜索
+                const query = app.searchInput.value.toLowerCase();
+                app.currentFilteredTracks = query ? app.playlist.filter(t => (t.title || '').toLowerCase().includes(query) || (t.artist || '').toLowerCase().includes(query)) : null;
+                app.renderPlaylist(app.currentFilteredTracks);
+            }
         };
 
         app.minimizeBtn.onclick = () => { if (window.electronAPI) window.electronAPI.minimizeWindow(); };

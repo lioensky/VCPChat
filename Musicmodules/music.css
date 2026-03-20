@@ -1455,21 +1455,60 @@ body.light-theme option {
     margin-bottom: 12px;
 }
 
+.search-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+    width: 100%;
+}
+
 .sidebar-actions #search-input {
     width: 100%;
     border: none;
     border-radius: 8px;
-    padding: 10px 14px;
+    padding: 10px 40px 10px 14px;
     font-size: 0.9em;
     background-color: var(--hover-bg);
     color: var(--music-text);
-    transition: background-color 0.3s ease;
+    transition: all 0.3s ease;
     box-sizing: border-box;
 }
 
 .sidebar-actions #search-input:focus {
     outline: none;
     background-color: rgba(255, 255, 255, 0.15);
+    box-shadow: 0 0 0 1px var(--music-highlight);
+}
+
+#semantic-search-btn {
+    position: absolute;
+    right: 8px;
+    background: transparent;
+    border: none;
+    color: var(--music-text-secondary);
+    cursor: pointer;
+    padding: 6px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    z-index: 2;
+}
+
+#semantic-search-btn:hover {
+    color: var(--music-highlight);
+    background-color: var(--hover-bg);
+}
+
+#semantic-search-btn.active {
+    color: var(--music-highlight);
+    background-color: rgba(var(--music-highlight-rgb, 118, 106, 226), 0.15);
+    filter: drop-shadow(0 0 5px var(--music-highlight));
+}
+
+#semantic-search-btn.loading svg {
+    animation: spin 1.5s linear infinite;
 }
 
 .sidebar-action-btns {
@@ -2447,4 +2486,4 @@ body.light-theme .dialog-btn.cancel {
     border-right: 1px solid var(--glass-border);
     border-bottom: 1px solid var(--glass-border);
     transform: rotate(45deg);
-}
+}
