@@ -320,11 +320,9 @@ function processSelectedText(selectionData) {
             console.error('[Assistant] Error showing assistant bar:', error);
         }
         
-        // 只有在非 Rust 模式下才启动 Node 端的全局鼠标监听器
-        // Rust 模式下，侧边栏程序（Sidecar）会自行处理点击外部隐藏逻辑
-        if (listenerMode !== 'rust') {
-            startGlobalMouseListener();
-        }
+        // 启动全局鼠标监听器作为备选方案
+        // Rust 模式下虽然 sidecar 会发送空选区事件，但添加双重保障
+        startGlobalMouseListener();
     });
 }
 
@@ -743,19 +741,53 @@ function unregisterRustSuspendHotkey() {
 
 function startGlobalMouseListener() {
     if (mouseListener) return;
-    const { GlobalKeyboardListener } = require('node-global-key-listener');
-    mouseListener = new GlobalKeyboardListener();
-    mouseListener.addListener((e) => {
-        if (e.state === 'DOWN') {
-            if (hideBarTimeout) clearTimeout(hideBarTimeout);
-            hideBarTimeout = setTimeout(() => {
-                const shouldHide = (Date.now() - lastAssistantBarShownAt) >= ASSISTANT_BAR_HIDE_GRACE_MS;
-                if (shouldHide && assistantBarWindow && !assistantBarWindow.isDestroyed() && assistantBarWindow.isVisible()) {
-                    hideAssistantBarWithAnimation('global-mouse-down');
-                }
-            }, ASSISTANT_BAR_GLOBAL_HIDE_DELAY_MS);
-        }
-    });
+    try {
+        const { GlobalKeyboardListener } = require('node-global-key-listener');
+        mouseListener = new GlobalKeyboardListener();
+        
+        // 监听鼠标按键事件（左键、右键、中键）
+        // 注意：node-global-key-listener 虽然名字是 Keyboard，但实际上也可以捕获鼠标事件
+        mouseListener.addListener((e) => {
+            // 检查是否是鼠标按键按下事件
+            const isMouseDown = e.state === 'DOWN' && (
+                e.name === 'MOUSE LEFT' || 
+                e.name === 'MOUSE RIGHT' || 
+                e.name === 'MOUSE MIDDLE' ||
+                e.name?.includes('MOUSE')
+            );
+            
+            if (isMouseDown) {
+                if (hideBarTimeout) clearTimeout(hideBarTimeout);
+                hideBarTimeout = setTimeout(() => {
+                    const shouldHide = (Date.now() - lastAssistantBarShownAt) >= ASSISTANT_BAR_HIDE_GRACE_MS;
+                    if (shouldHide && assistantBarWindow && !assistantBarWindow.isDestroyed() && assistantBarWindow.isVisible()) {
+                        // 检查鼠标点击位置是否在助手栏窗口内
+                        try {
+                            const cursorPos = screen.getCursorScreenPoint();
+                            const barBounds = assistantBarWindow.getBounds();
+                            const isInBarBounds = 
+                                cursorPos.x >= barBounds.x && 
+                                cursorPos.x <= barBounds.x + barBounds.width &&
+                                cursorPos.y >= barBounds.y && 
+                                cursorPos.y <= barBounds.y + barBounds.height;
+                            
+                            if (!isInBarBounds) {
+                                console.log('[Assistant] Hiding bar due to global mouse click outside');
+                                hideAssistantBarWithAnimation('global-mouse-down');
+                            }
+                        } catch (boundsError) {
+                            // 如果无法获取边界，直接隐藏
+                            console.log('[Assistant] Hiding bar (bounds check failed)');
+                            hideAssistantBarWithAnimation('global-mouse-down');
+                        }
+                    }
+                }, ASSISTANT_BAR_GLOBAL_HIDE_DELAY_MS);
+            }
+        });
+        console.log('[Assistant] Global mouse listener started');
+    } catch (error) {
+        console.error('[Assistant] Failed to start global mouse listener:', error);
+    }
 }
 
 function prepareAssistantBarForShow() {
@@ -930,8 +962,8 @@ function stopSelectionListener() {
 
 function createAssistantBarWindow() {
     assistantBarWindow = new BrowserWindow({
-        width: 410,
-        height: 40,
+        width: 460,
+        height: 44,
         show: false,
         frame: false,
         transparent: true,

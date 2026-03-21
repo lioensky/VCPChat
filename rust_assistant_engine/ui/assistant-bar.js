@@ -5,6 +5,18 @@ document.addEventListener('DOMContentLoaded', () => {
     const buttons = document.querySelectorAll('.assistant-button');
     let closeOnLeaveTimer = null;
 
+    // 应用主题函数
+    const applyTheme = (theme) => {
+        console.log(`[Assistant Bar] Applying theme: ${theme}`);
+        if (theme === 'light') {
+            document.body.classList.remove('dark-theme');
+            document.body.classList.add('light-theme');
+        } else {
+            document.body.classList.remove('light-theme');
+            document.body.classList.add('dark-theme');
+        }
+    };
+
     // 1. 主动从主进程获取初始数据
     const initialize = async () => {
         try {
@@ -14,12 +26,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 assistantAvatar.src = data.agentAvatarUrl;
             }
             if (data && data.theme) {
-                // 应用主题
-                document.body.classList.toggle('light-theme', data.theme === 'light');
-                document.body.classList.toggle('dark-theme', data.theme === 'dark');
+                applyTheme(data.theme);
             }
         } catch (error) {
             console.error('Failed to get initial data for assistant bar:', error);
+            // 默认使用深色主题
+            applyTheme('dark');
         }
     };
 
@@ -32,15 +44,15 @@ document.addEventListener('DOMContentLoaded', () => {
             assistantAvatar.src = data.agentAvatarUrl;
         }
         // 应用主题
-        document.body.classList.toggle('light-theme', data.theme === 'light');
-        document.body.classList.toggle('dark-theme', data.theme === 'dark');
+        if (data.theme) {
+            applyTheme(data.theme);
+        }
     });
 
     // Listen for theme updates from the main process
     window.electronAPI.onThemeUpdated((theme) => {
         console.log(`[Assistant Bar] Theme updated to: ${theme}`);
-        document.body.classList.toggle('light-theme', theme === 'light');
-        document.body.classList.toggle('dark-theme', theme !== 'light');
+        applyTheme(theme);
     });
 
     // 3. 为所有按钮添加点击事件
