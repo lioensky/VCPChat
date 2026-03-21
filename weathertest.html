@@ -1,0 +1,228 @@
+<div id="vcp-root" style="width:340px; font-family:'Segoe UI','Microsoft YaHei',sans-serif; color:#e8edf3; user-select:none;">
+<style>
+#vcp-weather-card {
+  background: rgba(20,28,45,0.72);
+  backdrop-filter: blur(24px) saturate(1.4);
+  -webkit-backdrop-filter: blur(24px) saturate(1.4);
+  border-radius: 18px;
+  border: 1px solid rgba(255,255,255,0.08);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.06);
+  padding: 20px 22px 16px;
+  position: relative;
+  overflow: hidden;
+}
+#vcp-weather-card::before {
+  content: '';
+  position: absolute;
+  top: -40%;
+  right: -20%;
+  width: 180px;
+  height: 180px;
+  background: radial-gradient(circle, rgba(100,160,255,0.12) 0%, transparent 70%);
+  pointer-events: none;
+}
+.vw-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 14px;
+}
+.vw-city {
+  font-size: 13px;
+  opacity: 0.6;
+  letter-spacing: 1px;
+}
+.vw-temp-block {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+.vw-temp-now {
+  font-size: 52px;
+  font-weight: 200;
+  line-height: 1;
+  letter-spacing: -2px;
+}
+.vw-temp-unit {
+  font-size: 18px;
+  opacity: 0.5;
+  margin-top: 6px;
+}
+.vw-desc {
+  font-size: 14px;
+  opacity: 0.75;
+  margin-bottom: 4px;
+}
+.vw-hilo {
+  font-size: 12px;
+  opacity: 0.45;
+}
+.vw-aqi {
+  display: inline-block;
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 20px;
+  background: rgba(90,180,90,0.2);
+  color: #8fd89f;
+  border: 1px solid rgba(90,180,90,0.15);
+  margin-top: 8px;
+}
+.vw-warning {
+  margin-top: 12px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: rgba(255,160,50,0.12);
+  border-left: 3px solid #f0a030;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #f0c878;
+}
+.vw-warning-title {
+  font-weight: 600;
+  font-size: 12px;
+  color: #f0a030;
+  margin-bottom: 4px;
+}
+.vw-divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent);
+  margin: 14px 0;
+}
+.vw-hourly {
+  display: flex;
+  gap: 0;
+  justify-content: space-between;
+  overflow: hidden;
+}
+.vw-hour-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+.vw-hour-time {
+  font-size: 10px;
+  opacity: 0.4;
+}
+.vw-hour-icon {
+  font-size: 16px;
+}
+.vw-hour-temp {
+  font-size: 12px;
+  font-weight: 500;
+}
+.vw-hour-pop {
+  font-size: 9px;
+  color: #6ab4ff;
+  opacity: 0.7;
+}
+.vw-meta {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px;
+  margin-top: 14px;
+}
+.vw-meta-item {
+  text-align: center;
+}
+.vw-meta-label {
+  font-size: 10px;
+  opacity: 0.35;
+  margin-bottom: 2px;
+}
+.vw-meta-value {
+  font-size: 13px;
+  font-weight: 500;
+}
+.vw-update {
+  text-align: right;
+  font-size: 9px;
+  opacity: 0.25;
+  margin-top: 10px;
+}
+</style>
+
+<div id="vcp-weather-card">
+  <div class="vw-header">
+    <div>
+      <div class="vw-city">武 汉</div>
+      <div class="vw-temp-block">
+        <span class="vw-temp-now">18</span>
+        <span class="vw-temp-unit">°C</span>
+      </div>
+      <div class="vw-desc">多云 · 东风 1-3级</div>
+      <div class="vw-hilo">↑ 20° ↓ 7°</div>
+      <div class="vw-aqi">AQI 90 · 良</div>
+    </div>
+    <div style="font-size:48px; opacity:0.7; margin-top:4px;">⛅</div>
+  </div>
+
+  <div class="vw-warning">
+    <div class="vw-warning-title">⚠ 大雾橙色预警</div>
+    能见度＜200m，局地＜50m，预计今晨到上午持续
+  </div>
+
+  <div class="vw-divider"></div>
+
+  <div class="vw-hourly">
+    <div class="vw-hour-item">
+      <span class="vw-hour-time">现在</span>
+      <span class="vw-hour-icon">⛅</span>
+      <span class="vw-hour-temp">18°</span>
+      <span class="vw-hour-pop"></span>
+    </div>
+    <div class="vw-hour-item">
+      <span class="vw-hour-time">18时</span>
+      <span class="vw-hour-icon">⛅</span>
+      <span class="vw-hour-temp">17°</span>
+      <span class="vw-hour-pop"></span>
+    </div>
+    <div class="vw-hour-item">
+      <span class="vw-hour-time">19时</span>
+      <span class="vw-hour-icon">☁️</span>
+      <span class="vw-hour-temp">16°</span>
+      <span class="vw-hour-pop">1%</span>
+    </div>
+    <div class="vw-hour-item">
+      <span class="vw-hour-time">21时</span>
+      <span class="vw-hour-icon">☁️</span>
+      temp">13°</span>
+      <span class="vw-hour-pop">1%</span>
+    </div>
+    <div class="vw-hour-item">
+      <span class="vw-hour-time">23时</span>
+      <span class="vw-hour-icon">☁️</span>
+      <span class="vw-hour-temp">10°</span>
+      <span class="vw-hour-pop"></span>
+    </div>
+    <div class="vw-hour-item">
+      <span class="vw-hour-time">01时</span>
+      <span class="vw-hour-icon">🌧</span>
+      <span class="vw-hour-temp">8°</span>
+      <span class="vw-hour-pop">52%</span>
+    </div>
+  </div>
+
+  <div class="vw-divider"></div>
+
+  <div class="vw-meta">
+    <div class="vw-meta-item">
+      <div class="vw-meta-label">湿度</div>
+      <div class="vw-meta-value">61%</div>
+    </div>
+    <div class="vw-meta-item">
+      <div class="vw-meta-label">气压</div>
+      <div class="vw-meta-value">1014hPa</div>
+    </div>
+    <div class="vw-meta-item">
+      <div class="vw-meta-label">日落</div>
+      <div class="vw-meta-value">18:35</div>
+    </div>
+  </div>
+
+  <div class="vw-update">更新于 12:00 · 蛾眉月</div>
+</div>
+</div>
