@@ -1466,3 +1466,82 @@ body.light-theme .vcp-thought-chain-bubble {
 .vcp-role-divider.type-end {
     opacity: 0.5;
 }
+
+/* --- VCPdesktop Push Placeholder --- */
+.vcp-desktop-push-placeholder {
+    display: block !important;
+    background: linear-gradient(145deg, rgba(30, 60, 90, 0.15), rgba(20, 40, 70, 0.25)) !important;
+    border-radius: 10px !important;
+    border: 1px solid rgba(100, 180, 255, 0.2);
+    padding: 12px 16px !important;
+    margin: 10px 0 !important;
+    position: relative;
+    font-family: 'Segoe UI', 'Roboto', sans-serif !important;
+    font-size: 0.92em !important;
+    line-height: 1.5;
+    width: fit-content;
+    max-width: 95%;
+    transition: all 0.3s ease;
+    backdrop-filter: blur(4px);
+}
+
+.vcp-desktop-push-placeholder.constructing {
+    border-color: rgba(100, 180, 255, 0.4);
+    animation: vcp-desktop-push-breathe 2s ease-in-out infinite;
+}
+
+@keyframes vcp-desktop-push-breathe {
+    0% { border-color: rgba(100, 180, 255, 0.2); box-shadow: 0 0 0 rgba(100, 180, 255, 0); }
+    50% { border-color: rgba(100, 180, 255, 0.5); box-shadow: 0 0 12px rgba(100, 180, 255, 0.15); }
+    100% { border-color: rgba(100, 180, 255, 0.2); box-shadow: 0 0 0 rgba(100, 180, 255, 0); }
+}
+
+.vcp-desktop-push-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.vcp-desktop-push-icon {
+    font-size: 1.1em;
+}
+
+.vcp-desktop-push-label {
+    font-weight: 600;
+    color: rgba(100, 180, 255, 0.9);
+    font-size: 0.95em;
+}
+
+.vcp-desktop-push-preview {
+    opacity: 0.5;
+    font-size: 0.85em;
+}
+
+.vcp-desktop-push-preview pre {
+    margin: 0;
+    padding: 6px 10px;
+    background: rgba(0, 0, 0, 0.15);
+    border-radius: 6px;
+    white-space: pre-wrap;
+    word-break: break-all;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 0.9em;
+    color: rgba(255, 255, 255, 0.6);
+    max-height: 80px;
+    overflow: hidden;
+}
+
+body.light-theme .vcp-desktop-push-placeholder {
+    background: linear-gradient(145deg, rgba(200, 220, 240, 0.3), rgba(180, 210, 240, 0.2)) !important;
+    border-color: rgba(50, 120, 200, 0.2);
+}
+
+body.light-theme .vcp-desktop-push-label {
+    color: rgba(30, 100, 180, 0.9);
+}
+
+body.light-theme .vcp-desktop-push-preview pre {
+    background: rgba(0, 0, 0, 0.05);
+    color: rgba(0, 0, 0, 0.5);
+}

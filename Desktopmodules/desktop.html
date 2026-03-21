@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy"
+          content="default-src 'self' data:;
+                   script-src 'self' 'unsafe-inline';
+                   style-src 'self' 'unsafe-inline' https:;
+                   img-src * data: file: blob:;
+                   media-src * data: file:;
+                   font-src *;
+                   connect-src * ws: wss:;">
+    <title>VCPdesktop</title>
+    <!-- 导入主题CSS，获得壁纸和主题变色能力 -->
+    <link rel="stylesheet" href="../styles/themes.css">
+    <link rel="stylesheet" href="desktop.css">
+    <!-- 渲染依赖 -->
+    <script src="../vendor/marked.min.js"></script>
+    <script src="../vendor/highlight.min.js"></script>
+    <script src="../vendor/anime.min.js"></script>
+    <script src="../vendor/three.min.js"></script>
+    <script src="../vendor/morphdom.min.js"></script>
+</head>
+<body>
+    <!-- 沉浸式标题栏 -->
+    <div id="desktop-title-bar">
+        <div class="desktop-title-bar-drag-region"></div>
+        <div class="desktop-title-bar-controls">
+            <span class="desktop-title-text">VCPdesktop</span>
+            <div class="desktop-title-buttons">
+                <button id="desktop-btn-minimize" class="desktop-title-btn" title="最小化">
+                    <svg viewBox="0 0 10 10"><rect x="0" y="4" width="10" height="1.2"></rect></svg>
+                </button>
+                <button id="desktop-btn-maximize" class="desktop-title-btn" title="最大化">
+                    <svg viewBox="0 0 10 10"><path d="M0,0v10h10V0H0z M9,9H1V1h8V9z"></path></svg>
+                </button>
+                <button id="desktop-btn-close" class="desktop-title-btn desktop-title-btn-close" title="关闭">
+                    <svg viewBox="0 0 10 10"><polygon points="10,1.01 8.99,0 5,3.99 1.01,0 0,1.01 3.99,5 0,8.99 1.01,10 5,6.01 8.99,10 10,8.99 6.01,5"></polygon></svg>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 挂件画布区域 -->
+    <div id="desktop-canvas">
+        <!-- 挂件容器将动态插入这里 -->
+    </div>
+
+    <!-- 状态指示器 -->
+    <div id="desktop-status-indicator" class="desktop-status hidden">
+        <span class="desktop-status-dot"></span>
+        <span class="desktop-status-text">等待连接...</span>
+    </div>
+
+    <script src="desktop.js"></script>
+</body>
+</html>

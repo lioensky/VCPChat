@@ -43,6 +43,8 @@ const CODE_FENCE_REGEX = /```\w*([\s\S]*?)```/g;
 const THOUGHT_CHAIN_REGEX = /\[--- VCP元思考链(?::\s*"([^"]*)")?\s*---\]([\s\S]*?)\[--- 元思考链结束 ---\]/gs;
 const CONVENTIONAL_THOUGHT_REGEX = /<think(?:ing)?>([\s\S]*?)<\/think(?:ing)?>/gi;
 const ROLE_DIVIDER_REGEX = /<<<\[(END_)?ROLE_DIVIDE_(SYSTEM|ASSISTANT|USER)\]>>>/g;
+const DESKTOP_PUSH_REGEX = /<<<\[DESKTOP_PUSH\]>>>([\s\S]*?)<<<\[DESKTOP_PUSH_END\]>>>/gs;
+const DESKTOP_PUSH_PARTIAL_REGEX = /<<<\[DESKTOP_PUSH\]>>>([\s\S]*)$/s; // 流式传输中未闭合的情况
 
 
 // --- Enhanced Rendering Styles (from UserScript) ---
@@ -520,6 +522,9 @@ function transformSpecialBlocks(text, codeBlockMap) {
         return renderThoughtChain("思维链", rawContent);
     });
 
+    // Desktop Push blocks 已在 preprocessFullContent 中于代码块保护之后统一处理
+    // 这里不再重复处理，避免与代码块内的语法冲突
+
     // Process Role Dividers
     processed = processed.replace(ROLE_DIVIDER_REGEX, (match, isEnd, role) => {
         const isEndMarker = !!isEnd;
@@ -750,7 +755,7 @@ function calculateDepthByTurns(messageId, history) {
  * @returns {string} The processed text.
  */
 function preprocessFullContent(text, settings = {}, messageRole = 'assistant', depth = 0) {
-    // 🟢 新增：第一层修复 - Markdown 图片语法修复
+    //  新增：第一层修复 - Markdown 图片语法修复
     text = fixEmoticonUrlsInMarkdown(text);
 
     // 🔴 关键安全修复：将「始」和「末」之间的内容视为纯文本并进行 HTML 转义
@@ -802,6 +807,34 @@ function preprocessFullContent(text, settings = {}, messageRole = 'assistant', d
 
     // The order of the remaining operations is critical.
     text = contentProcessor.deIndentToolRequestBlocks(text);
+
+    // 🔴 VCPdesktop 转义封印：在代码块保护之后执行（代码块内的语法不会被误匹配）
+    // 但在 transformSpecialBlocks 和 ensureHtmlFenced 之前（防止推送块内HTML泄露）
+    DESKTOP_PUSH_REGEX.lastIndex = 0;
+    DESKTOP_PUSH_PARTIAL_REGEX.lastIndex = 0;
+    text = text.replace(DESKTOP_PUSH_REGEX, (match, rawContent) => {
+        const content = rawContent.trim();
+        const escapedPreview = escapeHtml(content.length > 120 ? content.substring(0, 120) + '...' : content);
+        return `<div class="vcp-desktop-push-placeholder">` +
+            `<div class="vcp-desktop-push-header">` +
+            `<span class="vcp-desktop-push-icon">🖥️</span>` +
+            `<span class="vcp-desktop-push-label">已推送到桌面画布</span>` +
+            `</div>` +
+            `<div class="vcp-desktop-push-preview"><pre>${escapedPreview}</pre></div>` +
+            `</div>`;
+    });
+    text = text.replace(DESKTOP_PUSH_PARTIAL_REGEX, (match, partialContent) => {
+        const content = partialContent.trim();
+        const escapedPreview = escapeHtml(content.length > 80 ? content.substring(0, 80) + '...' : content);
+        return `<div class="vcp-desktop-push-placeholder constructing">` +
+            `<div class="vcp-desktop-push-header">` +
+            `<span class="vcp-desktop-push-icon">🖥️</span>` +
+            `<span class="vcp-desktop-push-label">正在向桌面推送<span class="thinking-indicator-dots">...</span></span>` +
+            `</div>` +
+            `<div class="vcp-desktop-push-preview"><pre>${escapedPreview}</pre></div>` +
+            `</div>`;
+    });
+
     text = transformSpecialBlocks(text, codeBlockMap);
     text = ensureHtmlFenced(text);
 
@@ -1331,21 +1364,36 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true)
             textToRender = transformUserButtonClick(textToRender);
             textToRender = transformVCPChatCanvas(textToRender);
         } else if (message.role === 'assistant' && scopeId) {
-            // --- 🟢 关键修复：先保护代码块，再提取样式 ---
-            // 这样可以避免代码块内的 <style> 被误当作真正的样式注入
-            const codeBlocksForStyleProtection = [];
-            const textWithProtectedBlocks = textToRender.replace(CODE_FENCE_REGEX, (match) => {
-                const placeholder = `__VCP_STYLE_PROTECT_${codeBlocksForStyleProtection.length}__`;
-                codeBlocksForStyleProtection.push(match);
+            // --- 🟢 关键修复：先保护代码块和桌面推送块，再提取样式 ---
+            // 这样可以避免代码块和推送块内的 <style> 被误当作真正的样式注入
+            const protectedBlocks = [];
+            
+            // 保护桌面推送块（必须在代码块之前，因为推送块可能包含代码围栏）
+            let textWithProtectedBlocks = textToRender.replace(DESKTOP_PUSH_REGEX, (match) => {
+                const placeholder = `__VCP_STYLE_PROTECT_${protectedBlocks.length}__`;
+                protectedBlocks.push(match);
+                return placeholder;
+            });
+            // 也保护未闭合的推送块
+            textWithProtectedBlocks = textWithProtectedBlocks.replace(DESKTOP_PUSH_PARTIAL_REGEX, (match) => {
+                const placeholder = `__VCP_STYLE_PROTECT_${protectedBlocks.length}__`;
+                protectedBlocks.push(match);
+                return placeholder;
+            });
+            
+            // 保护代码块
+            textWithProtectedBlocks = textWithProtectedBlocks.replace(CODE_FENCE_REGEX, (match) => {
+                const placeholder = `__VCP_STYLE_PROTECT_${protectedBlocks.length}__`;
+                protectedBlocks.push(match);
                 return placeholder;
             });
 
-            // 现在只会匹配代码块外的 <style> 标签
+            // 现在只会匹配不在保护区域内的 <style> 标签
             const { processedContent: contentWithoutStyles } = processAndInjectScopedCss(textWithProtectedBlocks, scopeId);
 
-            // 恢复代码块
+            // 恢复所有被保护的块
             textToRender = contentWithoutStyles;
-            codeBlocksForStyleProtection.forEach((block, i) => {
+            protectedBlocks.forEach((block, i) => {
                 const placeholder = `__VCP_STYLE_PROTECT_${i}__`;
                 textToRender = textToRender.replace(placeholder, block);
             });
@@ -1608,6 +1656,21 @@ function appendStreamChunk(messageId, chunkData, context) {
     streamManager.appendStreamChunk(messageId, chunkData, context);
 }
 
+/**
+ * 从完整的消息内容中提取桌面推送块，一次性推送到桌面画布
+ * 仅作为兜底机制：当流式推送不可用时（如桌面窗口在流式过程中不存在），
+ * 在finalize时补充推送。如果流式推送已经成功处理过，这里不会重复推送。
+ */
+function extractAndPushDesktopBlocks(content) {
+    // 此函数已被流式推送（processDesktopPushToken + setInterval）取代
+    // 仅在非流式场景（如历史消息重新渲染）中作为兜底
+    // 流式场景下，streamManager已经在token流中完成了推送，不需要重复
+    //
+    // 判断依据：如果桌面画布已存在挂件，说明流式推送已成功，跳过兜底
+    // 目前简单处理：完全禁用兜底推送，因为流式推送已经工作
+    // 未来可以加更智能的去重逻辑（基于widgetId映射）
+}
+
 async function finalizeStreamedMessage(messageId, finishReason, context, finalPayload = null) {
     // 责任完全在 streamManager 内部，它应该使用自己拼接好的文本。
     // 我们现在只传递必要的元数据。
@@ -1619,6 +1682,9 @@ async function finalizeStreamedMessage(messageId, finishReason, context, finalPa
     if (finalMessage) {
         // 使用 updateMessageContent 来安全地重新渲染消息，这将触发我们之前添加的正则逻辑
         updateMessageContent(messageId, finalMessage.content);
+
+        // --- VCPdesktop：从完整内容中提取桌面推送块，一次性推送到桌面画布 ---
+        extractAndPushDesktopBlocks(finalMessage.content);
     }
     // --- 修复结束 ---
 
