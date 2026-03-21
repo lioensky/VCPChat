@@ -1,0 +1,10 @@
+prefix=H:/VCP/vcpkg/installed/x64-windows-static
+exec_prefix=${prefix}
+libdir=${prefix}/lib
+includedir=${prefix}/include
+
+Name: soxr
+Description: High quality sample-rate conversion library
+Version: 0.1.3
+Libs: -L${libdir} -lsoxr
+Cflags: -I${includedir}
