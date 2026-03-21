@@ -576,6 +576,17 @@ function initialize(options) {
             }
         });
 
+        // --- 跨窗口音乐控制命令（桌面/分布式 → 音乐窗口） ---
+        ipcMain.on('music-remote-command', (event, command) => {
+            if (musicWindow && !musicWindow.isDestroyed()) {
+                console.log(`[Music] Forwarding remote command to music window: ${command}`);
+                // 音乐窗口监听的是 'music-control' 通道 (music.js line 574)
+                musicWindow.webContents.send('music-control', command);
+            } else {
+                console.warn(`[Music] music-remote-command: music window not available, command: ${command}`);
+            }
+        });
+
         ipcMain.handle('music-share-track', (event, filePath) => {
             if (mainWindow && !mainWindow.isDestroyed()) {
                 console.log(`[Music] Forwarding shared file to renderer: ${filePath}`);

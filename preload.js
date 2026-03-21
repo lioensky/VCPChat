@@ -12,7 +12,8 @@ contextBridge.exposeInMainWorld('electron', {
         // whitelist channels
         let validChannels = [
             'open-music-window',
-            'music-track-changed', 'music-renderer-ready'
+            'music-track-changed', 'music-renderer-ready',
+            'music-remote-command'
         ];
         if (validChannels.includes(channel)) {
             ipcRenderer.send(channel, data);
@@ -94,6 +95,7 @@ contextBridge.exposeInMainWorld('electron', {
             'music-files', 'music-scan-start', 'music-scan-progress', 'music-scan-complete',
             'audio-engine-error', // 用于接收来自主进程的引擎错误通知
             'music-set-track', // 用于从主进程设置当前曲目
+            'music-control', // 跨窗口音乐控制命令（桌面widget → 主进程 → 音乐窗口）
             'webdav-scan-progress' // WebDAV 扫描进度
         ];
         if (validChannels.includes(channel)) {
@@ -427,6 +429,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onDesktopPush: (callback) => ipcRenderer.on('desktop-push-to-canvas', (_event, data) => callback(data)),
     onDesktopStatus: (callback) => ipcRenderer.on('desktop-status', (_event, data) => callback(data)),
     openDesktopWindow: () => ipcRenderer.invoke('open-desktop-window'),
+
+    // VCPdesktop - 收藏系统 IPC 通道
+    desktopSaveWidget: (data) => ipcRenderer.invoke('desktop-save-widget', data),
+    desktopLoadWidget: (id) => ipcRenderer.invoke('desktop-load-widget', id),
+    desktopDeleteWidget: (id) => ipcRenderer.invoke('desktop-delete-widget', id),
+    desktopListWidgets: () => ipcRenderer.invoke('desktop-list-widgets'),
+    desktopCaptureWidget: (rect) => ipcRenderer.invoke('desktop-capture-widget', rect),
+    desktopGetCredentials: () => ipcRenderer.invoke('desktop-get-credentials'),
 });
 
 // Log the electronAPI object as it's defined in preload.js right after exposing it

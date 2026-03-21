@@ -1,4 +1,4 @@
-# VCPdesktop 开发文档 — 一期工程
+# VCPdesktop 开发文档 — 二期工程
 
 > **让 VChat 的流式渲染能力，从聊天气泡溢出到 Windows 桌面。**
 
@@ -6,24 +6,28 @@
 
 ## 一、项目概述
 
-VCPdesktop 是 VChat 的桌面渲染层扩展。它在 VChat 的 Electron 实例中创建一个画布窗口，复用 VChat 已有的流式渲染引擎，使 Agent 的流式输出可以直接渲染到操作系统桌面上。
+VCPdesktop 是 VChat 的桌面渲染层扩展。二期在一期基础上新增了收藏系统、右键菜单、vcpAPI 数据代理层、内置天气挂件和迷你音乐播放条。
 
-### 一期完成的核心能力
+### 二期完成的核心能力
 
 | 能力 | 状态 |
 |------|------|
-| 独立桌面画布窗口（主题壁纸、沉浸标题栏） | ✅ |
-| `<<<[DESKTOP_PUSH]>>>` 流式推送语法 | ✅ |
-| 逐token流式渲染到桌面（100ms节流） | ✅ |
-| Shadow DOM 样式隔离 | ✅ |
-| 挂件拖拽（抓手带） | ✅ |
-| 挂件关闭按钮 | ✅ |
-| 挂件尺寸自适应 | ✅ |
-| 脚本沙箱（document代理到Shadow DOM） | ✅ |
-| 主窗口转义封印（占位符显示） | ✅ |
-| 前缀白名单二级验证 | ✅ |
-| 150秒超时自动finalize | ✅ |
-| 桌面窗口不存在时零开销短路 | ✅ |
+| 独立桌面画布窗口（主题壁纸、沉浸标题栏） | ✅ 一期 |
+| `<<<[DESKTOP_PUSH]>>>` 流式推送语法 | ✅ 一期 |
+| 逐token流式渲染到桌面（100ms节流） | ✅ 一期 |
+| Shadow DOM 样式隔离 | ✅ 一期 |
+| 挂件拖拽（抓手带 + **拖拽限位**） | ✅ 二期修复 |
+| 挂件关闭按钮 | ✅ 一期 |
+| 挂件尺寸自适应 | ✅ 一期 |
+| 脚本沙箱（document代理到Shadow DOM） | ✅ 一期 |
+| **右键菜单**（收藏/刷新/关闭/置顶/置底） | ✅ 二期 |
+| **收藏系统**（模态窗 + 持久化 + 原生截图缩略图） | ✅ 二期 |
+| **收藏侧栏**（图片缩略图预览 + 拖出到桌面） | ✅ 二期 |
+| **Z-Index 层级管理**（置顶/置底） | ✅ 二期 |
+| **vcpAPI 代理层**（自动认证的后端数据访问） | ✅ 二期 |
+| **musicAPI 代理层**（跨窗口音乐播放器控制） | ✅ 二期 |
+| **内置天气挂件**（自动加载 + 30min刷新） | ✅ 二期 |
+| **迷你音乐播放条**（播放/暂停/上下首/进度/seek） | ✅ 二期 |
 
 ---
 
@@ -31,263 +35,190 @@ VCPdesktop 是 VChat 的桌面渲染层扩展。它在 VChat 的 Electron 实例
 
 ```
 Desktopmodules/
-├── desktop.html          # 桌面画布页面（引入themes.css获得壁纸）
-├── desktop.css           # 挂件容器、抓手带、施工态、关闭按钮样式
-├── desktop.js            # 画布渲染器（Shadow DOM、拖拽、IPC监听、自适应）
+├── desktop.html          # 桌面画布页面（含右键菜单、模态窗、侧栏DOM）
+├── desktop.css           # 全部样式（挂件、右键菜单、模态窗、侧栏、浅色主题）
+├── desktop.js            # 画布渲染器（核心）
 └── README.md             # 本文档
 
 modules/ipc/
-└── desktopHandlers.js    # 独立IPC模块（窗口生命周期、流式转发）
+├── desktopHandlers.js    # 桌面IPC模块（窗口管理、收藏持久化、截图、凭据获取）
+└── musicHandlers.js      # 音乐IPC模块（新增 music-remote-command 转发）
 
-修改的文件：
-├── main.js               # --desktop-only 模式、desktopHandlers引入
-├── preload.js            # 桌面IPC通道（desktopPush等4个）
-├── start-desktop.vbs     # VBS启动脚本
-├── modules/
-│   ├── messageRenderer.js    # 转义封印 + preprocessFullContent最先处理
-│   └── renderer/
-│       └── streamManager.js  # 流式推送拦截器
-└── styles/
-    └── messageRenderer.css   # 占位符样式
+preload.js                # 新增通道：desktop-save/load/delete/list-widget,
+                          #          desktop-capture-widget, desktop-get-credentials,
+                          #          music-remote-command, music-control
+
+AppData/DesktopWidgets/   # 收藏持久化存储目录
+├── {fav_id}/
+│   ├── widget.html       # 挂件HTML内容
+│   ├── meta.json         # 元数据（id, name, createdAt, updatedAt）
+│   └── thumbnail.png     # 原生截图缩略图
 ```
 
 ---
 
-## 三、架构总览
+## 三、二期新增架构
+
+### 3.1 收藏系统
 
 ```
-┌──────────────────────────────────────────────────────────┐
-│                    VChat (Electron)                       │
-│                                                          │
-│  ┌─────────────────────┐    ┌────────────────────────┐  │
-│  │    聊天主窗口         │    │   桌面画布窗口          │  │
-│  │                     │    │   (BrowserWindow)       │  │
-│  │  streamManager.js   │    │                        │  │
-│  │    ↓ token流         │    │   desktop.html/js      │  │
-│  │  processDesktopPush │    │     ↓                   │  │
-│  │  Token() 逐字符拦截  │    │   Shadow DOM 挂件      │  │
-│  │    ↓                │    │   (样式隔离+脚本沙箱)   │  │
-│  │  electronAPI        │    │                        │  │
-│  │  .desktopPush()     │    │   autoResizeWidget()   │  │
-│  └────────┬────────────┘    └──────────┬─────────────┘  │
-│           │                            │                │
-│           └──── IPC: desktop-push ─────┘                │
-│                                                          │
-│           desktopHandlers.js (转发 / 窗口管理)            │
-│                                                          │
-│           preload.js (通道定义)                           │
-└──────────────────────────────────────────────────────────┘
+用户右键挂件 → 收藏菜单 → 弹出模态窗输入名字
+    → 关闭模态窗 → 延迟350ms → Electron capturePage 截图
+    → IPC: desktop-save-widget → 主进程写入 AppData/DesktopWidgets/{id}/
+    → 刷新侧栏列表
+
+侧栏预览：图片缩略图（非实时渲染，避免性能问题）
+侧栏拖出：HTML5 Drag & Drop → canvas drop事件 → spawnFromFavorite()
+```
+
+### 3.2 vcpAPI 代理层
+
+```
+桌面启动 → initVcpApi()
+    → IPC: desktop-get-credentials
+    → 主进程读取 AppData/settings.json (vcpServerUrl)
+    →              AppData/UserData/forum.config.json (username/password)
+    → 返回 apiBaseUrl + auth
+    → 缓存在 _vcpCredentials 中
+
+Widget脚本中：
+    vcpAPI.weather() → window.__vcpProxyFetch('/admin_api/weather')
+                     → fetch(apiBaseUrl + endpoint, { Authorization: Basic auth })
+                     → 返回 JSON
+```
+
+### 3.3 musicAPI + 跨窗口控制
+
+```
+桌面 Widget → musicAPI.play/pause/getState/seek/setVolume
+           → window.electron.invoke('music-play/pause/get-state/seek/set-volume')
+           → 主进程 musicHandlers → Rust Audio Engine HTTP API
+
+上一首/下一首：
+    桌面 Widget → musicAPI.send('music-remote-command', 'next')
+              → 主进程 musicHandlers.ipcMain.on('music-remote-command')
+              → musicWindow.webContents.send('music-control', 'next')
+              → 音乐窗口 music.js → app.nextTrack()
+```
+
+### 3.4 拖拽限位
+
+```
+onMouseMove 中：
+    newTop = Math.max(TITLE_BAR_HEIGHT, newTop)       // 不进入标题栏
+    newTop = Math.min(viewH - 40, newTop)              // 不完全拖出底部
+    newLeft = Math.max(-(widgetW - 40), newLeft)       // 左边至少露40px
+    newLeft = Math.min(viewW - 40, newLeft)            // 右边至少露40px
 ```
 
 ---
 
-## 四、启动方式
+## 四、Widget 沙箱 API 参考
 
-### 4.1 独立模式
-```
-双击 start-desktop.vbs
-```
-或命令行：
-```bash
-npx electron . --desktop-only
-```
-仅启动桌面画布窗口，不创建主聊天窗口。
+每个 Widget 的 `<script>` 在沙箱闭包中执行，以下 API 自动可用：
 
-### 4.2 主窗口附属模式
-在主窗口的控制台中：
+### document（已代理到 Shadow DOM）
 ```javascript
-electronAPI.openDesktopWindow()
+document.querySelector(sel)      // 在 widget 内部查找
+document.getElementById(id)      // 在 widget 内部查找
+document.createElement(tag)      // 正常创建元素
+document.body                    // 指向 widget 内容容器
 ```
-或由AI输出 `<<<[DESKTOP_PUSH]>>>` 语法时自动触发。
+
+### vcpAPI（后端数据访问，自动认证）
+```javascript
+vcpAPI.weather()                        // 获取天气 JSON
+vcpAPI.fetch('/admin_api/任意端点')      // 通用后端 API
+```
+
+### musicAPI（音乐播放器控制）
+```javascript
+musicAPI.getState()                     // {is_playing, file_path, position_secs, duration_secs, volume}
+musicAPI.play()                         // 播放
+musicAPI.pause()                        // 暂停
+musicAPI.seek(秒数)                     // 跳转
+musicAPI.setVolume(0-100)               // 音量
+musicAPI.send('music-remote-command', 'next')      // 下一首
+musicAPI.send('music-remote-command', 'previous')  // 上一首
+```
 
 ---
 
-## 五、触发语法
+## 五、AI Agent 提示词模板
 
-### 5.1 完整推送
 ```
+## 桌面挂件能力
+
+你可以通过 <<<[DESKTOP_PUSH]>>> 语法将交互式 HTML 挂件推送到用户的桌面画布。
+
+可用 API：
+- vcpAPI.weather() - 获取天气数据
+- vcpAPI.fetch('/admin_api/xxx') - 访问后端任意API
+- musicAPI.getState() - 获取音乐播放状态
+- musicAPI.play()/pause() - 控制播放
+- musicAPI.send('music-remote-command', 'next'/'previous') - 切歌
+
+示例：
 <<<[DESKTOP_PUSH]>>>
-<div style="padding:16px; background:rgba(0,0,0,0.5); color:#fff;">
-  <h2>标题</h2>
-  <p>内容</p>
+<div id="widget" style="padding:16px;background:rgba(0,0,0,0.5);color:#fff;border-radius:12px;">
+  加载中...
 </div>
+<script>
+vcpAPI.weather().then(function(data) {
+    document.getElementById('widget').innerHTML = '<h2>'+data.hourly[0].temp+'°C</h2>';
+});
+</script>
 <<<[DESKTOP_PUSH_END]>>>
 ```
 
-### 5.2 流式替换（热更新）
+---
+
+## 六、三期规划：全局 Widget API Provider
+
+### 核心思想
+
+将 `vcpAPI` / `musicAPI` 从"桌面专属"提升为**全局渲染层基础设施**。
+
+### 实施方案
+
+1. 新建 `modules/widgetApiProvider.js`，封装所有 API 的初始化和注入逻辑
+2. 三个注入点：
+   - `desktop.js` → `widgetApiProvider.inject(sandbox, 'desktop')` — 完全权限
+   - `messageRenderer.js` → `widgetApiProvider.inject(sandbox, 'chat')` — 受限权限
+   - `canvas.js` → `widgetApiProvider.inject(sandbox, 'canvas')` — 完全权限
+3. 权限级别控制：
+   - `desktop` / `canvas`：完全权限（读写后端、音乐控制）
+   - `chat`：只读权限（只能读取天气等数据，不能控制播放器）
+
+### 架构图
+
 ```
-<<<[DESKTOP_PUSH]>>>
-target:「始」.vw-temp-now「末」,
-replace:「始」<span style="font-size:52px;">22°C</span>「末」
-<<<[DESKTOP_PUSH_END]>>>
+┌──────────────────────────────────────────────────────────────┐
+│                    widgetApiProvider.js                       │
+│                                                              │
+│  ┌─────────┐  ┌──────────┐  ┌───────────┐  ┌──────────────┐│
+│  │ vcpAPI   │  │ musicAPI │  │ 凭据管理   │  │ 权限控制     ││
+│  │ .weather │  │ .play    │  │ settings  │  │ desktop: full ││
+│  │ .fetch   │  │ .pause   │  │ forum.cfg │  │ chat: read   ││
+│  └────┬─────┘  └────┬─────┘  └────┬──────┘  │ canvas: full ││
+│       │             │             │          └──────────────┘│
+└───────┼─────────────┼─────────────┼──────────────────────────┘
+        │             │             │
+   ┌────▼────┐   ┌────▼────┐   ┌───▼───┐
+   │ desktop │   │  chat   │   │canvas │
+   │ .js     │   │renderer │   │ .js   │
+   │ Shadow  │   │ Shadow  │   │Shadow │
+   │ DOM     │   │ DOM     │   │ DOM   │
+   └─────────┘   └─────────┘   └───────┘
 ```
 
-- `target:「始」...「末」` — CSS选择器，在所有活跃挂件的Shadow DOM中查找目标元素
-- `replace:「始」...「末」` — 替换内容，支持多行HTML/CSS
-- 「始」「末」内可包含任意字符（包括换行、HTML标签），只要不包含「末」本身
-- 替换后自动触发 `autoResizeWidget` 重新计算尺寸
+### 效果
 
-### 5.3 支持的内容格式
-- 裸 `<div>` + 内联CSS
-- 完整 `<!DOCTYPE html>` 文档（含 `<style>` 和 `<script>`）
-- `<svg>` / `<canvas>` 图形
-- 带 `fetch()` 的动态数据挂件
-- `target:` + `replace:` 热替换语法
-
-### 5.4 二级前缀验证
-开始标签后的内容必须以以下前缀之一开头，否则丢弃：
-```
-<!doctype, <div, <section, <article, <main, <header,
-<nav, <aside, <canvas, <svg, target:
-```
+- AI 在聊天气泡中也能输出带 `vcpAPI.weather()` 的交互式天气卡片
+- AI 在 Canvas 中也能创建音乐控制面板
+- 统一的 API 接口，AI 不需要区分渲染目标
+- 安全：聊天气泡中的脚本只有只读权限
 
 ---
 
-## 六、流式渲染流程
-
-```
-AI输出token → appendStreamChunk()
-              ↓
-         processDesktopPushToken() 逐字符检测
-              ↓
-    检测到 <<<[DESKTOP_PUSH]>>> 开始标签
-              ↓
-    进入active状态，累积buffer（不创建挂件）
-              ↓
-    buffer积累5字符 → 前缀白名单验证
-              ↓ (验证通过)
-    创建挂件（施工态）+ 启动setInterval(100ms)
-              ↓
-    每100ms推送累积buffer全量到桌面画布
-    桌面 appendWidgetContent() → innerHTML覆盖 + autoResizeWidget()
-              ↓
-    检测到 <<<[DESKTOP_PUSH_END]>>> 结束标签
-              ↓
-    停止定时器 + 最终推送 + finalize + 执行脚本
-              ↓
-    施工态结束，挂件进入正常交互态
-```
-
----
-
-## 七、样式隔离
-
-每个挂件使用 **Shadow DOM** 实现样式隔离：
-
-```javascript
-const shadowRoot = contentWrapper.attachShadow({ mode: 'open' });
-```
-
-- 挂件内的CSS不会污染宿主文档
-- 宿主文档的CSS不会影响挂件内容
-- 内联 `<style>` 标签自动提取到 Shadow DOM 层级
-
----
-
-## 八、脚本沙箱
-
-挂件内的 `<script>` 在 finalize 时被包装在沙箱闭包中：
-
-```javascript
-(function(_realDoc) {
-    var _shadowRoot = _realDoc.querySelector('...').shadowRoot;
-    var root = _shadowRoot.querySelector('.widget-inner-content');
-    
-    // document 被代理到 Shadow DOM
-    var document = {
-        querySelector: (sel) => root.querySelector(sel),
-        getElementById: (id) => root.querySelector('#' + id),
-        createElement: _realDoc.createElement.bind(_realDoc),
-        // ...
-    };
-    
-    // AI的脚本在这里执行
-})(window.document);
-```
-
-这意味着：
-- `document.querySelector('#myElement')` → 在 Shadow DOM 内查找
-- `document.getElementById('xxx')` → 在 Shadow DOM 内查找
-- `fetch()` → 正常工作（全局作用域）
-- `document.createElement()` → 正常工作（委托给真实document）
-
----
-
-## 九、主窗口转义封印
-
-在聊天气泡中，`<<<[DESKTOP_PUSH]>>>` 块的内容被转义为占位符：
-
-```html
-<div class="vcp-desktop-push-placeholder">
-  <div class="vcp-desktop-push-header">
-    <span class="vcp-desktop-push-icon">🖥️</span>
-    <span class="vcp-desktop-push-label">已推送到桌面画布</span>
-  </div>
-  <div class="vcp-desktop-push-preview">
-    <pre>（转义后的前120字符预览）</pre>
-  </div>
-</div>
-```
-
-封印时机：`preprocessFullContent()` 的**第一步**（在所有其他HTML处理之前），确保无论是流式渲染、历史重新渲染还是切换话题，推送块内的HTML都不会泄露。
-
----
-
-## 十、防御性设计
-
-| 防御点 | 机制 |
-|--------|------|
-| 桌面窗口不存在 | `desktopWindowAvailable` 标志位短路，零IPC开销 |
-| AI示例性输出开始标签 | 二级前缀验证 + 150秒超时自动finalize |
-| 内容不合法 | 30字符内未匹配白名单前缀则丢弃 |
-| style标签泄露 | `processAndInjectScopedCss` 保护推送块 |
-| 重复推送 | `extractAndPushDesktopBlocks` 兜底已禁用 |
-| IPC消息风暴 | 100ms节流 + 全量覆盖模式（非逐字符） |
-
----
-
-## 十一、调试工具
-
-在桌面画布窗口的 DevTools 控制台中：
-
-```javascript
-// 创建测试挂件
-__desktopDebug.test()
-
-// 手动创建挂件
-__desktopDebug.createWidget('my-widget', { x: 100, y: 100, width: 300, height: 200 })
-
-// 设置挂件内容
-__desktopDebug.appendWidgetContent('my-widget', '<div style="padding:20px; color:#fff;">Hello</div>')
-
-// 完成挂件
-__desktopDebug.finalizeWidget('my-widget')
-
-// 移除挂件
-__desktopDebug.removeWidget('my-widget')
-
-// 清除所有挂件
-__desktopDebug.clearAllWidgets()
-
-// 查看状态
-__desktopDebug.getState()
-```
-
----
-
-## 十二、二期规划
-
-| 功能 | 说明 |
-|------|------|
-| 收藏夹系统 | 挂件持久化到JSON，冷启动恢复 |
-| 挂件缩放 | 拖拽角标缩放 |
-| 右键菜单 | 收藏/编辑/锁定/删除 |
-| 壁纸系统 | 静态图片/HTML动态壁纸 |
-| 多显示器 | 每屏一个画布窗口 |
-| 桌面图标映射 | 读取Win桌面快捷方式并渲染 |
-| 数据刷新 | 挂件内置定时fetch机制 |
-| 动画冻结 | visibilityOptimizer集成 |
-
----
-
-*VCPdesktop 一期工程 · 2026-03-21 · [VCP桌面开发]*
+*VCPdesktop 二期工程 · 2026-03-21 · [VCP桌面开发]*
