@@ -522,35 +522,8 @@ function transformSpecialBlocks(text, codeBlockMap) {
         return renderThoughtChain("思维链", rawContent);
     });
 
-    // Process Desktop Push blocks - 纯转义封印（显示占位符），不做IPC调用
-    // IPC推送由 finalizeStreamedMessage → extractAndPushDesktopBlocks 统一处理，避免重复推送
-    processed = processed.replace(DESKTOP_PUSH_REGEX, (match, rawContent) => {
-        const content = rawContent.trim();
-
-        // 在聊天气泡中显示占位提示（转义封印 - 不渲染HTML内容，不触发IPC）
-        const escapedPreview = escapeHtml(content.length > 120 ? content.substring(0, 120) + '...' : content);
-        return `<div class="vcp-desktop-push-placeholder">` +
-            `<div class="vcp-desktop-push-header">` +
-            `<span class="vcp-desktop-push-icon">🖥️</span>` +
-            `<span class="vcp-desktop-push-label">已推送到桌面画布</span>` +
-            `</div>` +
-            `<div class="vcp-desktop-push-preview"><pre>${escapedPreview}</pre></div>` +
-            `</div>`;
-    });
-
-    // 处理流式传输中未闭合的桌面推送（施工中状态）- 同样纯展示，不触发IPC
-    processed = processed.replace(DESKTOP_PUSH_PARTIAL_REGEX, (match, partialContent) => {
-        const content = partialContent.trim();
-        const escapedPreview = escapeHtml(content.length > 80 ? content.substring(0, 80) + '...' : content);
-
-        return `<div class="vcp-desktop-push-placeholder constructing">` +
-            `<div class="vcp-desktop-push-header">` +
-            `<span class="vcp-desktop-push-icon">🖥️</span>` +
-            `<span class="vcp-desktop-push-label">正在向桌面推送<span class="thinking-indicator-dots">...</span></span>` +
-            `</div>` +
-            `<div class="vcp-desktop-push-preview"><pre>${escapedPreview}</pre></div>` +
-            `</div>`;
-    });
+    // Desktop Push blocks 已在 preprocessFullContent 中于代码块保护之后统一处理
+    // 这里不再重复处理，避免与代码块内的语法冲突
 
     // Process Role Dividers
     processed = processed.replace(ROLE_DIVIDER_REGEX, (match, isEnd, role) => {
@@ -782,36 +755,6 @@ function calculateDepthByTurns(messageId, history) {
  * @returns {string} The processed text.
  */
 function preprocessFullContent(text, settings = {}, messageRole = 'assistant', depth = 0) {
-    // 🔴 VCPdesktop：最先处理桌面推送块的转义封印
-    // 必须在所有其他HTML处理之前执行，否则推送块内的HTML会被其他处理器泄露渲染
-    // 重置全局正则的 lastIndex
-    DESKTOP_PUSH_REGEX.lastIndex = 0;
-    DESKTOP_PUSH_PARTIAL_REGEX.lastIndex = 0;
-    
-    text = text.replace(DESKTOP_PUSH_REGEX, (match, rawContent) => {
-        const content = rawContent.trim();
-        const escapedPreview = escapeHtml(content.length > 120 ? content.substring(0, 120) + '...' : content);
-        return `<div class="vcp-desktop-push-placeholder">` +
-            `<div class="vcp-desktop-push-header">` +
-            `<span class="vcp-desktop-push-icon">🖥️</span>` +
-            `<span class="vcp-desktop-push-label">已推送到桌面画布</span>` +
-            `</div>` +
-            `<div class="vcp-desktop-push-preview"><pre>${escapedPreview}</pre></div>` +
-            `</div>`;
-    });
-    
-    text = text.replace(DESKTOP_PUSH_PARTIAL_REGEX, (match, partialContent) => {
-        const content = partialContent.trim();
-        const escapedPreview = escapeHtml(content.length > 80 ? content.substring(0, 80) + '...' : content);
-        return `<div class="vcp-desktop-push-placeholder constructing">` +
-            `<div class="vcp-desktop-push-header">` +
-            `<span class="vcp-desktop-push-icon">🖥️</span>` +
-            `<span class="vcp-desktop-push-label">正在向桌面推送<span class="thinking-indicator-dots">...</span></span>` +
-            `</div>` +
-            `<div class="vcp-desktop-push-preview"><pre>${escapedPreview}</pre></div>` +
-            `</div>`;
-    });
-
     //  新增：第一层修复 - Markdown 图片语法修复
     text = fixEmoticonUrlsInMarkdown(text);
 
@@ -864,6 +807,34 @@ function preprocessFullContent(text, settings = {}, messageRole = 'assistant', d
 
     // The order of the remaining operations is critical.
     text = contentProcessor.deIndentToolRequestBlocks(text);
+
+    // 🔴 VCPdesktop 转义封印：在代码块保护之后执行（代码块内的语法不会被误匹配）
+    // 但在 transformSpecialBlocks 和 ensureHtmlFenced 之前（防止推送块内HTML泄露）
+    DESKTOP_PUSH_REGEX.lastIndex = 0;
+    DESKTOP_PUSH_PARTIAL_REGEX.lastIndex = 0;
+    text = text.replace(DESKTOP_PUSH_REGEX, (match, rawContent) => {
+        const content = rawContent.trim();
+        const escapedPreview = escapeHtml(content.length > 120 ? content.substring(0, 120) + '...' : content);
+        return `<div class="vcp-desktop-push-placeholder">` +
+            `<div class="vcp-desktop-push-header">` +
+            `<span class="vcp-desktop-push-icon">🖥️</span>` +
+            `<span class="vcp-desktop-push-label">已推送到桌面画布</span>` +
+            `</div>` +
+            `<div class="vcp-desktop-push-preview"><pre>${escapedPreview}</pre></div>` +
+            `</div>`;
+    });
+    text = text.replace(DESKTOP_PUSH_PARTIAL_REGEX, (match, partialContent) => {
+        const content = partialContent.trim();
+        const escapedPreview = escapeHtml(content.length > 80 ? content.substring(0, 80) + '...' : content);
+        return `<div class="vcp-desktop-push-placeholder constructing">` +
+            `<div class="vcp-desktop-push-header">` +
+            `<span class="vcp-desktop-push-icon">🖥️</span>` +
+            `<span class="vcp-desktop-push-label">正在向桌面推送<span class="thinking-indicator-dots">...</span></span>` +
+            `</div>` +
+            `<div class="vcp-desktop-push-preview"><pre>${escapedPreview}</pre></div>` +
+            `</div>`;
+    });
+
     text = transformSpecialBlocks(text, codeBlockMap);
     text = ensureHtmlFenced(text);
 

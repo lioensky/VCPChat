@@ -224,30 +224,37 @@ function autoResizeWidget(widgetData) {
         const container = widgetData.contentContainer;
         if (!container) return;
 
-        // 获取内容的实际尺寸
+        // 临时设置容器为 inline-block 来获取内容的真实宽度
+        // 因为 width:100% 时 scrollWidth 返回的是容器宽度而非内容宽度
+        const origDisplay = container.style.display;
+        container.style.display = 'inline-block';
+        container.style.width = 'auto';
+        
         const contentWidth = container.scrollWidth;
         const contentHeight = container.scrollHeight;
+        
+        // 恢复
+        container.style.display = origDisplay || '';
+        container.style.width = '';
 
         // 限制最小/最大尺寸
-        const MIN_WIDTH = 120;
+        const MIN_WIDTH = 140;
         const MIN_HEIGHT = 60;
-        const MAX_WIDTH = window.innerWidth * 0.8;
-        const MAX_HEIGHT = window.innerHeight * 0.8;
+        const MAX_WIDTH = window.innerWidth * 0.85;
+        const MAX_HEIGHT = window.innerHeight * 0.85;
 
-        // 添加padding余量（抓手带 + 内边距）
-        const paddingW = 16;
-        const paddingH = 24; // 包含抓手带高度
+        // 添加padding余量（关闭按钮 + 抓手带 + 内边距）
+        const paddingW = 8;
+        const paddingH = 14; // 包含抓手带高度
 
         const newWidth = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, contentWidth + paddingW));
         const newHeight = Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, contentHeight + paddingH));
 
         const widget = widgetData.element;
-        // 使用平滑过渡
         widget.style.transition = 'width 0.15s ease-out, height 0.15s ease-out';
         widget.style.width = `${newWidth}px`;
         widget.style.height = `${newHeight}px`;
 
-        // 过渡结束后清除transition，避免影响拖拽
         setTimeout(() => {
             widget.style.transition = '';
         }, 200);
@@ -266,6 +273,31 @@ function processInlineStyles(widgetData) {
         widgetData.shadowRoot.insertBefore(newStyle, widgetData.contentContainer);
         styleEl.remove();
     });
+}
+
+/**
+ * 流式替换挂件中指定元素的内容
+ * @param {string} targetSelector - CSS选择器，在所有挂件的Shadow DOM中查找
+ * @param {string} newContent - 替换的HTML内容
+ * @returns {boolean} 是否找到并替换成功
+ */
+function replaceInWidgets(targetSelector, newContent) {
+    let found = false;
+    for (const [widgetId, widgetData] of desktopState.widgets) {
+        const targetEl = widgetData.contentContainer.querySelector(targetSelector);
+        if (targetEl) {
+            targetEl.innerHTML = newContent;
+            found = true;
+            // 替换后自适应尺寸
+            autoResizeWidget(widgetData);
+            console.log(`[Desktop] Replaced content in widget ${widgetId}, selector: ${targetSelector}`);
+            break; // 只替换第一个匹配的
+        }
+    }
+    if (!found) {
+        console.warn(`[Desktop] Target not found in any widget: ${targetSelector}`);
+    }
+    return found;
 }
 
 /**
@@ -421,6 +453,12 @@ if (window.electronAPI?.onDesktopPush) {
             case 'finalize':
                 finalizeWidget(widgetId);
                 updateStatus('connected', `挂件渲染完成: ${widgetId}`);
+                break;
+
+            case 'replace':
+                // 流式替换：在所有挂件中查找目标元素并替换内容
+                replaceInWidgets(data.targetSelector, content);
+                updateStatus('streaming', `替换内容: ${data.targetSelector}`);
                 break;
 
             case 'remove':

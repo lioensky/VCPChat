@@ -13,7 +13,7 @@ const DESKTOP_PUSH_START_TAG = '<<<[DESKTOP_PUSH]>>>';
 const DESKTOP_PUSH_END_TAG = '<<<[DESKTOP_PUSH_END]>>>';
 const DESKTOP_PUSH_THROTTLE_MS = 100; // 每100ms推送一次累积内容到桌面画布
 const DESKTOP_PUSH_TIMEOUT_MS = 150000; // 150秒超时：未闭合的推送块自动finalize
-const DESKTOP_PUSH_VALID_PREFIXES = ['<!doctype', '<div', '<section', '<article', '<main', '<header', '<nav', '<aside', '<canvas', '<svg'];
+const DESKTOP_PUSH_VALID_PREFIXES = ['<!doctype', '<div', '<section', '<article', '<main', '<header', '<nav', '<aside', '<canvas', '<svg', 'target:'];
 let desktopWindowAvailable = false; // 缓存桌面窗口是否可用，避免每个token都发IPC
 
 // --- DOM Cache ---
@@ -833,13 +833,34 @@ function processDesktopPushToken(messageId, textToAppend) {
                     if (state.timeoutTimer) { clearTimeout(state.timeoutTimer); state.timeoutTimer = null; }
 
                     if (canPush && state.created) {
-                        electronAPI.desktopPush({ action: 'append', widgetId: state.widgetId, content: state.buffer });
-                        electronAPI.desktopPush({ action: 'finalize', widgetId: state.widgetId });
-                        console.log(`[DesktopPush] Widget finalized: ${state.widgetId}`);
+                        if (state.isReplaceMode) {
+                            // 替换模式：解析 target:「始」...「末」和 replace:「始」...「末」
+                            const targetMatch = state.buffer.match(/target:「始」([\s\S]*?)「末」/);
+                            const replaceMatch = state.buffer.match(/replace:「始」([\s\S]*?)「末」/);
+                            
+                            if (targetMatch && replaceMatch) {
+                                const targetSelector = targetMatch[1].trim();
+                                const replaceContent = replaceMatch[1].trim();
+                                electronAPI.desktopPush({
+                                    action: 'replace',
+                                    targetSelector: targetSelector,
+                                    content: replaceContent
+                                });
+                                console.log(`[DesktopPush] Replace: "${targetSelector}" → ${replaceContent.substring(0, 50)}...`);
+                            } else {
+                                console.warn(`[DesktopPush] Replace mode but couldn't parse target/replace fields from buffer:`, state.buffer.substring(0, 100));
+                            }
+                        } else {
+                            // 创建模式：最终推送 + finalize
+                            electronAPI.desktopPush({ action: 'append', widgetId: state.widgetId, content: state.buffer });
+                            electronAPI.desktopPush({ action: 'finalize', widgetId: state.widgetId });
+                            console.log(`[DesktopPush] Widget finalized: ${state.widgetId}`);
+                        }
                     }
 
                     state.active = false; state.tagBuffer = ''; state.buffer = '';
-                    state.widgetId = null; state.created = false; state.validated = false; state.lastPushedLength = 0;
+                    state.widgetId = null; state.created = false; state.validated = false;
+                    state.isReplaceMode = false; state.lastPushedLength = 0;
                 }
             } else {
                 // 不是结束标签，内容追加到buffer
@@ -854,37 +875,50 @@ function processDesktopPushToken(messageId, textToAppend) {
                     
                     if (isValid) {
                         state.validated = true;
-                        console.log(`[DesktopPush] Content validated with prefix: ${trimmedBuffer.substring(0, 15)}...`);
                         
-                        // 验证通过后才创建挂件
-                        if (canPush) {
-                            electronAPI.desktopPush({
-                                action: 'create', widgetId: state.widgetId,
-                                options: { x: 200, y: 150, width: 400, height: 300 }
-                            });
-                            state.created = true;
+                        // 判断是否为替换模式（target:「始」...「末」开头）
+                        const isReplaceMode = trimmedBuffer.startsWith('target:');
+                        state.isReplaceMode = isReplaceMode;
+                        
+                        if (isReplaceMode) {
+                            console.log(`[DesktopPush] Replace mode detected, waiting for target and replace fields...`);
+                            state.created = true; // 标记为已处理，但不创建新挂件
+                            // 替换模式不需要定时推送，等到结束标签时一次性解析并替换
+                        } else {
+                            console.log(`[DesktopPush] Content validated with prefix: ${trimmedBuffer.substring(0, 15)}...`);
                             
-                            // 启动定时推送
-                            state.pushTimer = setInterval(() => {
-                                if (state.buffer.length > state.lastPushedLength) {
-                                    electronAPI.desktopPush({
-                                        action: 'append', widgetId: state.widgetId, content: state.buffer
-                                    });
-                                    state.lastPushedLength = state.buffer.length;
-                                }
-                            }, DESKTOP_PUSH_THROTTLE_MS);
+                            // 创建模式：验证通过后才创建挂件
+                            if (canPush) {
+                                electronAPI.desktopPush({
+                                    action: 'create', widgetId: state.widgetId,
+                                    options: { x: 200, y: 150, width: 400, height: 300 }
+                                });
+                                state.created = true;
+                                
+                                // 启动定时推送
+                                state.pushTimer = setInterval(() => {
+                                    if (state.buffer.length > state.lastPushedLength) {
+                                        electronAPI.desktopPush({
+                                            action: 'append', widgetId: state.widgetId, content: state.buffer
+                                        });
+                                        state.lastPushedLength = state.buffer.length;
+                                    }
+                                }, DESKTOP_PUSH_THROTTLE_MS);
+                            }
+                        }
 
-                            // 超时机制
+                        // 超时机制（创建模式和替换模式都需要）
+                        if (canPush) {
                             state.timeoutTimer = setTimeout(() => {
                                 console.warn(`[DesktopPush] Widget ${state.widgetId} timed out, auto-finalizing`);
                                 if (state.pushTimer) { clearInterval(state.pushTimer); state.pushTimer = null; }
-                                if (state.created && electronAPI?.desktopPush) {
+                                if (state.created && !state.isReplaceMode && electronAPI?.desktopPush) {
                                     electronAPI.desktopPush({ action: 'append', widgetId: state.widgetId, content: state.buffer });
                                     electronAPI.desktopPush({ action: 'finalize', widgetId: state.widgetId });
                                 }
                                 state.active = false; state.tagBuffer = ''; state.buffer = '';
                                 state.widgetId = null; state.created = false; state.validated = false;
-                                state.lastPushedLength = 0; state.timeoutTimer = null;
+                                state.isReplaceMode = false; state.lastPushedLength = 0; state.timeoutTimer = null;
                             }, DESKTOP_PUSH_TIMEOUT_MS);
                         }
                     } else if (state.buffer.trim().length >= 30) {

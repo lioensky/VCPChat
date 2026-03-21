@@ -114,17 +114,31 @@ electronAPI.openDesktopWindow()
 <<<[DESKTOP_PUSH_END]>>>
 ```
 
-### 5.2 支持的内容格式
+### 5.2 流式替换（热更新）
+```
+<<<[DESKTOP_PUSH]>>>
+target:「始」.vw-temp-now「末」,
+replace:「始」<span style="font-size:52px;">22°C</span>「末」
+<<<[DESKTOP_PUSH_END]>>>
+```
+
+- `target:「始」...「末」` — CSS选择器，在所有活跃挂件的Shadow DOM中查找目标元素
+- `replace:「始」...「末」` — 替换内容，支持多行HTML/CSS
+- 「始」「末」内可包含任意字符（包括换行、HTML标签），只要不包含「末」本身
+- 替换后自动触发 `autoResizeWidget` 重新计算尺寸
+
+### 5.3 支持的内容格式
 - 裸 `<div>` + 内联CSS
 - 完整 `<!DOCTYPE html>` 文档（含 `<style>` 和 `<script>`）
 - `<svg>` / `<canvas>` 图形
 - 带 `fetch()` 的动态数据挂件
+- `target:` + `replace:` 热替换语法
 
-### 5.3 二级前缀验证
+### 5.4 二级前缀验证
 开始标签后的内容必须以以下前缀之一开头，否则丢弃：
 ```
 <!doctype, <div, <section, <article, <main, <header,
-<nav, <aside, <canvas, <svg
+<nav, <aside, <canvas, <svg, target:
 ```
 
 ---
