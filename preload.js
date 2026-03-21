@@ -421,6 +421,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // Flowlock Control - for AI to control flowlock like a human user
     onFlowlockCommand: (callback) => ipcRenderer.on('flowlock-command', (_event, data) => callback(data)),
     sendFlowlockResponse: (data) => ipcRenderer.send('flowlock-response', data),
+
+    // VCPdesktop - 桌面画布 IPC 通道
+    desktopPush: (data) => ipcRenderer.send('desktop-push', data),
+    onDesktopPush: (callback) => ipcRenderer.on('desktop-push-to-canvas', (_event, data) => callback(data)),
+    onDesktopStatus: (callback) => ipcRenderer.on('desktop-status', (_event, data) => callback(data)),
+    openDesktopWindow: () => ipcRenderer.invoke('open-desktop-window'),
 });
 
 // Log the electronAPI object as it's defined in preload.js right after exposing it

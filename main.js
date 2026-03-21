@@ -41,6 +41,7 @@ const memoHandlers = require('./modules/ipc/memoHandlers'); // Import memo handl
 const ragHandlers = require('./modules/ipc/ragHandlers'); // Import RAG handlers
 // speechRecognizer is now lazy-loaded
 const canvasHandlers = require('./modules/ipc/canvasHandlers'); // Import canvas handlers
+const desktopHandlers = require('./modules/ipc/desktopHandlers'); // Import VCPdesktop handlers
 // chokidar is now lazy-loaded
 
 // --- File Watcher ---
@@ -146,6 +147,7 @@ let networkNotesTreeCache = null; // In-memory cache for the network notes
 let cachedModels = []; // Cache for models fetched from VCP server
 const NOTES_MODULE_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'Notemodules');
 const isRagObserverOnlyMode = process.argv.includes('--rag-observer-only');
+const isDesktopOnlyMode = process.argv.includes('--desktop-only');
 
 // --- Audio Engine Management ---
 // Now uses the Rust native audio engine instead of Python
@@ -417,10 +419,17 @@ if (!gotTheLock) {
 } else {
     app.on('second-instance', async (event, commandLine, workingDirectory) => {
         const wantsRagOnly = commandLine.includes('--rag-observer-only');
+        const wantsDesktopOnly = commandLine.includes('--desktop-only');
 
         // 如果第二实例请求的是 RAG 独立模式，则直接打开/聚焦 RAG 窗口
         if (wantsRagOnly) {
             await ragHandlers.openRagObserverWindow();
+            return;
+        }
+
+        // 如果第二实例请求的是 Desktop 独立模式，则直接打开/聚焦桌面窗口
+        if (wantsDesktopOnly) {
+            await desktopHandlers.openDesktopWindow();
             return;
         }
 
@@ -499,10 +508,24 @@ if (!gotTheLock) {
             themeHandlers.initialize({ mainWindow, openChildWindows, projectRoot: PROJECT_ROOT, APP_DATA_ROOT_IN_PROJECT, settingsManager: appSettingsManager });
             ipcMain.handle('get-platform', () => process.platform);
 
-            // 关键：独立模式也必须创建系统托盘，否则“最小化到托盘”后无法召回窗口。
+            // 关键：独立模式也必须创建系统托盘，否则"最小化到托盘"后无法召回窗口。
             createTray();
 
             await ragHandlers.openRagObserverWindow();
+            return;
+        }
+
+        // VCPdesktop 独立模式：不创建主窗口，仅初始化桌面所需 IPC 并直接打开桌面画布窗口
+        if (isDesktopOnlyMode) {
+            console.log('[Main] Starting in Desktop only mode.');
+            windowHandlers.initialize(mainWindow, openChildWindows);
+            themeHandlers.initialize({ mainWindow, openChildWindows, projectRoot: PROJECT_ROOT, APP_DATA_ROOT_IN_PROJECT, settingsManager: appSettingsManager });
+            desktopHandlers.initialize({ mainWindow, openChildWindows, settingsManager: appSettingsManager });
+            ipcMain.handle('get-platform', () => process.platform);
+
+            createTray();
+
+            await desktopHandlers.openDesktopWindow();
             return;
         }
 
@@ -914,6 +937,7 @@ if (!gotTheLock) {
         emoticonHandlers.initialize({ SETTINGS_FILE, APP_DATA_ROOT_IN_PROJECT });
         emoticonHandlers.setupEmoticonHandlers();
         canvasHandlers.initialize({ mainWindow, openChildWindows, CANVAS_CACHE_DIR });
+        desktopHandlers.initialize({ mainWindow, openChildWindows, settingsManager: appSettingsManager });
         promptHandlers.initialize({ AGENT_DIR, APP_DATA_ROOT_IN_PROJECT });
 
         ipcMain.on('minimize-to-tray', () => {
