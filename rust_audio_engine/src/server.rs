@@ -102,6 +102,12 @@ fn validate_path(path: &str) -> Result<String, String> {
         if path.contains("..") || path.contains('\\') {
             return Err("Invalid URL: path traversal characters not allowed".into());
         }
+        // SSRF protection: reject private/link-local IP ranges
+        if let Some(host) = extract_host(path) {
+            if is_private_host(&host) {
+                return Err(format!("URL host '{}' is not allowed (private/internal address)", host));
+            }
+        }
         return Ok(path.to_string());
     }
     
@@ -151,6 +157,30 @@ fn validate_path(path: &str) -> Result<String, String> {
             Err(format!("File not found or inaccessible: {}", path.display()))
         }
     }
+}
+
+/// Extract host from a URL string
+fn extract_host(url: &str) -> Option<String> {
+    // Skip "http://" or "https://"
+    let after_scheme = url.split("//").nth(1)?;
+    let host_port = after_scheme.split('/').next()?;
+    // Remove port if present
+    Some(host_port.split(':').next()?.to_string())
+}
+
+/// Check if a host is a private/internal address (SSRF protection)
+fn is_private_host(host: &str) -> bool {
+    if host == "localhost" { return true; }
+    // Parse dotted-decimal IPv4
+    let parts: Vec<u8> = host.split('.').filter_map(|p| p.parse().ok()).collect();
+    if parts.len() == 4 {
+        return matches!(parts[0],
+            10 | 127          // 10.x.x.x, loopback
+        ) || (parts[0] == 172 && (16..=31).contains(&parts[1])) // 172.16-31.x.x
+          || (parts[0] == 192 && parts[1] == 168)               // 192.168.x.x
+          || (parts[0] == 169 && parts[1] == 254);              // 169.254.x.x link-local
+    }
+    false
 }
 
 // ============ Request/Response Types ============
@@ -417,9 +447,7 @@ fn apply_settings_to_player(player: &mut AudioPlayer, settings: &PersistentSetti
             ("1000", 5), ("2000", 6), ("4000", 7), ("8000", 8), ("16000", 9),
             ("1k", 5), ("2k", 6), ("4k", 7), ("8k", 8), ("16k", 9),
         ].into_iter().collect();
-        
-        let sr = player.shared_state().sample_rate.load(Ordering::Relaxed) as f64;
-        
+
         if player.is_fir_eq_enabled() {
             let mut gains = [0.0_f64; 10];
             for (name, &gain) in bands {
@@ -435,7 +463,6 @@ fn apply_settings_to_player(player: &mut AudioPlayer, settings: &PersistentSetti
                     player.lockfree_eq_params.set_band_gain(idx, gain);
                 }
             }
-            let _ = sr;
         }
     }
     
@@ -684,7 +711,7 @@ pub async fn run_server(port: u16, config: AppConfig, settings_manager: SharedSe
             .wrap(middleware::Logger::default())
             .wrap(
                 middleware::DefaultHeaders::new()
-                    .add(("Access-Control-Allow-Origin", "*"))
+                    .add(("Access-Control-Allow-Origin", "file://"))
                     .add(("Access-Control-Allow-Methods", "GET, POST, OPTIONS"))
                     .add(("Access-Control-Allow-Headers", "Content-Type"))
             )

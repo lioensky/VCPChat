@@ -66,7 +66,7 @@
     overflow-x: hidden;
     flex-grow: 1;
     /* 为滚动条留出空间，避免布局变化 */
-    padding-right: 12px;
+    padding-right: 0;
     box-sizing: border-box;
 }
 
@@ -2105,8 +2105,292 @@ body.light-theme #globalSettingsModal .modal-content {
     image-rendering: crisp-edges;
 }
 
+/* ========================================
+   全局设置双栏布局
+   ======================================== */
+
+/* 模态框容器 - 增加宽度以适应双栏 */
+.global-settings-modal-content {
+    max-width: 900px !important;
+    width: 90vw;
+    height: 80vh;
+    min-height: 600px;
+    padding: 0 !important;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.global-settings-title {
+    margin: 0;
+    padding: 12px 25px;
+    color: var(--highlight-text);
+    font-size: 1.4em;
+    font-weight: 600;
+    border-bottom: 1px solid var(--border-color);
+    flex-shrink: 0;
+}
+
+/* 双栏布局容器 - 使用Grid布局 */
+.global-settings-layout {
+    display: grid;
+    grid-template-columns: 200px 1fr;
+    grid-template-rows: 1fr auto;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    padding: 8px;
+}
+
+/* 左侧导航菜单 */
+.global-settings-nav {
+    grid-row: 1;
+    background-color: var(--input-bg);
+    border-right: 1px solid var(--border-color);
+    overflow-y: auto;
+    border-radius: 8px 0 0 0;
+}
+
+.settings-nav-list {
+    list-style: none;
+    margin: 0;
+    padding: 10px 0;
+}
+
+.settings-nav-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 20px;
+    cursor: pointer;
+    color: var(--secondary-text);
+    transition: all 0.2s ease;
+    border-left: 3px solid transparent;
+    font-size: 0.95em;
+}
+
+.settings-nav-item:hover {
+    background-color: var(--accent-bg);
+    color: var(--highlight-text);
+}
+
+.settings-nav-item.active {
+    background-color: var(--accent-bg);
+    color: var(--highlight-text);
+    border-left-color: var(--user-bubble-bg);
+    font-weight: 500;
+}
+
+.settings-nav-icon {
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+}
+
+/* 右侧内容区域 */
+.global-settings-content {
+    overflow-y: auto;
+    padding: 10px 15px;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+/* 设置面板 - 使用 opacity 实现平滑过渡 */
+.settings-section {
+    display: none;
+    opacity: 0;
+    transform: translateX(15px);
+    transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.settings-section.active {
+    display: block;
+    opacity: 1;
+    transform: translateX(0);
+}
+
+/* 面板切换时的动画 */
+.settings-section.switching-out {
+    opacity: 0;
+    transform: translateX(-15px);
+}
+
+.settings-section.switching-in {
+    opacity: 0;
+    transform: translateX(15px);
+}
+
+.settings-section-title {
+    color: var(--highlight-text);
+    font-size: 1.1em;
+    font-weight: 600;
+    margin: 0 0 20px 0;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.settings-form-group {
+    margin-bottom: 15px;
+}
+
+.settings-form-group label {
+    display: block;
+    font-weight: 500;
+    color: var(--secondary-text);
+    font-size: 0.9em;
+    margin-bottom: 6px;
+}
+
+.settings-form-group input[type="text"],
+.settings-form-group input[type="url"],
+.settings-form-group input[type="password"],
+.settings-form-group input[type="number"],
+.settings-form-group select,
+.settings-form-group textarea {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    background-color: var(--input-bg);
+    color: var(--primary-text);
+    font-size: 0.95em;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.settings-form-group input:focus,
+.settings-form-group select:focus,
+.settings-form-group textarea:focus {
+    outline: none;
+    border-color: var(--user-bubble-bg);
+    box-shadow: 0 0 0 2px rgba(61, 90, 128, 0.2);
+}
+
+.settings-form-group textarea {
+    min-height: 80px;
+    resize: vertical;
+}
+
+/* 底部保存按钮区域 */
+.global-settings-footer {
+    grid-column: 2;
+    background: var(--secondary-bg);
+    padding: 10px 15px;
+    text-align: right;
+    border-radius: 0 0 8px 0;
+}
+
+.global-settings-footer button[type="submit"] {
+    padding: 12px 30px;
+    font-size: 1em;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    transition: background-color 0.2s, transform 0.1s;
+    color: #ffffff;
+    background-color: var(--user-bubble-bg);
+}
+
+.global-settings-footer button[type="submit"]:hover {
+    background-color: var(--button-hover-bg);
+    transform: translateY(-1px);
+}
+
+.global-settings-footer button[type="submit"]:active {
+    transform: translateY(0);
+}
+
+body.light-theme .global-settings-footer button[type="submit"] {
+    background-color: var(--button-bg);
+}
+
+body.light-theme .global-settings-footer button[type="submit"]:hover {
+    background-color: var(--button-hover-bg);
+}
+
+/* 滚动条样式 */
+.global-settings-content::-webkit-scrollbar {
+    width: 8px;
+}
+
+.global-settings-content::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.global-settings-content::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb, #c1c1c1);
+    border-radius: 4px;
+}
+
+.global-settings-content::-webkit-scrollbar-thumb:hover {
+    background: var(--scrollbar-thumb-hover, #a8a8a8);
+}
+
+.global-settings-nav::-webkit-scrollbar {
+    width: 6px;
+}
+
+.global-settings-nav::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.global-settings-nav::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb, #c1c1c1);
+    border-radius: 3px;
+}
+
 /* 响应式调整 */
 @media (max-width: 768px) {
+    .global-settings-modal-content {
+        width: 95vw;
+        max-height: 90vh;
+    }
+
+    .global-settings-layout {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .global-settings-nav {
+        width: 100%;
+        min-width: unset;
+        border-right: none;
+        border-bottom: 1px solid var(--border-color);
+        border-radius: 8px 8px 0 0;
+        max-height: 200px;
+    }
+
+    .settings-nav-list {
+        display: flex;
+        flex-wrap: wrap;
+        padding: 8px;
+        gap: 4px;
+    }
+
+    .settings-nav-item {
+        flex: 1 1 calc(50% - 8px);
+        min-width: 120px;
+        padding: 10px 12px;
+        border-left: none;
+        border-bottom: 2px solid transparent;
+        justify-content: center;
+        font-size: 0.85em;
+    }
+
+    .settings-nav-item.active {
+        border-left-color: transparent;
+        border-bottom-color: var(--user-bubble-bg);
+    }
+
+    .global-settings-content {
+        padding: 10px;
+    }
+
+    .global-settings-footer {
+        border-radius: 0 0 8px 8px;
+    }
+
     .agent-identity-main {
         flex-direction: column;
         align-items: center;

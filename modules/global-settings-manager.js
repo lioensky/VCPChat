@@ -84,7 +84,7 @@ export async function handleSaveGlobalSettings(e, deps) {
     }
 
     const rustConfigPatch = {
-        useRustAssistant: document.getElementById('rustUseAssistant')?.checked || false,
+        useRustAssistant: true,
         debugMode: document.getElementById('rustDebugMode')?.checked || false,
         whitelist: whitelist,
         blacklist: blacklist,

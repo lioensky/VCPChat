@@ -97,7 +97,7 @@ body.light-theme .resizer {
     -webkit-backdrop-filter: blur(12px);
     min-width: 180px;
     max-width: 600px;
-    padding: 15px 15px 15px 17px;
+    padding: 15px 10px 15px 17px;
     box-sizing: border-box;
     display: flex;
     flex-direction: column;

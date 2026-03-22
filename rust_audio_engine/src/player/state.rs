@@ -170,6 +170,15 @@ pub fn load_cache_with_header(
     Some(samples)
 }
 
+// ============ Event Flag Constants (Task E) ============
+
+pub const EVENT_LOAD_COMPLETE:       u32 = 1 << 0;
+pub const EVENT_LOAD_ERROR:          u32 = 1 << 1;
+pub const EVENT_TRACK_CHANGED:       u32 = 1 << 2;
+pub const EVENT_PLAYBACK_ENDED:      u32 = 1 << 3;
+pub const EVENT_NEEDS_PRELOAD:       u32 = 1 << 4;
+pub const EVENT_NEEDS_PRELOAD_RESET: u32 = 1 << 5;
+
 // ============ Commands & State ============
 
 /// Load result for async loading
@@ -247,15 +256,20 @@ pub struct SharedState {
     /// Fixes Defect 22: Prevents premature gain update during gapless preload
     pub pending_target_gain_db: std::sync::atomic::AtomicU64,  // Stored as bits of f64
 
+    // Gapless: deferred metadata for main-thread pickup after track switch.
+    // Audio callback sets gapless_swap_pending=true; main thread (WS pusher) reads these
+    // and copies into file_path / track_metadata / current_track_path, then clears.
+    pub gapless_swap_pending: AtomicBool,
+
     // Async loading state
     pub is_loading: AtomicBool,
     pub load_progress: AtomicU64,  // Percentage (0-100)
     pub load_error: RwLock<Option<String>>,
 
-    // WebSocket event flags
-    pub event_track_changed: AtomicBool,  // Gapless track switch happened
-    pub event_playback_ended: AtomicBool,  // EOF reached
-    pub event_load_complete: AtomicBool,  // Load finished (success or error)
+    // WebSocket event flags — unified bitmask (Task E)
+    // Writers: audio thread or async tasks use fetch_or(EVENT_*, Release)
+    // Reader: WebSocket pusher uses swap(0, AcqRel) to atomically take all events
+    pub event_flags: std::sync::atomic::AtomicU32,
     pub current_track_path: RwLock<Option<String>>,  // Current track for notifications
 
     // Track metadata
@@ -294,13 +308,13 @@ impl SharedState {
             cancel_preload_signal: AtomicBool::new(false),
             pending_target_gain_db: std::sync::atomic::AtomicU64::new(0_f64.to_bits()),
 
+            gapless_swap_pending: AtomicBool::new(false),
+
             is_loading: AtomicBool::new(false),
             load_progress: AtomicU64::new(0),
             load_error: RwLock::new(None),
 
-            event_track_changed: AtomicBool::new(false),
-            event_playback_ended: AtomicBool::new(false),
-            event_load_complete: AtomicBool::new(false),
+            event_flags: std::sync::atomic::AtomicU32::new(0),
             current_track_path: RwLock::new(None),
 
             track_metadata: RwLock::new(crate::decoder::TrackMetadata::default()),
