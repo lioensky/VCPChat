@@ -1,10 +1,10 @@
 /**
  * modules/ipc/desktopHandlers.js
  * VCPdesktop IPC 处理模块
- * 负责：桌面窗口创建管理、流式推送转发、收藏系统持久化
+ * 负责：桌面窗口创建管理、流式推送转发、收藏系统持久化、快捷方式解析/启动、Dock持久化、布局持久化
  */
 
-const { BrowserWindow, ipcMain, app, screen } = require('electron');
+const { BrowserWindow, ipcMain, app, screen, shell } = require('electron');
 const path = require('path');
 const fs = require('fs-extra');
 
@@ -17,6 +17,9 @@ let appSettingsManager = null;
 // --- 收藏系统路径 - 使用项目根目录的 AppData ---
 const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
 const DESKTOP_WIDGETS_DIR = path.join(PROJECT_ROOT, 'AppData', 'DesktopWidgets');
+const DESKTOP_DATA_DIR = path.join(PROJECT_ROOT, 'AppData', 'DesktopData');
+const DOCK_CONFIG_PATH = path.join(DESKTOP_DATA_DIR, 'dock.json');
+const LAYOUT_CONFIG_PATH = path.join(DESKTOP_DATA_DIR, 'layout.json');
 
 /**
  * 初始化桌面处理模块
@@ -26,8 +29,9 @@ function initialize(params) {
     openChildWindows = params.openChildWindows;
     appSettingsManager = params.settingsManager;
 
-    // 确保收藏目录存在
+    // 确保目录存在
     fs.ensureDirSync(DESKTOP_WIDGETS_DIR);
+    fs.ensureDirSync(DESKTOP_DATA_DIR);
 
     // --- IPC: 打开桌面窗口 ---
     ipcMain.handle('open-desktop-window', async () => {
@@ -268,7 +272,313 @@ function initialize(params) {
         }
     });
 
-    console.log('[DesktopHandlers] Initialized (with favorites & vcpAPI system).');
+    // ============================================================
+    // --- IPC: 快捷方式解析 & 启动 ---
+    // ============================================================
+
+    /**
+     * 解析 Windows 快捷方式 (.lnk) 文件
+     * 返回：{ name, targetPath, args, icon (DataURL), workingDir }
+     */
+    ipcMain.handle('desktop-shortcut-parse', async (event, filePath) => {
+        try {
+            if (!filePath || !filePath.toLowerCase().endsWith('.lnk')) {
+                return { success: false, error: '不是有效的快捷方式文件' };
+            }
+
+            // 使用 Electron 原生 API 解析 .lnk
+            let shortcutDetails;
+            try {
+                shortcutDetails = shell.readShortcutLink(filePath);
+            } catch (e) {
+                return { success: false, error: `解析快捷方式失败: ${e.message}` };
+            }
+
+            const targetPath = shortcutDetails.target || '';
+            const args = shortcutDetails.args || '';
+            const workingDir = shortcutDetails.cwd || '';
+            const description = shortcutDetails.description || '';
+
+            // 从文件名提取显示名称
+            const name = path.basename(filePath, '.lnk');
+
+            // 提取图标
+            let iconDataUrl = '';
+            try {
+                // 优先从目标可执行文件提取图标
+                const iconTarget = targetPath || filePath;
+                const nativeImage = await app.getFileIcon(iconTarget, { size: 'large' });
+                if (nativeImage && !nativeImage.isEmpty()) {
+                    iconDataUrl = nativeImage.toDataURL();
+                }
+            } catch (iconErr) {
+                console.warn('[DesktopHandlers] Icon extraction failed:', iconErr.message);
+                // 尝试从 .lnk 文件本身提取图标
+                try {
+                    const nativeImage = await app.getFileIcon(filePath, { size: 'large' });
+                    if (nativeImage && !nativeImage.isEmpty()) {
+                        iconDataUrl = nativeImage.toDataURL();
+                    }
+                } catch (e) { /* ignore */ }
+            }
+
+            console.log(`[DesktopHandlers] Shortcut parsed: ${name} -> ${targetPath}`);
+            return {
+                success: true,
+                shortcut: {
+                    name,
+                    targetPath,
+                    args,
+                    workingDir,
+                    description,
+                    icon: iconDataUrl,
+                    originalPath: filePath,
+                },
+            };
+        } catch (err) {
+            console.error('[DesktopHandlers] Shortcut parse error:', err);
+            return { success: false, error: err.message };
+        }
+    });
+
+    /**
+     * 批量解析多个快捷方式文件
+     */
+    ipcMain.handle('desktop-shortcut-parse-batch', async (event, filePaths) => {
+        try {
+            if (!Array.isArray(filePaths)) {
+                return { success: false, error: '参数必须是文件路径数组' };
+            }
+
+            const results = [];
+            for (const filePath of filePaths) {
+                try {
+                    if (!filePath.toLowerCase().endsWith('.lnk')) continue;
+
+                    let shortcutDetails;
+                    try {
+                        shortcutDetails = shell.readShortcutLink(filePath);
+                    } catch (e) {
+                        continue;
+                    }
+
+                    const targetPath = shortcutDetails.target || '';
+                    const name = path.basename(filePath, '.lnk');
+
+                    let iconDataUrl = '';
+                    try {
+                        const iconTarget = targetPath || filePath;
+                        const nativeImage = await app.getFileIcon(iconTarget, { size: 'large' });
+                        if (nativeImage && !nativeImage.isEmpty()) {
+                            iconDataUrl = nativeImage.toDataURL();
+                        }
+                    } catch (e) {
+                        try {
+                            const nativeImage = await app.getFileIcon(filePath, { size: 'large' });
+                            if (nativeImage && !nativeImage.isEmpty()) {
+                                iconDataUrl = nativeImage.toDataURL();
+                            }
+                        } catch (e2) { /* ignore */ }
+                    }
+
+                    results.push({
+                        name,
+                        targetPath,
+                        args: shortcutDetails.args || '',
+                        workingDir: shortcutDetails.cwd || '',
+                        description: shortcutDetails.description || '',
+                        icon: iconDataUrl,
+                        originalPath: filePath,
+                    });
+                } catch (e) {
+                    console.warn(`[DesktopHandlers] Failed to parse shortcut: ${filePath}`, e.message);
+                }
+            }
+
+            console.log(`[DesktopHandlers] Batch parsed ${results.length} shortcuts from ${filePaths.length} files`);
+            return { success: true, shortcuts: results };
+        } catch (err) {
+            console.error('[DesktopHandlers] Batch parse error:', err);
+            return { success: false, error: err.message };
+        }
+    });
+
+    /**
+     * 启动快捷方式目标程序
+     */
+    ipcMain.handle('desktop-shortcut-launch', async (event, shortcutData) => {
+        try {
+            const { targetPath, args, workingDir, originalPath } = shortcutData;
+
+            if (!targetPath && !originalPath) {
+                return { success: false, error: '缺少目标路径' };
+            }
+
+            // 优先使用 shell.openPath 打开原始 .lnk 文件（保留完整的快捷方式配置如管理员权限等）
+            if (originalPath && await fs.pathExists(originalPath)) {
+                console.log(`[DesktopHandlers] Launching shortcut via .lnk: ${originalPath}`);
+                const errorMsg = await shell.openPath(originalPath);
+                if (errorMsg) {
+                    return { success: false, error: errorMsg };
+                }
+                return { success: true };
+            }
+
+            // 备选方案：直接打开目标路径
+            if (targetPath && await fs.pathExists(targetPath)) {
+                console.log(`[DesktopHandlers] Launching target: ${targetPath}`);
+                const errorMsg = await shell.openPath(targetPath);
+                if (errorMsg) {
+                    return { success: false, error: errorMsg };
+                }
+                return { success: true };
+            }
+
+            return { success: false, error: '目标文件不存在' };
+        } catch (err) {
+            console.error('[DesktopHandlers] Shortcut launch error:', err);
+            return { success: false, error: err.message };
+        }
+    });
+
+    /**
+     * 扫描 Windows 桌面上的快捷方式
+     * 自动扫描公共桌面和用户桌面
+     */
+    ipcMain.handle('desktop-scan-shortcuts', async () => {
+        try {
+            if (process.platform !== 'win32') {
+                return { success: false, error: '此功能仅支持 Windows 平台' };
+            }
+
+            const shortcuts = [];
+            const desktopPaths = [
+                app.getPath('desktop'),  // 用户桌面
+                path.join(process.env.PUBLIC || 'C:\\Users\\Public', 'Desktop'),  // 公共桌面
+            ];
+
+            for (const desktopPath of desktopPaths) {
+                try {
+                    if (!await fs.pathExists(desktopPath)) continue;
+                    const files = await fs.readdir(desktopPath);
+
+                    for (const file of files) {
+                        if (!file.toLowerCase().endsWith('.lnk')) continue;
+
+                        const filePath = path.join(desktopPath, file);
+                        try {
+                            const shortcutDetails = shell.readShortcutLink(filePath);
+                            const targetPath = shortcutDetails.target || '';
+                            const name = path.basename(file, '.lnk');
+
+                            let iconDataUrl = '';
+                            try {
+                                const iconTarget = targetPath || filePath;
+                                const nativeImage = await app.getFileIcon(iconTarget, { size: 'large' });
+                                if (nativeImage && !nativeImage.isEmpty()) {
+                                    iconDataUrl = nativeImage.toDataURL();
+                                }
+                            } catch (e) { /* ignore */ }
+
+                            shortcuts.push({
+                                name,
+                                targetPath,
+                                args: shortcutDetails.args || '',
+                                workingDir: shortcutDetails.cwd || '',
+                                description: shortcutDetails.description || '',
+                                icon: iconDataUrl,
+                                originalPath: filePath,
+                            });
+                        } catch (e) {
+                            // 跳过无法解析的快捷方式
+                            console.warn(`[DesktopHandlers] Cannot parse: ${file}`, e.message);
+                        }
+                    }
+                } catch (e) {
+                    console.warn(`[DesktopHandlers] Cannot read desktop dir: ${desktopPath}`, e.message);
+                }
+            }
+
+            // 按名称排序
+            shortcuts.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
+
+            console.log(`[DesktopHandlers] Scanned ${shortcuts.length} shortcuts from Windows desktop`);
+            return { success: true, shortcuts };
+        } catch (err) {
+            console.error('[DesktopHandlers] Scan shortcuts error:', err);
+            return { success: false, error: err.message };
+        }
+    });
+
+    // ============================================================
+    // --- IPC: Dock 持久化 ---
+    // ============================================================
+
+    /**
+     * 保存 Dock 配置
+     */
+    ipcMain.handle('desktop-save-dock', async (event, dockData) => {
+        try {
+            await fs.writeJson(DOCK_CONFIG_PATH, dockData, { spaces: 2 });
+            console.log(`[DesktopHandlers] Dock config saved (${dockData.items?.length || 0} items)`);
+            return { success: true };
+        } catch (err) {
+            console.error('[DesktopHandlers] Save dock error:', err);
+            return { success: false, error: err.message };
+        }
+    });
+
+    /**
+     * 加载 Dock 配置
+     */
+    ipcMain.handle('desktop-load-dock', async () => {
+        try {
+            if (await fs.pathExists(DOCK_CONFIG_PATH)) {
+                const data = await fs.readJson(DOCK_CONFIG_PATH);
+                return { success: true, data };
+            }
+            return { success: true, data: { items: [], maxVisible: 8 } };
+        } catch (err) {
+            console.error('[DesktopHandlers] Load dock error:', err);
+            return { success: false, error: err.message };
+        }
+    });
+
+    // ============================================================
+    // --- IPC: 布局持久化 ---
+    // ============================================================
+
+    /**
+     * 保存桌面布局
+     */
+    ipcMain.handle('desktop-save-layout', async (event, layoutData) => {
+        try {
+            await fs.writeJson(LAYOUT_CONFIG_PATH, layoutData, { spaces: 2 });
+            console.log(`[DesktopHandlers] Layout saved`);
+            return { success: true };
+        } catch (err) {
+            console.error('[DesktopHandlers] Save layout error:', err);
+            return { success: false, error: err.message };
+        }
+    });
+
+    /**
+     * 加载桌面布局
+     */
+    ipcMain.handle('desktop-load-layout', async () => {
+        try {
+            if (await fs.pathExists(LAYOUT_CONFIG_PATH)) {
+                const data = await fs.readJson(LAYOUT_CONFIG_PATH);
+                return { success: true, data };
+            }
+            return { success: true, data: null };
+        } catch (err) {
+            console.error('[DesktopHandlers] Load layout error:', err);
+            return { success: false, error: err.message };
+        }
+    });
+
+    console.log('[DesktopHandlers] Initialized (with favorites, vcpAPI, shortcuts, dock & layout system).');
 }
 
 /**

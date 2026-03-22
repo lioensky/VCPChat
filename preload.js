@@ -437,6 +437,20 @@ contextBridge.exposeInMainWorld('electronAPI', {
     desktopListWidgets: () => ipcRenderer.invoke('desktop-list-widgets'),
     desktopCaptureWidget: (rect) => ipcRenderer.invoke('desktop-capture-widget', rect),
     desktopGetCredentials: () => ipcRenderer.invoke('desktop-get-credentials'),
+
+    // VCPdesktop - 快捷方式系统 IPC 通道
+    desktopShortcutParse: (filePath) => ipcRenderer.invoke('desktop-shortcut-parse', filePath),
+    desktopShortcutParseBatch: (filePaths) => ipcRenderer.invoke('desktop-shortcut-parse-batch', filePaths),
+    desktopShortcutLaunch: (shortcutData) => ipcRenderer.invoke('desktop-shortcut-launch', shortcutData),
+    desktopScanShortcuts: () => ipcRenderer.invoke('desktop-scan-shortcuts'),
+
+    // VCPdesktop - Dock 持久化 IPC 通道
+    desktopSaveDock: (dockData) => ipcRenderer.invoke('desktop-save-dock', dockData),
+    desktopLoadDock: () => ipcRenderer.invoke('desktop-load-dock'),
+
+    // VCPdesktop - 布局持久化 IPC 通道
+    desktopSaveLayout: (layoutData) => ipcRenderer.invoke('desktop-save-layout', layoutData),
+    desktopLoadLayout: () => ipcRenderer.invoke('desktop-load-layout'),
 });
 
 // Log the electronAPI object as it's defined in preload.js right after exposing it
