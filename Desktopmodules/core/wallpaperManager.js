@@ -80,37 +80,37 @@
             if (!wallpaperLayer) return;
         }
 
-        // 清除当前壁纸
-        clear();
+        // 清除当前壁纸（带渐出效果）
+        clearWithTransition(() => {
+            if (!config.enabled || config.type === 'none' || !config.source) {
+                // 无自定义壁纸：恢复 body 原有的 themes.css 壁纸显示
+                document.body.classList.remove('desktop-custom-wallpaper-active');
+                wallpaperLayer.style.display = 'none';
+                return;
+            }
 
-        if (!config.enabled || config.type === 'none' || !config.source) {
-            // 无自定义壁纸：恢复 body 原有的 themes.css 壁纸显示
-            document.body.classList.remove('desktop-custom-wallpaper-active');
-            wallpaperLayer.style.display = 'none';
-            return;
-        }
+            // 有自定义壁纸：隐藏 body 的 themes.css 壁纸
+            document.body.classList.add('desktop-custom-wallpaper-active');
+            wallpaperLayer.style.display = 'block';
 
-        // 有自定义壁纸：隐藏 body 的 themes.css 壁纸
-        document.body.classList.add('desktop-custom-wallpaper-active');
-        wallpaperLayer.style.display = 'block';
+            // 应用滤镜效果
+            applyFilters(config);
 
-        // 应用滤镜效果
-        applyFilters(config);
-
-        // 根据类型创建壁纸元素
-        switch (config.type) {
-            case 'image':
-                applyImageWallpaper(config.source);
-                break;
-            case 'video':
-                applyVideoWallpaper(config.source, config);
-                break;
-            case 'html':
-                applyHtmlWallpaper(config.source);
-                break;
-            default:
-                console.warn('[WallpaperManager] Unknown wallpaper type:', config.type);
-        }
+            // 根据类型创建壁纸元素
+            switch (config.type) {
+                case 'image':
+                    applyImageWallpaper(config.source);
+                    break;
+                case 'video':
+                    applyVideoWallpaper(config.source, config);
+                    break;
+                case 'html':
+                    applyHtmlWallpaper(config.source);
+                    break;
+                default:
+                    console.warn('[WallpaperManager] Unknown wallpaper type:', config.type);
+            }
+        });
     }
 
     /**
@@ -184,11 +184,11 @@
     /**
      * 应用 HTML 壁纸
      * HTML 壁纸通过 iframe 沙盒化加载，支持动态效果（粒子、shader 等）
+     * 使用 CSS transition 实现加载完成后的渐入效果
      */
     function applyHtmlWallpaper(source) {
         const iframe = document.createElement('iframe');
         iframe.className = 'desktop-wallpaper-html';
-        iframe.src = source;
         iframe.frameBorder = '0';
         iframe.scrolling = 'no';
         // 沙盒：允许脚本执行，但限制其他能力
@@ -198,9 +198,20 @@
         // 防止 iframe 捕获事件（让事件穿透到桌面画布）
         iframe.style.pointerEvents = 'none';
 
+        // iframe 加载完成后触发渐入
+        iframe.addEventListener('load', () => {
+            // 短暂延迟确保 iframe 内容已渲染
+            setTimeout(() => {
+                iframe.classList.add('wallpaper-loaded');
+                console.log('[WallpaperManager] HTML wallpaper loaded and fading in');
+            }, 100);
+        });
+
         // 加载错误处理
         iframe.addEventListener('error', (e) => {
             console.error('[WallpaperManager] HTML wallpaper load error:', e);
+            // 即使出错也显示（可能是部分加载）
+            iframe.classList.add('wallpaper-loaded');
             if (window.VCPDesktop.status) {
                 window.VCPDesktop.status.update('waiting', 'HTML壁纸加载失败');
                 window.VCPDesktop.status.show();
@@ -209,6 +220,8 @@
         });
 
         wallpaperLayer.appendChild(iframe);
+        // 设置 src 在 appendChild 之后，确保 load 事件不会被遗漏
+        iframe.src = source;
         currentElement = iframe;
         console.log('[WallpaperManager] HTML wallpaper applied:', source.substring(0, 80));
     }
@@ -218,7 +231,7 @@
     // ============================================================
 
     /**
-     * 清除当前壁纸
+     * 清除当前壁纸（无动画，直接清除）
      */
     function clear() {
         if (!wallpaperLayer) return;
@@ -237,6 +250,33 @@
 
         wallpaperLayer.innerHTML = '';
         currentElement = null;
+    }
+
+    /**
+     * 带渐出过渡的壁纸切换
+     * 如果当前有壁纸，先渐出再执行回调；如果没有则直接执行
+     * @param {Function} callback - 渐出完成后执行的回调
+     */
+    function clearWithTransition(callback) {
+        if (!wallpaperLayer || !currentElement) {
+            // 没有当前壁纸，直接清除并执行回调
+            clear();
+            if (callback) callback();
+            return;
+        }
+
+        // 为壁纸层添加渐出效果
+        wallpaperLayer.style.transition = 'opacity 0.4s ease-out';
+        wallpaperLayer.style.opacity = '0';
+
+        // 渐出完成后清除旧壁纸并执行回调
+        setTimeout(() => {
+            clear();
+            // 重置透明度（新壁纸会通过 CSS animation/transition 自行渐入）
+            wallpaperLayer.style.transition = '';
+            wallpaperLayer.style.opacity = '';
+            if (callback) callback();
+        }, 420); // 略长于 transition 时间
     }
 
     /**

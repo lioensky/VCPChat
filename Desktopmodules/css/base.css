@@ -42,12 +42,23 @@ body.desktop-custom-wallpaper-active {
     pointer-events: none;
 }
 
+/* --- 壁纸渐入动画 --- */
+@keyframes wallpaper-fade-in {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
 .desktop-wallpaper-image {
     position: absolute;
     inset: 0;
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
+    animation: wallpaper-fade-in 0.8s ease-out forwards;
 }
 
 .desktop-wallpaper-video {
@@ -60,6 +71,7 @@ body.desktop-custom-wallpaper-active {
     width: auto;
     height: auto;
     object-fit: cover;
+    animation: wallpaper-fade-in 0.8s ease-out forwards;
 }
 
 .desktop-wallpaper-html {
@@ -69,6 +81,13 @@ body.desktop-custom-wallpaper-active {
     height: 100%;
     border: none;
     background: transparent;
+    /* HTML 壁纸使用更长的渐入时间，因为 iframe 内容需要加载 */
+    opacity: 0;
+    transition: opacity 1.2s ease-out;
+}
+
+.desktop-wallpaper-html.wallpaper-loaded {
+    opacity: 1;
 }
 
 /* ============================================================
