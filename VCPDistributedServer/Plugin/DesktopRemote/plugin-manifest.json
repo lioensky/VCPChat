@@ -1,0 +1,31 @@
+{
+  "name": "DesktopRemote",
+  "displayName": "桌面远程控制器",
+  "pluginType": "synchronous",
+  "version": "1.1.0",
+  "description": "远程控制VCPdesktop桌面画布，支持推送壁纸、感知查询桌面状态、查看挂件源码。",
+  "author": "VCPToolBox",
+  "license": "MIT",
+  "entryPoint": {
+    "command": "node desktop-remote.js"
+  },
+  "communication": {
+    "protocol": "stdio"
+  },
+  "capabilities": {
+    "invocationCommands": [
+      {
+        "command": "SetWallpaper",
+        "description": "功能: 推送壁纸到用户的VCPdesktop桌面。支持多种壁纸来源：\n1. 直接URL（http/https）：推送网络图片或视频作为壁纸。\n2. 本地文件URL（file:///...）：推送本地图片、视频或HTML文件作为壁纸。\n3. HTML内容：直接传入一段HTML代码，系统会将其保存为HTML文件并作为动态壁纸加载（适合粒子效果、shader动画等）。\n\n壁纸类型会根据文件扩展名或内容自动检测：图片(jpg/png/gif/webp/svg)、视频(mp4/webm)、HTML动态壁纸(html/htm)。\n\n参数:\n- wallpaperSource (字符串, 必需): 壁纸来源。可以是：\n  - HTTP/HTTPS URL (如 https://example.com/bg.jpg)\n  - 本地文件 file:// URL (如 file:///C:/wallpapers/bg.png)\n  - 完整的HTML代码（以 <!DOCTYPE 或 <html 开头时会被识别为HTML内容）\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」DesktopRemote「末」,\ncommand:「始」SetWallpaper「末」,\nwallpaperSource:「始」https://example.com/beautiful-landscape.jpg「末」\n<<<[END_TOOL_REQUEST]>>>\n\n创建HTML动态壁纸示例:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」DesktopRemote「末」,\ncommand:「始」SetWallpaper「末」,\nwallpaperSource:「始」<!DOCTYPE html><html><head><style>body{margin:0;overflow:hidden;background:#000}canvas{display:block}</style></head><body><canvas id=\"c\"></canvas><script>/* 粒子动画代码 */</script></body></html>「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "QueryDesktop",
+        "description": "功能: 感知查询当前VCPdesktop桌面上的所有挂件(widget)和图标(shortcut icon)信息。\n返回内容包括：\n- widgets: 桌面上所有活跃挂件的ID列表。如果挂件已被收藏，还会显示收藏名称和对应的持久化目录路径（可配合FileOperator插件读写维护收藏的HTML内容）。\n- icons: 桌面上所有快捷方式图标的名称列表。\n\n此命令无需额外参数。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」DesktopRemote「末」,\ncommand:「始」QueryDesktop「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "ViewWidgetSource",
+        "description": "功能: 查看桌面上指定挂件(widget)的HTML源码内容。通过提供挂件ID，可以获取该挂件当前正在渲染的完整HTML代码。这对于理解挂件的结构、调试问题或基于现有挂件进行修改非常有用。\n\n建议先调用 QueryDesktop 获取挂件ID列表，再使用此命令查看特定挂件的源码。\n\n参数:\n- widgetId (字符串, 必需): 要查看源码的挂件ID。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」DesktopRemote「末」,\ncommand:「始」ViewWidgetSource「末」,\nwidgetId:「始」widget-abc123「末」\n<<<[END_TOOL_REQUEST]>>>"
+      }
+    ]
+  }
+}

@@ -430,6 +430,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onDesktopStatus: (callback) => ipcRenderer.on('desktop-status', (_event, data) => callback(data)),
     openDesktopWindow: () => ipcRenderer.invoke('open-desktop-window'),
 
+    // VCPdesktop - 桌面远程控制 IPC 通道 (DesktopRemote 插件)
+    onDesktopRemoteSetWallpaper: (callback) => ipcRenderer.on('desktop-remote-set-wallpaper', (_event, data) => callback(data)),
+    onDesktopRemoteQuery: (callback) => ipcRenderer.on('desktop-remote-query', (_event) => callback()),
+    sendDesktopRemoteQueryResponse: (data) => ipcRenderer.send('desktop-remote-query-response', data),
+    onDesktopRemoteViewSource: (callback) => ipcRenderer.on('desktop-remote-view-source', (_event, data) => callback(data)),
+    sendDesktopRemoteViewSourceResponse: (data) => ipcRenderer.send('desktop-remote-view-source-response', data),
+
     // VCPdesktop - 收藏系统 IPC 通道
     desktopSaveWidget: (data) => ipcRenderer.invoke('desktop-save-widget', data),
     desktopLoadWidget: (id) => ipcRenderer.invoke('desktop-load-widget', id),

@@ -970,7 +970,8 @@ if (!gotTheLock) {
                         handleMusicControl: musicHandlers.handleMusicControl, // Inject the music control handler
                         handleDiceControl: diceHandlers.handleDiceControl, // Inject the dice control handler
                         handleCanvasControl: handleCanvasControl, // Inject the canvas control handler
-                        handleFlowlockControl: handleFlowlockControl // Inject the flowlock control handler
+                        handleFlowlockControl: handleFlowlockControl, // Inject the flowlock control handler
+                        handleDesktopRemoteControl: handleDesktopRemoteControl // Inject the desktop remote control handler
                     };
                     distributedServer = new DistributedServer(config);
                     distributedServer.initialize();
@@ -1356,6 +1357,256 @@ ipcMain.handle('interrupt-group-request', (event, messageId) => {
         return { success: false, error: 'Group chat module not initialized correctly.' };
     }
 });
+
+// --- Desktop Remote Control Handler (for Distributed Server) ---
+async function handleDesktopRemoteControl(commandPayload) {
+    try {
+        const { command } = commandPayload;
+        console.log(`[Main] handleDesktopRemoteControl received command: ${command}`, commandPayload);
+
+        const desktopWin = desktopHandlers.getDesktopWindow();
+
+        if (command === 'SetWallpaper') {
+            const { wallpaperSource } = commandPayload;
+            if (!wallpaperSource) {
+                throw new Error('wallpaperSource parameter is required for SetWallpaper.');
+            }
+
+            // Detect if the source is HTML content (starts with <!DOCTYPE or <html)
+            const trimmedSource = wallpaperSource.trim();
+            const isHtmlContent = /^<!DOCTYPE|^<html/i.test(trimmedSource);
+
+            let wallpaperConfig;
+            const typeLabels = { image: '🖼️ 图片', video: '🎬 视频', html: '🌐 HTML动态' };
+
+            if (isHtmlContent) {
+                // Save HTML content as a file in AppData/DesktopData/
+                const htmlFileName = `ai_wallpaper_${Date.now()}.html`;
+                const htmlFilePath = path.join(PROJECT_ROOT, 'AppData', 'DesktopData', htmlFileName);
+                await fs.ensureDir(path.join(PROJECT_ROOT, 'AppData', 'DesktopData'));
+                await fs.writeFile(htmlFilePath, wallpaperSource, 'utf-8');
+                const fileUrl = `file:///${htmlFilePath.replace(/\\/g, '/')}`;
+                wallpaperConfig = {
+                    enabled: true,
+                    type: 'html',
+                    source: fileUrl,
+                    filePath: htmlFilePath,
+                    opacity: 1,
+                    blur: 0,
+                    brightness: 1,
+                };
+                console.log(`[Main] HTML wallpaper saved to: ${htmlFilePath}`);
+            } else if (trimmedSource.startsWith('http://') || trimmedSource.startsWith('https://')) {
+                // HTTP/HTTPS URL - detect type from extension
+                const urlPath = new URL(trimmedSource).pathname;
+                const ext = path.extname(urlPath).toLowerCase().replace('.', '');
+                const videoExts = ['mp4', 'webm'];
+                const htmlExts = ['html', 'htm'];
+                let type = 'image'; // default
+                if (videoExts.includes(ext)) type = 'video';
+                else if (htmlExts.includes(ext)) type = 'html';
+
+                wallpaperConfig = {
+                    enabled: true,
+                    type: type,
+                    source: trimmedSource,
+                    filePath: trimmedSource,
+                    opacity: 1,
+                    blur: 0,
+                    brightness: 1,
+                };
+            } else if (trimmedSource.startsWith('file://')) {
+                // Local file URL - detect type from extension
+                const localPath = trimmedSource.replace(/^file:\/\/\/?/, '');
+                const ext = path.extname(localPath).toLowerCase().replace('.', '');
+                const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'avif'];
+                const videoExts = ['mp4', 'webm'];
+                const htmlExts = ['html', 'htm'];
+                let type = 'image'; // default
+                if (videoExts.includes(ext)) type = 'video';
+                else if (htmlExts.includes(ext)) type = 'html';
+                else if (!imageExts.includes(ext)) type = 'image'; // fallback
+
+                wallpaperConfig = {
+                    enabled: true,
+                    type: type,
+                    source: trimmedSource,
+                    filePath: localPath,
+                    opacity: 1,
+                    blur: 0,
+                    brightness: 1,
+                };
+            } else {
+                throw new Error('wallpaperSource must be an HTTP/HTTPS URL, a file:// URL, or HTML content starting with <!DOCTYPE or <html>.');
+            }
+
+            // Build result in content array format (like FileOperator)
+            const typeLabel = typeLabels[wallpaperConfig.type] || wallpaperConfig.type;
+            let resultMessage;
+
+            // Send wallpaper config to the desktop window via IPC
+            if (desktopWin && !desktopWin.isDestroyed()) {
+                desktopWin.webContents.send('desktop-remote-set-wallpaper', wallpaperConfig);
+                resultMessage = `壁纸已成功推送到桌面。`;
+            } else {
+                // Try to open the desktop window first, then push
+                await desktopHandlers.openDesktopWindow();
+                const newDesktopWin = desktopHandlers.getDesktopWindow();
+                if (newDesktopWin && !newDesktopWin.isDestroyed()) {
+                    setTimeout(() => {
+                        newDesktopWin.webContents.send('desktop-remote-set-wallpaper', wallpaperConfig);
+                    }, 2000);
+                    resultMessage = `桌面窗口已自动打开，壁纸已推送。`;
+                } else {
+                    throw new Error('无法打开桌面窗口来设置壁纸。');
+                }
+            }
+
+            const mdReport = `### 壁纸推送成功\n\n` +
+                `- **类型**: ${typeLabel}\n` +
+                `- **来源**: \`${wallpaperConfig.filePath || wallpaperConfig.source}\`\n` +
+                `- **状态**: ${resultMessage}`;
+
+            return {
+                status: 'success',
+                result: {
+                    content: [{ type: 'text', text: mdReport }]
+                }
+            };
+
+        } else if (command === 'QueryDesktop') {
+            // Query desktop widgets and icons
+            if (!desktopWin || desktopWin.isDestroyed()) {
+                const mdReport = `### 桌面状态报告\n\n` +
+                    `**桌面窗口状态**: ❌ 未打开\n\n` +
+                    `桌面画布窗口当前未启动，无法查询挂件和图标信息。`;
+                return {
+                    status: 'success',
+                    result: {
+                        content: [{ type: 'text', text: mdReport }]
+                    }
+                };
+            }
+
+            // Use a promise-based IPC pattern to get data from renderer
+            return new Promise((resolve, reject) => {
+                const timeout = setTimeout(() => {
+                    ipcMain.removeListener('desktop-remote-query-response', responseHandler);
+                    reject(new Error('查询桌面状态超时。'));
+                }, 5000);
+
+                const responseHandler = (event, responseData) => {
+                    clearTimeout(timeout);
+                    ipcMain.removeListener('desktop-remote-query-response', responseHandler);
+
+                    if (responseData.success) {
+                        const widgets = responseData.widgets || [];
+                        const icons = responseData.icons || [];
+
+                        // Build Markdown report (like FileOperator's ListDirectory)
+                        let mdReport = `### 桌面状态报告\n\n**桌面窗口状态**: ✅ 已打开\n\n`;
+
+                        // Widgets table
+                        mdReport += `#### 活跃挂件 (${widgets.length}个)\n\n`;
+                        if (widgets.length === 0) {
+                            mdReport += `*桌面上没有活跃的挂件。*\n\n`;
+                        } else {
+                            mdReport += `| 挂件ID | 收藏状态 | 收藏名 | 持久化目录 |\n|---|---|---|---|\n`;
+                            for (const w of widgets) {
+                                if (w.savedName) {
+                                    mdReport += `| \`${w.id}\` | ⭐ 已收藏 | ${w.savedName} | \`${w.savedDir}\` |\n`;
+                                } else {
+                                    mdReport += `| \`${w.id}\` | 未收藏 | - | - |\n`;
+                                }
+                            }
+                            mdReport += `\n`;
+                        }
+
+                        // Icons list
+                        mdReport += `#### 桌面图标 (${icons.length}个)\n\n`;
+                        if (icons.length === 0) {
+                            mdReport += `*桌面上没有快捷方式图标。*\n`;
+                        } else {
+                            for (const iconName of icons) {
+                                mdReport += `- ${iconName}\n`;
+                            }
+                        }
+
+                        resolve({
+                            status: 'success',
+                            result: {
+                                content: [{ type: 'text', text: mdReport }]
+                            }
+                        });
+                    } else {
+                        reject(new Error(responseData.error || '查询桌面状态失败。'));
+                    }
+                };
+
+                ipcMain.on('desktop-remote-query-response', responseHandler);
+                desktopWin.webContents.send('desktop-remote-query');
+            });
+
+        } else if (command === 'ViewWidgetSource') {
+            // View widget HTML source code
+            const { widgetId } = commandPayload;
+            if (!widgetId) {
+                throw new Error('widgetId parameter is required for ViewWidgetSource.');
+            }
+
+            if (!desktopWin || desktopWin.isDestroyed()) {
+                throw new Error('桌面窗口未打开，无法查看挂件源码。');
+            }
+
+            // Use a promise-based IPC pattern to get data from renderer
+            return new Promise((resolve, reject) => {
+                const timeout = setTimeout(() => {
+                    ipcMain.removeListener('desktop-remote-view-source-response', responseHandler);
+                    reject(new Error('查看挂件源码超时。'));
+                }, 5000);
+
+                const responseHandler = (event, responseData) => {
+                    clearTimeout(timeout);
+                    ipcMain.removeListener('desktop-remote-view-source-response', responseHandler);
+
+                    if (responseData.success) {
+                        const htmlSource = responseData.html || '';
+                        const savedName = responseData.savedName || null;
+                        const savedId = responseData.savedId || null;
+
+                        let mdReport = `### 挂件源码: \`${widgetId}\`\n\n`;
+                        if (savedName) {
+                            mdReport += `- **收藏名**: ${savedName}\n`;
+                            mdReport += `- **收藏ID**: \`${savedId}\`\n\n`;
+                        }
+                        mdReport += `**HTML内容** (${htmlSource.length} 字符):\n\n`;
+
+                        resolve({
+                            status: 'success',
+                            result: {
+                                content: [
+                                    { type: 'text', text: mdReport },
+                                    { type: 'text', text: htmlSource }
+                                ]
+                            }
+                        });
+                    } else {
+                        reject(new Error(responseData.error || '查看挂件源码失败。'));
+                    }
+                };
+
+                ipcMain.on('desktop-remote-view-source-response', responseHandler);
+                desktopWin.webContents.send('desktop-remote-view-source', { widgetId });
+            });
+
+        } else {
+            throw new Error(`未知的桌面控制命令: ${command}`);
+        }
+    } catch (error) {
+        console.error('[Main] handleDesktopRemoteControl error:', error);
+        return { status: 'error', message: error.message };
+    }
+}
 
 // --- Flowlock Control Handler (for Distributed Server) ---
 async function handleFlowlockControl(commandPayload) {

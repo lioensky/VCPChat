@@ -26,6 +26,7 @@ class DistributedServer {
         this.handleDiceControl = config.handleDiceControl; // Inject the dice control handler
         this.handleCanvasControl = config.handleCanvasControl; // Inject the canvas control handler
         this.handleFlowlockControl = config.handleFlowlockControl; // Inject the flowlock control handler
+        this.handleDesktopRemoteControl = config.handleDesktopRemoteControl; // Inject the desktop remote control handler
         this.ws = null;
         this.app = express(); // 创建 Express 应用
         this.server = http.createServer(this.app); // 创建 HTTP 服务器
@@ -409,6 +410,28 @@ class DistributedServer {
                 
                 finalResult = { message: resultFromMain.message };
                 
+            } else if (toolName === 'DesktopRemote') {
+                // --- Special Handling for DesktopRemote ---
+                const commandPayload = (typeof result === 'string') ? JSON.parse(result) : result;
+                if (commandPayload.status === 'error') {
+                    throw new Error(commandPayload.error);
+                }
+                
+                if (typeof this.handleDesktopRemoteControl !== 'function') {
+                    throw new Error('Desktop remote control handler is not configured for the Distributed Server.');
+                }
+
+                // Directly call the injected handler function from main.js
+                const resultFromMain = await this.handleDesktopRemoteControl(commandPayload);
+
+                if (resultFromMain.status === 'error') {
+                    throw new Error(resultFromMain.message);
+                }
+                
+                // The handler returns { status, result: { content: [...] } } format
+                // Pass through the result directly to preserve the content array structure
+                finalResult = resultFromMain.result || { message: resultFromMain.message };
+
             } else {
                 // --- Default Handling for all other plugins ---
                 if (typeof result === 'object' && result !== null) {

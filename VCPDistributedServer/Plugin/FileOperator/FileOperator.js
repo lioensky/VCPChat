@@ -26,6 +26,7 @@ if (!ALLOWED_DIRECTORIES.includes(CANVAS_DIRECTORY)) {
 const MAX_FILE_SIZE = parseInt(process.env.MAX_FILE_SIZE) || 20971520; // 20MB default
 const MAX_DIRECTORY_ITEMS = parseInt(process.env.MAX_DIRECTORY_ITEMS) || 1000;
 const MAX_SEARCH_RESULTS = parseInt(process.env.MAX_SEARCH_RESULTS) || 100;
+const DEFAULT_DOWNLOAD_DIR = (process.env.DEFAULT_DOWNLOAD_DIR || '').trim();
 const DEBUG_MODE = process.env.DEBUG_MODE === 'true';
 const ENABLE_RECURSIVE_OPERATIONS = process.env.ENABLE_RECURSIVE_OPERATIONS !== 'false';
 const ENABLE_HIDDEN_FILES = process.env.ENABLE_HIDDEN_FILES === 'true';
@@ -915,17 +916,31 @@ async function searchFiles(searchPath, pattern, options = {}) {
   }
 }
 
-async function downloadFile(url) {
+async function downloadFile(url, downloadDir, customFileName) {
   try {
     // Automatically parse filename from URL
     const parsedUrl = new URL(url);
-    const fileName = path.basename(parsedUrl.pathname);
+    const urlFileName = path.basename(parsedUrl.pathname);
 
-    // Construct the full destination path in the designated AppData/file directory
-    const baseDir = path.join(__dirname, '..', '..', '..', 'AppData', 'file');
+    // Determine the actual file name: use customFileName if provided, otherwise use URL-derived name
+    const fileName = customFileName ? customFileName : urlFileName;
+
+    // Determine the base directory with priority:
+    // 1. Caller-specified downloadDir parameter
+    // 2. DEFAULT_DOWNLOAD_DIR from .env configuration
+    // 3. Fallback to AppData/file directory
+    let baseDir;
+    if (downloadDir && downloadDir.trim()) {
+      baseDir = downloadDir.trim();
+    } else if (DEFAULT_DOWNLOAD_DIR) {
+      baseDir = DEFAULT_DOWNLOAD_DIR;
+    } else {
+      baseDir = path.join(__dirname, '..', '..', '..', 'AppData', 'file');
+    }
+
     const destinationPath = path.join(baseDir, fileName);
 
-    debugLog('Initiating asynchronous file download', { url, destinationPath });
+    debugLog('Initiating asynchronous file download', { url, destinationPath, downloadDir, customFileName });
 
     if (!isPathAllowed(destinationPath, 'WriteFile')) {
       throw new Error(`Access denied: Path '${destinationPath}' is not in allowed directories`);
@@ -960,7 +975,9 @@ async function downloadFile(url) {
     });
 
     // Immediately return a success message to the AI
-    const message = `文件下载任务已在后台启动。将从URL自动解析文件名并保存到: ${newPath}`;
+    const message = customFileName
+      ? `文件下载任务已在后台启动。使用自定义文件名 "${fileName}"，保存到: ${newPath}`
+      : `文件下载任务已在后台启动。将从URL自动解析文件名并保存到: ${newPath}`;
     return {
       success: true,
       data: {
@@ -1284,7 +1301,7 @@ async function processBatchRequest(request) {
           }
           break;
         case 'DownloadFile':
-          result = await downloadFile(parameters.url);
+          result = await downloadFile(parameters.url, parameters.downloadDir, parameters.fileName);
           break;
         case 'CreateCanvas':
           result = await createCanvas(parameters.fileName, parameters.content, parameters.encoding);
@@ -1394,7 +1411,7 @@ async function processRequest(request) {
     case 'SearchFiles':
       return await searchFiles(parameters.searchPath, parameters.pattern, parameters.options);
     case 'DownloadFile':
-      return await downloadFile(parameters.url);
+      return await downloadFile(parameters.url, parameters.downloadDir, parameters.fileName);
     case 'CreateCanvas':
       return await createCanvas(parameters.fileName, parameters.content, parameters.encoding);
     case 'UpdateHistory':
