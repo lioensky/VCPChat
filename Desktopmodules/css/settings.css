@@ -419,3 +419,51 @@
     margin-top: 4px;
     padding-top: 4px;
 }
+
+/* ============================================================
+ * Dock 位置选择器
+ * ============================================================ */
+.desktop-settings-dock-position {
+    display: grid;
+    grid-template-columns: repeat(3, 28px);
+    grid-template-rows: repeat(3, 28px);
+    gap: 3px;
+    flex-shrink: 0;
+    margin-left: 12px;
+}
+
+.desktop-settings-dock-pos-btn {
+    width: 28px;
+    height: 28px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.5);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s ease;
+    padding: 0;
+    line-height: 1;
+}
+
+/* 布局：top 占第1行第2列，left 占第2行第1列，bottom 占第3行第2列，right 占第2行第3列 */
+.desktop-settings-dock-pos-btn[data-pos="top"]    { grid-column: 2; grid-row: 1; }
+.desktop-settings-dock-pos-btn[data-pos="left"]   { grid-column: 1; grid-row: 2; }
+.desktop-settings-dock-pos-btn[data-pos="bottom"] { grid-column: 2; grid-row: 3; }
+.desktop-settings-dock-pos-btn[data-pos="right"]  { grid-column: 3; grid-row: 2; }
+
+.desktop-settings-dock-pos-btn:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: rgba(255, 255, 255, 0.9);
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
+.desktop-settings-dock-pos-btn.active {
+    background: rgba(100, 180, 255, 0.2);
+    color: rgba(100, 180, 255, 0.95);
+    border-color: rgba(100, 180, 255, 0.5);
+    box-shadow: 0 0 8px rgba(100, 180, 255, 0.15);
+}

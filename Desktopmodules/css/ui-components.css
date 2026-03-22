@@ -106,6 +106,18 @@
     background: rgba(255, 255, 255, 0.08);
 }
 
+/* 右键菜单分组标签 */
+.desktop-context-menu-label {
+    padding: 4px 12px 2px;
+    font-size: 10px;
+    color: rgba(255, 255, 255, 0.35);
+    letter-spacing: 0.5px;
+    font-weight: 600;
+    text-transform: uppercase;
+    user-select: none;
+    pointer-events: none;
+}
+
 /* ============================================================
  * 收藏模态窗
  * ============================================================ */

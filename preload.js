@@ -478,6 +478,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     // VCPdesktop - 窗口置底控制
     setAlwaysOnBottom: (enabled) => ipcRenderer.invoke('desktop-set-always-on-bottom', enabled),
+
+    // VCPdesktop - 打开 Windows 系统工具
+    desktopOpenSystemTool: (cmd) => ipcRenderer.invoke('desktop-open-system-tool', cmd),
 });
 
 // Log the electronAPI object as it's defined in preload.js right after exposing it

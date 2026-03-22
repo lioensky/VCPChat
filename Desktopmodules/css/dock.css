@@ -22,8 +22,32 @@
     border: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
     border-radius: 20px;
     box-shadow: 0 8px 40px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.08);
-    transition: opacity 0.3s ease, transform 0.3s ease, box-shadow 0.3s ease;
+    transition: opacity 0.3s ease, box-shadow 0.3s ease;
     color: var(--primary-text, rgba(255,255,255,0.9));
+}
+
+/* --- Dock 四向定位 --- */
+#desktop-dock.dock-left,
+#desktop-dock.dock-right {
+    flex-direction: column;
+    padding: 14px 8px;
+    max-height: 80vh;
+}
+
+#desktop-dock.dock-left .desktop-dock-divider,
+#desktop-dock.dock-right .desktop-dock-divider {
+    width: 28px;
+    height: 1px;
+    margin: 6px 0;
+}
+
+#desktop-dock.dock-left .desktop-dock-icon:hover,
+#desktop-dock.dock-right .desktop-dock-icon:hover {
+    transform: scale(1.1);
+}
+
+#desktop-dock.dock-top .desktop-dock-icon:hover {
+    transform: translateY(6px) scale(1.1);
 }
 
 #desktop-dock.drop-target {
@@ -35,6 +59,11 @@
     display: flex;
     align-items: center;
     gap: 2px;
+}
+
+#desktop-dock.dock-left #desktop-dock-items,
+#desktop-dock.dock-right #desktop-dock-items {
+    flex-direction: column;
 }
 
 /* --- Dock 图标 --- */
@@ -197,6 +226,56 @@
 #desktop-dock-drawer.open {
     opacity: 1;
     pointer-events: auto;
+}
+
+/* 抽屉根据 Dock 位置调整对齐 */
+#desktop-dock-drawer.drawer-from-top {
+    align-items: flex-start;
+    justify-content: center;
+    padding-bottom: 0;
+    padding-top: 80px;
+}
+
+#desktop-dock-drawer.drawer-from-left {
+    align-items: center;
+    justify-content: flex-start;
+    padding-bottom: 0;
+    padding-left: 80px;
+}
+
+#desktop-dock-drawer.drawer-from-right {
+    align-items: center;
+    justify-content: flex-end;
+    padding-bottom: 0;
+    padding-right: 80px;
+}
+
+#desktop-dock-drawer.drawer-from-bottom {
+    align-items: flex-end;
+    justify-content: center;
+    padding-bottom: 80px;
+}
+
+/* 抽屉面板展开动画根据方向调整 */
+#desktop-dock-drawer.drawer-from-top #desktop-dock-drawer-panel {
+    transform: translateY(-20px);
+}
+#desktop-dock-drawer.drawer-from-top.open #desktop-dock-drawer-panel {
+    transform: translateY(0);
+}
+
+#desktop-dock-drawer.drawer-from-left #desktop-dock-drawer-panel {
+    transform: translateX(-20px);
+}
+#desktop-dock-drawer.drawer-from-left.open #desktop-dock-drawer-panel {
+    transform: translateX(0);
+}
+
+#desktop-dock-drawer.drawer-from-right #desktop-dock-drawer-panel {
+    transform: translateX(20px);
+}
+#desktop-dock-drawer.drawer-from-right.open #desktop-dock-drawer-panel {
+    transform: translateX(0);
 }
 
 #desktop-dock-drawer-panel {

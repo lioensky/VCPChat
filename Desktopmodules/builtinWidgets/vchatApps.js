@@ -128,6 +128,50 @@
             <circle cx="34" cy="26" r="3" fill="currentColor" opacity="0.3"/>
             <circle cx="24" cy="34" r="3" fill="currentColor" opacity="0.45"/>
         </svg>`,
+        // Windows 系统工具图标
+        displaySettings: `<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="4" y="4" width="40" height="28" rx="4" fill="currentColor" opacity="0.1"/>
+            <rect x="4" y="4" width="40" height="28" rx="4" stroke="currentColor" stroke-width="2.5" fill="none"/>
+            <line x1="18" y1="32" x2="18" y2="40" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+            <line x1="30" y1="32" x2="30" y2="40" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+            <line x1="12" y1="40" x2="36" y2="40" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+            <circle cx="24" cy="18" r="6" stroke="currentColor" stroke-width="2" fill="none" opacity="0.6"/>
+            <path d="M24 12v-2M24 26v-2M18 18h-2M32 18h-2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.4"/>
+        </svg>`,
+        winSettings: `<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="24" cy="24" r="18" fill="currentColor" opacity="0.08"/>
+            <circle cx="24" cy="24" r="18" stroke="currentColor" stroke-width="2.5" fill="none"/>
+            <circle cx="24" cy="24" r="7" stroke="currentColor" stroke-width="2.5" fill="none"/>
+            <path d="M24 4v6M24 38v6M4 24h6M38 24h6" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+            <path d="M10 10l4.2 4.2M33.8 33.8l4.2 4.2M10 38l4.2-4.2M33.8 14.2L38 10" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity="0.5"/>
+        </svg>`,
+        controlPanel: `<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="4" y="4" width="40" height="40" rx="6" fill="currentColor" opacity="0.08"/>
+            <rect x="4" y="4" width="40" height="40" rx="6" stroke="currentColor" stroke-width="2.5" fill="none"/>
+            <line x1="12" y1="16" x2="36" y2="16" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity="0.3"/>
+            <line x1="12" y1="24" x2="36" y2="24" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity="0.3"/>
+            <line x1="12" y1="32" x2="36" y2="32" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity="0.3"/>
+            <circle cx="20" cy="16" r="3" fill="currentColor"/>
+            <circle cx="30" cy="24" r="3" fill="currentColor"/>
+            <circle cx="16" cy="32" r="3" fill="currentColor"/>
+        </svg>`,
+        recycleBin: `<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 16h24l-2 26H14L12 16z" fill="currentColor" opacity="0.1"/>
+            <path d="M12 16h24l-2 26H14L12 16z" stroke="currentColor" stroke-width="2.5" fill="none"/>
+            <line x1="8" y1="12" x2="40" y2="12" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+            <path d="M18 12V8h12v4" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+            <line x1="20" y1="20" x2="20" y2="36" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity="0.5"/>
+            <line x1="28" y1="20" x2="28" y2="36" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity="0.5"/>
+        </svg>`,
+        myComputer: `<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="6" y="6" width="36" height="24" rx="4" fill="currentColor" opacity="0.1"/>
+            <rect x="6" y="6" width="36" height="24" rx="4" stroke="currentColor" stroke-width="2.5" fill="none"/>
+            <line x1="18" y1="30" x2="18" y2="36" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+            <line x1="30" y1="30" x2="30" y2="36" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+            <line x1="14" y1="36" x2="34" y2="36" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+            <rect x="10" y="10" width="28" height="16" rx="2" fill="currentColor" opacity="0.15"/>
+            <path d="M14 40h20" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+        </svg>`,
     };
 
     /**
@@ -246,6 +290,64 @@
         },
     ];
 
+    /**
+     * Windows 系统工具 — 作为 vchat-app 类型注入 Dock，
+     * 使用 appAction: 'open-system-tool:命令' 格式，
+     * 由主进程统一处理。
+     */
+    const SYSTEM_TOOLS = [
+        {
+            id: 'sys-tool-display-settings',
+            name: '显示设置',
+            icon: null,
+            animatedIcon: null,
+            svgIcon: SVG_ICONS.displaySettings,
+            emoji: '🖥️',
+            description: '打开 Windows 显示设置',
+            appAction: 'open-system-tool:ms-settings:display',
+        },
+        {
+            id: 'sys-tool-win-settings',
+            name: 'Windows 设置',
+            icon: null,
+            animatedIcon: null,
+            svgIcon: SVG_ICONS.winSettings,
+            emoji: '⚙️',
+            description: '打开 Windows 系统设置',
+            appAction: 'open-system-tool:ms-settings:',
+        },
+        {
+            id: 'sys-tool-control-panel',
+            name: '控制面板',
+            icon: null,
+            animatedIcon: null,
+            svgIcon: SVG_ICONS.controlPanel,
+            emoji: '🎛️',
+            description: '打开 Windows 控制面板',
+            appAction: 'open-system-tool:control',
+        },
+        {
+            id: 'sys-tool-recycle-bin',
+            name: '回收站',
+            icon: null,
+            animatedIcon: null,
+            svgIcon: SVG_ICONS.recycleBin,
+            emoji: '🗑️',
+            description: '打开 Windows 回收站',
+            appAction: 'open-system-tool:shell:RecycleBinFolder',
+        },
+        {
+            id: 'sys-tool-my-computer',
+            name: '我的电脑',
+            icon: null,
+            animatedIcon: null,
+            svgIcon: SVG_ICONS.myComputer,
+            emoji: '💻',
+            description: '打开此电脑（资源管理器）',
+            appAction: 'open-system-tool:shell:MyComputerFolder',
+        },
+    ];
+
     // ============================================================
     // 启动 VChat 内部应用
     // ============================================================
@@ -312,7 +414,10 @@
         let injectedCount = 0;
         let updatedCount = 0;
 
-        for (const appDef of VCHAT_APPS) {
+        // 合并 VChat 应用和系统工具
+        const allApps = [...VCHAT_APPS, ...SYSTEM_TOOLS];
+
+        for (const appDef of allApps) {
             const existing = state.dock.items.find(item => item.id === appDef.id);
             if (existing) {
                 // 已存在：同步更新属性（名称/描述/图标等可能在代码中修改过）
@@ -395,6 +500,7 @@
         inject: injectVchatAppsToDock,
         findByAction: findAppByAction,
         VCHAT_APPS,
+        SYSTEM_TOOLS,
     };
 
 })();

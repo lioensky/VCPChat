@@ -276,6 +276,28 @@
                     <div class="desktop-settings-section-title">Dock 栏</div>
                     <div class="desktop-settings-item">
                         <div class="desktop-settings-item-label">
+                            <div class="desktop-settings-item-label-text">Dock 位置</div>
+                            <div class="desktop-settings-item-label-desc">选择 Dock 栏停靠的屏幕边缘</div>
+                        </div>
+                        <div class="desktop-settings-dock-position">
+                            <button class="desktop-settings-dock-pos-btn" data-pos="top" title="顶部">⬆</button>
+                            <button class="desktop-settings-dock-pos-btn" data-pos="left" title="左侧">⬅</button>
+                            <button class="desktop-settings-dock-pos-btn active" data-pos="bottom" title="底部">⬇</button>
+                            <button class="desktop-settings-dock-pos-btn" data-pos="right" title="右侧">➡</button>
+                        </div>
+                    </div>
+                    <div class="desktop-settings-item">
+                        <div class="desktop-settings-item-label">
+                            <div class="desktop-settings-item-label-text">边缘距离</div>
+                            <div class="desktop-settings-item-label-desc">Dock 栏距屏幕边缘的距离</div>
+                        </div>
+                        <div class="desktop-settings-range-wrapper">
+                            <input type="range" class="desktop-settings-range" id="desktop-setting-dock-edge-distance" min="0" max="60" value="12" step="2">
+                            <span class="desktop-settings-range-label" id="desktop-setting-dock-edge-distance-label">12px</span>
+                        </div>
+                    </div>
+                    <div class="desktop-settings-item">
+                        <div class="desktop-settings-item-label">
                             <div class="desktop-settings-item-label-text">默认显示图标数</div>
                             <div class="desktop-settings-item-label-desc">Dock 栏中直接显示的快捷方式数量</div>
                         </div>

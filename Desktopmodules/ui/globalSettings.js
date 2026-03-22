@@ -38,6 +38,8 @@
         dock: {
             maxVisible: 8,
             iconSize: 32,       // px
+            position: 'bottom', // 'top' | 'bottom' | 'left' | 'right'
+            edgeDistance: 12,    // px
         },
         wallpaper: { ...DEFAULT_WALLPAPER },
     };
@@ -141,6 +143,20 @@
         const freezerEl = document.getElementById('desktop-setting-visibility-freezer');
         if (freezerEl) freezerEl.checked = s.visibilityFreezerEnabled !== false;
 
+        // Dock 位置
+        const dockPosition = s.dock?.position || DEFAULT_SETTINGS.dock.position;
+        const posBtns = document.querySelectorAll('.desktop-settings-dock-pos-btn');
+        posBtns.forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.pos === dockPosition);
+        });
+
+        // Dock 边缘距离
+        const edgeDistEl = document.getElementById('desktop-setting-dock-edge-distance');
+        const edgeDistLabel = document.getElementById('desktop-setting-dock-edge-distance-label');
+        const edgeDist = s.dock?.edgeDistance ?? DEFAULT_SETTINGS.dock.edgeDistance;
+        if (edgeDistEl) edgeDistEl.value = edgeDist;
+        if (edgeDistLabel) edgeDistLabel.textContent = `${edgeDist}px`;
+
         // Dock 可见图标数
         const dockCountEl = document.getElementById('desktop-setting-dock-count-value');
         if (dockCountEl) dockCountEl.textContent = s.dock?.maxVisible || DEFAULT_SETTINGS.dock.maxVisible;
@@ -170,6 +186,21 @@
 
         const freezerEl = document.getElementById('desktop-setting-visibility-freezer');
         if (freezerEl) s.visibilityFreezerEnabled = freezerEl.checked;
+
+        // Dock 位置
+        const activePos = document.querySelector('.desktop-settings-dock-pos-btn.active');
+        if (activePos) {
+            s.dock.position = activePos.dataset.pos || 'bottom';
+        }
+
+        // Dock 边缘距离
+        const edgeDistEl = document.getElementById('desktop-setting-dock-edge-distance');
+        if (edgeDistEl) {
+            const val = parseInt(edgeDistEl.value);
+            if (!isNaN(val) && val >= 0 && val <= 60) {
+                s.dock.edgeDistance = val;
+            }
+        }
 
         const dockCountEl = document.getElementById('desktop-setting-dock-count-value');
         if (dockCountEl) {
@@ -299,6 +330,18 @@
         // 4. Dock 图标大小 - 通过 CSS 变量应用
         if (s.dock?.iconSize) {
             document.documentElement.style.setProperty('--desktop-dock-icon-size', `${s.dock.iconSize}px`);
+        }
+
+        // 4.5. Dock 位置和边缘距离
+        if (window.VCPDesktop.dock && window.VCPDesktop.dock.applyPosition) {
+            const pos = s.dock?.position || 'bottom';
+            const dist = s.dock?.edgeDistance ?? 12;
+            // 同步到 dock 运行时状态
+            if (state.dock) {
+                state.dock.position = pos;
+                state.dock.edgeDistance = dist;
+            }
+            window.VCPDesktop.dock.applyPosition(pos, dist);
         }
 
         // 5. 壁纸
@@ -434,6 +477,24 @@
      * 初始化数值选择器的加减按钮（在 DOM 准备好后调用）
      */
     function initNumberControls() {
+        // Dock 位置选择器
+        const posBtns = document.querySelectorAll('.desktop-settings-dock-pos-btn');
+        posBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                posBtns.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+            });
+        });
+
+        // Dock 边缘距离滑块
+        const edgeDistRange = document.getElementById('desktop-setting-dock-edge-distance');
+        const edgeDistLabel = document.getElementById('desktop-setting-dock-edge-distance-label');
+        if (edgeDistRange && edgeDistLabel) {
+            edgeDistRange.addEventListener('input', () => {
+                edgeDistLabel.textContent = `${edgeDistRange.value}px`;
+            });
+        }
+
         // Dock 可见数量 - / +
         const minusBtn = document.getElementById('desktop-setting-dock-count-minus');
         const plusBtn = document.getElementById('desktop-setting-dock-count-plus');

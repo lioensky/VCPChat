@@ -521,6 +521,10 @@
     async function applyPreset(preset) {
         const D = window.VCPDesktop;
 
+        // 记录上次加载的预设（用于桌面右键菜单"保存当前预设"检测）
+        state.lastLoadedPresetId = preset.id;
+        state.lastLoadedPresetName = preset.name;
+
         // 清除当前桌面
         D.widget.clearAll();
 

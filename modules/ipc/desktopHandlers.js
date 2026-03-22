@@ -177,6 +177,58 @@ function createOrFocusChildWindow(existingWindow, options) {
 }
 
 /**
+ * 启动 Windows 系统工具
+ * 支持的命令格式：
+ *   - ms-settings:display     → 打开 Windows 显示设置
+ *   - ms-settings:            → 打开 Windows 设置首页
+ *   - control                 → 打开控制面板
+ *   - shell:RecycleBinFolder  → 打开回收站
+ *   - shell:MyComputerFolder  → 打开此电脑
+ * @param {string} cmd - 系统命令
+ * @returns {Promise<{success: boolean, error?: string}>}
+ */
+async function launchSystemTool(cmd) {
+    try {
+        if (!cmd) {
+            return { success: false, error: '缺少命令参数' };
+        }
+
+        console.log(`[DesktopHandlers] Launching system tool: ${cmd}`);
+
+        if (cmd.startsWith('ms-settings:')) {
+            // Windows 设置 URI - 使用 shell.openExternal
+            await shell.openExternal(cmd);
+            return { success: true };
+        }
+
+        if (cmd === 'control') {
+            // 控制面板 - 使用 shell.openPath
+            const { exec } = require('child_process');
+            exec('control.exe', (err) => {
+                if (err) console.warn('[DesktopHandlers] control.exe launch warning:', err.message);
+            });
+            return { success: true };
+        }
+
+        if (cmd.startsWith('shell:')) {
+            // Windows Shell 文件夹 - 使用 explorer.exe
+            const { exec } = require('child_process');
+            exec(`explorer.exe ${cmd}`, (err) => {
+                if (err) console.warn('[DesktopHandlers] explorer.exe launch warning:', err.message);
+            });
+            return { success: true };
+        }
+
+        // 通用方案：尝试直接打开
+        await shell.openPath(cmd);
+        return { success: true };
+    } catch (err) {
+        console.error(`[DesktopHandlers] System tool launch error (${cmd}):`, err);
+        return { success: false, error: err.message };
+    }
+}
+
+/**
  * 初始化桌面处理模块
  */
 function initialize(params) {
@@ -1268,9 +1320,15 @@ function initialize(params) {
                     return { success: true };
                 }
 
-                default:
+                default: {
+                    // 处理系统工具启动：appAction 格式为 'open-system-tool:命令'
+                    if (appAction && appAction.startsWith('open-system-tool:')) {
+                        const cmd = appAction.substring('open-system-tool:'.length);
+                        return await launchSystemTool(cmd);
+                    }
                     console.warn(`[DesktopHandlers] Unknown VChat app action: ${appAction}`);
                     return { success: false, error: `未知的应用动作: ${appAction}` };
+                }
             }
         } catch (err) {
             console.error(`[DesktopHandlers] VChat app launch error (${appAction}):`, err);
@@ -1278,7 +1336,15 @@ function initialize(params) {
         }
     });
 
-    console.log('[DesktopHandlers] Initialized (with favorites, vcpAPI, shortcuts, dock, layout, iconset, wallpaper & vchat-apps system).');
+    // ============================================================
+    // --- IPC: 打开 Windows 系统工具 ---
+    // ============================================================
+
+    ipcMain.handle('desktop-open-system-tool', async (event, cmd) => {
+        return await launchSystemTool(cmd);
+    });
+
+    console.log('[DesktopHandlers] Initialized (with favorites, vcpAPI, shortcuts, dock, layout, iconset, wallpaper, vchat-apps & system-tools).');
 }
 
 /**

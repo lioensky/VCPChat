@@ -49,6 +49,11 @@
 
         if (!dockElement) return;
 
+        // 初始应用 Dock 位置
+        const pos = state.dock.position || 'bottom';
+        const dist = state.dock.edgeDistance ?? 12;
+        applyDockPosition(pos, dist);
+
         // 扫描按钮
         const scanBtn = document.getElementById('desktop-dock-scan-btn');
         if (scanBtn) {
@@ -308,7 +313,7 @@
             e.dataTransfer.dropEffect = 'move';
 
             // 计算插入位置
-            const targetIndex = getDragOverIndex(e.clientX);
+            const targetIndex = getDragOverIndex(e.clientX, e.clientY);
             if (targetIndex !== dragSortState.dropTargetIndex) {
                 dragSortState.dropTargetIndex = targetIndex;
                 updateDragSortIndicators(targetIndex);
@@ -381,17 +386,23 @@
     }
 
     /**
-     * 根据鼠标 X 坐标计算拖拽插入位置索引
+     * 根据鼠标坐标计算拖拽插入位置索引（支持横向和纵向）
      */
-    function getDragOverIndex(clientX) {
+    function getDragOverIndex(clientX, clientY) {
         const icons = dockItemsContainer.querySelectorAll('.desktop-dock-icon');
         if (icons.length === 0) return 0;
 
+        const pos = state.dock.position || 'bottom';
+        const isVertical = pos === 'left' || pos === 'right';
+
         for (let i = 0; i < icons.length; i++) {
             const rect = icons[i].getBoundingClientRect();
-            const midX = rect.left + rect.width / 2;
-            if (clientX < midX) {
-                return i;
+            if (isVertical) {
+                const midY = rect.top + rect.height / 2;
+                if (clientY < midY) return i;
+            } else {
+                const midX = rect.left + rect.width / 2;
+                if (clientX < midX) return i;
             }
         }
         return icons.length;
@@ -447,6 +458,8 @@
                 dockDrawerSearch.value = '';
             }
             renderDrawer();
+            // 根据 Dock 位置调整抽屉对齐
+            updateDrawerPosition();
             dockDrawer.classList.add('open');
             // 自动聚焦搜索框
             setTimeout(() => {
@@ -1440,6 +1453,84 @@
     }
 
     // ============================================================
+    // Dock 四向定位
+    // ============================================================
+
+    /**
+     * 应用 Dock 的位置和边缘距离
+     * @param {string} position - 'top' | 'bottom' | 'left' | 'right'
+     * @param {number} edgeDistance - 边缘距离 (px)
+     */
+    function applyDockPosition(position, edgeDistance) {
+        if (!dockElement) return;
+
+        const pos = position || 'bottom';
+        const dist = edgeDistance ?? 12;
+
+        // 清除所有方向类
+        dockElement.classList.remove('dock-top', 'dock-bottom', 'dock-left', 'dock-right');
+        dockElement.classList.add(`dock-${pos}`);
+
+        // 重置所有定位属性（使用 'auto' 覆盖 CSS 默认值，避免 top+bottom 同时生效导致铺满）
+        dockElement.style.top = 'auto';
+        dockElement.style.bottom = 'auto';
+        dockElement.style.left = 'auto';
+        dockElement.style.right = 'auto';
+        dockElement.style.transform = 'none';
+
+        // 根据位置设置定位
+        switch (pos) {
+            case 'top':
+                dockElement.style.top = `${dist}px`;
+                dockElement.style.left = '50%';
+                dockElement.style.transform = 'translateX(-50%)';
+                dockElement.style.flexDirection = 'row';
+                if (dockItemsContainer) dockItemsContainer.style.flexDirection = 'row';
+                break;
+            case 'bottom':
+                dockElement.style.bottom = `${dist}px`;
+                dockElement.style.left = '50%';
+                dockElement.style.transform = 'translateX(-50%)';
+                dockElement.style.flexDirection = 'row';
+                if (dockItemsContainer) dockItemsContainer.style.flexDirection = 'row';
+                break;
+            case 'left':
+                dockElement.style.left = `${dist}px`;
+                dockElement.style.top = '50%';
+                dockElement.style.transform = 'translateY(-50%)';
+                dockElement.style.flexDirection = 'column';
+                if (dockItemsContainer) dockItemsContainer.style.flexDirection = 'column';
+                break;
+            case 'right':
+                dockElement.style.right = `${dist}px`;
+                dockElement.style.top = '50%';
+                dockElement.style.transform = 'translateY(-50%)';
+                dockElement.style.flexDirection = 'column';
+                if (dockItemsContainer) dockItemsContainer.style.flexDirection = 'column';
+                break;
+        }
+
+        // 更新运行时状态
+        state.dock.position = pos;
+        state.dock.edgeDistance = dist;
+
+        // 更新抽屉位置
+        updateDrawerPosition();
+    }
+
+    /**
+     * 根据 Dock 位置更新抽屉面板的对齐方式
+     */
+    function updateDrawerPosition() {
+        if (!dockDrawer) return;
+        const pos = state.dock.position || 'bottom';
+
+        // 清除旧的定位类
+        dockDrawer.classList.remove('drawer-from-top', 'drawer-from-bottom', 'drawer-from-left', 'drawer-from-right');
+        dockDrawer.classList.add(`drawer-from-${pos}`);
+    }
+
+    // ============================================================
     // 导出
     // ============================================================
     window.VCPDesktop = window.VCPDesktop || {};
@@ -1455,6 +1546,7 @@
         saveDockConfig,
         loadDockConfig,
         createDesktopIcon,
+        applyPosition: applyDockPosition,
     };
 
 })();
