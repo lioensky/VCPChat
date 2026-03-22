@@ -1153,7 +1153,8 @@ async function openDesktopWindow() {
             console.log('[Desktop] Auto-maximized on startup');
         }
 
-        desktopWindow.show();
+        // 使用 showInactive() 避免抢占主窗口焦点
+        desktopWindow.showInactive();
 
         // 窗口自动置底
         if (desktopGlobalSettings.alwaysOnBottom) {
