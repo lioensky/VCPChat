@@ -9,12 +9,14 @@
     const { state, domRefs } = window.VCPDesktop;
 
     let currentTab = 'widgets';
+    let presetContextMenu = null; // 预设右键菜单元素
 
     // 官方内置挂件注册表
     const BUILTIN_WIDGETS = [
         { id: 'builtinWeather', name: '天气预报', icon: '🌤️', description: '实时天气数据与预报', spawnKey: 'builtinWeather' },
         { id: 'builtinNews', name: '今日热点', icon: '📰', description: '多源新闻热点聚合', spawnKey: 'builtinNews' },
         { id: 'builtinMusic', name: '音乐播放条', icon: '🎵', description: '迷你音乐控制器', spawnKey: 'builtinMusic' },
+        { id: 'builtinAppTray', name: '应用托盘', icon: '📦', description: '网格浏览全部应用，拖拽到桌面', spawnKey: 'builtinAppTray' },
     ];
 
     // ============================================================
@@ -278,7 +280,8 @@
      * 保存当前桌面布局为预设
      */
     async function saveCurrentLayoutAsPreset() {
-        const name = prompt('为当前布局命名：', `布局 ${new Date().toLocaleDateString()}`);
+        // 使用自定义模态窗代替 prompt()（Electron 中 prompt() 不可用）
+        const name = await showInputModal('保存布局预设', '为当前布局取一个名字：', `布局 ${new Date().toLocaleDateString()}`);
         if (!name || !name.trim()) return;
 
         // 收集当前桌面上所有挂件的状态
@@ -318,7 +321,7 @@
                 // 加载已有预设
                 const existing = await loadPresetsFromDisk();
                 existing.push(preset);
-                await window.electronAPI.desktopSaveLayout({ presets: existing });
+                await savePresetsAndKeepSettings(existing);
 
                 if (window.VCPDesktop.status) {
                     window.VCPDesktop.status.update('connected', `布局预设已保存: ${name}`);
@@ -351,6 +354,28 @@
     }
 
     /**
+     * 保存预设列表，同时保留 layout.json 中的 globalSettings 等其他字段
+     */
+    async function savePresetsAndKeepSettings(presets) {
+        if (!window.electronAPI?.desktopSaveLayout) return;
+        try {
+            // 读取现有数据以保留 globalSettings 等字段
+            let existingData = {};
+            if (window.electronAPI?.desktopLoadLayout) {
+                const result = await window.electronAPI.desktopLoadLayout();
+                if (result?.success && result.data) {
+                    existingData = result.data;
+                }
+            }
+            // 更新预设列表，保留其他字段
+            existingData.presets = presets;
+            await window.electronAPI.desktopSaveLayout(existingData);
+        } catch (err) {
+            console.error('[Sidebar] Save presets error:', err);
+        }
+    }
+
+    /**
      * 渲染预设列表
      */
     async function loadPresetList() {
@@ -365,17 +390,39 @@
             return;
         }
 
+        // 获取默认预设ID
+        const defaultPresetId = state.globalSettings?.defaultPresetId || null;
+
         presets.forEach(preset => {
             const card = document.createElement('div');
             card.className = 'desktop-sidebar-preset-card';
 
+            // 标记默认预设
+            if (preset.id === defaultPresetId) {
+                card.classList.add('default-preset');
+            }
+
             const info = document.createElement('div');
             info.className = 'desktop-sidebar-preset-info';
+
+            const nameRow = document.createElement('div');
+            nameRow.className = 'desktop-sidebar-preset-name-row';
 
             const name = document.createElement('div');
             name.className = 'desktop-sidebar-preset-name';
             name.textContent = preset.name;
-            info.appendChild(name);
+            nameRow.appendChild(name);
+
+            // 默认预设标记
+            if (preset.id === defaultPresetId) {
+                const badge = document.createElement('span');
+                badge.className = 'desktop-sidebar-preset-default-badge';
+                badge.textContent = '默认';
+                badge.title = '启动时自动加载';
+                nameRow.appendChild(badge);
+            }
+
+            info.appendChild(nameRow);
 
             const meta = document.createElement('div');
             meta.className = 'desktop-sidebar-preset-meta';
@@ -401,23 +448,18 @@
             });
             actions.appendChild(loadBtn);
 
-            const delBtn = document.createElement('button');
-            delBtn.className = 'desktop-sidebar-card-btn desktop-sidebar-card-btn-del';
-            delBtn.textContent = '🗑';
-            delBtn.title = '删除预设';
-            delBtn.addEventListener('click', async (e) => {
-                e.stopPropagation();
-                if (confirm(`确定删除预设 "${preset.name}" 吗？`)) {
-                    await deletePreset(preset.id);
-                }
-            });
-            actions.appendChild(delBtn);
-
             card.appendChild(actions);
 
             // 点击应用
             card.addEventListener('click', () => {
                 applyPreset(preset);
+            });
+
+            // 右键菜单
+            card.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                showPresetContextMenu(e.clientX, e.clientY, preset);
             });
 
             container.appendChild(card);
@@ -487,11 +529,353 @@
         try {
             const presets = await loadPresetsFromDisk();
             const filtered = presets.filter(p => p.id !== presetId);
-            await window.electronAPI.desktopSaveLayout({ presets: filtered });
+            await savePresetsAndKeepSettings(filtered);
+
+            // 如果删除的是默认预设，清除默认设置
+            if (state.globalSettings?.defaultPresetId === presetId) {
+                state.globalSettings.defaultPresetId = null;
+                if (window.VCPDesktop.globalSettings) {
+                    window.VCPDesktop.globalSettings.save();
+                }
+            }
+
             loadPresetList();
         } catch (err) {
             console.error('[Sidebar] Delete preset error:', err);
         }
+    }
+
+    // ============================================================
+    // 预设右键菜单
+    // ============================================================
+
+    /**
+     * 显示预设右键菜单
+     */
+    function showPresetContextMenu(x, y, preset) {
+        // 移除旧菜单
+        hidePresetContextMenu();
+
+        const defaultPresetId = state.globalSettings?.defaultPresetId || null;
+        const isDefault = preset.id === defaultPresetId;
+
+        presetContextMenu = document.createElement('div');
+        presetContextMenu.className = 'desktop-context-menu visible';
+        presetContextMenu.style.left = `${x}px`;
+        presetContextMenu.style.top = `${y}px`;
+        presetContextMenu.style.visibility = 'hidden';
+
+        // 应用布局
+        const applyBtn = document.createElement('button');
+        applyBtn.className = 'desktop-context-menu-item';
+        applyBtn.textContent = '📤 应用布局';
+        applyBtn.addEventListener('click', () => {
+            hidePresetContextMenu();
+            applyPreset(preset);
+        });
+        presetContextMenu.appendChild(applyBtn);
+
+        // 分隔线
+        const divider1 = document.createElement('div');
+        divider1.className = 'desktop-context-menu-divider';
+        presetContextMenu.appendChild(divider1);
+
+        // 重命名
+        const renameBtn = document.createElement('button');
+        renameBtn.className = 'desktop-context-menu-item';
+        renameBtn.textContent = '✏️ 重命名';
+        renameBtn.addEventListener('click', async () => {
+            hidePresetContextMenu();
+            await renamePreset(preset);
+        });
+        presetContextMenu.appendChild(renameBtn);
+
+        // 设为默认预设 / 取消默认
+        const defaultBtn = document.createElement('button');
+        defaultBtn.className = 'desktop-context-menu-item';
+        if (isDefault) {
+            defaultBtn.textContent = '⭐ 取消默认预设';
+        } else {
+            defaultBtn.textContent = '⭐ 设为默认预设';
+        }
+        defaultBtn.addEventListener('click', () => {
+            hidePresetContextMenu();
+            toggleDefaultPreset(preset.id, isDefault);
+        });
+        presetContextMenu.appendChild(defaultBtn);
+
+        // 分隔线
+        const divider2 = document.createElement('div');
+        divider2.className = 'desktop-context-menu-divider';
+        presetContextMenu.appendChild(divider2);
+
+        // 删除
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'desktop-context-menu-item desktop-context-menu-item-danger';
+        deleteBtn.textContent = '🗑 删除预设';
+        deleteBtn.addEventListener('click', async () => {
+            hidePresetContextMenu();
+            const confirmMsg = `确定删除预设 "${preset.name}" 吗？`;
+            const confirmed = await showConfirmModal('删除预设', confirmMsg);
+            if (confirmed) {
+                await deletePreset(preset.id);
+            }
+        });
+        presetContextMenu.appendChild(deleteBtn);
+
+        document.body.appendChild(presetContextMenu);
+
+        // 边界避让
+        requestAnimationFrame(() => {
+            if (!presetContextMenu) return;
+            const rect = presetContextMenu.getBoundingClientRect();
+            let adjustedX = x;
+            let adjustedY = y;
+            if (rect.bottom > window.innerHeight - 10) adjustedY = y - rect.height;
+            if (rect.right > window.innerWidth - 10) adjustedX = x - rect.width;
+            if (adjustedY < 10) adjustedY = 10;
+            if (adjustedX < 10) adjustedX = 10;
+            presetContextMenu.style.left = `${adjustedX}px`;
+            presetContextMenu.style.top = `${adjustedY}px`;
+            presetContextMenu.style.visibility = '';
+        });
+
+        // 点击其他地方关闭
+        const closeHandler = (e) => {
+            if (presetContextMenu && !presetContextMenu.contains(e.target)) {
+                hidePresetContextMenu();
+                document.removeEventListener('click', closeHandler);
+            }
+        };
+        setTimeout(() => document.addEventListener('click', closeHandler), 0);
+    }
+
+    /**
+     * 隐藏预设右键菜单
+     */
+    function hidePresetContextMenu() {
+        if (presetContextMenu) {
+            presetContextMenu.remove();
+            presetContextMenu = null;
+        }
+    }
+
+    /**
+     * 重命名预设
+     */
+    async function renamePreset(preset) {
+        const newName = await showInputModal('重命名预设', '输入新的预设名称：', preset.name);
+        if (!newName || newName === preset.name) return;
+
+        try {
+            const presets = await loadPresetsFromDisk();
+            const target = presets.find(p => p.id === preset.id);
+            if (target) {
+                target.name = newName;
+                await savePresetsAndKeepSettings(presets);
+
+                if (window.VCPDesktop.status) {
+                    window.VCPDesktop.status.update('connected', `预设已重命名: ${newName}`);
+                    window.VCPDesktop.status.show();
+                    setTimeout(() => window.VCPDesktop.status.hide(), 3000);
+                }
+
+                loadPresetList();
+            }
+        } catch (err) {
+            console.error('[Sidebar] Rename preset error:', err);
+        }
+    }
+
+    /**
+     * 设为/取消默认预设
+     */
+    function toggleDefaultPreset(presetId, isCurrentlyDefault) {
+        if (!state.globalSettings) {
+            state.globalSettings = {};
+        }
+
+        if (isCurrentlyDefault) {
+            state.globalSettings.defaultPresetId = null;
+            if (window.VCPDesktop.status) {
+                window.VCPDesktop.status.update('connected', '已取消默认预设');
+                window.VCPDesktop.status.show();
+                setTimeout(() => window.VCPDesktop.status.hide(), 3000);
+            }
+        } else {
+            state.globalSettings.defaultPresetId = presetId;
+            if (window.VCPDesktop.status) {
+                window.VCPDesktop.status.update('connected', '已设为默认预设（下次启动自动加载）');
+                window.VCPDesktop.status.show();
+                setTimeout(() => window.VCPDesktop.status.hide(), 3000);
+            }
+        }
+
+        // 保存全局设置
+        if (window.VCPDesktop.globalSettings) {
+            window.VCPDesktop.globalSettings.save();
+        }
+
+        // 刷新列表显示
+        loadPresetList();
+    }
+
+    /**
+     * 显示确认模态窗
+     * @param {string} title - 标题
+     * @param {string} message - 描述
+     * @returns {Promise<boolean>}
+     */
+    function showConfirmModal(title, message) {
+        return new Promise((resolve) => {
+            const modal = document.getElementById('desktop-save-modal');
+            if (!modal) {
+                resolve(false);
+                return;
+            }
+
+            const titleEl = modal.querySelector('.desktop-modal-title');
+            const descEl = modal.querySelector('.desktop-modal-desc');
+            const input = modal.querySelector('.desktop-modal-input');
+            const cancelBtn = modal.querySelector('.desktop-modal-cancel');
+            const confirmBtn = modal.querySelector('.desktop-modal-confirm');
+
+            const origTitle = titleEl?.textContent;
+            const origDesc = descEl?.textContent;
+            const origConfirm = confirmBtn?.textContent;
+
+            if (titleEl) titleEl.textContent = title;
+            if (descEl) descEl.textContent = message;
+            if (confirmBtn) confirmBtn.textContent = '确认删除';
+            if (input) input.style.display = 'none';
+
+            delete modal.dataset.targetWidgetId;
+            modal.classList.add('visible');
+
+            let resolved = false;
+
+            function cleanup() {
+                if (resolved) return;
+                resolved = true;
+                modal.classList.remove('visible');
+                if (titleEl) titleEl.textContent = origTitle;
+                if (descEl) descEl.textContent = origDesc;
+                if (confirmBtn) confirmBtn.textContent = origConfirm;
+                if (input) input.style.display = '';
+                cancelBtn?.removeEventListener('click', onCancel);
+                confirmBtn?.removeEventListener('click', onConfirm);
+                modal.removeEventListener('click', onOverlay);
+            }
+
+            function onCancel() {
+                cleanup();
+                resolve(false);
+            }
+
+            function onConfirm() {
+                cleanup();
+                resolve(true);
+            }
+
+            function onOverlay(e) {
+                if (e.target === modal) onCancel();
+            }
+
+            cancelBtn?.addEventListener('click', onCancel);
+            confirmBtn?.addEventListener('click', onConfirm);
+            modal.addEventListener('click', onOverlay);
+        });
+    }
+
+    // ============================================================
+    // 通用输入模态窗（替代 prompt()）
+    // ============================================================
+
+    /**
+     * 显示一个自定义的输入模态窗，返回用户输入的文本
+     * @param {string} title - 标题
+     * @param {string} description - 描述文案
+     * @param {string} defaultValue - 默认值
+     * @returns {Promise<string|null>} 用户输入的文本，取消则返回 null
+     */
+    function showInputModal(title, description, defaultValue = '') {
+        return new Promise((resolve) => {
+            const modal = document.getElementById('desktop-save-modal');
+            if (!modal) {
+                resolve(null);
+                return;
+            }
+
+            const titleEl = modal.querySelector('.desktop-modal-title');
+            const descEl = modal.querySelector('.desktop-modal-desc');
+            const input = modal.querySelector('.desktop-modal-input');
+            const cancelBtn = modal.querySelector('.desktop-modal-cancel');
+            const confirmBtn = modal.querySelector('.desktop-modal-confirm');
+
+            // 保存原始内容以便恢复
+            const origTitle = titleEl?.textContent;
+            const origDesc = descEl?.textContent;
+            const origConfirm = confirmBtn?.textContent;
+
+            // 设置新内容
+            if (titleEl) titleEl.textContent = title;
+            if (descEl) descEl.textContent = description;
+            if (confirmBtn) confirmBtn.textContent = '确认';
+            if (input) input.value = defaultValue;
+
+            // 清除之前的 widgetId 标记（避免 saveModal 的原始逻辑干扰）
+            delete modal.dataset.targetWidgetId;
+
+            modal.classList.add('visible');
+            setTimeout(() => input?.focus(), 100);
+
+            let resolved = false;
+
+            function cleanup() {
+                if (resolved) return;
+                resolved = true;
+                modal.classList.remove('visible');
+                // 恢复原始内容
+                if (titleEl) titleEl.textContent = origTitle;
+                if (descEl) descEl.textContent = origDesc;
+                if (confirmBtn) confirmBtn.textContent = origConfirm;
+                // 移除临时事件
+                cancelBtn?.removeEventListener('click', onCancel);
+                confirmBtn?.removeEventListener('click', onConfirm);
+                input?.removeEventListener('keydown', onKeydown);
+                modal.removeEventListener('click', onOverlay);
+            }
+
+            function onCancel() {
+                cleanup();
+                resolve(null);
+            }
+
+            function onConfirm() {
+                const val = input?.value?.trim();
+                if (!val) {
+                    input?.classList.add('error');
+                    setTimeout(() => input?.classList.remove('error'), 600);
+                    return;
+                }
+                cleanup();
+                resolve(val);
+            }
+
+            function onKeydown(e) {
+                if (e.key === 'Enter') onConfirm();
+                if (e.key === 'Escape') onCancel();
+            }
+
+            function onOverlay(e) {
+                if (e.target === modal) onCancel();
+            }
+
+            cancelBtn?.addEventListener('click', onCancel);
+            confirmBtn?.addEventListener('click', onConfirm);
+            input?.addEventListener('keydown', onKeydown);
+            modal.addEventListener('click', onOverlay);
+        });
     }
 
     // ============================================================
@@ -541,6 +925,7 @@
         render: renderSidebarFavorites,
         initCanvasDrop,
         switchTab,
+        applyPreset,
     };
 
 })();

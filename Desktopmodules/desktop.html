@@ -9,6 +9,7 @@
                    style-src 'self' 'unsafe-inline' https:;
                    img-src * data: file: blob:;
                    media-src * data: file:;
+                   frame-src 'self' file: data:;
                    font-src *;
                    connect-src * ws: wss:;">
     <title>VCPdesktop</title>
@@ -50,6 +51,11 @@
         </div>
     </div>
 
+    <!-- 壁纸层（位于 canvas 下方） -->
+    <div id="desktop-wallpaper-layer" style="display:none;">
+        <!-- 壁纸元素（图片/视频/iframe）将由 wallpaperManager 动态插入 -->
+    </div>
+
     <!-- 挂件画布区域 -->
     <div id="desktop-canvas">
         <!-- 挂件容器和桌面图标将动态插入这里 -->
@@ -83,8 +89,10 @@
         <button class="desktop-context-menu-item" data-action="favorite">⭐ 收藏</button>
         <button class="desktop-context-menu-item" data-action="refresh" style="display:none;">🔄 刷新</button>
         <div class="desktop-context-menu-divider"></div>
-        <button class="desktop-context-menu-item" data-action="bring-front">⬆ 置顶</button>
-        <button class="desktop-context-menu-item" data-action="send-back">⬇ 置底</button>
+        <button class="desktop-context-menu-item" data-action="bring-front">⏫ 置顶</button>
+        <button class="desktop-context-menu-item" data-action="move-up">⬆ 上移一层</button>
+        <button class="desktop-context-menu-item" data-action="move-down">⬇ 下移一层</button>
+        <button class="desktop-context-menu-item" data-action="send-back">⏬ 置底</button>
         <div class="desktop-context-menu-divider"></div>
         <button class="desktop-context-menu-item desktop-context-menu-item-danger" data-action="close">✕ 关闭</button>
     </div>
@@ -134,6 +142,152 @@
                 <div class="desktop-sidebar-empty">暂无布局预设</div>
             </div>
         </div>
+        <!-- 侧栏底部全局设置按钮 -->
+        <div class="desktop-sidebar-footer">
+            <button id="desktop-sidebar-settings-btn" class="desktop-sidebar-settings-btn">⚙️ 全局设置</button>
+        </div>
+    </div>
+
+    <!-- 全局设置模态窗 -->
+    <div id="desktop-settings-overlay" class="desktop-settings-overlay">
+        <div class="desktop-settings-panel">
+            <div class="desktop-settings-header">
+                <span class="desktop-settings-title">⚙️ 全局设置</span>
+                <button class="desktop-settings-close" title="关闭">✕</button>
+            </div>
+            <div class="desktop-settings-body">
+                <!-- 壁纸设置 -->
+                <div class="desktop-settings-section">
+                    <div class="desktop-settings-section-title">壁纸</div>
+                    <div class="desktop-settings-item">
+                        <div class="desktop-settings-item-label">
+                            <div class="desktop-settings-item-label-text">自定义壁纸</div>
+                            <div class="desktop-settings-item-label-desc">启用后将覆盖主题默认壁纸</div>
+                        </div>
+                        <label class="desktop-settings-toggle">
+                            <input type="checkbox" id="desktop-setting-wallpaper-enabled">
+                            <span class="desktop-settings-toggle-slider"></span>
+                        </label>
+                    </div>
+                    <!-- 壁纸选择区域（仅在启用后显示） -->
+                    <div id="desktop-settings-wallpaper-config" class="desktop-settings-wallpaper-config" style="display:none;">
+                        <div class="desktop-settings-wallpaper-preview-area">
+                            <div id="desktop-settings-wallpaper-preview" class="desktop-settings-wallpaper-preview">
+                                <div class="desktop-settings-wallpaper-preview-empty">未选择壁纸</div>
+                            </div>
+                            <div class="desktop-settings-wallpaper-actions">
+                                <button id="desktop-setting-wallpaper-select" class="desktop-settings-wallpaper-btn select">📁 选择文件</button>
+                                <button id="desktop-setting-wallpaper-clear" class="desktop-settings-wallpaper-btn clear">✕ 移除</button>
+                            </div>
+                            <div id="desktop-settings-wallpaper-info" class="desktop-settings-wallpaper-info"></div>
+                        </div>
+                        <!-- 壁纸滤镜 -->
+                        <div class="desktop-settings-item">
+                            <div class="desktop-settings-item-label">
+                                <div class="desktop-settings-item-label-text">透明度</div>
+                            </div>
+                            <div class="desktop-settings-range-wrapper">
+                                <input type="range" class="desktop-settings-range" id="desktop-setting-wallpaper-opacity" min="0" max="100" value="100" step="5">
+                                <span class="desktop-settings-range-label" id="desktop-setting-wallpaper-opacity-label">100%</span>
+                            </div>
+                        </div>
+                        <div class="desktop-settings-item">
+                            <div class="desktop-settings-item-label">
+                                <div class="desktop-settings-item-label-text">模糊度</div>
+                            </div>
+                            <div class="desktop-settings-range-wrapper">
+                                <input type="range" class="desktop-settings-range" id="desktop-setting-wallpaper-blur" min="0" max="30" value="0" step="1">
+                                <span class="desktop-settings-range-label" id="desktop-setting-wallpaper-blur-label">0px</span>
+                            </div>
+                        </div>
+                        <div class="desktop-settings-item">
+                            <div class="desktop-settings-item-label">
+                                <div class="desktop-settings-item-label-text">亮度</div>
+                            </div>
+                            <div class="desktop-settings-range-wrapper">
+                                <input type="range" class="desktop-settings-range" id="desktop-setting-wallpaper-brightness" min="20" max="200" value="100" step="5">
+                                <span class="desktop-settings-range-label" id="desktop-setting-wallpaper-brightness-label">100%</span>
+                            </div>
+                        </div>
+                        <!-- 视频壁纸专用设置 -->
+                        <div id="desktop-settings-wallpaper-video-options" class="desktop-settings-wallpaper-video-options" style="display:none;">
+                            <div class="desktop-settings-item">
+                                <div class="desktop-settings-item-label">
+                                    <div class="desktop-settings-item-label-text">视频静音</div>
+                                    <div class="desktop-settings-item-label-desc">关闭后将播放视频声音</div>
+                                </div>
+                                <label class="desktop-settings-toggle">
+                                    <input type="checkbox" id="desktop-setting-wallpaper-video-muted" checked>
+                                    <span class="desktop-settings-toggle-slider"></span>
+                                </label>
+                            </div>
+                            <div class="desktop-settings-item">
+                                <div class="desktop-settings-item-label">
+                                    <div class="desktop-settings-item-label-text">播放速度</div>
+                                </div>
+                                <div class="desktop-settings-range-wrapper">
+                                    <input type="range" class="desktop-settings-range" id="desktop-setting-wallpaper-video-speed" min="25" max="200" value="100" step="25">
+                                    <span class="desktop-settings-range-label" id="desktop-setting-wallpaper-video-speed-label">1.0x</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- 窗口行为 -->
+                <div class="desktop-settings-section">
+                    <div class="desktop-settings-section-title">窗口行为</div>
+                    <div class="desktop-settings-item">
+                        <div class="desktop-settings-item-label">
+                            <div class="desktop-settings-item-label-text">启动时自动最大化</div>
+                            <div class="desktop-settings-item-label-desc">打开桌面窗口时自动最大化到全屏</div>
+                        </div>
+                        <label class="desktop-settings-toggle">
+                            <input type="checkbox" id="desktop-setting-auto-maximize">
+                            <span class="desktop-settings-toggle-slider"></span>
+                        </label>
+                    </div>
+                    <div class="desktop-settings-item">
+                        <div class="desktop-settings-item-label">
+                            <div class="desktop-settings-item-label-text">窗口自动置底</div>
+                            <div class="desktop-settings-item-label-desc">将桌面窗口置于所有其他窗口的最底层</div>
+                        </div>
+                        <label class="desktop-settings-toggle">
+                            <input type="checkbox" id="desktop-setting-always-bottom">
+                            <span class="desktop-settings-toggle-slider"></span>
+                        </label>
+                    </div>
+                </div>
+                <!-- Dock 栏 -->
+                <div class="desktop-settings-section">
+                    <div class="desktop-settings-section-title">Dock 栏</div>
+                    <div class="desktop-settings-item">
+                        <div class="desktop-settings-item-label">
+                            <div class="desktop-settings-item-label-text">默认显示图标数</div>
+                            <div class="desktop-settings-item-label-desc">Dock 栏中直接显示的快捷方式数量</div>
+                        </div>
+                        <div class="desktop-settings-number">
+                            <button class="desktop-settings-number-btn" id="desktop-setting-dock-count-minus">−</button>
+                            <span class="desktop-settings-number-value" id="desktop-setting-dock-count-value">8</span>
+                            <button class="desktop-settings-number-btn" id="desktop-setting-dock-count-plus">+</button>
+                        </div>
+                    </div>
+                    <div class="desktop-settings-item">
+                        <div class="desktop-settings-item-label">
+                            <div class="desktop-settings-item-label-text">图标大小</div>
+                            <div class="desktop-settings-item-label-desc">Dock 栏中图标的显示尺寸</div>
+                        </div>
+                        <div class="desktop-settings-range-wrapper">
+                            <input type="range" class="desktop-settings-range" id="desktop-setting-dock-size" min="20" max="56" value="32" step="2">
+                            <span class="desktop-settings-range-label" id="desktop-setting-dock-size-label">32px</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="desktop-settings-footer">
+                <button class="desktop-settings-footer-btn reset">恢复默认</button>
+                <button class="desktop-settings-footer-btn save">保存设置</button>
+            </div>
+        </div>
     </div>
 
     <!-- 状态指示器 -->
@@ -149,6 +303,8 @@
     <script src="core/state.js"></script>
     <!-- 2. 核心层：主题同步 -->
     <script src="core/theme.js"></script>
+    <!-- 2.5. 核心层：壁纸管理 -->
+    <script src="core/wallpaperManager.js"></script>
     <!-- 3. 核心层：状态指示器（依赖 state） -->
     <script src="core/statusIndicator.js"></script>
     <!-- 4. 核心层：Z-Index 管理（依赖 state） -->
@@ -165,6 +321,10 @@
     <script src="ui/sidebar.js"></script>
     <!-- 9.5. UI层：Dock 栏（依赖 state, domRefs, CONSTANTS） -->
     <script src="ui/dock.js"></script>
+    <!-- 9.6. UI层：图标选择器（依赖 state） -->
+    <script src="ui/iconPicker.js"></script>
+    <!-- 9.7. UI层：全局设置（依赖 state） -->
+    <script src="ui/globalSettings.js"></script>
     <!-- 10. 收藏层：缩略图捕获 -->
     <script src="favorites/thumbnail.js"></script>
     <!-- 11. 收藏层：收藏管理器（依赖 state, status, widget, sidebar, thumbnail） -->
@@ -179,6 +339,8 @@
     <script src="builtinWidgets/musicWidget.js"></script>
     <!-- 16. 内置挂件：新闻热点 -->
     <script src="builtinWidgets/newsWidget.js"></script>
+    <!-- 16.5. 内置挂件：应用托盘 -->
+    <script src="builtinWidgets/appTrayWidget.js"></script>
     <!-- 17. 调试工具 -->
     <script src="debug/debugTools.js"></script>
     <!-- 18. 主入口：初始化编排 -->

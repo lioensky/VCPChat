@@ -525,6 +525,14 @@ if (!gotTheLock) {
 
             createTray();
 
+            // 独立模式也需要注册 DevTools 快捷键
+            globalShortcut.register('Control+Shift+I', () => {
+                const focusedWindow = BrowserWindow.getFocusedWindow();
+                if (focusedWindow && focusedWindow.webContents && !focusedWindow.webContents.isDestroyed()) {
+                    focusedWindow.webContents.toggleDevTools();
+                }
+            });
+
             await desktopHandlers.openDesktopWindow();
             return;
         }

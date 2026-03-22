@@ -53,6 +53,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 4. 初始化各子系统
     D.theme.init();
+    if (D.wallpaper) {
+        D.wallpaper.init();
+    }
     D.status.update('waiting', '等待主窗口连接...');
     setTimeout(() => {
         D.status.hide();
@@ -67,6 +70,13 @@ document.addEventListener('DOMContentLoaded', () => {
     // 5.5. 初始化 Dock 栏
     if (D.dock) {
         D.dock.init();
+    }
+
+    // 5.6. 初始化全局设置
+    if (D.globalSettings) {
+        D.globalSettings.init().then(() => {
+            D.globalSettings.initNumberControls();
+        });
     }
 
     // 5. 点击空白关闭右键菜单
@@ -105,4 +115,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     // 官方内置挂件不再自动启动到桌面，而是通过侧栏或 Dock 按需加载
     // 用户可以通过调试工具手动生成：window.__desktopDebug.spawnWeatherWidget() 等
     console.log('[VCPdesktop] Built-in widgets registered (available via sidebar/debug).');
+
+    // 应用全局设置（包括自动最大化、窗口置底、加载默认预设等）
+    if (D.globalSettings) {
+        await D.globalSettings.applyOnStartup();
+    }
 });

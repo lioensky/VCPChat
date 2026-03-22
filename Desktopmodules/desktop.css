@@ -15,10 +15,59 @@ html, body {
     overflow: hidden;
     font-family: 'Segoe UI', 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
     color: var(--primary-text, #ccc);
-    /* 壁纸由 themes.css 提供 */
+    /* 壁纸由 themes.css 提供（可被自定义壁纸覆盖） */
     background-size: cover;
     background-position: center;
     background-attachment: fixed;
+}
+
+/* 启用自定义壁纸时，隐藏 body 上的 themes.css 壁纸 */
+body.desktop-custom-wallpaper-active {
+    background-image: none !important;
+    background-color: #0a0a0f;
+}
+
+/* ============================================================
+ * 壁纸层
+ * ============================================================ */
+#desktop-wallpaper-layer {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 0;
+    overflow: hidden;
+    pointer-events: none;
+}
+
+.desktop-wallpaper-image {
+    position: absolute;
+    inset: 0;
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+}
+
+.desktop-wallpaper-video {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    min-width: 100%;
+    min-height: 100%;
+    width: auto;
+    height: auto;
+    object-fit: cover;
+}
+
+.desktop-wallpaper-html {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    border: none;
+    background: transparent;
 }
 
 /* ============================================================
@@ -854,16 +903,16 @@ body.light-theme .desktop-sidebar-empty {
 }
 
 .desktop-dock-icon-img {
-    width: 32px;
-    height: 32px;
+    width: var(--desktop-dock-icon-size, 32px);
+    height: var(--desktop-dock-icon-size, 32px);
     border-radius: 6px;
     object-fit: contain;
     pointer-events: none;
 }
 
 .desktop-dock-icon-placeholder {
-    width: 32px;
-    height: 32px;
+    width: var(--desktop-dock-icon-size, 32px);
+    height: var(--desktop-dock-icon-size, 32px);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1251,10 +1300,72 @@ body.light-theme .desktop-shortcut-icon-label {
     flex-direction: column;
     flex: 1;
     overflow: hidden;
+    position: relative;
 }
 
 .desktop-sidebar-page.active {
     display: flex;
+}
+
+/* --- 侧栏滚动区域上下边缘淡出遮罩 --- */
+.desktop-sidebar-list {
+    position: relative;
+}
+
+.desktop-sidebar-page.active::before,
+.desktop-sidebar-page.active::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 24px;
+    pointer-events: none;
+    z-index: 10;
+    transition: opacity 0.2s ease;
+}
+
+.desktop-sidebar-page.active::before {
+    top: 0;
+    background: linear-gradient(
+        to bottom,
+        var(--sidebar-fade-color, rgba(30, 30, 42, 0.95)) 0%,
+        var(--sidebar-fade-color-mid, rgba(30, 30, 42, 0.6)) 40%,
+        transparent 100%
+    );
+}
+
+.desktop-sidebar-page.active::after {
+    bottom: 0;
+    background: linear-gradient(
+        to top,
+        var(--sidebar-fade-color, rgba(30, 30, 42, 0.95)) 0%,
+        var(--sidebar-fade-color-mid, rgba(30, 30, 42, 0.6)) 40%,
+        transparent 100%
+    );
+}
+
+/* 预设页：有操作按钮区，上方渐变不需要遮住按钮 */
+#desktop-sidebar-page-presets.active::before {
+    display: none;
+}
+
+/* 浅色主题的侧栏渐变颜色 */
+body.light-theme .desktop-sidebar-page.active::before {
+    background: linear-gradient(
+        to bottom,
+        rgba(245, 245, 250, 0.95) 0%,
+        rgba(245, 245, 250, 0.6) 40%,
+        transparent 100%
+    );
+}
+
+body.light-theme .desktop-sidebar-page.active::after {
+    background: linear-gradient(
+        to top,
+        rgba(245, 245, 250, 0.95) 0%,
+        rgba(245, 245, 250, 0.6) 40%,
+        transparent 100%
+    );
 }
 
 /* --- 分类标题 --- */
@@ -1373,16 +1484,62 @@ body.light-theme .desktop-shortcut-icon-label {
     min-width: 0;
 }
 
+.desktop-sidebar-preset-name-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 2px;
+}
+
 .desktop-sidebar-preset-name {
     font-size: 12px;
     font-weight: 600;
     color: var(--primary-text, rgba(255, 255, 255, 0.85));
-    margin-bottom: 2px;
+}
+
+.desktop-sidebar-preset-default-badge {
+    font-size: 9px;
+    padding: 1px 6px;
+    background: rgba(255, 180, 50, 0.2);
+    color: rgba(255, 200, 80, 0.95);
+    border: 1px solid rgba(255, 180, 50, 0.3);
+    border-radius: 4px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    flex-shrink: 0;
+    line-height: 1.4;
+}
+
+.desktop-sidebar-preset-card.default-preset {
+    border-color: rgba(255, 180, 50, 0.2);
+    background: rgba(255, 180, 50, 0.04);
+}
+
+.desktop-sidebar-preset-card.default-preset:hover {
+    border-color: rgba(255, 180, 50, 0.3);
+    background: rgba(255, 180, 50, 0.08);
 }
 
 .desktop-sidebar-preset-meta {
     font-size: 10px;
     color: var(--secondary-text, rgba(255, 255, 255, 0.35));
+}
+
+/* 浅色主题 - 预设默认标记 */
+body.light-theme .desktop-sidebar-preset-default-badge {
+    background: rgba(255, 160, 30, 0.12);
+    color: rgba(200, 130, 20, 0.95);
+    border-color: rgba(255, 160, 30, 0.25);
+}
+
+body.light-theme .desktop-sidebar-preset-card.default-preset {
+    border-color: rgba(255, 160, 30, 0.2);
+    background: rgba(255, 160, 30, 0.04);
+}
+
+body.light-theme .desktop-sidebar-preset-card.default-preset:hover {
+    border-color: rgba(255, 160, 30, 0.3);
+    background: rgba(255, 160, 30, 0.08);
 }
 
 /* --- 浅色主题适配（侧栏分页） --- */
@@ -1396,4 +1553,938 @@ body.light-theme .desktop-sidebar-tab.active {
 
 body.light-theme .desktop-sidebar-builtin-card:hover {
     background: rgba(0, 0, 0, 0.04);
+}
+
+/* ============================================================
+ * 图标选择器（Icon Picker）
+ * ============================================================ */
+.desktop-iconpicker-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 10002;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(6px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+}
+
+.desktop-iconpicker-overlay.visible {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.desktop-iconpicker-panel {
+    width: 560px;
+    max-width: 92vw;
+    max-height: 75vh;
+    background: rgba(35, 35, 50, 0.95);
+    backdrop-filter: blur(24px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transform: scale(0.95) translateY(10px);
+    transition: transform 0.25s ease;
+}
+
+.desktop-iconpicker-overlay.visible .desktop-iconpicker-panel {
+    transform: scale(1) translateY(0);
+}
+
+.desktop-iconpicker-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.desktop-iconpicker-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.9);
+    letter-spacing: 0.5px;
+}
+
+.desktop-iconpicker-close {
+    width: 24px;
+    height: 24px;
+    background: transparent;
+    border: none;
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 14px;
+    cursor: pointer;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s ease;
+}
+
+.desktop-iconpicker-close:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.9);
+}
+
+.desktop-iconpicker-toolbar {
+    display: flex;
+    gap: 8px;
+    padding: 12px 20px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.desktop-iconpicker-preset-select {
+    flex: 0 0 auto;
+    min-width: 140px;
+    padding: 7px 10px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 12px;
+    outline: none;
+    cursor: pointer;
+    transition: border-color 0.15s ease;
+}
+
+.desktop-iconpicker-preset-select:focus {
+    border-color: rgba(100, 180, 255, 0.4);
+}
+
+.desktop-iconpicker-preset-select option {
+    background: #2a2a3a;
+    color: #eee;
+}
+
+.desktop-iconpicker-search {
+    flex: 1;
+    padding: 7px 12px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 12px;
+    outline: none;
+    transition: border-color 0.15s ease;
+}
+
+.desktop-iconpicker-search:focus {
+    border-color: rgba(100, 180, 255, 0.4);
+}
+
+.desktop-iconpicker-search::placeholder {
+    color: rgba(255, 255, 255, 0.3);
+}
+
+.desktop-iconpicker-grid-wrapper {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 16px;
+    min-height: 200px;
+}
+
+.desktop-iconpicker-grid-wrapper::-webkit-scrollbar { width: 5px; }
+.desktop-iconpicker-grid-wrapper::-webkit-scrollbar-track { background: transparent; }
+.desktop-iconpicker-grid-wrapper::-webkit-scrollbar-thumb { background: rgba(128,128,128,0.3); border-radius: 3px; }
+
+.desktop-iconpicker-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(68px, 1fr));
+    gap: 6px;
+}
+
+.desktop-iconpicker-cell {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 8px 4px 4px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.12s ease;
+    border: 2px solid transparent;
+    min-height: 72px;
+}
+
+.desktop-iconpicker-cell:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.1);
+}
+
+.desktop-iconpicker-cell.selected {
+    background: rgba(100, 180, 255, 0.15);
+    border-color: rgba(100, 180, 255, 0.5);
+}
+
+.desktop-iconpicker-cell.broken {
+    opacity: 0.3;
+    pointer-events: none;
+}
+
+.desktop-iconpicker-cell-img {
+    width: 36px;
+    height: 36px;
+    object-fit: contain;
+    border-radius: 4px;
+    pointer-events: none;
+}
+
+.desktop-iconpicker-cell-label {
+    font-size: 9px;
+    color: rgba(255, 255, 255, 0.5);
+    margin-top: 4px;
+    max-width: 62px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: center;
+    line-height: 1.2;
+}
+
+.desktop-iconpicker-empty,
+.desktop-iconpicker-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 160px;
+    color: rgba(255, 255, 255, 0.3);
+    font-size: 13px;
+    text-align: center;
+    line-height: 1.8;
+    grid-column: 1 / -1;
+}
+
+.desktop-iconpicker-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 20px;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.desktop-iconpicker-info {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.4);
+}
+
+.desktop-iconpicker-pagination {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.desktop-iconpicker-page-info {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.5);
+    min-width: 40px;
+    text-align: center;
+}
+
+.desktop-iconpicker-prev,
+.desktop-iconpicker-next {
+    width: 28px;
+    height: 28px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.04);
+    color: rgba(255, 255, 255, 0.6);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 11px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.12s ease;
+}
+
+.desktop-iconpicker-prev:hover:not(:disabled),
+.desktop-iconpicker-next:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.9);
+    border-color: rgba(255, 255, 255, 0.15);
+}
+
+.desktop-iconpicker-prev:disabled,
+.desktop-iconpicker-next:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+/* --- 图标选择器浅色主题适配 --- */
+body.light-theme .desktop-iconpicker-panel {
+    background: rgba(250, 250, 255, 0.95);
+    border-color: rgba(0, 0, 0, 0.1);
+}
+
+body.light-theme .desktop-iconpicker-title {
+    color: rgba(0, 0, 0, 0.85);
+}
+
+body.light-theme .desktop-iconpicker-close {
+    color: rgba(0, 0, 0, 0.4);
+}
+
+body.light-theme .desktop-iconpicker-close:hover {
+    background: rgba(0, 0, 0, 0.06);
+    color: rgba(0, 0, 0, 0.8);
+}
+
+body.light-theme .desktop-iconpicker-preset-select,
+body.light-theme .desktop-iconpicker-search {
+    background: rgba(0, 0, 0, 0.04);
+    border-color: rgba(0, 0, 0, 0.1);
+    color: rgba(0, 0, 0, 0.85);
+}
+
+body.light-theme .desktop-iconpicker-preset-select option {
+    background: #f5f5fa;
+    color: #333;
+}
+
+body.light-theme .desktop-iconpicker-search::placeholder {
+    color: rgba(0, 0, 0, 0.3);
+}
+
+body.light-theme .desktop-iconpicker-cell:hover {
+    background: rgba(0, 0, 0, 0.04);
+    border-color: rgba(0, 0, 0, 0.08);
+}
+
+body.light-theme .desktop-iconpicker-cell.selected {
+    background: rgba(100, 180, 255, 0.12);
+    border-color: rgba(100, 180, 255, 0.4);
+}
+
+body.light-theme .desktop-iconpicker-cell-label {
+    color: rgba(0, 0, 0, 0.5);
+}
+
+body.light-theme .desktop-iconpicker-empty,
+body.light-theme .desktop-iconpicker-loading {
+    color: rgba(0, 0, 0, 0.3);
+}
+
+body.light-theme .desktop-iconpicker-info,
+body.light-theme .desktop-iconpicker-page-info {
+    color: rgba(0, 0, 0, 0.4);
+}
+
+body.light-theme .desktop-iconpicker-prev,
+body.light-theme .desktop-iconpicker-next {
+    background: rgba(0, 0, 0, 0.03);
+    border-color: rgba(0, 0, 0, 0.08);
+    color: rgba(0, 0, 0, 0.5);
+}
+
+body.light-theme .desktop-iconpicker-prev:hover:not(:disabled),
+body.light-theme .desktop-iconpicker-next:hover:not(:disabled) {
+    background: rgba(0, 0, 0, 0.08);
+    color: rgba(0, 0, 0, 0.8);
+}
+
+body.light-theme .desktop-iconpicker-header,
+body.light-theme .desktop-iconpicker-toolbar,
+body.light-theme .desktop-iconpicker-footer {
+    border-color: rgba(0, 0, 0, 0.06);
+}
+
+/* ============================================================
+ * 全局设置模态窗
+ * ============================================================ */
+.desktop-settings-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 10001;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(6px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+}
+
+.desktop-settings-overlay.visible {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.desktop-settings-panel {
+    width: 420px;
+    max-width: 92vw;
+    max-height: 80vh;
+    background: rgba(35, 35, 50, 0.95);
+    backdrop-filter: blur(24px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transform: scale(0.95) translateY(10px);
+    transition: transform 0.25s ease;
+}
+
+.desktop-settings-overlay.visible .desktop-settings-panel {
+    transform: scale(1) translateY(0);
+}
+
+.desktop-settings-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 22px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.desktop-settings-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.9);
+    letter-spacing: 0.5px;
+}
+
+.desktop-settings-close {
+    width: 24px;
+    height: 24px;
+    background: transparent;
+    border: none;
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 14px;
+    cursor: pointer;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s ease;
+}
+
+.desktop-settings-close:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.9);
+}
+
+.desktop-settings-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 22px;
+}
+
+.desktop-settings-body::-webkit-scrollbar { width: 4px; }
+.desktop-settings-body::-webkit-scrollbar-track { background: transparent; }
+.desktop-settings-body::-webkit-scrollbar-thumb { background: rgba(128,128,128,0.3); border-radius: 2px; }
+
+.desktop-settings-section {
+    margin-bottom: 20px;
+}
+
+.desktop-settings-section-title {
+    font-size: 11px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.4);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.desktop-settings-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+.desktop-settings-item:last-child {
+    border-bottom: none;
+}
+
+.desktop-settings-item-label {
+    flex: 1;
+    min-width: 0;
+}
+
+.desktop-settings-item-label-text {
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.85);
+    margin-bottom: 2px;
+}
+
+.desktop-settings-item-label-desc {
+    font-size: 10px;
+    color: rgba(255, 255, 255, 0.35);
+    line-height: 1.4;
+}
+
+/* 开关 Toggle */
+.desktop-settings-toggle {
+    position: relative;
+    width: 40px;
+    height: 22px;
+    flex-shrink: 0;
+    margin-left: 12px;
+}
+
+.desktop-settings-toggle input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+    position: absolute;
+}
+
+.desktop-settings-toggle-slider {
+    position: absolute;
+    inset: 0;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 11px;
+    cursor: pointer;
+    transition: all 0.25s ease;
+}
+
+.desktop-settings-toggle-slider::before {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 16px;
+    height: 16px;
+    background: rgba(255, 255, 255, 0.6);
+    border-radius: 50%;
+    transition: all 0.25s ease;
+}
+
+.desktop-settings-toggle input:checked + .desktop-settings-toggle-slider {
+    background: rgba(100, 180, 255, 0.3);
+    border-color: rgba(100, 180, 255, 0.5);
+}
+
+.desktop-settings-toggle input:checked + .desktop-settings-toggle-slider::before {
+    transform: translateX(18px);
+    background: rgba(100, 180, 255, 0.95);
+}
+
+/* 数值选择器 */
+.desktop-settings-number {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+    margin-left: 12px;
+}
+
+.desktop-settings-number-btn {
+    width: 24px;
+    height: 24px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.7);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.12s ease;
+    line-height: 1;
+}
+
+.desktop-settings-number-btn:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: rgba(255, 255, 255, 0.95);
+}
+
+.desktop-settings-number-value {
+    min-width: 32px;
+    text-align: center;
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.85);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+/* 滑块 */
+.desktop-settings-range-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+    margin-left: 12px;
+}
+
+.desktop-settings-range {
+    width: 100px;
+    height: 4px;
+    -webkit-appearance: none;
+    appearance: none;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 2px;
+    outline: none;
+    cursor: pointer;
+}
+
+.desktop-settings-range::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    background: rgba(100, 180, 255, 0.9);
+    border-radius: 50%;
+    cursor: pointer;
+    transition: transform 0.12s ease;
+}
+
+.desktop-settings-range::-webkit-slider-thumb:hover {
+    transform: scale(1.2);
+}
+
+.desktop-settings-range-label {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.5);
+    min-width: 28px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+/* 设置模态窗底部 */
+.desktop-settings-footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 12px 22px;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.desktop-settings-footer-btn {
+    padding: 8px 18px;
+    border: none;
+    border-radius: 8px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.desktop-settings-footer-btn.reset {
+    background: rgba(255, 255, 255, 0.06);
+    color: rgba(255, 255, 255, 0.5);
+}
+
+.desktop-settings-footer-btn.reset:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.desktop-settings-footer-btn.save {
+    background: rgba(100, 180, 255, 0.2);
+    color: rgba(100, 180, 255, 0.9);
+}
+
+.desktop-settings-footer-btn.save:hover {
+    background: rgba(100, 180, 255, 0.35);
+    color: #fff;
+}
+
+/* --- 全局设置浅色主题适配 --- */
+body.light-theme .desktop-settings-panel {
+    background: rgba(250, 250, 255, 0.95);
+    border-color: rgba(0, 0, 0, 0.1);
+}
+
+body.light-theme .desktop-settings-title {
+    color: rgba(0, 0, 0, 0.85);
+}
+
+body.light-theme .desktop-settings-close {
+    color: rgba(0, 0, 0, 0.4);
+}
+
+body.light-theme .desktop-settings-close:hover {
+    background: rgba(0, 0, 0, 0.06);
+    color: rgba(0, 0, 0, 0.8);
+}
+
+body.light-theme .desktop-settings-section-title {
+    color: rgba(0, 0, 0, 0.4);
+    border-bottom-color: rgba(0, 0, 0, 0.04);
+}
+
+body.light-theme .desktop-settings-item {
+    border-bottom-color: rgba(0, 0, 0, 0.04);
+}
+
+body.light-theme .desktop-settings-item-label-text {
+    color: rgba(0, 0, 0, 0.85);
+}
+
+body.light-theme .desktop-settings-item-label-desc {
+    color: rgba(0, 0, 0, 0.4);
+}
+
+body.light-theme .desktop-settings-toggle-slider {
+    background: rgba(0, 0, 0, 0.08);
+    border-color: rgba(0, 0, 0, 0.12);
+}
+
+body.light-theme .desktop-settings-toggle-slider::before {
+    background: rgba(0, 0, 0, 0.3);
+}
+
+body.light-theme .desktop-settings-toggle input:checked + .desktop-settings-toggle-slider {
+    background: rgba(100, 180, 255, 0.25);
+    border-color: rgba(100, 180, 255, 0.4);
+}
+
+body.light-theme .desktop-settings-toggle input:checked + .desktop-settings-toggle-slider::before {
+    background: rgba(70, 150, 230, 0.95);
+}
+
+body.light-theme .desktop-settings-number-btn {
+    background: rgba(0, 0, 0, 0.04);
+    border-color: rgba(0, 0, 0, 0.1);
+    color: rgba(0, 0, 0, 0.6);
+}
+
+body.light-theme .desktop-settings-number-btn:hover {
+    background: rgba(0, 0, 0, 0.08);
+    color: rgba(0, 0, 0, 0.9);
+}
+
+body.light-theme .desktop-settings-number-value {
+    color: rgba(0, 0, 0, 0.85);
+}
+
+body.light-theme .desktop-settings-range {
+    background: rgba(0, 0, 0, 0.08);
+}
+
+body.light-theme .desktop-settings-range-label {
+    color: rgba(0, 0, 0, 0.45);
+}
+
+body.light-theme .desktop-settings-header,
+body.light-theme .desktop-settings-footer {
+    border-color: rgba(0, 0, 0, 0.06);
+}
+
+/* ============================================================
+ * 侧栏底部全局设置按钮
+ * ============================================================ */
+.desktop-sidebar-footer {
+    padding: 10px 14px;
+    border-top: 1px solid var(--border-color, rgba(255, 255, 255, 0.06));
+    flex-shrink: 0;
+}
+
+.desktop-sidebar-settings-btn {
+    width: 100%;
+    padding: 9px 14px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 10px;
+    color: var(--secondary-text, rgba(255, 255, 255, 0.55));
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+}
+
+.desktop-sidebar-settings-btn:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.12);
+    color: var(--primary-text, rgba(255, 255, 255, 0.85));
+}
+
+body.light-theme .desktop-sidebar-settings-btn {
+    background: rgba(0, 0, 0, 0.03);
+    border-color: rgba(0, 0, 0, 0.06);
+    color: rgba(0, 0, 0, 0.45);
+}
+
+body.light-theme .desktop-sidebar-settings-btn:hover {
+    background: rgba(0, 0, 0, 0.06);
+    border-color: rgba(0, 0, 0, 0.1);
+    color: rgba(0, 0, 0, 0.75);
+}
+
+/* ============================================================
+ * 壁纸设置面板样式
+ * ============================================================ */
+
+/* 壁纸配置区域 */
+.desktop-settings-wallpaper-config {
+    padding: 8px 0;
+}
+
+.desktop-settings-wallpaper-preview-area {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+/* 壁纸预览框 */
+.desktop-settings-wallpaper-preview {
+    width: 100%;
+    height: 120px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px dashed rgba(255, 255, 255, 0.12);
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+}
+
+.desktop-settings-wallpaper-preview img,
+.desktop-settings-wallpaper-preview video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 10px;
+}
+
+.desktop-settings-wallpaper-preview-empty {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.25);
+    text-align: center;
+    line-height: 1.6;
+}
+
+/* 壁纸类型标记（浮在预览图上方） */
+.desktop-settings-wallpaper-type-badge {
+    position: absolute;
+    top: 6px;
+    left: 6px;
+    padding: 2px 8px;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(4px);
+    border-radius: 4px;
+    font-size: 10px;
+    color: rgba(255, 255, 255, 0.8);
+    letter-spacing: 0.5px;
+    font-weight: 500;
+}
+
+/* 壁纸操作按钮 */
+.desktop-settings-wallpaper-actions {
+    display: flex;
+    gap: 6px;
+}
+
+.desktop-settings-wallpaper-btn {
+    flex: 1;
+    padding: 8px 12px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-align: center;
+}
+
+.desktop-settings-wallpaper-btn.select {
+    background: rgba(100, 180, 255, 0.12);
+    color: rgba(100, 180, 255, 0.9);
+    border-color: rgba(100, 180, 255, 0.2);
+}
+
+.desktop-settings-wallpaper-btn.select:hover {
+    background: rgba(100, 180, 255, 0.22);
+    color: #fff;
+    border-color: rgba(100, 180, 255, 0.4);
+}
+
+.desktop-settings-wallpaper-btn.clear {
+    background: rgba(255, 255, 255, 0.04);
+    color: rgba(255, 255, 255, 0.45);
+    flex: 0 0 auto;
+    padding: 8px 14px;
+}
+
+.desktop-settings-wallpaper-btn.clear:hover {
+    background: rgba(255, 60, 60, 0.12);
+    color: rgba(255, 100, 100, 0.9);
+    border-color: rgba(255, 60, 60, 0.3);
+}
+
+/* 壁纸文件信息 */
+.desktop-settings-wallpaper-info {
+    font-size: 10px;
+    color: rgba(255, 255, 255, 0.3);
+    padding: 0 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-height: 14px;
+}
+
+/* 视频壁纸专用设置 */
+.desktop-settings-wallpaper-video-options {
+    border-top: 1px solid rgba(255, 255, 255, 0.04);
+    margin-top: 4px;
+    padding-top: 4px;
+}
+
+/* --- 壁纸设置浅色主题适配 --- */
+body.light-theme .desktop-settings-wallpaper-preview {
+    background: rgba(0, 0, 0, 0.03);
+    border-color: rgba(0, 0, 0, 0.1);
+}
+
+body.light-theme .desktop-settings-wallpaper-preview-empty {
+    color: rgba(0, 0, 0, 0.25);
+}
+
+body.light-theme .desktop-settings-wallpaper-type-badge {
+    background: rgba(255, 255, 255, 0.8);
+    color: rgba(0, 0, 0, 0.7);
+}
+
+body.light-theme .desktop-settings-wallpaper-btn.select {
+    background: rgba(70, 150, 230, 0.1);
+    color: rgba(70, 150, 230, 0.9);
+    border-color: rgba(70, 150, 230, 0.2);
+}
+
+body.light-theme .desktop-settings-wallpaper-btn.select:hover {
+    background: rgba(70, 150, 230, 0.18);
+    border-color: rgba(70, 150, 230, 0.35);
+}
+
+body.light-theme .desktop-settings-wallpaper-btn.clear {
+    background: rgba(0, 0, 0, 0.03);
+    color: rgba(0, 0, 0, 0.4);
+    border-color: rgba(0, 0, 0, 0.06);
+}
+
+body.light-theme .desktop-settings-wallpaper-btn.clear:hover {
+    background: rgba(255, 60, 60, 0.08);
+    color: rgba(220, 50, 50, 0.8);
+    border-color: rgba(255, 60, 60, 0.2);
+}
+
+body.light-theme .desktop-settings-wallpaper-info {
+    color: rgba(0, 0, 0, 0.3);
+}
+
+body.light-theme .desktop-settings-wallpaper-video-options {
+    border-top-color: rgba(0, 0, 0, 0.04);
+}
+
+body.light-theme.desktop-custom-wallpaper-active {
+    background-color: #f0f0f5;
 }

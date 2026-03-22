@@ -55,6 +55,24 @@
             }
         });
 
+        contextMenuElement.querySelector('[data-action="move-up"]')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const targetId = contextMenuTargetWidgetId;
+            hideContextMenu();
+            if (targetId) {
+                zIndex.moveUp(targetId);
+            }
+        });
+
+        contextMenuElement.querySelector('[data-action="move-down"]')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const targetId = contextMenuTargetWidgetId;
+            hideContextMenu();
+            if (targetId) {
+                zIndex.moveDown(targetId);
+            }
+        });
+
         contextMenuElement.querySelector('[data-action="send-back"]')?.addEventListener('click', (e) => {
             e.stopPropagation();
             const targetId = contextMenuTargetWidgetId;

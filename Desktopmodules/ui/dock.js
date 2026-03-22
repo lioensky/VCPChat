@@ -126,18 +126,17 @@
         iconWrapper.draggable = true;
 
         // 图标
-        if (item.icon) {
-            const img = document.createElement('img');
-            img.src = item.icon;
-            img.className = 'desktop-dock-icon-img';
-            img.draggable = false;
-            iconWrapper.appendChild(img);
-        } else {
-            const placeholder = document.createElement('span');
-            placeholder.className = 'desktop-dock-icon-placeholder';
-            placeholder.textContent = item.type === 'builtin' ? '📦' : '🔗';
-            iconWrapper.appendChild(placeholder);
-        }
+        const img = document.createElement('img');
+        img.src = item.icon || '../assets/setting.png';
+        img.className = 'desktop-dock-icon-img';
+        img.draggable = false;
+        // 图标加载失败时回退到默认图标
+        img.onerror = function () {
+            if (this.src !== new URL('../assets/setting.png', location.href).href) {
+                this.src = '../assets/setting.png';
+            }
+        };
+        iconWrapper.appendChild(img);
 
         // 名称标签
         const label = document.createElement('span');
@@ -222,18 +221,17 @@
             card.title = item.description || item.name;
 
             // 图标
-            if (item.icon) {
-                const img = document.createElement('img');
-                img.src = item.icon;
-                img.className = 'desktop-dock-drawer-item-icon';
-                img.draggable = false;
-                card.appendChild(img);
-            } else {
-                const placeholder = document.createElement('span');
-                placeholder.className = 'desktop-dock-drawer-item-icon-placeholder';
-                placeholder.textContent = item.type === 'builtin' ? '📦' : '🔗';
-                card.appendChild(placeholder);
-            }
+            const img = document.createElement('img');
+            img.src = item.icon || '../assets/setting.png';
+            img.className = 'desktop-dock-drawer-item-icon';
+            img.draggable = false;
+            // 图标加载失败时回退到默认图标
+            img.onerror = function () {
+                if (this.src !== new URL('../assets/setting.png', location.href).href) {
+                    this.src = '../assets/setting.png';
+                }
+            };
+            card.appendChild(img);
 
             // 名称
             const name = document.createElement('span');
@@ -631,18 +629,17 @@
         iconEl.style.top = `${adjustedY}px`;
 
         // 图标图片
-        if (item.icon) {
-            const img = document.createElement('img');
-            img.src = item.icon;
-            img.className = 'desktop-shortcut-icon-img';
-            img.draggable = false;
-            iconEl.appendChild(img);
-        } else {
-            const placeholder = document.createElement('span');
-            placeholder.className = 'desktop-shortcut-icon-placeholder';
-            placeholder.textContent = '🔗';
-            iconEl.appendChild(placeholder);
-        }
+        const img = document.createElement('img');
+        img.src = item.icon || '../assets/setting.png';
+        img.className = 'desktop-shortcut-icon-img';
+        img.draggable = false;
+        // 图标加载失败时回退到默认图标
+        img.onerror = function () {
+            if (this.src !== new URL('../assets/setting.png', location.href).href) {
+                this.src = '../assets/setting.png';
+            }
+        };
+        iconEl.appendChild(img);
 
         // 标签
         const label = document.createElement('span');
@@ -764,8 +761,11 @@
 
         dockContextMenu = document.createElement('div');
         dockContextMenu.className = 'desktop-context-menu visible';
+
+        // 先添加到 DOM 以便计算尺寸
         dockContextMenu.style.left = `${x}px`;
         dockContextMenu.style.top = `${y}px`;
+        dockContextMenu.style.visibility = 'hidden';
 
         const launchBtn = document.createElement('button');
         launchBtn.className = 'desktop-context-menu-item';
@@ -787,6 +787,31 @@
         });
         dockContextMenu.appendChild(toDesktopBtn);
 
+        // 更换图标
+        const changeIconBtn = document.createElement('button');
+        changeIconBtn.className = 'desktop-context-menu-item';
+        changeIconBtn.textContent = '🎨 更换图标';
+        changeIconBtn.addEventListener('click', () => {
+            dockContextMenu.remove();
+            dockContextMenu = null;
+            if (window.VCPDesktop.iconPicker) {
+                window.VCPDesktop.iconPicker.open((iconData) => {
+                    // 更新 state 中的图标
+                    const stateItem = state.dock.items.find(i => i.id === item.id);
+                    if (stateItem) {
+                        stateItem.icon = iconData.dataUrl;
+                    }
+                    item.icon = iconData.dataUrl;
+                    // 同步更新桌面上已存在的同源图标
+                    updateDesktopIconsByTarget(item.targetPath, iconData.dataUrl);
+                    // 重新渲染并保存
+                    renderDock();
+                    saveDockConfig();
+                });
+            }
+        });
+        dockContextMenu.appendChild(changeIconBtn);
+
         const divider = document.createElement('div');
         divider.className = 'desktop-context-menu-divider';
         dockContextMenu.appendChild(divider);
@@ -802,6 +827,29 @@
         dockContextMenu.appendChild(removeBtn);
 
         document.body.appendChild(dockContextMenu);
+
+        // 边界避让：防止菜单超出窗口
+        requestAnimationFrame(() => {
+            if (!dockContextMenu) return;
+            const rect = dockContextMenu.getBoundingClientRect();
+            let adjustedX = x;
+            let adjustedY = y;
+            // 底部避让
+            if (rect.bottom > window.innerHeight - 10) {
+                adjustedY = y - rect.height;
+            }
+            // 右侧避让
+            if (rect.right > window.innerWidth - 10) {
+                adjustedX = x - rect.width;
+            }
+            // 顶部避让
+            if (adjustedY < 10) {
+                adjustedY = 10;
+            }
+            dockContextMenu.style.left = `${adjustedX}px`;
+            dockContextMenu.style.top = `${adjustedY}px`;
+            dockContextMenu.style.visibility = '';
+        });
 
         // 点击其他地方关闭
         const closeHandler = (e) => {
@@ -826,6 +874,7 @@
         dockContextMenu.className = 'desktop-context-menu visible';
         dockContextMenu.style.left = `${x}px`;
         dockContextMenu.style.top = `${y}px`;
+        dockContextMenu.style.visibility = 'hidden';
 
         const launchBtn = document.createElement('button');
         launchBtn.className = 'desktop-context-menu-item';
@@ -836,6 +885,39 @@
             launchDockItem(item);
         });
         dockContextMenu.appendChild(launchBtn);
+
+        // 更换图标
+        const changeIconBtn = document.createElement('button');
+        changeIconBtn.className = 'desktop-context-menu-item';
+        changeIconBtn.textContent = '🎨 更换图标';
+        changeIconBtn.addEventListener('click', () => {
+            dockContextMenu.remove();
+            dockContextMenu = null;
+            if (window.VCPDesktop.iconPicker) {
+                window.VCPDesktop.iconPicker.open((iconData) => {
+                    // 更新桌面图标 DOM
+                    const imgEl = iconEl.querySelector('.desktop-shortcut-icon-img');
+                    if (imgEl) {
+                        imgEl.src = iconData.dataUrl;
+                    }
+                    // 更新桌面图标状态
+                    const targetPath = iconEl.dataset.targetPath;
+                    const iconState = state.desktopIcons.find(i => i.targetPath === targetPath);
+                    if (iconState) {
+                        iconState.icon = iconData.dataUrl;
+                    }
+                    // 同步更新 Dock 中的同源项
+                    const dockItem = state.dock.items.find(i => i.targetPath === targetPath);
+                    if (dockItem) {
+                        dockItem.icon = iconData.dataUrl;
+                        renderDock();
+                        saveDockConfig();
+                    }
+                    item.icon = iconData.dataUrl;
+                });
+            }
+        });
+        dockContextMenu.appendChild(changeIconBtn);
 
         const divider = document.createElement('div');
         divider.className = 'desktop-context-menu-divider';
@@ -859,6 +941,26 @@
         dockContextMenu.appendChild(removeBtn);
 
         document.body.appendChild(dockContextMenu);
+
+        // 边界避让：防止菜单超出窗口
+        requestAnimationFrame(() => {
+            if (!dockContextMenu) return;
+            const rect = dockContextMenu.getBoundingClientRect();
+            let adjustedX = x;
+            let adjustedY = y;
+            if (rect.bottom > window.innerHeight - 10) {
+                adjustedY = y - rect.height;
+            }
+            if (rect.right > window.innerWidth - 10) {
+                adjustedX = x - rect.width;
+            }
+            if (adjustedY < 10) {
+                adjustedY = 10;
+            }
+            dockContextMenu.style.left = `${adjustedX}px`;
+            dockContextMenu.style.top = `${adjustedY}px`;
+            dockContextMenu.style.visibility = '';
+        });
 
         const closeHandler = (e) => {
             if (dockContextMenu && !dockContextMenu.contains(e.target)) {
@@ -907,6 +1009,34 @@
         } catch (err) {
             console.error('[Dock] Load config error:', err);
         }
+    }
+
+    // ============================================================
+    // 图标同步更新辅助
+    // ============================================================
+
+    /**
+     * 更新桌面上所有同源（相同 targetPath）图标的显示
+     */
+    function updateDesktopIconsByTarget(targetPath, newIconSrc) {
+        if (!targetPath) return;
+        const canvas = domRefs.canvas;
+        if (!canvas) return;
+
+        const icons = canvas.querySelectorAll(`.desktop-shortcut-icon[data-target-path="${CSS.escape(targetPath)}"]`);
+        icons.forEach(iconEl => {
+            const imgEl = iconEl.querySelector('.desktop-shortcut-icon-img');
+            if (imgEl) {
+                imgEl.src = newIconSrc;
+            }
+        });
+
+        // 同步状态
+        state.desktopIcons.forEach(iconState => {
+            if (iconState.targetPath === targetPath) {
+                iconState.icon = newIconSrc;
+            }
+        });
     }
 
     // ============================================================
