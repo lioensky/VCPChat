@@ -1,6 +1,12 @@
 /**
  * VCPdesktop - 图标选择器模块
  * 负责：从 assets/iconset 预设文件夹中选择自定义图标
+ *
+ * 支持图标类型：
+ *   - image (PNG/JPG/ICO/WebP) — 标准图片图标
+ *   - svg — 矢量图标（支持 currentColor 主题适配）
+ *   - gif — 动画图标
+ *   - html — HTML 富图标（Shadow DOM 隔离渲染，AI 原生生成）
  */
 
 'use strict';
@@ -204,20 +210,63 @@
             for (const icon of icons) {
                 const cell = document.createElement('div');
                 cell.className = 'desktop-iconpicker-cell';
-                cell.title = icon.name;
+                cell.title = `${icon.name} (${icon.iconType || 'image'})`;
 
-                const img = document.createElement('img');
-                // 使用相对路径直接引用（从 Desktopmodules/ 出发，往上一层到项目根）
-                img.src = `../${icon.relativePath}`;
-                img.className = 'desktop-iconpicker-cell-img';
-                img.draggable = false;
-                img.loading = 'lazy';
-                // 加载失败时显示占位
-                img.onerror = function () {
-                    this.style.display = 'none';
-                    cell.classList.add('broken');
-                };
-                cell.appendChild(img);
+                // 根据图标类型选择不同的预览方式
+                const iconType = icon.iconType || 'image';
+
+                if (iconType === 'html') {
+                    // HTML 图标：用 Shadow DOM 隔离预览
+                    const previewEl = document.createElement('div');
+                    previewEl.className = 'desktop-iconpicker-cell-html';
+                    // 延迟加载 HTML 内容（性能优化）
+                    const loadHtmlPreview = async () => {
+                        try {
+                            const dataResult = await window.electronAPI.desktopIconsetGetIconData(icon.relativePath);
+                            if (dataResult?.success && dataResult.htmlContent) {
+                                const shadow = previewEl.attachShadow({ mode: 'closed' });
+                                shadow.innerHTML = dataResult.htmlContent;
+                            }
+                        } catch (e) {
+                            previewEl.textContent = '📄';
+                        }
+                    };
+                    // 使用 IntersectionObserver 懒加载
+                    const observer = new IntersectionObserver((entries) => {
+                        if (entries[0].isIntersecting) {
+                            loadHtmlPreview();
+                            observer.disconnect();
+                        }
+                    }, { threshold: 0.1 });
+                    observer.observe(previewEl);
+                    cell.appendChild(previewEl);
+
+                    // 类型标签
+                    const badge = document.createElement('span');
+                    badge.className = 'desktop-iconpicker-cell-badge';
+                    badge.textContent = 'HTML';
+                    cell.appendChild(badge);
+                } else {
+                    // PNG/SVG/GIF/其他图片：用 <img> 预览
+                    const img = document.createElement('img');
+                    img.src = `../${icon.relativePath}`;
+                    img.className = 'desktop-iconpicker-cell-img';
+                    img.draggable = false;
+                    img.loading = 'lazy';
+                    img.onerror = function () {
+                        this.style.display = 'none';
+                        cell.classList.add('broken');
+                    };
+                    cell.appendChild(img);
+
+                    // GIF 类型标签
+                    if (iconType === 'gif') {
+                        const badge = document.createElement('span');
+                        badge.className = 'desktop-iconpicker-cell-badge';
+                        badge.textContent = 'GIF';
+                        cell.appendChild(badge);
+                    }
+                }
 
                 const label = document.createElement('span');
                 label.className = 'desktop-iconpicker-cell-label';
@@ -230,13 +279,16 @@
                     grid.querySelectorAll('.desktop-iconpicker-cell.selected').forEach(el => el.classList.remove('selected'));
                     cell.classList.add('selected');
 
-                    // 读取为 DataURL 用于持久化
+                    // 读取图标数据
                     try {
                         const dataResult = await window.electronAPI.desktopIconsetGetIconData(icon.relativePath);
                         if (dataResult?.success && currentCallback) {
                             currentCallback({
                                 relativePath: icon.relativePath,
-                                dataUrl: dataResult.dataUrl,
+                                dataUrl: dataResult.dataUrl || null,
+                                htmlContent: dataResult.htmlContent || null,
+                                svgContent: dataResult.svgContent || null,
+                                iconType: dataResult.iconType || iconType,
                             });
                             closePicker();
                         }

@@ -18,17 +18,18 @@
         if (!widget) throw new Error('No widget element');
 
         // 使用 Electron 的 webContents.capturePage() 原生截图
+        // 注意：getBoundingClientRect() 返回 CSS 像素，capturePage() 也接受 CSS 像素
+        // Electron 内部会自动处理 DPR 缩放，无需手动乘以 devicePixelRatio
         if (window.electronAPI?.desktopCaptureWidget) {
             const rect = widget.getBoundingClientRect();
-            const dpr = window.devicePixelRatio || 1;
             const captureRect = {
-                x: Math.round(rect.x * dpr),
-                y: Math.round(rect.y * dpr),
-                width: Math.round(rect.width * dpr),
-                height: Math.round(rect.height * dpr),
+                x: Math.round(rect.x),
+                y: Math.round(rect.y),
+                width: Math.round(rect.width),
+                height: Math.round(rect.height),
             };
 
-            console.log(`[Desktop] Capturing widget at rect:`, captureRect, `dpr: ${dpr}`);
+            console.log(`[Desktop] Capturing widget at rect:`, captureRect, `(CSS pixels, dpr: ${window.devicePixelRatio})`);
             const result = await window.electronAPI.desktopCaptureWidget(captureRect);
             if (result?.success && result.thumbnail) {
                 return result.thumbnail;

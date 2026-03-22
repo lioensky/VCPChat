@@ -2,8 +2,13 @@
  * VCPdesktop - VChat 内部应用注册表 & 启动器
  * 负责：将 VChat 系统内部各子应用（聊天主界面、笔记中心、论坛、翻译、骰子、Canvas、音乐、RAG 监听等）
  *       注册到桌面 Dock 栏中，使用户可以统一从桌面启动这些应用。
- * 
- * 所有内部应用默认使用 assets/icon.png 作为图标。
+ *
+ * 图标体系（优先级从高到低）：
+ *   1. icon:         静态图标路径（PNG/SVG 文件，默认显示）
+ *   2. animatedIcon: 动画图标路径（GIF，hover 时播放）
+ *   3. svgIcon:      内联 SVG 字符串（AI 原生生成，支持 currentColor 主题适配）
+ *   4. emoji:        备用 emoji（所有图标加载失败时回退）
+ *
  * 启动方式通过 IPC 通道 'desktop-launch-vchat-app' 与主进程通信。
  */
 
@@ -17,21 +22,134 @@
     // ============================================================
 
     /**
+     * VChat 官方图标路径前缀
+     * 图标存放在 assets/iconset/VChatOfficial/ 目录下
+     * 从 desktop.html 出发的相对路径为 ../assets/iconset/VChatOfficial/
+     */
+    const ICON_BASE = '../assets/iconset/VChatOfficial';
+
+    // ============================================================
+    // AI 原生 SVG 内联图标
+    // 使用 currentColor 实现主题自适应（跟随 CSS --primary-text 等变量）
+    // ============================================================
+    const SVG_ICONS = {
+        chat: `<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="4" y="6" width="40" height="30" rx="6" fill="currentColor" opacity="0.12"/>
+            <rect x="4" y="6" width="40" height="30" rx="6" stroke="currentColor" stroke-width="2.5" fill="none"/>
+            <path d="M14 40l6-8h-6" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round" fill="currentColor" opacity="0.15"/>
+            <circle cx="16" cy="21" r="2.5" fill="currentColor"/>
+            <circle cx="24" cy="21" r="2.5" fill="currentColor"/>
+            <circle cx="32" cy="21" r="2.5" fill="currentColor"/>
+        </svg>`,
+        notes: `<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="8" y="4" width="32" height="40" rx="4" fill="currentColor" opacity="0.1"/>
+            <rect x="8" y="4" width="32" height="40" rx="4" stroke="currentColor" stroke-width="2.5" fill="none"/>
+            <line x1="14" y1="14" x2="34" y2="14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <line x1="14" y1="21" x2="30" y2="21" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <line x1="14" y1="28" x2="26" y2="28" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <path d="M32 30l4-4 4 4-4 4z" fill="currentColor" opacity="0.6"/>
+            <line x1="30" y1="36" x2="38" y2="28" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>`,
+        memo: `<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="24" cy="20" r="14" fill="currentColor" opacity="0.1"/>
+            <circle cx="24" cy="20" r="14" stroke="currentColor" stroke-width="2.5" fill="none"/>
+            <path d="M16 18c0 0 2-6 8-6s8 6 8 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/>
+            <circle cx="18" cy="22" r="1.5" fill="currentColor"/>
+            <circle cx="24" cy="16" r="1.5" fill="currentColor"/>
+            <circle cx="30" cy="22" r="1.5" fill="currentColor"/>
+            <line x1="18" y1="22" x2="24" y2="16" stroke="currentColor" stroke-width="1.2" opacity="0.4"/>
+            <line x1="24" y1="16" x2="30" y2="22" stroke="currentColor" stroke-width="1.2" opacity="0.4"/>
+            <line x1="18" y1="22" x2="30" y2="22" stroke="currentColor" stroke-width="1.2" opacity="0.4"/>
+            <path d="M18 36v4M24 34v6M30 36v4" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+        </svg>`,
+        forum: `<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="2" y="10" width="28" height="20" rx="5" fill="currentColor" opacity="0.1"/>
+            <rect x="2" y="10" width="28" height="20" rx="5" stroke="currentColor" stroke-width="2.5" fill="none"/>
+            <rect x="18" y="18" width="28" height="20" rx="5" fill="currentColor" opacity="0.08"/>
+            <rect x="18" y="18" width="28" height="20" rx="5" stroke="currentColor" stroke-width="2.5" fill="none"/>
+            <line x1="8" y1="18" x2="24" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <line x1="8" y1="23" x2="20" y2="23" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <line x1="24" y1="26" x2="40" y2="26" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <line x1="24" y1="31" x2="36" y2="31" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>`,
+        rag: `<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="24" cy="24" r="18" fill="currentColor" opacity="0.08"/>
+            <circle cx="24" cy="24" r="18" stroke="currentColor" stroke-width="2.5" fill="none"/>
+            <circle cx="24" cy="24" r="6" fill="currentColor" opacity="0.2"/>
+            <circle cx="24" cy="24" r="6" stroke="currentColor" stroke-width="2" fill="none"/>
+            <circle cx="24" cy="24" r="12" stroke="currentColor" stroke-width="1.5" stroke-dasharray="4 3" fill="none" opacity="0.4"/>
+            <line x1="24" y1="4" x2="24" y2="10" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+            <line x1="24" y1="38" x2="24" y2="44" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+            <line x1="4" y1="24" x2="10" y2="24" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+            <line x1="38" y1="24" x2="44" y2="24" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+        </svg>`,
+        dice: `<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="6" y="6" width="36" height="36" rx="8" fill="currentColor" opacity="0.1"/>
+            <rect x="6" y="6" width="36" height="36" rx="8" stroke="currentColor" stroke-width="2.5" fill="none"/>
+            <circle cx="16" cy="16" r="3" fill="currentColor"/>
+            <circle cx="32" cy="16" r="3" fill="currentColor"/>
+            <circle cx="24" cy="24" r="3" fill="currentColor"/>
+            <circle cx="16" cy="32" r="3" fill="currentColor"/>
+            <circle cx="32" cy="32" r="3" fill="currentColor"/>
+        </svg>`,
+        canvas: `<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="24" cy="24" r="18" fill="currentColor" opacity="0.08"/>
+            <circle cx="24" cy="24" r="18" stroke="currentColor" stroke-width="2.5" fill="none"/>
+            <circle cx="24" cy="12" r="4" fill="#FF6B6B" opacity="0.8"/>
+            <circle cx="14" cy="28" r="4" fill="#4ECDC4" opacity="0.8"/>
+            <circle cx="34" cy="28" r="4" fill="#FFE66D" opacity="0.8"/>
+            <path d="M8 40l6-14 4 8 6-20 6 16 4-6 6 16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="0.5"/>
+        </svg>`,
+        translator: `<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="24" cy="24" r="18" fill="currentColor" opacity="0.08"/>
+            <circle cx="24" cy="24" r="18" stroke="currentColor" stroke-width="2.5" fill="none"/>
+            <text x="12" y="22" font-size="12" font-weight="bold" fill="currentColor" font-family="sans-serif">A</text>
+            <text x="28" y="36" font-size="11" font-weight="bold" fill="currentColor" font-family="sans-serif" opacity="0.7">あ</text>
+            <path d="M22 26l6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <path d="M26 20l2 2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>`,
+        music: `<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="14" cy="36" r="6" fill="currentColor" opacity="0.15"/>
+            <circle cx="14" cy="36" r="6" stroke="currentColor" stroke-width="2.5" fill="none"/>
+            <circle cx="34" cy="32" r="6" fill="currentColor" opacity="0.15"/>
+            <circle cx="34" cy="32" r="6" stroke="currentColor" stroke-width="2.5" fill="none"/>
+            <line x1="20" y1="36" x2="20" y2="10" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+            <line x1="40" y1="32" x2="40" y2="6" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+            <path d="M20 14l20-6v-2l-20 6z" fill="currentColor" opacity="0.6"/>
+            <line x1="20" y1="12" x2="40" y2="6" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+        </svg>`,
+        themes: `<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="24" cy="24" r="18" fill="currentColor" opacity="0.08"/>
+            <circle cx="24" cy="24" r="18" stroke="currentColor" stroke-width="2.5" fill="none"/>
+            <path d="M24 6c-10 0-18 8-18 18h18V6z" fill="currentColor" opacity="0.2"/>
+            <circle cx="18" cy="16" r="3" fill="currentColor" opacity="0.6"/>
+            <circle cx="30" cy="16" r="3" fill="currentColor" opacity="0.4"/>
+            <circle cx="14" cy="26" r="3" fill="currentColor" opacity="0.5"/>
+            <circle cx="34" cy="26" r="3" fill="currentColor" opacity="0.3"/>
+            <circle cx="24" cy="34" r="3" fill="currentColor" opacity="0.45"/>
+        </svg>`,
+    };
+
+    /**
      * 所有可用的 VChat 内部子应用定义
-     * 
+     *
      * 每个应用包含：
-     *   - id:          唯一标识（用于 Dock 去重）
-     *   - name:        显示名称
-     *   - icon:        图标路径（相对于 desktop.html）
-     *   - emoji:       备用 emoji 图标
-     *   - description: 功能描述
-     *   - appAction:   主进程执行的动作标识
+     *   - id:           唯一标识（用于 Dock 去重）
+     *   - name:         显示名称
+     *   - icon:         静态图标路径（PNG，默认显示）
+     *   - animatedIcon: 动画图标路径（GIF，hover 时播放，可选）
+     *   - svgIcon:      内联 SVG 图标字符串（AI 原生生成，支持 CSS 变量主题适配）
+     *   - emoji:        备用 emoji 图标（图标加载失败时回退）
+     *   - description:  功能描述
+     *   - appAction:    主进程执行的动作标识
      */
     const VCHAT_APPS = [
         {
             id: 'vchat-app-main',
             name: 'VChat 主界面',
-            icon: '../assets/icon.png',
+            icon: `${ICON_BASE}/vchat_main.png`,
+            animatedIcon: null,
+            svgIcon: SVG_ICONS.chat,
             emoji: '💬',
             description: '打开 VChat 聊天主窗口',
             appAction: 'show-main-window',
@@ -39,7 +157,9 @@
         {
             id: 'vchat-app-notes',
             name: '用户笔记中心',
-            icon: '../assets/icon.png',
+            icon: null,
+            animatedIcon: `${ICON_BASE}/人类笔记.gif`,
+            svgIcon: SVG_ICONS.notes,
             emoji: '📝',
             description: '打开用户笔记管理窗口',
             appAction: 'open-notes-window',
@@ -47,7 +167,9 @@
         {
             id: 'vchat-app-memo',
             name: 'AI记忆中心',
-            icon: '../assets/icon.png',
+            icon: null,
+            animatedIcon: `${ICON_BASE}/AI记忆.gif`,
+            svgIcon: SVG_ICONS.memo,
             emoji: '🧠',
             description: '打开 AI 记忆图谱 & 备忘录',
             appAction: 'open-memo-window',
@@ -55,7 +177,9 @@
         {
             id: 'vchat-app-forum',
             name: '论坛模块',
-            icon: '../assets/icon.png',
+            icon: null,
+            animatedIcon: `${ICON_BASE}/论坛.gif`,
+            svgIcon: SVG_ICONS.forum,
             emoji: '🏛️',
             description: '打开 VCP 论坛讨论区',
             appAction: 'open-forum-window',
@@ -63,7 +187,9 @@
         {
             id: 'vchat-app-rag-observer',
             name: 'RAG 信息流监听',
-            icon: '../assets/icon.png',
+            icon: null,
+            animatedIcon: `${ICON_BASE}/信息流.gif`,
+            svgIcon: SVG_ICONS.rag,
             emoji: '📡',
             description: '打开 VCP RAG 信息流监听器',
             appAction: 'open-rag-observer-window',
@@ -71,7 +197,9 @@
         {
             id: 'vchat-app-dice',
             name: '丢骰子',
-            icon: '../assets/icon.png',
+            icon: `${ICON_BASE}/dice.png`,
+            animatedIcon: null,
+            svgIcon: SVG_ICONS.dice,
             emoji: '🎲',
             description: '打开骰子投掷器模块',
             appAction: 'open-dice-window',
@@ -79,7 +207,9 @@
         {
             id: 'vchat-app-canvas',
             name: 'Canvas 协同',
-            icon: '../assets/icon.png',
+            icon: `${ICON_BASE}/协同.png`,
+            animatedIcon: null,
+            svgIcon: SVG_ICONS.canvas,
             emoji: '🎨',
             description: '打开 Canvas 协同编辑画布',
             appAction: 'open-canvas-window',
@@ -87,7 +217,9 @@
         {
             id: 'vchat-app-translator',
             name: '翻译模块',
-            icon: '../assets/icon.png',
+            icon: `${ICON_BASE}/翻译.png`,
+            animatedIcon: null,
+            svgIcon: SVG_ICONS.translator,
             emoji: '🌐',
             description: '打开 AI 翻译工具窗口',
             appAction: 'open-translator-window',
@@ -95,7 +227,9 @@
         {
             id: 'vchat-app-music',
             name: '音乐播放器',
-            icon: '../assets/icon.png',
+            icon: `${ICON_BASE}/音乐.png`,
+            animatedIcon: null,
+            svgIcon: SVG_ICONS.music,
             emoji: '🎵',
             description: '打开 HIFI 音乐播放器',
             appAction: 'open-music-window',
@@ -103,7 +237,9 @@
         {
             id: 'vchat-app-themes',
             name: '主题商店',
-            icon: '../assets/icon.png',
+            icon: null,
+            animatedIcon: `${ICON_BASE}/主题.gif`,
+            svgIcon: SVG_ICONS.themes,
             emoji: '🎭',
             description: '打开主题定制与管理',
             appAction: 'open-themes-window',
@@ -190,6 +326,16 @@
                     existing.icon = appDef.icon;
                     changed = true;
                 }
+                // 同步动画图标（animatedIcon 始终从代码定义同步，不受用户自定义影响）
+                if (existing.animatedIcon !== appDef.animatedIcon) {
+                    existing.animatedIcon = appDef.animatedIcon;
+                    changed = true;
+                }
+                // 同步 SVG 内联图标（始终从代码定义同步）
+                if (existing.svgIcon !== appDef.svgIcon) {
+                    existing.svgIcon = appDef.svgIcon;
+                    changed = true;
+                }
                 if (changed) updatedCount++;
                 continue;
             }
@@ -199,6 +345,8 @@
                 id: appDef.id,
                 name: appDef.name,
                 icon: appDef.icon,
+                animatedIcon: appDef.animatedIcon,
+                svgIcon: appDef.svgIcon,
                 emoji: appDef.emoji,
                 description: appDef.description,
                 appAction: appDef.appAction,

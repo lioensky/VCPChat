@@ -257,16 +257,37 @@ body.light-theme .at-refresh-btn:hover { background: rgba(0,0,0,0.08); color: rg
             el.title = item.description || item.name || '';
             el.draggable = true;
 
-            // 图标
-            if (item.icon) {
+            // 图标：优先 icon（PNG），其次 animatedIcon（GIF），最后 emoji 占位
+            var trayDisplayIcon = item.icon || item.animatedIcon;
+            if (trayDisplayIcon) {
                 var img = document.createElement('img');
                 img.className = 'at-item-icon';
-                img.src = item.icon;
+                img.src = trayDisplayIcon;
                 img.draggable = false;
                 img.onerror = function() {
                     if (this.src !== defaultIcon) this.src = defaultIcon;
                 };
                 el.appendChild(img);
+
+                // GIF 动画图标：hover 时播放，移出时恢复静态
+                if (item.animatedIcon) {
+                    (function(imgEl, staticSrc, animSrc) {
+                        // 预加载 GIF
+                        var preload = new Image();
+                        preload.src = animSrc;
+                        el.addEventListener('mouseenter', function() {
+                            imgEl.src = animSrc + '?t=' + Date.now();
+                        });
+                        el.addEventListener('mouseleave', function() {
+                            imgEl.src = staticSrc;
+                        });
+                    })(img, trayDisplayIcon, item.animatedIcon);
+                }
+            } else if (item.emoji) {
+                var placeholder = document.createElement('div');
+                placeholder.className = 'at-item-icon-placeholder';
+                placeholder.textContent = item.emoji;
+                el.appendChild(placeholder);
             } else {
                 var placeholder = document.createElement('div');
                 placeholder.className = 'at-item-icon-placeholder';

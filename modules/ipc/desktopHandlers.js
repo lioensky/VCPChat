@@ -761,7 +761,7 @@ function initialize(params) {
                 if (!entry.isDirectory()) continue;
                 const presetDir = path.join(ICONSET_DIR, entry.name);
                 const files = await fs.readdir(presetDir);
-                const iconFiles = files.filter(f => /\.(png|jpg|jpeg|svg|ico|webp)$/i.test(f));
+                const iconFiles = files.filter(f => /\.(png|jpg|jpeg|svg|ico|webp|gif|html|htm)$/i.test(f));
                 presets.push({
                     name: entry.name,
                     iconCount: iconFiles.length,
@@ -790,7 +790,7 @@ function initialize(params) {
             }
 
             const files = await fs.readdir(presetDir);
-            let iconFiles = files.filter(f => /\.(png|jpg|jpeg|svg|ico|webp)$/i.test(f));
+            let iconFiles = files.filter(f => /\.(png|jpg|jpeg|svg|ico|webp|gif|html|htm)$/i.test(f));
 
             // 搜索过滤
             if (search) {
@@ -804,12 +804,22 @@ function initialize(params) {
             const startIndex = (page - 1) * pageSize;
             const pagedFiles = iconFiles.slice(startIndex, startIndex + pageSize);
 
-            const icons = pagedFiles.map(f => ({
-                name: path.basename(f, path.extname(f)),
-                fileName: f,
-                // 相对于项目根目录的路径，前端使用 ../assets/iconset/... 访问
-                relativePath: `assets/iconset/${presetName}/${f}`,
-            }));
+            const icons = pagedFiles.map(f => {
+                const ext = path.extname(f).toLowerCase();
+                // 判断图标类型
+                let iconType = 'image'; // 默认为图片（png/jpg/svg/ico/webp）
+                if (ext === '.gif') iconType = 'gif';
+                else if (ext === '.html' || ext === '.htm') iconType = 'html';
+                else if (ext === '.svg') iconType = 'svg';
+
+                return {
+                    name: path.basename(f, ext),
+                    fileName: f,
+                    iconType,
+                    // 相对于项目根目录的路径，前端使用 ../assets/iconset/... 访问
+                    relativePath: `assets/iconset/${presetName}/${f}`,
+                };
+            });
 
             return { success: true, icons, total, page, pageSize };
         } catch (err) {
@@ -830,20 +840,42 @@ function initialize(params) {
                 return { success: false, error: '图标文件不存在' };
             }
 
-            const buffer = await fs.readFile(fullPath);
             const ext = path.extname(fullPath).toLowerCase();
+
+            // HTML 图标：返回 HTML 内容字符串（用于 Shadow DOM 渲染）
+            if (ext === '.html' || ext === '.htm') {
+                const htmlContent = await fs.readFile(fullPath, 'utf-8');
+                return { success: true, dataUrl: null, htmlContent, iconType: 'html' };
+            }
+
+            // GIF 图标：返回 Data URL
+            if (ext === '.gif') {
+                const buffer = await fs.readFile(fullPath);
+                const dataUrl = `data:image/gif;base64,${buffer.toString('base64')}`;
+                return { success: true, dataUrl, iconType: 'gif' };
+            }
+
+            // SVG 图标：返回 Data URL + 原始 SVG 文本（供内联使用）
+            if (ext === '.svg') {
+                const buffer = await fs.readFile(fullPath);
+                const svgContent = buffer.toString('utf-8');
+                const dataUrl = `data:image/svg+xml;base64,${buffer.toString('base64')}`;
+                return { success: true, dataUrl, svgContent, iconType: 'svg' };
+            }
+
+            // 其他图片格式：返回 Data URL
+            const buffer = await fs.readFile(fullPath);
             const mimeTypes = {
                 '.png': 'image/png',
                 '.jpg': 'image/jpeg',
                 '.jpeg': 'image/jpeg',
-                '.svg': 'image/svg+xml',
                 '.ico': 'image/x-icon',
                 '.webp': 'image/webp',
             };
             const mime = mimeTypes[ext] || 'image/png';
             const dataUrl = `data:${mime};base64,${buffer.toString('base64')}`;
 
-            return { success: true, dataUrl };
+            return { success: true, dataUrl, iconType: 'image' };
         } catch (err) {
             console.error('[DesktopHandlers] Get icon data error:', err);
             return { success: false, error: err.message };

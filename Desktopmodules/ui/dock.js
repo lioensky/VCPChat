@@ -2,6 +2,15 @@
 /**
  * VCPdesktop - Dock 栏系统模块
  * 负责：底部 Dock 栏渲染、快捷方式管理、拖拽到桌面、应用抽屉
+ *
+ * 图标体系（优先级从高到低）：
+ *   1. icon (PNG/SVG 文件路径) — 静态图标，默认显示
+ *   2. animatedIcon (GIF 文件路径) — 鼠标悬停时播放动画，移出恢复静态
+ *   3. svgIcon (内联 SVG 字符串) — AI 原生生成，支持 currentColor 主题适配
+ *   4. emoji (文字 emoji) — 最终回退
+ *
+ * 当只有 animatedIcon 无 icon 时，GIF 自身作为默认显示。
+ * svgIcon 仅在无 icon 和 animatedIcon 时使用，作为 AI 原生图标。
  */
 
 'use strict';
@@ -125,16 +134,21 @@
         iconWrapper.title = item.description || item.name;
         iconWrapper.draggable = true;
 
-        // 图标
-        if (item.icon) {
+        // 图标渲染：icon(PNG/SVG文件) > animatedIcon(GIF) > svgIcon(内联SVG) > emoji
+        const displayIcon = item.icon || item.animatedIcon;
+        if (displayIcon) {
             const img = document.createElement('img');
-            img.src = item.icon;
+            img.src = displayIcon;
             img.className = 'desktop-dock-icon-img';
             img.draggable = false;
-            // 图标加载失败时回退到 emoji 或默认图标
+            // 图标加载失败时回退到 svgIcon > emoji > 默认图标
             img.onerror = function () {
-                if (item.emoji) {
-                    // 替换为 emoji 占位符
+                if (item.svgIcon) {
+                    const svgEl = document.createElement('span');
+                    svgEl.className = 'desktop-dock-icon-svg';
+                    svgEl.innerHTML = item.svgIcon;
+                    this.replaceWith(svgEl);
+                } else if (item.emoji) {
                     const emojiEl = document.createElement('span');
                     emojiEl.className = 'desktop-dock-icon-emoji';
                     emojiEl.textContent = item.emoji;
@@ -144,6 +158,39 @@
                 }
             };
             iconWrapper.appendChild(img);
+
+            // GIF 动画图标：hover 时播放，移出时恢复静态
+            if (item.animatedIcon) {
+                const preloadGif = new Image();
+                preloadGif.src = item.animatedIcon;
+                const staticSrc = item.icon || item.animatedIcon;
+
+                iconWrapper.addEventListener('mouseenter', () => {
+                    const imgEl = iconWrapper.querySelector('.desktop-dock-icon-img');
+                    if (imgEl) {
+                        imgEl.src = item.animatedIcon + '?t=' + Date.now();
+                    }
+                });
+                iconWrapper.addEventListener('mouseleave', () => {
+                    const imgEl = iconWrapper.querySelector('.desktop-dock-icon-img');
+                    if (imgEl) {
+                        imgEl.src = staticSrc;
+                    }
+                });
+            }
+        } else if (item.htmlIcon) {
+            // HTML 富图标（Shadow DOM 隔离渲染）
+            const htmlHost = document.createElement('span');
+            htmlHost.className = 'desktop-dock-icon-svg'; // 复用 SVG 容器样式
+            const shadow = htmlHost.attachShadow({ mode: 'closed' });
+            shadow.innerHTML = item.htmlIcon;
+            iconWrapper.appendChild(htmlHost);
+        } else if (item.svgIcon) {
+            // 内联 SVG 图标（AI 原生生成，支持 currentColor 主题适配）
+            const svgEl = document.createElement('span');
+            svgEl.className = 'desktop-dock-icon-svg';
+            svgEl.innerHTML = item.svgIcon;
+            iconWrapper.appendChild(svgEl);
         } else if (item.emoji) {
             const emojiEl = document.createElement('span');
             emojiEl.className = 'desktop-dock-icon-emoji';
@@ -239,18 +286,56 @@
             card.className = 'desktop-dock-drawer-item';
             card.title = item.description || item.name;
 
-            // 图标
-            const img = document.createElement('img');
-            img.src = item.icon || '../assets/setting.png';
-            img.className = 'desktop-dock-drawer-item-icon';
-            img.draggable = false;
-            // 图标加载失败时回退到默认图标
-            img.onerror = function () {
-                if (this.src !== new URL('../assets/setting.png', location.href).href) {
-                    this.src = '../assets/setting.png';
-                }
-            };
-            card.appendChild(img);
+            // 图标渲染：icon(PNG/SVG文件) > animatedIcon(GIF) > svgIcon(内联SVG) > 默认
+            const drawerDisplayIcon = item.icon || item.animatedIcon;
+            if (drawerDisplayIcon) {
+                const img = document.createElement('img');
+                img.src = drawerDisplayIcon;
+                img.className = 'desktop-dock-drawer-item-icon';
+                img.draggable = false;
+                img.onerror = function () {
+                    if (item.svgIcon) {
+                        const svgEl = document.createElement('span');
+                        svgEl.className = 'desktop-dock-drawer-item-svg';
+                        svgEl.innerHTML = item.svgIcon;
+                        this.replaceWith(svgEl);
+                    } else if (this.src !== new URL('../assets/setting.png', location.href).href) {
+                        this.src = '../assets/setting.png';
+                    }
+                };
+                card.appendChild(img);
+            } else if (item.htmlIcon) {
+                const htmlHost = document.createElement('span');
+                htmlHost.className = 'desktop-dock-drawer-item-svg';
+                const shadow = htmlHost.attachShadow({ mode: 'closed' });
+                shadow.innerHTML = item.htmlIcon;
+                card.appendChild(htmlHost);
+            } else if (item.svgIcon) {
+                const svgEl = document.createElement('span');
+                svgEl.className = 'desktop-dock-drawer-item-svg';
+                svgEl.innerHTML = item.svgIcon;
+                card.appendChild(svgEl);
+            } else {
+                const img = document.createElement('img');
+                img.src = '../assets/setting.png';
+                img.className = 'desktop-dock-drawer-item-icon';
+                img.draggable = false;
+                card.appendChild(img);
+            }
+
+            // GIF 动画图标：hover 时播放，移出时恢复静态
+            if (item.animatedIcon) {
+                const preloadGif = new Image();
+                preloadGif.src = item.animatedIcon;
+                const staticSrc = item.icon || item.animatedIcon;
+
+                card.addEventListener('mouseenter', () => {
+                    img.src = item.animatedIcon + '?t=' + Date.now();
+                });
+                card.addEventListener('mouseleave', () => {
+                    img.src = staticSrc;
+                });
+            }
 
             // 名称
             const name = document.createElement('span');
@@ -670,15 +755,21 @@
         iconEl.style.left = `${adjustedX}px`;
         iconEl.style.top = `${adjustedY}px`;
 
-        // 图标图片
-        if (item.icon) {
+        // 图标渲染：icon(PNG/SVG文件) > animatedIcon(GIF) > svgIcon(内联SVG) > emoji
+        const desktopDisplayIcon = item.icon || item.animatedIcon;
+        if (desktopDisplayIcon) {
             const img = document.createElement('img');
-            img.src = item.icon;
+            img.src = desktopDisplayIcon;
             img.className = 'desktop-shortcut-icon-img';
             img.draggable = false;
-            // 图标加载失败时回退到 emoji 或默认图标
+            // 图标加载失败时回退到 svgIcon > emoji > 默认图标
             img.onerror = function () {
-                if (item.emoji) {
+                if (item.svgIcon) {
+                    const svgEl = document.createElement('span');
+                    svgEl.className = 'desktop-shortcut-icon-svg';
+                    svgEl.innerHTML = item.svgIcon;
+                    this.replaceWith(svgEl);
+                } else if (item.emoji) {
                     const emojiEl = document.createElement('span');
                     emojiEl.className = 'desktop-shortcut-icon-emoji';
                     emojiEl.textContent = item.emoji;
@@ -688,6 +779,37 @@
                 }
             };
             iconEl.appendChild(img);
+
+            // GIF 动画图标：hover 时播放，移出时恢复静态
+            if (item.animatedIcon) {
+                const preloadGif = new Image();
+                preloadGif.src = item.animatedIcon;
+                const staticSrc = item.icon || item.animatedIcon;
+
+                iconEl.addEventListener('mouseenter', () => {
+                    const imgEl = iconEl.querySelector('.desktop-shortcut-icon-img');
+                    if (imgEl) {
+                        imgEl.src = item.animatedIcon + '?t=' + Date.now();
+                    }
+                });
+                iconEl.addEventListener('mouseleave', () => {
+                    const imgEl = iconEl.querySelector('.desktop-shortcut-icon-img');
+                    if (imgEl) {
+                        imgEl.src = staticSrc;
+                    }
+                });
+            }
+        } else if (item.htmlIcon) {
+            const htmlHost = document.createElement('span');
+            htmlHost.className = 'desktop-shortcut-icon-svg';
+            const shadow = htmlHost.attachShadow({ mode: 'closed' });
+            shadow.innerHTML = item.htmlIcon;
+            iconEl.appendChild(htmlHost);
+        } else if (item.svgIcon) {
+            const svgEl = document.createElement('span');
+            svgEl.className = 'desktop-shortcut-icon-svg';
+            svgEl.innerHTML = item.svgIcon;
+            iconEl.appendChild(svgEl);
         } else if (item.emoji) {
             const emojiEl = document.createElement('span');
             emojiEl.className = 'desktop-shortcut-icon-emoji';
@@ -856,15 +978,26 @@
             dockContextMenu = null;
             if (window.VCPDesktop.iconPicker) {
                 window.VCPDesktop.iconPicker.open((iconData) => {
-                    // 更新 state 中的图标
                     const stateItem = state.dock.items.find(i => i.id === item.id);
-                    if (stateItem) {
-                        stateItem.icon = iconData.dataUrl;
+                    // 根据图标类型更新不同字段
+                    if (iconData.iconType === 'html' && iconData.htmlContent) {
+                        // HTML 图标：清除其他图标字段，设置 htmlIcon
+                        if (stateItem) {
+                            stateItem.icon = null;
+                            stateItem.htmlIcon = iconData.htmlContent;
+                        }
+                        item.icon = null;
+                        item.htmlIcon = iconData.htmlContent;
+                    } else {
+                        // 图片/SVG/GIF 图标：使用 dataUrl
+                        if (stateItem) {
+                            stateItem.icon = iconData.dataUrl;
+                            stateItem.htmlIcon = null;
+                        }
+                        item.icon = iconData.dataUrl;
+                        item.htmlIcon = null;
+                        updateDesktopIconsByTarget(item.targetPath, iconData.dataUrl);
                     }
-                    item.icon = iconData.dataUrl;
-                    // 同步更新桌面上已存在的同源图标
-                    updateDesktopIconsByTarget(item.targetPath, iconData.dataUrl);
-                    // 重新渲染并保存
                     renderDock();
                     saveDockConfig();
                 });
@@ -955,25 +1088,26 @@
             dockContextMenu = null;
             if (window.VCPDesktop.iconPicker) {
                 window.VCPDesktop.iconPicker.open((iconData) => {
-                    // 更新桌面图标 DOM
-                    const imgEl = iconEl.querySelector('.desktop-shortcut-icon-img');
-                    if (imgEl) {
-                        imgEl.src = iconData.dataUrl;
-                    }
-                    // 更新桌面图标状态
                     const targetPath = iconEl.dataset.targetPath;
-                    const iconState = state.desktopIcons.find(i => i.targetPath === targetPath);
-                    if (iconState) {
-                        iconState.icon = iconData.dataUrl;
+                    if (iconData.iconType === 'html' && iconData.htmlContent) {
+                        // HTML 图标：需要重新创建桌面图标 DOM（无法简单替换 src）
+                        item.icon = null;
+                        item.htmlIcon = iconData.htmlContent;
+                        const iconState = state.desktopIcons.find(i => i.targetPath === targetPath);
+                        if (iconState) { iconState.icon = null; iconState.htmlIcon = iconData.htmlContent; }
+                        const dockItem = state.dock.items.find(i => i.targetPath === targetPath);
+                        if (dockItem) { dockItem.icon = null; dockItem.htmlIcon = iconData.htmlContent; renderDock(); saveDockConfig(); }
+                    } else {
+                        // 图片/SVG/GIF：直接替换 src
+                        const imgEl = iconEl.querySelector('.desktop-shortcut-icon-img');
+                        if (imgEl) { imgEl.src = iconData.dataUrl; }
+                        const iconState = state.desktopIcons.find(i => i.targetPath === targetPath);
+                        if (iconState) { iconState.icon = iconData.dataUrl; }
+                        const dockItem = state.dock.items.find(i => i.targetPath === targetPath);
+                        if (dockItem) { dockItem.icon = iconData.dataUrl; dockItem.htmlIcon = null; renderDock(); saveDockConfig(); }
+                        item.icon = iconData.dataUrl;
+                        item.htmlIcon = null;
                     }
-                    // 同步更新 Dock 中的同源项
-                    const dockItem = state.dock.items.find(i => i.targetPath === targetPath);
-                    if (dockItem) {
-                        dockItem.icon = iconData.dataUrl;
-                        renderDock();
-                        saveDockConfig();
-                    }
-                    item.icon = iconData.dataUrl;
                 });
             }
         });

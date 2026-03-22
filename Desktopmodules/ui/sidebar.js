@@ -48,6 +48,14 @@
             });
         }
 
+        // 新建空白预设按钮
+        const newBlankPresetBtn = document.getElementById('desktop-sidebar-new-blank-preset');
+        if (newBlankPresetBtn) {
+            newBlankPresetBtn.addEventListener('click', () => {
+                createBlankPreset();
+            });
+        }
+
         // 渲染官方挂件列表
         renderBuiltinWidgets();
     }
@@ -333,6 +341,46 @@
                 loadPresetList();
             } catch (err) {
                 console.error('[Sidebar] Save preset error:', err);
+            }
+        }
+    }
+
+    /**
+     * 新建空白预设（不包含任何挂件和桌面图标）
+     */
+    async function createBlankPreset() {
+        const name = await showInputModal('新建空白预设', '为空白预设取一个名字：', `空白预设 ${new Date().toLocaleDateString()}`);
+        if (!name || !name.trim()) return;
+
+        const preset = {
+            id: `preset_${Date.now()}`,
+            name: name.trim(),
+            createdAt: Date.now(),
+            widgets: [],
+            desktopIcons: [],
+            dock: {
+                items: state.dock.items.map(i => ({...i})),
+                maxVisible: state.dock.maxVisible,
+            },
+        };
+
+        // 保存到磁盘
+        if (window.electronAPI?.desktopSaveLayout) {
+            try {
+                const existing = await loadPresetsFromDisk();
+                existing.push(preset);
+                await savePresetsAndKeepSettings(existing);
+
+                if (window.VCPDesktop.status) {
+                    window.VCPDesktop.status.update('connected', `空白预设已创建: ${name}`);
+                    window.VCPDesktop.status.show();
+                    setTimeout(() => window.VCPDesktop.status.hide(), 3000);
+                }
+
+                // 刷新列表
+                loadPresetList();
+            } catch (err) {
+                console.error('[Sidebar] Create blank preset error:', err);
             }
         }
     }
