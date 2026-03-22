@@ -16,6 +16,7 @@
         { id: 'builtinWeather', name: '天气预报', icon: '🌤️', description: '实时天气数据与预报', spawnKey: 'builtinWeather' },
         { id: 'builtinNews', name: '今日热点', icon: '📰', description: '多源新闻热点聚合', spawnKey: 'builtinNews' },
         { id: 'builtinMusic', name: '音乐播放条', icon: '🎵', description: '迷你音乐控制器', spawnKey: 'builtinMusic' },
+        { id: 'builtinAppTray', name: '应用托盘', icon: '📦', description: '网格浏览全部应用，拖拽到桌面', spawnKey: 'builtinAppTray' },
     ];
 
     // ============================================================

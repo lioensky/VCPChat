@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>VCP 星空动态壁纸</title>
+<style>
+* { margin: 0; padding: 0; }
+html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #0a0a1a;
+}
+canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+(function() {
+    const canvas = document.getElementById('c');
+    const ctx = canvas.getContext('2d');
+    let W, H;
+    let stars = [];
+    let shootingStars = [];
+    let nebulae = [];
+    let mouseX = 0, mouseY = 0;
+    let time = 0;
+
+    function resize() {
+        W = canvas.width = window.innerWidth;
+        H = canvas.height = window.innerHeight;
+        initStars();
+        initNebulae();
+    }
+
+    // 星星
+    function initStars() {
+        stars = [];
+        const count = Math.floor((W * H) / 800);
+        for (let i = 0; i < count; i++) {
+            stars.push({
+                x: Math.random() * W,
+                y: Math.random() * H,
+                r: Math.random() * 1.5 + 0.3,
+                alpha: Math.random() * 0.8 + 0.2,
+                twinkleSpeed: Math.random() * 0.02 + 0.005,
+                twinkleOffset: Math.random() * Math.PI * 2,
+                // 视差层级 0~2
+                layer: Math.floor(Math.random() * 3),
+                color: getStarColor(),
+            });
+        }
+    }
+
+    function getStarColor() {
+        const colors = [
+            '255,255,255',    // 白
+            '200,220,255',    // 蓝白
+            '255,220,180',    // 暖白
+            '180,200,255',    // 淡蓝
+            '255,200,150',    // 橙白
+            '220,180,255',    // 淡紫
+        ];
+        return colors[Math.floor(Math.random() * colors.length)];
+    }
+
+    // 星云
+    function initNebulae() {
+        nebulae = [];
+        const count = 3 + Math.floor(Math.random() * 3);
+        for (let i = 0; i < count; i++) {
+            nebulae.push({
+                x: Math.random() * W,
+                y: Math.random() * H,
+                r: Math.random() * 300 + 150,
+                hue: Math.random() * 360,
+                alpha: Math.random() * 0.04 + 0.02,
+                driftX: (Math.random() - 0.5) * 0.15,
+                driftY: (Math.random() - 0.5) * 0.1,
+            });
+        }
+    }
+
+    // 流星
+    function spawnShootingStar() {
+        if (shootingStars.length > 3) return;
+        shootingStars.push({
+            x: Math.random() * W * 0.8,
+            y: Math.random() * H * 0.3,
+            len: Math.random() * 120 + 60,
+            speed: Math.random() * 8 + 4,
+            angle: Math.PI / 4 + (Math.random() - 0.5) * 0.3,
+            alpha: 1,
+            decay: Math.random() * 0.015 + 0.008,
+            width: Math.random() * 1.5 + 0.5,
+        });
+    }
+
+    function drawBackground() {
+        // 深空渐变背景
+        const grad = ctx.createRadialGradient(W * 0.3, H * 0.4, 0, W * 0.5, H * 0.5, Math.max(W, H) * 0.8);
+        grad.addColorStop(0, '#0f0f2a');
+        grad.addColorStop(0.4, '#0a0a1e');
+        grad.addColorStop(0.7, '#060614');
+        grad.addColorStop(1, '#020208');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, W, H);
+    }
+
+    function drawNebulae() {
+        nebulae.forEach(n => {
+            n.x += n.driftX;
+            n.y += n.driftY;
+            // 边界循环
+            if (n.x < -n.r) n.x = W + n.r;
+            if (n.x > W + n.r) n.x = -n.r;
+            if (n.y < -n.r) n.y = H + n.r;
+            if (n.y > H + n.r) n.y = -n.r;
+
+            const hue = (n.hue + time * 0.5) % 360;
+            const grad = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, n.r);
+            grad.addColorStop(0, `hsla(${hue}, 60%, 50%, ${n.alpha * 1.5})`);
+            grad.addColorStop(0.3, `hsla(${hue + 20}, 50%, 40%, ${n.alpha})`);
+            grad.addColorStop(0.7, `hsla(${hue + 40}, 40%, 30%, ${n.alpha * 0.3})`);
+            grad.addColorStop(1, 'transparent');
+            ctx.fillStyle = grad;
+            ctx.fillRect(n.x - n.r, n.y - n.r, n.r * 2, n.r * 2);
+        });
+    }
+
+    function drawStars() {
+        stars.forEach(s => {
+            const twinkle = Math.sin(time * s.twinkleSpeed * 60 + s.twinkleOffset);
+            const alpha = s.alpha * (0.6 + twinkle * 0.4);
+
+            // 视差效果（基于鼠标位置）
+            const parallaxFactor = (s.layer + 1) * 0.008;
+            const px = s.x + (mouseX - W / 2) * parallaxFactor;
+            const py = s.y + (mouseY - H / 2) * parallaxFactor;
+
+            ctx.beginPath();
+            ctx.arc(px, py, s.r, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(${s.color}, ${alpha})`;
+            ctx.fill();
+
+            // 较大的星星加光晕
+            if (s.r > 1.2) {
+                ctx.beginPath();
+                ctx.arc(px, py, s.r * 3, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(${s.color}, ${alpha * 0.08})`;
+                ctx.fill();
+            }
+        });
+    }
+
+    function drawShootingStars() {
+        for (let i = shootingStars.length - 1; i >= 0; i--) {
+            const ss = shootingStars[i];
+            const dx = Math.cos(ss.angle) * ss.speed;
+            const dy = Math.sin(ss.angle) * ss.speed;
+            ss.x += dx;
+            ss.y += dy;
+            ss.alpha -= ss.decay;
+
+            if (ss.alpha <= 0 || ss.x > W + 50 || ss.y > H + 50) {
+                shootingStars.splice(i, 1);
+                continue;
+            }
+
+            const tailX = ss.x - Math.cos(ss.angle) * ss.len;
+            const tailY = ss.y - Math.sin(ss.angle) * ss.len;
+
+            const grad = ctx.createLinearGradient(tailX, tailY, ss.x, ss.y);
+            grad.addColorStop(0, `rgba(255,255,255,0)`);
+            grad.addColorStop(0.6, `rgba(200,220,255,${ss.alpha * 0.3})`);
+            grad.addColorStop(1, `rgba(255,255,255,${ss.alpha})`);
+
+            ctx.beginPath();
+            ctx.moveTo(tailX, tailY);
+            ctx.lineTo(ss.x, ss.y);
+            ctx.strokeStyle = grad;
+            ctx.lineWidth = ss.width;
+            ctx.lineCap = 'round';
+            ctx.stroke();
+
+            // 头部光点
+            ctx.beginPath();
+            ctx.arc(ss.x, ss.y, ss.width + 1, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(255,255,255,${ss.alpha * 0.8})`;
+            ctx.fill();
+        }
+    }
+
+    // 底部极光效果
+    function drawAurora() {
+        const auroraH = H * 0.25;
+        const baseY = H - auroraH;
+
+        for (let i = 0; i < 3; i++) {
+            ctx.beginPath();
+            ctx.moveTo(0, H);
+
+            const hue = (120 + i * 40 + time * 2) % 360;
+            const segments = 12;
+            for (let j = 0; j <= segments; j++) {
+                const x = (j / segments) * W;
+                const waveY = baseY + Math.sin(x * 0.003 + time * 0.01 + i * 1.5) * 40
+                            + Math.sin(x * 0.007 + time * 0.015) * 20
+                            + Math.cos(x * 0.002 + time * 0.008 + i) * 30;
+                if (j === 0) {
+                    ctx.lineTo(x, waveY);
+                } else {
+                    const cpx = x - (W / segments) * 0.5;
+                    const cpy = waveY + Math.sin(x * 0.005 + time * 0.02) * 15;
+                    ctx.quadraticCurveTo(cpx, cpy, x, waveY);
+                }
+            }
+
+            ctx.lineTo(W, H);
+            ctx.closePath();
+
+            const auroraGrad = ctx.createLinearGradient(0, baseY, 0, H);
+            auroraGrad.addColorStop(0, `hsla(${hue}, 70%, 50%, 0.02)`);
+            auroraGrad.addColorStop(0.3, `hsla(${hue}, 60%, 40%, 0.04)`);
+            auroraGrad.addColorStop(0.7, `hsla(${hue + 30}, 50%, 30%, 0.02)`);
+            auroraGrad.addColorStop(1, 'transparent');
+            ctx.fillStyle = auroraGrad;
+            ctx.fill();
+        }
+    }
+
+    function animate() {
+        time++;
+        drawBackground();
+        drawNebulae();
+        drawAurora();
+        drawStars();
+        drawShootingStars();
+
+        // 随机生成流星
+        if (Math.random() < 0.008) {
+            spawnShootingStar();
+        }
+
+        requestAnimationFrame(animate);
+    }
+
+    // 鼠标追踪（视差效果）
+    document.addEventListener('mousemove', (e) => {
+        mouseX = e.clientX;
+        mouseY = e.clientY;
+    });
+
+    window.addEventListener('resize', resize);
+    resize();
+    animate();
+})();
+</script>
+</body>
+</html>

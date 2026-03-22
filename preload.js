@@ -460,6 +460,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // VCPdesktop - 壁纸系统 IPC 通道
     desktopSelectWallpaper: () => ipcRenderer.invoke('desktop-select-wallpaper'),
     desktopReadWallpaperThumbnail: (filePath) => ipcRenderer.invoke('desktop-read-wallpaper-thumbnail', filePath),
+
+    // VCPdesktop - 窗口置底控制
+    setAlwaysOnBottom: (enabled) => ipcRenderer.invoke('desktop-set-always-on-bottom', enabled),
 });
 
 // Log the electronAPI object as it's defined in preload.js right after exposing it

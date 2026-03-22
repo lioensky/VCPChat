@@ -13,6 +13,8 @@ let desktopWindow = null;
 let mainWindow = null;
 let openChildWindows = [];
 let appSettingsManager = null;
+let alwaysOnBottomEnabled = false;
+let alwaysOnBottomInterval = null;
 
 // --- 收藏系统路径 - 使用项目根目录的 AppData ---
 const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
@@ -92,6 +94,12 @@ function initialize(params) {
     // --- IPC: 打开桌面窗口 ---
     ipcMain.handle('open-desktop-window', async () => {
         await openDesktopWindow();
+    });
+
+    // --- IPC: 窗口始终置底控制 ---
+    ipcMain.handle('desktop-set-always-on-bottom', (event, enabled) => {
+        setAlwaysOnBottom(enabled);
+        return { success: true };
     });
 
     // --- IPC: 主窗口 → 桌面画布的流式推送 ---
@@ -898,16 +906,10 @@ async function openDesktopWindow() {
 
         // 窗口自动置底
         if (desktopGlobalSettings.alwaysOnBottom) {
-            desktopWindow.setAlwaysOnTop(true, 'screen-saver', -1);
-            // 使用 setAlwaysOnTop 的反向效果：先置顶再取消，让系统记住层级
-            // 实际"置底"需要操作系统级支持，Electron 没有直接的 setAlwaysOnBottom
-            // 替代方案：设置为最低层级
-            try {
-                desktopWindow.setAlwaysOnTop(false);
-                desktopWindow.moveTop(); // 先到顶
-                desktopWindow.blur();    // 失去焦点
-            } catch (e) { /* ignore */ }
-            console.log('[Desktop] Window set to bottom layer');
+            // 延迟一小段时间再启用，确保窗口已完全显示
+            setTimeout(() => {
+                setAlwaysOnBottom(true);
+            }, 500);
         }
 
         // 通知桌面窗口自身连接状态
@@ -944,6 +946,14 @@ async function openDesktopWindow() {
     });
 
     desktopWindow.on('closed', () => {
+        // 清理置底相关资源
+        alwaysOnBottomEnabled = false;
+        if (alwaysOnBottomInterval) {
+            clearInterval(alwaysOnBottomInterval);
+            alwaysOnBottomInterval = null;
+        }
+        stopBottomHelper();
+
         if (openChildWindows) {
             const index = openChildWindows.indexOf(desktopWindow);
             if (index > -1) openChildWindows.splice(index, 1);
@@ -957,6 +967,191 @@ async function openDesktopWindow() {
     });
 
     return desktopWindow;
+}
+
+// --- 窗口置底 Win32 原生实现 ---
+let bottomHelperProcess = null;  // 持久化的 PowerShell 进程
+let bottomHwnd = 0;             // 缓存的窗口句柄
+
+/**
+ * 启动一个持久化的 PowerShell 进程用于窗口置底操作
+ * 避免每次调用都创建新进程
+ */
+function startBottomHelper(hwnd) {
+    if (process.platform !== 'win32') return;
+    if (bottomHelperProcess) return; // 已启动
+
+    bottomHwnd = hwnd;
+
+    try {
+        // 创建一个持久化的 PowerShell 进程，通过 stdin 接收命令
+        const { spawn } = require('child_process');
+        bottomHelperProcess = spawn('powershell.exe', [
+            '-NoProfile', '-NoLogo', '-NonInteractive', '-Command', '-'
+        ], {
+            windowsHide: true,
+            stdio: ['pipe', 'pipe', 'pipe'],
+        });
+
+        // 发送初始化脚本：定义 Win32 API
+        const initScript = `
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public class VCPWinAPI {
+    public static readonly IntPtr HWND_BOTTOM = new IntPtr(1);
+    public const uint SWP_NOSIZE = 0x0001;
+    public const uint SWP_NOMOVE = 0x0002;
+    public const uint SWP_NOACTIVATE = 0x0010;
+    [DllImport("user32.dll")]
+    public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+    public static void PushToBottom(IntPtr hwnd) {
+        SetWindowPos(hwnd, HWND_BOTTOM, 0, 0, 0, 0, SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE);
+    }
+}
+"@
+Write-Host "VCPREADY"
+`;
+        bottomHelperProcess.stdin.write(initScript + '\n');
+
+        bottomHelperProcess.stdout.on('data', (data) => {
+            const msg = data.toString().trim();
+            if (msg.includes('VCPREADY')) {
+                console.log('[Desktop] Bottom helper PowerShell process ready');
+            }
+        });
+
+        bottomHelperProcess.stderr.on('data', (data) => {
+            // 忽略警告，只记录错误
+            const msg = data.toString().trim();
+            if (msg && !msg.includes('WARNING')) {
+                console.warn('[Desktop] Bottom helper stderr:', msg);
+            }
+        });
+
+        bottomHelperProcess.on('exit', (code) => {
+            console.log(`[Desktop] Bottom helper process exited with code ${code}`);
+            bottomHelperProcess = null;
+        });
+
+        bottomHelperProcess.on('error', (err) => {
+            console.error('[Desktop] Bottom helper process error:', err.message);
+            bottomHelperProcess = null;
+        });
+
+    } catch (e) {
+        console.error('[Desktop] Failed to start bottom helper:', e.message);
+        bottomHelperProcess = null;
+    }
+}
+
+/**
+ * 停止持久化的 PowerShell 进程
+ */
+function stopBottomHelper() {
+    if (bottomHelperProcess) {
+        try {
+            bottomHelperProcess.stdin.write('exit\n');
+            bottomHelperProcess.stdin.end();
+        } catch (e) { /* ignore */ }
+        bottomHelperProcess = null;
+    }
+    bottomHwnd = 0;
+}
+
+/**
+ * 使用持久化的 PowerShell 进程调用 Win32 API 将窗口推到底层
+ */
+function nativePushToBottom() {
+    if (!bottomHelperProcess || !bottomHwnd) return;
+    try {
+        bottomHelperProcess.stdin.write(`[VCPWinAPI]::PushToBottom([IntPtr]${bottomHwnd})\n`);
+    } catch (e) {
+        console.warn('[Desktop] nativePushToBottom write error:', e.message);
+    }
+}
+
+/**
+ * 设置桌面窗口始终置底
+ * Windows: 使用原生 SetWindowPos(HWND_BOTTOM) + focus 事件监听
+ * 其他平台: 使用 Electron setAlwaysOnTop 近似方案
+ * @param {boolean} enabled - 是否启用置底
+ */
+function setAlwaysOnBottom(enabled) {
+    alwaysOnBottomEnabled = enabled;
+
+    if (!desktopWindow || desktopWindow.isDestroyed()) return;
+
+    // 清除之前的定时器
+    if (alwaysOnBottomInterval) {
+        clearInterval(alwaysOnBottomInterval);
+        alwaysOnBottomInterval = null;
+    }
+
+    // 移除之前的 focus 事件监听器
+    desktopWindow.removeAllListeners('focus');
+    // 重新注册必要的 focus 监听（如果有其他模块需要的话可以在这里恢复）
+
+    if (enabled) {
+        console.log('[Desktop] Enabling always-on-bottom mode');
+
+        // Windows: 启动持久化的 PowerShell 进程
+        if (process.platform === 'win32') {
+            try {
+                const handle = desktopWindow.getNativeWindowHandle();
+                const hwnd = handle.readInt32LE(0);
+                startBottomHelper(hwnd);
+            } catch (e) {
+                console.warn('[Desktop] Failed to get native handle:', e.message);
+            }
+        }
+
+        const pushToBottom = () => {
+            if (!desktopWindow || desktopWindow.isDestroyed() || !alwaysOnBottomEnabled) return;
+
+            if (process.platform === 'win32') {
+                // Windows: 通过持久化 PowerShell 调用 Win32 SetWindowPos(HWND_BOTTOM)
+                nativePushToBottom();
+            } else {
+                // 其他平台: 使用 Electron API 近似
+                try {
+                    desktopWindow.setAlwaysOnTop(true, 'screen-saver', -1);
+                    desktopWindow.setAlwaysOnTop(false);
+                } catch (e) { /* ignore */ }
+            }
+        };
+
+        // 当窗口获得焦点时，立即将其推到底部
+        desktopWindow.on('focus', () => {
+            if (!alwaysOnBottomEnabled) return;
+            // 短暂延迟后下沉
+            setTimeout(() => {
+                pushToBottom();
+            }, 50);
+        });
+
+        // 定时强制置底（每 1.5 秒执行一次，确保持续在底层）
+        alwaysOnBottomInterval = setInterval(() => {
+            if (!desktopWindow || desktopWindow.isDestroyed() || !alwaysOnBottomEnabled) {
+                clearInterval(alwaysOnBottomInterval);
+                alwaysOnBottomInterval = null;
+                return;
+            }
+            pushToBottom();
+        }, 1500);
+
+        // 初始下沉（延迟 200ms 确保 PowerShell 进程已初始化）
+        setTimeout(() => pushToBottom(), 200);
+
+    } else {
+        console.log('[Desktop] Disabling always-on-bottom mode');
+        // 停止 PowerShell 进程
+        stopBottomHelper();
+        // 恢复正常窗口行为
+        try {
+            desktopWindow.setAlwaysOnTop(false);
+        } catch (e) { /* ignore */ }
+    }
 }
 
 /**
