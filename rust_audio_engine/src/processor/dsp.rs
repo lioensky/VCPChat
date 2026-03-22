@@ -5,6 +5,26 @@
 
 use serde::{Deserialize, Serialize};
 
+// ============================================================================
+// Common DSP Utility Functions (P1-4: centralized, previously duplicated)
+// ============================================================================
+
+/// Convert dB to linear gain. Shared across all processor modules.
+#[inline(always)]
+pub fn db_to_linear(db: f64) -> f64 {
+    10.0_f64.powf(db / 20.0)
+}
+
+/// Convert linear gain to dB. Shared across all processor modules.
+#[inline(always)]
+pub fn linear_to_db(linear: f64) -> f64 {
+    if linear > 0.0 {
+        20.0 * linear.log10()
+    } else {
+        f64::NEG_INFINITY
+    }
+}
+
 /// Volume controller with anti-zipper smoothing
 /// 
 /// FIX for Defect 36: Smoothing coefficient is now sample-rate aware.

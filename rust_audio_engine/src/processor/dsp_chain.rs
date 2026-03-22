@@ -32,7 +32,7 @@
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use super::traits::{AudioProcessor, ProcessResult, SampleRateAware};
+use super::traits::{AudioProcessor, ProcessResult};
 
 /// Processing statistics for monitoring
 #[derive(Debug, Default, Clone)]

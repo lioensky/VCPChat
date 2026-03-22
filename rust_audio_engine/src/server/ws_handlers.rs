@@ -7,8 +7,8 @@ use tokio::sync::oneshot;
 use tokio::time::interval;
 
 use crate::player::{
-    EVENT_LOAD_COMPLETE, EVENT_LOAD_ERROR, EVENT_TRACK_CHANGED,
-    EVENT_PLAYBACK_ENDED, EVENT_NEEDS_PRELOAD, EVENT_NEEDS_PRELOAD_RESET,
+    EVENT_LOAD_COMPLETE, EVENT_TRACK_CHANGED,
+    EVENT_PLAYBACK_ENDED, EVENT_NEEDS_PRELOAD_RESET,
 };
 
 pub fn configure_routes(cfg: &mut web::ServiceConfig) {

@@ -61,15 +61,11 @@ pub struct Saturation {
     // Cached HPF coefficient (recalculated when sample_rate or cutoff changes)
     hpf_coef: f64,
     
-    // HPF state (per-channel) - requires &mut self access
-    /// HPF state for left channel (y[n-1])
-    hpf_state_l: f64,
-    /// HPF state for right channel (y[n-1])
-    hpf_state_r: f64,
-    /// Previous input for left channel (x[n-1])
-    prev_input_l: f64,
-    /// Previous input for right channel (x[n-1])
-    prev_input_r: f64,
+    // P1-5 fix: Per-channel HPF state (supports arbitrary channel count, not just stereo)
+    /// HPF filter state per channel (y[n-1])
+    hpf_states: Vec<f64>,
+    /// Previous input per channel (x[n-1])
+    prev_inputs: Vec<f64>,
 }
 
 impl Saturation {
@@ -87,10 +83,9 @@ impl Saturation {
             highpass_cutoff: 4000.0,
             sample_rate: 44100.0,
             hpf_coef: 0.0,  // Will be calculated below
-            hpf_state_l: 0.0,
-            hpf_state_r: 0.0,
-            prev_input_l: 0.0,
-            prev_input_r: 0.0,
+            // P1-5 fix: Initialize for 2 channels by default, grows on demand
+            hpf_states: vec![0.0; 2],
+            prev_inputs: vec![0.0; 2],
         };
         // Initialize HPF coefficient immediately (fixes MINOR-03)
         instance.update_hpf_coef();
@@ -210,56 +205,42 @@ impl Saturation {
     }
     
     /// High-pass separated saturation (exciter mode)
-    /// Only saturates frequencies above the cutoff
+    /// Only saturates frequencies above the cutoff.
+    /// P1-5 fix: Supports arbitrary channel count (was hardcoded to L/R only).
     fn process_highpass(&mut self, samples: &mut [f64], channels: usize) {
         let input_gain = db_to_linear(self.input_gain_db);
         let output_gain = db_to_linear(self.output_gain_db);
         let alpha = self.hpf_coef;
         
-        for i in (0..samples.len()).step_by(channels) {
-            // Process left channel
-            let in_l = samples[i] * input_gain;
-            
-            // First-order HPF: y[n] = α·y[n-1] + α·(x[n] - x[n-1])
-            let high_l = alpha * self.hpf_state_l + alpha * (in_l - self.prev_input_l);
-            self.hpf_state_l = high_l;
-            self.prev_input_l = in_l;
-            
-            // Low frequencies are input minus high
-            let _low_l = in_l - high_l;
-            
-            // Apply saturation to high frequencies only
-            let saturated_high_l = if high_l.abs() > self.threshold {
-                let driven = high_l * (1.0 + self.drive);
-                self.apply_saturation(driven)
-            } else {
-                high_l
-            };
-            
-            // Mix: low + saturated_high * mix + high * (1 - mix)
-            // Simplified: low + high * (1 - mix) + saturated_high * mix
-            // = in_l - high_l + high_l - high_l * mix + saturated_high * mix
-            // = in_l - high_l * mix + saturated_high * mix
-            samples[i] = (in_l + (saturated_high_l - high_l) * self.mix) * output_gain;
-            
-            // Process right channel if present
-            if channels > 1 && i + 1 < samples.len() {
-                let in_r = samples[i + 1] * input_gain;
+        // Ensure HPF state vectors are large enough for the channel count
+        if self.hpf_states.len() < channels {
+            self.hpf_states.resize(channels, 0.0);
+            self.prev_inputs.resize(channels, 0.0);
+        }
+        
+        let frames = samples.len() / channels;
+        for frame in 0..frames {
+            for ch in 0..channels {
+                let idx = frame * channels + ch;
+                if idx >= samples.len() { break; }
                 
-                let high_r = alpha * self.hpf_state_r + alpha * (in_r - self.prev_input_r);
-                self.hpf_state_r = high_r;
-                self.prev_input_r = in_r;
+                let input = samples[idx] * input_gain;
                 
-                let _low_r = in_r - high_r;
+                // First-order HPF: y[n] = α·y[n-1] + α·(x[n] - x[n-1])
+                let high = alpha * self.hpf_states[ch] + alpha * (input - self.prev_inputs[ch]);
+                self.hpf_states[ch] = high;
+                self.prev_inputs[ch] = input;
                 
-                let saturated_high_r = if high_r.abs() > self.threshold {
-                    let driven = high_r * (1.0 + self.drive);
+                // Apply saturation to high frequencies only
+                let saturated_high = if high.abs() > self.threshold {
+                    let driven = high * (1.0 + self.drive);
                     self.apply_saturation(driven)
                 } else {
-                    high_r
+                    high
                 };
                 
-                samples[i + 1] = (in_r + (saturated_high_r - high_r) * self.mix) * output_gain;
+                // Mix: input + (saturated_high - high) * mix
+                samples[idx] = (input + (saturated_high - high) * self.mix) * output_gain;
             }
         }
     }
@@ -284,10 +265,8 @@ impl Saturation {
     
     /// Reset filter state
     pub fn reset(&mut self) {
-        self.hpf_state_l = 0.0;
-        self.hpf_state_r = 0.0;
-        self.prev_input_l = 0.0;
-        self.prev_input_r = 0.0;
+        self.hpf_states.fill(0.0);
+        self.prev_inputs.fill(0.0);
     }
     
     /// Get current settings as a struct
@@ -326,11 +305,8 @@ pub struct SaturationSettings {
     pub highpass_cutoff: f64,
 }
 
-/// Convert dB to linear
-#[inline(always)]
-fn db_to_linear(db: f64) -> f64 {
-    10.0_f64.powf(db / 20.0)
-}
+// P1-4 fix: Use centralized db_to_linear from dsp module instead of local duplicate
+use super::dsp::db_to_linear;
 
 // ============================================================================
 // Tests

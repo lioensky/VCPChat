@@ -985,24 +985,11 @@ pub struct LoudnessInfo {
 }
 
 // ============================================================================
-// Helper Functions
+// Helper Functions — P1-4 fix: use centralized versions from dsp module
 // ============================================================================
 
-/// Convert dB to linear
-#[inline(always)]
-pub fn db_to_linear(db: f64) -> f64 {
-    10.0_f64.powf(db / 20.0)
-}
-
-/// Convert linear to dB
-#[inline(always)]
-pub fn linear_to_db(linear: f64) -> f64 {
-    if linear > 0.0 {
-        20.0 * linear.log10()
-    } else {
-        f64::NEG_INFINITY
-    }
-}
+// Re-export from dsp module for backward compatibility with existing callers
+pub use super::dsp::{db_to_linear, linear_to_db};
 
 // ============================================================================
 // Tests

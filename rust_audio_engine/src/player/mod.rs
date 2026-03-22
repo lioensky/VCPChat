@@ -326,7 +326,7 @@ impl AudioPlayer {
         config: &AppConfig,
         device_id: Option<usize>,
         shared_state: &Arc<SharedState>,
-        loudness_enabled: bool,
+        _loudness_enabled: bool,
     ) -> Result<state::LoadResult, String> {
         use crate::decoder::StreamingDecoder;
         use crate::processor::StreamingResampler;
@@ -406,7 +406,7 @@ impl AudioPlayer {
                     let total_frames = cached_samples.len() / channels;
                     log::info!("Loaded from cache: {} frames", total_frames);
                     return Ok(state::LoadResult {
-                        samples: cached_samples.clone(),
+                        samples: cached_samples,  // Move instead of clone — avoids copying hundreds of MB
                         sample_rate: final_target_sr,
                         channels,
                         total_frames: total_frames as u64,

@@ -484,7 +484,10 @@ pub fn audio_callback_lockfree(
         let available_source = total.saturating_sub(current_pos);
         if available_source == 0 { break; }
 
-        let frames_to_read = source_frames_needed.min(available_source).min(4096);
+        // Clamp frames_to_read to pre-allocated buffer capacity to prevent
+        // heap allocation inside the audio callback (P0-3 fix)
+        let max_frames_from_capacity = process_buf.capacity() / channels;
+        let frames_to_read = source_frames_needed.min(available_source).min(4096).min(max_frames_from_capacity);
         let start_sample = current_pos * channels;
         let end_sample = start_sample + frames_to_read * channels;
 

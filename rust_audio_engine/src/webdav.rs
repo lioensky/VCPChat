@@ -26,6 +26,8 @@ pub struct WebDavConfig {
     /// Base URL, e.g. "https://nas.local/music" (no trailing slash)
     pub base_url: String,
     pub username: Option<String>,
+    /// P1-7 fix: Skip serializing password to prevent accidental exposure in JSON responses/logs
+    #[serde(skip_serializing)]
     pub password: Option<String>,
 }
 

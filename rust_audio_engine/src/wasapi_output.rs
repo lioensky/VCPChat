@@ -411,6 +411,12 @@ pub mod wasapi_exclusive {
         let mut resample_leftover: Vec<f32> = Vec::new();
         let mut resample_output_f64: Vec<f64> = Vec::with_capacity(8192 * channels);
         
+        // P1-9 fix: Pre-allocate buffers used in the hot loop to avoid per-frame heap allocation
+        let max_buffer_frames = 8192; // Typical max buffer size
+        let mut output_f32_buffer: Vec<f32> = vec![0.0; max_buffer_frames * channels];
+        let mut byte_buffer: Vec<u8> = vec![0u8; max_buffer_frames * blockalign as usize];
+        let mut temp_f32_buffer: Vec<f32> = vec![0.0; 4096 * channels]; // For resampler input
+        
         loop {
             // Check for commands (non-blocking)
             if let Ok(cmd) = cmd_rx.try_recv() {
@@ -483,7 +489,11 @@ pub mod wasapi_exclusive {
             let frames_to_write = buffer_frame_count as usize;
             let samples_to_write = frames_to_write * channels;
             
-            let mut output_f32_buffer = vec![0.0f32; samples_to_write];
+            // P1-9 fix: Resize pre-allocated buffers if needed (only grows, never shrinks)
+            if output_f32_buffer.len() < samples_to_write {
+                output_f32_buffer.resize(samples_to_write, 0.0);
+            }
+            output_f32_buffer[..samples_to_write].fill(0.0);
             let mut is_eof = false;
             
             if let Some(ref mut rs) = resampler {
@@ -501,21 +511,29 @@ pub mod wasapi_exclusive {
                     }
                     
                     let source_frames_to_request = 4096;
-                    let mut temp_f32 = vec![0.0f32; source_frames_to_request * channels];
-                    let chunk_eof = dsp_callback(&mut temp_f32, channels);
+                    // P1-9 fix: Reuse pre-allocated temp buffer instead of allocating per iteration
+                    let temp_samples = source_frames_to_request * channels;
+                    if temp_f32_buffer.len() < temp_samples {
+                        temp_f32_buffer.resize(temp_samples, 0.0);
+                    }
+                    temp_f32_buffer[..temp_samples].fill(0.0);
+                    let chunk_eof = dsp_callback(&mut temp_f32_buffer[..temp_samples], channels);
                     if chunk_eof {
                         is_eof = true;
                     }
                     
-                    let temp_f64: Vec<f64> = temp_f32.into_iter().map(|f| f as f64).collect();
-                    
+                    // P1-9 fix: Convert f32 -> f64 using pre-allocated buffer
                     resample_output_f64.clear();
-                    resample_output_f64.resize(temp_f64.len() * 2 + 256, 0.0);
-                    let written_frames = rs.process_chunk_into(&temp_f64, &mut resample_output_f64);
+                    resample_output_f64.extend(temp_f32_buffer[..temp_samples].iter().map(|&f| f as f64));
+                    let temp_f64 = &resample_output_f64;
+                    
+                    let needed_output = temp_f64.len() * 2 + 256;
+                    let mut resample_scratch = vec![0.0f64; needed_output]; // resampler needs separate output buffer
+                    let written_frames = rs.process_chunk_into(temp_f64, &mut resample_scratch);
                     
                     let new_samples = written_frames * channels;
                     for i in 0..new_samples {
-                        resample_leftover.push(resample_output_f64[i] as f32);
+                        resample_leftover.push(resample_scratch[i] as f32);
                     }
                     
                     if is_eof && new_samples == 0 {
@@ -523,10 +541,11 @@ pub mod wasapi_exclusive {
                     }
                 }
             } else {
-                is_eof = dsp_callback(&mut output_f32_buffer, channels);
+                // P1-9 fix: Only pass the exact number of samples needed, not the full pre-allocated buffer
+                is_eof = dsp_callback(&mut output_f32_buffer[..samples_to_write], channels);
             }
             
-            if is_eof && output_f32_buffer.iter().all(|&x| x == 0.0) {
+            if is_eof && output_f32_buffer[..samples_to_write].iter().all(|&x| x == 0.0) {
                 log::info!("WASAPI: Playback complete (EOF)");
                 let _ = audio_client.stop_stream();
                 break;
@@ -534,12 +553,18 @@ pub mod wasapi_exclusive {
             
             let actual_frames = frames_to_write;
             
-            // Convert f32 samples to output byte format
-            let mut data = vec![0u8; actual_frames * blockalign as usize];
+            // P1-9 fix: Reuse pre-allocated byte buffer
+            let data_len = actual_frames * blockalign as usize;
+            if byte_buffer.len() < data_len {
+                byte_buffer.resize(data_len, 0);
+            }
+            byte_buffer[..data_len].fill(0);
+            let data = &mut byte_buffer[..data_len];
             
+            // P1-9 fix: Only convert the actual samples needed (samples_to_write), not the entire pre-allocated buffer
             if is_float && bits_per_sample == 32 {
                 // 32-bit float
-                for (i, sample) in output_f32_buffer.iter().enumerate() {
+                for (i, sample) in output_f32_buffer[..samples_to_write].iter().enumerate() {
                     let bytes = sample.to_le_bytes();
                     let offset = i * 4;
                     if offset + 4 <= data.len() {
@@ -548,7 +573,7 @@ pub mod wasapi_exclusive {
                 }
             } else if bits_per_sample == 24 {
                 // 24-bit integer
-                for (i, sample) in output_f32_buffer.iter().enumerate() {
+                for (i, sample) in output_f32_buffer[..samples_to_write].iter().enumerate() {
                     let sample_i32 = (*sample as f64 * 8388607.0).clamp(-8388607.0, 8388607.0) as i32;
                     let bytes = sample_i32.to_le_bytes();
                     let offset = i * 3;
@@ -558,7 +583,7 @@ pub mod wasapi_exclusive {
                 }
             } else if bits_per_sample == 16 {
                 // 16-bit integer
-                for (i, sample) in output_f32_buffer.iter().enumerate() {
+                for (i, sample) in output_f32_buffer[..samples_to_write].iter().enumerate() {
                     let sample_i16 = (*sample as f64 * 32767.0).clamp(-32767.0, 32767.0) as i16;
                     let bytes = sample_i16.to_le_bytes();
                     let offset = i * 2;
@@ -569,7 +594,7 @@ pub mod wasapi_exclusive {
             }
             
             // Write to device
-            if let Err(e) = render_client.write_to_device(actual_frames, &data, None) {
+            if let Err(e) = render_client.write_to_device(actual_frames, data, None) {
                 log::error!("WASAPI: Failed to write to device: {:?}", e);
                 break;
             }

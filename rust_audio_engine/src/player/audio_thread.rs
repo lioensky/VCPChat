@@ -550,7 +550,7 @@ pub fn audio_thread_main(
                 shared_state.position_frames.store(0, Ordering::Relaxed);
                 shared_state.state.store(PlayerState::Stopped);
                 let channels = result.channels;
-                let sr = result.sample_rate as f64;
+                let _sr = result.sample_rate as f64;
                 let sr_u32 = result.sample_rate;
                 let metadata = result.metadata;
                 let file_path = result.file_path;

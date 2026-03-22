@@ -44,7 +44,7 @@ pub mod dsp_chain;
 // Re-export all public items for backward compatibility
 pub use resampler::{Resampler, StreamingResampler, ResamplerError};
 pub use eq::{BiquadSection, Equalizer};
-pub use dsp::{VolumeController, NoiseShaper, NoiseShaperCurve};
+pub use dsp::{VolumeController, NoiseShaper, NoiseShaperCurve, db_to_linear, linear_to_db};
 pub use spectrum::SpectrumAnalyzer;
 pub use convolver::FFTConvolver;
 pub use loudness::{

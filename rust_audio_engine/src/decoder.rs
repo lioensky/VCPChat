@@ -543,7 +543,7 @@ impl StreamingDecoder {
                         log::debug!("Downloaded {} bytes directly into pre-allocated buffer", pos);
                         Cursor::new(buffer)
                     } else {
-                        // Unknown size: use bytes() but immediately convert to avoid holding both
+                        // Unknown size: use bytes() and convert efficiently
                         let bytes = response
                             .bytes()
                             .map_err(|e| DecoderError::Http(e.to_string()))?;
@@ -557,8 +557,8 @@ impl StreamingDecoder {
                             )));
                         }
                         
-                        // bytes.into_vec() is more efficient than to_vec() - no copy if refcount=1
-                        Cursor::new(bytes.into_iter().collect::<Vec<u8>>())
+                        // FIX: Use .to_vec() instead of .into_iter().collect() — avoids per-byte iteration overhead
+                        Cursor::new(bytes.to_vec())
                     };
                     
                     let mss = MediaSourceStream::new(Box::new(cursor), Default::default());

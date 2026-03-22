@@ -18,58 +18,10 @@
 
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering};
 
-// Re-export atomic float if available, otherwise define fallback
-#[cfg(feature = "atomic_float")]
+// Use atomic_float crate directly — it's already a dependency in Cargo.toml.
+// Previously this used a cfg(feature) gate that was never registered, causing
+// a hand-rolled fallback to always be used instead (P1-1 fix).
 use atomic_float::AtomicF64;
-
-#[cfg(not(feature = "atomic_float"))]
-mod atomic_f64_fallback {
-    use std::sync::atomic::{AtomicU64, Ordering};
-    use std::sync::Arc;
-
-    /// Fallback AtomicF64 using bits representation
-    #[derive(Debug)]
-    pub struct AtomicF64 {
-        bits: AtomicU64,
-    }
-
-    impl AtomicF64 {
-        pub fn new(value: f64) -> Self {
-            Self {
-                bits: AtomicU64::new(value.to_bits()),
-            }
-        }
-
-        pub fn load(&self, order: Ordering) -> f64 {
-            f64::from_bits(self.bits.load(order))
-        }
-
-        pub fn store(&self, value: f64, order: Ordering) {
-            self.bits.store(value.to_bits(), order);
-        }
-
-        pub fn compare_exchange_weak(
-            &self,
-            current: f64,
-            new: f64,
-            success: Ordering,
-            failure: Ordering,
-        ) -> Result<f64, f64> {
-            match self.bits.compare_exchange_weak(
-                current.to_bits(),
-                new.to_bits(),
-                success,
-                failure,
-            ) {
-                Ok(v) => Ok(f64::from_bits(v)),
-                Err(v) => Err(f64::from_bits(v)),
-            }
-        }
-    }
-}
-
-#[cfg(not(feature = "atomic_float"))]
-use atomic_f64_fallback::AtomicF64;
 
 use super::traits::LockfreeParams;
 

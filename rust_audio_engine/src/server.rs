@@ -18,7 +18,6 @@ use crate::player::{AudioPlayer, AudioDeviceInfo, PlayerState};
 use crate::webdav::WebDavConfig;
 use crate::processor::LoudnessDatabase;
 use crate::settings::{SharedSettingsManager, PersistentSettings, PersistentSettingsUpdate};
-use std::sync::atomic::Ordering;
 
 /// Application state shared across handlers
 pub struct AppState {

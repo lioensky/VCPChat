@@ -384,21 +384,42 @@ impl ChannelAware for PeakLimiterProcessor {
 }
 
 // ============================================================================
-// Volume Adapter
+// Volume Adapter (P1-3 fix: anti-zipper smoothing)
 // ============================================================================
 
-/// Simple volume processor
+/// Volume processor with exponential smoothing to prevent zipper noise.
+///
+/// Uses ~5ms smoothing time constant to ensure click-free volume transitions.
+/// Previous implementation directly multiplied buffer by target volume,
+/// causing audible clicks/zips on rapid volume changes.
 pub struct VolumeProcessor {
     params: Arc<AtomicVolumeParams>,
     cached: VolumeParamsSnapshot,
+    /// Current smoothed volume (exponentially approaches target)
+    current_volume: f64,
+    /// Smoothing coefficient per sample (calculated from sample rate)
+    smoothing_coeff: f64,
+    /// Sample rate for smoothing calculation
+    sample_rate: f64,
 }
 
 impl VolumeProcessor {
     pub fn new(params: Arc<AtomicVolumeParams>) -> Self {
+        let smoothing_coeff = Self::calc_smoothing_coeff(44100.0);
         Self {
             params,
             cached: VolumeParamsSnapshot::default(),
+            current_volume: 1.0,
+            smoothing_coeff,
+            sample_rate: 44100.0,
         }
+    }
+
+    /// Calculate smoothing coefficient for ~5ms time constant
+    fn calc_smoothing_coeff(sample_rate: f64) -> f64 {
+        let smoothing_time_ms = 5.0;
+        let smoothing_samples = (smoothing_time_ms / 1000.0) * sample_rate;
+        (-1.0 / smoothing_samples).exp()
     }
 
     fn sync_params(&mut self) {
@@ -414,21 +435,31 @@ impl AudioProcessor for VolumeProcessor {
         "Volume"
     }
 
-    fn process(&mut self, buffer: &mut [f64], _channels: usize) -> ProcessResult {
+    fn process(&mut self, buffer: &mut [f64], channels: usize) -> ProcessResult {
         self.sync_params();
 
         // Volume is always "enabled" - just applies gain
         // Check for mute
         if self.cached.muted {
-            buffer.fill(0.0);
+            // Smooth fade to zero to avoid click
+            for sample in buffer.iter_mut() {
+                self.current_volume *= self.smoothing_coeff;
+                *sample *= self.current_volume;
+            }
             return ProcessResult::Ok;
         }
 
-        // Apply volume
-        let vol = self.cached.volume;
-        if (vol - 1.0).abs() > 1e-10 {
-            for sample in buffer.iter_mut() {
-                *sample *= vol;
+        // Apply volume with anti-zipper smoothing
+        let target = self.cached.volume;
+        let coeff = self.smoothing_coeff;
+        let one_minus_coeff = 1.0 - coeff;
+        let frames = buffer.len() / channels;
+
+        for frame in 0..frames {
+            // Exponential smoothing: current = current + (target - current) * (1 - coeff)
+            self.current_volume += (target - self.current_volume) * one_minus_coeff;
+            for ch in 0..channels {
+                buffer[frame * channels + ch] *= self.current_volume;
             }
         }
 
@@ -436,7 +467,7 @@ impl AudioProcessor for VolumeProcessor {
     }
 
     fn reset(&mut self) {
-        // No state to reset
+        self.current_volume = self.cached.volume;
     }
 
     fn is_enabled(&self) -> bool {
@@ -445,6 +476,13 @@ impl AudioProcessor for VolumeProcessor {
 
     fn set_enabled(&mut self, _enabled: bool) {
         // Use set_muted instead
+    }
+
+    fn set_sample_rate(&mut self, sample_rate: f64) {
+        if (self.sample_rate - sample_rate).abs() > 1.0 {
+            self.sample_rate = sample_rate;
+            self.smoothing_coeff = Self::calc_smoothing_coeff(sample_rate);
+        }
     }
 }
 
