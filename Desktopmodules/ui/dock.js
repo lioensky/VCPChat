@@ -309,25 +309,51 @@
             e.preventDefault();
             e.stopPropagation(); // 防止冒泡到桌面 canvas 的 drop
 
-            const fromIndex = dragSortState.draggedIndex;
-            let toIndex = dragSortState.dropTargetIndex;
+            const fromDisplayIndex = dragSortState.draggedIndex;
+            let toDisplayIndex = dragSortState.dropTargetIndex;
 
-            if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) {
+            if (fromDisplayIndex < 0 || toDisplayIndex < 0 || fromDisplayIndex === toDisplayIndex) {
                 cleanupDragSortIndicators();
                 return;
             }
 
-            // 执行排序：从数组中移除并插入到新位置
-            const visibleCount = Math.min(state.dock.items.length, state.dock.maxVisible);
-            if (fromIndex < visibleCount && toIndex <= visibleCount) {
-                const [movedItem] = state.dock.items.splice(fromIndex, 1);
-                // 如果拖拽目标在原始位置之后，需要调整索引（因为已移除一个元素）
-                const adjustedTo = toIndex > fromIndex ? toIndex - 1 : toIndex;
-                state.dock.items.splice(adjustedTo, 0, movedItem);
+            // 将显示索引映射回 state.dock.items 中的实际索引
+            const visibleItems = state.dock.items.filter(item => item.visible !== false);
+            const displayItems = visibleItems.slice(0, state.dock.maxVisible);
 
-                renderDock();
-                saveDockConfig();
+            if (fromDisplayIndex >= displayItems.length) {
+                cleanupDragSortIndicators();
+                return;
             }
+
+            const movedItem = displayItems[fromDisplayIndex];
+            const fromActualIndex = state.dock.items.indexOf(movedItem);
+
+            if (fromActualIndex < 0) {
+                cleanupDragSortIndicators();
+                return;
+            }
+
+            // 计算目标位置在全量数组中的实际索引
+            let toActualIndex;
+            if (toDisplayIndex >= displayItems.length) {
+                // 插到显示列表末尾：找到最后一个可见项在全量数组中的位置之后
+                const lastVisibleItem = displayItems[displayItems.length - 1];
+                toActualIndex = state.dock.items.indexOf(lastVisibleItem) + 1;
+            } else {
+                // 插到某个可见项前面
+                const targetItem = displayItems[toDisplayIndex];
+                toActualIndex = state.dock.items.indexOf(targetItem);
+            }
+
+            // 执行排序：从数组中移除并插入到新位置
+            state.dock.items.splice(fromActualIndex, 1);
+            // 移除后索引可能需要调整
+            const adjustedTo = toActualIndex > fromActualIndex ? toActualIndex - 1 : toActualIndex;
+            state.dock.items.splice(adjustedTo, 0, movedItem);
+
+            renderDock();
+            saveDockConfig();
 
             cleanupDragSortIndicators();
         });
