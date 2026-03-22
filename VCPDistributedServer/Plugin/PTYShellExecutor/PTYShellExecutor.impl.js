@@ -585,7 +585,10 @@ function setupThemeWatcher() {
         if (guiWindow && !guiWindow.isDestroyed()) {
             // 稍微延迟读取，确保文件写入已完成
             setTimeout(() => {
-                sendThemeUpdate(guiWindow.webContents);
+                // 竞态保护：延迟期间窗口可能已关闭并将 guiWindow 置空
+                if (guiWindow && !guiWindow.isDestroyed()) {
+                    sendThemeUpdate(guiWindow.webContents);
+                }
             }, 100);
         }
     });
