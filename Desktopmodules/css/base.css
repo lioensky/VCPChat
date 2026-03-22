@@ -1,0 +1,171 @@
+/* ============================================================
+ * VCPdesktop - 基础样式
+ * 全局重置、壁纸层、沉浸式标题栏、画布区域
+ * ============================================================ */
+
+/* --- 全局重置 --- */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    font-family: 'Segoe UI', 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
+    color: var(--primary-text, #ccc);
+    /* 壁纸由 themes.css 提供（可被自定义壁纸覆盖） */
+    background-size: cover;
+    background-position: center;
+    background-attachment: fixed;
+}
+
+/* 启用自定义壁纸时，隐藏 body 上的 themes.css 壁纸 */
+body.desktop-custom-wallpaper-active {
+    background-image: none !important;
+    background-color: #0a0a0f;
+}
+
+/* ============================================================
+ * 壁纸层
+ * ============================================================ */
+#desktop-wallpaper-layer {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 0;
+    overflow: hidden;
+    pointer-events: none;
+}
+
+.desktop-wallpaper-image {
+    position: absolute;
+    inset: 0;
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+}
+
+.desktop-wallpaper-video {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    min-width: 100%;
+    min-height: 100%;
+    width: auto;
+    height: auto;
+    object-fit: cover;
+}
+
+.desktop-wallpaper-html {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    border: none;
+    background: transparent;
+}
+
+/* ============================================================
+ * 沉浸式标题栏
+ * ============================================================ */
+#desktop-title-bar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 32px;
+    z-index: 9999;
+    -webkit-app-region: drag;
+    /* 默认几乎透明，hover时显现 */
+    opacity: 0.15;
+    transition: opacity 0.3s ease;
+}
+
+#desktop-title-bar:hover {
+    opacity: 1;
+}
+
+.desktop-title-bar-drag-region {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+}
+
+.desktop-title-bar-controls {
+    position: relative;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    height: 100%;
+    padding: 0 8px;
+    background: linear-gradient(to bottom, rgba(0, 0, 0, 0.4), transparent);
+    backdrop-filter: blur(4px);
+}
+
+.desktop-title-text {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    opacity: 0.6;
+    color: var(--primary-text, #fff);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+    pointer-events: none;
+}
+
+.desktop-title-buttons {
+    display: flex;
+    gap: 4px;
+    -webkit-app-region: no-drag;
+}
+
+.desktop-title-btn {
+    width: 32px;
+    height: 24px;
+    background: transparent;
+    border: none;
+    color: rgba(255, 255, 255, 0.7);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    transition: all 0.15s ease;
+}
+
+.desktop-title-btn svg {
+    width: 10px;
+    height: 10px;
+    fill: currentColor;
+}
+
+.desktop-title-btn:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: #fff;
+}
+
+.desktop-title-btn-close:hover {
+    background: #e81123;
+    color: #fff;
+}
+
+/* ============================================================
+ * 画布区域
+ * ============================================================ */
+#desktop-canvas {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 1;
+    overflow: hidden;
+}

@@ -1,0 +1,421 @@
+/* ============================================================
+ * VCPdesktop - 全局设置面板
+ * 设置模态窗、壁纸配置项
+ * ============================================================ */
+
+.desktop-settings-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 10001;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(6px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+}
+
+.desktop-settings-overlay.visible {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.desktop-settings-panel {
+    width: 420px;
+    max-width: 92vw;
+    max-height: 80vh;
+    background: rgba(35, 35, 50, 0.95);
+    backdrop-filter: blur(24px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transform: scale(0.95) translateY(10px);
+    transition: transform 0.25s ease;
+}
+
+.desktop-settings-overlay.visible .desktop-settings-panel {
+    transform: scale(1) translateY(0);
+}
+
+.desktop-settings-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 22px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.desktop-settings-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.9);
+    letter-spacing: 0.5px;
+}
+
+.desktop-settings-close {
+    width: 24px;
+    height: 24px;
+    background: transparent;
+    border: none;
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 14px;
+    cursor: pointer;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s ease;
+}
+
+.desktop-settings-close:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.9);
+}
+
+.desktop-settings-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 22px;
+}
+
+.desktop-settings-body::-webkit-scrollbar { width: 4px; }
+.desktop-settings-body::-webkit-scrollbar-track { background: transparent; }
+.desktop-settings-body::-webkit-scrollbar-thumb { background: rgba(128,128,128,0.3); border-radius: 2px; }
+
+.desktop-settings-section {
+    margin-bottom: 20px;
+}
+
+.desktop-settings-section-title {
+    font-size: 11px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.4);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.desktop-settings-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+.desktop-settings-item:last-child {
+    border-bottom: none;
+}
+
+.desktop-settings-item-label {
+    flex: 1;
+    min-width: 0;
+}
+
+.desktop-settings-item-label-text {
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.85);
+    margin-bottom: 2px;
+}
+
+.desktop-settings-item-label-desc {
+    font-size: 10px;
+    color: rgba(255, 255, 255, 0.35);
+    line-height: 1.4;
+}
+
+/* 开关 Toggle */
+.desktop-settings-toggle {
+    position: relative;
+    width: 40px;
+    height: 22px;
+    flex-shrink: 0;
+    margin-left: 12px;
+}
+
+.desktop-settings-toggle input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+    position: absolute;
+}
+
+.desktop-settings-toggle-slider {
+    position: absolute;
+    inset: 0;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 11px;
+    cursor: pointer;
+    transition: all 0.25s ease;
+}
+
+.desktop-settings-toggle-slider::before {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 16px;
+    height: 16px;
+    background: rgba(255, 255, 255, 0.6);
+    border-radius: 50%;
+    transition: all 0.25s ease;
+}
+
+.desktop-settings-toggle input:checked + .desktop-settings-toggle-slider {
+    background: rgba(100, 180, 255, 0.3);
+    border-color: rgba(100, 180, 255, 0.5);
+}
+
+.desktop-settings-toggle input:checked + .desktop-settings-toggle-slider::before {
+    transform: translateX(18px);
+    background: rgba(100, 180, 255, 0.95);
+}
+
+/* 数值选择器 */
+.desktop-settings-number {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+    margin-left: 12px;
+}
+
+.desktop-settings-number-btn {
+    width: 24px;
+    height: 24px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.7);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.12s ease;
+    line-height: 1;
+}
+
+.desktop-settings-number-btn:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: rgba(255, 255, 255, 0.95);
+}
+
+.desktop-settings-number-value {
+    min-width: 32px;
+    text-align: center;
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.85);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+/* 滑块 */
+.desktop-settings-range-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+    margin-left: 12px;
+}
+
+.desktop-settings-range {
+    width: 100px;
+    height: 4px;
+    -webkit-appearance: none;
+    appearance: none;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 2px;
+    outline: none;
+    cursor: pointer;
+}
+
+.desktop-settings-range::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    background: rgba(100, 180, 255, 0.9);
+    border-radius: 50%;
+    cursor: pointer;
+    transition: transform 0.12s ease;
+}
+
+.desktop-settings-range::-webkit-slider-thumb:hover {
+    transform: scale(1.2);
+}
+
+.desktop-settings-range-label {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.5);
+    min-width: 28px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+/* 设置模态窗底部 */
+.desktop-settings-footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 12px 22px;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.desktop-settings-footer-btn {
+    padding: 8px 18px;
+    border: none;
+    border-radius: 8px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.desktop-settings-footer-btn.reset {
+    background: rgba(255, 255, 255, 0.06);
+    color: rgba(255, 255, 255, 0.5);
+}
+
+.desktop-settings-footer-btn.reset:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.desktop-settings-footer-btn.save {
+    background: rgba(100, 180, 255, 0.2);
+    color: rgba(100, 180, 255, 0.9);
+}
+
+.desktop-settings-footer-btn.save:hover {
+    background: rgba(100, 180, 255, 0.35);
+    color: #fff;
+}
+
+/* ============================================================
+ * 壁纸设置面板样式
+ * ============================================================ */
+
+/* 壁纸配置区域 */
+.desktop-settings-wallpaper-config {
+    padding: 8px 0;
+}
+
+.desktop-settings-wallpaper-preview-area {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+/* 壁纸预览框 */
+.desktop-settings-wallpaper-preview {
+    width: 100%;
+    height: 120px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px dashed rgba(255, 255, 255, 0.12);
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+}
+
+.desktop-settings-wallpaper-preview img,
+.desktop-settings-wallpaper-preview video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 10px;
+}
+
+.desktop-settings-wallpaper-preview-empty {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.25);
+    text-align: center;
+    line-height: 1.6;
+}
+
+/* 壁纸类型标记（浮在预览图上方） */
+.desktop-settings-wallpaper-type-badge {
+    position: absolute;
+    top: 6px;
+    left: 6px;
+    padding: 2px 8px;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(4px);
+    border-radius: 4px;
+    font-size: 10px;
+    color: rgba(255, 255, 255, 0.8);
+    letter-spacing: 0.5px;
+    font-weight: 500;
+}
+
+/* 壁纸操作按钮 */
+.desktop-settings-wallpaper-actions {
+    display: flex;
+    gap: 6px;
+}
+
+.desktop-settings-wallpaper-btn {
+    flex: 1;
+    padding: 8px 12px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-align: center;
+}
+
+.desktop-settings-wallpaper-btn.select {
+    background: rgba(100, 180, 255, 0.12);
+    color: rgba(100, 180, 255, 0.9);
+    border-color: rgba(100, 180, 255, 0.2);
+}
+
+.desktop-settings-wallpaper-btn.select:hover {
+    background: rgba(100, 180, 255, 0.22);
+    color: #fff;
+    border-color: rgba(100, 180, 255, 0.4);
+}
+
+.desktop-settings-wallpaper-btn.clear {
+    background: rgba(255, 255, 255, 0.04);
+    color: rgba(255, 255, 255, 0.45);
+    flex: 0 0 auto;
+    padding: 8px 14px;
+}
+
+.desktop-settings-wallpaper-btn.clear:hover {
+    background: rgba(255, 60, 60, 0.12);
+    color: rgba(255, 100, 100, 0.9);
+    border-color: rgba(255, 60, 60, 0.3);
+}
+
+/* 壁纸文件信息 */
+.desktop-settings-wallpaper-info {
+    font-size: 10px;
+    color: rgba(255, 255, 255, 0.3);
+    padding: 0 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-height: 14px;
+}
+
+/* 视频壁纸专用设置 */
+.desktop-settings-wallpaper-video-options {
+    border-top: 1px solid rgba(255, 255, 255, 0.04);
+    margin-top: 4px;
+    padding-top: 4px;
+}

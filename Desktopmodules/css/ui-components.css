@@ -1,0 +1,225 @@
+/* ============================================================
+ * VCPdesktop - 通用 UI 组件
+ * 状态指示器、右键菜单、收藏模态窗
+ * ============================================================ */
+
+/* ============================================================
+ * 状态指示器
+ * ============================================================ */
+#desktop-status-indicator {
+    position: fixed;
+    bottom: 16px;
+    right: 16px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(10px);
+    border-radius: 20px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.7);
+    z-index: 9998;
+    transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+#desktop-status-indicator.hidden {
+    opacity: 0;
+    transform: translateY(10px);
+    pointer-events: none;
+}
+
+.desktop-status-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #ff9800;
+}
+
+.desktop-status-dot.connected {
+    background: #4caf50;
+    box-shadow: 0 0 6px rgba(76, 175, 80, 0.5);
+}
+
+.desktop-status-dot.streaming {
+    background: #2196f3;
+    box-shadow: 0 0 6px rgba(33, 150, 243, 0.5);
+    animation: desktop-construction-breathe 1.5s ease-in-out infinite;
+}
+
+/* ============================================================
+ * 右键菜单
+ * ============================================================ */
+.desktop-context-menu {
+    position: fixed;
+    z-index: 10000;
+    min-width: 150px;
+    background: rgba(30, 30, 40, 0.92);
+    backdrop-filter: blur(16px) saturate(1.5);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    padding: 4px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05);
+    opacity: 0;
+    transform: scale(0.95) translateY(-4px);
+    pointer-events: none;
+    transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.desktop-context-menu.visible {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+    pointer-events: auto;
+}
+
+.desktop-context-menu-item {
+    display: block;
+    width: 100%;
+    padding: 7px 12px;
+    background: transparent;
+    border: none;
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 12px;
+    text-align: left;
+    cursor: pointer;
+    border-radius: 6px;
+    transition: background 0.12s ease;
+    white-space: nowrap;
+}
+
+.desktop-context-menu-item:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.desktop-context-menu-item-danger {
+    color: #ff6b6b;
+}
+
+.desktop-context-menu-item-danger:hover {
+    background: rgba(255, 60, 60, 0.15);
+}
+
+.desktop-context-menu-divider {
+    height: 1px;
+    margin: 3px 8px;
+    background: rgba(255, 255, 255, 0.08);
+}
+
+/* ============================================================
+ * 收藏模态窗
+ * ============================================================ */
+.desktop-modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 10001;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+}
+
+.desktop-modal-overlay.visible {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.desktop-modal {
+    background: rgba(35, 35, 50, 0.95);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 14px;
+    padding: 24px;
+    width: 340px;
+    max-width: 90vw;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    transform: scale(0.95);
+    transition: transform 0.2s ease;
+}
+
+.desktop-modal-overlay.visible .desktop-modal {
+    transform: scale(1);
+}
+
+.desktop-modal-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.9);
+    margin-bottom: 8px;
+}
+
+.desktop-modal-desc {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.5);
+    margin-bottom: 16px;
+    line-height: 1.5;
+}
+
+.desktop-modal-input {
+    width: 100%;
+    padding: 10px 12px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 8px;
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.desktop-modal-input:focus {
+    border-color: rgba(100, 180, 255, 0.5);
+    box-shadow: 0 0 0 3px rgba(100, 180, 255, 0.1);
+}
+
+.desktop-modal-input.error {
+    border-color: rgba(255, 80, 80, 0.6);
+    animation: desktop-modal-shake 0.4s ease;
+}
+
+@keyframes desktop-modal-shake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-6px); }
+    75% { transform: translateX(6px); }
+}
+
+.desktop-modal-buttons {
+    display: flex;
+    gap: 8px;
+    margin-top: 16px;
+    justify-content: flex-end;
+}
+
+.desktop-modal-cancel,
+.desktop-modal-confirm {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 8px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.desktop-modal-cancel {
+    background: rgba(255, 255, 255, 0.06);
+    color: rgba(255, 255, 255, 0.6);
+}
+
+.desktop-modal-cancel:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.desktop-modal-confirm {
+    background: rgba(100, 180, 255, 0.2);
+    color: rgba(100, 180, 255, 0.9);
+}
+
+.desktop-modal-confirm:hover {
+    background: rgba(100, 180, 255, 0.35);
+    color: #fff;
+}

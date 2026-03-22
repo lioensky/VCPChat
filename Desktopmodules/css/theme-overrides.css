@@ -1,0 +1,433 @@
+/* ============================================================
+ * VCPdesktop - 浅色主题适配
+ * 所有 body.light-theme 覆盖样式集中管理
+ * ============================================================ */
+
+/* ============================================================
+ * 标题栏 - 浅色主题
+ * ============================================================ */
+body.light-theme #desktop-title-bar .desktop-title-bar-controls {
+    background: linear-gradient(to bottom, rgba(255, 255, 255, 0.5), transparent);
+}
+
+body.light-theme .desktop-title-text {
+    color: var(--primary-text, #333);
+}
+
+body.light-theme .desktop-title-btn {
+    color: rgba(0, 0, 0, 0.5);
+}
+
+body.light-theme .desktop-title-btn:hover {
+    background: rgba(0, 0, 0, 0.08);
+    color: #333;
+}
+
+/* ============================================================
+ * 挂件 - 浅色主题
+ * ============================================================ */
+body.light-theme .desktop-widget-grip:hover {
+    background: linear-gradient(
+        to bottom,
+        rgba(0, 0, 0, 0.08),
+        rgba(0, 0, 0, 0.01)
+    );
+}
+
+/* ============================================================
+ * 状态指示器 - 浅色主题
+ * ============================================================ */
+body.light-theme #desktop-status-indicator {
+    background: rgba(255, 255, 255, 0.7);
+    border-color: rgba(0, 0, 0, 0.1);
+    color: rgba(0, 0, 0, 0.6);
+}
+
+/* ============================================================
+ * 右键菜单 - 浅色主题
+ * ============================================================ */
+body.light-theme .desktop-context-menu {
+    background: rgba(245, 245, 250, 0.95);
+    border-color: rgba(0, 0, 0, 0.1);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+}
+
+body.light-theme .desktop-context-menu-item {
+    color: rgba(0, 0, 0, 0.8);
+}
+
+body.light-theme .desktop-context-menu-item:hover {
+    background: rgba(0, 0, 0, 0.06);
+}
+
+body.light-theme .desktop-context-menu-divider {
+    background: rgba(0, 0, 0, 0.08);
+}
+
+/* ============================================================
+ * 模态窗 - 浅色主题
+ * ============================================================ */
+body.light-theme .desktop-modal {
+    background: rgba(250, 250, 255, 0.95);
+    border-color: rgba(0, 0, 0, 0.1);
+}
+
+body.light-theme .desktop-modal-title {
+    color: rgba(0, 0, 0, 0.85);
+}
+
+body.light-theme .desktop-modal-desc {
+    color: rgba(0, 0, 0, 0.5);
+}
+
+body.light-theme .desktop-modal-input {
+    background: rgba(0, 0, 0, 0.04);
+    border-color: rgba(0, 0, 0, 0.12);
+    color: rgba(0, 0, 0, 0.85);
+}
+
+/* ============================================================
+ * 侧栏 - 浅色主题
+ * ============================================================ */
+body.light-theme .desktop-sidebar {
+    background: linear-gradient(145deg, rgba(255,255,255,0.8) 0%, rgba(255,255,255,0.55) 100%);
+    border-left-color: rgba(0, 0, 0, 0.06);
+    box-shadow: -4px 0 40px rgba(0, 0, 0, 0.06), inset 0 1px 0 rgba(255,255,255,0.6);
+}
+
+body.light-theme .desktop-sidebar-card {
+    background: rgba(0, 0, 0, 0.03);
+    border-color: rgba(0, 0, 0, 0.06);
+}
+
+body.light-theme .desktop-sidebar-card:hover {
+    background: rgba(0, 0, 0, 0.06);
+}
+
+body.light-theme .desktop-sidebar-card-name {
+    color: rgba(0, 0, 0, 0.8);
+}
+
+body.light-theme .desktop-sidebar-card-btn {
+    background: rgba(0, 0, 0, 0.04);
+}
+
+body.light-theme .desktop-sidebar-card-btn:hover {
+    background: rgba(0, 0, 0, 0.1);
+}
+
+body.light-theme .desktop-sidebar-empty {
+    color: rgba(0, 0, 0, 0.3);
+}
+
+/* --- 浅色主题适配（侧栏分页） --- */
+body.light-theme .desktop-sidebar-tab:hover {
+    background: rgba(0, 0, 0, 0.03);
+}
+
+body.light-theme .desktop-sidebar-tab.active {
+    background: rgba(0, 0, 0, 0.02);
+}
+
+body.light-theme .desktop-sidebar-builtin-card:hover {
+    background: rgba(0, 0, 0, 0.04);
+}
+
+/* 浅色主题的侧栏渐变颜色 */
+body.light-theme .desktop-sidebar-page.active::before {
+    background: linear-gradient(
+        to bottom,
+        rgba(245, 245, 250, 0.95) 0%,
+        rgba(245, 245, 250, 0.6) 40%,
+        transparent 100%
+    );
+}
+
+body.light-theme .desktop-sidebar-page.active::after {
+    background: linear-gradient(
+        to top,
+        rgba(245, 245, 250, 0.95) 0%,
+        rgba(245, 245, 250, 0.6) 40%,
+        transparent 100%
+    );
+}
+
+/* 浅色主题 - 预设默认标记 */
+body.light-theme .desktop-sidebar-preset-default-badge {
+    background: rgba(255, 160, 30, 0.12);
+    color: rgba(200, 130, 20, 0.95);
+    border-color: rgba(255, 160, 30, 0.25);
+}
+
+body.light-theme .desktop-sidebar-preset-card.default-preset {
+    border-color: rgba(255, 160, 30, 0.2);
+    background: rgba(255, 160, 30, 0.04);
+}
+
+body.light-theme .desktop-sidebar-preset-card.default-preset:hover {
+    border-color: rgba(255, 160, 30, 0.3);
+    background: rgba(255, 160, 30, 0.08);
+}
+
+/* 浅色主题 - 侧栏底部设置按钮 */
+body.light-theme .desktop-sidebar-settings-btn {
+    background: rgba(0, 0, 0, 0.03);
+    border-color: rgba(0, 0, 0, 0.06);
+    color: rgba(0, 0, 0, 0.45);
+}
+
+body.light-theme .desktop-sidebar-settings-btn:hover {
+    background: rgba(0, 0, 0, 0.06);
+    border-color: rgba(0, 0, 0, 0.1);
+    color: rgba(0, 0, 0, 0.75);
+}
+
+/* ============================================================
+ * Dock & 桌面图标 - 浅色主题
+ * ============================================================ */
+body.light-theme #desktop-dock {
+    background: linear-gradient(145deg, rgba(255,255,255,0.65) 0%, rgba(255,255,255,0.35) 100%);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.06), inset 0 1px 0 rgba(255,255,255,0.6);
+}
+
+body.light-theme .desktop-dock-icon:hover {
+    background: var(--user-bubble-bg, rgba(0, 0, 0, 0.06));
+}
+
+body.light-theme #desktop-dock-drawer-panel {
+    background: linear-gradient(145deg, rgba(255,255,255,0.8) 0%, rgba(255,255,255,0.55) 100%);
+    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.06), inset 0 1px 0 rgba(255,255,255,0.6);
+}
+
+body.light-theme .desktop-dock-drawer-item:hover {
+    background: var(--user-bubble-bg, rgba(0, 0, 0, 0.04));
+}
+
+body.light-theme .desktop-shortcut-icon:hover {
+    background: var(--user-bubble-bg, rgba(0, 0, 0, 0.06));
+}
+
+body.light-theme .desktop-shortcut-icon.selected {
+    background: var(--user-bubble-bg, rgba(100, 180, 255, 0.12));
+    outline-color: var(--highlight-text, rgba(100, 180, 255, 0.25));
+}
+
+body.light-theme .desktop-shortcut-icon-label {
+    text-shadow: 0 1px 3px rgba(255, 255, 255, 0.7), 0 0 6px rgba(255, 255, 255, 0.4);
+}
+
+/* ============================================================
+ * 图标选择器 - 浅色主题
+ * ============================================================ */
+body.light-theme .desktop-iconpicker-panel {
+    background: rgba(250, 250, 255, 0.95);
+    border-color: rgba(0, 0, 0, 0.1);
+}
+
+body.light-theme .desktop-iconpicker-title {
+    color: rgba(0, 0, 0, 0.85);
+}
+
+body.light-theme .desktop-iconpicker-close {
+    color: rgba(0, 0, 0, 0.4);
+}
+
+body.light-theme .desktop-iconpicker-close:hover {
+    background: rgba(0, 0, 0, 0.06);
+    color: rgba(0, 0, 0, 0.8);
+}
+
+body.light-theme .desktop-iconpicker-preset-select,
+body.light-theme .desktop-iconpicker-search {
+    background: rgba(0, 0, 0, 0.04);
+    border-color: rgba(0, 0, 0, 0.1);
+    color: rgba(0, 0, 0, 0.85);
+}
+
+body.light-theme .desktop-iconpicker-preset-select option {
+    background: #f5f5fa;
+    color: #333;
+}
+
+body.light-theme .desktop-iconpicker-search::placeholder {
+    color: rgba(0, 0, 0, 0.3);
+}
+
+body.light-theme .desktop-iconpicker-cell:hover {
+    background: rgba(0, 0, 0, 0.04);
+    border-color: rgba(0, 0, 0, 0.08);
+}
+
+body.light-theme .desktop-iconpicker-cell.selected {
+    background: rgba(100, 180, 255, 0.12);
+    border-color: rgba(100, 180, 255, 0.4);
+}
+
+body.light-theme .desktop-iconpicker-cell-label {
+    color: rgba(0, 0, 0, 0.5);
+}
+
+body.light-theme .desktop-iconpicker-empty,
+body.light-theme .desktop-iconpicker-loading {
+    color: rgba(0, 0, 0, 0.3);
+}
+
+body.light-theme .desktop-iconpicker-info,
+body.light-theme .desktop-iconpicker-page-info {
+    color: rgba(0, 0, 0, 0.4);
+}
+
+body.light-theme .desktop-iconpicker-prev,
+body.light-theme .desktop-iconpicker-next {
+    background: rgba(0, 0, 0, 0.03);
+    border-color: rgba(0, 0, 0, 0.08);
+    color: rgba(0, 0, 0, 0.5);
+}
+
+body.light-theme .desktop-iconpicker-prev:hover:not(:disabled),
+body.light-theme .desktop-iconpicker-next:hover:not(:disabled) {
+    background: rgba(0, 0, 0, 0.08);
+    color: rgba(0, 0, 0, 0.8);
+}
+
+body.light-theme .desktop-iconpicker-header,
+body.light-theme .desktop-iconpicker-toolbar,
+body.light-theme .desktop-iconpicker-footer {
+    border-color: rgba(0, 0, 0, 0.06);
+}
+
+/* ============================================================
+ * 全局设置 - 浅色主题
+ * ============================================================ */
+body.light-theme .desktop-settings-panel {
+    background: rgba(250, 250, 255, 0.95);
+    border-color: rgba(0, 0, 0, 0.1);
+}
+
+body.light-theme .desktop-settings-title {
+    color: rgba(0, 0, 0, 0.85);
+}
+
+body.light-theme .desktop-settings-close {
+    color: rgba(0, 0, 0, 0.4);
+}
+
+body.light-theme .desktop-settings-close:hover {
+    background: rgba(0, 0, 0, 0.06);
+    color: rgba(0, 0, 0, 0.8);
+}
+
+body.light-theme .desktop-settings-section-title {
+    color: rgba(0, 0, 0, 0.4);
+    border-bottom-color: rgba(0, 0, 0, 0.04);
+}
+
+body.light-theme .desktop-settings-item {
+    border-bottom-color: rgba(0, 0, 0, 0.04);
+}
+
+body.light-theme .desktop-settings-item-label-text {
+    color: rgba(0, 0, 0, 0.85);
+}
+
+body.light-theme .desktop-settings-item-label-desc {
+    color: rgba(0, 0, 0, 0.4);
+}
+
+body.light-theme .desktop-settings-toggle-slider {
+    background: rgba(0, 0, 0, 0.08);
+    border-color: rgba(0, 0, 0, 0.12);
+}
+
+body.light-theme .desktop-settings-toggle-slider::before {
+    background: rgba(0, 0, 0, 0.3);
+}
+
+body.light-theme .desktop-settings-toggle input:checked + .desktop-settings-toggle-slider {
+    background: rgba(100, 180, 255, 0.25);
+    border-color: rgba(100, 180, 255, 0.4);
+}
+
+body.light-theme .desktop-settings-toggle input:checked + .desktop-settings-toggle-slider::before {
+    background: rgba(70, 150, 230, 0.95);
+}
+
+body.light-theme .desktop-settings-number-btn {
+    background: rgba(0, 0, 0, 0.04);
+    border-color: rgba(0, 0, 0, 0.1);
+    color: rgba(0, 0, 0, 0.6);
+}
+
+body.light-theme .desktop-settings-number-btn:hover {
+    background: rgba(0, 0, 0, 0.08);
+    color: rgba(0, 0, 0, 0.9);
+}
+
+body.light-theme .desktop-settings-number-value {
+    color: rgba(0, 0, 0, 0.85);
+}
+
+body.light-theme .desktop-settings-range {
+    background: rgba(0, 0, 0, 0.08);
+}
+
+body.light-theme .desktop-settings-range-label {
+    color: rgba(0, 0, 0, 0.45);
+}
+
+body.light-theme .desktop-settings-header,
+body.light-theme .desktop-settings-footer {
+    border-color: rgba(0, 0, 0, 0.06);
+}
+
+/* ============================================================
+ * 壁纸设置 - 浅色主题
+ * ============================================================ */
+body.light-theme .desktop-settings-wallpaper-preview {
+    background: rgba(0, 0, 0, 0.03);
+    border-color: rgba(0, 0, 0, 0.1);
+}
+
+body.light-theme .desktop-settings-wallpaper-preview-empty {
+    color: rgba(0, 0, 0, 0.25);
+}
+
+body.light-theme .desktop-settings-wallpaper-type-badge {
+    background: rgba(255, 255, 255, 0.8);
+    color: rgba(0, 0, 0, 0.7);
+}
+
+body.light-theme .desktop-settings-wallpaper-btn.select {
+    background: rgba(70, 150, 230, 0.1);
+    color: rgba(70, 150, 230, 0.9);
+    border-color: rgba(70, 150, 230, 0.2);
+}
+
+body.light-theme .desktop-settings-wallpaper-btn.select:hover {
+    background: rgba(70, 150, 230, 0.18);
+    border-color: rgba(70, 150, 230, 0.35);
+}
+
+body.light-theme .desktop-settings-wallpaper-btn.clear {
+    background: rgba(0, 0, 0, 0.03);
+    color: rgba(0, 0, 0, 0.4);
+    border-color: rgba(0, 0, 0, 0.06);
+}
+
+body.light-theme .desktop-settings-wallpaper-btn.clear:hover {
+    background: rgba(255, 60, 60, 0.08);
+    color: rgba(220, 50, 50, 0.8);
+    border-color: rgba(255, 60, 60, 0.2);
+}
+
+body.light-theme .desktop-settings-wallpaper-info {
+    color: rgba(0, 0, 0, 0.3);
+}
+
+body.light-theme .desktop-settings-wallpaper-video-options {
+    border-top-color: rgba(0, 0, 0, 0.04);
+}
+
+body.light-theme.desktop-custom-wallpaper-active {
+    background-color: #f0f0f5;
+}

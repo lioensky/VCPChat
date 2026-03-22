@@ -24,6 +24,14 @@
     let dockDrawerList = null;
     let isDrawerOpen = false;
 
+    // Dock 内部拖拽排序状态
+    let dragSortState = {
+        isDragging: false,
+        draggedIndex: -1,
+        draggedItemId: null,
+        dropTargetIndex: -1,
+    };
+
     // ============================================================
     // 初始化
     // ============================================================
@@ -77,6 +85,9 @@
 
         // 初始化拖拽接收（从外部拖入 .lnk 文件）
         initFileDrop();
+
+        // 初始化 Dock 内部拖拽排序
+        initDockSortDrag();
 
         // 加载已保存的 Dock 配置
         loadDockConfig();
@@ -223,15 +234,28 @@
             showDockContextMenu(e.clientX, e.clientY, item, index);
         });
 
-        // 拖拽到桌面
+        // 拖拽：支持 Dock 内排序 + 拖到桌面
         iconWrapper.addEventListener('dragstart', (e) => {
             e.dataTransfer.setData('application/x-desktop-dock-item', JSON.stringify(item));
-            e.dataTransfer.effectAllowed = 'copy';
+            e.dataTransfer.setData('text/x-dock-sort-id', item.id);
+            e.dataTransfer.effectAllowed = 'copyMove';
             iconWrapper.classList.add('dragging');
+
+            // 设置拖拽排序状态
+            dragSortState.isDragging = true;
+            dragSortState.draggedIndex = index;
+            dragSortState.draggedItemId = item.id;
+            dragSortState.dropTargetIndex = -1;
         });
 
         iconWrapper.addEventListener('dragend', () => {
             iconWrapper.classList.remove('dragging');
+            // 清理排序状态和视觉反馈
+            cleanupDragSortIndicators();
+            dragSortState.isDragging = false;
+            dragSortState.draggedIndex = -1;
+            dragSortState.draggedItemId = null;
+            dragSortState.dropTargetIndex = -1;
         });
 
         // 鼓泡动画
@@ -246,6 +270,120 @@
         });
 
         return iconWrapper;
+    }
+
+    // ============================================================
+    // Dock 内部拖拽排序
+    // ============================================================
+
+    /**
+     * 初始化 Dock 内部拖拽排序事件
+     */
+    function initDockSortDrag() {
+        if (!dockItemsContainer) return;
+
+        dockItemsContainer.addEventListener('dragover', (e) => {
+            // 只处理 Dock 内部排序（检查是否有排序标记）
+            if (!dragSortState.isDragging) return;
+            if (!e.dataTransfer.types.includes('text/x-dock-sort-id')) return;
+
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+
+            // 计算插入位置
+            const targetIndex = getDragOverIndex(e.clientX);
+            if (targetIndex !== dragSortState.dropTargetIndex) {
+                dragSortState.dropTargetIndex = targetIndex;
+                updateDragSortIndicators(targetIndex);
+            }
+        });
+
+        dockItemsContainer.addEventListener('drop', (e) => {
+            const sortId = e.dataTransfer.getData('text/x-dock-sort-id');
+            if (!sortId || !dragSortState.isDragging) return;
+
+            e.preventDefault();
+            e.stopPropagation(); // 防止冒泡到桌面 canvas 的 drop
+
+            const fromIndex = dragSortState.draggedIndex;
+            let toIndex = dragSortState.dropTargetIndex;
+
+            if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) {
+                cleanupDragSortIndicators();
+                return;
+            }
+
+            // 执行排序：从数组中移除并插入到新位置
+            const visibleCount = Math.min(state.dock.items.length, state.dock.maxVisible);
+            if (fromIndex < visibleCount && toIndex <= visibleCount) {
+                const [movedItem] = state.dock.items.splice(fromIndex, 1);
+                // 如果拖拽目标在原始位置之后，需要调整索引（因为已移除一个元素）
+                const adjustedTo = toIndex > fromIndex ? toIndex - 1 : toIndex;
+                state.dock.items.splice(adjustedTo, 0, movedItem);
+
+                renderDock();
+                saveDockConfig();
+            }
+
+            cleanupDragSortIndicators();
+        });
+
+        dockItemsContainer.addEventListener('dragleave', (e) => {
+            // 只在离开整个容器时清除指示器
+            if (!dockItemsContainer.contains(e.relatedTarget)) {
+                cleanupDragSortIndicators();
+                dragSortState.dropTargetIndex = -1;
+            }
+        });
+    }
+
+    /**
+     * 根据鼠标 X 坐标计算拖拽插入位置索引
+     */
+    function getDragOverIndex(clientX) {
+        const icons = dockItemsContainer.querySelectorAll('.desktop-dock-icon');
+        if (icons.length === 0) return 0;
+
+        for (let i = 0; i < icons.length; i++) {
+            const rect = icons[i].getBoundingClientRect();
+            const midX = rect.left + rect.width / 2;
+            if (clientX < midX) {
+                return i;
+            }
+        }
+        return icons.length;
+    }
+
+    /**
+     * 更新拖拽排序的视觉指示器（插入线）
+     */
+    function updateDragSortIndicators(targetIndex) {
+        // 清除已有指示器
+        cleanupDragSortIndicators();
+
+        const icons = dockItemsContainer.querySelectorAll('.desktop-dock-icon');
+        if (icons.length === 0) return;
+
+        // 在目标位置创建插入线指示器
+        const indicator = document.createElement('div');
+        indicator.className = 'desktop-dock-sort-indicator';
+
+        if (targetIndex < icons.length) {
+            // 插到某个图标前面
+            icons[targetIndex].insertAdjacentElement('beforebegin', indicator);
+        } else {
+            // 插到末尾
+            dockItemsContainer.appendChild(indicator);
+        }
+    }
+
+    /**
+     * 清除所有拖拽排序指示器
+     */
+    function cleanupDragSortIndicators() {
+        if (!dockItemsContainer) return;
+        const indicators = dockItemsContainer.querySelectorAll('.desktop-dock-sort-indicator');
+        indicators.forEach(el => el.remove());
     }
 
     // ============================================================

@@ -1,0 +1,190 @@
+/* ============================================================
+ * VCPdesktop - 挂件样式
+ * 挂件容器、施工态、进入/移除动画
+ * ============================================================ */
+
+/* ============================================================
+ * 挂件容器
+ * ============================================================ */
+.desktop-widget {
+    position: absolute;
+    min-width: 120px;
+    min-height: 60px;
+    border-radius: 12px;
+    overflow: visible;
+    /* 样式隔离边界 */
+    contain: layout style;
+    transition: box-shadow 0.3s ease;
+}
+
+.desktop-widget:hover {
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+/* --- 关闭按钮（hover时出现在右上角） --- */
+.desktop-widget-close-btn {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 20px;
+    height: 20px;
+    border: none;
+    background: rgba(255, 60, 60, 0.0);
+    color: rgba(255, 255, 255, 0.0);
+    font-size: 12px;
+    line-height: 20px;
+    text-align: center;
+    border-radius: 50%;
+    cursor: pointer;
+    z-index: 15;
+    transition: all 0.2s ease;
+    padding: 0;
+}
+
+.desktop-widget:hover .desktop-widget-close-btn {
+    background: rgba(255, 60, 60, 0.6);
+    color: rgba(255, 255, 255, 0.9);
+}
+
+.desktop-widget-close-btn:hover {
+    background: rgba(255, 40, 40, 0.9) !important;
+    color: #fff !important;
+    transform: scale(1.1);
+}
+
+/* 施工态中关闭按钮也可见 */
+.desktop-widget.constructing .desktop-widget-close-btn {
+    pointer-events: auto;
+}
+
+/* --- 抓手带（拖拽条） --- */
+.desktop-widget-grip {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 6px;
+    cursor: grab;
+    z-index: 10;
+    border-radius: 12px 12px 0 0;
+    background: linear-gradient(
+        to bottom,
+        rgba(255, 255, 255, 0.0),
+        rgba(255, 255, 255, 0.0)
+    );
+    transition: background 0.25s ease, height 0.25s ease;
+}
+
+.desktop-widget-grip:hover {
+    background: linear-gradient(
+        to bottom,
+        rgba(255, 255, 255, 0.15),
+        rgba(255, 255, 255, 0.02)
+    );
+    height: 8px;
+}
+
+.desktop-widget-grip:active {
+    cursor: grabbing;
+    background: linear-gradient(
+        to bottom,
+        rgba(255, 255, 255, 0.25),
+        rgba(255, 255, 255, 0.05)
+    );
+}
+
+/* --- 挂件内容区 --- */
+.desktop-widget-content {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    border-radius: 12px;
+    position: relative;
+}
+
+/* Shadow DOM fallback */
+.desktop-widget-content > .widget-scoped-container {
+    all: initial;
+    display: block;
+    width: 100%;
+    height: 100%;
+    font-family: inherit;
+    color: inherit;
+}
+
+/* ============================================================
+ * 施工态（流式渲染中）
+ * ============================================================ */
+@keyframes desktop-construction-breathe {
+    0% {
+        box-shadow: 0 0 0 1px rgba(100, 180, 255, 0.2),
+                    0 0 8px rgba(100, 180, 255, 0.1);
+    }
+    50% {
+        box-shadow: 0 0 0 1px rgba(100, 180, 255, 0.5),
+                    0 0 16px rgba(100, 180, 255, 0.2);
+    }
+    100% {
+        box-shadow: 0 0 0 1px rgba(100, 180, 255, 0.2),
+                    0 0 8px rgba(100, 180, 255, 0.1);
+    }
+}
+
+@keyframes desktop-construction-spinner {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.desktop-widget.constructing {
+    animation: desktop-construction-breathe 2s ease-in-out infinite;
+    pointer-events: none;
+}
+
+/* 施工态角标 */
+.desktop-widget.constructing::after {
+    content: '';
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 12px;
+    height: 12px;
+    border: 2px solid rgba(100, 180, 255, 0.6);
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: desktop-construction-spinner 0.8s linear infinite;
+    z-index: 20;
+}
+
+/* ============================================================
+ * 挂件进入/移除动画
+ * ============================================================ */
+@keyframes desktop-widget-enter {
+    from {
+        opacity: 0;
+        transform: scale(0.9) translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+@keyframes desktop-widget-remove {
+    from {
+        opacity: 1;
+        transform: scale(1);
+    }
+    to {
+        opacity: 0;
+        transform: scale(0.85);
+    }
+}
+
+.desktop-widget.entering {
+    animation: desktop-widget-enter 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+}
+
+.desktop-widget.removing {
+    animation: desktop-widget-remove 0.3s ease-out forwards;
+    pointer-events: none;
+}
