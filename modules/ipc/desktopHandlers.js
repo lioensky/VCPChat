@@ -395,6 +395,7 @@ function initialize(params) {
             const forumConfigPath = path.join(PROJECT_ROOT, 'AppData', 'UserData', 'forum.config.json');
 
             let vcpServerUrl = '';
+            let vcpApiKey = '';
             let username = '';
             let password = '';
 
@@ -402,6 +403,7 @@ function initialize(params) {
                 try {
                     const settings = await fs.readJson(settingsPath);
                     vcpServerUrl = settings.vcpServerUrl || '';
+                    vcpApiKey = settings.vcpApiKey || '';
                 } catch (e) { /* ignore */ }
             }
 
@@ -425,6 +427,8 @@ function initialize(params) {
             return {
                 success: true,
                 apiBaseUrl,
+                vcpServerUrl,
+                vcpApiKey,
                 username,
                 password,
             };
