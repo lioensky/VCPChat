@@ -29,6 +29,14 @@
         <div class="desktop-title-bar-controls">
             <span class="desktop-title-text">VCPdesktop</span>
             <div class="desktop-title-buttons">
+                <!-- 侧栏开关按钮 -->
+                <button id="desktop-btn-sidebar" class="desktop-title-btn" title="收藏夹侧栏">
+                    <svg viewBox="0 0 10 10">
+                        <rect x="0" y="1" width="4" height="8" rx="0.5"></rect>
+                        <rect x="5.5" y="1" width="4.5" height="3" rx="0.5"></rect>
+                        <rect x="5.5" y="5.5" width="4.5" height="3.5" rx="0.5"></rect>
+                    </svg>
+                </button>
                 <button id="desktop-btn-minimize" class="desktop-title-btn" title="最小化">
                     <svg viewBox="0 0 10 10"><rect x="0" y="4" width="10" height="1.2"></rect></svg>
                 </button>
@@ -45,6 +53,41 @@
     <!-- 挂件画布区域 -->
     <div id="desktop-canvas">
         <!-- 挂件容器将动态插入这里 -->
+    </div>
+
+    <!-- 右键菜单 -->
+    <div id="desktop-context-menu" class="desktop-context-menu">
+        <button class="desktop-context-menu-item" data-action="favorite">⭐ 收藏</button>
+        <button class="desktop-context-menu-item" data-action="refresh" style="display:none;">🔄 刷新</button>
+        <div class="desktop-context-menu-divider"></div>
+        <button class="desktop-context-menu-item" data-action="bring-front">⬆ 置顶</button>
+        <button class="desktop-context-menu-item" data-action="send-back">⬇ 置底</button>
+        <div class="desktop-context-menu-divider"></div>
+        <button class="desktop-context-menu-item desktop-context-menu-item-danger" data-action="close">✕ 关闭</button>
+    </div>
+
+    <!-- 收藏模态窗 -->
+    <div id="desktop-save-modal" class="desktop-modal-overlay">
+        <div class="desktop-modal">
+            <div class="desktop-modal-title">收藏挂件</div>
+            <p class="desktop-modal-desc">为这个挂件取一个名字，它将被保存到收藏夹中。</p>
+            <input type="text" class="desktop-modal-input" placeholder="输入收藏名称..." maxlength="64" />
+            <div class="desktop-modal-buttons">
+                <button class="desktop-modal-cancel">取消</button>
+                <button class="desktop-modal-confirm">确认收藏</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 收藏侧栏 -->
+    <div id="desktop-sidebar" class="desktop-sidebar">
+        <div class="desktop-sidebar-header">
+            <span class="desktop-sidebar-title">📦 收藏夹</span>
+            <button class="desktop-sidebar-close" title="关闭侧栏">✕</button>
+        </div>
+        <div id="desktop-sidebar-list" class="desktop-sidebar-list">
+            <div class="desktop-sidebar-empty">暂无收藏</div>
+        </div>
     </div>
 
     <!-- 状态指示器 -->
