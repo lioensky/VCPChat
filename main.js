@@ -1579,14 +1579,13 @@ async function handleDesktopRemoteControl(commandPayload) {
                             mdReport += `- **收藏名**: ${savedName}\n`;
                             mdReport += `- **收藏ID**: \`${savedId}\`\n\n`;
                         }
-                        mdReport += `**HTML内容** (${htmlSource.length} 字符):\n\n`;
+                        mdReport += `**HTML内容** (${htmlSource.length} 字符):\n\n\`\`\`html\n${htmlSource}\n\`\`\``;
 
                         resolve({
                             status: 'success',
                             result: {
                                 content: [
-                                    { type: 'text', text: mdReport },
-                                    { type: 'text', text: htmlSource }
+                                    { type: 'text', text: mdReport }
                                 ]
                             }
                         });
