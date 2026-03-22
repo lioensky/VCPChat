@@ -52,7 +52,30 @@
 
     <!-- 挂件画布区域 -->
     <div id="desktop-canvas">
-        <!-- 挂件容器将动态插入这里 -->
+        <!-- 挂件容器和桌面图标将动态插入这里 -->
+    </div>
+
+    <!-- 底部 Dock 栏 -->
+    <div id="desktop-dock">
+        <div id="desktop-dock-items">
+            <!-- Dock 图标将动态插入这里 -->
+        </div>
+        <div class="desktop-dock-divider"></div>
+        <button id="desktop-dock-more-btn" class="desktop-dock-btn" title="全部应用" style="display:none;">⋯</button>
+        <button id="desktop-dock-scan-btn" class="desktop-dock-btn" title="导入桌面快捷方式">📥</button>
+    </div>
+
+    <!-- 应用抽屉 -->
+    <div id="desktop-dock-drawer">
+        <div id="desktop-dock-drawer-panel">
+            <div class="desktop-dock-drawer-header">
+                <span class="desktop-dock-drawer-title">📦 全部应用</span>
+                <button id="desktop-dock-drawer-close" class="desktop-dock-drawer-close-btn" title="关闭">✕</button>
+            </div>
+            <div id="desktop-dock-drawer-list">
+                <div class="desktop-dock-drawer-empty">暂无应用</div>
+            </div>
+        </div>
     </div>
 
     <!-- 右键菜单 -->
@@ -79,14 +102,37 @@
         </div>
     </div>
 
-    <!-- 收藏侧栏 -->
+    <!-- 收藏侧栏（分页） -->
     <div id="desktop-sidebar" class="desktop-sidebar">
         <div class="desktop-sidebar-header">
-            <span class="desktop-sidebar-title">📦 收藏夹</span>
+            <span class="desktop-sidebar-title">📦 面板</span>
             <button class="desktop-sidebar-close" title="关闭侧栏">✕</button>
         </div>
-        <div id="desktop-sidebar-list" class="desktop-sidebar-list">
-            <div class="desktop-sidebar-empty">暂无收藏</div>
+        <!-- 分页标签 -->
+        <div class="desktop-sidebar-tabs">
+            <button class="desktop-sidebar-tab active" data-tab="widgets">🧩 挂件</button>
+            <button class="desktop-sidebar-tab" data-tab="favorites">⭐ 收藏</button>
+            <button class="desktop-sidebar-tab" data-tab="presets">📐 预设</button>
+        </div>
+        <!-- 挂件页 -->
+        <div id="desktop-sidebar-page-widgets" class="desktop-sidebar-page active">
+            <div class="desktop-sidebar-section-title">官方挂件</div>
+            <div id="desktop-sidebar-builtin-list" class="desktop-sidebar-list"></div>
+        </div>
+        <!-- 收藏页 -->
+        <div id="desktop-sidebar-page-favorites" class="desktop-sidebar-page">
+            <div id="desktop-sidebar-list" class="desktop-sidebar-list">
+                <div class="desktop-sidebar-empty">暂无收藏</div>
+            </div>
+        </div>
+        <!-- 预设页 -->
+        <div id="desktop-sidebar-page-presets" class="desktop-sidebar-page">
+            <div class="desktop-sidebar-preset-actions">
+                <button id="desktop-sidebar-save-preset" class="desktop-sidebar-preset-btn">💾 保存当前布局</button>
+            </div>
+            <div id="desktop-sidebar-preset-list" class="desktop-sidebar-list">
+                <div class="desktop-sidebar-empty">暂无布局预设</div>
+            </div>
         </div>
     </div>
 
@@ -117,6 +163,8 @@
     <script src="ui/saveModal.js"></script>
     <!-- 9. UI层：侧栏（依赖 state, domRefs） -->
     <script src="ui/sidebar.js"></script>
+    <!-- 9.5. UI层：Dock 栏（依赖 state, domRefs, CONSTANTS） -->
+    <script src="ui/dock.js"></script>
     <!-- 10. 收藏层：缩略图捕获 -->
     <script src="favorites/thumbnail.js"></script>
     <!-- 11. 收藏层：收藏管理器（依赖 state, status, widget, sidebar, thumbnail） -->

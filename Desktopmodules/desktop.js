@@ -64,6 +64,11 @@ document.addEventListener('DOMContentLoaded', () => {
     D.saveModal.init();
     D.favorites.loadList();
 
+    // 5.5. 初始化 Dock 栏
+    if (D.dock) {
+        D.dock.init();
+    }
+
     // 5. 点击空白关闭右键菜单
     document.addEventListener('click', () => {
         D.contextMenu.hide();
@@ -95,14 +100,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     const D = window.VCPDesktop;
 
     // 加载 vcpAPI 凭据
-    const hasCredentials = await D.vcpApi.init();
+    await D.vcpApi.init();
 
-    // 凭据加载完成后，自动启动内置挂件
-    if (hasCredentials) {
-        setTimeout(() => D.builtinWeather.spawn(), 500);
-        setTimeout(() => D.builtinNews.spawn(), 600);
-    }
-
-    // 音乐播放条（不依赖凭据）
-    setTimeout(() => D.builtinMusic.spawn(), 800);
+    // 官方内置挂件不再自动启动到桌面，而是通过侧栏或 Dock 按需加载
+    // 用户可以通过调试工具手动生成：window.__desktopDebug.spawnWeatherWidget() 等
+    console.log('[VCPdesktop] Built-in widgets registered (available via sidebar/debug).');
 });

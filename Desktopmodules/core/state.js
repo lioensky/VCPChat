@@ -16,6 +16,13 @@
         nextZIndex: 10,              // z-index 递增计数器
         sidebarOpen: false,
         favorites: [],               // [{ id, name, thumbnail }]
+        // Dock 状态
+        dock: {
+            items: [],               // [{ id, name, icon, targetPath, args, workingDir, originalPath, type:'shortcut'|'builtin' }]
+            maxVisible: 8,           // Dock 默认最大可见图标数
+        },
+        // 桌面图标（从 Dock 拖出的快捷方式）
+        desktopIcons: [],            // [{ id, name, icon, targetPath, args, workingDir, originalPath, x, y }]
     };
 
     // ============================================================

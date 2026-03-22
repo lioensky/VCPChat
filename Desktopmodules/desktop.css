@@ -537,10 +537,11 @@ html, body {
     width: 280px;
     height: calc(100% - 32px);
     z-index: 9990;
-    background: rgba(20, 20, 30, 0.88);
-    backdrop-filter: blur(20px) saturate(1.3);
-    border-left: 1px solid rgba(255, 255, 255, 0.06);
-    box-shadow: -4px 0 24px rgba(0, 0, 0, 0.3);
+    background: linear-gradient(145deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.03) 100%);
+    backdrop-filter: blur(28px);
+    -webkit-backdrop-filter: blur(28px);
+    border-left: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: -4px 0 40px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255,255,255,0.08);
     transform: translateX(100%);
     transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     display: flex;
@@ -555,15 +556,16 @@ html, body {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 12px 16px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border-color, rgba(255, 255, 255, 0.06));
     -webkit-app-region: no-drag;
 }
 
 .desktop-sidebar-title {
     font-size: 14px;
     font-weight: 600;
-    color: rgba(255, 255, 255, 0.8);
+    color: var(--primary-text, rgba(255, 255, 255, 0.8));
+    letter-spacing: 0.5px;
 }
 
 .desktop-sidebar-close {
@@ -571,7 +573,7 @@ html, body {
     height: 24px;
     background: transparent;
     border: none;
-    color: rgba(255, 255, 255, 0.5);
+    color: var(--secondary-text, rgba(255, 255, 255, 0.5));
     font-size: 14px;
     cursor: pointer;
     border-radius: 6px;
@@ -582,8 +584,8 @@ html, body {
 }
 
 .desktop-sidebar-close:hover {
-    background: rgba(255, 255, 255, 0.1);
-    color: rgba(255, 255, 255, 0.9);
+    background: var(--user-bubble-bg, rgba(255, 255, 255, 0.1));
+    color: var(--primary-text, rgba(255, 255, 255, 0.9));
 }
 
 .desktop-sidebar-list {
@@ -602,8 +604,10 @@ html, body {
     align-items: center;
     justify-content: center;
     height: 120px;
-    color: rgba(255, 255, 255, 0.3);
+    color: var(--placeholder-text, rgba(255, 255, 255, 0.3));
     font-size: 13px;
+    text-align: center;
+    line-height: 1.8;
 }
 
 .desktop-sidebar-card {
@@ -757,12 +761,9 @@ body.light-theme .desktop-modal-input {
 }
 
 body.light-theme .desktop-sidebar {
-    background: rgba(245, 245, 250, 0.92);
-    border-left-color: rgba(0, 0, 0, 0.08);
-}
-
-body.light-theme .desktop-sidebar-title {
-    color: rgba(0, 0, 0, 0.8);
+    background: linear-gradient(145deg, rgba(255,255,255,0.8) 0%, rgba(255,255,255,0.55) 100%);
+    border-left-color: rgba(0, 0, 0, 0.06);
+    box-shadow: -4px 0 40px rgba(0, 0, 0, 0.06), inset 0 1px 0 rgba(255,255,255,0.6);
 }
 
 body.light-theme .desktop-sidebar-card {
@@ -788,4 +789,611 @@ body.light-theme .desktop-sidebar-card-btn:hover {
 
 body.light-theme .desktop-sidebar-empty {
     color: rgba(0, 0, 0, 0.3);
+}
+
+/* ============================================================
+ * Dock 栏（底部工具栏）
+ * ============================================================ */
+#desktop-dock {
+    position: fixed;
+    bottom: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 9995;
+    display: flex; /* 始终显示，至少有扫描按钮 */
+    align-items: center;
+    gap: 4px;
+    padding: 8px 14px;
+    background: linear-gradient(145deg, rgba(255,255,255,0.09) 0%, rgba(255,255,255,0.02) 100%);
+    backdrop-filter: blur(28px);
+    -webkit-backdrop-filter: blur(28px);
+    border: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+    border-radius: 20px;
+    box-shadow: 0 8px 40px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.08);
+    transition: opacity 0.3s ease, transform 0.3s ease, box-shadow 0.3s ease;
+    color: var(--primary-text, rgba(255,255,255,0.9));
+}
+
+#desktop-dock.drop-target {
+    border-color: var(--highlight-text, rgba(100, 220, 180, 0.4));
+    box-shadow: 0 8px 40px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.08), 0 0 20px rgba(100, 220, 180, 0.15);
+}
+
+#desktop-dock-items {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+}
+
+/* --- Dock 图标 --- */
+.desktop-dock-icon {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 52px;
+    padding: 4px 2px 2px;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    position: relative;
+}
+
+.desktop-dock-icon:hover {
+    background: rgba(255, 255, 255, 0.08);
+    transform: translateY(-6px) scale(1.1);
+}
+
+.desktop-dock-icon.active {
+    transform: translateY(-2px) scale(0.95);
+}
+
+.desktop-dock-icon.dragging {
+    opacity: 0.4;
+    transform: scale(0.9);
+}
+
+.desktop-dock-icon-img {
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+    object-fit: contain;
+    pointer-events: none;
+}
+
+.desktop-dock-icon-placeholder {
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 6px;
+}
+
+.desktop-dock-icon-label {
+    font-size: 9px;
+    color: var(--secondary-text, rgba(255, 255, 255, 0.6));
+    margin-top: 2px;
+    max-width: 50px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: center;
+    line-height: 1.2;
+}
+
+/* --- Dock 功能按钮 --- */
+.desktop-dock-btn {
+    width: 36px;
+    height: 36px;
+    border: 1px solid var(--border-color, rgba(255, 255, 255, 0.06));
+    background: var(--assistant-bubble-bg, rgba(255, 255, 255, 0.05));
+    color: var(--secondary-text, rgba(255, 255, 255, 0.5));
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s ease;
+    flex-shrink: 0;
+}
+
+.desktop-dock-btn:hover {
+    background: var(--user-bubble-bg, rgba(255, 255, 255, 0.12));
+    color: var(--primary-text, rgba(255, 255, 255, 0.9));
+    transform: scale(1.08);
+    border-color: var(--highlight-text, rgba(255, 255, 255, 0.12));
+}
+
+.desktop-dock-divider {
+    width: 1px;
+    height: 28px;
+    background: var(--border-color, rgba(255, 255, 255, 0.06));
+    margin: 0 6px;
+    flex-shrink: 0;
+}
+
+/* ============================================================
+ * 应用抽屉（App Drawer）
+ * ============================================================ */
+#desktop-dock-drawer {
+    position: fixed;
+    inset: 0;
+    z-index: 9996;
+    background: rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(8px);
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+    padding-bottom: 80px;
+}
+
+#desktop-dock-drawer.open {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+#desktop-dock-drawer-panel {
+    width: 480px;
+    max-width: 90vw;
+    max-height: 60vh;
+    background: linear-gradient(145deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.03) 100%);
+    backdrop-filter: blur(28px);
+    -webkit-backdrop-filter: blur(28px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 20px;
+    box-shadow: 0 8px 40px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.08);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transform: translateY(20px);
+    transition: transform 0.25s ease;
+}
+
+#desktop-dock-drawer.open #desktop-dock-drawer-panel {
+    transform: translateY(0);
+}
+
+.desktop-dock-drawer-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border-color, rgba(255, 255, 255, 0.06));
+}
+
+.desktop-dock-drawer-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--primary-text, rgba(255, 255, 255, 0.8));
+    letter-spacing: 0.5px;
+}
+
+.desktop-dock-drawer-close-btn {
+    width: 24px;
+    height: 24px;
+    background: transparent;
+    border: none;
+    color: var(--secondary-text, rgba(255, 255, 255, 0.5));
+    font-size: 14px;
+    cursor: pointer;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s ease;
+}
+
+.desktop-dock-drawer-close-btn:hover {
+    background: var(--user-bubble-bg, rgba(255, 255, 255, 0.1));
+    color: var(--primary-text, rgba(255, 255, 255, 0.9));
+}
+
+#desktop-dock-drawer-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px;
+}
+
+#desktop-dock-drawer-list::-webkit-scrollbar { width: 4px; }
+#desktop-dock-drawer-list::-webkit-scrollbar-track { background: transparent; }
+#desktop-dock-drawer-list::-webkit-scrollbar-thumb { background: rgba(128,128,128,0.3); border-radius: 2px; }
+
+.desktop-dock-drawer-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 120px;
+    color: var(--placeholder-text, rgba(255, 255, 255, 0.3));
+    font-size: 13px;
+    text-align: center;
+    line-height: 1.8;
+}
+
+.desktop-dock-drawer-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.12s ease;
+}
+
+.desktop-dock-drawer-item:hover {
+    background: rgba(255, 255, 255, 0.06);
+    transform: translateX(2px);
+}
+
+.desktop-dock-drawer-item-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    object-fit: contain;
+    flex-shrink: 0;
+}
+
+.desktop-dock-drawer-item-icon-placeholder {
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 6px;
+    flex-shrink: 0;
+}
+
+.desktop-dock-drawer-item-name {
+    flex: 1;
+    font-size: 12px;
+    color: var(--primary-text, rgba(255, 255, 255, 0.8));
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.desktop-dock-drawer-item-check {
+    width: 14px;
+    height: 14px;
+    accent-color: var(--highlight-text, rgba(100, 180, 255, 0.8));
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.desktop-dock-drawer-item-del {
+    width: 22px;
+    height: 22px;
+    border: none;
+    background: transparent;
+    color: var(--secondary-text, rgba(255, 255, 255, 0.3));
+    font-size: 11px;
+    cursor: pointer;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s ease;
+    flex-shrink: 0;
+}
+
+.desktop-dock-drawer-item-del:hover {
+    background: rgba(var(--danger-color, 255, 60, 60), 0.15);
+    color: var(--danger-color, rgba(255, 60, 60, 0.8));
+}
+
+/* ============================================================
+ * 桌面快捷方式图标
+ * ============================================================ */
+.desktop-shortcut-icon {
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    width: 72px;
+    padding: 8px 4px 4px;
+    border-radius: 8px;
+    cursor: default;
+    user-select: none;
+    z-index: 5;
+    transition: background 0.15s ease;
+}
+
+.desktop-shortcut-icon:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.desktop-shortcut-icon.selected {
+    background: rgba(100, 180, 255, 0.15);
+    outline: 1px solid rgba(100, 180, 255, 0.3);
+}
+
+.desktop-shortcut-icon.dragging {
+    opacity: 0.6;
+    z-index: 100;
+}
+
+.desktop-shortcut-icon.entering {
+    animation: desktop-widget-enter 0.3s ease-out forwards;
+}
+
+.desktop-shortcut-icon.removing {
+    animation: desktop-widget-remove 0.25s ease-out forwards;
+    pointer-events: none;
+}
+
+.desktop-shortcut-icon.launching {
+    animation: desktop-shortcut-launch 0.6s ease-out;
+}
+
+@keyframes desktop-shortcut-launch {
+    0%   { transform: scale(1); }
+    20%  { transform: scale(0.85); }
+    60%  { transform: scale(1.1); opacity: 0.7; }
+    100% { transform: scale(1); opacity: 1; }
+}
+
+.desktop-shortcut-icon-img {
+    width: 40px;
+    height: 40px;
+    border-radius: 6px;
+    object-fit: contain;
+    pointer-events: none;
+    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
+}
+
+.desktop-shortcut-icon-placeholder {
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 6px;
+}
+
+.desktop-shortcut-icon-label {
+    font-size: 10px;
+    color: var(--primary-text, rgba(255, 255, 255, 0.85));
+    text-shadow: var(--panel-text-shadow, 0 1px 3px rgba(0, 0, 0, 0.7));
+    margin-top: 4px;
+    max-width: 68px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: center;
+    line-height: 1.3;
+}
+
+/* ============================================================
+ * Dock & 桌面图标 - 浅色主题适配
+ * 由于使用了 CSS 变量，大部分颜色已自动适配。
+ * 以下仅覆盖需要特殊处理的磨砂背景效果。
+ * ============================================================ */
+body.light-theme #desktop-dock {
+    background: linear-gradient(145deg, rgba(255,255,255,0.65) 0%, rgba(255,255,255,0.35) 100%);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.06), inset 0 1px 0 rgba(255,255,255,0.6);
+}
+
+body.light-theme .desktop-dock-icon:hover {
+    background: var(--user-bubble-bg, rgba(0, 0, 0, 0.06));
+}
+
+body.light-theme #desktop-dock-drawer-panel {
+    background: linear-gradient(145deg, rgba(255,255,255,0.8) 0%, rgba(255,255,255,0.55) 100%);
+    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.06), inset 0 1px 0 rgba(255,255,255,0.6);
+}
+
+body.light-theme .desktop-dock-drawer-item:hover {
+    background: var(--user-bubble-bg, rgba(0, 0, 0, 0.04));
+}
+
+body.light-theme .desktop-shortcut-icon:hover {
+    background: var(--user-bubble-bg, rgba(0, 0, 0, 0.06));
+}
+
+body.light-theme .desktop-shortcut-icon.selected {
+    background: var(--user-bubble-bg, rgba(100, 180, 255, 0.12));
+    outline-color: var(--highlight-text, rgba(100, 180, 255, 0.25));
+}
+
+body.light-theme .desktop-shortcut-icon-label {
+    text-shadow: 0 1px 3px rgba(255, 255, 255, 0.7), 0 0 6px rgba(255, 255, 255, 0.4);
+}
+
+/* ============================================================
+ * 侧栏分页标签
+ * ============================================================ */
+.desktop-sidebar-tabs {
+    display: flex;
+    gap: 2px;
+    padding: 8px 10px 0;
+    border-bottom: 1px solid var(--border-color, rgba(255, 255, 255, 0.06));
+}
+
+.desktop-sidebar-tab {
+    flex: 1;
+    padding: 8px 6px;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--secondary-text, rgba(255, 255, 255, 0.4));
+    font-size: 11px;
+    cursor: pointer;
+    border-radius: 6px 6px 0 0;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+}
+
+.desktop-sidebar-tab:hover {
+    color: var(--primary-text, rgba(255, 255, 255, 0.7));
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.desktop-sidebar-tab.active {
+    color: var(--highlight-text, rgba(100, 180, 255, 0.9));
+    border-bottom-color: var(--highlight-text, rgba(100, 180, 255, 0.6));
+    background: rgba(255, 255, 255, 0.03);
+}
+
+/* --- 分页内容区 --- */
+.desktop-sidebar-page {
+    display: none;
+    flex-direction: column;
+    flex: 1;
+    overflow: hidden;
+}
+
+.desktop-sidebar-page.active {
+    display: flex;
+}
+
+/* --- 分类标题 --- */
+.desktop-sidebar-section-title {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--secondary-text, rgba(255, 255, 255, 0.35));
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    padding: 10px 12px 4px;
+}
+
+/* ============================================================
+ * 官方挂件卡片
+ * ============================================================ */
+.desktop-sidebar-builtin-card {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    margin: 2px 8px;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    border: 1px solid transparent;
+}
+
+.desktop-sidebar-builtin-card:hover {
+    background: var(--user-bubble-bg, rgba(255, 255, 255, 0.06));
+    border-color: var(--border-color, rgba(255, 255, 255, 0.08));
+}
+
+.desktop-sidebar-builtin-card.dragging {
+    opacity: 0.5;
+    transform: scale(0.96);
+}
+
+.desktop-sidebar-builtin-icon {
+    font-size: 24px;
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--assistant-bubble-bg, rgba(255, 255, 255, 0.04));
+    border-radius: 8px;
+    flex-shrink: 0;
+}
+
+.desktop-sidebar-builtin-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.desktop-sidebar-builtin-name {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--primary-text, rgba(255, 255, 255, 0.85));
+    margin-bottom: 1px;
+}
+
+.desktop-sidebar-builtin-desc {
+    font-size: 10px;
+    color: var(--secondary-text, rgba(255, 255, 255, 0.4));
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* ============================================================
+ * 布局预设
+ * ============================================================ */
+.desktop-sidebar-preset-actions {
+    padding: 10px 10px 4px;
+}
+
+.desktop-sidebar-preset-btn {
+    width: 100%;
+    padding: 10px 14px;
+    background: var(--user-bubble-bg, rgba(255, 255, 255, 0.06));
+    border: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
+    border-radius: 10px;
+    color: var(--primary-text, rgba(255, 255, 255, 0.8));
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-align: center;
+}
+
+.desktop-sidebar-preset-btn:hover {
+    background: var(--assistant-bubble-bg, rgba(255, 255, 255, 0.1));
+    border-color: var(--highlight-text, rgba(100, 180, 255, 0.3));
+    color: var(--highlight-text, rgba(100, 180, 255, 0.9));
+}
+
+.desktop-sidebar-preset-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 10px 12px;
+    margin: 2px 8px;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    border: 1px solid transparent;
+}
+
+.desktop-sidebar-preset-card:hover {
+    background: var(--user-bubble-bg, rgba(255, 255, 255, 0.06));
+    border-color: var(--border-color, rgba(255, 255, 255, 0.08));
+}
+
+.desktop-sidebar-preset-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.desktop-sidebar-preset-name {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--primary-text, rgba(255, 255, 255, 0.85));
+    margin-bottom: 2px;
+}
+
+.desktop-sidebar-preset-meta {
+    font-size: 10px;
+    color: var(--secondary-text, rgba(255, 255, 255, 0.35));
+}
+
+/* --- 浅色主题适配（侧栏分页） --- */
+body.light-theme .desktop-sidebar-tab:hover {
+    background: rgba(0, 0, 0, 0.03);
+}
+
+body.light-theme .desktop-sidebar-tab.active {
+    background: rgba(0, 0, 0, 0.02);
+}
+
+body.light-theme .desktop-sidebar-builtin-card:hover {
+    background: rgba(0, 0, 0, 0.04);
 }
