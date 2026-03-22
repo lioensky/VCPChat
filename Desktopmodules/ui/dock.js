@@ -22,6 +22,7 @@
     let dockItemsContainer = null;
     let dockDrawer = null;
     let dockDrawerList = null;
+    let dockDrawerSearch = null;
     let isDrawerOpen = false;
 
     // Dock 内部拖拽排序状态
@@ -44,6 +45,7 @@
         dockItemsContainer = document.getElementById('desktop-dock-items');
         dockDrawer = document.getElementById('desktop-dock-drawer');
         dockDrawerList = document.getElementById('desktop-dock-drawer-list');
+        dockDrawerSearch = document.getElementById('desktop-dock-drawer-search');
 
         if (!dockElement) return;
 
@@ -71,6 +73,17 @@
             drawerCloseBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 toggleDrawer(false);
+            });
+        }
+
+        // 抽屉搜索框
+        if (dockDrawerSearch) {
+            dockDrawerSearch.addEventListener('input', () => {
+                renderDrawer(dockDrawerSearch.value.trim());
+            });
+            // 阻止搜索框的点击事件冒泡（防止关闭抽屉）
+            dockDrawerSearch.addEventListener('click', (e) => {
+                e.stopPropagation();
             });
         }
 
@@ -429,8 +442,16 @@
         isDrawerOpen = forceState !== undefined ? forceState : !isDrawerOpen;
 
         if (isDrawerOpen) {
+            // 清空搜索框并渲染全部应用
+            if (dockDrawerSearch) {
+                dockDrawerSearch.value = '';
+            }
             renderDrawer();
             dockDrawer.classList.add('open');
+            // 自动聚焦搜索框
+            setTimeout(() => {
+                if (dockDrawerSearch) dockDrawerSearch.focus();
+            }, 100);
         } else {
             dockDrawer.classList.remove('open');
         }
@@ -439,17 +460,32 @@
     /**
      * 渲染抽屉中的全部应用
      */
-    function renderDrawer() {
+    function renderDrawer(filter) {
         if (!dockDrawerList) return;
 
         dockDrawerList.innerHTML = '';
 
-        if (state.dock.items.length === 0) {
-            dockDrawerList.innerHTML = '<div class="desktop-dock-drawer-empty">暂无应用<br><span style="font-size:11px;opacity:0.5;">点击右下角扫描按钮导入桌面快捷方式</span></div>';
+        // 根据搜索关键词过滤
+        let items = state.dock.items;
+        if (filter) {
+            const lowerFilter = filter.toLowerCase();
+            items = items.filter(item => {
+                const nameMatch = item.name && item.name.toLowerCase().includes(lowerFilter);
+                const descMatch = item.description && item.description.toLowerCase().includes(lowerFilter);
+                const pathMatch = item.targetPath && item.targetPath.toLowerCase().includes(lowerFilter);
+                return nameMatch || descMatch || pathMatch;
+            });
+        }
+
+        if (items.length === 0) {
+            const emptyMsg = filter
+                ? `未找到匹配 "${filter}" 的应用`
+                : '暂无应用<br><span style="font-size:11px;opacity:0.5;">点击右下角扫描按钮导入桌面快捷方式</span>';
+            dockDrawerList.innerHTML = `<div class="desktop-dock-drawer-empty">${emptyMsg}</div>`;
             return;
         }
 
-        state.dock.items.forEach((item, index) => {
+        items.forEach((item, index) => {
             const card = document.createElement('div');
             card.className = 'desktop-dock-drawer-item';
             card.title = item.description || item.name;
@@ -534,7 +570,7 @@
             delBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 removeDockItem(item.id);
-                renderDrawer();
+                renderDrawer(dockDrawerSearch ? dockDrawerSearch.value.trim() : '');
             });
             card.appendChild(delBtn);
 
@@ -561,7 +597,7 @@
         // 直接设置 item 的 visible 属性，不再通过数组位置判断
         item.visible = shouldBeVisible;
         renderDock();
-        renderDrawer();
+        renderDrawer(dockDrawerSearch ? dockDrawerSearch.value.trim() : '');
         saveDockConfig();
     }
 
@@ -676,7 +712,7 @@
             );
             if (!existing) {
                 const id = `shortcut_${Date.now()}_${Math.random().toString(36).substr(2, 4)}_${addedCount}`;
-                state.dock.items.push({
+                const newItem = {
                     id,
                     name: sc.name,
                     icon: sc.icon || '',
@@ -687,7 +723,12 @@
                     originalPath: sc.originalPath || '',
                     type: 'shortcut',
                     visible: true,
-                });
+                };
+                // 保留 URL 快捷方式标记（用于 steam:// 等协议链接的启动）
+                if (sc.isUrlShortcut) {
+                    newItem.isUrlShortcut = true;
+                }
+                state.dock.items.push(newItem);
                 addedCount++;
             }
         }
@@ -780,15 +821,16 @@
                 if (!files || files.length === 0) return;
 
                 e.preventDefault();
-                const lnkPaths = [];
+                const shortcutPaths = [];
                 for (let i = 0; i < files.length; i++) {
-                    if (files[i].name.toLowerCase().endsWith('.lnk')) {
-                        lnkPaths.push(files[i].path);
+                    const name = files[i].name.toLowerCase();
+                    if (name.endsWith('.lnk') || name.endsWith('.url')) {
+                        shortcutPaths.push(files[i].path);
                     }
                 }
 
-                if (lnkPaths.length > 0) {
-                    await importLnkFiles(lnkPaths);
+                if (shortcutPaths.length > 0) {
+                    await importLnkFiles(shortcutPaths);
                 }
             });
         }
@@ -822,16 +864,17 @@
                 // 处理外部 .lnk 文件拖入桌面
                 const files = e.dataTransfer.files;
                 if (files && files.length > 0) {
-                    const lnkPaths = [];
+                    const shortcutPaths = [];
                     for (let i = 0; i < files.length; i++) {
-                        if (files[i].name.toLowerCase().endsWith('.lnk')) {
-                            lnkPaths.push(files[i].path);
+                        const name = files[i].name.toLowerCase();
+                        if (name.endsWith('.lnk') || name.endsWith('.url')) {
+                            shortcutPaths.push(files[i].path);
                         }
                     }
-                    if (lnkPaths.length > 0) {
+                    if (shortcutPaths.length > 0) {
                         e.preventDefault();
                         // 先导入到 Dock
-                        const shortcuts = await importLnkFiles(lnkPaths);
+                        const shortcuts = await importLnkFiles(shortcutPaths);
                         // 同时在桌面上创建图标
                         if (shortcuts && shortcuts.length > 0) {
                             let offsetX = 0;

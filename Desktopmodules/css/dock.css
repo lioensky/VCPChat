@@ -255,6 +255,34 @@
     color: var(--primary-text, rgba(255, 255, 255, 0.9));
 }
 
+/* --- 抽屉搜索框 --- */
+.desktop-dock-drawer-search-wrapper {
+    padding: 0 16px 8px;
+    flex-shrink: 0;
+}
+
+.desktop-dock-drawer-search {
+    width: 100%;
+    padding: 7px 12px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    color: var(--primary-text, rgba(255, 255, 255, 0.85));
+    font-size: 12px;
+    outline: none;
+    transition: border-color 0.15s ease, background 0.15s ease;
+    box-sizing: border-box;
+}
+
+.desktop-dock-drawer-search:focus {
+    border-color: rgba(100, 180, 255, 0.4);
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.desktop-dock-drawer-search::placeholder {
+    color: var(--placeholder-text, rgba(255, 255, 255, 0.25));
+}
+
 #desktop-dock-drawer-list {
     flex: 1;
     overflow-y: auto;

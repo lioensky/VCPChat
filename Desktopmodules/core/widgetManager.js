@@ -239,6 +239,9 @@
      * @param {object} widgetData
      */
     function autoResizeWidget(widgetData) {
+        // 如果挂件标记了固定尺寸，跳过自动调整
+        if (widgetData.fixedSize) return;
+
         requestAnimationFrame(() => {
             const container = widgetData.contentContainer;
             if (!container) return;

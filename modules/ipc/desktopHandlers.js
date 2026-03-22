@@ -443,12 +443,110 @@ function initialize(params) {
     // ============================================================
 
     /**
+     * 解析 Windows .url 快捷方式文件（Internet Shortcut）
+     * 支持 Steam 等使用自定义协议的应用（如 steam://rungameid/570）
+     * @param {string} filePath - .url 文件路径
+     * @returns {object|null} 解析后的快捷方式信息
+     */
+    /**
+     * 带超时的 Promise 包装器
+     */
+    function withTimeout(promise, ms, fallback) {
+        return Promise.race([
+            promise,
+            new Promise(resolve => setTimeout(() => resolve(fallback), ms)),
+        ]);
+    }
+
+    async function parseUrlShortcut(filePath) {
+        try {
+            const content = await fs.readFile(filePath, 'utf-8');
+            const lines = content.split(/\r?\n/);
+
+            let url = '';
+            let iconFile = '';
+            let iconIndex = 0;
+
+            for (const line of lines) {
+                const trimmed = line.trim();
+                if (trimmed.toLowerCase().startsWith('url=')) {
+                    url = trimmed.substring(4);
+                } else if (trimmed.toLowerCase().startsWith('iconfile=')) {
+                    iconFile = trimmed.substring(9);
+                } else if (trimmed.toLowerCase().startsWith('iconindex=')) {
+                    iconIndex = parseInt(trimmed.substring(10), 10) || 0;
+                }
+            }
+
+            if (!url) return null;
+
+            const name = path.basename(filePath, '.url');
+
+            // 提取图标（带超时保护，防止 getFileIcon 挂起）
+            let iconDataUrl = '';
+            try {
+                // 优先从 IconFile 指定的文件提取图标
+                if (iconFile && await fs.pathExists(iconFile)) {
+                    const nativeImage = await withTimeout(
+                        app.getFileIcon(iconFile, { size: 'large' }),
+                        3000, // 3秒超时
+                        null
+                    );
+                    if (nativeImage && !nativeImage.isEmpty() && isIconValid(nativeImage)) {
+                        iconDataUrl = nativeImage.toDataURL();
+                    }
+                }
+                // 如果没有有效图标，尝试从 .url 文件本身提取
+                if (!iconDataUrl) {
+                    const nativeImage = await withTimeout(
+                        app.getFileIcon(filePath, { size: 'large' }),
+                        3000,
+                        null
+                    );
+                    if (nativeImage && !nativeImage.isEmpty() && isIconValid(nativeImage)) {
+                        iconDataUrl = nativeImage.toDataURL();
+                    }
+                }
+            } catch (e) {
+                console.warn('[DesktopHandlers] URL shortcut icon extraction failed:', e.message);
+            }
+
+            return {
+                name,
+                targetPath: url,      // 对 .url 文件，targetPath 存储的是 URL（如 steam://rungameid/570）
+                args: '',
+                workingDir: '',
+                description: url,
+                icon: iconDataUrl,
+                originalPath: filePath,
+                isUrlShortcut: true,   // 标记为 URL 快捷方式，启动时使用 shell.openExternal
+            };
+        } catch (e) {
+            console.warn(`[DesktopHandlers] Failed to parse .url file: ${filePath}`, e.message);
+            return null;
+        }
+    }
+
+    /**
      * 解析 Windows 快捷方式 (.lnk) 文件
      * 返回：{ name, targetPath, args, icon (DataURL), workingDir }
      */
     ipcMain.handle('desktop-shortcut-parse', async (event, filePath) => {
         try {
-            if (!filePath || !filePath.toLowerCase().endsWith('.lnk')) {
+            if (!filePath) {
+                return { success: false, error: '不是有效的快捷方式文件' };
+            }
+
+            // 支持 .url 文件
+            if (filePath.toLowerCase().endsWith('.url')) {
+                const result = await parseUrlShortcut(filePath);
+                if (result) {
+                    return { success: true, shortcut: result };
+                }
+                return { success: false, error: '无法解析 .url 快捷方式' };
+            }
+
+            if (!filePath.toLowerCase().endsWith('.lnk')) {
                 return { success: false, error: '不是有效的快捷方式文件' };
             }
 
@@ -473,7 +571,11 @@ function initialize(params) {
             try {
                 // 优先从目标可执行文件提取图标
                 const iconTarget = targetPath || filePath;
-                const nativeImage = await app.getFileIcon(iconTarget, { size: 'large' });
+                const nativeImage = await withTimeout(
+                    app.getFileIcon(iconTarget, { size: 'large' }),
+                    3000,
+                    null
+                );
                 if (nativeImage && !nativeImage.isEmpty() && isIconValid(nativeImage)) {
                     iconDataUrl = nativeImage.toDataURL();
                 }
@@ -481,7 +583,11 @@ function initialize(params) {
                 console.warn('[DesktopHandlers] Icon extraction failed:', iconErr.message);
                 // 尝试从 .lnk 文件本身提取图标
                 try {
-                    const nativeImage = await app.getFileIcon(filePath, { size: 'large' });
+                    const nativeImage = await withTimeout(
+                        app.getFileIcon(filePath, { size: 'large' }),
+                        3000,
+                        null
+                    );
                     if (nativeImage && !nativeImage.isEmpty() && isIconValid(nativeImage)) {
                         iconDataUrl = nativeImage.toDataURL();
                     }
@@ -519,7 +625,18 @@ function initialize(params) {
             const results = [];
             for (const filePath of filePaths) {
                 try {
-                    if (!filePath.toLowerCase().endsWith('.lnk')) continue;
+                    const lowerPath = filePath.toLowerCase();
+
+                    // 支持 .url 文件（Steam 等应用的快捷方式）
+                    if (lowerPath.endsWith('.url')) {
+                        const urlResult = await parseUrlShortcut(filePath);
+                        if (urlResult) {
+                            results.push(urlResult);
+                        }
+                        continue;
+                    }
+
+                    if (!lowerPath.endsWith('.lnk')) continue;
 
                     let shortcutDetails;
                     try {
@@ -534,13 +651,21 @@ function initialize(params) {
                     let iconDataUrl = '';
                     try {
                         const iconTarget = targetPath || filePath;
-                        const nativeImage = await app.getFileIcon(iconTarget, { size: 'large' });
+                        const nativeImage = await withTimeout(
+                            app.getFileIcon(iconTarget, { size: 'large' }),
+                            3000,
+                            null
+                        );
                         if (nativeImage && !nativeImage.isEmpty() && isIconValid(nativeImage)) {
                             iconDataUrl = nativeImage.toDataURL();
                         }
                     } catch (e) {
                         try {
-                            const nativeImage = await app.getFileIcon(filePath, { size: 'large' });
+                            const nativeImage = await withTimeout(
+                                app.getFileIcon(filePath, { size: 'large' }),
+                                3000,
+                                null
+                            );
                             if (nativeImage && !nativeImage.isEmpty() && isIconValid(nativeImage)) {
                                 iconDataUrl = nativeImage.toDataURL();
                             }
@@ -574,15 +699,22 @@ function initialize(params) {
      */
     ipcMain.handle('desktop-shortcut-launch', async (event, shortcutData) => {
         try {
-            const { targetPath, args, workingDir, originalPath } = shortcutData;
+            const { targetPath, args, workingDir, originalPath, isUrlShortcut } = shortcutData;
 
             if (!targetPath && !originalPath) {
                 return { success: false, error: '缺少目标路径' };
             }
 
-            // 优先使用 shell.openPath 打开原始 .lnk 文件（保留完整的快捷方式配置如管理员权限等）
+            // URL 快捷方式（如 steam://rungameid/570）：使用 shell.openExternal 打开
+            if (isUrlShortcut || (targetPath && /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(targetPath))) {
+                console.log(`[DesktopHandlers] Launching URL shortcut: ${targetPath}`);
+                await shell.openExternal(targetPath);
+                return { success: true };
+            }
+
+            // 优先使用 shell.openPath 打开原始 .lnk/.url 文件（保留完整的快捷方式配置如管理员权限等）
             if (originalPath && await fs.pathExists(originalPath)) {
-                console.log(`[DesktopHandlers] Launching shortcut via .lnk: ${originalPath}`);
+                console.log(`[DesktopHandlers] Launching shortcut via original file: ${originalPath}`);
                 const errorMsg = await shell.openPath(originalPath);
                 if (errorMsg) {
                     return { success: false, error: errorMsg };
@@ -629,9 +761,25 @@ function initialize(params) {
                     const files = await fs.readdir(desktopPath);
 
                     for (const file of files) {
-                        if (!file.toLowerCase().endsWith('.lnk')) continue;
-
+                        const lowerFile = file.toLowerCase();
                         const filePath = path.join(desktopPath, file);
+
+                        // 处理 .url 文件（Steam 等应用的快捷方式）
+                        if (lowerFile.endsWith('.url')) {
+                            try {
+                                const urlResult = await parseUrlShortcut(filePath);
+                                if (urlResult) {
+                                    shortcuts.push(urlResult);
+                                }
+                            } catch (e) {
+                                console.warn(`[DesktopHandlers] Cannot parse .url: ${file}`, e.message);
+                            }
+                            continue;
+                        }
+
+                        // 处理 .lnk 文件
+                        if (!lowerFile.endsWith('.lnk')) continue;
+
                         try {
                             const shortcutDetails = shell.readShortcutLink(filePath);
                             const targetPath = shortcutDetails.target || '';
@@ -640,7 +788,11 @@ function initialize(params) {
                             let iconDataUrl = '';
                             try {
                                 const iconTarget = targetPath || filePath;
-                                const nativeImage = await app.getFileIcon(iconTarget, { size: 'large' });
+                                const nativeImage = await withTimeout(
+                                    app.getFileIcon(iconTarget, { size: 'large' }),
+                                    3000,
+                                    null
+                                );
                                 if (nativeImage && !nativeImage.isEmpty() && isIconValid(nativeImage)) {
                                     iconDataUrl = nativeImage.toDataURL();
                                 }
@@ -668,7 +820,7 @@ function initialize(params) {
             // 按名称排序
             shortcuts.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
 
-            console.log(`[DesktopHandlers] Scanned ${shortcuts.length} shortcuts from Windows desktop`);
+            console.log(`[DesktopHandlers] Scanned ${shortcuts.length} shortcuts from Windows desktop (including .url)`);
             return { success: true, shortcuts };
         } catch (err) {
             console.error('[DesktopHandlers] Scan shortcuts error:', err);

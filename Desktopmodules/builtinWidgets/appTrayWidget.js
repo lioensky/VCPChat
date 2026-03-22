@@ -372,6 +372,15 @@ body.light-theme .at-refresh-btn:hover { background: rgba(0,0,0,0.08); color: rg
             height: 360,
         });
 
+        // 标记为固定尺寸挂件 —— 阻止 MutationObserver 触发的自动尺寸调整
+        widgetData.fixedSize = true;
+
+        // 断开内容观察器，防止定期刷新的 DOM 变更触发 autoResize
+        if (widgetData._resizeObserver) {
+            widgetData._resizeObserver.disconnect();
+            widgetData._resizeObserver = null;
+        }
+
         // 强制设置固定尺寸（防止内容撑开）
         widgetData.element.style.width = '340px';
         widgetData.element.style.height = '360px';
