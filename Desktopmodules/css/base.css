@@ -169,3 +169,31 @@ body.desktop-custom-wallpaper-active {
     z-index: 1;
     overflow: hidden;
 }
+
+/* ============================================================
+ * 窗口可见性冻结样式
+ * 当桌面被其他全屏程序遮挡时，暂停所有 CSS 动画/过渡以节省资源
+ * 由 visibilityFreezer.js 控制 body.desktop-frozen 类名
+ * ============================================================ */
+
+/* 全局冻结：暂停所有 CSS 动画和过渡 */
+body.desktop-frozen *,
+body.desktop-frozen *::before,
+body.desktop-frozen *::after {
+    animation-play-state: paused !important;
+    transition: none !important;
+}
+
+/* 挂件级冻结（由 visibilityFreezer 添加） */
+.vcp-widget-frozen,
+.vcp-widget-frozen *,
+.vcp-widget-frozen *::before,
+.vcp-widget-frozen *::after {
+    animation-play-state: paused !important;
+    transition: none !important;
+}
+
+/* Dock 冻结 */
+.vcp-dock-frozen .desktop-dock-icon-img {
+    animation-play-state: paused !important;
+}

@@ -56,6 +56,10 @@ document.addEventListener('DOMContentLoaded', () => {
     if (D.wallpaper) {
         D.wallpaper.init();
     }
+    // 初始化窗口可见性冻结系统
+    if (D.visibilityFreezer) {
+        D.visibilityFreezer.init();
+    }
     D.status.update('waiting', '等待主窗口连接...');
     setTimeout(() => {
         D.status.hide();

@@ -105,18 +105,22 @@
 
         dockItemsContainer.innerHTML = '';
 
-        const visibleItems = state.dock.items.slice(0, state.dock.maxVisible);
+        // 只渲染标记为可见（visible !== false）的项目，最多显示 maxVisible 个
+        const visibleItems = state.dock.items.filter(item => item.visible !== false);
+        const displayItems = visibleItems.slice(0, state.dock.maxVisible);
 
-        visibleItems.forEach((item, index) => {
+        displayItems.forEach((item, index) => {
             const iconEl = createDockIcon(item, index);
             dockItemsContainer.appendChild(iconEl);
         });
 
-        // 更新"更多"按钮的可见性
+        // 更新"更多"按钮的可见性：有不可见的项或可见项超过 maxVisible 时显示
         const moreBtn = document.getElementById('desktop-dock-more-btn');
         if (moreBtn) {
-            moreBtn.style.display = state.dock.items.length > state.dock.maxVisible ? '' : 'none';
-            const hiddenCount = state.dock.items.length - state.dock.maxVisible;
+            const hasHidden = state.dock.items.some(item => item.visible === false) ||
+                              visibleItems.length > state.dock.maxVisible;
+            moreBtn.style.display = (state.dock.items.length > 0 && (hasHidden || state.dock.items.length > state.dock.maxVisible)) ? '' : 'none';
+            const hiddenCount = state.dock.items.length - displayItems.length;
             if (hiddenCount > 0) {
                 moreBtn.title = `还有 ${hiddenCount} 个应用`;
             }
@@ -485,7 +489,7 @@
             const visCheck = document.createElement('input');
             visCheck.type = 'checkbox';
             visCheck.className = 'desktop-dock-drawer-item-check';
-            visCheck.checked = index < state.dock.maxVisible;
+            visCheck.checked = item.visible !== false;
             visCheck.title = '在 Dock 中显示';
             visCheck.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -528,22 +532,8 @@
      * 处理抽屉中的可见性切换
      */
     function handleVisibilityToggle(item, currentIndex, shouldBeVisible) {
-        if (shouldBeVisible) {
-            // 如果当前不在可见范围内，将其移到可见区域末尾
-            if (currentIndex >= state.dock.maxVisible) {
-                // 把它从当前位置移出
-                state.dock.items.splice(currentIndex, 1);
-                // 插到 maxVisible - 1 处（可见区域末尾之前）
-                const insertAt = Math.min(state.dock.maxVisible - 1, state.dock.items.length);
-                state.dock.items.splice(insertAt, 0, item);
-            }
-        } else {
-            // 移到不可见区域
-            if (currentIndex < state.dock.maxVisible) {
-                state.dock.items.splice(currentIndex, 1);
-                state.dock.items.push(item);
-            }
-        }
+        // 直接设置 item 的 visible 属性，不再通过数组位置判断
+        item.visible = shouldBeVisible;
         renderDock();
         renderDrawer();
         saveDockConfig();
@@ -639,6 +629,7 @@
             description: shortcut.description || '',
             originalPath: shortcut.originalPath || '',
             type: 'shortcut',
+            visible: true,
         };
 
         state.dock.items.push(item);
@@ -669,6 +660,7 @@
                     description: sc.description || '',
                     originalPath: sc.originalPath || '',
                     type: 'shortcut',
+                    visible: true,
                 });
                 addedCount++;
             }
@@ -1334,7 +1326,14 @@
             const result = await window.electronAPI.desktopLoadDock();
             if (result?.success && result.data) {
                 state.dock.items = result.data.items || [];
+                // 兼容旧数据：没有 visible 字段的 item 根据原来的位置逻辑设置默认值
                 state.dock.maxVisible = result.data.maxVisible || 8;
+                state.dock.items.forEach((item, index) => {
+                    if (item.visible === undefined) {
+                        // 旧数据迁移：前 maxVisible 个默认可见，其余不可见
+                        item.visible = index < state.dock.maxVisible;
+                    }
+                });
                 renderDock();
                 console.log(`[Dock] Config loaded: ${state.dock.items.length} items`);
             }
