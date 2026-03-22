@@ -1,10 +1,10 @@
 /**
  * modules/ipc/desktopHandlers.js
  * VCPdesktop IPC 处理模块
- * 负责：桌面窗口创建管理、流式推送转发、收藏系统持久化、快捷方式解析/启动、Dock持久化、布局持久化
+ * 负责：桌面窗口创建管理、流式推送转发、收藏系统持久化、快捷方式解析/启动、Dock持久化、布局持久化、壁纸文件选择
  */
 
-const { BrowserWindow, ipcMain, app, screen, shell } = require('electron');
+const { BrowserWindow, ipcMain, app, screen, shell, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs-extra');
 
@@ -744,7 +744,94 @@ function initialize(params) {
         }
     });
 
-    console.log('[DesktopHandlers] Initialized (with favorites, vcpAPI, shortcuts, dock, layout & iconset system).');
+    // ============================================================
+    // --- IPC: 壁纸文件选择 ---
+    // ============================================================
+
+    /**
+     * 打开文件选择对话框，选择壁纸文件
+     * 支持图片、视频(mp4)、HTML 文件
+     * 返回：{ success, filePath, fileUrl, type }
+     */
+    ipcMain.handle('desktop-select-wallpaper', async () => {
+        try {
+            const targetWindow = desktopWindow && !desktopWindow.isDestroyed() ? desktopWindow : mainWindow;
+            const result = await dialog.showOpenDialog(targetWindow, {
+                title: '选择壁纸文件',
+                properties: ['openFile'],
+                filters: [
+                    { name: '所有壁纸类型', extensions: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'avif', 'mp4', 'webm', 'html', 'htm'] },
+                    { name: '图片', extensions: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'avif'] },
+                    { name: '视频', extensions: ['mp4', 'webm'] },
+                    { name: 'HTML 动态壁纸', extensions: ['html', 'htm'] },
+                ],
+            });
+
+            if (result.canceled || !result.filePaths || result.filePaths.length === 0) {
+                return { success: false, canceled: true };
+            }
+
+            const filePath = result.filePaths[0];
+            const ext = path.extname(filePath).toLowerCase().replace('.', '');
+
+            // 检测文件类型
+            const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'avif'];
+            const videoExts = ['mp4', 'webm'];
+            const htmlExts = ['html', 'htm'];
+
+            let type = 'unknown';
+            if (imageExts.includes(ext)) type = 'image';
+            else if (videoExts.includes(ext)) type = 'video';
+            else if (htmlExts.includes(ext)) type = 'html';
+
+            // 将文件路径转为 file:// URL（Electron 渲染进程可以安全加载）
+            const fileUrl = `file:///${filePath.replace(/\\/g, '/')}`;
+
+            console.log(`[DesktopHandlers] Wallpaper selected: ${type} - ${filePath}`);
+            return { success: true, filePath, fileUrl, type };
+        } catch (err) {
+            console.error('[DesktopHandlers] Select wallpaper error:', err);
+            return { success: false, error: err.message };
+        }
+    });
+
+    /**
+     * 读取壁纸文件并返回 Data URL（用于图片壁纸预览或嵌入）
+     * 对于大文件使用 file:// URL 更合适，此 API 主要用于缩略图预览
+     */
+    ipcMain.handle('desktop-read-wallpaper-thumbnail', async (event, filePath) => {
+        try {
+            if (!filePath || !await fs.pathExists(filePath)) {
+                return { success: false, error: '文件不存在' };
+            }
+
+            const ext = path.extname(filePath).toLowerCase();
+            const imageExts = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg', '.avif'];
+
+            if (!imageExts.includes(ext)) {
+                // 非图片类型返回空缩略图
+                return { success: true, thumbnail: '', type: ext.replace('.', '') };
+            }
+
+            // 读取并缩放为缩略图
+            const buffer = await fs.readFile(filePath);
+            const mimeTypes = {
+                '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+                '.png': 'image/png', '.gif': 'image/gif',
+                '.webp': 'image/webp', '.bmp': 'image/bmp',
+                '.svg': 'image/svg+xml', '.avif': 'image/avif',
+            };
+            const mime = mimeTypes[ext] || 'image/png';
+            const dataUrl = `data:${mime};base64,${buffer.toString('base64')}`;
+
+            return { success: true, thumbnail: dataUrl };
+        } catch (err) {
+            console.error('[DesktopHandlers] Read wallpaper thumbnail error:', err);
+            return { success: false, error: err.message };
+        }
+    });
+
+    console.log('[DesktopHandlers] Initialized (with favorites, vcpAPI, shortcuts, dock, layout, iconset & wallpaper system).');
 }
 
 /**

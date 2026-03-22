@@ -1,19 +1,33 @@
 /**
  * VCPdesktop - 全局设置模块
  * 负责：桌面全局设置的UI渲染、保存/加载、应用设置逻辑
- * 
+ *
  * 设置项：
  *   - autoMaximize: 打开桌面时自动最大化
  *   - alwaysOnBottom: 桌面窗口自动置于所有窗口最底层
  *   - defaultPresetId: 启动时自动加载的默认预设ID
  *   - dock.maxVisible: Dock栏默认显示图标数目
  *   - dock.iconSize: Dock栏图标大小
+ *   - wallpaper: 自定义壁纸配置
  */
 
 'use strict';
 
 (function () {
     const { state } = window.VCPDesktop;
+
+    // 默认壁纸设置
+    const DEFAULT_WALLPAPER = {
+        enabled: false,
+        type: 'none',
+        source: '',
+        filePath: '',
+        opacity: 1,
+        blur: 0,
+        brightness: 1,
+        videoMuted: true,
+        videoPlaybackRate: 1,
+    };
 
     // 默认设置
     const DEFAULT_SETTINGS = {
@@ -24,6 +38,7 @@
             maxVisible: 8,
             iconSize: 32,       // px
         },
+        wallpaper: { ...DEFAULT_WALLPAPER },
     };
 
     let overlayEl = null;
@@ -35,7 +50,11 @@
     async function init() {
         // 确保 state.globalSettings 存在
         if (!state.globalSettings) {
-            state.globalSettings = { ...DEFAULT_SETTINGS, dock: { ...DEFAULT_SETTINGS.dock } };
+            state.globalSettings = {
+                ...DEFAULT_SETTINGS,
+                dock: { ...DEFAULT_SETTINGS.dock },
+                wallpaper: { ...DEFAULT_WALLPAPER },
+            };
         }
 
         // 从磁盘加载设置（等待完成，确保后续 applyOnStartup 能读取到）
@@ -75,6 +94,9 @@
                 closeSettingsModal();
             });
         }
+
+        // 初始化壁纸 UI 控件事件绑定
+        initWallpaperControls();
     }
 
     // ============================================================
@@ -123,6 +145,9 @@
         const dockSizeLabelEl = document.getElementById('desktop-setting-dock-size-label');
         if (dockSizeEl) dockSizeEl.value = s.dock?.iconSize || DEFAULT_SETTINGS.dock.iconSize;
         if (dockSizeLabelEl) dockSizeLabelEl.textContent = `${s.dock?.iconSize || DEFAULT_SETTINGS.dock.iconSize}px`;
+
+        // 壁纸设置
+        populateWallpaperUI();
     }
 
     /**
@@ -154,6 +179,9 @@
             }
         }
 
+        // 读取壁纸 UI 值
+        readWallpaperFromUI();
+
         // 应用设置
         applySettings();
 
@@ -172,8 +200,17 @@
      * 重置为默认设置
      */
     function resetSettings() {
-        state.globalSettings = { ...DEFAULT_SETTINGS, dock: { ...DEFAULT_SETTINGS.dock } };
+        state.globalSettings = {
+            ...DEFAULT_SETTINGS,
+            dock: { ...DEFAULT_SETTINGS.dock },
+            wallpaper: { ...DEFAULT_WALLPAPER },
+        };
         populateUI();
+
+        // 立即应用壁纸重置
+        if (window.VCPDesktop.wallpaper) {
+            window.VCPDesktop.wallpaper.apply(state.globalSettings.wallpaper);
+        }
 
         if (window.VCPDesktop.status) {
             window.VCPDesktop.status.update('connected', '已恢复默认设置');
@@ -249,6 +286,11 @@
         // 4. Dock 图标大小 - 通过 CSS 变量应用
         if (s.dock?.iconSize) {
             document.documentElement.style.setProperty('--desktop-dock-icon-size', `${s.dock.iconSize}px`);
+        }
+
+        // 5. 壁纸
+        if (window.VCPDesktop.wallpaper) {
+            window.VCPDesktop.wallpaper.apply(s.wallpaper);
         }
     }
 
@@ -344,6 +386,10 @@
                         ...DEFAULT_SETTINGS.dock,
                         ...(layoutData.globalSettings.dock || {}),
                     },
+                    wallpaper: {
+                        ...DEFAULT_WALLPAPER,
+                        ...(layoutData.globalSettings.wallpaper || {}),
+                    },
                 };
                 console.log('[GlobalSettings] Settings loaded from layout.json:', state.globalSettings);
             }
@@ -403,6 +449,257 @@
         if (sizeRange && sizeLabel) {
             sizeRange.addEventListener('input', () => {
                 sizeLabel.textContent = `${sizeRange.value}px`;
+            });
+        }
+    }
+
+    // ============================================================
+    // 壁纸 UI 交互
+    // ============================================================
+
+    /**
+     * 填充壁纸 UI 控件
+     */
+    function populateWallpaperUI() {
+        const wp = state.globalSettings.wallpaper || DEFAULT_WALLPAPER;
+
+        // 启用开关
+        const enabledEl = document.getElementById('desktop-setting-wallpaper-enabled');
+        if (enabledEl) enabledEl.checked = !!wp.enabled;
+
+        // 显示/隐藏配置区域
+        const configEl = document.getElementById('desktop-settings-wallpaper-config');
+        if (configEl) configEl.style.display = wp.enabled ? '' : 'none';
+
+        // 透明度
+        const opacityEl = document.getElementById('desktop-setting-wallpaper-opacity');
+        const opacityLabel = document.getElementById('desktop-setting-wallpaper-opacity-label');
+        if (opacityEl) opacityEl.value = Math.round((wp.opacity || 1) * 100);
+        if (opacityLabel) opacityLabel.textContent = `${Math.round((wp.opacity || 1) * 100)}%`;
+
+        // 模糊度
+        const blurEl = document.getElementById('desktop-setting-wallpaper-blur');
+        const blurLabel = document.getElementById('desktop-setting-wallpaper-blur-label');
+        if (blurEl) blurEl.value = wp.blur || 0;
+        if (blurLabel) blurLabel.textContent = `${wp.blur || 0}px`;
+
+        // 亮度
+        const brightnessEl = document.getElementById('desktop-setting-wallpaper-brightness');
+        const brightnessLabel = document.getElementById('desktop-setting-wallpaper-brightness-label');
+        if (brightnessEl) brightnessEl.value = Math.round((wp.brightness || 1) * 100);
+        if (brightnessLabel) brightnessLabel.textContent = `${Math.round((wp.brightness || 1) * 100)}%`;
+
+        // 视频静音
+        const videoMutedEl = document.getElementById('desktop-setting-wallpaper-video-muted');
+        if (videoMutedEl) videoMutedEl.checked = wp.videoMuted !== false;
+
+        // 视频播放速度
+        const videoSpeedEl = document.getElementById('desktop-setting-wallpaper-video-speed');
+        const videoSpeedLabel = document.getElementById('desktop-setting-wallpaper-video-speed-label');
+        if (videoSpeedEl) videoSpeedEl.value = Math.round((wp.videoPlaybackRate || 1) * 100);
+        if (videoSpeedLabel) videoSpeedLabel.textContent = `${(wp.videoPlaybackRate || 1).toFixed(1)}x`;
+
+        // 显示/隐藏视频选项
+        const videoOptionsEl = document.getElementById('desktop-settings-wallpaper-video-options');
+        if (videoOptionsEl) videoOptionsEl.style.display = wp.type === 'video' ? '' : 'none';
+
+        // 更新预览
+        updateWallpaperPreview(wp);
+
+        // 更新文件信息
+        const infoEl = document.getElementById('desktop-settings-wallpaper-info');
+        if (infoEl) {
+            if (wp.filePath) {
+                const typeLabels = { image: '🖼️ 图片', video: '🎬 视频', html: '🌐 HTML' };
+                infoEl.textContent = `${typeLabels[wp.type] || wp.type} · ${wp.filePath}`;
+            } else {
+                infoEl.textContent = '';
+            }
+        }
+    }
+
+    /**
+     * 更新壁纸预览区域
+     */
+    function updateWallpaperPreview(wp) {
+        const previewEl = document.getElementById('desktop-settings-wallpaper-preview');
+        if (!previewEl) return;
+
+        previewEl.innerHTML = '';
+
+        if (!wp.source || wp.type === 'none') {
+            previewEl.innerHTML = '<div class="desktop-settings-wallpaper-preview-empty">未选择壁纸<br>支持图片、视频(mp4)、HTML动态壁纸</div>';
+            return;
+        }
+
+        // 类型标记
+        const badge = document.createElement('div');
+        badge.className = 'desktop-settings-wallpaper-type-badge';
+        const typeLabels = { image: '图片', video: '视频', html: 'HTML' };
+        badge.textContent = typeLabels[wp.type] || wp.type;
+
+        if (wp.type === 'image') {
+            const img = document.createElement('img');
+            img.src = wp.source;
+            img.alt = '壁纸预览';
+            img.onerror = () => {
+                previewEl.innerHTML = '<div class="desktop-settings-wallpaper-preview-empty">图片加载失败</div>';
+            };
+            previewEl.appendChild(img);
+        } else if (wp.type === 'video') {
+            const video = document.createElement('video');
+            video.src = wp.source;
+            video.muted = true;
+            video.autoplay = true;
+            video.loop = true;
+            video.playsInline = true;
+            video.style.pointerEvents = 'none';
+            previewEl.appendChild(video);
+        } else if (wp.type === 'html') {
+            // HTML 壁纸在预览中显示占位提示
+            const placeholder = document.createElement('div');
+            placeholder.className = 'desktop-settings-wallpaper-preview-empty';
+            placeholder.innerHTML = '🌐 HTML 动态壁纸<br><span style="font-size:10px;opacity:0.5">保存后可在桌面预览效果</span>';
+            previewEl.appendChild(placeholder);
+        }
+
+        previewEl.appendChild(badge);
+    }
+
+    /**
+     * 从 UI 读取壁纸设置
+     */
+    function readWallpaperFromUI() {
+        const s = state.globalSettings;
+        if (!s.wallpaper) s.wallpaper = { ...DEFAULT_WALLPAPER };
+
+        const enabledEl = document.getElementById('desktop-setting-wallpaper-enabled');
+        if (enabledEl) s.wallpaper.enabled = enabledEl.checked;
+
+        const opacityEl = document.getElementById('desktop-setting-wallpaper-opacity');
+        if (opacityEl) s.wallpaper.opacity = parseInt(opacityEl.value) / 100;
+
+        const blurEl = document.getElementById('desktop-setting-wallpaper-blur');
+        if (blurEl) s.wallpaper.blur = parseInt(blurEl.value);
+
+        const brightnessEl = document.getElementById('desktop-setting-wallpaper-brightness');
+        if (brightnessEl) s.wallpaper.brightness = parseInt(brightnessEl.value) / 100;
+
+        const videoMutedEl = document.getElementById('desktop-setting-wallpaper-video-muted');
+        if (videoMutedEl) s.wallpaper.videoMuted = videoMutedEl.checked;
+
+        const videoSpeedEl = document.getElementById('desktop-setting-wallpaper-video-speed');
+        if (videoSpeedEl) s.wallpaper.videoPlaybackRate = parseInt(videoSpeedEl.value) / 100;
+    }
+
+    /**
+     * 初始化壁纸相关的 UI 事件绑定
+     */
+    function initWallpaperControls() {
+        // 壁纸启用开关
+        const enabledEl = document.getElementById('desktop-setting-wallpaper-enabled');
+        const configEl = document.getElementById('desktop-settings-wallpaper-config');
+        if (enabledEl && configEl) {
+            enabledEl.addEventListener('change', () => {
+                configEl.style.display = enabledEl.checked ? '' : 'none';
+            });
+        }
+
+        // 选择壁纸文件按钮
+        const selectBtn = document.getElementById('desktop-setting-wallpaper-select');
+        if (selectBtn) {
+            selectBtn.addEventListener('click', async () => {
+                if (!window.electronAPI?.desktopSelectWallpaper) {
+                    console.warn('[GlobalSettings] desktopSelectWallpaper API not available');
+                    return;
+                }
+
+                const result = await window.electronAPI.desktopSelectWallpaper();
+                if (!result.success || result.canceled) return;
+
+                const wp = state.globalSettings.wallpaper || (state.globalSettings.wallpaper = { ...DEFAULT_WALLPAPER });
+                wp.type = result.type;
+                wp.source = result.fileUrl;
+                wp.filePath = result.filePath;
+                wp.enabled = true;
+
+                // 更新启用开关
+                if (enabledEl) enabledEl.checked = true;
+                if (configEl) configEl.style.display = '';
+
+                // 显示/隐藏视频选项
+                const videoOptionsEl = document.getElementById('desktop-settings-wallpaper-video-options');
+                if (videoOptionsEl) videoOptionsEl.style.display = result.type === 'video' ? '' : 'none';
+
+                // 更新预览
+                updateWallpaperPreview(wp);
+
+                // 更新文件信息
+                const infoEl = document.getElementById('desktop-settings-wallpaper-info');
+                if (infoEl) {
+                    const typeLabels = { image: '🖼️ 图片', video: '🎬 视频', html: '🌐 HTML' };
+                    infoEl.textContent = `${typeLabels[result.type] || result.type} · ${result.filePath}`;
+                }
+
+                console.log(`[GlobalSettings] Wallpaper selected: ${result.type} - ${result.filePath}`);
+            });
+        }
+
+        // 移除壁纸按钮
+        const clearBtn = document.getElementById('desktop-setting-wallpaper-clear');
+        if (clearBtn) {
+            clearBtn.addEventListener('click', () => {
+                const wp = state.globalSettings.wallpaper || (state.globalSettings.wallpaper = { ...DEFAULT_WALLPAPER });
+                wp.type = 'none';
+                wp.source = '';
+                wp.filePath = '';
+
+                // 更新预览
+                updateWallpaperPreview(wp);
+
+                // 清除文件信息
+                const infoEl = document.getElementById('desktop-settings-wallpaper-info');
+                if (infoEl) infoEl.textContent = '';
+
+                // 隐藏视频选项
+                const videoOptionsEl = document.getElementById('desktop-settings-wallpaper-video-options');
+                if (videoOptionsEl) videoOptionsEl.style.display = 'none';
+            });
+        }
+
+        // 透明度滑块
+        const opacityEl = document.getElementById('desktop-setting-wallpaper-opacity');
+        const opacityLabel = document.getElementById('desktop-setting-wallpaper-opacity-label');
+        if (opacityEl && opacityLabel) {
+            opacityEl.addEventListener('input', () => {
+                opacityLabel.textContent = `${opacityEl.value}%`;
+            });
+        }
+
+        // 模糊度滑块
+        const blurEl = document.getElementById('desktop-setting-wallpaper-blur');
+        const blurLabel = document.getElementById('desktop-setting-wallpaper-blur-label');
+        if (blurEl && blurLabel) {
+            blurEl.addEventListener('input', () => {
+                blurLabel.textContent = `${blurEl.value}px`;
+            });
+        }
+
+        // 亮度滑块
+        const brightnessEl = document.getElementById('desktop-setting-wallpaper-brightness');
+        const brightnessLabel = document.getElementById('desktop-setting-wallpaper-brightness-label');
+        if (brightnessEl && brightnessLabel) {
+            brightnessEl.addEventListener('input', () => {
+                brightnessLabel.textContent = `${brightnessEl.value}%`;
+            });
+        }
+
+        // 视频播放速度滑块
+        const videoSpeedEl = document.getElementById('desktop-setting-wallpaper-video-speed');
+        const videoSpeedLabel = document.getElementById('desktop-setting-wallpaper-video-speed-label');
+        if (videoSpeedEl && videoSpeedLabel) {
+            videoSpeedEl.addEventListener('input', () => {
+                videoSpeedLabel.textContent = `${(parseInt(videoSpeedEl.value) / 100).toFixed(1)}x`;
             });
         }
     }

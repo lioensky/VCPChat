@@ -456,6 +456,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     desktopIconsetListPresets: () => ipcRenderer.invoke('desktop-iconset-list-presets'),
     desktopIconsetListIcons: (params) => ipcRenderer.invoke('desktop-iconset-list-icons', params),
     desktopIconsetGetIconData: (relativePath) => ipcRenderer.invoke('desktop-iconset-get-icon-data', relativePath),
+
+    // VCPdesktop - 壁纸系统 IPC 通道
+    desktopSelectWallpaper: () => ipcRenderer.invoke('desktop-select-wallpaper'),
+    desktopReadWallpaperThumbnail: (filePath) => ipcRenderer.invoke('desktop-read-wallpaper-thumbnail', filePath),
 });
 
 // Log the electronAPI object as it's defined in preload.js right after exposing it

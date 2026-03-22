@@ -32,6 +32,17 @@
                 maxVisible: 8,       // Dock 栏默认显示图标数
                 iconSize: 32,        // Dock 栏图标大小 (px)
             },
+            wallpaper: {
+                enabled: false,          // 是否启用自定义壁纸
+                type: 'none',            // 'image' | 'video' | 'html' | 'none'
+                source: '',              // 文件 URL (file:///...)
+                filePath: '',            // 原始文件路径（用于显示和重新加载）
+                opacity: 1,              // 壁纸透明度 0~1
+                blur: 0,                 // 模糊度 px
+                brightness: 1,           // 亮度 0~2
+                videoMuted: true,        // 视频壁纸是否静音
+                videoPlaybackRate: 1,    // 视频播放速率
+            },
         },
     };
 

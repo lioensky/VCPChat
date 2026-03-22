@@ -53,6 +53,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 4. 初始化各子系统
     D.theme.init();
+    if (D.wallpaper) {
+        D.wallpaper.init();
+    }
     D.status.update('waiting', '等待主窗口连接...');
     setTimeout(() => {
         D.status.hide();
