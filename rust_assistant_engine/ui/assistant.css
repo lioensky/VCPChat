@@ -269,22 +269,24 @@ body.light-theme #attachFileBtn svg {
     color: var(--danger-color);
 }
 
-/* 悬浮工具条样式 */
+/* 悬浮工具条样式 - 统一全局主题 */
 #selection-assistant-bar {
     position: fixed;
-    background-color: var(--panel-bg);
+    background-color: var(--secondary-bg);
     border: 1px solid var(--border-color);
-    border-radius: 8px;
-    /* box-shadow: 0 4px 12px rgba(0,0,0,0.15); */ /* Removed shadow to prevent rendering artifacts */
-    padding: 5px;
+    border-radius: 12px;
+    padding: 6px 8px;
     display: flex;
     align-items: center;
-    gap: 5px;
+    gap: 6px;
     z-index: 2147483647; /* 确保在最顶层 */
     transition: opacity 0.2s ease-in-out, transform 0.2s ease-in-out;
     opacity: 0;
     pointer-events: none;
     transform: translateY(10px);
+    -webkit-backdrop-filter: blur(12px) saturate(120%);
+    backdrop-filter: blur(12px) saturate(120%);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
 }
 
 #selection-assistant-bar.visible {
@@ -298,33 +300,61 @@ body.light-theme #attachFileBtn svg {
     height: 28px;
     border-radius: 50%;
     object-fit: cover;
+    border: 2px solid var(--highlight-text);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
 }
 
 #selection-assistant-bar .assistant-button {
-    background: none;
+    background: transparent;
     border: 1px solid var(--border-color);
     color: var(--secondary-text);
-    padding: 4px 8px;
-    border-radius: 5px;
+    padding: 5px 10px;
+    border-radius: 8px;
     cursor: pointer;
-    font-size: 0.9em;
-    transition: background-color 0.2s, color 0.2s;
+    font-size: 0.85em;
+    font-weight: 500;
+    transition: all 0.2s ease;
+    white-space: nowrap;
 }
 
 #selection-assistant-bar .assistant-button:hover {
     background-color: var(--accent-bg);
-    color: var(--primary-text);
+    border-color: var(--highlight-text);
+    color: var(--highlight-text);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
-/* 浅色主题下悬浮按钮的特定样式 */
-body.light-theme #selection-assistant-bar .assistant-button {
+/* 深色主题下悬浮条的特定样式 */
+body.dark-theme #selection-assistant-bar {
+    background-color: rgba(37, 40, 48, 0.92);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+}
+
+body.dark-theme #selection-assistant-bar .assistant-button:hover {
+    background-color: rgba(229, 192, 123, 0.15);
     color: var(--highlight-text);
-    border-color: var(--highlight-text);
+}
+
+/* 浅色主题下悬浮条的特定样式 */
+body.light-theme #selection-assistant-bar {
+    background-color: rgba(255, 255, 255, 0.92);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+}
+
+body.light-theme #selection-assistant-bar .assistant-button {
+    color: var(--primary-text);
+    border-color: var(--border-color);
 }
 
 body.light-theme #selection-assistant-bar .assistant-button:hover {
     background-color: var(--highlight-text);
+    border-color: var(--highlight-text);
     color: var(--text-on-accent);
+}
+
+body.light-theme #selection-assistant-bar .assistant-avatar {
+    border-color: var(--highlight-text);
 }
 
 /* Light theme override for input area */
