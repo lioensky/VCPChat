@@ -1,11 +1,13 @@
 /**
  * VCPdesktop - 窗口可见性冻结模块
- * 负责：当桌面窗口被其他全屏程序遮挡或最小化时，自动冻结所有动画以节省资源
+ * 负责：当桌面窗口最小化或被系统级遮挡时，自动冻结所有动画以节省资源
  *
  * 检测机制：
  *   1. document.visibilitychange — 最小化/切换标签页
- *   2. window blur/focus — 其他窗口覆盖（含全屏程序）
- *   3. Electron IPC 'window-occluded' — 系统级遮挡检测（如果可用）
+ *   2. Electron IPC 'window-occluded' — 系统级遮挡检测（如果可用）
+ *
+ * 注意：不再监听 blur/focus 事件，因为普通窗口覆盖（非全屏/非最大化遮挡）
+ *       也会触发 blur，导致冻结机制过于灵敏。
  *
  * 冻结范围：
  *   - 壁纸层（视频暂停、HTML iframe 通信）
@@ -14,6 +16,8 @@
  *   - Dock GIF 动画图标
  *
  * 借鉴 visibilityOptimizer.js 的暂停/恢复策略，但作用于整个桌面窗口级别。
+ *
+ * 功能开关：可通过全局设置中的 visibilityFreezerEnabled 控制是否启用此功能。
  */
 
 'use strict';
@@ -22,15 +26,12 @@
     const { state, domRefs } = window.VCPDesktop;
 
     let isFrozen = false;
-    let blurTimer = null;
 
     // 被冻结前壁纸视频是否正在播放
     let wallpaperVideoWasPlaying = false;
 
     // 配置
     const CONFIG = {
-        // blur 事件后延迟冻结（防止短暂焦点切换误触，如右键菜单弹出）
-        blurFreezeDelay: 800,
         // 调试日志
         debug: false,
     };
@@ -40,19 +41,25 @@
     // ============================================================
 
     /**
+     * 检查功能是否启用（读取全局设置）
+     */
+    function isEnabled() {
+        // 默认启用；如果全局设置中明确关闭则禁用
+        const setting = state.globalSettings?.visibilityFreezerEnabled;
+        return setting !== false;
+    }
+
+    /**
      * 初始化可见性冻结系统
      */
     function init() {
         // 1. Page Visibility API — 最可靠，最小化/标签切换必触发
         document.addEventListener('visibilitychange', onVisibilityChange);
 
-        // 2. blur/focus — 其他窗口覆盖时触发
-        window.addEventListener('blur', onWindowBlur);
-        window.addEventListener('focus', onWindowFocus);
-
-        // 3. Electron IPC — 系统级遮挡检测（若 preload 暴露了此接口）
+        // 2. Electron IPC — 系统级遮挡检测（若 preload 暴露了此接口）
         if (window.electronAPI?.onWindowOccluded) {
             window.electronAPI.onWindowOccluded((occluded) => {
+                if (!isEnabled()) return;
                 if (occluded) {
                     freeze('electron-occluded');
                 } else {
@@ -61,7 +68,7 @@
             });
         }
 
-        log('Initialized');
+        log('Initialized (enabled: ' + isEnabled() + ')');
     }
 
     // ============================================================
@@ -69,32 +76,12 @@
     // ============================================================
 
     function onVisibilityChange() {
+        if (!isEnabled()) return;
         if (document.hidden) {
             freeze('visibilitychange');
         } else {
             unfreeze('visibilitychange');
         }
-    }
-
-    function onWindowBlur() {
-        // 延迟冻结，防止短暂焦点丢失（如弹出系统对话框、右键菜单）
-        if (blurTimer) clearTimeout(blurTimer);
-        blurTimer = setTimeout(() => {
-            blurTimer = null;
-            // 再次检查：如果 document 已经 hidden 了，由 visibilitychange 处理
-            if (!document.hidden) {
-                freeze('window-blur');
-            }
-        }, CONFIG.blurFreezeDelay);
-    }
-
-    function onWindowFocus() {
-        // 取消延迟冻结（如果还没执行的话）
-        if (blurTimer) {
-            clearTimeout(blurTimer);
-            blurTimer = null;
-        }
-        unfreeze('window-focus');
     }
 
     // ============================================================
@@ -383,6 +370,21 @@
         return isFrozen;
     }
 
+    /**
+     * 动态设置启用/禁用状态
+     * @param {boolean} enabled - true 启用冻结功能，false 禁用
+     */
+    function setEnabled(enabled) {
+        if (state.globalSettings) {
+            state.globalSettings.visibilityFreezerEnabled = !!enabled;
+        }
+        // 如果禁用且当前处于冻结状态，立即解冻
+        if (!enabled && isFrozen) {
+            unfreeze('disabled-by-user');
+        }
+        log('Enabled set to: ' + enabled);
+    }
+
     // ============================================================
     // 导出
     // ============================================================
@@ -392,6 +394,8 @@
         freeze,
         unfreeze,
         isFrozen: isFrozenState,
+        isEnabled,
+        setEnabled,
     };
 
 })();
