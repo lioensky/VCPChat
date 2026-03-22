@@ -22,7 +22,7 @@ process.stdin.on('end', () => {
         const command = args.command || args.Command || args.action || args.Action;
 
         if (!command) {
-            throw new Error("The 'command' parameter is required. Valid commands: 'SetWallpaper', 'QueryDesktop', 'ViewWidgetSource'.");
+            throw new Error("The 'command' parameter is required. Valid commands: 'SetWallpaper', 'QueryDesktop', 'ViewWidgetSource', 'CreateWidget'.");
         }
 
         const normalizedCommand = command.toLowerCase();
@@ -66,8 +66,44 @@ process.stdin.on('end', () => {
 
             console.log(JSON.stringify(commandPayload));
 
+        } else if (normalizedCommand === 'createwidget' || normalizedCommand === 'create_widget' || normalizedCommand === 'create') {
+            // CreateWidget command - create a new widget on the desktop canvas
+            const htmlContent = args.htmlContent || args.htmlcontent || args.HtmlContent
+                || args.html || args.Html || args.content || args.Content;
+
+            if (!htmlContent) {
+                throw new Error("The 'htmlContent' parameter is required for CreateWidget command. Provide the HTML code for the widget.");
+            }
+
+            // Optional position and size parameters
+            const x = _parseNumber(args.x || args.X || args.posX || args.positionX);
+            const y = _parseNumber(args.y || args.Y || args.posY || args.positionY);
+            const width = _parseNumber(args.width || args.Width || args.w);
+            const height = _parseNumber(args.height || args.Height || args.h);
+
+            // Optional widget ID and save options
+            const widgetId = args.widgetId || args.widgetid || args.WidgetId || args.widget_id || args.id || args.Id || null;
+            const autoSave = _parseBoolean(args.autoSave || args.autosave || args.AutoSave || args.auto_save);
+            const saveName = args.saveName || args.savename || args.SaveName || args.save_name || args.name || args.Name || null;
+
+            const commandPayload = {
+                command: 'CreateWidget',
+                htmlContent: htmlContent,
+            };
+
+            // Only include optional fields if they have valid values
+            if (x !== null) commandPayload.x = x;
+            if (y !== null) commandPayload.y = y;
+            if (width !== null) commandPayload.width = width;
+            if (height !== null) commandPayload.height = height;
+            if (widgetId) commandPayload.widgetId = widgetId;
+            if (autoSave) commandPayload.autoSave = true;
+            if (saveName) commandPayload.saveName = saveName;
+
+            console.log(JSON.stringify(commandPayload));
+
         } else {
-            throw new Error(`Unknown command: '${command}'. Valid commands: 'SetWallpaper', 'QueryDesktop', 'ViewWidgetSource'.`);
+            throw new Error(`Unknown command: '${command}'. Valid commands: 'SetWallpaper', 'QueryDesktop', 'ViewWidgetSource', 'CreateWidget'.`);
         }
 
     } catch (error) {
@@ -75,3 +111,26 @@ process.stdin.on('end', () => {
         process.exit(1);
     }
 });
+
+/**
+ * Parse a value as a number, return null if invalid
+ * @param {*} val
+ * @returns {number|null}
+ */
+function _parseNumber(val) {
+    if (val === undefined || val === null) return null;
+    const num = Number(val);
+    return isNaN(num) ? null : num;
+}
+
+/**
+ * Parse a value as a boolean
+ * @param {*} val
+ * @returns {boolean}
+ */
+function _parseBoolean(val) {
+    if (val === undefined || val === null) return false;
+    if (typeof val === 'boolean') return val;
+    if (typeof val === 'string') return val.toLowerCase() === 'true';
+    return !!val;
+}

@@ -199,6 +199,145 @@
                 }
             });
         }
+
+        // 远程创建挂件
+        if (window.electronAPI?.onDesktopRemoteCreateWidget) {
+            window.electronAPI.onDesktopRemoteCreateWidget((data) => {
+                const { widgetId, htmlContent, options, autoSave, saveName } = data;
+                console.log(`[Desktop IPC] Received remote create widget: ${widgetId}`, options);
+                try {
+                    // 使用 widgetManager 创建挂件
+                    const widgetData = widget.create(widgetId, {
+                        x: options.x || 100,
+                        y: options.y || 100,
+                        width: options.width || 320,
+                        height: options.height || 200,
+                    });
+
+                    // 设置内容
+                    widget.appendContent(widgetId, htmlContent);
+
+                    // 完成渲染（执行脚本等）
+                    widget.finalize(widgetId);
+
+                    status.update('connected', `AI创建了新挂件: ${widgetId}`);
+                    status.show();
+                    setTimeout(() => status.hide(), 3000);
+
+                    // 如果需要自动收藏
+                    if (autoSave && saveName) {
+                        _autoSaveWidget(widgetId, saveName, widgetData).then((savedResult) => {
+                            // 发送成功响应
+                            if (window.electronAPI?.sendDesktopRemoteCreateWidgetResponse) {
+                                window.electronAPI.sendDesktopRemoteCreateWidgetResponse({
+                                    success: true,
+                                    widgetId,
+                                    savedId: savedResult?.id || null,
+                                    savedName: savedResult?.name || null,
+                                });
+                            }
+                        }).catch((saveErr) => {
+                            console.warn('[Desktop IPC] Auto-save failed, but widget was created:', saveErr);
+                            if (window.electronAPI?.sendDesktopRemoteCreateWidgetResponse) {
+                                window.electronAPI.sendDesktopRemoteCreateWidgetResponse({
+                                    success: true,
+                                    widgetId,
+                                    savedId: null,
+                                    savedName: null,
+                                });
+                            }
+                        });
+                    } else {
+                        // 无需收藏，直接返回成功
+                        if (window.electronAPI?.sendDesktopRemoteCreateWidgetResponse) {
+                            window.electronAPI.sendDesktopRemoteCreateWidgetResponse({
+                                success: true,
+                                widgetId,
+                            });
+                        }
+                    }
+
+                    console.log(`[Desktop IPC] Widget created successfully: ${widgetId}`);
+                } catch (err) {
+                    console.error('[Desktop IPC] Create widget error:', err);
+                    if (window.electronAPI?.sendDesktopRemoteCreateWidgetResponse) {
+                        window.electronAPI.sendDesktopRemoteCreateWidgetResponse({
+                            success: false,
+                            error: err.message,
+                        });
+                    }
+                }
+            });
+        }
+    }
+
+    /**
+     * 自动收藏挂件（内部辅助函数）
+     * @param {string} widgetId - 挂件 ID
+     * @param {string} saveName - 收藏名称
+     * @param {object} widgetData - 挂件数据
+     * @returns {Promise<{id: string, name: string}|null>}
+     */
+    async function _autoSaveWidget(widgetId, saveName, widgetData) {
+        try {
+            const savedId = `saved-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+            const htmlContent = widgetData.contentBuffer || widgetData.contentContainer?.innerHTML || '';
+
+            if (!htmlContent) {
+                console.warn('[Desktop IPC] No content to save for auto-save');
+                return null;
+            }
+
+            // 获取缩略图
+            let thumbnail = '';
+            try {
+                const rect = widgetData.element.getBoundingClientRect();
+                if (window.electronAPI?.desktopCaptureWidget) {
+                    const captureResult = await window.electronAPI.desktopCaptureWidget({
+                        x: Math.round(rect.x),
+                        y: Math.round(rect.y),
+                        width: Math.round(rect.width),
+                        height: Math.round(rect.height),
+                    });
+                    if (captureResult?.success) {
+                        thumbnail = captureResult.thumbnail;
+                    }
+                }
+            } catch (e) {
+                console.warn('[Desktop IPC] Thumbnail capture failed:', e.message);
+            }
+
+            // 调用收藏 API
+            if (window.electronAPI?.desktopSaveWidget) {
+                const result = await window.electronAPI.desktopSaveWidget({
+                    id: savedId,
+                    name: saveName,
+                    html: htmlContent,
+                    thumbnail,
+                });
+
+                if (result?.success) {
+                    // 更新挂件的收藏标记
+                    widgetData.savedName = saveName;
+                    widgetData.savedId = savedId;
+                    console.log(`[Desktop IPC] Widget auto-saved: ${saveName} (${savedId})`);
+
+                    // 刷新侧栏
+                    if (window.VCPDesktop?.sidebar?.refresh) {
+                        window.VCPDesktop.sidebar.refresh();
+                    } else if (window.VCPDesktop?.favorites?.loadList) {
+                        window.VCPDesktop.favorites.loadList();
+                    }
+
+                    return { id: savedId, name: saveName };
+                }
+            }
+
+            return null;
+        } catch (err) {
+            console.error('[Desktop IPC] Auto-save error:', err);
+            return null;
+        }
     }
 
     // ============================================================
