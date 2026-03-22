@@ -27,6 +27,7 @@
         globalSettings: {
             autoMaximize: false,     // 打开桌面时自动最大化
             alwaysOnBottom: false,   // 桌面窗口自动置底
+            visibilityFreezerEnabled: true,  // 最小化/遮挡时自动冻结动画
             defaultPresetId: null,   // 启动时自动加载的预设ID
             dock: {
                 maxVisible: 8,       // Dock 栏默认显示图标数

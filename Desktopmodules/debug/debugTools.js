@@ -39,6 +39,11 @@
                     window.VCPDesktop.builtinNews.spawn();
                 }
             },
+            spawnTranslateWidget: () => {
+                if (window.VCPDesktop.builtinTranslate) {
+                    window.VCPDesktop.builtinTranslate.spawn();
+                }
+            },
 
             // 测试挂件
             test: () => {

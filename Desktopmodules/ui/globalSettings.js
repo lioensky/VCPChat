@@ -33,6 +33,7 @@
     const DEFAULT_SETTINGS = {
         autoMaximize: false,
         alwaysOnBottom: false,
+        visibilityFreezerEnabled: true,
         defaultPresetId: null,
         dock: {
             maxVisible: 8,
@@ -136,6 +137,10 @@
         const bottomEl = document.getElementById('desktop-setting-always-bottom');
         if (bottomEl) bottomEl.checked = !!s.alwaysOnBottom;
 
+        // 可见性冻结开关
+        const freezerEl = document.getElementById('desktop-setting-visibility-freezer');
+        if (freezerEl) freezerEl.checked = s.visibilityFreezerEnabled !== false;
+
         // Dock 可见图标数
         const dockCountEl = document.getElementById('desktop-setting-dock-count-value');
         if (dockCountEl) dockCountEl.textContent = s.dock?.maxVisible || DEFAULT_SETTINGS.dock.maxVisible;
@@ -162,6 +167,9 @@
 
         const bottomEl = document.getElementById('desktop-setting-always-bottom');
         if (bottomEl) s.alwaysOnBottom = bottomEl.checked;
+
+        const freezerEl = document.getElementById('desktop-setting-visibility-freezer');
+        if (freezerEl) s.visibilityFreezerEnabled = freezerEl.checked;
 
         const dockCountEl = document.getElementById('desktop-setting-dock-count-value');
         if (dockCountEl) {
@@ -273,6 +281,11 @@
         // 2. 窗口置底
         if (window.electronAPI?.setAlwaysOnBottom) {
             window.electronAPI.setAlwaysOnBottom(!!s.alwaysOnBottom);
+        }
+
+        // 2.5. 可见性冻结开关
+        if (window.VCPDesktop.visibilityFreezer) {
+            window.VCPDesktop.visibilityFreezer.setEnabled(s.visibilityFreezerEnabled !== false);
         }
 
         // 3. Dock 可见图标数
