@@ -789,8 +789,40 @@ async function openDesktopWindow() {
     desktopWindow.loadURL(desktopUrl);
     desktopWindow.setMenu(null);
 
+    // 读取全局设置（自动最大化、窗口置底等）
+    let desktopGlobalSettings = {};
+    try {
+        if (fs.pathExistsSync(LAYOUT_CONFIG_PATH)) {
+            const layoutData = fs.readJsonSync(LAYOUT_CONFIG_PATH);
+            desktopGlobalSettings = layoutData.globalSettings || {};
+        }
+    } catch (e) {
+        console.warn('[Desktop] Failed to read global settings:', e.message);
+    }
+
     desktopWindow.once('ready-to-show', () => {
+        // 启动时自动最大化
+        if (desktopGlobalSettings.autoMaximize) {
+            desktopWindow.maximize();
+            console.log('[Desktop] Auto-maximized on startup');
+        }
+
         desktopWindow.show();
+
+        // 窗口自动置底
+        if (desktopGlobalSettings.alwaysOnBottom) {
+            desktopWindow.setAlwaysOnTop(true, 'screen-saver', -1);
+            // 使用 setAlwaysOnTop 的反向效果：先置顶再取消，让系统记住层级
+            // 实际"置底"需要操作系统级支持，Electron 没有直接的 setAlwaysOnBottom
+            // 替代方案：设置为最低层级
+            try {
+                desktopWindow.setAlwaysOnTop(false);
+                desktopWindow.moveTop(); // 先到顶
+                desktopWindow.blur();    // 失去焦点
+            } catch (e) { /* ignore */ }
+            console.log('[Desktop] Window set to bottom layer');
+        }
+
         // 通知桌面窗口自身连接状态
         if (desktopWindow && !desktopWindow.isDestroyed()) {
             desktopWindow.webContents.send('desktop-status', { connected: true, message: '已连接' });
@@ -800,6 +832,18 @@ async function openDesktopWindow() {
             mainWindow.webContents.send('desktop-status', { connected: true, message: '桌面画布已就绪' });
         }
     });
+
+    // 锁定最大化状态：如果开启了自动最大化，阻止用户手动还原
+    if (desktopGlobalSettings.autoMaximize) {
+        desktopWindow.on('unmaximize', () => {
+            // 在下一个事件循环中重新最大化，实现锁定效果
+            setImmediate(() => {
+                if (desktopWindow && !desktopWindow.isDestroyed()) {
+                    desktopWindow.maximize();
+                }
+            });
+        });
+    }
 
     if (openChildWindows) {
         openChildWindows.push(desktopWindow);

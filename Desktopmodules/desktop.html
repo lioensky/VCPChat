@@ -134,6 +134,75 @@
                 <div class="desktop-sidebar-empty">暂无布局预设</div>
             </div>
         </div>
+        <!-- 侧栏底部全局设置按钮 -->
+        <div class="desktop-sidebar-footer">
+            <button id="desktop-sidebar-settings-btn" class="desktop-sidebar-settings-btn">⚙️ 全局设置</button>
+        </div>
+    </div>
+
+    <!-- 全局设置模态窗 -->
+    <div id="desktop-settings-overlay" class="desktop-settings-overlay">
+        <div class="desktop-settings-panel">
+            <div class="desktop-settings-header">
+                <span class="desktop-settings-title">⚙️ 全局设置</span>
+                <button class="desktop-settings-close" title="关闭">✕</button>
+            </div>
+            <div class="desktop-settings-body">
+                <!-- 窗口行为 -->
+                <div class="desktop-settings-section">
+                    <div class="desktop-settings-section-title">窗口行为</div>
+                    <div class="desktop-settings-item">
+                        <div class="desktop-settings-item-label">
+                            <div class="desktop-settings-item-label-text">启动时自动最大化</div>
+                            <div class="desktop-settings-item-label-desc">打开桌面窗口时自动最大化到全屏</div>
+                        </div>
+                        <label class="desktop-settings-toggle">
+                            <input type="checkbox" id="desktop-setting-auto-maximize">
+                            <span class="desktop-settings-toggle-slider"></span>
+                        </label>
+                    </div>
+                    <div class="desktop-settings-item">
+                        <div class="desktop-settings-item-label">
+                            <div class="desktop-settings-item-label-text">窗口自动置底</div>
+                            <div class="desktop-settings-item-label-desc">将桌面窗口置于所有其他窗口的最底层</div>
+                        </div>
+                        <label class="desktop-settings-toggle">
+                            <input type="checkbox" id="desktop-setting-always-bottom">
+                            <span class="desktop-settings-toggle-slider"></span>
+                        </label>
+                    </div>
+                </div>
+                <!-- Dock 栏 -->
+                <div class="desktop-settings-section">
+                    <div class="desktop-settings-section-title">Dock 栏</div>
+                    <div class="desktop-settings-item">
+                        <div class="desktop-settings-item-label">
+                            <div class="desktop-settings-item-label-text">默认显示图标数</div>
+                            <div class="desktop-settings-item-label-desc">Dock 栏中直接显示的快捷方式数量</div>
+                        </div>
+                        <div class="desktop-settings-number">
+                            <button class="desktop-settings-number-btn" id="desktop-setting-dock-count-minus">−</button>
+                            <span class="desktop-settings-number-value" id="desktop-setting-dock-count-value">8</span>
+                            <button class="desktop-settings-number-btn" id="desktop-setting-dock-count-plus">+</button>
+                        </div>
+                    </div>
+                    <div class="desktop-settings-item">
+                        <div class="desktop-settings-item-label">
+                            <div class="desktop-settings-item-label-text">图标大小</div>
+                            <div class="desktop-settings-item-label-desc">Dock 栏中图标的显示尺寸</div>
+                        </div>
+                        <div class="desktop-settings-range-wrapper">
+                            <input type="range" class="desktop-settings-range" id="desktop-setting-dock-size" min="20" max="56" value="32" step="2">
+                            <span class="desktop-settings-range-label" id="desktop-setting-dock-size-label">32px</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="desktop-settings-footer">
+                <button class="desktop-settings-footer-btn reset">恢复默认</button>
+                <button class="desktop-settings-footer-btn save">保存设置</button>
+            </div>
+        </div>
     </div>
 
     <!-- 状态指示器 -->
@@ -167,6 +236,8 @@
     <script src="ui/dock.js"></script>
     <!-- 9.6. UI层：图标选择器（依赖 state） -->
     <script src="ui/iconPicker.js"></script>
+    <!-- 9.7. UI层：全局设置（依赖 state） -->
+    <script src="ui/globalSettings.js"></script>
     <!-- 10. 收藏层：缩略图捕获 -->
     <script src="favorites/thumbnail.js"></script>
     <!-- 11. 收藏层：收藏管理器（依赖 state, status, widget, sidebar, thumbnail） -->
