@@ -6,6 +6,23 @@ fn not_implemented_error(err: &str) -> bool {
     err.to_ascii_lowercase().contains("not yet implemented")
 }
 
+/// Map EQ band name to array index (avoids rebuilding HashMap per request)
+fn eq_band_name_to_index(name: &str) -> Option<usize> {
+    match name {
+        "31"    => Some(0),
+        "62"    => Some(1),
+        "125"   => Some(2),
+        "250"   => Some(3),
+        "500"   => Some(4),
+        "1000" | "1k"  => Some(5),
+        "2000" | "2k"  => Some(6),
+        "4000" | "4k"  => Some(7),
+        "8000" | "8k"  => Some(8),
+        "16000" | "16k" => Some(9),
+        _ => None,
+    }
+}
+
 pub fn configure_routes(cfg: &mut web::ServiceConfig) {
     cfg.route("/set_eq", web::post().to(set_eq))
         .route("/set_eq_type", web::post().to(set_eq_type))
@@ -37,31 +54,11 @@ async fn set_eq(
         }
 
         if let Some(ref bands) = body.bands {
-            let band_map: std::collections::HashMap<&str, usize> = [
-                ("31", 0),
-                ("62", 1),
-                ("125", 2),
-                ("250", 3),
-                ("500", 4),
-                ("1000", 5),
-                ("2000", 6),
-                ("4000", 7),
-                ("8000", 8),
-                ("16000", 9),
-                ("1k", 5),
-                ("2k", 6),
-                ("4k", 7),
-                ("8k", 8),
-                ("16k", 9),
-            ]
-            .into_iter()
-            .collect();
-
             let mut gains = [0.0_f64; 10];
             let mut any_set = false;
 
             for (name, &gain) in bands {
-                if let Some(&idx) = band_map.get(name.as_str()) {
+                if let Some(idx) = eq_band_name_to_index(name.as_str()) {
                     gains[idx] = gain;
                     any_set = true;
                 }
@@ -86,28 +83,8 @@ async fn set_eq(
     }
 
     if let Some(ref bands) = body.bands {
-        let band_map: std::collections::HashMap<&str, usize> = [
-            ("31", 0),
-            ("62", 1),
-            ("125", 2),
-            ("250", 3),
-            ("500", 4),
-            ("1000", 5),
-            ("2000", 6),
-            ("4000", 7),
-            ("8000", 8),
-            ("16000", 9),
-            ("1k", 5),
-            ("2k", 6),
-            ("4k", 7),
-            ("8k", 8),
-            ("16k", 9),
-        ]
-        .into_iter()
-        .collect();
-
         for (name, &gain) in bands {
-            if let Some(&idx) = band_map.get(name.as_str()) {
+            if let Some(idx) = eq_band_name_to_index(name.as_str()) {
                 player.lockfree_eq_params.set_band_gain(idx, gain);
             } else {
                 log::warn!("Unknown EQ band name: '{}'", name);

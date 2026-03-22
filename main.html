@@ -437,399 +437,474 @@
     <div id="modal-container"></div>
     <template id="globalSettingsModalTemplate">
         <div class="modal" id="globalSettingsModal">
-            <div class="modal-content">
+            <div class="modal-content global-settings-modal-content">
                 <span class="close-button" onclick="uiHelperFunctions.closeModal('globalSettingsModal')">×</span>
-                <h2>全局设置</h2>
-                <form id="globalSettingsForm">
-                    <!-- 用户身份容器 -->
-                    <div class="agent-identity-container">
-                        <div class="agent-identity-main">
-                            <div class="agent-avatar-wrapper">
-                                <img id="userAvatarPreview" src="assets/default_user_avatar.png" alt="用户头像预览" class="agent-avatar-display" style="display: block;">
-                                <label for="userAvatarInput" class="avatar-upload-overlay">
-                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
-                                        <circle cx="12" cy="13" r="4"></circle>
-                                    </svg>
-                                </label>
-                                <input type="file" id="userAvatarInput" name="userAvatar" accept="image/png, image/jpeg, image/gif" style="display: none;">
-                            </div>
-                            <div class="agent-name-wrapper">
-                                <label for="userName">用户名:</label>
-                                <input type="text" id="userName" name="userName" placeholder="您的用户名" required>
-                            </div>
-                        </div>
-                        
-                        <!-- 用户自定义样式设置 - 可折叠 -->
-                        <div class="agent-style-collapsible-container collapsed">
-                            <div class="style-collapse-header" id="userStyleCollapseHeader">
-                                <span class="style-collapse-icon">▶</span>
-                                <span class="style-collapse-title">自定义样式设置</span>
-                            </div>
-                            <div class="agent-style-controls">
-                                <div class="style-control-item">
-                                    <label for="userAvatarBorderColor">头像外框颜色:</label>
-                                    <div class="color-input-group">
-                                        <input type="color" id="userAvatarBorderColor" name="userAvatarBorderColor" value="#3d5a80">
-                                        <input type="text" id="userAvatarBorderColorText" placeholder="#3d5a80" maxlength="7">
+                <h2 class="global-settings-title">全局设置</h2>
+                
+                <div class="global-settings-layout">
+                    <!-- 左侧导航菜单 -->
+                    <nav class="global-settings-nav">
+                        <ul class="settings-nav-list">
+                            <li class="settings-nav-item active" data-section="user-identity">
+                                <svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                                    <circle cx="12" cy="7" r="4"></circle>
+                                </svg>
+                                <span>用户身份</span>
+                            </li>
+                            <li class="settings-nav-item" data-section="server-connection">
+                                <svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
+                                    <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
+                                    <line x1="6" y1="6" x2="6.01" y2="6"></line>
+                                    <line x1="6" y1="18" x2="6.01" y2="18"></line>
+                                </svg>
+                                <span>服务器连接</span>
+                            </li>
+                            <li class="settings-nav-item" data-section="render-settings">
+                                <svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <circle cx="12" cy="12" r="3"></circle>
+                                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                                </svg>
+                                <span>渲染设置</span>
+                            </li>
+                            <li class="settings-nav-item" data-section="selection-assistant">
+                                <svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                                </svg>
+                                <span>划词助手</span>
+                            </li>
+                            <li class="settings-nav-item" data-section="advanced-features">
+                                <svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
+                                    <polyline points="2 17 12 22 22 17"></polyline>
+                                    <polyline points="2 12 12 17 22 12"></polyline>
+                                </svg>
+                                <span>高级功能</span>
+                            </li>
+                            <li class="settings-nav-item" data-section="quick-actions">
+                                <svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path>
+                                </svg>
+                                <span>快捷操作</span>
+                            </li>
+                        </ul>
+                    </nav>
+
+                    <!-- 右侧内容区域 -->
+                    <div class="global-settings-content">
+                        <form id="globalSettingsForm">
+                            <!-- 用户身份 -->
+                            <div class="settings-section active" id="section-user-identity">
+                                <h3 class="settings-section-title">用户身份</h3>
+                                <div class="agent-identity-container">
+                                    <div class="agent-identity-main">
+                                        <div class="agent-avatar-wrapper">
+                                            <img id="userAvatarPreview" src="assets/default_user_avatar.png" alt="用户头像预览" class="agent-avatar-display" style="display: block;">
+                                            <label for="userAvatarInput" class="avatar-upload-overlay">
+                                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                                                    <circle cx="12" cy="13" r="4"></circle>
+                                                </svg>
+                                            </label>
+                                            <input type="file" id="userAvatarInput" name="userAvatar" accept="image/png, image/jpeg, image/gif" style="display: none;">
+                                        </div>
+                                        <div class="agent-name-wrapper">
+                                            <label for="userName">用户名:</label>
+                                            <input type="text" id="userName" name="userName" placeholder="您的用户名" required>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- 用户自定义样式设置 - 可折叠 -->
+                                    <div class="agent-style-collapsible-container collapsed">
+                                        <div class="style-collapse-header" id="userStyleCollapseHeader">
+                                            <span class="style-collapse-icon">▶</span>
+                                            <span class="style-collapse-title">自定义样式设置</span>
+                                        </div>
+                                        <div class="agent-style-controls">
+                                            <div class="style-control-item">
+                                                <label for="userAvatarBorderColor">头像外框颜色:</label>
+                                                <div class="color-input-group">
+                                                    <input type="color" id="userAvatarBorderColor" name="userAvatarBorderColor" value="#3d5a80">
+                                                    <input type="text" id="userAvatarBorderColorText" placeholder="#3d5a80" maxlength="7">
+                                                </div>
+                                            </div>
+                                            <div class="style-control-item">
+                                                <label for="userNameTextColor">名称文字颜色:</label>
+                                                <div class="color-input-group">
+                                                    <input type="color" id="userNameTextColor" name="userNameTextColor" value="#ffffff">
+                                                    <input type="text" id="userNameTextColorText" placeholder="#ffffff" maxlength="7">
+                                                </div>
+                                            </div>
+                                            
+                                            <!-- 重置颜色按钮 -->
+                                            <div class="style-control-item full-width">
+                                                <button type="button" id="resetUserAvatarColorsBtn" class="reset-colors-btn">
+                                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                        <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path>
+                                                        <path d="M21 3v5h-5"></path>
+                                                        <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path>
+                                                        <path d="M3 21v-5h5"></path>
+                                                    </svg>
+                                                    重置为头像默认颜色
+                                                </button>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
-                                <div class="style-control-item">
-                                    <label for="userNameTextColor">名称文字颜色:</label>
-                                    <div class="color-input-group">
-                                        <input type="color" id="userNameTextColor" name="userNameTextColor" value="#ffffff">
-                                        <input type="text" id="userNameTextColorText" placeholder="#ffffff" maxlength="7">
-                                    </div>
+                            </div>
+
+                            <!-- 服务器连接 -->
+                            <div class="settings-section" id="section-server-connection">
+                                <h3 class="settings-section-title">服务器连接</h3>
+                                <div class="settings-form-group">
+                                    <label for="vcpServerUrl">VCP 服务器 URL:</label>
+                                    <input type="url" id="vcpServerUrl" name="vcpServerUrl" placeholder="将自动补全 /v1/chat/completions" required>
                                 </div>
-                                
-                                <!-- 重置颜色按钮 -->
-                                <div class="style-control-item full-width">
-                                    <button type="button" id="resetUserAvatarColorsBtn" class="reset-colors-btn">
-                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                            <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path>
-                                            <path d="M21 3v5h-5"></path>
-                                            <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path>
-                                            <path d="M3 21v-5h5"></path>
-                                        </svg>
-                                        重置为头像默认颜色
-                                    </button>
+                                <div class="settings-form-group">
+                                    <label for="vcpApiKey">VCP API Key:</label>
+                                    <input type="password" id="vcpApiKey" name="vcpApiKey">
+                                </div>
+                                <div class="settings-form-group">
+                                    <label for="vcpLogUrl">VCP WebSocket服务器 URL:</label>
+                                    <input type="url" id="vcpLogUrl" name="vcpLogUrl">
+                                </div>
+                                <div class="settings-form-group">
+                                    <label for="vcpLogKey">VCP WebSocket鉴权 Key:</label>
+                                    <input type="password" id="vcpLogKey" name="vcpLogKey">
+                                </div>
+                                <div class="settings-form-group">
+                                    <label>网络笔记路径:</label>
+                                    <div id="networkNotesPathsContainer" style="display: flex; flex-direction: column; gap: 8px;">
+                                        <!-- Path inputs will be dynamically added here -->
+                                    </div>
+                                    <button type="button" id="addNetworkPathBtn" class="sidebar-button small-button" style="margin-top: 8px; width: auto; padding: 4px 10px;">添加路径</button>
                                 </div>
                             </div>
-                        </div>
+
+                            <!-- 渲染设置 -->
+                            <div class="settings-section" id="section-render-settings">
+                                <h3 class="settings-section-title">渲染设置</h3>
+                                <div class="form-group-inline" style="justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                                    <label for="enableAgentBubbleTheme">开启Agent自定义气泡主题</label>
+                                    <label class="switch">
+                                        <input type="checkbox" id="enableAgentBubbleTheme" name="enableAgentBubbleTheme" checked>
+                                        <span class="slider round"></span>
+                                    </label>
+                                </div>
+                                <div class="form-group-inline" style="justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                                    <label for="enableSmoothStreaming">开启高级流式渲染</label>
+                                    <label class="switch">
+                                        <input type="checkbox" id="enableSmoothStreaming" name="enableSmoothStreaming">
+                                        <span class="slider round"></span>
+                                    </label>
+                                </div>
+                                <div class="form-group-inline">
+                                    <div>
+                                        <label for="minChunkBufferSize" style="display: block; margin-bottom: 4px;">最小渲染Chunk字数 (≥1):</label>
+                                        <input type="number" id="minChunkBufferSize" name="minChunkBufferSize" min="1" value="16" style="width: 80px;">
+                                    </div>
+                                    <div style="margin-left: 20px;">
+                                        <label for="smoothStreamIntervalMs" style="display: block; margin-bottom: 4px;">最小渲染Chunk间隔 (ms, ≥1):</label>
+                                        <input type="number" id="smoothStreamIntervalMs" name="smoothStreamIntervalMs" min="1" value="100" style="width: 80px;">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 划词助手 -->
+                            <div class="settings-section" id="section-selection-assistant">
+                                <h3 class="settings-section-title">划词助手</h3>
+                                <div class="settings-form-group" id="assistantAgentContainer">
+                                    <label for="assistantAgent">划词助手 Agent:</label>
+                                    <select id="assistantAgent" name="assistantAgent">
+                                        <option value="">请选择一个Agent</option>
+                                        <!-- Agent list will be populated by JS -->
+                                    </select>
+                                </div>
+
+                                <div id="rustAssistantConfigContainer" style="margin-top: 15px; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px;">
+                                    <h4 style="margin: 0 0 10px 0;">Rust 划词助手配置</h4>
+
+                                    <div id="rustDebugPanel" style="display: none; margin-bottom: 10px; padding: 8px; border-radius: 6px; background: var(--bg-secondary, rgba(127,127,127,0.08));">
+                                        <div><strong>当前生效实现:</strong> <span id="assistantRuntimeMode">未知</span></div>
+                                        <div><strong>监听状态:</strong> <span id="assistantRuntimeActive">未知</span></div>
+                                        <div><strong>期望实现:</strong> <span id="assistantRuntimeDesiredMode">未知</span></div>
+                                        <div><strong>最近诊断:</strong> <span id="assistantRuntimeDebugReason">无</span></div>
+                                        <div><strong>Rust事件转发数:</strong> <span id="assistantRuntimeForwardedCount">0</span></div>
+                                        <div><strong>Rust监听活跃(sidecar):</strong> <span id="assistantRuntimeSidecarActive">未知</span></div>
+                                        <div><strong>Rust进程状态:</strong> <span id="assistantRuntimeProcessAlive">未知</span></div>
+                                        <div><strong>Rust进程PID:</strong> <span id="assistantRuntimeProcessPid">未知</span></div>
+                                        <div><strong>自动回退次数:</strong> <span id="assistantRuntimeAutoFallbackCount">0</span></div>
+                                        <div><strong>最近自动回退原因:</strong> <span id="assistantRuntimeAutoFallbackReason">无</span></div>
+                                        <div><strong>主进程收到选区数:</strong> <span id="assistantRuntimeReceivedCount">0</span></div>
+                                        <div><strong>弹窗尝试次数:</strong> <span id="assistantRuntimeShowAttemptCount">0</span></div>
+                                        <div><strong>最近弹窗错误:</strong> <span id="assistantRuntimeShowError">无</span></div>
+                                    </div>
+
+                                    <div class="form-group-inline" style="justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                                        <label for="rustDebugMode">调试模式（输出诊断）</label>
+                                        <label class="switch">
+                                            <input type="checkbox" id="rustDebugMode" name="rustDebugMode">
+                                            <span class="slider round"></span>
+                                        </label>
+                                    </div>
+
+                                    <div class="form-group-inline" style="justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                                        <label for="rustUseAssistant">启用 Rust 划词助手</label>
+                                        <label class="switch">
+                                            <input type="checkbox" id="rustUseAssistant" name="rustUseAssistant">
+                                            <span class="slider round"></span>
+                                        </label>
+                                    </div>
+
+                                    <div id="rustGuardRulesContainer" style="display: none; margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border-color);">
+                                        <!-- 自定义阈值部分 -->
+                                        <div class="form-group-inline" style="justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                                            <label for="rustEnableCustomThresholds">启用自定义阈值</label>
+                                            <label class="switch">
+                                                <input type="checkbox" id="rustEnableCustomThresholds" name="rustEnableCustomThresholds">
+                                                <span class="slider round"></span>
+                                            </label>
+                                        </div>
+
+                                        <div id="rustCustomThresholdsPanel" style="display: none; margin-bottom: 15px; padding: 10px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-secondary, rgba(127,127,127,0.05));">
+                                            <div class="form-group" style="margin-bottom: 8px;">
+                                                <label for="rustMinEventIntervalMs">最小事件间隔 (ms):</label>
+                                                <input type="number" id="rustMinEventIntervalMs" name="rustMinEventIntervalMs" min="0" value="80" style="width: 100px;">
+                                                <small style="color: var(--text-secondary); margin-top: 3px; display: block;">选区事件的最小时间间隔，防止重复触发</small>
+                                            </div>
+
+                                            <div class="form-group" style="margin-bottom: 8px;">
+                                                <label for="rustMinDistance">最小位移距离 (px):</label>
+                                                <input type="number" id="rustMinDistance" name="rustMinDistance" min="0" value="0" style="width: 100px;">
+                                                <small style="color: var(--text-secondary); margin-top: 3px; display: block;">鼠标释放点距离按下点的最小像素数（0 = 禁用此检查）</small>
+                                            </div>
+
+                                            <div class="form-group" style="margin-bottom: 8px;">
+                                                <label for="rustScreenshotSuspendMs">截图暂停时长 (ms):</label>
+                                                <input type="number" id="rustScreenshotSuspendMs" name="rustScreenshotSuspendMs" min="0" value="3000" style="width: 100px;">
+                                                <small style="color: var(--text-secondary); margin-top: 3px; display: block;">检测到截图软件后，暂停的时长</small>
+                                            </div>
+
+                                            <div class="form-group" style="margin-bottom: 8px;">
+                                                <label for="rustClipboardConflictSuspendMs">剪贴板冲突暂停 (ms):</label>
+                                                <input type="number" id="rustClipboardConflictSuspendMs" name="rustClipboardConflictSuspendMs" min="0" value="1000" style="width: 100px;">
+                                                <small style="color: var(--text-secondary); margin-top: 3px; display: block;">检测到剪贴板冲突后，暂停的时长</small>
+                                            </div>
+
+                                            <div class="form-group" style="margin-bottom: 0;">
+                                                <label for="rustClipboardCheckIntervalMs">剪贴板检查间隔 (ms):</label>
+                                                <input type="number" id="rustClipboardCheckIntervalMs" name="rustClipboardCheckIntervalMs" min="50" value="500" style="width: 100px;">
+                                                <small style="color: var(--text-secondary); margin-top: 3px; display: block;">后台剪贴板监控的检查间隔（最小50ms）</small>
+                                            </div>
+                                        </div>
+
+                                        <!-- 规则模式选择部分 -->
+                                        <div class="form-group" style="margin-bottom: 10px;">
+                                            <label for="rustRuleMode">规则模式:</label>
+                                            <select id="rustRuleMode" name="rustRuleMode" style="width: 100%; padding: 6px; border: 1px solid var(--border-color); border-radius: 4px;">
+                                                <option value="none">不使用规则</option>
+                                                <option value="whitelist">白名单模式（只在匹配的应用中启用）</option>
+                                                <option value="blacklist">黑名单模式（在非匹配的应用中启用）</option>
+                                            </select>
+                                            <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
+                                                提示：白名单和黑名单不能同时使用，选择一种模式
+                                            </small>
+                                        </div>
+
+                                        <div id="rustWhitelistPanel" style="display: none; margin-bottom: 10px;">
+                                            <div class="form-group" style="margin-bottom: 0;">
+                                                <label for="rustWhitelistKeywords">白名单关键词（每行一个）</label>
+                                                <textarea id="rustWhitelistKeywords" name="rustWhitelistKeywords" rows="3" placeholder="例如：visual studio code&#10;chrome"></textarea>
+                                                <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
+                                                    只在包含这些关键词的窗口中启用划词助手
+                                                </small>
+                                            </div>
+                                        </div>
+
+                                        <div id="rustBlacklistPanel" style="display: none; margin-bottom: 10px;">
+                                            <div class="form-group" style="margin-bottom: 0;">
+                                                <label for="rustBlacklistKeywords">黑名单关键词（每行一个）</label>
+                                                <textarea id="rustBlacklistKeywords" name="rustBlacklistKeywords" rows="4" placeholder="例如：password&#10;credential&#10;secret"></textarea>
+                                                <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
+                                                    在包含这些关键词的窗口中禁用划词助手
+                                                </small>
+                                            </div>
+                                        </div>
+
+                                        <div id="rustScreenshotAppsPanel" style="margin-bottom: 0;">
+                                            <div class="form-group" style="margin-bottom: 0;">
+                                                <label for="rustScreenshotApps">截图软件关键词（每行一个）</label>
+                                                <textarea id="rustScreenshotApps" name="rustScreenshotApps" rows="3" placeholder="例如：snippingtool&#10;snipaste&#10;capturescreen"></textarea>
+                                                <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
+                                                    检测到这些窗口时，暂停导词助手以避免冲突
+                                                </small>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 高级功能 -->
+                            <div class="settings-section" id="section-advanced-features">
+                                <h3 class="settings-section-title">高级功能</h3>
+                                <div class="form-group-inline" style="justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                                    <label for="enableDistributedServer">启用VCP分布式服务器</label>
+                                    <label class="switch">
+                                        <input type="checkbox" id="enableDistributedServer" name="enableDistributedServer">
+                                        <span class="slider round"></span>
+                                    </label>
+                                </div>
+
+                                <div class="form-group-inline" style="justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                                    <label for="enableVcpToolInjection">开启VCP工具信息注入上下文</label>
+                                    <label class="switch">
+                                        <input type="checkbox" id="enableVcpToolInjection" name="enableVcpToolInjection">
+                                        <span class="slider round"></span>
+                                    </label>
+                                </div>
+
+                                <div class="form-group-inline" style="justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                                    <label for="enableThoughtChainInjection" title="开启后，AI 的元思考内容（Thought Chain）将保留在上下文中，否则将被自动清理。">元思考注入 AI 上下文</label>
+                                    <label class="switch">
+                                        <input type="checkbox" id="enableThoughtChainInjection" name="enableThoughtChainInjection">
+                                        <span class="slider round"></span>
+                                    </label>
+                                </div>
+
+                                <div class="form-group-inline" style="justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                                    <label for="enableAiMessageButtons" title="开启后，AI回复中的按钮将可以点击并自动发送消息">启用AI消息快捷按钮</label>
+                                    <label class="switch">
+                                        <input type="checkbox" id="enableAiMessageButtons" name="enableAiMessageButtons">
+                                        <span class="slider round"></span>
+                                    </label>
+                                </div>
+            
+                                <div class="form-group-inline" style="justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                                    <label for="enableContextSanitizer" title="开启后，在提交给AI的上下文中，较早的AI消息的HTML将被转换为Markdown以节省Token。">上下文HTML标签转MD净化器</label>
+                                    <label class="switch">
+                                        <input type="checkbox" id="enableContextSanitizer" name="enableContextSanitizer">
+                                        <span class="slider round"></span>
+                                    </label>
+                                </div>
+
+                                <div class="form-group" id="contextSanitizerDepthContainer" style="display: none; margin-bottom: 20px;">
+                                    <label for="contextSanitizerDepth">净化初始深度:</label>
+                                    <input type="number" id="contextSanitizerDepth" name="contextSanitizerDepth" min="0" value="2" style="width: 80px;">
+                                    <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
+                                        例如: 设置为2，则从倒数第3条AI消息开始净化。设置为0，则净化所有AI消息。
+                                    </small>
+                                </div>
+
+                                <div class="form-group-inline" style="justify-content: space-between; align-items: center;">
+                                    <label for="agentMusicControl">启用Agent音乐控制</label>
+                                    <label class="switch">
+                                        <input type="checkbox" id="agentMusicControl" name="agentMusicControl">
+                                        <span class="slider round"></span>
+                                    </label>
+                                </div>
+
+                                <hr style="border: none; border-top: 1px solid var(--border-color); margin: 20px 0;">
+
+                                <div class="settings-form-group" id="topicSummaryModelContainer">
+                                    <label for="topicSummaryModel">话题总结模型:</label>
+                                    <div class="model-input-container">
+                                        <input type="text" id="topicSummaryModel" name="topicSummaryModel" placeholder="默认: gemini-2.5-flash-preview-05-20">
+                                        <button type="button" id="openTopicSummaryModelSelectBtn" class="small-button" title="选择模型">
+                                            <svg data-slot="icon" fill="none" stroke-width="1.5" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" width="16" height="16">
+                                                <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 15L12 18.75 15.75 15m-7.5-6L12 5.25 15.75 9"></path>
+                                            </svg>
+                                        </button>
+                                    </div>
+                                    <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
+                                        用于自动生成话题摘要的模型
+                                    </small>
+                                </div>
+                            </div>
+
+                            <!-- 快捷操作 -->
+                            <div class="settings-section" id="section-quick-actions">
+                                <h3 class="settings-section-title">快捷操作</h3>
+                                <div class="settings-form-group" style="margin-bottom: 20px;">
+                                    <label for="continueWritingPrompt">中键续写默认提示词:</label>
+                                    <textarea id="continueWritingPrompt" name="continueWritingPrompt" placeholder="默认: 请继续" rows="1" style="min-height: 38px; max-height: 200px; resize: none; field-sizing: content;" spellcheck="false">请继续</textarea>
+                                    <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
+                                        提示：在输入框上中键点击时，如果输入框为空则使用此提示词进行续写；使用 ctrl/command+d 快速使用。
+                                    </small>
+                                </div>
+
+                                <div class="settings-form-group" style="margin-bottom: 20px;">
+                                    <label for="flowlockContinueDelay">心流锁续写延迟 (秒):</label>
+                                    <input type="number" id="flowlockContinueDelay" name="flowlockContinueDelay" min="1" max="300" step="1" value="5" style="width: 80px;">
+                                    <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
+                                        提示：AI完成一次续写后，等待指定秒数再开始下一次续写。
+                                    </small>
+                                </div>
+
+                                <div class="form-group-inline" style="justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                                    <label for="enableMiddleClickQuickAction">启用在聊天气泡中的中键快捷功能</label>
+                                    <label class="switch">
+                                        <input type="checkbox" id="enableMiddleClickQuickAction" name="enableMiddleClickQuickAction">
+                                        <span class="slider round"></span>
+                                    </label>
+                                </div>
+
+                                <div class="form-group" id="middleClickQuickActionContainer" style="display: none; margin-bottom: 20px;">
+                                    <label for="middleClickQuickAction">中键快速执行功能:</label>
+                                    <select id="middleClickQuickAction" name="middleClickQuickAction">
+                                        <option value="">请选择要快速执行的功能</option>
+                                        <option value="edit">编辑消息</option>
+                                        <option value="copy">复制文本</option>
+                                        <option value="createBranch">创建分支</option>
+                                        <option value="forward">转发消息</option>
+                                        <option value="readAloud">朗读气泡</option>
+                                        <option value="readMode">阅读模式</option>
+                                        <option value="regenerate">重新回复</option>
+                                        <option value="delete">删除消息</option>
+                                    </select>
+                                    <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
+                                        提示：启用后，中键按下消息气泡，1 秒内松开将快速执行选中的右键菜单功能
+                                    </small>
+                                </div>
+
+                                <!-- 重新回复保险机制开关 - 仅在中键快速执行功能为重新回复时显示 -->
+                                <div class="form-group" id="regenerateConfirmationContainer" style="display: none; margin-bottom: 15px;">
+                                    <div class="form-group-inline" style="justify-content: space-between; align-items: center;">
+                                        <label for="enableRegenerateConfirmation" title="开启后，当重新回复的消息不是最后一条时会显示确认对话框">重新回复保险机制</label>
+                                        <label class="switch">
+                                            <input type="checkbox" id="enableRegenerateConfirmation" name="enableRegenerateConfirmation">
+                                            <span class="slider round"></span>
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <div class="form-group" id="middleClickAdvancedContainer" style="display: none; margin-bottom: 20px;">
+                                    <div class="form-group-inline" style="justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                                        <label for="enableMiddleClickAdvanced">启用高级中键九宫格选择</label>
+                                        <label class="switch">
+                                            <input type="checkbox" id="enableMiddleClickAdvanced" name="enableMiddleClickAdvanced">
+                                            <span class="slider round"></span>
+                                        </label>
+                                    </div>
+
+                                    <div class="form-group" id="middleClickAdvancedSettings" style="display: none; margin-bottom: 15px;">
+                                        <label for="middleClickAdvancedDelay">九宫格出现延迟 (毫秒):</label>
+                                        <input type="number" id="middleClickAdvancedDelay" name="middleClickAdvancedDelay" min="1000" max="5000" step="100" value="1000" style="width: 100px;">
+                                        <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
+                                            提示：中键按下后不松开，延迟若干时间 (1000-5000ms) 后出现九宫格选择界面，按住鼠标移动到相关功能后松开即可完成快速设置。
+                                        </small>
+                                    </div>
+                                </div>
+                            </div>
+                        </form>
                     </div>
                     
-                    <hr style="border: none; border-top: 1px solid var(--border-color); margin: 20px 0;">
-                    <div>
-                        <label for="vcpServerUrl">VCP 服务器 URL:</label>
-                        <input type="url" id="vcpServerUrl" name="vcpServerUrl" placeholder="将自动补全 /v1/chat/completions" required>
+                    <!-- 保存按钮区域 -->
+                    <div class="global-settings-footer">
+                        <button type="submit" form="globalSettingsForm">保存全局设置</button>
                     </div>
-                    <div>
-                        <label for="vcpApiKey">VCP API Key:</label>
-                        <input type="password" id="vcpApiKey" name="vcpApiKey">
-                    </div>
-                    <div>
-                        <label for="vcpLogUrl">VCP WebSocket服务器 URL:</label>
-                        <input type="url" id="vcpLogUrl" name="vcpLogUrl">
-                    </div>
-                    <div>
-                        <label for="vcpLogKey">VCP WebSocket鉴权 Key:</label>
-                        <input type="password" id="vcpLogKey" name="vcpLogKey">
-                    </div>
-                    <div class="form-group">
-                        <label>网络笔记路径:</label>
-                        <div id="networkNotesPathsContainer" style="display: flex; flex-direction: column; gap: 8px;">
-                            <!-- Path inputs will be dynamically added here -->
-                        </div>
-                        <button type="button" id="addNetworkPathBtn" class="sidebar-button small-button" style="margin-top: 8px; width: auto; padding: 4px 10px;">添加路径</button>
-                    </div>
-                    <div class="form-group-inline" style="justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                        <label for="enableAgentBubbleTheme">开启Agent自定义气泡主题</label>
-                        <label class="switch">
-                            <input type="checkbox" id="enableAgentBubbleTheme" name="enableAgentBubbleTheme" checked>
-                            <span class="slider round"></span>
-                        </label>
-                    </div>
-                    <div class="form-group-inline" style="justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                        <label for="enableSmoothStreaming">开启高级流式渲染</label>
-                        <label class="switch">
-                            <input type="checkbox" id="enableSmoothStreaming" name="enableSmoothStreaming">
-                            <span class="slider round"></span>
-                        </label>
-                    </div>
-                    <div class="form-group-inline">
-                        <div>
-                            <label for="minChunkBufferSize" style="display: block; margin-bottom: 4px;">最小渲染Chunk字数 (≥1):</label>
-                            <input type="number" id="minChunkBufferSize" name="minChunkBufferSize" min="1" value="16" style="width: 80px;">
-                        </div>
-                        <div style="margin-left: 20px;">
-                            <label for="smoothStreamIntervalMs" style="display: block; margin-bottom: 4px;">最小渲染Chunk间隔 (ms, ≥1):</label>
-                            <input type="number" id="smoothStreamIntervalMs" name="smoothStreamIntervalMs" min="1" value="100" style="width: 80px;">
-                        </div>
-                    </div>
-                    <div>
-                    </div>
-
-                    <hr style="border: none; border-top: 1px solid var(--border-color); margin: 20px 0;">
-
-                    <div id="assistantAgentContainer" style="margin-top: 15px;">
-                        <label for="assistantAgent">划词助手 Agent:</label>
-                        <select id="assistantAgent" name="assistantAgent">
-                            <option value="">请选择一个Agent</option>
-                            <!-- Agent list will be populated by JS -->
-                        </select>
-                    </div>
-
-                    <div id="rustAssistantConfigContainer" style="margin-top: 15px; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px;">
-                        <h4 style="margin: 0 0 10px 0;">Rust 划词助手配置</h4>
-
-                        <div id="rustDebugPanel" style="display: none; margin-bottom: 10px; padding: 8px; border-radius: 6px; background: var(--bg-secondary, rgba(127,127,127,0.08));">
-                            <div><strong>当前生效实现:</strong> <span id="assistantRuntimeMode">未知</span></div>
-                            <div><strong>监听状态:</strong> <span id="assistantRuntimeActive">未知</span></div>
-                            <div><strong>期望实现:</strong> <span id="assistantRuntimeDesiredMode">未知</span></div>
-                            <div><strong>最近诊断:</strong> <span id="assistantRuntimeDebugReason">无</span></div>
-                            <div><strong>Rust事件转发数:</strong> <span id="assistantRuntimeForwardedCount">0</span></div>
-                            <div><strong>Rust监听活跃(sidecar):</strong> <span id="assistantRuntimeSidecarActive">未知</span></div>
-                            <div><strong>Rust进程状态:</strong> <span id="assistantRuntimeProcessAlive">未知</span></div>
-                            <div><strong>Rust进程PID:</strong> <span id="assistantRuntimeProcessPid">未知</span></div>
-                            <div><strong>自动回退次数:</strong> <span id="assistantRuntimeAutoFallbackCount">0</span></div>
-                            <div><strong>最近自动回退原因:</strong> <span id="assistantRuntimeAutoFallbackReason">无</span></div>
-                            <div><strong>主进程收到选区数:</strong> <span id="assistantRuntimeReceivedCount">0</span></div>
-                            <div><strong>弹窗尝试次数:</strong> <span id="assistantRuntimeShowAttemptCount">0</span></div>
-                            <div><strong>最近弹窗错误:</strong> <span id="assistantRuntimeShowError">无</span></div>
-                        </div>
-
-                        <div class="form-group-inline" style="justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                            <label for="rustDebugMode">调试模式（输出诊断）</label>
-                            <label class="switch">
-                                <input type="checkbox" id="rustDebugMode" name="rustDebugMode">
-                                <span class="slider round"></span>
-                            </label>
-                        </div>
-
-                        <div class="form-group-inline" style="justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                            <label for="rustUseAssistant">启用 Rust 划词助手</label>
-                            <label class="switch">
-                                <input type="checkbox" id="rustUseAssistant" name="rustUseAssistant">
-                                <span class="slider round"></span>
-                            </label>
-                        </div>
-
-                        <div id="rustGuardRulesContainer" style="display: none; margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border-color);">
-                            <!-- 自定义阈值部分 -->
-                            <div class="form-group-inline" style="justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                                <label for="rustEnableCustomThresholds">启用自定义阈值</label>
-                                <label class="switch">
-                                    <input type="checkbox" id="rustEnableCustomThresholds" name="rustEnableCustomThresholds">
-                                    <span class="slider round"></span>
-                                </label>
-                            </div>
-
-                            <div id="rustCustomThresholdsPanel" style="display: none; margin-bottom: 15px; padding: 10px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-secondary, rgba(127,127,127,0.05));">
-                                <div class="form-group" style="margin-bottom: 8px;">
-                                    <label for="rustMinEventIntervalMs">最小事件间隔 (ms):</label>
-                                    <input type="number" id="rustMinEventIntervalMs" name="rustMinEventIntervalMs" min="0" value="80" style="width: 100px;">
-                                    <small style="color: var(--text-secondary); margin-top: 3px; display: block;">选区事件的最小时间间隔，防止重复触发</small>
-                                </div>
-
-                                <div class="form-group" style="margin-bottom: 8px;">
-                                    <label for="rustMinDistance">最小位移距离 (px):</label>
-                                    <input type="number" id="rustMinDistance" name="rustMinDistance" min="0" value="0" style="width: 100px;">
-                                    <small style="color: var(--text-secondary); margin-top: 3px; display: block;">鼠标释放点距离按下点的最小像素数（0 = 禁用此检查）</small>
-                                </div>
-
-                                <div class="form-group" style="margin-bottom: 8px;">
-                                    <label for="rustScreenshotSuspendMs">截图暂停时长 (ms):</label>
-                                    <input type="number" id="rustScreenshotSuspendMs" name="rustScreenshotSuspendMs" min="0" value="3000" style="width: 100px;">
-                                    <small style="color: var(--text-secondary); margin-top: 3px; display: block;">检测到截图软件后，暂停的时长</small>
-                                </div>
-
-                                <div class="form-group" style="margin-bottom: 8px;">
-                                    <label for="rustClipboardConflictSuspendMs">剪贴板冲突暂停 (ms):</label>
-                                    <input type="number" id="rustClipboardConflictSuspendMs" name="rustClipboardConflictSuspendMs" min="0" value="1000" style="width: 100px;">
-                                    <small style="color: var(--text-secondary); margin-top: 3px; display: block;">检测到剪贴板冲突后，暂停的时长</small>
-                                </div>
-
-                                <div class="form-group" style="margin-bottom: 0;">
-                                    <label for="rustClipboardCheckIntervalMs">剪贴板检查间隔 (ms):</label>
-                                    <input type="number" id="rustClipboardCheckIntervalMs" name="rustClipboardCheckIntervalMs" min="50" value="500" style="width: 100px;">
-                                    <small style="color: var(--text-secondary); margin-top: 3px; display: block;">后台剪贴板监控的检查间隔（最小50ms）</small>
-                                </div>
-                            </div>
-
-                            <!-- 规则模式选择部分 -->
-                            <div class="form-group" style="margin-bottom: 10px;">
-                                <label for="rustRuleMode">规则模式:</label>
-                                <select id="rustRuleMode" name="rustRuleMode" style="width: 100%; padding: 6px; border: 1px solid var(--border-color); border-radius: 4px;">
-                                    <option value="none">不使用规则</option>
-                                    <option value="whitelist">白名单模式（只在匹配的应用中启用）</option>
-                                    <option value="blacklist">黑名单模式（在非匹配的应用中启用）</option>
-                                </select>
-                                <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
-                                    提示：白名单和黑名单不能同时使用，选择一种模式
-                                </small>
-                            </div>
-
-                            <div id="rustWhitelistPanel" style="display: none; margin-bottom: 10px;">
-                                <div class="form-group" style="margin-bottom: 0;">
-                                    <label for="rustWhitelistKeywords">白名单关键词（每行一个）</label>
-                                    <textarea id="rustWhitelistKeywords" name="rustWhitelistKeywords" rows="3" placeholder="例如：visual studio code&#10;chrome"></textarea>
-                                    <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
-                                        只在包含这些关键词的窗口中启用划词助手
-                                    </small>
-                                </div>
-                            </div>
-
-                            <div id="rustBlacklistPanel" style="display: none; margin-bottom: 10px;">
-                                <div class="form-group" style="margin-bottom: 0;">
-                                    <label for="rustBlacklistKeywords">黑名单关键词（每行一个）</label>
-                                    <textarea id="rustBlacklistKeywords" name="rustBlacklistKeywords" rows="4" placeholder="例如：password&#10;credential&#10;secret"></textarea>
-                                    <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
-                                        在包含这些关键词的窗口中禁用划词助手
-                                    </small>
-                                </div>
-                            </div>
-
-                            <div id="rustScreenshotAppsPanel" style="margin-bottom: 0;">
-                                <div class="form-group" style="margin-bottom: 0;">
-                                    <label for="rustScreenshotApps">截图软件关键词（每行一个）</label>
-                                    <textarea id="rustScreenshotApps" name="rustScreenshotApps" rows="3" placeholder="例如：snippingtool&#10;snipaste&#10;capturescreen"></textarea>
-                                    <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
-                                        检测到这些窗口时，暂停导词助手以避免冲突
-                                    </small>
-                                </div>
-                            </div>
-                        </div>
-
-                    </div>
-
-                    <div id="topicSummaryModelContainer" style="margin-top: 15px;">
-                        <label for="topicSummaryModel">话题总结模型:</label>
-                        <div class="model-input-container">
-                            <input type="text" id="topicSummaryModel" name="topicSummaryModel" placeholder="默认: gemini-2.5-flash-preview-05-20">
-                            <button type="button" id="openTopicSummaryModelSelectBtn" class="small-button" title="选择模型">
-                                <svg data-slot="icon" fill="none" stroke-width="1.5" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" width="16" height="16">
-                                    <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 15L12 18.75 15.75 15m-7.5-6L12 5.25 15.75 9"></path>
-                                </svg>
-                            </button>
-                        </div>
-                    </div>
-
-                    <hr style="border: none; border-top: 1px solid var(--border-color); margin: 20px 0;">
-
-                    <div class="form-group-inline" style="justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                        <label for="enableDistributedServer">启用VCP分布式服务器</label>
-                        <label class="switch">
-                            <input type="checkbox" id="enableDistributedServer" name="enableDistributedServer">
-                            <span class="slider round"></span>
-                        </label>
-                    </div>
-
-                    <div class="form-group-inline" style="justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                        <label for="enableVcpToolInjection">开启VCP工具信息注入上下文</label>
-                        <label class="switch">
-                            <input type="checkbox" id="enableVcpToolInjection" name="enableVcpToolInjection">
-                            <span class="slider round"></span>
-                        </label>
-                    </div>
-
-                    <div class="form-group-inline" style="justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                        <label for="enableThoughtChainInjection" title="开启后，AI 的元思考内容（Thought Chain）将保留在上下文中，否则将被自动清理。">元思考注入 AI 上下文</label>
-                        <label class="switch">
-                            <input type="checkbox" id="enableThoughtChainInjection" name="enableThoughtChainInjection">
-                            <span class="slider round"></span>
-                        </label>
-                    </div>
-
-                    <div class="form-group-inline" style="justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                        <label for="enableAiMessageButtons" title="开启后，AI回复中的按钮将可以点击并自动发送消息">启用AI消息快捷按钮</label>
-                        <label class="switch">
-                            <input type="checkbox" id="enableAiMessageButtons" name="enableAiMessageButtons">
-                            <span class="slider round"></span>
-                        </label>
-                    </div>
-                    <hr style="border: none; border-top: 1px solid var(--border-color); margin: 20px 0;">
-    
-                    <div class="form-group-inline" style="justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                        <label for="enableContextSanitizer" title="开启后，在提交给AI的上下文中，较早的AI消息的HTML将被转换为Markdown以节省Token。">上下文HTML标签转MD净化器</label>
-                        <label class="switch">
-                            <input type="checkbox" id="enableContextSanitizer" name="enableContextSanitizer">
-                            <span class="slider round"></span>
-                        </label>
-                    </div>
-
-                    <div class="form-group" id="contextSanitizerDepthContainer" style="display: none; margin-bottom: 20px;">
-                        <label for="contextSanitizerDepth">净化初始深度:</label>
-                        <input type="number" id="contextSanitizerDepth" name="contextSanitizerDepth" min="0" value="2" style="width: 80px;">
-                        <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
-                            例如: 设置为2，则从倒数第3条AI消息开始净化。设置为0，则净化所有AI消息。
-                        </small>
-                    </div>
-
-                    <div class="form-group-inline" style="justify-content: space-between; align-items: center;">
-                        <label for="agentMusicControl">启用Agent音乐控制</label>
-                        <label class="switch">
-                            <input type="checkbox" id="agentMusicControl" name="agentMusicControl">
-                            <span class="slider round"></span>
-                        </label>
-                    </div>
-
-                    <hr style="border: none; border-top: 1px solid var(--border-color); margin: 20px 0;">
-
-                    <div class="form-group" style="margin-bottom: 20px;">
-                        <label for="continueWritingPrompt">中键续写默认提示词:</label>
-                        <input type="text" id="continueWritingPrompt" name="continueWritingPrompt" placeholder="默认: 请继续" value="请继续">
-                        <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
-                            提示：在输入框上中键点击时，如果输入框为空则使用此提示词进行续写；使用 ctrl/command+d 快速使用。
-                        </small>
-                    </div>
-
-                    <div class="form-group" style="margin-bottom: 20px;">
-                        <label for="flowlockContinueDelay">心流锁续写延迟 (秒):</label>
-                        <input type="number" id="flowlockContinueDelay" name="flowlockContinueDelay" min="1" max="300" step="1" value="5" style="width: 80px;">
-                        <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
-                            提示：AI完成一次续写后，等待指定秒数再开始下一次续写。
-                        </small>
-                    </div>
-
-                    <hr style="border: none; border-top: 1px solid var(--border-color); margin: 20px 0;">
-
-                    <div class="form-group-inline" style="justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                        <label for="enableMiddleClickQuickAction">启用在聊天气泡中的中键快捷功能</label>
-                        <label class="switch">
-                            <input type="checkbox" id="enableMiddleClickQuickAction" name="enableMiddleClickQuickAction">
-                            <span class="slider round"></span>
-                        </label>
-                    </div>
-
-                    <div class="form-group" id="middleClickQuickActionContainer" style="display: none; margin-bottom: 20px;">
-                        <label for="middleClickQuickAction">中键快速执行功能:</label>
-                        <select id="middleClickQuickAction" name="middleClickQuickAction">
-                            <option value="">请选择要快速执行的功能</option>
-                            <option value="edit">编辑消息</option>
-                            <option value="copy">复制文本</option>
-                            <option value="createBranch">创建分支</option>
-                            <option value="forward">转发消息</option>
-                            <option value="readAloud">朗读气泡</option>
-                            <option value="readMode">阅读模式</option>
-                            <option value="regenerate">重新回复</option>
-                            <option value="delete">删除消息</option>
-                        </select>
-                        <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
-                            提示：启用后，中键按下消息气泡，1 秒内松开将快速执行选中的右键菜单功能
-                        </small>
-                    </div>
-
-                    <!-- 重新回复保险机制开关 - 仅在中键快速执行功能为重新回复时显示 -->
-                    <div class="form-group" id="regenerateConfirmationContainer" style="display: none; margin-bottom: 15px;">
-                        <div class="form-group-inline" style="justify-content: space-between; align-items: center;">
-                            <label for="enableRegenerateConfirmation" title="开启后，当重新回复的消息不是最后一条时会显示确认对话框">重新回复保险机制</label>
-                            <label class="switch">
-                                <input type="checkbox" id="enableRegenerateConfirmation" name="enableRegenerateConfirmation">
-                                <span class="slider round"></span>
-                            </label>
-                        </div>
-                    </div>
-
-                    <div class="form-group" id="middleClickAdvancedContainer" style="display: none; margin-bottom: 20px;">
-                        <div class="form-group-inline" style="justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                            <label for="enableMiddleClickAdvanced">启用高级中键九宫格选择</label>
-                            <label class="switch">
-                                <input type="checkbox" id="enableMiddleClickAdvanced" name="enableMiddleClickAdvanced">
-                                <span class="slider round"></span>
-                            </label>
-                        </div>
-
-                        <div class="form-group" id="middleClickAdvancedSettings" style="display: none; margin-bottom: 15px;">
-                            <label for="middleClickAdvancedDelay">九宫格出现延迟 (毫秒):</label>
-                            <input type="number" id="middleClickAdvancedDelay" name="middleClickAdvancedDelay" min="1000" max="5000" step="100" value="1000" style="width: 100px;">
-                            <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
-                                提示：中键按下后不松开，延迟若干时间 (1000-5000ms) 后出现九宫格选择界面，按住鼠标移动到相关功能后松开即可完成快速设置。
-                            </small>
-                        </div>
-                    </div>
-
-                    <button type="submit" style="margin-top: 20px;">保存全局设置</button>
-                </form>
+                </div>
             </div>
         </div>
     </template>

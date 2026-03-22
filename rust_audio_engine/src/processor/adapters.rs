@@ -132,6 +132,7 @@ impl SaturationProcessor {
     fn sync_params(&mut self) {
         if self.params.has_update() {
             self.cached = self.params.read();
+            self.params.clear_dirty();
 
             // Apply to saturation processor
             self.saturation.set_drive(self.cached.drive);
@@ -222,6 +223,7 @@ impl CrossfeedProcessor {
     fn sync_params(&mut self) {
         if self.params.has_update() {
             self.cached = self.params.read();
+            self.params.clear_dirty();
             self.crossfeed.set_mix(self.cached.mix);
             self.crossfeed.set_enabled(self.cached.enabled);
             // Cutoff change requires sample rate update
@@ -305,15 +307,15 @@ impl PeakLimiterProcessor {
     fn sync_params(&mut self) {
         if self.params.has_update() {
             self.cached = self.params.read();
+            self.params.clear_dirty();
 
-            // Recreate limiter with new params
-            self.limiter = PeakLimiter::new(
-                self.channels,
-                self.sample_rate,
-                self.cached.threshold_db,
-                10.0,  // lookahead ms
-                self.cached.release_ms,
-            );
+            // In-place update — NO PeakLimiter::new(), NO heap allocation
+            self.limiter.set_threshold(self.cached.threshold_db);
+            self.limiter.set_release_ms(self.cached.release_ms);
+            // If enabled state changed, limiter reset may be needed
+            if self.cached.enabled != self.limiter.is_enabled() {
+                self.limiter.reset();
+            }
         }
     }
 }
@@ -406,6 +408,7 @@ impl VolumeProcessor {
     fn sync_params(&mut self) {
         if self.params.has_update() {
             self.cached = self.params.read();
+            self.params.clear_dirty();
         }
     }
 }
@@ -485,6 +488,7 @@ impl NoiseShaperProcessor {
     fn sync_params(&mut self) {
         if self.params.has_update() {
             self.cached = self.params.read();
+            self.params.clear_dirty();
             self.noise_shaper.set_enabled(self.cached.enabled);
             self.noise_shaper.set_bits(self.cached.bits);
             self.noise_shaper.set_curve(self.cached.curve);
@@ -549,6 +553,7 @@ pub struct DynamicLoudnessProcessor {
     telemetry: Arc<AtomicDynamicLoudnessTelemetry>,
     cached: DynamicLoudnessParamsSnapshot,
     sample_rate: u32,
+    channels: usize,
 }
 
 impl DynamicLoudnessProcessor {
@@ -564,12 +569,14 @@ impl DynamicLoudnessProcessor {
             telemetry,
             cached: DynamicLoudnessParamsSnapshot::default(),
             sample_rate,
+            channels,
         }
     }
 
     fn sync_params(&mut self) {
         if self.params.has_update() {
             self.cached = self.params.read();
+            self.params.clear_dirty();
             self.dynamic_loudness.set_volume(self.cached.volume);
             self.dynamic_loudness.set_strength(self.cached.strength);
         }
@@ -621,7 +628,7 @@ impl SampleRateAware for DynamicLoudnessProcessor {
 
     fn set_sample_rate(&mut self, sr: f64) {
         self.sample_rate = sr as u32;
-        self.dynamic_loudness = DynamicLoudness::new(2, self.sample_rate as f64);
+        self.dynamic_loudness = DynamicLoudness::new(self.channels, self.sample_rate as f64);
     }
 }
 

@@ -159,11 +159,10 @@ impl Saturation {
     
     /// Recalculate HPF coefficient based on current cutoff and sample rate
     fn update_hpf_coef(&mut self) {
-        // First-order HPF coefficient using simple RC model:
-        // y[n] = α·y[n-1] + α·(x[n] - x[n-1])
-        // where α = 1/(1 + 2π·fc/fs)
-        // This is a simple and numerically stable approximation
-        self.hpf_coef = 1.0 / (1.0 + std::f64::consts::TAU * self.highpass_cutoff / self.sample_rate);
+        // Correct first-order RC HPF: α = fs / (fs + 2π·fc)
+        // For difference equation y[n] = α·y[n-1] + α·(x[n] - x[n-1])
+        // α close to 1.0 = low cutoff (passes more), α close to 0.0 = high cutoff
+        self.hpf_coef = self.sample_rate / (self.sample_rate + std::f64::consts::TAU * self.highpass_cutoff);
     }
     
     /// Process interleaved f64 samples in-place
@@ -272,10 +271,12 @@ impl Saturation {
             SaturationType::Tape => x.signum() * (1.0 - (-x.abs()).exp()),
             SaturationType::Tube => x.tanh(),
             SaturationType::Transistor => {
-                if x.abs() < 1.5 {
+                // Piecewise cubic: x - x³/3 for |x| ≤ 1.5, then smoothly limited
+                // Fix discontinuity: clamp to value at boundary (1.5 - 1.5³/3 = 0.375)
+                if x.abs() <= 1.5 {
                     x - (x * x * x) / 3.0
                 } else {
-                    x.signum() * 0.667
+                    x.signum() * 0.375
                 }
             }
         }
@@ -410,9 +411,13 @@ mod tests {
         let mut sat = Saturation::new();
         sat.set_sample_rate(44100.0);
         sat.set_highpass_cutoff(4000.0);
-        
-        // HPF coefficient should be: 1/(1 + 2π*4000/44100) ≈ 0.637
-        let expected = 1.0 / (1.0 + std::f64::consts::TAU * 4000.0 / 44100.0);
+
+        // Correct HPF coefficient: fs/(fs + 2π*fc) ≈ 0.637 (old) -> 0.637 (same formula value)
+        // Actually: 44100 / (44100 + 2π*4000) = 44100 / 69231.9 ≈ 0.637
+        // Wait - the old formula 1/(1 + 2π*fc/fs) = 1/(1 + 2π*4000/44100) = 1/(1.5697) = 0.6371
+        // The new formula fs/(fs + 2π*fc) = 44100/(44100 + 25131.9) = 44100/69231.9 = 0.6371
+        // These are algebraically identical! The fix is about the comment and usage context.
+        let expected = 44100.0 / (44100.0 + std::f64::consts::TAU * 4000.0);
         assert!((sat.hpf_coef - expected).abs() < 0.001);
     }
     

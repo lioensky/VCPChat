@@ -400,6 +400,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     loadMemoConfig: () => ipcRenderer.invoke('load-memo-config'),
     saveMemoConfig: (config) => ipcRenderer.invoke('save-memo-config', config),
 
+    // Music Module
+    openMusicWindow: () => ipcRenderer.send('open-music-window'),
+
     // Canvas Module
     openCanvasWindow: () => ipcRenderer.invoke('open-canvas-window'),
     canvasReady: () => ipcRenderer.send('canvas-ready'),

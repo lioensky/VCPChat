@@ -195,6 +195,8 @@ pub struct PeakLimiter {
     release_coeff: f64,
     /// Number of channels
     channels: usize,
+    /// Sample rate (needed for in-place release_ms updates)
+    sample_rate: f64,
 }
 
 impl PeakLimiter {
@@ -234,6 +236,7 @@ impl PeakLimiter {
             gain_reduction: 1.0,
             release_coeff,
             channels,
+            sample_rate: sample_rate as f64,
         }
     }
     
@@ -312,6 +315,22 @@ impl PeakLimiter {
     /// Set threshold in dB
     pub fn set_threshold_db(&mut self, threshold_db: f64) {
         self.threshold = db_to_linear(threshold_db);
+    }
+
+    /// Update threshold in-place without reallocating lookahead buffer.
+    pub fn set_threshold(&mut self, threshold_db: f64) {
+        self.threshold = db_to_linear(threshold_db);
+    }
+
+    /// Update release time in-place without reallocating lookahead buffer.
+    pub fn set_release_ms(&mut self, release_ms: f64) {
+        let release_samples = (release_ms / 1000.0) * self.sample_rate;
+        self.release_coeff = (-1.0 / release_samples.max(1.0)).exp();
+    }
+
+    /// Check if limiter is conceptually enabled (always true for PeakLimiter)
+    pub fn is_enabled(&self) -> bool {
+        true
     }
     
     /// Get current gain reduction in dB (for metering)
@@ -596,6 +615,18 @@ impl AtomicLoudnessState {
     /// Set mode: 0=Track, 1=Album, 2=Streaming, 3=ReplayGainTrack, 4=ReplayGainAlbum
     pub fn set_mode(&self, mode: u8) {
         self.mode.store(mode, Ordering::Relaxed);
+    }
+
+    /// Get normalization mode as enum
+    pub fn get_mode(&self) -> NormalizationMode {
+        match self.mode.load(Ordering::Relaxed) {
+            0 => NormalizationMode::Track,
+            1 => NormalizationMode::Album,
+            2 => NormalizationMode::Streaming,
+            3 => NormalizationMode::ReplayGainTrack,
+            4 => NormalizationMode::ReplayGainAlbum,
+            _ => NormalizationMode::Track,
+        }
     }
     
     /// Update smoothing coefficient
