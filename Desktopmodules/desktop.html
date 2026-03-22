@@ -96,6 +96,44 @@
         <span class="desktop-status-text">等待连接...</span>
     </div>
 
+    <!-- ============================================================
+         模块化脚本加载（严格按依赖顺序）
+         ============================================================ -->
+    <!-- 1. 核心层：状态 & 常量（无依赖） -->
+    <script src="core/state.js"></script>
+    <!-- 2. 核心层：主题同步 -->
+    <script src="core/theme.js"></script>
+    <!-- 3. 核心层：状态指示器（依赖 state） -->
+    <script src="core/statusIndicator.js"></script>
+    <!-- 4. 核心层：Z-Index 管理（依赖 state） -->
+    <script src="core/zIndexManager.js"></script>
+    <!-- 5. 核心层：拖拽系统（依赖 CONSTANTS, zIndex） -->
+    <script src="core/dragSystem.js"></script>
+    <!-- 6. 核心层：挂件管理（依赖 state, CONSTANTS, domRefs, drag, zIndex） -->
+    <script src="core/widgetManager.js"></script>
+    <!-- 7. UI层：右键菜单（依赖 state, widget, zIndex） -->
+    <script src="ui/contextMenu.js"></script>
+    <!-- 8. UI层：收藏模态窗（依赖 state） -->
+    <script src="ui/saveModal.js"></script>
+    <!-- 9. UI层：侧栏（依赖 state, domRefs） -->
+    <script src="ui/sidebar.js"></script>
+    <!-- 10. 收藏层：缩略图捕获 -->
+    <script src="favorites/thumbnail.js"></script>
+    <!-- 11. 收藏层：收藏管理器（依赖 state, status, widget, sidebar, thumbnail） -->
+    <script src="favorites/favoritesManager.js"></script>
+    <!-- 12. API层：vcpAPI 代理 -->
+    <script src="api/vcpProxy.js"></script>
+    <!-- 13. API层：IPC 桥接（依赖 state, status, widget） -->
+    <script src="api/ipcBridge.js"></script>
+    <!-- 14. 内置挂件：天气 -->
+    <script src="builtinWidgets/weatherWidget.js"></script>
+    <!-- 15. 内置挂件：音乐播放条 -->
+    <script src="builtinWidgets/musicWidget.js"></script>
+    <!-- 16. 内置挂件：新闻热点 -->
+    <script src="builtinWidgets/newsWidget.js"></script>
+    <!-- 17. 调试工具 -->
+    <script src="debug/debugTools.js"></script>
+    <!-- 18. 主入口：初始化编排 -->
     <script src="desktop.js"></script>
 </body>
 </html>

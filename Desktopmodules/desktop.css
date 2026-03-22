@@ -532,10 +532,10 @@ html, body {
  * ============================================================ */
 .desktop-sidebar {
     position: fixed;
-    top: 0;
+    top: 20px;
     right: 0;
     width: 280px;
-    height: 100%;
+    height: calc(100% - 32px);
     z-index: 9990;
     background: rgba(20, 20, 30, 0.88);
     backdrop-filter: blur(20px) saturate(1.3);
