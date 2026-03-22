@@ -1,6 +1,10 @@
 use std::env;
 use std::path::PathBuf;
 
+// M-4 fix: Import SaturationType from processor module (single source of truth).
+// Previously defined identically in both config.rs and saturation.rs.
+pub use crate::processor::SaturationType;
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ResampleQuality {
     Low,
@@ -83,14 +87,8 @@ impl Default for LoudnessConfig {
     }
 }
 
-/// Saturation type for analog warmth
-#[derive(Debug, Clone, Copy, PartialEq, Default, serde::Serialize, serde::Deserialize)]
-pub enum SaturationType {
-    #[default]
-    Tape,       // Warm, gentle compression
-    Tube,       // Rich even harmonics
-    Transistor, // Edgy, odd harmonics
-}
+// M-4 fix: SaturationType is now imported from processor::saturation (single definition).
+// The duplicate definition that was here has been removed.
 
 /// Saturation configuration for analog warmth
 #[derive(Debug, Clone)]
@@ -174,6 +172,8 @@ pub struct AppConfig {
     pub loudness: LoudnessConfig,
     pub dynamic_loudness: DynamicLoudnessConfig,
     pub saturation: SaturationConfig,
+    /// Output bit depth for noise shaper (M-1 fix: was hardcoded to 24)
+    pub output_bits: Option<u32>,
 }
 
 impl Default for ResampleQuality {
@@ -195,6 +195,7 @@ impl Default for AppConfig {
             loudness: LoudnessConfig::default(),
             dynamic_loudness: DynamicLoudnessConfig::default(),
             saturation: SaturationConfig::default(),
+            output_bits: None,  // Will default to 24 if not set
         }
     }
 }
@@ -346,10 +347,16 @@ impl AppConfig {
                 .unwrap_or(true),  // Enabled by default
         };
         
-        log::info!("Loaded config: Quality={:?}, Phase={:?}, Cache={}, Preemptive={}, EQ={}, Loudness={} LUFS, DynamicLoudness={} (ref={}dB), Saturation={}", 
-            resample_quality, phase_response, use_cache, preemptive_resample, eq_type, loudness.target_lufs, 
+        // Load output bit depth for noise shaper (M-1 fix)
+        let output_bits = env::var("VCP_AUDIO_OUTPUT_BITS")
+            .ok()
+            .and_then(|s| s.parse::<u32>().ok())
+            .map(|b| b.clamp(8, 32));
+
+        log::info!("Loaded config: Quality={:?}, Phase={:?}, Cache={}, Preemptive={}, EQ={}, Loudness={} LUFS, DynamicLoudness={} (ref={}dB), Saturation={}",
+            resample_quality, phase_response, use_cache, preemptive_resample, eq_type, loudness.target_lufs,
             dynamic_loudness.enabled, dynamic_loudness.ref_volume_db, saturation.enabled);
-            
+
         Self {
             target_samplerate,
             resample_quality,
@@ -361,6 +368,7 @@ impl AppConfig {
             loudness,
             dynamic_loudness,
             saturation,
+            output_bits,
         }
     }
 }

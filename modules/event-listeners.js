@@ -486,8 +486,81 @@ export function setupEventListeners(deps) {
 
             // 绑定 Rust 助手配置相关的事件
             setupRustAssistantConfigListeners();
+
+            // 绑定全局设置导航切换
+            setupGlobalSettingsNavigation();
+
+            // continueWritingPrompt 使用 CSS field-sizing: content 自动调整高度，无需 JS 处理
         }
     });
+
+    // 全局设置双栏导航切换
+    function setupGlobalSettingsNavigation() {
+        const navItems = document.querySelectorAll('.settings-nav-item');
+        const sections = document.querySelectorAll('.settings-section');
+        let isAnimating = false;
+
+        navItems.forEach(item => {
+            item.addEventListener('click', () => {
+                // 防止动画过程中重复点击
+                if (isAnimating) return;
+
+                const targetSection = item.dataset.section;
+                const currentActive = document.querySelector('.settings-section.active');
+
+                // 如果点击的是当前已激活的项，不执行任何操作
+                if (currentActive && currentActive.id === `section-${targetSection}`) {
+                    return;
+                }
+
+                isAnimating = true;
+
+                // 更新导航项激活状态
+                navItems.forEach(nav => nav.classList.remove('active'));
+                item.classList.add('active');
+
+                // 获取目标面板
+                const targetPanel = document.getElementById(`section-${targetSection}`);
+                if (!targetPanel) {
+                    isAnimating = false;
+                    return;
+                }
+
+                // 如果有当前激活的面板，先执行退出动画
+                if (currentActive) {
+                    currentActive.classList.add('switching-out');
+                    currentActive.classList.remove('active');
+
+                    // 等待退出动画完成后显示新面板
+                    setTimeout(() => {
+                        currentActive.style.display = 'none';
+                        currentActive.classList.remove('switching-out');
+
+                        // 显示新面板
+                        targetPanel.style.display = 'block';
+                        targetPanel.classList.add('switching-in');
+
+                        // 强制重排以触发动画
+                        void targetPanel.offsetWidth;
+
+                        targetPanel.classList.remove('switching-in');
+                        targetPanel.classList.add('active');
+                        isAnimating = false;
+                    }, 150);
+                } else {
+                    // 没有当前面板，直接显示新面板
+                    targetPanel.style.display = 'block';
+                    targetPanel.classList.add('switching-in');
+
+                    void targetPanel.offsetWidth;
+
+                    targetPanel.classList.remove('switching-in');
+                    targetPanel.classList.add('active');
+                    isAnimating = false;
+                }
+            });
+        });
+    }
 
     function setupUserAvatarListener(input) {
         input.addEventListener('change', (event) => {
@@ -666,8 +739,15 @@ export function setupEventListeners(deps) {
                     result.runtimeThresholds.clipboardCheckIntervalMs !== 500);
 
             const rustEnableCustomThresholdsCheckbox = document.getElementById('rustEnableCustomThresholds');
+            const rustCustomThresholdsPanel = document.getElementById('rustCustomThresholdsPanel');
+            
             if (rustEnableCustomThresholdsCheckbox) {
                 rustEnableCustomThresholdsCheckbox.checked = hasCustomThresholds;
+            }
+            
+            // 根据开关状态更新面板显示
+            if (rustCustomThresholdsPanel) {
+                rustCustomThresholdsPanel.style.display = hasCustomThresholds ? 'block' : 'none';
             }
 
             if (result.runtimeThresholds) {
@@ -686,6 +766,9 @@ export function setupEventListeners(deps) {
 
             // 填充规则选择
             const rustRuleModeSelect = document.getElementById('rustRuleMode');
+            const rustWhitelistPanel = document.getElementById('rustWhitelistPanel');
+            const rustBlacklistPanel = document.getElementById('rustBlacklistPanel');
+            
             let ruleMode = 'none';
             if (result.whitelist && result.whitelist.length > 0) {
                 ruleMode = 'whitelist';
@@ -695,6 +778,12 @@ export function setupEventListeners(deps) {
 
             if (rustRuleModeSelect) {
                 rustRuleModeSelect.value = ruleMode;
+            }
+
+            // 根据规则模式更新面板显示
+            if (rustWhitelistPanel && rustBlacklistPanel) {
+                rustWhitelistPanel.style.display = ruleMode === 'whitelist' ? 'block' : 'none';
+                rustBlacklistPanel.style.display = ruleMode === 'blacklist' ? 'block' : 'none';
             }
 
             // 填充白名单和黑名单
@@ -1063,10 +1152,10 @@ export function setupEventListeners(deps) {
 
     if (openMusicBtn) {
         openMusicBtn.addEventListener('click', () => {
-            if (window.electron) {
-                window.electron.send('open-music-window');
+            if (window.electronAPI && window.electronAPI.openMusicWindow) {
+                window.electronAPI.openMusicWindow();
             } else {
-                console.error('Music Player: electron context bridge not found.');
+                console.error('Music Player: electronAPI.openMusicWindow not found.');
             }
         });
     }

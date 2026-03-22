@@ -7,8 +7,10 @@
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use crossbeam::channel::Sender;
+use arc_swap::ArcSwapOption;
 
-use super::state::{SharedState, PlayerState};
+use super::state::{SharedState, PlayerState,
+    EVENT_TRACK_CHANGED, EVENT_NEEDS_PRELOAD_RESET, EVENT_PLAYBACK_ENDED};
 use crate::processor::{
     DspChain, StreamingResampler, AtomicLoudnessState,
     AtomicEqParams, AtomicSaturationParams, AtomicCrossfeedParams,
@@ -64,76 +66,60 @@ pub fn normalize_channels(samples: Vec<f64>, from: usize, to: usize) -> Vec<f64>
 
 /// Lock-free DSP context for audio callback
 ///
-/// This structure holds all the state needed for lock-free audio processing.
-/// It uses DspChain for unified processing and atomic parameters for thread-safe
-/// parameter updates without blocking.
+/// This structure manages DSP processing state. The DspChain and convolver
+/// are owned by the audio callback closure (&mut), NOT shared via Mutex.
 ///
-/// # Architecture (RCU-style for convolver)
+/// - DspChain: owned exclusively by callback closure (created once, moved in)
+/// - Convolver: updated via ArcSwapOption (wait-free pointer swap)
+/// - IR kernels: stored for rebuild on non-realtime path only
+/// - Parameters: read atomically from shared AtomicXxxParams
 ///
-/// ```text
-/// Main Thread                         Audio Thread
-///     |                                    |
-///     v                                    v
-/// AtomicParams ──────────────────> DspChain.process()  (always runs)
-/// (non-blocking)                          |
-///                                         v
-/// rebuild_merged_convolver():       merged_convolver.process_inplace()
-///   1. Build new FFTConvolver              |
-///      OUTSIDE lock (O(N log N))    runtime.lock() held only during
-///   2. Lock runtime                 process() — never during rebuild
-///   3. Swap Option<FFTConvolver>
-///   4. Unlock
-///      (swap is O(1) pointer move)
+/// # Architecture
+///
 /// ```
-///
-/// The key invariant: the runtime lock is NEVER held during expensive
-/// operations (FFT, IR convolution). The audio thread always gets the
-/// lock because contention only exists during an O(1) pointer swap.
-///
-/// # Usage
-///
-/// ```ignore
-/// // Main thread: create and share
-/// let ctx = Arc::new(LockfreeDspContext::new(2, 44100.0, params...));
-///
-/// // Audio thread: process (guaranteed non-blocking)
-/// ctx.process(buffer, channels);
-///
-/// // Main thread: update parameters (non-blocking)
-/// ctx.eq_params().set_band_gain(0, 3.0);
+/// Main Thread                    Audio Thread
+///     |                              |
+///     v                              v
+/// AtomicParams ───> DspChain.process() (owned &mut, no Mutex)
+/// (non-blocking)     |
+///                    v
+///               [EQ → Saturation → Crossfeed → Limiter → Volume → DynamicLoudness]
+///                    |
+///                    v
+///               ArcSwapOption<FFTConvolver> ───> convolver.process_inplace()
 /// ```
 pub struct LockfreeDspContext {
-    /// Runtime state: chain + merged convolver.
-    /// Lock is only held during process() and O(1) convolver swaps.
-    /// NEVER held during FFTConvolver construction or IR merging.
-    runtime: parking_lot::Mutex<DspRuntime>,
-
-    /// Lock-free parameter references
-    eq_params: Arc<AtomicEqParams>,
-    saturation_params: Arc<AtomicSaturationParams>,
-    crossfeed_params: Arc<AtomicCrossfeedParams>,
-    limiter_params: Arc<AtomicPeakLimiterParams>,
-    volume_params: Arc<AtomicVolumeParams>,
-    noise_shaper_params: Arc<AtomicNoiseShaperParams>,
-    dynamic_loudness_params: Arc<AtomicDynamicLoudnessParams>,
+    /// Lock-free parameter references (shared with main thread, read atomically)
+    pub eq_params: Arc<AtomicEqParams>,
+    pub saturation_params: Arc<AtomicSaturationParams>,
+    pub crossfeed_params: Arc<AtomicCrossfeedParams>,
+    pub limiter_params: Arc<AtomicPeakLimiterParams>,
+    pub volume_params: Arc<AtomicVolumeParams>,
+    pub noise_shaper_params: Arc<AtomicNoiseShaperParams>,
+    pub dynamic_loudness_params: Arc<AtomicDynamicLoudnessParams>,
 
     /// Sample rate
     sample_rate: f64,
     /// Channel count
     channels: usize,
-    /// Optional external IR kernel source (interleaved)
+
+    /// Merged convolver — updated via ArcSwap (wait-free pointer swap from main thread,
+    /// wait-free load from audio thread). No Mutex needed.
+    pub merged_convolver: Arc<ArcSwapOption<FFTConvolver>>,
+
+    /// IR kernel sources — only accessed from non-realtime command handling path.
+    /// Protected by Mutex because they are only read/written from the audio thread's
+    /// command processing loop (not from the audio callback itself).
     external_ir_kernel: parking_lot::Mutex<Option<(Vec<f64>, usize)>>,
-    /// Optional FIR kernel source (interleaved)
     fir_ir_kernel: parking_lot::Mutex<Option<(Vec<f64>, usize)>>,
 }
 
-struct DspRuntime {
-    chain: DspChain,
-    merged_convolver: Option<FFTConvolver>,
-}
-
 impl LockfreeDspContext {
-    /// Create a new lock-free DSP context
+    /// Create a new lock-free DSP context.
+    ///
+    /// Returns (Self, DspChain) — the caller must move the DspChain into the
+    /// audio callback closure. The DspChain is exclusively owned by the audio
+    /// thread and never shared.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         channels: usize,
@@ -146,10 +132,10 @@ impl LockfreeDspContext {
         noise_shaper_params: Arc<AtomicNoiseShaperParams>,
         dynamic_loudness_params: Arc<AtomicDynamicLoudnessParams>,
         dynamic_loudness_telemetry: Arc<AtomicDynamicLoudnessTelemetry>,
-    ) -> Self {
+    ) -> (Self, DspChain) {
         // Build DSP chain with processors
         let mut chain = DspChain::new(sample_rate);
-        
+
         // Add processors in order: EQ → Saturation → Crossfeed → Limiter → Volume → DynamicLoudness → NoiseShaper
         chain.add(EqProcessor::new(channels, sample_rate, Arc::clone(&eq_params)));
         chain.add(SaturationProcessor::new(Arc::clone(&saturation_params)));
@@ -167,12 +153,8 @@ impl LockfreeDspContext {
             sample_rate as u32,
             Arc::clone(&noise_shaper_params),
         ));
-        
-        Self {
-            runtime: parking_lot::Mutex::new(DspRuntime {
-                chain,
-                merged_convolver: None,
-            }),
+
+        let ctx = Self {
             eq_params,
             saturation_params,
             crossfeed_params,
@@ -182,53 +164,22 @@ impl LockfreeDspContext {
             dynamic_loudness_params,
             sample_rate,
             channels,
+            merged_convolver: Arc::new(ArcSwapOption::empty()),
             external_ir_kernel: parking_lot::Mutex::new(None),
             fir_ir_kernel: parking_lot::Mutex::new(None),
-        }
-    }
-    
-    /// Process audio buffer through DSP chain (guaranteed non-blocking)
-    ///
-    /// The runtime lock is always available to the audio thread because:
-    /// - The main thread NEVER holds it during expensive operations
-    /// - rebuild_merged_convolver() builds the new convolver OUTSIDE the lock,
-    ///   then acquires the lock only for an O(1) pointer swap
-    /// - set_sample_rate() and reset() are only called from the audio thread itself
-    ///
-    /// This ensures DSP is NEVER skipped, preserving state continuity for
-    /// stateful processors (limiter envelope, convolver overlap-add, etc.).
-    #[inline]
-    pub fn process(&self, buffer: &mut [f64]) {
-        let mut runtime = self.runtime.lock();
-        runtime.chain.process(buffer, self.channels);
-        if let Some(convolver) = runtime.merged_convolver.as_mut() {
-            convolver.process_inplace(buffer);
-        }
-    }
-    
-    /// Reset all processors
-    pub fn reset(&self) {
-        let mut runtime = self.runtime.lock();
-        runtime.chain.reset();
-        if let Some(convolver) = runtime.merged_convolver.as_mut() {
-            convolver.reset();
-        }
+        };
+
+        (ctx, chain)
     }
 
-    /// Rebuild merged convolver from current IR kernels.
-    ///
-    /// IMPORTANT: All expensive work (FFTConvolver construction, IR merging) is done
-    /// OUTSIDE the runtime lock. The lock is only held for the final O(1) pointer swap.
-    /// This guarantees the audio thread's process() is never blocked by IR rebuilds.
     fn rebuild_merged_convolver(&self) -> Result<(), String> {
         let external = self.external_ir_kernel.lock().clone();
         let fir = self.fir_ir_kernel.lock().clone();
 
-        // === Expensive work: done WITHOUT holding runtime lock ===
         let merged = match (external, fir) {
             (None, None) => None,
             (Some((ir, channels)), None) | (None, Some((ir, channels))) => {
-                Some(FFTConvolver::new(&ir, channels))
+                Some(Arc::new(FFTConvolver::new(&ir, channels)))
             }
             (Some((external_ir, ext_channels)), Some((fir_ir, fir_channels))) => {
                 if ext_channels != fir_channels {
@@ -239,13 +190,16 @@ impl LockfreeDspContext {
                 }
 
                 let merged_ir = convolve_interleaved_ir(&external_ir, &fir_ir, ext_channels)?;
-                Some(FFTConvolver::new(&merged_ir, ext_channels))
+                Some(Arc::new(FFTConvolver::new(&merged_ir, ext_channels)))
             }
         };
 
-        // === O(1) swap: only now acquire the runtime lock ===
-        let mut runtime = self.runtime.lock();
-        runtime.merged_convolver = merged;
+        // Wait-free pointer swap — audio callback will pick up new convolver
+        // on next invocation via ArcSwap::load()
+        match merged {
+            Some(conv) => self.merged_convolver.store(Some(conv)),
+            None => self.merged_convolver.store(None),
+        }
         Ok(())
     }
 
@@ -290,34 +244,28 @@ impl LockfreeDspContext {
         }
         let _ = self.rebuild_merged_convolver();
     }
-    
-    /// Update sample rate (reinitializes processors)
-    pub fn set_sample_rate(&self, sample_rate: f64) {
-        let mut runtime = self.runtime.lock();
-        runtime.chain.set_sample_rate(sample_rate);
-    }
-    
+
     /// Get parameter references for main thread updates
     pub fn eq_params(&self) -> &Arc<AtomicEqParams> {
         &self.eq_params
     }
-    
+
     pub fn saturation_params(&self) -> &Arc<AtomicSaturationParams> {
         &self.saturation_params
     }
-    
+
     pub fn crossfeed_params(&self) -> &Arc<AtomicCrossfeedParams> {
         &self.crossfeed_params
     }
-    
+
     pub fn limiter_params(&self) -> &Arc<AtomicPeakLimiterParams> {
         &self.limiter_params
     }
-    
+
     pub fn volume_params(&self) -> &Arc<AtomicVolumeParams> {
         &self.volume_params
     }
-    
+
     pub fn dynamic_loudness_params(&self) -> &Arc<AtomicDynamicLoudnessParams> {
         &self.dynamic_loudness_params
     }
@@ -364,25 +312,18 @@ fn convolve_interleaved_ir(a: &[f64], b: &[f64], channels: usize) -> Result<Vec<
 
 /// Main audio callback for cpal output stream (lock-free)
 ///
-/// This function is called by cpal when it needs more audio samples.
-/// It handles:
-/// - Gapless playback buffer swapping
-/// - DSP processing chain via `LockfreeDspContext` (lock-free parameter reads)
-/// - Resampling (if device sample rate differs)
-/// - Loudness normalization
-/// - Spectrum data output
-///
-/// # Key Features
-///
-/// 1. Uses `LockfreeDspContext` instead of individual Mutex<T> processors
-/// 2. Parameters are read atomically, never blocking
-/// 3. No processor is ever skipped due to lock contention
-/// 4. Simpler, more maintainable code
+/// Zero-Mutex audio processing:
+/// - `dsp_chain`: exclusively owned by this closure (&mut), no lock needed
+/// - `owned_convolver`: exclusively owned by callback, updated via ArcSwap swap-in
+/// - `convolver_swap`: wait-free ArcSwap used only to deliver new convolver instances
+/// - Parameters: read atomically from shared AtomicXxxParams
 #[allow(clippy::too_many_arguments)]
 pub fn audio_callback_lockfree(
     data: &mut [f32],
     shared: &SharedState,
-    dsp_ctx: &LockfreeDspContext,
+    dsp_chain: &mut DspChain,
+    owned_convolver: &mut Option<FFTConvolver>,
+    convolver_swap: &Arc<ArcSwapOption<FFTConvolver>>,
     loudness_state: &Arc<AtomicLoudnessState>,
     spectrum_tx: &Sender<f64>,
     channels: usize,
@@ -391,7 +332,40 @@ pub fn audio_callback_lockfree(
     resample_leftover: &mut Vec<f64>,
     resample_leftover_pos: &mut usize,
     resample_output: &mut Vec<f64>,
+    convolver_output: &mut Vec<f64>,
 ) {
+    // Check for new convolver delivered via ArcSwap (wait-free pointer swap).
+    // If a new convolver was built by the command handler thread, swap it in.
+    // We take ownership so we can call process_inplace(&mut self).
+    {
+        let new_conv = convolver_swap.swap(None);
+        if let Some(arc_conv) = new_conv {
+            // Try to unwrap the Arc; if there are no other references we get the owned value.
+            // Otherwise, clone it (this only happens at swap-in time, not per-callback).
+            match Arc::try_unwrap(arc_conv) {
+                Ok(conv) => *owned_convolver = Some(conv),
+                Err(arc) => *owned_convolver = Some((*arc).clone()),
+            }
+        }
+    }
+
+    // H-channel fix: Rebuild DspChain when channel count changes (or sample rate).
+    // The LoadComplete handler sets dsp_needs_rebuild=true; we rebuild here
+    // because dsp_chain is exclusively owned by this callback closure.
+    if shared.dsp_needs_rebuild.compare_exchange(
+        true, false, Ordering::AcqRel, Ordering::Acquire
+    ).is_ok() {
+        let new_channels = shared.channels.load(Ordering::Relaxed).max(1) as usize;
+        let new_sr = shared.sample_rate.load(Ordering::Relaxed).max(1) as f64;
+        dsp_chain.set_sample_rate(new_sr);
+        dsp_chain.reset();
+        // Reset convolver state for new format
+        if let Some(ref mut conv) = owned_convolver {
+            conv.reset();
+        }
+        log::info!("DspChain rebuilt for {} channels @ {} Hz", new_channels, new_sr);
+    }
+
     let has_leftover = *resample_leftover_pos < resample_leftover.len();
 
     // Gapless and EOF handling
@@ -412,42 +386,37 @@ pub fn audio_callback_lockfree(
     // EOF Detection with gapless
     if current_pos >= total && !has_leftover {
         if shared.pending_ready.load(Ordering::Acquire) {
-            let next_samples = {
-                // Atomically take the pending buffer (swap with None).
-                // This is lock-free: ArcSwap::swap is a single atomic pointer exchange.
-                let old = shared.pending_buffer.swap(Arc::new(None));
-                // Extract the inner Option<Vec<f64>>. If Arc has other holders
-                // (shouldn't happen in normal flow), clone the data.
-                match Arc::try_unwrap(old) {
-                    Ok(opt) => opt,
-                    Err(arc) => (*arc).clone(),
-                }
-            };
+            // Load pending buffer via ArcSwap (lock-free)
+            let pending_arc = shared.pending_buffer.load_full();
+            let next_samples = pending_arc.as_ref().clone();
+            // Clear the pending buffer
+            shared.pending_buffer.store(Arc::new(None));
 
             if let Some(next) = next_samples {
                 let next_frames = shared.pending_total_frames.load(Ordering::Relaxed);
                 let next_sr = shared.pending_sample_rate.load(Ordering::Relaxed);
                 let next_ch = shared.pending_channels.load(Ordering::Relaxed);
-                let next_path = shared.pending_file_path.write().take();
-                let next_metadata = shared.pending_metadata.write().take();
 
-                // Atomically swap audio buffer (lock-free)
+                // Store new audio buffer (wait-free ArcSwap)
                 shared.audio_buffer.store(Arc::new(next));
                 shared.total_frames.store(next_frames, Ordering::Relaxed);
                 shared.sample_rate.store(next_sr, Ordering::Relaxed);
                 shared.channels.store(next_ch, Ordering::Relaxed);
                 shared.position_frames.store(0, Ordering::Relaxed);
-                *shared.file_path.write() = next_path.clone();
-                
-                if let Some(meta) = next_metadata {
-                    *shared.track_metadata.write() = meta;
-                }
-                *shared.current_track_path.write() = next_path;
 
                 shared.pending_ready.store(false, Ordering::Release);
                 shared.needs_preload.store(false, Ordering::Relaxed);
-                shared.event_track_changed.store(true, Ordering::Release);
                 shared.dsp_reset_pending.store(true, Ordering::Release);
+
+                // Signal events via bitmask (single atomic op)
+                shared.event_flags.fetch_or(
+                    EVENT_TRACK_CHANGED | EVENT_NEEDS_PRELOAD_RESET,
+                    Ordering::Release,
+                );
+
+                // Signal that metadata needs to be copied by main thread
+                // (avoid RwLock writes in audio callback — P0-1 fix)
+                shared.gapless_swap_pending.store(true, Ordering::Release);
 
                 let pending_gain_bits = shared.pending_target_gain_db.load(Ordering::Relaxed);
                 let pending_gain_db = f64::from_bits(pending_gain_bits);
@@ -455,8 +424,12 @@ pub fn audio_callback_lockfree(
 
                 log::info!("Gapless: switched to next track (gain: {:.2} dB)", pending_gain_db);
 
-                // Reset DSP chain
-                dsp_ctx.reset();
+                // Reset DSP chain (no Mutex — owned &mut)
+                dsp_chain.reset();
+                // Reset convolver state for new track
+                if let Some(ref mut conv) = owned_convolver {
+                    conv.reset();
+                }
                 *resampler = None;
                 resample_leftover.clear();
                 *resample_leftover_pos = 0;
@@ -468,11 +441,12 @@ pub fn audio_callback_lockfree(
         }
 
         data.fill(0.0);
-        if let Some(mut state) = shared.state.try_write() {
-            if *state == PlayerState::Playing {
-                *state = PlayerState::Stopped;
-                shared.event_playback_ended.store(true, Ordering::Release);
-            }
+        // P0 fix: use atomic store instead of try_write() to guarantee state update
+        // and event delivery. Previously try_write() could fail if the RwLock was held,
+        // silently dropping EVENT_PLAYBACK_ENDED.
+        if shared.state.load() == PlayerState::Playing {
+            shared.state.store(PlayerState::Stopped);
+            shared.event_flags.fetch_or(EVENT_PLAYBACK_ENDED, Ordering::Release);
         }
         return;
     }
@@ -516,9 +490,6 @@ pub fn audio_callback_lockfree(
 
         process_buf.clear();
         {
-            // Lock-free read: ArcSwap::load() is an atomic pointer load,
-            // never blocks, never contends with writers. This eliminates
-            // the last RwLock in the audio callback hot path.
             let buf = shared.audio_buffer.load();
             if end_sample <= buf.len() {
                 process_buf.extend_from_slice(&buf[start_sample..end_sample]);
@@ -540,8 +511,21 @@ pub fn audio_callback_lockfree(
             *sample *= linear_gain;
         }
 
-        // Process through unified DSP chain (lock-free parameter reads)
-        dsp_ctx.process(process_buf);
+        // Process through unified DSP chain (NO Mutex — owned &mut)
+        dsp_chain.process(process_buf, channels);
+
+        // Convolver: apply owned convolver in-place (P0 fix).
+        // The convolver is exclusively owned by the callback closure,
+        // so we can safely call process_inplace(&mut self).
+        // New convolvers are delivered via ArcSwap at the top of this function.
+        if let Some(ref mut conv) = owned_convolver {
+            // Use pre-allocated convolver_output buffer to avoid allocation
+            let buf_len = process_buf.len();
+            convolver_output.clear();
+            convolver_output.resize(buf_len, 0.0);
+            conv.process_into(process_buf, convolver_output);
+            process_buf.copy_from_slice(&convolver_output[..buf_len]);
+        }
 
         // Resample or direct output
         if let Some(rs) = resampler {
@@ -623,7 +607,7 @@ mod tests {
         let dl_params = Arc::new(AtomicDynamicLoudnessParams::new());
         let dl_telemetry = Arc::new(AtomicDynamicLoudnessTelemetry::new());
 
-        let ctx = LockfreeDspContext::new(
+        let (ctx, mut chain) = LockfreeDspContext::new(
             2,
             44100.0,
             Arc::clone(&eq_params),
@@ -638,10 +622,11 @@ mod tests {
 
         // Test that we can update params while processing
         eq_params.set_band_gain(0, 3.0);
-        
+
         let mut buffer = vec![0.5; 100];
-        ctx.process(&mut buffer);
-        
+        // Process through owned chain (no Mutex!)
+        chain.process(&mut buffer, 2);
+
         // Should not panic
     }
 }

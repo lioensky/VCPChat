@@ -2,7 +2,7 @@
 //!
 //! Contains shared state, commands, device info, and cache utilities.
 
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, Ordering};
 use std::sync::Arc;
 use parking_lot::{Mutex, RwLock};
 use arc_swap::ArcSwap;
@@ -170,6 +170,15 @@ pub fn load_cache_with_header(
     Some(samples)
 }
 
+// ============ Event Flag Constants (Task E) ============
+
+pub const EVENT_LOAD_COMPLETE:       u32 = 1 << 0;
+pub const EVENT_LOAD_ERROR:          u32 = 1 << 1;
+pub const EVENT_TRACK_CHANGED:       u32 = 1 << 2;
+pub const EVENT_PLAYBACK_ENDED:      u32 = 1 << 3;
+pub const EVENT_NEEDS_PRELOAD:       u32 = 1 << 4;
+pub const EVENT_NEEDS_PRELOAD_RESET: u32 = 1 << 5;
+
 // ============ Commands & State ============
 
 /// Load result for async loading
@@ -204,15 +213,68 @@ pub enum AudioCommand {
 
 /// State of the audio player
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[repr(u8)]
 pub enum PlayerState {
-    Stopped,
-    Playing,
-    Paused,
+    Stopped = 0,
+    Playing = 1,
+    Paused = 2,
+}
+
+impl PlayerState {
+    /// Convert from u8 (for atomic storage)
+    pub fn from_u8(val: u8) -> Self {
+        match val {
+            1 => PlayerState::Playing,
+            2 => PlayerState::Paused,
+            _ => PlayerState::Stopped,
+        }
+    }
+}
+
+/// Atomic wrapper for PlayerState (P0 fix: replaces RwLock<PlayerState>)
+///
+/// Using AtomicU8 ensures that the audio callback can always update state
+/// without risk of lock contention. This prevents EVENT_PLAYBACK_ENDED from
+/// being silently dropped when try_write() would have failed.
+pub struct AtomicPlayerState {
+    inner: AtomicU8,
+}
+
+impl AtomicPlayerState {
+    pub fn new(state: PlayerState) -> Self {
+        Self {
+            inner: AtomicU8::new(state as u8),
+        }
+    }
+
+    #[inline]
+    pub fn load(&self) -> PlayerState {
+        PlayerState::from_u8(self.inner.load(Ordering::Acquire))
+    }
+
+    #[inline]
+    pub fn store(&self, state: PlayerState) {
+        self.inner.store(state as u8, Ordering::Release);
+    }
+
+    /// Compare-and-swap: only update if current state matches expected.
+    /// Returns true if the swap was successful.
+    #[inline]
+    pub fn compare_exchange(&self, expected: PlayerState, new: PlayerState) -> bool {
+        self.inner
+            .compare_exchange(
+                expected as u8,
+                new as u8,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            )
+            .is_ok()
+    }
 }
 
 /// Shared state between audio thread and main thread
 pub struct SharedState {
-    pub state: RwLock<PlayerState>,
+    pub state: AtomicPlayerState,
     pub position_frames: AtomicU64,
     pub sample_rate: AtomicU64,
     pub channels: AtomicU64,
@@ -247,15 +309,20 @@ pub struct SharedState {
     /// Fixes Defect 22: Prevents premature gain update during gapless preload
     pub pending_target_gain_db: std::sync::atomic::AtomicU64,  // Stored as bits of f64
 
+    // Gapless: deferred metadata for main-thread pickup after track switch.
+    // Audio callback sets gapless_swap_pending=true; main thread (WS pusher) reads these
+    // and copies into file_path / track_metadata / current_track_path, then clears.
+    pub gapless_swap_pending: AtomicBool,
+
     // Async loading state
     pub is_loading: AtomicBool,
     pub load_progress: AtomicU64,  // Percentage (0-100)
     pub load_error: RwLock<Option<String>>,
 
-    // WebSocket event flags
-    pub event_track_changed: AtomicBool,  // Gapless track switch happened
-    pub event_playback_ended: AtomicBool,  // EOF reached
-    pub event_load_complete: AtomicBool,  // Load finished (success or error)
+    // WebSocket event flags — unified bitmask (Task E)
+    // Writers: audio thread or async tasks use fetch_or(EVENT_*, Release)
+    // Reader: WebSocket pusher uses swap(0, AcqRel) to atomically take all events
+    pub event_flags: std::sync::atomic::AtomicU32,
     pub current_track_path: RwLock<Option<String>>,  // Current track for notifications
 
     // Track metadata
@@ -264,12 +331,15 @@ pub struct SharedState {
     
     // Output format info (Defect 37 fix: for NoiseShaper bit depth)
     pub output_bits: std::sync::atomic::AtomicU32,
+
+    // H-channel fix: signal callback to rebuild DspChain when channels change
+    pub dsp_needs_rebuild: AtomicBool,
 }
 
 impl SharedState {
     pub fn new() -> Self {
         Self {
-            state: RwLock::new(PlayerState::Stopped),
+            state: AtomicPlayerState::new(PlayerState::Stopped),
             position_frames: AtomicU64::new(0),
             sample_rate: AtomicU64::new(44100),
             channels: AtomicU64::new(2),
@@ -294,18 +364,19 @@ impl SharedState {
             cancel_preload_signal: AtomicBool::new(false),
             pending_target_gain_db: std::sync::atomic::AtomicU64::new(0_f64.to_bits()),
 
+            gapless_swap_pending: AtomicBool::new(false),
+
             is_loading: AtomicBool::new(false),
             load_progress: AtomicU64::new(0),
             load_error: RwLock::new(None),
 
-            event_track_changed: AtomicBool::new(false),
-            event_playback_ended: AtomicBool::new(false),
-            event_load_complete: AtomicBool::new(false),
+            event_flags: std::sync::atomic::AtomicU32::new(0),
             current_track_path: RwLock::new(None),
 
             track_metadata: RwLock::new(crate::decoder::TrackMetadata::default()),
             pending_metadata: RwLock::new(None),
             output_bits: std::sync::atomic::AtomicU32::new(24),  // Default 24-bit
+            dsp_needs_rebuild: AtomicBool::new(false),
         }
     }
 

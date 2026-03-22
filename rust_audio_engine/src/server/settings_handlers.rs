@@ -26,7 +26,8 @@ async fn save_settings(
     data: web::Data<Arc<AppState>>,
     body: web::Json<SaveSettingsRequest>,
 ) -> HttpResponse {
-    {
+    // Merge update + read settings in a single lock acquisition
+    let settings = {
         let mut manager = data.settings_manager.lock();
         if let Err(e) = manager.update(body.settings.clone()) {
             return HttpResponse::InternalServerError().json(serde_json::json!({
@@ -34,10 +35,10 @@ async fn save_settings(
                 "message": e
             }));
         }
-    }
+        manager.get_settings()
+    };
 
     {
-        let settings = data.settings_manager.lock().get_settings();
         let mut player = data.player.lock();
         apply_settings_to_player(&mut player, &settings);
     }
