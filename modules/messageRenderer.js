@@ -1364,12 +1364,28 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true)
             textToRender = transformUserButtonClick(textToRender);
             textToRender = transformVCPChatCanvas(textToRender);
         } else if (message.role === 'assistant' && scopeId) {
-            // --- 🟢 关键修复：先保护代码块和桌面推送块，再提取样式 ---
-            // 这样可以避免代码块和推送块内的 <style> 被误当作真正的样式注入
+            // --- 🟢 关键修复：先保护所有可能包含 <style> 的特殊区域，再提取样式 ---
+            // 这样可以避免代码块、推送块、工具请求块和「始」「末」标记内的 <style> 被误当作真正的样式注入
             const protectedBlocks = [];
             
+            // 🔴 保护工具请求块（<<<[TOOL_REQUEST]>>>...<<<[END_TOOL_REQUEST]>>>）
+            // 工具请求参数中可能包含完整的HTML文档（如壁纸HTML），其中的 <style> 不应被注入
+            let textWithProtectedBlocks = textToRender.replace(TOOL_REGEX, (match) => {
+                const placeholder = `__VCP_STYLE_PROTECT_${protectedBlocks.length}__`;
+                protectedBlocks.push(match);
+                return placeholder;
+            });
+            
+            // 🔴 保护「始」「末」标记区域
+            // 这些标记内的内容是工具参数，可能包含任意HTML（含<style>），不应被提取
+            textWithProtectedBlocks = textWithProtectedBlocks.replace(/「始」[\s\S]*?(「末」|$)/g, (match) => {
+                const placeholder = `__VCP_STYLE_PROTECT_${protectedBlocks.length}__`;
+                protectedBlocks.push(match);
+                return placeholder;
+            });
+            
             // 保护桌面推送块（必须在代码块之前，因为推送块可能包含代码围栏）
-            let textWithProtectedBlocks = textToRender.replace(DESKTOP_PUSH_REGEX, (match) => {
+            textWithProtectedBlocks = textWithProtectedBlocks.replace(DESKTOP_PUSH_REGEX, (match) => {
                 const placeholder = `__VCP_STYLE_PROTECT_${protectedBlocks.length}__`;
                 protectedBlocks.push(match);
                 return placeholder;

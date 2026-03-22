@@ -836,14 +836,36 @@ function processRenderedContent(contentDiv, settings = {}) {
  * @returns {string} 处理后的 CSS 文本。
  */
 function scopeSelector(selector, scopeId) {
-    // 跳过特殊选择器
-    if (selector.match(/^(@|from|to|\d+%|:root|html|body)/)) {
+    // 跳过 @规则 和 keyframe 步骤（这些不是选择器）
+    if (selector.match(/^(@|from|to|\d+%)/)) {
         return selector;
+    }
+    
+    // 🔴 关键安全修复：将全局选择器（:root, html, body）重写为 scoped 选择器
+    // 防止AI输出的CSS（如 body { background: black }）影响整个页面
+    if (selector.match(/^:root$/)) {
+        return `#${scopeId}`;
+    }
+    if (selector.match(/^(html|body)$/i)) {
+        return `#${scopeId}`;
+    }
+    // 处理带后续选择器的情况，如 "body .class" → "#scopeId .class"
+    if (selector.match(/^(html|body)\s+/i)) {
+        return selector.replace(/^(html|body)\s+/i, `#${scopeId} `);
+    }
+    // 处理 ":root .class" 的情况
+    if (selector.match(/^:root\s+/)) {
+        return selector.replace(/^:root\s+/, `#${scopeId} `);
     }
     
     // 处理伪类/伪元素
     if (selector.match(/^::?[\w-]+$/)) {
         return `#${scopeId}${selector}`;
+    }
+    
+    // 🔴 处理通配符选择器 "*"
+    if (selector === '*') {
+        return `#${scopeId} *`;
     }
     
     return `#${scopeId} ${selector}`;
