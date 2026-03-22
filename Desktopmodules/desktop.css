@@ -910,6 +910,19 @@ body.light-theme .desktop-sidebar-empty {
     pointer-events: none;
 }
 
+.desktop-dock-icon-emoji {
+    width: var(--desktop-dock-icon-size, 32px);
+    height: var(--desktop-dock-icon-size, 32px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: calc(var(--desktop-dock-icon-size, 32px) * 0.65);
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 6px;
+    pointer-events: none;
+    line-height: 1;
+}
+
 .desktop-dock-icon-placeholder {
     width: var(--desktop-dock-icon-size, 32px);
     height: var(--desktop-dock-icon-size, 32px);
@@ -1197,6 +1210,20 @@ body.light-theme .desktop-sidebar-empty {
     object-fit: contain;
     pointer-events: none;
     filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
+}
+
+.desktop-shortcut-icon-emoji {
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 26px;
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 6px;
+    pointer-events: none;
+    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
+    line-height: 1;
 }
 
 .desktop-shortcut-icon-placeholder {

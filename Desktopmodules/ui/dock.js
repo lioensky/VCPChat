@@ -126,17 +126,36 @@
         iconWrapper.draggable = true;
 
         // 图标
-        const img = document.createElement('img');
-        img.src = item.icon || '../assets/setting.png';
-        img.className = 'desktop-dock-icon-img';
-        img.draggable = false;
-        // 图标加载失败时回退到默认图标
-        img.onerror = function () {
-            if (this.src !== new URL('../assets/setting.png', location.href).href) {
-                this.src = '../assets/setting.png';
-            }
-        };
-        iconWrapper.appendChild(img);
+        if (item.icon) {
+            const img = document.createElement('img');
+            img.src = item.icon;
+            img.className = 'desktop-dock-icon-img';
+            img.draggable = false;
+            // 图标加载失败时回退到 emoji 或默认图标
+            img.onerror = function () {
+                if (item.emoji) {
+                    // 替换为 emoji 占位符
+                    const emojiEl = document.createElement('span');
+                    emojiEl.className = 'desktop-dock-icon-emoji';
+                    emojiEl.textContent = item.emoji;
+                    this.replaceWith(emojiEl);
+                } else if (this.src !== new URL('../assets/setting.png', location.href).href) {
+                    this.src = '../assets/setting.png';
+                }
+            };
+            iconWrapper.appendChild(img);
+        } else if (item.emoji) {
+            const emojiEl = document.createElement('span');
+            emojiEl.className = 'desktop-dock-icon-emoji';
+            emojiEl.textContent = item.emoji;
+            iconWrapper.appendChild(emojiEl);
+        } else {
+            const img = document.createElement('img');
+            img.src = '../assets/setting.png';
+            img.className = 'desktop-dock-icon-img';
+            img.draggable = false;
+            iconWrapper.appendChild(img);
+        }
 
         // 名称标签
         const label = document.createElement('span');
@@ -333,6 +352,16 @@
             // 内置挂件 - 通过挂件系统生成
             if (item.builtinId && window.VCPDesktop[item.builtinId]) {
                 window.VCPDesktop[item.builtinId].spawn();
+            }
+            return;
+        }
+
+        // VChat 内部应用 - 通过 IPC 启动子窗口
+        if (item.type === 'vchat-app') {
+            if (window.VCPDesktop.vchatApps && window.VCPDesktop.vchatApps.launch) {
+                await window.VCPDesktop.vchatApps.launch(item);
+            } else {
+                console.warn('[Dock] VChat apps module not loaded');
             }
             return;
         }
@@ -610,17 +639,30 @@
         const canvas = domRefs.canvas;
         if (!canvas) return;
 
-        // 检查是否已存在
-        const existingIcon = canvas.querySelector(`.desktop-shortcut-icon[data-target-path="${CSS.escape(item.targetPath)}"]`);
-        if (existingIcon) {
-            console.log(`[Dock] Desktop icon already exists: ${item.name}`);
-            return;
+        // 检查是否已存在（对 vchat-app 类型使用 id 去重，对快捷方式使用 targetPath 去重）
+        if (item.type === 'vchat-app') {
+            const existingIcon = canvas.querySelector(`.desktop-shortcut-icon[data-app-id="${CSS.escape(item.id)}"]`);
+            if (existingIcon) {
+                console.log(`[Dock] Desktop icon already exists: ${item.name}`);
+                return;
+            }
+        } else {
+            const existingIcon = canvas.querySelector(`.desktop-shortcut-icon[data-target-path="${CSS.escape(item.targetPath)}"]`);
+            if (existingIcon) {
+                console.log(`[Dock] Desktop icon already exists: ${item.name}`);
+                return;
+            }
         }
 
         const iconEl = document.createElement('div');
         iconEl.className = 'desktop-shortcut-icon';
-        iconEl.dataset.targetPath = item.targetPath || '';
-        iconEl.dataset.originalPath = item.originalPath || '';
+        if (item.type === 'vchat-app') {
+            iconEl.dataset.appId = item.id || '';
+            iconEl.dataset.appType = 'vchat-app';
+        } else {
+            iconEl.dataset.targetPath = item.targetPath || '';
+            iconEl.dataset.originalPath = item.originalPath || '';
+        }
 
         // 定位
         const adjustedX = Math.max(10, Math.min(x - 32, window.innerWidth - 80));
@@ -629,17 +671,35 @@
         iconEl.style.top = `${adjustedY}px`;
 
         // 图标图片
-        const img = document.createElement('img');
-        img.src = item.icon || '../assets/setting.png';
-        img.className = 'desktop-shortcut-icon-img';
-        img.draggable = false;
-        // 图标加载失败时回退到默认图标
-        img.onerror = function () {
-            if (this.src !== new URL('../assets/setting.png', location.href).href) {
-                this.src = '../assets/setting.png';
-            }
-        };
-        iconEl.appendChild(img);
+        if (item.icon) {
+            const img = document.createElement('img');
+            img.src = item.icon;
+            img.className = 'desktop-shortcut-icon-img';
+            img.draggable = false;
+            // 图标加载失败时回退到 emoji 或默认图标
+            img.onerror = function () {
+                if (item.emoji) {
+                    const emojiEl = document.createElement('span');
+                    emojiEl.className = 'desktop-shortcut-icon-emoji';
+                    emojiEl.textContent = item.emoji;
+                    this.replaceWith(emojiEl);
+                } else if (this.src !== new URL('../assets/setting.png', location.href).href) {
+                    this.src = '../assets/setting.png';
+                }
+            };
+            iconEl.appendChild(img);
+        } else if (item.emoji) {
+            const emojiEl = document.createElement('span');
+            emojiEl.className = 'desktop-shortcut-icon-emoji';
+            emojiEl.textContent = item.emoji;
+            iconEl.appendChild(emojiEl);
+        } else {
+            const img = document.createElement('img');
+            img.src = '../assets/setting.png';
+            img.className = 'desktop-shortcut-icon-img';
+            img.draggable = false;
+            iconEl.appendChild(img);
+        }
 
         // 标签
         const label = document.createElement('span');

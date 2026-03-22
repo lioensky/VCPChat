@@ -72,6 +72,15 @@ document.addEventListener('DOMContentLoaded', () => {
         D.dock.init();
     }
 
+    // 5.5.1. 注入 VChat 内部应用到 Dock
+    // 在 Dock 加载配置完成后（loadDockConfig 是异步的），延迟注入确保不覆盖已有配置
+    if (D.vchatApps) {
+        // 给 Dock 配置加载留出时间后再注入
+        setTimeout(() => {
+            D.vchatApps.inject();
+        }, 500);
+    }
+
     // 5.6. 初始化全局设置
     if (D.globalSettings) {
         D.globalSettings.init().then(() => {

@@ -1,10 +1,10 @@
 /**
  * modules/ipc/desktopHandlers.js
  * VCPdesktop IPC 处理模块
- * 负责：桌面窗口创建管理、流式推送转发、收藏系统持久化、快捷方式解析/启动、Dock持久化、布局持久化、壁纸文件选择
+ * 负责：桌面窗口创建管理、流式推送转发、收藏系统持久化、快捷方式解析/启动、Dock持久化、布局持久化、壁纸文件选择、VChat内部应用启动
  */
 
-const { BrowserWindow, ipcMain, app, screen, shell, dialog } = require('electron');
+const { BrowserWindow, ipcMain, app, screen, shell, dialog, nativeTheme } = require('electron');
 const path = require('path');
 const fs = require('fs-extra');
 
@@ -15,6 +15,13 @@ let openChildWindows = [];
 let appSettingsManager = null;
 let alwaysOnBottomEnabled = false;
 let alwaysOnBottomInterval = null;
+
+// --- VChat 内部子窗口单例引用 ---
+let vchatForumWindow = null;
+let vchatMemoWindow = null;
+let vchatTranslatorWindow = null;
+let vchatMusicWindow = null;
+let vchatThemesWindow = null;
 
 // --- 收藏系统路径 - 使用项目根目录的 AppData ---
 const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
@@ -80,12 +87,103 @@ function isIconValid(nativeImg) {
 }
 
 /**
+ * 在所有已打开的窗口中查找 URL 包含指定关键词的窗口
+ * @param {string} urlKeyword - URL 中需要包含的关键词（如 'forum.html'）
+ * @returns {BrowserWindow|null}
+ */
+function findWindowByUrl(urlKeyword) {
+    const allWindows = BrowserWindow.getAllWindows();
+    return allWindows.find(win => {
+        if (win.isDestroyed()) return false;
+        try {
+            const url = win.webContents.getURL();
+            return url.includes(urlKeyword);
+        } catch (e) {
+            return false;
+        }
+    }) || null;
+}
+
+/**
+ * 创建或聚焦一个通用子窗口（用于 VChat 内部应用）
+ * @param {BrowserWindow|null} existingWindow - 现有窗口引用
+ * @param {object} options - 窗口配置
+ * @returns {BrowserWindow} 创建或聚焦后的窗口
+ */
+function createOrFocusChildWindow(existingWindow, options) {
+    if (existingWindow && !existingWindow.isDestroyed()) {
+        if (!existingWindow.isVisible()) existingWindow.show();
+        existingWindow.focus();
+        return existingWindow;
+    }
+
+    const win = new BrowserWindow({
+        width: options.width || 1000,
+        height: options.height || 700,
+        minWidth: options.minWidth || 600,
+        minHeight: options.minHeight || 400,
+        title: options.title || 'VChat',
+        frame: false,
+        ...(process.platform === 'darwin' ? {} : { titleBarStyle: 'hidden' }),
+        modal: false,
+        webPreferences: {
+            preload: path.join(app.getAppPath(), 'preload.js'),
+            contextIsolation: true,
+            nodeIntegration: false,
+            devTools: true,
+        },
+        icon: path.join(app.getAppPath(), 'assets', 'icon.png'),
+        show: false,
+    });
+
+    // 构建 URL
+    let url = `file://${options.htmlPath}`;
+    if (options.queryParams) {
+        url += `?${options.queryParams}`;
+    }
+
+    win.loadURL(url);
+    win.setMenu(null);
+
+    if (openChildWindows) {
+        openChildWindows.push(win);
+    }
+
+    win.once('ready-to-show', () => {
+        win.show();
+    });
+
+    win.on('close', (evt) => {
+        if (process.platform === 'darwin' && !app.isQuitting) {
+            evt.preventDefault();
+            win.hide();
+        }
+    });
+
+    win.on('closed', () => {
+        if (openChildWindows) {
+            const idx = openChildWindows.indexOf(win);
+            if (idx > -1) openChildWindows.splice(idx, 1);
+        }
+        // 清理单例引用
+        if (win === vchatForumWindow) vchatForumWindow = null;
+        if (win === vchatMemoWindow) vchatMemoWindow = null;
+        if (win === vchatTranslatorWindow) vchatTranslatorWindow = null;
+        if (win === vchatThemesWindow) vchatThemesWindow = null;
+    });
+
+    console.log(`[DesktopHandlers] Created child window: ${options.title}`);
+    return win;
+}
+
+/**
  * 初始化桌面处理模块
  */
 function initialize(params) {
     mainWindow = params.mainWindow;
     openChildWindows = params.openChildWindows;
     appSettingsManager = params.settingsManager;
+
 
     // 确保目录存在
     fs.ensureDirSync(DESKTOP_WIDGETS_DIR);
@@ -839,7 +937,160 @@ function initialize(params) {
         }
     });
 
-    console.log('[DesktopHandlers] Initialized (with favorites, vcpAPI, shortcuts, dock, layout, iconset & wallpaper system).');
+    // ============================================================
+    // --- IPC: VChat 内部应用启动 ---
+    // ============================================================
+
+    /**
+     * 根据 appAction 启动对应的 VChat 子应用窗口
+     * 这是桌面模块调用系统内部各子应用的统一入口
+     *
+     * 对于有导出函数的模块（notes, rag, canvas），直接 require 并调用。
+     * 对于只有 ipcMain.on 注册的模块（forum, memo, music, themes），
+     * 在这里直接实现窗口创建逻辑（与 windowHandlers.js 保持一致的单例管理）。
+     */
+    ipcMain.handle('desktop-launch-vchat-app', async (event, appAction) => {
+        try {
+            console.log(`[DesktopHandlers] Launching VChat app: ${appAction}`);
+
+            switch (appAction) {
+                case 'show-main-window': {
+                    // 尝试找到主窗口（可能通过 initialize 传入，也可能需要从所有窗口中查找）
+                    let targetMainWindow = mainWindow;
+                    if (!targetMainWindow || targetMainWindow.isDestroyed()) {
+                        // 在所有窗口中查找加载了 main.html 的窗口
+                        const allWindows = BrowserWindow.getAllWindows();
+                        targetMainWindow = allWindows.find(win => {
+                            if (win.isDestroyed()) return false;
+                            const url = win.webContents.getURL();
+                            return url.includes('main.html') && !url.includes('desktop.html');
+                        });
+                    }
+                    if (targetMainWindow && !targetMainWindow.isDestroyed()) {
+                        if (!targetMainWindow.isVisible()) targetMainWindow.show();
+                        if (targetMainWindow.isMinimized()) targetMainWindow.restore();
+                        targetMainWindow.focus();
+                    } else {
+                        return { success: false, error: '主窗口不可用（可能未启动或已关闭）' };
+                    }
+                    return { success: true };
+                }
+
+                case 'open-notes-window': {
+                    const notesHandlers = require('./notesHandlers');
+                    notesHandlers.createOrFocusNotesWindow();
+                    return { success: true };
+                }
+
+                case 'open-memo-window': {
+                    // 优先检查是否已有 memo 窗口存在（可能由 windowHandlers 创建）
+                    const existingMemo = findWindowByUrl('memo.html');
+                    if (existingMemo) {
+                        if (!existingMemo.isVisible()) existingMemo.show();
+                        existingMemo.focus();
+                    } else {
+                        vchatMemoWindow = createOrFocusChildWindow(vchatMemoWindow, {
+                            width: 1200, height: 800, minWidth: 800, minHeight: 600,
+                            title: 'VCP Memo 中心',
+                            htmlPath: path.join(app.getAppPath(), 'Memomodules', 'memo.html'),
+                        });
+                    }
+                    return { success: true };
+                }
+
+                case 'open-forum-window': {
+                    // 优先检查是否已有 forum 窗口存在（可能由 windowHandlers 创建）
+                    const existingForum = findWindowByUrl('forum.html');
+                    if (existingForum) {
+                        if (!existingForum.isVisible()) existingForum.show();
+                        existingForum.focus();
+                    } else {
+                        vchatForumWindow = createOrFocusChildWindow(vchatForumWindow, {
+                            width: 1200, height: 800, minWidth: 800, minHeight: 600,
+                            title: 'VCP 论坛',
+                            htmlPath: path.join(app.getAppPath(), 'Forummodules', 'forum.html'),
+                        });
+                    }
+                    return { success: true };
+                }
+
+                case 'open-rag-observer-window': {
+                    const ragHandlers = require('./ragHandlers');
+                    await ragHandlers.openRagObserverWindow();
+                    return { success: true };
+                }
+
+                case 'open-dice-window': {
+                    // 骰子窗口需要先启动本地 express 服务器，
+                    // 通过桌面窗口的渲染进程间接调用 electronAPI.openDiceWindow()
+                    // 这会触发已注册的 ipcMain.handle('open-dice-window')
+                    if (desktopWindow && !desktopWindow.isDestroyed()) {
+                        desktopWindow.webContents.executeJavaScript(`window.electronAPI?.openDiceWindow()`).catch(() => {});
+                    } else if (mainWindow && !mainWindow.isDestroyed()) {
+                        mainWindow.webContents.executeJavaScript(`window.electronAPI?.openDiceWindow()`).catch(() => {});
+                    }
+                    return { success: true };
+                }
+
+                case 'open-canvas-window': {
+                    const canvasHandlers = require('./canvasHandlers');
+                    await canvasHandlers.createCanvasWindow();
+                    return { success: true };
+                }
+
+                case 'open-translator-window': {
+                    // 读取设置获取 API 凭据
+                    let settings = {};
+                    try {
+                        const settingsPath = path.join(PROJECT_ROOT, 'AppData', 'settings.json');
+                        if (await fs.pathExists(settingsPath)) {
+                            settings = await fs.readJson(settingsPath);
+                        }
+                    } catch (e) { /* ignore */ }
+
+                    const vcpServerUrl = settings.vcpServerUrl || '';
+                    const vcpApiKey = settings.vcpApiKey || '';
+
+                    vchatTranslatorWindow = createOrFocusChildWindow(vchatTranslatorWindow, {
+                        width: 1000, height: 700, minWidth: 800, minHeight: 600,
+                        title: '翻译',
+                        htmlPath: path.join(app.getAppPath(), 'Translatormodules', 'translator.html'),
+                        queryParams: `vcpServerUrl=${encodeURIComponent(vcpServerUrl)}&vcpApiKey=${encodeURIComponent(vcpApiKey)}`,
+                    });
+                    return { success: true };
+                }
+
+                case 'open-music-window': {
+                    // 音乐窗口需要通过已注册的 ipcMain.on('open-music-window') 打开
+                    // 通过桌面窗口自身的渲染进程触发（桌面窗口加载了相同的 preload.js）
+                    if (desktopWindow && !desktopWindow.isDestroyed()) {
+                        desktopWindow.webContents.executeJavaScript(`window.electron?.send('open-music-window')`).catch(() => {});
+                    } else if (mainWindow && !mainWindow.isDestroyed()) {
+                        mainWindow.webContents.executeJavaScript(`window.electron?.send('open-music-window')`).catch(() => {});
+                    }
+                    return { success: true };
+                }
+
+                case 'open-themes-window': {
+                    vchatThemesWindow = createOrFocusChildWindow(vchatThemesWindow, {
+                        width: 850, height: 700,
+                        title: '主题选择',
+                        htmlPath: path.join(app.getAppPath(), 'Themesmodules', 'themes.html'),
+                    });
+                    return { success: true };
+                }
+
+                default:
+                    console.warn(`[DesktopHandlers] Unknown VChat app action: ${appAction}`);
+                    return { success: false, error: `未知的应用动作: ${appAction}` };
+            }
+        } catch (err) {
+            console.error(`[DesktopHandlers] VChat app launch error (${appAction}):`, err);
+            return { success: false, error: err.message };
+        }
+    });
+
+    console.log('[DesktopHandlers] Initialized (with favorites, vcpAPI, shortcuts, dock, layout, iconset, wallpaper & vchat-apps system).');
 }
 
 /**
