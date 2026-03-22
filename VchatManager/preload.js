@@ -10,6 +10,9 @@ contextBridge.exposeInMainWorld('api', {
   // A generic file writer
   writeFile: (relativePath, content) => ipcRenderer.invoke('fs:writeFile', relativePath, content),
 
+  // Ensure a directory exists (create if missing)
+  ensureDir: (relativePath) => ipcRenderer.invoke('fs:ensureDir', relativePath),
+
   // A more specific, combined data fetcher for efficiency
   getVChatData: () => ipcRenderer.invoke('vchat:getData')
 });

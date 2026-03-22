@@ -601,3 +601,26 @@ h3 {
     text-align: center;
     color: var(--secondary-text);
 }
+
+/* Recovery Details for Orphaned Agents */
+.recovery-details {
+    background-color: var(--tertiary-bg);
+    border: 1px solid var(--border-color);
+    border-left: 4px solid #f0ad4e;
+    border-radius: 4px;
+    padding: 10px 12px;
+    margin: 8px 0;
+}
+
+.recovery-details p {
+    margin: 4px 0;
+    font-size: 0.9em;
+}
+
+.recovery-details strong {
+    color: var(--highlight-text);
+}
+
+.issue-item[data-issue-type="missing_agent_config"] {
+    border-left: 4px solid #f0ad4e;
+}

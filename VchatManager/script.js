@@ -743,10 +743,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     issueEl.classList.add('issue-item');
                     issueEl.dataset.issueIndex = index;
                     
+                    const typeLabel = issue.itemType === 'orphaned_agent'
+                        ? '🔧 ORPHANED AGENT'
+                        : issue.itemType.toUpperCase();
                     let issueHtml = `
                         <div class="issue-header">
                             <input type="checkbox" class="issue-checkbox" data-index="${index}" checked>
-                            <strong>[${issue.itemType.toUpperCase()}] ${issue.itemName}</strong>
+                            <strong>[${typeLabel}] ${issue.itemName}</strong>
                         </div>
                         <div class="issue-details">
                             <p>${issue.message}</p>
@@ -764,6 +767,23 @@ document.addEventListener('DOMContentLoaded', () => {
                             issueHtml += `<li>❌ ${topic.id} - ${topic.name}</li>`;
                         });
                         issueHtml += '</ul>';
+                    } else if (issue.type === 'missing_agent_config') {
+                        const info = issue.recoveryInfo;
+                        issueHtml += '<div class="recovery-details">';
+                        issueHtml += `<p>🔍 <strong>Recovered agent name:</strong> ${info.agentName || 'Unknown'}</p>`;
+                        issueHtml += `<p>📊 <strong>Total messages:</strong> ${info.totalMessages}</p>`;
+                        if (info.oldestTimestamp) {
+                            issueHtml += `<p>📅 <strong>Date range:</strong> ${new Date(info.oldestTimestamp).toLocaleDateString()} ~ ${info.newestTimestamp ? new Date(info.newestTimestamp).toLocaleDateString() : 'N/A'}</p>`;
+                        }
+                        if (info.model) {
+                            issueHtml += `<p>🤖 <strong>Model used:</strong> ${info.model}</p>`;
+                        }
+                        issueHtml += '<ul class="topic-list">';
+                        info.topics.forEach(topic => {
+                            issueHtml += `<li>💬 ${topic.id} - ${topic.name} (${topic.messageCount} messages)</li>`;
+                        });
+                        issueHtml += '</ul>';
+                        issueHtml += '</div>';
                     }
                     
                     issueHtml += '</div>';
@@ -786,6 +806,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const applyFixesBtn = document.getElementById('apply-fixes-btn');
         const addOrphaned = document.getElementById('fix-add-orphaned').checked;
         const removeMissing = document.getElementById('fix-remove-missing').checked;
+        const recoverOrphanedAgents = document.getElementById('fix-recover-agents').checked;
         
         if (!lastCheckResults || lastCheckResults.totalIssues === 0) {
             alert('No issues to fix.');
@@ -804,11 +825,14 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         
+        const hasOrphanedAgents = selectedIssues.some(i => i.type === 'missing_agent_config');
         const confirmMsg = `Apply fixes to ${selectedIssues.length} issue(s)?\n\n` +
             `Options:\n` +
             `- Add orphaned topics: ${addOrphaned ? 'YES' : 'NO'}\n` +
-            `- Remove missing topics: ${removeMissing ? 'YES' : 'NO'}\n\n` +
-            `This will modify agent/group config files.`;
+            `- Remove missing topics: ${removeMissing ? 'YES' : 'NO'}\n` +
+            `- Recover orphaned agents: ${recoverOrphanedAgents ? 'YES' : 'NO'}\n` +
+            (hasOrphanedAgents ? `\n⚠ This will CREATE new agent config files for recovered agents.\n` : '') +
+            `\nThis will modify agent/group config files.`;
         
         if (!confirm(confirmMsg)) {
             return;
@@ -820,7 +844,8 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const results = await consistencyChecker.fixIssues(selectedIssues, {
                 addOrphaned,
-                removeMissing
+                removeMissing,
+                recoverOrphanedAgents
             });
             
             // Show results
@@ -831,7 +856,9 @@ document.addEventListener('DOMContentLoaded', () => {
             results.forEach(result => {
                 if (result.success) {
                     successCount++;
-                    if (result.modified) {
+                    if (result.itemType === 'orphaned_agent' && result.modified) {
+                        messages.push(`✓ Recovered agent "${result.recoveredName}" (${result.topicsCount} topics, ${result.totalMessages} messages)`);
+                    } else if (result.modified) {
                         messages.push(`✓ ${result.itemType} ${result.itemId}: Updated (${result.topicsCount} topics)`);
                     } else {
                         messages.push(`○ ${result.itemType} ${result.itemId}: No changes needed`);

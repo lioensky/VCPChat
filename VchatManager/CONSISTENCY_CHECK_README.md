@@ -3,6 +3,7 @@
 ## 功能概述
 
 数据一致性检查功能用于检测和修复聊天历史文件夹与 Agent 配置文件中话题列表之间的不一致问题。
+同时支持检测和恢复"孤立Agent"——即话题文件（聊天历史）仍然存在，但 Agent 配置文件丢失的情况。
 
 ## 主要特性
 
@@ -10,17 +11,20 @@
 - 检测配置文件中存在但文件系统中缺失的话题（missing_files）
 - 检测文件系统中存在但配置文件中缺失的话题（orphaned_files）
 - 检测完全缺失话题目录的情况（missing_all_files）
+- **检测孤立Agent（missing_agent_config）**：UserData中存在话题文件，但Agent配置文件丢失
 
 ### 2. 安全修复
 - **只修改 topics 数组**：修复操作仅针对 config.json 中的 `topics` 字段，不会影响其他配置项
 - **可选修复选项**：
   - 添加孤立话题：将文件系统中存在但配置中缺失的话题添加到配置
   - 移除缺失话题：从配置中移除文件系统中不存在的话题
+  - **恢复孤立Agent**：从聊天历史中提取Agent信息，重建配置文件
 - **选择性修复**：可以选择要修复的具体问题
 
 ### 3. 详细报告
 - 显示每个问题的详细信息
 - 对于孤立话题，显示消息数量
+- 对于孤立Agent，显示恢复的名字、消息总数、日期范围
 - 修复后显示操作结果
 
 ## 使用方法
@@ -77,6 +81,35 @@
 
 **建议**：检查 UserData 目录是否存在，必要时手动创建
 
+### missing_agent_config（孤立Agent / Agent配置丢失）🆕
+**现象**：UserData 目录下存在某个 Agent 的话题文件和聊天历史，但 Agents 目录下没有对应的配置文件
+
+**原因**：
+- Agent 配置文件被意外删除
+- 文件同步/备份过程中配置文件丢失
+- 手动操作导致 Agents 目录数据丢失
+- 程序异常导致配置文件损坏后被清理
+
+**恢复原理**：
+- 从聊天历史文件（history.json）中的 `assistant` 消息的 `name` 字段提取Agent名字
+- 通过多个话题的消息投票确定最可能的Agent名字
+- 从话题文件夹列表和时间戳重建话题列表
+- 生成一个包含基本设置的最小化 config.json
+
+**恢复的信息**：
+- ✅ Agent 名称（从聊天历史中提取）
+- ✅ 话题列表（从文件系统目录结构重建）
+- ✅ 话题创建时间（从第一条消息的时间戳推断）
+- ✅ 使用的模型（如果消息中包含模型信息）
+- ⚠️ System Prompt（仅设为默认值 `你是 {名字}。`，需要用户手动修正）
+- ⚠️ 头像（不恢复，使用默认头像）
+- ⚠️ 其他自定义配置（温度、Token限制等使用默认值）
+
+**建议**：
+1. 勾选"Recover orphaned agents"选项并执行修复
+2. 修复完成后，在VChat主程序中检查Agent的配置是否正确
+3. 手动补充system prompt、头像等无法自动恢复的信息
+
 ## 安全性保证
 
 1. **只读检查**：检查操作不会修改任何文件
@@ -93,13 +126,14 @@
 
 ### 关键方法
 ```javascript
-// 执行检查
+// 执行检查（现在包含孤立Agent检测）
 await consistencyChecker.performCheck(agents, groups)
 
-// 应用修复
+// 应用修复（新增孤立Agent恢复选项）
 await consistencyChecker.fixIssues(selectedIssues, {
     addOrphaned: true,
-    removeMissing: false
+    removeMissing: false,
+    recoverOrphanedAgents: true  // 新增：恢复孤立Agent
 })
 ```
 
@@ -130,6 +164,8 @@ await window.api.writeFile(configPath, JSON.stringify(config, null, 2));
 - [ ] 支持预览修复效果
 - [ ] 添加撤销功能
 - [ ] 支持批量备份和恢复
+- [ ] 恢复Agent时尝试从备份文件中恢复更多配置信息
+- [ ] 支持从其他Agent的聊天历史中推断system prompt
 
 ## 故障排除
 

@@ -91,3 +91,18 @@ ipcMain.handle('fs:listDir', async (event, relativePath) => {
         return [];
     }
 });
+
+// Ensure directory exists (create if missing)
+ipcMain.handle('fs:ensureDir', async (event, relativePath) => {
+    if (!isPathSafe(relativePath)) {
+        throw new Error(`Access denied to path: ${relativePath}`);
+    }
+    try {
+        const fullPath = path.join(__dirname, '..', relativePath);
+        await fs.mkdir(fullPath, { recursive: true });
+        return { success: true };
+    } catch (error) {
+        console.error(`Error ensuring directory ${relativePath}:`, error);
+        return { success: false, error: error.message };
+    }
+});
