@@ -144,12 +144,8 @@ impl SaturationProcessor {
             self.saturation.set_highpass_cutoff(self.cached.highpass_cutoff);
             self.saturation.set_enabled(self.cached.enabled);
 
-            // Map sat_type
-            match self.cached.sat_type {
-                SaturationTypeValue::Tape => self.saturation.set_type(super::saturation::SaturationType::Tape),
-                SaturationTypeValue::Tube => self.saturation.set_type(super::saturation::SaturationType::Tube),
-                SaturationTypeValue::Transistor => self.saturation.set_type(super::saturation::SaturationType::Transistor),
-            }
+            // M-4 fix: use From trait for type-safe conversion
+            self.saturation.set_type(super::saturation::SaturationType::from(self.cached.sat_type));
         }
     }
 }

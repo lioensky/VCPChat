@@ -61,7 +61,7 @@ async fn websocket(
                 }
                 _ = timer.tick() => {
                     let is_playing = matches!(
-                        *shared_state.state.read(),
+                        shared_state.state.load(),
                         crate::player::PlayerState::Playing
                     );
 
@@ -144,6 +144,10 @@ async fn websocket(
                     if !is_playing && !is_loading {
                         idle_ticks += 1;
                         if idle_ticks > 40 {
+                            // N-3: Idle mode — reduce polling frequency to save CPU.
+                            // Events checked above via bitmask swap will not be lost
+                            // (they accumulate in the AtomicU32), but delivery may be
+                            // delayed by up to 200ms. This is acceptable for idle state.
                             tokio::time::sleep(Duration::from_millis(200)).await;
                             continue;
                         }

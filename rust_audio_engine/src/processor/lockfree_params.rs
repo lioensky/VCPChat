@@ -255,7 +255,10 @@ impl LockfreeParams for AtomicEqParams {
 // Saturation Parameters (Simple Atomic)
 // ============================================================================
 
-/// Saturation type enumeration
+/// Saturation type enumeration for lock-free parameter passing.
+///
+/// M-4 fix: Provides bidirectional conversion with SaturationType
+/// from the saturation module, eliminating unsafe string-based mapping.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[repr(u8)]
 pub enum SaturationTypeValue {
@@ -272,6 +275,26 @@ impl From<u8> for SaturationTypeValue {
             1 => Self::Tube,
             2 => Self::Transistor,
             _ => Self::default(),
+        }
+    }
+}
+
+impl From<crate::processor::SaturationType> for SaturationTypeValue {
+    fn from(st: crate::processor::SaturationType) -> Self {
+        match st {
+            crate::processor::SaturationType::Tape => Self::Tape,
+            crate::processor::SaturationType::Tube => Self::Tube,
+            crate::processor::SaturationType::Transistor => Self::Transistor,
+        }
+    }
+}
+
+impl From<SaturationTypeValue> for crate::processor::SaturationType {
+    fn from(v: SaturationTypeValue) -> Self {
+        match v {
+            SaturationTypeValue::Tape => Self::Tape,
+            SaturationTypeValue::Tube => Self::Tube,
+            SaturationTypeValue::Transistor => Self::Transistor,
         }
     }
 }
@@ -438,13 +461,9 @@ impl AtomicSaturationParams {
 
     /// Get settings as SaturationSettings (for backward compatibility)
     pub fn get_settings(&self) -> crate::processor::SaturationSettings {
+        let sat_type_value = SaturationTypeValue::from(self.sat_type.load(Ordering::Acquire));
         crate::processor::SaturationSettings {
-            sat_type: match self.sat_type.load(Ordering::Acquire) {
-                0 => crate::processor::SaturationType::Tape,
-                1 => crate::processor::SaturationType::Tube,
-                2 => crate::processor::SaturationType::Transistor,
-                _ => crate::processor::SaturationType::Tube,
-            },
+            sat_type: crate::processor::SaturationType::from(sat_type_value),
             drive: self.drive.load(Ordering::Acquire),
             threshold: self.threshold.load(Ordering::Acquire),
             mix: self.mix.load(Ordering::Acquire),

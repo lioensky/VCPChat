@@ -20,6 +20,21 @@ pub struct FFTConvolver {
     scratch_complex: Vec<Complex<f64>>,
 }
 
+impl Clone for FFTConvolver {
+    fn clone(&self) -> Self {
+        Self {
+            fft_size: self.fft_size,
+            impulse_response_fft: self.impulse_response_fft.clone(),
+            overlap_buffers: self.overlap_buffers.clone(),
+            channels: self.channels,
+            ir_len: self.ir_len,
+            fft_forward: Arc::clone(&self.fft_forward),
+            fft_inverse: Arc::clone(&self.fft_inverse),
+            scratch_complex: self.scratch_complex.clone(),
+        }
+    }
+}
+
 impl FFTConvolver {
     /// Create a new FFT convolver with the given impulse response
     /// 

@@ -314,13 +314,15 @@ fn convolve_interleaved_ir(a: &[f64], b: &[f64], channels: usize) -> Result<Vec<
 ///
 /// Zero-Mutex audio processing:
 /// - `dsp_chain`: exclusively owned by this closure (&mut), no lock needed
-/// - `convolver_swap`: wait-free ArcSwap load, no lock needed
+/// - `owned_convolver`: exclusively owned by callback, updated via ArcSwap swap-in
+/// - `convolver_swap`: wait-free ArcSwap used only to deliver new convolver instances
 /// - Parameters: read atomically from shared AtomicXxxParams
 #[allow(clippy::too_many_arguments)]
 pub fn audio_callback_lockfree(
     data: &mut [f32],
     shared: &SharedState,
     dsp_chain: &mut DspChain,
+    owned_convolver: &mut Option<FFTConvolver>,
     convolver_swap: &Arc<ArcSwapOption<FFTConvolver>>,
     loudness_state: &Arc<AtomicLoudnessState>,
     spectrum_tx: &Sender<f64>,
@@ -330,7 +332,40 @@ pub fn audio_callback_lockfree(
     resample_leftover: &mut Vec<f64>,
     resample_leftover_pos: &mut usize,
     resample_output: &mut Vec<f64>,
+    convolver_output: &mut Vec<f64>,
 ) {
+    // Check for new convolver delivered via ArcSwap (wait-free pointer swap).
+    // If a new convolver was built by the command handler thread, swap it in.
+    // We take ownership so we can call process_inplace(&mut self).
+    {
+        let new_conv = convolver_swap.swap(None);
+        if let Some(arc_conv) = new_conv {
+            // Try to unwrap the Arc; if there are no other references we get the owned value.
+            // Otherwise, clone it (this only happens at swap-in time, not per-callback).
+            match Arc::try_unwrap(arc_conv) {
+                Ok(conv) => *owned_convolver = Some(conv),
+                Err(arc) => *owned_convolver = Some((*arc).clone()),
+            }
+        }
+    }
+
+    // H-channel fix: Rebuild DspChain when channel count changes (or sample rate).
+    // The LoadComplete handler sets dsp_needs_rebuild=true; we rebuild here
+    // because dsp_chain is exclusively owned by this callback closure.
+    if shared.dsp_needs_rebuild.compare_exchange(
+        true, false, Ordering::AcqRel, Ordering::Acquire
+    ).is_ok() {
+        let new_channels = shared.channels.load(Ordering::Relaxed).max(1) as usize;
+        let new_sr = shared.sample_rate.load(Ordering::Relaxed).max(1) as f64;
+        dsp_chain.set_sample_rate(new_sr);
+        dsp_chain.reset();
+        // Reset convolver state for new format
+        if let Some(ref mut conv) = owned_convolver {
+            conv.reset();
+        }
+        log::info!("DspChain rebuilt for {} channels @ {} Hz", new_channels, new_sr);
+    }
+
     let has_leftover = *resample_leftover_pos < resample_leftover.len();
 
     // Gapless and EOF handling
@@ -391,6 +426,10 @@ pub fn audio_callback_lockfree(
 
                 // Reset DSP chain (no Mutex — owned &mut)
                 dsp_chain.reset();
+                // Reset convolver state for new track
+                if let Some(ref mut conv) = owned_convolver {
+                    conv.reset();
+                }
                 *resampler = None;
                 resample_leftover.clear();
                 *resample_leftover_pos = 0;
@@ -402,11 +441,12 @@ pub fn audio_callback_lockfree(
         }
 
         data.fill(0.0);
-        if let Some(mut state) = shared.state.try_write() {
-            if *state == PlayerState::Playing {
-                *state = PlayerState::Stopped;
-                shared.event_flags.fetch_or(EVENT_PLAYBACK_ENDED, Ordering::Release);
-            }
+        // P0 fix: use atomic store instead of try_write() to guarantee state update
+        // and event delivery. Previously try_write() could fail if the RwLock was held,
+        // silently dropping EVENT_PLAYBACK_ENDED.
+        if shared.state.load() == PlayerState::Playing {
+            shared.state.store(PlayerState::Stopped);
+            shared.event_flags.fetch_or(EVENT_PLAYBACK_ENDED, Ordering::Release);
         }
         return;
     }
@@ -474,15 +514,18 @@ pub fn audio_callback_lockfree(
         // Process through unified DSP chain (NO Mutex — owned &mut)
         dsp_chain.process(process_buf, channels);
 
-        // Convolver: wait-free ArcSwap load.
-        // Note: process_inplace requires &mut but ArcSwap gives us shared Arc.
-        // The convolver's process_inplace mutates internal state (overlap buffers),
-        // so we cannot safely call it through a shared reference.
-        // For now we skip convolver in the hot path — convolver updates are
-        // handled by rebuilding via set_external_ir_convolver/set_fir_convolver
-        // which stores a fresh FFTConvolver. The audio thread command handler
-        // applies convolver processing when it has exclusive mutable access.
-        // TODO: In future, move convolver into callback-owned state like dsp_chain.
+        // Convolver: apply owned convolver in-place (P0 fix).
+        // The convolver is exclusively owned by the callback closure,
+        // so we can safely call process_inplace(&mut self).
+        // New convolvers are delivered via ArcSwap at the top of this function.
+        if let Some(ref mut conv) = owned_convolver {
+            // Use pre-allocated convolver_output buffer to avoid allocation
+            let buf_len = process_buf.len();
+            convolver_output.clear();
+            convolver_output.resize(buf_len, 0.0);
+            conv.process_into(process_buf, convolver_output);
+            process_buf.copy_from_slice(&convolver_output[..buf_len]);
+        }
 
         // Resample or direct output
         if let Some(rs) = resampler {

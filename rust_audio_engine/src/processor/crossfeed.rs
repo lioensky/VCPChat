@@ -270,9 +270,9 @@ mod tests {
         }
         cf.process(&mut samples, 2);
         
-        // After initial transient, crossfeed should be very small
-        // (DC is blocked by HPF)
-        let sum_r: f64 = samples.iter().skip(101).step_by(2).take(50).sum();
+        // N-1 fix: Clarify intent — skip initial transient (first 50 stereo frames = 100 samples),
+        // then take R channel samples (odd indices) by starting at index 101 (R of frame 50).
+        let sum_r: f64 = samples.iter().skip(100).skip(1).step_by(2).take(50).sum();
         assert!(sum_r.abs() < 1.0);  // Much less than 50 samples of DC
     }
 }

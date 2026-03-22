@@ -170,42 +170,10 @@ impl Equalizer {
         }
         sample
     }
-    
-    /// Process a single sample (legacy API, updates counter per-sample)
-    ///
-    /// DEPRECATED: Use `process()` for buffer-based processing instead.
-    /// This method duplicates logic from `process()` + `process_sample_no_counter_update()`.
-    /// Kept for backward compatibility only.
-    #[deprecated(note = "Use process() for buffer-based processing instead")]
-    #[inline]
-    pub fn process_sample(&mut self, mut sample: f64, ch: usize) -> f64 {
-        if !self.enabled || ch >= self.channels { return sample; }
-        for b in 0..self.bands[ch].len() {
-            if self.smooth_counter[b] > 0 {
-                // Blend: run both filters on the same input
-                let current_out = self.bands[ch][b].process(sample);
-                let target_out = self.target_bands[ch][b].process(sample);
-                let t = self.smooth_counter[b] as f64 / EQ_SMOOTH_SAMPLES as f64;
-                sample = current_out * t + target_out * (1.0 - t);
-                // Decrement counter only on channel 0 to stay in sync
-                // This ensures counter is decremented once per frame, not per channel
-                if ch == 0 {
-                    self.smooth_counter[b] -= 1;
-                    // Crossfade done: snap current to target
-                    // Use copy_coefficients_from to preserve current filter state (z1, z2)
-                    // This avoids discontinuities from cloning a filter with different state
-                    if self.smooth_counter[b] == 0 {
-                        for c in 0..self.channels {
-                            self.bands[c][b].copy_coefficients_from(&self.target_bands[c][b]);
-                        }
-                    }
-                }
-            } else {
-                sample = self.bands[ch][b].process(sample);
-            }
-        }
-        sample
-    }
+
+    // M-2 fix: Removed deprecated process_sample() method.
+    // It duplicated logic from process() + process_sample_no_counter_update()
+    // with subtle differences that could cause bugs. Use process() instead.
 
     pub fn reset(&mut self) {
         for ch in &mut self.bands {

@@ -204,7 +204,6 @@ fn parse_propfind_response(xml: &str, base_url: &str) -> Result<Vec<DavEntry>, W
         match reader.read_event_into(&mut buf) {
             Ok(Event::Start(ref e)) => {
                 let local = local_name(e.name().as_ref());
-                current_tag = local.clone();
                 match local.as_str() {
                     "response" => {
                         in_response = true;
@@ -219,6 +218,8 @@ fn parse_propfind_response(xml: &str, base_url: &str) -> Result<Vec<DavEntry>, W
                     }
                     _ => {}
                 }
+                // N-2 fix: move `local` into `current_tag` instead of cloning
+                current_tag = local;
             }
             Ok(Event::Empty(ref e)) => {
                 let local = local_name(e.name().as_ref());

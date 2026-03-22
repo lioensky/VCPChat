@@ -593,8 +593,16 @@ impl AtomicLoudnessState {
     }
     
     /// Set target gain (call from main thread)
+    ///
+    /// H-2 fix: Guards against NaN/Infinity values that could propagate through
+    /// the audio path and produce corrupted output. Falls back to 0 dB (no gain).
     pub fn set_target_gain(&self, gain_db: f64) {
-        self.target_gain_db.store(gain_db, Ordering::Relaxed);
+        if gain_db.is_finite() {
+            self.target_gain_db.store(gain_db, Ordering::Relaxed);
+        } else {
+            log::warn!("set_target_gain: ignoring non-finite value ({:.2}), using 0.0 dB", gain_db);
+            self.target_gain_db.store(0.0, Ordering::Relaxed);
+        }
     }
     
     /// Set album gain (call from main thread)
