@@ -8,7 +8,7 @@
     flex-direction: column;
     align-items: center;
     justify-content: flex-start;
-    width: 72px;
+    width: calc(var(--desktop-shortcut-icon-size, 40px) + 32px);
     padding: 8px 4px 4px;
     border-radius: 8px;
     cursor: default;
@@ -52,8 +52,8 @@
 }
 
 .desktop-shortcut-icon-img {
-    width: 40px;
-    height: 40px;
+    width: var(--desktop-shortcut-icon-size, 40px);
+    height: var(--desktop-shortcut-icon-size, 40px);
     border-radius: 6px;
     object-fit: contain;
     pointer-events: none;
@@ -61,12 +61,12 @@
 }
 
 .desktop-shortcut-icon-emoji {
-    width: 40px;
-    height: 40px;
+    width: var(--desktop-shortcut-icon-size, 40px);
+    height: var(--desktop-shortcut-icon-size, 40px);
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 26px;
+    font-size: calc(var(--desktop-shortcut-icon-size, 40px) * 0.65);
     background: rgba(255, 255, 255, 0.06);
     border-radius: 6px;
     pointer-events: none;
@@ -75,8 +75,8 @@
 }
 
 .desktop-shortcut-icon-svg {
-    width: 40px;
-    height: 40px;
+    width: var(--desktop-shortcut-icon-size, 40px);
+    height: var(--desktop-shortcut-icon-size, 40px);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -92,8 +92,8 @@
 }
 
 .desktop-shortcut-icon-placeholder {
-    width: 40px;
-    height: 40px;
+    width: var(--desktop-shortcut-icon-size, 40px);
+    height: var(--desktop-shortcut-icon-size, 40px);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -107,7 +107,7 @@
     color: var(--primary-text, rgba(255, 255, 255, 0.85));
     text-shadow: var(--panel-text-shadow, 0 1px 3px rgba(0, 0, 0, 0.7));
     margin-top: 4px;
-    max-width: 68px;
+    max-width: calc(var(--desktop-shortcut-icon-size, 40px) + 28px);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

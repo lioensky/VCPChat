@@ -41,6 +41,10 @@
             position: 'bottom', // 'top' | 'bottom' | 'left' | 'right'
             edgeDistance: 12,    // px
         },
+        desktopIcon: {
+            gridSnap: false,    // 桌面应用图标网格对齐
+            iconSize: 40,       // 桌面应用图标大小 (px)
+        },
         wallpaper: { ...DEFAULT_WALLPAPER },
     };
 
@@ -167,6 +171,17 @@
         if (dockSizeEl) dockSizeEl.value = s.dock?.iconSize || DEFAULT_SETTINGS.dock.iconSize;
         if (dockSizeLabelEl) dockSizeLabelEl.textContent = `${s.dock?.iconSize || DEFAULT_SETTINGS.dock.iconSize}px`;
 
+        // 桌面图标 - 网格对齐
+        const gridSnapEl = document.getElementById('desktop-setting-icon-grid-snap');
+        if (gridSnapEl) gridSnapEl.checked = !!(s.desktopIcon?.gridSnap);
+
+        // 桌面图标 - 图标大小
+        const iconSizeEl = document.getElementById('desktop-setting-icon-size');
+        const iconSizeLabel = document.getElementById('desktop-setting-icon-size-label');
+        const size = s.desktopIcon?.iconSize || DEFAULT_SETTINGS.desktopIcon.iconSize;
+        if (iconSizeEl) iconSizeEl.value = size;
+        if (iconSizeLabel) iconSizeLabel.textContent = `${size}px`;
+
         // 壁纸设置
         populateWallpaperUI();
     }
@@ -218,6 +233,23 @@
             }
         }
 
+        // 桌面图标 - 网格对齐
+        const gridSnapEl = document.getElementById('desktop-setting-icon-grid-snap');
+        if (gridSnapEl) {
+            if (!s.desktopIcon) s.desktopIcon = { ...DEFAULT_SETTINGS.desktopIcon };
+            s.desktopIcon.gridSnap = gridSnapEl.checked;
+        }
+
+        // 桌面图标 - 图标大小
+        const iconSizeEl = document.getElementById('desktop-setting-icon-size');
+        if (iconSizeEl) {
+            if (!s.desktopIcon) s.desktopIcon = { ...DEFAULT_SETTINGS.desktopIcon };
+            const val = parseInt(iconSizeEl.value);
+            if (!isNaN(val) && val >= 24 && val <= 72) {
+                s.desktopIcon.iconSize = val;
+            }
+        }
+
         // 读取壁纸 UI 值
         readWallpaperFromUI();
 
@@ -242,6 +274,7 @@
         state.globalSettings = {
             ...DEFAULT_SETTINGS,
             dock: { ...DEFAULT_SETTINGS.dock },
+            desktopIcon: { ...DEFAULT_SETTINGS.desktopIcon },
             wallpaper: { ...DEFAULT_WALLPAPER },
         };
         populateUI();
@@ -344,6 +377,11 @@
             window.VCPDesktop.dock.applyPosition(pos, dist);
         }
 
+        // 4.6. 桌面应用图标大小 - 通过 CSS 变量应用
+        if (s.desktopIcon?.iconSize) {
+            document.documentElement.style.setProperty('--desktop-shortcut-icon-size', `${s.desktopIcon.iconSize}px`);
+        }
+
         // 5. 壁纸
         if (window.VCPDesktop.wallpaper) {
             window.VCPDesktop.wallpaper.apply(s.wallpaper);
@@ -442,6 +480,10 @@
                         ...DEFAULT_SETTINGS.dock,
                         ...(layoutData.globalSettings.dock || {}),
                     },
+                    desktopIcon: {
+                        ...DEFAULT_SETTINGS.desktopIcon,
+                        ...(layoutData.globalSettings.desktopIcon || {}),
+                    },
                     wallpaper: {
                         ...DEFAULT_WALLPAPER,
                         ...(layoutData.globalSettings.wallpaper || {}),
@@ -514,6 +556,15 @@
                     val++;
                     valueEl.textContent = val;
                 }
+            });
+        }
+
+        // 桌面图标大小滑块
+        const iconSizeRange = document.getElementById('desktop-setting-icon-size');
+        const iconSizeLabel = document.getElementById('desktop-setting-icon-size-label');
+        if (iconSizeRange && iconSizeLabel) {
+            iconSizeRange.addEventListener('input', () => {
+                iconSizeLabel.textContent = `${iconSizeRange.value}px`;
             });
         }
 

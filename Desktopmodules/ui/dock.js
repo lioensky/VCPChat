@@ -961,9 +961,15 @@
             iconEl.dataset.originalPath = item.originalPath || '';
         }
 
-        // 定位
-        const adjustedX = Math.max(10, Math.min(x - 32, window.innerWidth - 80));
-        const adjustedY = Math.max(CONSTANTS.TITLE_BAR_HEIGHT + 4, Math.min(y - 32, window.innerHeight - 120));
+        // 定位（如果传入的是精确坐标 _exactPos=true，则跳过偏移调整）
+        let adjustedX, adjustedY;
+        if (item._exactPos) {
+            adjustedX = x;
+            adjustedY = y;
+        } else {
+            adjustedX = Math.max(10, Math.min(x - 32, window.innerWidth - 80));
+            adjustedY = Math.max(CONSTANTS.TITLE_BAR_HEIGHT + 4, Math.min(y - 32, window.innerHeight - 120));
+        }
         iconEl.style.left = `${adjustedX}px`;
         iconEl.style.top = `${adjustedY}px`;
 
@@ -1072,19 +1078,29 @@
 
         canvas.appendChild(iconEl);
 
-        // 保存到状态
+        // 保存到状态（保留完整的图标信息，确保预设恢复时图标不丢失）
         const iconState = {
             id: item.id || `dicon_${Date.now()}`,
             name: item.name,
             icon: item.icon,
+            animatedIcon: item.animatedIcon || null,
+            svgIcon: item.svgIcon || null,
+            htmlIcon: item.htmlIcon || null,
+            emoji: item.emoji || null,
             targetPath: item.targetPath,
             args: item.args,
             workingDir: item.workingDir,
             originalPath: item.originalPath,
+            description: item.description || '',
+            type: item.type || 'shortcut',
+            appAction: item.appAction || null,
             x: adjustedX,
             y: adjustedY,
         };
         state.desktopIcons.push(iconState);
+
+        // 自动保存桌面图标布局
+        saveDesktopIconsDebounced();
 
         // 进入动画
         iconEl.classList.add('entering');
@@ -1126,13 +1142,26 @@
                 document.removeEventListener('mouseup', onUp);
                 if (isDragging) {
                     iconEl.classList.remove('dragging');
+
+                    // 网格对齐吸附
+                    if (state.globalSettings?.desktopIcon?.gridSnap) {
+                        snapToGrid(iconEl);
+                    }
+
                     // 更新状态中的位置
                     const targetPath = iconEl.dataset.targetPath;
-                    const iconState = state.desktopIcons.find(i => i.targetPath === targetPath);
+                    const appId = iconEl.dataset.appId;
+                    const iconState = state.desktopIcons.find(i =>
+                        (targetPath && i.targetPath === targetPath) ||
+                        (appId && i.id === appId)
+                    );
                     if (iconState) {
                         iconState.x = parseInt(iconEl.style.left) || 0;
                         iconState.y = parseInt(iconEl.style.top) || 0;
                     }
+
+                    // 自动保存桌面图标布局
+                    saveDesktopIconsDebounced();
                 }
             };
 
@@ -1339,9 +1368,15 @@
             iconEl.addEventListener('animationend', () => {
                 iconEl.remove();
                 // 从状态中移除
-                const targetPath = iconEl.dataset.targetPath;
-                const idx = state.desktopIcons.findIndex(i => i.targetPath === targetPath);
+                const rmTargetPath = iconEl.dataset.targetPath;
+                const rmAppId = iconEl.dataset.appId;
+                const idx = state.desktopIcons.findIndex(i =>
+                    (rmTargetPath && i.targetPath === rmTargetPath) ||
+                    (rmAppId && i.id === rmAppId)
+                );
                 if (idx >= 0) state.desktopIcons.splice(idx, 1);
+                // 自动保存桌面图标布局
+                saveDesktopIconsDebounced();
             }, { once: true });
         });
         dockContextMenu.appendChild(removeBtn);
@@ -1531,6 +1566,129 @@
     }
 
     // ============================================================
+    // 桌面图标网格吸附
+    // ============================================================
+
+    /**
+     * 将桌面图标吸附到最近的网格位置
+     * @param {HTMLElement} iconEl - 桌面图标 DOM 元素
+     */
+    function snapToGrid(iconEl) {
+        const iconSize = state.globalSettings?.desktopIcon?.iconSize || 40;
+        // 网格单元尺寸 = 图标容器宽度（iconSize + 32px padding）+ 间距
+        const cellW = iconSize + 40;  // 水平单元（含间距）
+        const cellH = iconSize + 52;  // 垂直单元（含标签 + 间距）
+        const padLeft = 16;           // 左侧起始边距
+        const padTop = 42;            // 顶部起始边距（标题栏下方）
+
+        let x = parseInt(iconEl.style.left) || 0;
+        let y = parseInt(iconEl.style.top) || 0;
+
+        // 计算最近的网格位置
+        const col = Math.max(0, Math.round((x - padLeft) / cellW));
+        const row = Math.max(0, Math.round((y - padTop) / cellH));
+
+        const snapX = col * cellW + padLeft;
+        const snapY = row * cellH + padTop;
+
+        // 平滑吸附动画
+        iconEl.style.transition = 'left 0.15s ease, top 0.15s ease';
+        iconEl.style.left = `${snapX}px`;
+        iconEl.style.top = `${snapY}px`;
+
+        // 动画结束后移除 transition 避免影响后续拖拽
+        setTimeout(() => {
+            iconEl.style.transition = '';
+        }, 160);
+    }
+
+    // ============================================================
+    // 桌面图标持久化（自动保存/恢复）
+    // ============================================================
+
+    let _saveDesktopIconsTimer = null;
+
+    /**
+     * 防抖保存桌面图标（避免频繁写入）
+     */
+    function saveDesktopIconsDebounced() {
+        // 恢复期间不自动保存（避免数据翻倍）
+        if (_isRestoringIcons) return;
+        if (_saveDesktopIconsTimer) clearTimeout(_saveDesktopIconsTimer);
+        _saveDesktopIconsTimer = setTimeout(() => {
+            saveDesktopIcons();
+        }, 800);
+    }
+
+    /**
+     * 保存桌面图标到 layout.json 的 desktopIcons 字段
+     */
+    async function saveDesktopIcons() {
+        if (!window.electronAPI?.desktopSaveLayout || !window.electronAPI?.desktopLoadLayout) return;
+
+        try {
+            const result = await window.electronAPI.desktopLoadLayout();
+            const layoutData = (result?.success && result.data) ? result.data : {};
+            // 保存到 currentDesktopIcons 字段（清除旧的 desktopIcons 避免混淆）
+            layoutData.currentDesktopIcons = state.desktopIcons.map(icon => {
+                const copy = {...icon};
+                delete copy._exactPos; // 清除临时标记
+                return copy;
+            });
+            delete layoutData.desktopIcons; // 清除旧字段
+            await window.electronAPI.desktopSaveLayout(layoutData);
+            console.log(`[Dock] Desktop icons saved: ${state.desktopIcons.length} icons`);
+        } catch (err) {
+            console.error('[Dock] Save desktop icons error:', err);
+        }
+    }
+
+    /** 是否正在恢复桌面图标（恢复期间不触发自动保存） */
+    let _isRestoringIcons = false;
+
+    /**
+     * 从 layout.json 恢复桌面图标
+     */
+    async function restoreDesktopIcons() {
+        if (!window.electronAPI?.desktopLoadLayout) return;
+
+        try {
+            const result = await window.electronAPI.desktopLoadLayout();
+            if (!result?.success || !result.data) return;
+
+            // 支持两个字段名：currentDesktopIcons（新）和 desktopIcons（旧兼容）
+            const savedIcons = result.data.currentDesktopIcons || result.data.desktopIcons;
+            if (!Array.isArray(savedIcons) || savedIcons.length === 0) return;
+
+            console.log(`[Dock] Restoring ${savedIcons.length} desktop icons...`);
+
+            // 标记恢复中，禁止自动保存
+            _isRestoringIcons = true;
+
+            // 清空当前桌面图标状态
+            state.desktopIcons = [];
+
+            // 清除画布上现有的桌面图标 DOM
+            const canvas = domRefs.canvas;
+            if (canvas) {
+                canvas.querySelectorAll('.desktop-shortcut-icon').forEach(el => el.remove());
+            }
+
+            for (const iconData of savedIcons) {
+                // 使用 _exactPos 标记精确坐标（跳过 createDesktopIcon 内部的偏移调整）
+                iconData._exactPos = true;
+                createDesktopIcon(iconData, iconData.x || 100, iconData.y || 100);
+            }
+
+            _isRestoringIcons = false;
+            console.log(`[Dock] Desktop icons restored: ${state.desktopIcons.length}`);
+        } catch (err) {
+            _isRestoringIcons = false;
+            console.error('[Dock] Restore desktop icons error:', err);
+        }
+    }
+
+    // ============================================================
     // 导出
     // ============================================================
     window.VCPDesktop = window.VCPDesktop || {};
@@ -1547,6 +1705,8 @@
         loadDockConfig,
         createDesktopIcon,
         applyPosition: applyDockPosition,
+        restoreDesktopIcons,
+        saveDesktopIcons,
     };
 
 })();

@@ -559,10 +559,15 @@
             }
         }
 
-        // 恢复桌面图标
+        // 恢复桌面图标（使用精确坐标，不触发自动保存）
         if (preset.desktopIcons && preset.desktopIcons.length > 0 && D.dock) {
             for (const icon of preset.desktopIcons) {
-                D.dock.createDesktopIcon(icon, icon.x + 32, icon.y + 32);
+                icon._exactPos = true;
+                D.dock.createDesktopIcon(icon, icon.x || 100, icon.y || 100);
+            }
+            // 预设恢复后，手动保存一次桌面图标到 currentDesktopIcons
+            if (D.dock.saveDesktopIcons) {
+                setTimeout(() => D.dock.saveDesktopIcons(), 500);
             }
         }
 

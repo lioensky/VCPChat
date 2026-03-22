@@ -318,6 +318,30 @@
                         </div>
                     </div>
                 </div>
+                <!-- 桌面图标 -->
+                <div class="desktop-settings-section">
+                    <div class="desktop-settings-section-title">桌面图标</div>
+                    <div class="desktop-settings-item">
+                        <div class="desktop-settings-item-label">
+                            <div class="desktop-settings-item-label-text">网格对齐</div>
+                            <div class="desktop-settings-item-label-desc">拖拽应用图标松手后自动吸附到网格位置</div>
+                        </div>
+                        <label class="desktop-settings-toggle">
+                            <input type="checkbox" id="desktop-setting-icon-grid-snap">
+                            <span class="desktop-settings-toggle-slider"></span>
+                        </label>
+                    </div>
+                    <div class="desktop-settings-item">
+                        <div class="desktop-settings-item-label">
+                            <div class="desktop-settings-item-label-text">图标大小</div>
+                            <div class="desktop-settings-item-label-desc">桌面应用快捷方式图标的显示尺寸</div>
+                        </div>
+                        <div class="desktop-settings-range-wrapper">
+                            <input type="range" class="desktop-settings-range" id="desktop-setting-icon-size" min="24" max="72" value="40" step="4">
+                            <span class="desktop-settings-range-label" id="desktop-setting-icon-size-label">40px</span>
+                        </div>
+                    </div>
+                </div>
             </div>
             <div class="desktop-settings-footer">
                 <button class="desktop-settings-footer-btn reset">恢复默认</button>

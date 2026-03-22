@@ -85,6 +85,14 @@ document.addEventListener('DOMContentLoaded', () => {
         }, 500);
     }
 
+    // 5.5.2. 恢复桌面图标（在 Dock 配置加载完成后延迟恢复）
+    // 如果设置了默认预设，applyPreset 会先清除所有桌面图标再恢复预设中的图标，不会冲突
+    if (D.dock && D.dock.restoreDesktopIcons) {
+        setTimeout(() => {
+            D.dock.restoreDesktopIcons();
+        }, 600);
+    }
+
     // 5.6. 初始化全局设置
     if (D.globalSettings) {
         D.globalSettings.init().then(() => {

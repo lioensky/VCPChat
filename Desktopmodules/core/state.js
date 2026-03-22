@@ -40,6 +40,10 @@
                 position: 'bottom',  // Dock 栏位置：'top' | 'bottom' | 'left' | 'right'
                 edgeDistance: 12,     // Dock 栏距边缘距离 (px)
             },
+            desktopIcon: {
+                gridSnap: false,     // 桌面图标网格对齐
+                iconSize: 40,        // 桌面图标大小 (px)，默认 40
+            },
             wallpaper: {
                 enabled: false,          // 是否启用自定义壁纸
                 type: 'none',            // 'image' | 'video' | 'html' | 'none'
