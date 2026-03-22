@@ -170,13 +170,15 @@ button#devButton.header-button:hover {
 }
 
 body.light-theme button#devButton.header-button {
+    background-color: var(--button-bg);
     color: #ffffff; 
-    border: 1px solid var(--button-bg-light); 
+    border: 1px solid var(--button-bg); 
 }
 
 body.light-theme button#devButton.header-button:hover {
+    background-color: var(--button-hover-bg);
     color: #ffffff; 
-    border-color: var(--button-hover-bg-light); 
+    border-color: var(--button-hover-bg); 
 }
 
 body.light-theme .chat-actions .header-button {
@@ -330,7 +332,7 @@ body.light-theme .button-primary {
 }
 
 body.light-theme .button-primary:hover {
-    background-color: var(--button-hover-bg-light);
+    background-color: var(--button-hover-bg);
 }
 
 .button-secondary {
@@ -354,7 +356,7 @@ body.light-theme .button-secondary {
 }
 
 body.light-theme .button-secondary:hover {
-    background-color: var(--button-hover-bg-light); /* Same as primary */
+    background-color: var(--button-hover-bg);
 }
 body.light-theme .modal-content button[type="submit"] {
     color: #ffffff;

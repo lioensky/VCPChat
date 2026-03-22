@@ -61,7 +61,7 @@ pub fn audio_thread_main(
     let initial_channels = shared_state.channels.load(Ordering::Relaxed).max(1) as usize;
     let initial_sample_rate = shared_state.sample_rate.load(Ordering::Relaxed).max(1) as f64;
 
-    let dsp_ctx = Arc::new(LockfreeDspContext::new(
+    let (dsp_ctx, initial_dsp_chain) = LockfreeDspContext::new(
         initial_channels,
         initial_sample_rate,
         Arc::clone(&eq_params),
@@ -72,7 +72,11 @@ pub fn audio_thread_main(
         Arc::clone(&noise_shaper_params),
         Arc::clone(&dynamic_loudness_params),
         Arc::clone(&dynamic_loudness_telemetry),
-    ));
+    );
+    let dsp_ctx = Arc::new(dsp_ctx);
+    // The DspChain will be moved into the callback closure below.
+    // We hold it here temporarily until stream creation.
+    let mut owned_dsp_chain = Some(initial_dsp_chain);
 
     loop {
         match cmd_rx.recv() {
@@ -260,9 +264,27 @@ pub fn audio_thread_main(
                 };
 
                 let cb_shared = Arc::clone(&shared_state);
-                let cb_dsp_ctx = Arc::clone(&dsp_ctx);
+                let cb_convolver = Arc::clone(&dsp_ctx.merged_convolver);
                 let cb_loudness_state = Arc::clone(&loudness_state);
                 let cb_spectrum_tx = spectrum_tx.clone();
+
+                // Take ownership of DspChain — it will live exclusively inside the closure
+                let mut cb_dsp_chain = owned_dsp_chain.take().unwrap_or_else(|| {
+                    // Rebuild if chain was already consumed (e.g., second Play after Stop)
+                    let (_, chain) = LockfreeDspContext::new(
+                        channels as usize,
+                        requested_sample_rate as f64,
+                        Arc::clone(&eq_params),
+                        Arc::clone(&saturation_params),
+                        Arc::clone(&crossfeed_params),
+                        Arc::clone(&limiter_params),
+                        Arc::clone(&volume_params),
+                        Arc::clone(&noise_shaper_params),
+                        Arc::clone(&dynamic_loudness_params),
+                        Arc::clone(&dynamic_loudness_telemetry),
+                    );
+                    chain
+                });
 
                 let mut process_buffer = Vec::with_capacity(8192 * channels as usize);
                 process_buffer.resize(8192 * channels as usize, 0.0);
@@ -279,7 +301,8 @@ pub fn audio_thread_main(
                             audio_callback_lockfree(
                                 data,
                                 &cb_shared,
-                                &cb_dsp_ctx,
+                                &mut cb_dsp_chain,
+                                &cb_convolver,
                                 &cb_loudness_state,
                                 &cb_spectrum_tx,
                                 channels as usize,
@@ -295,7 +318,8 @@ pub fn audio_thread_main(
                         audio_callback_lockfree(
                             data,
                             &cb_shared,
-                            &cb_dsp_ctx,
+                            &mut cb_dsp_chain,
+                            &cb_convolver,
                             &cb_loudness_state,
                             &cb_spectrum_tx,
                             channels as usize,
@@ -359,9 +383,23 @@ pub fn audio_thread_main(
                             };
 
                             let cb_shared = Arc::clone(&shared_state);
-                            let cb_dsp_ctx = Arc::clone(&dsp_ctx);
+                            let cb_convolver = Arc::clone(&dsp_ctx.merged_convolver);
                             let cb_loudness_state = Arc::clone(&loudness_state);
                             let cb_spectrum_tx = spectrum_tx.clone();
+                            // Build a fresh DspChain for the fallback path
+                            let (_, fallback_chain) = LockfreeDspContext::new(
+                                fallback_channels,
+                                fallback_sr as f64,
+                                Arc::clone(&eq_params),
+                                Arc::clone(&saturation_params),
+                                Arc::clone(&crossfeed_params),
+                                Arc::clone(&limiter_params),
+                                Arc::clone(&volume_params),
+                                Arc::clone(&noise_shaper_params),
+                                Arc::clone(&dynamic_loudness_params),
+                                Arc::clone(&dynamic_loudness_telemetry),
+                            );
+                            let mut fb_dsp_chain = fallback_chain;
                             let mut process_buffer = Vec::with_capacity(8192 * fallback_channels);
                             process_buffer.resize(8192 * fallback_channels, 0.0);
                             let mut fallback_resample_leftover = Vec::new();
@@ -377,7 +415,8 @@ pub fn audio_thread_main(
                                         audio_callback_lockfree(
                                             data,
                                             &cb_shared,
-                                            &cb_dsp_ctx,
+                                            &mut fb_dsp_chain,
+                                            &cb_convolver,
                                             &cb_loudness_state,
                                             &cb_spectrum_tx,
                                             fallback_channels,
@@ -393,7 +432,8 @@ pub fn audio_thread_main(
                                     audio_callback_lockfree(
                                         data,
                                         &cb_shared,
-                                        &cb_dsp_ctx,
+                                        &mut fb_dsp_chain,
+                                        &cb_convolver,
                                         &cb_loudness_state,
                                         &cb_spectrum_tx,
                                         fallback_channels,
@@ -511,12 +551,15 @@ pub fn audio_thread_main(
                 *shared_state.track_metadata.write() = metadata.clone();
                 *shared_state.current_track_path.write() = Some(file_path);
 
-                dsp_ctx.set_sample_rate(sr);
-                dsp_ctx.reset();
+                // Note: DspChain is now exclusively owned by the callback closure.
+                // Sample rate / reset is handled implicitly by the processors
+                // reading atomic params on each callback. No dsp_ctx.set_sample_rate()
+                // or dsp_ctx.reset() needed — those were only required when the chain
+                // was behind a Mutex shared between command handler and callback.
 
                 loudness_state.set_smoothing(200.0, sr_u32);
 
-                let mode_val = loudness_state.mode.load(Ordering::Relaxed);
+                let _mode_val = loudness_state.mode.load(Ordering::Relaxed);
                 let preamp = loudness_state.preamp_gain_db.load(Ordering::Relaxed);
 
                 let calc_safe_gain = |rg_gain_db: f64, peak: Option<f64>, preamp_db: f64| -> f64 {
@@ -547,8 +590,8 @@ pub fn audio_thread_main(
                     requested_gain
                 };
 
-                match mode_val {
-                    3 => {
+                match loudness_state.get_mode() {
+                    crate::config::NormalizationMode::ReplayGainTrack => {
                         if let Some(rg_gain) = metadata.rg_track_gain {
                             let peak = metadata.rg_track_peak;
                             let effective_gain = calc_safe_gain(rg_gain, peak, preamp);
@@ -566,7 +609,6 @@ pub fn audio_thread_main(
                             meter.process(&samples_arc);
                             let loudness = meter.integrated_loudness();
                             if loudness.is_finite() {
-                                // FIX for Defect 3: Use user-configured target_lufs instead of hardcoded -12
                                 let gain = target_lufs - loudness + preamp;
                                 loudness_state.set_target_gain(gain);
                                 log::info!(
@@ -584,7 +626,7 @@ pub fn audio_thread_main(
                             }
                         }
                     }
-                    4 => {
+                    crate::config::NormalizationMode::ReplayGainAlbum => {
                         let rg_gain = metadata.rg_album_gain.or(metadata.rg_track_gain);
                         let peak = metadata.rg_album_peak.or(metadata.rg_track_peak);
                         if let Some(gain) = rg_gain {
@@ -603,7 +645,6 @@ pub fn audio_thread_main(
                             meter.process(&samples_arc);
                             let loudness = meter.integrated_loudness();
                             if loudness.is_finite() {
-                                // FIX for Defect 3: Use user-configured target_lufs instead of hardcoded -12
                                 let gain = target_lufs - loudness + preamp;
                                 loudness_state.set_target_gain(gain);
                                 log::info!(
@@ -652,12 +693,27 @@ fn handle_wasapi_exclusive(
     }
 
     let cb_shared = Arc::clone(shared_state);
-    let cb_dsp_ctx = Arc::clone(dsp_ctx);
+    let cb_convolver = Arc::clone(&dsp_ctx.merged_convolver);
     let cb_loudness_state = Arc::clone(loudness_state);
     let cb_spectrum_tx = spectrum_tx.clone();
 
     let mut process_buffer = Vec::with_capacity(8192 * channels);
     process_buffer.resize(8192 * channels, 0.0);
+
+    // Build a DspChain owned by the WASAPI callback
+    let (_, wasapi_chain) = LockfreeDspContext::new(
+        channels,
+        sample_rate as f64,
+        Arc::clone(&dsp_ctx.eq_params),
+        Arc::clone(&dsp_ctx.saturation_params),
+        Arc::clone(&dsp_ctx.crossfeed_params),
+        Arc::clone(&dsp_ctx.limiter_params),
+        Arc::clone(&dsp_ctx.volume_params),
+        Arc::clone(&dsp_ctx.noise_shaper_params),
+        Arc::clone(&dsp_ctx.dynamic_loudness_params),
+        Arc::new(crate::processor::AtomicDynamicLoudnessTelemetry::new()),
+    );
+    let mut wasapi_dsp_chain = wasapi_chain;
 
     let mut unused_resampler = None;
     let mut unused_leftover = Vec::new();
@@ -668,7 +724,8 @@ fn handle_wasapi_exclusive(
         audio_callback_lockfree(
             data,
             &cb_shared,
-            &cb_dsp_ctx,
+            &mut wasapi_dsp_chain,
+            &cb_convolver,
             &cb_loudness_state,
             &cb_spectrum_tx,
             cb_channels,

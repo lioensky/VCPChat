@@ -47,10 +47,11 @@ body.light-theme .notifications-header {
 }
 
 body.light-theme #clearNotificationsBtn, body.light-theme #doNotDisturbBtn, body.light-theme .notifications-header .header-button {
-    background-color: var(--button-bg-light);
-    color: var(--button-bg);
+    background-color: var(--button-bg);
+    color: #ffffff;
 }
 body.light-theme #clearNotificationsBtn:hover, body.light-theme #doNotDisturbBtn:hover, body.light-theme .notifications-header .header-button:hover {
+    background-color: var(--button-hover-bg);
     color: #ffffff;
 }
 
@@ -230,8 +231,9 @@ body.light-theme .notes-section #openNotesBtn,
 body.light-theme .notes-section #openMusicBtn,
 body.light-theme .notes-section #openDiceBtn,
 body.light-theme .notes-section #openCanvasBtn {
+    background-color: var(--button-bg);
     color: #ffffff;
-    border: 1px solid var(--button-bg-light);
+    border: 1px solid var(--button-bg);
 }
 
 body.light-theme .notes-section #openTranslatorBtn:hover,
@@ -239,8 +241,9 @@ body.light-theme .notes-section #openNotesBtn:hover,
 body.light-theme .notes-section #openMusicBtn:hover,
 body.light-theme .notes-section #openDiceBtn:hover,
 body.light-theme .notes-section #openCanvasBtn:hover {
+    background-color: var(--button-hover-bg);
     color: #ffffff;
-    border-color: var(--button-hover-bg-light);
+    border-color: var(--button-hover-bg);
 }
 
 .notification-item {

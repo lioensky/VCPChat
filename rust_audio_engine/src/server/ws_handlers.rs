@@ -6,6 +6,11 @@ use std::time::Duration;
 use tokio::sync::oneshot;
 use tokio::time::interval;
 
+use crate::player::{
+    EVENT_LOAD_COMPLETE, EVENT_LOAD_ERROR, EVENT_TRACK_CHANGED,
+    EVENT_PLAYBACK_ENDED, EVENT_NEEDS_PRELOAD, EVENT_NEEDS_PRELOAD_RESET,
+};
+
 pub fn configure_routes(cfg: &mut web::ServiceConfig) {
     cfg.route("/ws", web::get().to(websocket));
 }
@@ -47,7 +52,7 @@ async fn websocket(
         let mut last_spectrum: Vec<f32> = Vec::new();
         let mut idle_ticks: u32 = 0;
         let mut last_load_progress: u64 = 0;
-        let mut last_preload_sent = false;  // FIX for Defect 4: track if preload was already sent
+        let mut last_preload_sent = false;
 
         loop {
             tokio::select! {
@@ -75,7 +80,10 @@ async fn websocket(
                         }
                     }
 
-                    if shared_state.event_load_complete.swap(false, std::sync::atomic::Ordering::AcqRel) {
+                    // ── Event bitmask: atomic take-all ──
+                    let events = shared_state.event_flags.swap(0, std::sync::atomic::Ordering::AcqRel);
+
+                    if events & EVENT_LOAD_COMPLETE != 0 {
                         let error = shared_state.load_error.read().clone();
                         let file_path = shared_state.file_path.read().clone();
                         let msg = if let Some(err) = error {
@@ -95,7 +103,20 @@ async fn websocket(
                         }
                     }
 
-                    if shared_state.event_track_changed.swap(false, std::sync::atomic::Ordering::AcqRel) {
+                    if events & EVENT_TRACK_CHANGED != 0 {
+                        // Deferred metadata copy (P0-1 fix: audio callback no longer
+                        // writes RwLock — we do it here on the async/main thread)
+                        if shared_state.gapless_swap_pending.swap(false, std::sync::atomic::Ordering::AcqRel) {
+                            let next_path = shared_state.pending_file_path.write().take();
+                            let next_metadata = shared_state.pending_metadata.write().take();
+                            if let Some(ref p) = next_path {
+                                *shared_state.file_path.write() = Some(p.clone());
+                            }
+                            if let Some(meta) = next_metadata {
+                                *shared_state.track_metadata.write() = meta;
+                            }
+                            *shared_state.current_track_path.write() = next_path;
+                        }
                         let file_path = shared_state.current_track_path.read().clone();
                         let msg = serde_json::json!({
                             "type": "track_changed",
@@ -107,13 +128,17 @@ async fn websocket(
                         }
                     }
 
-                    if shared_state.event_playback_ended.swap(false, std::sync::atomic::Ordering::AcqRel) {
+                    if events & EVENT_PLAYBACK_ENDED != 0 {
                         let msg = serde_json::json!({
                             "type": "playback_ended",
                         });
                         if session.text(msg.to_string()).await.is_err() {
                             break;
                         }
+                    }
+
+                    if events & EVENT_NEEDS_PRELOAD_RESET != 0 {
+                        last_preload_sent = false;
                     }
 
                     if !is_playing && !is_loading {
@@ -126,9 +151,7 @@ async fn websocket(
                         idle_ticks = 0;
                     }
 
-                    // FIX for Defect 4: Use load() but only send if we haven't sent
-                    // for this preload cycle already. Reset tracking when needs_preload
-                    // goes from true→false (i.e., gapless system clears it).
+                    // Preload signaling (still uses dedicated AtomicBool for callback compatibility)
                     let needs_preload_now = shared_state.needs_preload.load(std::sync::atomic::Ordering::Acquire);
                     if needs_preload_now && !last_preload_sent {
                         last_preload_sent = true;
@@ -146,7 +169,6 @@ async fn websocket(
                         }
                     }
                     if !needs_preload_now && last_preload_sent {
-                        // Reset once gapless system clears the flag, ready for next cycle
                         last_preload_sent = false;
                     }
 

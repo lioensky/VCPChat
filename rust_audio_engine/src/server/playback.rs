@@ -160,8 +160,10 @@ fn analyze_track_loudness(
     }
 
     let integrated_lufs = meter.integrated_loudness();
+    let integrated_lufs = if integrated_lufs.is_finite() { integrated_lufs } else { -70.0 };
     let loudness_range = meter.loudness_range();
-    let true_peak_dbtp = 20.0 * meter.true_peak().log10();
+    let true_peak_linear = meter.true_peak().max(1e-10); // guard against 0.0 and negative
+    let true_peak_dbtp = 20.0 * true_peak_linear.log10();
 
     let track_loudness = TrackLoudness::new(
         &path,
@@ -670,10 +672,6 @@ async fn queue_next(
     let player = data.player.lock();
     match player.queue_next_with_credentials(&path, credentials) {
         Ok(()) => {
-            player
-                .shared_state()
-                .needs_preload
-                .store(false, std::sync::atomic::Ordering::Release);
             HttpResponse::Ok().json(ApiResponse::success("Queued for gapless playback"))
         }
         Err(e) => HttpResponse::InternalServerError().json(ApiResponse::error(&e)),

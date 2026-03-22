@@ -10,7 +10,9 @@ mod audio_thread;
 mod spectrum;
 
 // Re-exports
-pub use state::{AudioCommand, PlayerState, SharedState, AudioDeviceInfo};
+pub use state::{AudioCommand, PlayerState, SharedState, AudioDeviceInfo,
+    EVENT_LOAD_COMPLETE, EVENT_LOAD_ERROR, EVENT_TRACK_CHANGED,
+    EVENT_PLAYBACK_ENDED, EVENT_NEEDS_PRELOAD, EVENT_NEEDS_PRELOAD_RESET};
 pub use gapless::GaplessManager;
 pub use callback::{LockfreeDspContext, audio_callback_lockfree, normalize_channels};
 
