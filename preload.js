@@ -451,6 +451,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // VCPdesktop - 布局持久化 IPC 通道
     desktopSaveLayout: (layoutData) => ipcRenderer.invoke('desktop-save-layout', layoutData),
     desktopLoadLayout: () => ipcRenderer.invoke('desktop-load-layout'),
+
+    // VCPdesktop - 图标集系统 IPC 通道
+    desktopIconsetListPresets: () => ipcRenderer.invoke('desktop-iconset-list-presets'),
+    desktopIconsetListIcons: (params) => ipcRenderer.invoke('desktop-iconset-list-icons', params),
+    desktopIconsetGetIconData: (relativePath) => ipcRenderer.invoke('desktop-iconset-get-icon-data', relativePath),
 });
 
 // Log the electronAPI object as it's defined in preload.js right after exposing it

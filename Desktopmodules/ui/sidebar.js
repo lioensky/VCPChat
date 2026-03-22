@@ -278,7 +278,8 @@
      * 保存当前桌面布局为预设
      */
     async function saveCurrentLayoutAsPreset() {
-        const name = prompt('为当前布局命名：', `布局 ${new Date().toLocaleDateString()}`);
+        // 使用自定义模态窗代替 prompt()（Electron 中 prompt() 不可用）
+        const name = await showInputModal('保存布局预设', '为当前布局取一个名字：', `布局 ${new Date().toLocaleDateString()}`);
         if (!name || !name.trim()) return;
 
         // 收集当前桌面上所有挂件的状态
@@ -492,6 +493,97 @@
         } catch (err) {
             console.error('[Sidebar] Delete preset error:', err);
         }
+    }
+
+    // ============================================================
+    // 通用输入模态窗（替代 prompt()）
+    // ============================================================
+
+    /**
+     * 显示一个自定义的输入模态窗，返回用户输入的文本
+     * @param {string} title - 标题
+     * @param {string} description - 描述文案
+     * @param {string} defaultValue - 默认值
+     * @returns {Promise<string|null>} 用户输入的文本，取消则返回 null
+     */
+    function showInputModal(title, description, defaultValue = '') {
+        return new Promise((resolve) => {
+            const modal = document.getElementById('desktop-save-modal');
+            if (!modal) {
+                resolve(null);
+                return;
+            }
+
+            const titleEl = modal.querySelector('.desktop-modal-title');
+            const descEl = modal.querySelector('.desktop-modal-desc');
+            const input = modal.querySelector('.desktop-modal-input');
+            const cancelBtn = modal.querySelector('.desktop-modal-cancel');
+            const confirmBtn = modal.querySelector('.desktop-modal-confirm');
+
+            // 保存原始内容以便恢复
+            const origTitle = titleEl?.textContent;
+            const origDesc = descEl?.textContent;
+            const origConfirm = confirmBtn?.textContent;
+
+            // 设置新内容
+            if (titleEl) titleEl.textContent = title;
+            if (descEl) descEl.textContent = description;
+            if (confirmBtn) confirmBtn.textContent = '确认';
+            if (input) input.value = defaultValue;
+
+            // 清除之前的 widgetId 标记（避免 saveModal 的原始逻辑干扰）
+            delete modal.dataset.targetWidgetId;
+
+            modal.classList.add('visible');
+            setTimeout(() => input?.focus(), 100);
+
+            let resolved = false;
+
+            function cleanup() {
+                if (resolved) return;
+                resolved = true;
+                modal.classList.remove('visible');
+                // 恢复原始内容
+                if (titleEl) titleEl.textContent = origTitle;
+                if (descEl) descEl.textContent = origDesc;
+                if (confirmBtn) confirmBtn.textContent = origConfirm;
+                // 移除临时事件
+                cancelBtn?.removeEventListener('click', onCancel);
+                confirmBtn?.removeEventListener('click', onConfirm);
+                input?.removeEventListener('keydown', onKeydown);
+                modal.removeEventListener('click', onOverlay);
+            }
+
+            function onCancel() {
+                cleanup();
+                resolve(null);
+            }
+
+            function onConfirm() {
+                const val = input?.value?.trim();
+                if (!val) {
+                    input?.classList.add('error');
+                    setTimeout(() => input?.classList.remove('error'), 600);
+                    return;
+                }
+                cleanup();
+                resolve(val);
+            }
+
+            function onKeydown(e) {
+                if (e.key === 'Enter') onConfirm();
+                if (e.key === 'Escape') onCancel();
+            }
+
+            function onOverlay(e) {
+                if (e.target === modal) onCancel();
+            }
+
+            cancelBtn?.addEventListener('click', onCancel);
+            confirmBtn?.addEventListener('click', onConfirm);
+            input?.addEventListener('keydown', onKeydown);
+            modal.addEventListener('click', onOverlay);
+        });
     }
 
     // ============================================================

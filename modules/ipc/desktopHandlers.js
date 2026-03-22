@@ -22,6 +22,62 @@ const DOCK_CONFIG_PATH = path.join(DESKTOP_DATA_DIR, 'dock.json');
 const LAYOUT_CONFIG_PATH = path.join(DESKTOP_DATA_DIR, 'layout.json');
 
 /**
+ * 检测图标是否有效（非空白/非全透明）
+ * Windows 对某些系统应用（如 UWP/MSIX）可能返回一个非空但几乎全透明或全白的图标，
+ * 这类图标虽然 isEmpty() 返回 false，但视觉上是空白的。
+ * @param {Electron.NativeImage} nativeImg - Electron NativeImage 对象
+ * @returns {boolean} 图标是否有意义（有可见内容）
+ */
+function isIconValid(nativeImg) {
+    try {
+        const bitmap = nativeImg.toBitmap();
+        const size = nativeImg.getSize();
+        if (!bitmap || bitmap.length === 0 || size.width === 0 || size.height === 0) {
+            return false;
+        }
+
+        const totalPixels = size.width * size.height;
+        let opaquePixels = 0;          // 有不透明度的像素
+        let colorfulPixels = 0;        // 有实际颜色（非纯白/纯黑）的像素
+
+        // RGBA 格式，每像素 4 字节
+        // 采样检测：为了性能，对大图只采样部分像素
+        const step = totalPixels > 1024 ? Math.floor(totalPixels / 512) : 1;
+
+        for (let i = 0; i < totalPixels; i += step) {
+            const offset = i * 4;
+            const r = bitmap[offset];
+            const g = bitmap[offset + 1];
+            const b = bitmap[offset + 2];
+            const a = bitmap[offset + 3];
+
+            if (a > 20) {
+                opaquePixels++;
+                // 检查是否有实际颜色（非接近纯白或纯黑）
+                if (!((r > 240 && g > 240 && b > 240) || (r < 15 && g < 15 && b < 15))) {
+                    colorfulPixels++;
+                }
+            }
+        }
+
+        const sampledPixels = Math.ceil(totalPixels / step);
+        const opaqueRatio = opaquePixels / sampledPixels;
+
+        // 如果不透明像素少于 5%，判定为空白图标
+        if (opaqueRatio < 0.05) {
+            return false;
+        }
+
+        // 图标有足够的不透明内容，视为有效
+        return true;
+    } catch (e) {
+        // 检测失败时保守地认为图标有效
+        console.warn('[DesktopHandlers] isIconValid check failed:', e.message);
+        return true;
+    }
+}
+
+/**
  * 初始化桌面处理模块
  */
 function initialize(params) {
@@ -308,7 +364,7 @@ function initialize(params) {
                 // 优先从目标可执行文件提取图标
                 const iconTarget = targetPath || filePath;
                 const nativeImage = await app.getFileIcon(iconTarget, { size: 'large' });
-                if (nativeImage && !nativeImage.isEmpty()) {
+                if (nativeImage && !nativeImage.isEmpty() && isIconValid(nativeImage)) {
                     iconDataUrl = nativeImage.toDataURL();
                 }
             } catch (iconErr) {
@@ -316,7 +372,7 @@ function initialize(params) {
                 // 尝试从 .lnk 文件本身提取图标
                 try {
                     const nativeImage = await app.getFileIcon(filePath, { size: 'large' });
-                    if (nativeImage && !nativeImage.isEmpty()) {
+                    if (nativeImage && !nativeImage.isEmpty() && isIconValid(nativeImage)) {
                         iconDataUrl = nativeImage.toDataURL();
                     }
                 } catch (e) { /* ignore */ }
@@ -369,13 +425,13 @@ function initialize(params) {
                     try {
                         const iconTarget = targetPath || filePath;
                         const nativeImage = await app.getFileIcon(iconTarget, { size: 'large' });
-                        if (nativeImage && !nativeImage.isEmpty()) {
+                        if (nativeImage && !nativeImage.isEmpty() && isIconValid(nativeImage)) {
                             iconDataUrl = nativeImage.toDataURL();
                         }
                     } catch (e) {
                         try {
                             const nativeImage = await app.getFileIcon(filePath, { size: 'large' });
-                            if (nativeImage && !nativeImage.isEmpty()) {
+                            if (nativeImage && !nativeImage.isEmpty() && isIconValid(nativeImage)) {
                                 iconDataUrl = nativeImage.toDataURL();
                             }
                         } catch (e2) { /* ignore */ }
@@ -475,7 +531,7 @@ function initialize(params) {
                             try {
                                 const iconTarget = targetPath || filePath;
                                 const nativeImage = await app.getFileIcon(iconTarget, { size: 'large' });
-                                if (nativeImage && !nativeImage.isEmpty()) {
+                                if (nativeImage && !nativeImage.isEmpty() && isIconValid(nativeImage)) {
                                     iconDataUrl = nativeImage.toDataURL();
                                 }
                             } catch (e) { /* ignore */ }
@@ -578,7 +634,117 @@ function initialize(params) {
         }
     });
 
-    console.log('[DesktopHandlers] Initialized (with favorites, vcpAPI, shortcuts, dock & layout system).');
+    // ============================================================
+    // --- IPC: 图标集系统（iconset） ---
+    // ============================================================
+
+    const ICONSET_DIR = path.join(PROJECT_ROOT, 'assets', 'iconset');
+
+    /**
+     * 获取所有图标预设文件夹列表
+     * 返回：{ success, presets: [{ name, iconCount }] }
+     */
+    ipcMain.handle('desktop-iconset-list-presets', async () => {
+        try {
+            if (!await fs.pathExists(ICONSET_DIR)) {
+                return { success: true, presets: [] };
+            }
+            const entries = await fs.readdir(ICONSET_DIR, { withFileTypes: true });
+            const presets = [];
+            for (const entry of entries) {
+                if (!entry.isDirectory()) continue;
+                const presetDir = path.join(ICONSET_DIR, entry.name);
+                const files = await fs.readdir(presetDir);
+                const iconFiles = files.filter(f => /\.(png|jpg|jpeg|svg|ico|webp)$/i.test(f));
+                presets.push({
+                    name: entry.name,
+                    iconCount: iconFiles.length,
+                });
+            }
+            presets.sort((a, b) => a.name.localeCompare(b.name));
+            return { success: true, presets };
+        } catch (err) {
+            console.error('[DesktopHandlers] List iconset presets error:', err);
+            return { success: false, error: err.message, presets: [] };
+        }
+    });
+
+    /**
+     * 获取指定预设文件夹中的图标列表
+     * 参数：{ presetName, page, pageSize, search }
+     * 返回：{ success, icons: [{ name, relativePath }], total, page, pageSize }
+     */
+    ipcMain.handle('desktop-iconset-list-icons', async (event, params) => {
+        try {
+            const { presetName, page = 1, pageSize = 50, search = '' } = params;
+            const presetDir = path.join(ICONSET_DIR, presetName);
+
+            if (!await fs.pathExists(presetDir)) {
+                return { success: false, error: '预设文件夹不存在', icons: [], total: 0 };
+            }
+
+            const files = await fs.readdir(presetDir);
+            let iconFiles = files.filter(f => /\.(png|jpg|jpeg|svg|ico|webp)$/i.test(f));
+
+            // 搜索过滤
+            if (search) {
+                const searchLower = search.toLowerCase();
+                iconFiles = iconFiles.filter(f => f.toLowerCase().includes(searchLower));
+            }
+
+            iconFiles.sort((a, b) => a.localeCompare(b));
+
+            const total = iconFiles.length;
+            const startIndex = (page - 1) * pageSize;
+            const pagedFiles = iconFiles.slice(startIndex, startIndex + pageSize);
+
+            const icons = pagedFiles.map(f => ({
+                name: path.basename(f, path.extname(f)),
+                fileName: f,
+                // 相对于项目根目录的路径，前端使用 ../assets/iconset/... 访问
+                relativePath: `assets/iconset/${presetName}/${f}`,
+            }));
+
+            return { success: true, icons, total, page, pageSize };
+        } catch (err) {
+            console.error('[DesktopHandlers] List iconset icons error:', err);
+            return { success: false, error: err.message, icons: [], total: 0 };
+        }
+    });
+
+    /**
+     * 将图标文件读取为 Data URL（用于高质量显示或持久化）
+     * 参数：relativePath - 相对于项目根目录的路径
+     * 返回：{ success, dataUrl }
+     */
+    ipcMain.handle('desktop-iconset-get-icon-data', async (event, relativePath) => {
+        try {
+            const fullPath = path.join(PROJECT_ROOT, relativePath);
+            if (!await fs.pathExists(fullPath)) {
+                return { success: false, error: '图标文件不存在' };
+            }
+
+            const buffer = await fs.readFile(fullPath);
+            const ext = path.extname(fullPath).toLowerCase();
+            const mimeTypes = {
+                '.png': 'image/png',
+                '.jpg': 'image/jpeg',
+                '.jpeg': 'image/jpeg',
+                '.svg': 'image/svg+xml',
+                '.ico': 'image/x-icon',
+                '.webp': 'image/webp',
+            };
+            const mime = mimeTypes[ext] || 'image/png';
+            const dataUrl = `data:${mime};base64,${buffer.toString('base64')}`;
+
+            return { success: true, dataUrl };
+        } catch (err) {
+            console.error('[DesktopHandlers] Get icon data error:', err);
+            return { success: false, error: err.message };
+        }
+    });
+
+    console.log('[DesktopHandlers] Initialized (with favorites, vcpAPI, shortcuts, dock, layout & iconset system).');
 }
 
 /**
