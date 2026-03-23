@@ -141,8 +141,12 @@ function deIndentToolRequestBlocks(text) {
     let inToolBlock = false;
 
     return lines.map(line => {
-        const isStart = line.includes('<<<[TOOL_REQUEST]>>>');
-        const isEnd = line.includes('<<<[END_TOOL_REQUEST]>>>');
+        // 🟢 加固：排除被反引号包裹的占位符（如 `<<<[TOOL_REQUEST]>>>`）
+        const isBacktickWrapped = /`[^`]*<<<\[TOOL_REQUEST\]>>>[^`]*`/.test(line) ||
+                                   /`[^`]*<<<\[END_TOOL_REQUEST\]>>>[^`]*`/.test(line);
+        
+        const isStart = !isBacktickWrapped && line.includes('<<<[TOOL_REQUEST]>>>');
+        const isEnd = !isBacktickWrapped && line.includes('<<<[END_TOOL_REQUEST]>>>');
 
         let needsTrim = false;
         // If a line contains the start marker, we begin trimming.

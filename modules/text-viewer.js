@@ -146,11 +146,27 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function transformSpecialBlocksForViewer(text) {
-        const toolRegex = /<<<\[TOOL_REQUEST\]>>>(.*?)<<<\[END_TOOL_REQUEST\]>>>/gs;
+        // 🟢 加固：排除被反引号包裹的占位符
+        const toolRegex = /(?<!`)<<<\[TOOL_REQUEST\]>>>(.*?)<<<\[END_TOOL_REQUEST\]>>>(?!`)/gs;
         const noteRegex = /<<<DailyNoteStart>>>(.*?)<<<DailyNoteEnd>>>/gs;
         const toolResultRegex = /\[\[VCP调用结果信息汇总:(.*?)\]\]/gs;
+        // 🟢 新增：桌面推送块正则（排除反引号包裹）
+        const desktopPushRegex = /(?<!`)<<<\[DESKTOP_PUSH\]>>>([\s\S]*?)<<<\[DESKTOP_PUSH_END\]>>>(?!`)/gs;
+        const desktopPushPartialRegex = /(?<!`)<<<\[DESKTOP_PUSH\]>>>([\s\S]*)$/s;
 
         let processed = text;
+
+        // 🟢 处理桌面推送块：将推送的HTML内容渲染为代码块展示
+        processed = processed.replace(desktopPushRegex, (match, rawContent) => {
+            const content = rawContent.trim();
+            // 将推送内容作为 HTML 代码块展示，而非直接渲染为 HTML
+            return '\n```html\n' + content + '\n```\n';
+        });
+        // 处理未闭合的桌面推送块（流式传输场景）
+        processed = processed.replace(desktopPushPartialRegex, (match, rawContent) => {
+            const content = rawContent.trim();
+            return '\n```html\n' + content + '\n（桌面推送内容，尚未结束...）\n```\n';
+        });
 
         // Process VCP Tool Results - Viewer Mode (Full Details)
         processed = processed.replace(toolResultRegex, (match, rawContent) => {

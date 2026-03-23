@@ -791,7 +791,7 @@ function intelligentChunkSplit(text) {
 function processDesktopPushToken(messageId, textToAppend) {
     let state = desktopPushStates.get(messageId);
     if (!state) {
-        state = { active: false, widgetId: null, buffer: '', tagBuffer: '', created: false, validated: false, pushTimer: null, lastPushedLength: 0, timeoutTimer: null };
+        state = { active: false, widgetId: null, buffer: '', tagBuffer: '', created: false, validated: false, pushTimer: null, lastPushedLength: 0, timeoutTimer: null, backtickContext: false };
         desktopPushStates.set(messageId, state);
     }
 
@@ -809,8 +809,20 @@ function processDesktopPushToken(messageId, textToAppend) {
 
             if (DESKTOP_PUSH_START_TAG.startsWith(state.tagBuffer)) {
                 if (state.tagBuffer === DESKTOP_PUSH_START_TAG) {
+                    // 🟢 加固：检查开始标签前是否有反引号包裹
+                    // 检查 outputText 末尾是否刚输出了一个反引号
+                    const precedingChar = outputText.length > 0 ? outputText[outputText.length - 1] : '';
+                    if (precedingChar === '`') {
+                        // 被反引号包裹，不视为推送标签，直接输出原文
+                        state.backtickContext = true;
+                        outputText += state.tagBuffer;
+                        state.tagBuffer = '';
+                        continue;
+                    }
+                    
                     // 匹配到开始标签，进入active状态但延迟创建挂件
                     state.active = true;
+                    state.backtickContext = false;
                     state.widgetId = 'dw-' + Date.now().toString(36) + Math.random().toString(36).substring(2, 5);
                     state.buffer = '';
                     state.created = false;
