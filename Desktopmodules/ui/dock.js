@@ -216,7 +216,8 @@
             const htmlHost = document.createElement('span');
             htmlHost.className = 'desktop-dock-icon-svg'; // 复用 SVG 容器样式
             const shadow = htmlHost.attachShadow({ mode: 'closed' });
-            shadow.innerHTML = item.htmlIcon;
+            // 注入缩放约束：用包裹容器强制 HTML 图标内容缩放到指定尺寸
+            shadow.innerHTML = `<style>:host{display:block;width:100%;height:100%;overflow:hidden;}.vcp-html-icon-wrap{width:100%;height:100%;display:flex;align-items:center;justify-content:center;overflow:hidden;transform-origin:center center;}</style><div class="vcp-html-icon-wrap">${item.htmlIcon}</div>`;
             iconWrapper.appendChild(htmlHost);
         } else if (item.svgIcon) {
             // 内联 SVG 图标（AI 原生生成，支持 currentColor 主题适配）
@@ -525,7 +526,7 @@
                 const htmlHost = document.createElement('span');
                 htmlHost.className = 'desktop-dock-drawer-item-svg';
                 const shadow = htmlHost.attachShadow({ mode: 'closed' });
-                shadow.innerHTML = item.htmlIcon;
+                shadow.innerHTML = `<style>:host{display:block;width:100%;height:100%;overflow:hidden;}.vcp-html-icon-wrap{width:100%;height:100%;display:flex;align-items:center;justify-content:center;overflow:hidden;transform-origin:center center;}</style><div class="vcp-html-icon-wrap">${item.htmlIcon}</div>`;
                 card.appendChild(htmlHost);
             } else if (item.svgIcon) {
                 const svgEl = document.createElement('span');
@@ -1021,7 +1022,7 @@
             const htmlHost = document.createElement('span');
             htmlHost.className = 'desktop-shortcut-icon-svg';
             const shadow = htmlHost.attachShadow({ mode: 'closed' });
-            shadow.innerHTML = item.htmlIcon;
+            shadow.innerHTML = `<style>:host{display:block;width:100%;height:100%;overflow:hidden;}.vcp-html-icon-wrap{width:100%;height:100%;display:flex;align-items:center;justify-content:center;overflow:hidden;transform-origin:center center;}</style><div class="vcp-html-icon-wrap">${item.htmlIcon}</div>`;
             iconEl.appendChild(htmlHost);
         } else if (item.svgIcon) {
             const svgEl = document.createElement('span');
@@ -1229,6 +1230,8 @@
                         }
                         item.icon = null;
                         item.htmlIcon = iconData.htmlContent;
+                        // 同步更新桌面上的同源图标 DOM
+                        updateDesktopIconsByTargetHtml(item.targetPath, iconData.htmlContent);
                     } else {
                         // 图片/SVG/GIF 图标：使用 dataUrl
                         if (stateItem) {
@@ -1330,24 +1333,47 @@
             if (window.VCPDesktop.iconPicker) {
                 window.VCPDesktop.iconPicker.open((iconData) => {
                     const targetPath = iconEl.dataset.targetPath;
+                    const appId = iconEl.dataset.appId;
                     if (iconData.iconType === 'html' && iconData.htmlContent) {
-                        // HTML 图标：需要重新创建桌面图标 DOM（无法简单替换 src）
+                        // HTML 图标：替换桌面图标 DOM 中的图标元素
                         item.icon = null;
                         item.htmlIcon = iconData.htmlContent;
-                        const iconState = state.desktopIcons.find(i => i.targetPath === targetPath);
+                        // 更新 state
+                        const iconState = state.desktopIcons.find(i =>
+                            (targetPath && i.targetPath === targetPath) ||
+                            (appId && i.id === appId)
+                        );
                         if (iconState) { iconState.icon = null; iconState.htmlIcon = iconData.htmlContent; }
-                        const dockItem = state.dock.items.find(i => i.targetPath === targetPath);
+                        // 替换当前桌面图标 DOM 中的图标元素
+                        replaceDesktopIconElement(iconEl, 'html', iconData.htmlContent);
+                        // 同步 Dock
+                        const dockItem = state.dock.items.find(i =>
+                            (targetPath && i.targetPath === targetPath) ||
+                            (appId && i.id === appId)
+                        );
                         if (dockItem) { dockItem.icon = null; dockItem.htmlIcon = iconData.htmlContent; renderDock(); saveDockConfig(); }
+                        // 自动保存桌面图标布局
+                        saveDesktopIconsDebounced();
                     } else {
-                        // 图片/SVG/GIF：直接替换 src
-                        const imgEl = iconEl.querySelector('.desktop-shortcut-icon-img');
-                        if (imgEl) { imgEl.src = iconData.dataUrl; }
-                        const iconState = state.desktopIcons.find(i => i.targetPath === targetPath);
-                        if (iconState) { iconState.icon = iconData.dataUrl; }
-                        const dockItem = state.dock.items.find(i => i.targetPath === targetPath);
-                        if (dockItem) { dockItem.icon = iconData.dataUrl; dockItem.htmlIcon = null; renderDock(); saveDockConfig(); }
+                        // 图片/SVG/GIF：替换桌面图标 DOM 中的图标元素
                         item.icon = iconData.dataUrl;
                         item.htmlIcon = null;
+                        // 更新 state
+                        const iconState = state.desktopIcons.find(i =>
+                            (targetPath && i.targetPath === targetPath) ||
+                            (appId && i.id === appId)
+                        );
+                        if (iconState) { iconState.icon = iconData.dataUrl; iconState.htmlIcon = null; }
+                        // 替换当前桌面图标 DOM 中的图标元素
+                        replaceDesktopIconElement(iconEl, 'image', iconData.dataUrl);
+                        // 同步 Dock
+                        const dockItem = state.dock.items.find(i =>
+                            (targetPath && i.targetPath === targetPath) ||
+                            (appId && i.id === appId)
+                        );
+                        if (dockItem) { dockItem.icon = iconData.dataUrl; dockItem.htmlIcon = null; renderDock(); saveDockConfig(); }
+                        // 自动保存桌面图标布局
+                        saveDesktopIconsDebounced();
                     }
                 });
             }
@@ -1464,7 +1490,7 @@
     // ============================================================
 
     /**
-     * 更新桌面上所有同源（相同 targetPath）图标的显示
+     * 更新桌面上所有同源（相同 targetPath）图标的显示（图片类型）
      */
     function updateDesktopIconsByTarget(targetPath, newIconSrc) {
         if (!targetPath) return;
@@ -1473,18 +1499,93 @@
 
         const icons = canvas.querySelectorAll(`.desktop-shortcut-icon[data-target-path="${CSS.escape(targetPath)}"]`);
         icons.forEach(iconEl => {
-            const imgEl = iconEl.querySelector('.desktop-shortcut-icon-img');
-            if (imgEl) {
-                imgEl.src = newIconSrc;
-            }
+            replaceDesktopIconElement(iconEl, 'image', newIconSrc);
         });
 
         // 同步状态
         state.desktopIcons.forEach(iconState => {
             if (iconState.targetPath === targetPath) {
                 iconState.icon = newIconSrc;
+                iconState.htmlIcon = null;
             }
         });
+
+        // 自动保存桌面图标布局
+        saveDesktopIconsDebounced();
+    }
+
+    /**
+     * 更新桌面上所有同源（相同 targetPath）图标的显示（HTML 类型）
+     */
+    function updateDesktopIconsByTargetHtml(targetPath, htmlContent) {
+        if (!targetPath) return;
+        const canvas = domRefs.canvas;
+        if (!canvas) return;
+
+        const icons = canvas.querySelectorAll(`.desktop-shortcut-icon[data-target-path="${CSS.escape(targetPath)}"]`);
+        icons.forEach(iconEl => {
+            replaceDesktopIconElement(iconEl, 'html', htmlContent);
+        });
+
+        // 同步状态
+        state.desktopIcons.forEach(iconState => {
+            if (iconState.targetPath === targetPath) {
+                iconState.icon = null;
+                iconState.htmlIcon = htmlContent;
+            }
+        });
+
+        // 自动保存桌面图标布局
+        saveDesktopIconsDebounced();
+    }
+
+    /**
+     * 替换桌面图标 DOM 中的图标元素（支持 image/html 类型切换）
+     * @param {HTMLElement} iconEl - 桌面图标容器 (.desktop-shortcut-icon)
+     * @param {string} type - 'image' | 'html'
+     * @param {string} content - dataUrl (image) 或 htmlContent (html)
+     */
+    function replaceDesktopIconElement(iconEl, type, content) {
+        // 移除旧的图标元素（img / span.desktop-shortcut-icon-svg / span.desktop-shortcut-icon-emoji）
+        const oldImg = iconEl.querySelector('.desktop-shortcut-icon-img');
+        const oldSvg = iconEl.querySelector('.desktop-shortcut-icon-svg');
+        const oldEmoji = iconEl.querySelector('.desktop-shortcut-icon-emoji');
+        const oldPlaceholder = iconEl.querySelector('.desktop-shortcut-icon-placeholder');
+        if (oldImg) oldImg.remove();
+        if (oldSvg) oldSvg.remove();
+        if (oldEmoji) oldEmoji.remove();
+        if (oldPlaceholder) oldPlaceholder.remove();
+
+        // 在 label 之前插入新图标元素
+        const label = iconEl.querySelector('.desktop-shortcut-icon-label');
+
+        if (type === 'html') {
+            const htmlHost = document.createElement('span');
+            htmlHost.className = 'desktop-shortcut-icon-svg';
+            const shadow = htmlHost.attachShadow({ mode: 'closed' });
+            shadow.innerHTML = `<style>:host{display:block;width:100%;height:100%;overflow:hidden;}.vcp-html-icon-wrap{width:100%;height:100%;display:flex;align-items:center;justify-content:center;overflow:hidden;transform-origin:center center;}</style><div class="vcp-html-icon-wrap">${content}</div>`;
+            if (label) {
+                iconEl.insertBefore(htmlHost, label);
+            } else {
+                iconEl.appendChild(htmlHost);
+            }
+        } else {
+            // image 类型
+            const img = document.createElement('img');
+            img.src = content;
+            img.className = 'desktop-shortcut-icon-img';
+            img.draggable = false;
+            img.onerror = function () {
+                if (this.src !== new URL('../assets/setting.png', location.href).href) {
+                    this.src = '../assets/setting.png';
+                }
+            };
+            if (label) {
+                iconEl.insertBefore(img, label);
+            } else {
+                iconEl.appendChild(img);
+            }
+        }
     }
 
     // ============================================================

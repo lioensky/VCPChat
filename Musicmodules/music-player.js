@@ -2,6 +2,9 @@
 // 核心播放逻辑
 
 function setupPlayer(app) {
+    // 防重入标志：防止 playback_ended 等事件在 loadTrack 进行中重复触发切歌
+    app._isNextTrackInProgress = false;
+
     app.loadTrack = async (trackIndex, andPlay = true) => {
         const requestId = ++app.pendingLoadRequestId;
         app.isPreloadingNext = false;
@@ -51,6 +54,7 @@ function setupPlayer(app) {
             const waitForTrackReady = async () => {
                 const timeoutAt = Date.now() + 12000;
                 const targetPath = app.normalizePathForCompare(track.path);
+                let pollInterval = 120;
 
                 while (Date.now() < timeoutAt) {
                     if (requestId !== app.pendingLoadRequestId) return false;
@@ -62,8 +66,11 @@ function setupPlayer(app) {
                         const loadedPath = app.normalizePathForCompare(state.file_path);
                         if (loadedPath === targetPath && !state.is_loading) return true;
                     }
-                    await new Promise(r => setTimeout(r, 120));
+                    await new Promise(r => setTimeout(r, pollInterval));
+                    // 逐步增大轮询间隔，避免高频轮询（最大 500ms）
+                    pollInterval = Math.min(pollInterval + 50, 500);
                 }
+                console.warn('[Music.js] waitForTrackReady timed out for:', track.title);
                 return false;
             };
 
@@ -115,6 +122,12 @@ function setupPlayer(app) {
     };
 
     app.nextTrack = () => {
+        // 防重入保护：如果上一次 nextTrack 触发的 loadTrack 仍在进行中，则跳过
+        if (app._isNextTrackInProgress) {
+            console.log('[Music.js] nextTrack skipped: previous nextTrack still in progress');
+            return;
+        }
+
         const activeList = app.currentFilteredTracks || app.playlist;
         if (app.lastShuffleList !== activeList) {
             app.shuffleQueue = [];
@@ -128,6 +141,8 @@ function setupPlayer(app) {
             }
             return;
         }
+
+        const previousTrackIndex = app.currentTrackIndex;
 
         switch (app.playModes[app.currentPlayMode]) {
             case 'repeat':
@@ -156,7 +171,24 @@ function setupPlayer(app) {
                 app.currentTrackIndex = app.playlist.indexOf(activeList[nextIdx]);
                 break;
         }
-        app.loadTrack(app.currentTrackIndex);
+
+        // 防止 repeat-one 或其他情况下 index 未变导致重复加载
+        // 但 repeat-one 模式下需要重新播放当前歌曲
+        if (app.currentTrackIndex === previousTrackIndex && app.playModes[app.currentPlayMode] !== 'repeat-one') {
+            // 如果歌曲没变（例如列表只有 2 首且刚好又轮到当前），仍然需要切歌
+            // 但如果真的只有 1 首（前面已处理），不应到达这里
+        }
+
+        app._isNextTrackInProgress = true;
+        const loadPromise = app.loadTrack(app.currentTrackIndex);
+        // loadTrack 是 async 的，等待完成后清除标志
+        if (loadPromise && typeof loadPromise.then === 'function') {
+            loadPromise.finally(() => {
+                app._isNextTrackInProgress = false;
+            });
+        } else {
+            app._isNextTrackInProgress = false;
+        }
     };
 
     app.handleNeedsPreload = async () => {
@@ -216,8 +248,6 @@ function setupPlayer(app) {
         if (result.status === 'success') app.updateUIWithState(result.state);
     };
 
-    app.startStatePolling = () => {
-        if (app.statePollInterval) clearInterval(app.statePollInterval);
     app.syncTrackIndexByPath = (path) => {
         if (!path) return;
         const index = app.playlist.findIndex(t => app.normalizePathForCompare(t.path) === app.normalizePathForCompare(path));
@@ -246,6 +276,9 @@ function setupPlayer(app) {
             if (app.wnpAdapter) app.wnpAdapter.sendUpdate();
         }
     };
+
+    app.startStatePolling = () => {
+        if (app.statePollInterval) clearInterval(app.statePollInterval);
         app.statePollInterval = setInterval(app.pollState, 250);
     };
 

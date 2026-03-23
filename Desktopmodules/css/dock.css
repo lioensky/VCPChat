@@ -143,6 +143,7 @@
     color: var(--primary-text, rgba(255, 255, 255, 0.85));
     pointer-events: none;
     border-radius: 6px;
+    overflow: hidden;
 }
 
 .desktop-dock-icon-svg svg {
@@ -415,6 +416,7 @@
     color: var(--primary-text, rgba(255, 255, 255, 0.85));
     flex-shrink: 0;
     border-radius: 6px;
+    overflow: hidden;
 }
 
 .desktop-dock-drawer-item-svg svg {

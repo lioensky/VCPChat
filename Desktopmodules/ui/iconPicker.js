@@ -225,7 +225,7 @@
                             const dataResult = await window.electronAPI.desktopIconsetGetIconData(icon.relativePath);
                             if (dataResult?.success && dataResult.htmlContent) {
                                 const shadow = previewEl.attachShadow({ mode: 'closed' });
-                                shadow.innerHTML = dataResult.htmlContent;
+                                shadow.innerHTML = `<style>:host{display:block;width:100%;height:100%;overflow:hidden;}.vcp-html-icon-wrap{width:100%;height:100%;display:flex;align-items:center;justify-content:center;overflow:hidden;transform-origin:center center;}</style><div class="vcp-html-icon-wrap">${dataResult.htmlContent}</div>`;
                             }
                         } catch (e) {
                             previewEl.textContent = '📄';

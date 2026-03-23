@@ -84,6 +84,7 @@
     pointer-events: none;
     filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
     border-radius: 6px;
+    overflow: hidden;
 }
 
 .desktop-shortcut-icon-svg svg {
