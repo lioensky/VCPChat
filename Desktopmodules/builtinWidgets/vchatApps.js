@@ -209,7 +209,7 @@
     const VCHAT_APPS = [
         {
             id: 'vchat-app-main',
-            name: 'VChat 主界面',
+            name: 'VChat',
             icon: `${ICON_BASE}/vchat_main.png`,
             animatedIcon: null,
             svgIcon: SVG_ICONS.chat,
@@ -249,7 +249,7 @@
         },
         {
             id: 'vchat-app-rag-observer',
-            name: 'RAG 信息流监听',
+            name: 'RAG监听',
             icon: null,
             animatedIcon: `${ICON_BASE}/信息流.gif`,
             svgIcon: SVG_ICONS.rag,
@@ -269,7 +269,7 @@
         },
         {
             id: 'vchat-app-canvas',
-            name: 'Canvas 协同',
+            name: 'Canvas',
             icon: `${ICON_BASE}/协同.png`,
             animatedIcon: null,
             svgIcon: SVG_ICONS.canvas,
@@ -319,7 +319,7 @@
         },
         {
             id: 'vchat-app-dbmanager',
-            name: 'VchatManager',
+            name: 'Vchat数据',
             icon: null,
             animatedIcon: `${ICON_BASE}/数据库.gif`,
             svgIcon: SVG_ICONS.database,
