@@ -835,11 +835,16 @@ function preprocessFullContent(text, settings = {}, messageRole = 'assistant', d
     });
     text = text.replace(DESKTOP_PUSH_PARTIAL_REGEX, (match, partialContent) => {
         const content = partialContent.trim();
-        const escapedPreview = escapeHtml(content.length > 80 ? content.substring(0, 80) + '...' : content);
+        // 🟢 改进：显示末尾内容而非开头，让用户看到推送进度
+        const lines = content.split('\n');
+        const totalLines = lines.length;
+        const tailLines = lines.slice(-3).join('\n'); // 显示最后3行
+        const escapedPreview = escapeHtml(tailLines.length > 120 ? tailLines.substring(tailLines.length - 120) : tailLines);
+        const lineCountInfo = totalLines > 3 ? `(${totalLines} 行)` : '';
         return `<div class="vcp-desktop-push-placeholder constructing">` +
             `<div class="vcp-desktop-push-header">` +
             `<span class="vcp-desktop-push-icon">🖥️</span>` +
-            `<span class="vcp-desktop-push-label">正在向桌面推送<span class="thinking-indicator-dots">...</span></span>` +
+            `<span class="vcp-desktop-push-label">正在向桌面推送 ${escapeHtml(lineCountInfo)}<span class="thinking-indicator-dots">...</span></span>` +
             `</div>` +
             `<div class="vcp-desktop-push-preview"><pre>${escapedPreview}</pre></div>` +
             `</div>`;
