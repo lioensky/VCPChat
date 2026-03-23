@@ -122,14 +122,10 @@ function setupVisualizer(app) {
                     console.log('[Music.js] Received needs_preload event, remaining:', message.remaining_secs?.toFixed(1), 's');
                     app.handleNeedsPreload();
                 } else if (message.type === 'playback_ended') {
-                    // 防护：如果正在加载新曲目（手动切歌或之前的 nextTrack 仍在进行），
-                    // 则忽略此事件。这防止了后端解码延迟导致的重复切歌问题。
+                    // 防护：如果正在加载新曲目（手动切歌），则忽略此事件。
+                    // 这防止了后端解码延迟导致的重复切歌问题。
                     if (app.isTrackLoading) {
                         console.log('[Music.js] playback_ended ignored: track is currently loading');
-                        return;
-                    }
-                    if (app._isNextTrackInProgress) {
-                        console.log('[Music.js] playback_ended ignored: nextTrack already in progress');
                         return;
                     }
                     console.log('[Music.js] Playback ended, moving to next track');

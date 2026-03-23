@@ -2,9 +2,6 @@
 // 核心播放逻辑
 
 function setupPlayer(app) {
-    // 防重入标志：防止 playback_ended 等事件在 loadTrack 进行中重复触发切歌
-    app._isNextTrackInProgress = false;
-
     app.loadTrack = async (trackIndex, andPlay = true) => {
         const requestId = ++app.pendingLoadRequestId;
         app.isPreloadingNext = false;
@@ -122,12 +119,6 @@ function setupPlayer(app) {
     };
 
     app.nextTrack = () => {
-        // 防重入保护：如果上一次 nextTrack 触发的 loadTrack 仍在进行中，则跳过
-        if (app._isNextTrackInProgress) {
-            console.log('[Music.js] nextTrack skipped: previous nextTrack still in progress');
-            return;
-        }
-
         const activeList = app.currentFilteredTracks || app.playlist;
         if (app.lastShuffleList !== activeList) {
             app.shuffleQueue = [];
@@ -141,8 +132,6 @@ function setupPlayer(app) {
             }
             return;
         }
-
-        const previousTrackIndex = app.currentTrackIndex;
 
         switch (app.playModes[app.currentPlayMode]) {
             case 'repeat':
@@ -172,23 +161,7 @@ function setupPlayer(app) {
                 break;
         }
 
-        // 防止 repeat-one 或其他情况下 index 未变导致重复加载
-        // 但 repeat-one 模式下需要重新播放当前歌曲
-        if (app.currentTrackIndex === previousTrackIndex && app.playModes[app.currentPlayMode] !== 'repeat-one') {
-            // 如果歌曲没变（例如列表只有 2 首且刚好又轮到当前），仍然需要切歌
-            // 但如果真的只有 1 首（前面已处理），不应到达这里
-        }
-
-        app._isNextTrackInProgress = true;
-        const loadPromise = app.loadTrack(app.currentTrackIndex);
-        // loadTrack 是 async 的，等待完成后清除标志
-        if (loadPromise && typeof loadPromise.then === 'function') {
-            loadPromise.finally(() => {
-                app._isNextTrackInProgress = false;
-            });
-        } else {
-            app._isNextTrackInProgress = false;
-        }
+        app.loadTrack(app.currentTrackIndex);
     };
 
     app.handleNeedsPreload = async () => {
@@ -250,12 +223,14 @@ function setupPlayer(app) {
 
     app.syncTrackIndexByPath = (path) => {
         if (!path) return;
-        const index = app.playlist.findIndex(t => app.normalizePathForCompare(t.path) === app.normalizePathForCompare(path));
+        const normalizedPath = app.normalizePathForCompare(path);
+        const index = app.playlist.findIndex(t => app.normalizePathForCompare(t.path) === normalizedPath);
         if (index !== -1) {
-            console.log('[Music.js] Syncing track index to:', index);
+            console.log('[Music.js] Syncing track index to:', index, 'path:', normalizedPath);
             app.currentTrackIndex = index;
             const track = app.playlist[index];
             app.pendingTrackPath = track.path;
+            app.isTrackLoading = false; // gapless 切歌后后端已经加载好了，重置加载标志
             app.trackTitle.textContent = track.title || '未知标题';
             app.trackArtist.textContent = track.artist || '未知艺术家';
             app.trackBitrate.textContent = track.bitrate ? `${Math.round(track.bitrate / 1000)} kbps` : '';
@@ -274,6 +249,45 @@ function setupPlayer(app) {
             app.fetchAndDisplayLyrics(track.artist, track.title);
             app.updateMediaSessionMetadata();
             if (app.wnpAdapter) app.wnpAdapter.sendUpdate();
+        } else {
+            // 路径匹配失败 —— 尝试文件名模糊匹配作为降级
+            // 后端可能返回带 \\?\ 前缀或不同斜杠方向的路径
+            const fileName = normalizedPath ? normalizedPath.split('/').pop() : null;
+            if (fileName) {
+                const fuzzyIndex = app.playlist.findIndex(t => {
+                    const tNorm = app.normalizePathForCompare(t.path);
+                    return tNorm && tNorm.split('/').pop() === fileName;
+                });
+                if (fuzzyIndex !== -1) {
+                    console.log('[Music.js] Syncing track index (fuzzy match) to:', fuzzyIndex);
+                    app.currentTrackIndex = fuzzyIndex;
+                    const track = app.playlist[fuzzyIndex];
+                    app.pendingTrackPath = track.path;
+                    app.isTrackLoading = false;
+                    app.trackTitle.textContent = track.title || '未知标题';
+                    app.trackArtist.textContent = track.artist || '未知艺术家';
+                    app.trackBitrate.textContent = track.bitrate ? `${Math.round(track.bitrate / 1000)} kbps` : '';
+                    
+                    const defaultArtUrl = `url('../assets/${app.currentTheme === 'light' ? 'musiclight.jpeg' : 'musicdark.jpeg'}')`;
+                    if (track.albumArt) {
+                        const albumArtUrl = `url('file://${track.albumArt.replace(/\\/g, '/')}')`;
+                        app.albumArt.style.backgroundImage = albumArtUrl;
+                        app.updateBlurredBackground(albumArtUrl);
+                    } else {
+                        app.albumArt.style.backgroundImage = defaultArtUrl;
+                        app.updateBlurredBackground(defaultArtUrl);
+                    }
+                    
+                    app.renderPlaylist(app.currentFilteredTracks);
+                    app.fetchAndDisplayLyrics(track.artist, track.title);
+                    app.updateMediaSessionMetadata();
+                    if (app.wnpAdapter) app.wnpAdapter.sendUpdate();
+                } else {
+                    console.warn('[Music.js] syncTrackIndexByPath: no match found for', normalizedPath);
+                }
+            } else {
+                console.warn('[Music.js] syncTrackIndexByPath: no match found for', path);
+            }
         }
     };
 
