@@ -29,6 +29,159 @@ const DESKTOP_WIDGETS_DIR = path.join(PROJECT_ROOT, 'AppData', 'DesktopWidgets')
 const DESKTOP_DATA_DIR = path.join(PROJECT_ROOT, 'AppData', 'DesktopData');
 const DOCK_CONFIG_PATH = path.join(DESKTOP_DATA_DIR, 'dock.json');
 const LAYOUT_CONFIG_PATH = path.join(DESKTOP_DATA_DIR, 'layout.json');
+const CATALOG_PATH = path.join(DESKTOP_WIDGETS_DIR, 'CATALOG.md');
+
+/**
+ * 自动生成 CATALOG.md —— 收藏挂件目录索引
+ *
+ * 遍历 DesktopWidgets 目录中所有子文件夹，读取 meta.json，
+ * 生成一份人类可读的 Markdown 文档，方便 AI 或用户通过 list 指令
+ * 快速了解每个文件夹对应的插件名称和内部文件结构。
+ *
+ * 该函数在以下时机自动调用：
+ *   - 保存/更新收藏后 (desktop-save-widget)
+ *   - 删除收藏后 (desktop-delete-widget)
+ *   - 初始化时 (initialize)
+ */
+async function generateCatalog() {
+    try {
+        await fs.ensureDir(DESKTOP_WIDGETS_DIR);
+        const entries = await fs.readdir(DESKTOP_WIDGETS_DIR, { withFileTypes: true });
+
+        // 收集所有 widget 信息
+        const widgets = [];
+        for (const entry of entries) {
+            if (!entry.isDirectory()) continue;
+
+            const widgetDir = path.join(DESKTOP_WIDGETS_DIR, entry.name);
+            const metaPath = path.join(widgetDir, 'meta.json');
+
+            let meta = { id: entry.name, name: entry.name };
+            if (await fs.pathExists(metaPath)) {
+                try {
+                    meta = await fs.readJson(metaPath);
+                } catch (e) { /* ignore */ }
+            }
+
+            // 递归收集文件树
+            const fileTree = await collectFileTree(widgetDir, '');
+
+            widgets.push({
+                dirName: entry.name,
+                name: meta.name || entry.name,
+                id: meta.id || entry.name,
+                createdAt: meta.createdAt,
+                updatedAt: meta.updatedAt,
+                fileTree,
+            });
+        }
+
+        // 按名称排序
+        widgets.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'zh-CN'));
+
+        // 生成 Markdown 内容
+        const lines = [];
+        lines.push('# 📦 桌面挂件收藏目录 (CATALOG)');
+        lines.push('');
+        lines.push('> 此文件由系统自动生成和维护，请勿手动编辑。');
+        lines.push(`> 最后更新: ${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}`);
+        lines.push('');
+        lines.push(`共 **${widgets.length}** 个收藏挂件。`);
+        lines.push('');
+
+        if (widgets.length > 0) {
+            // 快速索引表
+            lines.push('## 📋 快速索引');
+            lines.push('');
+            lines.push('| # | 收藏名称 | 文件夹 ID | 创建时间 | 更新时间 |');
+            lines.push('|---|---------|----------|---------|---------|');
+            widgets.forEach((w, i) => {
+                const created = w.createdAt ? new Date(w.createdAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) : '未知';
+                const updated = w.updatedAt ? new Date(w.updatedAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) : '未知';
+                lines.push(`| ${i + 1} | **${w.name}** | \`${w.dirName}\` | ${created} | ${updated} |`);
+            });
+            lines.push('');
+
+            // 详细文件树
+            lines.push('## 📂 详细文件树');
+            lines.push('');
+            for (const w of widgets) {
+                lines.push(`### ${w.name}`);
+                lines.push('');
+                lines.push(`- **文件夹**: \`${w.dirName}/\``);
+                lines.push(`- **收藏 ID**: \`${w.id}\``);
+                if (w.createdAt) {
+                    lines.push(`- **创建时间**: ${new Date(w.createdAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}`);
+                }
+                if (w.updatedAt) {
+                    lines.push(`- **更新时间**: ${new Date(w.updatedAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}`);
+                }
+                lines.push('');
+                lines.push('```');
+                lines.push(`${w.dirName}/`);
+                for (const file of w.fileTree) {
+                    lines.push(`  ${file}`);
+                }
+                lines.push('```');
+                lines.push('');
+            }
+        }
+
+        await fs.writeFile(CATALOG_PATH, lines.join('\n'), 'utf-8');
+        console.log(`[DesktopHandlers] CATALOG.md updated (${widgets.length} widgets)`);
+    } catch (err) {
+        console.error('[DesktopHandlers] Failed to generate CATALOG.md:', err);
+    }
+}
+
+/**
+ * 递归收集目录下的文件列表（相对路径）
+ * @param {string} dirPath - 绝对目录路径
+ * @param {string} prefix - 当前递归前缀（用于缩进显示）
+ * @returns {Promise<string[]>} 文件路径列表
+ */
+async function collectFileTree(dirPath, prefix) {
+    const result = [];
+    try {
+        const entries = await fs.readdir(dirPath, { withFileTypes: true });
+        // 排序：目录在前，文件在后
+        entries.sort((a, b) => {
+            if (a.isDirectory() && !b.isDirectory()) return -1;
+            if (!a.isDirectory() && b.isDirectory()) return 1;
+            return a.name.localeCompare(b.name);
+        });
+
+        for (const entry of entries) {
+            if (entry.name === 'CATALOG.md') continue; // 跳过自身
+            if (entry.isDirectory()) {
+                result.push(`${prefix}${entry.name}/`);
+                const subFiles = await collectFileTree(path.join(dirPath, entry.name), prefix + '  ');
+                result.push(...subFiles);
+            } else {
+                // 附加文件大小信息
+                try {
+                    const stat = await fs.stat(path.join(dirPath, entry.name));
+                    const sizeStr = formatFileSize(stat.size);
+                    result.push(`${prefix}${entry.name}  (${sizeStr})`);
+                } catch (e) {
+                    result.push(`${prefix}${entry.name}`);
+                }
+            }
+        }
+    } catch (e) { /* ignore */ }
+    return result;
+}
+
+/**
+ * 格式化文件大小
+ * @param {number} bytes
+ * @returns {string}
+ */
+function formatFileSize(bytes) {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
 
 /**
  * 检测图标是否有效（非空白/非全透明）
@@ -241,6 +394,11 @@ function initialize(params) {
     fs.ensureDirSync(DESKTOP_WIDGETS_DIR);
     fs.ensureDirSync(DESKTOP_DATA_DIR);
 
+    // 启动时生成/更新 CATALOG.md
+    generateCatalog().catch(err => {
+        console.warn('[DesktopHandlers] Initial CATALOG.md generation failed:', err.message);
+    });
+
     // --- IPC: 打开桌面窗口 ---
     ipcMain.handle('open-desktop-window', async () => {
         await openDesktopWindow();
@@ -304,6 +462,12 @@ function initialize(params) {
             }
 
             console.log(`[DesktopHandlers] Widget saved: ${name} (${id}) to ${widgetDir}`);
+
+            // 保存成功后异步更新 CATALOG.md（不阻塞返回）
+            generateCatalog().catch(err => {
+                console.warn('[DesktopHandlers] CATALOG.md update after save failed:', err.message);
+            });
+
             return { success: true, id };
         } catch (err) {
             console.error('[DesktopHandlers] Save widget error:', err);
@@ -346,6 +510,12 @@ function initialize(params) {
                 await fs.remove(widgetDir);
                 console.log(`[DesktopHandlers] Widget deleted: ${id}`);
             }
+
+            // 删除成功后异步更新 CATALOG.md（不阻塞返回）
+            generateCatalog().catch(err => {
+                console.warn('[DesktopHandlers] CATALOG.md update after delete failed:', err.message);
+            });
+
             return { success: true };
         } catch (err) {
             console.error('[DesktopHandlers] Delete widget error:', err);
@@ -1684,4 +1854,5 @@ module.exports = {
     openDesktopWindow,
     pushToDesktop,
     getDesktopWindow,
+    generateCatalog,
 };
