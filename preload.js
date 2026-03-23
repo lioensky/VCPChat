@@ -447,6 +447,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     desktopLoadWidget: (id) => ipcRenderer.invoke('desktop-load-widget', id),
     desktopDeleteWidget: (id) => ipcRenderer.invoke('desktop-delete-widget', id),
     desktopListWidgets: () => ipcRenderer.invoke('desktop-list-widgets'),
+
+    // VCPdesktop - 收藏多文件系统 IPC 通道（支持 AI 生成多文件 widget）
+    desktopSaveWidgetFile: (data) => ipcRenderer.invoke('desktop-save-widget-file', data),
+    desktopLoadWidgetFile: (data) => ipcRenderer.invoke('desktop-load-widget-file', data),
+    desktopListWidgetFiles: (widgetId) => ipcRenderer.invoke('desktop-list-widget-files', widgetId),
     desktopCaptureWidget: (rect) => ipcRenderer.invoke('desktop-capture-widget', rect),
     desktopGetCredentials: () => ipcRenderer.invoke('desktop-get-credentials'),
 

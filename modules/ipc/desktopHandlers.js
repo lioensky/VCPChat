@@ -556,6 +556,131 @@ function initialize(params) {
         }
     });
 
+    /**
+     * 保存额外文件到收藏目录（用于 AI 生成的多文件 widget）
+     * 允许 AI 将外部 JS/CSS/资源文件保存到 widget 收藏目录中。
+     * 参数：{ widgetId, fileName, content, encoding }
+     * - widgetId: 收藏 ID（目录名）
+     * - fileName: 文件名（如 'app.js', 'style.css'，不允许路径穿越）
+     * - content: 文件内容（字符串）
+     * - encoding: 编码方式，默认 'utf-8'，也支持 'base64'
+     */
+    ipcMain.handle('desktop-save-widget-file', async (event, data) => {
+        try {
+            const { widgetId, fileName, content, encoding } = data;
+            if (!widgetId || !fileName || content === undefined) {
+                return { success: false, error: '缺少必要参数 (widgetId, fileName, content)' };
+            }
+
+            // 安全检查：防止路径穿越
+            const safeName = path.basename(fileName);
+            if (safeName !== fileName || fileName.includes('..')) {
+                return { success: false, error: `不安全的文件名: ${fileName}` };
+            }
+
+            // 禁止覆盖核心文件
+            const protectedFiles = ['meta.json', 'widget.html', 'thumbnail.png'];
+            if (protectedFiles.includes(safeName.toLowerCase())) {
+                return { success: false, error: `不允许覆盖核心文件: ${safeName}` };
+            }
+
+            const widgetDir = path.join(DESKTOP_WIDGETS_DIR, widgetId);
+            await fs.ensureDir(widgetDir);
+
+            const filePath = path.join(widgetDir, safeName);
+            const enc = encoding === 'base64' ? 'base64' : 'utf-8';
+            await fs.writeFile(filePath, content, enc);
+
+            console.log(`[DesktopHandlers] Widget file saved: ${widgetId}/${safeName} (${enc})`);
+            return { success: true, filePath: `${widgetId}/${safeName}` };
+        } catch (err) {
+            console.error('[DesktopHandlers] Save widget file error:', err);
+            return { success: false, error: err.message };
+        }
+    });
+
+    /**
+     * 读取收藏目录中的额外文件
+     * 参数：{ widgetId, fileName }
+     * 返回：{ success, content, encoding }
+     */
+    ipcMain.handle('desktop-load-widget-file', async (event, data) => {
+        try {
+            const { widgetId, fileName } = data;
+            if (!widgetId || !fileName) {
+                return { success: false, error: '缺少必要参数' };
+            }
+
+            // 安全检查
+            const safeName = path.basename(fileName);
+            if (safeName !== fileName || fileName.includes('..')) {
+                return { success: false, error: `不安全的文件名: ${fileName}` };
+            }
+
+            const filePath = path.join(DESKTOP_WIDGETS_DIR, widgetId, safeName);
+            if (!await fs.pathExists(filePath)) {
+                return { success: false, error: '文件不存在' };
+            }
+
+            // 根据扩展名判断是否为文本文件
+            const ext = path.extname(safeName).toLowerCase();
+            const textExts = ['.js', '.css', '.html', '.htm', '.json', '.txt', '.md', '.svg', '.xml'];
+            if (textExts.includes(ext)) {
+                const content = await fs.readFile(filePath, 'utf-8');
+                return { success: true, content, encoding: 'utf-8' };
+            } else {
+                // 二进制文件返回 base64
+                const buffer = await fs.readFile(filePath);
+                return { success: true, content: buffer.toString('base64'), encoding: 'base64' };
+            }
+        } catch (err) {
+            console.error('[DesktopHandlers] Load widget file error:', err);
+            return { success: false, error: err.message };
+        }
+    });
+
+    /**
+     * 列出收藏目录中的所有文件
+     * 参数：widgetId
+     * 返回：{ success, files: [{ name, size, isText }] }
+     */
+    ipcMain.handle('desktop-list-widget-files', async (event, widgetId) => {
+        try {
+            if (!widgetId) {
+                return { success: false, error: '缺少 widgetId' };
+            }
+
+            const widgetDir = path.join(DESKTOP_WIDGETS_DIR, widgetId);
+            if (!await fs.pathExists(widgetDir)) {
+                return { success: true, files: [] };
+            }
+
+            const entries = await fs.readdir(widgetDir, { withFileTypes: true });
+            const files = [];
+            const textExts = ['.js', '.css', '.html', '.htm', '.json', '.txt', '.md', '.svg', '.xml'];
+
+            for (const entry of entries) {
+                if (!entry.isFile()) continue;
+                const ext = path.extname(entry.name).toLowerCase();
+                try {
+                    const stat = await fs.stat(path.join(widgetDir, entry.name));
+                    files.push({
+                        name: entry.name,
+                        size: stat.size,
+                        isText: textExts.includes(ext),
+                    });
+                } catch (e) {
+                    files.push({ name: entry.name, size: 0, isText: textExts.includes(ext) });
+                }
+            }
+
+            return { success: true, files };
+        } catch (err) {
+            console.error('[DesktopHandlers] List widget files error:', err);
+            return { success: false, error: err.message };
+        }
+    });
+
     // 加载收藏（读取HTML内容）
     ipcMain.handle('desktop-load-widget', async (event, id) => {
         try {
