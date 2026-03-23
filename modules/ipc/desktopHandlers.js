@@ -16,6 +16,9 @@ let appSettingsManager = null;
 let alwaysOnBottomEnabled = false;
 let alwaysOnBottomInterval = null;
 
+// --- 独立 Electron App 子进程引用（防止重复启动） ---
+const standaloneAppProcesses = new Map(); // appDir -> child_process
+
 // --- VChat 内部子窗口单例引用 ---
 let vchatForumWindow = null;
 let vchatMemoWindow = null;
@@ -377,6 +380,84 @@ async function launchSystemTool(cmd) {
         return { success: true };
     } catch (err) {
         console.error(`[DesktopHandlers] System tool launch error (${cmd}):`, err);
+        return { success: false, error: err.message };
+    }
+}
+
+/**
+ * 启动独立的 Electron App（如人类工具箱、VchatManager）
+ * 这些应用是项目内的独立 Electron 入口，拥有各自的 main.js。
+ * 通过 child_process.spawn 启动一个新的 electron 实例。
+ *
+ * @param {string} appDir - 应用目录名（相对于项目根目录，如 'VCPHumanToolBox'）
+ * @param {string} displayName - 显示名称（用于日志和状态提示）
+ * @returns {Promise<{success: boolean, error?: string}>}
+ */
+async function launchStandaloneElectronApp(appDir, displayName) {
+    try {
+        const appPath = path.join(PROJECT_ROOT, appDir);
+        const mainJsPath = path.join(appPath, 'main.js');
+
+        // 检查目录和入口文件是否存在
+        if (!await fs.pathExists(mainJsPath)) {
+            console.error(`[DesktopHandlers] Standalone app not found: ${mainJsPath}`);
+            return { success: false, error: `${displayName} 入口文件不存在: ${appDir}/main.js` };
+        }
+
+        // 检查是否已有该应用的进程在运行
+        const existingProcess = standaloneAppProcesses.get(appDir);
+        if (existingProcess && !existingProcess.killed) {
+            // 进程存在，检查是否还活着
+            try {
+                process.kill(existingProcess.pid, 0); // 发送信号 0 检测进程是否存活
+                console.log(`[DesktopHandlers] ${displayName} already running (PID: ${existingProcess.pid})`);
+                return { success: true, alreadyRunning: true };
+            } catch (e) {
+                // 进程已退出，清理引用
+                standaloneAppProcesses.delete(appDir);
+            }
+        }
+
+        // 获取当前 Electron 可执行文件路径
+        const electronExe = process.execPath;
+
+        console.log(`[DesktopHandlers] Launching standalone app: ${displayName}`);
+        console.log(`[DesktopHandlers]   Electron: ${electronExe}`);
+        console.log(`[DesktopHandlers]   App path: ${appPath}`);
+
+        // 使用 spawn 启动独立的 electron 进程
+        const { spawn } = require('child_process');
+        const child = spawn(electronExe, [mainJsPath], {
+            cwd: appPath,
+            detached: true,       // 独立进程，不随父进程退出
+            stdio: 'ignore',      // 不继承标准IO
+            env: {
+                ...process.env,
+                // 确保子进程知道项目根目录
+                VCP_PROJECT_ROOT: PROJECT_ROOT,
+            },
+        });
+
+        // 解除父进程对子进程的引用，允许子进程独立运行
+        child.unref();
+
+        // 记录进程引用（用于防止重复启动）
+        standaloneAppProcesses.set(appDir, child);
+
+        child.on('exit', (code) => {
+            console.log(`[DesktopHandlers] ${displayName} exited with code ${code}`);
+            standaloneAppProcesses.delete(appDir);
+        });
+
+        child.on('error', (err) => {
+            console.error(`[DesktopHandlers] ${displayName} process error:`, err.message);
+            standaloneAppProcesses.delete(appDir);
+        });
+
+        console.log(`[DesktopHandlers] ${displayName} launched successfully (PID: ${child.pid})`);
+        return { success: true };
+    } catch (err) {
+        console.error(`[DesktopHandlers] Failed to launch ${displayName}:`, err);
         return { success: false, error: err.message };
     }
 }
@@ -1488,6 +1569,14 @@ function initialize(params) {
                         htmlPath: path.join(app.getAppPath(), 'Themesmodules', 'themes.html'),
                     });
                     return { success: true };
+                }
+
+                case 'launch-human-toolbox': {
+                    return await launchStandaloneElectronApp('VCPHumanToolBox', '人类工具箱');
+                }
+
+                case 'launch-vchat-manager': {
+                    return await launchStandaloneElectronApp('VchatManager', 'VchatManager');
                 }
 
                 default: {
