@@ -862,6 +862,55 @@
         const infoContainer = document.getElementById('infoContainer');
         let currentFilter = 'all';
 
+        // --- HTML Sanitization Utility ---
+        // Escapes HTML special characters to prevent injection
+        function escapeHTML(str) {
+            if (typeof str !== 'string') return '';
+            const div = document.createElement('div');
+            div.appendChild(document.createTextNode(str));
+            return div.innerHTML;
+        }
+
+        // Strips dangerous HTML tags (style, script, link, iframe, object, embed, form)
+        // from Markdown-rendered output to prevent layout/style injection.
+        // NOTE: This only processes the output of marked.parse(), NOT the page's own template HTML.
+        function sanitizeRenderedHTML(html) {
+            if (typeof html !== 'string') return '';
+            // Build regexes via RegExp constructor to avoid closing-tag literal in source
+            // which would prematurely terminate the script block in HTML.
+            var reStyle = new RegExp('<style\\b[^>]*>[\\s\\S]*?<\\/style\\s*>', 'gi');
+            var reScript = new RegExp('<scr' + 'ipt\\b[^>]*>[\\s\\S]*?<\\/scr' + 'ipt\\s*>', 'gi');
+            var reLink = new RegExp('<link\\b[^>]*\\/?>', 'gi');
+            var reIframe = new RegExp('<iframe\\b[^>]*>[\\s\\S]*?<\\/iframe\\s*>', 'gi');
+            var reObject = new RegExp('<object\\b[^>]*>[\\s\\S]*?<\\/object\\s*>', 'gi');
+            var reEmbed = new RegExp('<embed\\b[^>]*\\/?>', 'gi');
+            var reForm = new RegExp('<form\\b[^>]*>[\\s\\S]*?<\\/form\\s*>', 'gi');
+
+            html = html.replace(reStyle, '');
+            html = html.replace(reScript, '');
+            html = html.replace(reLink, '');
+            html = html.replace(reIframe, '');
+            html = html.replace(reObject, '');
+            html = html.replace(reEmbed, '');
+            html = html.replace(reForm, '');
+            // Strip dangerous CSS patterns from inline style attributes in user content:
+            // position:fixed/absolute (overlay hijacking), background (wallpaper override), z-index (layer hijacking)
+            html = html.replace(/(<[^>]+\sstyle\s*=\s*")((?:[^"])*)(">)/gi, function(match, prefix, styleVal, suffix) {
+                var cleaned = styleVal
+                    .replace(/position\s*:\s*(fixed|absolute)\s*;?/gi, '')
+                    .replace(/z-index\s*:\s*[^;]*;?/gi, '')
+                    .replace(/background(-image|-color)?\s*:\s*[^;]*;?/gi, '');
+                return cleaned.trim() ? (prefix + cleaned + suffix) : prefix.replace(/\sstyle\s*=\s*"$/, '') + '">';
+            });
+            return html;
+        }
+
+        // Safe wrapper around marked.parse — always sanitizes output
+        function safeMarkedParse(text) {
+            if (typeof text !== 'string') return '';
+            return sanitizeRenderedHTML(marked.parse(text));
+        }
+
         const overlayState = {
             passThrough: true,
             opacity: 0.92,
@@ -1300,7 +1349,7 @@
         function createContentHTML(text) {
             if (!text) return '';
             const isLong = text.length > 150;
-            const rendered = marked.parse(text);
+            const rendered = safeMarkedParse(text);
             
             if (!isLong) return `<div class="text-content">${rendered}</div>`;
 
@@ -1310,7 +1359,7 @@
             return `
                 <div class="content-wrapper">
                     <div class="text-content">
-                        <div class="snippet">${text}</div>
+                        <div class="snippet">${escapeHTML(text)}</div>
                         <div class="full-text">${rendered}</div>
                     </div>
                     <div class="action-row">
@@ -1539,7 +1588,7 @@
                     <span class="meta-pill">模式: ${isFullText ? '全量召回 <<>>' : '直接引入 {{}}'}</span>
                 </div>
                 <div style="color: var(--accent-memo); font-weight: bold; padding: 10px; background: rgba(26, 188, 156, 0.1); border-radius: 8px; border-left: 3px solid var(--accent-memo);">
-                    ${data.message}
+                    ${escapeHTML(data.message)}
                 </div>
             `;
             prependCard(block);
@@ -1556,7 +1605,7 @@
 
             switch(data.type) {
                 case 'AGENT_DREAM_START':
-                    contentHTML = `<div style="color: var(--accent-dream); font-weight: bold; padding: 10px; background: rgba(232, 67, 147, 0.1); border-radius: 8px;">${data.message}</div>`;
+                    contentHTML = `<div style="color: var(--accent-dream); font-weight: bold; padding: 10px; background: rgba(232, 67, 147, 0.1); border-radius: 8px;">${escapeHTML(data.message)}</div>`;
                     break;
                 case 'AGENT_DREAM_ASSOCIATIONS':
                     title += ' - 联想召回';
@@ -1568,11 +1617,11 @@
                         </div>
                         <div style="margin-top:10px;">
                             <div style="font-size:0.8em; opacity:0.6; margin-bottom:5px;">梦境种子:</div>
-                            ${data.seeds.map(s => `<div class="rag-sub-item" style="font-size:0.9em;"><strong>${s.file}</strong>: ${s.snippet}</div>`).join('')}
+                            ${data.seeds.map(s => `<div class="rag-sub-item" style="font-size:0.9em;"><strong>${escapeHTML(s.file)}</strong>: ${escapeHTML(s.snippet)}</div>`).join('')}
                         </div>
                         <div style="margin-top:10px;">
                             <div style="font-size:0.8em; opacity:0.6; margin-bottom:5px;">联想内容:</div>
-                            ${data.associations.map(a => `<div class="rag-sub-item" style="font-size:0.9em; display:flex; justify-content:space-between;"><span>${a.file}</span><span class="score-badge score-med">${a.score}</span></div>`).join('')}
+                            ${data.associations.map(a => `<div class="rag-sub-item" style="font-size:0.9em; display:flex; justify-content:space-between;"><span>${escapeHTML(a.file)}</span><span class="score-badge score-med">${escapeHTML(String(a.score))}</span></div>`).join('')}
                         </div>
                     `;
                     break;
@@ -1605,7 +1654,7 @@
                 case 'AGENT_DREAM_END':
                     title += ' - 梦境状态';
                     icon = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>'; // X circle icon
-                    contentHTML = `<div style="color: #ff5f56; font-weight: bold; padding: 10px; background: rgba(255, 95, 86, 0.1); border-radius: 8px;">${data.error || '梦境结束'}</div>`;
+                    contentHTML = `<div style="color: #ff5f56; font-weight: bold; padding: 10px; background: rgba(255, 95, 86, 0.1); border-radius: 8px;">${escapeHTML(data.error || '梦境结束')}</div>`;
                     break;
             }
 
@@ -1712,7 +1761,7 @@
                     <span class="meta-pill">Time: ${new Date().toLocaleTimeString()}</span>
                 </div>
                 <div style="margin-top:10px; padding:12px; background:rgba(241, 196, 15, 0.1); border-radius:8px; border-left:3px solid var(--accent-agent); color:rgba(255,255,255,0.9); font-size:0.95rem;">
-                    ${marked.parse(messageText)}
+                    ${safeMarkedParse(messageText)}
                 </div>
             `;
             prependCard(block);
