@@ -8,7 +8,7 @@ let activeStreamingMessageId = null; // Track the currently active streaming mes
 const elementContentLengthCache = new Map(); // 跟踪每个元素的内容长度
 
 // --- VCPdesktop 流式推送状态 ---
-const desktopPushStates = new Map(); // messageId -> { active, widgetId, buffer, tagBuffer, created, pushTimer, lastPushedLength, timeoutTimer, validated }
+const desktopPushStates = new Map(); // messageId -> { active, widgetId, buffer, tagBuffer, created, pushTimer, lastPushedLength, timeoutTimer, validated, insideToolResult }
 const DESKTOP_PUSH_START_TAG = '<<<[DESKTOP_PUSH]>>>';
 const DESKTOP_PUSH_END_TAG = '<<<[DESKTOP_PUSH_END]>>>';
 const DESKTOP_PUSH_THROTTLE_MS = 100; // 每100ms推送一次累积内容到桌面画布
@@ -788,10 +788,14 @@ function intelligentChunkSplit(text) {
  * VCPdesktop 流式推送处理器
  * 在token流中拦截 <<<[DESKTOP_PUSH]>>> 语法，实时转发到桌面画布
  */
+// --- 工具结果块标记（用于 processDesktopPushToken 跳过工具结果块内的推送语法） ---
+const TOOL_RESULT_START_TAG = '[[VCP调用结果信息汇总:';
+const TOOL_RESULT_END_TAG = 'VCP调用结果结束]]';
+
 function processDesktopPushToken(messageId, textToAppend) {
     let state = desktopPushStates.get(messageId);
     if (!state) {
-        state = { active: false, widgetId: null, buffer: '', tagBuffer: '', created: false, validated: false, pushTimer: null, lastPushedLength: 0, timeoutTimer: null, backtickContext: false };
+        state = { active: false, widgetId: null, buffer: '', tagBuffer: '', created: false, validated: false, pushTimer: null, lastPushedLength: 0, timeoutTimer: null, backtickContext: false, insideToolResult: false, toolResultTagBuffer: '' };
         desktopPushStates.set(messageId, state);
     }
 
@@ -803,6 +807,51 @@ function processDesktopPushToken(messageId, textToAppend) {
 
     for (let i = 0; i < remainingText.length; i++) {
         const char = remainingText[i];
+
+        // 🟢 工具结果块保护：跟踪是否在 [[VCP调用结果信息汇总:...VCP调用结果结束]] 内部
+        // 在工具结果块内部，不应拦截 DESKTOP_PUSH 语法
+        if (!state.insideToolResult) {
+            state.toolResultTagBuffer += char;
+            if (TOOL_RESULT_START_TAG.startsWith(state.toolResultTagBuffer)) {
+                if (state.toolResultTagBuffer === TOOL_RESULT_START_TAG) {
+                    // 进入工具结果块
+                    state.insideToolResult = true;
+                    outputText += state.toolResultTagBuffer;
+                    state.toolResultTagBuffer = '';
+                    continue;
+                }
+                // 部分匹配，继续积累
+                continue;
+            } else {
+                // 不匹配，输出缓冲并重置
+                // 但不要输出当前字符到 outputText，因为它还需要经过下面的推送逻辑处理
+                const bufferedExceptCurrent = state.toolResultTagBuffer.slice(0, -1);
+                state.toolResultTagBuffer = '';
+                if (bufferedExceptCurrent.length > 0) {
+                    // 将之前积累的字符重新送入处理（递归会太复杂，这里直接追加到输出）
+                    outputText += bufferedExceptCurrent;
+                }
+                // char 还需要经过下面的推送标签检测逻辑
+            }
+        } else {
+            // 在工具结果块内部，检测结束标签
+            state.toolResultTagBuffer += char;
+            if (TOOL_RESULT_END_TAG.startsWith(state.toolResultTagBuffer)) {
+                if (state.toolResultTagBuffer === TOOL_RESULT_END_TAG) {
+                    // 离开工具结果块
+                    state.insideToolResult = false;
+                    outputText += state.toolResultTagBuffer;
+                    state.toolResultTagBuffer = '';
+                    continue;
+                }
+                // 是结束标签的前缀，继续积累
+                continue;
+            }
+            // 不匹配结束标签前缀，输出缓冲并继续
+            outputText += state.toolResultTagBuffer;
+            state.toolResultTagBuffer = '';
+            continue;
+        }
 
         if (!state.active) {
             state.tagBuffer += char;

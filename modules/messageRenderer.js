@@ -759,15 +759,6 @@ function preprocessFullContent(text, settings = {}, messageRole = 'assistant', d
     text = fixEmoticonUrlsInMarkdown(text);
 
     // 🔴 关键安全修复：将「始」和「末」之间的内容视为纯文本并进行 HTML 转义
-    // 这样可以防止工具调用参数中的 HTML 被执行。
-    // 注意：这里我们只处理不在工具请求块（<<<[TOOL_REQUEST]>>>）内的标记，
-    // 因为 transformSpecialBlocks 会处理工具块内的转义，避免双重转义。
-    // 但为了简单起见，我们先注释掉这一行，让 transformSpecialBlocks 统一处理，
-    // 或者确保 transformSpecialBlocks 能够处理未转义的原始文本。
-    // 实际上，processStartEndMarkers 在流式传输中非常重要。
-    // 我们将其移动到 transformSpecialBlocks 之后，或者只对非工具块内容应用。
-
-    // 暂时保留，但我们需要意识到双重转义风险。
     text = contentProcessor.processStartEndMarkers(text);
 
     // 一次性处理 Mermaid（合并两种情况）
@@ -784,9 +775,28 @@ function preprocessFullContent(text, settings = {}, messageRole = 'assistant', d
     });
 
     // 🔴 关键修复：在提取代码块之前先处理缩进
-    // 这样 deIndentMisinterpretedCodeBlocks 才能正确识别代码围栏
     text = contentProcessor.deIndentMisinterpretedCodeBlocks(text);
     text = deIndentHtml(text);
+
+    // 🟢 保护工具调用结果块：在代码块保护和 DESKTOP_PUSH/TOOL_REQUEST 处理之前
+    // 工具调用结果块内部可能包含 <<<[TOOL_REQUEST]>>> 或 <<<[DESKTOP_PUSH]>>> 语法
+    // 这些是文档内容的一部分，不应被当作真正的工具调用或桌面推送来渲染
+    let toolResultMap = null;
+    let toolResultPlaceholderId = 0;
+    TOOL_RESULT_REGEX.lastIndex = 0;
+    const hasToolResults = TOOL_RESULT_REGEX.test(text);
+    TOOL_RESULT_REGEX.lastIndex = 0; // 重置，后续 transformSpecialBlocks 还要用
+
+    if (hasToolResults) {
+        toolResultMap = new Map();
+        text = text.replace(TOOL_RESULT_REGEX, (match) => {
+            const placeholder = `__VCP_TOOL_RESULT_PLACEHOLDER_${toolResultPlaceholderId}__`;
+            toolResultMap.set(placeholder, match);
+            toolResultPlaceholderId++;
+            return placeholder;
+        });
+        TOOL_RESULT_REGEX.lastIndex = 0; // 重置
+    }
 
     // 保护代码块（优化：只在需要时创建 Map）
     let codeBlockMap = null;
@@ -809,7 +819,7 @@ function preprocessFullContent(text, settings = {}, messageRole = 'assistant', d
     text = contentProcessor.deIndentToolRequestBlocks(text);
 
     // 🔴 VCPdesktop 转义封印：在代码块保护之后执行（代码块内的语法不会被误匹配）
-    // 但在 transformSpecialBlocks 和 ensureHtmlFenced 之前（防止推送块内HTML泄露）
+    // 工具调用结果块已被保护，内部的推送语法不会被误匹配
     DESKTOP_PUSH_REGEX.lastIndex = 0;
     DESKTOP_PUSH_PARTIAL_REGEX.lastIndex = 0;
     text = text.replace(DESKTOP_PUSH_REGEX, (match, rawContent) => {
@@ -834,6 +844,14 @@ function preprocessFullContent(text, settings = {}, messageRole = 'assistant', d
             `<div class="vcp-desktop-push-preview"><pre>${escapedPreview}</pre></div>` +
             `</div>`;
     });
+
+    // 🟢 恢复工具调用结果块（在 DESKTOP_PUSH 处理之后、transformSpecialBlocks 之前）
+    // 这样 transformSpecialBlocks 中的 TOOL_RESULT_REGEX 可以正常匹配并渲染结果气泡
+    if (toolResultMap) {
+        for (const [placeholder, block] of toolResultMap.entries()) {
+            text = text.replace(placeholder, () => block);
+        }
+    }
 
     text = transformSpecialBlocks(text, codeBlockMap);
     text = ensureHtmlFenced(text);
