@@ -506,7 +506,7 @@ function renderFolders(folders) {
         item.setAttribute('draggable', 'true');
         item.innerHTML = `
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
-            <span>${folder}</span>
+            <span>${escapeHtml(folder)}</span>
         `;
         item.onclick = () => selectFolder(folder);
 
@@ -623,13 +623,13 @@ function renderMemos(memos) {
 
         card.innerHTML = `
             <div>
-                <h3>${memo.name}</h3>
-                <p class="preview">${memo.preview || '无预览内容'}</p>
+                <h3>${escapeHtml(memo.name)}</h3>
+                <p class="preview">${escapeHtml(memo.preview || '无预览内容')}</p>
             </div>
             <div class="meta">
                 <span>📅 ${dateStr}</span>
                 <div style="display: flex; align-items: center; gap: 8px;">
-                    ${memo.folderName && memo.folderName !== currentFolder ? `<span style="opacity:0.6; font-size:0.7rem;">📁 ${memo.folderName}</span>` : ''}
+                    ${memo.folderName && memo.folderName !== currentFolder ? `<span style="opacity:0.6; font-size:0.7rem;">📁 ${escapeHtml(memo.folderName)}</span>` : ''}
                     <button class="association-btn" title="记忆联想">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .52 8.125A5.002 5.002 0 0 0 14 18a5 5 0 0 0 5-5A3 3 0 0 0 12 5Z"/><path d="M12 18v-2a2 2 0 0 0-2-2H8"/><path d="M16 8a2 2 0 0 0-2 2v2"/></svg>
                     联想
@@ -679,8 +679,8 @@ function updateBatchUI() {
             const item = document.createElement('div');
             item.className = 'batch-item-tag';
             item.innerHTML = `
-                <div class="item-name" title="${name}">${name}</div>
-                <div class="item-folder">📁 ${folder}</div>
+                <div class="item-name" title="${escapeHtml(name)}">${escapeHtml(name)}</div>
+                <div class="item-folder">📁 ${escapeHtml(folder)}</div>
                 <div class="batch-item-remove" title="移除">×</div>
             `;
             item.querySelector('.batch-item-remove').onclick = (e) => {
@@ -1031,7 +1031,7 @@ function openHiddenFoldersModal() {
             item.innerHTML = `
                 <div style="display: flex; align-items: center; gap: 10px;">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 18px; height: 18px;"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
-                    <span>${folder}</span>
+                    <span>${escapeHtml(folder)}</span>
                 </div>
                 <button class="glass-btn" style="padding: 4px 10px; font-size: 0.8rem;">取消隐藏</button>
             `;
@@ -1130,6 +1130,16 @@ function customAlert(message, title = '提示') {
 }
 
 // ========== 工具函数 ==========
+function escapeHtml(str) {
+    if (typeof str !== 'string') return str;
+    return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
 function debounce(func, wait) {
     let timeout;
     return function(...args) {

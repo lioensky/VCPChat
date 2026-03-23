@@ -3,6 +3,16 @@
  * 日记工作台逻辑模块 - 负责多日记整合与参考阅读
  */
 
+function escapeHtmlWb(str) {
+    if (typeof str !== 'string') return str;
+    return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
 const DiaryWorkbench = {
     selectedMemos: [], // 存储选中的日记对象 { name, folder, preview, lastModified, content? }
     
@@ -93,15 +103,15 @@ const DiaryWorkbench = {
             
             card.innerHTML = `
                 <div class="card-header">
-                    <span class="folder-tag">📁 ${memo.folder}</span>
+                    <span class="folder-tag">📁 ${escapeHtmlWb(memo.folder)}</span>
                     <div class="card-actions">
                         <button class="icon-btn edit-ref-btn" title="编辑此日记">✏️</button>
                         <button class="icon-btn remove-ref-btn" title="从工作台移除">×</button>
                     </div>
                 </div>
                 <div class="card-body">
-                    <h4>${memo.name}</h4>
-                    <p class="preview">${memo.preview || '加载中...'}</p>
+                    <h4>${escapeHtmlWb(memo.name)}</h4>
+                    <p class="preview">${escapeHtmlWb(memo.preview || '加载中...')}</p>
                 </div>
                 <div class="card-footer">
                     <span>📅 ${dateStr}</span>
