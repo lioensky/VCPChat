@@ -292,7 +292,7 @@ function startMiddleClickTimer(event, messageItem, message, quickAction) {
  * @param {Object} message - The message object
  * @param {string} quickAction - The quick action to perform
  */
-function handleMiddleClickQuickAction(event, messageItem, message, quickAction) {
+async function handleMiddleClickQuickAction(event, messageItem, message, quickAction) {
     const { electronAPI, uiHelper } = mainRendererReferences;
     const currentChatHistoryArray = mainRendererReferences.currentChatHistoryRef.get();
     const currentSelectedItemVal = mainRendererReferences.currentSelectedItemRef.get();
@@ -584,8 +584,12 @@ function handleMiddleClickQuickAction(event, messageItem, message, quickAction) 
 
                     // 如果不是最后一条消息，显示警告对话框
                     if (!isLastMessage) {
-                        const confirmRegenerate = confirm(
-                            `当前消息不是最后一条消息，确定要重新生成此消息的回复吗？`
+                        const confirmRegenerate = await uiHelper.showConfirmDialog(
+                            `当前消息不是最后一条消息，确定要重新生成此消息的回复吗？`,
+                            '重新生成确认',
+                            '确定',
+                            '取消',
+                            false
                         );
 
                         if (!confirmRegenerate) {
@@ -641,7 +645,7 @@ function handleMiddleClickQuickAction(event, messageItem, message, quickAction) 
                 textForConfirm = '[消息内容无法预览]';
             }
 
-            if (confirm(`确定要删除此消息吗？\n"${textForConfirm.substring(0, 50)}${textForConfirm.length > 50 ? '...' : ''}"`)) {
+            if (await uiHelper.showConfirmDialog(`确定要删除此消息吗？\n"${textForConfirm.substring(0, 50)}${textForConfirm.length > 50 ? '...' : ''}"`, '删除确认', '删除', '取消', true)) {
                 // 设置标志位阻止九宫格取消提示
                 isDeletingMessage = true;
                 freezeGridCancellation = true;

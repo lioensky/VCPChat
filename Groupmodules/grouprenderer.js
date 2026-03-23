@@ -743,7 +743,7 @@ window.GroupRenderer = (() => {
         const groupId = document.getElementById('editingGroupId').value;
         const groupName = groupNameInput.value || '当前选中的群组';
 
-        if (confirm(`您确定要删除群组 "${groupName}" 吗？其所有聊天记录和设置都将被删除，此操作不可撤销！`)) {
+        if (await uiHelper.showConfirmDialog(`您确定要删除群组 "${groupName}" 吗？其所有聊天记录和设置都将被删除，此操作不可撤销！`, '删除确认', '删除', '取消', true)) {
             try {
                 const result = await electronAPI.deleteAgentGroup(groupId);
                 if (result.success) {
@@ -916,7 +916,7 @@ window.GroupRenderer = (() => {
     }
 
     async function handleDeleteGroupTopic(groupId, topicId, topicName) {
-        if (confirm(`确定要删除群组话题 "${topicName}" 吗？此操作不可撤销。`)) {
+        if (await uiHelper.showConfirmDialog(`确定要删除群组话题 "${topicName}" 吗？此操作不可撤销。`, '删除确认', '删除', '取消', true)) {
             const result = await electronAPI.deleteGroupTopic(groupId, topicId);
             if (result.success) {
                 // uiHelper.showToastNotification(`群组话题 "${topicName}" 已删除。`); // 移除成功提示

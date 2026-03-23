@@ -703,3 +703,108 @@ body.light-theme .grid-cell[data-function="none"]:hover {
     border: 2px solid var(--secondary-bg); /* 添加背景色边框，使其与背景分离 */
     box-sizing: border-box; /* 确保边框和内边距包含在尺寸内 */
 }
+
+/* --- Confirm Dialog --- */
+/* 替代原生 confirm() 对话框，避免 Electron 焦点问题 */
+.confirm-dialog-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 10002;
+    background-color: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.confirm-dialog-overlay.visible {
+    opacity: 1;
+}
+
+.confirm-dialog {
+    background-color: var(--secondary-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 20px 24px;
+    min-width: 300px;
+    max-width: 90vw;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    transform: scale(0.95);
+    transition: transform 0.2s ease;
+}
+
+.confirm-dialog-overlay.visible .confirm-dialog {
+    transform: scale(1);
+}
+
+.confirm-dialog-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--primary-text);
+    margin-bottom: 12px;
+}
+
+.confirm-dialog-message {
+    font-size: 14px;
+    color: var(--secondary-text);
+    line-height: 1.5;
+    margin-bottom: 20px;
+}
+
+.confirm-dialog-buttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
+.confirm-dialog-btn {
+    padding: 8px 20px;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.confirm-dialog-cancel {
+    background-color: var(--accent-bg);
+    color: var(--secondary-text);
+}
+
+.confirm-dialog-cancel:hover {
+    background-color: var(--button-hover-bg);
+    color: var(--primary-text);
+}
+
+.confirm-dialog-confirm {
+    background-color: var(--user-bubble-bg);
+    color: #ffffff;
+}
+
+.confirm-dialog-confirm:hover {
+    background-color: var(--button-hover-bg);
+}
+
+.confirm-dialog-confirm.danger {
+    background-color: var(--danger-color);
+}
+
+.confirm-dialog-confirm.danger:hover {
+    background-color: var(--danger-hover-bg);
+}
+
+/* Light theme for confirm dialog */
+body.light-theme .confirm-dialog {
+    background-color: #ffffff;
+    border-color: rgba(0, 0, 0, 0.1);
+}
+
+body.light-theme .confirm-dialog-title {
+    color: #333333;
+}
+
+body.light-theme .confirm-dialog-message {
+    color: #666666;
+}

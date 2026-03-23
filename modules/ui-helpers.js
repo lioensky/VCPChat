@@ -622,6 +622,105 @@
         }
     };
 
+    /**
+     * 显示确认对话框（替代原生 confirm()，避免 Electron 焦点问题）
+     * @param {string} message - 确认消息
+     * @param {string} [title='确认'] - 对话框标题
+     * @param {string} [confirmText='确定'] - 确认按钮文字
+     * @param {string} [cancelText='取消'] - 取消按钮文字
+     * @param {boolean} [isDanger=false] - 是否为危险操作（红色确认按钮）
+     * @returns {Promise<boolean>} - 用户点击确认返回 true，取消返回 false
+     */
+    uiHelperFunctions.showConfirmDialog = function(message, title = '确认', confirmText = '确定', cancelText = '取消', isDanger = false) {
+        return new Promise((resolve) => {
+            // 创建模态框容器
+            const overlay = document.createElement('div');
+            overlay.id = 'confirm-dialog-overlay';
+            overlay.className = 'confirm-dialog-overlay';
+            
+            // 创建对话框
+            const dialog = document.createElement('div');
+            dialog.className = 'confirm-dialog';
+            
+            // 标题
+            const titleEl = document.createElement('div');
+            titleEl.className = 'confirm-dialog-title';
+            titleEl.textContent = title;
+            dialog.appendChild(titleEl);
+            
+            // 消息
+            const messageEl = document.createElement('div');
+            messageEl.className = 'confirm-dialog-message';
+            messageEl.textContent = message;
+            dialog.appendChild(messageEl);
+            
+            // 按钮容器
+            const buttonsEl = document.createElement('div');
+            buttonsEl.className = 'confirm-dialog-buttons';
+            
+            // 取消按钮
+            const cancelBtn = document.createElement('button');
+            cancelBtn.className = 'confirm-dialog-btn confirm-dialog-cancel';
+            cancelBtn.textContent = cancelText;
+            cancelBtn.onclick = () => {
+                cleanup();
+                resolve(false);
+            };
+            buttonsEl.appendChild(cancelBtn);
+            
+            // 确认按钮
+            const confirmBtn = document.createElement('button');
+            confirmBtn.className = `confirm-dialog-btn confirm-dialog-confirm ${isDanger ? 'danger' : ''}`;
+            confirmBtn.textContent = confirmText;
+            confirmBtn.onclick = () => {
+                cleanup();
+                resolve(true);
+            };
+            buttonsEl.appendChild(confirmBtn);
+            
+            dialog.appendChild(buttonsEl);
+            overlay.appendChild(dialog);
+            document.body.appendChild(overlay);
+            
+            // 显示动画
+            requestAnimationFrame(() => {
+                overlay.classList.add('visible');
+                confirmBtn.focus();
+            });
+            
+            // 键盘事件
+            const handleKeydown = (e) => {
+                if (e.key === 'Escape') {
+                    cleanup();
+                    resolve(false);
+                } else if (e.key === 'Enter') {
+                    cleanup();
+                    resolve(true);
+                }
+            };
+            document.addEventListener('keydown', handleKeydown);
+            
+            // 点击遮罩关闭
+            overlay.onclick = (e) => {
+                if (e.target === overlay) {
+                    cleanup();
+                    resolve(false);
+                }
+            };
+            
+            // 清理函数
+            function cleanup() {
+                document.removeEventListener('keydown', handleKeydown);
+                overlay.classList.remove('visible');
+                setTimeout(() => {
+                    if (overlay.parentNode) {
+                        overlay.parentNode.removeChild(overlay);
+                    }
+                }, 200);
+            }
+        });
+    };
+
     window.uiHelperFunctions = uiHelperFunctions;
 
 })();

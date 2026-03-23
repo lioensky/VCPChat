@@ -166,7 +166,7 @@ window.filterManager = (() => {
      * @param {string} ruleId
      */
     async function deleteFilterRule(ruleId) {
-        if (confirm('确定要删除这条过滤规则吗？')) {
+        if (await _uiHelper.showConfirmDialog('确定要删除这条过滤规则吗？', '删除确认', '删除', '取消', true)) {
             const settings = getGlobalSettings();
             settings.filterRules = settings.filterRules.filter(r => r.id !== ruleId);
             setGlobalSettings(settings);

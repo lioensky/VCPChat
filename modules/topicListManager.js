@@ -543,7 +543,15 @@ window.topicListManager = (() => {
         deleteTopicPermanentlyOption.innerHTML = `<i class="fas fa-trash-alt"></i> 删除此话题`;
         deleteTopicPermanentlyOption.onclick = async () => {
             closeTopicContextMenu();
-            if (confirm(`确定要永久删除话题 "${topic.name}" 吗？此操作不可撤销。`)) {
+            // 使用自定义确认对话框替代原生 confirm()，避免 Electron 焦点问题
+            const confirmed = await uiHelper.showConfirmDialog(
+                `确定要永久删除话题 "${topic.name}" 吗？此操作不可撤销。`,
+                '删除话题',
+                '删除',
+                '取消',
+                true // isDanger
+            );
+            if (confirmed) {
                 let result;
                 if (itemType === 'agent') {
                     result = await electronAPI.deleteTopic(itemFullConfig.id, topic.id);

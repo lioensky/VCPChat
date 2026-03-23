@@ -400,7 +400,7 @@ function showContextMenu(event, messageItem, message) {
                 textForConfirm = '[消息内容无法预览]';
             }
             
-            if (confirm(`确定要删除此消息吗？\n"${textForConfirm.substring(0, 50)}${textForConfirm.length > 50 ? '...' : ''}"`)) {
+            if (await uiHelper.showConfirmDialog(`确定要删除此消息吗？\n"${textForConfirm.substring(0, 50)}${textForConfirm.length > 50 ? '...' : ''}"`, '删除确认', '删除', '取消', true)) {
                 contextMenuDependencies.removeMessageById(message.id, true); // Pass true to save history
             }
             closeContextMenu();
