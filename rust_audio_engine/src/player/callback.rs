@@ -372,11 +372,15 @@ pub fn audio_callback_lockfree(
     let total = shared.total_frames.load(Ordering::Relaxed) as usize;
     let mut current_pos = shared.position_frames.load(Ordering::Relaxed) as usize;
 
-    // Signal preload
+    // Signal preload — request next track preloading early enough to allow
+    // full decode + optional resampling before EOF. 5 seconds of lead time
+    // handles large files and remote (WebDAV) streams that take longer to decode.
+    // Previously used 2 seconds which was insufficient for slow-decoding tracks,
+    // causing playback_ended to fire instead of gapless transition.
     let sr = shared.sample_rate.load(Ordering::Relaxed) as usize;
     let remaining_frames = total.saturating_sub(current_pos);
     if remaining_frames > 0
-        && remaining_frames < sr * 2
+        && remaining_frames < sr * 5
         && !shared.pending_ready.load(Ordering::Relaxed)
         && !shared.needs_preload.load(Ordering::Acquire)
     {
