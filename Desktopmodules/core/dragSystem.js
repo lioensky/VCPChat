@@ -22,6 +22,8 @@
 
         gripElement.addEventListener('mousedown', (e) => {
             if (e.button !== 0) return;
+            // 锁定状态下禁止拖拽
+            if (window.VCPDesktop.state && window.VCPDesktop.state.desktopLocked) return;
             e.preventDefault();
             e.stopPropagation();
 

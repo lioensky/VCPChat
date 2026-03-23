@@ -54,6 +54,8 @@
         closeBtn.title = '关闭挂件';
         closeBtn.addEventListener('click', (e) => {
             e.stopPropagation();
+            // 锁定状态下禁止关闭挂件
+            if (state.desktopLocked) return;
             removeWidget(widgetId);
         });
         widget.appendChild(closeBtn);

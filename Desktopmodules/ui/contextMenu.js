@@ -123,6 +123,18 @@
         desktopContextMenuEl.style.top = `${y}px`;
         desktopContextMenuEl.style.visibility = 'hidden';
 
+        // --- 锁定/解锁桌面 ---
+        const isLocked = state.desktopLocked;
+        const lockLabel = isLocked ? '🔓 解锁桌面' : '🔒 锁定桌面';
+        const lockBtn = createMenuItem(lockLabel, () => {
+            hideDesktopCanvasContextMenu();
+            toggleDesktopLock();
+        });
+        desktopContextMenuEl.appendChild(lockBtn);
+
+        // --- 分隔线 ---
+        desktopContextMenuEl.appendChild(createDivider());
+
         // --- 刷新桌面 ---
         const refreshBtn = createMenuItem('🔄 刷新桌面', () => {
             hideDesktopCanvasContextMenu();
@@ -385,6 +397,36 @@
     }
 
     // ============================================================
+    // 桌面锁定/解锁
+    // ============================================================
+
+    /**
+     * 切换桌面锁定状态
+     */
+    function toggleDesktopLock() {
+        state.desktopLocked = !state.desktopLocked;
+        const canvas = document.getElementById('desktop-canvas');
+        if (canvas) {
+            if (state.desktopLocked) {
+                canvas.classList.add('desktop-locked');
+            } else {
+                canvas.classList.remove('desktop-locked');
+            }
+        }
+
+        // 状态提示
+        if (window.VCPDesktop.status) {
+            const msg = state.desktopLocked ? '桌面已锁定' : '桌面已解锁';
+            const icon = state.desktopLocked ? '🔒' : '🔓';
+            window.VCPDesktop.status.update('connected', `${icon} ${msg}`);
+            window.VCPDesktop.status.show();
+            setTimeout(() => window.VCPDesktop.status.hide(), 2000);
+        }
+
+        console.log(`[ContextMenu] Desktop lock: ${state.desktopLocked}`);
+    }
+
+    // ============================================================
     // 导出
     // ============================================================
     window.VCPDesktop = window.VCPDesktop || {};
@@ -393,6 +435,7 @@
         show: showContextMenu,
         hide: hideContextMenu,
         getTargetWidgetId,
+        toggleDesktopLock,
     };
 
 })();
