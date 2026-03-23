@@ -481,7 +481,7 @@ function initialize(options) {
 
             try {
                 await collectFilePaths(folderPath);
-                event.sender.send('music-scan-start', { total: fileList.length });
+                event.sender.send('music-scan-start', { total: fileList.length, folderPath: folderPath });
 
                 await fs.ensureDir(MUSIC_COVER_CACHE_DIR);
 
@@ -504,14 +504,14 @@ function initialize(options) {
                     event.sender.send('music-scan-progress', { current: processedCount, total: fileList.length });
 
                     if (processedCount === fileList.length) {
-                        event.sender.send('music-scan-complete', finalPlaylist);
+                        event.sender.send('music-scan-complete', { tracks: finalPlaylist, folderPath: folderPath });
                         worker.terminate();
                     }
                 });
 
                 worker.on('error', (error) => {
                     console.error('Worker thread error:', error);
-                    event.sender.send('music-scan-complete', finalPlaylist);
+                    event.sender.send('music-scan-complete', { tracks: finalPlaylist, folderPath: folderPath });
                     worker.terminate();
                 });
 

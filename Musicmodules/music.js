@@ -563,12 +563,45 @@ document.addEventListener('DOMContentLoaded', () => {
             app.scanProgressBar.style.width = `${percent}%`;
             app.scanProgressLabel.textContent = `正在扫描: ${data.current} / ${data.total}`;
         });
-        window.electron.on('music-scan-complete', (newPlaylist) => {
+        window.electron.on('music-scan-complete', (data) => {
             app.loadingIndicator.style.display = 'none';
-            // Merge new tracks, avoiding duplicates by path
-            const existingPaths = new Set(app.playlist.map(t => t.path));
-            const brandNewTracks = newPlaylist.filter(t => !existingPaths.has(t.path));
-            app.playlist = [...app.playlist, ...brandNewTracks];
+            // data may be { tracks, folderPath } (new format) or plain array (legacy)
+            const newPlaylist = Array.isArray(data) ? data : (data.tracks || []);
+            const folderPath = Array.isArray(data) ? null : (data.folderPath || null);
+
+            // Build a map of newly scanned tracks by path for quick lookup
+            const scannedMap = new Map(newPlaylist.map(t => [t.path, t]));
+            const scannedPaths = new Set(scannedMap.keys());
+
+            // Normalize folder path for prefix matching (ensure trailing separator)
+            const folderPrefix = folderPath ? folderPath.replace(/[\\/]+$/, '') : null;
+
+            const updatedPlaylist = [];
+            const handledPaths = new Set();
+
+            for (const track of app.playlist) {
+                if (scannedPaths.has(track.path)) {
+                    // Track exists in new scan — use updated metadata
+                    updatedPlaylist.push(scannedMap.get(track.path));
+                    handledPaths.add(track.path);
+                } else if (folderPrefix && track.path.startsWith(folderPrefix)) {
+                    // Track belongs to the scanned folder but was NOT found in new scan
+                    // → file was deleted from disk, remove it from playlist
+                    // (skip adding it)
+                } else {
+                    // Track from a different folder/source — keep it
+                    updatedPlaylist.push(track);
+                }
+            }
+
+            // Add brand-new tracks that weren't in the existing playlist
+            for (const track of newPlaylist) {
+                if (!handledPaths.has(track.path)) {
+                    updatedPlaylist.push(track);
+                }
+            }
+
+            app.playlist = updatedPlaylist;
             app.renderPlaylist(); app.renderSidebarContent(app.currentSidebarView);
             window.electron.invoke('save-music-playlist', app.playlist);
         });
