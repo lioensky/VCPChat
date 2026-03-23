@@ -195,6 +195,8 @@ document.addEventListener('DOMContentLoaded', () => {
         shuffleQueue: [],
         lastShuffleList: null,
         wnpAdapter: null,
+        _gaplessJustSwitched: false,
+        _gaplessSwitchTimer: null,
         dragInProgress: false,
         isChangingState: false,
         lastCommandTime: 0,

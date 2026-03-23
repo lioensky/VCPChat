@@ -133,6 +133,8 @@ function setupPlayer(app) {
             return;
         }
 
+        const previousTrackIndex = app.currentTrackIndex;
+
         switch (app.playModes[app.currentPlayMode]) {
             case 'repeat':
                 const currentTrack = app.playlist[app.currentTrackIndex];
@@ -159,6 +161,21 @@ function setupPlayer(app) {
                 const nextIdx = app.shuffleQueue.shift();
                 app.currentTrackIndex = app.playlist.indexOf(activeList[nextIdx]);
                 break;
+        }
+
+        // 防御性保护：如果不是单曲循环模式，但计算出的下一首仍然是当前歌曲，
+        // 则强制跳到列表中的下一首。这可以防止由于 gapless 事件竞争等原因
+        // 导致的意外"单曲循环"行为。
+        if (app.playModes[app.currentPlayMode] !== 'repeat-one'
+            && app.currentTrackIndex === previousTrackIndex
+            && activeList.length > 1) {
+            console.warn('[Music.js] nextTrack: computed same track in non-repeat-one mode, forcing advance');
+            const currentTrackForFix = app.playlist[app.currentTrackIndex];
+            const currentPosForFix = activeList.indexOf(currentTrackForFix);
+            const forcedNextPos = (currentPosForFix !== -1)
+                ? (currentPosForFix + 1) % activeList.length
+                : 0;
+            app.currentTrackIndex = app.playlist.indexOf(activeList[forcedNextPos]);
         }
 
         app.loadTrack(app.currentTrackIndex);

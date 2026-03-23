@@ -122,10 +122,18 @@ function setupVisualizer(app) {
                     console.log('[Music.js] Received needs_preload event, remaining:', message.remaining_secs?.toFixed(1), 's');
                     app.handleNeedsPreload();
                 } else if (message.type === 'playback_ended') {
-                    // 防护：如果正在加载新曲目（手动切歌），则忽略此事件。
-                    // 这防止了后端解码延迟导致的重复切歌问题。
+                    // 防护1：如果正在加载新曲目（手动切歌），则忽略此事件。
                     if (app.isTrackLoading) {
                         console.log('[Music.js] playback_ended ignored: track is currently loading');
+                        return;
+                    }
+                    // 防护2：如果刚刚发生了 gapless 切歌（track_changed），则忽略此事件。
+                    // 后端在 gapless 切歌时会同时设置 EVENT_TRACK_CHANGED 和 EVENT_PLAYBACK_ENDED
+                    // 两个事件在同一 tick 中被发送，导致 track_changed 更新了 index 后，
+                    // playback_ended 又错误地触发 nextTrack()。
+                    if (app._gaplessJustSwitched) {
+                        console.log('[Music.js] playback_ended ignored: gapless switch just occurred');
+                        app._gaplessJustSwitched = false;
                         return;
                     }
                     console.log('[Music.js] Playback ended, moving to next track');
@@ -136,6 +144,13 @@ function setupVisualizer(app) {
                     app.nextTrack();
                 } else if (message.type === 'track_changed') {
                     console.log('[Music.js] Gapless track changed:', message.file_path);
+                    // 设置 gapless 切歌标志，抑制紧随其后的 playback_ended 事件
+                    app._gaplessJustSwitched = true;
+                    // 安全兜底：如果 playback_ended 没有紧跟着来，在一定时间后清除标志
+                    clearTimeout(app._gaplessSwitchTimer);
+                    app._gaplessSwitchTimer = setTimeout(() => {
+                        app._gaplessJustSwitched = false;
+                    }, 2000);
                     // 重置 preload 标志，允许新一轮预加载
                     app.isPreloadingNext = false;
                     app.syncTrackIndexByPath(message.file_path);

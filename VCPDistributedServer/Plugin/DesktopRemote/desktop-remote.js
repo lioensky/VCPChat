@@ -86,6 +86,10 @@ process.stdin.on('end', () => {
             const autoSave = _parseBoolean(args.autoSave || args.autosave || args.AutoSave || args.auto_save);
             const saveName = args.saveName || args.savename || args.SaveName || args.save_name || args.name || args.Name || null;
 
+            // Optional external script code (plain string, will be saved as app.js)
+            const scriptCode = args.scriptFiles || args.scriptfiles || args.ScriptFiles || args.script_files
+                || args.scriptCode || args.scriptcode || args.ScriptCode || args.script_code || null;
+
             const commandPayload = {
                 command: 'CreateWidget',
                 htmlContent: htmlContent,
@@ -99,6 +103,16 @@ process.stdin.on('end', () => {
             if (widgetId) commandPayload.widgetId = widgetId;
             if (autoSave) commandPayload.autoSave = true;
             if (saveName) commandPayload.saveName = saveName;
+
+            // Include scriptCode if provided (plain JS string, saved as app.js)
+            if (scriptCode && typeof scriptCode === 'string' && scriptCode.trim().length > 0) {
+                commandPayload.scriptCode = scriptCode;
+                // When scriptCode is provided, force autoSave (file needs persistent storage)
+                commandPayload.autoSave = true;
+                if (!commandPayload.saveName) {
+                    commandPayload.saveName = saveName || 'AI Widget';
+                }
+            }
 
             console.log(JSON.stringify(commandPayload));
 
