@@ -442,10 +442,10 @@ if (!gotTheLock) {
             return;
         }
 
-        // 🔧 关键：如果当前是 desktop-only 或 rag-only 模式，且主窗口不存在，
-        // 说明是从桌面/RAG 模式中请求启动完整主窗口。执行完整的应用初始化。
-        if ((isDesktopOnlyMode || isRagObserverOnlyMode) && !fullAppBootstrapped) {
-            console.log('[Main] Second instance triggered full app bootstrap from standalone mode.');
+        // 🔧 关键：如果主窗口不存在（首次创建或被关闭后再次打开），
+        // 从独立模式（desktop-only/rag-only）中执行完整初始化或重建主窗口。
+        if (isDesktopOnlyMode || isRagObserverOnlyMode) {
+            console.log('[Main] Second instance triggered main window creation from standalone mode.');
             await bootstrapFullApp();
             return;
         }
@@ -1042,11 +1042,16 @@ if (!gotTheLock) {
     // ============================================================
     async function bootstrapFullApp() {
         if (fullAppBootstrapped) {
-            console.log('[Main] Full app already bootstrapped. Focusing main window.');
+            // 已经初始化过，但主窗口可能被关闭了，需要重新创建
             if (mainWindow && !mainWindow.isDestroyed()) {
+                console.log('[Main] Full app already bootstrapped. Focusing main window.');
                 if (!mainWindow.isVisible()) mainWindow.show();
                 mainWindow.focus();
+                return;
             }
+            // 主窗口被关闭了，重新创建（IPC handler 已注册，无需重复初始化）
+            console.log('[Main] Main window was closed. Re-creating window...');
+            createWindow();
             return;
         }
 
