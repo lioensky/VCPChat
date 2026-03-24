@@ -95,7 +95,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 5.6. 初始化全局设置
     if (D.globalSettings) {
-        D.globalSettings.init().then(() => {
+        D.globalSettings._initPromise = D.globalSettings.init().then(() => {
             D.globalSettings.initNumberControls();
         });
     }
@@ -139,6 +139,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // 应用全局设置（包括自动最大化、窗口置底、加载默认预设等）
     if (D.globalSettings) {
+        if (D.globalSettings._initPromise) {
+            await D.globalSettings._initPromise;
+        }
         await D.globalSettings.applyOnStartup();
     }
 });
