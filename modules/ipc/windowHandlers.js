@@ -39,9 +39,19 @@ function initialize(mainWindow, openChildWindows) {
     ipcMain.on('close-window', (event) => {
         const win = BrowserWindow.fromWebContents(event.sender);
         if (win) {
-            // If it's the main window, quit the app. Otherwise, just close the child window.
+            // If it's the main window, check if the desktop window is alive.
+            // If so, hide the main window to tray instead of quitting.
             if (win === mainWindow) {
-                app.quit();
+                const desktopHandlers = require('./desktopHandlers');
+                const desktopWindow = desktopHandlers.getDesktopWindow();
+                if (desktopWindow && !desktopWindow.isDestroyed()) {
+                    // 桌面窗口存在时，主窗口关闭 → 最小化到托盘
+                    console.log('[WindowHandlers] Desktop window is active. Hiding main window to tray instead of quitting.');
+                    win.hide();
+                } else {
+                    // 桌面窗口不存在时，正常退出
+                    app.quit();
+                }
             } else {
                 win.close();
             }

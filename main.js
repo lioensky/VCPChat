@@ -137,7 +137,6 @@ const NOTES_AGENT_ID = 'notes_attachments_agent';
 
 let audioEngineProcess = null; // To hold the python audio engine process
 let mainWindow;
-let fullAppBootstrapped = false; // 标记完整应用是否已初始化（用于 desktop-only 模式下延迟初始化）
 let tray = null;
 let vcpLogWebSocket;
 let vcpLogReconnectInterval;
@@ -149,7 +148,7 @@ let networkNotesTreeCache = null; // In-memory cache for the network notes
 let cachedModels = []; // Cache for models fetched from VCP server
 const NOTES_MODULE_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'Notemodules');
 const isRagObserverOnlyMode = process.argv.includes('--rag-observer-only');
-const isDesktopOnlyMode = process.argv.includes('--desktop-only');
+const isAutoOpenDesktop = process.argv.includes('--desktop-only');
 
 // --- Audio Engine Management ---
 // Now uses the Rust native audio engine instead of Python
@@ -254,15 +253,31 @@ function createWindow() {
         }
     });
 
-    // 当主窗口关闭时，退出整个应用程序
-    // 这将触发 'will-quit' 事件，用于执行所有清理操作
+    // 当主窗口关闭时的处理逻辑：
+    // 1. macOS 上始终隐藏而非关闭
+    // 2. 当桌面窗口存在时，隐藏到托盘而非退出（偷天换日！）
+    // 3. 其他情况正常退出
     mainWindow.on('close', (event) => {
-        // On macOS, closing the window should hide it and keep the app alive.
-        // The 'activate' event will handle re-opening it.
-        if (process.platform === 'darwin' && !app.isQuitting) {
+        if (app.isQuitting) {
+            // 应用正在退出，允许关闭
+            return;
+        }
+
+        // macOS 始终隐藏
+        if (process.platform === 'darwin') {
             event.preventDefault();
             mainWindow.hide();
+            return;
         }
+
+        // Windows/Linux：如果桌面窗口存在，隐藏到托盘
+        const dw = desktopHandlers.getDesktopWindow();
+        if (dw && !dw.isDestroyed()) {
+            event.preventDefault();
+            mainWindow.hide();
+            console.log('[Main] Desktop window active — main window hidden to tray instead of closing.');
+        }
+        // 否则允许正常关闭（触发 closed 事件）
     });
 
     // This will be triggered when the app is quitting, after the window is closed.
@@ -421,7 +436,7 @@ if (!gotTheLock) {
 } else {
     app.on('second-instance', async (event, commandLine, workingDirectory) => {
         const wantsRagOnly = commandLine.includes('--rag-observer-only');
-        const wantsDesktopOnly = commandLine.includes('--desktop-only');
+        const wantsDesktop = commandLine.includes('--desktop-only');
 
         // 如果第二实例请求的是 RAG 独立模式，则直接打开/聚焦 RAG 窗口
         if (wantsRagOnly) {
@@ -429,9 +444,14 @@ if (!gotTheLock) {
             return;
         }
 
-        // 如果第二实例请求的是 Desktop 独立模式，则直接打开/聚焦桌面窗口
-        if (wantsDesktopOnly) {
+        // 如果第二实例带 --desktop-only 参数，打开/聚焦桌面窗口
+        if (wantsDesktop) {
             await desktopHandlers.openDesktopWindow();
+            // 同时确保主窗口也显示出来
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                if (!mainWindow.isVisible()) mainWindow.show();
+                mainWindow.focus();
+            }
             return;
         }
 
@@ -439,14 +459,6 @@ if (!gotTheLock) {
         if (mainWindow && !mainWindow.isDestroyed()) {
             if (mainWindow.isMinimized()) mainWindow.restore();
             mainWindow.focus();
-            return;
-        }
-
-        // 🔧 关键：如果主窗口不存在（首次创建或被关闭后再次打开），
-        // 从独立模式（desktop-only/rag-only）中执行完整初始化或重建主窗口。
-        if (isDesktopOnlyMode || isRagObserverOnlyMode) {
-            console.log('[Main] Second instance triggered main window creation from standalone mode.');
-            await bootstrapFullApp();
             return;
         }
 
@@ -525,30 +537,8 @@ if (!gotTheLock) {
             return;
         }
 
-        // VCPdesktop 独立模式：不创建主窗口，仅初始化桌面所需 IPC 并直接打开桌面画布窗口
-        if (isDesktopOnlyMode) {
-            console.log('[Main] Starting in Desktop only mode.');
-            windowHandlers.initialize(mainWindow, openChildWindows);
-            themeHandlers.initialize({ mainWindow, openChildWindows, projectRoot: PROJECT_ROOT, APP_DATA_ROOT_IN_PROJECT, settingsManager: appSettingsManager });
-            desktopHandlers.initialize({ mainWindow, openChildWindows, settingsManager: appSettingsManager });
-            ipcMain.handle('get-platform', () => process.platform);
-
-            createTray();
-
-            // 独立模式也需要注册 DevTools 快捷键
-            globalShortcut.register('Control+Shift+I', () => {
-                const focusedWindow = BrowserWindow.getFocusedWindow();
-                if (focusedWindow && focusedWindow.webContents && !focusedWindow.webContents.isDestroyed()) {
-                    focusedWindow.webContents.toggleDevTools();
-                }
-            });
-
-            await desktopHandlers.openDesktopWindow();
-            return;
-        }
-
-        // 标记完整应用已初始化
-        fullAppBootstrapped = true;
+        // 注意：原 desktop-only 模式已移除。--desktop-only 参数现在仅作为
+        // "启动后自动打开桌面窗口"的标志，所有 IPC 始终完整初始化。
 
         // Function to fetch and cache models from the VCP server
         async function fetchAndCacheModels() {
@@ -1034,313 +1024,18 @@ if (!gotTheLock) {
         ipcMain.handle('get-platform', () => {
             return process.platform;
         });
+
+        // --- 自动打开桌面窗口 ---
+        // 当使用 --desktop-only 参数启动时，在所有 IPC 初始化完成后自动打开桌面窗口
+        if (isAutoOpenDesktop) {
+            console.log('[Main] --desktop-only flag detected. Auto-opening desktop window after full initialization.');
+            // 延迟打开，确保主窗口已完全就绪
+            setTimeout(async () => {
+                await desktopHandlers.openDesktopWindow();
+                console.log('[Main] Desktop window auto-opened.');
+            }, 1000);
+        }
     });
-
-    // ============================================================
-    // bootstrapFullApp - 从独立模式（desktop-only/rag-only）中延迟初始化完整应用
-    // 当用户在桌面模式下点击 VChat 图标时，通过 second-instance 触发此函数
-    // ============================================================
-    async function bootstrapFullApp() {
-        if (fullAppBootstrapped) {
-            // 已经初始化过，但主窗口可能被关闭了，需要重新创建
-            if (mainWindow && !mainWindow.isDestroyed()) {
-                console.log('[Main] Full app already bootstrapped. Focusing main window.');
-                if (!mainWindow.isVisible()) mainWindow.show();
-                mainWindow.focus();
-                return;
-            }
-            // 主窗口被关闭了，重新创建（IPC handler 已注册，无需重复初始化）
-            console.log('[Main] Main window was closed. Re-creating window...');
-            createWindow();
-            return;
-        }
-
-        console.log('[Main] Bootstrapping full app from standalone mode...');
-        fullAppBootstrapped = true;
-
-        // 创建主窗口
-        createWindow();
-
-        // --- 初始化所有正常模式所需的模块 ---
-
-        // Application Menu
-        const isMac = process.platform === 'darwin';
-        const menuTemplate = [
-            ...(isMac ? [{
-                label: app.name,
-                submenu: [
-                    { role: 'about' },
-                    { type: 'separator' },
-                    { role: 'services' },
-                    { type: 'separator' },
-                    { role: 'hide' },
-                    { role: 'hideothers' },
-                    { role: 'unhide' },
-                    { type: 'separator' },
-                    {
-                        label: '退出 VCPChat',
-                        accelerator: 'Command+Q',
-                        click: () => {
-                            app.isQuitting = true;
-                            app.quit();
-                        }
-                    }
-                ]
-            }] : []),
-            {
-                label: '文件',
-                submenu: [
-                    {
-                        label: '新建无锁话题',
-                        accelerator: 'CommandOrControl+Shift+N',
-                        click: () => {
-                            if (mainWindow && !mainWindow.isDestroyed()) {
-                                mainWindow.webContents.send('create-unlocked-topic');
-                            }
-                        }
-                    }
-                ]
-            },
-            {
-                label: '编辑',
-                submenu: [
-                    { role: 'undo' },
-                    { role: 'redo' },
-                    { type: 'separator' },
-                    { role: 'cut' },
-                    { role: 'copy' },
-                    { role: 'paste' },
-                    ...(isMac ? [
-                        { role: 'pasteAndMatchStyle' },
-                        { role: 'delete' },
-                        { role: 'selectAll' },
-                        { type: 'separator' },
-                        {
-                            label: '语音',
-                            submenu: [
-                                { role: 'startSpeaking' },
-                                { role: 'stopSpeaking' }
-                            ]
-                        }
-                    ] : [
-                        { role: 'delete' },
-                        { type: 'separator' },
-                        { role: 'selectAll' }
-                    ])
-                ]
-            },
-            {
-                label: '视图',
-                submenu: [
-                    { role: 'reload' },
-                    { role: 'forceReload' },
-                    { type: 'separator' },
-                    { role: 'resetZoom' },
-                    { role: 'zoomIn' },
-                    { role: 'zoomOut' },
-                    { type: 'separator' },
-                    { role: 'togglefullscreen' }
-                ]
-            },
-            {
-                label: '窗口',
-                submenu: [
-                    { role: 'minimize' },
-                    { role: 'zoom' },
-                    ...(isMac ? [
-                        { role: 'close' },
-                        { type: 'separator' },
-                        { role: 'front' },
-                        { type: 'separator' },
-                        { role: 'window' }
-                    ] : [
-                        { role: 'close' }
-                    ])
-                ]
-            },
-            {
-                label: '开发者',
-                submenu: [
-                    {
-                        label: '切换开发者工具',
-                        accelerator: 'Ctrl+Shift+I',
-                        click: (item, focusedWindow) => {
-                            if (focusedWindow) {
-                                focusedWindow.webContents.toggleDevTools();
-                            }
-                        }
-                    }
-                ]
-            }
-        ];
-        const menu = Menu.buildFromTemplate(menuTemplate);
-        Menu.setApplicationMenu(menu);
-
-        // 初始化需要 AGENT_DIR 的模块（agentConfigManager 已在 whenReady 中创建）
-        const AgentConfigManager = require('./modules/utils/agentConfigManager');
-        const agentConfigManager = new AgentConfigManager(AGENT_DIR);
-        agentConfigManager.startCleanupTimer();
-
-        // 初始化各 IPC handler 模块（仅初始化 desktop-only 模式下未初始化的模块）
-        notesHandlers.initialize({
-            openChildWindows,
-            APP_DATA_ROOT_IN_PROJECT,
-            SETTINGS_FILE
-        });
-
-        forumHandlers.initialize({ USER_DATA_DIR });
-        memoHandlers.initialize({ USER_DATA_DIR });
-
-        agentHandlers.initialize({
-            AGENT_DIR,
-            USER_DATA_DIR,
-            SETTINGS_FILE,
-            USER_AVATAR_FILE,
-            getSelectionListenerStatus: assistantHandlers.getSelectionListenerStatus,
-            stopSelectionListener: assistantHandlers.stopSelectionListener,
-            startSelectionListener: assistantHandlers.startSelectionListener,
-            settingsManager: appSettingsManager,
-            agentConfigManager
-        });
-
-        await assistantHandlers.initialize({ SETTINGS_FILE });
-
-        fileDialogHandlers.initialize(mainWindow, {
-            getSelectionListenerStatus: assistantHandlers.getSelectionListenerStatus,
-            stopSelectionListener: assistantHandlers.stopSelectionListener,
-            startSelectionListener: assistantHandlers.startSelectionListener,
-            openChildWindows
-        });
-
-        groupChatHandlers.initialize(mainWindow, {
-            AGENT_DIR,
-            USER_DATA_DIR,
-            getSelectionListenerStatus: assistantHandlers.getSelectionListenerStatus,
-            stopSelectionListener: assistantHandlers.stopSelectionListener,
-            startSelectionListener: assistantHandlers.startSelectionListener,
-            fileWatcher
-        });
-
-        regexHandlers.initialize({ AGENT_DIR });
-
-        chatHandlers.initialize(mainWindow, {
-            AGENT_DIR,
-            USER_DATA_DIR,
-            APP_DATA_ROOT_IN_PROJECT,
-            NOTES_AGENT_ID,
-            getSelectionListenerStatus: assistantHandlers.getSelectionListenerStatus,
-            stopSelectionListener: assistantHandlers.stopSelectionListener,
-            startSelectionListener: assistantHandlers.startSelectionListener,
-            getMusicState: musicHandlers.getMusicState,
-            fileWatcher,
-            agentConfigManager
-        });
-
-        // Watcher IPC handlers（检查是否已注册，避免重复注册）
-        try {
-            ipcMain.handle('watcher:start', (event, filePath, agentId, topicId) => {
-                if (fileWatcher) {
-                    fileWatcher.watchFile(filePath, (changedPath) => {
-                        if (mainWindow && !mainWindow.isDestroyed()) {
-                            mainWindow.webContents.send('history-file-updated', { path: changedPath, agentId, topicId });
-                        }
-                    });
-                    return { success: true, watching: filePath };
-                }
-                return { success: false, error: 'File watcher not initialized.' };
-            });
-
-            ipcMain.handle('watcher:stop', () => {
-                if (fileWatcher) {
-                    fileWatcher.stopWatching();
-                    return { success: true };
-                }
-                return { success: false, error: 'File watcher not initialized.' };
-            });
-        } catch (e) {
-            // IPC handler 可能已在 desktop-only 模式下由其他模块注册
-            console.log('[Main] Watcher IPC handlers may already be registered:', e.message);
-        }
-
-        sovitsHandlers.initialize(mainWindow);
-        musicHandlers.initialize({ mainWindow, openChildWindows, APP_DATA_ROOT_IN_PROJECT, startAudioEngine, stopAudioEngine });
-        diceHandlers.initialize({ projectRoot: PROJECT_ROOT });
-        emoticonHandlers.initialize({ SETTINGS_FILE, APP_DATA_ROOT_IN_PROJECT });
-        emoticonHandlers.setupEmoticonHandlers();
-        canvasHandlers.initialize({ mainWindow, openChildWindows, CANVAS_CACHE_DIR });
-        // desktopHandlers 和 themeHandlers 已在 desktop-only 模式下初始化，无需重复
-        desktopRemoteHandlers.initialize({ mainWindow });
-        promptHandlers.initialize({ AGENT_DIR, APP_DATA_ROOT_IN_PROJECT });
-
-        // 注册 path 相关 IPC handlers
-        try {
-            ipcMain.handle('path:dirname', (event, p) => path.dirname(p));
-            ipcMain.handle('path:extname', (event, p) => path.extname(p));
-            ipcMain.handle('path:basename', (event, p) => path.basename(p));
-        } catch (e) {
-            console.log('[Main] Path IPC handlers may already be registered:', e.message);
-        }
-
-        // 注册模型相关 IPC handlers
-        try {
-            ipcMain.handle('get-cached-models', () => cachedModels);
-            ipcMain.handle('get-hot-models', async () => {
-                try {
-                    const modelUsageTracker = require('./modules/modelUsageTracker');
-                    return await modelUsageTracker.getHotModels(10);
-                } catch (error) { return []; }
-            });
-            ipcMain.handle('get-favorite-models', async () => {
-                try {
-                    const modelUsageTracker = require('./modules/modelUsageTracker');
-                    return await modelUsageTracker.getFavoriteModels();
-                } catch (error) { return []; }
-            });
-            ipcMain.handle('toggle-favorite-model', async (event, modelId) => {
-                try {
-                    const modelUsageTracker = require('./modules/modelUsageTracker');
-                    return await modelUsageTracker.toggleFavoriteModel(modelId);
-                } catch (error) { return { favorited: false }; }
-            });
-        } catch (e) {
-            console.log('[Main] Model IPC handlers may already be registered:', e.message);
-        }
-
-        ipcMain.on('minimize-to-tray', () => {
-            if (mainWindow) mainWindow.hide();
-        });
-
-        // 后台获取模型
-        async function fetchAndCacheModelsBootstrap() {
-            try {
-                const settings = await appSettingsManager.readSettings();
-                const vcpServerUrl = settings.vcpServerUrl;
-                const vcpApiKey = settings.vcpApiKey;
-                if (!vcpServerUrl) { cachedModels = []; return; }
-                const urlObject = new URL(vcpServerUrl);
-                const baseUrl = `${urlObject.protocol}//${urlObject.host}`;
-                const modelsUrl = new URL('/v1/models', baseUrl).toString();
-                const response = await fetch(modelsUrl, {
-                    headers: { 'Authorization': `Bearer ${vcpApiKey}` }
-                });
-                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-                const data = await response.json();
-                cachedModels = data.data || [];
-                console.log('[Main] Models fetched (bootstrap):', cachedModels.map(m => m.id));
-            } catch (error) {
-                console.error('[Main] Failed to fetch models (bootstrap):', error);
-                cachedModels = [];
-            }
-        }
-
-        fetchAndCacheModelsBootstrap().then(() => {
-            if (mainWindow && !mainWindow.isDestroyed()) {
-                mainWindow.webContents.send('models-updated', cachedModels);
-            }
-        }).catch(() => {});
-
-        console.log('[Main] Full app bootstrap complete. Main window created.');
-    }
 
     // --- Python Execution IPC Handler ---
     ipcMain.handle('execute-python-code', (event, code) => {
