@@ -144,11 +144,17 @@
     function appendWidgetContent(widgetId, fullContent) {
         let widgetData = state.widgets.get(widgetId);
         if (!widgetData) {
+            // 并发情况下，如果 createWidget 还没来得及把 widget 放入 state.widgets，
+            // 这里可能会重复创建。虽然 createWidget 内部有检查，但为了保险，
+            // 我们在这里也做一次检查，或者确保 createWidget 是同步完成 state 写入的。
             widgetData = createWidget(widgetId, {
                 x: 100 + Math.random() * 200,
                 y: 100 + Math.random() * 200,
             });
         }
+
+        // 如果内容没有变化，跳过重复渲染，减少并发时的 DOM 压力
+        if (widgetData.contentBuffer === fullContent) return;
 
         widgetData.contentBuffer = fullContent;
         widgetData.contentContainer.innerHTML = fullContent;

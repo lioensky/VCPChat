@@ -248,6 +248,7 @@
                         if (window.electronAPI?.sendDesktopRemoteViewSourceResponse) {
                             window.electronAPI.sendDesktopRemoteViewSourceResponse({
                                 success: false,
+                                widgetId,
                                 error: `挂件 '${widgetId}' 不存在于当前桌面上。可用的挂件ID: ${[...state.widgets.keys()].join(', ') || '(无)'}`,
                             });
                         }
@@ -261,6 +262,7 @@
                     if (window.electronAPI?.sendDesktopRemoteViewSourceResponse) {
                         window.electronAPI.sendDesktopRemoteViewSourceResponse({
                             success: true,
+                            widgetId,
                             html: htmlSource,
                             savedName: widgetData.savedName || null,
                             savedId: widgetData.savedId || null,
@@ -372,6 +374,7 @@
                     if (window.electronAPI?.sendDesktopRemoteCreateWidgetResponse) {
                         window.electronAPI.sendDesktopRemoteCreateWidgetResponse({
                             success: false,
+                            widgetId,
                             error: err.message,
                         });
                     }

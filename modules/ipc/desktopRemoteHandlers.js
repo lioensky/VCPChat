@@ -477,6 +477,8 @@ async function _handleViewWidgetSource(commandPayload, desktopWin) {
         }, 5000);
 
         const responseHandler = (event, responseData) => {
+            if (responseData.widgetId !== widgetId) return;
+
             clearTimeout(timeout);
             ipcMain.removeListener('desktop-remote-view-source-response', responseHandler);
 
@@ -636,6 +638,9 @@ async function _handleCreateWidget(commandPayload, desktopWin) {
         }, 8000);
 
         const responseHandler = (event, responseData) => {
+            // 增加 ID 匹配检查，确保并发请求时响应正确对应
+            if (responseData.widgetId !== finalWidgetId) return;
+
             clearTimeout(timeout);
             ipcMain.removeListener('desktop-remote-create-widget-response', responseHandler);
 
