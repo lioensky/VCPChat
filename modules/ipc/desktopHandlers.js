@@ -1587,7 +1587,27 @@ function initialize(params) {
                         if (targetMainWindow.isMinimized()) targetMainWindow.restore();
                         targetMainWindow.focus();
                     } else {
-                        return { success: false, error: '主窗口不可用（可能未启动或已关闭）' };
+                        // 主窗口不存在（例如 desktop-only 模式下），通过 spawn 新实例触发完整初始化
+                        // 利用 Electron 单实例锁机制：新实例会被检测为第二实例，
+                        // 触发当前进程的 second-instance 回调来创建主窗口
+                        console.log('[DesktopHandlers] Main window not available. Spawning new instance to trigger full app bootstrap...');
+                        try {
+                            const electronExe = process.execPath;
+                            const appPath = app.getAppPath();
+                            const { spawn: spawnChild } = require('child_process');
+                            // 启动一个不带 --desktop-only 的新实例
+                            // 由于单实例锁，它会立即退出并触发当前进程的 second-instance 事件
+                            const child = spawnChild(electronExe, [appPath], {
+                                detached: true,
+                                stdio: 'ignore',
+                            });
+                            child.unref();
+                            console.log('[DesktopHandlers] New instance spawned to trigger main window creation.');
+                            return { success: true, pending: true };
+                        } catch (spawnErr) {
+                            console.error('[DesktopHandlers] Failed to spawn new instance:', spawnErr);
+                            return { success: false, error: `无法启动主窗口: ${spawnErr.message}` };
+                        }
                     }
                     return { success: true };
                 }

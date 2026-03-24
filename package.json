@@ -5,6 +5,7 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
+    "start:desktop": "electron . --desktop-only",
     "start:rag-observer": "electron . --rag-observer-only",
     "pack": "electron-builder --dir",
     "dist": "electron-builder"
