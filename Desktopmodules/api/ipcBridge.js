@@ -157,6 +157,86 @@
             });
         }
 
+        // 远程 Dock 应用列表查询
+        if (window.electronAPI?.onDesktopRemoteQueryDock) {
+            window.electronAPI.onDesktopRemoteQueryDock(() => {
+                console.log('[Desktop IPC] Received remote dock query');
+                try {
+                    // 收集 Dock 中的用户快捷方式列表
+                    const dockItems = [];
+                    if (state.dock && state.dock.items) {
+                        for (const item of state.dock.items) {
+                            const info = {
+                                name: item.name,
+                                type: item.type || 'shortcut',
+                                visible: item.visible !== false,
+                            };
+                            if (item.type === 'vchat-app') {
+                                info.appAction = item.appAction || '';
+                            } else if (item.type === 'builtin') {
+                                info.builtinId = item.builtinId || '';
+                            } else {
+                                info.targetPath = item.targetPath || '';
+                            }
+                            dockItems.push(info);
+                        }
+                    }
+
+                    // 收集 VChat 内部应用列表（硬编码，始终可用）
+                    const vchatApps = [];
+                    if (window.VCPDesktop.vchatApps && window.VCPDesktop.vchatApps.VCHAT_APPS) {
+                        for (const app of window.VCPDesktop.vchatApps.VCHAT_APPS) {
+                            vchatApps.push({
+                                name: app.name,
+                                emoji: app.emoji || '',
+                                appAction: app.appAction,
+                            });
+                        }
+                    }
+
+                    // 收集系统工具列表
+                    const systemTools = [];
+                    if (window.VCPDesktop.vchatApps && window.VCPDesktop.vchatApps.SYSTEM_TOOLS) {
+                        for (const tool of window.VCPDesktop.vchatApps.SYSTEM_TOOLS) {
+                            systemTools.push({
+                                name: tool.name,
+                                emoji: tool.emoji || '',
+                                appAction: tool.appAction,
+                            });
+                        }
+                    }
+
+                    // 收集内置挂件列表
+                    const builtinWidgets = [
+                        { name: '天气挂件', builtinId: 'builtinWeather' },
+                        { name: '音乐播放条', builtinId: 'builtinMusic' },
+                        { name: '应用托盘', builtinId: 'builtinAppTray' },
+                    ];
+
+                    // 发送响应
+                    if (window.electronAPI?.sendDesktopRemoteQueryDockResponse) {
+                        window.electronAPI.sendDesktopRemoteQueryDockResponse({
+                            success: true,
+                            dockItems,
+                            vchatApps,
+                            systemTools,
+                            builtinWidgets,
+                        });
+                    }
+
+                    console.log(`[Desktop IPC] Dock query response: ${dockItems.length} dock items, ${vchatApps.length} vchat apps, ${systemTools.length} system tools`);
+                } catch (err) {
+                    console.error('[Desktop IPC] Dock query error:', err);
+                    if (window.electronAPI?.sendDesktopRemoteQueryDockResponse) {
+                        window.electronAPI.sendDesktopRemoteQueryDockResponse({
+                            success: false,
+                            error: err.message,
+                        });
+                    }
+                }
+            });
+        }
+
         // 远程查看挂件源码
         if (window.electronAPI?.onDesktopRemoteViewSource) {
             window.electronAPI.onDesktopRemoteViewSource((data) => {

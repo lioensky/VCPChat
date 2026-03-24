@@ -2,8 +2,8 @@
   "name": "DesktopRemote",
   "displayName": "桌面远程控制器",
   "pluginType": "synchronous",
-  "version": "1.2.0",
-  "description": "远程控制VCPdesktop桌面画布，支持推送壁纸、感知查询桌面状态、查看挂件源码、创建新挂件。",
+  "version": "1.3.0",
+  "description": "远程控制VCPdesktop桌面画布，支持推送壁纸、感知查询桌面状态、查询Dock应用列表、查看挂件源码、创建新挂件。",
   "author": "VCPToolBox",
   "license": "MIT",
   "entryPoint": {
@@ -21,6 +21,10 @@
       {
         "command": "QueryDesktop",
         "description": "功能: 感知查询当前VCPdesktop桌面上的所有挂件(widget)和图标(shortcut icon)信息。\n返回内容包括：\n- widgets: 桌面上所有活跃挂件的ID列表。如果挂件已被收藏，还会显示收藏名称和对应的持久化目录路径（可配合FileOperator插件读写维护收藏的HTML内容）。\n- icons: 桌面上所有快捷方式图标的名称列表。\n\n此命令无需额外参数。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」DesktopRemote「末」,\ncommand:「始」QueryDesktop「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "QueryDock",
+        "description": "功能: 查询VCPdesktop的Dock栏完整应用列表，了解所有可用的应用、工具和启动方式。\n返回内容包括：\n- Dock快捷方式: 用户导入的Windows桌面快捷方式列表（名称、类型、可见性、启动代码）\n- VChat内部应用: 12个硬编码的VChat核心应用（如音乐播放器、笔记、翻译等），始终可用\n- Windows系统工具: 5个系统工具快捷入口（显示设置、控制面板等），始终可用\n- 内置桌面挂件: 天气挂件、音乐播放条、应用托盘等内置组件\n\n每个应用都附带对应的启动代码示例，可在Widget脚本中直接使用 `window.VCPDesktop.dock.launch(item)` 调用。\n\n此命令无需额外参数。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」DesktopRemote「末」,\ncommand:「始」QueryDock「末」\n<<<[END_TOOL_REQUEST]>>>"
       },
       {
         "command": "ViewWidgetSource",

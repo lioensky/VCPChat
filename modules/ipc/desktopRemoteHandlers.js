@@ -190,6 +190,8 @@ async function handleDesktopRemoteControl(commandPayload) {
             return await _handleSetWallpaper(commandPayload, desktopWin);
         } else if (command === 'QueryDesktop') {
             return await _handleQueryDesktop(desktopWin);
+        } else if (command === 'QueryDock') {
+            return await _handleQueryDock(desktopWin);
         } else if (command === 'ViewWidgetSource') {
             return await _handleViewWidgetSource(commandPayload, desktopWin);
         } else if (command === 'CreateWidget') {
@@ -357,6 +359,100 @@ async function _handleQueryDesktop(desktopWin) {
 
         ipcMain.on('desktop-remote-query-response', responseHandler);
         desktopWin.webContents.send('desktop-remote-query');
+    });
+}
+
+// ============================================================
+// 内部实现：QueryDock
+// ============================================================
+
+async function _handleQueryDock(desktopWin) {
+    if (!desktopWin || desktopWin.isDestroyed()) {
+        const mdReport = `### Dock 应用列表报告\n\n` +
+            `**桌面窗口状态**: ❌ 未打开\n\n` +
+            `桌面画布窗口当前未启动，无法查询 Dock 应用列表。`;
+        return {
+            status: 'success',
+            result: { content: [{ type: 'text', text: mdReport }] }
+        };
+    }
+
+    return new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+            ipcMain.removeListener('desktop-remote-query-dock-response', responseHandler);
+            reject(new Error('查询 Dock 应用列表超时。'));
+        }, 5000);
+
+        const responseHandler = (event, responseData) => {
+            clearTimeout(timeout);
+            ipcMain.removeListener('desktop-remote-query-dock-response', responseHandler);
+
+            if (responseData.success) {
+                const dockItems = responseData.dockItems || [];
+                const vchatApps = responseData.vchatApps || [];
+                const systemTools = responseData.systemTools || [];
+                const builtinWidgets = responseData.builtinWidgets || [];
+
+                let mdReport = `### Dock 应用列表报告\n\n**桌面窗口状态**: ✅ 已打开\n\n`;
+
+                // Dock 中的用户快捷方式
+                mdReport += `#### Dock 快捷方式 (${dockItems.length}个)\n\n`;
+                if (dockItems.length === 0) {
+                    mdReport += `*Dock 中没有用户添加的快捷方式。*\n\n`;
+                } else {
+                    mdReport += `| 名称 | 类型 | 可见 | 启动方式 |\n|---|---|---|---|\n`;
+                    for (const item of dockItems) {
+                        const visible = item.visible !== false ? '✅' : '❌';
+                        let launchMethod = '';
+                        if (item.type === 'vchat-app') {
+                            launchMethod = `\`dock.launch({type:'vchat-app', appAction:'${item.appAction}'})\``;
+                        } else if (item.type === 'builtin') {
+                            launchMethod = `\`dock.launch({type:'builtin', builtinId:'${item.builtinId}'})\``;
+                        } else {
+                            launchMethod = `\`dock.launch({type:'shortcut', targetPath:'${item.targetPath}'})\``;
+                        }
+                        mdReport += `| ${item.name} | ${item.type || 'shortcut'} | ${visible} | ${launchMethod} |\n`;
+                    }
+                    mdReport += `\n`;
+                }
+
+                // VChat 内部应用（硬编码，始终可用）
+                mdReport += `#### VChat 内部应用 (${vchatApps.length}个，始终可用)\n\n`;
+                mdReport += `| 名称 | emoji | appAction | 启动代码 |\n|---|---|---|---|\n`;
+                for (const app of vchatApps) {
+                    mdReport += `| ${app.name} | ${app.emoji || '-'} | \`${app.appAction}\` | \`dock.launch({type:'vchat-app', appAction:'${app.appAction}'})\` |\n`;
+                }
+                mdReport += `\n`;
+
+                // 系统工具
+                mdReport += `#### Windows 系统工具 (${systemTools.length}个，始终可用)\n\n`;
+                mdReport += `| 名称 | emoji | appAction | 启动代码 |\n|---|---|---|---|\n`;
+                for (const tool of systemTools) {
+                    mdReport += `| ${tool.name} | ${tool.emoji || '-'} | \`${tool.appAction}\` | \`dock.launch({type:'vchat-app', appAction:'${tool.appAction}'})\` |\n`;
+                }
+                mdReport += `\n`;
+
+                // 内置挂件
+                mdReport += `#### 内置桌面挂件 (${builtinWidgets.length}个)\n\n`;
+                mdReport += `| 名称 | builtinId | 启动代码 |\n|---|---|---|\n`;
+                for (const w of builtinWidgets) {
+                    mdReport += `| ${w.name} | \`${w.builtinId}\` | \`dock.launch({type:'builtin', builtinId:'${w.builtinId}'})\` |\n`;
+                }
+                mdReport += `\n`;
+
+                mdReport += `---\n**提示**: 在 Widget 脚本中，所有启动操作都通过 \`window.VCPDesktop.dock.launch(item)\` 调用。`;
+
+                resolve({
+                    status: 'success',
+                    result: { content: [{ type: 'text', text: mdReport }] }
+                });
+            } else {
+                reject(new Error(responseData.error || '查询 Dock 应用列表失败。'));
+            }
+        };
+
+        ipcMain.on('desktop-remote-query-dock-response', responseHandler);
+        desktopWin.webContents.send('desktop-remote-query-dock');
     });
 }
 
