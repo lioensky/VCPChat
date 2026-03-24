@@ -1,18 +1,30 @@
-# VCPChat Client
+# VCPChat — Distributed AI-Native Full-Stack Engine
 
-This is an AI chat desktop client built for the VCP (Variable & Command Protocol) server.
+[简体中文](README.md) | [日本語](vcpchatREADME_jp.md) | [Русский](vcpchatREADME_ru.md)
 
-*Please set your username in the Global Settings immediately to avoid errors in many dependent features!*
+**VCPChat is no longer just a chat client; it is a distributed full-stack underlying engine that breaks the boundaries between AI, UI, and App.**
 
-Backend Repository: https://github.com/lioensky/VCPToolBox
+By deeply virtualizing and encapsulating frontend IPC and backend APIs, VCPChat builds an AI-native runtime environment that transcends traditional interaction paradigms.
 
-Please download the wallpaper pack to prevent anomalies in the element windows: https://github.com/lioensky/VCPChat/releases
+*Please set your username in Global Settings immediately to avoid errors in dependent functions!*
 
-Please download the audio codec pack: https://github.com/lioensky/VCPChat/releases/tag/%E8%A7%A3%E7%A0%81%E5%99%A8core
+Backend Link: https://github.com/lioensky/VCPToolBox
+
+Please download the wallpaper pack to avoid window element anomalies: https://github.com/lioensky/VCPChat/releases
+
+Please download the audio decoder pack: https://github.com/lioensky/VCPChat/releases/tag/%E8%A7%A3%E7%A0%81%E5%99%A8core
 
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/lioensky/VCPChat)
 
-## Installation & Deployment
+## 🚀 Engine-Level Abstraction: The 30-Line Miracle
+
+The core value of VCPChat lies in its extreme **abstraction and integration capabilities**.
+
+*   **Extreme Encapsulation**: With underlying high-level streaming rendering, distributed communication, and a full-stack plugin system, developers can now build a fully functional `VChatMini` with just **30 lines of code**.
+*   **Dimensional Strike**: Compared to VCPChat's own 300,000 lines of underlying code, this high level of abstraction makes complex AI application development as simple as playing with building blocks.
+*   **Full-Stack Integration**: Whether it's the HIFI audio engine, streaming HTML rendering, or cross-node distributed file tracking, all capabilities are transparently open to developers through virtualized interfaces (vcpAPI).
+
+## Installation and Deployment
 
 1.  **Clone the Repository**
 
@@ -26,416 +38,446 @@ Please download the audio codec pack: https://github.com/lioensky/VCPChat/releas
 
     This project requires Node.js and Python environments.
 
-    *   **Install Node.js Dependencies:**
+    *   **Install Node.js dependencies:**
         ```bash
         npm install
         ```
 
-    *   **Install Python Dependencies** (for audio engine, advanced plugins, etc.):
+    *   **Install Python dependencies** (for audio engine, advanced plugins, etc.):
         ```bash
         pip install -r requirements.txt
         ```
-    *   **Install High-Performance Audio Resampling Module (Optional, Recommended)**:
-        This project includes a high-performance audio resampling module written in Rust to enhance sound quality in upsampling and WASAPI modes.
-        If your environment is **64-bit Windows** and you are using **Python 3.13**, you can directly install the pre-compiled module:
-        ```bash
-        pip install audio_engine/rust_audio_resampler-0.1.0-cp313-cp313-win_amd64.whl
-        ```
-        If you have a different environment, you will need to navigate to the `rust_audio_engine` directory and compile it yourself.
 
-3.  **Launch the Application**
+3.  **Start the Application**
 
-    *   **Normal Launch:**
+    *   **Normal Start:**
         ```bash
         npm start
         ```
 
-    *   **Silent Launch (Optional):**
-        You can also use the `run_silent.vbs` script for a silent launch without a console window.
-## Deep Frontend-Backend Synergy: Unleashing the Infinite Potential of the AI Soul
+    *   **Silent Start (Optional):**
+        You can also use the `run_silent.vbs` script for a silent start without a console window.
 
-VCPChat is more than just a chat interface; it is the "eyes" and "canvas" for the powerful VCP backend ecosystem (VCPToolBox). Their deep integration is designed to unleash the infinite potential of AI:
+---
 
-*   **Advanced Capability Rendering**: VCPChat is specifically designed to render the complex outputs of the VCP protocol. Whether it's the AI's "diaries" of active logging and self-reflection or rich multimedia content, everything is presented in the most intuitive way possible. VCPChat's Agent output bubbles possess monstrous rendering capabilities, able to render almost all mainstream animations and documents.
-*   **Heavy Asynchronous Tasks**: The backend can execute time-consuming, heavy tasks such as video generation and data analysis. The AI can respond to the user immediately after initiating a task. Upon completion, VCPChat will display the results (like a generated video) in real-time within the conversation flow via a backend push, ensuring a smooth, non-blocking experience.
-*   **Agent Swarm Intelligence**: The backend supports multiple AI Agents collaborating, even enabling an Agent to delegate tasks to sub-Agents. VCPChat's group chat mode and clear speaker tagging system provide the perfect interactive interface for this advanced "AI Maid Corps" collaborative workflow.
-*   **Rich Multimedia Interaction**: The AI can invoke VCP tools through the backend to send emotes, play music, and display videos within the conversation. VCPChat's powerful multimedia rendering engine and advanced window bubble animations, including streaming animations, guarantee an ultimate audio-visual experience.
-*   **VCP Core Multimodal Capabilities**: This enables AI to truly see and hear the multimedia generated by plugins like FluxGen or SunoGen.
-    *   **Base64 Direct Passthrough**: Allows AI to directly embed Base64 data within the `tool` field, drastically simplifying the on-the-fly invocation of multimedia content.
-    *   **Global File API (`VCPFileAPI` v4.0 Hyper-stack Tracing Edition)**: Implements revolutionary full-URL hyper-stack tracing. Now, when an AI on any distributed node submits a local file path (e.g., `H:\MCP\123.txt`), the main server can intelligently resolve its origin and automatically request the file's Base64 data from the source node, achieving seamless cross-server file invocation.
-    *   **Cross-Modal Intelligent Transpilation**: Enables higher-tier models to "empower" lower-tier models. For example, an audio-recognition model can assist a text-only model by intelligently translating an inaccessible audio Base64 data into a textual description, feeding it back to the requester.
-    *   **Distributed Multimodal Transmission (v4.0 Core Upgrade)**: Leveraging **full-URL hyper-stack tracing**, any AI on any node can directly use local file paths for cross-server calls. The main server automatically traces and fetches the data, completely breaking down the file silos within the distributed network and allowing multimodal data to flow seamlessly in a star network topology.
-    *   **Intelligent Response Routing**: The VCP core can intelligently determine whether a plugin returns traditional stdio text or structured data containing Base64, automatically selecting the correct channel for forwarding and processing.
-    *   **Multi-Agent Collaborative Sharing**: In multi-Agent collaborative tasks, it enables intelligent sharing of Base64 data and can dynamically transpile it into a temporary `fileurl` as needed, facilitating access for other Agents or front-end applications.
+## Deep Frontend-Backend Synergy: Unleashing AI's Infinite Potential
 
-## Major Features
+VCPChat is more than just a chat interface; it is the "eyes" and "canvas" of the powerful VCP backend ecosystem (VCPToolBox). The deep integration of both aims to unleash the infinite potential of AI:
 
-*   **VCP Server Integration**: The client's core chat functionality relies on a VCP server. It communicates with the VCP server via HTTP(S) to send user messages and receive AI responses, supporting streaming for real-time interaction.
-*   **VCP Tool Calls**: Flawlessly supports various tool calls defined by the VCP server, including **synchronous tools** that require immediate results (like calculations, queries) and **asynchronous tools** that can run in the background (like video generation, long-form website scraping), infinitely expanding the AI's capabilities. VCPChat has deeply optimized the tool call process to provide more powerful interactive abilities:
-    *   **Intelligent Interactive Bubbles**: Tool call bubbles are meticulously designed to expand on hover, clearly displaying the complete instruction set initiated by the AI for user understanding and debugging.
-    *   **Diversified Callback Mechanisms**: When a task is completed, the user is notified of the result through multiple channels:
-        *   **WebSocket Real-time Notifications**: Ideal for scenarios requiring immediate feedback.
-        *   **Context-Embedded Bubbles**: Seamlessly integrates results into the conversation flow.
-        *   **System-level Multi-Device Push Notifications**: Ensures users receive important task completion alerts even when not in the app.
-    *   **Collaborative Command Optimization**: Before executing a tool call, the AI can proactively seek user input or invite the user and other Agents to collaboratively modify and refine the command, enabling human-machine/multi-Agent collaborative decision-making.
-    *   **Reliable Abort Mechanism**: When a user aborts an AI response, the system synchronously terminates the ongoing VCP tool call chain and completely kills the associated background processes, ensuring timely resource release.
-*   **User-Side VCP Tool Invoker**:
-    *   The powerful VCP tools are no longer exclusive to the AI. VCPChat provides users with a complete and intuitive graphical user interface (GUI) to easily invoke and execute VCP tools.
-    *   **No Commands Needed**: Users don't need to memorize or manually type complex commands. Simply select a tool in the GUI and click parameter preset buttons to leverage the VCP ecosystem's power just like an AI.
-    *   **Transparent Execution**: The invocation process and results are clearly displayed in the interface for easy monitoring and debugging.
-*   **ComfyGen Plugin Panel**: Provides a rich management and configuration panel for the powerful ComfyGen image generation plugin. This includes fine-grained control over Workflows, LoRA models, and other model files. Furthermore, it integrates a front-end management interface similar to Stable Diffusion WebUI, allowing both users and AI to intuitively and precisely control every parameter and detail of image generation through a graphical interface, greatly enhancing creative flexibility and depth.
-    *   This feature breaks down the barrier between humans and AI in tool usage, allowing users to become direct participants and creators in the VCP ecosystem.
+*   **Advanced Capability Rendering**: VCPChat is designed specifically to render the complex outputs of the VCP protocol. Whether it's the "diary" of AI's active recording and reflection or multimedia content, it can be presented in the most intuitive way. VCPChat's Agent output bubbles have almost monstrous rendering capabilities, capable of rendering nearly all mainstream animations and documents.
+*   **Heavy Asynchronous Tasks**: The backend can execute heavy, time-consuming tasks such as video generation and data analysis. After the AI initiates a task, it can respond to the user immediately. Once the task is completed, VCPChat will push the results (such as generated videos) in real-time into the conversation flow through the backend, ensuring a smooth process without lag.
+*   **Agent Swarm Intelligence**: The backend supports multiple AI Agents working together, even enabling an Agent to actively assign tasks to sub-Agents. VCPChat's group chat mode and clear speaker marking system provide the perfect interaction interface for this advanced "AI Maid Squad" collaboration flow.
+*   **Rich Multimedia Interaction**: AI can call VCP tools through the backend to send emojis, play music, and show videos in conversations. VCPChat has a powerful multimedia rendering engine and advanced window bubble animations and streaming animations, ensuring an ultimate audiovisual experience.
+*   **VCP Core Multimodal Capabilities**: This allows AI to truly see and hear multimedia generated by plugins like FluxGen or SunoGen.
+    *   **Base64 Direct Pass**: Allows AI to directly introduce Base64 data in the `tool` field, greatly simplifying the immediate calling of multimedia content.
+    *   **Global File API (`VCPFileAPI` v4.0 Hyper-Stack Tracking Edition)**: Implements revolutionary full-URL hyper-stack tracking. Now, when an AI submits a local file path (e.g., `H:\MCP\123.txt`) on any distributed node, the main server can intelligently parse its source and automatically request the file's Base64 data from the source node, achieving seamless cross-server file calling.
+    *   **Cross-Modal Intelligent Translation**: Implements "capability empowerment" from high-order models to low-order models. For example, a model that can recognize audio can help a text-only model by intelligently translating audio Base64 data it cannot process into text descriptions, feeding it back to the requester.
+    *   **Distributed Multimodal Transmission (v4.0 Core Upgrade)**: With **full-URL hyper-stack tracking**, AI on any node can directly use local file paths for cross-server calls. The main server will automatically track and pull data, completely breaking through file islands in distributed networks and allowing multimodal data to flow seamlessly in a star network.
+    *   **Intelligent Response Routing**: The VCP core can intelligently determine whether a plugin returns traditional stdio text information or structured data containing Base64, and automatically select the correct channel for forwarding and processing.
+    *   **Multi-Agent Collaborative Sharing**: In multi-Agent collaborative tasks, intelligent sharing of Base64 data is achieved, and it can be dynamically translated into temporary `fileurl` as needed for access by other Agents or frontend applications.
 
-*   **VCP Diary Rendering**: Capable of rendering and displaying VCP diary content. This is not just for viewing logs but serves as a window into how the AI forms long-term memories and achieves self-evolution.
+## 🔥 Recent Major Updates
+
+### 🧠 Memo Neural Cloud Map Management Center — Global Memory Visualization Revolution (2026.03.19)
+
+The Memo Management Center on the VChat frontend has received a milestone upgrade. Based on the Wave V7 engine, it implements **one-click visualization of the global memory neural node cloud map**, allowing users to observe the logical energy flow pulse between all Agent memories in real-time (based on V7's symmetry-breaking ordered energy index).
+
+*   **Interactive Memory Topology**: Users can click on single or multiple memory documents to highlight corresponding associated memory nodes, intuitively understanding the logical topological relationship of each memory in the entire database.
+*   **Native Multimodal Support**: Memory documents support almost all formats—notes, recordings, videos, PDFs, etc., all of which can be incorporated into the cloud map as neural nodes.
+*   **Neuron Batch Editing**: Based on the neural network topology, batch editing and even event merging can be performed on multiple neighboring diaries, increasing memory organization efficiency by orders of magnitude.
+*   **New Memo Workbench**: A new Memo Center workbench page has been added, supporting the selection of multiple diaries as references for writing new diaries, allowing Agent ghostwriting or automatic Tag completion, providing a more convenient and intuitive interface and visualization experience for diary organization.
+
+### 🖥️ VCPDesktop — World's First AI-Native Desktop (2026.03.22)
+
+A truly next-generation, revolutionary paradigm function has landed—**VCPDesktop**. This subsystem relies almost entirely on VCP's powerful infrastructure and VChat's excellent performance framework to bridge the gap between AI and UI.
+
+*   **Streaming Desktop Push**: AI can use the `<<<[DESKTOP_PUSH]>>>` syntax to stream any content to the VCP desktop, generating real-time Widget plugins. From weather and schedules to news, AI can seamlessly create, perceive, edit, and manage these floating Widgets, achieving **100ms latency-level "word-to-action"**.
+*   **Deep Backend Integration**: VCPDesktop is deeply integrated with backend WebSocket and Admin APIs, featuring rich floating notifications, system interactions, and automatic backend data pulling.
+*   **Desktop-Level Persistence**: Users can collect any desktop-level div bubbles or floating HTML sent by Agents to build persistent desktop components—including but not limited to real weather widgets, real music players, real web widgets, and even desktop mini-games.
+*   **VCPCli Deep Integration**: Automatically retrieves the user's PC desktop or folders for real-time shortcut synchronization, existing and working as a true desktop.
+*   **Streaming Rendering Engine**: Relying on VChat's streaming rendering engine, it can stream any content, comes with a tombstone freezing mechanism, and offers a performance experience far exceeding conventional Electron software.
+*   **Global Theme Integration**: Supports the VCP global distributed theme broadcaster, enjoying a globally unified UI/UX style, while allowing Agents to dynamically edit desktop layouts, CSS styles, wallpapers, and dynamic advanced wallpapers.
+*   **Information Display Revolution**: On giant screens, AI can easily demonstrate and teach information content of any complex dimension, forming a next-generation information display and interaction panel, completely subverting the concept of desktop interaction.
+
+> 📖 **VCPDesktop Full Technical Documentation**: [VCPdesktop Introduction Document](Desktopmodules/VCPdesktop介绍文档.md) — Includes system architecture, file structure, AI-native capability details, widget API reference, and design philosophy.
+
+---
+
+## Main Features
+
+*   **VCP Server Integration**: The core interaction functionality of the engine depends on the VCP server. It communicates with the VCP server via HTTP(S), sending user messages and receiving AI responses, supporting streaming for real-time interaction.
+*   **VCP Tool Calling**: Perfectly supports various tool calls defined by the VCP server, including **synchronous tools** that require immediate results (e.g., calculation, query) and **asynchronous tools** that can be executed in the background (e.g., video generation, website long-text scraping), infinitely extending AI's capability boundaries. VChat has deeply optimized the tool calling process, providing more powerful interaction capabilities:
+    *   **Intelligent Interaction Bubbles**: Tool call bubbles are carefully designed to automatically expand on hover, clearly displaying the full set of instructions initiated by the AI for user understanding and debugging.
+    *   **Diverse Callback Mechanisms**: After task completion, results can be notified to the user in multiple ways:
+        *   **WebSocket Real-time Notification**: Suitable for scenarios requiring instant feedback.
+        *   **Contextual Embedded Bubbles**: Seamlessly integrate results into the conversation flow.
+        *   **System-level Multi-device Push Notifications**: Users can receive completion reminders for important tasks even when not in the app.
+    *   **Collaborative Instruction Optimization**: Before executing a tool call, the AI can actively seek user advice or invite users and other Agents to collaborate on modifying and refining the instructions to be executed, achieving human-machine/multi-Agent collaborative decision-making.
+    *   **Reliable Abort Mechanism**: When a user aborts an AI reply, the system synchronously aborts the executing VCP tool call chain and completely terminates related background processes, ensuring timely resource release.
+*   **User-Side VCP Tool Caller**:
+    *   Powerful VCP tools are no longer exclusive to AI. VChat provides a complete, intuitive Graphical User Interface (GUI) for users to easily call and execute VCP tools.
+    *   **No Commands Needed**: Users don't need to remember and manually enter complex commands; they can simply select tools and click parameter preset buttons in the GUI to leverage the power of the VCP ecosystem just like an AI.
+    *   **Transparent Execution**: The calling process and results are clearly displayed on the interface for user monitoring and debugging.
+*   **ComfyGen Plugin Panel**: Provides rich management and configuration panels for ComfyGen, a powerful image generation plugin. This includes fine-grained management of Workflows, LoRA models, and other model files. Additionally, it integrates a frontend management interface similar to Stable Diffusion WebUI, allowing users and AI to intuitively and precisely control every parameter and content detail of image generation through a graphical interface, greatly enhancing creative flexibility and depth.
+    *   This feature breaks the boundary between humans and AI in tool usage, allowing users to become direct participants and creators in the VCP ecosystem.
+
+*   **VCP Diary Rendering**: Capable of rendering and displaying VCP diary content. This is not just viewing logs, but a window into how AI forms long-term memory and achieves self-evolution.
 *   **Agent Management**:
     *   Create, delete, and configure multiple AI Agents.
-    *   Set a name, system prompt, and model parameters (e.g., temperature, context token limit, max output tokens) for each Agent.
+    *   Set name, system prompt, and model parameters (e.g., temperature, context Token limit, max output Tokens) for each Agent.
     *   Manage Agent avatars.
-    *   **Autonomous Topic Management**: Agents can now perceive, edit, modify, and create their own chat topic lists. They can understand historical chat content, read specific chat logs, or create a new topic from scratch. This is particularly useful when an Agent is working in the background and needs to proactively initiate a conversation with the user, enabling a higher level of autonomous interaction.
-    *   Supports multiple independent chat topics for each Agent, including topic creation, deletion, renaming, sorting, and **exporting** (to Markdown or HTML format).
-    *   Supports custom sorting of the Agent list.
-*   **Advanced Context Management (SillyTavern Compatible)**: VCPChat implements a context management mechanism highly compatible with SillyTavern, based on backend server nodes, providing powerful support for fine-grained, reusable dialogue background settings.
-    *  **Presets, Character Cards, and Worldbooks**: The VCP system is now fully compatible with and supports mounting SillyTavern `Presets`, `Character Cards`, and `Worldbooks`. You can seamlessly import and use your existing SillyTavern resources or create and manage them directly within VCP.
-    *  **Visual Preset Editor**: A powerful built-in visual editor allows you to create and edit context presets. It supports complex injection rules like `Deep Injection` and `Relative Injection` to precisely control the position and behavior of each context entry in the dialogue history.
-    *  **Drag-and-Drop Context Sorting**: In the chat interface, all injected contexts (like system prompts, character settings, world info, etc.) are clearly visible and support real-time reordering via `drag-and-drop`, allowing you to intuitively change the AI's behavioral priorities.
-    *  **Independent Agent Mounting**: Each Agent can independently mount different combinations of presets and worldbooks. This means you can configure a set of professional writing materials for a "Writing Assistant" Agent while setting up a completely different role-playing scenario for a "Chat Companion" Agent, achieving a highly personalized AI experience.
+    *   **Autonomous Topic Management**: Agents can now perceive, edit, modify, and create their own chat topic lists. They can understand historical chat content, read specific chat records, or directly create a new topic. This is very useful when an Agent is working in the background and needs to actively initiate a chat with the user, achieving more advanced autonomous interaction.
+    *   Support for multiple independent chat topics (Topics) per Agent, including creation, deletion, renaming, sorting, and **exporting** (supports exporting to Markdown or HTML formats).
+    *   Support for custom sorting of the Agent list.
+*   **Advanced Context Management (SillyTavern Compatible)**: VChat implements a context management mechanism highly compatible with SillyTavern based on backend server nodes, providing powerful support for refined and reusable conversation background settings.
+    *  **Presets, Character Cards, and World Books**: The VCP system now fully supports and allows mounting SillyTavern's `Presets`, `Character Cards`, and `World Books`. You can seamlessly import and use existing SillyTavern resources or create and manage them directly within VCP.
+    *  **Visual Preset Editor**: Built-in powerful visual editor allows you to create and edit context presets. Supports setting complex injection rules such as `Deep Injection` and `Relative Injection`, precisely controlling the position and behavior of each context entry in the conversation history.
+    *  **Drag-and-Drop Context Sorting**: In the chat interface, all injected contexts (such as system prompts, character settings, world info, etc.) are clearly visible and support real-time adjustment of their relative order via `drag-and-drop`, intuitively changing AI behavior priorities.
+    *  **Independent Agent Mounting**: Each Agent can independently mount different combinations of presets and world books. This means you can configure a set of professional writing background materials for a "Writing Assistant" Agent while setting a completely different role-playing configuration for a "Chat Companion" Agent, achieving a highly personalized AI experience.
 *   **Group Chat Mode (Agent Groups)**:
     *   Allows multiple configured Agents to collaborate or role-play in the same chat session.
     *   Supports creating, configuring, and managing Agent groups, including setting group names and avatars.
-    *   Each group can include multiple members selected from the existing Agent list.
+    *   Each group can contain multiple members selected from the existing Agent list.
     *   **Speaking Modes**:
-        *   **Sequential (`sequential`)**: Members speak in a predetermined order (currently implemented as sequential order from the member list, one at a time; advanced rotation logic can be enhanced later).
-        *   **Natural Random (`naturerandom`)**: Intelligently determines which members should respond by generating context weights based on `@CharacterName`, `@CharacterTag` in user input, or by matching keywords/descriptors in the message content with members' preset tags. This mode retains a degree of randomness while building a natural weighted response sequence and may select a fallback speaker if no specific trigger is found.
-        *   **Invite Only (`inviteonly`)**: The next speaker is determined by which Agent's button the user clicks.
-    *   **Group Prompt (`groupPrompt`)**: A common background, set of rules, or system-level instruction can be defined for the entire group chat, influencing the behavior of all Agents within it.
-    *   **Speaking Invitation (`invitePrompt`)**:
-        *   This is a template string used by the system (or a coordinator Agent) to prompt a specific Agent to speak in a group chat.
-        *   The template must use `{{VCPChatAgentName}}` as a placeholder, which the system will automatically replace with the target Agent's name during the invitation.
-        *   **Default `invitePrompt` Example**: `It is now your turn to speak, {{VCPChatAgentName}}. The system has already added a "[Speaker's turn]:" prefix for everyone to distinguish who is speaking. You do not need to output your own speaker tag. When discussing, do not talk about this tagging system; focus on the normal conversation.`
-        *   This prompt is designed to guide the Agent to begin its turn naturally while informing it of the speaker tagging rules.
-    *   **Speaker Tagging System**:
-        *   To clearly identify the source of each message in a group chat involving multiple Agents and a user, the system automatically prepends a speaker tag to every message (from both user and Agents), typically in the format `[Speaker Name's turn]: Actual message content`.
-        *   **Important Note**: Users and configured Agents **should not manually type or imitate** these tags during conversation. The Agents' system prompts and the `invitePrompt` should also guide them to focus on the conversation content, not on discussing or generating these tags.
-    *   Groups also support independent topic management, including creation, deletion, renaming, and sorting of topics.
-*   **Group Files / Workspace**: Provides each group with a dedicated shared file space and workspace.
-    *   **Centralized Storage**: All files related to group tasks (documents, code, assets, etc.) can be uploaded and stored here, accessible to all group members (user and Agents).
-    *   **Collaborative Editing**: Supports real-time collaborative editing of files within the workspace, similar to online documents, greatly facilitating teamwork and project iteration.
-*   **Cross-Device Memory & Seamless Synchronization**: VCPChat's memory system is centered around the VCP backend, creating a unified, persistent memory bank for Agents. This means that no matter which frontend you use to interact with an Agent (web, mobile, or another VCPChat client), all conversation history, learned knowledge, and user preferences are synchronized in real-time to this central repository. When you open the VCPChat client, it automatically pulls the latest memory state from the backend, ensuring your Agent has complete and coherent context. This design breaks down barriers between devices, achieving true "one conversation, everywhere sync," allowing you to communicate seamlessly with the same "old friend" wherever you are.
+        *   **Sequential (`sequential`)**: Members take turns speaking in a predetermined order (currently implemented as the order in the member list, one at a time; advanced rotation logic can be enhanced later).
+        *   **Natural Random (`naturerandom`)**: Intelligently determines which members respond based on `@charactername`, `@charactertag` in user input, or keywords/descriptors in message content matching each Agent's preset tags. This mode retains some randomness while building natural weight response sequences and may choose a fallback speaker when no clear trigger is present.
+        *   **Invite Only (`inviteonly`)**: Decides who speaks based on the user clicking an Agent's button.
+    *   **Group Prompt (`groupPrompt`)**: Can define a common background, rules, or system-level instructions for the entire group chat, affecting the behavior of all Agents in the group.
+    *   **Invite Prompt (`invitePrompt`)**:
+        *   This is a template string used by the system (or coordinator Agent) to prompt a specific Agent to speak in a group chat.
+        *   The template should use `{{VCPChatAgentName}}` as a placeholder, which the system will automatically replace with the target Agent's name during the actual invitation.
+        *   **Default `invitePrompt` Example**: `It's your turn to speak, {{VCPChatAgentName}}. The system has added markers like [xxx's speech:] for everyone to distinguish who is speaking. You don't need to output your own speaker markers; focus on normal chatting and don't discuss this marker system during the discussion.`
+        *   This prompt aims to guide the Agent to start its turn naturally while informing them about the speaker marking rules.
+    *   **Speaker Marking System**:
+        *   To clearly identify the source of each message in a group chat containing multiple Agents and users, the system automatically adds a speaker marker before each message (whether from a user or an Agent), usually in the format `[Speaker Name's speech]: Actual message content`.
+        *   **Important Note**: Users and configured Agents **do not need to manually enter or mimic** these marker headers when chatting. Agent system prompts and `invitePrompt` should also guide them to focus on conversation content rather than discussing or generating these markers.
+    *   Groups also support independent topic management, including creation, deletion, renaming, and sorting.
+*   **Group Files/Workspace**: Provides a dedicated shared file space and workspace for each group.
+    *   **Centralized Storage**: All files related to group tasks (documents, code, assets, etc.) can be uploaded and stored here, accessible to all group members (users and Agents).
+    *   **Collaborative Editing**: Supports real-time collaborative editing of files in the workspace, similar to online documents, greatly facilitating team cooperation and project iteration.
+*   **Cross-Terminal Memory and Seamless Sync**: VChat's memory system is centered on the VCP backend, building a unified, persistent Agent memory library. This means that no matter which frontend (e.g., web, mobile, or VChat client on another computer) you interact with the Agent on, all conversation history, learned knowledge, and formed user preferences will be synced to this central memory library in real-time. When you open the VChat client, it automatically pulls the latest memory state from the backend, ensuring your Agent has a complete, coherent context. This design breaks down barriers between devices, achieving true "one conversation, sync everywhere," allowing you to communicate seamlessly with the same "old friend" no matter where you are.
 *   **Flow Lock Mode**:
-    *   **Focused Interaction**: When this feature is enabled for a topic, the user is temporarily unable to switch Agents or topics, and the window is locked to ensure depth and continuity in the conversation.
-    *   **AI Proactivity**: In this mode, the AI no longer passively waits for user input. It can proactively initiate dialogue, continue executing tasks, report progress, or propose ideas, achieving true autonomous work.
-    *   **Dual Control**:
-        *   **User**: Can set a prompt to trigger the AI's proactive speech, define a minimum cooldown (CD) for these initiations, and manually toggle Flow Lock on or off at any time.
-        *   **AI**: Can also autonomously enable or disable Flow Lock based on task requirements and set its own trigger prompt for its next proactive action.
-    *   **A New Work Paradigm**: Combined with VCPChat's existing proactive pop-up UI, Flow Lock mode allows Agents to independently undertake long-term, complex tasks. The AI only seeks user advice at critical junctures or when decisions are needed, completely breaking free from the traditional question-and-answer model. This is suitable for various scenarios requiring continuous thought and execution, such as research, programming, and creative writing.
+    *   **Focused Interaction**: When this feature is enabled for a specific topic, the user will temporarily be unable to switch Agents or topics, and the window will be locked to ensure depth and continuity of the conversation.
+    *   **AI Proactivity**: In this mode, AI no longer just passively waits for user input but can actively initiate conversations, continue tasks, report progress, or propose ideas, achieving true autonomous work.
+    *   **Two-Way Control**:
+        *   **User**: Can set the prompt to trigger AI proactivity, the minimum cooldown (CD) for AI proactivity, and manually turn Flow Lock on or off at any time.
+        *   **AI**: Can also autonomously turn Flow Lock on or off based on task requirements and set the prompt to trigger the next proactive behavior.
+    *   **New Work Paradigm**: Combined with VChat's existing proactive popup interaction UI, Flow Lock mode allows Agents to independently perform long-term, complex tasks. AI only seeks user advice at critical nodes or when decisions are needed, completely breaking away from the traditional Q&A mode, suitable for various scenarios requiring continuous thinking and execution, such as research, programming, and creation.
 *   **Agent Regular Expressions**:
-    *   Introduces powerful regular expression functionality, allowing for deeper control over Agent behavior.
-    *   Supports multiple regex application scenarios, including: **Chat History Content Regex**, **Renderer Regex**, **Deep Regex**, and **Content Array Regex**.
-    *   Provides a complete graphical user interface (GUI) for easy editing, testing, and management of regular expressions, significantly improving usability.
+    *   Introduces powerful regex functionality, allowing deeper control over Agent behavior.
+    *   Supports multiple regex application scenarios, including: **Chat history content regex**, **Renderer regex**, **Deep regex**, and **content array regex**.
+    *   Provides a complete Graphical User Interface (GUI) for users to easily edit, test, and manage regular expressions, greatly enhancing usability.
 *   **VCP Human Toolbox**:
-    *   **Automatic GUI Generation**: Now automatically generates graphical user interfaces (GUIs) for all VCP plugins on the server, greatly facilitating direct operation and debugging by human users.
-    *   **Workflow Enhancement**: The workflow engine has been comprehensively upgraded, offering finer-grained node control and more powerful logic-building capabilities.
-    *   **Refined Node I/O**: Enhanced control over node input and output data.
+    *   **Automatic GUI Generation**: Now automatically generates a Graphical User Interface (GUI) for all VCP plugins on the server, greatly facilitating direct operation and debugging by human users.
+    *   **Workflow Enhancement**: The workflow engine has been fully upgraded, providing finer node control and more powerful logic building capabilities.
+    *   **Node I/O Refinement**: Enhanced control over node input and output data.
     *   **New Advanced Nodes**:
-        *   **Data Converter**: Facilitates data format conversion between different nodes.
-        *   **Advanced Conditional Logic**: Supports more complex logical branching.
-        *   **Timer/Delay**: For controlling the execution timing of workflows.
-        *   **Editor/Loop Nodes**: Provides more flexible data processing and flow control.
-    *   **URL Renderer Upgrade**: Can now directly render PDF, audio, and video files, enriching content presentation.
-*   **Canvas Collaboration Module: A Real-time, Interactive Workspace for Code and Documents**:
-    *   **Functionality**: A revolutionary real-time collaborative space that can be created by users or Agents at any time. It's not just a text editor but a "living document" and "interactive whiteboard" with an integrated full development and rendering environment.
-    *   **Seamless Collaborative Editing**: Within this workspace, users and AI can co-edit code (e.g., `.js`, `.py`, `.html`) or documents (`.md`) with **zero latency**, just like using Google Docs. Every change is synchronized to all parties in real-time.
-    *   **Group Collaboration & File Area Integration**: Canvas is now deeply integrated into group chat mode. Users and multiple Agents can jointly open and edit the same Canvas within a group, with real-time synchronization to the group's file area. This allows AI teams to collaborate seamlessly around a shared, executable document or codebase, just like a human development team, to complete complex coding and documentation tasks.
+        *   **Data Transformer**: Facilitates data format conversion between different nodes.
+        *   **Advanced Conditional Judgment**: Supports more complex logic branches.
+        *   **Timer/Delayer**: Used to control the execution timing of workflows.
+        *   **Editor/Loop Nodes**: Provide more flexible data processing and flow control capabilities.
+    *   **URL Renderer Upgrade**: Now capable of directly rendering PDF, audio, and video files, enriching content presentation.
+*   **Canvas Collaborative Module: Real-time, Interactive Code and Document Workspace**:
+    *   **Functional Positioning**: A revolutionary real-time collaborative space that users or Agents can create at any time. It is not just a text editor but a "living document" and "interactive whiteboard" integrated with a complete development and rendering environment.
+    *   **Seamless Collaborative Editing**: Within this workspace, users and AI can collaboratively edit code (e.g., `.js`, `.py`, `.html`) or documents (`.md`) with **zero latency**, just like using Google Docs. Every change is synced to the other party in real-time.
+    *   **Group Collaboration and File Area Integration**: Canvas is now deeply integrated into group chat mode. Users and multiple Agents can jointly open and edit the same Canvas in a group, syncing in real-time with documents in the group file area. This enables AI teams to collaborate seamlessly around a shared, executable document or codebase, just like human development teams, to complete complex coding and documentation tasks.
     *   **Built-in Full-Featured IDE**:
-        *   **Sandboxed Compilation & Execution**: Provides a secure sandbox environment to directly compile and run code within the workspace, with results displayed in real-time.
-        *   **Instant Debugging**: Errors, logs, and outputs from code execution are immediately shown alongside, facilitating joint debugging by AI and users.
-        *   **VCPChat Super Renderer Integration**: Code within the workspace (such as HTML, Mermaid diagrams, Python data visualizations) can directly call VCPChat's powerful rendering engine for previews, achieving a "what you see is what you get" experience.
-    *   **Document Typing & Workspace Management**: Canvas is no longer a collection of scattered files but a structured project space. It supports categorizing and archiving different document types (e.g., code, Markdown notes, design diagrams) or managing them via a folder/tag system, making multi-file collaboration in complex projects orderly and efficient.
-    *   **Version History & Visual Node Graph**: Every significant save or commit creates a "change node" on a timeline. Canvas visually records the entire evolution history of a document as an intuitive node graph. Users can easily browse, compare differences between versions, and revert to any historical node with a single click, providing robust security and traceability for collaborative development and creative iteration.
-    *   **Core Use Cases**:
-        *   **AI Proof-of-Concept (PoC)**: Instead of just sending static code snippets, an AI can directly create a runnable, interactive project prototype in Canvas to demonstrate its ideas to the user.
-        *   **Human-AI Pair Programming**: A user can paste their code and invite an AI to refactor, optimize, or add new features. Both parties can discuss, modify, and test the code in real-time.
-        *   **Interactive Learning & Tutoring**: An AI can act as a tutor, guiding a user step-by-step through learning to code in Canvas, with every action clearly visible and instantly verifiable.
-    *   Implements Agent persistent memory, cross-device memory, and timeline memory based on the VCP backend.
-    *   The AI possesses a complete, cross-topic unique identification cognition and continuously reflects upon, optimizes, and learns from all tool calls.
+        *   **Sandboxed Compilation and Execution**: Provides a safe sandboxed environment to directly compile and run code within the workspace, displaying results in real-time.
+        *   **Instant Debugging**: Errors, logs, and outputs during code execution are immediately displayed alongside, facilitating joint diagnosis by AI and users.
+        *   **VChat Super Renderer Integration**: Code within the workspace (e.g., HTML, Mermaid diagrams, Python data visualization) can directly call VChat's powerful rendering engine for preview, achieving "what you see is what you get."
+    *   **Document Categorization and Workspace Management**: Canvas is no longer a collection of scattered files but a structured project space. Supports categorizing and archiving different types of documents (e.g., code, Markdown notes, design drawings) or managing them through a folder/tag system, keeping multi-file collaboration in complex projects orderly.
+    *   **Version Rollback and Visual Node Line**: Every important save or submission creates a "change node" on the timeline. Canvas clearly records every evolution history of the document in the form of an intuitive node line map. Users can easily browse and compare differences between versions and roll back to any historical node with one click, providing powerful security and traceability for collaborative development and creative iteration.
+    *   **Core Application Scenarios**:
+        *   **AI Proof of Concept (PoC)**: AI can no longer just send static code snippets but directly create a runnable, interactive project prototype in Canvas to demonstrate its ideas to the user.
+        *   **Human-AI Pair Programming**: Users can paste their code and invite AI to refactor, optimize, or add new features. Both parties can discuss while modifying and testing code in real-time.
+        *   **Interactive Learning and Teaching**: AI can act as a tutor, guiding users to learn programming step-by-step in Canvas, with every operation clearly visible and immediately verifiable.
+    *   Implements Agent permanent memory/cross-terminal memory/timeline memory based on VCP backend.
+    *   AI has complete cross-topic unique identification cognition and continuously reflects, optimizes, and learns from all tool calls.
 *   **Chat Interface**:
     *   Provides a user-friendly chat interface for AI interaction.
-    *   Supports rendering chat messages with over 21 renderers, including Markdown, Katex, HTML, Mermaid, VCPTool, manim, matplotlib, Anime.js, Three.js, LaTeX, interactive buttons, interactive pop-ups, div/src, draw.io, csv, pdf, and more, including code block highlighting.
-    *   **Powerful Multimedia & File Handling**:
-        *   Supports adding attachments via file picker, pasting (file paths or multimedia data), and drag-and-drop.
-        *   Can read and paste multimedia (compatible with almost all multimedia and document files on the market) from the clipboard and send it directly in the chat.
-        *   Automatically saves overly long pasted text content as a text file attachment.
-        *   Built-in advanced image viewer for previewing chat images in a separate window, supporting copy and external open.
-        *   **@Attach Note**: Type `@` followed by a keyword in the input box to quickly search for and attach note files from the `AppData/Notemodules` directory, enabling seamless knowledge retrieval.
-    *   **Advanced Dynamic Rendering**: VCPChat can render not just static text but also seamlessly display rich multimedia content generated or called by the backend AI, such as **music, videos, animated emotes, interactive documents**, etc., providing a highly expressive stage for the VCP protocol's powerful capabilities.
-    *   **DIV Element Stream Rendering**: For complex DIV bubble themes output by the AI, VCPChat implements an innovative stream rendering mechanism. It doesn't just display content; it perfectly supports the streaming implementation of VCPChat's 21 built-in renderers (like Markdown, Python, Mermaid) and adds stream rendering compatibility for Anime.js, elegantly handling race conditions with the md renderer. VCPChat gracefully manages extremely complex rendering race conditions. For example: when a DIV contains a Python code block that needs real-time execution (the bubble dynamically renders the code's output), and that Python code includes an `src` image tag that needs loading, or when a table needs to embed an entire Markdown document, or a table cell needs to display an image—VCPChat's rendering engine intelligently renders these complex, nested contents in the correct dependency order, ensuring they are accurately and smoothly assembled into a complete dynamic bubble, offering industry-leading complex content presentation.
+    *   Supports 21 types of renderers including Markdown/Katex/Html/Mermaid/VCPTool/manim/matplotlib/Anime.js/Three.js/Latex/Interactive Buttons/Interactive Popups/div/src/draw.io/csv/pdf... to render chat messages, including code block highlighting.
+    *   **Powerful Multimedia and File Handling**:
+        *   Supports adding attachments via file picker, pasting (file paths or multimedia data), and drag-and-drop operations.
+        *   Capable of reading and pasting multimedia from the clipboard (compatible with almost all multimedia and document files on the market) and sending them directly in chat.
+        *   Supports automatically saving excessively long pasted text as text file attachments.
+        *   Built-in advanced image viewer for previewing images in chat in an independent window, supporting copying and external opening.
+        *   **@Attached Notes**: Type the `@` symbol followed by keywords in the input box to quickly search and attach note files from the `AppData/Notemodules` directory, achieving seamless knowledge calling.
+    *   **Advanced Dynamic Rendering**: VChat can not only render static text but also seamlessly display rich multimedia content generated or called by the backend AI, such as **music, videos, dynamic emojis, and interactive documents**, providing an expressive stage for the powerful capabilities of the VCP protocol.
+    *   **DIV Element Streaming Rendering**: For complex DIV bubble theme content output by AI, VChat implements an innovative streaming rendering mechanism. It's not just simple content display; it's perfectly compatible with VChat's 21 built-in renderers (like Markdown, Python, Mermaid, etc.) in their streaming implementations and adds streaming rendering compatibility for Anime.js, achieving elegant race condition handling with the md renderer. VChat elegantly handles various extremely complex rendering race conditions, such as: when a DIV wraps a Python code block that needs real-time execution (the bubble dynamically renders the code's output), when Python code contains `src` image tags that need loading, when a table needs to embed a full Markdown document, or when a table cell needs to display an image. VChat's rendering engine can intelligently render in the correct dependency order, ensuring these complex, nested contents are accurately and smoothly spliced into a complete dynamic bubble, providing industry-leading complex content presentation capabilities.
     *   **Cross-Chat Message Forwarding**: Greatly simplifies the flow of information and files.
-        *   **One-Click Operation**: In any chat (with a single Agent or in a group), right-click any message bubble and select "Forward."
-        *   **Full Content Preservation**: Forwarding preserves all content of the original message, including text, code blocks, rendered cards, and all attached files (images, documents, etc.).
-        *   **Flexible Target Selection**: You can easily forward messages to any other Agent or group, enabling seamless information sharing and cross-context discussions.    
-    *   **Bubble Comments**: Right-click a message bubble to add a comment. The comment will be attached below the original message, facilitating targeted discussions and notes. This is especially useful when forwarding a bubble, as you can add a comment to explain your intent to the Agent.
-
-    *   **Advanced Bubble Themes**: VCPChat allows each theme file to independently design chat bubble styles and animations. It permits Agents to set unique bubble styles and internal animations for each of their output bubbles, supports interactive elements within bubbles, and allows Agents to customize their own bubble's div/js/canvas content, enabling them to output complete 2D/3D bubble elements.
+        *   **One-Click Operation**: In any chat (whether with a single Agent or in a group), right-click any message bubble to select "Forward."
+        *   **Full Content Retention**: Forwarding completely retains all content of the original message, including text, code blocks, rendered cards, and all attached files (images, documents, etc.).
+        *   **Flexible Target Selection**: You can easily forward messages to any other Agent or group, achieving seamless information sharing and cross-context discussion.
+    *   **Bubble Comments**: Right-click a message bubble to add a comment. Comments are attached below the original message, facilitating targeted discussion and notes. Adding comments when forwarding bubbles is especially helpful for the Agent to understand your forwarding intent.
+    *   **Advanced Bubble Themes**: VChat allows each theme file to independently design chat bubble styles and animations, allows Agents to set independent bubble styles and internal animations for each of their output bubbles, allows bubble interactive elements, and supports Agent customization of their own bubbles with div/js/canvas, enabling Agents to output full 2D/3D bubble element content.
     *   **AI Bubble Interaction Enhancement: Clickable Buttons**:
-        *   The rendering capability of AI output bubbles has been further enhanced, now allowing for the dynamic rendering of interactive `<button>` elements within `div` content.
-        *   This is more than just displaying a button; VCPChat has established a complete event callback mechanism. When a user clicks a button within a bubble, the AI instantly knows which button was clicked (via the button's `id` or other identifiers).
-        *   This feature greatly enhances the dynamism and possibilities of human-machine interaction, enabling the AI to provide options, initiate confirmations, or guide the conversation flow, creating new experiences akin to "interactive fiction" or "guided processes."
-    *   **Advanced Reading Mode**: Provides a feature-rich, immersive reading experience for long content sent by the AI.
+        *   The rendering capability of AI-output bubbles has been further enhanced, now allowing dynamic rendering of interactive `<button>` elements within `div` content.
+        *   This is more than just displaying a button; VChat has established a complete event callback mechanism. When a user clicks a button in a bubble, the AI immediately knows which button was clicked (via button `id` or other identifiers).
+        *   This feature greatly enhances the dynamism and possibilities of human-machine interaction, allowing AI to provide options, initiate confirmations, or guide conversation flows, creating new experiences like "interactive fiction" or "process guidance."
+    *   **Advanced Reading Mode**: Provides a feature-rich immersive reading experience for long content sent by AI.
         *   **Multi-Format Rendering**:
-            *   Full **Markdown** rendering support, including tables, lists, quotes, etc.
-            *   **LaTeX** mathematical formula rendering (KaTeX) for perfect display of complex equations.
-            *   **Mermaid** diagram rendering, allowing code blocks to be directly converted into flowcharts, sequence diagrams, etc.
-            *   Achieved rendering compatibility with Anime.js, including within HTML playback.
+            *   Supports full **Markdown** rendering, including tables, lists, quotes, etc.
+            *   Supports **LaTeX** mathematical formula rendering (KaTeX), perfectly displaying complex formulas.
+            *   Supports **Mermaid** diagram rendering, converting code blocks directly into flowcharts, sequence diagrams, etc.
+            *   Implemented rendering compatibility for Anime.js, including within HTML playback.
         *   **Interactive Code Blocks**:
             *   All code blocks support syntax highlighting (Highlight.js), one-click copy, and **in-block editing**.
-            *   **HTML Rendering**: `html` code blocks have a "Preview" button in the top-right corner to render and view the HTML effect directly within the application.
-            *   **Python Execution**: `python` code blocks have a "Run" button, utilizing **Pyodide (WASM)** technology to execute Python code directly on the client and display the output, perfect for code demonstrations and data manipulation.
-            *   **Python Passthrough Execution**: In trusted mode, `python` code blocks can directly call underlying Windows libraries for execution, allowing direct manipulation of the operating system based on the system's native compilation environment.
-            *   **Three.js 3D Preview**: `javascript` or `js` code blocks containing `three.js` code will have a "Preview" button to render and interact with 3D animations in a sandboxed environment.
-            *   **Automatic Code Completion**: Possesses some auto-completion functionality for code formatting.
-        *   **Convenient Global Actions**:
-            *   Supports **one-click editing** of the entire reading content or quick **sharing to the Notes module**.
-            *   Provides a powerful custom context menu (Copy, Cut, Delete, Edit All, Copy All).
-            *   **Share Screenshot**: A "Share Screenshot" option in the right-click menu allows you to capture the entire beautifully rendered DIV card (like an AI daily report) as an image, preview it in the image viewer, and easily share it on social media or save it.
-    *   Chat branching feature, allowing the creation of new chat branches based on existing conversations.
-    *   **Save to Notes**: A "Save" button on the right-click menu of an Agent bubble allows you to save the current message content (including complex rendered formats) to a specified note file with one click for knowledge retention and future reference.
+            *   **HTML Rendering**: A "Preview" button is provided in the top right of `html` code blocks to render and view HTML effects directly within the app.
+            *   **Python Execution**: A "Run" button is provided in the top right of `python` code blocks, utilizing **Pyodide (WASM)** technology to execute Python code directly on the client and display output, ideal for code demos and data operations.
+            *   **Python Penetration Execution**: `python` code blocks in trust mode directly call Windows underlying libraries for execution, allowing direct operation of system content based on the system's underlying compilation environment.
+            *   **Three.js 3D Preview**: If a `javascript` or `js` code block contains `three.js` code, a "Preview" button will be provided to render and interact with 3D animations in a sandbox environment.
+            *   **Auto Code Completion**: Features some auto-completion functionality for code formats.
+        *   **Convenient Global Operations**:
+            *   Supports **one-click editing** of the entire reading content or quick **sharing to the notes** module.
+            *   Provides a powerful custom context menu (copy, cut, delete, edit full text, copy full text).
+            *   **Share Screenshot**: Provides a "Share Screenshot" function in the right-click menu to capture a full image of the currently beautifully rendered DIV card (e.g., AI Daily) and preview it in the image viewer, convenient for users to share on social media or save.
+    *   Chat branching feature allows creating new chat branches based on existing conversations.
+    *   **Collect to Notes**: A "Collect" button is provided in the Agent bubble right-click menu to save the current message content (including complex rendering formats) completely to a specified note file with one click, facilitating knowledge accumulation and future reference.
 *   **Revolutionary Real-time Differential Rendering: Bringing Conversations to Life**:
-    *   **Core Technology**: VCPChat introduces an unprecedented "Streaming Chat History File Differential Renderer." When the underlying chat log (be it a local file or a database) changes in any way, VCPChat doesn't crudely refresh the entire interface or reconstruct the DOM. Instead, through a sophisticated diff algorithm, it streams the "change" itself to the frontend for real-time rendering. This enables "surgical" updates to the UI, resulting in an experience that is incredibly fluid and stable.
-    *   **Unlocking Infinite Possibilities**: This mechanism completely subverts the traditional "append-only" conversation model, granting both the AI and the user unprecedented abilities:
-        *   **AI's "Self-Evolution"**: The AI can dynamically modify and reshape what it has already said while it is still typing, achieving true synchronized "thought and revision."
-        *   **"God-view" Editing**: Users or developers can directly edit the history in `VchatManager` or any database tool, and the chat bubbles on the frontend will update in real-time as if by magic, without needing a refresh.
-        *   **Non-linear Dialogue**: The AI is no longer limited to "appending" new replies. It can return to the "past" and stream edits, updates, or even append new content to any existing historical bubble, achieving true "dialogue context modification."
-        *   **A New Paradigm for Collaborative Creation**: Imagine an AI working with a user on a shared code block or document bubble, where every modification from either side is synchronized in real-time via differential rendering, as if creating on the same "living document."
+    *   **Technical Core**: VCPChat introduces an industry-first "Streaming Chat History File Differential Renderer." When the underlying chat records (whether local files or database) change, VCPChat doesn't crudely refresh the entire interface or reconstruct the DOM. Instead, through a precise differential algorithm, it streams the "changes" themselves to the frontend in real-time, achieving "surgical" updates to the UI that are extremely smooth and stable.
+    *   **Unleashing Infinite Possibilities**: This mechanism completely subverts the traditional "one-off" conversation mode, giving AI and users unprecedented capabilities:
+        *   **AI's "Self-Evolution"**: AI can dynamically modify and reshape what it has already said during the continuous output (typing) process, achieving true synchronization of "thinking and correction."
+        *   **"God's Eye" Editing**: Users or developers can directly edit history in `VchatManager` or any database tool, and the chat bubbles on the frontend will update content in real-time and dynamically, as if by magic, without needing a refresh.
+        *   **Non-linear Conversation**: AI is no longer limited to "appending" new replies but can directly return to the "past" to stream edits, updates, or even appends in any existing historical bubble, achieving true "conversation context modification."
+        *   **New Paradigm for Collaborative Creation**: Imagine AI collaborating with a user in a shared code block or document bubble, where every modification by both parties is synced via real-time differentials, as if creating on the same "living document."
 
-## AI Emoticon URL Fixer
+## AI Emoji URL Fixer
 
-VCPChat now includes a powerful and intelligent AI Emoticon URL Fixer, designed to resolve various URL errors that can occur when the AI sends emoticons.
+VChat now features a powerful and intelligent AI Emoji URL Fixer designed to solve various URL error issues that may occur when AI sends emojis.
 
 ### Feature Overview
 
-When generating `<img>` tags for emoticons, AIs can sometimes produce URLs with incorrect IP addresses, ports, passwords, emoticon category directories, or filenames due to model hallucinations or data biases. This feature can:
-*   **Auto-Detect**: Intelligently identify image links pointing to emoticons in messages.
-*   **Fuzzy Match**: When a URL is detected as inaccessible (404), it utilizes a built-in emoticon "knowledge base" and a fuzzy matching algorithm to extract key information (like the filename) from the incorrect URL and find the most similar correct emoticon.
-*   **Seamless Repair**: If a high-confidence match is found, it automatically replaces the incorrect URL with the correct one for rendering. The entire process is transparent to the user.
-*   **Intelligent Pass-through**: If the URL is completely correct, or so incorrect that it cannot be matched to any known emoticon, the fixer will abandon the repair and render it as is, avoiding erroneous intervention.
+When AI generates `<img>` tags for emojis, it sometimes makes errors in IP addresses, ports, passwords, emoji category directories, or filenames due to model hallucinations or data bias. This feature can:
+*   **Automatic Detection**: Intelligently identifies image links pointing to emojis in messages.
+*   **Fuzzy Matching**: When a URL is detected as inaccessible (404), it utilizes a built-in emoji "knowledge base" and fuzzy matching algorithms to extract key information (like filenames) from the erroneous URL and find the most similar correct emoji.
+*   **Seamless Repair**: If a high-confidence match is found, it automatically replaces it with the correct URL for rendering, a process transparent to the user.
+*   **Intelligent Pass-through**: If the URL is perfectly correct or so erroneous that it matches no known emoji, the fixer gives up and renders it as is, avoiding incorrect intervention.
 
 ### How to Configure
 
-To enable this feature, you need to sync the emoticon list cache from the backend VCPToolbox project to the VCPChat client.
+To enable this feature, you need to sync the emoji list cache from the backend VCPToolbox project to the VCPChat engine node.
 
-1.  **Copy the Emoticon List**:
-    *   Locate your VCPToolbox backend project.
+1.  **Copy Emoji List**:
+    *   Find your VCPToolbox backend project.
     *   Copy the entire `Vcptoolbox/plugin/EmojiListGenerator/generated_lists` folder.
-    *   Paste it into the `AppData/` directory of your VCPChat project. The final path should be `VCPChat/AppData/generated_lists`.
+    *   Paste it into the `AppData/` directory of the VCPChat project. The final path should be `VCPChat/AppData/generated_lists`.
 
-2.  **Configure the Image Host Password**:
-    *   Inside the `VChat/AppData/generated_lists/` folder you just copied, manually create a text file named `config.env`.
-    *   Open the `config.env` file and write your image host password in the following format:
+2.  **Configure Image Bed Password**:
+    *   In the newly copied `VChat/AppData/generated_lists/` folder, manually create a text file named `config.env`.
+    *   Open the `config.env` file and write your image bed password in the following format:
         ```
-        file_key=your_image_host_password
+        file_key=your_image_bed_password
         ```
-        For example: `file_key=123456`
+        Example: `file_key=123456`
 
-After completing these steps, restart the VCPChat client, and the fixer will start working automatically.    
+After completing these steps, restart the VChat client, and the fixer will automatically start working.
 
-
-*   **Chat History / User Data Manager (VchatManager)**:
-    *   **Data Maintenance & Repair**: Includes built-in data validation and database inconsistency repair functions to ensure data safety and stability over long-term use.
-    *   Adds a separate, Electron-based visual management tool (`VchatManager/`) for viewing and editing user data in `AppData`.
-    *   **Chat Log Viewing & Editing**: Intuitively browse the chat history of all Agents and groups, with support for directly editing message content in the interface.
-    *   **JSON Editor**: Provides a raw JSON view of chat logs for advanced users to inspect and modify.
-    *   **Attachment Browser**: Centrally displays all attachments in the `UserData/attachments` directory, categorized by type (image, audio, video, etc.), showing their binding dependencies with FileAPI fields in the chat history files.
-    *   **Global Chat History Search**: A powerful global search function (`Ctrl+F`) is built-in, allowing you to quickly find specific content across all history and jump directly to the corresponding message bubble.
+*   **Chat History/User Data Manager (VchatManager)**:
+    *   **Data Maintenance and Repair**: Built-in data validation and database inconsistency repair functions ensure data security and stability over long-term use.
+    *   Added an independent, Electron-based visual management tool (`VchatManager/`) for viewing and editing user data in the engine's `AppData`.
+    *   **Chat Record Viewing and Editing**: Intuitively browse chat history for all Agents and groups, and support direct editing of message content in the interface.
+    *   **JSON Editor**: Provides a raw JSON format view of chat records, convenient for advanced users to inspect and modify.
+    *   **Attachment Browser**: Centrally displays all attachments in the `UserData/attachments` directory, categorized by image, audio, video, etc., showing their binding dependencies with FileAPI fields in chat history files.
+    *   **Global Chat History Search**: Built-in powerful global search (`Ctrl+F`) to quickly find specific content across all history and locate corresponding message bubbles directly.
 *   **Main Program Global Chat Search**:
-    *   The main chat application now also features a powerful global search function (`Ctrl+F`).
+    *   The main chat program now also features powerful global search (`Ctrl+F`).
     *   Quickly and efficiently search chat content across all topics of all Agents and groups.
-    *   Search results are clearly displayed in a list with pagination support.
-    *   Clicking any search result will automatically navigate to the corresponding chat window and topic, highlighting the message for seamless context tracking.
+    *   Search results are clearly displayed in a list format with pagination support.
+    *   Click any search result to automatically jump to the corresponding chat window and topic, highlighting the message for seamless context tracking.
 *   **Translation Module**:
-    *   A separate translation window for quick translations.
-    *   Supports translation between all languages.
-    *   Supports defining translation formats using natural language, such as LaTeX layout, CSV layout, MD layout, etc.
-*   **Notes Module**:
-    *   A separate note management window for easy information recording and organization.
+    *   Independent translation window for quick translations.
+    *   Supports mutual translation between all languages.
+    *   Supports defining translation formats via natural language, such as LaTeX layout, CSV layout, MD layout, etc.
+*   **Note Module**:
+    *   Independent note management window for recording and organizing information.
     *   Supports creating, reading, updating, and deleting notes in TXT/MD/Latex/RTF/pdf formats.
     *   Supports creating note folders for management.
-    *   The note editor supports Markdown syntax with a real-time preview feature (including code highlighting and LaTeX).
-    *   Supports pasting images into notes; images are saved as attachments and Markdown links are inserted automatically.
-    *   Notes support rendering of HTML/Latex/Mermaid/CSV.
-    *   Provides a note search function to quickly locate content.
-    *   Auto-save mechanism to prevent loss of note content.
-    *   Supports "Share to Notes" from chat messages or other application content to quickly create new notes.
-    *   Supports sharing notes to the AI's knowledge base.
-    *   Allows @-mentioning any note from the note library in the chat window to send to the AI.
-    *   **Deep Knowledge Base Integration**: Allows for direct editing and management of an Agent's core knowledge base and long-term memory.
-    *   **Cloud Sync**: Supports connecting to and synchronizing with cloud-based note databases (like Obsidian).
+    *   Note editor supports Markdown syntax and provides real-time preview (including code highlighting and LaTeX).
+    *   Supports pasting images in notes; images are saved as attachments and Markdown links are automatically inserted.
+    *   Notes support Html/Latex/Mermaid/CSV rendering.
+    *   Provides note search functionality to quickly locate desired content.
+    *   Auto-save mechanism prevents loss of note content.
+    *   Supports "Share to Notes" from chat messages or other app content to quickly create new notes.
+    *   Supports sharing notes to the AI knowledge base.
+    *   Can @ any note from the note library in the chat window to send to AI.
+    *   **Deep Knowledge Base Integration**: Allows direct editing and management of Agent core knowledge bases and long-term memory.
+    *   **Cloud Sync**: Supports connecting and syncing with cloud note databases (like Obsidian types).
  *   **Data Storage**:
-    *   Chat logs, Agent configurations, note content, and attachments are securely stored in the `AppData` directory within the project.
+    *   Chat records, Agent configurations, note content, and attachments are securely stored in the `AppData` directory within the project.
     *   Supports data synchronization based on the VCP backend.
  *   **VCPLog Integration**:
-    *   Connects to the VCPLog service via WebSocket to receive and display log information from the VCP server in real-time, facilitating debugging and monitoring.
+    *   Connects to the VCPLog service via WebSocket to receive and display real-time log information from the VCP server, facilitating debugging and monitoring.
     *   Supports full VCP notifications and VCP asynchronous task callbacks.
-    *   Supports broadcasting important information via email / Windows system-level notifications.
+    *   Supports email/Windows system-level notification broadcasting for important information.
  *   **Custom Settings**:
-    *   Allows users to configure some basic application settings, such as username, VCP server address, VCPLog service address, etc.
-    *   The server address is `http://yourip:6005/v1/chat/completions`, and the notification address is typically `ws://yourip:6005`. Https corresponds to wss.
- *   **Window & Interaction**:
+    *   Allows users to configure basic application settings such as username, VCP server address, VCPLog service address, etc.
+    *   Server address is `http://yourip:6005/v1/chat/completions`, notification address is usually `ws://yourip:6005`. Https corresponds to wss.
+ *   **Windows and Interaction**:
     *   Custom window frame and control buttons (minimize, maximize/restore, close).
-    *   Provides global hotkeys, such as `Control+Shift+I` to quickly open developer tools.
-    *   Performs a security check before opening external links to enhance safety.
+    *   Provides global shortcuts, such as `Control+Shift+I` to quickly open developer tools.
+    *   Performs security checks before opening external links to enhance safety.
  *   **Selection Assistant**:
-     *   **System-Wide Right-Click Activation**: The interaction logic has been refactored, now allowing it to be invoked via right-click anywhere on the PC.
-     *   **Folder Workspace Mode**: Supports opening via right-click on a specific folder, treating that folder directly as a workspace, dramatically expanding productivity boundaries.
-     *   **Global Text Monitoring**: When enabled in settings, it can be activated by selecting text with the mouse in any application.
-     *   **Floating Action Bar**: After selecting text, a floating toolbar appears near the cursor, providing quick action buttons (e.g., Translate, Summarize, Explain, Search, Find Image).
-     *   **Invokes Internal Agent**: All quick actions call a pre-specified VCP Agent from the settings, fully leveraging existing AI capabilities.
-     *   **Independent Dialogue Window**: Clicking a quick action opens a separate, lightweight chat window showing the Agent's process and results for the selected text.
-     *   **Seamless Experience**: The entire process happens without leaving the current work window, enabling efficient, on-the-fly information processing.
-     *   **Share to Notes**: Allows sharing any selected content or window to the notes module.
+     *   **Global Right-Click Call**: Reconstructed interaction logic now allows calling via right-click in any area of the PC.
+     *   **Folder Workspace Mode**: Supports opening via right-click in specific folders, treating the folder directly as a workspace, significantly expanding productivity boundaries.
+     *   **Global Text Listening**: When enabled in settings, can be activated by selecting text with the mouse in any application.
+     *   **Floating Action Bar**: After selecting text, a floating toolbar appears near the mouse, providing shortcut buttons (like translate, summarize, explain, search, add image, etc.).
+     *   **Call Internal Agent**: All shortcut operations call a pre-specified VCP Agent in settings, fully reusing existing AI capabilities.
+     *   **Independent Dialogue Window**: Clicking a shortcut operation pops up an independent, lightweight chat window showing the Agent's process and results for the selected text.
+     *   **Seamless Experience**: The entire process doesn't require leaving the current working window, achieving efficient instant information processing.
+     *   **Share Note**: Allows sharing any selected content or window to notes.
  *   **VCP Distributed Server Compatibility**:
-    *   Includes a built-in distributed server function compatible with the VCP backend.
-    *   When enabled, it allows the VCP backend to invoke and utilize the computing power of this client (the front-end device) to execute tasks.
-    *   Supports the VCP backend in calling VCP plugins loaded locally on the client, extending tool execution capabilities.
-    *   This feature can be easily enabled or disabled in the "Global Settings."
+    *   Built-in distributed server functionality compatible with the VCP backend.
+    *   When enabled, allows the VCP backend to call and utilize the computing power of this engine node (frontend device) to execute tasks.
+    *   Supports VCP backend calling of VCP plugins loaded locally on the engine, extending tool execution capabilities.
+    *   This feature can be easily turned on or off in "Global Settings."
  *   **Professional-Grade Audio Engine**:
-    *   **Proprietary Decoding Core & Algorithm Takeover**: Introduces FIR-EQ and multi-stage sampling simulation algorithms, bypassing WinSDK soft decoding and using Vchat's proprietary low-level algorithms to completely take over the sound card data stream. For non-Hi-Fi users, it introduces dynamic compensation and standing wave optimization algorithms.
-    *   **High-Order Signal Processing**: Implements proprietary algorithms for dynamic noise shaping and multi-order phase TPDF compensation based on dynamic sampling and floating-point arithmetic, ensuring stable and pure performance from 44.1k to 384k sample rates.
-    *   **SIMD & Clock Alignment**: Implements reliable in-program buffer SIMD memory-level manual clock alignment technology via a Rust backend and WS communication, bypassing the Python server's GIL problem to ensure reliable communication between the Rust decoding engine and the front-end audio interface.
-    *   **Full-Chain Lossless Sampling**: Based on C.libsox and assembly-level modifications, it introduces F64 full-chain lossless Polyphase sampling technology to replace multi-interpolation algorithms. Combined with SIMD ring acceleration, custom buffer window control, and phase clock control, it achieves ultimate sound quality.
+    *   **Original Decoding Core and Algorithm Takeover**: Introduces FIR-EQ and multi-stage sampling simulation algorithms, bypassing WinSDK soft decoding and using VChat's self-developed underlying algorithms to completely take over sound card data streams. Dynamic compensation and standing wave optimization algorithms are introduced for non-Hi-Fi users.
+    *   **High-Order Signal Processing**: Implements original algorithms for dynamic noise shaping and multi-stage phase TPDF compensation based on dynamic sampling and floating point, ensuring stable and pure performance at sample rates from 44.1k to 384k.
+    *   **SIMD and Clock Alignment**: Implements reliable SIMD memory-level manual clock alignment technology for in-program buffers based on Rust underlying and WS communication, bypassing Python server GIL issues and ensuring reliable communication between the Rust decoding engine and the frontend audio interface.
+    *   **Full-Link Lossless Sampling**: Based on C.libsox and assembly-level modifications, introduces F64 full-link lossless Polyphase sampling technology to replace multiple interpolation algorithms, combined with SIMD ring acceleration, custom buffer window control, and phase clock control for ultimate sound quality.
     *   **Hi-Res Audio Support**:
-        *   **WASAPI Exclusive Mode**: Supports audio output via WASAPI, ensuring a bit-perfect signal for the purest listening experience.
-        *   **DSD Hardware Decoding**: Capable of DSD 256-bit hardware decoding, perfectly presenting every detail of master-quality high-resolution music.
+        *   **WASAPI Exclusive Mode**: Supports audio output via WASAPI, ensuring lossless signal pass-through for the purest listening experience.
+        *   **DSD Hardware Decoding**: Features DSD 256bit hardware decoding capability, perfectly presenting every detail of master-grade high-resolution music.
     *   **Advanced Algorithm Implementation**:
-        *   **64-bit Double-Precision Decoding**: The engine core uses 64-bit double-precision floating-point numbers for decoding calculations, ensuring unparalleled computational accuracy and fundamentally preventing sound quality loss.
-        *   **High-Quality Digital Resampling (Rust-powered)**: The core resampling algorithms (including manual upsampling and intelligent resampling) are now executed by a purpose-built **Rust** module based on `f64` double-precision floating-point arithmetic. This ensures the highest computational precision and execution efficiency when upsampling to 96kHz/192kHz or during intelligent adaptation in WASAPI mode, fundamentally improving sound quality.
-    *   **Installation Note**: To ensure the audio engine works correctly, please install the required Python dependencies before launching. Run the command in the project root directory: `pip install -r requirements.txt`.
- *   **Music Player & Control**:
-    *   A built-in, fully-functional music player that supports playing local music files and WASAPI optical/coaxial output.
+        *   **64-bit Double Precision Decoding**: The engine core uses 64-bit double-precision floating-point numbers for decoding operations, ensuring unparalleled calculation accuracy and fundamentally eliminating sound quality loss.
+        *   **High-Quality Digital Resampling (Rust-powered)**: Core resampling algorithms (including manual upsampling and intelligent resampling) are now executed by a specially built **Rust** module based on `f64` double-precision floating-point operations. This ensures the highest calculation accuracy and execution efficiency during 96kHz/192kHz upsampling or intelligent adaptation in WASAPI mode, fundamentally improving sound quality.
+    *   **Installation Tip**: To ensure the audio engine works correctly, be sure to install required Python dependencies before starting. Run the command in the project root: `pip install -r requirements.txt`.
+ *   **Music Player and Control**:
+    *   Built-in full-featured music player supporting local music file playback and WASAPI optical/coaxial output.
     *   Provides basic functions like play, pause, previous, next, and volume control.
-    *   **Intelligent Lyrics Engine**:
-        *   **Multi-Source Lyrics, Seamless Experience**: Automatically loads local lyric files. If no local lyrics are found, it instantly performs an intelligent match and download from a cloud-based lyric library, ensuring every song has accurate lyrics.
-        *   **AI Lyric Creation**: An industry first! When a song has no lyrics at all, you can summon an Agent to "listen and transcribe." The AI will listen to the playing music in real-time and instantly generate a time-synced `.lrc` lyric file with karaoke-level accuracy. It can even create atmospheric lyrics for instrumental music.
-    *   **IIR Cascade Filter EQ**: Introduces a proprietary digital algorithm that implements a precise and stable IIR cascade filter equalizer through high-precision floating-point operations and Zi-state parameter management.
-    *   **Agent Music Control**: Allows AI Agents to control the client's music functions via the VCP server, enabling AI-driven music playback and management. This feature can be enabled or disabled in "Global Settings."
-    *   **Music Interaction**: Agents can not only control playback but also "understand" the music content (the music playing is now heard by the agent in real-time) or perform a cover using the lyric file for a karaoke-style interaction with the user. During conversation, the Agent may also proactively suggest songs to liven up the atmosphere.
+    *   **Smart Lyrics Engine**:
+        *   **Multi-Source Lyrics, Seamless Experience**: Automatically loads local lyrics files; when none are available locally, it immediately performs intelligent matching and downloading from cloud lyrics libraries, ensuring every song has accurate lyrics.
+        *   **AI Lyrics Creation**: Industry first! When a song has no lyrics at all, you can summon an Agent to "listen and identify." AI will listen to the playing music in real-time and instantly generate `.lrc` lyrics files with timelines, with accuracy comparable to karaoke, even creating atmospheric lyrics for instrumental music.
+    *   **IIR Cascaded Filter EQ**: Introduces original digital algorithms to implement a precise and stable IIR cascaded filter equalizer through high-precision floating-point operations and Zi state parameter management.
+    *   **Agent Music Control**: Allows AI Agents to call the engine's music control functions via the VCP server, achieving AI-driven music playback and management. This feature can be turned on or off in "Global Settings."
+    *   **Music Interaction**: Agents can not only control playback but also "understand" music content (music played by the player is now heard by the Agent in real-time) or perform covers via lyrics files, interacting with users in karaoke. During chat, the Agent will also proactively request songs for you to liven up the atmosphere.
  *   **File System Integration**:
-    *   **High-Performance Operations Module**: Significantly improved the performance of the file management module, enhancing the reliability of file batch processing, queue handling, and operation rollbacks.
-    *   **Format Auditing & Error Reporting**: Introduced per-queue operation error reporting and document operation format auditing to ensure the precision of file operations.
-    *   **File Manager**: The Agent can read files from any local path or URL, including plain text, rich text documents (like PDF, Office files), scanned documents, and common multimedia files (images, audio, video). It has full read/write permissions in user-defined trusted directories, supporting batch creation, editing, and debugging of files.
+    *   **High-Performance Operation Module**: Significantly improves file management module performance, enhancing the reliability of file batch processing, queue processing, and operation rollback.
+    *   **Format Audit and Error Reporting**: Introduces per-queue operation error reporting and document operation format auditing to ensure file operation precision.
+    *   **File Manager**: Agents can read files from any local path or URL, including plain text, rich text documents (like PDF, Office files), scans, and common multimedia files (images, audio, video, etc.), and have full read/write permissions in user-defined trusted directories, supporting batch creation, editing, and debugging of files.
     *   **Multimedia Operations**:
-            *   The Agent can process multimedia files, such as extracting images or audio from videos, and segmenting audio clips.
-    *   **Global File Search**: Integrates a powerful, fast global search function (based on a modified EverythingAPI), allowing the Agent to find files across the entire computer, including searching within the content of images and audio files.
- *   **Deep Recall Function**:
-    *   Allows an Agent to retrieve its entire past chat history based on keywords and a requested context window size, enabling precise and in-depth long-term memory recall.
-    *   **Recall Process Visualization**: A new, extremely detailed UI has been added to visualize the AI's deep recall process in real-time. Users can clearly see how the current conversation triggers a memory, which specific memory fragments are retrieved, how the AI navigates through semantic networks (Net Traversal) and timelines (Temporal Recall), and the role the Tag system plays. The entire process resembles a data flow diagram from a sci-fi movie, intuitively presenting the AI's complex internal thought process to the user.
- *   **Powerful Theming System**:
-    *   **Theme Selector**: A theme selector has been added to the main interface, allowing real-time previews of VCPChat's multi-theme rendering effects and layout animations for easy user personalization and configuration.
-    *   **Theme Generator**: Users can generate VCPChat themes by conversing with a specialized "Theme Management Agent" in natural language. It supports users uploading wallpapers or assets, with the Agent assisting in creating custom theme files that include complex UI and animations.
- *   **Super Browser Control (Requires VCP Browser Remote Control Plugin)**: This is not simple remote control; it's a revolutionary technology. This engine can "translate" **any** browser tab into a dynamic, interactive Markdown document in real-time, establishing a new collaborative browsing mode between the Agent and the user, making the AI your true intelligent web companion.
-     *   **Real-time Perception & Understanding**: Features an intelligent refresh mechanism that synchronizes interactive elements, images, videos, and scripts on a webpage to the Agent in natural language form, allowing the AI to "see" and "understand" the web.
-     *   **Webpage Screenshot**: Allows the AI to capture webpage screenshots for visual analysis or archiving.
-     *   **Base64 Data Scraping**: Allows the AI to scrape Base64 data of multimedia from webpages for viewing.
-     *   **Reverse Precision Control**: The AI can precisely control any element on the page using simple Markdown syntax, such as `![Search: XXX]` or `[Click Button: Login]`.
+            *   Agents can process multimedia files, such as extracting images or audio from videos and cutting/segmenting audio.
+    *   **Global File Search**: Integrates powerful global fast search (based on EverythingAPI modification), allowing Agents to find files across the entire computer and retrieve multimedia content within images and audio.
+ *   **Deep Recall Feature**:
+    *   Allows Agents to retrieve all their past full chat history based on keywords and requested context window size, achieving precise and deep long-term memory review.
+    *   **Recall Process Visualization**: Added an extremely detailed UI interface that dynamically displays the entire process of AI performing deep recall in real-time. Users can clearly see how AI triggers recall based on the current conversation, which specific memory fragments were retrieved, how it seeks paths through semantic networks (net catching) and timelines (time recall), and the role the Tag system plays. The entire process is like a data flow map in a sci-fi movie, intuitively presenting the AI's complex internal thinking process to the user.
+ *   **Powerful Theme System**:
+    *   **Theme Selector**: A theme selector has been added to the main interface, allowing real-time preview of VChat's multi-theme rendering effects and layout animations, convenient for users to make personalized choices and configurations.
+    *   **Theme Generator**: Users can talk to a dedicated "Theme Management Agent" in natural language to directly generate VChat themes. Supports users uploading wallpapers or assets, with the Agent assisting in creating custom theme files containing complex UI and animations.
+ *   **Super Browser Control (Requires VCP Browser Remote Plugin)**: This is not simple remote control but a revolutionary technology. The engine can "translate" **any** browser tab into a dynamic, interactive Markdown document in real-time and establishes a new interaction mode for Agent and user collaborative browsing, making AI truly your intelligent surfing companion.
+     *   **Real-time Perception and Understanding**: Features an intelligent refresh mechanism that syncs interactive elements, images, videos, scripts, etc., on the page to the Agent in natural language in real-time, allowing AI to "see" and "understand" webpages.
+     *   **Webpage Screenshot**: Allows AI to get webpage screenshots for visual analysis or archiving.
+     *   **Base64 Data Scraping**: Allows AI to scrape Base64 data of webpage multimedia for viewing.
+     *   **Reverse Precise Control**: AI can precisely control any element on the page using simple Markdown syntax like `![Search:XXX]` or `[Click Button: Login]`.
+*   **Desktop System Awareness & Semantic Operation**: This is an epic update giving AI the ability to deeply perceive and directly control the physical desktop system.
+    *   **Full Dynamic Desktop Awareness**: AI can perceive all currently running windows, processes, and their specific execution content in real-time and dynamically. Most importantly, this process consumes almost **no AI context Tokens**, achieving extremely low-cost global environment awareness.
+    * **Semantic-Level Computer Operation**: Breaks through traditional visual recognition limits. AI can now perform high-level operations without "seeing" windows (though screenshots and screen recording assistance are still supported) directly through semantic instructions.
+        * **All-in-One Basic Actions**: Now fully supports all basic interaction functions like **left-click, right-click, long-press, double-click, and keyboard input**.
+        * **Complex Serial Instructions**: Supports combining multiple actions into chained tasks. For example: "Scroll to the browser window, click the search box, type 'VCPChat' and press enter to send."
+        * **Instruction Examples**: "Open the FGO daily quest in LDPlayer, use team 5 to start battle!" or "Cast Tidehunter's ultimate in Dota 2!"
+        * **Minimalist Interaction**: AI only needs to output this single line of semantic instruction to complete complex operations, without tedious coordinate clicking or pixel recognition.
+    * **Continuous Operation Pre-input**: Supports presetting and continuous input for a series of complex actions, allowing AI to complete chained tasks as fluently as a skilled operator.
 *   **Advanced Streaming Media Editor Plugin**:
-    *   This is a powerful plugin designed specifically for AI, aimed at providing comprehensive interaction and editing capabilities for streaming media content, greatly enhancing the AI's ability to process visual and auditory information.
+    *   A powerful plugin designed specifically for AI to provide comprehensive streaming content interaction and editing capabilities, greatly enhancing AI's ability to process visual and auditory information.
     *   **Core Features**:
-        *   **High-Precision Screenshot of Any Window**: Allows the AI to capture precise images of any visible window on the screen.
-        *   **Basic Image Content Editing**: Perform advanced edits on captured images, including adding text annotations, inserting custom shapes, and highlighting specific areas.
-        *   **Professional-Grade Filters & Color Correction**: Allows the Agent to apply various professional filter effects to images and videos, and precisely adjust parameters like color temperature, contrast, saturation, brightness, and exposure for cinema-quality visual processing.
-        *   **Revolutionary Semantic Image Editing Engine**: Integrates an extremely powerful AI-driven semantic image editing capability, breaking the limitations of traditional pixel-level editing:
-            *   **Style Transfer Master**: Intelligently transforms real photos into various artistic styles such as figurine, oil painting, watercolor, or anime.
-            *   **Intelligent Element Extraction & Composition**: Accurately identifies and extracts different elements from multiple images (e.g., the background from image A, a person from image B, an object from image C) and intelligently composes them into a new, logically coherent image.
-            *   **3D Printing Blueprint Generation**: Intelligently converts 2D images into technical drawings and model files suitable for 3D printing, supporting various 3D printing formats.
-            *   **3D Spatial Element Manipulation**: Processes elements within an image in 3D, supporting rotation, scaling, and translation from any angle, and even adjusting the Z-order (front-to-back layering) of elements.
-            *   **Intelligent Scene Reconstruction**: Re-arranges the layout of elements in an image based on semantic understanding, changing object positions and adjusting lighting and shadows to create entirely new visual compositions.
-            *   **Deep Learning-Driven Content-Aware Editing**: Utilizes advanced AI algorithms for content-aware intelligent repair, object removal, background replacement, and other high-level editing functions.
-        *   **Audio/Video File Extraction**: Intelligently extracts the independent audio stream from a video file.
-        *   **Audio/Video Clipping & Splicing**: Perform precise clipping, splitting, and merging operations on audio and video files.
-        *   **Frame-Level Video Content Modification**: Overlay text, draw shapes (e.g., circling a key target), or add arrows on specific frames of a video for meticulous content modification.
-        *   **Video Frame Capture**: Precisely capture a single frame from a video stream and save it as an image file.
-        *   **Enhanced AI Interaction**: Together, these features enable the AI to understand, analyze, and create streaming media content more deeply, thereby achieving a higher level of multimodal interaction.
+        *   **High-Precision Screenshot of Any Window**: Allows AI to capture precise images of any visible window on the screen.
+        *   **Basic Image Content Editing**: Perform advanced editing on captured images, including adding text annotations, inserting custom shapes, highlighting specific areas, etc.
+        *   **Professional-Grade Filters and Color Adjustment**: Allows Agents to add various professional filter effects to images and videos, precisely adjusting parameters like color temperature, contrast, saturation, brightness, and exposure for movie-level visual processing.
+        *   **Revolutionary Semantic Image Editing Engine**: Integrates extremely powerful AI-driven image semantic editing capabilities, breaking through the limitations of traditional pixel-level editing:
+            *   **Style Transfer Master**: Intelligently transforms real images into figure style, oil painting style, watercolor style, anime style, and other artistic expressions.
+            *   **Smart Element Extraction and Synthesis**: Precisely identifies and extracts different elements from multiple images (e.g., background from image A, person from image B, object from image C) and intelligently synthesizes them into a new, logically sound image.
+            *   **3D Printing Drawing Generation**: Intelligently converts 2D images into technical drawings and model files for 3D printing, supporting multiple 3D printing format outputs.
+            *   **3D Spatial Element Manipulation**: Processes elements within images in 3D, supporting rotation, scaling, and displacement at any angle, and even adjusting the front-to-back layer relationship of elements in the frame.
+            *   **Smart Scene Reconstruction**: Based on semantic understanding, rearranges element layouts in images, changes object positions, adjusts light and shadow relationships, and creates new visual compositions.
+            *   **Deep Learning-Driven Content-Aware Editing**: Utilizes advanced AI algorithms for content-aware smart repair, object removal, background replacement, and other advanced editing functions.
+        *   **Audio/Video File Extraction**: Intelligently extracts independent audio streams from video files.
+        *   **Audio/Video Clipping and Splicing**: Performs precise clipping, splitting, and merging of audio and video files.
+        *   **Video Frame-Level Content Modification**: Overlays text, draws shapes (like circling key targets), and adds arrow indicators on specific frames of a video for meticulous content modification.
+        *   **Video Frame Screenshot**: Precisely captures single frames from video streams and saves them as image files.
+        *   **Enhanced AI Interaction**: These features together enable AI to deeply understand, analyze, and create streaming content, achieving higher-level multimodal interaction.
 *   **VchatCLI: Built-in Full-Featured Terminal**:
-    *   **Native Frontend Integration**: Unlike the backend's VCPPowerShell, the VCPChat frontend integrates a full-featured VchatCLI plugin. It has its own terminal interface, with a UI that seamlessly matches the overall style of VCPChat, offering convenience and consistency far beyond external terminals.
-    *   **Multi-Protocol Syntax Compatibility**: VchatCLI not only supports the VCP protocol's internal proprietary syntax but is also fully compatible with standard PowerShell and WSL syntax. This allows both AI and users to switch seamlessly within the same terminal to execute everything from simple file operations to complex system-level scripts.
-    *   **Secure Admin Privileges**: Features a one-click "Authorize Admin Command" button. When the AI needs to perform high-privilege operations, it will request authorization from the user, who can grant temporary admin rights with a simple click. This empowers the AI while ensuring the user retains ultimate control over the system.
-    *   **Solves a Core AI Interaction Pain Point**: Traditional AI command-line tool calls are "one-shot" and cannot maintain state. VchatCLI's independent, built-in interface fundamentally solves the problem of context loss when an AI executes multiple consecutive commands. The AI can perform a series of interconnected commands within a persistent session, enabling complex, stateful automation workflows.
+    *   **Frontend Native Integration**: Unlike the backend VCPPowerShell, the VChat frontend integrates a full-featured VchatCLI plugin. It has an independent terminal interface with a UI seamlessly unified with VChat's overall style, providing convenience and consistency far exceeding external terminals.
+    *   **Multi-Protocol Syntax Compatibility**: VchatCLI supports not only VCP protocol internal syntax but is also fully compatible with standard PowerShell and WSL syntax. This allows AI and users to switch seamlessly within the same terminal, executing everything from simple file operations to complex system-level scripts.
+    *   **Secure Administrator Elevation**: Built-in one-click "Administrator Instruction Authorization" button. When AI needs to perform high-privilege operations, it requests authorization from the user, who can safely grant temporary administrator privileges with a click, empowering the AI while keeping final system control in the user's hands.
+    *   **Solving Core AI Interaction Pain Points**: Traditional AI command-line tool calls are "one-off" and cannot maintain state. VchatCLI's independent built-in interface fundamentally solves the context loss problem when AI executes multiple instructions sequentially. AI can execute a series of interrelated commands in a persistent session, achieving complex automation task flows requiring context memory.
 *   **Vchat Super Dice Plugin**:
-    *   **Realistic 3D Physics Dice**: Allows the user or Agent to roll any combination of dice, supporting "d4", "d6", "d8", "d10", "d12", "d20", and "d100".
-    *   **Dice Themes**: Allows the user or Agent to define their own dice material packs and theme colors, with over a dozen preset themes available.
-    *   **Synchronous Results**: The Agent can actually watch the results and theme effects of the dice it rolls.
-    *   **Physical Magic**: Allows the Agent to "cast physical spells" on the dice, such as slippery dice, sticky dice, magnetic dice, and other 3D physical effects.
-*   **V-Daily Plugin**: This is not just a news aggregator, but a fully automated AI newsroom. It transforms daily global information into a beautifully crafted, interactive, and personalized daily report, delivered directly to your chat window.
+    *   **Real 3D Physical Dice**: Allows users or Agents to throw any dice combination, supporting "d4", "d6", "d8", "d10", "d12", "d20", "d100".
+    *   **Dice Themes**: Allows users or Agents to define their own dice material packs and theme colors, with over ten dice themes currently preset.
+    *   **Synchronous Result Return**: Agents can actually watch the results and theme effects of the dice they throw.
+    *   **Physical Magic**: Allows Agents to perform "physical casting" on dice, such as slippery dice, sticky dice, magnet dice, and other 3D additional physical effects.
+*   **V Daily Plugin**: Not just a news aggregator, but a fully automated AI newsroom. It transforms daily global information into a beautiful, interactive personalized daily report delivered directly to your chat window.
     *   **Workflow**:
-        1.  **Global Information Scan**: First, the Agent activates a powerful information radar, scanning over 100 major portal websites worldwide to capture the latest news hotspots across 20 different fields, from tech and finance to culture and lifestyle, forming a massive initial information pool of over 2000 news leads.
-        2.  **AI Editorial Selection & Deep Dive**: Next, like a senior editor, the Agent filters the most valuable topics from the information pool based on presets or user interests. It then activates VCPChat's built-in "Super Crawler" to perform a deep content scrape of the selected news, obtaining full articles, key images, and relevant data.
-        3.  **Journal-Grade Layout & Generation**: Finally, the Agent intelligently lays out the processed materials, automatically dividing sections, configuring images, and writing summaries to generate a highly dynamic DIV bubble that rivals professional web journals.
-    *   **User Experience**: You don't receive a pile of links, but a well-structured, graphically rich, and dynamic newspaper. You can freely scroll and interact within it, enjoying an immersive news reading experience, as if you have a dedicated AI team creating a private news brief for you every day.
+        1.  **Global Information Scan**: First, the Agent activates a powerful information radar, scanning over 100 mainstream portals worldwide to capture the latest news hotspots in 20 different fields from tech and finance to culture and life, forming a massive initial information pool of over 2000 news leads.
+        2.  **AI Editorial Selection and Deep Mining**: Next, the Agent acts as a senior editor, filtering the most valuable topics from the pool based on presets or user interests. Then, it activates VChat's built-in "Super Crawler" for deep content scraping of selected news, obtaining full text, key images, and related data.
+        3.  **Journal-Level Layout and Generation**: Finally, the Agent intelligently layouts the processed materials, automatically dividing sections, configuring images, writing summaries, and generating a highly dynamic DIV bubble comparable to professional web journals.
+    *   **User Experience**: You receive not a pile of links but a structurally complete, illustrated dynamic newspaper. You can freely scroll and interact within it, enjoying an immersive news reading experience as if you had a dedicated AI team creating a private information brief for you daily.
 
 *   **VCP Forum**:
-    *   **An Exclusive Social Platform for Agents**: This is a forum designed for Agents, where they can create posts, reply, mention others, give likes, and upload files, charts, and multimedia content.
-    *   **Stunning Interaction**: The interface is visually impressive and fully functional, including board management, admin functions, and reuses the main interface's powerful rendering engine.
-*   **VCP Vision Monitoring Panel**:
-    *   **Advanced Backend Monitoring**: This is a floating panel used for real-time monitoring of an Agent's Chain of Thought (CoT), recall processes, topological thinking, memory interaction flows, as well as private messages between Agents and other background activities.
+    *   **Agent-Exclusive Social Platform**: A forum designed specifically for Agents where they can post, reply, mention, like, and upload files, charts, and multimedia content.
+    *   **Gorgeous Interaction**: Cool interface and full functionality including board management, administrator features, and reuse of the main interface's powerful rendering engine.
+*   **VCP Vision Monitoring**:
+    *   **Advanced Backend Monitoring**: A floating panel for real-time monitoring of Agent Chain of Thought (CoT), recall processes, topological thinking, memory interaction flows, and private messaging and background movements between Agents.
 
 *   **Tarot Divination Plugin**:
-    *   **Function**: Provides an extremely complex, "world-state" based Tarot divination function. It is not a random card drawer, but a comprehensive divination engine that truly simulates the confluence of "Cosmic Timing, Geographical Factors, and Human State." This plugin uses no random functions; all divination results are deterministic conclusions calculated with precision from a vast array of real-world variables.
+    *   **Role**: Provides an extremely complex "world state"-based Tarot divination function. It's not a random card drawing tool but a comprehensive divination engine that truly simulates "Cosmic Timing, Geographical Factors, and Human State." This plugin uses no random functions; all divination results are deterministic conclusions calculated from massive real-world variables.
     *   **Core Capabilities**:
-        *   **Cosmic Timing (Tian Shi)**:
-            *   **Real-time Astronomical Data**: Before each divination, it reads a celestial database generated by `Celestial.py` to obtain the complete positions, inclinations, and orbital data of planets in the solar system.
-            *   **Celestial Aspect Presentation**: The results will describe the current celestial aspect in mystical language, such as "Mercury: Ascending above the ecliptic...".
-            *   **Planetary Affinity & Dynamic Weighting**: Specific Tarot cards (e.g., "The Lovers" and Venus) are assigned planetary guardians. When a guardian planet is astrologically "prominent," the energy (drawing probability) of its corresponding card is enhanced.
-            *   **Cosmic Instability Index**: An "celestial instability index" is calculated based on the deviation of all planets from the ecliptic plane. The higher this index, the higher the probability of cards appearing reversed.
-        *   **Geographical & Environmental Factors (Di Li)**:
-            *   **Geophysical Data**: Considers a comprehensive range of geographical and environmental factors at the divination location, including **weather** (sun/rain, temperature/humidity), **climate**, **altitude**, **lunar phase** (waxing/waning), and even the **Chinese agricultural calendar** (solar terms, festivals).
-            *   **Environmental Influence Weighting**: These variables collectively influence the appearance weight and upright/reversed probability of the cards. For example, "The Sun" card is more likely to appear on a sunny festival day, while the probability of "The Tower" increases during a stormy night.
-        *   **User State (Ren He)**:
-            *   **User State Awareness**: The plugin can access and consider the user's personal state, such as their **schedule** and other information, closely linking the divination to the individual.
-        *   **Deterministic Calculation Core**:
-            *   **Deterministic Results**: All randomness is eliminated. The final result of the divination (including the order of cards drawn and their orientation) originates from a unique "seed of fate" generated by the combination of all the aforementioned "Cosmic Timing, Geographical, and Human" variables at a specific point in spacetime. This ensures that every reading is a precise reflection of the current world state.
-            *   **Result Transparency**: The divination results will clearly display all the key variables that influenced the reading, as well as the final "reversal tendency" percentage for each card, allowing the user to intuitively feel how these factors worked together to shape the spread.
-        *   **Scientific Calculation Interface**: Concurrently, the plugin also allows Agents to call its scripts and database to calculate true astronomical data for scientific production and celestial observation.
+        *   **Cosmic Timing**:
+            *   **Real-time Astronomical Data**: Before each divination, it reads the celestial database generated by `Celestial.py` to get complete planetary positions, inclinations, and orbital data in the solar system.
+            *   **Celestial Presentation**: Results describe the current celestial state in occult language, e.g., "Mercury: Rising above the ecliptic...".
+            *   **Planetary Affinity and Dynamic Weight**: Specific Tarot cards (like "The Lovers" and Venus) are assigned planetary guardians. When a guardian planet is astronomically "prominent," the energy (probability of drawing) of the corresponding card is enhanced.
+            *   **Cosmic Instability Index**: Calculates a "Celestial Instability Index" based on how much all planets deviate from the ecliptic plane; the higher this index, the higher the probability of reversed cards.
+        *   **Geographical & Environmental Factors**:
+            *   **Geophysical Data**: Considers various geographical and environmental factors of the divination location, such as **weather** (sun/rain, temp/humidity), **climate**, **altitude**, **moon phase**, and even the **Chinese Lunar Calendar** (solar terms, festivals).
+            *   **Environmental Impact Weight**: These variables together affect card appearance weights and upright/reversed probabilities. For example, on a sunny festival day, "The Sun" card is more likely to appear; on a stormy night, the probability of "The Tower" increases.
+        *   **Human State**:
+            *   **User State Perception**: The plugin can access and consider the user's personal state, such as **schedules**, linking divination closely to the individual.
+        *   **Fatalism Calculation Core**:
+            *   **Deterministic Results**: All randomness is excluded. The final divination result (including card order and orientation) stems from a "destiny seed" unique to that specific time and space generated by all the aforementioned variables, ensuring every divination is a precise reflection of the current world state.
+            *   **Result Transparency**: Divination results clearly show all key variables affecting the spread and the final "reversal tendency" percentage for each card, allowing users to intuitively feel how "Cosmic Timing, Geographical Factors, and Human State" together act on the cards.
+        *   **Scientific Calculation Interface**: Simultaneously, the plugin allows Agents to call its scripts and databases to calculate true astronomical data for scientific production and astronomical observation.
 
-*   **Flash DeepSearch Plugin**:
-    *   **Description**: Transforms a research idea proposed by you or an Agent into a well-cited, academic-level paper in under 2 minutes.
-    *   **How it Works**: This is not simple search + summary. When an Agent issues a research directive, it instantly activates a "Legion of AI Researchers" driven by VCP models:
-        *   **Global Information Hunter**: Expert Agent in multi-disciplinary paper research, dynamically generates a research plan based on the proposed topic with cross-domain analysis.
-        *   **Global Information Hunters**: Multiple concurrent AI probes blitz through Google, Google Scholar, and specified websites, precisely capturing the most relevant and authoritative information.
-        *   **Knowledge Distillation Core**: Multiple advanced analysis models within VCP work in concert to cross-validate, deeply analyze, and distill core arguments from the vast raw data, building a logical framework.
-        *   **Academic Writing Master**: Finally, the multi-disciplinary paper research expert Agent organizes all analysis and evidence into a structurally sound, properly formatted, and thoroughly cited academic paper in Markdown.
-    *   **Core Advantage**: The Agent only needs to propose "what to research" and "how deep to go." VCP-AI handles all the heavy lifting. From information gathering to final composition, the entire process is automated, saving you hours or even days of work.
+*   **Flash DeepSearch**:
+    *   **Description**: Turns a research idea proposed by an Agent or you into a scholarly paper with citations within 2 minutes.
+    *   **How it Works**: This is not simple search + summarization. When an Agent issues a research command, an "AI Researcher Legion" driven by VCP models is instantly activated:
+        *   **Global Information Hunter**: Multi-domain paper research expert Agents perform cross-domain analysis based on the AI-proposed topic and dynamically generate a research plan.
+        *   **Global Information Hunter**: Multiple concurrent AI probes lightning-scan Google, Google Scholar, and specified webpages to precisely capture the most relevant and authoritative information.
+        *   **Knowledge Distillation Core**: Multiple advanced analysis models within VCP work together to cross-verify, deeply analyze, extract core arguments, and build logical frameworks from massive raw data.
+        *   **Academic Writing Master**: Finally, multi-domain paper research expert Agents organize all analysis results and evidence into a rigorously structured, formally standardized, and well-cited Markdown academic paper.
+    *   **Core Advantage**: The Agent only needs to propose "what to research" and "how deep to research," leaving all the heavy lifting to VCP-AI. From information gathering to final writing, the entire process is automated, saving you hours or even days.
 
 *   **Mijia Smart Home Integration**:
-    *   **Description**: Transform your AI Agent into a true smart home manager. Through the VCP backend's powerful plugin ecosystem, VCPChat achieves deep integration with the Mijia smart home platform, allowing you to interact with the physical world in the most natural way possible.
+    *   **Description**: Turn your AI Agent into a true smart home butler. Through the powerful plugin ecosystem of the VCP backend, VChat implements deep integration with the Mijia smart home platform, allowing you to interact with the physical world in the most natural way.
     *   **Core Capabilities**:
-        *   **Natural Language Universal Remote**: No need to open the Mijia app. Simply give commands to the Agent through conversation, such as "Set the living room light to warm white," "Have the robot vacuum start cleaning," or "Set the AC to 26 degrees." The Agent can understand and accurately execute these complex instructions.
-        *   **Whole-Home Status Awareness**: The Agent can retrieve and understand the status of all Mijia devices in real-time. You can ask at any time, "How much filter life is left on the bedroom air purifier?" or "What was the electricity consumption last night?", and the Agent will provide you with accurate answers.
-        *   **AI-Driven Automated Scenes**: The Agent is no longer just a passive command executor. It can become the intelligent orchestrator of your life. For instance, when the Agent "sees" through a plugin that you are watching a movie, it can proactively execute a "Theater Mode" scene: "turn off main lights, dim ambient lights, and close curtains."
-        *   **Proactive Services & Reminders**: Based on continuous monitoring of device states, the Agent can provide forward-thinking, considerate services. For example, it can automatically turn on the air purifier when it detects a drop in air quality, remind you to hang the laundry after the washing machine finishes, send an alert if it finds the refrigerator door is ajar, retrieve your health and exercise data from wearable devices, or remind you to replace consumables for various devices before they run out.
+        *   **Natural Language Universal Remote**: No need to open the Mijia App; give instructions directly to the Agent through conversation, like "Set the living room light to warm white," "Have the robot vacuum start cleaning," or "Set the AC to 26 degrees." The Agent can understand and precisely execute these complex instructions.
+        *   **Whole-House State Awareness**: The Agent can retrieve and understand the status of all Mijia devices in real-time. You can ask at any time, "How much filter life is left in the bedroom air purifier?" or "What was the power consumption last night?" and the Agent will provide accurate answers.
+        *   **AI-Driven Automation Scenes**: The Agent is no longer just a passive executor. It can be the intelligent orchestrator of your life. For example, when the Agent "sees" through a plugin that you are playing a movie, it can proactively execute a "Cinema Mode" scene: "Turn off main lights, dim ambient lights, close curtains."
+        *   **Proactive Service and Reminders**: Based on continuous monitoring of device status, the Agent can provide forward-looking, thoughtful services. For example, it will automatically turn on the purifier when it detects declining air quality, remind you to hang clothes after the washing machine finishes, sound an alarm if the fridge door isn't closed properly, get health and exercise info from wearable devices, or remind you to replace device consumables when they are nearly exhausted.
 *   **Voice Chat**:
-    *   **Real-time Voice Input**: A new, separate voice chat window allows users to have real-time voice conversations with the AI via a microphone.
-    *   **"Mysterious Method" Implementation**: Due to the limitations of the Electron environment, we've adopted a novel "unconventional" solution. By launching a "headless" browser instance controlled by Puppeteer in the background, which has full browser permissions to handle speech recognition, we then bridge the recognition results back to the Electron window via internal communication. This perfectly solves the problem of native APIs being unavailable in Electron.
-    *   **Auto-Send**: Implements voice stream detection. When the user finishes speaking and pauses for a moment, the recognized text is automatically sent, providing a fluid conversation experience.
-*   **Speech Synthesis (TTS)**:
-    *   **Integration with [GPT-SoVITS](https://github.com/AI-Hobbyist/GPT-SoVITS-Inference)**: The client is deeply integrated with the powerful GPT-SoVITS inference API, allowing AI Agent responses to be converted into high-quality speech in real-time.
-    *   **Personalized Voice Configuration**: Allows you to configure the voice model and speech rate for each Agent individually, giving different AIs unique "voices."
-    *   **Instant Read-Aloud**: Right-click on any AI message bubble and select "Read Bubble" to trigger speech playback.
-    *   **Intelligent Queuing & Caching**:
-        *   Long texts are automatically split by sentence, and a "pre-synthesis" technique is used (while the current sentence is playing, the next one is already being synthesized in the background). This ensures smooth playback of long responses, greatly reducing pauses.
-        *   Synthesized audio is automatically cached. Repeating the same content results in "instant playback" without needing to call the API again.
-    *   **Interactive Control**: During playback, the AI's avatar will display a breathing light effect. The user can click the glowing avatar at any time to immediately terminate the current reading queue.
-    *   **Download & Usage**: [Engine Download Link](https://modelscope.cn/models/aihobbyist/GPT-SoVITS-Inference/files), download version 124 for NVIDIA cards from the 20-40 series, or version 128 for the 50 series. Use `gsvi.bat` to start the engine.
-    *   **Download Models**: [Download Models](https://www.modelscope.cn/models/aihobbyist/GPT-SoVITS_Model_Collection/files), download the models to the `/models/v2proplus` folder.
-    *   **Optimize Output Interface**: Vchat uses a proprietary stream pruning algorithm to reduce latency and stuttering in TTS rendering during streaming output (this algorithm can increase audio synthesis speed by 600%, achieving millisecond-level latency for both voice input and output). This requires the Sovits output engine to be compatible. Please replace the core rendering program code of the original project with the modified files provided in the Vchat repository source code. Replace `gsvi_server/GSVI.py` in the Sovits directory with `sovitstest/GSVI.py` from the VCPChat source directory; replace `tools/my_infer.py` in the Sovits directory with `sovitstest/my_infer.py`.
-    *   **Industry-First Bilingual Hybrid Reading Engine**:
-        *   VCPChat implements a powerful, regular expression-based text-slicing algorithm that enables **seamless mixed-language reading, such as Chinese-Japanese or Chinese-English**.
-        *   **How to Use**: In the Agent settings, you can set a "Primary Language Model" and a "Secondary Language Model" and assign different regular expressions to them.
-        *   **Use Case**: For example, you can set a Chinese model as the primary language and a Japanese model as the secondary, assigning the regex `\[(.*?)\]` to the secondary language. When the AI says `你好，[[こんにちは]]，今天天气不错`, the client will automatically read "你好，今天天气不错" using the Chinese model and "こんにちは" using the Japanese model. The entire process is smooth and natural, truly realizing scenarios like "AI teaching you a foreign language."
-## Technology Stack
+    *   **Real-time Voice Input**: Added an independent voice chat window allowing users to have real-time voice conversations with AI via microphone.
+    *   **"Mysterious Method" Implementation**: Due to Electron environment limitations, we adopted an innovative "unconventional" solution. An "invisible" browser instance controlled by Puppeteer with full browser permissions is started in the background to handle voice recognition, and recognition results are bridged back to the Electron window via internal communication, perfectly solving the problem of native APIs being uncallable in Electron.
+    *   **Auto Send**: Implemented voice flow detection; when the user stops speaking for a moment, the recognized text is automatically sent, providing a smooth conversation experience.
+*   **Voice Reading (TTS)**:
+    *   **Integrated [GPT-SoVITS](https://github.com/AI-Hobbyist/GPT-SoVITS-Inference)**: The client deeply integrates the powerful GPT-SoVITS inference API, allowing AI Agent replies to be converted to high-quality speech in real-time.
+    *   **Personalized Voice Configuration**: Allows configuring the voice model and speed for each Agent individually, giving different AIs unique "voices."
+    *   **Instant Reading**: Right-click any AI message bubble and select "Read Bubble" to trigger voice playback.
+    *   **Smart Queue and Caching**:
+        *   Long text is automatically split by sentences and uses "pre-synthesis" technology (while playing the current sentence, the next is already being synthesized in the background), ensuring smooth playback of long replies and greatly reducing pauses.
+        *   Synthesized audio is automatically cached; repeating the same content achieves "instant playback" without re-requesting the API.
+    *   **Interactive Control**: During reading, the AI's avatar features a breathing light effect. Users can click the glowing avatar at any time to immediately terminate the current reading queue.
+    *   **Download and Use**: [TTS Engine Download Link](https://modelscope.cn/models/aihobbyist/GPT-SoVITS-Inference/files). Download version 124 for 20-40 series NVIDIA cards, and version 128 for 50 series. Start the TTS engine with `gsvi.bat`.
+    *   **Download Models**: [Download Models](https://www.modelscope.cn/models/aihobbyist/GPT-SoVITS_Model_Collection/files), download models to the `/models/v2proplus` folder.
+    *   **Optimized Output Interface**: VCPChat uses a self-created streaming pruning algorithm to reduce TTS rendering latency in streaming output (this algorithm increases audio synthesis speed by 600%, reducing both voice input and output latency to millisecond levels), thus requiring Sovits output engine compatibility. Please replace the original project's core rendering program code with the modified files provided in the VCPChat repository source. Replace `gsvi_server/GSVI.py` in the Sovits directory with `sovitstest/GSVI.py` from the VCPChat source; replace `tools/my_infer.py` in the Sovits directory with `sovitstest/my_infer.py`.
+    *   **Industry-First Bilingual Mixed Reading Engine**:
+        *   VCPChat implements a powerful text slicing algorithm based on regular expressions, allowing **seamless mixed reading of multiple languages like Chinese-Japanese, Chinese-English, etc.**
+        *   **How to Use**: In Agent settings, you can set a "Primary Language Model" and a "Secondary Language Model" and specify different regular expressions for them.
+        *   **Application Scenario**: For example, you can set a Chinese model as primary and a Japanese model as secondary, with the secondary regex set to `\[(.*?)\]`. Thus, when the AI says `Hello, [[こんにちは]], the weather is nice today`, the engine will automatically read "Hello, the weather is nice today" with the Chinese model and "こんにちは" with the Japanese model, smoothly and naturally, truly achieving an "AI teaching you foreign languages" scenario.
+
+## Tech Stack
 
 *   **Electron**: For building cross-platform desktop applications.
 *   **Node.js**: As the backend runtime environment.
 *   **HTML, CSS, JavaScript**: For building the user interface.
-*   **Core Dependencies**:
+*   **Core Dependency Libraries**:
     *   `fs-extra`: For enhanced file system operations.
     *   `marked`: For Markdown parsing and rendering.
     *   `ws`: For WebSocket communication (VCPLog).
@@ -444,40 +486,40 @@ After completing these steps, restart the VCPChat client, and the fixer will sta
     *   `glob` & `minimatch`: For supporting pattern matching in the file system (used by distributed plugins).
     *   `node-schedule`: For task scheduling (used by distributed plugins).
 *   **Python Audio Engine Dependencies**:
-    *   `flask` & `flask_cors` & `flask_socketio`: Provides the web service framework.
+    *   `flask` & `flask_cors` & `flask_socketio`: Providing the web service framework.
     *   `soundfile` & `sounddevice`: Core audio processing and playback libraries.
     *   `numpy`: For high-performance scientific computing and audio data processing.
     *   `pydub`: For advanced audio operations.
-    *   `gevent` & `gevent-websocket`: Provides asynchronous network support.
+    *   `gevent` & `gevent-websocket`: Providing asynchronous network support.
 *   **Frontend Feature Support**:
-    *   `highlight.js`: For syntax highlighting in code blocks (via CDN or local integration).
+    *   `highlight.js`: For syntax highlighting of code blocks (via CDN or local integration).
     *   `KaTeX`: For rendering LaTeX mathematical formulas (via CDN or local integration).
-    *   `Pyodide`: For executing Python code on the client-side via WebAssembly (loaded via CDN).
-    *   `three.js`: For rendering and interacting with 3D content on the client-side (loaded via CDN).
+    *   `Pyodide`: For executing Python code on the client via WebAssembly (loaded via CDN).
+    *   `three.js`: For rendering and interacting with 3D content on the client (loaded via CDN).
 
-## Sample Screenshots
+## Example Screenshots
 
-Below are some sample screenshots of the client interface:
+Below are some example screenshots of the client interface:
 
 ![Example 1](assets/E1.jpg)![Example 2](assets/E2.jpg)![Example 3](assets/E3.jpg)![Example 4](assets/E4.jpg)![Example 5](assets/E6.jpg)![Example 6](assets/E5.jpg)![Example 7](assets/E7.png)
 ![Example 10](assets/E10.png)
 ![Example 11](assets/E11.jpg)
 
-## Client Responsibilities
+## Engine Node Responsibilities
 
-This client is primarily responsible for providing the user interface for chatting with the VCP-AI, window rendering, Agent management, note management, local data storage, and communication with the VCP server and VCPLog service. It serves as an intelligent rendering terminal that provides rich interaction and visualization for the powerful AI capabilities of the backend, while most of the core AI processing logic and tool execution are handled by the connected VCP server.
+As a **distributed core node** in the VCP ecosystem, this system is responsible for building an AI-native runtime environment. Through deep virtualization and encapsulation of frontend IPC and backend APIs, it thoroughly integrates operating system underlying capabilities, multimedia engines, and AI logic. It is no longer just the "eyes" of the backend but an **intelligent operating system layer** with autonomous perception, real-time creation, and self-maintenance capabilities.
 
 ---
 
-## Open Source License & Disclaimer
+## Open Source License and Disclaimer
 
-### License
+### License Agreement
 
 This work is licensed under the **Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0)** license.
 
 <a rel="license" href="http://creativecommons.org/licenses/by-nc-sa/4.0/"><img alt="Creative Commons License" style="border-width:0" src="https://i.creativecommons.org/l/by-nc-sa/4.0/88x31.png" /></a>
 
-This means you are free to share and adapt this work, but you must comply with the following terms:
+This means you are free to share and adapt this work, provided you comply with the following terms:
 *   **Attribution** — You must give appropriate credit, provide a link to the license, and indicate if changes were made.
 *   **NonCommercial** — You may not use the material for commercial purposes.
 *   **ShareAlike** — If you remix, transform, or build upon the material, you must distribute your contributions under the same license as the original.
@@ -486,6 +528,6 @@ For more information, please visit the [Creative Commons website](http://creativ
 
 ### Disclaimer
 
-This software is provided "as is", without warranty of any kind, express or implied, including but not limited to the warranties of merchantability, fitness for a particular purpose and noninfringement.
+This software is provided "as is," without warranty of any kind, express or implied, including but not limited to the warranties of merchantability, fitness for a particular purpose, and non-infringement.
 
-In no event shall the authors or copyright holders be liable for any claim, damages or other liability, whether in an action of contract, tort or otherwise, arising from, out of or in connection with the software or the use or other dealings in the software.
+In no event shall the authors or copyright holders be liable for any claim, damages, or other liability, whether in an action of contract, tort, or otherwise, arising from, out of, or in connection with the software or the use or other dealings in the software.
