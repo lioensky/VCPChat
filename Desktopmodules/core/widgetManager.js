@@ -105,8 +105,9 @@
             }
         });
 
-        // 点击提升层级
+        // 点击提升层级（锁定状态下不改变层级）
         widget.addEventListener('mousedown', () => {
+            if (state.desktopLocked) return;
             zIndex.bringToFront(widgetId);
         });
 

@@ -21,6 +21,8 @@
      * @param {string} widgetId
      */
     function bringToFront(widgetId) {
+        // 锁定状态下禁止改变层级
+        if (state.desktopLocked) return;
         const widgetData = state.widgets.get(widgetId);
         if (!widgetData) return;
         const newZ = state.nextZIndex++;
@@ -33,6 +35,8 @@
      * @param {string} widgetId
      */
     function sendToBack(widgetId) {
+        // 锁定状态下禁止改变层级
+        if (state.desktopLocked) return;
         const widgetData = state.widgets.get(widgetId);
         if (!widgetData) return;
 
@@ -55,6 +59,8 @@
      * @param {string} widgetId
      */
     function moveUp(widgetId) {
+        // 锁定状态下禁止改变层级
+        if (state.desktopLocked) return;
         const widgetData = state.widgets.get(widgetId);
         if (!widgetData) return;
 
@@ -87,6 +93,8 @@
      * @param {string} widgetId
      */
     function moveDown(widgetId) {
+        // 锁定状态下禁止改变层级
+        if (state.desktopLocked) return;
         const widgetData = state.widgets.get(widgetId);
         if (!widgetData) return;
 

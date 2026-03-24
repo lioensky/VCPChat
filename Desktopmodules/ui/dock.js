@@ -1119,6 +1119,8 @@
 
         iconEl.addEventListener('mousedown', (e) => {
             if (e.button !== 0) return;
+            // 锁定状态下禁止拖拽桌面图标
+            if (state.desktopLocked) return;
             isDragging = false;
             startX = e.clientX;
             startY = e.clientY;
