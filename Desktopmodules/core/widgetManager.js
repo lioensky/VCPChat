@@ -377,8 +377,8 @@
                     var widgetId = '${widgetId}';
                     
                     var _widgetData = null;
-                    if (window.VCPDesktop && window.VCPDesktop.state && window.VCPDesktop.state.widgets) {
-                        _widgetData = window.VCPDesktop.state.widgets.get('${widgetId}');
+                    if (_realWindow.VCPDesktop && _realWindow.VCPDesktop.state && _realWindow.VCPDesktop.state.widgets) {
+                        _widgetData = _realWindow.VCPDesktop.state.widgets.get('${widgetId}');
                     }
 
                     var setInterval = function(fn, delay) {
