@@ -1274,12 +1274,15 @@ ipcMain.on('open-voice-chat-window', (event, { agentId }) => {
         show: false,
     });
 
+    const theme = nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
+    voiceChatWindow.webContents.once('did-finish-load', () => {
+        voiceChatWindow.webContents.send('voice-chat-data', { agentId, theme });
+    });
+    
     voiceChatWindow.loadFile(path.join(__dirname, 'Voicechatmodules/voicechat.html'));
 
     voiceChatWindow.once('ready-to-show', () => {
-        const theme = nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
         voiceChatWindow.show();
-        voiceChatWindow.webContents.send('voice-chat-data', { agentId, theme });
     });
 
     openChildWindows.push(voiceChatWindow);

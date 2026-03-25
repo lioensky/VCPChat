@@ -19,6 +19,15 @@
  *   detailsAndBubbleWrapper: HTMLElement | null
  * }} An object containing the created DOM elements.
  */
+
+function fixVoiceChatAssetPath(url) {
+    if (!url) return url;
+    const isVoiceChatPage = window.location.pathname.replace(/\\/g, '/').includes('/Voicechatmodules/');
+    if (!isVoiceChatPage) return url;
+    if (url.startsWith('assets/')) return `../${url}`;
+    return url;
+}
+
 export function createMessageSkeleton(message, globalSettings, currentSelectedItem) {
     const messageItem = document.createElement('div');
     messageItem.classList.add('message-item', message.role);
@@ -55,9 +64,12 @@ export function createMessageSkeleton(message, globalSettings, currentSelectedIt
     if (message.role === 'user' || message.role === 'assistant') {
         avatarImg = document.createElement('img');
         avatarImg.classList.add('chat-avatar');
-        avatarImg.src = avatarUrlToUse;
+        avatarImg.src = fixVoiceChatAssetPath(avatarUrlToUse);
         avatarImg.alt = `${senderNameToUse} 头像`;
-        avatarImg.onerror = () => { avatarImg.src = message.role === 'user' ? 'assets/default_user_avatar.png' : 'assets/default_avatar.png'; };
+        avatarImg.onerror = () => {
+            avatarImg.onerror = null;
+            avatarImg.src = fixVoiceChatAssetPath(message.role === 'user' ? 'assets/default_user_avatar.png' : 'assets/default_avatar.png');
+        };
 
         nameTimeDiv = document.createElement('div');
         nameTimeDiv.classList.add('name-time-block');
