@@ -255,6 +255,12 @@ document.addEventListener('DOMContentLoaded', () => {
             syncInitialSettings(initialState);
         }
         app.populateDeviceList(false);
+
+        // Signal that the renderer is ready to handle commands
+        if (window.electron) {
+            console.log('[Music] Sending "music-renderer-ready" signal to main process.');
+            window.electron.send('music-renderer-ready');
+        }
         app.createEqBands();
         app.populateEqPresets();
     };

@@ -18,11 +18,16 @@ let MUSIC_COVER_CACHE_DIR;
 let LYRIC_DIR;
 let startAudioEngine; // To hold the function from main.js
 let stopAudioEngine; // To hold the function from main.js
-let audioEngineReadyPromise = null; // Promise to track engine readiness
+let musicWindowPromise = null; // To handle concurrent window creation requests
 
 // --- Singleton Music Window Creation Function ---
 function createOrFocusMusicWindow() {
-    return new Promise(async (resolve, reject) => {
+    if (musicWindowPromise) {
+        console.log('[Music] Window creation already in progress, returning existing promise.');
+        return musicWindowPromise;
+    }
+
+    musicWindowPromise = new Promise(async (resolve, reject) => {
         try {
             // Always wait for the engine to be ready before creating/focusing the window.
             // Thanks to pre-warming in main.js, this should be very fast.
@@ -34,6 +39,7 @@ function createOrFocusMusicWindow() {
         } catch (error) {
             console.error('[Music] Failed to ensure audio engine is ready:', error);
             dialog.showErrorBox('音乐引擎错误', '无法启动或连接后端音频引擎，请检查日志或重启应用。');
+            musicWindowPromise = null;
             reject(error);
             return;
         }
@@ -44,6 +50,7 @@ function createOrFocusMusicWindow() {
                 musicWindow.show();
             }
             musicWindow.focus();
+            musicWindowPromise = null;
             resolve(musicWindow);
             return;
         }
@@ -78,12 +85,27 @@ function createOrFocusMusicWindow() {
         });
 
         // Wait for the renderer to signal that it's ready
-        ipcMain.once('music-renderer-ready', (event) => {
-            if (event.sender === musicWindow.webContents) {
+        const readyHandler = (event) => {
+            if (musicWindow && event.sender === musicWindow.webContents) {
                 console.log('[Music] Received "music-renderer-ready" signal. Resolving promise.');
+                ipcMain.removeListener('music-renderer-ready', readyHandler);
+                clearTimeout(timeoutId);
+                musicWindowPromise = null;
                 resolve(musicWindow);
             }
-        });
+        };
+
+        // Add a timeout to prevent hanging forever if the renderer fails to signal
+        const timeoutId = setTimeout(() => {
+            console.error('[Music] Timeout waiting for "music-renderer-ready" signal.');
+            ipcMain.removeListener('music-renderer-ready', readyHandler);
+            musicWindowPromise = null;
+            // We resolve anyway to allow the command to proceed, or we could reject.
+            // Resolving might lead to other errors, but it's better than a permanent hang.
+            resolve(musicWindow);
+        }, 10000); // 10 second timeout
+
+        ipcMain.on('music-renderer-ready', readyHandler);
 
         musicWindow.on('close', (event) => {
             if (process.platform === 'darwin' && !require('electron').app.isQuitting) {
