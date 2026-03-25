@@ -56,6 +56,9 @@
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
                 </button>
             </div>
+            <div class="sidebar-search">
+                <input type="text" id="folder-search-input" class="folder-search-input" placeholder="搜索文件夹...">
+            </div>
             <div id="folder-list" class="folder-list">
                 <!-- 文件夹项将由 JS 动态生成 -->
                 <div class="folder-item active">
@@ -146,7 +149,7 @@
 
 
     <!-- 自定义确认弹窗 -->
-    <div id="custom-confirm-modal" class="modal" style="display: none; align-items: center; justify-content: center; position: fixed; top:0; left:0; right:0; bottom:0; z-index: 8000; background: rgba(0,0,0,0.6); backdrop-filter: blur(10px);">
+    <div id="custom-confirm-modal" class="modal" style="display: none; align-items: center; justify-content: center; position: fixed; top:0; left:0; right:0; bottom:0; z-index: 10100; background: rgba(0,0,0,0.6); backdrop-filter: blur(10px);">
         <div class="modal-glass-content glass" style="max-width: 450px; width: 90%; text-align: center; padding: 30px; border-radius: 20px;">
             <h3 id="confirm-title" style="margin-top: 0; margin-bottom: 15px; color: var(--accent-color);">确认操作</h3>
             <p id="confirm-message" style="margin-bottom: 25px; line-height: 1.6; color: var(--text-primary);"></p>
@@ -158,7 +161,7 @@
     </div>
 
     <!-- 自定义提示弹窗 -->
-    <div id="custom-alert-modal" class="modal" style="display: none; align-items: center; justify-content: center; position: fixed; top:0; left:0; right:0; bottom:0; z-index: 8000; background: rgba(0,0,0,0.6); backdrop-filter: blur(10px);">
+    <div id="custom-alert-modal" class="modal" style="display: none; align-items: center; justify-content: center; position: fixed; top:0; left:0; right:0; bottom:0; z-index: 10100; background: rgba(0,0,0,0.6); backdrop-filter: blur(10px);">
         <div class="modal-glass-content glass" style="max-width: 400px; width: 90%; text-align: center; padding: 30px; border-radius: 20px;">
             <h3 id="alert-title" style="margin-top: 0; margin-bottom: 15px; color: var(--accent-color);">提示</h3>
             <p id="alert-message" style="margin-bottom: 25px; line-height: 1.6; color: var(--text-primary);"></p>

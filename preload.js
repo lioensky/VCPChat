@@ -84,7 +84,9 @@ contextBridge.exposeInMainWorld('electron', {
             'music-configure-resampling',
             // --- Settings Persistence ---
             'music-get-settings',
-            'music-save-settings'
+            'music-save-settings',
+            // --- Pending Track for AI song request ---
+            'music-get-pending-track'
         ];
         if (validChannels.includes(channel)) {
             return ipcRenderer.invoke(channel, data);
