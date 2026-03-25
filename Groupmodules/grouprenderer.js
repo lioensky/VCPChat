@@ -29,6 +29,16 @@ window.GroupRenderer = (() => {
     // State for group settings
     let availableAgentsForGroup = []; // To populate member selection
 
+    function setCurrentItemActionButtonText(button, text) {
+        if (!button) return;
+        const label = button.querySelector('.button-label');
+        if (label) {
+            label.textContent = text;
+            return;
+        }
+        button.textContent = text;
+    }
+
     function init(dependencies) {
         console.log('[GroupRenderer] init function CALLED. Dependencies received:', Object.keys(dependencies));
         electronAPI = dependencies.electronAPI;
@@ -267,7 +277,7 @@ window.GroupRenderer = (() => {
             mainRendererElements.currentChatNameH3.textContent = `与群组 ${groupName} 聊天中`;
         }
         if (mainRendererElements.currentItemActionBtn) {
-            mainRendererElements.currentItemActionBtn.textContent = '新建群聊话题';
+            setCurrentItemActionButtonText(mainRendererElements.currentItemActionBtn, '新建群聊话题');
             mainRendererElements.currentItemActionBtn.title = `为群组 ${groupName} 新建群聊话题`;
             mainRendererElements.currentItemActionBtn.style.display = 'inline-block';
         }

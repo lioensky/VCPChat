@@ -46,6 +46,7 @@ const messageInput = document.getElementById('messageInput');
 const sendMessageBtn = document.getElementById('sendMessageBtn');
 const attachFileBtn = document.getElementById('attachFileBtn');
 const attachmentPreviewArea = document.getElementById('attachmentPreviewArea');
+const chatInputCard = document.querySelector('.chat-input-card');
 
 const globalSettingsBtn = document.getElementById('globalSettingsBtn');
 // 模态框及其内部元素现在延迟加载，不再在顶层缓存引用
@@ -315,6 +316,7 @@ import { setupEventListeners } from './modules/event-listeners.js';
     if (window.inputEnhancer) {
         window.inputEnhancer.initializeInputEnhancer({
             messageInput: messageInput,
+            dropTargetElement: chatInputCard,
             electronAPI: window.electronAPI,
             attachedFiles: { get: () => attachedFiles, set: (val) => attachedFiles = val },
             updateAttachmentPreview: () => uiHelperFunctions.updateAttachmentPreview(attachedFiles, attachmentPreviewArea),

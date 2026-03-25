@@ -91,11 +91,16 @@ body.light-theme .sidebar-button:hover {
     border-color: var(--button-hover-bg);
 }
 
+.chat-actions {
+    display: flex;
+    align-items: center;
+}
+
 .chat-actions .header-button {
     background: transparent;
     border: 1px solid var(--button-bg);
     color: var(--secondary-text);
-    padding: 0 8px;
+    padding: 0 10px;
     height: 32px;
     border-radius: 8px;
     cursor: pointer;
@@ -113,30 +118,38 @@ body.light-theme .sidebar-button:hover {
     height: 18px;
 }
 .chat-actions .header-button#themeToggleBtn {
-    padding: 0 10px; 
-    position: relative;
-    top: 3.4px; 
+    padding: 0 10px;
 }
 
 .chat-actions .header-button#toggleNotificationsBtn {
-    padding: 0 10px; 
-    position: relative;
-    top: 3.4px; 
+    padding: 0 10px;
 }
 
 .chat-actions .header-button#toggleAssistantBtn {
     padding: 0 10px;
-    position: relative;
-    top: 3.4px;
 }
 
 .chat-actions .header-button#voiceChatBtn {
     padding: 0 10px;
 }
 
+.chat-actions .header-button#currentAgentSettingsBtn {
+    padding: 0 10px;
+}
+
+.chat-actions .header-button#currentAgentSettingsBtn svg {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+}
+
+.chat-actions .header-button#currentAgentSettingsBtn svg,
 .chat-actions .header-button#voiceChatBtn svg {
-    position: relative;
-    top: 1.8px; /* Adjust the icon itself */
+    transform: translateY(1px);
+}
+
+.chat-actions .header-button#currentAgentSettingsBtn .button-label {
+    display: none;
 }
 
 .chat-actions .header-button:hover {
@@ -189,33 +202,88 @@ body.light-theme .chat-actions .header-button:hover {
 }
 
 #sendMessageBtn, #attachFileBtn {
-    background-color: var(--button-bg); 
     border: none;
-    border-radius: 50%; 
-    width: 40px;
-    height: 40px;
     display: flex;
     justify-content: center;
     align-items: center;
     cursor: pointer;
-    transition: background-color 0.2s ease;
+    transition: background-color 0.2s ease, color 0.2s ease, opacity 0.2s ease, transform 0.2s ease;
     padding: 0;
-    margin-left: 8px;
 }
 #sendMessageBtn svg, #attachFileBtn svg {
     width: 24px;
     height: 24px;
     stroke: var(--secondary-text);
-    fill: var(--secondary-text);
     color: var(--secondary-text);
 }
+
+#sendMessageBtn svg {
+    fill: none;
+}
+
+#attachFileBtn svg {
+    fill: var(--secondary-text);
+}
+
 body.light-theme #sendMessageBtn svg, body.light-theme #attachFileBtn svg {
     stroke: #ffffff; 
+}
+
+body.light-theme #sendMessageBtn svg {
+    fill: none;
+}
+
+body.light-theme #attachFileBtn svg {
     fill: #ffffff; 
+}
+
+body.light-theme #attachFileBtn svg {
+    stroke: var(--button-bg);
+    fill: var(--button-bg);
 }
 
 #sendMessageBtn:hover, #attachFileBtn:hover {
     background-color: var(--button-hover-bg);
+}
+
+#sendMessageBtn {
+    position: static;
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    background-color: var(--button-bg);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+    margin-left: auto;
+}
+
+#sendMessageBtn:hover:not(:disabled) {
+    transform: translateY(-1px);
+}
+
+#attachFileBtn {
+    width: 36px;
+    height: 36px;
+    border-radius: 12px;
+    background-color: transparent;
+    border: 1px solid var(--border-color);
+    margin-left: 0;
+    flex-shrink: 0;
+}
+
+#attachFileBtn:hover:not(:disabled) {
+    border-color: var(--button-hover-bg);
+}
+
+#sendMessageBtn:disabled,
+#attachFileBtn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+#attachFileBtn:disabled {
+    border-color: var(--border-color);
 }
 
 /* --- Modals --- */
