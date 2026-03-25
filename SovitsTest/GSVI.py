@@ -1,25 +1,12 @@
-""" GSVI服务器 """
-
 import os
-import io
 import sys
-from datetime import datetime
-from tools.logger import logger
-import pyfiglet
-pyfiglet.print_figlet("G S V I", "standard", "LIGHT_GREEN")
-from .exec_hook import set_exechook , ExtractException
-set_exechook()
-if not (3, 9, 12) <= sys.version_info < (3, 12):
-    logger.warning("python版本不在 3.9 - 3.11 之间，可能会遇到模块安装问题，如果你遇到了 ModuleNotFoundError，请安装这个区间内的python.")
-logger.info("开始导入各种模块...")
-start_import = datetime.now()
-from .openai_like_model import (
-    inferWithClassic, inferWithEmotions, inferWithMulti, installModel, checkModelInstalled, openaiLikeInfer, requestVersion, ShutdownRequest
-)
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
 from tools.my_infer import get_multi_ref_template, create_speaker_list, single_infer, multi_infer, pre_infer, get_classic_model_list, classic_infer, get_version, check_installed, install_model, delete_model, openai_like_infer
 from fastapi import FastAPI, File, UploadFile, Request, Response
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 import argparse
 import uvicorn
@@ -27,23 +14,10 @@ from pathlib import Path
 import webbrowser
 import signal
 import mimetypes
-logger.success("模块导入完成，可喜可贺！！！")
-end_import = datetime.now()
-logger.info(f"导入耗时: {end_import - start_import}")
 
 #===========================启动服务===========================
-
 origin = ["*"] # 允许所有来源的请求
 mimetypes.add_type('application/javascript', '.js')
-
-### CONSTANTS ###
-
-infer_key: str = ""
-host: str = ""
-port: int = 8000
-ref_audio_path: str = ""
-
-### CONSTANTS ###
 
 APP = FastAPI()
 APP.add_middleware(
@@ -54,29 +28,127 @@ APP.add_middleware(
     allow_headers=["*"],  # 允许的请求头
 )
 
-### EXCEPTION HANDLERS ###
+#OpenAI推理接口其它参数
+class otherParams(BaseModel):
+    app_key: str = ""
+    text_lang: str = "中英混合"
+    prompt_lang: str = "中文"
+    emotion: str = "默认"
+    top_k: int = 10
+    top_p: float = 1.0
+    temperature: float = 1.0
+    text_split_method: str = "按标点符号切"
+    batch_size: int = 1
+    batch_threshold: float = 0.75
+    split_bucket: bool = True
+    fragment_interval: float = 0.3
+    parallel_infer: bool = True
+    repetition_penalty: float = 1.35
+    sample_steps: int = 16
+    if_sr: bool = False
+    seed: int = -1
 
-@APP.exception_handler(Exception)
-async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
-    """ 全局异常处理器 """
-    logger.error("发生了错误: \n")
-    exc_Information = ExtractException(type(exc), exc, exc.__traceback__)
-    logger.error(exc_Information)
-    return JSONResponse(content="GSVI服务器发射了一些错误导致未能处理请求，请查看终端知晓详情！", status_code=500)
+#OpenAI风格的推理接口
+class openaiLikeInfer(BaseModel):
+    model: str = ""
+    input: str = ""
+    voice: str = ""
+    response_format: str = "mp3"
+    speed: float = 1.0
+    other_params: otherParams = otherParams()
 
-### EXCEPTION HANDLERS ###
-
-### MIDDLEWARES ###
-
-@APP.middleware("http")
-async def log_request(request: Request, call_next) -> Response:
-    req_from = f"({request.client.host}:{request.client.port})" if request.client else "UNKNOWN"
-    req_info = f"请求来自: {req_from} => {request.url} ({request.method})"
-    logger.trace(req_info)
-    response = await call_next(request)
-    return response
-
-### MIDDLEWARES ###
+# 定义请求参数模型
+class requestVersion(BaseModel):
+    version: str
+    
+class shutdown(BaseModel):
+    password: str
+    
+class inferWithEmotions(BaseModel):
+    app_key: str = ""
+    dl_url: str = ""
+    version: str = "v4"
+    model_name: str = ""
+    prompt_text_lang: str = ""
+    emotion: str = ""
+    text: str = ""
+    text_lang: str = ""
+    top_k: int = 10
+    top_p: float = 1.0
+    temperature: float = 1.0
+    text_split_method: str = "按标点符号切"
+    batch_size: int = 1
+    batch_threshold: float = 0.75
+    split_bucket: bool = True
+    speed_facter: float = 1.0
+    fragment_interval: float = 0.3
+    media_type: str = "wav"
+    parallel_infer: bool = True
+    repetition_penalty: float = 1.35
+    seed: int = -1
+    sample_steps: int = 16
+    if_sr : bool = False
+    
+class inferWithMulti(BaseModel):
+    app_key: str = ""
+    dl_url: str = ""
+    content : str = ""
+    top_k: int = 10
+    top_p: float = 1.0
+    temperature: float = 1.0
+    text_split_method: str = "按标点符号切"
+    batch_size: int = 1
+    batch_threshold: float = 0.75
+    split_bucket: bool = True
+    fragment_interval: float = 0.3
+    media_type: str = "wav"
+    parallel_infer: bool = True
+    repetition_penalty: float = 1.35
+    seed: int = -1
+    sample_steps: int = 16
+    if_sr : bool = False
+    
+    
+class inferWithClassic(BaseModel):
+    app_key: str = ""
+    dl_url: str = ""
+    version: str = "v4"
+    gpt_model_name: str = ""
+    sovits_model_name: str = ""
+    ref_audio_path: str = ""
+    prompt_text: str = ""
+    prompt_text_lang: str = ""
+    text: str = ""
+    text_lang: str = ""
+    top_k: int = 10
+    top_p: float = 1.0
+    temperature: float = 1.0
+    text_split_method: str = "按标点符号切"
+    batch_size: int = 1
+    batch_threshold: float = 0.75
+    split_bucket: bool = True
+    speed_facter: float = 1.0
+    fragment_interval: float = 0.3
+    media_type: str = "wav"
+    parallel_infer: bool = True
+    repetition_penalty: float = 1.35
+    seed: int = -1
+    sample_steps: int = 16
+    if_sr : bool = False
+    
+class checkModelInstalled(BaseModel):
+    version: str = "v4"
+    category: str = ""
+    language: str = ""
+    model_name: str = ""
+    
+class installModel(BaseModel):
+    version: str = "v4"
+    category: str = ""
+    language: str = ""
+    model_name: str = ""
+    dl_url: str = ""
+    
     
 # 初始化
 @APP.get("/api")
@@ -95,10 +167,20 @@ async def template(model: requestVersion):
     template_list, msg = get_multi_ref_template(model.version)
     return {"msg": msg, "template_list": template_list}
 
+@APP.get("/template/{version}")
+async def template_get(version: str):
+    template_list, msg = get_multi_ref_template(version)
+    return {"msg": msg, "template_list": template_list}
+
 # 获取说话人列表
 @APP.post("/models")
 async def speaker_list(model: requestVersion):
     model_list, msg = create_speaker_list(model.version)
+    return {"msg": msg, "models": model_list}
+
+@APP.get("/models/{version}")
+async def speaker_list_get(version: str):
+    model_list, msg = create_speaker_list(version)
     return {"msg": msg, "models": model_list}
 
 # 根据情感进行推理
@@ -154,6 +236,41 @@ async def classic_model_list(model: requestVersion):
         print(e)
     return {"msg": msg, "gpt": gpt, "sovits": sovits}
 
+@APP.get("/classic_model_list/{version}")
+async def classic_model_list_get(version: str):
+    try:
+        gpt, sovits, msg, _, _ = get_classic_model_list(version)
+    except Exception as e:
+        msg = "获取模型列表失败"
+        gpt = []
+        sovits = []
+        print(e)
+    return {"msg": msg, "gpt": gpt, "sovits": sovits}
+
+@APP.get("/check_model/{version}")
+async def check_model_list(version: str):
+    try:
+        model_root = Path(f"models/{version}")
+        installed = []
+        if model_root.exists():
+            for item in sorted(model_root.iterdir(), key=lambda path: path.name):
+                if not item.is_dir():
+                    continue
+
+                model_name = item.name
+                if "_" in model_name:
+                    category, language = model_name.rsplit("_", 1)
+                elif "-" in model_name:
+                    category, language = model_name.rsplit("-", 1)
+                else:
+                    category, language = model_name, ""
+
+                installed.append(f"{category}-{language}-{model_name}" if language else model_name)
+    except Exception as e:
+        print(e)
+        installed = []
+    return {"installed": installed}
+
 # 经典模式推理
 @APP.post("/infer_classic")
 async def infer_classic(model: inferWithClassic):
@@ -175,12 +292,10 @@ async def infer_classic(model: inferWithClassic):
         msg = "参数错误"
         audio_url = ""
     return {"msg": msg, "audio_url": audio_url}
-
+    
 # OpenAI风格的推理接口
 @APP.post("/v1/audio/speech")
-# OpenAI风格的推理接口
-@APP.post("/v1/audio/speech")
-async def openai_like_infer_func(model: openaiLikeInfer):
+async def openai_compatible_infer(model: openaiLikeInfer):
     try:
         if model.other_params.app_key != infer_key and infer_key != "":
             return {
@@ -203,7 +318,6 @@ async def openai_like_infer_func(model: openaiLikeInfer):
                     }
                 }
             else:
-                # 根据请求的格式动态设置MIME类型
                 media_type_map = {
                     "mp3": "audio/mpeg",
                     "wav": "audio/wav",
@@ -211,7 +325,7 @@ async def openai_like_infer_func(model: openaiLikeInfer):
                     "ogg": "audio/ogg",
                     "raw": "application/octet-stream"
                 }
-                response_media_type = media_type_map.get(model.response_format, "audio/wav") # 默认为wav
+                response_media_type = media_type_map.get(model.response_format, "audio/wav")
                 return Response(content=audio_byte, media_type=response_media_type)
 
     except Exception as e:
@@ -257,7 +371,7 @@ async def delete_model_func(model: checkModelInstalled):
 
 # 关闭服务
 @APP.post("/shutdown")
-async def shutdown(model: ShutdownRequest):
+async def shutdown(model: shutdown):
     shutdown_password = "wYdjEHnnjrNAahFsQ0yVmv1TEeUU9Z8A"  # 设置关闭密码
     if model.password == shutdown_password:
         os.kill(os.getpid(), signal.SIGINT)
@@ -294,25 +408,21 @@ async def redirect_to_index(request: Request, call_next):
     if response.status_code == 404 and not request.url.path.startswith("/api"):
         return FileResponse("gsvi_ui/index.html")
     return response
-    
 
-def main() -> None:
-    global infer_key, host, port, ref_audio_path
+if __name__ == "__main__":
+    #===========================启动参数===========================
     parser = argparse.ArgumentParser(description="TTS Inference API")
     parser.add_argument("-s","--host", type=str, default="0.0.0.0", help="主机地址")
-    parser.add_argument("-p","--port", type=int, default=8000, help="端口")
+    parser.add_argument("-p","--port", type=int, default=8001, help="端口")
     parser.add_argument("-k","--key", type=str, default="", help="推理密钥")
     parser.add_argument("-c","--config", type=str, default="./GPT_SoVITS/configs/tts_infer.yaml", help="配置文件路径")
     parser.add_argument("-r","--ref_audio", type=str, default="./custom_refs", help="参考音频路径")
     args = parser.parse_args()
-    
-    logger.info(f"服务即将启动，将运行在: http://127.0.0.1:{port}")
+        
     infer_key = args.key
     host = args.host
     port = args.port
     ref_audio_path = args.ref_audio
-        
     pre_infer(args.config, ref_audio_path)
-
     webbrowser.open(f"http://127.0.0.1:{port}")
-    uvicorn.run(app=APP, host=host, port=port, log_level="critical")
+    uvicorn.run(app=APP, host=host, port=port)

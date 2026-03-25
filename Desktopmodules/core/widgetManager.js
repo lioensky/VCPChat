@@ -121,6 +121,9 @@
             savedName: null,
             savedId: null,
             _resizeObserver: null,
+            _intervals: [],
+            _timeouts: [],
+            _windowListeners: [],
         };
 
         // 监听 Shadow DOM 内容变化，自动调整尺寸
@@ -144,11 +147,17 @@
     function appendWidgetContent(widgetId, fullContent) {
         let widgetData = state.widgets.get(widgetId);
         if (!widgetData) {
+            // 并发情况下，如果 createWidget 还没来得及把 widget 放入 state.widgets，
+            // 这里可能会重复创建。虽然 createWidget 内部有检查，但为了保险，
+            // 我们在这里也做一次检查，或者确保 createWidget 是同步完成 state 写入的。
             widgetData = createWidget(widgetId, {
                 x: 100 + Math.random() * 200,
                 y: 100 + Math.random() * 200,
             });
         }
+
+        // 如果内容没有变化，跳过重复渲染，减少并发时的 DOM 压力
+        if (widgetData.contentBuffer === fullContent) return;
 
         widgetData.contentBuffer = fullContent;
         widgetData.contentContainer.innerHTML = fullContent;
@@ -216,6 +225,20 @@
         if (widgetData._resizeObserver) {
             widgetData._resizeObserver.disconnect();
             widgetData._resizeObserver = null;
+        }
+
+        // 清理沙盒内建立的定时器和全局事件监听，防止内存泄漏
+        if (widgetData._intervals) {
+            widgetData._intervals.forEach(id => clearInterval(id));
+            widgetData._intervals = [];
+        }
+        if (widgetData._timeouts) {
+            widgetData._timeouts.forEach(id => clearTimeout(id));
+            widgetData._timeouts = [];
+        }
+        if (widgetData._windowListeners) {
+            widgetData._windowListeners.forEach(l => window.removeEventListener(l.type, l.listener, l.options));
+            widgetData._windowListeners = [];
         }
 
         widgetData.element.classList.add('removing');
@@ -348,10 +371,69 @@
      * @returns {string} 包裹后的代码
      */
     function buildSandboxCode(widgetId, userCode) {
-        return `(function(_realDoc) {
+        return `(function(_realDoc, _realWindow) {
                     var _shadowRoot = _realDoc.querySelector('[data-widget-id="${widgetId}"] .desktop-widget-content').shadowRoot;
                     var root = _shadowRoot.querySelector('.widget-inner-content');
                     var widgetId = '${widgetId}';
+                    
+                    var _widgetData = null;
+                    if (_realWindow.VCPDesktop && _realWindow.VCPDesktop.state && _realWindow.VCPDesktop.state.widgets) {
+                        _widgetData = _realWindow.VCPDesktop.state.widgets.get('${widgetId}');
+                    }
+
+                    var setInterval = function(fn, delay) {
+                        var id = _realWindow.setInterval(fn, delay);
+                        if (_widgetData) _widgetData._intervals.push(id);
+                        return id;
+                    };
+                    var clearInterval = function(id) {
+                        _realWindow.clearInterval(id);
+                        if (_widgetData) {
+                            var idx = _widgetData._intervals.indexOf(id);
+                            if (idx > -1) _widgetData._intervals.splice(idx, 1);
+                        }
+                    };
+
+                    var setTimeout = function(fn, delay) {
+                        var id = _realWindow.setTimeout(fn, delay);
+                        if (_widgetData) _widgetData._timeouts.push(id);
+                        return id;
+                    };
+                    var clearTimeout = function(id) {
+                        _realWindow.clearTimeout(id);
+                        if (_widgetData) {
+                            var idx = _widgetData._timeouts.indexOf(id);
+                            if (idx > -1) _widgetData._timeouts.splice(idx, 1);
+                        }
+                    };
+
+                    var window = new Proxy(_realWindow, {
+                        get: function(target, prop) {
+                            if (prop === 'addEventListener') {
+                                return function(type, listener, options) {
+                                    if (_widgetData) _widgetData._windowListeners.push({type, listener, options});
+                                    return _realWindow.addEventListener(type, listener, options);
+                                };
+                            }
+                            if (prop === 'removeEventListener') {
+                                return function(type, listener, options) {
+                                    if (_widgetData) {
+                                        _widgetData._windowListeners = _widgetData._windowListeners.filter(
+                                            l => l.type !== type || l.listener !== listener
+                                        );
+                                    }
+                                    return _realWindow.removeEventListener(type, listener, options);
+                                };
+                            }
+                            if (prop === 'setInterval') return setInterval;
+                            if (prop === 'clearInterval') return clearInterval;
+                            if (prop === 'setTimeout') return setTimeout;
+                            if (prop === 'clearTimeout') return clearTimeout;
+                            
+                            var val = target[prop];
+                            return typeof val === 'function' ? val.bind(target) : val;
+                        }
+                    });
                     
                     var document = {
                         querySelector: function(sel) { return root.querySelector(sel) || _shadowRoot.querySelector(sel); },
@@ -433,7 +515,7 @@
                     };
                     
                     ${userCode}
-                })(window.document);`;
+                })(window.document, window);`;
     }
 
     /**

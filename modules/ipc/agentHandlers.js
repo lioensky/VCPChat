@@ -106,10 +106,16 @@ function initialize(context) {
 
                     if (await fs.pathExists(configPath)) {
                         let config;
-                        if (agentConfigManager) {
-                            config = await agentConfigManager.readAgentConfig(folderName, { allowDefault: true });
-                        } else {
-                            config = await fs.readJson(configPath);
+                        try {
+                            if (agentConfigManager) {
+                                // 不再允许静默返回默认配置，如有错误则通过 catch 处理
+                                config = await agentConfigManager.readAgentConfig(folderName);
+                            } else {
+                                config = await fs.readJson(configPath);
+                            }
+                        } catch (readError) {
+                            console.error(`[agentHandlers] Skipping corrupted agent ${folderName}:`, readError);
+                            continue; // 跳过此 Agent，防止损坏的数据进入前端
                         }
 
                         // Load external regex rules if they exist
@@ -328,11 +334,12 @@ function initialize(context) {
             const agentDir = path.join(AGENT_DIR_CACHE, agentId);
             await fs.ensureDir(agentDir);
 
-            // 1. 获取 Agent 名称
+            // 1. 获取 Agent 配置（用于重命名头像文件）
             let agentConfig = {};
             try {
                 if (agentConfigManager) {
-                    agentConfig = await agentConfigManager.readAgentConfig(agentId, { allowDefault: true });
+                    // 这里也不允许返回默认配置，因为这是在操作已存在的 Agent
+                    agentConfig = await agentConfigManager.readAgentConfig(agentId);
                 } else {
                     const configPath = path.join(agentDir, 'config.json');
                     if (await fs.pathExists(configPath)) {
@@ -340,7 +347,8 @@ function initialize(context) {
                     }
                 }
             } catch (e) {
-                console.warn(`无法读取Agent ${agentId} 的配置以获取名称:`, e);
+                console.warn(`无法读取Agent ${agentId} 的配置以获取名称 (可能正在更新中):`, e);
+                // 如果读取失败，尝试使用缓存或回退到 ID，但不覆盖文件
             }
             const agentName = agentConfig.name || agentId;
 

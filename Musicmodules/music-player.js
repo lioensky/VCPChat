@@ -197,15 +197,21 @@ function setupPlayer(app) {
                 nextTrackToPreload = app.playlist[app.currentTrackIndex];
                 break;
             case 'shuffle':
+                if (app.shuffleQueue.length === 0) {
+                    // Generate a new shuffle queue if empty
+                    app.shuffleQueue = Array.from({ length: activeList.length }, (_, i) => i);
+                    for (let i = app.shuffleQueue.length - 1; i > 0; i--) {
+                        const j = Math.floor(Math.random() * (i + 1));
+                        [app.shuffleQueue[i], app.shuffleQueue[j]] = [app.shuffleQueue[j], app.shuffleQueue[i]];
+                    }
+                    // Avoid starting with the current track
+                    if (app.shuffleQueue.length > 1 && app.playlist.indexOf(activeList[app.shuffleQueue[0]]) === app.currentTrackIndex) {
+                        app.shuffleQueue.push(app.shuffleQueue.shift());
+                    }
+                }
+                
                 if (app.shuffleQueue.length > 0) {
                     nextTrackToPreload = activeList[app.shuffleQueue[0]];
-                } else {
-                    const temp = Array.from({ length: activeList.length }, (_, i) => i);
-                    for (let i = temp.length - 1; i > 0; i--) {
-                        const j = Math.floor(Math.random() * (i + 1));
-                        [temp[i], temp[j]] = [temp[j], temp[i]];
-                    }
-                    if (temp.length > 0) nextTrackToPreload = activeList[temp[0]];
                 }
                 break;
         }
@@ -265,6 +271,20 @@ function setupPlayer(app) {
             app.renderPlaylist(app.currentFilteredTracks);
             app.fetchAndDisplayLyrics(track.artist, track.title);
             app.updateMediaSessionMetadata();
+
+            // 如果是随机播放，从队列中移除当前已开始播放的这首歌，防止之后再次随机到它
+            if (app.playModes[app.currentPlayMode] === 'shuffle') {
+                const activeList = app.currentFilteredTracks || app.playlist;
+                const posInActiveList = activeList.indexOf(track);
+                if (posInActiveList !== -1) {
+                    const queueIndex = app.shuffleQueue.indexOf(posInActiveList);
+                    if (queueIndex !== -1) {
+                        console.log('[Music.js] Removing synced track from shuffle queue at index:', queueIndex);
+                        app.shuffleQueue.splice(queueIndex, 1);
+                    }
+                }
+            }
+
             if (app.wnpAdapter) app.wnpAdapter.sendUpdate();
         } else {
             // 路径匹配失败 —— 尝试文件名模糊匹配作为降级
@@ -298,6 +318,20 @@ function setupPlayer(app) {
                     app.renderPlaylist(app.currentFilteredTracks);
                     app.fetchAndDisplayLyrics(track.artist, track.title);
                     app.updateMediaSessionMetadata();
+
+                    // 同样处理模糊匹配的情况
+                    if (app.playModes[app.currentPlayMode] === 'shuffle') {
+                        const activeList = app.currentFilteredTracks || app.playlist;
+                        const posInActiveList = activeList.indexOf(track);
+                        if (posInActiveList !== -1) {
+                            const queueIndex = app.shuffleQueue.indexOf(posInActiveList);
+                            if (queueIndex !== -1) {
+                                console.log('[Music.js] Removing synced track (fuzzy) from shuffle queue at index:', queueIndex);
+                                app.shuffleQueue.splice(queueIndex, 1);
+                            }
+                        }
+                    }
+
                     if (app.wnpAdapter) app.wnpAdapter.sendUpdate();
                 } else {
                     console.warn('[Music.js] syncTrackIndexByPath: no match found for', normalizedPath);

@@ -236,6 +236,12 @@ const settingsManager = (() => {
     async function saveCurrentAgentSettings(event) {
         event.preventDefault();
         const agentId = editingAgentIdInput.value;
+        if (!agentId) {
+            console.error("[SettingsManager] Cannot save agent settings: agentId is missing.");
+            uiHelper.showToastNotification("保存失败：未指定 Agent ID", 'error');
+            return;
+        }
+
         // Get system prompt from PromptManager
         let systemPromptData = {};
         if (promptManager) {
@@ -287,9 +293,12 @@ const settingsManager = (() => {
 
                 if (avatarResult.error) {
                     uiHelper.showToastNotification(`保存Agent头像失败: ${avatarResult.error}`, 'error');
+                    // 如果头像保存失败，视情况决定是否继续保存其他配置。这里选择报错并中断。
+                    return;
                 } else {
                     // 只在成功保存真实头像文件后才提取颜色
                     if (avatarResult.needsColorExtraction && avatarResult.avatarUrl && electronAPI.saveAvatarColor) {
+                        // 这里不阻塞主流程，但也进行错误处理
                         uiHelper.getAverageColorFromAvatar(avatarResult.avatarUrl, (avgColor) => {
                             if (avgColor) {
                                 electronAPI.saveAvatarColor({ type: 'agent', id: agentId, color: avgColor })
@@ -312,6 +321,7 @@ const settingsManager = (() => {
             } catch (readError) {
                 console.error("读取Agent头像文件失败:", readError);
                 uiHelper.showToastNotification(`读取Agent头像文件失败: ${readError.message}`, 'error');
+                return; // 中断保存
             }
         }
 

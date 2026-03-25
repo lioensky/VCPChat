@@ -10,8 +10,12 @@ import numpy as np
 import soundfile as sf
 import torch
 import gc
-from gsvi_server.openai_like_model import otherParams
+from typing import TYPE_CHECKING
 from tools.logger import logger
+
+if TYPE_CHECKING:
+    from gsvi import otherParams
+
 from GPT_SoVITS.TTS_infer_pack.TTS import TTS, TTS_Config
 from glob import glob
 from pathlib import Path
@@ -19,7 +23,7 @@ from re import split
 from io import BytesIO
 from random import choice, randint
 from hashlib import md5
-from time import time
+from time import time, sleep
 from datetime import datetime
 from pydub import AudioSegment
 from shutil import move, rmtree
@@ -27,10 +31,6 @@ from config import is_half, infer_device, force_half_infer, force_gpu_infer
 from GPT_SoVITS.TTS_infer_pack.text_segmentation_method import get_method
 
 #===============推理预备================
-# 持久化模型
-loaded_gpt_model = ""
-loaded_sovits_model = ""
-
 def create_weight_dirs():
     gpt_dirs = ["GPT_weights", "GPT_weights_v2", "GPT_weights_v3", "GPT_weights_v4", "GPT_weights_v2Pro", "GPT_weights_v2ProPlus"]
     sovits_dirs = ["SoVITS_weights", "SoVITS_weights_v2", "SoVITS_weights_v3", "SoVITS_weights_v4", "SoVITS_weights_v2Pro", "SoVITS_weights_v2ProPlus"]
@@ -71,6 +71,10 @@ def pre_infer(config_path: str, ref_audio_path: str) -> None:
     tts_pipeline = TTS(tts_config)
     
     
+loaded_gpt_model = ""
+loaded_sovits_model = ""
+
+
 def load_weights(gpt, sovits):
     global loaded_gpt_model, loaded_sovits_model
     if gpt != "" and gpt != loaded_gpt_model:
@@ -224,7 +228,7 @@ def get_tag_text(file_name):
     return tag, text
 
 # 获取说话人支持的参考音频语言
-def get_ref_audio_langs(modelname, version):
+def get_ref_audio_langs(modelname: str, version: str) -> list[str]:
     langs = []
     lang_dir = glob(f"models/{version}/{modelname}/reference_audios/*")
     for lang in lang_dir:
@@ -233,7 +237,7 @@ def get_ref_audio_langs(modelname, version):
     return langs
 
 # 根据语言获取参考情感列表
-def get_ref_audios(modelname, lang, version):
+def get_ref_audios(modelname: str, lang: str, version: str) -> list[str]:
     audios = glob(f"models/{version}/{modelname}/reference_audios/{lang}/emotions/*.wav")
     audio_list = []
     for audio in audios:
@@ -323,7 +327,7 @@ def get_multi_ref_template(version: str) -> tuple[list[str], str]:
     return template_list, msg
 
 # 创建说话人列表
-def create_speaker_list(version):
+def create_speaker_list(version: str) -> tuple[dict[str, dict[str, list[str]]], str]:
     spk_list = {}
     if not version_support(version):
         msg = "不支持该版本！"
@@ -501,7 +505,10 @@ def classic_infer(gpt_model_name, sovits_model_name, ref_audio_path, prompt_text
     return audio_path, msg
 
 #=========OpenAI语音合成兼容接口=========
-def openai_like_infer(model, input, voice, response_format, speed, other_options: otherParams):
+
+
+def openai_like_infer(model, input, voice, response_format, speed, other_options: "otherParams"):
+
     version = model.split("-")[1]
     if not version_support(version):
         msg = "不支持该版本！"
@@ -551,19 +558,36 @@ def openai_like_infer(model, input, voice, response_format, speed, other_options
             )
         msg = "合成成功"
     return audio_data, msg
-            
-            
-    
-        
-        
-        
+                    
 #===============一键安装================
+# 获取已安装模型列表
+def get_installed_models(version):
+    model_list = []
+    if not version_support(version):
+        msg = "不支持该版本！"
+    else:
+        installed_models = glob(f"models/{version}/*")
+        if len(installed_models) == 0:
+            msg = "该版本暂无已安装模型！"
+        else:
+            for model in installed_models:
+                model_name = Path(model).name
+                model_list.append(model_name)
+            msg = "获取已安装模型列表成功"
+    return model_list, msg
+
 # 检测是否已安装对应模型
 def check_installed(version, categroy, lang, model_name):
-    if Path(f'models/{version}/{categroy}-{lang}-{model_name}').exists():
+    model_dir = Path(f"models/{version}/{categroy}-{lang}-{model_name}")
+    if model_dir.exists():
         return True
-    else:
-        return False
+
+    if model_name:
+        direct_model_dir = Path(f"models/{version}/{model_name}")
+        if direct_model_dir.exists():
+            return True
+
+    return False
     
 # 检测模型是否成功安装
 def check_model_installed(version, categroy, lang, model_name):

@@ -106,68 +106,56 @@ class AgentConfigManager extends EventEmitter {
                 return await this.readAgentConfig(id, { allowDefault, retryCount: retryCount + 1 });
             }
 
-            if (error.code === 'ENOENT') {
-                // 所有重试都失败后，优先返回缓存数据
-                const cachedConfig = this.caches.get(id);
-                if (cachedConfig) {
-                    console.warn(`Agent ${id} config file not found after retries, using cached data`);
-                    return { ...cachedConfig };
-                }
+            // 如果读取失败，按优先级尝试恢复：缓存 > 备份 > 默认配置（如果允许）
+            const cachedConfig = this.caches.get(id);
 
-                // 仅在明确允许的场景（如新建Agent）才返回默认配置
-                if (allowDefault) {
-                    const defaultConfig = {
-                        name: id,
-                        systemPrompt: `你是 ${id}。`,
-                        model: 'gemini-2.0-flash-exp',
-                        temperature: 0.7,
-                        contextTokenLimit: 1000000,
-                        maxOutputTokens: 60000,
-                        topics: [{ id: "default", name: "主要对话", createdAt: Date.now() }]
-                    };
-                    return { ...defaultConfig };
-                }
-
-                // 严禁悄悄返回默认配置，抛出错误以防止覆盖用户数据
-                throw new Error(`Agent config for ${id} not found after retries and no cache available`);
+            // 1. 尝试从缓存恢复
+            if (cachedConfig) {
+                console.warn(`Agent ${id} config read failed, using cached data`);
+                return { ...cachedConfig };
             }
 
-            console.error(`Error reading agent ${agentId} config, attempting recovery:`, error);
-
-            // 尝试从备份恢复
+            // 2. 尝试从备份恢复
             const backupPath = configPath + '.backup';
             if (await fs.pathExists(backupPath)) {
                 try {
                     const backupContent = await fs.readFile(backupPath, 'utf8');
                     const backupConfig = JSON.parse(backupContent);
 
-                    // 验证备份数据是否有效且包含用户自定义数据（例如非默认的 systemPrompt 或 topics）
-                    const isNonDefault = backupConfig && (
-                        (Array.isArray(backupConfig.topics) && backupConfig.topics.length > 0 && backupConfig.topics[0].id !== 'default') ||
-                        (backupConfig.systemPrompt && !backupConfig.systemPrompt.includes(`你是 ${agentId}`)) ||
-                        backupConfig.model
-                    );
-
-                    if (isNonDefault) {
-                        console.log(`Recovered agent ${agentId} config from valid backup`);
+                    // 只要备份有效且看起来不是完全空的（ID匹配即可视为有效）
+                    if (backupConfig && (backupConfig.id === id || backupConfig.name)) {
+                        console.log(`Recovered agent ${id} config from backup`);
+                        // 恢复后存入缓存
+                        this.caches.set(id, backupConfig);
                         return { ...backupConfig };
-                    } else {
-                        console.warn(`Agent ${agentId} backup exists but appears to be default or empty, skipping recovery to prevent overwrite`);
                     }
                 } catch (backupError) {
-                    console.error(`Agent ${agentId} backup also corrupted:`, backupError);
+                    console.error(`Agent ${id} backup recovery failed:`, backupError);
                 }
             }
 
-            // 最后尝试缓存
-            const cachedConfig = this.caches.get(agentId);
-            if (cachedConfig) {
-                console.warn(`Agent ${agentId} config corrupted, falling back to cached data`);
-                return { ...cachedConfig };
+            // 3. 仅在缺失文件且允许时返回默认配置
+            if (error.code === 'ENOENT' && allowDefault) {
+                const defaultConfig = {
+                    name: id,
+                    systemPrompt: `你是 ${id}。`,
+                    model: 'gemini-2.0-flash-exp',
+                    temperature: 0.7,
+                    contextTokenLimit: 1000000,
+                    maxOutputTokens: 60000,
+                    topics: [{ id: "default", name: "主要对话", createdAt: Date.now() }]
+                };
+                console.warn(`Agent ${id} config not found, returning default config (allowDefault=true)`);
+                return { ...defaultConfig };
             }
 
-            // 如果主文件损坏且没有有效的备份，抛出错误以防止覆盖
-            throw new Error(`Agent config for ${agentId} corrupted and no valid backup found: ${error.message}`);
+            // 4. 全部失败，抛出错误
+            const errorMessage = error.code === 'ENOENT' 
+                ? `Agent config for ${id} not found and no cache/backup available`
+                : `Agent config for ${id} corrupted and recovery failed: ${error.message}`;
+            
+            console.error(`[AgentConfigManager] ${errorMessage}`);
+            throw new Error(errorMessage);
         }
     }
 
