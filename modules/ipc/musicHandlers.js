@@ -19,6 +19,7 @@ let LYRIC_DIR;
 let startAudioEngine; // To hold the function from main.js
 let stopAudioEngine; // To hold the function from main.js
 let musicWindowPromise = null; // To handle concurrent window creation requests
+let pendingTrackForNewWindow = null; // 用于在新窗口创建时传递待播放的曲目
 
 // --- Singleton Music Window Creation Function ---
 function createOrFocusMusicWindow() {
@@ -90,6 +91,8 @@ function createOrFocusMusicWindow() {
                 console.log('[Music] Received "music-renderer-ready" signal. Resolving promise.');
                 ipcMain.removeListener('music-renderer-ready', readyHandler);
                 clearTimeout(timeoutId);
+                // pendingTrackForNewWindow 由前端通过 music-get-pending-track 主动拉取
+                // 不在这里发送，避免时序问题
                 musicWindowPromise = null;
                 resolve(musicWindow);
             }
@@ -168,45 +171,72 @@ async function audioEngineApi(endpoint, method = 'POST', body = null) {
 
 
 // --- Music Control Handler (Legacy, for distributed server) ---
-// 这个函数现在将指令转发到新的IPC通道，或者直接调用API
+// 这个函数统一通过前端 renderer 来控制播放，避免竞态问题
 async function handleMusicControl(args) {
     const { command, target } = args;
     console.log(`[MusicControl] Received command: ${command}, Target: ${target}`);
 
-    // 确保音乐窗口存在
-    await createOrFocusMusicWindow();
-
     switch (command.toLowerCase()) {
         case 'play':
-            // 如果有目标，需要先从播放列表找到文件路径
             if (target) {
+                // 从播放列表中找到目标曲目
                 const playlist = await fs.readJson(MUSIC_PLAYLIST_FILE).catch(() => []);
                 const track = playlist.find(t =>
                     (t.title || '').toLowerCase().includes(target.toLowerCase()) ||
                     (t.artist || '').toLowerCase().includes(target.toLowerCase())
                 );
-                if (track) {
-                    // Load the track in the engine
-                    await audioEngineApi('/load', 'POST', { path: track.path });
-
-                    // Tell the UI to update with the new track information
-                    if (musicWindow && !musicWindow.isDestroyed()) {
-                        musicWindow.webContents.send('music-set-track', track);
-                    }
-
-                    // Play the track
-                    return audioEngineApi('/play', 'POST');
-                } else {
+                if (!track) {
                     return { status: 'error', message: `Track '${target}' not found.` };
                 }
+
+                // 判断窗口是否已经存在且 ready
+                const windowAlreadyExists = musicWindow && !musicWindow.isDestroyed();
+
+                if (windowAlreadyExists) {
+                    // 窗口已存在，直接发送 music-set-track 让前端处理
+                    console.log('[MusicControl] Window exists, sending music-set-track to renderer.');
+                    musicWindow.webContents.send('music-set-track', track);
+                    if (!musicWindow.isVisible()) {
+                        musicWindow.show();
+                    }
+                    musicWindow.focus();
+                    return { status: 'success', message: `Playing: ${track.title}` };
+                } else {
+                    // 窗口不存在，需要创建。将 track 存入 pending，
+                    // 等窗口 ready 后由 readyHandler 发送给前端
+                    console.log('[MusicControl] Window does not exist, storing pending track and creating window.');
+                    pendingTrackForNewWindow = track;
+                    await createOrFocusMusicWindow();
+                    return { status: 'success', message: `Playing: ${track.title}` };
+                }
             } else {
+                // 无目标，简单恢复播放
+                if (musicWindow && !musicWindow.isDestroyed()) {
+                    musicWindow.webContents.send('music-control', 'play');
+                    return { status: 'success', message: 'Resumed playback.' };
+                }
                 return audioEngineApi('/play', 'POST');
             }
         case 'pause':
+            if (musicWindow && !musicWindow.isDestroyed()) {
+                musicWindow.webContents.send('music-control', 'pause');
+                return { status: 'success', message: 'Paused.' };
+            }
             return audioEngineApi('/pause', 'POST');
         case 'stop':
             return audioEngineApi('/stop', 'POST');
-        // 'next' and 'prev' are handled by the renderer for now
+        case 'next':
+            if (musicWindow && !musicWindow.isDestroyed()) {
+                musicWindow.webContents.send('music-control', 'next');
+                return { status: 'success', message: 'Next track.' };
+            }
+            return { status: 'error', message: 'Music window not available.' };
+        case 'previous':
+            if (musicWindow && !musicWindow.isDestroyed()) {
+                musicWindow.webContents.send('music-control', 'previous');
+                return { status: 'success', message: 'Previous track.' };
+            }
+            return { status: 'error', message: 'Music window not available.' };
         default:
             return { status: 'error', message: `Unknown command: ${command}` };
     }
@@ -232,6 +262,16 @@ function initialize(options) {
             } catch (error) {
                 console.error("[Music] Failed to open or focus music window from IPC:", error);
             }
+        });
+
+        // --- 前端初始化时拉取待播放曲目（解决新窗口点歌竞态问题）---
+        ipcMain.handle('music-get-pending-track', () => {
+            const track = pendingTrackForNewWindow;
+            pendingTrackForNewWindow = null; // 取出后清空，只消费一次
+            if (track) {
+                console.log('[Music] Pending track consumed by renderer:', track.title);
+            }
+            return track; // 返回 null 或 track 对象
         });
 
         ipcMain.handle('music-load', async (event, track) => {
