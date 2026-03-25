@@ -506,8 +506,10 @@
 
             // 图标渲染：icon(PNG/SVG文件) > animatedIcon(GIF) > svgIcon(内联SVG) > 默认
             const drawerDisplayIcon = item.icon || item.animatedIcon;
+            let img = null;
+
             if (drawerDisplayIcon) {
-                const img = document.createElement('img');
+                img = document.createElement('img');
                 img.src = drawerDisplayIcon;
                 img.className = 'desktop-dock-drawer-item-icon';
                 img.draggable = false;
@@ -534,7 +536,7 @@
                 svgEl.innerHTML = item.svgIcon;
                 card.appendChild(svgEl);
             } else {
-                const img = document.createElement('img');
+                img = document.createElement('img');
                 img.src = '../assets/setting.png';
                 img.className = 'desktop-dock-drawer-item-icon';
                 img.draggable = false;
@@ -542,7 +544,7 @@
             }
 
             // GIF 动画图标：hover 时播放，移出时恢复静态
-            if (item.animatedIcon) {
+            if (item.animatedIcon && img) {
                 const preloadGif = new Image();
                 preloadGif.src = item.animatedIcon;
                 const staticSrc = item.icon || item.animatedIcon;
