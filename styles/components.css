@@ -201,7 +201,7 @@ body.light-theme .chat-actions .header-button:hover {
     color: #ffffff;
 }
 
-#sendMessageBtn, #attachFileBtn {
+#sendMessageBtn, #attachFileBtn, #quickNewTopicBtn, #emoticonTriggerBtn {
     border: none;
     display: flex;
     justify-content: center;
@@ -210,7 +210,7 @@ body.light-theme .chat-actions .header-button:hover {
     transition: background-color 0.2s ease, color 0.2s ease, opacity 0.2s ease, transform 0.2s ease;
     padding: 0;
 }
-#sendMessageBtn svg, #attachFileBtn svg {
+#sendMessageBtn svg, #attachFileBtn svg, #quickNewTopicBtn svg, #emoticonTriggerBtn svg {
     width: 24px;
     height: 24px;
     stroke: var(--secondary-text);
@@ -221,11 +221,13 @@ body.light-theme .chat-actions .header-button:hover {
     fill: none;
 }
 
-#attachFileBtn svg {
-    fill: var(--secondary-text);
+#attachFileBtn svg, #quickNewTopicBtn svg, #emoticonTriggerBtn svg {
+    width: 16px;
+    height: 16px;
+    fill: none;
 }
 
-body.light-theme #sendMessageBtn svg, body.light-theme #attachFileBtn svg {
+body.light-theme #sendMessageBtn svg, body.light-theme #attachFileBtn svg, body.light-theme #quickNewTopicBtn svg, body.light-theme #emoticonTriggerBtn svg {
     stroke: #ffffff; 
 }
 
@@ -233,23 +235,24 @@ body.light-theme #sendMessageBtn svg {
     fill: none;
 }
 
-body.light-theme #attachFileBtn svg {
-    fill: #ffffff; 
+body.light-theme #attachFileBtn svg, body.light-theme #quickNewTopicBtn svg, body.light-theme #emoticonTriggerBtn svg {
+    fill: none; 
 }
 
-body.light-theme #attachFileBtn svg {
+body.light-theme #attachFileBtn svg, body.light-theme #quickNewTopicBtn svg, body.light-theme #emoticonTriggerBtn svg {
     stroke: var(--button-bg);
-    fill: var(--button-bg);
+    fill: none;
 }
 
-#sendMessageBtn:hover, #attachFileBtn:hover {
+#sendMessageBtn:hover {
     background-color: var(--button-hover-bg);
 }
 
 #sendMessageBtn {
     position: static;
-    width: 38px;
-    height: 38px;
+    width: 36px;
+    height: 36px;
+    padding: 0;
     border-radius: 50%;
     background-color: var(--button-bg);
     box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
@@ -260,30 +263,32 @@ body.light-theme #attachFileBtn svg {
     transform: translateY(-1px);
 }
 
-#attachFileBtn {
-    width: 36px;
-    height: 36px;
-    border-radius: 12px;
+#attachFileBtn, #quickNewTopicBtn, #emoticonTriggerBtn {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
     background-color: transparent;
-    border: 1px solid var(--border-color);
+    border: none;
     margin-left: 0;
     flex-shrink: 0;
 }
 
-#attachFileBtn:hover:not(:disabled) {
-    border-color: var(--button-hover-bg);
+#quickNewTopicBtn, #attachFileBtn {
+    margin-right: 4px;
+}
+
+#attachFileBtn:hover:not(:disabled), #quickNewTopicBtn:hover:not(:disabled), #emoticonTriggerBtn:hover:not(:disabled) {
+    background-color: rgba(128, 128, 128, 0.12);
 }
 
 #sendMessageBtn:disabled,
-#attachFileBtn:disabled {
+#attachFileBtn:disabled,
+#quickNewTopicBtn:disabled,
+#emoticonTriggerBtn:disabled {
     opacity: 0.55;
     cursor: not-allowed;
     transform: none;
     box-shadow: none;
-}
-
-#attachFileBtn:disabled {
-    border-color: var(--border-color);
 }
 
 /* --- Modals --- */

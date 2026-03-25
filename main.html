@@ -394,8 +394,18 @@
                     <div class="attachment-preview-area" id="attachmentPreviewArea"></div>
                     <textarea id="messageInput" placeholder="输入消息... (Shift+Enter 换行)" rows="1" disabled></textarea>
                     <div class="chat-input-actions">
+                        <button id="quickNewTopicBtn" title="新建聊天话题" disabled>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z"></path>
+                                <path d="M12 8v6"></path>
+                                <path d="M9 11h6"></path>
+                            </svg>
+                        </button>
                         <button id="attachFileBtn" title="发送文件" disabled>
-                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="4 4 56 56" fill="currentColor"><path d="M 18.505859 9.4140625 C 15.577379 9.4140625 13.181641 11.809801 13.181641 14.738281 L 13.181641 50.154297 C 13.181641 53.082777 15.577379 55.478516 18.505859 55.478516 L 46.644531 55.478516 C 49.573011 55.478516 51.96875 53.082777 51.96875 50.154297 L 51.96875 29.148438 A 1.0001 1.0001 0 1 0 49.96875 29.148438 L 49.96875 50.154297 C 49.96875 52.001817 48.492051 53.478516 46.644531 53.478516 L 18.505859 53.478516 C 16.65834 53.478516 15.181641 52.001817 15.181641 50.154297 L 15.181641 14.738281 C 15.181641 12.890761 16.65834 11.414062 18.505859 11.414062 L 36.712891 11.414062 L 48.449219 24.03125 L 39.064453 24.03125 C 38.283048 24.03125 37.669922 23.420077 37.669922 22.638672 L 37.669922 16.798828 A 1.0001 1.0001 0 1 0 35.669922 16.798828 L 35.669922 22.638672 C 35.669922 24.501267 37.201858 26.03125 39.064453 26.03125 L 50.744141 26.03125 A 1.0001 1.0001 0 0 0 51.476562 24.351562 L 37.880859 9.734375 A 1.0001 1.0001 0 0 0 37.148438 9.4140625 L 18.505859 9.4140625 z"></path></svg>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-paperclip-icon lucide-paperclip" aria-hidden="true"><path d="m16 6-8.414 8.586a2 2 0 0 0 2.829 2.829l8.414-8.586a4 4 0 1 0-5.657-5.657l-8.379 8.551a6 6 0 1 0 8.485 8.485l8.379-8.551"/></svg>
+                        </button>
+                        <button id="emoticonTriggerBtn" title="打开表情包" disabled>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-sticker-icon lucide-sticker" aria-hidden="true"><path d="M21 9a2.4 2.4 0 0 0-.706-1.706l-3.588-3.588A2.4 2.4 0 0 0 15 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2z"/><path d="M15 3v5a1 1 0 0 0 1 1h5"/><path d="M8 13h.01"/><path d="M16 13h.01"/><path d="M10 16s.8 1 2 1c1.3 0 2-1 2-1"/></svg>
                         </button>
                         <button id="sendMessageBtn" title="发送消息 (Ctrl+Enter)" disabled>
                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
