@@ -1,0 +1,130 @@
+/*
+ * styles/themes/themesEva.css
+ * Theme Name: Eva (EVA)
+ * Inspired by EVA, with colors from 月影春信
+ */
+
+/* =================================================================
+ * Dark Theme: Eva Dark
+ * ================================================================= */
+:root {
+    /* --- Wallpaper --- */
+    --chat-wallpaper-dark: url('../assets/wallpaper/eva-dark.png');
+
+    /* --- Base Colors --- */
+    --primary-bg: #0f172a;      /* 深邃蓝黑 */
+    --secondary-bg: #1e293b;    /* 侧边栏 */
+    --tertiary-bg: #020617;     /* 聊天区底色 */
+    --accent-bg: #334155;
+    --border-color: rgba(233, 196, 106, 0.4); /* 琥珀月金边框 */
+    --input-bg: rgba(15, 23, 42, 0.8);
+
+    --panel-bg-dark: rgba(15, 23, 42, 0.75);
+
+    /* --- Text Colors --- */
+    --primary-text: #f1f5f9;    /* 极浅灰白 */
+    --secondary-text: #94a3b8;  /* 冷灰蓝 */
+    --highlight-text: #E9C46A;  /* 琥珀月金 */
+    --text-on-accent: #0f172a;
+    --placeholder-text: #475569;
+    --quoted-text: #FDE68A;
+    --user-text: #f1f5f9;
+    --agent-text: #f1f5f9;
+
+    /* --- Bubble Colors (Frosted Glass) --- */
+    --user-bubble-bg: rgba(253, 230, 138, 0.15); /* 用户气泡：淡金光影 */
+    --assistant-bubble-bg: rgba(30, 41, 59, 0.4);  /* AI气泡：深海磨砂 */
+
+    /* --- UI Element Colors --- */
+    --button-bg: #E9C46A;
+    --button-hover-bg: #D4A373;
+    --danger-color: #f87171;
+    --success-color: #4ade80;
+    --notification-bg: #1e293b;
+    --notification-border: #FDE68A;
+    --tool-bubble-bg: rgba(253, 230, 138, 0.05);
+    --tool-bubble-border: #FDE68A;
+
+    /* --- Scrollbar --- */
+    --scrollbar-track: rgba(15, 23, 42, 0.3);
+    --scrollbar-thumb: rgba(253, 230, 138, 0.3);
+    --scrollbar-thumb-hover: rgba(253, 230, 138, 0.5);
+
+    /* --- Shimmer Effect --- */
+    --shimmer-color-transparent: rgba(253, 230, 138, 0.1);
+    --shimmer-color-highlight: rgba(253, 230, 138, 0.3);
+
+    --panel-text-shadow: none;
+    --panel-bg: var(--panel-bg-dark);
+}
+
+body {
+    background-image: var(--chat-wallpaper-dark);
+    background-size: cover;
+    background-position: center;
+    background-attachment: fixed;
+}
+
+/* =================================================================
+ * Light Theme: Eva Light
+ * ================================================================= */
+body.light-theme {
+    /* --- Wallpaper --- */
+    --chat-wallpaper-light: url('../assets/wallpaper/eva-light.jpg');
+    background-image: var(--chat-wallpaper-light);
+
+    /* --- Base Colors (红白EVA风格) --- */
+    --primary-bg: #fafafa;      /* 纯白 */
+    --secondary-bg: #ffffff;
+    --tertiary-bg: #f5f5f5;
+    --accent-bg: #ffeaea;       /* 淡红背景 */
+    --border-color: rgba(255, 62, 95, 0.3); /* EVA红边框 */
+    --input-bg: rgba(255, 255, 255, 0.95);
+
+    --panel-bg-light: rgba(255, 255, 255, 0.6); /* 高透明度 */
+
+    /* --- Text Colors --- */
+    --primary-text: #2d2d30;    /* 深灰 */
+    --secondary-text: #6a6a70;  /* 中灰 - 图标颜色 */
+    --highlight-text: #ff3e5f;  /* EVA红 */
+    --text-on-accent: #ffffff;
+    --placeholder-text: #a0a0a8;
+    --quoted-text: #ff3e5f;
+    --user-text: #2d2d30;
+    --agent-text: #2d2d30;
+
+    /* --- Bubble Colors --- */
+    --user-bubble-bg: rgba(255, 62, 95, 0.12);    /* 淡红 */
+    --assistant-bubble-bg: rgba(255, 255, 255, 0.5); /* 半透明白 */
+
+    /* --- UI Element Colors --- */
+    --button-bg: #ff3e5f;
+    --button-hover-bg: #ff1f45;
+    --danger-color: #ef4444;
+    --success-color: #22c55e;
+    --notification-bg: #ffffff;
+    --notification-border: #ff3e5f;
+    --tool-bubble-bg: rgba(255, 62, 95, 0.08);
+    --tool-bubble-border: #ff3e5f;
+
+    /* --- Scrollbar --- */
+    --scrollbar-track: rgba(0, 0, 0, 0.08);
+    --scrollbar-thumb: rgba(255, 62, 95, 0.4);
+    --scrollbar-thumb-hover: rgba(255, 62, 95, 0.6);
+
+    /* --- Shimmer Effect --- */
+    --shimmer-color-transparent: rgba(255, 62, 95, 0.08);
+    --shimmer-color-highlight: rgba(255, 62, 95, 0.2);
+
+    --panel-text-shadow: none;
+
+    --panel-bg: var(--panel-bg-light);
+}
+
+/* --- 增强磨砂感 --- */
+.message-bubble {
+    backdrop-filter: blur(10px) saturate(110%);
+    -webkit-backdrop-filter: blur(10px) saturate(110%);
+    border: 1px solid var(--border-color);
+    box-shadow: none;
+}
