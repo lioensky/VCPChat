@@ -108,6 +108,17 @@ async function initApp() {
 }
 
 function setupEventListeners() {
+    // 文件夹搜索
+    const folderSearchInput = document.getElementById('folder-search-input');
+    folderSearchInput.oninput = () => {
+        const term = folderSearchInput.value.trim().toLowerCase();
+        const items = folderListEl.querySelectorAll('.folder-item');
+        items.forEach(item => {
+            const name = item.querySelector('span')?.textContent?.toLowerCase() || '';
+            item.style.display = name.includes(term) ? '' : 'none';
+        });
+    };
+
     // 刷新文件夹
     const refreshBtn = document.getElementById('refresh-folders-btn');
     refreshBtn.onclick = async () => {
