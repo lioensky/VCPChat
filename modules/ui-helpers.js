@@ -8,6 +8,36 @@
     let croppedGroupAvatarFile = null;
 
     const uiHelperFunctions = {};
+    const filePreviewIconMarkup = `
+<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"></path>
+    <path d="M14 2v5a1 1 0 0 0 1 1h5"></path>
+</svg>`;
+    const audioFilePreviewIconMarkup = `
+<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <path d="M4 6.835V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.706.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2h-.343"></path>
+    <path d="M14 2v5a1 1 0 0 0 1 1h5"></path>
+    <path d="M2 19a2 2 0 0 1 4 0v1a2 2 0 0 1-4 0v-4a6 6 0 0 1 12 0v4a2 2 0 0 1-4 0v-1a2 2 0 0 1 4 0"></path>
+</svg>`;
+    const videoFilePreviewIconMarkup = `
+<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <rect width="18" height="18" x="3" y="3" rx="2"></rect>
+    <path d="M7 3v18"></path>
+    <path d="M3 7.5h4"></path>
+    <path d="M3 12h18"></path>
+    <path d="M3 16.5h4"></path>
+    <path d="M17 3v18"></path>
+    <path d="M17 7.5h4"></path>
+    <path d="M17 16.5h4"></path>
+</svg>`;
+    const textFilePreviewIconMarkup = `
+<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"></path>
+    <path d="M14 2v5a1 1 0 0 0 1 1h5"></path>
+    <path d="M10 9H8"></path>
+    <path d="M16 13H8"></path>
+    <path d="M16 17H8"></path>
+</svg>`;
 
     /**
      * 从字符串中解析正则表达式（支持 /pattern/flags 格式）
@@ -409,6 +439,14 @@
             prevDiv.title = af.originalName || af.file.name;
     
             const fileType = af.file.type;
+            const fileName = (af.originalName || af.file.name || '').toLowerCase();
+            const isTextDocument =
+                fileType.startsWith('text/') ||
+                fileType === 'application/msword' ||
+                fileType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+                fileType === 'application/rtf' ||
+                fileType === 'application/vnd.oasis.opendocument.text' ||
+                /\.(txt|md|markdown|rtf|doc|docx|odt|csv|log|json|xml|yml|yaml)$/i.test(fileName);
     
             if (fileType.startsWith('image/')) {
                 const thumbnailImg = document.createElement('img');
@@ -419,7 +457,7 @@
                     thumbnailImg.remove(); // Remove broken image
                     const iconSpanFallback = document.createElement('span');
                     iconSpanFallback.className = 'file-preview-icon';
-                    iconSpanFallback.textContent = '⚠️'; // Error/fallback icon
+                    iconSpanFallback.innerHTML = filePreviewIconMarkup;
                     prevDiv.prepend(iconSpanFallback); // Add fallback icon at the beginning
                 };
                 prevDiv.appendChild(thumbnailImg);
@@ -427,13 +465,15 @@
                 const iconSpan = document.createElement('span');
                 iconSpan.className = 'file-preview-icon';
                 if (fileType.startsWith('audio/')) {
-                    iconSpan.textContent = '🎵';
+                    iconSpan.innerHTML = audioFilePreviewIconMarkup;
                 } else if (fileType.startsWith('video/')) {
-                    iconSpan.textContent = '🎞️';
+                    iconSpan.innerHTML = videoFilePreviewIconMarkup;
+                } else if (isTextDocument) {
+                    iconSpan.innerHTML = textFilePreviewIconMarkup;
                 } else if (fileType.includes('pdf')) {
-                    iconSpan.textContent = '📄';
+                    iconSpan.innerHTML = filePreviewIconMarkup;
                 } else {
-                    iconSpan.textContent = '📎';
+                    iconSpan.innerHTML = filePreviewIconMarkup;
                 }
                 prevDiv.appendChild(iconSpan);
             }

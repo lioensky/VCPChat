@@ -418,18 +418,25 @@ body.light-theme .message-item.system.welcome-bubble {
     gap: 8px;
     padding: 12px 14px 10px;
     box-sizing: border-box;
-    border: 1px solid var(--border-color);
+    border: 1px solid color-mix(in srgb, var(--border-color) 38%, transparent);
     border-radius: 24px;
-    background-color: var(--input-bg);
-    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.12);
+    background-color: color-mix(in srgb, var(--input-bg) 84%, transparent);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
     transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
     position: relative;
     z-index: 1;
 }
 
+.chat-input-card:hover:not(:focus-within):not(.drag-over) {
+    border-color: color-mix(in srgb, var(--border-color) 62%, transparent);
+    background-color: color-mix(in srgb, var(--input-bg) 90%, transparent);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+}
+
 .chat-input-card:focus-within {
-    border-color: var(--user-bubble-bg);
-    box-shadow: 0 0 0 2px rgba(61, 90, 128, 0.2), 0 10px 24px rgba(0, 0, 0, 0.14);
+    border-color: color-mix(in srgb, var(--border-color) 82%, var(--primary-text) 18%);
+    background-color: color-mix(in srgb, var(--input-bg) 94%, transparent);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--border-color) 24%, transparent), 0 5px 16px rgba(0, 0, 0, 0.09);
 }
 
 .chat-input-card.drag-over {
@@ -584,49 +591,57 @@ body.light-theme .message-edit-controls button {
 }
 
 .attachment-preview-area:not(:empty) {
-    margin-bottom: 4px;
-    padding-bottom: 10px;
-    border-bottom: 1px solid var(--border-color);
+    margin-bottom: 2px;
+    padding-bottom: 2px;
 }
 
 .attachment-preview-item {
-    background-color: var(--accent-bg);
+    position: relative;
+    background-color: color-mix(in srgb, var(--input-bg) 72%, transparent);
     color: var(--primary-text);
-    border: 1px solid var(--border-color);
+    border: 1px solid color-mix(in srgb, var(--border-color) 34%, transparent);
     border-radius: 12px;
-    padding: 7px 10px;
+    padding: 5px 28px 5px 9px;
     display: flex;
     align-items: center;
-    font-size: 0.9em;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
-    transition: all 0.2s ease-in-out;
+    font-size: 0.86em;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+    transition: border-color 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease;
     cursor: default;
     min-width: 0;
     max-width: min(240px, 100%);
 }
 
-.attachment-preview-item:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+.attachment-preview-item:hover,
+.attachment-preview-item:focus-within {
+    background-color: color-mix(in srgb, var(--input-bg) 82%, transparent);
+    border-color: color-mix(in srgb, var(--border-color) 46%, transparent);
+    box-shadow: 0 2px 5px rgba(0,0,0,0.07);
 }
 
 .attachment-thumbnail-image {
-    width: 32px; /* Thumbnail size */
-    height: 32px;
+    width: 28px;
+    height: 28px;
     object-fit: cover;
-    border-radius: 4px; /* Slightly rounded corners for the image */
-    margin-right: 8px;
-    border: 1px solid var(--border-color); /* Optional border for the image */
+    border-radius: 7px;
+    margin-right: 7px;
+    border: 1px solid color-mix(in srgb, var(--border-color) 24%, transparent);
 }
 
 .file-preview-icon {
-    margin-right: 8px;
-    font-size: 1.2em; /* Slightly larger icon for non-images */
-    width: 32px; /* Match thumbnail width for alignment */
-    height: 32px; /* Match thumbnail height */
+    margin-right: 7px;
+    font-size: 1.1em;
+    width: 28px;
+    height: 28px;
     display: flex;
     align-items: center;
     justify-content: center;
+}
+
+.file-preview-icon svg {
+    width: 16px;
+    height: 16px;
+    color: var(--secondary-text);
 }
 
 .file-preview-name {
@@ -641,26 +656,48 @@ body.light-theme .message-edit-controls button {
 }
 
 .file-preview-remove-btn {
-    /* Removed absolute positioning, now part of flex flow */
-    background: transparent;
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    background: color-mix(in srgb, var(--input-bg) 88%, rgba(240, 240, 240, 0.92));
     border: none;
-    color: var(--secondary-text); /* Muted color */
-    padding: 0; /* Reset padding */
-    margin-left: auto; /* Pushes button to the right within the flex container */
+    color: var(--secondary-text);
+    padding: 0;
+    margin-left: 0;
     cursor: pointer;
-    font-size: 1.3em; /* Larger 'x' */
+    font-size: 0.95em;
+    font-weight: 500;
     line-height: 1;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: color 0.2s ease;
-    align-self: center; /* Vertically align with other items */
-    width: 20px; /* Give some clickable area */
-    height: 20px;
+    transition: opacity 0.18s ease, transform 0.18s ease, background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+    align-self: center;
+    width: 16px;
+    height: 16px;
+    border-radius: 999px;
+    opacity: 0;
+    transform: scale(0.92);
+    pointer-events: none;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+}
+
+.attachment-preview-item:hover .file-preview-remove-btn,
+.attachment-preview-item:focus-within .file-preview-remove-btn,
+.file-preview-remove-btn:focus-visible {
+    opacity: 1;
+    transform: scale(1);
+    pointer-events: auto;
 }
 
 .file-preview-remove-btn:hover {
-    color: var(--danger-color); /* Highlight on hover */
+    color: var(--danger-color);
+    background-color: color-mix(in srgb, var(--input-bg) 82%, rgba(235, 235, 235, 0.96));
+}
+
+.file-preview-remove-btn:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--border-color) 22%, transparent), 0 1px 2px rgba(0,0,0,0.08);
 }
 
 .message-attachment-image-thumbnail {
