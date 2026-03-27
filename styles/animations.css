@@ -41,8 +41,20 @@
     position: relative;
     overflow: hidden;
     /* 替代动画的高亮效果：使用静态的背景色和边框 */
-    background-color: var(--accent-bg) !important;
+    background:
+        linear-gradient(
+            180deg,
+            color-mix(in srgb, var(--accent-bg) 82%, rgba(255, 255, 255, 0.34)),
+            color-mix(in srgb, var(--accent-bg) 70%, rgba(255, 255, 255, 0.18))
+        ) !important;
+    border: 1px solid rgba(51, 51, 51, 0.06);
     border-left: 4px solid var(--highlight-text) !important;
+    backdrop-filter: blur(10px) saturate(130%);
+    -webkit-backdrop-filter: blur(10px) saturate(130%);
+    box-shadow:
+        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.68),
+        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.58),
+        inset 0 0 1px rgba(0, 0, 0, 0.08) !important;
 }
 
 .topic-item.active-topic-glowing::before {
@@ -74,6 +86,22 @@ body.light-theme .topic-item.active-topic-glowing::before {
         rgba(56, 131, 196, 0.358) 40%,
         rgba(14, 78, 134, 0) 70%
     ) !important;
+}
+
+body:not(.light-theme) .topic-item.active-topic-glowing {
+    background:
+        linear-gradient(
+            180deg,
+            color-mix(in srgb, var(--accent-bg) 72%, rgba(255, 255, 255, 0.07)),
+            color-mix(in srgb, var(--accent-bg) 60%, rgba(255, 255, 255, 0.03))
+        ) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(8px) saturate(118%);
+    -webkit-backdrop-filter: blur(8px) saturate(118%);
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.14),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.1),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.04) !important;
 }
 
 

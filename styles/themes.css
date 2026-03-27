@@ -1,68 +1,60 @@
 /*
- * styles/themes/themesCodeIDE.css
- * Curated by Coco for Professor Ryan
- * Code IDE Theme - 代码编辑器风格
- * A clean, professional theme inspired by modern IDEs.
+ * styles/themes/themesEva.css
+ * Theme Name: Eva (EVA)
+ * Inspired by EVA, with colors from 月影春信
  */
 
-/* * =================================================================
- * Dark Theme: Code Dark (代码深色)
- * Inspired by VS Code and modern IDE aesthetics.
- * Black, Gray, and IDE Yellow color scheme.
- * =================================================================
- */
+/* =================================================================
+ * Dark Theme: Eva Dark
+ * ================================================================= */
 :root {
     /* --- Wallpaper --- */
-    --chat-wallpaper-dark: url('../assets/wallpaper/code-dark.jpeg');
+    --chat-wallpaper-dark: url('../assets/wallpaper/eva-dark.png');
 
     /* --- Base Colors --- */
-    --primary-bg: #1a1d23;
-    --secondary-bg: #252830;
-    --tertiary-bg: #1e2127;
-    --accent-bg: #2c313a;
-    --border-color: #3e4451;
-    --input-bg: #21252b;
-    --panel-bg-dark: rgba(37, 40, 48, 0.8);
+    --primary-bg: #0f172a;      /* 深邃蓝黑 */
+    --secondary-bg: #1e293b;    /* 侧边栏 */
+    --tertiary-bg: #020617;     /* 聊天区底色 */
+    --accent-bg: #334155;
+    --border-color: rgba(233, 196, 106, 0.4); /* 琥珀月金边框 */
+    --input-bg: rgba(15, 23, 42, 0.8);
+
+    --panel-bg-dark: rgba(15, 23, 42, 0.75);
 
     /* --- Text Colors --- */
-    --primary-text: #b5bfd1;
-    --secondary-text: #586374;
-    --highlight-text: #E5C07B;
-    --text-on-accent: #1a1d23;
-    --placeholder-text: #5c6370;
-    --quoted-text: #E5C07B;
-    --user-text: #abb2bf;
-    --agent-text: #abb2bf;
+    --primary-text: #f1f5f9;    /* 极浅灰白 */
+    --secondary-text: #94a3b8;  /* 冷灰蓝 */
+    --highlight-text: #E9C46A;  /* 琥珀月金 */
+    --text-on-accent: #0f172a;
+    --placeholder-text: #475569;
+    --quoted-text: #FDE68A;
+    --user-text: #f1f5f9;
+    --agent-text: #f1f5f9;
 
-    /* --- Bubble Colors --- */
-    --user-bubble-bg: rgba(229, 192, 123, 0.12);
-    --assistant-bubble-bg: rgba(255, 255, 255, 0.06);
+    /* --- Bubble Colors (Frosted Glass) --- */
+    --user-bubble-bg: rgba(253, 230, 138, 0.15); /* 用户气泡：淡金光影 */
+    --assistant-bubble-bg: rgba(30, 41, 59, 0.4);  /* AI气泡：深海磨砂 */
 
     /* --- UI Element Colors --- */
-    --button-bg: #E5C07B;
-    --button-hover-bg: #d9b56f;
-    --danger-color: #e06c75;
-    --danger-hover-bg: #d45a62;
-    --success-color: #98c379;
-    --notification-bg: #252830;
-    --notification-header-bg: #2c313a;
-    --notification-border: #E5C07B;
-    --tool-bubble-bg: rgba(229, 192, 123, 0.08);
-    --tool-bubble-border: #E5C07B;
+    --button-bg: #E9C46A;
+    --button-hover-bg: #D4A373;
+    --danger-color: #f87171;
+    --success-color: #4ade80;
+    --notification-bg: #1e293b;
+    --notification-border: #FDE68A;
+    --tool-bubble-bg: rgba(253, 230, 138, 0.05);
+    --tool-bubble-border: #FDE68A;
 
     /* --- Scrollbar --- */
-    --scrollbar-track: rgba(30, 33, 39, 0.6);
-    --scrollbar-thumb: rgba(229, 192, 123, 0.4);
-    --scrollbar-thumb-hover: rgba(229, 192, 123, 0.6);
+    --scrollbar-track: rgba(15, 23, 42, 0.3);
+    --scrollbar-thumb: rgba(253, 230, 138, 0.3);
+    --scrollbar-thumb-hover: rgba(253, 230, 138, 0.5);
 
     /* --- Shimmer Effect --- */
-    --shimmer-color-transparent: rgba(171, 178, 191, 0.3);
-    --shimmer-color-highlight: rgba(229, 192, 123, 0.6);
+    --shimmer-color-transparent: rgba(253, 230, 138, 0.1);
+    --shimmer-color-highlight: rgba(253, 230, 138, 0.3);
 
-    /* --- Text Shadow --- */
-    --panel-text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
-
-    /* --- Unified Panel Background --- */
+    --panel-text-shadow: none;
     --panel-bg: var(--panel-bg-dark);
 }
 
@@ -73,65 +65,66 @@ body {
     background-attachment: fixed;
 }
 
-/* * =================================================================
- * Light Theme: Code Light (代码浅色)
- * Clean and professional light theme.
- * Inspired by light IDE color schemes.
- * =================================================================
- */
+/* =================================================================
+ * Light Theme: Eva Light
+ * ================================================================= */
 body.light-theme {
-    background-image: var(--chat-wallpaper-light);
-    background-size: cover;
-    background-position: center;
-    background-attachment: fixed;
-
     /* --- Wallpaper --- */
-    --chat-wallpaper-light: url('../assets/wallpaper/code-light.jpeg');
+    --chat-wallpaper-light: url('../assets/wallpaper/eva-light.jpg');
+    background-image: var(--chat-wallpaper-light);
 
-    /* --- Base Colors --- */
-    --primary-bg: #f5f3ed;
+    /* --- Base Colors (红白EVA风格) --- */
+    --primary-bg: #fafafa;      /* 纯白 */
     --secondary-bg: #ffffff;
-    --tertiary-bg: #fafaf8;
-    --accent-bg: #e8e6e0;
-    --border-color: #d4d2cc;
-    --input-bg: #ffffff;
-    --panel-bg-light: rgba(255, 255, 255, 0.5);
+    --tertiary-bg: #f5f5f5;
+    --accent-bg: #ffeaea;       /* 淡红背景 */
+    --border-color: rgba(255, 62, 95, 0.3); /* EVA红边框 */
+    --input-bg: rgba(255, 255, 255, 0.95);
+
+    --panel-bg-light: rgba(255, 255, 255, 0.6); /* 高透明度 */
 
     /* --- Text Colors --- */
-    --primary-text: #383a42;
-    --secondary-text: #9ca0a4;
-    --highlight-text: #4b6f85;
+    --primary-text: #2d2d30;    /* 深灰 */
+    --secondary-text: #6a6a70;  /* 中灰 - 图标颜色 */
+    --highlight-text: #ff3e5f;  /* EVA红 */
     --text-on-accent: #ffffff;
-    --placeholder-text: #9ca0a4;
-    --quoted-text: #4b6f85;
-    --user-text: #383a42;
-    --agent-text: #383a42;
+    --placeholder-text: #a0a0a8;
+    --quoted-text: #ff3e5f;
+    --user-text: #2d2d30;
+    --agent-text: #2d2d30;
 
     /* --- Bubble Colors --- */
-    --user-bubble-bg: rgba(75, 111, 133, 0.08);
-    --assistant-bubble-bg: rgba(255, 255, 255, 0.35);
+    --user-bubble-bg: rgba(255, 62, 95, 0.12);    /* 淡红 */
+    --assistant-bubble-bg: rgba(255, 255, 255, 0.5); /* 半透明白 */
 
     /* --- UI Element Colors --- */
-    --button-bg: #4b6f85;
-    --button-hover-bg: #3d5a6d;
-    --danger-color: #e45649;
-    --danger-hover-bg: #d44437;
-    --success-color: #50a14f;
-    --notification-bg: #f5f3ed;
-    --notification-header-bg: #ffffff;
-    --notification-border: #4b6f85;
-    --tool-bubble-bg: rgba(75, 111, 133, 0.06);
-    --tool-bubble-border: #4b6f85;
+    --button-bg: #ff3e5f;
+    --button-hover-bg: #ff1f45;
+    --danger-color: #ef4444;
+    --success-color: #22c55e;
+    --notification-bg: #ffffff;
+    --notification-border: #ff3e5f;
+    --tool-bubble-bg: rgba(255, 62, 95, 0.08);
+    --tool-bubble-border: #ff3e5f;
 
     /* --- Scrollbar --- */
-    --scrollbar-track: rgba(212, 210, 204, 0.5);
-    --scrollbar-thumb: rgba(75, 111, 133, 0.4);
-    --scrollbar-thumb-hover: rgba(75, 111, 133, 0.6);
+    --scrollbar-track: rgba(0, 0, 0, 0.08);
+    --scrollbar-thumb: rgba(255, 62, 95, 0.4);
+    --scrollbar-thumb-hover: rgba(255, 62, 95, 0.6);
 
     /* --- Shimmer Effect --- */
-    --shimmer-color-transparent: rgba(56, 58, 66, 0.2);
-    --shimmer-color-highlight: rgba(75, 111, 133, 0.4);
+    --shimmer-color-transparent: rgba(255, 62, 95, 0.08);
+    --shimmer-color-highlight: rgba(255, 62, 95, 0.2);
 
-    /* --- Unified Panel Background --- */
+    --panel-text-shadow: none;
+
     --panel-bg: var(--panel-bg-light);
+}
+
+/* --- 增强磨砂感 --- */
+.message-bubble {
+    backdrop-filter: blur(10px) saturate(110%);
+    -webkit-backdrop-filter: blur(10px) saturate(110%);
+    border: 1px solid var(--border-color);
+    box-shadow: none;
 }

@@ -81,6 +81,77 @@
     border-color: var(--button-hover-bg);
 }
 
+.sidebar-actions .create-agent-btn,
+.sidebar-actions .create-group-btn {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    height: 37px;
+    padding: 0 12px;
+    border-radius: 999px;
+    border: 1px solid rgba(51, 51, 51, 0.06);
+    background: linear-gradient(
+        180deg,
+        rgba(255, 255, 255, 0.74),
+        rgba(255, 255, 255, 0.52)
+    );
+    backdrop-filter: blur(12px) saturate(132%);
+    -webkit-backdrop-filter: blur(12px) saturate(132%);
+    box-shadow:
+        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.9),
+        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.82),
+        inset 0 0 1px rgba(0, 0, 0, 0.12);
+    color: var(--primary-text);
+    font-weight: 500;
+    transition:
+        background 0.2s ease,
+        border-color 0.2s ease,
+        box-shadow 0.2s ease,
+        transform 0.2s ease;
+}
+
+.sidebar-actions .create-agent-btn::after,
+.sidebar-actions .create-group-btn::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: linear-gradient(
+        45deg,
+        rgba(255, 255, 255, 0.6) 0%,
+        transparent 24%,
+        transparent 76%,
+        rgba(255, 255, 255, 0.6) 100%
+    );
+    filter: blur(2px);
+    pointer-events: none;
+}
+
+.sidebar-actions .create-agent-btn:hover,
+.sidebar-actions .create-group-btn:hover {
+    background: linear-gradient(
+        180deg,
+        rgba(255, 255, 255, 0.8),
+        rgba(255, 255, 255, 0.58)
+    );
+    border-color: rgba(51, 51, 51, 0.08);
+    box-shadow:
+        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.94),
+        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.86),
+        inset 0 0 1px rgba(0, 0, 0, 0.1);
+    transform: translateY(-1px);
+}
+
+.sidebar-actions .create-agent-btn:active,
+.sidebar-actions .create-group-btn:active {
+    transform: translateY(0);
+    background: linear-gradient(
+        180deg,
+        rgba(255, 255, 255, 0.7),
+        rgba(255, 255, 255, 0.5)
+    );
+}
+
 body.light-theme .sidebar-button {
     color: #ffffff; 
     border: 1px solid var(--button-bg);
@@ -91,22 +162,77 @@ body.light-theme .sidebar-button:hover {
     border-color: var(--button-hover-bg);
 }
 
+body.light-theme .sidebar-actions .create-agent-btn,
+body.light-theme .sidebar-actions .create-group-btn,
+body.light-theme .sidebar-actions .create-agent-btn:hover,
+body.light-theme .sidebar-actions .create-group-btn:hover {
+    color: var(--primary-text);
+}
+
+body:not(.light-theme) .sidebar-actions .create-agent-btn,
+body:not(.light-theme) .sidebar-actions .create-group-btn {
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: linear-gradient(
+        180deg,
+        rgba(255, 255, 255, 0.08),
+        rgba(255, 255, 255, 0.05)
+    );
+    backdrop-filter: blur(10px) saturate(118%);
+    -webkit-backdrop-filter: blur(10px) saturate(118%);
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.16),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.12),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+    color: rgba(235, 239, 245, 0.92);
+}
+
+body:not(.light-theme) .sidebar-actions .create-agent-btn::after,
+body:not(.light-theme) .sidebar-actions .create-group-btn::after {
+    display: none;
+}
+
+body:not(.light-theme) .sidebar-actions .create-agent-btn:hover,
+body:not(.light-theme) .sidebar-actions .create-group-btn:hover {
+    border-color: rgba(255, 255, 255, 0.1);
+    background: linear-gradient(
+        180deg,
+        rgba(255, 255, 255, 0.1),
+        rgba(255, 255, 255, 0.065)
+    );
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.2),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.14),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+
 .chat-actions {
     display: flex;
     align-items: center;
 }
 
 .chat-actions .header-button {
-    background: transparent;
-    border: 1px solid var(--button-bg);
+    position: relative;
+    isolation: isolate;
+    background: linear-gradient(
+        180deg,
+        rgba(255, 255, 255, 0.1),
+        rgba(255, 255, 255, 0.04)
+    );
+    border: 1px solid rgba(255, 255, 255, 0.12);
     color: var(--secondary-text);
     padding: 0 10px;
     height: 32px;
-    border-radius: 8px;
+    border-radius: 12px;
     cursor: pointer;
     margin-left: 4px;
     font-size: 0.9em;
-    transition: background-color 0.2s, border-color 0.2s;
+    backdrop-filter: blur(8px) saturate(120%);
+    -webkit-backdrop-filter: blur(8px) saturate(120%);
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.24),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.18),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+    transition: background-color 0.2s, border-color 0.2s, box-shadow 0.2s;
     display: inline-flex; 
     align-items: center; 
     justify-content: center; 
@@ -134,11 +260,13 @@ body.light-theme .sidebar-button:hover {
 }
 
 .chat-actions .header-button#currentAgentSettingsBtn {
-    padding: 0 10px;
+    gap: 0;
+    padding: 0 6px;
+    width: auto;
 }
 
 .chat-actions .header-button#currentAgentSettingsBtn svg {
-    width: 18px;
+    width: 45px;
     height: 18px;
     flex-shrink: 0;
 }
@@ -146,6 +274,10 @@ body.light-theme .sidebar-button:hover {
 .chat-actions .header-button#currentAgentSettingsBtn svg,
 .chat-actions .header-button#voiceChatBtn svg {
     transform: translateY(1px);
+}
+
+.chat-actions .header-button#currentAgentSettingsBtn svg {
+    transform: translate(3px, 0);
 }
 
 .chat-actions .header-button#currentAgentSettingsBtn .button-label {
@@ -195,9 +327,22 @@ body.light-theme button#devButton.header-button:hover {
 }
 
 body.light-theme .chat-actions .header-button {
+    background: linear-gradient(
+        180deg,
+        rgba(255, 255, 255, 0.78),
+        rgba(255, 255, 255, 0.56)
+    );
+    border-color: rgba(51, 51, 51, 0.08);
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.92),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.82),
+        inset 0 0 1px rgba(0, 0, 0, 0.1);
     color: var(--button-bg);
 }
 body.light-theme .chat-actions .header-button:hover {
+    background: var(--button-hover-bg);
+    border-color: var(--button-hover-bg);
+    box-shadow: none;
     color: #ffffff;
 }
 
@@ -659,12 +804,37 @@ input:checked + .slider:before {
     stroke: var(--text-on-accent);
 }
 
+body.light-theme #toggleAssistantBtn.active {
+    background: linear-gradient(
+        180deg,
+        rgba(255, 255, 255, 0.78),
+        rgba(255, 255, 255, 0.56)
+    );
+    border-color: rgba(220, 72, 72, 0.9);
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.92),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.82),
+        inset 0 0 1px rgba(0, 0, 0, 0.1),
+        0 0 0 1px rgba(220, 72, 72, 0.22);
+    color: var(--button-bg);
+}
+
+body.light-theme #toggleAssistantBtn.active svg {
+    stroke: currentColor;
+}
+
 .topics-header-container {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
     margin-bottom: 10px;
 }
 
 .agents-header {
-    margin-bottom: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 4px;
 }
 
 /*
@@ -672,7 +842,107 @@ input:checked + .slider:before {
   to create a more compact layout.
 */
 aside.sidebar .sidebar-tab-content h2 {
-    margin-bottom: 2px;
+    margin: 0;
+}
+
+.sidebar-subtab-item {
+    display: flex;
+    align-items: center;
+    min-height: 37px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    box-sizing: border-box;
+    background-color: color-mix(in srgb, var(--input-bg) 76%, var(--accent-bg) 24%);
+    box-shadow: 0 1px 6px rgba(0, 0, 0, 0.08);
+}
+
+.sidebar-subtab-item-active {
+    min-height: 30px;
+    padding: 0 4px 0 3px;
+    border-radius: 8px;
+    background-color: transparent;
+    box-shadow: none;
+}
+
+.agents-header .sidebar-subtab-item-active {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    height: 37px;
+    min-height: 37px;
+    margin: 0 4px 0 3px;
+    padding: 0 10px;
+    border-radius: 999px;
+    box-sizing: border-box;
+}
+
+.sidebar-subtab-item h2 {
+    display: flex;
+    align-items: center;
+    min-height: 0;
+    font-size: 0.94em;
+    font-weight: 500;
+    line-height: 1.2;
+    color: var(--primary-text);
+    border: none;
+    padding: 0;
+}
+
+.sidebar-subtab-item-active h2 {
+    min-height: 30px;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1;
+    color: var(--highlight-text);
+}
+
+.agents-header .sidebar-subtab-item-active h2 {
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    font-size: 0.94em;
+    font-weight: 500;
+    line-height: 1.2;
+    color: var(--primary-text);
+}
+
+.sidebar-search-subtab {
+    transition: background-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.sidebar-search-subtab:hover {
+    background-color: color-mix(in srgb, var(--input-bg) 68%, var(--accent-bg) 32%);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.sidebar-search-subtab:focus-within {
+    background-color: color-mix(in srgb, var(--input-bg) 64%, var(--accent-bg) 36%);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+.agents-title-pseudo-item {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    min-width: 0;
+    height: 100%;
+    cursor: default;
+    pointer-events: none;
+}
+
+.agents-title-logo-image {
+    width: 24px;
+    height: 24px;
+    border-radius: 999px;
+    border: 2px solid var(--button-bg);
+    box-sizing: border-box;
+    object-fit: cover;
+    display: block;
+}
+
+.agents-title-text {
+    font-size: 0.94em;
+    line-height: 1.2;
 }
 
 /* --- Middle Click Grid --- */
@@ -746,18 +1016,21 @@ body.light-theme .grid-cell[data-function="none"]:hover {
 
 /* Unread Topic Badge */
 /* 为头像创建一个定位包装器 */
-.agent-list li {
+.sidebar #agentList > li {
     position: relative;
 }
 
 /* 头像包装器，用于定位未读徽章 */
-.avatar-wrapper {
+.sidebar #agentList .avatar-wrapper {
     position: relative;
-    display: inline-block;
+    display: flex;
+    align-items: center;
+    align-self: center;
     flex-shrink: 0;
+    line-height: 0;
 }
 
-.unread-badge {
+.sidebar #agentList .unread-badge {
     position: absolute;
     top: -2px; /* 相对于头像顶部，略微向上偏移以贴近边缘 */
     left: -2px; /* 相对于头像左边，略微向左偏移以贴近边缘 */
@@ -775,6 +1048,19 @@ body.light-theme .grid-cell[data-function="none"]:hover {
     z-index: 10;
     border: 2px solid var(--secondary-bg); /* 添加背景色边框，使其与背景分离 */
     box-sizing: border-box; /* 确保边框和内边距包含在尺寸内 */
+}
+
+/* Compact sidebar list badge sizing */
+.sidebar #agentList .unread-badge {
+    top: -1px;
+    left: -1px;
+    min-width: 13px;
+    height: 13px;
+    padding: 0 3px;
+    font-size: 9px;
+    line-height: 13px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.32);
+    border-width: 1.5px;
 }
 
 /* --- Confirm Dialog --- */

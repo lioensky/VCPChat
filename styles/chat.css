@@ -1,6 +1,7 @@
 /* styles/chat.css */
 
 .chat-header {
+    position: relative;
     padding: 12px 20px;
     padding: 12px 20px;
     background-color: var(--panel-bg-dark); /* 浣跨敤鍗婇€忔槑鍙橀噺 */
@@ -11,17 +12,93 @@
     justify-content: space-between;
     align-items: center;
     min-height: 36px;
+    z-index: 1;
+    overflow: visible;
+    padding: 5px 20px 3px;
+    background: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    min-height: 30px;
     flex-shrink: 0;
 }
+
+.chat-header::after {
+    content: "";
+    position: absolute;
+    top: -2px;
+    right: 0;
+    bottom: -34px;
+    left: 0;
+    z-index: 0;
+    pointer-events: none;
+    background: linear-gradient(
+        to bottom,
+        rgba(var(--rgb-secondary-bg-dark, 40, 40, 44), 0.94) 0%,
+        rgba(var(--rgb-secondary-bg-dark, 40, 40, 44), 0.88) 12%,
+        rgba(var(--rgb-secondary-bg-dark, 40, 40, 44), 0.72) 28%,
+        rgba(var(--rgb-secondary-bg-dark, 40, 40, 44), 0.46) 52%,
+        rgba(var(--rgb-secondary-bg-dark, 40, 40, 44), 0.18) 78%,
+        rgba(var(--rgb-secondary-bg-dark, 40, 40, 44), 0) 100%
+    );
+}
+
+.chat-header > * {
+    position: relative;
+    z-index: 1;
+}
+
 body.light-theme .chat-header {
-    background-color: var(--panel-bg-light);
+    background: transparent;
+}
+
+body.light-theme .chat-header::after {
+    background: linear-gradient(
+        to bottom,
+        rgba(var(--rgb-secondary-bg-light, 255, 255, 255), 0.97) 0%,
+        rgba(var(--rgb-secondary-bg-light, 255, 255, 255), 0.91) 12%,
+        rgba(var(--rgb-secondary-bg-light, 255, 255, 255), 0.76) 28%,
+        rgba(var(--rgb-secondary-bg-light, 255, 255, 255), 0.5) 52%,
+        rgba(var(--rgb-secondary-bg-light, 255, 255, 255), 0.2) 78%,
+        rgba(var(--rgb-secondary-bg-light, 255, 255, 255), 0) 100%
+    );
 }
 .chat-header h3 {
     margin: 0;
-    font-size: 1.2em;
+    font-size: 1.08em;
     color: var(--highlight-text);
     font-weight: 500;
+    line-height: 1.15;
     text-shadow: var(--panel-text-shadow);
+}
+
+/* Restore the original solid/frosted chat header and remove the fade experiment. */
+.chat-header {
+    position: static;
+    overflow: visible;
+    padding: 6px 20px;
+    background-color: var(--panel-bg-dark);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    min-height: 32px;
+    z-index: auto;
+}
+
+.chat-header::after {
+    display: none;
+}
+
+.chat-header > * {
+    position: static;
+    z-index: auto;
+}
+
+body.light-theme .chat-header {
+    background-color: var(--panel-bg-light);
+}
+
+.chat-header h3 {
+    font-size: 1.08em;
+    line-height: normal;
 }
 
 .theme-icon {
@@ -52,6 +129,12 @@ body.light-theme #moon-icon {
     flex-direction: column-reverse; 
     position: relative;
     z-index: 0;
+    -webkit-mask-image: none;
+    mask-image: none;
+    -webkit-mask-repeat: initial;
+    mask-repeat: initial;
+    -webkit-mask-size: auto;
+    mask-size: auto;
 }
 
 .chat-messages {

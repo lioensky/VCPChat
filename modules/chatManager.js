@@ -273,7 +273,7 @@ window.chatManager = (() => {
         currentChatNameH3.textContent = `与 ${itemName} ${itemType === 'group' ? '(群组)' : ''} 聊天中`;
         setCurrentItemActionButtonText(currentItemActionBtn, itemType === 'group' ? '新建群聊话题' : '新建聊天话题');
         currentItemActionBtn.title = `为 ${itemName} 新建${itemType === 'group' ? '群聊话题' : '聊天话题'}`;
-        currentItemActionBtn.style.display = 'inline-block';
+        currentItemActionBtn.style.display = 'inline-flex';
         
         if (voiceChatBtn) {
             voiceChatBtn.style.display = itemType === 'agent' ? 'inline-block' : 'none';

@@ -3,35 +3,82 @@
 /* Sidebar Tabs */
 .sidebar-tabs {
     display: flex;
-    margin-bottom: 15px;
-    border-bottom: 1px solid var(--border-color);
+    align-items: center;
+    gap: 0;
+    margin-bottom: 10px;
+    padding: 0 2px;
 }
 
 .sidebar-tab-button {
-    flex-grow: 1;
-    padding: 10px 5px;
+    position: relative;
+    flex: 1;
+    min-width: 0;
+    height: 30px;
+    padding: 0 6px;
     background-color: transparent;
     border: none;
-    border-bottom: 2px solid transparent;
-    /* For active indicator */
     color: var(--secondary-text);
     cursor: pointer;
-    font-size: 0.95em;
+    font-size: 13px;
+    font-weight: 400;
+    line-height: 1;
     text-align: center;
-    transition: background-color 0.2s ease, color 0.2s ease, border-bottom-color 0.2s ease;
-    margin-bottom: -1px;
-    /* Align with bottom border of container */
+    border-radius: 8px;
+    appearance: none;
+    -webkit-appearance: none;
+    transition: color 0.2s ease, font-weight 0.2s ease;
+}
+
+.sidebar-tab-button::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    bottom: -4px;
+    transform: translateX(-50%);
+    width: 0;
+    height: 3px;
+    border-radius: 999px;
+    background-color: color-mix(in srgb, var(--highlight-text) 55%, transparent);
+    transition: width 0.2s ease, background-color 0.2s ease;
 }
 
 .sidebar-tab-button:hover {
-    background-color: var(--accent-bg);
-    color: var(--highlight-text);
+    color: color-mix(in srgb, var(--highlight-text) 88%, var(--primary-text) 12%);
+}
+
+.sidebar-tab-button:hover::after {
+    width: 16px;
+    background-color: color-mix(in srgb, var(--highlight-text) 42%, transparent);
 }
 
 .sidebar-tab-button.active {
     color: var(--highlight-text);
-    border-bottom-color: var(--user-bubble-bg);
-    font-weight: 500;
+    font-weight: 600;
+}
+
+.sidebar-tab-button.active::after {
+    width: 30px;
+    background-color: var(--highlight-text);
+}
+
+.sidebar-tab-button.active:hover::after {
+    width: 30px;
+    background-color: var(--highlight-text);
+}
+
+.sidebar-tab-button:focus-visible {
+    outline: none;
+    color: var(--highlight-text);
+}
+
+.sidebar-tab-button:focus-visible::after {
+    width: 20px;
+    background-color: color-mix(in srgb, var(--highlight-text) 65%, transparent);
+}
+
+.sidebar-tab-button.active:focus-visible::after {
+    width: 30px;
+    background-color: var(--highlight-text);
 }
 
 .sidebar-tab-content {
@@ -207,78 +254,240 @@
 .agent-list,
 .topic-list {
     list-style-type: none;
-    padding: 0;
+    padding: 0 4px 0 3px;
     margin: 0;
     overflow-y: auto;
     overflow-x: hidden;
     flex-grow: 1;
+    box-sizing: border-box;
 }
 
-.agent-list li,
-.topic-list .topic-item {
-    padding: 10px 12px;
-    margin-bottom: 6px;
-    border-radius: 8px;
+.sidebar .agent-list li,
+.sidebar .topic-list .topic-item {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    height: 37px;
+    min-height: 37px;
+    padding: 0 10px;
+    margin-bottom: 4px;
+    border-radius: 999px;
     cursor: pointer;
     display: flex;
     align-items: center;
-    transition: background-color 0.2s ease, transform 0.1s ease;
+    box-sizing: border-box;
+    transition: background-color 0.2s ease, box-shadow 0.2s ease;
 }
 
-.agent-list li:hover,
-.topic-list .topic-item:hover {
-    background-color: var(--accent-bg);
-    transform: translateX(2px);
+.sidebar .agent-list li:hover,
+.sidebar .topic-list .topic-item:hover {
+    border: 1px solid rgba(51, 51, 51, 0.05);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.07));
+    backdrop-filter: blur(8px) saturate(122%);
+    -webkit-backdrop-filter: blur(8px) saturate(122%);
+    box-shadow:
+        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.28),
+        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.22),
+        inset 0 0 1px rgba(0, 0, 0, 0.06);
 }
 
-.agent-list li.active {
-    background-color: var(--user-bubble-bg);
-    color: white;
+.sidebar .agent-list li.active {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--user-bubble-bg) 82%, rgba(255, 255, 255, 0.4)),
+        color-mix(in srgb, var(--user-bubble-bg) 70%, rgba(255, 255, 255, 0.22))
+    );
+    border: 1px solid rgba(51, 51, 51, 0.06);
+    backdrop-filter: blur(10px) saturate(130%);
+    -webkit-backdrop-filter: blur(10px) saturate(130%);
+    color: var(--primary-text);
     font-weight: 500;
+    box-shadow:
+        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.72),
+        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.62),
+        inset 0 0 1px rgba(0, 0, 0, 0.08);
 }
 
-.agent-list li.active .agent-name {
-    color: white;
+.agents-header .sidebar-subtab-item-active {
+    background: transparent;
+    border: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: none;
 }
 
-.agent-list li.active img.avatar {
+.agents-header .sidebar-subtab-item-active::after {
+    display: none;
+}
+
+.agents-header .sidebar-subtab-item-active > * {
+    position: relative;
+    z-index: 1;
+}
+
+.sidebar .agent-list li.active .agent-name {
+    color: var(--primary-text);
+}
+
+.sidebar .agent-list li.active img.avatar {
     border-color: var(--highlight-text);
 }
 
-.agent-list img.avatar,
-.topic-list .topic-item img.avatar {
-    width: 36px;
-    height: 36px;
+.sidebar .agent-list img.avatar,
+.sidebar .topic-list .topic-item img.avatar {
+    width: 24px;
+    height: 24px;
     border-radius: 50%;
-    margin-right: 10px;
+    margin-right: 8px;
     object-fit: cover;
     border: 2px solid var(--button-bg);
     position: relative;
+    flex-shrink: 0;
     /* 为未读徽章提供定位上下文 */
 }
 
-.agent-list .agent-name,
-.topic-list .topic-item .agent-name {
+.sidebar .agent-list .agent-name,
+.sidebar .topic-list .topic-item .agent-name {
     font-weight: 400;
-    font-size: 1.05em;
+    font-size: 0.94em;
+    line-height: 1.2;
     color: var(--primary-text);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
     flex-grow: 1;
+    min-width: 0;
 }
 
-.topic-list .topic-item .message-count {
+.agents-title-pseudo-item .avatar {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    margin-right: 8px;
+    object-fit: cover;
+    border: 2px solid var(--button-bg);
+    flex-shrink: 0;
+}
+
+.agents-title-pseudo-item .agent-name {
+    font-weight: 500;
+    font-size: 0.94em;
+    line-height: 1.2;
+    color: var(--primary-text);
+    margin-left: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex-grow: 1;
+    min-width: 0;
+}
+
+.sidebar .agent-list li.active::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    border-radius: inherit;
+    background:
+        linear-gradient(
+            45deg,
+            rgba(255, 255, 255, 0.54) 0%,
+            transparent 24%,
+            transparent 76%,
+            rgba(255, 255, 255, 0.54) 100%
+        );
+    filter: blur(2px);
+    pointer-events: none;
+}
+
+.sidebar .agent-list li > *,
+.sidebar .topic-list .topic-item > * {
+    position: relative;
+    z-index: 1;
+}
+
+.sidebar .agent-list li:hover::after,
+.sidebar .topic-list .topic-item:hover::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    border-radius: inherit;
+    background:
+        linear-gradient(
+            45deg,
+            rgba(255, 255, 255, 0.12) 0%,
+            transparent 26%,
+            transparent 74%,
+            rgba(255, 255, 255, 0.12) 100%
+        );
+    filter: blur(2px);
+    pointer-events: none;
+}
+
+.sidebar .topic-list .topic-item .message-count {
     margin-left: auto;
-    padding: 3px 8px;
+    padding: 2px 7px;
     background-color: var(--accent-bg);
     color: var(--highlight-text);
-    border-radius: 10px;
-    font-size: 0.85em;
-    min-width: 20px;
+    border-radius: 999px;
+    font-size: 0.78em;
+    line-height: 1.2;
+    min-width: 18px;
     text-align: center;
     font-weight: bold;
     font-family: "Arial Rounded MT Bold", "Helvetica Rounded", Arial, sans-serif;
+}
+
+body:not(.light-theme) .sidebar .agent-list li.active {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--user-bubble-bg) 52%, rgba(255, 255, 255, 0.06)),
+        color-mix(in srgb, var(--user-bubble-bg) 40%, rgba(255, 255, 255, 0.03))
+    );
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(8px) saturate(118%);
+    -webkit-backdrop-filter: blur(8px) saturate(118%);
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.16),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.12),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+
+body:not(.light-theme) .agents-header .sidebar-subtab-item-active {
+    background: transparent;
+    border: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: none;
+}
+
+body:not(.light-theme) .sidebar .agent-list li.active::after {
+    display: none;
+}
+
+body:not(.light-theme) .agents-header .sidebar-subtab-item-active::after {
+    display: none;
+}
+
+body:not(.light-theme) .sidebar .agent-list li:hover,
+body:not(.light-theme) .sidebar .topic-list .topic-item:hover {
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.045));
+    backdrop-filter: blur(7px) saturate(115%);
+    -webkit-backdrop-filter: blur(7px) saturate(115%);
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.14),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.1),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+}
+
+body:not(.light-theme) .sidebar .agent-list li:hover::after,
+body:not(.light-theme) .sidebar .topic-list .topic-item:hover::after {
+    display: none;
 }
 
 #tabContentTopics p {
@@ -758,34 +967,279 @@ body.light-theme input[type="file"]::file-selector-button:hover {
 
 .topic-search-container {
     display: flex;
+    align-items: center;
     width: 100%;
-    gap: 8px;
-    padding: 0 15px;
+    gap: 0;
+    padding: 0;
     box-sizing: border-box;
 }
 
 .topic-search-input {
     flex-grow: 1;
-    padding: 10px 12px;
-    border: 1px solid var(--border-color);
-    border-radius: 20px;
-    background-color: var(--input-bg);
-    color: var(--primary-text);
-    font-size: 1em;
+    height: auto;
+    padding: 0;
+    border: none;
+    border-radius: 0;
+    background-color: transparent;
+    color: var(--secondary-text);
+    font-size: 0.94em;
+    font-weight: 400;
+    line-height: 1.2;
     box-sizing: border-box;
-    max-width: calc(100% - 8px);
     min-width: 0;
+    box-shadow: none;
+    transition: color 0.2s ease;
+}
+
+.topic-search-input:hover {
+    color: color-mix(in srgb, var(--highlight-text) 88%, var(--primary-text) 12%);
 }
 
 .topic-search-input::placeholder {
     color: var(--secondary-text);
-    opacity: 0.7;
+    opacity: 0.78;
 }
 
-.topic-search-input:focus {
+.topic-search-input:focus,
+.topic-search-input:focus-visible {
     outline: none;
-    border-color: var(--user-bubble-bg);
-    box-shadow: 0 0 0 2px rgba(61, 90, 128, 0.3);
+    color: var(--highlight-text);
+}
+
+.sidebar-search-subtab .topic-search-input::-webkit-search-cancel-button,
+.sidebar-search-subtab .topic-search-input::-ms-clear {
+    opacity: 0.8;
+}
+
+/* Make the agent/group search capsule visually align with topic pills. */
+.agents-header .sidebar-search-subtab {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    height: 37px;
+    min-height: 37px;
+    margin: 0 4px 0 3px;
+    padding: 0 10px;
+    border-radius: 999px;
+    border: 1px solid transparent;
+    background: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: none;
+    filter: none;
+}
+
+.agents-header .sidebar-search-subtab::before {
+    content: "";
+    position: absolute;
+    z-index: 0;
+    top: 42%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: calc(100% - 24px);
+    height: calc(100% - 18px);
+    border-radius: inherit;
+    border: 1px solid rgba(0, 0, 0, 0.12);
+    filter: blur(6px);
+    opacity: 0;
+    pointer-events: none;
+}
+
+.agents-header .sidebar-search-subtab::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    border-radius: inherit;
+    background:
+        linear-gradient(
+            45deg,
+            rgba(255, 255, 255, 0.8) 0%,
+            transparent 22%,
+            transparent 78%,
+            rgba(255, 255, 255, 0.8) 100%
+        );
+    filter: blur(3px);
+    opacity: 0;
+    pointer-events: none;
+}
+
+.agents-header .sidebar-search-subtab:hover {
+    border-color: rgba(51, 51, 51, 0.06);
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(255, 255, 255, 0.6));
+    backdrop-filter: blur(12px) saturate(135%);
+    -webkit-backdrop-filter: blur(12px) saturate(135%);
+    box-shadow:
+        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.96),
+        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.9),
+        inset 0 0 1px rgba(0, 0, 0, 0.12);
+    filter: brightness(0.98);
+}
+
+.agents-header .sidebar-search-subtab:hover::before {
+    opacity: 0.22;
+}
+
+.agents-header .sidebar-search-subtab:hover::after {
+    opacity: 1;
+}
+
+.agents-header .sidebar-search-subtab:focus-within {
+    border-color: rgba(51, 51, 51, 0.06);
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(255, 255, 255, 0.64));
+    backdrop-filter: blur(12px) saturate(135%);
+    -webkit-backdrop-filter: blur(12px) saturate(135%);
+    box-shadow:
+        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.98),
+        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.92),
+        inset 0 0 1px rgba(0, 0, 0, 0.1);
+    filter: brightness(0.98);
+}
+
+.agents-header .sidebar-search-subtab:focus-within::before {
+    opacity: 0.22;
+}
+
+.agents-header .sidebar-search-subtab:focus-within::after {
+    opacity: 1;
+}
+
+.agents-header .topic-search-container {
+    position: relative;
+    z-index: 1;
+    gap: 0;
+    width: 100%;
+    height: 100%;
+}
+
+.agent-search-icon {
+    position: relative;
+    width: 24px;
+    height: 24px;
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 8px;
+    border-radius: 50%;
+    border: 1px double rgba(51, 51, 51, 0.08);
+    box-sizing: border-box;
+    background: rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.92),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.88),
+        inset 0 0 2px rgba(0, 0, 0, 0.28),
+        0 3px 10px rgba(0, 0, 0, 0.08);
+    color: rgba(74, 79, 88, 0.9);
+    opacity: 0.88;
+    line-height: 0;
+}
+
+.agent-search-icon::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background:
+        linear-gradient(
+            45deg,
+            rgba(255, 255, 255, 0.72) 0%,
+            transparent 28%,
+            transparent 72%,
+            rgba(255, 255, 255, 0.72) 100%
+        );
+    filter: blur(2px);
+    pointer-events: none;
+}
+
+.agent-search-icon svg {
+    width: 12px;
+    height: 12px;
+    filter: drop-shadow(0 10px 2px rgba(102, 102, 102, 0.08));
+}
+
+#agentSearchInput {
+    position: relative;
+    z-index: 1;
+    display: block;
+    height: 100%;
+    min-height: 0;
+    color: var(--primary-text);
+    caret-color: var(--highlight-text);
+    font-size: 0.94em;
+    font-weight: 400;
+    line-height: 1.2;
+}
+
+#agentSearchInput::placeholder {
+    color: var(--secondary-text);
+    opacity: 0.84;
+}
+
+/* Dark mode: keep the search pill frosted, but tone down the liquid-glass highlights. */
+body:not(.light-theme) .agents-header .sidebar-search-subtab {
+    border: 1px solid transparent;
+    background: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: none;
+    filter: none;
+}
+
+body:not(.light-theme) .agents-header .sidebar-search-subtab::before,
+body:not(.light-theme) .agents-header .sidebar-search-subtab::after,
+body:not(.light-theme) .agent-search-icon::after {
+    display: none;
+}
+
+body:not(.light-theme) .agents-header .sidebar-search-subtab:hover {
+    border-color: rgba(255, 255, 255, 0.08);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.065));
+    backdrop-filter: blur(10px) saturate(120%);
+    -webkit-backdrop-filter: blur(10px) saturate(120%);
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.2),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.14),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+}
+
+body:not(.light-theme) .agents-header .sidebar-search-subtab:focus-within {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.11), rgba(255, 255, 255, 0.07));
+    border-color: rgba(255, 255, 255, 0.12);
+    backdrop-filter: blur(10px) saturate(120%);
+    -webkit-backdrop-filter: blur(10px) saturate(120%);
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.22),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.16),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
+body:not(.light-theme) .agent-search-icon {
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.16),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.12);
+    color: rgba(225, 230, 238, 0.82);
+}
+
+body:not(.light-theme) .agent-search-icon svg {
+    filter: none;
+}
+
+body:not(.light-theme) #agentSearchInput {
+    color: rgba(235, 239, 245, 0.92);
+}
+
+body:not(.light-theme) #agentSearchInput::placeholder {
+    color: rgba(214, 221, 231, 0.6);
+    opacity: 1;
 }
 
 .digital-clock {

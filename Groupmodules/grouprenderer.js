@@ -279,7 +279,7 @@ window.GroupRenderer = (() => {
         if (mainRendererElements.currentItemActionBtn) {
             setCurrentItemActionButtonText(mainRendererElements.currentItemActionBtn, '新建群聊话题');
             mainRendererElements.currentItemActionBtn.title = `为群组 ${groupName} 新建群聊话题`;
-            mainRendererElements.currentItemActionBtn.style.display = 'inline-block';
+            mainRendererElements.currentItemActionBtn.style.display = 'inline-flex';
         }
         // mainRendererElements.clearCurrentChatBtn.style.display = 'inline-block'; // This button is removed
 
