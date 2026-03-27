@@ -45,7 +45,10 @@ const chatMessagesDiv = document.getElementById('chatMessages');
 const messageInput = document.getElementById('messageInput');
 const sendMessageBtn = document.getElementById('sendMessageBtn');
 const attachFileBtn = document.getElementById('attachFileBtn');
+const emoticonTriggerBtn = document.getElementById('emoticonTriggerBtn');
+const quickNewTopicBtn = document.getElementById('quickNewTopicBtn');
 const attachmentPreviewArea = document.getElementById('attachmentPreviewArea');
+const chatInputCard = document.querySelector('.chat-input-card');
 
 const globalSettingsBtn = document.getElementById('globalSettingsBtn');
 // 模态框及其内部元素现在延迟加载，不再在顶层缓存引用
@@ -315,6 +318,7 @@ import { setupEventListeners } from './modules/event-listeners.js';
     if (window.inputEnhancer) {
         window.inputEnhancer.initializeInputEnhancer({
             messageInput: messageInput,
+            dropTargetElement: chatInputCard,
             electronAPI: window.electronAPI,
             attachedFiles: { get: () => attachedFiles, set: (val) => attachedFiles = val },
             updateAttachmentPreview: () => uiHelperFunctions.updateAttachmentPreview(attachedFiles, attachmentPreviewArea),
@@ -954,15 +958,72 @@ import { setupEventListeners } from './modules/event-listeners.js';
         });
 
         // Emoticon panel event listener
-        if (attachFileBtn && window.emoticonManager) {
-            attachFileBtn.addEventListener('contextmenu', (e) => {
+        if (attachFileBtn && emoticonTriggerBtn && window.emoticonManager) {
+            const syncEmoticonTriggerButton = () => {
+                emoticonTriggerBtn.disabled = attachFileBtn.disabled;
+            };
+
+            const openEmoticonPanel = (e) => {
                 e.preventDefault();
-                window.emoticonManager.togglePanel(attachFileBtn);
+                if (emoticonTriggerBtn.disabled) return;
+                window.emoticonManager.togglePanel(emoticonTriggerBtn);
+            };
+
+            emoticonTriggerBtn.addEventListener('click', openEmoticonPanel);
+            emoticonTriggerBtn.addEventListener('contextmenu', openEmoticonPanel);
+
+            const emoticonTriggerObserver = new MutationObserver(syncEmoticonTriggerButton);
+            emoticonTriggerObserver.observe(attachFileBtn, {
+                attributes: true,
+                attributeFilter: ['disabled']
             });
+
+            syncEmoticonTriggerButton();
         }
 
         window.topicListManager.setupTopicSearch(); // Ensure this is called after DOM for topic search input is ready
         if(messageInput) uiHelperFunctions.autoResizeTextarea(messageInput);
+
+        if (quickNewTopicBtn && currentItemActionBtn) {
+            const syncQuickNewTopicButton = () => {
+                const isVisible = window.getComputedStyle(currentItemActionBtn).display !== 'none';
+                const buttonLabel = currentItemActionBtn.querySelector('.button-label')?.textContent?.trim();
+
+                quickNewTopicBtn.style.display = 'inline-flex';
+                quickNewTopicBtn.disabled = !isVisible;
+                quickNewTopicBtn.title = currentItemActionBtn.title || '新建聊天话题';
+
+                if (buttonLabel) {
+                    quickNewTopicBtn.setAttribute('aria-label', buttonLabel);
+                }
+            };
+
+            const forwardCurrentItemAction = (eventName) => {
+                if (quickNewTopicBtn.disabled) return;
+                currentItemActionBtn.dispatchEvent(new MouseEvent(eventName, {
+                    bubbles: true,
+                    cancelable: true,
+                    view: window
+                }));
+            };
+
+            quickNewTopicBtn.addEventListener('click', () => forwardCurrentItemAction('click'));
+            quickNewTopicBtn.addEventListener('contextmenu', (event) => {
+                event.preventDefault();
+                forwardCurrentItemAction('contextmenu');
+            });
+
+            const quickTopicObserver = new MutationObserver(syncQuickNewTopicButton);
+            quickTopicObserver.observe(currentItemActionBtn, {
+                attributes: true,
+                attributeFilter: ['style', 'title'],
+                childList: true,
+                subtree: true,
+                characterData: true
+            });
+
+            syncQuickNewTopicButton();
+        }
 
         // Set default view if no item is selected
         if (!currentSelectedItem.id) {

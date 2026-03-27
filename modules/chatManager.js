@@ -24,6 +24,16 @@ window.chatManager = (() => {
     let isCanvasWindowOpen = false; // State to track if the canvas window is open
     let lastAssistantSuspendAt = 0;
 
+    function setCurrentItemActionButtonText(button, text) {
+        if (!button) return;
+        const label = button.querySelector('.button-label');
+        if (label) {
+            label.textContent = text;
+            return;
+        }
+        button.textContent = text;
+    }
+
 
 
     /**
@@ -261,7 +271,7 @@ window.chatManager = (() => {
         const voiceChatBtn = document.getElementById('voiceChatBtn');
 
         currentChatNameH3.textContent = `与 ${itemName} ${itemType === 'group' ? '(群组)' : ''} 聊天中`;
-        currentItemActionBtn.textContent = itemType === 'group' ? '新建群聊话题' : '新建聊天话题';
+        setCurrentItemActionButtonText(currentItemActionBtn, itemType === 'group' ? '新建群聊话题' : '新建聊天话题');
         currentItemActionBtn.title = `为 ${itemName} 新建${itemType === 'group' ? '群聊话题' : '聊天话题'}`;
         currentItemActionBtn.style.display = 'inline-block';
         

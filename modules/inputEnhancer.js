@@ -13,6 +13,7 @@ let currentTopicIdRef; // Function to get currentTopicId
  * Initializes the input enhancer module.
  * @param {object} refs - References to functions and variables from renderer.js
  * @param {HTMLTextAreaElement} refs.messageInput - The message input textarea element.
+ * @param {HTMLElement} [refs.dropTargetElement] - Optional drag-and-drop target container for the composer.
  * @param {object} refs.electronAPI - The exposed electron API from preload.js.
  * @param {Array} refs.attachedFiles - Reference to the array holding files to be attached.
  * @param {Function} refs.updateAttachmentPreview - Function to update the attachment preview UI.
@@ -35,36 +36,48 @@ function initializeInputEnhancer(refs) {
     currentTopicIdRef = refs.getCurrentTopicId;
 
     const messageInput = refs.messageInput;
+    const dropTargetElement = refs.dropTargetElement || messageInput;
+    let dragDepth = 0;
+
+    const activateDropTarget = () => dropTargetElement.classList.add('drag-over');
+    const deactivateDropTarget = () => {
+        dragDepth = 0;
+        dropTargetElement.classList.remove('drag-over');
+    };
 
     // 1. Drag and Drop functionality
-    messageInput.addEventListener('dragenter', (event) => {
+    dropTargetElement.addEventListener('dragenter', (event) => {
         event.preventDefault();
         event.stopPropagation();
         console.log('[InputEnhancer] dragenter event');
-        messageInput.classList.add('drag-over');
+        dragDepth += 1;
+        activateDropTarget();
     });
 
-    messageInput.addEventListener('dragover', (event) => {
+    dropTargetElement.addEventListener('dragover', (event) => {
         event.preventDefault();
         event.stopPropagation();
         event.dataTransfer.dropEffect = 'copy';
-        if (!messageInput.classList.contains('drag-over')) {
-            messageInput.classList.add('drag-over');
+        if (!dropTargetElement.classList.contains('drag-over')) {
+            activateDropTarget();
         }
     });
 
-    messageInput.addEventListener('dragleave', (event) => {
+    dropTargetElement.addEventListener('dragleave', (event) => {
         event.preventDefault();
         event.stopPropagation();
         console.log('[InputEnhancer] dragleave event');
-        messageInput.classList.remove('drag-over');
+        dragDepth = Math.max(0, dragDepth - 1);
+        if (dragDepth === 0) {
+            dropTargetElement.classList.remove('drag-over');
+        }
     });
 
-    messageInput.addEventListener('drop', async (event) => {
+    dropTargetElement.addEventListener('drop', async (event) => {
         event.preventDefault();
         event.stopPropagation();
         console.log('[InputEnhancer] drop event triggered.');
-        messageInput.classList.remove('drag-over');
+        deactivateDropTarget();
 
         const agentId = currentAgentIdRef();
         const topicId = currentTopicIdRef();
