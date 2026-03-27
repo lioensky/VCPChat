@@ -22,7 +22,7 @@ process.stdin.on('end', () => {
         const command = args.command || args.Command || args.action || args.Action;
 
         if (!command) {
-            throw new Error("The 'command' parameter is required. Valid commands: 'SetWallpaper', 'QueryDesktop', 'QueryDock', 'ViewWidgetSource', 'CreateWidget'.");
+            throw new Error("The 'command' parameter is required. Valid commands: 'SetWallpaper', 'QueryDesktop', 'QueryDock', 'ViewWidgetSource', 'CreateWidget', 'SetStyleAutomation', 'GetStyleAutomationStatus'.");
         }
 
         const normalizedCommand = command.toLowerCase();
@@ -124,8 +124,67 @@ process.stdin.on('end', () => {
 
             console.log(JSON.stringify(commandPayload));
 
+        } else if (
+            normalizedCommand === 'setstyleautomation' ||
+            normalizedCommand === 'set_style_automation' ||
+            normalizedCommand === 'styleautomation' ||
+            normalizedCommand === 'style_automation'
+        ) {
+            const configPatch = {};
+
+            const hasEnabled = Object.prototype.hasOwnProperty.call(args, 'enabled')
+                || Object.prototype.hasOwnProperty.call(args, 'Enabled')
+                || Object.prototype.hasOwnProperty.call(args, 'enable')
+                || Object.prototype.hasOwnProperty.call(args, 'Enable');
+            if (hasEnabled) {
+                configPatch.enabled = _parseBoolean(
+                    args.enabled ?? args.Enabled ?? args.enable ?? args.Enable
+                );
+            }
+
+            const intervalMsRaw = args.intervalMs ?? args.IntervalMs ?? args.interval ?? args.Interval ?? args.pollIntervalMs ?? args.PollIntervalMs;
+            const intervalMs = _parseNumber(intervalMsRaw);
+            if (intervalMs !== null) {
+                configPatch.intervalMs = intervalMs;
+            }
+
+            const metricsOptions = args.metricsOptions ?? args.MetricsOptions ?? null;
+            if (metricsOptions && typeof metricsOptions === 'object') {
+                configPatch.metricsOptions = metricsOptions;
+            }
+
+            const rules = args.rules ?? args.Rules ?? null;
+            if (rules !== null) {
+                if (!Array.isArray(rules)) {
+                    throw new Error("The 'rules' parameter must be an array when provided.");
+                }
+                configPatch.rules = rules;
+            }
+
+            const persist = _parseBoolean(args.persist ?? args.Persist ?? args.save ?? args.Save ?? args.persistConfig ?? args.PersistConfig);
+
+            const commandPayload = {
+                command: 'SetStyleAutomation',
+                configPatch,
+                persist,
+            };
+
+            console.log(JSON.stringify(commandPayload));
+
+        } else if (
+            normalizedCommand === 'getstyleautomationstatus' ||
+            normalizedCommand === 'get_style_automation_status' ||
+            normalizedCommand === 'styleautomationstatus' ||
+            normalizedCommand === 'style_automation_status'
+        ) {
+            const commandPayload = {
+                command: 'GetStyleAutomationStatus',
+            };
+
+            console.log(JSON.stringify(commandPayload));
+
         } else {
-            throw new Error(`Unknown command: '${command}'. Valid commands: 'SetWallpaper', 'QueryDesktop', 'QueryDock', 'ViewWidgetSource', 'CreateWidget'.`);
+            throw new Error(`Unknown command: '${command}'. Valid commands: 'SetWallpaper', 'QueryDesktop', 'QueryDock', 'ViewWidgetSource', 'CreateWidget', 'SetStyleAutomation', 'GetStyleAutomationStatus'.`);
         }
 
     } catch (error) {

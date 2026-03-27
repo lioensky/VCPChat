@@ -144,4 +144,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         await D.globalSettings.applyOnStartup();
     }
+
+    if (D.styleAutomation?.init) {
+        await D.styleAutomation.init();
+    }
 });
