@@ -267,10 +267,10 @@
     position: relative;
     isolation: isolate;
     overflow: hidden;
-    height: 37px;
-    min-height: 37px;
+    height: 54px;
+    min-height: 54px;
     padding: 0 10px;
-    margin-bottom: 4px;
+    margin-bottom: 8px;
     border-radius: 999px;
     cursor: pointer;
     display: flex;
@@ -338,8 +338,8 @@
 
 .sidebar .agent-list img.avatar,
 .sidebar .topic-list .topic-item img.avatar {
-    width: 24px;
-    height: 24px;
+    width: 42px;
+    height: 42px;
     border-radius: 50%;
     margin-right: 8px;
     object-fit: cover;
@@ -352,7 +352,7 @@
 .sidebar .agent-list .agent-name,
 .sidebar .topic-list .topic-item .agent-name {
     font-weight: 400;
-    font-size: 0.94em;
+    font-size: 16px;
     line-height: 1.24;
     padding-bottom: 2px;
     color: var(--primary-text);
@@ -366,7 +366,7 @@
 .sidebar .topic-list .topic-title-display,
 .sidebar .topic-list .topic-name {
     font-weight: 400;
-    font-size: 0.94em;
+    font-size: 16px;
     line-height: 1.24;
     padding-bottom: 2px;
     color: var(--primary-text);
@@ -378,8 +378,8 @@
 }
 
 .agents-title-pseudo-item .avatar {
-    width: 24px;
-    height: 24px;
+    width: 42px;
+    height: 42px;
     border-radius: 50%;
     margin-right: 8px;
     object-fit: cover;
@@ -389,7 +389,7 @@
 
 .agents-title-pseudo-item .agent-name {
     font-weight: 500;
-    font-size: 0.94em;
+    font-size: 16px;
     line-height: 1.2;
     color: var(--primary-text);
     margin-left: 2px;
@@ -589,12 +589,7 @@ body:not(.light-theme) .sidebar .topic-list .topic-item:hover::after {
 }
 
 #agentSettingsContainer h3 {
-    color: var(--highlight-text);
-    margin-top: 0;
-    margin-bottom: 15px;
-    font-size: 1.2em;
-    border-bottom: 1px solid var(--border-color);
-    padding-bottom: 8px;
+    display: none;
 }
 
 
@@ -897,9 +892,6 @@ body.light-theme #groupSettingsForm .form-actions #deleteGroupBtn:hover {
     object-fit: cover;
 }
 
-#memberTagsContainer {
-    /* Styles for the container of all tag inputs, if needed */
-}
 
 #memberTagsInputs {
     display: flex;

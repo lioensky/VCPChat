@@ -93,18 +93,11 @@
     height: 37px;
     padding: 0 12px;
     border-radius: 14px;
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    background: linear-gradient(
-        180deg,
-        rgba(255, 255, 255, 0.1),
-        rgba(255, 255, 255, 0.04)
-    );
-    backdrop-filter: blur(8px) saturate(120%);
-    -webkit-backdrop-filter: blur(8px) saturate(120%);
-    box-shadow:
-        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.24),
-        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.18),
-        inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+    background: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: none;
     color: var(--highlight-text);
     font-weight: 500;
     transition:
@@ -280,11 +273,7 @@ body:not(.light-theme) .sidebar-actions .create-group-btn:hover {
 .chat-actions .header-button {
     position: relative;
     isolation: isolate;
-    background: linear-gradient(
-        180deg,
-        rgba(255, 255, 255, 0.1),
-        rgba(255, 255, 255, 0.04)
-    );
+    background: transparent;
     border: 1px solid rgba(255, 255, 255, 0.12);
     color: var(--secondary-text);
     padding: 0 10px;
@@ -293,12 +282,9 @@ body:not(.light-theme) .sidebar-actions .create-group-btn:hover {
     cursor: pointer;
     margin-left: 4px;
     font-size: 0.9em;
-    backdrop-filter: blur(8px) saturate(120%);
-    -webkit-backdrop-filter: blur(8px) saturate(120%);
-    box-shadow:
-        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.24),
-        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.18),
-        inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: none;
     transition: background-color 0.2s, border-color 0.2s, box-shadow 0.2s;
     display: inline-flex; 
     align-items: center; 
@@ -338,8 +324,8 @@ body:not(.light-theme) .chat-actions .header-button {
 }
 
 .chat-actions .header-button#currentAgentSettingsBtn svg {
-    width: 45px;
-    height: 18px;
+    width: 50px;
+    height: 20px;
     flex-shrink: 0;
 }
 
@@ -406,16 +392,9 @@ body.light-theme button#devButton.header-button:hover {
 }
 
 body.light-theme .chat-actions .header-button {
-    background: linear-gradient(
-        180deg,
-        rgba(255, 255, 255, 0.78),
-        rgba(255, 255, 255, 0.56)
-    );
+    background: transparent;
     border-color: rgba(51, 51, 51, 0.08);
-    box-shadow:
-        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.92),
-        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.82),
-        inset 0 0 1px rgba(0, 0, 0, 0.1);
+    box-shadow: none;
     color: var(--button-bg);
 }
 body.light-theme .chat-actions .header-button:hover {
