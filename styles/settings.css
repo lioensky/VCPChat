@@ -5,7 +5,7 @@
     display: flex;
     align-items: center;
     gap: 0;
-    margin-bottom: 10px;
+    margin-bottom: 13px;
     padding: 0 2px;
 }
 
@@ -353,7 +353,22 @@
 .sidebar .topic-list .topic-item .agent-name {
     font-weight: 400;
     font-size: 0.94em;
-    line-height: 1.2;
+    line-height: 1.24;
+    padding-bottom: 2px;
+    color: var(--primary-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex-grow: 1;
+    min-width: 0;
+}
+
+.sidebar .topic-list .topic-title-display,
+.sidebar .topic-list .topic-name {
+    font-weight: 400;
+    font-size: 0.94em;
+    line-height: 1.24;
+    padding-bottom: 2px;
     color: var(--primary-text);
     white-space: nowrap;
     overflow: hidden;
@@ -429,17 +444,70 @@
 }
 
 .sidebar .topic-list .topic-item .message-count {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     margin-left: auto;
-    padding: 2px 7px;
-    background-color: var(--accent-bg);
+    padding: 2px 6px;
+    border: 1px solid rgba(51, 51, 51, 0.08);
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--user-bubble-bg) 84%, rgba(255, 255, 255, 0.42)),
+        color-mix(in srgb, var(--user-bubble-bg) 68%, rgba(255, 255, 255, 0.2))
+    );
+    backdrop-filter: blur(10px) saturate(132%);
+    -webkit-backdrop-filter: blur(10px) saturate(132%);
+    box-shadow:
+        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.72),
+        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.62),
+        inset 0 0 1px rgba(0, 0, 0, 0.08);
     color: var(--highlight-text);
     border-radius: 999px;
     font-size: 0.78em;
     line-height: 1.2;
-    min-width: 18px;
+    min-width: 17px;
     text-align: center;
     font-weight: bold;
     font-family: "Arial Rounded MT Bold", "Helvetica Rounded", Arial, sans-serif;
+}
+
+.sidebar .topic-list .topic-item .message-count::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background:
+        linear-gradient(
+            45deg,
+            rgba(255, 255, 255, 0.6) 0%,
+            transparent 24%,
+            transparent 76%,
+            rgba(255, 255, 255, 0.6) 100%
+        );
+    filter: blur(2px);
+    pointer-events: none;
+}
+
+body:not(.light-theme) .sidebar .topic-list .topic-item .message-count {
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--user-bubble-bg) 58%, rgba(255, 255, 255, 0.08)),
+        color-mix(in srgb, var(--user-bubble-bg) 44%, rgba(255, 255, 255, 0.04))
+    );
+    backdrop-filter: blur(8px) saturate(120%);
+    -webkit-backdrop-filter: blur(8px) saturate(120%);
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.18),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.12),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+
+body:not(.light-theme) .sidebar .topic-list .topic-item .message-count::after {
+    display: none;
 }
 
 body:not(.light-theme) .sidebar .agent-list li.active {
@@ -499,7 +567,8 @@ body:not(.light-theme) .sidebar .topic-list .topic-item:hover::after {
 
 .sidebar-actions {
     margin-top: auto;
-    padding-top: 10px;
+    padding: 10px 4px 0 3px;
+    box-sizing: border-box;
     border-top: none;
     display: flex;
     flex-direction: row;
@@ -1011,8 +1080,9 @@ body.light-theme input[type="file"]::file-selector-button:hover {
     opacity: 0.8;
 }
 
-/* Make the agent/group search capsule visually align with topic pills. */
-.agents-header .sidebar-search-subtab {
+/* Make the tab search capsules visually align with the assistant list pills. */
+.agents-header .sidebar-search-subtab,
+.topics-header-container .sidebar-search-subtab {
     position: relative;
     isolation: isolate;
     overflow: hidden;
@@ -1021,15 +1091,23 @@ body.light-theme input[type="file"]::file-selector-button:hover {
     margin: 0 4px 0 3px;
     padding: 0 10px;
     border-radius: 999px;
-    border: 1px solid transparent;
-    background: transparent;
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-    box-shadow: none;
+    border: 1px solid color-mix(in srgb, rgba(51, 51, 51, 0.05) 88%, var(--highlight-text) 12%);
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, rgba(255, 255, 255, 0.74) 93%, var(--highlight-text) 7%),
+        color-mix(in srgb, rgba(255, 255, 255, 0.54) 91%, var(--highlight-text) 9%)
+    );
+    backdrop-filter: blur(10px) saturate(128%);
+    -webkit-backdrop-filter: blur(10px) saturate(128%);
+    box-shadow:
+        inset 0 1px 1px rgba(255, 255, 255, 0.56),
+        inset 0 -1px 1px rgba(255, 255, 255, 0.14),
+        inset 0 0 1px rgba(0, 0, 0, 0.08);
     filter: none;
 }
 
-.agents-header .sidebar-search-subtab::before {
+.agents-header .sidebar-search-subtab::before,
+.topics-header-container .sidebar-search-subtab::before {
     content: "";
     position: absolute;
     z-index: 0;
@@ -1041,14 +1119,15 @@ body.light-theme input[type="file"]::file-selector-button:hover {
     border-radius: inherit;
     border: 1px solid rgba(0, 0, 0, 0.12);
     filter: blur(6px);
-    opacity: 0;
+    opacity: 0.1;
     pointer-events: none;
 }
 
-.agents-header .sidebar-search-subtab::after {
+.agents-header .sidebar-search-subtab::after,
+.topics-header-container .sidebar-search-subtab::after {
     content: "";
     position: absolute;
-    inset: 0;
+    inset: 1px;
     z-index: 0;
     border-radius: inherit;
     background:
@@ -1060,14 +1139,19 @@ body.light-theme input[type="file"]::file-selector-button:hover {
             rgba(255, 255, 255, 0.8) 100%
         );
     filter: blur(3px);
-    opacity: 0;
+    opacity: 0.22;
     pointer-events: none;
 }
 
-.agents-header .sidebar-search-subtab:hover {
-    border-color: rgba(51, 51, 51, 0.06);
+.agents-header .sidebar-search-subtab:hover,
+.topics-header-container .sidebar-search-subtab:hover {
+    border-color: color-mix(in srgb, rgba(51, 51, 51, 0.06) 82%, var(--highlight-text) 18%);
     background:
-        linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(255, 255, 255, 0.6));
+        linear-gradient(
+            180deg,
+            color-mix(in srgb, rgba(255, 255, 255, 0.82) 90%, var(--highlight-text) 10%),
+            color-mix(in srgb, rgba(255, 255, 255, 0.6) 87%, var(--highlight-text) 13%)
+        );
     backdrop-filter: blur(12px) saturate(135%);
     -webkit-backdrop-filter: blur(12px) saturate(135%);
     box-shadow:
@@ -1077,18 +1161,25 @@ body.light-theme input[type="file"]::file-selector-button:hover {
     filter: brightness(0.98);
 }
 
-.agents-header .sidebar-search-subtab:hover::before {
+.agents-header .sidebar-search-subtab:hover::before,
+.topics-header-container .sidebar-search-subtab:hover::before {
     opacity: 0.22;
 }
 
-.agents-header .sidebar-search-subtab:hover::after {
+.agents-header .sidebar-search-subtab:hover::after,
+.topics-header-container .sidebar-search-subtab:hover::after {
     opacity: 1;
 }
 
-.agents-header .sidebar-search-subtab:focus-within {
-    border-color: rgba(51, 51, 51, 0.06);
+.agents-header .sidebar-search-subtab:focus-within,
+.topics-header-container .sidebar-search-subtab:focus-within {
+    border-color: color-mix(in srgb, rgba(51, 51, 51, 0.06) 80%, var(--highlight-text) 20%);
     background:
-        linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(255, 255, 255, 0.64));
+        linear-gradient(
+            180deg,
+            color-mix(in srgb, rgba(255, 255, 255, 0.86) 88%, var(--highlight-text) 12%),
+            color-mix(in srgb, rgba(255, 255, 255, 0.64) 85%, var(--highlight-text) 15%)
+        );
     backdrop-filter: blur(12px) saturate(135%);
     -webkit-backdrop-filter: blur(12px) saturate(135%);
     box-shadow:
@@ -1098,15 +1189,18 @@ body.light-theme input[type="file"]::file-selector-button:hover {
     filter: brightness(0.98);
 }
 
-.agents-header .sidebar-search-subtab:focus-within::before {
+.agents-header .sidebar-search-subtab:focus-within::before,
+.topics-header-container .sidebar-search-subtab:focus-within::before {
     opacity: 0.22;
 }
 
-.agents-header .sidebar-search-subtab:focus-within::after {
+.agents-header .sidebar-search-subtab:focus-within::after,
+.topics-header-container .sidebar-search-subtab:focus-within::after {
     opacity: 1;
 }
 
-.agents-header .topic-search-container {
+.agents-header .topic-search-container,
+.topics-header-container .topic-search-container {
     position: relative;
     z-index: 1;
     gap: 0;
@@ -1180,25 +1274,53 @@ body.light-theme input[type="file"]::file-selector-button:hover {
     opacity: 0.84;
 }
 
+#topicSearchInput {
+    position: relative;
+    z-index: 1;
+    display: block;
+    height: 100%;
+    min-height: 0;
+    color: var(--primary-text);
+    caret-color: var(--highlight-text);
+    font-size: 0.94em;
+    font-weight: 400;
+    line-height: 1.2;
+}
+
 /* Dark mode: keep the search pill frosted, but tone down the liquid-glass highlights. */
-body:not(.light-theme) .agents-header .sidebar-search-subtab {
-    border: 1px solid transparent;
-    background: transparent;
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-    box-shadow: none;
+body:not(.light-theme) .agents-header .sidebar-search-subtab,
+body:not(.light-theme) .topics-header-container .sidebar-search-subtab {
+    border: 1px solid color-mix(in srgb, rgba(255, 255, 255, 0.07) 84%, var(--highlight-text) 16%);
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, rgba(255, 255, 255, 0.08) 88%, var(--highlight-text) 12%),
+        color-mix(in srgb, rgba(255, 255, 255, 0.045) 84%, var(--highlight-text) 16%)
+    );
+    backdrop-filter: blur(8px) saturate(118%);
+    -webkit-backdrop-filter: blur(8px) saturate(118%);
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.14),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.1),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.03);
     filter: none;
 }
 
 body:not(.light-theme) .agents-header .sidebar-search-subtab::before,
 body:not(.light-theme) .agents-header .sidebar-search-subtab::after,
+body:not(.light-theme) .topics-header-container .sidebar-search-subtab::before,
+body:not(.light-theme) .topics-header-container .sidebar-search-subtab::after,
 body:not(.light-theme) .agent-search-icon::after {
     display: none;
 }
 
-body:not(.light-theme) .agents-header .sidebar-search-subtab:hover {
-    border-color: rgba(255, 255, 255, 0.08);
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.065));
+body:not(.light-theme) .agents-header .sidebar-search-subtab:hover,
+body:not(.light-theme) .topics-header-container .sidebar-search-subtab:hover {
+    border-color: color-mix(in srgb, rgba(255, 255, 255, 0.08) 80%, var(--highlight-text) 20%);
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, rgba(255, 255, 255, 0.1) 84%, var(--highlight-text) 16%),
+        color-mix(in srgb, rgba(255, 255, 255, 0.065) 80%, var(--highlight-text) 20%)
+    );
     backdrop-filter: blur(10px) saturate(120%);
     -webkit-backdrop-filter: blur(10px) saturate(120%);
     box-shadow:
@@ -1207,9 +1329,14 @@ body:not(.light-theme) .agents-header .sidebar-search-subtab:hover {
         inset 0 0 0 1px rgba(255, 255, 255, 0.05);
 }
 
-body:not(.light-theme) .agents-header .sidebar-search-subtab:focus-within {
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.11), rgba(255, 255, 255, 0.07));
-    border-color: rgba(255, 255, 255, 0.12);
+body:not(.light-theme) .agents-header .sidebar-search-subtab:focus-within,
+body:not(.light-theme) .topics-header-container .sidebar-search-subtab:focus-within {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, rgba(255, 255, 255, 0.11) 82%, var(--highlight-text) 18%),
+        color-mix(in srgb, rgba(255, 255, 255, 0.07) 78%, var(--highlight-text) 22%)
+    );
+    border-color: color-mix(in srgb, rgba(255, 255, 255, 0.12) 76%, var(--highlight-text) 24%);
     backdrop-filter: blur(10px) saturate(120%);
     -webkit-backdrop-filter: blur(10px) saturate(120%);
     box-shadow:

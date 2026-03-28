@@ -1,10 +1,9 @@
-/* styles/chat.css */
-
+﻿/* styles/chat.css */
 .chat-header {
     position: relative;
     padding: 12px 20px;
     padding: 12px 20px;
-    background-color: var(--panel-bg-dark); /* 浣跨敤鍗婇€忔槑鍙橀噺 */
+    background-color: var(--panel-bg-dark); /* ?????????????????*/
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
     border-bottom: none;
@@ -21,7 +20,6 @@
     min-height: 30px;
     flex-shrink: 0;
 }
-
 .chat-header::after {
     content: "";
     position: absolute;
@@ -41,16 +39,13 @@
         rgba(var(--rgb-secondary-bg-dark, 40, 40, 44), 0) 100%
     );
 }
-
 .chat-header > * {
     position: relative;
     z-index: 1;
 }
-
 body.light-theme .chat-header {
     background: transparent;
 }
-
 body.light-theme .chat-header::after {
     background: linear-gradient(
         to bottom,
@@ -70,7 +65,6 @@ body.light-theme .chat-header::after {
     line-height: 1.15;
     text-shadow: var(--panel-text-shadow);
 }
-
 /* Restore the original solid/frosted chat header and remove the fade experiment. */
 .chat-header {
     position: static;
@@ -82,20 +76,16 @@ body.light-theme .chat-header::after {
     min-height: 32px;
     z-index: auto;
 }
-
 .chat-header::after {
     display: none;
 }
-
 .chat-header > * {
     position: static;
     z-index: auto;
 }
-
 body.light-theme .chat-header {
     background-color: var(--panel-bg-light);
 }
-
 .chat-header h3 {
     font-size: 1.08em;
     line-height: normal;
@@ -155,11 +145,11 @@ body.light-theme #moon-icon {
     align-items: flex-start;
     gap: 10px;
     position: relative;
-    /* 核心优化：跳过视界外元素的布局和绘制 */
+    /* 鏍稿績浼樺寲锛氳烦杩囪鐣屽鍏冪礌鐨勫竷灞€鍜岀粯鍒?*/
     content-visibility: auto;
-    /* 配合 content-visibility 防止滚动条抖动，默认给一个预估值 */
+    /* 閰嶅悎 content-visibility 闃叉婊氬姩鏉℃姈鍔紝榛樿缁欎竴涓浼板€?*/
     contain-intrinsic-size: auto 100px;
-    /* 进一步优化：提升为独立层，避免局部刷新引起全局重绘 */
+    /* 杩涗竴姝ヤ紭鍖栵細鎻愬崌涓虹嫭绔嬪眰锛岄伩鍏嶅眬閮ㄥ埛鏂板紩璧峰叏灞€閲嶇粯 */
     will-change: transform;
 }
 
@@ -483,7 +473,7 @@ body.light-theme .message-item.system.welcome-bubble {
 .chat-input-area {
     padding-top: 0;
     padding-right: 15px;
-    padding-bottom: 8px;
+    padding-bottom: 12px;
     padding-left: 15px;
     display: flex;
     flex-direction: column;
@@ -498,13 +488,22 @@ body.light-theme .message-item.system.welcome-bubble {
     width: 100%;
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    padding: 12px 14px 10px;
+    gap: 4px;
+    padding: 14px 14px 8px;
     box-sizing: border-box;
     border: 1px solid color-mix(in srgb, var(--border-color) 38%, transparent);
     border-radius: 24px;
-    background-color: color-mix(in srgb, var(--input-bg) 84%, transparent);
-    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--input-bg) 82%, rgba(255, 255, 255, 0.08)),
+        color-mix(in srgb, var(--input-bg) 72%, transparent)
+    );
+    backdrop-filter: blur(10px) saturate(112%);
+    -webkit-backdrop-filter: blur(10px) saturate(112%);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.08),
+        inset 0 0 0 1px color-mix(in srgb, var(--border-color) 10%, transparent),
+        0 4px 14px rgba(0, 0, 0, 0.08);
     transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
     position: relative;
     z-index: 1;
@@ -512,14 +511,29 @@ body.light-theme .message-item.system.welcome-bubble {
 
 .chat-input-card:hover:not(:focus-within):not(.drag-over) {
     border-color: color-mix(in srgb, var(--border-color) 62%, transparent);
-    background-color: color-mix(in srgb, var(--input-bg) 90%, transparent);
-    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--input-bg) 86%, rgba(255, 255, 255, 0.1)),
+        color-mix(in srgb, var(--input-bg) 76%, transparent)
+    );
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.1),
+        inset 0 0 0 1px color-mix(in srgb, var(--border-color) 14%, transparent),
+        0 4px 14px rgba(0, 0, 0, 0.08);
 }
 
 .chat-input-card:focus-within {
     border-color: color-mix(in srgb, var(--border-color) 82%, var(--primary-text) 18%);
-    background-color: color-mix(in srgb, var(--input-bg) 94%, transparent);
-    box-shadow: 0 0 0 1px color-mix(in srgb, var(--border-color) 24%, transparent), 0 5px 16px rgba(0, 0, 0, 0.09);
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--input-bg) 90%, rgba(255, 255, 255, 0.1)),
+        color-mix(in srgb, var(--input-bg) 80%, transparent)
+    );
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.12),
+        inset 0 0 0 1px color-mix(in srgb, var(--border-color) 14%, transparent),
+        0 0 0 1px color-mix(in srgb, var(--border-color) 24%, transparent),
+        0 5px 16px rgba(0, 0, 0, 0.09);
 }
 
 .chat-input-card.drag-over {
@@ -533,7 +547,7 @@ body.light-theme .message-item.system.welcome-bubble {
     align-items: center;
     justify-content: flex-start;
     gap: 0;
-    min-height: 36px;
+    min-height: 32px;
 }
 
 .attachment-preview-area .file-preview { /* This is the old attachment preview style in input area */
@@ -803,10 +817,10 @@ body.light-theme .message-edit-controls button {
     color: var(--quoted-text);
 }
 
-/* @tag 高亮样式 */
+/* @tag 楂樹寒鏍峰紡 */
 .highlighted-tag {
-    color: var(--highlight-text); /* 使用主题的高亮颜色 */
-    background-color: rgba(var(--rgb-secondary-bg-dark, 40, 40, 44), 0.2); /* 轻微背景，暗色主题兼容 */
+    color: var(--highlight-text); /* 浣跨敤涓婚鐨勯珮浜鑹?*/
+    background-color: rgba(var(--rgb-secondary-bg-dark, 40, 40, 44), 0.2); /* 杞诲井鑳屾櫙锛屾殫鑹蹭富棰樺吋瀹?*/
     padding: 0.1em 0.3em;
     border-radius: 4px;
     font-weight: 500;
@@ -814,7 +828,7 @@ body.light-theme .message-edit-controls button {
 
 body.light-theme .highlighted-tag {
     color: var(--highlight-text-light);
-    background-color: rgba(var(--rgb-secondary-bg-light, 255, 255, 255), 0.3); /* 轻微背景，亮色主题兼容 */
+    background-color: rgba(var(--rgb-secondary-bg-light, 255, 255, 255), 0.3); /* 杞诲井鑳屾櫙锛屼寒鑹蹭富棰樺吋瀹?*/
 }
 
 /* --- @Note Suggestion Popup --- */
@@ -888,8 +902,8 @@ body.light-theme .suggestion-item {
 }
 /* --- Light Theme Code Block Styles --- */
 body.light-theme .message-item .md-content pre {
-    background-color: rgba(255, 250, 240, 0.85); /* 米白磨砂背景 */
-    color: #333333; /* 深灰色基础文字 */
+    background-color: rgba(255, 250, 240, 0.85); /* 绫崇櫧纾ㄧ爞鑳屾櫙 */
+    color: #333333; /* 娣辩伆鑹插熀纭€鏂囧瓧 */
     border-color: rgba(0, 0, 0, 0.1);
 }
 
@@ -988,10 +1002,10 @@ body.light-theme .message-item .md-content pre .hljs-meta {
 
 /* Allow wrapped quotes to soft-wrap and break within CJK contexts */
 .message-item .md-content .highlighted-quote {
-    white-space: normal;           /* 允许正常换行 */
-    word-break: break-word;        /* 长词/连续中文可断行 */
-    overflow-wrap: anywhere;       /* 现代浏览器任意处断行 */
-    line-break: anywhere;          /* CJK 断行更宽松（若浏览器支持） */
+    white-space: normal;           /* 鍏佽姝ｅ父鎹㈣ */
+    word-break: break-word;        /* 闀胯瘝/杩炵画涓枃鍙柇琛?*/
+    overflow-wrap: anywhere;       /* 鐜颁唬娴忚鍣ㄤ换鎰忓鏂 */
+    line-break: anywhere;          /* CJK 鏂鏇村鏉撅紙鑻ユ祻瑙堝櫒鏀寔锛?*/
 }
 
 /*
@@ -1101,3 +1115,4 @@ body.light-theme .message-item .md-content pre .hljs-meta {
    outline: 2px solid var(--highlight-text);
    outline-offset: 2px;
 }
+

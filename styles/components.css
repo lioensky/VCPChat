@@ -86,28 +86,87 @@
     position: relative;
     isolation: isolate;
     overflow: hidden;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
     height: 37px;
     padding: 0 12px;
-    border-radius: 999px;
-    border: 1px solid rgba(51, 51, 51, 0.06);
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
     background: linear-gradient(
         180deg,
-        rgba(255, 255, 255, 0.74),
-        rgba(255, 255, 255, 0.52)
+        rgba(255, 255, 255, 0.1),
+        rgba(255, 255, 255, 0.04)
     );
-    backdrop-filter: blur(12px) saturate(132%);
-    -webkit-backdrop-filter: blur(12px) saturate(132%);
+    backdrop-filter: blur(8px) saturate(120%);
+    -webkit-backdrop-filter: blur(8px) saturate(120%);
     box-shadow:
-        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.9),
-        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.82),
-        inset 0 0 1px rgba(0, 0, 0, 0.12);
-    color: var(--primary-text);
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.24),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.18),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+    color: var(--highlight-text);
     font-weight: 500;
     transition:
         background 0.2s ease,
         border-color 0.2s ease,
         box-shadow 0.2s ease,
         transform 0.2s ease;
+}
+
+.sidebar-actions .create-agent-btn svg,
+.sidebar-actions .create-group-btn svg {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+}
+
+.sidebar-actions .create-group-btn svg {
+    transform: translateY(1px);
+}
+
+.sidebar-actions .create-agent-btn .sidebar-button-label,
+.sidebar-actions .create-group-btn .sidebar-button-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    line-height: 1;
+    min-width: 0;
+    font-weight: 500;
+}
+
+.sidebar-actions .create-agent-btn .sidebar-button-prefix,
+.sidebar-actions .create-group-btn .sidebar-button-prefix,
+.sidebar-actions .create-agent-btn .sidebar-button-keyword,
+.sidebar-actions .create-group-btn .sidebar-button-keyword {
+    white-space: nowrap;
+}
+
+.sidebar-actions .create-group-btn .sidebar-button-label {
+    transform: translateY(-2px);
+}
+
+@container sidebar (max-width: 225px) {
+    .sidebar-actions {
+        gap: 8px;
+    }
+
+    .sidebar-actions .create-agent-btn,
+    .sidebar-actions .create-group-btn {
+        gap: 5px;
+        padding: 0 8px;
+        font-size: 0.9em;
+    }
+
+    .sidebar-actions .create-agent-btn .sidebar-button-prefix,
+    .sidebar-actions .create-group-btn .sidebar-button-prefix {
+        display: none;
+    }
+
+    .sidebar-actions .create-agent-btn .sidebar-button-label,
+    .sidebar-actions .create-group-btn .sidebar-button-label {
+        gap: 0;
+    }
 }
 
 .sidebar-actions .create-agent-btn::after,
@@ -129,26 +188,25 @@
 
 .sidebar-actions .create-agent-btn:hover,
 .sidebar-actions .create-group-btn:hover {
-    background: linear-gradient(
-        180deg,
-        rgba(255, 255, 255, 0.8),
-        rgba(255, 255, 255, 0.58)
-    );
-    border-color: rgba(51, 51, 51, 0.08);
-    box-shadow:
-        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.94),
-        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.86),
-        inset 0 0 1px rgba(0, 0, 0, 0.1);
-    transform: translateY(-1px);
+    background: var(--highlight-text);
+    border-color: var(--highlight-text);
+    box-shadow: none;
+    color: var(--text-on-accent);
+    transform: none;
+}
+
+.sidebar-actions .create-agent-btn:hover::after,
+.sidebar-actions .create-group-btn:hover::after {
+    display: none;
 }
 
 .sidebar-actions .create-agent-btn:active,
 .sidebar-actions .create-group-btn:active {
-    transform: translateY(0);
+    transform: none;
     background: linear-gradient(
         180deg,
-        rgba(255, 255, 255, 0.7),
-        rgba(255, 255, 255, 0.5)
+        rgba(255, 255, 255, 0.08),
+        rgba(255, 255, 255, 0.03)
     );
 }
 
@@ -163,10 +221,28 @@ body.light-theme .sidebar-button:hover {
 }
 
 body.light-theme .sidebar-actions .create-agent-btn,
-body.light-theme .sidebar-actions .create-group-btn,
+body.light-theme .sidebar-actions .create-group-btn {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--user-bubble-bg) 82%, rgba(255, 255, 255, 0.4)),
+        color-mix(in srgb, var(--user-bubble-bg) 70%, rgba(255, 255, 255, 0.22))
+    );
+    border-color: rgba(51, 51, 51, 0.08);
+    backdrop-filter: blur(10px) saturate(130%);
+    -webkit-backdrop-filter: blur(10px) saturate(130%);
+    box-shadow:
+        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.72),
+        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.62),
+        inset 0 0 1px rgba(0, 0, 0, 0.08);
+    color: var(--highlight-text);
+}
+
 body.light-theme .sidebar-actions .create-agent-btn:hover,
 body.light-theme .sidebar-actions .create-group-btn:hover {
-    color: var(--primary-text);
+    background: var(--highlight-text);
+    border-color: var(--highlight-text);
+    box-shadow: none;
+    color: var(--text-on-accent);
 }
 
 body:not(.light-theme) .sidebar-actions .create-agent-btn,
@@ -174,16 +250,16 @@ body:not(.light-theme) .sidebar-actions .create-group-btn {
     border: 1px solid rgba(255, 255, 255, 0.08);
     background: linear-gradient(
         180deg,
-        rgba(255, 255, 255, 0.08),
-        rgba(255, 255, 255, 0.05)
+        color-mix(in srgb, var(--user-bubble-bg) 52%, rgba(255, 255, 255, 0.06)),
+        color-mix(in srgb, var(--user-bubble-bg) 40%, rgba(255, 255, 255, 0.03))
     );
-    backdrop-filter: blur(10px) saturate(118%);
-    -webkit-backdrop-filter: blur(10px) saturate(118%);
+    backdrop-filter: blur(8px) saturate(118%);
+    -webkit-backdrop-filter: blur(8px) saturate(118%);
     box-shadow:
         inset 1px -1px 1px -1px rgba(255, 255, 255, 0.16),
         inset -1px 1px 1px -1px rgba(255, 255, 255, 0.12),
-        inset 0 0 0 1px rgba(255, 255, 255, 0.03);
-    color: rgba(235, 239, 245, 0.92);
+        inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+    color: var(--highlight-text);
 }
 
 body:not(.light-theme) .sidebar-actions .create-agent-btn::after,
@@ -193,16 +269,11 @@ body:not(.light-theme) .sidebar-actions .create-group-btn::after {
 
 body:not(.light-theme) .sidebar-actions .create-agent-btn:hover,
 body:not(.light-theme) .sidebar-actions .create-group-btn:hover {
-    border-color: rgba(255, 255, 255, 0.1);
-    background: linear-gradient(
-        180deg,
-        rgba(255, 255, 255, 0.1),
-        rgba(255, 255, 255, 0.065)
-    );
-    box-shadow:
-        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.2),
-        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.14),
-        inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+    background: var(--highlight-text);
+    border-color: var(--highlight-text);
+    box-shadow: none;
+    color: var(--text-on-accent);
+    transform: none;
 }
 
 .chat-actions {
@@ -238,6 +309,11 @@ body:not(.light-theme) .sidebar-actions .create-group-btn:hover {
     justify-content: center; 
     box-sizing: border-box; 
 }
+
+body:not(.light-theme) .chat-actions .header-button {
+    color: var(--highlight-text);
+}
+
 .chat-actions .header-button svg {
     stroke: currentColor; 
     width: 18px; 
@@ -288,6 +364,13 @@ body:not(.light-theme) .sidebar-actions .create-group-btn:hover {
     background-color: var(--button-hover-bg);
     border-color: var(--button-hover-bg);
     color: var(--primary-text);
+}
+
+body:not(.light-theme) .chat-actions .header-button:hover {
+    background: var(--highlight-text);
+    border-color: var(--highlight-text);
+    box-shadow: none;
+    color: var(--text-on-accent);
 }
 
 button#devButton.header-button {
@@ -364,6 +447,11 @@ body.light-theme .chat-actions .header-button:hover {
 
 #sendMessageBtn svg {
     fill: none;
+}
+
+body:not(.light-theme) #sendMessageBtn svg {
+    stroke: rgba(255, 255, 255, 0.92);
+    color: rgba(255, 255, 255, 0.92);
 }
 
 #attachFileBtn svg, #quickNewTopicBtn svg, #emoticonTriggerBtn svg {
@@ -804,18 +892,26 @@ input:checked + .slider:before {
     stroke: var(--text-on-accent);
 }
 
+body:not(.light-theme) #toggleAssistantBtn.active {
+    background: var(--highlight-text);
+    border-color: var(--highlight-text);
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
 body.light-theme #toggleAssistantBtn.active {
     background: linear-gradient(
         180deg,
         rgba(255, 255, 255, 0.78),
         rgba(255, 255, 255, 0.56)
     );
-    border-color: rgba(220, 72, 72, 0.9);
+    border-color: var(--highlight-text);
     box-shadow:
         inset 1px -1px 1px -1px rgba(255, 255, 255, 0.92),
         inset -1px 1px 1px -1px rgba(255, 255, 255, 0.82),
         inset 0 0 1px rgba(0, 0, 0, 0.1),
-        0 0 0 1px rgba(220, 72, 72, 0.22);
+        0 0 0 1px color-mix(in srgb, var(--highlight-text) 22%, transparent);
     color: var(--button-bg);
 }
 
@@ -827,14 +923,14 @@ body.light-theme #toggleAssistantBtn.active svg {
     display: flex;
     flex-direction: column;
     gap: 4px;
-    margin-bottom: 10px;
+    margin-bottom: 12px;
 }
 
 .agents-header {
     display: flex;
     flex-direction: column;
-    gap: 4px;
-    margin-bottom: 4px;
+    gap: 0;
+    margin-bottom: 6px;
 }
 
 /*
