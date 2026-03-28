@@ -201,6 +201,57 @@
     background: rgba(255, 255, 255, 0.03);
 }
 
+.desktop-sidebar-search {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 10px 8px;
+    border-bottom: 1px solid var(--border-color, rgba(255, 255, 255, 0.06));
+    flex-shrink: 0;
+}
+
+.desktop-sidebar-search-input {
+    flex: 1;
+    height: 34px;
+    padding: 0 12px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--primary-text, rgba(255, 255, 255, 0.82));
+    font-size: 12px;
+    outline: none;
+    transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.desktop-sidebar-search-input::placeholder {
+    color: var(--placeholder-text, rgba(255, 255, 255, 0.3));
+}
+
+.desktop-sidebar-search-input:focus {
+    border-color: var(--highlight-text, rgba(100, 180, 255, 0.45));
+    background: rgba(255, 255, 255, 0.08);
+    box-shadow: 0 0 0 3px rgba(100, 180, 255, 0.12);
+}
+
+.desktop-sidebar-search-btn {
+    width: 34px;
+    height: 34px;
+    flex-shrink: 0;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--primary-text, rgba(255, 255, 255, 0.72));
+    font-size: 16px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.desktop-sidebar-search-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.14);
+    color: var(--highlight-text, rgba(100, 180, 255, 0.9));
+}
+
 /* --- 分页内容区 --- */
 .desktop-sidebar-page {
     display: none;
@@ -260,6 +311,10 @@
     letter-spacing: 1.5px;
     text-transform: uppercase;
     padding: 10px 12px 4px;
+}
+
+.desktop-sidebar-group {
+    padding-bottom: 6px;
 }
 
 /* ============================================================

@@ -73,6 +73,9 @@
     "xterm": "^5.3.0",
     "xterm-addon-fit": "^0.8.0"
   },
+  "optionalDependencies": {
+    "electron-edge-js": "^38.0.0"
+  },
   "build": {
     "appId": "com.vcp.chatdesktop",
     "productName": "VCP聊天客户端",
@@ -86,6 +89,7 @@
       "style.css",
       "assets/",
       "modules/**/*",
+      "vendor/**/*",
       "node_modules/**/*"
     ],
     "directories": {

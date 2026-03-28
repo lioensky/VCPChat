@@ -44,6 +44,67 @@
                     window.VCPDesktop.builtinTranslate.spawn();
                 }
             },
+            spawnMetricWidget: (component, options) => {
+                if (window.VCPDesktop.metricWidgets) {
+                    return window.VCPDesktop.metricWidgets.spawn(component, options);
+                }
+            },
+            spawnCpuMonitorWidget: () => {
+                if (window.VCPDesktop.builtinCpuMonitor) {
+                    window.VCPDesktop.builtinCpuMonitor.spawn();
+                }
+            },
+            spawnMemoryMonitorWidget: () => {
+                if (window.VCPDesktop.builtinMemoryMonitor) {
+                    window.VCPDesktop.builtinMemoryMonitor.spawn();
+                }
+            },
+            spawnDiskMonitorWidget: () => {
+                if (window.VCPDesktop.builtinDiskMonitor) {
+                    window.VCPDesktop.builtinDiskMonitor.spawn();
+                }
+            },
+            spawnNetworkMonitorWidget: () => {
+                if (window.VCPDesktop.builtinNetworkMonitor) {
+                    window.VCPDesktop.builtinNetworkMonitor.spawn();
+                }
+            },
+            spawnGpuMonitorWidget: () => {
+                if (window.VCPDesktop.builtinGpuMonitor) {
+                    window.VCPDesktop.builtinGpuMonitor.spawn();
+                }
+            },
+            spawnBatteryMonitorWidget: () => {
+                if (window.VCPDesktop.builtinBatteryMonitor) {
+                    window.VCPDesktop.builtinBatteryMonitor.spawn();
+                }
+            },
+            spawnDockerMonitorWidget: () => {
+                if (window.VCPDesktop.builtinDockerMonitor) {
+                    window.VCPDesktop.builtinDockerMonitor.spawn();
+                }
+            },
+            spawnSensorsMonitorWidget: () => {
+                if (window.VCPDesktop.builtinSensorsMonitor) {
+                    window.VCPDesktop.builtinSensorsMonitor.spawn();
+                }
+            },
+            spawnProcessMonitorWidget: () => {
+                if (window.VCPDesktop.builtinProcessMonitor) {
+                    window.VCPDesktop.builtinProcessMonitor.spawn();
+                }
+            },
+            spawnSystemMonitorWidget: () => {
+                if (window.VCPDesktop.builtinSystemMonitor) {
+                    window.VCPDesktop.builtinSystemMonitor.spawn('cpu');
+                }
+            },
+            listMetricComponents: () => {
+                return window.VCPDesktop.metrics?.listComponents?.() || [];
+            },
+            getMetricComponent: (component, options) => {
+                return window.VCPDesktop.metrics?.getComponentSnapshot?.(component, options);
+            },
 
             // 测试挂件
             test: () => {

@@ -120,6 +120,27 @@ body.light-theme .desktop-sidebar-empty {
     color: rgba(0, 0, 0, 0.3);
 }
 
+body.light-theme .desktop-sidebar-search-input,
+body.light-theme .desktop-sidebar-search-btn {
+    background: rgba(0, 0, 0, 0.04);
+    border-color: rgba(0, 0, 0, 0.08);
+    color: rgba(0, 0, 0, 0.72);
+}
+
+body.light-theme .desktop-sidebar-search-input::placeholder {
+    color: rgba(0, 0, 0, 0.28);
+}
+
+body.light-theme .desktop-sidebar-search-input:focus {
+    background: rgba(255, 255, 255, 0.7);
+    border-color: rgba(70, 150, 230, 0.35);
+    box-shadow: 0 0 0 3px rgba(70, 150, 230, 0.1);
+}
+
+body.light-theme .desktop-sidebar-search-btn:hover {
+    background: rgba(0, 0, 0, 0.08);
+}
+
 /* --- 浅色主题适配（侧栏分页） --- */
 body.light-theme .desktop-sidebar-tab:hover {
     background: rgba(0, 0, 0, 0.03);

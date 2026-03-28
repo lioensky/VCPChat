@@ -285,9 +285,71 @@
         // 远程创建挂件
         if (window.electronAPI?.onDesktopRemoteCreateWidget) {
             window.electronAPI.onDesktopRemoteCreateWidget((data) => {
-                const { widgetId, htmlContent, options, autoSave, saveName, preSavedId } = data;
-                console.log(`[Desktop IPC] Received remote create widget: ${widgetId}`, options, preSavedId ? `(pre-saved: ${preSavedId})` : '');
+                const {
+                    widgetId,
+                    htmlContent,
+                    options = {},
+                    autoSave,
+                    saveName,
+                    preSavedId,
+                    builtinWidgetKey,
+                    metricComponent,
+                } = data || {};
+                console.log(
+                    `[Desktop IPC] Received remote create widget: ${widgetId || builtinWidgetKey || metricComponent}`,
+                    options,
+                    preSavedId ? `(pre-saved: ${preSavedId})` : ''
+                );
                 try {
+                    const builtinKey = builtinWidgetKey || metricComponent;
+                    if (builtinKey && window.VCPDesktop.metricWidgets?.spawn) {
+                        const spawnResult = window.VCPDesktop.metricWidgets.spawn(builtinKey, {
+                            ...options,
+                            widgetId,
+                        });
+                        const createdWidgetId = spawnResult?.widgetId || widgetId;
+                        const builtinWidgetData = state.widgets.get(createdWidgetId);
+
+                        status.update('connected', `AI创建了内置监控挂件: ${builtinKey}`);
+                        status.show();
+                        setTimeout(() => status.hide(), 3000);
+
+                        if (autoSave && saveName && builtinWidgetData) {
+                            _autoSaveWidget(createdWidgetId, saveName, builtinWidgetData).then((savedResult) => {
+                                if (window.electronAPI?.sendDesktopRemoteCreateWidgetResponse) {
+                                    window.electronAPI.sendDesktopRemoteCreateWidgetResponse({
+                                        success: true,
+                                        widgetId: createdWidgetId,
+                                        savedId: savedResult?.id || null,
+                                        savedName: savedResult?.name || null,
+                                        builtinWidgetKey: builtinKey,
+                                    });
+                                }
+                            }).catch(() => {
+                                if (window.electronAPI?.sendDesktopRemoteCreateWidgetResponse) {
+                                    window.electronAPI.sendDesktopRemoteCreateWidgetResponse({
+                                        success: true,
+                                        widgetId: createdWidgetId,
+                                        savedId: null,
+                                        savedName: null,
+                                        builtinWidgetKey: builtinKey,
+                                    });
+                                }
+                            });
+                        } else if (window.electronAPI?.sendDesktopRemoteCreateWidgetResponse) {
+                            window.electronAPI.sendDesktopRemoteCreateWidgetResponse({
+                                success: true,
+                                widgetId: createdWidgetId,
+                                builtinWidgetKey: builtinKey,
+                            });
+                        }
+                        return;
+                    }
+
+                    if (!widgetId || !htmlContent) {
+                        throw new Error('远程创建自定义挂件缺少 widgetId 或 htmlContent');
+                    }
+
                     // 使用 widgetManager 创建挂件
                     const widgetData = widget.create(widgetId, {
                         x: options.x || 100,
@@ -378,6 +440,52 @@
                             error: err.message,
                         });
                     }
+                }
+            });
+        }
+
+        // 远程样式自动化控制（SetStyleAutomation / GetStyleAutomationStatus）
+        if (window.electronAPI?.onDesktopRemoteStyleAutomation) {
+            window.electronAPI.onDesktopRemoteStyleAutomation(async (data) => {
+                const action = data?.action || 'status';
+                const persist = !!data?.persist;
+                const configPatch = data?.configPatch;
+                try {
+                    if (!window.VCPDesktop?.styleAutomation) {
+                        throw new Error('styleAutomation 模块不可用');
+                    }
+
+                    if (action === 'set') {
+                        if (!configPatch || typeof configPatch !== 'object') {
+                            throw new Error('configPatch 必须为对象');
+                        }
+                        const statusResult = await window.VCPDesktop.styleAutomation.setConfigPatch(configPatch, { persist });
+                        window.electronAPI?.sendDesktopRemoteStyleAutomationResponse?.({
+                            success: true,
+                            action,
+                            status: statusResult,
+                        });
+                        return;
+                    }
+
+                    if (action === 'status') {
+                        const statusResult = window.VCPDesktop.styleAutomation.getStatus();
+                        window.electronAPI?.sendDesktopRemoteStyleAutomationResponse?.({
+                            success: true,
+                            action,
+                            status: statusResult,
+                        });
+                        return;
+                    }
+
+                    throw new Error(`未知 action: ${action}`);
+                } catch (err) {
+                    console.error('[Desktop IPC] Style automation error:', err);
+                    window.electronAPI?.sendDesktopRemoteStyleAutomationResponse?.({
+                        success: false,
+                        action,
+                        error: err?.message || String(err),
+                    });
                 }
             });
         }

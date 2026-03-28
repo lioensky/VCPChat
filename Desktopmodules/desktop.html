@@ -125,9 +125,18 @@
             <button class="desktop-sidebar-tab" data-tab="favorites">⭐ 收藏</button>
             <button class="desktop-sidebar-tab" data-tab="presets">📐 预设</button>
         </div>
+        <div class="desktop-sidebar-search">
+            <input
+                type="text"
+                id="desktop-sidebar-search-input"
+                class="desktop-sidebar-search-input"
+                placeholder="搜索挂件 / 收藏 / 预设标题，回车执行"
+                aria-label="搜索挂件、收藏和预设标题"
+            />
+            <button id="desktop-sidebar-search-btn" class="desktop-sidebar-search-btn" title="执行搜索" aria-label="执行搜索">⌕</button>
+        </div>
         <!-- 挂件页 -->
         <div id="desktop-sidebar-page-widgets" class="desktop-sidebar-page active">
-            <div class="desktop-sidebar-section-title">官方挂件</div>
             <div id="desktop-sidebar-builtin-list" class="desktop-sidebar-list"></div>
         </div>
         <!-- 收藏页 -->
@@ -395,6 +404,10 @@
     <script src="api/vcpProxy.js"></script>
     <!-- 13. API层：IPC 桥接（依赖 state, status, widget） -->
     <script src="api/ipcBridge.js"></script>
+    <!-- 13.5. API层：桌面指标服务 -->
+    <script src="api/desktopMetrics.js"></script>
+    <!-- 13.6. 核心层：全局样式自动化（依赖 state, globalSettings, metrics, wallpaper） -->
+    <script src="core/styleAutomation.js"></script>
     <!-- 14. 内置挂件：天气 -->
     <script src="builtinWidgets/weatherWidget.js"></script>
     <!-- 15. 内置挂件：音乐播放条 -->
@@ -405,6 +418,8 @@
     <script src="builtinWidgets/translateWidget.js"></script>
     <!-- 16.5. 内置挂件：应用托盘 -->
     <script src="builtinWidgets/appTrayWidget.js"></script>
+    <!-- 16.7. 内置挂件：系统监控 -->
+    <script src="builtinWidgets/systemMonitorWidget.js"></script>
     <!-- 16.6. VChat 内部应用注册表 & 启动器 -->
     <script src="builtinWidgets/vchatApps.js"></script>
     <!-- 17. 调试工具 -->

@@ -1,6 +1,6 @@
 /**
  * VCPdesktop - 侧栏系统模块（分页版）
- * 负责：分页标签切换、官方挂件列表、收藏卡片渲染、布局预设管理、拖拽到桌面
+ * 负责：分页标签切换、挂件分类与搜索、收藏卡片渲染、布局预设管理、拖拽到桌面
  */
 
 'use strict';
@@ -10,15 +10,72 @@
 
     let currentTab = 'widgets';
     let presetContextMenu = null; // 预设右键菜单元素
+    let currentSearchKeyword = '';
 
-    // 官方内置挂件注册表
-    const BUILTIN_WIDGETS = [
+    const OFFICIAL_WIDGETS = [
         { id: 'builtinWeather', name: '天气预报', icon: '🌤️', description: '实时天气数据与预报', spawnKey: 'builtinWeather' },
         { id: 'builtinNews', name: '今日热点', icon: '📰', description: '多源新闻热点聚合', spawnKey: 'builtinNews' },
         { id: 'builtinTranslate', name: 'AI 翻译', icon: '🌐', description: 'AI 驱动的多语言翻译工具', spawnKey: 'builtinTranslate' },
         { id: 'builtinMusic', name: '音乐播放条', icon: '🎵', description: '迷你音乐控制器', spawnKey: 'builtinMusic' },
         { id: 'builtinAppTray', name: '应用托盘', icon: '📦', description: '网格浏览全部应用，拖拽到桌面', spawnKey: 'builtinAppTray' },
     ];
+
+    const THIRD_PARTY_WIDGETS = [
+        { id: 'builtinCpuMonitor', name: 'CPU 监控', icon: '🧠', description: 'CPU 占用、负载与中断', spawnKey: 'builtinCpuMonitor' },
+        { id: 'builtinMemoryMonitor', name: 'RAM 监控', icon: '🧮', description: '内存、Swap 与页面错误', spawnKey: 'builtinMemoryMonitor' },
+        { id: 'builtinDiskMonitor', name: '磁盘监控', icon: '🗄️', description: '容量汇总与分区占用', spawnKey: 'builtinDiskMonitor' },
+        { id: 'builtinNetworkMonitor', name: '网络监控', icon: '🌐', description: '网络吞吐与网卡速率', spawnKey: 'builtinNetworkMonitor' },
+        { id: 'builtinGpuMonitor', name: 'GPU 监控', icon: '🎮', description: 'GPU 占用、温度与功耗', spawnKey: 'builtinGpuMonitor' },
+        { id: 'builtinBatteryMonitor', name: '电池监控', icon: '🔋', description: '电量、充电状态与功耗', spawnKey: 'builtinBatteryMonitor' },
+        { id: 'builtinDockerMonitor', name: 'Docker 监控', icon: '🐳', description: '容器运行数与资源占用', spawnKey: 'builtinDockerMonitor' },
+        { id: 'builtinSensorsMonitor', name: '传感器监控', icon: '🌡️', description: '温度、风扇、电压与功耗', spawnKey: 'builtinSensorsMonitor' },
+        { id: 'builtinProcessMonitor', name: '进程监视器', icon: '🧾', description: '运行进程数与 Top CPU', spawnKey: 'builtinProcessMonitor' },
+    ];
+
+    const WIDGET_GROUPS = [
+        { key: 'official', title: '官方挂件', items: OFFICIAL_WIDGETS },
+        { key: 'thirdParty', title: '三方挂件', items: THIRD_PARTY_WIDGETS },
+    ];
+
+    function normalizeSearchKeyword(keyword) {
+        return String(keyword || '').trim().toLocaleLowerCase();
+    }
+
+    function hasSearchKeyword() {
+        return Boolean(currentSearchKeyword);
+    }
+
+    function matchesSearchTitle(title) {
+        if (!currentSearchKeyword) return true;
+        return String(title || '').toLocaleLowerCase().includes(currentSearchKeyword);
+    }
+
+    function refreshTabData(tabName) {
+        if (tabName === 'widgets') {
+            renderBuiltinWidgets();
+            return Promise.resolve();
+        }
+
+        if (tabName === 'favorites' && window.VCPDesktop.favorites) {
+            return window.VCPDesktop.favorites.loadList();
+        }
+
+        if (tabName === 'presets') {
+            return loadPresetList();
+        }
+
+        return Promise.resolve();
+    }
+
+    function executeSidebarSearch(keyword) {
+        currentSearchKeyword = normalizeSearchKeyword(keyword);
+
+        return Promise.allSettled([
+            refreshTabData('widgets'),
+            refreshTabData('favorites'),
+            refreshTabData('presets'),
+        ]);
+    }
 
     // ============================================================
     // 初始化
@@ -39,6 +96,20 @@
             tab.addEventListener('click', () => {
                 switchTab(tab.dataset.tab);
             });
+        });
+
+        const searchInput = document.getElementById('desktop-sidebar-search-input');
+        const searchBtn = document.getElementById('desktop-sidebar-search-btn');
+        const submitSearch = () => executeSidebarSearch(searchInput?.value || '');
+        searchBtn?.addEventListener('click', submitSearch);
+        searchInput?.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                submitSearch();
+            } else if (e.key === 'Escape' && searchInput.value) {
+                searchInput.value = '';
+                submitSearch();
+            }
         });
 
         // 保存预设按钮
@@ -82,11 +153,7 @@
         });
 
         // 切换到对应页时刷新数据
-        if (tabName === 'favorites' && window.VCPDesktop.favorites) {
-            window.VCPDesktop.favorites.loadList();
-        } else if (tabName === 'presets') {
-            loadPresetList();
-        }
+        refreshTabData(tabName);
     }
 
     // ============================================================
@@ -103,11 +170,7 @@
         if (shouldOpen) {
             sidebar.classList.add('open');
             // 刷新当前页签内容
-            if (currentTab === 'favorites' && window.VCPDesktop.favorites) {
-                window.VCPDesktop.favorites.loadList();
-            } else if (currentTab === 'presets') {
-                loadPresetList();
-            }
+            refreshTabData(currentTab);
         } else {
             sidebar.classList.remove('open');
         }
@@ -123,57 +186,80 @@
 
         container.innerHTML = '';
 
-        BUILTIN_WIDGETS.forEach(widget => {
-            const card = document.createElement('div');
-            card.className = 'desktop-sidebar-builtin-card';
-            card.draggable = true;
+        const groups = WIDGET_GROUPS.map(group => ({
+            ...group,
+            items: group.items.filter(widget => matchesSearchTitle(widget.name)),
+        }));
+        const totalCount = groups.reduce((sum, group) => sum + group.items.length, 0);
 
-            const iconSpan = document.createElement('span');
-            iconSpan.className = 'desktop-sidebar-builtin-icon';
-            iconSpan.textContent = widget.icon;
-            card.appendChild(iconSpan);
+        if (totalCount === 0) {
+            container.innerHTML = `<div class="desktop-sidebar-empty">${hasSearchKeyword() ? '未找到匹配的挂件' : '暂无挂件'}</div>`;
+            return;
+        }
 
-            const info = document.createElement('div');
-            info.className = 'desktop-sidebar-builtin-info';
+        groups.forEach(group => {
+            if (group.items.length === 0) return;
 
-            const name = document.createElement('div');
-            name.className = 'desktop-sidebar-builtin-name';
-            name.textContent = widget.name;
-            info.appendChild(name);
+            const section = document.createElement('div');
+            section.className = 'desktop-sidebar-group';
 
-            const desc = document.createElement('div');
-            desc.className = 'desktop-sidebar-builtin-desc';
-            desc.textContent = widget.description;
-            info.appendChild(desc);
+            const title = document.createElement('div');
+            title.className = 'desktop-sidebar-section-title';
+            title.textContent = group.title;
+            section.appendChild(title);
 
-            card.appendChild(info);
+            group.items.forEach(widget => {
+                const card = document.createElement('div');
+                card.className = 'desktop-sidebar-builtin-card';
+                card.draggable = true;
 
-            const addBtn = document.createElement('button');
-            addBtn.className = 'desktop-sidebar-card-btn';
-            addBtn.textContent = '📤';
-            addBtn.title = '放置到桌面';
-            addBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                spawnBuiltinWidget(widget.spawnKey);
+                const iconSpan = document.createElement('span');
+                iconSpan.className = 'desktop-sidebar-builtin-icon';
+                iconSpan.textContent = widget.icon;
+                card.appendChild(iconSpan);
+
+                const info = document.createElement('div');
+                info.className = 'desktop-sidebar-builtin-info';
+
+                const name = document.createElement('div');
+                name.className = 'desktop-sidebar-builtin-name';
+                name.textContent = widget.name;
+                info.appendChild(name);
+
+                const desc = document.createElement('div');
+                desc.className = 'desktop-sidebar-builtin-desc';
+                desc.textContent = widget.description;
+                info.appendChild(desc);
+
+                card.appendChild(info);
+
+                const addBtn = document.createElement('button');
+                addBtn.className = 'desktop-sidebar-card-btn';
+                addBtn.textContent = '📤';
+                addBtn.title = '放置到桌面';
+                addBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    spawnBuiltinWidget(widget.spawnKey);
+                });
+                card.appendChild(addBtn);
+
+                card.addEventListener('click', () => {
+                    spawnBuiltinWidget(widget.spawnKey);
+                });
+
+                card.addEventListener('dragstart', (e) => {
+                    e.dataTransfer.setData('application/x-desktop-builtin-widget', widget.spawnKey);
+                    e.dataTransfer.effectAllowed = 'copy';
+                    card.classList.add('dragging');
+                });
+                card.addEventListener('dragend', () => {
+                    card.classList.remove('dragging');
+                });
+
+                section.appendChild(card);
             });
-            card.appendChild(addBtn);
 
-            // 点击也可以生成
-            card.addEventListener('click', () => {
-                spawnBuiltinWidget(widget.spawnKey);
-            });
-
-            // 拖拽支持
-            card.addEventListener('dragstart', (e) => {
-                e.dataTransfer.setData('application/x-desktop-builtin-widget', widget.spawnKey);
-                e.dataTransfer.effectAllowed = 'copy';
-                card.classList.add('dragging');
-            });
-            card.addEventListener('dragend', () => {
-                card.classList.remove('dragging');
-            });
-
-            container.appendChild(card);
+            container.appendChild(section);
         });
     }
 
@@ -199,12 +285,14 @@
 
         listContainer.innerHTML = '';
 
-        if (state.favorites.length === 0) {
-            listContainer.innerHTML = '<div class="desktop-sidebar-empty">暂无收藏</div>';
+        const filteredFavorites = state.favorites.filter(fav => matchesSearchTitle(fav.name));
+
+        if (filteredFavorites.length === 0) {
+            listContainer.innerHTML = `<div class="desktop-sidebar-empty">${hasSearchKeyword() ? '未找到匹配的收藏' : '暂无收藏'}</div>`;
             return;
         }
 
-        state.favorites.forEach(fav => {
+        filteredFavorites.forEach(fav => {
             const card = document.createElement('div');
             card.className = 'desktop-sidebar-card';
             card.dataset.favId = fav.id;
@@ -441,20 +529,23 @@
      */
     async function loadPresetList() {
         const container = document.getElementById('desktop-sidebar-preset-list');
-        if (!container) return;
+        if (!container) return [];
 
         const presets = await loadPresetsFromDisk();
         container.innerHTML = '';
+        const filteredPresets = presets.filter(preset => matchesSearchTitle(preset.name));
 
-        if (presets.length === 0) {
-            container.innerHTML = '<div class="desktop-sidebar-empty">暂无布局预设<br><span style="font-size:11px;opacity:0.5;">点击上方按钮保存当前桌面布局</span></div>';
-            return;
+        if (filteredPresets.length === 0) {
+            container.innerHTML = hasSearchKeyword()
+                ? '<div class="desktop-sidebar-empty">未找到匹配的预设</div>'
+                : '<div class="desktop-sidebar-empty">暂无布局预设<br><span style="font-size:11px;opacity:0.5;">点击上方按钮保存当前桌面布局</span></div>';
+            return presets;
         }
 
         // 获取默认预设ID
         const defaultPresetId = state.globalSettings?.defaultPresetId || null;
 
-        presets.forEach(preset => {
+        filteredPresets.forEach(preset => {
             const card = document.createElement('div');
             card.className = 'desktop-sidebar-preset-card';
 
@@ -525,6 +616,8 @@
 
             container.appendChild(card);
         });
+
+        return presets;
     }
 
     /**
@@ -1023,6 +1116,7 @@
         initCanvasDrop,
         switchTab,
         applyPreset,
+        search: executeSidebarSearch,
     };
 
 })();

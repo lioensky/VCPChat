@@ -194,6 +194,10 @@ async function handleDesktopRemoteControl(commandPayload) {
             return await _handleQueryDock(desktopWin);
         } else if (command === 'ViewWidgetSource') {
             return await _handleViewWidgetSource(commandPayload, desktopWin);
+        } else if (command === 'SetStyleAutomation') {
+            return await _handleSetStyleAutomation(commandPayload, desktopWin);
+        } else if (command === 'GetStyleAutomationStatus') {
+            return await _handleGetStyleAutomationStatus(desktopWin);
         } else if (command === 'CreateWidget') {
             return await _handleCreateWidget(commandPayload, desktopWin);
         } else {
@@ -507,6 +511,124 @@ async function _handleViewWidgetSource(commandPayload, desktopWin) {
 
         ipcMain.on('desktop-remote-view-source-response', responseHandler);
         desktopWin.webContents.send('desktop-remote-view-source', { widgetId });
+    });
+}
+
+// ============================================================
+// 内部实现：SetStyleAutomation / GetStyleAutomationStatus
+// ============================================================
+
+async function _handleSetStyleAutomation(commandPayload, desktopWin) {
+    const { configPatch, persist } = commandPayload;
+
+    if (!configPatch || typeof configPatch !== 'object') {
+        throw new Error('configPatch parameter (object) is required for SetStyleAutomation.');
+    }
+
+    let targetWin = desktopWin;
+    if (!targetWin || targetWin.isDestroyed()) {
+        await desktopHandlersRef.openDesktopWindow();
+        targetWin = desktopHandlersRef.getDesktopWindow();
+        if (!targetWin || targetWin.isDestroyed()) {
+            throw new Error('无法打开桌面窗口来设置全局样式自动化。');
+        }
+        await new Promise(resolve => setTimeout(resolve, 2000));
+    }
+
+    return new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+            ipcMain.removeListener('desktop-remote-style-automation-response', responseHandler);
+            resolve({
+                status: 'success',
+                result: {
+                    content: [{
+                        type: 'text',
+                        text: `### 全局样式自动化设置已下发\n\n` +
+                            `- **状态**: 已发送到桌面（响应超时，可能仍已生效）\n` +
+                            `- **persist**: ${persist ? 'true' : 'false'}`
+                    }]
+                }
+            });
+        }, 8000);
+
+        const responseHandler = (event, responseData) => {
+            clearTimeout(timeout);
+            ipcMain.removeListener('desktop-remote-style-automation-response', responseHandler);
+
+            if (responseData && responseData.success) {
+                const running = responseData.status?.running ? 'true' : 'false';
+                const enabled = responseData.status?.enabled ? 'true' : 'false';
+                const intervalMs = responseData.status?.intervalMs;
+                const lastError = responseData.status?.lastError;
+
+                let mdReport = `### 全局样式自动化设置成功 ✅\n\n` +
+                    `- **enabled**: ${enabled}\n` +
+                    (typeof intervalMs === 'number' ? `- **intervalMs**: ${intervalMs}\n` : '') +
+                    `- **running**: ${running}\n` +
+                    (lastError ? `- **lastError**: ${lastError}\n` : '');
+
+                resolve({
+                    status: 'success',
+                    result: { content: [{ type: 'text', text: mdReport }] }
+                });
+            } else {
+                reject(new Error(responseData?.error || '设置全局样式自动化失败。'));
+            }
+        };
+
+        ipcMain.on('desktop-remote-style-automation-response', responseHandler);
+        targetWin.webContents.send('desktop-remote-style-automation', {
+            action: 'set',
+            configPatch,
+            persist: !!persist,
+        });
+    });
+}
+
+async function _handleGetStyleAutomationStatus(desktopWin) {
+    if (!desktopWin || desktopWin.isDestroyed()) {
+        const mdReport = `### 全局样式自动化状态\n\n` +
+            `- **桌面窗口**: 未打开\n` +
+            `- **状态**: 无法查询（请先打开 VCPdesktop 桌面窗口）`;
+        return {
+            status: 'success',
+            result: { content: [{ type: 'text', text: mdReport }] }
+        };
+    }
+
+    return new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+            ipcMain.removeListener('desktop-remote-style-automation-response', responseHandler);
+            reject(new Error('查询全局样式自动化状态超时。'));
+        }, 5000);
+
+        const responseHandler = (event, responseData) => {
+            clearTimeout(timeout);
+            ipcMain.removeListener('desktop-remote-style-automation-response', responseHandler);
+
+            if (responseData && responseData.success) {
+                const running = responseData.status?.running ? 'true' : 'false';
+                const enabled = responseData.status?.enabled ? 'true' : 'false';
+                const intervalMs = responseData.status?.intervalMs;
+                const lastError = responseData.status?.lastError;
+
+                let mdReport = `### 全局样式自动化状态\n\n` +
+                    `- **enabled**: ${enabled}\n` +
+                    (typeof intervalMs === 'number' ? `- **intervalMs**: ${intervalMs}\n` : '') +
+                    `- **running**: ${running}\n` +
+                    (lastError ? `- **lastError**: ${lastError}\n` : '');
+
+                resolve({
+                    status: 'success',
+                    result: { content: [{ type: 'text', text: mdReport }] }
+                });
+            } else {
+                reject(new Error(responseData?.error || '查询全局样式自动化状态失败。'));
+            }
+        };
+
+        ipcMain.on('desktop-remote-style-automation-response', responseHandler);
+        desktopWin.webContents.send('desktop-remote-style-automation', { action: 'status' });
     });
 }
 

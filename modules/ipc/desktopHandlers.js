@@ -7,6 +7,7 @@
 const { BrowserWindow, ipcMain, app, screen, shell, dialog, nativeTheme } = require('electron');
 const path = require('path');
 const fs = require('fs-extra');
+const desktopMetrics = require('./desktopMetrics');
 
 // --- 模块状态 ---
 let desktopWindow = null;
@@ -1728,7 +1729,9 @@ function initialize(params) {
         return await launchSystemTool(cmd);
     });
 
-    console.log('[DesktopHandlers] Initialized (with favorites, vcpAPI, shortcuts, dock, layout, iconset, wallpaper, vchat-apps & system-tools).');
+    desktopMetrics.initialize({ ipcMain });
+
+    console.log('[DesktopHandlers] Initialized (with favorites, vcpAPI, shortcuts, dock, layout, iconset, wallpaper, vchat-apps, system-tools & desktop-metrics).');
 }
 
 /**

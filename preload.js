@@ -445,6 +445,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     sendDesktopRemoteViewSourceResponse: (data) => ipcRenderer.send('desktop-remote-view-source-response', data),
     onDesktopRemoteCreateWidget: (callback) => ipcRenderer.on('desktop-remote-create-widget', (_event, data) => callback(data)),
     sendDesktopRemoteCreateWidgetResponse: (data) => ipcRenderer.send('desktop-remote-create-widget-response', data),
+    onDesktopRemoteStyleAutomation: (callback) => ipcRenderer.on('desktop-remote-style-automation', (_event, data) => callback(data)),
+    sendDesktopRemoteStyleAutomationResponse: (data) => ipcRenderer.send('desktop-remote-style-automation-response', data),
 
     // VCPdesktop - 收藏系统 IPC 通道
     desktopSaveWidget: (data) => ipcRenderer.invoke('desktop-save-widget', data),
@@ -487,6 +489,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     // VCPdesktop - 窗口置底控制
     setAlwaysOnBottom: (enabled) => ipcRenderer.invoke('desktop-set-always-on-bottom', enabled),
+
+    // VCPdesktop - 系统指标 IPC 通道
+    desktopMetricsGetSnapshot: (options) => ipcRenderer.invoke('desktop-metrics-get-snapshot', options || {}),
+    desktopMetricsGetCapabilities: () => ipcRenderer.invoke('desktop-metrics-get-capabilities'),
 
     // VCPdesktop - 打开 Windows 系统工具
     desktopOpenSystemTool: (cmd) => ipcRenderer.invoke('desktop-open-system-tool', cmd),
