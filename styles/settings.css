@@ -1369,6 +1369,15 @@ body:not(.light-theme) #agentSearchInput::placeholder {
     opacity: 1;
 }
 
+body:not(.light-theme) #topicSearchInput {
+    color: rgba(235, 239, 245, 0.92);
+}
+
+body:not(.light-theme) #topicSearchInput::placeholder {
+    color: rgba(214, 221, 231, 0.6);
+    opacity: 1;
+}
+
 .digital-clock {
     font-size: 2.0em;
     color: var(--highlight-text);
