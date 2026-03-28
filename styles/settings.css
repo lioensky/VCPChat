@@ -19,7 +19,7 @@
     border: none;
     color: var(--secondary-text);
     cursor: pointer;
-    font-size: 13px;
+    font-size: 15px;
     font-weight: 400;
     line-height: 1;
     text-align: center;
@@ -1080,7 +1080,7 @@ body.light-theme input[type="file"]::file-selector-button:hover {
     overflow: hidden;
     height: 37px;
     min-height: 37px;
-    margin: 0 4px 0 3px;
+    margin: 2px 4px 2px 3px;
     padding: 0 10px;
     border-radius: 999px;
     border: 1px solid color-mix(in srgb, rgba(51, 51, 51, 0.05) 88%, var(--highlight-text) 12%);
