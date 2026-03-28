@@ -266,23 +266,28 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
             const copyButton = document.createElement('button');
             copyButton.className = 'notification-copy-btn';
             copyButton.textContent = '📋';
+            copyButton.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg>';
             copyButton.title = '复制消息到剪贴板';
             copyButton.onclick = (e) => {
                 e.stopPropagation();
                 navigator.clipboard.writeText(textToCopy).then(() => {
                     const originalText = copyButton.textContent;
+                    const originalMarkup = copyButton.innerHTML;
                     copyButton.textContent = '已复制!';
                     copyButton.disabled = true;
                     setTimeout(() => {
                         copyButton.textContent = originalText;
+                        copyButton.innerHTML = originalMarkup;
                         copyButton.disabled = false;
                     }, 1500);
                 }).catch(err => {
                     console.error('通知复制失败: ', err);
                     const originalText = copyButton.textContent;
+                    const originalMarkup = copyButton.innerHTML;
                     copyButton.textContent = '错误!';
                     setTimeout(() => {
                         copyButton.textContent = originalText;
+                        copyButton.innerHTML = originalMarkup;
                     }, 1500);
                 });
             };

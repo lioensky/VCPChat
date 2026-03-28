@@ -21,6 +21,10 @@
     font-size: 0.95em;
     transition: all 0.2s ease;
     border-right: 1px solid var(--border-color);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
 }
 
 .prompt-mode-button:last-child {
@@ -36,6 +40,24 @@
     background-color: var(--user-bubble-bg);
     color: white;
     font-weight: 500;
+}
+
+.prompt-mode-button-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.prompt-mode-button-icon svg {
+    width: 15px;
+    height: 15px;
+    display: block;
+    stroke: currentColor;
+}
+
+.prompt-mode-button-label {
+    line-height: 1;
 }
 
 /* 内容容器 */
@@ -109,7 +131,7 @@
     padding: 8px 12px;
     background-color: var(--button-bg);
     border: 1px solid var(--button-bg);
-    color: var(--primary-text);
+    color: var(--text-on-accent);
     border-radius: 6px;
     cursor: pointer;
     font-size: 0.9em;
@@ -117,6 +139,10 @@
     align-items: center;
     gap: 5px;
     transition: all 0.2s ease;
+}
+
+.toolbar-btn svg {
+    stroke: currentColor;
 }
 
 .toolbar-btn:hover {
@@ -735,7 +761,7 @@
     padding: 9px 15px;
     background-color: var(--button-bg);
     border: 1px solid var(--button-bg);
-    color: var(--primary-text);
+    color: var(--text-on-accent);
     border-radius: 8px;
     cursor: pointer;
     font-size: 0.95em;
@@ -748,6 +774,10 @@
     display: flex;
     align-items: center;
     justify-content: center;
+}
+
+.preset-refresh-btn svg {
+    stroke: currentColor;
 }
 
 .preset-browse-btn:hover,

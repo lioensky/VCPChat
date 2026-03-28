@@ -135,6 +135,8 @@ body.light-theme .sidebar {
     background-color: var(--panel-bg-dark); /* 使用半透明变量 */
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
+    container-type: inline-size;
+    container-name: notifications-sidebar;
     min-width: 220px; /* Adjusted min-width */
     max-width: 600px; /* Added max-width */
     /* REMOVE border-left */

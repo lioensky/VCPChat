@@ -126,7 +126,10 @@ class PromptManager {
             const button = document.createElement('button');
             button.className = 'prompt-mode-button';
             button.dataset.mode = mode.id;
-            button.textContent = this.getModeName(mode.id);
+            button.innerHTML = `
+                <span class="prompt-mode-button-icon" aria-hidden="true">${this.getModeIcon(mode.id)}</span>
+                <span class="prompt-mode-button-label">${this.getModeName(mode.id)}</span>
+            `;
 
             if (this.currentMode === mode.id) {
                 button.classList.add('active');
@@ -170,6 +173,16 @@ class PromptManager {
         return this.customModeNames[modeId] || this.defaultModeNames[modeId];
     }
 
+    getModeIcon(modeId) {
+        const icons = {
+            original: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20"/><path d="m8 13 4-7 4 7"/><path d="M9.1 11h5.7"/></svg>`,
+            modular: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 22V7a1 1 0 0 0-1-1H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5a1 1 0 0 0-1-1H2"/><rect x="14" y="2" width="8" height="8" rx="1"/></svg>`,
+            preset: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17h1.5"/><path d="M12 22h1.5"/><path d="M12 2h1.5"/><path d="M17.5 22H19a1 1 0 0 0 1-1"/><path d="M17.5 2H19a1 1 0 0 1 1 1v1.5"/><path d="M20 14v3h-2.5"/><path d="M20 8.5V10"/><path d="M4 10V8.5"/><path d="M4 19.5V14"/><path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H8"/><path d="M8 22H6.5a1 1 0 0 1 0-5H8"/></svg>`
+        };
+
+        return icons[modeId] || '';
+    }
+
     /**
      * 加载自定义模式名称
      */
@@ -204,7 +217,7 @@ class PromptManager {
      * 进入编辑模式
      */
     enterEditMode(button, modeId) {
-        const currentName = button.textContent;
+        const currentName = button.textContent.trim();
 
         // 创建输入框
         const input = document.createElement('input');
