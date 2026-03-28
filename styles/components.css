@@ -142,10 +142,6 @@
     white-space: nowrap;
 }
 
-.sidebar-actions .create-group-btn .sidebar-button-label {
-    transform: translateY(-2px);
-}
-
 @container sidebar (max-width: 225px) {
     .sidebar-actions {
         gap: 8px;

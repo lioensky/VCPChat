@@ -948,7 +948,7 @@ export function setupEventListeners(deps) {
     }
 
     if (createNewGroupBtn) {
-        createNewGroupBtn.style.display = 'inline-block';
+        createNewGroupBtn.style.display = 'inline-flex';
     }
 
     currentItemActionBtn.addEventListener('click', async () => {
