@@ -329,14 +329,19 @@ body:not(.light-theme) .chat-actions .header-button {
     flex-shrink: 0;
 }
 
-.chat-actions .header-button#currentAgentSettingsBtn svg,
 .chat-actions .header-button#voiceChatBtn svg {
-    transform: translateY(1px);
+    transform: translateY(1.4px);
 }
 
 .chat-actions .header-button#currentAgentSettingsBtn svg {
     transform: translate(3px, 0);
 }
+
+.chat-actions .header-button#currentAgentSettingsBtn svg text {
+    transform: translateY(0.3px);
+}
+
+/* Unified transfer to specific rules above to avoid overwrite conflicts */
 
 .chat-actions .header-button#currentAgentSettingsBtn .button-label {
     display: none;

@@ -341,7 +341,7 @@
     width: 42px;
     height: 42px;
     border-radius: 50%;
-    margin-right: 8px;
+    margin-right: 9px;
     object-fit: cover;
     border: 2px solid var(--button-bg);
     position: relative;
@@ -381,7 +381,7 @@
     width: 42px;
     height: 42px;
     border-radius: 50%;
-    margin-right: 8px;
+    margin-right: 9px;
     object-fit: cover;
     border: 2px solid var(--button-bg);
     flex-shrink: 0;
@@ -1588,9 +1588,11 @@ textarea::placeholder {
     transform: rotate(360deg);
 }
 
-#globalSettingsForm .model-input-container button {
-    position: relative;
-    top: -8px;
+#globalSettingsForm .model-input-container #openTopicSummaryModelSelectBtn {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    right: 5px;
 }
 
 #agentModel {
@@ -1598,14 +1600,16 @@ textarea::placeholder {
     /* Make space for the button */
 }
 
-#openModelSelectBtn {
+#agentSettingsForm .model-input-container #openModelSelectBtn,
+#globalSettingsForm .model-input-container #openTopicSummaryModelSelectBtn,
+#groupSettingsForm .model-input-container #openGroupModelSelectBtn {
     position: absolute;
     right: 5px;
     top: 50%;
     transform: translateY(-50%);
-    width: 28px;
-    height: 28px;
-    padding: 4px;
+    width: 24px;
+    height: 24px;
+    padding: 2px;
     border: none;
     background-color: transparent;
     cursor: pointer;
@@ -1613,15 +1617,24 @@ textarea::placeholder {
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: background-color 0.2s ease;
+    transition: background-color 0.2s ease, transform 0.2s ease;
+    flex-shrink: 0;
+    min-width: 24px;
+    z-index: 2;
 }
 
-#openModelSelectBtn:hover {
+#openModelSelectBtn:hover,
+#openTopicSummaryModelSelectBtn:hover,
+#openGroupModelSelectBtn:hover {
     background-color: var(--accent-bg);
 }
 
-#openModelSelectBtn svg {
+#openModelSelectBtn svg,
+#openTopicSummaryModelSelectBtn svg,
+#openGroupModelSelectBtn svg {
     stroke: var(--secondary-text);
+    width: 14px;
+    height: 14px;
 }
 
 .model-search-container {
@@ -2350,12 +2363,30 @@ body.light-theme #globalSettingsModal .modal-content {
 .params-content input[type="number"] {
     width: 100%;
     padding: 9px 10px;
+    padding-right: 28px;
     border-radius: 8px;
     border: 1px solid var(--border-color);
     background-color: var(--secondary-bg);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='rgba(160, 160, 176, 0.5)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='7 15 12 20 17 15'%3E%3C/polyline%3E%3Cpolyline points='7 9 12 4 17 9'%3E%3C/polyline%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
     color: var(--primary-text);
     font-size: 0.95em;
     box-sizing: border-box;
+    -moz-appearance: textfield;
+    transition: background-image 0.2s ease, border-color 0.2s ease;
+}
+
+.params-content input[type="number"]::-webkit-inner-spin-button,
+.params-content input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.params-content input[type="number"]:focus {
+    outline: none;
+    border-color: var(--highlight-text);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='rgb(255, 140, 148)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='7 15 12 20 17 15'%3E%3C/polyline%3E%3Cpolyline points='7 9 12 4 17 9'%3E%3C/polyline%3E%3C/svg%3E");
 }
 
 .params-content .form-group-inline {

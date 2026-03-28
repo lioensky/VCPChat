@@ -133,22 +133,6 @@ window.GroupRenderer = (() => {
                <div class="form-group-inline" style="justify-content: space-between; align-items: center; margin-bottom: 10px;">
                    <label for="groupUseUnifiedModel">启用群组统一模型</label>
                    <label class="switch">
-                       <input type="checkbox" id="groupUseUnifiedModel">
-                       <span class="slider round"></span>
-                   </label>
-               </div>
-               <div id="groupUnifiedModelContainer" class="form-group" style="display: none;">
-                   <label for="groupUnifiedModelInput">群组统一模型:</label>
-                   <div class="model-input-container">
-                       <input type="text" id="groupUnifiedModelInput" placeholder="例如 gemini-pro">
-                       <button type="button" id="openGroupModelSelectBtn" class="small-button" title="选择模型">
-                           <svg data-slot="icon" fill="none" stroke-width="1.5" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" width="16" height="16">
-                               <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 15L12 18.75 15.75 15m-7.5-6L12 5.25 15.75 9"></path>
-                           </svg>
-                       </button>
-                   </div>
-               </div>
-               <hr class="form-divider">
 
                 <div id="memberTagsContainer" class="form-group" style="display: none;">
                     <div class="form-group" style="margin-bottom: 10px;">
