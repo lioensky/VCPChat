@@ -1,10 +1,10 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy"
-          content="default-src 'self' data:;
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' data:;
                    script-src 'self' 'unsafe-inline';
                    style-src 'self' 'unsafe-inline' https:;
                    img-src * data: file: blob:;
@@ -25,14 +25,18 @@
     <script src="vendor/three.min.js"></script> <!-- 全局引入 three.js -->
     <script src="vendor/morphdom.min.js"></script>
 </head>
+
 <body>
     <div class="seam-fixer" id="title-bar-seam-fixer"></div>
     <div class="title-bar">
         <div class="title-bar-text"><img src="assets/icon.png" alt="Logo" class="title-bar-logo"> VCPChat</div>
         <div class="title-bar-controls">
-            <button id="themes-btn" class="title-bar-button" title="主题商店" onclick="window.electronAPI.openThemesWindow()">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16" style="width: 12px; height: 12px;">
-                    <path d="M15.825.12a.5.5 0 0 1 .132.584c-1.53 3.43-4.743 8.17-7.095 10.64a6.067 6.067 0 0 1-2.373 1.534c-.018.227-.06.538-.16.868-.201.659-.667 1.479-1.708 1.74a8.118 8.118 0 0 1-3.078.132 3.659 3.659 0 0 1-.562-.135 1.382 1.382 0 0 1-.466-.247.714.714 0 0 1-.204-.288.622.622 0 0 1 .004-.443c.095-.245.316-.38.461-.452.394-.197.625-.453.867-.826.095-.144.184-.297.287-.472l.117-.198c.151-.255.326-.5.527-.734.206-.236.438-.46.693-.659.26-.2.548-.37.848-.487.306-.12.624-.19.958-.21a3.36 3.36 0 0 1 .82.025c.28.04.554.12.81.24.26.12.5.28.7.49.2.21.36.46.48.74.12.28.2.6.22.94.02.34-.02.69-.1.99-.08.3-.2.59-.35.86-.15.27-.35.52-.58.75-.23.23-.5.43-.78.58-.28.15-.59.26-.92.32-.33.06-.67.06-1.01-.02a4.007 4.007 0 0 1-1.12-.328.5.5 0 0 1-.28-.88c.24-.17.54-.38.87-.58.33-.19.68-.42 1.05-.68.37-.26.76-.55 1.18-.86.42-.3.87-.62 1.34-.94.47-.32.96-.64 1.48-.96.52-.32 1.05-.63 1.6-.92.55-.29 1.1-.56 1.65-.8.55-.24 1.1-.47 1.6-.68.5-.2.95-.38 1.36-.51a.5.5 0 0 1 .585.132z"/>
+            <button id="themes-btn" class="title-bar-button" title="主题商店"
+                onclick="window.electronAPI.openThemesWindow()">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"
+                    style="width: 12px; height: 12px;">
+                    <path
+                        d="M15.825.12a.5.5 0 0 1 .132.584c-1.53 3.43-4.743 8.17-7.095 10.64a6.067 6.067 0 0 1-2.373 1.534c-.018.227-.06.538-.16.868-.201.659-.667 1.479-1.708 1.74a8.118 8.118 0 0 1-3.078.132 3.659 3.659 0 0 1-.562-.135 1.382 1.382 0 0 1-.466-.247.714.714 0 0 1-.204-.288.622.622 0 0 1 .004-.443c.095-.245.316-.38.461-.452.394-.197.625-.453.867-.826.095-.144.184-.297.287-.472l.117-.198c.151-.255.326-.5.527-.734.206-.236.438-.46.693-.659.26-.2.548-.37.848-.487.306-.12.624-.19.958-.21a3.36 3.36 0 0 1 .82.025c.28.04.554.12.81.24.26.12.5.28.7.49.2.21.36.46.48.74.12.28.2.6.22.94.02.34-.02.69-.1.99-.08.3-.2.59-.35.86-.15.27-.35.52-.58.75-.23.23-.5.43-.78.58-.28.15-.59.26-.92.32-.33.06-.67.06-1.01-.02a4.007 4.007 0 0 1-1.12-.328.5.5 0 0 1-.28-.88c.24-.17.54-.38.87-.58.33-.19.68-.42 1.05-.68.37-.26.76-.55 1.18-.86.42-.3.87-.62 1.34-.94.47-.32.96-.64 1.48-.96.52-.32 1.05-.63 1.6-.92.55-.29 1.1-.56 1.65-.8.55-.24 1.1-.47 1.6-.68.5-.2.95-.38 1.36-.51a.5.5 0 0 1 .585.132z" />
                 </svg>
             </button>
             <button id="minimize-to-tray-btn" class="title-bar-button" title="最小化到托盘">
@@ -41,16 +45,27 @@
                 </svg>
             </button>
             <button id="minimize-btn" class="title-bar-button" title="最小化">
-                <svg x="0px" y="0px" viewBox="0 0 10.2 1"><rect x="0" y="0" width="10.2" height="1"></rect></svg>
+                <svg x="0px" y="0px" viewBox="0 0 10.2 1">
+                    <rect x="0" y="0" width="10.2" height="1"></rect>
+                </svg>
             </button>
             <button id="maximize-btn" class="title-bar-button" title="最大化">
-                <svg viewBox="0 0 10 10"><path d="M0,0v10h10V0H0z M9,9H1V1h8V9z"></path></svg>
+                <svg viewBox="0 0 10 10">
+                    <path d="M0,0v10h10V0H0z M9,9H1V1h8V9z"></path>
+                </svg>
             </button>
             <button id="restore-btn" class="title-bar-button" title="还原" style="display: none;">
-                <svg viewBox="0 0 10.2 10.1"><path d="M2.1,0v2H0v8.1h8.2v-2h2V0H2.1z M7.2,9.2H1.1V3h6.1V9.2z M9.2,7.1h-1V2H3.1V1h6.1V7.1z"></path></svg>
+                <svg viewBox="0 0 10.2 10.1">
+                    <path d="M2.1,0v2H0v8.1h8.2v-2h2V0H2.1z M7.2,9.2H1.1V3h6.1V9.2z M9.2,7.1h-1V2H3.1V1h6.1V7.1z">
+                    </path>
+                </svg>
             </button>
             <button id="close-btn" class="title-bar-button close-button" title="关闭">
-                <svg viewBox="0 0 10 10"><polygon points="10,1.01 8.99,0 5,3.99 1.01,0 0,1.01 3.99,5 0,8.99 1.01,10 5,6.01 8.99,10 10,8.99 6.01,5"></polygon></svg>
+                <svg viewBox="0 0 10 10">
+                    <polygon
+                        points="10,1.01 8.99,0 5,3.99 1.01,0 0,1.01 3.99,5 0,8.99 1.01,10 5,6.01 8.99,10 10,8.99 6.01,5">
+                    </polygon>
+                </svg>
             </button>
         </div>
     </div>
@@ -66,7 +81,9 @@
                     <div class="sidebar-subtab-item sidebar-search-subtab">
                         <div class="topic-search-container">
                             <span class="agent-search-icon" aria-hidden="true">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+                                    fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                    stroke-linejoin="round">
                                     <circle cx="11" cy="11" r="7"></circle>
                                     <path d="m20 20-3.5-3.5"></path>
                                 </svg>
@@ -85,7 +102,9 @@
                 </ul>
                 <div class="sidebar-actions">
                     <button id="createNewAgentBtn" class="sidebar-button create-agent-btn small-button">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                            aria-hidden="true">
                             <path d="M2 21a8 8 0 0 1 13.292-6"></path>
                             <circle cx="10" cy="8" r="5"></circle>
                             <path d="M19 16v6"></path>
@@ -97,7 +116,9 @@
                         </span>
                     </button>
                     <button id="createNewGroupBtn" class="sidebar-button create-group-btn small-button">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                            aria-hidden="true">
                             <path d="M18 21a8 8 0 0 0-16 0"></path>
                             <circle cx="10" cy="8" r="5"></circle>
                             <path d="M22 20c0-3.37-2-6.5-4-8a5 5 0 0 0-.45-8.3"></path>
@@ -115,7 +136,9 @@
                     <div class="sidebar-subtab-item sidebar-search-subtab">
                         <div class="topic-search-container">
                             <span class="agent-search-icon" aria-hidden="true">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+                                    fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                    stroke-linejoin="round">
                                     <circle cx="11" cy="11" r="7"></circle>
                                     <path d="m20 20-3.5-3.5"></path>
                                 </svg>
@@ -134,7 +157,7 @@
                     <h2>设置</h2>
                     <button id="globalSettingsBtn" class="sidebar-button global-settings-btn">全局设置</button>
                 </div>
-                
+
                 <div id="agentSettingsContainer" style="display: none;"> <!-- Initially hidden -->
                     <h3 id="agentSettingsContainerTitle">助手设置: <span id="selectedAgentNameForSettings"></span></h3>
                     <form id="agentSettingsForm">
@@ -143,21 +166,26 @@
                         <div class="agent-identity-container">
                             <div class="agent-identity-main">
                                 <div class="agent-avatar-wrapper">
-                                    <img id="agentAvatarPreview" src="assets/default_avatar.png" alt="头像预览" class="agent-avatar-display" style="display: block;">
+                                    <img id="agentAvatarPreview" src="assets/default_avatar.png" alt="头像预览"
+                                        class="agent-avatar-display" style="display: block;">
                                     <label for="agentAvatarInput" class="avatar-upload-overlay">
-                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                                            stroke="currentColor" stroke-width="2">
+                                            <path
+                                                d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z">
+                                            </path>
                                             <circle cx="12" cy="13" r="4"></circle>
                                         </svg>
                                     </label>
-                                    <input type="file" id="agentAvatarInput" name="avatar" accept="image/png, image/jpeg, image/gif" style="display: none;">
+                                    <input type="file" id="agentAvatarInput" name="avatar"
+                                        accept="image/png, image/jpeg, image/gif" style="display: none;">
                                 </div>
                                 <div class="agent-name-wrapper">
                                     <label for="agentNameInput">Agent 名称</label>
                                     <input type="text" id="agentNameInput" name="name" required>
                                 </div>
                             </div>
-                            
+
                             <!-- 自定义样式设置 - 可折叠 -->
                             <div class="agent-style-collapsible-container collapsed">
                                 <div class="style-collapse-header" id="styleCollapseHeader">
@@ -167,45 +195,56 @@
                                 <div class="agent-style-controls">
                                     <!-- 禁用自定义颜色开关 -->
                                     <div class="style-control-item full-width">
-                                        <div class="form-group-inline" style="justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                                            <label for="disableCustomColors" style="margin-bottom: 0;">助手页面中使用主题默认颜色</label>
+                                        <div class="form-group-inline"
+                                            style="justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                                            <label for="disableCustomColors"
+                                                style="margin-bottom: 0;">助手页面中使用主题默认颜色</label>
                                             <label class="switch" style="margin-bottom: 0;">
-                                                <input type="checkbox" id="disableCustomColors" name="disableCustomColors">
+                                                <input type="checkbox" id="disableCustomColors"
+                                                    name="disableCustomColors">
                                                 <span class="slider round"></span>
                                             </label>
                                         </div>
                                     </div>
-                                    
+
                                     <!-- 会话中使用主题颜色开关 -->
                                     <div class="style-control-item full-width">
-                                        <div class="form-group-inline" style="justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                                            <label for="useThemeColorsInChat" style="margin-bottom: 0;">会话界面中使用主题默认颜色</label>
+                                        <div class="form-group-inline"
+                                            style="justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                                            <label for="useThemeColorsInChat"
+                                                style="margin-bottom: 0;">会话界面中使用主题默认颜色</label>
                                             <label class="switch" style="margin-bottom: 0;">
-                                                <input type="checkbox" id="useThemeColorsInChat" name="useThemeColorsInChat">
+                                                <input type="checkbox" id="useThemeColorsInChat"
+                                                    name="useThemeColorsInChat">
                                                 <span class="slider round"></span>
                                             </label>
                                         </div>
                                     </div>
-                                    
+
                                     <div class="style-control-item">
                                         <label for="agentAvatarBorderColor">头像外框颜色:</label>
                                         <div class="color-input-group">
-                                            <input type="color" id="agentAvatarBorderColor" name="avatarBorderColor" value="#3d5a80">
-                                            <input type="text" id="agentAvatarBorderColorText" placeholder="#3d5a80" maxlength="7">
+                                            <input type="color" id="agentAvatarBorderColor" name="avatarBorderColor"
+                                                value="#3d5a80">
+                                            <input type="text" id="agentAvatarBorderColorText" placeholder="#3d5a80"
+                                                maxlength="7">
                                         </div>
                                     </div>
                                     <div class="style-control-item">
                                         <label for="agentNameTextColor">名称文字颜色:</label>
                                         <div class="color-input-group">
-                                            <input type="color" id="agentNameTextColor" name="nameTextColor" value="#ffffff">
-                                            <input type="text" id="agentNameTextColorText" placeholder="#ffffff" maxlength="7">
+                                            <input type="color" id="agentNameTextColor" name="nameTextColor"
+                                                value="#ffffff">
+                                            <input type="text" id="agentNameTextColorText" placeholder="#ffffff"
+                                                maxlength="7">
                                         </div>
                                     </div>
-                                    
+
                                     <!-- 重置颜色按钮 -->
                                     <div class="style-control-item full-width">
                                         <button type="button" id="resetAvatarColorsBtn" class="reset-colors-btn">
-                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                                                stroke="currentColor" stroke-width="2">
                                                 <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path>
                                                 <path d="M21 3v5h-5"></path>
                                                 <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path>
@@ -214,23 +253,33 @@
                                             重置为头像默认颜色
                                         </button>
                                     </div>
-                                    
+
                                     <div class="style-control-item full-width">
                                         <label for="agentCustomCss">列表项自定义CSS:</label>
-                                        <textarea id="agentCustomCss" name="customCss" placeholder="例如: border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.2);" rows="3"></textarea>
-                                        <small style="color: var(--text-secondary); font-size: 0.85em;">提示：此CSS将应用于【助手】页面的Agent列表项容器</small>
+                                        <textarea id="agentCustomCss" name="customCss"
+                                            placeholder="例如: border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.2);"
+                                            rows="3"></textarea>
+                                        <small
+                                            style="color: var(--text-secondary); font-size: 0.85em;">提示：此CSS将应用于【助手】页面的Agent列表项容器</small>
                                     </div>
-                                    
+
                                     <div class="style-control-item full-width">
                                         <label for="agentCardCss">名片样式CSS:</label>
-                                        <textarea id="agentCardCss" name="cardCss" placeholder="例如: border-radius: 15px; background: linear-gradient(135deg, rgba(138, 43, 226, 0.1), rgba(75, 0, 130, 0.05));" rows="3"></textarea>
-                                        <small style="color: var(--text-secondary); font-size: 0.85em;">提示：此CSS将应用于【设置】页面中Agent的名片区域（头像和名称）</small>
+                                        <textarea id="agentCardCss" name="cardCss"
+                                            placeholder="例如: border-radius: 15px; background: linear-gradient(135deg, rgba(138, 43, 226, 0.1), rgba(75, 0, 130, 0.05));"
+                                            rows="3"></textarea>
+                                        <small
+                                            style="color: var(--text-secondary); font-size: 0.85em;">提示：此CSS将应用于【设置】页面中Agent的名片区域（头像和名称）</small>
                                     </div>
-                                    
+
                                     <div class="style-control-item full-width">
                                         <label for="agentChatCss">会话样式CSS:</label>
-                                        <textarea id="agentChatCss" name="chatCss" placeholder="例如: .message-avatar { filter: drop-shadow(0 0 10px rgba(100,150,255,0.8)); } .sender-name { text-shadow: 0 0 8px currentColor; }" rows="4"></textarea>
-                                        <small style="color: var(--text-secondary); font-size: 0.85em;">提示：此CSS将应用于【聊天会话】中Agent的头像和名称。可使用 .message-avatar 控制头像，.sender-name 控制名称</small>
+                                        <textarea id="agentChatCss" name="chatCss"
+                                            placeholder="例如: .message-avatar { filter: drop-shadow(0 0 10px rgba(100,150,255,0.8)); } .sender-name { text-shadow: 0 0 8px currentColor; }"
+                                            rows="4"></textarea>
+                                        <small
+                                            style="color: var(--text-secondary); font-size: 0.85em;">提示：此CSS将应用于【聊天会话】中Agent的头像和名称。可使用
+                                            .message-avatar 控制头像，.sender-name 控制名称</small>
                                     </div>
                                 </div>
                             </div>
@@ -244,10 +293,14 @@
                         <div>
                             <label for="agentModel">模型名称:</label>
                             <div class="model-input-container">
-                                <input type="text" id="agentModel" name="model" placeholder="例如 gemini-2.5-flash-preview-05-20">
+                                <input type="text" id="agentModel" name="model"
+                                    placeholder="例如 gemini-2.5-flash-preview-05-20">
                                 <button type="button" id="openModelSelectBtn" class="small-button" title="选择模型">
-                                    <svg data-slot="icon" fill="none" stroke-width="2" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" width="14" height="14">
-                                        <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5"></path>
+                                    <svg data-slot="icon" fill="none" stroke-width="2" stroke="currentColor"
+                                        viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"
+                                        width="14" height="14">
+                                        <path stroke-linecap="round" stroke-linejoin="round"
+                                            d="M19.5 8.25l-7.5 7.5-7.5-7.5"></path>
                                     </svg>
                                 </button>
                             </div>
@@ -257,8 +310,10 @@
                             <div class="params-header" id="paramsToggleHeader">
                                 <span class="params-title">模型参数配置</span>
                                 <div class="params-summary" id="paramsSummary"></div>
-                                <button type="button" class="params-toggle-btn" id="paramsToggleBtn" aria-label="展开/折叠参数">
-                                    <svg class="toggle-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <button type="button" class="params-toggle-btn" id="paramsToggleBtn"
+                                    aria-label="展开/折叠参数">
+                                    <svg class="toggle-icon" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                                        stroke="currentColor" stroke-width="2">
                                         <polyline points="6 9 12 15 18 9"></polyline>
                                     </svg>
                                 </button>
@@ -266,15 +321,18 @@
                             <div class="params-content" id="paramsContent">
                                 <div>
                                     <label for="agentTemperature">Temperature (0-1):</label>
-                                    <input type="number" id="agentTemperature" name="temperature" min="0" max="1" step="0.1">
+                                    <input type="number" id="agentTemperature" name="temperature" min="0" max="1"
+                                        step="0.1">
                                 </div>
                                 <div>
                                     <label for="agentContextTokenLimit">上下文Token上限:</label>
-                                    <input type="number" id="agentContextTokenLimit" name="contextTokenLimit" min="0" step="100">
+                                    <input type="number" id="agentContextTokenLimit" name="contextTokenLimit" min="0"
+                                        step="100">
                                 </div>
                                 <div>
                                     <label for="agentMaxOutputTokens">最大输出Token上限:</label>
-                                    <input type="number" id="agentMaxOutputTokens" name="maxOutputTokens" min="0" step="50">
+                                    <input type="number" id="agentMaxOutputTokens" name="maxOutputTokens" min="0"
+                                        step="50">
                                 </div>
                                 <div>
                                     <label for="agentTopP">Top P (0-1):</label>
@@ -287,24 +345,28 @@
                                 <div class="form-group-inline">
                                     <label>输出模式:</label>
                                     <label for="agentStreamOutputTrue" style="margin-left: 10px;">
-                                        <input type="radio" id="agentStreamOutputTrue" name="streamOutput" value="true" checked> 流
+                                        <input type="radio" id="agentStreamOutputTrue" name="streamOutput" value="true"
+                                            checked> 流
                                     </label>
                                     <label for="agentStreamOutputFalse" style="margin-left: 15px;">
-                                        <input type="radio" id="agentStreamOutputFalse" name="streamOutput" value="false"> 非流
+                                        <input type="radio" id="agentStreamOutputFalse" name="streamOutput"
+                                            value="false"> 非流
                                     </label>
                                 </div>
                             </div>
                         </div>
 
                         <hr class="form-divider">
-                        
+
                         <!-- 语音设置可折叠容器 -->
                         <div class="agent-params-collapsible-container">
                             <div class="params-header" id="ttsToggleHeader">
                                 <span class="params-title">语音设置 (Sovits TTS)</span>
                                 <div class="params-summary" id="ttsSummary"></div>
-                                <button type="button" class="params-toggle-btn" id="ttsToggleBtn" aria-label="展开/折叠语音设置">
-                                    <svg class="toggle-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <button type="button" class="params-toggle-btn" id="ttsToggleBtn"
+                                    aria-label="展开/折叠语音设置">
+                                    <svg class="toggle-icon" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                                        stroke="currentColor" stroke-width="2">
                                         <polyline points="6 9 12 15 18 9"></polyline>
                                     </svg>
                                 </button>
@@ -316,16 +378,22 @@
                                         <select id="agentTtsVoicePrimary" name="ttsVoicePrimary">
                                             <option value="">不使用语音</option>
                                         </select>
-                                        <button type="button" id="refreshTtsModelsBtn" class="small-button" title="刷新模型列表">
-                                            <svg data-slot="icon" fill="none" stroke-width="1.5" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" width="16" height="16">
-                                                <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 11.667 0l3.181-3.183m-4.991-2.691v-2.985h-4.992v2.985h4.992Zm-4.993 0v4.992h4.992v-4.992h-4.992Z"></path>
+                                        <button type="button" id="refreshTtsModelsBtn" class="small-button"
+                                            title="刷新模型列表">
+                                            <svg data-slot="icon" fill="none" stroke-width="1.5" stroke="currentColor"
+                                                viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"
+                                                aria-hidden="true" width="16" height="16">
+                                                <path stroke-linecap="round" stroke-linejoin="round"
+                                                    d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 11.667 0l3.181-3.183m-4.991-2.691v-2.985h-4.992v2.985h4.992Zm-4.993 0v4.992h4.992v-4.992h-4.992Z">
+                                                </path>
                                             </svg>
                                         </button>
                                     </div>
                                 </div>
                                 <div>
                                     <label for="agentTtsRegexPrimary">主语言正则 (留空则匹配全部):</label>
-                                    <input type="text" id="agentTtsRegexPrimary" name="ttsRegexPrimary" placeholder="例如 [^\[\]]+">
+                                    <input type="text" id="agentTtsRegexPrimary" name="ttsRegexPrimary"
+                                        placeholder="例如 [^\[\]]+">
                                 </div>
 
                                 <hr class="form-divider-dashed">
@@ -340,7 +408,8 @@
                                 </div>
                                 <div>
                                     <label for="agentTtsRegexSecondary">副语言正则:</label>
-                                    <input type="text" id="agentTtsRegexSecondary" name="ttsRegexSecondary" placeholder="例如 \[(.*?)\]">
+                                    <input type="text" id="agentTtsRegexSecondary" name="ttsRegexSecondary"
+                                        placeholder="例如 \[(.*?)\]">
                                 </div>
 
                                 <hr class="form-divider-dashed">
@@ -348,7 +417,8 @@
                                 <div>
                                     <label for="agentTtsSpeed">语速:</label>
                                     <div class="slider-container">
-                                        <input type="range" id="agentTtsSpeed" name="ttsSpeed" min="0.5" max="2.0" step="0.1" value="1.0">
+                                        <input type="range" id="agentTtsSpeed" name="ttsSpeed" min="0.5" max="2.0"
+                                            step="0.1" value="1.0">
                                         <span id="ttsSpeedValue">1.0</span>
                                     </div>
                                 </div>
@@ -372,7 +442,9 @@
                 <h3 id="currentChatAgentName">选择一个Agent开始聊天</h3>
                 <div class="chat-actions">
                     <button id="toggleAssistantBtn" class="header-button" title="左键划词助手/右键折叠侧栏">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                            aria-hidden="true">
                             <path d="M12 20h-1a2 2 0 0 1-2-2 2 2 0 0 1-2 2H6"></path>
                             <path d="M13 8h7a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-7"></path>
                             <path d="M5 16H4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h1"></path>
@@ -381,13 +453,19 @@
                         </svg>
                     </button>
                     <button id="toggleNotificationsBtn" class="header-button" title="左键启动通知/右键监控面板">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                            aria-hidden="true">
                             <path d="M10.268 21a2 2 0 0 0 3.464 0"></path>
-                            <path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"></path>
+                            <path
+                                d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326">
+                            </path>
                         </svg>
                     </button>
                     <button id="themeToggleBtn" class="header-button" title="深色/浅色模式">
-                        <svg id="sun-icon" class="theme-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <svg id="sun-icon" class="theme-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24"
+                            viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                             <circle cx="12" cy="12" r="4"></circle>
                             <path d="M12 2v2"></path>
                             <path d="M12 20v2"></path>
@@ -398,26 +476,37 @@
                             <path d="m6.34 17.66-1.41 1.41"></path>
                             <path d="m19.07 4.93-1.41 1.41"></path>
                         </svg>
-                        <svg id="moon-icon" class="theme-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                            <path d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401"></path>
+                        <svg id="moon-icon" class="theme-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24"
+                            viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path
+                                d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401">
+                            </path>
                         </svg>
                     </button>
                     <button id="currentAgentSettingsBtn" class="header-button" title="当前Agent设置" style="display: none;">
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 110 44" width="110" height="44" aria-hidden="true">
-                            <g transform="translate(1 2) scale(1.62)" stroke="currentColor" stroke-width="2" fill="none" stroke-linejoin="round" stroke-linecap="round">
-                                <path d="M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z"></path>
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 110 44" width="110" height="44"
+                            aria-hidden="true">
+                            <g transform="translate(1 2) scale(1.62)" stroke="currentColor" stroke-width="2" fill="none"
+                                stroke-linejoin="round" stroke-linecap="round">
+                                <path
+                                    d="M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z">
+                                </path>
                                 <path d="M12 8v6"></path>
                                 <path d="M9 11h6"></path>
                             </g>
-                            <g fill="currentColor" font-family="system-ui, -apple-system, sans-serif" font-size="15" font-weight="500">
+                            <g fill="currentColor" font-family="system-ui, -apple-system, sans-serif" font-size="15"
+                                font-weight="500">
                                 <text x="45" y="17">CREATE</text>
-                                <text x="45" y="32">TOPIC</text>
+                                <text x="45" y="33">TOPIC</text>
                             </g>
                         </svg>
                         <span class="button-label">新建聊天话题</span>
                     </button>
-                    <button id="voiceChatBtn" class="header-button" title="语音聊天" style="margin-right: 5px; display: none;">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <button id="voiceChatBtn" class="header-button" title="语音聊天"
+                        style="margin-right: 5px; display: none;">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M12 19v3"></path>
                             <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
                             <rect x="9" y="2" width="6" height="13" rx="3"></rect>
@@ -427,7 +516,7 @@
             </header>
             <div class="chat-messages-container">
                 <div class="chat-messages" id="chatMessages">
-                    </div>
+                </div>
             </div>
             <footer class="chat-input-area">
                 <div class="chat-input-card">
@@ -435,20 +524,42 @@
                     <textarea id="messageInput" placeholder="输入消息... (Shift+Enter 换行)" rows="1" disabled></textarea>
                     <div class="chat-input-actions">
                         <button id="quickNewTopicBtn" title="新建聊天话题" disabled>
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                <path d="M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z"></path>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+                                fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                stroke-linejoin="round" aria-hidden="true">
+                                <path
+                                    d="M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z">
+                                </path>
                                 <path d="M12 8v6"></path>
                                 <path d="M9 11h6"></path>
                             </svg>
                         </button>
                         <button id="attachFileBtn" title="发送文件" disabled>
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-paperclip-icon lucide-paperclip" aria-hidden="true"><path d="m16 6-8.414 8.586a2 2 0 0 0 2.829 2.829l8.414-8.586a4 4 0 1 0-5.657-5.657l-8.379 8.551a6 6 0 1 0 8.485 8.485l8.379-8.551"/></svg>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+                                fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                stroke-linejoin="round" class="lucide lucide-paperclip-icon lucide-paperclip"
+                                aria-hidden="true">
+                                <path
+                                    d="m16 6-8.414 8.586a2 2 0 0 0 2.829 2.829l8.414-8.586a4 4 0 1 0-5.657-5.657l-8.379 8.551a6 6 0 1 0 8.485 8.485l8.379-8.551" />
+                            </svg>
                         </button>
                         <button id="emoticonTriggerBtn" title="打开表情包" disabled>
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-sticker-icon lucide-sticker" aria-hidden="true"><path d="M21 9a2.4 2.4 0 0 0-.706-1.706l-3.588-3.588A2.4 2.4 0 0 0 15 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2z"/><path d="M15 3v5a1 1 0 0 0 1 1h5"/><path d="M8 13h.01"/><path d="M16 13h.01"/><path d="M10 16s.8 1 2 1c1.3 0 2-1 2-1"/></svg>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+                                fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                stroke-linejoin="round" class="lucide lucide-sticker-icon lucide-sticker"
+                                aria-hidden="true">
+                                <path
+                                    d="M21 9a2.4 2.4 0 0 0-.706-1.706l-3.588-3.588A2.4 2.4 0 0 0 15 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2z" />
+                                <path d="M15 3v5a1 1 0 0 0 1 1h5" />
+                                <path d="M8 13h.01" />
+                                <path d="M16 13h.01" />
+                                <path d="M10 16s.8 1 2 1c1.3 0 2-1 2-1" />
+                            </svg>
                         </button>
                         <button id="sendMessageBtn" title="发送消息 (Ctrl+Enter)" disabled>
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+                                fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                stroke-linejoin="round" aria-hidden="true">
                                 <path d="m5 12 7-7 7 7"></path>
                                 <path d="M12 19V5"></path>
                             </svg>
@@ -467,7 +578,8 @@
                 </div>
                 <div class="notification-header-actions">
                     <button id="openForumBtn" class="header-button" title="左键VCP论坛/右键VCPMemo中心">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
                         </svg>
                     </button>
@@ -479,60 +591,72 @@
                 VCPLog: 未连接
             </div>
             <ul class="notifications-list" id="notificationsList">
-                </ul>
-            <div id="inviteAgentButtonsContainer" class="invite-agent-buttons-container" style="display: none; padding: 10px; border-top: 1px solid var(--border-color); margin-top:10px;">
+            </ul>
+            <div id="inviteAgentButtonsContainer" class="invite-agent-buttons-container"
+                style="display: none; padding: 10px; border-top: 1px solid var(--border-color); margin-top:10px;">
                 <!-- 邀请发言按钮将由 JavaScript 动态填充到这里 -->
             </div>
             <hr class="section-divider">
             <div class="notes-section">
                 <button id="openTranslatorBtn" class="header-button" title="翻译">
-                    <svg data-slot="icon" fill="none" stroke-width="1.5" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" width="18" height="18">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 21h7.5m-9-13.5h6m-6 4.5h6m-10.5-6.75h6a2.25 2.25 0 0 1 2.25 2.25v10.5a2.25 2.25 0 0 1-2.25 2.25h-6a2.25 2.25 0 0 1-2.25-2.25v-10.5A2.25 2.25 0 0 1 10.5 3.75ZM15.75 12a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0Z" />
+                    <svg data-slot="icon" fill="none" stroke-width="1.5" stroke="currentColor" viewBox="0 0 24 24"
+                        xmlns="http://www.w3.org/2000/svg" aria-hidden="true" width="18" height="18">
+                        <path stroke-linecap="round" stroke-linejoin="round"
+                            d="M10.5 21h7.5m-9-13.5h6m-6 4.5h6m-10.5-6.75h6a2.25 2.25 0 0 1 2.25 2.25v10.5a2.25 2.25 0 0 1-2.25 2.25h-6a2.25 2.25 0 0 1-2.25-2.25v-10.5A2.25 2.25 0 0 1 10.5 3.75ZM15.75 12a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0Z" />
                     </svg>
                     翻译
                 </button>
                 <button id="openNotesBtn" class="header-button" title="打开笔记">
-                    <svg data-slot="icon" fill="none" stroke-width="1.5" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" width="18" height="18">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.2-8.2zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10"></path>
+                    <svg data-slot="icon" fill="none" stroke-width="1.5" stroke="currentColor" viewBox="0 0 24 24"
+                        xmlns="http://www.w3.org/2000/svg" aria-hidden="true" width="18" height="18">
+                        <path stroke-linecap="round" stroke-linejoin="round"
+                            d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.2-8.2zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10">
+                        </path>
                     </svg>
                     笔记
                 </button>
                 <button id="openMusicBtn" class="header-button" title="音乐播放器">
-                    <svg data-slot="icon" fill="none" stroke-width="1.5" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" width="18" height="18">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 18V5l12-2v13M9 18a3 3 0 100-6 3 3 0 000 6zm12-2a3 3 0 100-6 3 3 0 000 6z"></path>
+                    <svg data-slot="icon" fill="none" stroke-width="1.5" stroke="currentColor" viewBox="0 0 24 24"
+                        xmlns="http://www.w3.org/2000/svg" aria-hidden="true" width="18" height="18">
+                        <path stroke-linecap="round" stroke-linejoin="round"
+                            d="M9 18V5l12-2v13M9 18a3 3 0 100-6 3 3 0 000 6zm12-2a3 3 0 100-6 3 3 0 000 6z"></path>
                     </svg>
                     音乐
                 </button>
                 <button id="openCanvasBtn" class="header-button" title="协同">
-                    <svg data-slot="icon" fill="none" stroke-width="1.5" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" width="18" height="18">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M17.25 6.75 22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3-4.5 16.5"></path>
+                    <svg data-slot="icon" fill="none" stroke-width="1.5" stroke="currentColor" viewBox="0 0 24 24"
+                        xmlns="http://www.w3.org/2000/svg" aria-hidden="true" width="18" height="18">
+                        <path stroke-linecap="round" stroke-linejoin="round"
+                            d="M17.25 6.75 22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3-4.5 16.5"></path>
                     </svg>
                     协同
                 </button>
             </div>
         </aside>
     </div>
- 
+
     <div id="modal-container"></div>
     <template id="globalSettingsModalTemplate">
         <div class="modal" id="globalSettingsModal">
             <div class="modal-content global-settings-modal-content">
                 <span class="close-button" onclick="uiHelperFunctions.closeModal('globalSettingsModal')">×</span>
                 <h2 class="global-settings-title">全局设置</h2>
-                
+
                 <div class="global-settings-layout">
                     <!-- 左侧导航菜单 -->
                     <nav class="global-settings-nav">
                         <ul class="settings-nav-list">
                             <li class="settings-nav-item active" data-section="user-identity">
-                                <svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2">
                                     <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
                                     <circle cx="12" cy="7" r="4"></circle>
                                 </svg>
                                 <span>用户身份</span>
                             </li>
                             <li class="settings-nav-item" data-section="server-connection">
-                                <svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2">
                                     <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
                                     <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
                                     <line x1="6" y1="6" x2="6.01" y2="6"></line>
@@ -541,21 +665,26 @@
                                 <span>服务器连接</span>
                             </li>
                             <li class="settings-nav-item" data-section="render-settings">
-                                <svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2">
                                     <circle cx="12" cy="12" r="3"></circle>
-                                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                                    <path
+                                        d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z">
+                                    </path>
                                 </svg>
                                 <span>渲染设置</span>
                             </li>
                             <li class="settings-nav-item" data-section="selection-assistant">
-                                <svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2">
                                     <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
                                     <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
                                 </svg>
                                 <span>划词助手</span>
                             </li>
                             <li class="settings-nav-item" data-section="advanced-features">
-                                <svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2">
                                     <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
                                     <polyline points="2 17 12 22 22 17"></polyline>
                                     <polyline points="2 12 12 17 22 12"></polyline>
@@ -563,7 +692,8 @@
                                 <span>高级功能</span>
                             </li>
                             <li class="settings-nav-item" data-section="quick-actions">
-                                <svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2">
                                     <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path>
                                 </svg>
                                 <span>快捷操作</span>
@@ -580,21 +710,27 @@
                                 <div class="agent-identity-container">
                                     <div class="agent-identity-main">
                                         <div class="agent-avatar-wrapper">
-                                            <img id="userAvatarPreview" src="assets/default_user_avatar.png" alt="用户头像预览" class="agent-avatar-display" style="display: block;">
+                                            <img id="userAvatarPreview" src="assets/default_user_avatar.png"
+                                                alt="用户头像预览" class="agent-avatar-display" style="display: block;">
                                             <label for="userAvatarInput" class="avatar-upload-overlay">
-                                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                                                    stroke="currentColor" stroke-width="2">
+                                                    <path
+                                                        d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z">
+                                                    </path>
                                                     <circle cx="12" cy="13" r="4"></circle>
                                                 </svg>
                                             </label>
-                                            <input type="file" id="userAvatarInput" name="userAvatar" accept="image/png, image/jpeg, image/gif" style="display: none;">
+                                            <input type="file" id="userAvatarInput" name="userAvatar"
+                                                accept="image/png, image/jpeg, image/gif" style="display: none;">
                                         </div>
                                         <div class="agent-name-wrapper">
                                             <label for="userName">用户名:</label>
-                                            <input type="text" id="userName" name="userName" placeholder="您的用户名" required>
+                                            <input type="text" id="userName" name="userName" placeholder="您的用户名"
+                                                required>
                                         </div>
                                     </div>
-                                    
+
                                     <!-- 用户自定义样式设置 - 可折叠 -->
                                     <div class="agent-style-collapsible-container collapsed">
                                         <div class="style-collapse-header" id="userStyleCollapseHeader">
@@ -605,25 +741,33 @@
                                             <div class="style-control-item">
                                                 <label for="userAvatarBorderColor">头像外框颜色:</label>
                                                 <div class="color-input-group">
-                                                    <input type="color" id="userAvatarBorderColor" name="userAvatarBorderColor" value="#3d5a80">
-                                                    <input type="text" id="userAvatarBorderColorText" placeholder="#3d5a80" maxlength="7">
+                                                    <input type="color" id="userAvatarBorderColor"
+                                                        name="userAvatarBorderColor" value="#3d5a80">
+                                                    <input type="text" id="userAvatarBorderColorText"
+                                                        placeholder="#3d5a80" maxlength="7">
                                                 </div>
                                             </div>
                                             <div class="style-control-item">
                                                 <label for="userNameTextColor">名称文字颜色:</label>
                                                 <div class="color-input-group">
-                                                    <input type="color" id="userNameTextColor" name="userNameTextColor" value="#ffffff">
-                                                    <input type="text" id="userNameTextColorText" placeholder="#ffffff" maxlength="7">
+                                                    <input type="color" id="userNameTextColor" name="userNameTextColor"
+                                                        value="#ffffff">
+                                                    <input type="text" id="userNameTextColorText" placeholder="#ffffff"
+                                                        maxlength="7">
                                                 </div>
                                             </div>
-                                            
+
                                             <!-- 重置颜色按钮 -->
                                             <div class="style-control-item full-width">
-                                                <button type="button" id="resetUserAvatarColorsBtn" class="reset-colors-btn">
-                                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                                        <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path>
+                                                <button type="button" id="resetUserAvatarColorsBtn"
+                                                    class="reset-colors-btn">
+                                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                                                        stroke="currentColor" stroke-width="2">
+                                                        <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8">
+                                                        </path>
                                                         <path d="M21 3v5h-5"></path>
-                                                        <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path>
+                                                        <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16">
+                                                        </path>
                                                         <path d="M3 21v-5h5"></path>
                                                     </svg>
                                                     重置为头像默认颜色
@@ -639,7 +783,8 @@
                                 <h3 class="settings-section-title">服务器连接</h3>
                                 <div class="settings-form-group">
                                     <label for="vcpServerUrl">VCP 服务器 URL:</label>
-                                    <input type="url" id="vcpServerUrl" name="vcpServerUrl" placeholder="将自动补全 /v1/chat/completions" required>
+                                    <input type="url" id="vcpServerUrl" name="vcpServerUrl"
+                                        placeholder="将自动补全 /v1/chat/completions" required>
                                 </div>
                                 <div class="settings-form-group">
                                     <label for="vcpApiKey">VCP API Key:</label>
@@ -655,24 +800,29 @@
                                 </div>
                                 <div class="settings-form-group">
                                     <label>网络笔记路径:</label>
-                                    <div id="networkNotesPathsContainer" style="display: flex; flex-direction: column; gap: 8px;">
+                                    <div id="networkNotesPathsContainer"
+                                        style="display: flex; flex-direction: column; gap: 8px;">
                                         <!-- Path inputs will be dynamically added here -->
                                     </div>
-                                    <button type="button" id="addNetworkPathBtn" class="sidebar-button small-button" style="margin-top: 8px; width: auto; padding: 4px 10px;">添加路径</button>
+                                    <button type="button" id="addNetworkPathBtn" class="sidebar-button small-button"
+                                        style="margin-top: 8px; width: auto; padding: 4px 10px;">添加路径</button>
                                 </div>
                             </div>
 
                             <!-- 渲染设置 -->
                             <div class="settings-section" id="section-render-settings">
                                 <h3 class="settings-section-title">渲染设置</h3>
-                                <div class="form-group-inline" style="justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                                <div class="form-group-inline"
+                                    style="justify-content: space-between; align-items: center; margin-bottom: 15px;">
                                     <label for="enableAgentBubbleTheme">开启Agent自定义气泡主题</label>
                                     <label class="switch">
-                                        <input type="checkbox" id="enableAgentBubbleTheme" name="enableAgentBubbleTheme" checked>
+                                        <input type="checkbox" id="enableAgentBubbleTheme" name="enableAgentBubbleTheme"
+                                            checked>
                                         <span class="slider round"></span>
                                     </label>
                                 </div>
-                                <div class="form-group-inline" style="justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                                <div class="form-group-inline"
+                                    style="justify-content: space-between; align-items: center; margin-bottom: 15px;">
                                     <label for="enableSmoothStreaming">开启高级流式渲染</label>
                                     <label class="switch">
                                         <input type="checkbox" id="enableSmoothStreaming" name="enableSmoothStreaming">
@@ -681,12 +831,16 @@
                                 </div>
                                 <div class="form-group-inline">
                                     <div>
-                                        <label for="minChunkBufferSize" style="display: block; margin-bottom: 4px;">最小渲染Chunk字数 (≥1):</label>
-                                        <input type="number" id="minChunkBufferSize" name="minChunkBufferSize" min="1" value="16" style="width: 80px;">
+                                        <label for="minChunkBufferSize"
+                                            style="display: block; margin-bottom: 4px;">最小渲染Chunk字数 (≥1):</label>
+                                        <input type="number" id="minChunkBufferSize" name="minChunkBufferSize" min="1"
+                                            value="16" style="width: 80px;">
                                     </div>
                                     <div style="margin-left: 20px;">
-                                        <label for="smoothStreamIntervalMs" style="display: block; margin-bottom: 4px;">最小渲染Chunk间隔 (ms, ≥1):</label>
-                                        <input type="number" id="smoothStreamIntervalMs" name="smoothStreamIntervalMs" min="1" value="100" style="width: 80px;">
+                                        <label for="smoothStreamIntervalMs"
+                                            style="display: block; margin-bottom: 4px;">最小渲染Chunk间隔 (ms, ≥1):</label>
+                                        <input type="number" id="smoothStreamIntervalMs" name="smoothStreamIntervalMs"
+                                            min="1" value="100" style="width: 80px;">
                                     </div>
                                 </div>
                             </div>
@@ -702,26 +856,40 @@
                                     </select>
                                 </div>
 
-                                <div id="rustAssistantConfigContainer" style="margin-top: 15px; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px;">
+                                <div id="rustAssistantConfigContainer"
+                                    style="margin-top: 15px; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px;">
                                     <h4 style="margin: 0 0 10px 0;">Rust 划词助手配置</h4>
 
-                                    <div id="rustDebugPanel" style="display: none; margin-bottom: 10px; padding: 8px; border-radius: 6px; background: var(--bg-secondary, rgba(127,127,127,0.08));">
+                                    <div id="rustDebugPanel"
+                                        style="display: none; margin-bottom: 10px; padding: 8px; border-radius: 6px; background: var(--bg-secondary, rgba(127,127,127,0.08));">
                                         <div><strong>当前生效实现:</strong> <span id="assistantRuntimeMode">未知</span></div>
                                         <div><strong>监听状态:</strong> <span id="assistantRuntimeActive">未知</span></div>
-                                        <div><strong>期望实现:</strong> <span id="assistantRuntimeDesiredMode">未知</span></div>
-                                        <div><strong>最近诊断:</strong> <span id="assistantRuntimeDebugReason">无</span></div>
-                                        <div><strong>Rust事件转发数:</strong> <span id="assistantRuntimeForwardedCount">0</span></div>
-                                        <div><strong>Rust监听活跃(sidecar):</strong> <span id="assistantRuntimeSidecarActive">未知</span></div>
-                                        <div><strong>Rust进程状态:</strong> <span id="assistantRuntimeProcessAlive">未知</span></div>
-                                        <div><strong>Rust进程PID:</strong> <span id="assistantRuntimeProcessPid">未知</span></div>
-                                        <div><strong>自动回退次数:</strong> <span id="assistantRuntimeAutoFallbackCount">0</span></div>
-                                        <div><strong>最近自动回退原因:</strong> <span id="assistantRuntimeAutoFallbackReason">无</span></div>
-                                        <div><strong>主进程收到选区数:</strong> <span id="assistantRuntimeReceivedCount">0</span></div>
-                                        <div><strong>弹窗尝试次数:</strong> <span id="assistantRuntimeShowAttemptCount">0</span></div>
-                                        <div><strong>最近弹窗错误:</strong> <span id="assistantRuntimeShowError">无</span></div>
+                                        <div><strong>期望实现:</strong> <span id="assistantRuntimeDesiredMode">未知</span>
+                                        </div>
+                                        <div><strong>最近诊断:</strong> <span id="assistantRuntimeDebugReason">无</span>
+                                        </div>
+                                        <div><strong>Rust事件转发数:</strong> <span
+                                                id="assistantRuntimeForwardedCount">0</span></div>
+                                        <div><strong>Rust监听活跃(sidecar):</strong> <span
+                                                id="assistantRuntimeSidecarActive">未知</span></div>
+                                        <div><strong>Rust进程状态:</strong> <span
+                                                id="assistantRuntimeProcessAlive">未知</span></div>
+                                        <div><strong>Rust进程PID:</strong> <span id="assistantRuntimeProcessPid">未知</span>
+                                        </div>
+                                        <div><strong>自动回退次数:</strong> <span
+                                                id="assistantRuntimeAutoFallbackCount">0</span></div>
+                                        <div><strong>最近自动回退原因:</strong> <span
+                                                id="assistantRuntimeAutoFallbackReason">无</span></div>
+                                        <div><strong>主进程收到选区数:</strong> <span
+                                                id="assistantRuntimeReceivedCount">0</span></div>
+                                        <div><strong>弹窗尝试次数:</strong> <span
+                                                id="assistantRuntimeShowAttemptCount">0</span></div>
+                                        <div><strong>最近弹窗错误:</strong> <span id="assistantRuntimeShowError">无</span>
+                                        </div>
                                     </div>
 
-                                    <div class="form-group-inline" style="justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                                    <div class="form-group-inline"
+                                        style="justify-content: space-between; align-items: center; margin-bottom: 10px;">
                                         <label for="rustDebugMode">调试模式（输出诊断）</label>
                                         <label class="switch">
                                             <input type="checkbox" id="rustDebugMode" name="rustDebugMode">
@@ -729,7 +897,8 @@
                                         </label>
                                     </div>
 
-                                    <div class="form-group-inline" style="justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                                    <div class="form-group-inline"
+                                        style="justify-content: space-between; align-items: center; margin-bottom: 10px;">
                                         <label for="rustUseAssistant">启用 Rust 划词助手</label>
                                         <label class="switch">
                                             <input type="checkbox" id="rustUseAssistant" name="rustUseAssistant">
@@ -737,57 +906,78 @@
                                         </label>
                                     </div>
 
-                                    <div id="rustGuardRulesContainer" style="display: none; margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border-color);">
+                                    <div id="rustGuardRulesContainer"
+                                        style="display: none; margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border-color);">
                                         <!-- 自定义阈值部分 -->
-                                        <div class="form-group-inline" style="justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                                        <div class="form-group-inline"
+                                            style="justify-content: space-between; align-items: center; margin-bottom: 10px;">
                                             <label for="rustEnableCustomThresholds">启用自定义阈值</label>
                                             <label class="switch">
-                                                <input type="checkbox" id="rustEnableCustomThresholds" name="rustEnableCustomThresholds">
+                                                <input type="checkbox" id="rustEnableCustomThresholds"
+                                                    name="rustEnableCustomThresholds">
                                                 <span class="slider round"></span>
                                             </label>
                                         </div>
 
-                                        <div id="rustCustomThresholdsPanel" style="display: none; margin-bottom: 15px; padding: 10px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-secondary, rgba(127,127,127,0.05));">
+                                        <div id="rustCustomThresholdsPanel"
+                                            style="display: none; margin-bottom: 15px; padding: 10px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-secondary, rgba(127,127,127,0.05));">
                                             <div class="form-group" style="margin-bottom: 8px;">
                                                 <label for="rustMinEventIntervalMs">最小事件间隔 (ms):</label>
-                                                <input type="number" id="rustMinEventIntervalMs" name="rustMinEventIntervalMs" min="0" value="80" style="width: 100px;">
-                                                <small style="color: var(--text-secondary); margin-top: 3px; display: block;">选区事件的最小时间间隔，防止重复触发</small>
+                                                <input type="number" id="rustMinEventIntervalMs"
+                                                    name="rustMinEventIntervalMs" min="0" value="80"
+                                                    style="width: 100px;">
+                                                <small
+                                                    style="color: var(--text-secondary); margin-top: 3px; display: block;">选区事件的最小时间间隔，防止重复触发</small>
                                             </div>
 
                                             <div class="form-group" style="margin-bottom: 8px;">
                                                 <label for="rustMinDistance">最小位移距离 (px):</label>
-                                                <input type="number" id="rustMinDistance" name="rustMinDistance" min="0" value="0" style="width: 100px;">
-                                                <small style="color: var(--text-secondary); margin-top: 3px; display: block;">鼠标释放点距离按下点的最小像素数（0 = 禁用此检查）</small>
+                                                <input type="number" id="rustMinDistance" name="rustMinDistance" min="0"
+                                                    value="0" style="width: 100px;">
+                                                <small
+                                                    style="color: var(--text-secondary); margin-top: 3px; display: block;">鼠标释放点距离按下点的最小像素数（0
+                                                    = 禁用此检查）</small>
                                             </div>
 
                                             <div class="form-group" style="margin-bottom: 8px;">
                                                 <label for="rustScreenshotSuspendMs">截图暂停时长 (ms):</label>
-                                                <input type="number" id="rustScreenshotSuspendMs" name="rustScreenshotSuspendMs" min="0" value="3000" style="width: 100px;">
-                                                <small style="color: var(--text-secondary); margin-top: 3px; display: block;">检测到截图软件后，暂停的时长</small>
+                                                <input type="number" id="rustScreenshotSuspendMs"
+                                                    name="rustScreenshotSuspendMs" min="0" value="3000"
+                                                    style="width: 100px;">
+                                                <small
+                                                    style="color: var(--text-secondary); margin-top: 3px; display: block;">检测到截图软件后，暂停的时长</small>
                                             </div>
 
                                             <div class="form-group" style="margin-bottom: 8px;">
                                                 <label for="rustClipboardConflictSuspendMs">剪贴板冲突暂停 (ms):</label>
-                                                <input type="number" id="rustClipboardConflictSuspendMs" name="rustClipboardConflictSuspendMs" min="0" value="1000" style="width: 100px;">
-                                                <small style="color: var(--text-secondary); margin-top: 3px; display: block;">检测到剪贴板冲突后，暂停的时长</small>
+                                                <input type="number" id="rustClipboardConflictSuspendMs"
+                                                    name="rustClipboardConflictSuspendMs" min="0" value="1000"
+                                                    style="width: 100px;">
+                                                <small
+                                                    style="color: var(--text-secondary); margin-top: 3px; display: block;">检测到剪贴板冲突后，暂停的时长</small>
                                             </div>
 
                                             <div class="form-group" style="margin-bottom: 0;">
                                                 <label for="rustClipboardCheckIntervalMs">剪贴板检查间隔 (ms):</label>
-                                                <input type="number" id="rustClipboardCheckIntervalMs" name="rustClipboardCheckIntervalMs" min="50" value="500" style="width: 100px;">
-                                                <small style="color: var(--text-secondary); margin-top: 3px; display: block;">后台剪贴板监控的检查间隔（最小50ms）</small>
+                                                <input type="number" id="rustClipboardCheckIntervalMs"
+                                                    name="rustClipboardCheckIntervalMs" min="50" value="500"
+                                                    style="width: 100px;">
+                                                <small
+                                                    style="color: var(--text-secondary); margin-top: 3px; display: block;">后台剪贴板监控的检查间隔（最小50ms）</small>
                                             </div>
                                         </div>
 
                                         <!-- 规则模式选择部分 -->
                                         <div class="form-group" style="margin-bottom: 10px;">
                                             <label for="rustRuleMode">规则模式:</label>
-                                            <select id="rustRuleMode" name="rustRuleMode" style="width: 100%; padding: 6px; border: 1px solid var(--border-color); border-radius: 4px;">
+                                            <select id="rustRuleMode" name="rustRuleMode"
+                                                style="width: 100%; padding: 6px; border: 1px solid var(--border-color); border-radius: 4px;">
                                                 <option value="none">不使用规则</option>
                                                 <option value="whitelist">白名单模式（只在匹配的应用中启用）</option>
                                                 <option value="blacklist">黑名单模式（在非匹配的应用中启用）</option>
                                             </select>
-                                            <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
+                                            <small
+                                                style="color: var(--text-secondary); margin-top: 5px; display: block;">
                                                 提示：白名单和黑名单不能同时使用，选择一种模式
                                             </small>
                                         </div>
@@ -795,8 +985,10 @@
                                         <div id="rustWhitelistPanel" style="display: none; margin-bottom: 10px;">
                                             <div class="form-group" style="margin-bottom: 0;">
                                                 <label for="rustWhitelistKeywords">白名单关键词（每行一个）</label>
-                                                <textarea id="rustWhitelistKeywords" name="rustWhitelistKeywords" rows="3" placeholder="例如：visual studio code&#10;chrome"></textarea>
-                                                <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
+                                                <textarea id="rustWhitelistKeywords" name="rustWhitelistKeywords"
+                                                    rows="3" placeholder="例如：visual studio code&#10;chrome"></textarea>
+                                                <small
+                                                    style="color: var(--text-secondary); margin-top: 5px; display: block;">
                                                     只在包含这些关键词的窗口中启用划词助手
                                                 </small>
                                             </div>
@@ -805,8 +997,11 @@
                                         <div id="rustBlacklistPanel" style="display: none; margin-bottom: 10px;">
                                             <div class="form-group" style="margin-bottom: 0;">
                                                 <label for="rustBlacklistKeywords">黑名单关键词（每行一个）</label>
-                                                <textarea id="rustBlacklistKeywords" name="rustBlacklistKeywords" rows="4" placeholder="例如：password&#10;credential&#10;secret"></textarea>
-                                                <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
+                                                <textarea id="rustBlacklistKeywords" name="rustBlacklistKeywords"
+                                                    rows="4"
+                                                    placeholder="例如：password&#10;credential&#10;secret"></textarea>
+                                                <small
+                                                    style="color: var(--text-secondary); margin-top: 5px; display: block;">
                                                     在包含这些关键词的窗口中禁用划词助手
                                                 </small>
                                             </div>
@@ -815,8 +1010,10 @@
                                         <div id="rustScreenshotAppsPanel" style="margin-bottom: 0;">
                                             <div class="form-group" style="margin-bottom: 0;">
                                                 <label for="rustScreenshotApps">截图软件关键词（每行一个）</label>
-                                                <textarea id="rustScreenshotApps" name="rustScreenshotApps" rows="3" placeholder="例如：snippingtool&#10;snipaste&#10;capturescreen"></textarea>
-                                                <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
+                                                <textarea id="rustScreenshotApps" name="rustScreenshotApps" rows="3"
+                                                    placeholder="例如：snippingtool&#10;snipaste&#10;capturescreen"></textarea>
+                                                <small
+                                                    style="color: var(--text-secondary); margin-top: 5px; display: block;">
                                                     检测到这些窗口时，暂停导词助手以避免冲突
                                                 </small>
                                             </div>
@@ -828,55 +1025,71 @@
                             <!-- 高级功能 -->
                             <div class="settings-section" id="section-advanced-features">
                                 <h3 class="settings-section-title">高级功能</h3>
-                                <div class="form-group-inline" style="justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                                <div class="form-group-inline"
+                                    style="justify-content: space-between; align-items: center; margin-bottom: 20px;">
                                     <label for="enableDistributedServer">启用VCP分布式服务器</label>
                                     <label class="switch">
-                                        <input type="checkbox" id="enableDistributedServer" name="enableDistributedServer">
+                                        <input type="checkbox" id="enableDistributedServer"
+                                            name="enableDistributedServer">
                                         <span class="slider round"></span>
                                     </label>
                                 </div>
 
-                                <div class="form-group-inline" style="justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                                <div class="form-group-inline"
+                                    style="justify-content: space-between; align-items: center; margin-bottom: 20px;">
                                     <label for="enableVcpToolInjection">开启VCP工具信息注入上下文</label>
                                     <label class="switch">
-                                        <input type="checkbox" id="enableVcpToolInjection" name="enableVcpToolInjection">
+                                        <input type="checkbox" id="enableVcpToolInjection"
+                                            name="enableVcpToolInjection">
                                         <span class="slider round"></span>
                                     </label>
                                 </div>
 
-                                <div class="form-group-inline" style="justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                                    <label for="enableThoughtChainInjection" title="开启后，AI 的元思考内容（Thought Chain）将保留在上下文中，否则将被自动清理。">元思考注入 AI 上下文</label>
+                                <div class="form-group-inline"
+                                    style="justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                                    <label for="enableThoughtChainInjection"
+                                        title="开启后，AI 的元思考内容（Thought Chain）将保留在上下文中，否则将被自动清理。">元思考注入 AI 上下文</label>
                                     <label class="switch">
-                                        <input type="checkbox" id="enableThoughtChainInjection" name="enableThoughtChainInjection">
+                                        <input type="checkbox" id="enableThoughtChainInjection"
+                                            name="enableThoughtChainInjection">
                                         <span class="slider round"></span>
                                     </label>
                                 </div>
 
-                                <div class="form-group-inline" style="justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                                    <label for="enableAiMessageButtons" title="开启后，AI回复中的按钮将可以点击并自动发送消息">启用AI消息快捷按钮</label>
+                                <div class="form-group-inline"
+                                    style="justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                                    <label for="enableAiMessageButtons"
+                                        title="开启后，AI回复中的按钮将可以点击并自动发送消息">启用AI消息快捷按钮</label>
                                     <label class="switch">
-                                        <input type="checkbox" id="enableAiMessageButtons" name="enableAiMessageButtons">
-                                        <span class="slider round"></span>
-                                    </label>
-                                </div>
-            
-                                <div class="form-group-inline" style="justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                                    <label for="enableContextSanitizer" title="开启后，在提交给AI的上下文中，较早的AI消息的HTML将被转换为Markdown以节省Token。">上下文HTML标签转MD净化器</label>
-                                    <label class="switch">
-                                        <input type="checkbox" id="enableContextSanitizer" name="enableContextSanitizer">
+                                        <input type="checkbox" id="enableAiMessageButtons"
+                                            name="enableAiMessageButtons">
                                         <span class="slider round"></span>
                                     </label>
                                 </div>
 
-                                <div class="form-group" id="contextSanitizerDepthContainer" style="display: none; margin-bottom: 20px;">
+                                <div class="form-group-inline"
+                                    style="justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                                    <label for="enableContextSanitizer"
+                                        title="开启后，在提交给AI的上下文中，较早的AI消息的HTML将被转换为Markdown以节省Token。">上下文HTML标签转MD净化器</label>
+                                    <label class="switch">
+                                        <input type="checkbox" id="enableContextSanitizer"
+                                            name="enableContextSanitizer">
+                                        <span class="slider round"></span>
+                                    </label>
+                                </div>
+
+                                <div class="form-group" id="contextSanitizerDepthContainer"
+                                    style="display: none; margin-bottom: 20px;">
                                     <label for="contextSanitizerDepth">净化初始深度:</label>
-                                    <input type="number" id="contextSanitizerDepth" name="contextSanitizerDepth" min="0" value="2" style="width: 80px;">
+                                    <input type="number" id="contextSanitizerDepth" name="contextSanitizerDepth" min="0"
+                                        value="2" style="width: 80px;">
                                     <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
                                         例如: 设置为2，则从倒数第3条AI消息开始净化。设置为0，则净化所有AI消息。
                                     </small>
                                 </div>
 
-                                <div class="form-group-inline" style="justify-content: space-between; align-items: center;">
+                                <div class="form-group-inline"
+                                    style="justify-content: space-between; align-items: center;">
                                     <label for="agentMusicControl">启用Agent音乐控制</label>
                                     <label class="switch">
                                         <input type="checkbox" id="agentMusicControl" name="agentMusicControl">
@@ -889,10 +1102,15 @@
                                 <div class="settings-form-group" id="topicSummaryModelContainer">
                                     <label for="topicSummaryModel">话题总结模型:</label>
                                     <div class="model-input-container">
-                                        <input type="text" id="topicSummaryModel" name="topicSummaryModel" placeholder="默认: gemini-2.5-flash-preview-05-20">
-                                        <button type="button" id="openTopicSummaryModelSelectBtn" class="small-button" title="选择模型">
-                                            <svg data-slot="icon" fill="none" stroke-width="2" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" width="14" height="14">
-                                                <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5"></path>
+                                        <input type="text" id="topicSummaryModel" name="topicSummaryModel"
+                                            placeholder="默认: gemini-2.5-flash-preview-05-20">
+                                        <button type="button" id="openTopicSummaryModelSelectBtn" class="small-button"
+                                            title="选择模型">
+                                            <svg data-slot="icon" fill="none" stroke-width="2" stroke="currentColor"
+                                                viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"
+                                                aria-hidden="true" width="14" height="14">
+                                                <path stroke-linecap="round" stroke-linejoin="round"
+                                                    d="M19.5 8.25l-7.5 7.5-7.5-7.5"></path>
                                             </svg>
                                         </button>
                                     </div>
@@ -907,7 +1125,10 @@
                                 <h3 class="settings-section-title">快捷操作</h3>
                                 <div class="settings-form-group" style="margin-bottom: 20px;">
                                     <label for="continueWritingPrompt">中键续写默认提示词:</label>
-                                    <textarea id="continueWritingPrompt" name="continueWritingPrompt" placeholder="默认: 请继续" rows="1" style="min-height: 38px; max-height: 200px; resize: none; field-sizing: content;" spellcheck="false">请继续</textarea>
+                                    <textarea id="continueWritingPrompt" name="continueWritingPrompt"
+                                        placeholder="默认: 请继续" rows="1"
+                                        style="min-height: 38px; max-height: 200px; resize: none; field-sizing: content;"
+                                        spellcheck="false">请继续</textarea>
                                     <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
                                         提示：在输入框上中键点击时，如果输入框为空则使用此提示词进行续写；使用 ctrl/command+d 快速使用。
                                     </small>
@@ -915,21 +1136,25 @@
 
                                 <div class="settings-form-group" style="margin-bottom: 20px;">
                                     <label for="flowlockContinueDelay">心流锁续写延迟 (秒):</label>
-                                    <input type="number" id="flowlockContinueDelay" name="flowlockContinueDelay" min="1" max="300" step="1" value="5" style="width: 80px;">
+                                    <input type="number" id="flowlockContinueDelay" name="flowlockContinueDelay" min="1"
+                                        max="300" step="1" value="5" style="width: 80px;">
                                     <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
                                         提示：AI完成一次续写后，等待指定秒数再开始下一次续写。
                                     </small>
                                 </div>
 
-                                <div class="form-group-inline" style="justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                                <div class="form-group-inline"
+                                    style="justify-content: space-between; align-items: center; margin-bottom: 15px;">
                                     <label for="enableMiddleClickQuickAction">启用在聊天气泡中的中键快捷功能</label>
                                     <label class="switch">
-                                        <input type="checkbox" id="enableMiddleClickQuickAction" name="enableMiddleClickQuickAction">
+                                        <input type="checkbox" id="enableMiddleClickQuickAction"
+                                            name="enableMiddleClickQuickAction">
                                         <span class="slider round"></span>
                                     </label>
                                 </div>
 
-                                <div class="form-group" id="middleClickQuickActionContainer" style="display: none; margin-bottom: 20px;">
+                                <div class="form-group" id="middleClickQuickActionContainer"
+                                    style="display: none; margin-bottom: 20px;">
                                     <label for="middleClickQuickAction">中键快速执行功能:</label>
                                     <select id="middleClickQuickAction" name="middleClickQuickAction">
                                         <option value="">请选择要快速执行的功能</option>
@@ -948,28 +1173,38 @@
                                 </div>
 
                                 <!-- 重新回复保险机制开关 - 仅在中键快速执行功能为重新回复时显示 -->
-                                <div class="form-group" id="regenerateConfirmationContainer" style="display: none; margin-bottom: 15px;">
-                                    <div class="form-group-inline" style="justify-content: space-between; align-items: center;">
-                                        <label for="enableRegenerateConfirmation" title="开启后，当重新回复的消息不是最后一条时会显示确认对话框">重新回复保险机制</label>
+                                <div class="form-group" id="regenerateConfirmationContainer"
+                                    style="display: none; margin-bottom: 15px;">
+                                    <div class="form-group-inline"
+                                        style="justify-content: space-between; align-items: center;">
+                                        <label for="enableRegenerateConfirmation"
+                                            title="开启后，当重新回复的消息不是最后一条时会显示确认对话框">重新回复保险机制</label>
                                         <label class="switch">
-                                            <input type="checkbox" id="enableRegenerateConfirmation" name="enableRegenerateConfirmation">
+                                            <input type="checkbox" id="enableRegenerateConfirmation"
+                                                name="enableRegenerateConfirmation">
                                             <span class="slider round"></span>
                                         </label>
                                     </div>
                                 </div>
 
-                                <div class="form-group" id="middleClickAdvancedContainer" style="display: none; margin-bottom: 20px;">
-                                    <div class="form-group-inline" style="justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                                <div class="form-group" id="middleClickAdvancedContainer"
+                                    style="display: none; margin-bottom: 20px;">
+                                    <div class="form-group-inline"
+                                        style="justify-content: space-between; align-items: center; margin-bottom: 15px;">
                                         <label for="enableMiddleClickAdvanced">启用高级中键九宫格选择</label>
                                         <label class="switch">
-                                            <input type="checkbox" id="enableMiddleClickAdvanced" name="enableMiddleClickAdvanced">
+                                            <input type="checkbox" id="enableMiddleClickAdvanced"
+                                                name="enableMiddleClickAdvanced">
                                             <span class="slider round"></span>
                                         </label>
                                     </div>
 
-                                    <div class="form-group" id="middleClickAdvancedSettings" style="display: none; margin-bottom: 15px;">
+                                    <div class="form-group" id="middleClickAdvancedSettings"
+                                        style="display: none; margin-bottom: 15px;">
                                         <label for="middleClickAdvancedDelay">九宫格出现延迟 (毫秒):</label>
-                                        <input type="number" id="middleClickAdvancedDelay" name="middleClickAdvancedDelay" min="1000" max="5000" step="100" value="1000" style="width: 100px;">
+                                        <input type="number" id="middleClickAdvancedDelay"
+                                            name="middleClickAdvancedDelay" min="1000" max="5000" step="100"
+                                            value="1000" style="width: 100px;">
                                         <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
                                             提示：中键按下后不松开，延迟若干时间 (1000-5000ms) 后出现九宫格选择界面，按住鼠标移动到相关功能后松开即可完成快速设置。
                                         </small>
@@ -978,7 +1213,7 @@
                             </div>
                         </form>
                     </div>
-                    
+
                     <!-- 保存按钮区域 -->
                     <div class="global-settings-footer">
                         <button type="submit" form="globalSettingsForm">保存全局设置</button>
@@ -991,29 +1226,38 @@
     <template id="avatarCropperModalTemplate">
         <div class="modal" id="avatarCropperModal">
             <div class="modal-content" style="max-width: 420px;"> <!-- Adjusted width for cropper -->
-                <span class="close-button" onclick="uiHelperFunctions.closeModal('avatarCropperModal'); document.getElementById('agentAvatarInput').value = ''; if(document.getElementById('userAvatarInput')) document.getElementById('userAvatarInput').value = '';">&times;</span>
+                <span class="close-button"
+                    onclick="uiHelperFunctions.closeModal('avatarCropperModal'); document.getElementById('agentAvatarInput').value = ''; if(document.getElementById('userAvatarInput')) document.getElementById('userAvatarInput').value = '';">&times;</span>
                 <h2>裁剪头像</h2>
-                <div id="avatarCropperContainer" style="width: 360px; height: 360px; margin: 10px auto; position: relative; border: 1px solid var(--border-color); overflow: hidden; background-color: #ccc;">
+                <div id="avatarCropperContainer"
+                    style="width: 360px; height: 360px; margin: 10px auto; position: relative; border: 1px solid var(--border-color); overflow: hidden; background-color: #ccc;">
                     <!-- Canvas for the image -->
                     <canvas id="avatarCanvas" width="360" height="360"></canvas>
                     <!-- Div for the circular overlay -->
-                    <div id="avatarCropOverlay" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; cursor: grab;">
-                        <svg width="100%" height="100%" viewBox="0 0 360 360" style="pointer-events: none;"> <!-- SVG itself non-interactive -->
+                    <div id="avatarCropOverlay"
+                        style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; cursor: grab;">
+                        <svg width="100%" height="100%" viewBox="0 0 360 360" style="pointer-events: none;">
+                            <!-- SVG itself non-interactive -->
                             <defs>
                                 <mask id="circleMask">
-                                    <rect width="360" height="360" fill="white"/>
-                                    <circle id="cropCircle" cx="180" cy="180" r="100" fill="black"/>
+                                    <rect width="360" height="360" fill="white" />
+                                    <circle id="cropCircle" cx="180" cy="180" r="100" fill="black" />
                                 </mask>
                             </defs>
-                            <rect width="360" height="360" fill="rgba(0,0,0,0.5)" mask="url(#circleMask)"/>
-                            <circle id="cropCircleBorder" cx="180" cy="180" r="100" fill="none" stroke="rgba(255,255,255,0.7)" stroke-width="2" stroke-dasharray="5,5"/>
+                            <rect width="360" height="360" fill="rgba(0,0,0,0.5)" mask="url(#circleMask)" />
+                            <circle id="cropCircleBorder" cx="180" cy="180" r="100" fill="none"
+                                stroke="rgba(255,255,255,0.7)" stroke-width="2" stroke-dasharray="5,5" />
                         </svg>
                     </div>
                 </div>
-                <div style="text-align: center; margin-top: 0px; margin-bottom:15px; font-size: 0.9em; color: var(--secondary-text);"><small>使用鼠标滚轮缩放, 拖动选区</small></div>
+                <div
+                    style="text-align: center; margin-top: 0px; margin-bottom:15px; font-size: 0.9em; color: var(--secondary-text);">
+                    <small>使用鼠标滚轮缩放, 拖动选区</small></div>
                 <div class="form-actions" style="margin-top: 10px;">
-                    <button type="button" id="cancelCropBtn" class="sidebar-button" style="background-color: var(--button-bg); color: var(--primary-text);">取消</button>
-                    <button type="button" id="confirmCropBtn" class="sidebar-button" style="background-color: var(--user-bubble-bg); color: white;">确认裁剪</button>
+                    <button type="button" id="cancelCropBtn" class="sidebar-button"
+                        style="background-color: var(--button-bg); color: var(--primary-text);">取消</button>
+                    <button type="button" id="confirmCropBtn" class="sidebar-button"
+                        style="background-color: var(--user-bubble-bg); color: white;">确认裁剪</button>
                 </div>
             </div>
         </div>
@@ -1030,7 +1274,8 @@
                         <input type="text" id="newGroupNameInput" name="groupName" placeholder="请输入群组名称" required>
                     </div>
                     <div class="form-actions">
-                        <button type="button" class="button-secondary" onclick="uiHelperFunctions.closeModal('createGroupModal')">取消</button>
+                        <button type="button" class="button-secondary"
+                            onclick="uiHelperFunctions.closeModal('createGroupModal')">取消</button>
                         <button type="submit" class="button-primary">创建</button>
                     </div>
                 </form>
@@ -1046,8 +1291,11 @@
                 <div class="model-search-container">
                     <input type="text" id="modelSearchInput" placeholder="搜索模型..." class="model-search-input">
                     <button type="button" id="refreshModelsBtn" class="small-button" title="刷新模型列表">
-                        <svg data-slot="icon" fill="none" stroke-width="1.5" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" width="16" height="16">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 11.667 0l3.181-3.183m-4.991-2.691v-2.985h-4.992v2.985h4.992Zm-4.993 0v4.992h4.992v-4.992h-4.992Z"></path>
+                        <svg data-slot="icon" fill="none" stroke-width="1.5" stroke="currentColor" viewBox="0 0 24 24"
+                            xmlns="http://www.w3.org/2000/svg" aria-hidden="true" width="16" height="16">
+                            <path stroke-linecap="round" stroke-linejoin="round"
+                                d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 11.667 0l3.181-3.183m-4.991-2.691v-2.985h-4.992v2.985h4.992Zm-4.993 0v4.992h4.992v-4.992h-4.992Z">
+                            </path>
                         </svg>
                     </button>
                 </div>
@@ -1071,7 +1319,8 @@
                             <option value="all">所有助手和群组</option>
                         </select>
                     </div>
-                    <textarea id="global-search-input" placeholder="搜索聊天记录 (Ctrl+F)...&#10;支持多行搜索，Ctrl+Enter 或 Shift+Enter 执行搜索" rows="3"></textarea>
+                    <textarea id="global-search-input"
+                        placeholder="搜索聊天记录 (Ctrl+F)...&#10;支持多行搜索，Ctrl+Enter 或 Shift+Enter 执行搜索" rows="3"></textarea>
                     <div id="global-search-results"></div>
                     <div id="global-search-pagination"></div>
                 </div>
@@ -1097,7 +1346,8 @@
                         <textarea id="forwardAdditionalComment" rows="3" placeholder="例如：你怎么看？"></textarea>
                     </div>
                     <div class="form-actions">
-                        <button type="button" class="button-secondary" onclick="uiHelperFunctions.closeModal('forwardMessageModal')">取消</button>
+                        <button type="button" class="button-secondary"
+                            onclick="uiHelperFunctions.closeModal('forwardMessageModal')">取消</button>
                         <button type="button" id="confirmForwardBtn" class="button-primary">确认转发</button>
                     </div>
                 </div>
@@ -1120,7 +1370,8 @@
 
                     <div>
                         <label for="regexRuleFind">查找内容 (正则表达式):</label>
-                        <textarea id="regexRuleFind" name="findPattern" rows="3" placeholder="例如：/\[VCP.*?\]/g"></textarea>
+                        <textarea id="regexRuleFind" name="findPattern" rows="3"
+                            placeholder="例如：/\[VCP.*?\]/g"></textarea>
                     </div>
 
                     <div>
@@ -1180,12 +1431,15 @@
                 <span class="close-button" id="closeFilterRulesModal">×</span>
                 <h2>过滤规则设置</h2>
 
-                <div class="filter-rules-header" style="margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between; gap: 15px;">
+                <div class="filter-rules-header"
+                    style="margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between; gap: 15px;">
                     <div style="display: flex; align-items: center; gap: 8px; flex: 0 1 auto;">
                         <span style="font-weight: 500; color: var(--secondary-text); white-space: nowrap;">当前状态:</span>
-                        <span id="filterStatus" style="color: var(--text-secondary); font-size: 0.95em; white-space: nowrap;"></span>
+                        <span id="filterStatus"
+                            style="color: var(--text-secondary); font-size: 0.95em; white-space: nowrap;"></span>
                     </div>
-                    <button type="button" id="addFilterRuleBtn" class="sidebar-button small-button" style="width: 130px; flex-shrink: 0; margin-left: auto;">添加过滤规则</button>
+                    <button type="button" id="addFilterRuleBtn" class="sidebar-button small-button"
+                        style="width: 130px; flex-shrink: 0; margin-left: auto;">添加过滤规则</button>
                 </div>
 
                 <div id="filterRulesList" class="filter-rules-list">
@@ -1229,7 +1483,8 @@
 
                     <div>
                         <label for="filterRulePattern">匹配模式:</label>
-                        <input type="text" id="filterRulePattern" name="pattern" placeholder="消息标题中包含的关键字或正则表达式" required>
+                        <input type="text" id="filterRulePattern" name="pattern" placeholder="消息标题中包含的关键字或正则表达式"
+                            required>
                         <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
                             支持简单的关键字匹配或正则表达式（无需/包围）
                         </small>
@@ -1247,9 +1502,12 @@
                     <div>
                         <label for="filterRuleDuration">消息停留时间（秒）:</label>
                         <div style="display: flex; align-items: center; gap: 10px;">
-                            <input type="number" id="filterRuleDuration" name="duration" min="0" max="300" value="7" style="width: 80px;" oninput="this.value = Math.max(0, Math.min(300, parseInt(this.value) || 0))">
+                            <input type="number" id="filterRuleDuration" name="duration" min="0" max="300" value="7"
+                                style="width: 80px;"
+                                oninput="this.value = Math.max(0, Math.min(300, parseInt(this.value) || 0))">
                             <span>秒</span>
-                            <label for="filterRuleDurationInfinite" style="display: flex; align-items: center; gap: 5px;">
+                            <label for="filterRuleDurationInfinite"
+                                style="display: flex; align-items: center; gap: 5px;">
                                 <input type="checkbox" id="filterRuleDurationInfinite" name="durationInfinite">
                                 永久显示（不自动消失）
                             </label>
@@ -1310,4 +1568,5 @@
     <!-- User Emoticon Panel -->
     <div id="emoticonPanel" class="emoticon-panel"></div>
 </body>
+
 </html>
