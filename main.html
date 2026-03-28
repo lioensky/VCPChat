@@ -56,16 +56,23 @@
     </div>
     <div class="container">
         <aside class="sidebar active">
-            <div class="sidebar-tabs">
+            <div class="sidebar-tabs" role="tablist" aria-label="Sidebar sections">
                 <button class="sidebar-tab-button active" data-tab="agents">助手</button>
                 <button class="sidebar-tab-button" data-tab="topics">话题</button>
                 <button class="sidebar-tab-button" data-tab="settings">设置</button>
             </div>
-            <div class="sidebar-tab-content active" id="tabContentAgents">
+            <div class="sidebar-tab-content active" id="tabContentAgents" role="tabpanel" aria-hidden="false">
                 <div class="agents-header">
-                    <h2>VCP Agents</h2>
-                    <div class="topic-search-container">
-                        <input type="text" id="agentSearchInput" placeholder="搜索助手或群..." class="topic-search-input">
+                    <div class="sidebar-subtab-item sidebar-search-subtab">
+                        <div class="topic-search-container">
+                            <span class="agent-search-icon" aria-hidden="true">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <circle cx="11" cy="11" r="7"></circle>
+                                    <path d="m20 20-3.5-3.5"></path>
+                                </svg>
+                            </span>
+                            <input type="text" id="agentSearchInput" placeholder="搜索助手或群..." class="topic-search-input">
+                        </div>
                     </div>
                 </div>
                 <ul class="agent-list" id="agentList">
@@ -77,24 +84,51 @@
                     -->
                 </ul>
                 <div class="sidebar-actions">
-                    <button id="createNewAgentBtn" class="sidebar-button create-agent-btn small-button">创建Agent</button>
-                    <button id="createNewGroupBtn" class="sidebar-button create-group-btn small-button">创建 Group</button>
+                    <button id="createNewAgentBtn" class="sidebar-button create-agent-btn small-button">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M2 21a8 8 0 0 1 13.292-6"></path>
+                            <circle cx="10" cy="8" r="5"></circle>
+                            <path d="M19 16v6"></path>
+                            <path d="M22 19h-6"></path>
+                        </svg>
+                        <span class="sidebar-button-label">
+                            <span class="sidebar-button-prefix">&#21019;&#24314;</span>
+                            <span class="sidebar-button-keyword">Agent</span>
+                        </span>
+                    </button>
+                    <button id="createNewGroupBtn" class="sidebar-button create-group-btn small-button">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M18 21a8 8 0 0 0-16 0"></path>
+                            <circle cx="10" cy="8" r="5"></circle>
+                            <path d="M22 20c0-3.37-2-6.5-4-8a5 5 0 0 0-.45-8.3"></path>
+                        </svg>
+                        <span class="sidebar-button-label">
+                            <span class="sidebar-button-prefix">&#21019;&#24314;</span>
+                            <span class="sidebar-button-keyword">Group</span>
+                        </span>
+                    </button>
                 </div>
             </div>
-            <div class="sidebar-tab-content" id="tabContentTopics">
+            <div class="sidebar-tab-content" id="tabContentTopics" role="tabpanel" aria-hidden="true">
                 <!-- 话题内容区 -->
                 <div class="topics-header-container">
-                    <h2>话题</h2>
-                    <div class="topic-search-container">
-                        <input type="text" id="topicSearchInput" placeholder="搜索话题..." class="topic-search-input">
-                        <!-- Search button removed -->
+                    <div class="sidebar-subtab-item sidebar-search-subtab">
+                        <div class="topic-search-container">
+                            <span class="agent-search-icon" aria-hidden="true">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <circle cx="11" cy="11" r="7"></circle>
+                                    <path d="m20 20-3.5-3.5"></path>
+                                </svg>
+                            </span>
+                            <input type="text" id="topicSearchInput" placeholder="搜索话题..." class="topic-search-input">
+                        </div>
                     </div>
                 </div>
                 <ul class="topic-list" id="topicList">
                     <!-- 话题列表将在这里动态加载 -->
                 </ul>
             </div>
-            <div class="sidebar-tab-content" id="tabContentSettings">
+            <div class="sidebar-tab-content" id="tabContentSettings" role="tabpanel" aria-hidden="true">
                 <!-- 设置内容区 -->
                 <div class="settings-header-bar">
                     <h2>设置</h2>
@@ -369,10 +403,16 @@
                         </svg>
                     </button>
                     <button id="currentAgentSettingsBtn" class="header-button" title="当前Agent设置" style="display: none;">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                            <path d="M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z"></path>
-                            <path d="M12 8v6"></path>
-                            <path d="M9 11h6"></path>
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 110 44" width="110" height="44" aria-hidden="true">
+                            <g transform="translate(1 2) scale(1.58)" stroke="currentColor" stroke-width="2" fill="none" stroke-linejoin="round" stroke-linecap="round">
+                                <path d="M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z"></path>
+                                <path d="M12 8v6"></path>
+                                <path d="M9 11h6"></path>
+                            </g>
+                            <g fill="currentColor" font-family="system-ui, -apple-system, sans-serif" font-size="14" font-weight="400">
+                                <text x="42" y="17">CREATE</text>
+                                <text x="42" y="32">TOPIC</text>
+                            </g>
                         </svg>
                         <span class="button-label">新建聊天话题</span>
                     </button>

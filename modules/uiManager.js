@@ -245,10 +245,54 @@ const uiManager = (() => {
      */
     function setupSidebarTabs() {
         if (sidebarTabButtons) {
+            const tabIdsByName = {
+                agents: 'sidebarTabAgents',
+                topics: 'sidebarTabTopics',
+                settings: 'sidebarTabSettings'
+            };
+
             sidebarTabButtons.forEach(button => {
+                const targetTab = button.dataset.tab;
+                const panelId = `tabContent${targetTab.charAt(0).toUpperCase() + targetTab.slice(1)}`;
+                const tabId = tabIdsByName[targetTab] || `sidebarTab${targetTab.charAt(0).toUpperCase() + targetTab.slice(1)}`;
+
+                button.id = button.id || tabId;
+                button.setAttribute('role', 'tab');
+                button.setAttribute('aria-controls', panelId);
+
+                const panel = document.getElementById(panelId);
+                if (panel) {
+                    panel.setAttribute('aria-labelledby', button.id);
+                }
                 // 左键点击 - 切换标签
                 button.addEventListener('click', () => {
                     switchToTab(button.dataset.tab);
+                });
+
+                button.addEventListener('keydown', (e) => {
+                    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
+
+                    e.preventDefault();
+
+                    const buttons = Array.from(sidebarTabButtons);
+                    const currentIndex = buttons.indexOf(button);
+                    let nextIndex = currentIndex;
+
+                    if (e.key === 'ArrowRight') {
+                        nextIndex = (currentIndex + 1) % buttons.length;
+                    } else if (e.key === 'ArrowLeft') {
+                        nextIndex = (currentIndex - 1 + buttons.length) % buttons.length;
+                    } else if (e.key === 'Home') {
+                        nextIndex = 0;
+                    } else if (e.key === 'End') {
+                        nextIndex = buttons.length - 1;
+                    }
+
+                    const nextButton = buttons[nextIndex];
+                    if (!nextButton) return;
+
+                    switchToTab(nextButton.dataset.tab);
+                    nextButton.focus();
                 });
                 
                 // 中键点击 - 如果是设置标签，直接打开全局设置
@@ -279,13 +323,17 @@ const uiManager = (() => {
     function switchToTab(targetTab) {
         if (sidebarTabButtons) {
             sidebarTabButtons.forEach(btn => {
-                btn.classList.toggle('active', btn.dataset.tab === targetTab);
+                const isActive = btn.dataset.tab === targetTab;
+                btn.classList.toggle('active', isActive);
+                btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+                btn.tabIndex = isActive ? 0 : -1;
             });
         }
         if (sidebarTabContents) {
             sidebarTabContents.forEach(content => {
                 const isActive = content.id === `tabContent${targetTab.charAt(0).toUpperCase() + targetTab.slice(1)}`;
                 content.classList.toggle('active', isActive);
+                content.setAttribute('aria-hidden', isActive ? 'false' : 'true');
                 if (isActive) {
                     if (targetTab === 'topics') {
                         if (window.topicListManager) {
