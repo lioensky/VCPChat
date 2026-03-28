@@ -1,7 +1,6 @@
 /* styles/notifications.css */
 
 .notifications-header {
-    padding: 10px 15px;
     /* 关键修改：这里也应该使用磨砂玻璃效果 */
     background-color: var(--panel-bg-dark);
     backdrop-filter: blur(12px);
@@ -11,7 +10,7 @@
     align-items: center;
     border-bottom: none;
     flex-shrink: 0;
-    padding: 10px 6px 10px 17px; /* 整体向右移动2px */
+    padding: 10px 8px 10px 17px; /* 整体向右边距增加2px，由6px变为8px */
 }
 /* 为亮色主题添加对应样式 */
 body.light-theme .notifications-header {
