@@ -143,6 +143,26 @@ export async function handleSaveGlobalSettings(e, deps) {
         }
     }
 
+    // 保存论坛配置 (forum.config.json)
+    const adminUsername = document.getElementById('adminUsername')?.value?.trim() || '';
+    const adminPassword = document.getElementById('adminPassword')?.value || '';
+    if (adminUsername || adminPassword) {
+        try {
+            const forumConfig = {
+                username: adminUsername,
+                password: adminPassword,
+                replyUsername: newSettings.userName || '用户',
+                rememberCredentials: true
+            };
+            const forumResult = await window.electronAPI.saveForumConfig(forumConfig);
+            if (!forumResult?.success) {
+                console.warn('[GlobalSettings] Failed to save forum config:', forumResult?.error);
+            }
+        } catch (forumErr) {
+            console.warn('[GlobalSettings] Error saving forum config:', forumErr);
+        }
+    }
+
     const result = await window.electronAPI.saveSettings(newSettings);
     if (result.success) {
         if (window.electronAPI?.saveRustAssistantConfig) {
