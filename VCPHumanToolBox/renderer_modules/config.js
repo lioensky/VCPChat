@@ -301,6 +301,19 @@ export const tools = {
             { name: 'temporary_contact', type: 'checkbox', required: false, default: false }
         ]
     },
+    'AgentDream': {
+        displayName: '梦境触发器',
+        description: '让一位Agent入眠，然后做一场美梦。',
+        commands: {
+            'triggerDream': {
+                description: '触发梦境',
+                params: [
+                    { name: 'maid', type: 'text', required: true, placeholder: '你的名字' },
+                    { name: 'agent_name', type: 'text', required: true, placeholder: 'Nova' }
+                ]
+            }
+        }
+    },
     'AgentMessage': {
         displayName: '主人通讯器',
         description: '向莱恩主人的设备发送通知消息。',
