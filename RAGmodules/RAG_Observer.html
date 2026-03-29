@@ -7,8 +7,8 @@
     <link rel="stylesheet" href="../styles/themes.css">
     <style>
         :root {
-            --card-enter-duration: 0.6s;
-            --ease-elastic: cubic-bezier(0.68, -0.55, 0.27, 1.55); /* 更Q弹的果冻效果 */
+            --card-enter-duration: 0.4s;
+            --ease-elastic: cubic-bezier(0.25, 0.8, 0.25, 1); /* 更轻量的缓动，减少GPU计算 */
             --glass-border: 1px solid rgba(255, 255, 255, 0.1);
             --glass-bg: rgba(20, 20, 20, 0.6);
             --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
@@ -44,7 +44,7 @@
             background: linear-gradient(to bottom, rgba(0,0,0,0.8), rgba(0,0,0,0));
             z-index: 2000;
             -webkit-app-region: drag;
-            backdrop-filter: blur(4px);
+            backdrop-filter: blur(8px);
         }
 
         #custom-title-bar .title {
@@ -196,9 +196,9 @@
             height: calc(100% - 8px);
             border-radius: 16px;
             background: rgba(255, 255, 255, 0.15);
-            transition: all 0.4s var(--ease-elastic); /* 速度加快 */
+            transition: all 0.3s var(--ease-elastic);
             z-index: 0;
-            backdrop-filter: blur(4px); /* 磨砂效果 */
+            backdrop-filter: blur(4px);
         }
 
         .filter-btn {
@@ -241,23 +241,32 @@
         /* --- Card Base Styles --- */
         .card-base {
             background: var(--glass-bg);
-            backdrop-filter: blur(16px) saturate(180%);
+            /* 性能优化：移除 backdrop-filter，改用纯色半透明背景 */
             border: var(--glass-border);
             border-radius: 16px;
             padding: 20px;
             margin-bottom: 24px;
             position: relative;
             overflow: hidden;
-            transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1), box-shadow 0.3s ease, opacity 0.4s ease;
+            /* 性能优化：使用 will-change 提示GPU，减少transition属性 */
+            transition: transform 0.2s ease, opacity 0.3s ease;
             /* Initial state for animation */
             opacity: 0;
-            transform: translateY(30px) scale(0.98);
+            transform: translateY(20px);
+            /* 性能优化：提升为合成层 */
+            will-change: transform, opacity;
+            contain: content; /* CSS Containment: 限制布局/绘制范围 */
         }
 
         .card-base:hover {
             transform: translateY(-2px);
             box-shadow: 0 12px 40px rgba(0,0,0,0.4);
             border-color: rgba(255,255,255,0.2);
+        }
+
+        /* 性能优化：卡片进入视口后移除will-change，释放GPU内存 */
+        .card-base.settled {
+            will-change: auto;
         }
 
         /* Dynamic border accent line */
@@ -272,11 +281,11 @@
 
         /* Animation Class */
         .card-enter {
-            animation: cardEnter var(--card-enter-duration) var(--ease-elastic) forwards;
+            animation: cardEnter var(--card-enter-duration) ease-out forwards;
         }
 
         @keyframes cardEnter {
-            to { opacity: 1; transform: translateY(0) scale(1); }
+            to { opacity: 1; transform: translateY(0); }
         }
 
         /* --- Typography & Details --- */
@@ -446,11 +455,11 @@
         .score-high { color: #4caf50; background: rgba(76, 175, 80, 0.1); border: 1px solid rgba(76, 175, 80, 0.3); }
         .score-med { color: #ff9800; background: rgba(255, 152, 0, 0.1); border: 1px solid rgba(255, 152, 0, 0.3); }
         .score-low { color: #f44336; background: rgba(244, 67, 54, 0.1); border: 1px solid rgba(244, 67, 54, 0.3); }
-        .score-boosted { 
-            background: linear-gradient(45deg, rgba(255,193,7,0.1), rgba(255,152,0,0.2)); 
-            color: #ffc107; 
+        .score-boosted {
+            background: linear-gradient(45deg, rgba(255,193,7,0.1), rgba(255,152,0,0.2));
+            color: #ffc107;
             border: 1px solid #ffc107;
-            box-shadow: 0 0 8px rgba(255, 193, 7, 0.2);
+            /* 性能优化：移除 box-shadow 动画 */
         }
 
         /* Clear Animation */
@@ -473,11 +482,11 @@
             margin-bottom: 10px;
         }
         .status-dot { width: 8px; height: 8px; border-radius: 50%; }
-        .dot-green { background: #4caf50; box-shadow: 0 0 8px #4caf50; animation: pulse 2s infinite; }
+        .dot-green { background: #4caf50; box-shadow: 0 0 8px #4caf50; }
         .dot-red { background: #f44336; }
         .dot-orange { background: #ff9800; }
 
-        @keyframes pulse { 0% { opacity: 0.5; transform: scale(0.9); } 50% { opacity: 1; transform: scale(1.1); } 100% { opacity: 0.5; transform: scale(0.9); } }
+        /* 性能优化：移除 infinite pulse 动画，改为静态样式 */
 
         /* --- Overlay Control Bar --- */
         .overlay-control-bar {
@@ -491,7 +500,7 @@
             border-radius: 12px;
             background: rgba(255,255,255,0.04);
             border: 1px solid rgba(255,255,255,0.08);
-            backdrop-filter: blur(10px);
+            /* 性能优化：移除 backdrop-filter */
         }
 
         .overlay-toggle-group {
@@ -558,18 +567,12 @@
             display: flex;
             align-items: center;
             gap: 6px;
-            box-shadow: 0 2px 10px rgba(255, 193, 7, 0.2);
             font-weight: bold;
-            animation: glow 2s infinite alternate;
+            /* 性能优化：移除 infinite glow 动画和 box-shadow */
         }
         .core-tag-pill::before {
             content: '✨';
             font-size: 0.9em;
-            filter: drop-shadow(0 0 2px #ffc107);
-        }
-        @keyframes glow {
-            from { box-shadow: 0 0 5px rgba(255, 193, 7, 0.2); border-color: rgba(255, 193, 7, 0.4); }
-            to { box-shadow: 0 0 15px rgba(255, 193, 7, 0.5); border-color: rgba(255, 193, 7, 0.8); }
         }
         .tag-match-highlight {
             color: #ffc107 !important;
@@ -581,8 +584,8 @@
         .settings-modal {
             position: fixed;
             top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(0, 0, 0, 0.4);
-            backdrop-filter: blur(8px);
+            background: rgba(0, 0, 0, 0.6);
+            /* 性能优化：移除 backdrop-filter */
             z-index: 3000;
             display: none;
             align-items: center;
@@ -597,8 +600,8 @@
         }
 
         .settings-panel {
-            background: var(--glass-bg);
-            backdrop-filter: blur(20px) saturate(180%);
+            background: rgba(30, 30, 30, 0.95);
+            /* 性能优化：移除 backdrop-filter */
             border: var(--glass-border);
             border-radius: 24px;
             padding: 24px;
@@ -858,57 +861,103 @@
     </svg>
 
     <script>
+        // --- Performance Constants ---
+        const MAX_CARDS = 150; // DOM中最多保留的卡片数量
+        const CARD_CLEANUP_BATCH = 30; // 每次清理的卡片数量
+        const MESSAGE_THROTTLE_MS = 80; // 消息处理节流间隔(ms)
+        const SETTLE_DELAY_MS = 500; // 卡片动画完成后释放will-change的延迟
+
         // --- Visuals & Utils ---
         const infoContainer = document.getElementById('infoContainer');
         let currentFilter = 'all';
+        let _cardCount = 0; // 跟踪当前卡片数量，避免频繁querySelectorAll
 
         // --- HTML Sanitization Utility ---
-        // Escapes HTML special characters to prevent injection
+        // 性能优化：使用字符替换代替DOM操作
+        const _escapeMap = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+        const _escapeRe = /[&<>"']/g;
         function escapeHTML(str) {
             if (typeof str !== 'string') return '';
-            const div = document.createElement('div');
-            div.appendChild(document.createTextNode(str));
-            return div.innerHTML;
+            return str.replace(_escapeRe, ch => _escapeMap[ch]);
         }
 
-        // Strips dangerous HTML tags (style, script, link, iframe, object, embed, form)
-        // from Markdown-rendered output to prevent layout/style injection.
-        // NOTE: This only processes the output of marked.parse(), NOT the page's own template HTML.
+        // 性能优化：预编译所有正则表达式（避免每次调用都重新创建）
+        const _sanitizeRegexes = [
+            new RegExp('<style\\b[^>]*>[\\s\\S]*?<\\/style\\s*>', 'gi'),
+            new RegExp('<scr' + 'ipt\\b[^>]*>[\\s\\S]*?<\\/scr' + 'ipt\\s*>', 'gi'),
+            new RegExp('<link\\b[^>]*\\/?>', 'gi'),
+            new RegExp('<iframe\\b[^>]*>[\\s\\S]*?<\\/iframe\\s*>', 'gi'),
+            new RegExp('<object\\b[^>]*>[\\s\\S]*?<\\/object\\s*>', 'gi'),
+            new RegExp('<embed\\b[^>]*\\/?>', 'gi'),
+            new RegExp('<form\\b[^>]*>[\\s\\S]*?<\\/form\\s*>', 'gi')
+        ];
+        const _styleAttrRe = /(<[^>]+\sstyle\s*=\s*")((?:[^"])*)(">)/gi;
+        const _dangerousCssPatterns = [
+            /position\s*:\s*(fixed|absolute)\s*;?/gi,
+            /z-index\s*:\s*[^;]*;?/gi,
+            /background(-image|-color)?\s*:\s*[^;]*;?/gi
+        ];
+
         function sanitizeRenderedHTML(html) {
             if (typeof html !== 'string') return '';
-            // Build regexes via RegExp constructor to avoid closing-tag literal in source
-            // which would prematurely terminate the script block in HTML.
-            var reStyle = new RegExp('<style\\b[^>]*>[\\s\\S]*?<\\/style\\s*>', 'gi');
-            var reScript = new RegExp('<scr' + 'ipt\\b[^>]*>[\\s\\S]*?<\\/scr' + 'ipt\\s*>', 'gi');
-            var reLink = new RegExp('<link\\b[^>]*\\/?>', 'gi');
-            var reIframe = new RegExp('<iframe\\b[^>]*>[\\s\\S]*?<\\/iframe\\s*>', 'gi');
-            var reObject = new RegExp('<object\\b[^>]*>[\\s\\S]*?<\\/object\\s*>', 'gi');
-            var reEmbed = new RegExp('<embed\\b[^>]*\\/?>', 'gi');
-            var reForm = new RegExp('<form\\b[^>]*>[\\s\\S]*?<\\/form\\s*>', 'gi');
-
-            html = html.replace(reStyle, '');
-            html = html.replace(reScript, '');
-            html = html.replace(reLink, '');
-            html = html.replace(reIframe, '');
-            html = html.replace(reObject, '');
-            html = html.replace(reEmbed, '');
-            html = html.replace(reForm, '');
-            // Strip dangerous CSS patterns from inline style attributes in user content:
-            // position:fixed/absolute (overlay hijacking), background (wallpaper override), z-index (layer hijacking)
-            html = html.replace(/(<[^>]+\sstyle\s*=\s*")((?:[^"])*)(">)/gi, function(match, prefix, styleVal, suffix) {
-                var cleaned = styleVal
-                    .replace(/position\s*:\s*(fixed|absolute)\s*;?/gi, '')
-                    .replace(/z-index\s*:\s*[^;]*;?/gi, '')
-                    .replace(/background(-image|-color)?\s*:\s*[^;]*;?/gi, '');
+            for (let i = 0; i < _sanitizeRegexes.length; i++) {
+                _sanitizeRegexes[i].lastIndex = 0; // 重置全局正则状态
+                html = html.replace(_sanitizeRegexes[i], '');
+            }
+            _styleAttrRe.lastIndex = 0;
+            html = html.replace(_styleAttrRe, function(match, prefix, styleVal, suffix) {
+                var cleaned = styleVal;
+                for (let i = 0; i < _dangerousCssPatterns.length; i++) {
+                    _dangerousCssPatterns[i].lastIndex = 0;
+                    cleaned = cleaned.replace(_dangerousCssPatterns[i], '');
+                }
                 return cleaned.trim() ? (prefix + cleaned + suffix) : prefix.replace(/\sstyle\s*=\s*"$/, '') + '">';
             });
             return html;
         }
 
         // Safe wrapper around marked.parse — always sanitizes output
+        // 性能优化：添加简单LRU缓存，避免重复解析相同文本
+        const _markedCache = new Map();
+        const _markedCacheMaxSize = 64;
         function safeMarkedParse(text) {
             if (typeof text !== 'string') return '';
-            return sanitizeRenderedHTML(marked.parse(text));
+            // 短文本直接缓存
+            if (text.length < 2000) {
+                const cached = _markedCache.get(text);
+                if (cached !== undefined) return cached;
+            }
+            const result = sanitizeRenderedHTML(marked.parse(text));
+            if (text.length < 2000) {
+                if (_markedCache.size >= _markedCacheMaxSize) {
+                    // 删除最早的条目
+                    const firstKey = _markedCache.keys().next().value;
+                    _markedCache.delete(firstKey);
+                }
+                _markedCache.set(text, result);
+            }
+            return result;
+        }
+
+        // --- 消息节流队列 ---
+        let _messageQueue = [];
+        let _messageThrottleTimer = null;
+        function enqueueMessage(handler, data) {
+            _messageQueue.push({ handler, data });
+            if (!_messageThrottleTimer) {
+                _messageThrottleTimer = setTimeout(_flushMessageQueue, MESSAGE_THROTTLE_MS);
+            }
+        }
+        function _flushMessageQueue() {
+            _messageThrottleTimer = null;
+            const batch = _messageQueue;
+            _messageQueue = [];
+            // 使用requestAnimationFrame确保在下一帧渲染
+            requestAnimationFrame(() => {
+                for (let i = 0; i < batch.length; i++) {
+                    batch[i].handler(batch[i].data);
+                }
+            });
         }
 
         const overlayState = {
@@ -1286,19 +1335,29 @@
             const cards = infoContainer.querySelectorAll('.card-base');
             if (cards.length === 0) return;
 
-            cards.forEach((card, index) => {
-                // FINAL FIX: Forcefully remove the animation lock before triggering the transition.
-                card.classList.remove('card-enter');
-                card.style.animation = 'none'; // Explicitly clear the animation property.
-                void card.offsetHeight; // Force a browser reflow to apply the style changes.
+            // 性能优化：卡片数量多时跳过逐个动画，直接清空
+            if (cards.length > 30) {
+                infoContainer.innerHTML = `
+                    <div style="text-align:center; color:rgba(255,255,255,0.3); margin-top: 50px; font-size: 0.9rem;">
+                        <p>等待数据接入...</p>
+                        <p style="font-size: 0.8em;">System Ready</p>
+                    </div>`;
+                _cardCount = 0;
+                // 清空markdown缓存释放内存
+                _markedCache.clear();
+                return;
+            }
 
-                // Stagger the application of the clearing class to trigger the transition.
+            cards.forEach((card, index) => {
+                card.classList.remove('card-enter');
+                card.style.animation = 'none';
+                void card.offsetHeight;
+
                 setTimeout(() => {
                     card.classList.add('is-clearing');
                 }, index * 50);
             });
 
-            // Use the longest transition duration from the .card-base rule (opacity is 0.4s)
             const animationDuration = 400;
             const lastCardDelay = (cards.length - 1) * 50;
 
@@ -1308,6 +1367,8 @@
                         <p>等待数据接入...</p>
                         <p style="font-size: 0.8em;">System Ready</p>
                     </div>`;
+                _cardCount = 0;
+                _markedCache.clear();
             }, lastCardDelay + animationDuration);
         }
 
@@ -1329,7 +1390,6 @@
             
             const snippet = wrapper.querySelector('.snippet');
             const full = wrapper.querySelector('.full-text');
-            const arrow = btn.querySelector('.toggle-arrow');
             
             // Toggle logic
             if (full.style.display === 'block') {
@@ -1337,6 +1397,12 @@
                 snippet.style.display = '-webkit-box'; // Restore line clamp
                 btn.classList.remove('expanded');
             } else {
+                // 性能优化：延迟渲染markdown，首次展开时才解析
+                const lazyMd = full.getAttribute('data-lazy-md');
+                if (lazyMd) {
+                    full.innerHTML = safeMarkedParse(decodeURIComponent(lazyMd));
+                    full.removeAttribute('data-lazy-md'); // 只渲染一次
+                }
                 full.style.display = 'block';
                 snippet.style.display = 'none';
                 btn.classList.add('expanded');
@@ -1346,24 +1412,27 @@
         // --- Block Generators ---
 
         // Helper to create generic toggle-able text
+        // 性能优化：长文本延迟渲染markdown，只在展开时才解析
         function createContentHTML(text) {
             if (!text) return '';
             const isLong = text.length > 150;
-            const rendered = safeMarkedParse(text);
             
-            if (!isLong) return `<div class="text-content">${rendered}</div>`;
+            if (!isLong) {
+                const rendered = safeMarkedParse(text);
+                return `<div class="text-content">${rendered}</div>`;
+            }
 
-            // Safe string escaping for onclick
-            const escapedText = text.replace(/"/g, '&quot;').replace(/'/g, "\\'");
+            // 长文本：snippet用纯文本，full-text标记为lazy，展开时才渲染markdown
+            const encodedText = encodeURIComponent(text);
             
             return `
                 <div class="content-wrapper">
                     <div class="text-content">
                         <div class="snippet">${escapeHTML(text)}</div>
-                        <div class="full-text">${rendered}</div>
+                        <div class="full-text" data-lazy-md="${encodedText}"></div>
                     </div>
                     <div class="action-row">
-                        <button class="icon-btn" title="复制" onclick="copyToClipboard(decodeURIComponent('${encodeURIComponent(text)}'), this)">
+                        <button class="icon-btn" title="复制" onclick="copyToClipboard(decodeURIComponent('${encodedText}'), this)">
                             <svg><use href="#icon-copy"></use></svg>
                         </button>
                         <button class="icon-btn" title="展开/收起" onclick="toggleExpand(this)">
@@ -1383,15 +1452,15 @@
             // 所有消息统一驱动外部悬浮通知窗（仅消息到达时显现）
             notifyOverlayFromData(data);
 
-            // Handle specialized types first
-            if (data.type === 'AGENT_PRIVATE_CHAT_PREVIEW') return displayAgentChat(data);
-            if (data.type === 'META_THINKING_CHAIN') return displayChain(data);
-            if (data.type === 'AI_MEMO_RETRIEVAL') return displayMemo(data);
-            if (data.type.startsWith('AGENT_DREAM_')) return displayDreamInfo(data);
-            if (data.type === 'DailyNote') return displayDailyNote(data);
-            if (data.source === 'AgentAssistant') return displayAgentAssistantNotification(data);
-            if (data.type === 'tool_approval_request') return displayToolApprovalRequest(data);
-            if (isNotificationData(data)) return displaySystemNotification(data);
+            // Handle specialized types first — 使用消息节流队列
+            if (data.type === 'AGENT_PRIVATE_CHAT_PREVIEW') return enqueueMessage(displayAgentChat, data);
+            if (data.type === 'META_THINKING_CHAIN') return enqueueMessage(displayChain, data);
+            if (data.type === 'AI_MEMO_RETRIEVAL') return enqueueMessage(displayMemo, data);
+            if (data.type.startsWith('AGENT_DREAM_')) return enqueueMessage(displayDreamInfo, data);
+            if (data.type === 'DailyNote') return enqueueMessage(displayDailyNote, data);
+            if (data.source === 'AgentAssistant') return enqueueMessage(displayAgentAssistantNotification, data);
+            if (data.type === 'tool_approval_request') return enqueueMessage(displayToolApprovalRequest, data);
+            if (isNotificationData(data)) return enqueueMessage(displaySystemNotification, data);
 
             const block = document.createElement('div');
             block.className = 'card-base type-rag card-enter';
@@ -1906,50 +1975,87 @@
             // Remove "Waiting..." text if present
             if (infoContainer.children.length > 0 && infoContainer.children[0].tagName === 'DIV' && infoContainer.children[0].innerText.includes('等待数据')) {
                 infoContainer.innerHTML = '';
+                _cardCount = 0;
             }
 
             infoContainer.prepend(element);
+            _cardCount++;
+
+            // 性能优化：动画完成后释放will-change，减少GPU内存占用
+            setTimeout(() => {
+                element.classList.add('settled');
+            }, SETTLE_DELAY_MS);
+
+            // 性能核心：DOM卡片数量上限，自动清理最旧的卡片
+            if (_cardCount > MAX_CARDS) {
+                _trimOldCards();
+            }
+        }
+
+        // 批量移除超出上限的旧卡片
+        function _trimOldCards() {
+            const cards = infoContainer.querySelectorAll('.card-base');
+            const excess = cards.length - (MAX_CARDS - CARD_CLEANUP_BATCH);
+            if (excess <= 0) return;
+
+            // 从末尾开始移除（最旧的卡片在底部）
+            for (let i = cards.length - 1; i >= 0 && i >= cards.length - excess; i--) {
+                cards[i].remove();
+            }
+            _cardCount = infoContainer.querySelectorAll('.card-base').length;
         }
 
         // --- Spectrum Animation ---
+        // 性能优化：使用OffscreenCanvas（如果支持），减少主线程开销
         const canvas = document.getElementById('spectrum-canvas');
-        const ctx = canvas.getContext('2d');
-        let animationId;
+        const ctx = canvas.getContext('2d', { alpha: true });
+        let animationId = null;
+        let _spectrumEndTime = 0;
+        // 预创建渐变（在resize时更新）
+        let _spectrumGradient = null;
 
         function resizeCanvas() {
             canvas.width = window.innerWidth;
-            canvas.height = 4; // Thin line
+            canvas.height = 4;
+            // 重建渐变
+            _spectrumGradient = ctx.createLinearGradient(0, 0, canvas.width, 0);
+            _spectrumGradient.addColorStop(0, '#3498db');
+            _spectrumGradient.addColorStop(0.5, '#9b59b6');
+            _spectrumGradient.addColorStop(1, '#f1c40f');
         }
-        window.addEventListener('resize', resizeCanvas);
+        // 性能优化：resize事件防抖
+        let _resizeTimer = null;
+        window.addEventListener('resize', () => {
+            if (_resizeTimer) clearTimeout(_resizeTimer);
+            _resizeTimer = setTimeout(resizeCanvas, 150);
+        });
         resizeCanvas();
 
         window.startSpectrumAnimation = function(duration = 3000) {
-            if (animationId) cancelAnimationFrame(animationId);
-            let startTime = Date.now();
+            _spectrumEndTime = Date.now() + duration;
+            // 如果动画已在运行，只延长时间，不重启
+            if (animationId) return;
 
             function draw() {
-                const elapsed = Date.now() - startTime;
-                if (elapsed > duration) {
+                const now = Date.now();
+                if (now > _spectrumEndTime) {
                     ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    animationId = null;
                     return;
                 }
 
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
-                const gradient = ctx.createLinearGradient(0, 0, canvas.width, 0);
-                gradient.addColorStop(0, '#3498db');
-                gradient.addColorStop(0.5, '#9b59b6');
-                gradient.addColorStop(1, '#f1c40f');
-                ctx.fillStyle = gradient;
+                ctx.fillStyle = _spectrumGradient;
 
-                // Simple wave effect
+                // 性能优化：减少bar数量，使用位运算
                 const width = canvas.width;
-                const bars = 50;
+                const bars = 30; // 从50减少到30
                 const step = width / bars;
+                const t = now * 0.005;
                 
-                for(let i=0; i<bars; i++) {
-                    const t = Date.now() * 0.005;
-                    const h = (Math.sin(i * 0.2 + t) + 1) * 2; // Height variation
-                    ctx.fillRect(i * step, 2 - h/2, step-2, h);
+                for (let i = 0; i < bars; i++) {
+                    const h = (Math.sin(i * 0.2 + t) + 1) * 2;
+                    ctx.fillRect(i * step, 2 - h / 2, step - 2, h);
                 }
 
                 animationId = requestAnimationFrame(draw);
