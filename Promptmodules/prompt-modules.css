@@ -13,7 +13,7 @@
 
 .prompt-mode-button {
     flex: 1;
-    padding: 10px 15px;
+    padding: 10px 8px;
     background-color: var(--secondary-bg);
     border: none;
     color: var(--secondary-text);
@@ -24,7 +24,7 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 7px;
+    gap: 4px;
 }
 
 .prompt-mode-button:last-child {

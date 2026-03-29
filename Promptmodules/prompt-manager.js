@@ -14,9 +14,9 @@ class PromptManager {
 
         // 默认模式名称
         this.defaultModeNames = {
-            original: '原始富文本',
-            modular: '模块化',
-            preset: '临时与预制'
+            original: '文本',
+            modular: '模块',
+            preset: '预制'
         };
 
         // 自定义模式名称（从全局设置加载）
