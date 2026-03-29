@@ -251,6 +251,10 @@
     margin-left: 15px;
 }
 
+body:not(.light-theme) .settings-header-bar .global-settings-btn {
+    color: var(--text-on-accent);
+}
+
 .agent-list,
 .topic-list {
     list-style-type: none;
@@ -1371,13 +1375,13 @@ body:not(.light-theme) #topicSearchInput::placeholder {
 }
 
 .digital-clock {
-    font-size: 2.0em;
+    font-size: 1.64em;
     color: var(--highlight-text);
     font-family: 'Maven Pro ExtraBold', 'Arial Black', sans-serif;
     font-weight: 800;
-    letter-spacing: 1px;
+    letter-spacing: 0.6px;
     line-height: 1;
-    margin-bottom: -1px;
+    margin-bottom: 0;
     text-align: left;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -1385,16 +1389,16 @@ body:not(.light-theme) #topicSearchInput::placeholder {
 }
 
 .date-display {
-    font-size: 0.7em;
+    font-size: 0.61em;
     color: var(--secondary-text);
     font-weight: 500;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     line-height: 1;
     text-align: left;
-    margin-top: 0px;
+    margin-top: 0;
     position: relative;
-    top: -1px;
-    left: 3px;
+    top: 0;
+    left: 2px;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
 }
@@ -1552,7 +1556,7 @@ textarea::placeholder {
     padding: 0;
     background-color: var(--button-bg);
     border: 1px solid var(--button-bg);
-    color: var(--secondary-text);
+    color: var(--text-on-accent);
     border-radius: 6px;
     cursor: pointer;
     display: flex;
@@ -1577,7 +1581,7 @@ textarea::placeholder {
 #globalSettingsForm .model-input-container button svg,
 #groupSettingsForm .model-input-container button svg {
     /* 新增群组设置按钮SVG样式 */
-    stroke: var(--primary-text);
+    stroke: currentColor;
     transition: transform 0.5s ease;
 }
 
@@ -1621,6 +1625,7 @@ textarea::placeholder {
     flex-shrink: 0;
     min-width: 24px;
     z-index: 2;
+    color: var(--secondary-text);
 }
 
 #openModelSelectBtn:hover,
@@ -1660,7 +1665,7 @@ textarea::placeholder {
     padding: 0;
     background-color: var(--button-bg);
     border: 1px solid var(--button-bg);
-    color: var(--secondary-text);
+    color: var(--text-on-accent);
     border-radius: 6px;
     /* Match search input border-radius */
     cursor: pointer;
@@ -1681,7 +1686,7 @@ textarea::placeholder {
 }
 
 #refreshModelsBtn svg {
-    stroke: var(--primary-text);
+    stroke: currentColor;
     transition: transform 0.5s ease;
 }
 
@@ -1920,7 +1925,7 @@ textarea::placeholder {
     padding: 0;
     background-color: var(--button-bg);
     border: 1px solid var(--button-bg);
-    color: var(--primary-text);
+    color: var(--text-on-accent);
     border-radius: 6px;
     cursor: pointer;
     display: flex;
@@ -1949,7 +1954,7 @@ textarea::placeholder {
 }
 
 .custom-select-button svg {
-    stroke: var(--primary-text);
+    stroke: currentColor;
     transition: transform 0.2s ease;
 }
 
@@ -2019,7 +2024,7 @@ textarea::placeholder {
     border: 1px solid var(--button-bg);
     cursor: pointer;
     background-color: var(--button-bg);
-    color: var(--secondary-text);
+    color: var(--text-on-accent);
     transition: background-color 0.2s ease, border-color 0.2s ease;
     width: 100%;
 }
@@ -2094,7 +2099,7 @@ body.light-theme .custom-dropdown {
     padding: 0;
     background-color: var(--button-bg);
     border: 1px solid var(--button-bg);
-    color: var(--primary-text);
+    color: var(--text-on-accent);
     border-radius: 6px;
     cursor: pointer;
     display: flex;
@@ -2677,8 +2682,8 @@ body.light-theme #globalSettingsModal .modal-content {
     width: 100%;
     padding: 10px 15px;
     background-color: var(--button-bg);
-    color: var(--primary-text);
-    border: 1px solid var(--border-color);
+    color: var(--text-on-accent);
+    border: 1px solid var(--button-bg);
     border-radius: 8px;
     cursor: pointer;
     font-size: 0.9em;
@@ -2696,6 +2701,7 @@ body.light-theme #globalSettingsModal .modal-content {
 
 .reset-colors-btn svg {
     flex-shrink: 0;
+    stroke: currentColor;
 }
 
 /* ========================================
@@ -2742,6 +2748,10 @@ body.light-theme #globalSettingsModal .modal-content {
     font-weight: 600;
     border-bottom: 1px solid var(--border-color);
     flex-shrink: 0;
+}
+
+body:not(.light-theme) .global-settings-title {
+    color: var(--primary-text);
 }
 
 /* 双栏布局容器 - 使用Grid布局 */

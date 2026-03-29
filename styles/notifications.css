@@ -2,9 +2,9 @@
 
 .notifications-header {
     /* 关键修改：这里也应该使用磨砂玻璃效果 */
-    background-color: var(--panel-bg-dark);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
+    background: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -14,79 +14,143 @@
 }
 /* 为亮色主题添加对应样式 */
 body.light-theme .notifications-header {
-    background-color: var(--panel-bg-light) !important;
+    background: transparent !important;
 }
-#clearNotificationsBtn,
-#doNotDisturbBtn,
-.notifications-header .header-button {
-    background-color: var(--button-bg);
+
+.notification-header-actions {
+    display: grid;
+    grid-template-columns: repeat(3, 38px);
+    align-items: center;
+    gap: 3px;
+    width: 120px;
+    flex: 0 0 auto;
+    min-width: 0;
+}
+
+.notification-header-actions > button {
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.12);
     color: var(--secondary-text);
-    border: 1px solid var(--button-bg);
-    padding: 0 8px;
-    height: 29px; /* 高度做小1像素 */
-    border-radius: 8px;
+    padding: 0 10px;
+    height: 32px;
+    border-radius: 12px;
     cursor: pointer;
     font-size: 0.9em;
-    transition: background-color 0.2s, border-color 0.2s, color 0.2s;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: none;
+    transition: background-color 0.2s, border-color 0.2s, box-shadow 0.2s, color 0.2s;
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    gap: 0;
     box-sizing: border-box;
-    margin-right: -1px; /* 尝试 */
-    position: relative; /* 为文字上移做准备 */
-    top: 0px; /* 清空文字下挪1px */
+    width: 100%;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    padding: 0;
 }
 
-#clearNotificationsBtn:hover,
-#doNotDisturbBtn:hover,
-.notifications-header .header-button:hover {
+body:not(.light-theme) .notification-header-actions > button {
+    color: var(--highlight-text);
+}
+
+.notification-header-actions > button:hover {
     background-color: var(--button-hover-bg);
     border-color: var(--button-hover-bg);
     color: var(--primary-text);
 }
 
-body.light-theme #clearNotificationsBtn, body.light-theme #doNotDisturbBtn, body.light-theme .notifications-header .header-button {
-    background-color: var(--button-bg);
+body:not(.light-theme) .notification-header-actions > button:hover {
+    background: var(--highlight-text);
+    border-color: var(--highlight-text);
+    box-shadow: none;
+    color: var(--text-on-accent);
+}
+
+body.light-theme .notification-header-actions > button {
+    background: transparent;
+    border-color: rgba(51, 51, 51, 0.08);
+    box-shadow: none;
+    color: var(--button-bg);
+}
+
+body.light-theme .notification-header-actions > button:hover {
+    background: var(--button-hover-bg);
+    border-color: var(--button-hover-bg);
+    box-shadow: none;
     color: #ffffff;
 }
-body.light-theme #clearNotificationsBtn:hover, body.light-theme #doNotDisturbBtn:hover, body.light-theme .notifications-header .header-button:hover {
-    background-color: var(--button-hover-bg);
-    color: #ffffff;
-}
 
-.notifications-header #openMailboxTestPanelBtn {
-    margin-left: -1px; /* 向左移动 1px */
-    top: -1px; /* 向上移动 1px */
-}
-
-.notifications-header .header-button#openAdminPanelBtn {
-    width: 30px;
-    padding: 0;
-    position: relative;
-    top: 1px;
-}
-
-#doNotDisturbBtn.active {
+.notification-header-actions > button.active {
     background-color: var(--highlight-text) !important;
     color: var(--text-on-accent) !important;
     border-color: var(--highlight-text) !important;
 }
 
-#doNotDisturbBtn.active:hover {
+.notification-header-actions > button.active:hover {
     background-color: var(--highlight-text) !important;
     border-color: var(--highlight-text) !important;
     color: var(--text-on-accent) !important;
 }
-.notifications-header .header-button svg {
+
+body.light-theme .notification-header-actions > button.active {
+    background: linear-gradient(
+        180deg,
+        rgba(255, 255, 255, 0.78),
+        rgba(255, 255, 255, 0.56)
+    ) !important;
+    border-color: var(--highlight-text) !important;
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.92),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.82),
+        inset 0 0 1px rgba(0, 0, 0, 0.1),
+        0 0 0 1px color-mix(in srgb, var(--highlight-text) 22%, transparent);
+    color: var(--button-bg) !important;
+}
+
+body.light-theme .notification-header-actions > button.active svg {
+    stroke: currentColor;
+}
+
+.notification-header-actions > button svg {
     stroke: currentColor;
     width: 18px;
     height: 18px;
-    position: relative;
-    top: 2.5px; /* 小齿轮下挪1像素 */
+    position: static;
+    top: auto;
+    flex-shrink: 0;
+}
+
+.notification-header-actions > button#openForumBtn svg {
+    transform: translateY(2px);
+}
+
+
+.notifications-header {
+    padding: 4px 8px 4px 16px;
+}
+
+.datetime-container {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+    flex: 1 1 auto;
+    min-width: 0;
+    padding-right: 8px;
+    transform: translateY(-1px);
+    margin-left: -3px;
+}
+
+.notification-header-actions {
+    width: 120px;
+    flex: 0 0 auto;
 }
 
 .notifications-status {
-    padding: 8px 15px;
+    padding: 6px 15px;
     font-size: 0.85em;
     background-color: var(--tertiary-bg);
     color: var(--secondary-text);
@@ -155,18 +219,12 @@ body.light-theme #clearNotificationsBtn:hover, body.light-theme #doNotDisturbBtn
 }
  
 .notes-section {
-    padding: 10px 8px;
-    display: flex;
-    justify-content: flex-end;
+    padding: 10px 8px 15px 8px;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     align-items: center;
-    padding: 10px 8px;
-    display: flex;
-    justify-content: flex-end;
-    align-items: center;
-    /* 关键修改：这里也需要是透明或半透明的，并应用模糊 */
-    background-color: transparent; /* 直接设为透明，因为它位于 notifications-sidebar 内，继承其模糊效果 */
-    padding-top: 10px;
-    padding-bottom: 10px;
+    gap: 6px;
+    background-color: transparent;
     flex-shrink: 0;
 }
 
@@ -174,75 +232,81 @@ body.light-theme .notes-section {
     background-color: transparent;
 }
 
-.notifications-sidebar > .section-divider { 
+.notifications-sidebar > .section-divider {
     border: none;
-    margin: 0; 
+    margin: 0;
     width: 100%;
-    box-sizing: border-box; 
-    padding: 0 15px; 
+    box-sizing: border-box;
+    padding: 0 15px;
 }
 
-.notes-section #openTranslatorBtn,
-.notes-section #openNotesBtn,
-.notes-section #openMusicBtn,
-.notes-section #openDiceBtn,
-.notes-section #openCanvasBtn {
+.notes-section > button {
     background-color: var(--button-bg);
     color: var(--secondary-text);
     border: 1px solid var(--button-bg);
-    padding: 0 5px;
+    padding: 0 10px;
     height: 32px;
-    border-radius: 8px;
+    border-radius: 12px;
     cursor: pointer;
     font-size: 0.9em;
     transition: background-color 0.2s, border-color 0.2s;
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    gap: 4px;
     box-sizing: border-box;
-    margin-left: 5px; /* Reduced margin */
-    width: auto;
+    width: 100%;
+    min-width: 0;
 }
 
-.notes-section #openTranslatorBtn:hover,
-.notes-section #openNotesBtn:hover,
-.notes-section #openMusicBtn:hover,
-.notes-section #openDiceBtn:hover,
-.notes-section #openCanvasBtn:hover {
+body:not(.light-theme) .notes-section > button {
+    color: var(--text-on-accent);
+}
+
+.notes-section > button:hover {
     background-color: var(--button-hover-bg);
     border-color: var(--button-hover-bg);
     color: var(--primary-text);
 }
 
-.notes-section #openTranslatorBtn svg,
-.notes-section #openNotesBtn svg,
-.notes-section #openMusicBtn svg,
-.notes-section #openDiceBtn svg,
-.notes-section #openCanvasBtn svg {
+body:not(.light-theme) .notes-section > button:hover {
+    color: var(--text-on-accent);
+}
+
+.notes-section > button svg {
     stroke: currentColor;
     width: 18px;
     height: 18px;
-    margin-right: 2px; /* Reduce space between icon and text */
+    flex-shrink: 0;
 }
 
-body.light-theme .notes-section #openTranslatorBtn,
-body.light-theme .notes-section #openNotesBtn,
-body.light-theme .notes-section #openMusicBtn,
-body.light-theme .notes-section #openDiceBtn,
-body.light-theme .notes-section #openCanvasBtn {
+.notes-section .notes-button-label {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+body.light-theme .notes-section > button {
     background-color: var(--button-bg);
     color: #ffffff;
     border: 1px solid var(--button-bg);
 }
 
-body.light-theme .notes-section #openTranslatorBtn:hover,
-body.light-theme .notes-section #openNotesBtn:hover,
-body.light-theme .notes-section #openMusicBtn:hover,
-body.light-theme .notes-section #openDiceBtn:hover,
-body.light-theme .notes-section #openCanvasBtn:hover {
+body.light-theme .notes-section > button:hover {
     background-color: var(--button-hover-bg);
     color: #ffffff;
     border-color: var(--button-hover-bg);
+}
+
+@container notifications-sidebar (max-width: 280px) {
+    .notes-section .notes-button-label {
+        display: none;
+    }
+
+    .notes-section > button {
+        padding: 0;
+        gap: 0;
+    }
 }
 
 .notification-item {
@@ -339,6 +403,12 @@ body.light-theme .notes-section #openCanvasBtn:hover {
 .notification-copy-btn:hover {
     opacity: 1;
     background: rgba(255,255,255,0.2);
+}
+
+.notification-copy-btn svg {
+    display: block;
+    width: 14px;
+    height: 14px;
 }
 
 .notification-timestamp {
@@ -637,11 +707,6 @@ body.light-theme .floating-toast-notification {
     padding: 2px 8px;
     border-radius: 12px;
     background-color: var(--secondary-bg);
-}
-
-.notifications-header #openForumBtn {
-    position: relative;
-    top: 1px;
 }
 
 /* Tool Approval Notification Actions */
