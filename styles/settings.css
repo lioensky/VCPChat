@@ -1089,8 +1089,7 @@ body:not(.light-theme) #agentSettingsForm .form-actions .danger-button:hover {
     cursor: pointer;
     transition: background-color 0.2s;
     color: #ffffff;
-    flex: 1;
-    /* Make buttons take equal width */
+    flex: 0 0 auto;
     text-align: center;
     /* Center text within the button */
 }
@@ -4774,6 +4773,11 @@ body.light-theme .global-settings-footer button[type="submit"]:hover {
     background-image: none !important;
 }
 
+#agentSettingsForm > .agent-settings-section[data-section-key="identity"] + .agent-settings-section {
+    margin-top: 0 !important;
+    padding-top: 3px !important;
+}
+
 #agentSettingsContainer .agent-settings-collapsible-container {
     position: relative;
 }
@@ -4873,6 +4877,14 @@ body.light-theme .global-settings-footer button[type="submit"]:hover {
     gap: 14px;
     align-items: center;
     margin-top: 8px;
+    margin-left: -6px;
+    max-width: calc(100% + 6px);
+    box-sizing: border-box;
+    padding: 8px 12px 8px 16px;
+    border-radius: 18px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: transparent;
+    background-clip: padding-box;
 }
 
 #agentSettingsContainer #identitySummary .agent-settings-summary-avatar {
@@ -4885,6 +4897,40 @@ body.light-theme .global-settings-footer button[type="submit"]:hover {
     font-size: 1.18em;
     font-weight: 600;
     line-height: 1.2;
+}
+
+body.light-theme #agentSettingsContainer #identitySummary.summary-with-avatar {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--user-bubble-bg) 18%, rgba(255, 255, 255, 0.52)),
+        color-mix(in srgb, var(--user-bubble-bg) 12%, rgba(255, 255, 255, 0.26))
+    );
+    border-color: rgba(51, 51, 51, 0.08);
+    backdrop-filter: blur(12px) saturate(138%);
+    -webkit-backdrop-filter: blur(12px) saturate(138%);
+    box-shadow:
+        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.82),
+        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.72),
+        inset 6px -6px 1px -6px rgba(255, 255, 255, 0.42),
+        inset -6px 6px 1px -6px rgba(255, 255, 255, 0.3),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.18),
+        inset 0 0 1px rgba(0, 0, 0, 0.06);
+}
+
+body:not(.light-theme) #agentSettingsContainer #identitySummary.summary-with-avatar {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--user-bubble-bg) 58%, rgba(255, 255, 255, 0.08)),
+        color-mix(in srgb, var(--user-bubble-bg) 44%, rgba(255, 255, 255, 0.04))
+    );
+    border-color: rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(10px) saturate(124%);
+    -webkit-backdrop-filter: blur(10px) saturate(124%);
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.18),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.14),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.04),
+        inset 0 0 1px rgba(255, 255, 255, 0.03);
 }
 
 #agentSettingsContainer .agent-settings-collapsible-container:not(.collapsed) .agent-settings-section-summary {
@@ -5784,4 +5830,1132 @@ body.light-theme .style-collapse-header:hover .style-collapse-icon::after {
     opacity: 0;
     padding-top: 0;
     padding-bottom: 0;
+}
+
+/* ========================================
+   Group Settings Final Authority
+   Mirrors the Agent settings experience.
+   ======================================== */
+#groupSettingsContainer {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0 3px 0 12px;
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    height: 100%;
+    min-height: 0;
+}
+
+#groupSettingsContainer h3 {
+    display: none;
+}
+
+#groupSettingsForm {
+    width: 100%;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    height: 100%;
+    min-height: 0;
+    gap: 12px;
+}
+
+#groupSettingsForm > .group-settings-section {
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+}
+
+#groupSettingsForm > .group-settings-section + .group-settings-section {
+    margin-top: 2px !important;
+    padding-top: 5px !important;
+    border-top: none !important;
+    background-image: none !important;
+}
+
+#groupSettingsForm > .group-settings-section[data-section-key="identity"] + .group-settings-section {
+    margin-top: 0 !important;
+    padding-top: 3px !important;
+}
+
+#groupSettingsContainer .group-settings-collapsible-container {
+    position: relative;
+}
+
+#groupSettingsContainer .group-settings-section-header {
+    position: relative;
+    isolation: isolate;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+        "title toggle"
+        "summary summary";
+    align-items: start;
+    column-gap: 12px;
+    row-gap: 0;
+    padding: 3px 0 2px !important;
+    background: transparent !important;
+    cursor: pointer;
+    user-select: none;
+}
+
+#groupSettingsContainer .group-settings-section-header::before {
+    content: "";
+    position: absolute;
+    left: -8px;
+    right: -2px;
+    top: 3px;
+    height: 26px;
+    border-radius: 999px;
+    background-color: transparent;
+    transition: background-color 0.18s ease, box-shadow 0.18s ease;
+    z-index: -1;
+    pointer-events: none;
+}
+
+#groupSettingsContainer .group-settings-section-title {
+    grid-area: title;
+    position: relative;
+    display: inline-block;
+    justify-self: start;
+    align-self: center;
+    min-width: 0;
+    max-width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--highlight-text);
+    font-size: 1.06em;
+    font-weight: 500;
+    line-height: 24px;
+    z-index: 1;
+    transition: color 0.18s ease;
+}
+
+#groupSettingsContainer .group-settings-section-summary {
+    grid-area: summary;
+    min-width: 0;
+    color: var(--secondary-text);
+    font-size: 0.98em;
+    line-height: 1.3;
+    white-space: pre-line;
+    overflow: visible;
+    text-overflow: clip;
+    margin-top: 4px;
+}
+
+#groupSettingsContainer .group-settings-section-summary.summary-with-avatar {
+    display: inline-flex;
+    align-items: center;
+    gap: 14px;
+    white-space: normal;
+    margin-top: 8px;
+}
+
+#groupSettingsContainer .group-settings-summary-avatar {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    object-fit: cover;
+    object-position: center;
+    flex-shrink: 0;
+    border: 2px solid color-mix(in srgb, var(--highlight-text) 24%, transparent);
+}
+
+#groupSettingsContainer .group-settings-summary-copy {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+#groupSettingsContainer .group-settings-summary-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 1.18em;
+    font-weight: 600;
+    line-height: 1.2;
+}
+
+#groupSettingsContainer .group-settings-summary-meta {
+    color: var(--secondary-text);
+    font-size: 0.86em;
+    line-height: 1.2;
+}
+
+#groupSettingsContainer .group-settings-collapsible-container:not(.collapsed) .group-settings-section-summary {
+    display: none;
+}
+
+#groupSettingsContainer .group-settings-collapsible-container.collapsed .group-settings-section-header {
+    padding-bottom: 5px !important;
+}
+
+#groupSettingsContainer .group-settings-section-header:hover::before,
+#groupSettingsContainer .group-settings-collapsible-container:not(.collapsed) .group-settings-section-header::before {
+    background-color: color-mix(in srgb, var(--highlight-text) 12%, transparent);
+}
+
+body.light-theme #groupSettingsContainer .group-settings-section-header:hover::before,
+body.light-theme #groupSettingsContainer .group-settings-collapsible-container:not(.collapsed) .group-settings-section-header::before {
+    background-color: color-mix(in srgb, var(--highlight-text) 14%, rgba(255, 255, 255, 0.7));
+}
+
+body:not(.light-theme) #groupSettingsContainer .group-settings-section-header:hover::before,
+body:not(.light-theme) #groupSettingsContainer .group-settings-collapsible-container:not(.collapsed) .group-settings-section-header::before {
+    background-color: color-mix(in srgb, var(--highlight-text) 18%, rgba(255, 255, 255, 0.04));
+}
+
+#groupSettingsContainer .group-settings-toggle-btn {
+    grid-area: toggle;
+    align-self: center;
+    justify-self: end;
+    position: relative;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: none;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--secondary-text);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2;
+    cursor: pointer;
+    transition: color 0.2s ease, background-color 0.2s ease, transform 0.2s ease;
+}
+
+#groupSettingsContainer .group-settings-toggle-btn::before {
+    content: "";
+    position: absolute;
+    inset: 2px;
+    border-radius: 999px;
+    background-color: transparent;
+    transition: background-color 0.2s ease;
+}
+
+#groupSettingsContainer .group-settings-toggle-btn:hover {
+    color: var(--highlight-text);
+    background-color: transparent;
+    box-shadow: none;
+}
+
+body:not(.light-theme) #groupSettingsContainer .group-settings-toggle-btn:hover::before {
+    background-color: color-mix(in srgb, var(--highlight-text) 20%, rgba(255, 255, 255, 0.05));
+}
+
+body.light-theme #groupSettingsContainer .group-settings-toggle-btn:hover::before {
+    background-color: color-mix(in srgb, var(--highlight-text) 16%, rgba(255, 255, 255, 0.74));
+}
+
+#groupSettingsContainer .group-settings-toggle-btn .toggle-icon {
+    transition: transform 0.24s ease;
+}
+
+#groupSettingsContainer .group-settings-collapsible-container.collapsed .group-settings-toggle-btn .toggle-icon {
+    transform: rotate(-90deg);
+}
+
+#groupSettingsContainer .group-settings-section-content {
+    max-height: 2400px;
+    opacity: 1;
+    overflow: hidden;
+    padding: 0 0 2px !important;
+    transition: max-height 0.28s ease, opacity 0.22s ease, padding 0.22s ease;
+}
+
+#groupSettingsContainer .group-settings-collapsible-container:not(.collapsed) .group-settings-section-content {
+    overflow: visible;
+}
+
+#groupSettingsContainer .group-settings-collapsible-container.collapsed .group-settings-section-content {
+    max-height: 0;
+    opacity: 0;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    pointer-events: none;
+}
+
+#groupSettingsContainer .group-settings-section-content > .group-settings-identity-shell,
+#groupSettingsContainer .group-settings-section-content > .group-settings-card-shell {
+    margin: 0 !important;
+    border: none !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    background-image: none !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    padding: 0 !important;
+}
+
+#groupSettingsContainer .group-settings-identity-shell {
+    display: flex;
+    flex-direction: column;
+    gap: 8px !important;
+}
+
+#groupSettingsContainer .group-settings-card-shell {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+#groupSettingsContainer .group-identity-main {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+#groupSettingsContainer .group-avatar-display {
+    width: 76px;
+    height: 76px;
+    border-width: 2px;
+}
+
+#groupSettingsContainer .group-name-wrapper label {
+    margin-left: 4px;
+}
+
+#groupSettingsContainer .group-name-wrapper input[type="text"] {
+    width: calc(100% + 4px);
+    margin-left: -4px;
+    font-size: 1.08em;
+}
+
+#groupSettingsContainer .group-settings-field-shell {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+#groupSettingsContainer .group-settings-field-label,
+#groupSettingsForm label {
+    display: block;
+    font-weight: 500;
+    color: var(--secondary-text);
+    font-size: 0.9em;
+}
+
+#groupSettingsForm input[type="text"],
+#groupSettingsForm textarea,
+#groupSettingsForm select {
+    width: 100%;
+    box-sizing: border-box;
+    color: var(--primary-text);
+    font-size: 0.95em;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: transparent;
+}
+
+#groupSettingsForm input[type="text"],
+#groupSettingsForm select {
+    height: 37px;
+    padding: 0 12px;
+    border-radius: 999px;
+}
+
+#groupSettingsForm textarea {
+    min-height: 96px;
+    padding: 12px 14px;
+    border-radius: 18px;
+    resize: vertical;
+}
+
+body.light-theme #groupSettingsForm input[type="text"],
+body.light-theme #groupSettingsForm textarea,
+body.light-theme #groupSettingsForm select,
+body.light-theme #groupSettingsContainer .group-member-item label {
+    background: linear-gradient(
+        180deg,
+        rgba(255, 255, 255, 0.82),
+        rgba(255, 255, 255, 0.58)
+    );
+    border-color: rgba(51, 51, 51, 0.08);
+    backdrop-filter: blur(10px) saturate(130%);
+    -webkit-backdrop-filter: blur(10px) saturate(130%);
+    box-shadow:
+        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.74),
+        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.62),
+        inset 0 0 1px rgba(0, 0, 0, 0.08);
+}
+
+body:not(.light-theme) #groupSettingsForm input[type="text"],
+body:not(.light-theme) #groupSettingsForm textarea,
+body:not(.light-theme) #groupSettingsForm select,
+body:not(.light-theme) #groupSettingsContainer .group-member-item label {
+    background: linear-gradient(
+        180deg,
+        rgba(255, 255, 255, 0.08),
+        rgba(255, 255, 255, 0.04)
+    );
+    border-color: rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(8px) saturate(118%);
+    -webkit-backdrop-filter: blur(8px) saturate(118%);
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.16),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.12),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+
+body.light-theme #groupSettingsForm input[type="text"]:hover,
+body.light-theme #groupSettingsForm input[type="text"]:focus,
+body.light-theme #groupSettingsForm input[type="text"]:focus-visible,
+body.light-theme #groupSettingsForm textarea:hover,
+body.light-theme #groupSettingsForm textarea:focus,
+body.light-theme #groupSettingsForm textarea:focus-visible,
+body.light-theme #groupSettingsForm select:hover,
+body.light-theme #groupSettingsForm select:focus,
+body.light-theme #groupSettingsForm select:focus-visible,
+body:not(.light-theme) #groupSettingsForm input[type="text"]:hover,
+body:not(.light-theme) #groupSettingsForm input[type="text"]:focus,
+body:not(.light-theme) #groupSettingsForm input[type="text"]:focus-visible,
+body:not(.light-theme) #groupSettingsForm textarea:hover,
+body:not(.light-theme) #groupSettingsForm textarea:focus,
+body:not(.light-theme) #groupSettingsForm textarea:focus-visible,
+body:not(.light-theme) #groupSettingsForm select:hover,
+body:not(.light-theme) #groupSettingsForm select:focus,
+body:not(.light-theme) #groupSettingsForm select:focus-visible {
+    border-color: var(--highlight-text);
+    outline: none;
+}
+
+#groupSettingsContainer .group-settings-helper-text {
+    color: var(--secondary-text);
+    font-size: 0.82em;
+    line-height: 1.35;
+}
+
+#groupSettingsContainer .group-settings-switch-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 2px 2px 0;
+}
+
+#groupSettingsContainer .group-settings-model-shell .model-input-container {
+    margin-top: 0;
+}
+
+#groupSettingsContainer .group-members-list-container {
+    max-height: 220px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    border: none;
+    border-radius: 0;
+    padding: 2px 0 0;
+    background: transparent;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+#groupSettingsContainer .group-member-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0;
+}
+
+#groupSettingsContainer .group-member-item input[type="checkbox"] {
+    margin: 0;
+    width: 16px;
+    height: 16px;
+    accent-color: var(--highlight-text);
+    flex-shrink: 0;
+}
+
+#groupSettingsContainer .group-member-item label {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: inline-flex;
+    align-items: center;
+    cursor: pointer;
+    font-weight: 400;
+    color: var(--primary-text);
+    font-size: 0.95em;
+    padding: 9px 12px;
+    border-radius: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+#groupSettingsContainer .group-member-item .avatar-small {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    margin-right: 8px;
+    object-fit: cover;
+    flex-shrink: 0;
+}
+
+#groupSettingsContainer #memberTagsInputs {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+#groupSettingsContainer .member-tag-input-item {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+#groupSettingsContainer .member-tag-input-item label {
+    font-size: 0.85em;
+    color: var(--secondary-text);
+}
+
+#groupSettingsContainer .member-tag-input-item input[type="text"] {
+    font-size: 0.9em;
+}
+
+#groupSettingsForm .model-input-container {
+    position: relative;
+}
+
+#groupSettingsForm .model-input-container input[type="text"] {
+    padding-right: 36px;
+}
+
+#groupSettingsForm .model-input-container #openGroupModelSelectBtn {
+    position: absolute;
+    right: 5px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 24px;
+    height: 24px;
+    padding: 2px;
+    border: none;
+    background-color: transparent;
+    cursor: pointer;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.2s ease, transform 0.2s ease;
+    min-width: 24px;
+    z-index: 2;
+    color: var(--secondary-text);
+}
+
+#groupSettingsForm .model-input-container #openGroupModelSelectBtn:hover {
+    background-color: var(--accent-bg);
+}
+
+#groupSettingsForm .model-input-container #openGroupModelSelectBtn svg {
+    stroke: currentColor;
+    width: 14px;
+    height: 14px;
+}
+
+#groupSettingsForm > .form-actions {
+    margin-top: auto;
+}
+
+#groupSettingsForm .form-actions {
+    margin-top: auto;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    flex-shrink: 0;
+    gap: 4px;
+    position: sticky;
+    bottom: 0;
+    background-color: transparent;
+    padding: 12px 15px 8px;
+    border-radius: 8px;
+    box-shadow: none;
+    z-index: 10;
+    margin-left: -15px;
+    margin-right: -15px;
+    margin-bottom: -15px;
+}
+
+#groupSettingsForm .form-actions .delete-button-container {
+    opacity: 1;
+    max-height: none;
+    overflow: visible;
+    transition: none;
+    margin-top: 2px;
+}
+
+#groupSettingsForm .form-actions button {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: calc(100% + 2px);
+    margin-left: -2px;
+    height: 37px;
+    padding: 0 12px;
+    font-size: 0.95em;
+    font-weight: 500;
+    line-height: 1;
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    cursor: pointer;
+    white-space: nowrap;
+    box-sizing: border-box;
+    transition:
+        background 0.2s ease,
+        border-color 0.2s ease,
+        box-shadow 0.2s ease,
+        color 0.2s ease,
+        transform 0.2s ease;
+}
+
+#groupSettingsForm .form-actions button[type="submit"] {
+    color: var(--highlight-text);
+}
+
+#groupSettingsForm .form-actions button[type="submit"]:hover {
+    background: var(--highlight-text);
+    border-color: var(--highlight-text);
+    color: var(--text-on-accent);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: none;
+}
+
+#groupSettingsForm .form-actions .danger-button {
+    color: color-mix(in srgb, var(--danger-color) 88%, #ffffff 12%);
+}
+
+#groupSettingsForm .form-actions .danger-button:hover {
+    background: var(--danger-color);
+    border-color: var(--danger-color);
+    color: #ffffff;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: none;
+}
+
+body.light-theme #groupSettingsForm .form-actions button[type="submit"] {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--user-bubble-bg) 82%, rgba(255, 255, 255, 0.4)),
+        color-mix(in srgb, var(--user-bubble-bg) 70%, rgba(255, 255, 255, 0.22))
+    );
+    border-color: rgba(51, 51, 51, 0.08);
+    backdrop-filter: blur(10px) saturate(130%);
+    -webkit-backdrop-filter: blur(10px) saturate(130%);
+    box-shadow:
+        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.72),
+        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.62),
+        inset 0 0 1px rgba(0, 0, 0, 0.08);
+}
+
+body.light-theme #groupSettingsForm .form-actions .danger-button {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--danger-color) 16%, rgba(255, 255, 255, 0.78)),
+        color-mix(in srgb, var(--danger-color) 11%, rgba(255, 255, 255, 0.54))
+    );
+    border-color: rgba(51, 51, 51, 0.08);
+    color: color-mix(in srgb, var(--danger-color) 92%, #6d0f1f 8%);
+    backdrop-filter: blur(10px) saturate(130%);
+    -webkit-backdrop-filter: blur(10px) saturate(130%);
+    box-shadow:
+        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.74),
+        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.62),
+        inset 0 0 1px rgba(0, 0, 0, 0.08);
+}
+
+body:not(.light-theme) #groupSettingsForm .form-actions button[type="submit"] {
+    border-color: rgba(255, 255, 255, 0.08);
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--user-bubble-bg) 52%, rgba(255, 255, 255, 0.06)),
+        color-mix(in srgb, var(--user-bubble-bg) 40%, rgba(255, 255, 255, 0.03))
+    );
+    backdrop-filter: blur(8px) saturate(118%);
+    -webkit-backdrop-filter: blur(8px) saturate(118%);
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.16),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.12),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+
+body:not(.light-theme) #groupSettingsForm .form-actions button[type="submit"]:hover {
+    color: color-mix(in srgb, #000000 78%, var(--primary-text) 22%);
+}
+
+body:not(.light-theme) #groupSettingsForm .form-actions .danger-button {
+    border-color: rgba(255, 255, 255, 0.08);
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--danger-color) 34%, rgba(255, 255, 255, 0.08)),
+        color-mix(in srgb, var(--danger-color) 24%, rgba(255, 255, 255, 0.04))
+    );
+    color: color-mix(in srgb, var(--danger-color) 78%, #ffdce2 22%);
+    backdrop-filter: blur(8px) saturate(118%);
+    -webkit-backdrop-filter: blur(8px) saturate(118%);
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.16),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.12),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+
+/* ========================================
+   Group Settings Second Pass Alignment
+   Unifies save button + bubble family with Agent settings.
+   ======================================== */
+#groupSettingsContainer {
+    --agent-settings-pill-radius: 16px;
+}
+
+#agentSettingsContainer,
+#groupSettingsContainer {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0 3px 0 12px;
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    height: auto;
+}
+
+#agentSettingsForm,
+#groupSettingsForm {
+    width: 100%;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    height: auto;
+    gap: 12px;
+}
+
+#agentSettingsForm > .form-actions,
+#groupSettingsForm > .form-actions {
+    margin-top: auto;
+}
+
+#agentSettingsForm .form-actions,
+#groupSettingsForm .form-actions {
+    margin-top: auto;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    flex-shrink: 0;
+    gap: 4px;
+    position: sticky;
+    bottom: 0;
+    background-color: transparent;
+    padding: 12px 15px 14px;
+    border-radius: 8px;
+    box-shadow: none;
+    z-index: 10;
+    margin-left: -15px;
+    margin-right: -15px;
+    margin-bottom: -15px;
+}
+
+#agentSettingsForm .form-actions .delete-button-container,
+#groupSettingsForm .form-actions .delete-button-container {
+    opacity: 1;
+    max-height: none;
+    overflow: visible;
+    transition: none;
+    margin-top: 2px;
+}
+
+#agentSettingsForm .form-actions button,
+#groupSettingsForm .form-actions button {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    align-self: stretch;
+    width: calc(100% + 2px);
+    margin-left: -2px;
+    height: 37px;
+    min-height: 37px;
+    padding: 0 12px;
+    font-size: 0.95em;
+    font-weight: 500;
+    line-height: 1;
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    cursor: pointer;
+    white-space: nowrap;
+    box-sizing: border-box;
+    flex: 0 0 auto;
+    appearance: none;
+    -webkit-appearance: none;
+    transition:
+        background 0.2s ease,
+        border-color 0.2s ease,
+        box-shadow 0.2s ease,
+        color 0.2s ease,
+        transform 0.2s ease;
+}
+
+#agentSettingsForm .form-actions button[type="submit"],
+#groupSettingsForm .form-actions button[type="submit"] {
+    color: var(--highlight-text);
+}
+
+#agentSettingsForm .form-actions button[type="submit"]:hover,
+#groupSettingsForm .form-actions button[type="submit"]:hover {
+    background: var(--highlight-text);
+    border-color: var(--highlight-text);
+    color: var(--text-on-accent);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: none;
+}
+
+body.light-theme #agentSettingsForm .form-actions button[type="submit"],
+body.light-theme #groupSettingsForm .form-actions button[type="submit"] {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--user-bubble-bg) 82%, rgba(255, 255, 255, 0.4)),
+        color-mix(in srgb, var(--user-bubble-bg) 70%, rgba(255, 255, 255, 0.22))
+    );
+    border-color: rgba(51, 51, 51, 0.08);
+    backdrop-filter: blur(10px) saturate(130%);
+    -webkit-backdrop-filter: blur(10px) saturate(130%);
+    box-shadow:
+        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.72),
+        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.62),
+        inset 0 0 1px rgba(0, 0, 0, 0.08);
+}
+
+body.light-theme #agentSettingsForm .form-actions button[type="submit"]:hover,
+body.light-theme #groupSettingsForm .form-actions button[type="submit"]:hover {
+    background: var(--highlight-text);
+    border-color: var(--highlight-text);
+    color: #ffffff;
+}
+
+body:not(.light-theme) #agentSettingsForm .form-actions button[type="submit"],
+body:not(.light-theme) #groupSettingsForm .form-actions button[type="submit"] {
+    border-color: rgba(255, 255, 255, 0.08);
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--user-bubble-bg) 52%, rgba(255, 255, 255, 0.06)),
+        color-mix(in srgb, var(--user-bubble-bg) 40%, rgba(255, 255, 255, 0.03))
+    );
+    backdrop-filter: blur(8px) saturate(118%);
+    -webkit-backdrop-filter: blur(8px) saturate(118%);
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.16),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.12),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+
+body:not(.light-theme) #agentSettingsForm .form-actions button[type="submit"]:hover,
+body:not(.light-theme) #groupSettingsForm .form-actions button[type="submit"]:hover {
+    background: var(--highlight-text);
+    background-image: none;
+    color: color-mix(in srgb, #000000 78%, var(--primary-text) 22%);
+    border-color: var(--highlight-text);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: none;
+    filter: none;
+}
+
+#agentSettingsForm .form-actions .danger-button,
+#groupSettingsForm .form-actions .danger-button,
+#agentSettingsForm .form-actions #deleteAgentBtn,
+#groupSettingsForm .form-actions #deleteGroupBtn {
+    color: color-mix(in srgb, var(--danger-color) 88%, #ffffff 12%);
+}
+
+#agentSettingsForm .form-actions .danger-button:hover,
+#groupSettingsForm .form-actions .danger-button:hover,
+#agentSettingsForm .form-actions #deleteAgentBtn:hover,
+#groupSettingsForm .form-actions #deleteGroupBtn:hover {
+    background: var(--danger-color);
+    border-color: var(--danger-color);
+    color: #ffffff;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: none;
+}
+
+body.light-theme #agentSettingsForm .form-actions .danger-button,
+body.light-theme #groupSettingsForm .form-actions .danger-button,
+body.light-theme #agentSettingsForm .form-actions #deleteAgentBtn,
+body.light-theme #groupSettingsForm .form-actions #deleteGroupBtn {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--danger-color) 16%, rgba(255, 255, 255, 0.78)),
+        color-mix(in srgb, var(--danger-color) 11%, rgba(255, 255, 255, 0.54))
+    );
+    border-color: rgba(51, 51, 51, 0.08);
+    color: color-mix(in srgb, var(--danger-color) 92%, #6d0f1f 8%);
+    backdrop-filter: blur(10px) saturate(130%);
+    -webkit-backdrop-filter: blur(10px) saturate(130%);
+    box-shadow:
+        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.74),
+        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.62),
+        inset 0 0 1px rgba(0, 0, 0, 0.08);
+}
+
+body.light-theme #agentSettingsForm .form-actions .danger-button:hover,
+body.light-theme #groupSettingsForm .form-actions .danger-button:hover,
+body.light-theme #agentSettingsForm .form-actions #deleteAgentBtn:hover,
+body.light-theme #groupSettingsForm .form-actions #deleteGroupBtn:hover {
+    background: var(--danger-color);
+    border-color: var(--danger-color);
+    color: #ffffff;
+}
+
+body:not(.light-theme) #agentSettingsForm .form-actions .danger-button,
+body:not(.light-theme) #groupSettingsForm .form-actions .danger-button,
+body:not(.light-theme) #agentSettingsForm .form-actions #deleteAgentBtn,
+body:not(.light-theme) #groupSettingsForm .form-actions #deleteGroupBtn {
+    border-color: rgba(255, 255, 255, 0.08);
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--danger-color) 34%, rgba(255, 255, 255, 0.08)),
+        color-mix(in srgb, var(--danger-color) 24%, rgba(255, 255, 255, 0.04))
+    );
+    color: color-mix(in srgb, var(--danger-color) 78%, #ffdce2 22%);
+    backdrop-filter: blur(8px) saturate(118%);
+    -webkit-backdrop-filter: blur(8px) saturate(118%);
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.16),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.12),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+
+body:not(.light-theme) #agentSettingsForm .form-actions .danger-button:hover,
+body:not(.light-theme) #groupSettingsForm .form-actions .danger-button:hover,
+body:not(.light-theme) #agentSettingsForm .form-actions #deleteAgentBtn:hover,
+body:not(.light-theme) #groupSettingsForm .form-actions #deleteGroupBtn:hover {
+    background: var(--danger-color);
+    border-color: var(--danger-color);
+    color: #ffffff;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: none;
+}
+
+#groupSettingsContainer input[type="text"],
+#groupSettingsContainer select {
+    width: 100%;
+    height: 34px;
+    min-height: 34px;
+    max-height: 34px;
+    padding: 0 12px;
+    margin-bottom: 0;
+    border-radius: var(--agent-settings-pill-radius) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: transparent;
+    background-clip: padding-box;
+    color: var(--highlight-text);
+    font-size: 0.9em;
+    line-height: 1;
+    box-sizing: border-box;
+    transition:
+        background 0.2s ease,
+        border-color 0.2s ease,
+        box-shadow 0.2s ease,
+        color 0.2s ease;
+}
+
+#groupSettingsContainer textarea {
+    width: 100%;
+    box-sizing: border-box;
+    min-height: 96px;
+    padding: 12px 14px;
+    border-radius: 18px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: transparent;
+    background-clip: padding-box;
+    color: var(--highlight-text);
+    font-size: 0.9em;
+    line-height: 1.45;
+    resize: vertical;
+    transition:
+        background 0.2s ease,
+        border-color 0.2s ease,
+        box-shadow 0.2s ease,
+        color 0.2s ease;
+}
+
+#groupSettingsContainer select {
+    padding-right: 34px;
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='rgba(160, 160, 176, 0.7)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+}
+
+body.light-theme #groupSettingsContainer input[type="text"],
+body.light-theme #groupSettingsContainer textarea,
+body.light-theme #groupSettingsContainer select,
+body.light-theme #groupSettingsContainer .group-member-item label,
+body.light-theme #groupSettingsContainer .group-settings-section-summary.summary-with-avatar {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--user-bubble-bg) 18%, rgba(255, 255, 255, 0.52)),
+        color-mix(in srgb, var(--user-bubble-bg) 12%, rgba(255, 255, 255, 0.26))
+    );
+    border-color: rgba(51, 51, 51, 0.08);
+    backdrop-filter: blur(12px) saturate(138%);
+    -webkit-backdrop-filter: blur(12px) saturate(138%);
+    box-shadow:
+        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.82),
+        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.72),
+        inset 6px -6px 1px -6px rgba(255, 255, 255, 0.42),
+        inset -6px 6px 1px -6px rgba(255, 255, 255, 0.3),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.18),
+        inset 0 0 1px rgba(0, 0, 0, 0.06);
+}
+
+body:not(.light-theme) #groupSettingsContainer input[type="text"],
+body:not(.light-theme) #groupSettingsContainer textarea,
+body:not(.light-theme) #groupSettingsContainer select,
+body:not(.light-theme) #groupSettingsContainer .group-member-item label,
+body:not(.light-theme) #groupSettingsContainer .group-settings-section-summary.summary-with-avatar {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--user-bubble-bg) 58%, rgba(255, 255, 255, 0.08)),
+        color-mix(in srgb, var(--user-bubble-bg) 44%, rgba(255, 255, 255, 0.04))
+    );
+    border-color: rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(10px) saturate(124%);
+    -webkit-backdrop-filter: blur(10px) saturate(124%);
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.18),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.14),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.04),
+        inset 0 0 1px rgba(255, 255, 255, 0.03);
+}
+
+body.light-theme #groupSettingsContainer input[type="text"]:hover,
+body.light-theme #groupSettingsContainer input[type="text"]:focus,
+body.light-theme #groupSettingsContainer input[type="text"]:focus-visible,
+body.light-theme #groupSettingsContainer textarea:hover,
+body.light-theme #groupSettingsContainer textarea:focus,
+body.light-theme #groupSettingsContainer textarea:focus-visible,
+body.light-theme #groupSettingsContainer select:hover,
+body.light-theme #groupSettingsContainer select:focus,
+body.light-theme #groupSettingsContainer select:focus-visible,
+body.light-theme #groupSettingsContainer .group-member-item label:hover {
+    outline: none;
+    border-color: color-mix(in srgb, var(--highlight-text) 72%, rgba(51, 51, 51, 0.12));
+    box-shadow:
+        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.82),
+        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.72),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.18),
+        0 0 0 1px color-mix(in srgb, var(--highlight-text) 24%, transparent);
+}
+
+body.light-theme #groupSettingsContainer input[type="text"]:focus,
+body.light-theme #groupSettingsContainer input[type="text"]:focus-visible,
+body.light-theme #groupSettingsContainer textarea:focus,
+body.light-theme #groupSettingsContainer textarea:focus-visible,
+body.light-theme #groupSettingsContainer select:focus,
+body.light-theme #groupSettingsContainer select:focus-visible {
+    border-color: var(--highlight-text);
+    box-shadow:
+        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.82),
+        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.72),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.18),
+        0 0 0 1px color-mix(in srgb, var(--highlight-text) 34%, transparent);
+}
+
+body:not(.light-theme) #groupSettingsContainer input[type="text"]:hover,
+body:not(.light-theme) #groupSettingsContainer input[type="text"]:focus,
+body:not(.light-theme) #groupSettingsContainer input[type="text"]:focus-visible,
+body:not(.light-theme) #groupSettingsContainer textarea:hover,
+body:not(.light-theme) #groupSettingsContainer textarea:focus,
+body:not(.light-theme) #groupSettingsContainer textarea:focus-visible,
+body:not(.light-theme) #groupSettingsContainer select:hover,
+body:not(.light-theme) #groupSettingsContainer select:focus,
+body:not(.light-theme) #groupSettingsContainer select:focus-visible,
+body:not(.light-theme) #groupSettingsContainer .group-member-item label:hover {
+    outline: none;
+    border-color: color-mix(in srgb, var(--highlight-text) 68%, rgba(255, 255, 255, 0.12));
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.2),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.16),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.05),
+        0 0 0 1px color-mix(in srgb, var(--highlight-text) 26%, transparent);
+}
+
+body:not(.light-theme) #groupSettingsContainer input[type="text"]:focus,
+body:not(.light-theme) #groupSettingsContainer input[type="text"]:focus-visible,
+body:not(.light-theme) #groupSettingsContainer textarea:focus,
+body:not(.light-theme) #groupSettingsContainer textarea:focus-visible,
+body:not(.light-theme) #groupSettingsContainer select:focus,
+body:not(.light-theme) #groupSettingsContainer select:focus-visible {
+    border-color: var(--highlight-text);
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.2),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.16),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.05),
+        0 0 0 1px color-mix(in srgb, var(--highlight-text) 34%, transparent);
+}
+
+#groupSettingsContainer .group-member-item label {
+    min-height: 34px;
+    padding: 4px 12px 4px 9px;
+    border-radius: var(--agent-settings-pill-radius);
+    color: var(--highlight-text);
+    background: transparent;
+    background-clip: padding-box;
+}
+
+#groupSettingsContainer .group-member-item input[type="checkbox"]:checked + label {
+    border-color: color-mix(in srgb, var(--highlight-text) 70%, transparent);
+    color: var(--highlight-text);
+}
+
+#groupSettingsContainer .group-settings-section-summary.summary-with-avatar {
+    margin-left: -6px;
+    max-width: calc(100% + 6px);
+    box-sizing: border-box;
+    padding: 8px 12px 8px 16px;
+    border-radius: 18px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: transparent;
+    background-clip: padding-box;
+}
+
+#groupSettingsContainer .group-settings-summary-label {
+    color: var(--highlight-text);
+}
+
+#groupSettingsContainer .member-tag-input-item {
+    gap: 6px;
+}
+
+#groupSettingsContainer .member-tag-input-item label {
+    margin-left: 4px;
+}
+
+#groupSettingsContainer .group-settings-model-shell .model-input-container #openGroupModelSelectBtn {
+    color: var(--highlight-text);
+}
+
+body.light-theme #groupSettingsContainer .group-settings-model-shell .model-input-container #openGroupModelSelectBtn:hover {
+    background-color: color-mix(in srgb, var(--highlight-text) 12%, rgba(255, 255, 255, 0.78));
+}
+
+body:not(.light-theme) #groupSettingsContainer .group-settings-model-shell .model-input-container #openGroupModelSelectBtn:hover {
+    background-color: color-mix(in srgb, var(--highlight-text) 18%, rgba(255, 255, 255, 0.05));
 }

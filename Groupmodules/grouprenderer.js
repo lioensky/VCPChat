@@ -23,11 +23,13 @@ window.GroupRenderer = (() => {
     let memberTagsContainer, memberTagsInputsDiv;
     let tagMatchModeSelect;
     let groupPromptTextarea, invitePromptTextarea;
+    let groupUseUnifiedModel, groupUnifiedModelContainer, groupUnifiedModelInput, openGroupModelSelectBtn;
     let deleteGroupBtn;
     let createNewGroupBtn; // This button is in main.html, renderer.js might attach its listener
 
     // State for group settings
     let availableAgentsForGroup = []; // To populate member selection
+    const groupSectionControllers = new Map();
 
     function setCurrentItemActionButtonText(button, text) {
         if (!button) return;
@@ -161,6 +163,7 @@ window.GroupRenderer = (() => {
                 </div>
             </form>
         `;
+        groupSettingsContainer.innerHTML = renderGroupSettingsMarkup();
         console.log("[GroupRenderer] groupSettingsContainer innerHTML set.");
         // Now that DOM is ensured and populated, get element references
         return getGroupSettingsElements(); // Return true if elements are successfully retrieved
@@ -192,6 +195,338 @@ window.GroupRenderer = (() => {
         invitePromptTextarea = document.getElementById('invitePrompt');
         deleteGroupBtn = document.getElementById('deleteGroupBtn'); // This is the button inside the group settings form
         return true;
+    }
+
+    function renderGroupSettingsMarkup() {
+        return `
+            <form id="groupSettingsForm">
+                <input type="hidden" id="editingGroupId">
+
+                <div class="group-settings-collapsible-container group-settings-section collapsed" data-section-key="identity">
+                    <div class="group-settings-section-header" id="groupIdentityToggleHeader">
+                        <span class="group-settings-section-title">基础信息</span>
+                        <div class="group-settings-section-summary" id="groupIdentitySummary"></div>
+                        <button type="button" class="group-settings-toggle-btn" id="groupIdentityToggleBtn" aria-label="展开或收起基础信息">
+                            <svg class="toggle-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="6 9 12 15 18 9"></polyline>
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="group-settings-section-content" id="groupIdentityContent">
+                        <div class="group-settings-identity-shell">
+                            <div class="agent-identity-main group-identity-main">
+                                <div class="agent-avatar-wrapper group-avatar-wrapper">
+                                    <img id="groupAvatarPreview" src="assets/default_group_avatar.png" alt="群组头像预览" class="agent-avatar-display group-avatar-display" style="display: block;">
+                                    <label for="groupAvatarInput" class="avatar-upload-overlay">
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                                            <circle cx="12" cy="13" r="4"></circle>
+                                        </svg>
+                                    </label>
+                                    <input type="file" id="groupAvatarInput" accept="image/*" style="display: none;">
+                                </div>
+                                <div class="agent-name-wrapper group-name-wrapper">
+                                    <label for="groupNameInput">群组名称</label>
+                                    <input type="text" id="groupNameInput" required>
+                                </div>
+                            </div>
+
+                            <div class="group-settings-field-shell">
+                                <label class="group-settings-field-label" for="groupMembersList">群组成员</label>
+                                <div id="groupMembersList" class="group-members-list-container"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="group-settings-collapsible-container group-settings-section collapsed" data-section-key="mode">
+                    <div class="group-settings-section-header" id="groupModeToggleHeader">
+                        <span class="group-settings-section-title">群聊模式</span>
+                        <div class="group-settings-section-summary" id="groupModeSummary"></div>
+                        <button type="button" class="group-settings-toggle-btn" id="groupModeToggleBtn" aria-label="展开或收起群聊模式">
+                            <svg class="toggle-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="6 9 12 15 18 9"></polyline>
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="group-settings-section-content" id="groupModeContent">
+                        <div class="group-settings-card-shell">
+                            <div class="group-settings-field-shell">
+                                <select id="groupChatMode">
+                                    <option value="sequential">顺序发言</option>
+                                    <option value="naturerandom">自然随机</option>
+                                    <option value="invite_only">邀请发言</option>
+                                </select>
+                            </div>
+
+                            <div id="memberTagsContainer" class="group-settings-field-shell" style="display: none;">
+                                <label for="tagMatchMode">Tag 触发模式</label>
+                                <select id="tagMatchMode">
+                                    <option value="strict">严格模式</option>
+                                    <option value="natural">自然模式</option>
+                                </select>
+                                <div class="group-settings-helper-text">自然模式会区分 Tag 来源，尽量避免 Agent 因引用自身历史发言而重复触发。</div>
+
+                                <div class="group-settings-field-shell group-member-tags-shell">
+                                    <label class="group-settings-field-label">成员 Tags</label>
+                                    <div id="memberTagsInputs"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="group-settings-collapsible-container group-settings-section collapsed" data-section-key="model">
+                    <div class="group-settings-section-header" id="groupModelToggleHeader">
+                        <span class="group-settings-section-title">模型设置</span>
+                        <div class="group-settings-section-summary" id="groupModelSummary"></div>
+                        <button type="button" class="group-settings-toggle-btn" id="groupModelToggleBtn" aria-label="展开或收起模型设置">
+                            <svg class="toggle-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="6 9 12 15 18 9"></polyline>
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="group-settings-section-content" id="groupModelContent">
+                        <div class="group-settings-card-shell group-settings-model-shell">
+                            <div class="group-settings-switch-row">
+                                <label for="groupUseUnifiedModel">启用群组统一模型</label>
+                                <label class="switch" style="margin-bottom: 0;">
+                                    <input type="checkbox" id="groupUseUnifiedModel">
+                                    <span class="slider round"></span>
+                                </label>
+                            </div>
+
+                            <div id="groupUnifiedModelContainer" class="group-settings-field-shell" style="display: none;">
+                                <div class="model-input-container">
+                                    <input type="text" id="groupUnifiedModelInput" placeholder="选择群组统一模型">
+                                    <button type="button" id="openGroupModelSelectBtn" aria-label="打开模型选择器" title="选择模型">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <polyline points="6 9 12 15 18 9"></polyline>
+                                        </svg>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="group-settings-collapsible-container group-settings-section collapsed" data-section-key="prompt">
+                    <div class="group-settings-section-header" id="groupPromptToggleHeader">
+                        <span class="group-settings-section-title">系统提示词</span>
+                        <div class="group-settings-section-summary" id="groupPromptSummary"></div>
+                        <button type="button" class="group-settings-toggle-btn" id="groupPromptToggleBtn" aria-label="展开或收起系统提示词">
+                            <svg class="toggle-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="6 9 12 15 18 9"></polyline>
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="group-settings-section-content" id="groupPromptContent">
+                        <div class="group-settings-card-shell group-settings-prompt-shell">
+                            <div class="group-settings-field-shell">
+                                <label for="groupPrompt">GroupPrompt</label>
+                                <textarea id="groupPrompt" rows="4" placeholder="例如：这里是用户家的聊天空间，成员应保持协作与角色分工。"></textarea>
+                            </div>
+                            <div class="group-settings-field-shell">
+                                <label for="invitePrompt">InvitePrompt</label>
+                                <textarea id="invitePrompt" rows="4" placeholder="例如：现在轮到 {{VCPChatAgentName}} 发言了。"></textarea>
+                                <div class="group-settings-helper-text">可使用 {{VCPChatAgentName}} 作为被邀请发言的 Agent 名称占位符。</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-actions">
+                    <button type="submit">保存群组设置</button>
+                    <div class="delete-button-container">
+                        <button type="button" id="deleteGroupBtn" class="danger-button">删除此群组</button>
+                    </div>
+                </div>
+            </form>
+        `;
+    }
+
+    function getGroupSectionContainer(key) {
+        return groupSettingsForm?.querySelector(`.group-settings-section[data-section-key="${key}"]`) || null;
+    }
+
+    function createGroupSectionController(key, buildSummary) {
+        const container = getGroupSectionContainer(key);
+        if (!container) return null;
+
+        const header = container.querySelector('.group-settings-section-header');
+        const summary = container.querySelector('.group-settings-section-summary');
+        const toggleBtn = container.querySelector('.group-settings-toggle-btn');
+        if (!header || !summary || !toggleBtn) return null;
+
+        const controller = {
+            key,
+            container,
+            header,
+            summary,
+            toggleBtn,
+            buildSummary,
+            setCollapsed(collapsed) {
+                this.container.classList.toggle('collapsed', !!collapsed);
+            }
+        };
+
+        if (!header.dataset.collapsibleBound) {
+            header.addEventListener('click', (event) => {
+                event.preventDefault();
+                controller.setCollapsed(!controller.container.classList.contains('collapsed'));
+            });
+            header.dataset.collapsibleBound = 'true';
+        }
+
+        groupSectionControllers.set(key, controller);
+        return controller;
+    }
+
+    function buildGroupPromptPreviewText(primaryText, secondaryText = '') {
+        const normalizedPrimary = (primaryText || '').replace(/\s+/g, ' ').trim();
+        const normalizedSecondary = (secondaryText || '').replace(/\s+/g, ' ').trim();
+
+        if (!normalizedPrimary && !normalizedSecondary) {
+            return '暂无提示词内容';
+        }
+
+        const previewSource = normalizedPrimary || normalizedSecondary;
+        const preview = previewSource.length > 96
+            ? `${previewSource.slice(0, 96)}...`
+            : previewSource;
+
+        if (!normalizedPrimary || !normalizedSecondary) {
+            return preview;
+        }
+
+        return `${preview}\nInvitePrompt 已配置`;
+    }
+
+    function buildGroupIdentitySummary() {
+        const name = groupNameInput?.value?.trim() || '未命名群组';
+        const avatarSrc = groupAvatarPreview?.getAttribute('src') || 'assets/default_group_avatar.png';
+        const memberCount = groupMembersListDiv
+            ? groupMembersListDiv.querySelectorAll('input[type="checkbox"]:checked').length
+            : 0;
+
+        return {
+            kind: 'identity',
+            text: name,
+            avatarSrc,
+            meta: memberCount > 0 ? `${memberCount} 名成员` : '暂无成员'
+        };
+    }
+
+    function buildGroupModeSummary() {
+        const modeLabels = {
+            sequential: '顺序发言',
+            naturerandom: '自然随机',
+            invite_only: '邀请发言'
+        };
+        const tagModeLabels = {
+            strict: '严格模式',
+            natural: '自然模式'
+        };
+
+        const lines = [`模式: ${modeLabels[groupChatModeSelect?.value] || '未设置'}`];
+        if (groupChatModeSelect?.value === 'naturerandom') {
+            lines.push(`Tag: ${tagModeLabels[tagMatchModeSelect?.value] || '严格模式'}`);
+        }
+        return lines.join('\n');
+    }
+
+    function buildGroupModelSummary() {
+        if (!groupUseUnifiedModel?.checked) {
+            return '跟随成员模型';
+        }
+        return groupUnifiedModelInput?.value?.trim() || '已启用统一模型，尚未选择';
+    }
+
+    function buildGroupPromptSummary() {
+        return buildGroupPromptPreviewText(groupPromptTextarea?.value, invitePromptTextarea?.value);
+    }
+
+    function updateGroupSectionSummary(key) {
+        const controller = groupSectionControllers.get(key);
+        if (!controller) return;
+
+        const summaryValue = controller.buildSummary();
+        if (summaryValue && typeof summaryValue === 'object' && summaryValue.kind === 'identity') {
+            controller.summary.classList.add('summary-with-avatar');
+            controller.summary.innerHTML = '';
+
+            const avatar = document.createElement('img');
+            avatar.className = 'group-settings-summary-avatar';
+            avatar.src = summaryValue.avatarSrc || 'assets/default_group_avatar.png';
+            avatar.alt = '';
+
+            const copy = document.createElement('div');
+            copy.className = 'group-settings-summary-copy';
+
+            const title = document.createElement('span');
+            title.className = 'group-settings-summary-label';
+            title.textContent = summaryValue.text || '未命名群组';
+
+            const meta = document.createElement('span');
+            meta.className = 'group-settings-summary-meta';
+            meta.textContent = summaryValue.meta || '';
+
+            copy.appendChild(title);
+            copy.appendChild(meta);
+            controller.summary.appendChild(avatar);
+            controller.summary.appendChild(copy);
+            return;
+        }
+
+        controller.summary.classList.remove('summary-with-avatar');
+        controller.summary.textContent = typeof summaryValue === 'string' ? summaryValue : '';
+    }
+
+    function updateAllGroupSectionSummaries() {
+        groupSectionControllers.forEach((_, key) => updateGroupSectionSummary(key));
+    }
+
+    function setupGroupSettingsSections() {
+        groupSectionControllers.clear();
+        createGroupSectionController('identity', buildGroupIdentitySummary);
+        createGroupSectionController('mode', buildGroupModeSummary);
+        createGroupSectionController('model', buildGroupModelSummary);
+        createGroupSectionController('prompt', buildGroupPromptSummary);
+
+        if (!groupSettingsForm?.dataset.summaryBindings) {
+            const bindSummaryRefresh = (element, events = ['input']) => {
+                if (!element || element.dataset.groupSummaryBound) return;
+                events.forEach((eventName) => {
+                    element.addEventListener(eventName, () => updateAllGroupSectionSummaries());
+                });
+                element.dataset.groupSummaryBound = 'true';
+            };
+
+            [
+                groupNameInput,
+                groupChatModeSelect,
+                tagMatchModeSelect,
+                groupUseUnifiedModel,
+                groupUnifiedModelInput,
+                groupPromptTextarea,
+                invitePromptTextarea
+            ].forEach((element) => bindSummaryRefresh(element, ['input', 'change']));
+
+            if (groupAvatarPreview && !groupAvatarPreview.dataset.groupSummaryObserverBound) {
+                const avatarObserver = new MutationObserver(() => updateGroupSectionSummary('identity'));
+                avatarObserver.observe(groupAvatarPreview, { attributes: true, attributeFilter: ['src'] });
+                groupAvatarPreview.dataset.groupSummaryObserverBound = 'true';
+            }
+
+            groupSettingsForm.dataset.summaryBindings = 'true';
+        }
+
+        ['identity', 'mode', 'model', 'prompt'].forEach((key) => {
+            const controller = groupSectionControllers.get(key);
+            if (controller) controller.setCollapsed(true);
+        });
+
+        updateAllGroupSectionSummaries();
     }
 
 
@@ -345,7 +680,7 @@ window.GroupRenderer = (() => {
         const groupConfig = await electronAPI.getAgentGroupConfig(groupId);
         if (!groupConfig || groupConfig.error) {
             alert(`加载群组配置失败: ${groupConfig?.error || '未知错误'}`);
-            if (groupSettingsContainer) groupSettingsContainer.style.display = 'none'; // Hide group settings form
+            if (groupSettingsContainer) groupSettingsContainer.style.display = 'none';
             if (selectAgentPromptForSettingsElementFromRenderer) { // Use direct module-level ref
                 selectAgentPromptForSettingsElementFromRenderer.textContent = `加载群组 ${groupId} 配置失败。`;
                 selectAgentPromptForSettingsElementFromRenderer.style.display = 'block';
@@ -367,7 +702,7 @@ window.GroupRenderer = (() => {
 
         // Show group-specific settings container (this is managed within GroupRenderer)
         if (groupSettingsContainer && typeof groupSettingsContainer.style !== 'undefined') {
-            groupSettingsContainer.style.display = 'block';
+            groupSettingsContainer.style.display = '';
         }
 
         // Hide the "select item" prompt (using the specific ref from renderer)
@@ -400,8 +735,10 @@ window.GroupRenderer = (() => {
         document.getElementById('editingGroupId').value = groupId;
 
         groupNameInput.value = groupConfig.name || '';
-        groupAvatarPreview.style.display = groupConfig.avatarUrl ? 'block' : 'none';
-        groupAvatarPreview.src = groupConfig.avatarUrl ? `${groupConfig.avatarUrl}?t=${Date.now()}` : '#';
+        groupAvatarPreview.style.display = 'block';
+        groupAvatarPreview.src = groupConfig.avatarUrl
+            ? `${groupConfig.avatarUrl}?t=${Date.now()}`
+            : 'assets/default_group_avatar.png';
         groupAvatarInput.value = ''; // Clear file input
 
         groupChatModeSelect.value = groupConfig.mode || 'sequential';
@@ -419,21 +756,26 @@ window.GroupRenderer = (() => {
         groupUnifiedModelInput.value = groupConfig.unifiedModel || '';
         groupUnifiedModelContainer.style.display = groupUseUnifiedModel.checked ? 'block' : 'none';
 
+        setupGroupSettingsSections();
+
         groupUseUnifiedModel.onchange = () => {
             groupUnifiedModelContainer.style.display = groupUseUnifiedModel.checked ? 'block' : 'none';
+            updateGroupSectionSummary('model');
         };
 
         // To prevent adding multiple listeners, we replace the button with a clone of itself, which removes all old listeners.
-        const newBtn = openGroupModelSelectBtn.cloneNode(true);
-        openGroupModelSelectBtn.parentNode.replaceChild(newBtn, openGroupModelSelectBtn);
-        openGroupModelSelectBtn = newBtn; // Update our reference to the new button
+        if (openGroupModelSelectBtn?.parentNode) {
+            const newBtn = openGroupModelSelectBtn.cloneNode(true);
+            openGroupModelSelectBtn.parentNode.replaceChild(newBtn, openGroupModelSelectBtn);
+            openGroupModelSelectBtn = newBtn; // Update our reference to the new button
 
-        openGroupModelSelectBtn.addEventListener('click', async () => {
+            openGroupModelSelectBtn.addEventListener('click', async () => {
             try {
                 // Reuse SettingsManager's model selector pipeline so callback/list behavior stays consistent.
                 if (window.settingsManager && typeof window.settingsManager.openModelSelectForInput === 'function') {
                     try {
                         await window.settingsManager.openModelSelectForInput(groupUnifiedModelInput);
+                        updateGroupSectionSummary('model');
                         return;
                     } catch (settingsManagerError) {
                         console.warn('[GroupRenderer] settingsManager model selector failed, falling back.', settingsManagerError);
@@ -466,6 +808,7 @@ window.GroupRenderer = (() => {
                         if (groupUnifiedModelInput) {
                             groupUnifiedModelInput.value = modelId;
                         }
+                        updateGroupSectionSummary('model');
                         uiHelper.closeModal('modelSelectModal');
                     });
                     modelListElement.appendChild(li);
@@ -474,10 +817,12 @@ window.GroupRenderer = (() => {
                 console.error('Error fetching cached models for group settings:', error);
                 uiHelper.showToastNotification('加载模型列表失败', 'error');
             }
-        });
+            });
+        }
 
         groupChatModeSelect.onchange = () => {
             toggleMemberTagsVisibility(groupChatModeSelect.value);
+            updateGroupSectionSummary('mode');
         };
 
         if (groupSettingsForm._eventListenerAttached) {
@@ -487,17 +832,21 @@ window.GroupRenderer = (() => {
         groupSettingsForm._eventListenerAttached = true;
 
 
-        if (deleteGroupBtn._eventListenerAttached) {
+        if (deleteGroupBtn?._eventListenerAttached) {
             deleteGroupBtn.removeEventListener('click', handleDeleteCurrentGroup);
         }
-        deleteGroupBtn.addEventListener('click', handleDeleteCurrentGroup);
-        deleteGroupBtn._eventListenerAttached = true;
+        if (deleteGroupBtn) {
+            deleteGroupBtn.addEventListener('click', handleDeleteCurrentGroup);
+            deleteGroupBtn._eventListenerAttached = true;
+        }
 
         if (groupAvatarInput._eventListenerAttached) {
             groupAvatarInput.removeEventListener('change', handleGroupAvatarChange);
         }
         groupAvatarInput.addEventListener('change', handleGroupAvatarChange);
         groupAvatarInput._eventListenerAttached = true;
+
+        updateAllGroupSectionSummaries();
     }
 
 
@@ -510,6 +859,7 @@ window.GroupRenderer = (() => {
                     groupAvatarPreview.src = URL.createObjectURL(croppedFile);
                     groupAvatarPreview.style.display = 'block';
                 }
+                updateGroupSectionSummary('identity');
             });
         }
     }
@@ -540,7 +890,11 @@ window.GroupRenderer = (() => {
                 checkbox.id = `member_agent_${agent.id}`;
                 checkbox.value = agent.id;
                 checkbox.checked = groupConfig.members && groupConfig.members.includes(agent.id);
-                checkbox.onchange = () => updateMemberTagsInputs(groupConfig);
+                checkbox.onchange = () => {
+                    updateMemberTagsInputs(groupConfig);
+                    updateGroupSectionSummary('identity');
+                    updateGroupSectionSummary('mode');
+                };
 
 
                 const label = document.createElement('label');
@@ -558,6 +912,8 @@ window.GroupRenderer = (() => {
                 groupMembersListDiv.appendChild(memberDiv);
             });
             updateMemberTagsInputs(groupConfig); // Initial population of tag inputs
+            updateGroupSectionSummary('identity');
+            updateGroupSectionSummary('mode');
         } catch (error) {
             groupMembersListDiv.innerHTML = `加载Agent列表时出错: ${error.message}`;
             console.error("Error populating group members settings:", error);
@@ -566,6 +922,10 @@ window.GroupRenderer = (() => {
 
     function updateMemberTagsInputs(groupConfig) {
         if (!memberTagsInputsDiv || !groupMembersListDiv) return;
+        const draftTags = {};
+        memberTagsInputsDiv.querySelectorAll('input[type="text"]').forEach((input) => {
+            draftTags[input.dataset.agentId] = input.value;
+        });
         memberTagsInputsDiv.innerHTML = ''; // Clear existing
         const selectedMemberIds = Array.from(groupMembersListDiv.querySelectorAll('input[type="checkbox"]:checked'))
             .map(cb => cb.value);
@@ -583,7 +943,8 @@ window.GroupRenderer = (() => {
                 input.id = `tags_for_${agentId}`;
                 input.dataset.agentId = agentId;
                 input.placeholder = "例如: 猫娘,小克,科学";
-                input.value = (groupConfig.memberTags && groupConfig.memberTags[agentId]) ? groupConfig.memberTags[agentId] : '';
+                input.value = draftTags[agentId] ?? ((groupConfig.memberTags && groupConfig.memberTags[agentId]) ? groupConfig.memberTags[agentId] : '');
+                input.addEventListener('input', () => updateGroupSectionSummary('mode'));
                 tagInputDiv.appendChild(label);
                 tagInputDiv.appendChild(input);
                 memberTagsInputsDiv.appendChild(tagInputDiv);
@@ -596,6 +957,7 @@ window.GroupRenderer = (() => {
         if (memberTagsContainer) {
             memberTagsContainer.style.display = mode === 'naturerandom' ? 'block' : 'none';
         }
+        updateGroupSectionSummary('mode');
     }
 
     async function handleSaveGroupSettings(event) {
