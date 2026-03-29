@@ -391,7 +391,7 @@ body {
     background: var(--accent-color);
     color: var(--text-on-accent);
     border-color: transparent;
-    box-shadow: 0 0 15px var(--accent-color);
+    box-shadow: 0 0 8px rgba(var(--accent-color-rgb, 74, 144, 226), 0.4);
 }
 
 .scope-toggle-btn svg {
