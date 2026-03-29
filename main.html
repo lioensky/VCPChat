@@ -163,36 +163,48 @@
                     <form id="agentSettingsForm">
                         <input type="hidden" id="editingAgentId" name="agentId">
                         <!-- Agent名称和头像容器 -->
-                        <div class="agent-identity-container">
-                            <div class="agent-identity-main">
-                                <div class="agent-avatar-wrapper">
-                                    <img id="agentAvatarPreview" src="assets/default_avatar.png" alt="头像预览"
-                                        class="agent-avatar-display" style="display: block;">
-                                    <label for="agentAvatarInput" class="avatar-upload-overlay">
-                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
-                                            stroke="currentColor" stroke-width="2">
-                                            <path
-                                                d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z">
-                                            </path>
-                                            <circle cx="12" cy="13" r="4"></circle>
-                                        </svg>
-                                    </label>
-                                    <input type="file" id="agentAvatarInput" name="avatar"
-                                        accept="image/png, image/jpeg, image/gif" style="display: none;">
-                                </div>
-                                <div class="agent-name-wrapper">
-                                    <label for="agentNameInput">Agent 名称</label>
-                                    <input type="text" id="agentNameInput" name="name" required>
-                                </div>
+                        <div class="agent-settings-collapsible-container agent-settings-section collapsed" data-section-key="identity">
+                            <div class="agent-settings-section-header" id="identityToggleHeader">
+                                <span class="agent-settings-section-title">基础信息</span>
+                                <div class="agent-settings-section-summary" id="identitySummary"></div>
+                                <button type="button" class="agent-settings-toggle-btn" id="identityToggleBtn" aria-label="展开或收起基础信息">
+                                    <svg class="toggle-icon" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                                        stroke="currentColor" stroke-width="2">
+                                        <polyline points="6 9 12 15 18 9"></polyline>
+                                    </svg>
+                                </button>
                             </div>
+                            <div class="agent-settings-section-content" id="identityContent">
+                                <div class="agent-identity-container">
+                                    <div class="agent-identity-main">
+                                        <div class="agent-avatar-wrapper">
+                                            <img id="agentAvatarPreview" src="assets/default_avatar.png" alt="头像预览"
+                                                class="agent-avatar-display" style="display: block;">
+                                            <label for="agentAvatarInput" class="avatar-upload-overlay">
+                                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                                                    stroke="currentColor" stroke-width="2">
+                                                    <path
+                                                        d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z">
+                                                    </path>
+                                                    <circle cx="12" cy="13" r="4"></circle>
+                                                </svg>
+                                            </label>
+                                            <input type="file" id="agentAvatarInput" name="avatar"
+                                                accept="image/png, image/jpeg, image/gif" style="display: none;">
+                                        </div>
+                                        <div class="agent-name-wrapper">
+                                            <label for="agentNameInput">Agent 名称</label>
+                                            <input type="text" id="agentNameInput" name="name" required>
+                                        </div>
+                                    </div>
 
-                            <!-- 自定义样式设置 - 可折叠 -->
-                            <div class="agent-style-collapsible-container collapsed">
-                                <div class="style-collapse-header" id="styleCollapseHeader">
-                                    <span class="style-collapse-icon">▶</span>
-                                    <span class="style-collapse-title">自定义样式设置</span>
-                                </div>
-                                <div class="agent-style-controls">
+                                    <!-- 自定义样式设置 - 可折叠 -->
+                                    <div class="agent-style-collapsible-container collapsed">
+                                        <div class="style-collapse-header" id="styleCollapseHeader">
+                                            <span class="style-collapse-icon">▶</span>
+                                            <span class="style-collapse-title">自定义样式设置</span>
+                                        </div>
+                                        <div class="agent-style-controls">
                                     <!-- 禁用自定义颜色开关 -->
                                     <div class="style-control-item full-width">
                                         <div class="form-group-inline"
@@ -281,36 +293,65 @@
                                             style="color: var(--text-secondary); font-size: 0.85em;">提示：此CSS将应用于【聊天会话】中Agent的头像和名称。可使用
                                             .message-avatar 控制头像，.sender-name 控制名称</small>
                                     </div>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
-                        <div>
-                            <label for="systemPromptContainer">系统提示词（三个模块独立，编辑后注意保存以生效):</label>
-                            <div id="systemPromptContainer" class="system-prompt-container">
-                                <!-- Promptmodules will be initialized here -->
-                            </div>
-                        </div>
-                        <div>
-                            <label for="agentModel">模型名称:</label>
-                            <div class="model-input-container">
-                                <input type="text" id="agentModel" name="model"
-                                    placeholder="例如 gemini-2.5-flash-preview-05-20">
-                                <button type="button" id="openModelSelectBtn" class="small-button" title="选择模型">
-                                    <svg data-slot="icon" fill="none" stroke-width="2" stroke="currentColor"
-                                        viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"
-                                        width="14" height="14">
-                                        <path stroke-linecap="round" stroke-linejoin="round"
-                                            d="M19.5 8.25l-7.5 7.5-7.5-7.5"></path>
+                        <div class="agent-settings-collapsible-container agent-settings-section collapsed" data-section-key="prompt">
+                            <div class="agent-settings-section-header" id="promptToggleHeader">
+                                <span class="agent-settings-section-title">系统提示词</span>
+                                <div class="agent-settings-section-summary" id="promptSummary"></div>
+                                <button type="button" class="agent-settings-toggle-btn" id="promptToggleBtn" aria-label="展开或收起系统提示词">
+                                    <svg class="toggle-icon" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                                        stroke="currentColor" stroke-width="2">
+                                        <polyline points="6 9 12 15 18 9"></polyline>
                                     </svg>
                                 </button>
                             </div>
+                            <div class="agent-settings-section-content" id="promptContent">
+                                <div class="agent-settings-card-shell agent-settings-prompt-shell">
+                                    <div class="prompt-section-note">三个模块独立编辑后，注意保存以生效</div>
+                                    <div id="systemPromptContainer" class="system-prompt-container">
+                                        <!-- Promptmodules will be initialized here -->
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="agent-settings-collapsible-container agent-settings-section collapsed" data-section-key="model">
+                            <div class="agent-settings-section-header" id="modelToggleHeader">
+                                <span class="agent-settings-section-title">模型设置</span>
+                                <div class="agent-settings-section-summary" id="modelSummary"></div>
+                                <button type="button" class="agent-settings-toggle-btn" id="modelToggleBtn" aria-label="展开或收起模型设置">
+                                    <svg class="toggle-icon" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                                        stroke="currentColor" stroke-width="2">
+                                        <polyline points="6 9 12 15 18 9"></polyline>
+                                    </svg>
+                                </button>
+                            </div>
+                            <div class="agent-settings-section-content" id="modelContent">
+                                <div class="agent-settings-card-shell agent-settings-model-shell">
+                                    <div class="model-input-container">
+                                        <input type="text" id="agentModel" name="model"
+                                            placeholder="例如 gemini-2.5-flash-preview-05-20">
+                                        <button type="button" id="openModelSelectBtn" class="small-button" title="选择模型">
+                                            <svg data-slot="icon" fill="none" stroke-width="2" stroke="currentColor"
+                                                viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"
+                                                width="14" height="14">
+                                                <path stroke-linecap="round" stroke-linejoin="round"
+                                                    d="M19.5 8.25l-7.5 7.5-7.5-7.5"></path>
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                         <!-- 参数设置可折叠容器 -->
-                        <div class="agent-params-collapsible-container">
-                            <div class="params-header" id="paramsToggleHeader">
-                                <span class="params-title">模型参数配置</span>
-                                <div class="params-summary" id="paramsSummary"></div>
-                                <button type="button" class="params-toggle-btn" id="paramsToggleBtn"
+                        <div class="agent-settings-collapsible-container agent-params-collapsible-container agent-settings-section collapsed" data-section-key="params">
+                            <div class="agent-settings-section-header params-header" id="paramsToggleHeader">
+                                <span class="agent-settings-section-title params-title">模型参数配置</span>
+                                <div class="agent-settings-section-summary params-summary" id="paramsSummary"></div>
+                                <button type="button" class="agent-settings-toggle-btn params-toggle-btn" id="paramsToggleBtn"
                                     aria-label="展开/折叠参数">
                                     <svg class="toggle-icon" width="16" height="16" viewBox="0 0 24 24" fill="none"
                                         stroke="currentColor" stroke-width="2">
@@ -318,7 +359,7 @@
                                     </svg>
                                 </button>
                             </div>
-                            <div class="params-content" id="paramsContent">
+                            <div class="agent-settings-section-content params-content" id="paramsContent">
                                 <div>
                                     <label for="agentTemperature">Temperature (0-1):</label>
                                     <input type="number" id="agentTemperature" name="temperature" min="0" max="1"
@@ -356,14 +397,12 @@
                             </div>
                         </div>
 
-                        <hr class="form-divider">
-
                         <!-- 语音设置可折叠容器 -->
-                        <div class="agent-params-collapsible-container">
-                            <div class="params-header" id="ttsToggleHeader">
-                                <span class="params-title">语音设置 (Sovits TTS)</span>
-                                <div class="params-summary" id="ttsSummary"></div>
-                                <button type="button" class="params-toggle-btn" id="ttsToggleBtn"
+                        <div class="agent-settings-collapsible-container agent-params-collapsible-container agent-settings-section collapsed" data-section-key="tts">
+                            <div class="agent-settings-section-header params-header" id="ttsToggleHeader">
+                                <span class="agent-settings-section-title params-title">语音设置 (Sovits TTS)</span>
+                                <div class="agent-settings-section-summary params-summary" id="ttsSummary"></div>
+                                <button type="button" class="agent-settings-toggle-btn params-toggle-btn" id="ttsToggleBtn"
                                     aria-label="展开/折叠语音设置">
                                     <svg class="toggle-icon" width="16" height="16" viewBox="0 0 24 24" fill="none"
                                         stroke="currentColor" stroke-width="2">
@@ -371,7 +410,7 @@
                                     </svg>
                                 </button>
                             </div>
-                            <div class="params-content" id="ttsContent">
+                            <div class="agent-settings-section-content params-content" id="ttsContent">
                                 <div>
                                     <label for="agentTtsVoicePrimary">主语言模型:</label>
                                     <div class="model-input-container">
@@ -400,8 +439,6 @@
                                         placeholder="例如 [^\[\]]+">
                                 </div>
 
-                                <hr class="form-divider-dashed">
-
                                 <div>
                                     <label for="agentTtsVoiceSecondary">副语言模型:</label>
                                     <div class="model-input-container">
@@ -415,8 +452,6 @@
                                     <input type="text" id="agentTtsRegexSecondary" name="ttsRegexSecondary"
                                         placeholder="例如 \[(.*?)\]">
                                 </div>
-
-                                <hr class="form-divider-dashed">
 
                                 <div>
                                     <label for="agentTtsSpeed">语速:</label>

@@ -90,7 +90,7 @@ class ModularPromptModule {
     render(container) {
         this.container = container;
         container.innerHTML = '';
-        container.className = 'modular-prompt-container';
+        container.classList.add('modular-prompt-container');
 
         // 顶部工具栏
         const toolbar = this.createToolbar();
@@ -223,7 +223,7 @@ class ModularPromptModule {
 
         if (block.type === 'newline') {
             blockEl.classList.add('newline-block');
-            blockEl.innerHTML = '<span class="newline-label">\\n</span>';
+            blockEl.innerHTML = '<span class="newline-label">换行</span>';
         } else {
             blockEl.classList.add('text-block');
             if (block.disabled) {
@@ -656,7 +656,7 @@ class ModularPromptModule {
         // 添加新建仓库按钮
         const addWarehouseBtn = document.createElement('button');
         addWarehouseBtn.className = 'add-warehouse-btn';
-        addWarehouseBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 16 16"><path d="M8 2v12M2 8h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+        addWarehouseBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 16 16"><path d="M8 2v12M2 8h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span>新建小仓</span>';
         addWarehouseBtn.title = '新建仓库';
         addWarehouseBtn.onclick = () => this.createWarehouse();
         header.appendChild(addWarehouseBtn);

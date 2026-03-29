@@ -372,6 +372,7 @@ class PromptManager {
         if (!contentContainer) return;
 
         contentContainer.innerHTML = '';
+        contentContainer.className = 'prompt-content-container';
 
         switch (this.currentMode) {
             case 'original':
