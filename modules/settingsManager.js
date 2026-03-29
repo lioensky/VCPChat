@@ -67,6 +67,8 @@ const settingsManager = (() => {
     let currentModelSelectCallback = null;
     const sectionControllers = new Map();
     let lastPersistedCollapseStateSignature = '';
+    let scheduleStickyButtonsRefresh = () => { };
+    const initializedCollapseStateAgents = new Set();
     const promptModeFallbackLabels = {
         original: '文本',
         modular: '模块',
@@ -88,7 +90,7 @@ const settingsManager = (() => {
             selectedItemNameForSettingsSpan.textContent = currentSelectedItem.name || currentSelectedItem.id;
 
             if (currentSelectedItem.type === 'agent') {
-                if (agentSettingsExists) agentSettingsContainer.style.display = 'block';
+                if (agentSettingsExists) agentSettingsContainer.style.display = '';
                 if (groupSettingsExists) groupSettingsContainer.style.display = 'none';
                 itemSettingsContainerTitle.textContent = 'Agent 设置: ';
                 deleteItemBtn.textContent = '删除此 Agent';
@@ -122,7 +124,7 @@ const settingsManager = (() => {
      */
     async function populateAgentSettingsForm(agentId, agentConfig) {
         if (groupSettingsContainer) groupSettingsContainer.style.display = 'none';
-        if (agentSettingsContainer) agentSettingsContainer.style.display = 'block';
+        if (agentSettingsContainer) agentSettingsContainer.style.display = '';
 
         if (!agentConfig || agentConfig.error) {
             uiHelper.showToastNotification(`加载Agent配置失败: ${agentConfig?.error || '未知错误'}`, 'error');
@@ -235,6 +237,7 @@ const settingsManager = (() => {
         // Restore collapse states after dynamic content is ready
         restoreCollapseStates(agentConfig);
         updateAllSectionSummaries();
+        scheduleStickyButtonsRefresh();
     }
 
     /**
@@ -1239,8 +1242,7 @@ function createStripRegexUI() {
         const importBtn = document.createElement('button');
         importBtn.type = 'button';
         importBtn.textContent = '导入正则';
-        importBtn.className = 'btn-add-regex';
-        importBtn.style.marginTop = '8px';
+        importBtn.className = 'btn-add-regex btn-add-regex-secondary';
         importBtn.addEventListener('click', () => handleImportRegex());
         shell.appendChild(importBtn);
 
@@ -1261,6 +1263,7 @@ function createStripRegexUI() {
             stripRegexListContainer.appendChild(row);
         });
         updateSectionSummary('regex');
+        scheduleStickyButtonsRefresh();
     }
 
     function createRegexRow(rule) {
@@ -1439,54 +1442,25 @@ function createStripRegexUI() {
     /**
      * 设置Agent设置的粘性按钮效果
      */
-    function setupAgentSettingsStickyButtons() {
-        if (!agentSettingsContainer) return;
+function setupAgentSettingsStickyButtons() {
+        const applyStableDualButtonsState = () => {
+            const formActions = agentSettingsForm?.querySelector('.form-actions');
+            if (!formActions) return;
 
-        // 监听Agent设置容器的滚动事件
-        const settingsTabContent = agentSettingsContainer.closest('.sidebar-tab-content');
-        if (!settingsTabContent) return;
-
-        let isScrolledToBottom = false;
-
-        const updateStickyButtonState = () => {
-            const scrollTop = settingsTabContent.scrollTop;
-            const scrollHeight = settingsTabContent.scrollHeight;
-            const clientHeight = settingsTabContent.clientHeight;
-
-            // 检查是否滚动到底部（留出一些容差）
-            const newScrolledToBottom = scrollTop + clientHeight >= scrollHeight - 10;
-
-            if (newScrolledToBottom !== isScrolledToBottom) {
-                isScrolledToBottom = newScrolledToBottom;
-
-                // 更新按钮容器类名
-                const formActions = agentSettingsForm?.querySelector('.form-actions');
-                if (formActions) {
-                    if (isScrolledToBottom) {
-                        // 滚动到底部时，显示删除按钮
-                        formActions.classList.add('scrolled-to-bottom');
-                    } else {
-                        // 未滚动到底部时，隐藏删除按钮
-                        formActions.classList.remove('scrolled-to-bottom');
-                    }
-                }
-            }
+            formActions.classList.add('scrolled-to-bottom');
+            formActions.classList.remove('no-scroll-mode');
         };
 
-        // 使用节流函数避免过度调用
-        let scrollTimeout;
-        settingsTabContent.addEventListener('scroll', () => {
-            if (scrollTimeout) {
-                clearTimeout(scrollTimeout);
-            }
-            scrollTimeout = setTimeout(updateStickyButtonState, 10);
-        });
+        scheduleStickyButtonsRefresh = () => {
+            window.requestAnimationFrame(() => {
+                applyStableDualButtonsState();
+            });
+        };
 
-        // 初始检查 - 确保初始状态下删除按钮是隐藏的
-        isScrolledToBottom = false;
-        updateStickyButtonState();
+        applyStableDualButtonsState();
+        scheduleStickyButtonsRefresh();
 
-        console.log('[SettingsManager] Agent settings sticky buttons initialized.');
+        console.log('[SettingsManager] Agent settings sticky buttons initialized in stable dual-button mode.');
     }
 
     /**
@@ -1616,6 +1590,7 @@ function setupParamsCollapsible() {
                 controller.setCollapsed(!controller.container.classList.contains('collapsed'));
                 updateSectionSummary(key);
                 persistCollapseStatesForCurrentSelection();
+                scheduleStickyButtonsRefresh();
             });
             header.dataset.collapsibleBound = 'true';
         }
@@ -1758,6 +1733,7 @@ function setupParamsCollapsible() {
             if (systemPromptContainer && !systemPromptContainer.dataset.summaryRefreshBound) {
                 const schedulePromptRefresh = () => {
                     window.setTimeout(() => updateSectionSummary('prompt'), 0);
+                    scheduleStickyButtonsRefresh();
                 };
                 ['input', 'change', 'click'].forEach(eventName => {
                     systemPromptContainer.addEventListener(eventName, schedulePromptRefresh);
@@ -1862,6 +1838,8 @@ function setupParamsCollapsible() {
      * 恢复折叠区域的状态
      */
     function restoreCollapseStates(agentConfig) {
+        const agentId = editingAgentIdInput?.value || agentConfig?.id || '';
+        const isFirstSettingsLoadThisSession = agentId && !initializedCollapseStateAgents.has(agentId);
         const states = {
             identityCollapsed: true,
             promptCollapsed: true,
@@ -1870,8 +1848,12 @@ function setupParamsCollapsible() {
             ttsCollapsed: true,
             regexCollapsed: true,
             styleCollapsed: true,
-            ...getCollapseStatesFromConfig(agentConfig)
+            ...(isFirstSettingsLoadThisSession ? {} : getCollapseStatesFromConfig(agentConfig))
         };
+
+        if (agentId) {
+            initializedCollapseStateAgents.add(agentId);
+        }
 
         [
             ['identity', states.identityCollapsed],
@@ -1915,6 +1897,7 @@ function setupParamsCollapsible() {
             styleHeader.addEventListener('click', () => {
                 styleContainer.classList.toggle('collapsed');
                 persistCollapseStatesForCurrentSelection();
+                scheduleStickyButtonsRefresh();
             });
             styleHeader.dataset.collapsibleBound = 'true';
         }
