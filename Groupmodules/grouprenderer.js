@@ -105,65 +105,8 @@ window.GroupRenderer = (() => {
             console.log("[GroupRenderer] groupSettingsContainer created.");
         }
 
-        // Always set the innerHTML to ensure all form elements are present
-        groupSettingsContainer.innerHTML = `
-            <form id="groupSettingsForm">
-                <input type="hidden" id="editingGroupId">
-                <div class="form-group">
-                    <label for="groupNameInput">群组名称:</label>
-                    <input type="text" id="groupNameInput" required>
-                </div>
-                <div class="form-group">
-                    <label for="groupAvatarInput">群组头像:</label>
-                    <input type="file" id="groupAvatarInput" accept="image/*">
-                    <img id="groupAvatarPreview" src="#" alt="群组头像预览" style="display: none; max-width: 100px; max-height: 100px; border-radius: 50%;">
-                </div>
-                <div class="form-group">
-                    <label>群组成员:</label>
-                    <div id="groupMembersList" class="group-members-list-container"></div>
-                </div>
-                <div class="form-group">
-                    <label for="groupChatMode">群聊模式:</label>
-                    <select id="groupChatMode">
-                        <option value="sequential">顺序发言</option>
-                        <option value="naturerandom">自然随机</option>
-                        <option value="invite_only">邀请发言</option>
-                    </select>
-                </div>
-
-               <hr class="form-divider">
-               <div class="form-group-inline" style="justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                   <label for="groupUseUnifiedModel">启用群组统一模型</label>
-                   <label class="switch">
-
-                <div id="memberTagsContainer" class="form-group" style="display: none;">
-                    <div class="form-group" style="margin-bottom: 10px;">
-                        <label for="tagMatchMode">发言触发模式:</label>
-                        <select id="tagMatchMode">
-                            <option value="strict">精确模式（Tag命中即发言）</option>
-                            <option value="natural">自然模式（智能区分触发来源）</option>
-                        </select>
-                        <small style="display:block; margin-top:4px; color: var(--text-secondary, #888);">自然模式：区分 Tag 来自他人还是自身，避免 Agent 因自身历史发言而反复重复。</small>
-                    </div>
-                    <label>成员 Tags (用于自然随机模式):</label>
-                    <div id="memberTagsInputs"></div>
-                </div>
-                <div class="form-group">
-                    <label for="groupPrompt">群设定 (GroupPrompt):</label>
-                    <textarea id="groupPrompt" rows="3" placeholder="例如：现在这里是用户家的聊天室..."></textarea>
-                </div>
-                <div class="form-group">
-                    <label for="invitePrompt">发言设定 (InvitePrompt):</label>
-                    <textarea id="invitePrompt" rows="3" placeholder="例如：现在轮到你 {{VCPChatAgentName}} 发言了。"></textarea>
-                    <small>使用 {{VCPChatAgentName}} 作为被邀请发言的Agent名称占位符。</small>
-                </div>
-                <div class="form-actions">
-                    <button type="submit">保存群组设置</button>
-                    <button type="button" id="deleteGroupBtn">删除此群组</button>
-                </div>
-            </form>
-        `;
-        groupSettingsContainer.innerHTML = renderGroupSettingsMarkup();
+        // 使用模块化的 HTML 模板
+        groupSettingsContainer.innerHTML = window.GroupSettingsMarkup.renderGroupSettingsMarkup();
         console.log("[GroupRenderer] groupSettingsContainer innerHTML set.");
         // Now that DOM is ensured and populated, get element references
         return getGroupSettingsElements(); // Return true if elements are successfully retrieved
@@ -197,153 +140,7 @@ window.GroupRenderer = (() => {
         return true;
     }
 
-    function renderGroupSettingsMarkup() {
-        return `
-            <form id="groupSettingsForm">
-                <input type="hidden" id="editingGroupId">
-
-                <div class="group-settings-collapsible-container group-settings-section collapsed" data-section-key="identity">
-                    <div class="group-settings-section-header" id="groupIdentityToggleHeader">
-                        <span class="group-settings-section-title">基础信息</span>
-                        <div class="group-settings-section-summary" id="groupIdentitySummary"></div>
-                        <button type="button" class="group-settings-toggle-btn" id="groupIdentityToggleBtn" aria-label="展开或收起基础信息">
-                            <svg class="toggle-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <polyline points="6 9 12 15 18 9"></polyline>
-                            </svg>
-                        </button>
-                    </div>
-                    <div class="group-settings-section-content" id="groupIdentityContent">
-                        <div class="group-settings-identity-shell">
-                            <div class="agent-identity-main group-identity-main">
-                                <div class="agent-avatar-wrapper group-avatar-wrapper">
-                                    <img id="groupAvatarPreview" src="assets/default_group_avatar.png" alt="群组头像预览" class="agent-avatar-display group-avatar-display" style="display: block;">
-                                    <label for="groupAvatarInput" class="avatar-upload-overlay">
-                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
-                                            <circle cx="12" cy="13" r="4"></circle>
-                                        </svg>
-                                    </label>
-                                    <input type="file" id="groupAvatarInput" accept="image/*" style="display: none;">
-                                </div>
-                                <div class="agent-name-wrapper group-name-wrapper">
-                                    <label for="groupNameInput">群组名称</label>
-                                    <input type="text" id="groupNameInput" required>
-                                </div>
-                            </div>
-
-                            <div class="group-settings-field-shell">
-                                <label class="group-settings-field-label" for="groupMembersList">群组成员</label>
-                                <div id="groupMembersList" class="group-members-list-container"></div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="group-settings-collapsible-container group-settings-section collapsed" data-section-key="mode">
-                    <div class="group-settings-section-header" id="groupModeToggleHeader">
-                        <span class="group-settings-section-title">群聊模式</span>
-                        <div class="group-settings-section-summary" id="groupModeSummary"></div>
-                        <button type="button" class="group-settings-toggle-btn" id="groupModeToggleBtn" aria-label="展开或收起群聊模式">
-                            <svg class="toggle-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <polyline points="6 9 12 15 18 9"></polyline>
-                            </svg>
-                        </button>
-                    </div>
-                    <div class="group-settings-section-content" id="groupModeContent">
-                        <div class="group-settings-card-shell">
-                            <div class="group-settings-field-shell">
-                                <select id="groupChatMode">
-                                    <option value="sequential">顺序发言</option>
-                                    <option value="naturerandom">自然随机</option>
-                                    <option value="invite_only">邀请发言</option>
-                                </select>
-                            </div>
-
-                            <div id="memberTagsContainer" class="group-settings-field-shell" style="display: none;">
-                                <label for="tagMatchMode">Tag 触发模式</label>
-                                <select id="tagMatchMode">
-                                    <option value="strict">严格模式</option>
-                                    <option value="natural">自然模式</option>
-                                </select>
-                                <div class="group-settings-helper-text">自然模式会区分 Tag 来源，尽量避免 Agent 因引用自身历史发言而重复触发。</div>
-
-                                <div class="group-settings-field-shell group-member-tags-shell">
-                                    <label class="group-settings-field-label">成员 Tags</label>
-                                    <div id="memberTagsInputs"></div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="group-settings-collapsible-container group-settings-section collapsed" data-section-key="model">
-                    <div class="group-settings-section-header" id="groupModelToggleHeader">
-                        <span class="group-settings-section-title">模型设置</span>
-                        <div class="group-settings-section-summary" id="groupModelSummary"></div>
-                        <button type="button" class="group-settings-toggle-btn" id="groupModelToggleBtn" aria-label="展开或收起模型设置">
-                            <svg class="toggle-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <polyline points="6 9 12 15 18 9"></polyline>
-                            </svg>
-                        </button>
-                    </div>
-                    <div class="group-settings-section-content" id="groupModelContent">
-                        <div class="group-settings-card-shell group-settings-model-shell">
-                            <div class="group-settings-switch-row">
-                                <label for="groupUseUnifiedModel">启用群组统一模型</label>
-                                <label class="switch" style="margin-bottom: 0;">
-                                    <input type="checkbox" id="groupUseUnifiedModel">
-                                    <span class="slider round"></span>
-                                </label>
-                            </div>
-
-                            <div id="groupUnifiedModelContainer" class="group-settings-field-shell" style="display: none;">
-                                <div class="model-input-container">
-                                    <input type="text" id="groupUnifiedModelInput" placeholder="选择群组统一模型">
-                                    <button type="button" id="openGroupModelSelectBtn" aria-label="打开模型选择器" title="选择模型">
-                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                            <polyline points="6 9 12 15 18 9"></polyline>
-                                        </svg>
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="group-settings-collapsible-container group-settings-section collapsed" data-section-key="prompt">
-                    <div class="group-settings-section-header" id="groupPromptToggleHeader">
-                        <span class="group-settings-section-title">系统提示词</span>
-                        <div class="group-settings-section-summary" id="groupPromptSummary"></div>
-                        <button type="button" class="group-settings-toggle-btn" id="groupPromptToggleBtn" aria-label="展开或收起系统提示词">
-                            <svg class="toggle-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <polyline points="6 9 12 15 18 9"></polyline>
-                            </svg>
-                        </button>
-                    </div>
-                    <div class="group-settings-section-content" id="groupPromptContent">
-                        <div class="group-settings-card-shell group-settings-prompt-shell">
-                            <div class="group-settings-field-shell">
-                                <label for="groupPrompt">GroupPrompt</label>
-                                <textarea id="groupPrompt" rows="4" placeholder="例如：这里是用户家的聊天空间，成员应保持协作与角色分工。"></textarea>
-                            </div>
-                            <div class="group-settings-field-shell">
-                                <label for="invitePrompt">InvitePrompt</label>
-                                <textarea id="invitePrompt" rows="4" placeholder="例如：现在轮到 {{VCPChatAgentName}} 发言了。"></textarea>
-                                <div class="group-settings-helper-text">可使用 {{VCPChatAgentName}} 作为被邀请发言的 Agent 名称占位符。</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="form-actions">
-                    <button type="submit">保存群组设置</button>
-                    <div class="delete-button-container">
-                        <button type="button" id="deleteGroupBtn" class="danger-button">删除此群组</button>
-                    </div>
-                </div>
-            </form>
-        `;
-    }
+    // renderGroupSettingsMarkup 已模块化至 Groupmodules/groupSettingsMarkup.js
 
     function getGroupSectionContainer(key) {
         return groupSettingsForm?.querySelector(`.group-settings-section[data-section-key="${key}"]`) || null;
@@ -971,7 +768,20 @@ window.GroupRenderer = (() => {
         const selectedMemberIds = Array.from(groupMembersListDiv.querySelectorAll('input[type="checkbox"]:checked'))
             .map(cb => cb.value);
 
-        const memberTags = {};
+        // 保留所有成员的 tag 数据（包括当前未勾选的成员），防止踢出后再加回时 tag 丢失
+        // 先获取服务端已有的完整 memberTags 作为基础
+        let existingMemberTags = {};
+        try {
+            const existingConfig = await electronAPI.getAgentGroupConfig(groupId);
+            if (existingConfig && existingConfig.memberTags) {
+                existingMemberTags = { ...existingConfig.memberTags };
+            }
+        } catch (e) {
+            console.warn('[GroupRenderer] 获取现有 memberTags 失败，将仅使用当前表单数据:', e);
+        }
+
+        // 用当前 DOM 中的值覆盖（当前勾选成员的最新编辑）
+        const memberTags = { ...existingMemberTags };
         if (memberTagsInputsDiv) {
             memberTagsInputsDiv.querySelectorAll('input[type="text"]').forEach(input => {
                 memberTags[input.dataset.agentId] = input.value.trim();
