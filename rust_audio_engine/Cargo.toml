@@ -82,3 +82,4 @@ dependencies = ["soxr"]
 
 [build-dependencies]
 pkg-config = "0.3"
+vcpkg = "0.2"
