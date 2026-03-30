@@ -29,6 +29,79 @@ import * as contextMenu from './renderer/messageContextMenu.js';
 import * as middleClickHandler from './renderer/middleClickHandler.js';
 
 
+// --- LaTeX Protection ---
+// 用于在 marked 解析前保护 LaTeX 块，防止 Markdown 解析器破坏 LaTeX 语法
+// （如 \\ 被当作转义、_ 被当作斜体等）
+let latexBlockMap = null;
+let latexPlaceholderId = 0;
+
+/**
+ * 在 marked 解析前保护 LaTeX 块，用占位符替换。
+ * 必须在 preprocessFullContent 之后、markedInstance.parse 之前调用。
+ * @param {string} text 预处理后的文本
+ * @returns {{text: string, map: Map<string, string>}} 替换后的文本和映射表
+ */
+function protectLatexBlocks(text) {
+    const map = new Map();
+    let id = 0;
+
+    // 保护顺序很重要：先保护 display math ($$...$$)，再保护 inline math ($...$)
+    // 同时保护 \[...\] 和 \(...\)
+
+    // 1. 保护 $$...$$ (display math) - 支持多行
+    text = text.replace(/\$\$([\s\S]*?)\$\$/g, (match) => {
+        const placeholder = `%%LATEX_BLOCK_${id}%%`;
+        map.set(placeholder, match);
+        id++;
+        return placeholder;
+    });
+
+    // 2. 保护 \[...\] (display math) - 支持多行
+    text = text.replace(/\\\[([\s\S]*?)\\\]/g, (match) => {
+        const placeholder = `%%LATEX_BLOCK_${id}%%`;
+        map.set(placeholder, match);
+        id++;
+        return placeholder;
+    });
+
+    // 3. 保护 \(...\) (inline math)
+    text = text.replace(/\\\(([\s\S]*?)\\\)/g, (match) => {
+        const placeholder = `%%LATEX_BLOCK_${id}%%`;
+        map.set(placeholder, match);
+        id++;
+        return placeholder;
+    });
+
+    // 4. 保护 $...$ (inline math) - 不跨行，避免误匹配价格等
+    // 使用更严格的匹配：$ 后面不能是空格，$ 前面不能是空格，不跨行
+    text = text.replace(/\$([^\$\n]+?)\$/g, (match, content) => {
+        // 跳过看起来像价格的情况（如 $100）
+        if (/^\d/.test(content.trim())) return match;
+        const placeholder = `%%LATEX_BLOCK_${id}%%`;
+        map.set(placeholder, match);
+        id++;
+        return placeholder;
+    });
+
+    return { text, map };
+}
+
+/**
+ * 在 marked 解析后恢复被保护的 LaTeX 块。
+ * @param {string} html marked 解析后的 HTML
+ * @param {Map<string, string>} map 占位符到原始 LaTeX 的映射
+ * @returns {string} 恢复后的 HTML
+ */
+function restoreLatexBlocks(html, map) {
+    if (!map || map.size === 0) return html;
+    for (const [placeholder, original] of map.entries()) {
+        // 占位符可能被 marked 包裹在 <p> 标签中，需要处理这种情况
+        // 使用全局替换以防万一有重复
+        html = html.split(placeholder).join(original);
+    }
+    return html;
+}
+
 // --- Pre-compiled Regular Expressions for Performance ---
 const TOOL_REGEX = /(?<!`)<<<\[TOOL_REQUEST\]>>>(.*?)<<<\[END_TOOL_REQUEST\]>>>(?!`)/gs;
 const NOTE_REGEX = /<<<DailyNoteStart>>>(.*?)<<<DailyNoteEnd>>>/gs;
@@ -1112,7 +1185,12 @@ function initializeMessageRenderer(refs) {
         parse: (text) => {
             const globalSettings = mainRendererReferences.globalSettingsRef.get();
             const processedText = preprocessFullContent(text, globalSettings);
-            return originalMarkedParse(processedText);
+            // 🟢 LaTeX 保护：在 marked 解析前保护 LaTeX 块
+            const { text: protectedText, map: latexMap } = protectLatexBlocks(processedText);
+            let html = originalMarkedParse(protectedText);
+            // 🟢 LaTeX 恢复：在 marked 解析后恢复 LaTeX 块
+            html = restoreLatexBlocks(html, latexMap);
+            return html;
         }
     };
 
@@ -1458,7 +1536,11 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true)
         // --- 正则规则应用结束 ---
 
         const processedContent = preprocessFullContent(textToRender, globalSettings, message.role, depth);
-        let rawHtml = markedInstance.parse(processedContent);
+        // 🟢 LaTeX 保护：在 marked 解析前保护 LaTeX 块
+        const { text: protectedContent, map: latexMap } = protectLatexBlocks(processedContent);
+        let rawHtml = markedInstance.parse(protectedContent);
+        // 🟢 LaTeX 恢复：在 marked 解析后恢复 LaTeX 块
+        rawHtml = restoreLatexBlocks(rawHtml, latexMap);
 
         // 修复：清理 Markdown 解析器可能生成的损坏的 SVG viewBox 属性
         // 错误 "Unexpected end of attribute" 表明 viewBox 的值不完整, 例如 "0 "
@@ -1815,7 +1897,11 @@ async function renderFullMessage(messageId, fullContent, agentName, agentId) {
     }
     // --- 正则规则应用结束 ---
     const processedFinalText = preprocessFullContent(fullContent, globalSettings, 'assistant');
-    let rawHtml = markedInstance.parse(processedFinalText);
+    // 🟢 LaTeX 保护：在 marked 解析前保护 LaTeX 块
+    const { text: protectedFinalText, map: latexMapFinal } = protectLatexBlocks(processedFinalText);
+    let rawHtml = markedInstance.parse(protectedFinalText);
+    // 🟢 LaTeX 恢复：在 marked 解析后恢复 LaTeX 块
+    rawHtml = restoreLatexBlocks(rawHtml, latexMapFinal);
 
     setContentAndProcessImages(contentDiv, rawHtml, messageId);
 
@@ -1863,7 +1949,11 @@ function updateMessageContent(messageId, newContent) {
     }
     // --- 正则规则应用结束 ---
     const processedContent = preprocessFullContent(textToRender, globalSettings, messageInHistory?.role || 'assistant', depthForUpdate);
-    let rawHtml = markedInstance.parse(processedContent);
+    // 🟢 LaTeX 保护：在 marked 解析前保护 LaTeX 块
+    const { text: protectedContentUpdate, map: latexMapUpdate } = protectLatexBlocks(processedContent);
+    let rawHtml = markedInstance.parse(protectedContentUpdate);
+    // 🟢 LaTeX 恢复：在 marked 解析后恢复 LaTeX 块
+    rawHtml = restoreLatexBlocks(rawHtml, latexMapUpdate);
 
     // --- Post-Render Processing (aligned with renderMessage logic) ---
 
