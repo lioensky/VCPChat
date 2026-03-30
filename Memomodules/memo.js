@@ -955,9 +955,14 @@ async function searchMemos(term) {
 }
 
 async function performSemanticSearch(query) {
+    // 捕获当前的 abort controller 本地引用，防止竞态
+    const myAbortController = searchAbortController;
     try {
         const settings = await window.electronAPI.loadSettings();
         if (!settings?.vcpApiKey) throw new Error('API Key 未配置');
+
+        // 竞态检查：如果在 await 期间有新搜索发起，放弃当前搜索
+        if (myAbortController.signal.aborted || myAbortController !== searchAbortController) return;
 
         let serverBaseUrl = settings.vcpServerUrl.replace(/\/v1\/chat\/completions\/?$/, '');
         if (!serverBaseUrl.endsWith('/')) serverBaseUrl += '/';
@@ -978,14 +983,20 @@ search_all_knowledge_bases:「始」true「末」
                 'Authorization': `Bearer ${settings.vcpApiKey}`
             },
             body: toolRequest,
-            signal: searchAbortController.signal
+            signal: myAbortController.signal
         });
 
         if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
         
+        // 竞态检查：fetch 返回后确认当前搜索未被取代
+        if (myAbortController !== searchAbortController) return;
+
         const data = await res.json();
         console.log('[Memo] Semantic search result:', data);
         
+        // 竞态检查：解析完成后再次确认
+        if (myAbortController !== searchAbortController) return;
+
         let output = '';
         if (data.original_plugin_output) {
             output = data.original_plugin_output;
@@ -1007,6 +1018,8 @@ search_all_knowledge_bases:「始」true「末」
         }
     } catch (err) {
         if (err.name === 'AbortError') return;
+        // 竞态检查：如果已被新搜索取代，静默退出
+        if (myAbortController !== searchAbortController) return;
         console.error('[Memo] Semantic search error:', err);
         memoGridEl.innerHTML = `<div style="padding: 20px; color: var(--danger-color);">语义搜索失败: ${err.message}</div>`;
     }
@@ -1027,16 +1040,35 @@ function processSemanticSearchResults(output, query) {
             const fileName = parts.pop();
             const folderName = parts.join('/');
             
-            // 提取预览内容 (简单提取日期后的第一行非空内容)
+            // 提取预览内容：跳过元信息行（来源标题、路径、TagMemo、Tag），取实际日记内容
             const lines = section.split('\n');
-            let preview = '';
+            let contentLines = [];
+            let skippedFirstLine = false;
+            
             for (let i = 0; i < lines.length; i++) {
                 const line = lines[i].trim();
-                if (line.startsWith('[20') && lines[i+1]) {
-                    preview = lines[i+1].trim();
-                    break;
+                if (!line) continue;
+                // split('--- (来源:') 后第一个非空行一定是来源信息（如 "公共的日常, 相关性: 86.6%(混合))"）
+                if (!skippedFirstLine) {
+                    skippedFirstLine = true;
+                    continue;
                 }
+                // 跳过路径行
+                if (line.startsWith('[路径:')) continue;
+                // 跳过 TagMemo 增强行
+                if (line.startsWith('[TagMemo')) continue;
+                // 跳过 Tag 行（兼容半角/全角冒号）
+                if (/^Tag[：:]/.test(line)) continue;
+                // 跳过分隔线
+                if (line.startsWith('---')) continue;
+                
+                // 剩下的就是实际日记内容
+                contentLines.push(line);
+                // 收集足够的预览内容就停止
+                if (contentLines.join(' ').length >= 100) break;
             }
+            
+            const preview = contentLines.join(' ').substring(0, 150);
 
             results.push({
                 name: fileName,
