@@ -1467,6 +1467,9 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true)
 
         // Apply special formatting for user button clicks
         if (message.role === 'user') {
+            // 🔴 关键安全修复：用户输入属于不可信内容，必须先行进行 HTML 转义以防 XSS
+            textToRender = escapeHtml(textToRender);
+
             textToRender = transformUserButtonClick(textToRender);
             textToRender = transformVCPChatCanvas(textToRender);
         } else if (message.role === 'assistant' && scopeId) {
