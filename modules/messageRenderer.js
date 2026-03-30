@@ -384,8 +384,11 @@ function transformSpecialBlocks(text, codeBlockMap) {
                 processedValue = `<a href="${value}" target="_blank" rel="noopener noreferrer" title="点击预览"><img src="${value}" class="vcp-tool-result-image" alt="Generated Image"></a>`;
             } else if (isMarkdownField && mainRendererReferences.markedInstance) {
                 try {
-                    // Use marked for markdown fields
-                    processedValue = mainRendererReferences.markedInstance.parse(restoreBlocks(value));
+                    // 🔴 关键安全修复：工具结果属于外部不可信内容，必须先进行 HTML 转义
+                    // 这样可以确保任何 XSS 变种（如 <img onerror=>, <svg onload=> 等）都被转为纯文本显示
+                    // 同时不影响 Markdown 语法（如 **粗体**）的解析
+                    const escapedValue = escapeHtml(restoreBlocks(value));
+                    processedValue = mainRendererReferences.markedInstance.parse(escapedValue);
                 } catch (e) {
                     console.error('Failed to parse markdown in tool result', e);
                     processedValue = escapeHtml(restoreBlocks(value));
@@ -413,7 +416,9 @@ function transformSpecialBlocks(text, codeBlockMap) {
             let processedFooter;
             if (mainRendererReferences.markedInstance) {
                 try {
-                    processedFooter = mainRendererReferences.markedInstance.parse(restoreBlocks(footerText));
+                    // 🔴 关键安全修复：页脚同样需要转义处理
+                    const escapedFooter = escapeHtml(restoreBlocks(footerText));
+                    processedFooter = mainRendererReferences.markedInstance.parse(escapedFooter);
                 } catch (e) {
                     console.error('Failed to parse markdown in tool result footer', e);
                     processedFooter = `<pre>${escapeHtml(restoreBlocks(footerText))}</pre>`;
