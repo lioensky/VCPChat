@@ -1442,26 +1442,61 @@ function createStripRegexUI() {
     /**
      * 设置Agent设置的粘性按钮效果
      */
-function setupAgentSettingsStickyButtons() {
-        const applyStableDualButtonsState = () => {
-            const formActions = agentSettingsForm?.querySelector('.form-actions');
-            if (!formActions) return;
+    /**
+     * 设置设置页面的粘性按钮效果（通用逻辑，支持 Agent 和群组）
+     */
+    function setupAgentSettingsStickyButtons() {
+        const settingsTab = document.getElementById('tabContentSettings');
+        if (!settingsTab) return;
 
-            formActions.classList.add('scrolled-to-bottom');
-            formActions.classList.remove('no-scroll-mode');
+        let isCurrentlyAtBottom = false;
+
+        const updateButtonsState = () => {
+            const allFormActions = settingsTab.querySelectorAll('.form-actions');
+            if (allFormActions.length === 0) return;
+
+            // 检测是否到达底部（引入滞后性/Hysteresis逻辑以消除抖动）
+            const distanceToBottom = settingsTab.scrollHeight - settingsTab.scrollTop - settingsTab.clientHeight;
+            
+            // 判定逻辑：
+            // 1. 如果当前未显示（isCurrentlyAtBottom = false），则在距离底部 < 10px 时触发显示
+            // 2. 如果当前已显示（isCurrentlyAtBottom = true），则只有在向上滚动超过 60px 时才隐藏
+            //    (60px 略大于增加的按钮区域高度，防止高度变化导致的判定循环)
+            const threshold = isCurrentlyAtBottom ? 60 : 10;
+            const isAtBottom = distanceToBottom <= threshold;
+
+            if (isAtBottom !== isCurrentlyAtBottom) {
+                isCurrentlyAtBottom = isAtBottom;
+                allFormActions.forEach(formActions => {
+                    if (isAtBottom) {
+                        formActions.classList.add('scrolled-to-bottom');
+                    } else {
+                        formActions.classList.remove('scrolled-to-bottom');
+                    }
+                });
+            }
         };
 
+
+
+        // 监听滚动事件
+        settingsTab.addEventListener('scroll', updateButtonsState);
+
+        // 暴露刷新方法给外部调用
         scheduleStickyButtonsRefresh = () => {
-            window.requestAnimationFrame(() => {
-                applyStableDualButtonsState();
-            });
+            window.requestAnimationFrame(updateButtonsState);
         };
 
-        applyStableDualButtonsState();
-        scheduleStickyButtonsRefresh();
+        // 初始检查
+        setTimeout(updateButtonsState, 100);
 
-        console.log('[SettingsManager] Agent settings sticky buttons initialized in stable dual-button mode.');
+        // 定期检查（处理动态内容加载导致的滚动条变化）
+        setInterval(updateButtonsState, 1000);
+
+        console.log('[SettingsManager] Settings sticky buttons initialized with generic scroll detection.');
     }
+
+
 
     /**
      * 设置颜色选择器与文本输入框的同步
