@@ -52,7 +52,7 @@ class PresetPromptModule {
      */
     async render(container) {
         container.innerHTML = '';
-        container.className = 'preset-prompt-container';
+        container.classList.add('preset-prompt-container');
 
         // 重新加载预设列表（修复初始化问题）
         await this.loadPresets();
@@ -210,7 +210,7 @@ class PresetPromptModule {
         this.textarea.className = 'prompt-textarea preset-prompt-textarea';
         this.textarea.placeholder = '请输入系统提示词或选择预设...';
         this.textarea.value = this.cachedContent;
-        this.textarea.rows = 10;
+        this.textarea.rows = 3;
 
         // 添加输入事件监听器
         this.textarea.addEventListener('input', () => {
@@ -235,7 +235,7 @@ class PresetPromptModule {
         // 重置高度以获取正确的scrollHeight
         this.textarea.style.height = 'auto';
         // 设置最小高度
-        const minHeight = 120;
+        const minHeight = 60;
         // 根据内容设置高度，但不小于最小高度
         const newHeight = Math.max(minHeight, this.textarea.scrollHeight);
         this.textarea.style.height = newHeight + 'px';

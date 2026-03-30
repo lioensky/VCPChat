@@ -23,6 +23,8 @@
     font-weight: 400;
     line-height: 1;
     text-align: center;
+    white-space: nowrap;
+    overflow: visible;
     border-radius: 8px;
     appearance: none;
     -webkit-appearance: none;
@@ -117,6 +119,16 @@
     box-sizing: border-box;
 }
 
+#tabContentSettings.sidebar-tab-content.active {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    padding-bottom: 0 !important;
+    padding-right: 8px;
+    margin-right: -8px;
+    margin-bottom: -15px;
+}
+
 /* 始终显示滚动条轨道，避免布局动态变化 */
 .sidebar-tab-content.active::-webkit-scrollbar {
     width: 12px;
@@ -193,18 +205,18 @@
 
 /* 默认情况下删除按钮容器是隐藏的 */
 #agentSettingsForm .form-actions .delete-button-container {
-    opacity: 0;
-    max-height: 0;
-    overflow: hidden;
-    transition: opacity 0.3s ease, max-height 0.3s ease;
-    margin-top: 10px;
+    opacity: 1;
+    max-height: none;
+    overflow: visible;
+    transition: none;
+    margin-top: 2px;
 }
 
 /* 只有滚动到底部时才显示删除按钮 */
 #agentSettingsForm .form-actions.scrolled-to-bottom .delete-button-container {
     opacity: 1;
-    max-height: 50px;
-    /* 删除按钮的大致高度 */
+    max-height: none;
+    margin-bottom: 6px;
 }
 
 /* 确保两个按钮宽度一致 */
@@ -231,9 +243,26 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 15px;
-    padding-bottom: 10px;
-    border-bottom: 1px solid var(--border-color);
+    gap: 4px;
+    position: relative;
+    margin-top: -12px;
+    margin-bottom: 10px;
+    padding-top: 0;
+    padding-left: 12px;
+    padding-right: 3px;
+    padding-bottom: 7px;
+    border-bottom: none;
+}
+
+.settings-header-bar::after {
+    content: "";
+    position: absolute;
+    left: 12px;
+    right: 0;
+    bottom: 0;
+    height: 1px;
+    background: var(--border-color);
+    pointer-events: none;
 }
 
 .settings-header-bar h2 {
@@ -242,17 +271,145 @@
     border-bottom: none;
     text-align: left;
     flex-grow: 1;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 1.2em;
+    line-height: 1.2;
+    font-weight: 600;
+    color: var(--secondary-text);
 }
 
 .settings-header-bar .global-settings-btn {
+    position: relative;
+    isolation: isolate;
+    flex: 0 0 auto;
     width: auto;
-    padding: 8px 15px;
+    min-width: 0;
+    height: 32px;
+    padding: 0 12px;
+    margin-left: 0;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: transparent;
+    color: var(--secondary-text);
     font-size: 0.9em;
-    margin-left: 15px;
+    font-weight: 500;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    transition: background-color 0.2s, border-color 0.2s, box-shadow 0.2s, color 0.2s;
+}
+
+.settings-header-bar .global-settings-btn:hover {
+    background-color: var(--button-hover-bg);
+    border-color: var(--button-hover-bg);
+    color: var(--primary-text);
+}
+
+body.light-theme .settings-header-bar .global-settings-btn {
+    background: transparent;
+    border-color: rgba(51, 51, 51, 0.08);
+    color: var(--button-bg);
 }
 
 body:not(.light-theme) .settings-header-bar .global-settings-btn {
+    color: var(--highlight-text);
+}
+
+body:not(.light-theme) .settings-header-bar .global-settings-btn:hover {
+    background: var(--highlight-text);
+    border-color: var(--highlight-text);
     color: var(--text-on-accent);
+}
+
+body.light-theme .settings-header-bar .global-settings-btn:hover {
+    background:
+        linear-gradient(
+            180deg,
+            color-mix(in srgb, var(--button-hover-bg) 76%, rgba(255, 255, 255, 0.32)),
+            color-mix(in srgb, var(--button-hover-bg) 92%, rgba(255, 255, 255, 0.12))
+        );
+    border-color: var(--button-hover-bg);
+    color: #ffffff;
+}
+
+@container sidebar (max-width: 230px) {
+    .sidebar-tab-button {
+        padding: 0 4px;
+        font-size: 13px;
+    }
+
+    .settings-header-bar {
+        gap: 8px;
+    }
+
+    .settings-header-bar h2 {
+        font-size: 1.08em;
+    }
+
+}
+
+@container sidebar (max-width: 205px) {
+    .sidebar-actions .create-agent-btn .sidebar-button-label,
+    .sidebar-actions .create-group-btn .sidebar-button-label {
+        display: none;
+    }
+
+    .sidebar-actions .create-agent-btn,
+    .sidebar-actions .create-group-btn {
+        padding: 0;
+        justify-content: center;
+    }
+
+    .settings-header-bar .global-settings-btn {
+        max-width: 28px;
+        padding: 0;
+        font-size: 0;
+        color: transparent;
+    }
+
+    .settings-header-bar .global-settings-btn::before {
+        content: "全";
+        font-size: 13px;
+        font-weight: 600;
+        line-height: 1;
+        color: var(--button-bg);
+    }
+}
+
+@container sidebar (max-width: 205px) {
+    body:not(.light-theme) .settings-header-bar .global-settings-btn::before {
+        color: var(--highlight-text);
+    }
+}
+
+@container sidebar (max-width: 205px) {
+    .settings-header-bar .global-settings-btn::before {
+        content: "\5168";
+    }
+}
+
+@container sidebar (max-width: 205px) {
+    .settings-header-bar .global-settings-btn {
+        max-width: none;
+        padding: 0 12px;
+        font-size: 0.9em;
+        color: inherit;
+    }
+
+    .settings-header-bar .global-settings-btn::before {
+        content: none;
+    }
 }
 
 .agent-list,
@@ -563,7 +720,7 @@ body:not(.light-theme) .sidebar .topic-list .topic-item:hover::after {
 }
 
 #tabContentTopics p {
-    padding: 15px;
+    padding: 8px 15px 8px;
     text-align: center;
     color: var(--secondary-text);
 }
@@ -583,13 +740,18 @@ body:not(.light-theme) .sidebar .topic-list .topic-item:hover::after {
 }
 
 #tabContentSettings {
-    padding: 15px;
+    padding: 12px 0 0 3px;
     box-sizing: border-box;
 }
 
 #agentSettingsContainer {
     width: 100%;
     box-sizing: border-box;
+    padding: 0 3px 0 12px;
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
 }
 
 #agentSettingsContainer h3 {
@@ -602,6 +764,8 @@ body:not(.light-theme) .sidebar .topic-list .topic-item:hover::after {
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
     gap: 12px;
 }
 
@@ -647,19 +811,20 @@ body:not(.light-theme) .sidebar .topic-list .topic-item:hover::after {
 }
 
 #agentSettingsForm .form-actions {
-    margin-top: 15px;
+    margin-top: auto;
     display: flex;
     flex-direction: column;
     /* Make buttons stack vertically */
     justify-content: flex-start;
-    gap: 10px;
+    flex-shrink: 0;
+    gap: 4px;
     /* 粘性定位：当滚动条没有到底部时，固定在容器底部 */
     position: sticky;
     bottom: 0;
-    background-color: var(--secondary-bg);
-    padding: 15px;
+    background-color: transparent;
+    padding: 12px 15px 8px;
     border-radius: 8px;
-    box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
+    box-shadow: none;
     z-index: 10;
     margin-left: -15px;
     /* 抵消容器的内边距 */
@@ -669,46 +834,155 @@ body:not(.light-theme) .sidebar .topic-list .topic-item:hover::after {
     /* 抵消容器的内边距 */
 }
 
+#agentSettingsForm .form-actions.no-scroll-mode {
+    position: sticky;
+    bottom: 0;
+    margin-top: auto;
+}
+
 #agentSettingsForm .form-actions button {
-    padding: 10px 18px;
-    font-size: 1em;
-    border-radius: 8px;
-    border: none;
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: calc(100% + 2px);
+    margin-left: -2px;
+    height: 37px;
+    padding: 0 12px;
+    font-size: 0.95em;
+    font-weight: 500;
+    line-height: 1;
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
     cursor: pointer;
-    transition: background-color 0.2s;
-    color: #ffffff;
+    white-space: nowrap;
+    box-sizing: border-box;
+    transition:
+        background 0.2s ease,
+        border-color 0.2s ease,
+        box-shadow 0.2s ease,
+        color 0.2s ease,
+        transform 0.2s ease;
 }
 
 #agentSettingsForm .form-actions button[type="submit"] {
-    background-color: var(--user-bubble-bg);
+    color: var(--highlight-text);
 }
 
 #agentSettingsForm .form-actions button[type="submit"]:hover {
-    background-color: var(--button-hover-bg);
+    background: var(--highlight-text);
+    border-color: var(--highlight-text);
+    color: var(--text-on-accent);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: none;
 }
 
 #agentSettingsForm .form-actions .danger-button {
-    background-color: var(--danger-color);
+    color: color-mix(in srgb, var(--danger-color) 88%, #ffffff 12%);
 }
 
 #agentSettingsForm .form-actions .danger-button:hover {
-    background-color: var(--danger-hover-bg);
+    background: var(--danger-color);
+    border-color: var(--danger-color);
+    color: #ffffff;
 }
 
 body.light-theme #agentSettingsForm .form-actions button[type="submit"] {
-    background-color: var(--button-bg);
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--user-bubble-bg) 82%, rgba(255, 255, 255, 0.4)),
+        color-mix(in srgb, var(--user-bubble-bg) 70%, rgba(255, 255, 255, 0.22))
+    );
+    border-color: rgba(51, 51, 51, 0.08);
+    backdrop-filter: blur(10px) saturate(130%);
+    -webkit-backdrop-filter: blur(10px) saturate(130%);
+    box-shadow:
+        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.72),
+        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.62),
+        inset 0 0 1px rgba(0, 0, 0, 0.08);
 }
 
 body.light-theme #agentSettingsForm .form-actions button[type="submit"]:hover {
-    background-color: var(--button-hover-bg);
+    background: var(--highlight-text);
+    border-color: var(--highlight-text);
+    color: #ffffff;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: none;
 }
 
 body.light-theme #agentSettingsForm .form-actions .danger-button {
-    background-color: var(--danger-color);
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--danger-color) 16%, rgba(255, 255, 255, 0.78)),
+        color-mix(in srgb, var(--danger-color) 11%, rgba(255, 255, 255, 0.54))
+    );
+    border-color: rgba(51, 51, 51, 0.08);
+    color: color-mix(in srgb, var(--danger-color) 92%, #6d0f1f 8%);
+    backdrop-filter: blur(10px) saturate(130%);
+    -webkit-backdrop-filter: blur(10px) saturate(130%);
+    box-shadow:
+        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.74),
+        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.62),
+        inset 0 0 1px rgba(0, 0, 0, 0.08);
 }
 
 body.light-theme #agentSettingsForm .form-actions .danger-button:hover {
-    background-color: var(--danger-hover-bg);
+    background: var(--danger-color);
+    border-color: var(--danger-color);
+    color: #ffffff;
+}
+
+body:not(.light-theme) #agentSettingsForm .form-actions button[type="submit"] {
+    border-color: rgba(255, 255, 255, 0.08);
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--user-bubble-bg) 52%, rgba(255, 255, 255, 0.06)),
+        color-mix(in srgb, var(--user-bubble-bg) 40%, rgba(255, 255, 255, 0.03))
+    );
+    backdrop-filter: blur(8px) saturate(118%);
+    -webkit-backdrop-filter: blur(8px) saturate(118%);
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.16),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.12),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+
+body:not(.light-theme) #agentSettingsForm .form-actions button[type="submit"]:hover {
+    background: var(--highlight-text);
+    border-color: var(--highlight-text);
+    color: color-mix(in srgb, #000000 78%, var(--primary-text) 22%);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: none;
+}
+
+body:not(.light-theme) #agentSettingsForm .form-actions .danger-button {
+    border-color: rgba(255, 255, 255, 0.08);
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--danger-color) 34%, rgba(255, 255, 255, 0.08)),
+        color-mix(in srgb, var(--danger-color) 24%, rgba(255, 255, 255, 0.04))
+    );
+    color: color-mix(in srgb, var(--danger-color) 78%, #ffdce2 22%);
+    backdrop-filter: blur(8px) saturate(118%);
+    -webkit-backdrop-filter: blur(8px) saturate(118%);
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.16),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.12),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+
+body:not(.light-theme) #agentSettingsForm .form-actions .danger-button:hover {
+    background: var(--danger-color);
+    border-color: var(--danger-color);
+    color: #ffffff;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: none;
 }
 
 #selectAgentPromptForSettings {
@@ -815,8 +1089,7 @@ body.light-theme #agentSettingsForm .form-actions .danger-button:hover {
     cursor: pointer;
     transition: background-color 0.2s;
     color: #ffffff;
-    flex: 1;
-    /* Make buttons take equal width */
+    flex: 0 0 auto;
     text-align: center;
     /* Center text within the button */
 }
@@ -928,7 +1201,7 @@ body.light-theme #groupSettingsForm .form-actions #deleteGroupBtn:hover {
     object-fit: cover;
     display: block;
     margin-top: 10px;
-    margin-bottom: 10px;
+    margin-bottom: 6px;
 }
 
 input[type="file"] {
@@ -1875,8 +2148,13 @@ textarea::placeholder {
 .strip-regex-container {
     display: flex;
     flex-direction: column;
-    gap: 10px;
-    margin-top: 15px;
+    gap: 2px;
+    margin-top: 8px;
+}
+
+.strip-regex-container .form-section-title {
+    margin-top: 0;
+    margin-bottom: 2px;
 }
 
 .strip-regex-list-container {
@@ -2018,20 +2296,51 @@ textarea::placeholder {
 
 /* 按钮样式 - 与刷新模型按钮保持一致 */
 .btn-add-regex {
-    padding: 10px 18px;
-    font-size: 1em;
-    border-radius: 8px;
-    border: 1px solid var(--button-bg);
-    cursor: pointer;
-    background-color: var(--button-bg);
-    color: var(--text-on-accent);
-    transition: background-color 0.2s ease, border-color 0.2s ease;
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     width: 100%;
+    height: 37px;
+    padding: 0 12px;
+    font-size: 0.95em;
+    font-weight: 500;
+    line-height: 1;
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    cursor: pointer;
+    background: transparent;
+    color: var(--highlight-text);
+    box-sizing: border-box;
+    transition:
+        background 0.2s ease,
+        border-color 0.2s ease,
+        box-shadow 0.2s ease,
+        color 0.2s ease,
+        transform 0.2s ease;
 }
 
 .btn-add-regex:hover {
-    background-color: var(--button-hover-bg);
-    border-color: var(--button-hover-bg);
+    background: var(--highlight-text);
+    border-color: var(--highlight-text);
+    color: var(--text-on-accent);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: none;
+}
+
+.btn-add-regex + .btn-add-regex {
+    margin-top: 6px;
+}
+
+.btn-add-regex.btn-add-regex-secondary {
+    color: var(--secondary-text);
+}
+
+.btn-add-regex.btn-add-regex-secondary:hover {
+    color: var(--text-on-accent);
 }
 
 .btn-delete-regex {
@@ -2060,6 +2369,69 @@ textarea::placeholder {
     stroke: white;
     width: 16px;
     height: 16px;
+}
+
+body.light-theme .btn-add-regex {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--user-bubble-bg) 82%, rgba(255, 255, 255, 0.4)),
+        color-mix(in srgb, var(--user-bubble-bg) 70%, rgba(255, 255, 255, 0.22))
+    );
+    border-color: rgba(51, 51, 51, 0.08);
+    backdrop-filter: blur(10px) saturate(130%);
+    -webkit-backdrop-filter: blur(10px) saturate(130%);
+    box-shadow:
+        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.72),
+        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.62),
+        inset 0 0 1px rgba(0, 0, 0, 0.08);
+}
+
+body.light-theme .btn-add-regex.btn-add-regex-secondary {
+    background: linear-gradient(
+        180deg,
+        rgba(255, 255, 255, 0.82),
+        rgba(255, 255, 255, 0.58)
+    );
+    color: color-mix(in srgb, var(--primary-text) 72%, var(--secondary-text) 28%);
+}
+
+body.light-theme .btn-add-regex.btn-add-regex-secondary:hover {
+    background: var(--highlight-text);
+    border-color: var(--highlight-text);
+    color: #ffffff;
+}
+
+body:not(.light-theme) .btn-add-regex {
+    border-color: rgba(255, 255, 255, 0.08);
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--user-bubble-bg) 52%, rgba(255, 255, 255, 0.06)),
+        color-mix(in srgb, var(--user-bubble-bg) 40%, rgba(255, 255, 255, 0.03))
+    );
+    backdrop-filter: blur(8px) saturate(118%);
+    -webkit-backdrop-filter: blur(8px) saturate(118%);
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.16),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.12),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+
+body:not(.light-theme) .btn-add-regex.btn-add-regex-secondary {
+    background: linear-gradient(
+        180deg,
+        rgba(255, 255, 255, 0.08),
+        rgba(255, 255, 255, 0.04)
+    );
+    color: color-mix(in srgb, #ffffff 70%, var(--secondary-text) 30%);
+}
+
+body:not(.light-theme) .btn-add-regex.btn-add-regex-secondary:hover {
+    background: var(--highlight-text);
+    border-color: var(--highlight-text);
+    color: color-mix(in srgb, #000000 78%, var(--primary-text) 22%);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: none;
 }
 
 /* 亮色主题调整 */
@@ -2274,11 +2646,56 @@ body.light-theme #globalSettingsModal .modal-content {
     border-radius: 12px;
     background-color: var(--input-bg);
     overflow: hidden;
+    transition: background-color 0.2s ease;
+}
+
+.agent-params-collapsible-container:has(#paramsToggleHeader) {
+    position: relative;
+    isolation: isolate;
+    border-radius: 14px;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.04);
+    backdrop-filter: blur(3px) saturate(108%);
+    -webkit-backdrop-filter: blur(3px) saturate(108%);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow:
+        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.22),
+        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.18),
+        inset 6px -6px 1px -6px rgba(255, 255, 255, 0.12),
+        inset -6px 6px 1px -6px rgba(255, 255, 255, 0.08),
+        inset 0 0 2px rgba(0, 0, 0, 0.38),
+        0 6px 14px rgba(0, 0, 0, 0.14);
+    transition:
+        border-color 0.22s ease,
+        box-shadow 0.22s ease,
+        background 0.22s ease;
+}
+
+.agent-params-collapsible-container:has(#paramsToggleHeader)::before {
+    content: "";
+    position: absolute;
+    z-index: 0;
+    top: 34%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: calc(100% - 18px);
+    height: calc(100% - 18px);
+    border-radius: inherit;
+    border: 1px solid rgba(0, 0, 0, 0.72);
+    filter: blur(8px);
+    opacity: 0.18;
+}
+
+.agent-params-collapsible-container:has(#paramsToggleHeader)::after {
+    content: none;
 }
 
 .params-header {
-    display: flex;
-    align-items: center;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    column-gap: 10px;
+    row-gap: 6px;
     padding: 12px 15px;
     cursor: pointer;
     background-color: var(--input-bg);
@@ -2286,30 +2703,108 @@ body.light-theme #globalSettingsModal .modal-content {
     user-select: none;
 }
 
+.agent-params-collapsible-container:not(.collapsed) .params-header {
+    padding-bottom: 8px;
+}
+
+.agent-params-collapsible-container.collapsed .params-header {
+    row-gap: 0;
+    padding-bottom: 16px;
+}
+
+.agent-params-collapsible-container:has(#paramsToggleHeader) .params-header,
+.agent-params-collapsible-container:has(#paramsToggleHeader) .params-content {
+    position: relative;
+    z-index: 1;
+}
+
+.agent-params-collapsible-container:has(#paramsToggleHeader) .params-header,
+.agent-params-collapsible-container:has(#paramsToggleHeader) .params-content,
+.agent-params-collapsible-container:has(#paramsToggleHeader):hover .params-header,
+.agent-params-collapsible-container:has(#paramsToggleHeader).collapsed:hover .params-header {
+    background-color: transparent;
+}
+
 .params-header:hover {
     background-color: var(--accent-bg);
+}
+
+.agent-params-collapsible-container.collapsed:hover {
+    background-color: var(--accent-bg);
+}
+
+.agent-params-collapsible-container.collapsed:hover .params-header {
+    background-color: transparent;
+}
+
+body.light-theme .agent-params-collapsible-container:has(#paramsToggleHeader) {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(51, 51, 51, 0.08);
+    backdrop-filter: blur(3px) saturate(104%);
+    -webkit-backdrop-filter: blur(3px) saturate(104%);
+    box-shadow:
+        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.9),
+        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.9),
+        inset 6px -6px 1px -6px rgba(255, 255, 255, 0.55),
+        inset -6px 6px 1px -6px rgba(255, 255, 255, 0.55),
+        inset 0 0 2px rgba(0, 0, 0, 0.18),
+        0 4px 8px rgba(0, 0, 0, 0.12);
+}
+
+body.light-theme .agent-params-collapsible-container:has(#paramsToggleHeader):hover {
+    background: rgba(255, 255, 255, 0.08);
+    box-shadow:
+        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.94),
+        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.94),
+        inset 6px -6px 1px -6px rgba(255, 255, 255, 0.62),
+        inset -6px 6px 1px -6px rgba(255, 255, 255, 0.62),
+        inset 0 0 2px rgba(0, 0, 0, 0.2),
+        0 6px 10px rgba(0, 0, 0, 0.14);
+}
+
+body:not(.light-theme) .agent-params-collapsible-container:has(#paramsToggleHeader) {
+    background: color-mix(in srgb, var(--input-bg) 88%, rgba(255, 255, 255, 0.03));
+    border-color: rgba(255, 255, 255, 0.07);
+    backdrop-filter: blur(2px) saturate(104%);
+    -webkit-backdrop-filter: blur(2px) saturate(104%);
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.14),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.1),
+        inset 0 0 1px rgba(0, 0, 0, 0.42),
+        0 3px 8px rgba(0, 0, 0, 0.14);
+}
+
+body:not(.light-theme) .agent-params-collapsible-container:has(#paramsToggleHeader):hover {
+    background: color-mix(in srgb, var(--input-bg) 84%, rgba(255, 255, 255, 0.05));
+    border-color: color-mix(in srgb, var(--highlight-text) 58%, rgba(255, 255, 255, 0.1));
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.16),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.12),
+        inset 0 0 1px rgba(0, 0, 0, 0.46),
+        0 0 0 1px color-mix(in srgb, var(--highlight-text) 34%, transparent),
+        0 4px 10px rgba(0, 0, 0, 0.16);
 }
 
 .params-title {
     font-weight: 500;
     color: var(--highlight-text);
     font-size: 1em;
-    margin-right: 15px;
-    flex-shrink: 0;
+    min-width: 0;
 }
 
 .params-summary {
-    flex-grow: 1;
+    grid-column: 1 / -1;
     font-size: 0.85em;
     color: var(--secondary-text);
     overflow: visible;
-    white-space: normal;
+    white-space: pre-line;
     word-wrap: break-word;
-    line-height: 1.4;
+    line-height: 1.5;
 }
 
 .params-toggle-btn {
-    flex-shrink: 0;
+    grid-column: 2;
+    grid-row: 1;
     background: none;
     border: none;
     cursor: pointer;
@@ -2319,7 +2814,7 @@ body.light-theme #globalSettingsModal .modal-content {
     justify-content: center;
     color: var(--secondary-text);
     transition: transform 0.3s ease, color 0.2s ease;
-    margin-left: 10px;
+    margin-left: 0;
 }
 
 .params-toggle-btn:hover {
@@ -2339,7 +2834,8 @@ body.light-theme #globalSettingsModal .modal-content {
     overflow: hidden;
     transition: max-height 0.3s ease, opacity 0.3s ease;
     opacity: 1;
-    padding: 0 15px 15px 15px;
+    padding: 0 15px 9px 15px;
+    margin-top: -11px;
 }
 
 .agent-params-collapsible-container.collapsed .params-content {
@@ -2351,8 +2847,8 @@ body.light-theme #globalSettingsModal .modal-content {
 .params-content>div {
     display: flex;
     flex-direction: column;
-    gap: 6px;
-    margin-bottom: 12px;
+    gap: 4px;
+    margin-bottom: 8px;
 }
 
 .params-content>div:last-child {
@@ -2366,20 +2862,38 @@ body.light-theme #globalSettingsModal .modal-content {
 }
 
 .params-content input[type="number"] {
+    --params-pill-radius: 13px;
     width: 100%;
-    padding: 9px 10px;
-    padding-right: 28px;
-    border-radius: 8px;
-    border: 1px solid var(--border-color);
-    background-color: var(--secondary-bg);
+    height: 34px;
+    min-height: 34px;
+    max-height: 34px;
+    padding: 0 34px 0 11px;
+    border-radius: var(--params-pill-radius) !important;
+    overflow: hidden;
+    background-clip: padding-box;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: transparent;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='rgba(160, 160, 176, 0.5)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='7 15 12 20 17 15'%3E%3C/polyline%3E%3Cpolyline points='7 9 12 4 17 9'%3E%3C/polyline%3E%3C/svg%3E");
     background-repeat: no-repeat;
-    background-position: right 8px center;
-    color: var(--primary-text);
-    font-size: 0.95em;
+    background-position: right 12px center;
+    color: var(--highlight-text);
+    font-size: 0.9em;
+    line-height: 1;
     box-sizing: border-box;
+    display: block;
+    appearance: none;
+    -webkit-appearance: none;
     -moz-appearance: textfield;
-    transition: background-image 0.2s ease, border-color 0.2s ease;
+    transition:
+        background 0.2s ease,
+        border-color 0.2s ease,
+        box-shadow 0.2s ease,
+        background-image 0.2s ease;
+}
+
+.params-content > div {
+    gap: 4px;
+    margin-bottom: 8px;
 }
 
 .params-content input[type="number"]::-webkit-inner-spin-button,
@@ -2391,7 +2905,923 @@ body.light-theme #globalSettingsModal .modal-content {
 .params-content input[type="number"]:focus {
     outline: none;
     border-color: var(--highlight-text);
+    border-radius: var(--params-pill-radius) !important;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='rgb(255, 140, 148)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='7 15 12 20 17 15'%3E%3C/polyline%3E%3Cpolyline points='7 9 12 4 17 9'%3E%3C/polyline%3E%3C/svg%3E");
+}
+
+body.light-theme .params-content input[type="number"] {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--user-bubble-bg) 18%, rgba(255, 255, 255, 0.52)),
+        color-mix(in srgb, var(--user-bubble-bg) 12%, rgba(255, 255, 255, 0.26))
+    );
+    border-color: rgba(51, 51, 51, 0.08);
+    backdrop-filter: blur(12px) saturate(138%);
+    -webkit-backdrop-filter: blur(12px) saturate(138%);
+    box-shadow:
+        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.82),
+        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.72),
+        inset 6px -6px 1px -6px rgba(255, 255, 255, 0.42),
+        inset -6px 6px 1px -6px rgba(255, 255, 255, 0.3),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.18),
+        inset 0 0 1px rgba(0, 0, 0, 0.06);
+}
+
+body.light-theme .params-content input[type="number"]:hover {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--user-bubble-bg) 90%, rgba(255, 255, 255, 0.54)),
+        color-mix(in srgb, var(--user-bubble-bg) 80%, rgba(255, 255, 255, 0.32))
+    );
+    border-color: color-mix(in srgb, var(--highlight-text) 72%, rgba(51, 51, 51, 0.12));
+    box-shadow:
+        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.82),
+        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.72),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.18),
+        0 0 0 1px color-mix(in srgb, var(--highlight-text) 24%, transparent);
+}
+
+body.light-theme .params-content input[type="number"]:focus,
+body.light-theme .params-content input[type="number"]:focus-visible {
+    border-color: var(--highlight-text);
+    box-shadow:
+        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.82),
+        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.72),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.18),
+        0 0 0 1px color-mix(in srgb, var(--highlight-text) 34%, transparent);
+}
+
+body:not(.light-theme) .params-content input[type="number"] {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--user-bubble-bg) 58%, rgba(255, 255, 255, 0.08)),
+        color-mix(in srgb, var(--user-bubble-bg) 44%, rgba(255, 255, 255, 0.04))
+    );
+    border-color: rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(10px) saturate(124%);
+    -webkit-backdrop-filter: blur(10px) saturate(124%);
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.18),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.14),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.04),
+        inset 0 0 1px rgba(255, 255, 255, 0.03);
+}
+
+body:not(.light-theme) .params-content input[type="number"]:hover {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--user-bubble-bg) 66%, rgba(255, 255, 255, 0.1)),
+        color-mix(in srgb, var(--user-bubble-bg) 50%, rgba(255, 255, 255, 0.05))
+    );
+    border-color: color-mix(in srgb, var(--highlight-text) 68%, rgba(255, 255, 255, 0.12));
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.2),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.16),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.05),
+        0 0 0 1px color-mix(in srgb, var(--highlight-text) 26%, transparent);
+}
+
+body:not(.light-theme) .params-content input[type="number"]:focus,
+body:not(.light-theme) .params-content input[type="number"]:focus-visible {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--highlight-text) 82%, rgba(255, 255, 255, 0.12)),
+        color-mix(in srgb, var(--highlight-text) 68%, rgba(255, 255, 255, 0.05))
+    );
+    border-color: var(--highlight-text);
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.2),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.16),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.05),
+        0 0 0 1px color-mix(in srgb, var(--highlight-text) 34%, transparent);
+}
+
+/* ========================================
+   Agent Settings Shared Card Shell
+   ======================================== */
+#agentSettingsForm > .agent-settings-card-shell,
+#agentSettingsContainer .agent-identity-container,
+#agentSettingsContainer .agent-params-collapsible-container,
+#agentSettingsContainer .strip-regex-container {
+    position: relative;
+    isolation: isolate;
+    margin: 0;
+    border-radius: 14px;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.04);
+    backdrop-filter: blur(3px) saturate(108%);
+    -webkit-backdrop-filter: blur(3px) saturate(108%);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow:
+        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.22),
+        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.18),
+        inset 6px -6px 1px -6px rgba(255, 255, 255, 0.12),
+        inset -6px 6px 1px -6px rgba(255, 255, 255, 0.08),
+        inset 0 0 2px rgba(0, 0, 0, 0.38),
+        0 6px 14px rgba(0, 0, 0, 0.14);
+    transition:
+        border-color 0.22s ease,
+        box-shadow 0.22s ease,
+        background 0.22s ease;
+}
+
+#agentSettingsForm > .agent-settings-card-shell::before,
+#agentSettingsContainer .agent-identity-container::before,
+#agentSettingsContainer .agent-params-collapsible-container::before,
+#agentSettingsContainer .strip-regex-container::before {
+    content: "";
+    position: absolute;
+    z-index: 0;
+    top: 34%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: calc(100% - 18px);
+    height: calc(100% - 18px);
+    border-radius: inherit;
+    border: 1px solid rgba(0, 0, 0, 0.72);
+    filter: blur(8px);
+    opacity: 0.18;
+    pointer-events: none;
+}
+
+#agentSettingsForm > .agent-settings-card-shell:hover,
+#agentSettingsContainer .agent-identity-container:hover,
+#agentSettingsContainer .agent-params-collapsible-container:hover,
+#agentSettingsContainer .strip-regex-container:hover {
+    border-color: color-mix(in srgb, var(--highlight-text) 58%, rgba(255, 255, 255, 0.1));
+}
+
+body.light-theme #agentSettingsForm > .agent-settings-card-shell,
+body.light-theme #agentSettingsContainer .agent-identity-container,
+body.light-theme #agentSettingsContainer .agent-params-collapsible-container,
+body.light-theme #agentSettingsContainer .strip-regex-container {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(51, 51, 51, 0.08);
+    backdrop-filter: blur(3px) saturate(104%);
+    -webkit-backdrop-filter: blur(3px) saturate(104%);
+    box-shadow:
+        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.9),
+        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.9),
+        inset 6px -6px 1px -6px rgba(255, 255, 255, 0.55),
+        inset -6px 6px 1px -6px rgba(255, 255, 255, 0.55),
+        inset 0 0 2px rgba(0, 0, 0, 0.18),
+        0 4px 8px rgba(0, 0, 0, 0.12);
+}
+
+body.light-theme #agentSettingsForm > .agent-settings-card-shell:hover,
+body.light-theme #agentSettingsContainer .agent-identity-container:hover,
+body.light-theme #agentSettingsContainer .agent-params-collapsible-container:hover,
+body.light-theme #agentSettingsContainer .strip-regex-container:hover {
+    background: rgba(255, 255, 255, 0.08);
+    box-shadow:
+        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.94),
+        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.94),
+        inset 6px -6px 1px -6px rgba(255, 255, 255, 0.62),
+        inset -6px 6px 1px -6px rgba(255, 255, 255, 0.62),
+        inset 0 0 2px rgba(0, 0, 0, 0.2),
+        0 6px 10px rgba(0, 0, 0, 0.14);
+}
+
+body:not(.light-theme) #agentSettingsForm > .agent-settings-card-shell,
+body:not(.light-theme) #agentSettingsContainer .agent-identity-container,
+body:not(.light-theme) #agentSettingsContainer .agent-params-collapsible-container,
+body:not(.light-theme) #agentSettingsContainer .strip-regex-container {
+    background: color-mix(in srgb, var(--input-bg) 88%, rgba(255, 255, 255, 0.03));
+    border-color: rgba(255, 255, 255, 0.07);
+    backdrop-filter: blur(2px) saturate(104%);
+    -webkit-backdrop-filter: blur(2px) saturate(104%);
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.14),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.1),
+        inset 0 0 1px rgba(0, 0, 0, 0.42),
+        0 3px 8px rgba(0, 0, 0, 0.14);
+}
+
+body:not(.light-theme) #agentSettingsForm > .agent-settings-card-shell:hover,
+body:not(.light-theme) #agentSettingsContainer .agent-identity-container:hover,
+body:not(.light-theme) #agentSettingsContainer .agent-params-collapsible-container:hover,
+body:not(.light-theme) #agentSettingsContainer .strip-regex-container:hover {
+    background: color-mix(in srgb, var(--input-bg) 84%, rgba(255, 255, 255, 0.05));
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.16),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.12),
+        inset 0 0 1px rgba(0, 0, 0, 0.46),
+        0 0 0 1px color-mix(in srgb, var(--highlight-text) 34%, transparent),
+        0 4px 10px rgba(0, 0, 0, 0.16);
+}
+
+#agentSettingsForm > .agent-settings-card-shell,
+#agentSettingsContainer .agent-identity-container,
+#agentSettingsContainer .strip-regex-container {
+    padding: 13px 15px;
+}
+
+#agentSettingsForm > .agent-settings-card-shell,
+#agentSettingsContainer .agent-identity-container,
+#agentSettingsContainer .strip-regex-container {
+    gap: 8px;
+}
+
+#agentSettingsForm > .agent-settings-card-shell > *,
+#agentSettingsContainer .agent-identity-container > *,
+#agentSettingsContainer .strip-regex-container > *,
+#agentSettingsContainer .agent-params-collapsible-container .params-header,
+#agentSettingsContainer .agent-params-collapsible-container .params-content {
+    position: relative;
+    z-index: 1;
+}
+
+#agentSettingsContainer .agent-params-collapsible-container .params-header,
+#agentSettingsContainer .agent-params-collapsible-container .params-content,
+#agentSettingsContainer .agent-params-collapsible-container:hover .params-header,
+#agentSettingsContainer .agent-params-collapsible-container.collapsed:hover .params-header {
+    background-color: transparent;
+}
+
+#agentSettingsForm > .agent-settings-card-shell > label,
+#agentSettingsContainer .strip-regex-container .form-section-title {
+    margin: 0;
+    color: var(--highlight-text);
+    font-size: 1em;
+    font-weight: 500;
+}
+
+#agentSettingsContainer .agent-settings-model-shell .model-input-container {
+    margin-top: 2px;
+}
+
+#agentSettingsForm > .agent-settings-card-shell,
+#agentSettingsContainer .agent-identity-container,
+#agentSettingsContainer .agent-params-collapsible-container,
+#agentSettingsContainer .strip-regex-container {
+    margin: 0;
+    padding: 0;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    overflow: visible;
+    isolation: auto;
+}
+
+#agentSettingsForm > .agent-settings-card-shell::before,
+#agentSettingsContainer .agent-identity-container::before,
+#agentSettingsContainer .agent-params-collapsible-container::before,
+#agentSettingsContainer .strip-regex-container::before {
+    display: none;
+}
+
+#agentSettingsForm > .agent-settings-card-shell:hover,
+#agentSettingsContainer .agent-identity-container:hover,
+#agentSettingsContainer .agent-params-collapsible-container:hover,
+#agentSettingsContainer .strip-regex-container:hover {
+    border: none;
+    background: transparent;
+    box-shadow: none;
+}
+
+#agentSettingsForm > .agent-settings-card-shell > label,
+#agentSettingsContainer .strip-regex-container .form-section-title {
+    margin: 0 0 6px;
+}
+
+#agentSettingsContainer .agent-identity-container {
+    gap: 12px;
+}
+
+#agentSettingsContainer .agent-params-collapsible-container {
+    padding-bottom: 2px;
+}
+
+#agentSettingsContainer .params-header {
+    padding: 8px 0;
+}
+
+#agentSettingsContainer .agent-params-collapsible-container:not(.collapsed) .params-header {
+    padding-bottom: 6px;
+}
+
+#agentSettingsContainer .agent-params-collapsible-container.collapsed .params-header {
+    padding-bottom: 8px;
+}
+
+#agentSettingsContainer .params-content {
+    padding: 0 0 2px;
+    margin-top: 0;
+}
+
+#agentSettingsContainer .agent-params-collapsible-container.collapsed .params-content {
+    padding: 0;
+}
+
+#agentSettingsContainer .agent-settings-prompt-shell {
+    padding-bottom: 0;
+    gap: 6px;
+}
+
+#agentSettingsContainer .agent-settings-prompt-shell .system-prompt-container {
+    margin: 0;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    overflow: visible;
+}
+
+#agentSettingsContainer .system-prompt-container .prompt-mode-selector {
+    display: flex;
+    gap: 8px;
+    padding: 10px 12px 0;
+    border-bottom: none;
+    background: transparent;
+    flex-wrap: wrap;
+}
+
+#agentSettingsContainer .system-prompt-container .prompt-mode-button {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 34px;
+    padding: 0 10px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-right: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: var(--agent-settings-pill-radius);
+    background: transparent;
+    color: var(--secondary-text);
+    font-size: 0.9em;
+    font-weight: 500;
+    line-height: 1;
+}
+
+#agentSettingsContainer .system-prompt-container .prompt-mode-button:last-child {
+    border-right: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+#agentSettingsContainer .system-prompt-container .prompt-mode-button-icon svg {
+    width: 14px;
+    height: 14px;
+}
+
+#agentSettingsContainer .system-prompt-container .prompt-content-container {
+    padding: 10px 12px 12px;
+    background: transparent;
+}
+
+#agentSettingsContainer .system-prompt-container .prompt-textarea,
+#agentSettingsContainer .system-prompt-container .preset-path-input,
+#agentSettingsContainer .system-prompt-container .preset-select,
+#agentSettingsContainer .system-prompt-container .block-name-input {
+    width: 100%;
+    box-sizing: border-box;
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: transparent;
+    color: var(--highlight-text);
+    transition:
+        background 0.2s ease,
+        border-color 0.2s ease,
+        box-shadow 0.2s ease;
+}
+
+#agentSettingsContainer .system-prompt-container .prompt-textarea,
+#agentSettingsContainer .system-prompt-container .block-content-input,
+#agentSettingsContainer .system-prompt-container .variant-content-input {
+    border-radius: 14px;
+}
+
+#agentSettingsContainer .system-prompt-container .prompt-content-container > .prompt-textarea {
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+#agentSettingsContainer .system-prompt-container .prompt-textarea {
+    min-height: 76px;
+    padding: 10px 12px;
+}
+
+#agentSettingsContainer .system-prompt-container .modular-prompt-container,
+#agentSettingsContainer .system-prompt-container .preset-prompt-container {
+    gap: 2px;
+    padding: 0;
+}
+
+#agentSettingsContainer .system-prompt-container .modular-toolbar {
+    padding: 0;
+    border-bottom: none;
+    gap: 8px;
+}
+
+#agentSettingsContainer .system-prompt-container .toolbar-controls-group,
+#agentSettingsContainer .system-prompt-container .path-input-container {
+    gap: 8px;
+}
+
+#agentSettingsContainer .system-prompt-container .toolbar-btn,
+#agentSettingsContainer .system-prompt-container .preset-browse-btn,
+#agentSettingsContainer .system-prompt-container .preset-refresh-btn,
+#agentSettingsContainer .system-prompt-container .add-variant-btn {
+    min-height: 34px;
+    padding: 0 12px;
+    border-radius: var(--agent-settings-pill-radius);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: transparent;
+    color: var(--highlight-text);
+    font-size: 0.88em;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+}
+
+#agentSettingsContainer .system-prompt-container .preset-refresh-btn {
+    width: 34px;
+    min-width: 34px;
+    padding: 0;
+}
+
+#agentSettingsContainer .system-prompt-container .blocks-container,
+#agentSettingsContainer .system-prompt-container .warehouse-container,
+#agentSettingsContainer .system-prompt-container .preview-text {
+    border-radius: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: transparent;
+}
+
+#agentSettingsContainer .system-prompt-container .blocks-container,
+#agentSettingsContainer .system-prompt-container .warehouse-container {
+    min-height: 82px;
+    padding: 10px;
+}
+
+#agentSettingsContainer .system-prompt-container .preview-text {
+    padding: 12px 13px;
+}
+
+#agentSettingsContainer .system-prompt-container .prompt-block.text-block {
+    border-radius: 14px;
+    border-width: 1px;
+}
+
+#agentSettingsContainer .system-prompt-container .prompt-block.newline-block {
+    border-radius: 999px;
+}
+
+body.light-theme #agentSettingsContainer .system-prompt-container .prompt-mode-button,
+body.light-theme #agentSettingsContainer .system-prompt-container .prompt-textarea,
+body.light-theme #agentSettingsContainer .system-prompt-container .preset-path-input,
+body.light-theme #agentSettingsContainer .system-prompt-container .preset-select,
+body.light-theme #agentSettingsContainer .system-prompt-container .block-name-input,
+body.light-theme #agentSettingsContainer .system-prompt-container .toolbar-btn,
+body.light-theme #agentSettingsContainer .system-prompt-container .preset-browse-btn,
+body.light-theme #agentSettingsContainer .system-prompt-container .preset-refresh-btn,
+body.light-theme #agentSettingsContainer .system-prompt-container .add-variant-btn,
+body.light-theme #agentSettingsContainer .system-prompt-container .blocks-container,
+body.light-theme #agentSettingsContainer .system-prompt-container .warehouse-container,
+body.light-theme #agentSettingsContainer .system-prompt-container .preview-text,
+body.light-theme #agentSettingsContainer .system-prompt-container .prompt-block.text-block {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--user-bubble-bg) 16%, rgba(255, 255, 255, 0.52)),
+        color-mix(in srgb, var(--user-bubble-bg) 10%, rgba(255, 255, 255, 0.26))
+    );
+    border-color: rgba(51, 51, 51, 0.08);
+    backdrop-filter: blur(12px) saturate(138%);
+    -webkit-backdrop-filter: blur(12px) saturate(138%);
+    box-shadow:
+        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.82),
+        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.72),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.18),
+        inset 0 0 1px rgba(0, 0, 0, 0.06);
+}
+
+body.light-theme #agentSettingsContainer .system-prompt-container .prompt-mode-button:hover,
+body.light-theme #agentSettingsContainer .system-prompt-container .prompt-textarea:hover,
+body.light-theme #agentSettingsContainer .system-prompt-container .preset-path-input:hover,
+body.light-theme #agentSettingsContainer .system-prompt-container .preset-select:hover,
+body.light-theme #agentSettingsContainer .system-prompt-container .block-name-input:hover,
+body.light-theme #agentSettingsContainer .system-prompt-container .toolbar-btn:hover,
+body.light-theme #agentSettingsContainer .system-prompt-container .preset-browse-btn:hover,
+body.light-theme #agentSettingsContainer .system-prompt-container .preset-refresh-btn:hover,
+body.light-theme #agentSettingsContainer .system-prompt-container .add-variant-btn:hover,
+body.light-theme #agentSettingsContainer .system-prompt-container .prompt-block.text-block:hover {
+    border-color: color-mix(in srgb, var(--highlight-text) 72%, rgba(51, 51, 51, 0.12));
+    box-shadow:
+        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.82),
+        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.72),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.18),
+        0 0 0 1px color-mix(in srgb, var(--highlight-text) 24%, transparent);
+}
+
+body.light-theme #agentSettingsContainer .system-prompt-container .prompt-mode-button.active {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--highlight-text) 92%, rgba(255, 255, 255, 0.18)),
+        color-mix(in srgb, var(--highlight-text) 80%, rgba(255, 255, 255, 0.08))
+    );
+    border-color: color-mix(in srgb, var(--highlight-text) 90%, rgba(51, 51, 51, 0.16));
+    color: var(--text-on-accent);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.28),
+        0 0 0 1px color-mix(in srgb, var(--highlight-text) 30%, transparent);
+}
+
+body:not(.light-theme) #agentSettingsContainer .system-prompt-container .prompt-mode-button,
+body:not(.light-theme) #agentSettingsContainer .system-prompt-container .prompt-textarea,
+body:not(.light-theme) #agentSettingsContainer .system-prompt-container .preset-path-input,
+body:not(.light-theme) #agentSettingsContainer .system-prompt-container .preset-select,
+body:not(.light-theme) #agentSettingsContainer .system-prompt-container .block-name-input,
+body:not(.light-theme) #agentSettingsContainer .system-prompt-container .toolbar-btn,
+body:not(.light-theme) #agentSettingsContainer .system-prompt-container .preset-browse-btn,
+body:not(.light-theme) #agentSettingsContainer .system-prompt-container .preset-refresh-btn,
+body:not(.light-theme) #agentSettingsContainer .system-prompt-container .add-variant-btn,
+body:not(.light-theme) #agentSettingsContainer .system-prompt-container .blocks-container,
+body:not(.light-theme) #agentSettingsContainer .system-prompt-container .warehouse-container,
+body:not(.light-theme) #agentSettingsContainer .system-prompt-container .preview-text,
+body:not(.light-theme) #agentSettingsContainer .system-prompt-container .prompt-block.text-block {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--user-bubble-bg) 54%, rgba(255, 255, 255, 0.08)),
+        color-mix(in srgb, var(--user-bubble-bg) 40%, rgba(255, 255, 255, 0.04))
+    );
+    border-color: rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(10px) saturate(124%);
+    -webkit-backdrop-filter: blur(10px) saturate(124%);
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.18),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.14),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.04),
+        inset 0 0 1px rgba(255, 255, 255, 0.03);
+}
+
+body:not(.light-theme) #agentSettingsContainer .system-prompt-container .prompt-mode-button:hover,
+body:not(.light-theme) #agentSettingsContainer .system-prompt-container .prompt-textarea:hover,
+body:not(.light-theme) #agentSettingsContainer .system-prompt-container .preset-path-input:hover,
+body:not(.light-theme) #agentSettingsContainer .system-prompt-container .preset-select:hover,
+body:not(.light-theme) #agentSettingsContainer .system-prompt-container .block-name-input:hover,
+body:not(.light-theme) #agentSettingsContainer .system-prompt-container .toolbar-btn:hover,
+body:not(.light-theme) #agentSettingsContainer .system-prompt-container .preset-browse-btn:hover,
+body:not(.light-theme) #agentSettingsContainer .system-prompt-container .preset-refresh-btn:hover,
+body:not(.light-theme) #agentSettingsContainer .system-prompt-container .add-variant-btn:hover,
+body:not(.light-theme) #agentSettingsContainer .system-prompt-container .prompt-block.text-block:hover {
+    border-color: color-mix(in srgb, var(--highlight-text) 68%, rgba(255, 255, 255, 0.12));
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.2),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.16),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.05),
+        0 0 0 1px color-mix(in srgb, var(--highlight-text) 26%, transparent);
+}
+
+body:not(.light-theme) #agentSettingsContainer .system-prompt-container .prompt-mode-button.active {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--highlight-text) 86%, rgba(255, 255, 255, 0.14)),
+        color-mix(in srgb, var(--highlight-text) 74%, rgba(255, 255, 255, 0.05))
+    );
+    border-color: var(--highlight-text);
+    color: var(--text-on-accent);
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.22),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.18),
+        0 0 0 1px color-mix(in srgb, var(--highlight-text) 32%, transparent);
+}
+
+body.light-theme #agentSettingsContainer .system-prompt-container .prompt-textarea:focus,
+body.light-theme #agentSettingsContainer .system-prompt-container .prompt-textarea:focus-visible,
+body.light-theme #agentSettingsContainer .system-prompt-container .preset-path-input:focus,
+body.light-theme #agentSettingsContainer .system-prompt-container .preset-path-input:focus-visible,
+body.light-theme #agentSettingsContainer .system-prompt-container .preset-select:focus,
+body.light-theme #agentSettingsContainer .system-prompt-container .preset-select:focus-visible,
+body.light-theme #agentSettingsContainer .system-prompt-container .block-name-input:focus,
+body.light-theme #agentSettingsContainer .system-prompt-container .block-name-input:focus-visible {
+    outline: none;
+    border-color: var(--highlight-text);
+    box-shadow:
+        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.82),
+        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.72),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.18),
+        0 0 0 1px color-mix(in srgb, var(--highlight-text) 34%, transparent);
+}
+
+body:not(.light-theme) #agentSettingsContainer .system-prompt-container .prompt-textarea:focus,
+body:not(.light-theme) #agentSettingsContainer .system-prompt-container .prompt-textarea:focus-visible,
+body:not(.light-theme) #agentSettingsContainer .system-prompt-container .preset-path-input:focus,
+body:not(.light-theme) #agentSettingsContainer .system-prompt-container .preset-path-input:focus-visible,
+body:not(.light-theme) #agentSettingsContainer .system-prompt-container .preset-select:focus,
+body:not(.light-theme) #agentSettingsContainer .system-prompt-container .preset-select:focus-visible,
+body:not(.light-theme) #agentSettingsContainer .system-prompt-container .block-name-input:focus,
+body:not(.light-theme) #agentSettingsContainer .system-prompt-container .block-name-input:focus-visible {
+    outline: none;
+    border-color: var(--highlight-text);
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.2),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.16),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.05),
+        0 0 0 1px color-mix(in srgb, var(--highlight-text) 34%, transparent);
+}
+
+#agentSettingsContainer .system-prompt-container .blocks-container,
+#agentSettingsContainer .system-prompt-container .warehouse-container,
+#agentSettingsContainer .system-prompt-container .preview-text {
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
+#agentSettingsContainer .system-prompt-container .prompt-block.text-block {
+    box-shadow: none;
+}
+
+#agentSettingsContainer .system-prompt-container .modular-toolbar,
+#agentSettingsContainer .system-prompt-container .preset-path-section,
+#agentSettingsContainer .system-prompt-container .preset-selector-section,
+#agentSettingsContainer .system-prompt-container .preset-editor-section {
+    background: transparent;
+    box-shadow: none;
+}
+
+#agentSettingsContainer .params-header:hover,
+#agentSettingsContainer .agent-params-collapsible-container.collapsed:hover,
+#agentSettingsContainer .agent-params-collapsible-container.collapsed:hover .params-header,
+#agentSettingsContainer .agent-identity-container .style-collapse-header:hover {
+    background: transparent;
+    box-shadow: none;
+}
+
+#agentSettingsContainer .strip-regex-row {
+    background: transparent;
+    box-shadow: none;
+}
+
+#agentSettingsContainer .strip-regex-row,
+#agentSettingsContainer .system-prompt-container .blocks-container,
+#agentSettingsContainer .system-prompt-container .warehouse-container,
+#agentSettingsContainer .system-prompt-container .preview-text {
+    border-color: color-mix(in srgb, var(--border-color) 72%, transparent);
+}
+
+#agentSettingsContainer .agent-identity-container .agent-style-collapsible-container {
+    margin: 0;
+    border-top: 1px solid color-mix(in srgb, var(--border-color) 72%, transparent);
+    background: transparent;
+}
+
+#agentSettingsContainer .agent-identity-container .style-collapse-header,
+#agentSettingsContainer .agent-identity-container .agent-style-controls {
+    background: transparent;
+}
+
+#agentSettingsContainer .strip-regex-container {
+    margin-top: 0;
+}
+
+#agentSettingsContainer {
+    --agent-settings-pill-radius: 16px;
+}
+
+#agentSettingsContainer input[type="text"]:not(.prompt-textarea):not(.strip-regex-input),
+#agentSettingsContainer input[type="url"],
+#agentSettingsContainer input[type="password"],
+#agentSettingsContainer input[type="number"],
+#agentSettingsContainer select {
+    width: 100%;
+    height: 34px;
+    min-height: 34px;
+    max-height: 34px;
+    padding: 0 12px;
+    margin-bottom: 0;
+    border-radius: var(--agent-settings-pill-radius) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: transparent;
+    background-clip: padding-box;
+    color: var(--highlight-text);
+    font-size: 0.9em;
+    line-height: 1;
+    box-sizing: border-box;
+    transition:
+        background 0.2s ease,
+        border-color 0.2s ease,
+        box-shadow 0.2s ease;
+}
+
+#agentSettingsContainer select {
+    padding-right: 34px;
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='rgba(160, 160, 176, 0.7)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+}
+
+#agentSettingsContainer #agentModel {
+    padding-right: 38px;
+}
+
+body.light-theme #agentSettingsContainer input[type="text"]:not(.prompt-textarea):not(.strip-regex-input),
+body.light-theme #agentSettingsContainer input[type="url"],
+body.light-theme #agentSettingsContainer input[type="password"],
+body.light-theme #agentSettingsContainer input[type="number"],
+body.light-theme #agentSettingsContainer select {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--user-bubble-bg) 18%, rgba(255, 255, 255, 0.52)),
+        color-mix(in srgb, var(--user-bubble-bg) 12%, rgba(255, 255, 255, 0.26))
+    );
+    border-color: rgba(51, 51, 51, 0.08);
+    backdrop-filter: blur(12px) saturate(138%);
+    -webkit-backdrop-filter: blur(12px) saturate(138%);
+    box-shadow:
+        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.82),
+        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.72),
+        inset 6px -6px 1px -6px rgba(255, 255, 255, 0.42),
+        inset -6px 6px 1px -6px rgba(255, 255, 255, 0.3),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.18),
+        inset 0 0 1px rgba(0, 0, 0, 0.06);
+}
+
+body.light-theme #agentSettingsContainer input[type="text"]:not(.prompt-textarea):not(.strip-regex-input):hover,
+body.light-theme #agentSettingsContainer input[type="url"]:hover,
+body.light-theme #agentSettingsContainer input[type="password"]:hover,
+body.light-theme #agentSettingsContainer input[type="number"]:hover,
+body.light-theme #agentSettingsContainer select:hover {
+    border-color: color-mix(in srgb, var(--highlight-text) 72%, rgba(51, 51, 51, 0.12));
+    box-shadow:
+        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.82),
+        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.72),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.18),
+        0 0 0 1px color-mix(in srgb, var(--highlight-text) 24%, transparent);
+}
+
+body.light-theme #agentSettingsContainer input[type="text"]:not(.prompt-textarea):not(.strip-regex-input):focus,
+body.light-theme #agentSettingsContainer input[type="text"]:not(.prompt-textarea):not(.strip-regex-input):focus-visible,
+body.light-theme #agentSettingsContainer input[type="url"]:focus,
+body.light-theme #agentSettingsContainer input[type="url"]:focus-visible,
+body.light-theme #agentSettingsContainer input[type="password"]:focus,
+body.light-theme #agentSettingsContainer input[type="password"]:focus-visible,
+body.light-theme #agentSettingsContainer input[type="number"]:focus,
+body.light-theme #agentSettingsContainer input[type="number"]:focus-visible,
+body.light-theme #agentSettingsContainer select:focus,
+body.light-theme #agentSettingsContainer select:focus-visible {
+    outline: none;
+    border-color: var(--highlight-text);
+    box-shadow:
+        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.82),
+        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.72),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.18),
+        0 0 0 1px color-mix(in srgb, var(--highlight-text) 34%, transparent);
+}
+
+body:not(.light-theme) #agentSettingsContainer input[type="text"]:not(.prompt-textarea):not(.strip-regex-input),
+body:not(.light-theme) #agentSettingsContainer input[type="url"],
+body:not(.light-theme) #agentSettingsContainer input[type="password"],
+body:not(.light-theme) #agentSettingsContainer input[type="number"],
+body:not(.light-theme) #agentSettingsContainer select {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--user-bubble-bg) 58%, rgba(255, 255, 255, 0.08)),
+        color-mix(in srgb, var(--user-bubble-bg) 44%, rgba(255, 255, 255, 0.04))
+    );
+    border-color: rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(10px) saturate(124%);
+    -webkit-backdrop-filter: blur(10px) saturate(124%);
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.18),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.14),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.04),
+        inset 0 0 1px rgba(255, 255, 255, 0.03);
+}
+
+body:not(.light-theme) #agentSettingsContainer input[type="text"]:not(.prompt-textarea):not(.strip-regex-input):hover,
+body:not(.light-theme) #agentSettingsContainer input[type="url"]:hover,
+body:not(.light-theme) #agentSettingsContainer input[type="password"]:hover,
+body:not(.light-theme) #agentSettingsContainer input[type="number"]:hover,
+body:not(.light-theme) #agentSettingsContainer select:hover {
+    border-color: color-mix(in srgb, var(--highlight-text) 68%, rgba(255, 255, 255, 0.12));
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.2),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.16),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.05),
+        0 0 0 1px color-mix(in srgb, var(--highlight-text) 26%, transparent);
+}
+
+body:not(.light-theme) #agentSettingsContainer input[type="text"]:not(.prompt-textarea):not(.strip-regex-input):focus,
+body:not(.light-theme) #agentSettingsContainer input[type="text"]:not(.prompt-textarea):not(.strip-regex-input):focus-visible,
+body:not(.light-theme) #agentSettingsContainer input[type="url"]:focus,
+body:not(.light-theme) #agentSettingsContainer input[type="url"]:focus-visible,
+body:not(.light-theme) #agentSettingsContainer input[type="password"]:focus,
+body:not(.light-theme) #agentSettingsContainer input[type="password"]:focus-visible,
+body:not(.light-theme) #agentSettingsContainer input[type="number"]:focus,
+body:not(.light-theme) #agentSettingsContainer input[type="number"]:focus-visible,
+body:not(.light-theme) #agentSettingsContainer select:focus,
+body:not(.light-theme) #agentSettingsContainer select:focus-visible {
+    outline: none;
+    border-color: var(--highlight-text);
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.2),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.16),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.05),
+        0 0 0 1px color-mix(in srgb, var(--highlight-text) 34%, transparent);
+}
+
+#agentSettingsContainer input[type="number"] {
+    padding: 0 12px;
+    background-image: none;
+}
+
+body.light-theme #agentSettingsContainer input[type="number"]:hover,
+body.light-theme #agentSettingsContainer input[type="number"]:focus,
+body.light-theme #agentSettingsContainer input[type="number"]:focus-visible {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--user-bubble-bg) 18%, rgba(255, 255, 255, 0.52)),
+        color-mix(in srgb, var(--user-bubble-bg) 12%, rgba(255, 255, 255, 0.26))
+    );
+    background-image: none;
+}
+
+body:not(.light-theme) #agentSettingsContainer input[type="number"]:hover,
+body:not(.light-theme) #agentSettingsContainer input[type="number"]:focus,
+body:not(.light-theme) #agentSettingsContainer input[type="number"]:focus-visible {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--user-bubble-bg) 58%, rgba(255, 255, 255, 0.08)),
+        color-mix(in srgb, var(--user-bubble-bg) 44%, rgba(255, 255, 255, 0.04))
+    );
+    background-image: none;
+}
+
+#agentSettingsContainer .model-input-container button:not(#openModelSelectBtn) {
+    width: 34px;
+    height: 34px;
+    border-radius: var(--agent-settings-pill-radius);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: transparent;
+    color: var(--highlight-text);
+}
+
+body.light-theme #agentSettingsContainer .model-input-container button:not(#openModelSelectBtn) {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--user-bubble-bg) 18%, rgba(255, 255, 255, 0.52)),
+        color-mix(in srgb, var(--user-bubble-bg) 12%, rgba(255, 255, 255, 0.26))
+    );
+    border-color: rgba(51, 51, 51, 0.08);
+    box-shadow:
+        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.82),
+        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.72),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.18),
+        inset 0 0 1px rgba(0, 0, 0, 0.06);
+}
+
+body:not(.light-theme) #agentSettingsContainer .model-input-container button:not(#openModelSelectBtn) {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--user-bubble-bg) 58%, rgba(255, 255, 255, 0.08)),
+        color-mix(in srgb, var(--user-bubble-bg) 44%, rgba(255, 255, 255, 0.04))
+    );
+    border-color: rgba(255, 255, 255, 0.08);
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.18),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.14),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.04),
+        inset 0 0 1px rgba(255, 255, 255, 0.03);
+}
+
+body.light-theme #agentSettingsContainer .model-input-container button:not(#openModelSelectBtn):hover,
+body.light-theme #agentSettingsContainer .model-input-container button:not(#openModelSelectBtn):focus-visible {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--user-bubble-bg) 24%, rgba(255, 255, 255, 0.56)),
+        color-mix(in srgb, var(--user-bubble-bg) 16%, rgba(255, 255, 255, 0.3))
+    );
+    border-color: color-mix(in srgb, var(--highlight-text) 72%, rgba(51, 51, 51, 0.12));
+    box-shadow:
+        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.82),
+        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.72),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.18),
+        0 0 0 1px color-mix(in srgb, var(--highlight-text) 24%, transparent);
+}
+
+body:not(.light-theme) #agentSettingsContainer .model-input-container button:not(#openModelSelectBtn):hover,
+body:not(.light-theme) #agentSettingsContainer .model-input-container button:not(#openModelSelectBtn):focus-visible {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--user-bubble-bg) 66%, rgba(255, 255, 255, 0.1)),
+        color-mix(in srgb, var(--user-bubble-bg) 50%, rgba(255, 255, 255, 0.05))
+    );
+    border-color: color-mix(in srgb, var(--highlight-text) 68%, rgba(255, 255, 255, 0.12));
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.2),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.16),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.05),
+        0 0 0 1px color-mix(in srgb, var(--highlight-text) 26%, transparent);
+}
+
+.agent-name-wrapper input[type="text"] {
+    font-size: 0.95em;
 }
 
 .params-content .form-group-inline {
@@ -2420,24 +3850,30 @@ body.light-theme #globalSettingsModal .modal-content {
 .agent-identity-container {
     display: flex;
     flex-direction: column;
-    gap: 15px;
-    padding: 15px;
+    gap: 8px;
+    padding: 4px 15px 0;
     background-color: var(--input-bg);
     border: 1px solid var(--border-color);
     border-radius: 12px;
     margin: 10px 0;
 }
 
-.agent-identity-main {
+#agentSettingsContainer .agent-identity-main {
     display: flex;
     align-items: center;
-    gap: 20px;
+    gap: 14px;
 }
 
 /* 头像包装器 */
 .agent-avatar-wrapper {
     position: relative;
     flex-shrink: 0;
+}
+
+#agentSettingsContainer .agent-avatar-display {
+    width: 76px;
+    height: 76px;
+    border-width: 2px;
 }
 
 .agent-avatar-display {
@@ -2495,6 +3931,11 @@ body.light-theme #globalSettingsModal .modal-content {
     opacity: 1;
 }
 
+#agentSettingsContainer .avatar-upload-overlay svg {
+    width: 22px;
+    height: 22px;
+}
+
 .avatar-upload-overlay svg {
     width: 32px;
     height: 32px;
@@ -2507,23 +3948,26 @@ body.light-theme #globalSettingsModal .modal-content {
     flex-grow: 1;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 4px;
 }
 
 .agent-name-wrapper label {
-    font-size: 0.9em;
+    font-size: 0.96em;
     font-weight: 500;
     color: var(--secondary-text);
+    margin-left: 4px;
 }
 
 .agent-name-wrapper input[type="text"] {
-    width: 100%;
-    padding: 10px 12px;
+    width: calc(100% + 4px);
+    margin-left: -4px;
+    padding: 12px 14px;
     border-radius: 8px;
     border: 1px solid var(--border-color);
     background-color: var(--secondary-bg);
     color: var(--primary-text);
-    font-size: 1em;
+    font-size: 1.08em;
+    line-height: 1.3;
     box-sizing: border-box;
 }
 
@@ -2573,7 +4017,7 @@ body.light-theme #globalSettingsModal .modal-content {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
     gap: 12px;
-    padding: 15px;
+    padding: 8px 15px 0;
     max-height: 800px;
     /* 增加最大高度 */
     overflow-y: auto;
@@ -2638,24 +4082,103 @@ body.light-theme #globalSettingsModal .modal-content {
 }
 
 .color-input-group input[type="color"] {
-    width: 50px;
-    height: 38px;
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
+    width: 37px;
+    height: 37px;
+    min-width: 37px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 999px;
     cursor: pointer;
-    padding: 2px;
-    background-color: var(--secondary-bg);
+    padding: 3px;
+    background: transparent;
+    box-sizing: border-box;
+    overflow: hidden;
+    transition:
+        border-color 0.2s ease,
+        box-shadow 0.2s ease,
+        transform 0.2s ease;
+}
+
+.color-input-group input[type="color"]::-webkit-color-swatch-wrapper {
+    padding: 0;
+    border-radius: 999px;
+}
+
+.color-input-group input[type="color"]::-webkit-color-swatch {
+    border: none;
+    border-radius: 999px;
+}
+
+.color-input-group input[type="color"]::-moz-color-swatch {
+    border: none;
+    border-radius: 999px;
+}
+
+.color-input-group input[type="color"]:hover {
+    border-color: var(--highlight-text);
+}
+
+.color-input-group input[type="color"]:focus,
+.color-input-group input[type="color"]:focus-visible {
+    outline: none;
+    border-color: var(--highlight-text);
+    box-shadow: none;
 }
 
 .color-input-group input[type="text"] {
     flex-grow: 1;
-    padding: 8px 10px;
-    border-radius: 6px;
-    border: 1px solid var(--border-color);
-    background-color: var(--secondary-bg);
+    height: 37px;
+    padding: 0 12px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: transparent;
     color: var(--primary-text);
-    font-size: 0.9em;
+    font-size: 0.95em;
     font-family: monospace;
+    box-sizing: border-box;
+}
+
+body.light-theme .color-input-group input[type="color"],
+body.light-theme .color-input-group input[type="text"] {
+    background: linear-gradient(
+        180deg,
+        rgba(255, 255, 255, 0.82),
+        rgba(255, 255, 255, 0.58)
+    );
+    border-color: rgba(51, 51, 51, 0.08);
+    backdrop-filter: blur(10px) saturate(130%);
+    -webkit-backdrop-filter: blur(10px) saturate(130%);
+    box-shadow:
+        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.74),
+        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.62),
+        inset 0 0 1px rgba(0, 0, 0, 0.08);
+}
+
+body.light-theme .color-input-group input[type="text"]:hover,
+body.light-theme .color-input-group input[type="text"]:focus,
+body.light-theme .color-input-group input[type="text"]:focus-visible {
+    border-color: var(--highlight-text);
+}
+
+body:not(.light-theme) .color-input-group input[type="color"],
+body:not(.light-theme) .color-input-group input[type="text"] {
+    background: linear-gradient(
+        180deg,
+        rgba(255, 255, 255, 0.08),
+        rgba(255, 255, 255, 0.04)
+    );
+    border-color: rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(8px) saturate(118%);
+    -webkit-backdrop-filter: blur(8px) saturate(118%);
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.16),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.12),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+
+body:not(.light-theme) .color-input-group input[type="text"]:hover,
+body:not(.light-theme) .color-input-group input[type="text"]:focus,
+body:not(.light-theme) .color-input-group input[type="text"]:focus-visible {
+    border-color: var(--highlight-text);
 }
 
 /* 自定义CSS文本框 */
@@ -2679,29 +4202,88 @@ body.light-theme #globalSettingsModal .modal-content {
 
 /* 重置颜色按钮 */
 .reset-colors-btn {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
     width: 100%;
-    padding: 10px 15px;
-    background-color: var(--button-bg);
-    color: var(--text-on-accent);
-    border: 1px solid var(--button-bg);
-    border-radius: 8px;
+    height: 37px;
+    padding: 0 12px;
+    background: transparent;
+    color: var(--highlight-text);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 14px;
     cursor: pointer;
-    font-size: 0.9em;
-    display: flex;
+    font-size: 0.95em;
+    font-weight: 500;
+    line-height: 1;
+    display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: 8px;
-    transition: background-color 0.2s ease, border-color 0.2s ease;
+    box-sizing: border-box;
+    transition:
+        background 0.2s ease,
+        border-color 0.2s ease,
+        box-shadow 0.2s ease,
+        color 0.2s ease,
+        transform 0.2s ease;
 }
 
 .reset-colors-btn:hover {
-    background-color: var(--button-hover-bg);
-    border-color: var(--button-hover-bg);
+    background: var(--highlight-text);
+    border-color: var(--highlight-text);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: none;
 }
 
 .reset-colors-btn svg {
     flex-shrink: 0;
     stroke: currentColor;
+}
+
+body.light-theme .reset-colors-btn {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--highlight-text) 10%, rgba(255, 255, 255, 0.82)),
+        color-mix(in srgb, var(--highlight-text) 6%, rgba(255, 255, 255, 0.58))
+    );
+    border-color: rgba(51, 51, 51, 0.08);
+    color: var(--highlight-text);
+    backdrop-filter: blur(10px) saturate(130%);
+    -webkit-backdrop-filter: blur(10px) saturate(130%);
+    box-shadow:
+        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.74),
+        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.62),
+        inset 0 0 1px rgba(0, 0, 0, 0.08);
+}
+
+body.light-theme .reset-colors-btn:hover {
+    background: var(--highlight-text);
+    border-color: var(--highlight-text);
+    color: #ffffff;
+}
+
+body:not(.light-theme) .reset-colors-btn {
+    background: linear-gradient(
+        180deg,
+        rgba(255, 255, 255, 0.08),
+        rgba(255, 255, 255, 0.04)
+    );
+    border-color: rgba(255, 255, 255, 0.08);
+    color: var(--highlight-text);
+    backdrop-filter: blur(8px) saturate(118%);
+    -webkit-backdrop-filter: blur(8px) saturate(118%);
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.16),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.12),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+
+body:not(.light-theme) .reset-colors-btn:hover {
+    background: var(--highlight-text);
+    border-color: var(--highlight-text);
+    color: #000000;
 }
 
 /* ========================================
@@ -3027,4 +4609,2353 @@ body.light-theme .global-settings-footer button[type="submit"]:hover {
     .style-control-item.full-width {
         grid-column: 1;
     }
+}
+
+/* ========================================
+   Agent Settings Final Layout
+   Unified section-based layout for the agent settings page.
+   ======================================== */
+#agentSettingsForm > .agent-settings-section,
+#agentSettingsContainer .agent-settings-section.agent-settings-card-shell,
+#agentSettingsContainer .agent-settings-section.agent-identity-container,
+#agentSettingsContainer .agent-settings-section.agent-params-collapsible-container,
+#agentSettingsContainer .agent-settings-section.strip-regex-container,
+#agentSettingsContainer .system-prompt-container,
+#agentSettingsContainer .agent-style-collapsible-container,
+#agentSettingsContainer .style-collapse-header,
+#agentSettingsContainer .agent-style-controls {
+    background-color: transparent !important;
+    background-image: none !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+#agentSettingsForm > .agent-settings-section,
+#agentSettingsContainer .system-prompt-container {
+    border: none !important;
+    border-radius: 0 !important;
+}
+
+#agentSettingsForm > .agent-settings-section::after,
+#agentSettingsForm > .agent-settings-section::before,
+#agentSettingsContainer .agent-settings-section::after,
+#agentSettingsContainer .agent-settings-section::before {
+    display: none !important;
+    content: none !important;
+}
+
+#agentSettingsForm > .agent-settings-section {
+    position: relative;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+#agentSettingsForm > .agent-settings-section + .agent-settings-section {
+    margin-top: 14px !important;
+    padding-top: 18px !important;
+    background-image: linear-gradient(var(--border-color), var(--border-color)) !important;
+    background-repeat: no-repeat !important;
+    background-position: top left !important;
+    background-size: 100% 1px !important;
+}
+
+#agentSettingsContainer .agent-identity-container {
+    gap: 12px !important;
+}
+
+#agentSettingsContainer .agent-style-collapsible-container {
+    margin-top: 0 !important;
+    border-top: none !important;
+}
+
+#agentSettingsContainer .style-collapse-header,
+#agentSettingsContainer .agent-style-controls,
+#agentSettingsContainer .params-header,
+#agentSettingsContainer .params-header:hover,
+#agentSettingsContainer .agent-params-collapsible-container.collapsed:hover,
+#agentSettingsContainer .agent-params-collapsible-container.collapsed:hover .params-header {
+    background-color: transparent !important;
+    background-image: none !important;
+    box-shadow: none !important;
+}
+
+#agentSettingsContainer .agent-params-collapsible-container {
+    padding-bottom: 2px !important;
+}
+
+#agentSettingsContainer .params-header {
+    padding: 8px 0 !important;
+}
+
+#agentSettingsContainer .agent-params-collapsible-container:not(.collapsed) .params-header {
+    padding-bottom: 6px !important;
+}
+
+#agentSettingsContainer .agent-params-collapsible-container.collapsed .params-header {
+    padding-bottom: 8px !important;
+}
+
+#agentSettingsContainer .params-content {
+    padding: 0 0 2px !important;
+    margin-top: 0 !important;
+}
+
+#agentSettingsContainer .agent-params-collapsible-container.collapsed .params-content {
+    padding: 0 !important;
+}
+
+#agentSettingsContainer .agent-settings-prompt-shell {
+    gap: 6px !important;
+}
+
+#agentSettingsContainer .agent-settings-prompt-shell .system-prompt-container {
+    margin: 0 !important;
+    overflow: visible !important;
+}
+
+#agentSettingsContainer .system-prompt-container .blocks-container,
+#agentSettingsContainer .system-prompt-container .warehouse-container,
+#agentSettingsContainer .system-prompt-container .preview-text {
+    background-color: transparent !important;
+    background-image: none !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    border-width: 0 !important;
+    border-radius: 0 !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+}
+
+#agentSettingsContainer .system-prompt-container .modular-toolbar,
+#agentSettingsContainer .system-prompt-container .preset-path-section,
+#agentSettingsContainer .system-prompt-container .preset-selector-section,
+#agentSettingsContainer .system-prompt-container .preset-editor-section {
+    background-color: transparent !important;
+    background-image: none !important;
+    box-shadow: none !important;
+}
+
+#agentSettingsContainer .strip-regex-row {
+    background-color: transparent !important;
+    background-image: none !important;
+    box-shadow: none !important;
+    border-left: none !important;
+    border-right: none !important;
+    border-top: none !important;
+    border-radius: 0 !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+}
+
+#agentSettingsForm > .form-actions {
+    margin-top: auto;
+}
+
+/* ========================================
+   Agent Settings Unified Collapsible Sections
+   Final authority for the settings page section logic.
+   ======================================== */
+#agentSettingsForm > .agent-settings-section {
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+}
+
+#agentSettingsForm > .agent-settings-section + .agent-settings-section {
+    margin-top: 2px !important;
+    padding-top: 5px !important;
+    border-top: none !important;
+    background-image: none !important;
+}
+
+#agentSettingsForm > .agent-settings-section[data-section-key="identity"] + .agent-settings-section {
+    margin-top: 0 !important;
+    padding-top: 3px !important;
+}
+
+#agentSettingsContainer .agent-settings-collapsible-container {
+    position: relative;
+}
+
+#agentSettingsContainer .agent-settings-section-header {
+    position: relative;
+    isolation: isolate;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+        "title toggle"
+        "summary summary";
+    align-items: start;
+    column-gap: 12px;
+    row-gap: 0;
+    padding: 3px 0 2px !important;
+    background: transparent !important;
+    cursor: pointer;
+    user-select: none;
+}
+
+#agentSettingsContainer .agent-settings-section-header::before {
+    content: "";
+    position: absolute;
+    left: -8px;
+    right: -2px;
+    top: 3px;
+    height: 26px;
+    border-radius: 999px;
+    background-color: transparent;
+    transition: background-color 0.18s ease, box-shadow 0.18s ease;
+    z-index: -1;
+    pointer-events: none;
+}
+
+#agentSettingsContainer .agent-settings-section-title {
+    grid-area: title;
+    position: relative;
+    display: inline-block;
+    justify-self: start;
+    align-self: center;
+    min-width: 0;
+    max-width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--highlight-text);
+    font-size: 1.06em;
+    font-weight: 500;
+    line-height: 24px;
+    z-index: 1;
+    transition: color 0.18s ease;
+}
+
+#agentSettingsContainer .agent-settings-section-summary {
+    grid-area: summary;
+    min-width: 0;
+    color: var(--secondary-text);
+    font-size: 0.88em;
+    line-height: 1.24;
+    white-space: pre-line;
+    overflow: visible;
+    text-overflow: clip;
+    margin-top: 4px;
+}
+
+#agentSettingsContainer .agent-settings-section:not([data-section-key="identity"]) .agent-settings-section-summary {
+    font-size: 0.98em;
+    line-height: 1.3;
+}
+
+#agentSettingsContainer .agent-settings-section-summary.summary-with-avatar {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    white-space: normal;
+}
+
+#agentSettingsContainer .agent-settings-summary-avatar {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    object-fit: cover;
+    object-position: center;
+    flex-shrink: 0;
+    border: 1px solid color-mix(in srgb, var(--highlight-text) 24%, transparent);
+}
+
+#agentSettingsContainer .agent-settings-summary-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#agentSettingsContainer #identitySummary.summary-with-avatar {
+    gap: 14px;
+    align-items: center;
+    margin-top: 8px;
+    margin-left: -6px;
+    max-width: calc(100% + 6px);
+    box-sizing: border-box;
+    padding: 8px 12px 8px 16px;
+    border-radius: 18px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: transparent;
+    background-clip: padding-box;
+}
+
+#agentSettingsContainer #identitySummary .agent-settings-summary-avatar {
+    width: 30px;
+    height: 30px;
+    border-width: 2px;
+}
+
+#agentSettingsContainer #identitySummary .agent-settings-summary-label {
+    font-size: 1.18em;
+    font-weight: 600;
+    line-height: 1.2;
+}
+
+body.light-theme #agentSettingsContainer #identitySummary.summary-with-avatar {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--user-bubble-bg) 18%, rgba(255, 255, 255, 0.52)),
+        color-mix(in srgb, var(--user-bubble-bg) 12%, rgba(255, 255, 255, 0.26))
+    );
+    border-color: rgba(51, 51, 51, 0.08);
+    backdrop-filter: blur(12px) saturate(138%);
+    -webkit-backdrop-filter: blur(12px) saturate(138%);
+    box-shadow:
+        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.82),
+        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.72),
+        inset 6px -6px 1px -6px rgba(255, 255, 255, 0.42),
+        inset -6px 6px 1px -6px rgba(255, 255, 255, 0.3),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.18),
+        inset 0 0 1px rgba(0, 0, 0, 0.06);
+}
+
+body:not(.light-theme) #agentSettingsContainer #identitySummary.summary-with-avatar {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--user-bubble-bg) 58%, rgba(255, 255, 255, 0.08)),
+        color-mix(in srgb, var(--user-bubble-bg) 44%, rgba(255, 255, 255, 0.04))
+    );
+    border-color: rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(10px) saturate(124%);
+    -webkit-backdrop-filter: blur(10px) saturate(124%);
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.18),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.14),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.04),
+        inset 0 0 1px rgba(255, 255, 255, 0.03);
+}
+
+#agentSettingsContainer .agent-settings-collapsible-container:not(.collapsed) .agent-settings-section-summary {
+    display: none;
+}
+
+#agentSettingsContainer .agent-settings-collapsible-container.collapsed .agent-settings-section-header {
+    padding-bottom: 5px !important;
+}
+
+#agentSettingsContainer .agent-settings-section[data-section-key="identity"].collapsed .agent-settings-section-header {
+    padding-bottom: 0 !important;
+}
+
+#agentSettingsContainer .agent-settings-section-header:hover .agent-settings-section-title {
+    color: var(--highlight-text);
+}
+
+#agentSettingsContainer .agent-settings-section-header:hover::before {
+    background-color: color-mix(in srgb, var(--highlight-text) 12%, transparent);
+}
+
+#agentSettingsContainer .agent-settings-collapsible-container:not(.collapsed) .agent-settings-section-header::before {
+    background-color: color-mix(in srgb, var(--highlight-text) 12%, transparent);
+}
+
+body.light-theme #agentSettingsContainer .agent-settings-section-header:hover::before {
+    background-color: color-mix(in srgb, var(--highlight-text) 14%, rgba(255, 255, 255, 0.7));
+}
+
+body.light-theme #agentSettingsContainer .agent-settings-collapsible-container:not(.collapsed) .agent-settings-section-header::before {
+    background-color: color-mix(in srgb, var(--highlight-text) 14%, rgba(255, 255, 255, 0.7));
+}
+
+body:not(.light-theme) #agentSettingsContainer .agent-settings-section-header:hover::before {
+    background-color: color-mix(in srgb, var(--highlight-text) 18%, rgba(255, 255, 255, 0.04));
+}
+
+body:not(.light-theme) #agentSettingsContainer .agent-settings-collapsible-container:not(.collapsed) .agent-settings-section-header::before {
+    background-color: color-mix(in srgb, var(--highlight-text) 18%, rgba(255, 255, 255, 0.04));
+}
+
+#agentSettingsContainer .agent-settings-toggle-btn {
+    grid-area: toggle;
+    align-self: center;
+    justify-self: end;
+    position: relative;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: none;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--secondary-text);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2;
+    cursor: pointer;
+    transition: color 0.2s ease, background-color 0.2s ease, transform 0.2s ease;
+}
+
+#agentSettingsContainer .agent-settings-toggle-btn::before {
+    content: "";
+    position: absolute;
+    inset: 2px;
+    border-radius: 999px;
+    background-color: transparent;
+    transition: background-color 0.2s ease;
+}
+
+#agentSettingsContainer .agent-settings-toggle-btn:hover {
+    color: var(--highlight-text);
+    background-color: transparent;
+    box-shadow: none;
+}
+
+body:not(.light-theme) #agentSettingsContainer .agent-settings-toggle-btn:hover::before {
+    background-color: color-mix(in srgb, var(--highlight-text) 20%, rgba(255, 255, 255, 0.05));
+}
+
+body.light-theme #agentSettingsContainer .agent-settings-toggle-btn:hover::before {
+    background-color: color-mix(in srgb, var(--highlight-text) 16%, rgba(255, 255, 255, 0.74));
+}
+
+#agentSettingsContainer .agent-settings-toggle-btn .toggle-icon {
+    transition: transform 0.24s ease;
+}
+
+#agentSettingsContainer .agent-settings-collapsible-container.collapsed .agent-settings-toggle-btn .toggle-icon {
+    transform: rotate(-90deg);
+}
+
+#agentSettingsContainer .agent-settings-section-content {
+    max-height: 2400px;
+    opacity: 1;
+    overflow: hidden;
+    padding: 0 0 2px !important;
+    transition: max-height 0.28s ease, opacity 0.22s ease, padding 0.22s ease;
+}
+
+#agentSettingsContainer .agent-settings-collapsible-container:not(.collapsed) .agent-settings-section-content {
+    overflow: visible;
+}
+
+#agentSettingsContainer .agent-settings-collapsible-container.collapsed .agent-settings-section-content {
+    max-height: 0;
+    opacity: 0;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    pointer-events: none;
+}
+
+#agentSettingsContainer .agent-params-collapsible-container:not(.collapsed) .params-content > div,
+#agentSettingsContainer .agent-params-collapsible-container:not(.collapsed) .params-content .model-input-container {
+    overflow: visible;
+}
+
+#agentSettingsContainer .params-content > div > input[type="number"],
+#agentSettingsContainer .params-content > div > input[type="text"],
+#agentSettingsContainer .params-content > div > .model-input-container {
+    width: calc(100% + 2px);
+    margin-left: -2px;
+}
+
+#agentSettingsContainer .agent-settings-section-content > .agent-identity-container,
+#agentSettingsContainer .agent-settings-section-content > .agent-settings-card-shell {
+    margin: 0 !important;
+    border: none !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    background-image: none !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+#agentSettingsContainer .agent-settings-section-content > .agent-identity-container {
+    display: flex;
+    flex-direction: column;
+    gap: 12px !important;
+    padding: 0 !important;
+}
+
+#agentSettingsContainer .agent-settings-section-content > .agent-settings-card-shell {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 0 !important;
+}
+
+#agentSettingsContainer .agent-settings-section-content > .agent-settings-card-shell > label {
+    margin: 0 0 6px;
+    color: var(--highlight-text);
+    font-size: 1em;
+    font-weight: 500;
+}
+
+#agentSettingsContainer .agent-settings-section-content > .agent-settings-model-shell .model-input-container {
+    margin-top: 0;
+}
+
+#agentSettingsContainer .agent-settings-collapsible-container.collapsed .params-content {
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+}
+
+#agentSettingsContainer .strip-regex-container .agent-settings-card-shell {
+    gap: 0;
+}
+
+#agentSettingsContainer .strip-regex-container .strip-regex-list-container {
+    margin-bottom: 8px;
+}
+
+/* ========================================
+   Agent Settings Prompt Section Final Polish
+   ======================================== */
+#agentSettingsContainer .agent-settings-prompt-shell {
+    gap: 2px !important;
+}
+
+#agentSettingsContainer .agent-settings-section[data-section-key="prompt"] .agent-settings-section-content {
+    padding-top: 0 !important;
+}
+
+#agentSettingsContainer .agent-settings-prompt-shell > .prompt-section-note {
+    margin: -1px 0 0;
+    color: var(--secondary-text);
+    font-size: 0.82em;
+    line-height: 1.35;
+    font-weight: 400;
+}
+
+#agentSettingsContainer .system-prompt-container .prompt-mode-selector {
+    display: flex;
+    align-items: flex-end;
+    justify-content: flex-start;
+    gap: 20px;
+    margin: 0 0 8px;
+    padding: 1px 0 6px;
+    overflow: visible;
+    border: none;
+    background: transparent;
+}
+
+#agentSettingsContainer .system-prompt-container .prompt-mode-button {
+    position: relative;
+    flex: 0 0 auto;
+    min-width: 0;
+    height: 28px;
+    min-height: 28px;
+    padding: 0 1px;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    color: var(--secondary-text);
+    font-size: 0.95em;
+    font-weight: 400;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 6px;
+    white-space: nowrap;
+    overflow: visible;
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    transition: color 0.2s ease, font-weight 0.2s ease;
+}
+
+#agentSettingsContainer .system-prompt-container .prompt-mode-button::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    bottom: -6px;
+    transform: translateX(-50%);
+    width: 0;
+    height: 3px;
+    border-radius: 999px;
+    background-color: color-mix(in srgb, var(--highlight-text) 55%, transparent);
+    transition: width 0.2s ease, background-color 0.2s ease;
+}
+
+#agentSettingsContainer .system-prompt-container .prompt-mode-button:hover {
+    color: color-mix(in srgb, var(--highlight-text) 88%, var(--primary-text) 12%);
+    border: none;
+    background: transparent;
+    box-shadow: none;
+}
+
+#agentSettingsContainer .system-prompt-container .prompt-mode-button:hover::after {
+    width: 16px;
+    background-color: color-mix(in srgb, var(--highlight-text) 42%, transparent);
+}
+
+#agentSettingsContainer .system-prompt-container .prompt-mode-button.active {
+    color: var(--highlight-text);
+    font-weight: 600;
+    border: none;
+    background: transparent;
+    box-shadow: none;
+    transition: color 0.2s ease, font-weight 0.2s ease;
+}
+
+#agentSettingsContainer .system-prompt-container .prompt-mode-button.active::after,
+#agentSettingsContainer .system-prompt-container .prompt-mode-button.active:hover::after {
+    width: 30px;
+    background-color: var(--highlight-text);
+}
+
+body.light-theme #agentSettingsContainer .system-prompt-container .prompt-mode-button,
+body.light-theme #agentSettingsContainer .system-prompt-container .prompt-mode-button:hover,
+body.light-theme #agentSettingsContainer .system-prompt-container .prompt-mode-button.active,
+body:not(.light-theme) #agentSettingsContainer .system-prompt-container .prompt-mode-button,
+body:not(.light-theme) #agentSettingsContainer .system-prompt-container .prompt-mode-button:hover,
+body:not(.light-theme) #agentSettingsContainer .system-prompt-container .prompt-mode-button.active {
+    border: none;
+    background: transparent;
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
+body.light-theme #agentSettingsContainer .system-prompt-container .prompt-mode-button.active,
+body:not(.light-theme) #agentSettingsContainer .system-prompt-container .prompt-mode-button.active {
+    color: var(--highlight-text);
+    font-weight: 600;
+}
+
+body.light-theme #agentSettingsContainer .system-prompt-container .prompt-mode-button:hover,
+body:not(.light-theme) #agentSettingsContainer .system-prompt-container .prompt-mode-button:hover {
+    color: color-mix(in srgb, var(--highlight-text) 88%, var(--primary-text) 12%);
+}
+
+#agentSettingsContainer .system-prompt-container .prompt-mode-button-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    line-height: 0;
+    transform: translateY(-1px);
+}
+
+#agentSettingsContainer .system-prompt-container .prompt-mode-button-icon svg {
+    width: 14px;
+    height: 14px;
+}
+
+#agentSettingsContainer .system-prompt-container .prompt-mode-button-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#agentSettingsContainer .system-prompt-container .prompt-content-container {
+    padding: 2px 0 0;
+}
+
+#agentSettingsContainer .system-prompt-container .prompt-textarea,
+#agentSettingsContainer .system-prompt-container .preset-path-input,
+#agentSettingsContainer .system-prompt-container .preset-select,
+#agentSettingsContainer .system-prompt-container .block-name-input {
+    border-radius: var(--agent-settings-pill-radius) !important;
+    font-size: 0.9em;
+    color: var(--highlight-text);
+}
+
+#agentSettingsContainer .system-prompt-container .preset-path-input,
+#agentSettingsContainer .system-prompt-container .preset-select,
+#agentSettingsContainer .system-prompt-container .block-name-input {
+    height: 34px;
+    min-height: 34px;
+    max-height: 34px;
+    padding: 0 12px;
+}
+
+#agentSettingsContainer .system-prompt-container .preset-select {
+    padding-right: 34px;
+}
+
+#agentSettingsContainer .system-prompt-container .prompt-textarea {
+    min-height: 76px;
+    padding: 10px 12px;
+    border-radius: 16px !important;
+}
+
+#agentSettingsContainer .system-prompt-container .preset-path-section label,
+#agentSettingsContainer .system-prompt-container .preset-selector-section label,
+#agentSettingsContainer .system-prompt-container .preset-editor-section label {
+    margin: 0 0 4px;
+    color: var(--secondary-text);
+    font-size: 0.9em;
+    font-weight: 500;
+}
+
+#agentSettingsContainer .system-prompt-container .modular-prompt-container,
+#agentSettingsContainer .system-prompt-container .preset-prompt-container {
+    gap: 8px;
+    padding: 2px 0 0;
+}
+
+#agentSettingsContainer .system-prompt-container .modular-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 0 6px;
+    border: none;
+    background: transparent;
+    flex-wrap: wrap;
+}
+
+#agentSettingsContainer .system-prompt-container .toolbar-controls-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+    flex-wrap: wrap;
+}
+
+#agentSettingsContainer .system-prompt-container .toolbar-btn,
+#agentSettingsContainer .system-prompt-container .preset-browse-btn,
+#agentSettingsContainer .system-prompt-container .preset-refresh-btn,
+#agentSettingsContainer .system-prompt-container .add-variant-btn,
+#agentSettingsContainer .system-prompt-container .warehouse-btn,
+#agentSettingsContainer .system-prompt-container .add-warehouse-btn {
+    min-height: 34px;
+    padding: 0 12px;
+    border-radius: var(--agent-settings-pill-radius);
+    font-size: 0.88em;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+}
+
+#agentSettingsContainer .system-prompt-container .preset-refresh-btn {
+    width: 34px;
+    min-width: 34px;
+    padding: 0;
+}
+
+#agentSettingsContainer .system-prompt-container .toolbar-toggle {
+    min-height: 34px;
+    padding: 0 12px;
+    border-radius: var(--agent-settings-pill-radius);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: var(--secondary-text);
+    font-size: 0.88em;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    user-select: none;
+}
+
+#agentSettingsContainer .system-prompt-container .toolbar-toggle input[type="checkbox"] {
+    width: 15px;
+    height: 15px;
+    margin: 0;
+    flex-shrink: 0;
+}
+
+#agentSettingsContainer .system-prompt-container .blocks-container,
+#agentSettingsContainer .system-prompt-container .warehouse-container,
+#agentSettingsContainer .system-prompt-container .preview-container {
+    border-radius: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 12px;
+}
+
+#agentSettingsContainer .system-prompt-container .blocks-container,
+#agentSettingsContainer .system-prompt-container .hidden-blocks-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-content: flex-start;
+}
+
+#agentSettingsContainer .system-prompt-container .blocks-container {
+    min-height: 84px;
+}
+
+#agentSettingsContainer .system-prompt-container .warehouse-container,
+#agentSettingsContainer .system-prompt-container .preview-container {
+    padding: 10px 12px;
+}
+
+#agentSettingsContainer .system-prompt-container .warehouse-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+#agentSettingsContainer .system-prompt-container .warehouse-header h4,
+#agentSettingsContainer .system-prompt-container .preview-label {
+    margin: 0;
+    color: var(--secondary-text);
+    font-size: 0.9em;
+    font-weight: 500;
+}
+
+#agentSettingsContainer .system-prompt-container .warehouse-selector {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 8px;
+}
+
+#agentSettingsContainer .system-prompt-container .warehouse-btn,
+#agentSettingsContainer .system-prompt-container .add-warehouse-btn {
+    position: relative;
+    isolation: isolate;
+    min-width: 0;
+    transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, color 0.2s ease;
+}
+
+#agentSettingsContainer .system-prompt-container .warehouse-btn {
+    padding: 0 12px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: transparent;
+    color: var(--secondary-text);
+    white-space: nowrap;
+}
+
+#agentSettingsContainer .system-prompt-container .add-warehouse-btn {
+    padding: 0 12px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: transparent;
+    color: var(--highlight-text);
+    white-space: nowrap;
+}
+
+#agentSettingsContainer .system-prompt-container .add-warehouse-btn span {
+    line-height: 1;
+    white-space: nowrap;
+}
+
+#agentSettingsContainer .system-prompt-container .add-warehouse-btn svg,
+#agentSettingsContainer .system-prompt-container .warehouse-btn svg {
+    flex-shrink: 0;
+    width: 14px;
+    height: 14px;
+}
+
+#agentSettingsContainer .system-prompt-container .hidden-blocks-list {
+    min-height: 52px;
+    padding: 0;
+}
+
+#agentSettingsContainer .system-prompt-container .prompt-block,
+#agentSettingsContainer .system-prompt-container .hidden-block {
+    position: relative;
+    isolation: isolate;
+    min-height: 32px;
+    padding: 0 11px;
+    border-radius: 999px;
+    font-size: 0.88em;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+#agentSettingsContainer .system-prompt-container .prompt-block.text-block,
+#agentSettingsContainer .system-prompt-container .hidden-block {
+    border-width: 1px;
+}
+
+#agentSettingsContainer .system-prompt-container .hidden-block {
+    max-width: 220px;
+    color: var(--highlight-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#agentSettingsContainer .system-prompt-container .hidden-block.has-custom-name {
+    background-image: none;
+}
+
+#agentSettingsContainer .system-prompt-container .block-content {
+    font-size: 0.9em;
+    line-height: 1.35;
+}
+
+#agentSettingsContainer .system-prompt-container .block-content:empty::before {
+    content: "双击输入内容...";
+    color: var(--secondary-text);
+    opacity: 0.7;
+}
+
+#agentSettingsContainer .system-prompt-container .block-content[contenteditable="true"] {
+    padding: 4px 6px;
+    border-radius: 10px;
+}
+
+#agentSettingsContainer .system-prompt-container .prompt-block.newline-block {
+    min-height: 28px;
+    height: 28px;
+    max-height: 28px;
+    padding: 0 12px;
+    border-radius: 999px;
+}
+
+#agentSettingsContainer .system-prompt-container .newline-label {
+    font-size: 0.82em;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+}
+
+#agentSettingsContainer .system-prompt-container .variant-content-input {
+    min-height: 76px;
+    padding: 10px 12px;
+    border-radius: 16px;
+}
+
+#agentSettingsContainer .system-prompt-container .remove-variant-btn {
+    width: 28px;
+    height: 28px;
+    min-width: 28px;
+    align-self: center;
+    border-radius: 999px;
+}
+
+#agentSettingsContainer .system-prompt-container .path-input-container {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+#agentSettingsContainer .system-prompt-container .preset-path-section,
+#agentSettingsContainer .system-prompt-container .preset-selector-section,
+#agentSettingsContainer .system-prompt-container .preset-editor-section,
+#agentSettingsContainer .system-prompt-container .variants-edit-container {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+#agentSettingsContainer .system-prompt-container .variants-edit-container {
+    margin-bottom: 0;
+}
+
+#agentSettingsContainer .system-prompt-container .variants-list {
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+#agentSettingsContainer .system-prompt-container .variant-item-edit {
+    gap: 8px;
+}
+
+#agentSettingsContainer .system-prompt-container .preview-text {
+    padding: 12px 13px;
+    border-radius: 14px;
+    line-height: 1.55;
+}
+
+#agentSettingsContainer .system-prompt-container .warehouse-item.active .warehouse-btn {
+    color: var(--text-on-accent);
+    background: var(--highlight-text);
+    border-color: var(--highlight-text);
+    box-shadow: none;
+}
+
+#agentSettingsContainer .system-prompt-container .warehouse-btn:hover,
+#agentSettingsContainer .system-prompt-container .add-warehouse-btn:hover {
+    color: var(--highlight-text);
+}
+
+body.light-theme #agentSettingsContainer .system-prompt-container .toolbar-toggle,
+body.light-theme #agentSettingsContainer .system-prompt-container .preview-container {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--user-bubble-bg) 16%, rgba(255, 255, 255, 0.52)),
+        color-mix(in srgb, var(--user-bubble-bg) 10%, rgba(255, 255, 255, 0.26))
+    );
+    border-color: rgba(51, 51, 51, 0.08);
+    box-shadow:
+        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.82),
+        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.72),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.18),
+        inset 0 0 1px rgba(0, 0, 0, 0.06);
+}
+
+body.light-theme #agentSettingsContainer .system-prompt-container .blocks-container,
+body.light-theme #agentSettingsContainer .system-prompt-container .warehouse-container,
+body.light-theme #agentSettingsContainer .system-prompt-container .preview-text,
+body.light-theme #agentSettingsContainer .system-prompt-container .prompt-block.text-block,
+body.light-theme #agentSettingsContainer .system-prompt-container .hidden-block {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--user-bubble-bg) 16%, rgba(255, 255, 255, 0.52)),
+        color-mix(in srgb, var(--user-bubble-bg) 10%, rgba(255, 255, 255, 0.26))
+    );
+    border-color: rgba(51, 51, 51, 0.08);
+    box-shadow:
+        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.82),
+        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.72),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.18),
+        inset 0 0 1px rgba(0, 0, 0, 0.06);
+}
+
+body.light-theme #agentSettingsContainer .system-prompt-container .warehouse-btn,
+body.light-theme #agentSettingsContainer .system-prompt-container .add-warehouse-btn {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--user-bubble-bg) 16%, rgba(255, 255, 255, 0.52)),
+        color-mix(in srgb, var(--user-bubble-bg) 10%, rgba(255, 255, 255, 0.26))
+    );
+    border-color: rgba(51, 51, 51, 0.08);
+    box-shadow:
+        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.82),
+        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.72),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.18),
+        inset 0 0 1px rgba(0, 0, 0, 0.06);
+}
+
+body.light-theme #agentSettingsContainer .system-prompt-container .warehouse-btn:hover,
+body.light-theme #agentSettingsContainer .system-prompt-container .add-warehouse-btn:hover {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--user-bubble-bg) 24%, rgba(255, 255, 255, 0.56)),
+        color-mix(in srgb, var(--user-bubble-bg) 16%, rgba(255, 255, 255, 0.3))
+    );
+    border-color: color-mix(in srgb, var(--highlight-text) 72%, rgba(51, 51, 51, 0.12));
+    box-shadow:
+        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.82),
+        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.72),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.18),
+        0 0 0 1px color-mix(in srgb, var(--highlight-text) 24%, transparent);
+}
+
+body:not(.light-theme) #agentSettingsContainer .system-prompt-container .toolbar-toggle,
+body:not(.light-theme) #agentSettingsContainer .system-prompt-container .preview-container {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--user-bubble-bg) 54%, rgba(255, 255, 255, 0.08)),
+        color-mix(in srgb, var(--user-bubble-bg) 40%, rgba(255, 255, 255, 0.04))
+    );
+    border-color: rgba(255, 255, 255, 0.08);
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.18),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.14),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.04),
+        inset 0 0 1px rgba(255, 255, 255, 0.03);
+}
+
+body:not(.light-theme) #agentSettingsContainer .system-prompt-container .blocks-container,
+body:not(.light-theme) #agentSettingsContainer .system-prompt-container .warehouse-container,
+body:not(.light-theme) #agentSettingsContainer .system-prompt-container .preview-text,
+body:not(.light-theme) #agentSettingsContainer .system-prompt-container .prompt-block.text-block,
+body:not(.light-theme) #agentSettingsContainer .system-prompt-container .hidden-block {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--user-bubble-bg) 54%, rgba(255, 255, 255, 0.08)),
+        color-mix(in srgb, var(--user-bubble-bg) 40%, rgba(255, 255, 255, 0.04))
+    );
+    border-color: rgba(255, 255, 255, 0.08);
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.18),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.14),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.04),
+        inset 0 0 1px rgba(255, 255, 255, 0.03);
+}
+
+body:not(.light-theme) #agentSettingsContainer .system-prompt-container .warehouse-btn,
+body:not(.light-theme) #agentSettingsContainer .system-prompt-container .add-warehouse-btn {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--user-bubble-bg) 54%, rgba(255, 255, 255, 0.08)),
+        color-mix(in srgb, var(--user-bubble-bg) 40%, rgba(255, 255, 255, 0.04))
+    );
+    border-color: rgba(255, 255, 255, 0.08);
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.18),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.14),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.04),
+        inset 0 0 1px rgba(255, 255, 255, 0.03);
+}
+
+body:not(.light-theme) #agentSettingsContainer .system-prompt-container .warehouse-btn:hover,
+body:not(.light-theme) #agentSettingsContainer .system-prompt-container .add-warehouse-btn:hover {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--user-bubble-bg) 66%, rgba(255, 255, 255, 0.1)),
+        color-mix(in srgb, var(--user-bubble-bg) 50%, rgba(255, 255, 255, 0.05))
+    );
+    border-color: color-mix(in srgb, var(--highlight-text) 68%, rgba(255, 255, 255, 0.12));
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.2),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.16),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.05),
+        0 0 0 1px color-mix(in srgb, var(--highlight-text) 26%, transparent);
+}
+
+/* ========================================
+   Unified Nested Style Collapsible
+   ======================================== */
+.agent-style-collapsible-container {
+    margin-top: 0;
+    border-top: none;
+    background: transparent;
+}
+
+.style-collapse-header {
+    position: relative;
+    isolation: isolate;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 4px 0 5px;
+    background: transparent;
+    cursor: pointer;
+    user-select: none;
+}
+
+.style-collapse-header::before {
+    content: "";
+    position: absolute;
+    left: -8px;
+    right: -2px;
+    top: 3px;
+    height: 26px;
+    border-radius: 999px;
+    background-color: transparent;
+    transition: background-color 0.18s ease, box-shadow 0.18s ease;
+    z-index: -1;
+    pointer-events: none;
+}
+
+.style-collapse-header:hover::before {
+    background-color: color-mix(in srgb, var(--highlight-text) 12%, transparent);
+}
+
+body.light-theme .style-collapse-header:hover::before {
+    background-color: color-mix(in srgb, var(--highlight-text) 14%, rgba(255, 255, 255, 0.7));
+}
+
+body:not(.light-theme) .style-collapse-header:hover::before {
+    background-color: color-mix(in srgb, var(--highlight-text) 18%, rgba(255, 255, 255, 0.04));
+}
+
+.style-collapse-title {
+    order: 1;
+    flex: 1 1 auto;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--highlight-text);
+    font-size: 0.98em;
+    font-weight: 500;
+    line-height: 24px;
+}
+
+.style-collapse-icon {
+    order: 2;
+    position: relative;
+    margin-left: auto;
+    margin-right: 0;
+    width: 22px;
+    height: 22px;
+    min-width: 22px;
+    border: none;
+    border-radius: 999px;
+    color: var(--secondary-text);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0;
+    line-height: 0;
+    transform: none;
+    transition: color 0.2s ease, background-color 0.2s ease;
+}
+
+.style-collapse-icon::after {
+    content: "";
+    position: absolute;
+    inset: 2px;
+    border-radius: 999px;
+    background-color: transparent;
+    transition: background-color 0.2s ease;
+}
+
+.style-collapse-icon::before {
+    content: "";
+    position: relative;
+    z-index: 1;
+    width: 5px;
+    height: 5px;
+    border-right: 1.6px solid currentColor;
+    border-bottom: 1.6px solid currentColor;
+    transform: rotate(-45deg);
+    transition: transform 0.24s ease;
+}
+
+.agent-style-collapsible-container:not(.collapsed) .style-collapse-icon,
+.agent-style-collapsible-container.collapsed .style-collapse-icon {
+    transform: none;
+}
+
+.agent-style-collapsible-container:not(.collapsed) .style-collapse-icon::before {
+    transform: rotate(45deg);
+}
+
+.style-collapse-header:hover .style-collapse-icon {
+    color: var(--highlight-text);
+    background-color: transparent;
+    box-shadow: none;
+}
+
+body:not(.light-theme) .style-collapse-header:hover .style-collapse-icon::after {
+    background-color: color-mix(in srgb, var(--highlight-text) 20%, rgba(255, 255, 255, 0.05));
+}
+
+body.light-theme .style-collapse-header:hover .style-collapse-icon::after {
+    background-color: color-mix(in srgb, var(--highlight-text) 16%, rgba(255, 255, 255, 0.74));
+}
+
+.agent-style-controls {
+    gap: 12px;
+    padding: 4px 0 2px;
+    max-height: 900px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    opacity: 1;
+    background: transparent;
+    transition: max-height 0.28s ease, opacity 0.22s ease, padding 0.22s ease;
+}
+
+.agent-style-collapsible-container.collapsed .agent-style-controls {
+    max-height: 0;
+    opacity: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+}
+
+/* ========================================
+   Group Settings Final Authority
+   Mirrors the Agent settings experience.
+   ======================================== */
+#groupSettingsContainer {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0 3px 0 12px;
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    height: 100%;
+    min-height: 0;
+}
+
+#groupSettingsContainer h3 {
+    display: none;
+}
+
+#groupSettingsForm {
+    width: 100%;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    height: 100%;
+    min-height: 0;
+    gap: 12px;
+}
+
+#groupSettingsForm > .group-settings-section {
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+}
+
+#groupSettingsForm > .group-settings-section + .group-settings-section {
+    margin-top: 2px !important;
+    padding-top: 5px !important;
+    border-top: none !important;
+    background-image: none !important;
+}
+
+#groupSettingsForm > .group-settings-section[data-section-key="identity"] + .group-settings-section {
+    margin-top: 0 !important;
+    padding-top: 3px !important;
+}
+
+#groupSettingsContainer .group-settings-collapsible-container {
+    position: relative;
+}
+
+#groupSettingsContainer .group-settings-section-header {
+    position: relative;
+    isolation: isolate;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+        "title toggle"
+        "summary summary";
+    align-items: start;
+    column-gap: 12px;
+    row-gap: 0;
+    padding: 3px 0 2px !important;
+    background: transparent !important;
+    cursor: pointer;
+    user-select: none;
+}
+
+#groupSettingsContainer .group-settings-section-header::before {
+    content: "";
+    position: absolute;
+    left: -8px;
+    right: -2px;
+    top: 3px;
+    height: 26px;
+    border-radius: 999px;
+    background-color: transparent;
+    transition: background-color 0.18s ease, box-shadow 0.18s ease;
+    z-index: -1;
+    pointer-events: none;
+}
+
+#groupSettingsContainer .group-settings-section-title {
+    grid-area: title;
+    position: relative;
+    display: inline-block;
+    justify-self: start;
+    align-self: center;
+    min-width: 0;
+    max-width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--highlight-text);
+    font-size: 1.06em;
+    font-weight: 500;
+    line-height: 24px;
+    z-index: 1;
+    transition: color 0.18s ease;
+}
+
+#groupSettingsContainer .group-settings-section-summary {
+    grid-area: summary;
+    min-width: 0;
+    color: var(--secondary-text);
+    font-size: 0.98em;
+    line-height: 1.3;
+    white-space: pre-line;
+    overflow: visible;
+    text-overflow: clip;
+    margin-top: 4px;
+}
+
+#groupSettingsContainer .group-settings-section-summary.summary-with-avatar {
+    display: inline-flex;
+    align-items: center;
+    gap: 14px;
+    white-space: normal;
+    margin-top: 8px;
+}
+
+#groupSettingsContainer .group-settings-summary-avatar {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    object-fit: cover;
+    object-position: center;
+    flex-shrink: 0;
+    border: 2px solid color-mix(in srgb, var(--highlight-text) 24%, transparent);
+}
+
+#groupSettingsContainer .group-settings-summary-copy {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+#groupSettingsContainer .group-settings-summary-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 1.18em;
+    font-weight: 600;
+    line-height: 1.2;
+}
+
+#groupSettingsContainer .group-settings-summary-meta {
+    color: var(--secondary-text);
+    font-size: 0.86em;
+    line-height: 1.2;
+}
+
+#groupSettingsContainer .group-settings-collapsible-container:not(.collapsed) .group-settings-section-summary {
+    display: none;
+}
+
+#groupSettingsContainer .group-settings-collapsible-container.collapsed .group-settings-section-header {
+    padding-bottom: 5px !important;
+}
+
+#groupSettingsContainer .group-settings-section-header:hover::before,
+#groupSettingsContainer .group-settings-collapsible-container:not(.collapsed) .group-settings-section-header::before {
+    background-color: color-mix(in srgb, var(--highlight-text) 12%, transparent);
+}
+
+body.light-theme #groupSettingsContainer .group-settings-section-header:hover::before,
+body.light-theme #groupSettingsContainer .group-settings-collapsible-container:not(.collapsed) .group-settings-section-header::before {
+    background-color: color-mix(in srgb, var(--highlight-text) 14%, rgba(255, 255, 255, 0.7));
+}
+
+body:not(.light-theme) #groupSettingsContainer .group-settings-section-header:hover::before,
+body:not(.light-theme) #groupSettingsContainer .group-settings-collapsible-container:not(.collapsed) .group-settings-section-header::before {
+    background-color: color-mix(in srgb, var(--highlight-text) 18%, rgba(255, 255, 255, 0.04));
+}
+
+#groupSettingsContainer .group-settings-toggle-btn {
+    grid-area: toggle;
+    align-self: center;
+    justify-self: end;
+    position: relative;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: none;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--secondary-text);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2;
+    cursor: pointer;
+    transition: color 0.2s ease, background-color 0.2s ease, transform 0.2s ease;
+}
+
+#groupSettingsContainer .group-settings-toggle-btn::before {
+    content: "";
+    position: absolute;
+    inset: 2px;
+    border-radius: 999px;
+    background-color: transparent;
+    transition: background-color 0.2s ease;
+}
+
+#groupSettingsContainer .group-settings-toggle-btn:hover {
+    color: var(--highlight-text);
+    background-color: transparent;
+    box-shadow: none;
+}
+
+body:not(.light-theme) #groupSettingsContainer .group-settings-toggle-btn:hover::before {
+    background-color: color-mix(in srgb, var(--highlight-text) 20%, rgba(255, 255, 255, 0.05));
+}
+
+body.light-theme #groupSettingsContainer .group-settings-toggle-btn:hover::before {
+    background-color: color-mix(in srgb, var(--highlight-text) 16%, rgba(255, 255, 255, 0.74));
+}
+
+#groupSettingsContainer .group-settings-toggle-btn .toggle-icon {
+    transition: transform 0.24s ease;
+}
+
+#groupSettingsContainer .group-settings-collapsible-container.collapsed .group-settings-toggle-btn .toggle-icon {
+    transform: rotate(-90deg);
+}
+
+#groupSettingsContainer .group-settings-section-content {
+    max-height: 2400px;
+    opacity: 1;
+    overflow: hidden;
+    padding: 0 0 2px !important;
+    transition: max-height 0.28s ease, opacity 0.22s ease, padding 0.22s ease;
+}
+
+#groupSettingsContainer .group-settings-collapsible-container:not(.collapsed) .group-settings-section-content {
+    overflow: visible;
+}
+
+#groupSettingsContainer .group-settings-collapsible-container.collapsed .group-settings-section-content {
+    max-height: 0;
+    opacity: 0;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    pointer-events: none;
+}
+
+#groupSettingsContainer .group-settings-section-content > .group-settings-identity-shell,
+#groupSettingsContainer .group-settings-section-content > .group-settings-card-shell {
+    margin: 0 !important;
+    border: none !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    background-image: none !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    padding: 0 !important;
+}
+
+#groupSettingsContainer .group-settings-identity-shell {
+    display: flex;
+    flex-direction: column;
+    gap: 8px !important;
+}
+
+#groupSettingsContainer .group-settings-card-shell {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+#groupSettingsContainer .group-identity-main {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+#groupSettingsContainer .group-avatar-display {
+    width: 76px;
+    height: 76px;
+    border-width: 2px;
+}
+
+#groupSettingsContainer .group-name-wrapper label {
+    margin-left: 4px;
+}
+
+#groupSettingsContainer .group-name-wrapper input[type="text"] {
+    width: calc(100% + 4px);
+    margin-left: -4px;
+    font-size: 1.08em;
+}
+
+#groupSettingsContainer .group-settings-field-shell {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+#groupSettingsContainer .group-settings-field-label,
+#groupSettingsForm label {
+    display: block;
+    font-weight: 500;
+    color: var(--secondary-text);
+    font-size: 0.9em;
+}
+
+#groupSettingsForm input[type="text"],
+#groupSettingsForm textarea,
+#groupSettingsForm select {
+    width: 100%;
+    box-sizing: border-box;
+    color: var(--primary-text);
+    font-size: 0.95em;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: transparent;
+}
+
+#groupSettingsForm input[type="text"],
+#groupSettingsForm select {
+    height: 37px;
+    padding: 0 12px;
+    border-radius: 999px;
+}
+
+#groupSettingsForm textarea {
+    min-height: 96px;
+    padding: 12px 14px;
+    border-radius: 18px;
+    resize: vertical;
+}
+
+body.light-theme #groupSettingsForm input[type="text"],
+body.light-theme #groupSettingsForm textarea,
+body.light-theme #groupSettingsForm select,
+body.light-theme #groupSettingsContainer .group-member-item label {
+    background: linear-gradient(
+        180deg,
+        rgba(255, 255, 255, 0.82),
+        rgba(255, 255, 255, 0.58)
+    );
+    border-color: rgba(51, 51, 51, 0.08);
+    backdrop-filter: blur(10px) saturate(130%);
+    -webkit-backdrop-filter: blur(10px) saturate(130%);
+    box-shadow:
+        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.74),
+        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.62),
+        inset 0 0 1px rgba(0, 0, 0, 0.08);
+}
+
+body:not(.light-theme) #groupSettingsForm input[type="text"],
+body:not(.light-theme) #groupSettingsForm textarea,
+body:not(.light-theme) #groupSettingsForm select,
+body:not(.light-theme) #groupSettingsContainer .group-member-item label {
+    background: linear-gradient(
+        180deg,
+        rgba(255, 255, 255, 0.08),
+        rgba(255, 255, 255, 0.04)
+    );
+    border-color: rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(8px) saturate(118%);
+    -webkit-backdrop-filter: blur(8px) saturate(118%);
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.16),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.12),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+
+body.light-theme #groupSettingsForm input[type="text"]:hover,
+body.light-theme #groupSettingsForm input[type="text"]:focus,
+body.light-theme #groupSettingsForm input[type="text"]:focus-visible,
+body.light-theme #groupSettingsForm textarea:hover,
+body.light-theme #groupSettingsForm textarea:focus,
+body.light-theme #groupSettingsForm textarea:focus-visible,
+body.light-theme #groupSettingsForm select:hover,
+body.light-theme #groupSettingsForm select:focus,
+body.light-theme #groupSettingsForm select:focus-visible,
+body:not(.light-theme) #groupSettingsForm input[type="text"]:hover,
+body:not(.light-theme) #groupSettingsForm input[type="text"]:focus,
+body:not(.light-theme) #groupSettingsForm input[type="text"]:focus-visible,
+body:not(.light-theme) #groupSettingsForm textarea:hover,
+body:not(.light-theme) #groupSettingsForm textarea:focus,
+body:not(.light-theme) #groupSettingsForm textarea:focus-visible,
+body:not(.light-theme) #groupSettingsForm select:hover,
+body:not(.light-theme) #groupSettingsForm select:focus,
+body:not(.light-theme) #groupSettingsForm select:focus-visible {
+    border-color: var(--highlight-text);
+    outline: none;
+}
+
+#groupSettingsContainer .group-settings-helper-text {
+    color: var(--secondary-text);
+    font-size: 0.82em;
+    line-height: 1.35;
+}
+
+#groupSettingsContainer .group-settings-switch-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 2px 2px 0;
+}
+
+#groupSettingsContainer .group-settings-model-shell .model-input-container {
+    margin-top: 0;
+}
+
+#groupSettingsContainer .group-members-list-container {
+    max-height: 220px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    border: none;
+    border-radius: 0;
+    padding: 2px 0 0;
+    background: transparent;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+#groupSettingsContainer .group-member-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0;
+}
+
+#groupSettingsContainer .group-member-item input[type="checkbox"] {
+    margin: 0;
+    width: 16px;
+    height: 16px;
+    accent-color: var(--highlight-text);
+    flex-shrink: 0;
+}
+
+#groupSettingsContainer .group-member-item label {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: inline-flex;
+    align-items: center;
+    cursor: pointer;
+    font-weight: 400;
+    color: var(--primary-text);
+    font-size: 0.95em;
+    padding: 9px 12px;
+    border-radius: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+#groupSettingsContainer .group-member-item .avatar-small {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    margin-right: 8px;
+    object-fit: cover;
+    flex-shrink: 0;
+}
+
+#groupSettingsContainer #memberTagsInputs {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+#groupSettingsContainer .member-tag-input-item {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+#groupSettingsContainer .member-tag-input-item label {
+    font-size: 0.85em;
+    color: var(--secondary-text);
+}
+
+#groupSettingsContainer .member-tag-input-item input[type="text"] {
+    font-size: 0.9em;
+}
+
+#groupSettingsForm .model-input-container {
+    position: relative;
+}
+
+#groupSettingsForm .model-input-container input[type="text"] {
+    padding-right: 36px;
+}
+
+#groupSettingsForm .model-input-container #openGroupModelSelectBtn {
+    position: absolute;
+    right: 5px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 24px;
+    height: 24px;
+    padding: 2px;
+    border: none;
+    background-color: transparent;
+    cursor: pointer;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.2s ease, transform 0.2s ease;
+    min-width: 24px;
+    z-index: 2;
+    color: var(--secondary-text);
+}
+
+#groupSettingsForm .model-input-container #openGroupModelSelectBtn:hover {
+    background-color: var(--accent-bg);
+}
+
+#groupSettingsForm .model-input-container #openGroupModelSelectBtn svg {
+    stroke: currentColor;
+    width: 14px;
+    height: 14px;
+}
+
+#groupSettingsForm > .form-actions {
+    margin-top: auto;
+}
+
+#groupSettingsForm .form-actions {
+    margin-top: auto;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    flex-shrink: 0;
+    gap: 4px;
+    position: sticky;
+    bottom: 0;
+    background-color: transparent;
+    padding: 12px 15px 8px;
+    border-radius: 8px;
+    box-shadow: none;
+    z-index: 10;
+    margin-left: -15px;
+    margin-right: -15px;
+    margin-bottom: -15px;
+}
+
+#groupSettingsForm .form-actions .delete-button-container {
+    opacity: 1;
+    max-height: none;
+    overflow: visible;
+    transition: none;
+    margin-top: 2px;
+}
+
+#groupSettingsForm .form-actions button {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: calc(100% + 2px);
+    margin-left: -2px;
+    height: 37px;
+    padding: 0 12px;
+    font-size: 0.95em;
+    font-weight: 500;
+    line-height: 1;
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    cursor: pointer;
+    white-space: nowrap;
+    box-sizing: border-box;
+    transition:
+        background 0.2s ease,
+        border-color 0.2s ease,
+        box-shadow 0.2s ease,
+        color 0.2s ease,
+        transform 0.2s ease;
+}
+
+#groupSettingsForm .form-actions button[type="submit"] {
+    color: var(--highlight-text);
+}
+
+#groupSettingsForm .form-actions button[type="submit"]:hover {
+    background: var(--highlight-text);
+    border-color: var(--highlight-text);
+    color: var(--text-on-accent);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: none;
+}
+
+#groupSettingsForm .form-actions .danger-button {
+    color: color-mix(in srgb, var(--danger-color) 88%, #ffffff 12%);
+}
+
+#groupSettingsForm .form-actions .danger-button:hover {
+    background: var(--danger-color);
+    border-color: var(--danger-color);
+    color: #ffffff;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: none;
+}
+
+body.light-theme #groupSettingsForm .form-actions button[type="submit"] {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--user-bubble-bg) 82%, rgba(255, 255, 255, 0.4)),
+        color-mix(in srgb, var(--user-bubble-bg) 70%, rgba(255, 255, 255, 0.22))
+    );
+    border-color: rgba(51, 51, 51, 0.08);
+    backdrop-filter: blur(10px) saturate(130%);
+    -webkit-backdrop-filter: blur(10px) saturate(130%);
+    box-shadow:
+        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.72),
+        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.62),
+        inset 0 0 1px rgba(0, 0, 0, 0.08);
+}
+
+body.light-theme #groupSettingsForm .form-actions .danger-button {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--danger-color) 16%, rgba(255, 255, 255, 0.78)),
+        color-mix(in srgb, var(--danger-color) 11%, rgba(255, 255, 255, 0.54))
+    );
+    border-color: rgba(51, 51, 51, 0.08);
+    color: color-mix(in srgb, var(--danger-color) 92%, #6d0f1f 8%);
+    backdrop-filter: blur(10px) saturate(130%);
+    -webkit-backdrop-filter: blur(10px) saturate(130%);
+    box-shadow:
+        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.74),
+        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.62),
+        inset 0 0 1px rgba(0, 0, 0, 0.08);
+}
+
+body:not(.light-theme) #groupSettingsForm .form-actions button[type="submit"] {
+    border-color: rgba(255, 255, 255, 0.08);
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--user-bubble-bg) 52%, rgba(255, 255, 255, 0.06)),
+        color-mix(in srgb, var(--user-bubble-bg) 40%, rgba(255, 255, 255, 0.03))
+    );
+    backdrop-filter: blur(8px) saturate(118%);
+    -webkit-backdrop-filter: blur(8px) saturate(118%);
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.16),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.12),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+
+body:not(.light-theme) #groupSettingsForm .form-actions button[type="submit"]:hover {
+    color: color-mix(in srgb, #000000 78%, var(--primary-text) 22%);
+}
+
+body:not(.light-theme) #groupSettingsForm .form-actions .danger-button {
+    border-color: rgba(255, 255, 255, 0.08);
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--danger-color) 34%, rgba(255, 255, 255, 0.08)),
+        color-mix(in srgb, var(--danger-color) 24%, rgba(255, 255, 255, 0.04))
+    );
+    color: color-mix(in srgb, var(--danger-color) 78%, #ffdce2 22%);
+    backdrop-filter: blur(8px) saturate(118%);
+    -webkit-backdrop-filter: blur(8px) saturate(118%);
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.16),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.12),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+
+/* ========================================
+   Group Settings Second Pass Alignment
+   Unifies save button + bubble family with Agent settings.
+   ======================================== */
+#groupSettingsContainer {
+    --agent-settings-pill-radius: 16px;
+}
+
+#agentSettingsContainer,
+#groupSettingsContainer {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0 3px 0 12px;
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    height: auto;
+}
+
+#agentSettingsForm,
+#groupSettingsForm {
+    width: 100%;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    height: auto;
+    gap: 12px;
+}
+
+#agentSettingsForm > .form-actions,
+#groupSettingsForm > .form-actions {
+    margin-top: auto;
+}
+
+#agentSettingsForm .form-actions,
+#groupSettingsForm .form-actions {
+    margin-top: auto;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    flex-shrink: 0;
+    gap: 4px;
+    position: sticky;
+    bottom: 0;
+    background-color: transparent;
+    padding: 12px 15px 14px;
+    border-radius: 8px;
+    box-shadow: none;
+    z-index: 10;
+    margin-left: -15px;
+    margin-right: -15px;
+    margin-bottom: -15px;
+}
+
+#agentSettingsForm .form-actions .delete-button-container,
+#groupSettingsForm .form-actions .delete-button-container {
+    opacity: 1;
+    max-height: none;
+    overflow: visible;
+    transition: none;
+    margin-top: 2px;
+}
+
+#agentSettingsForm .form-actions button,
+#groupSettingsForm .form-actions button {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    align-self: stretch;
+    width: calc(100% + 2px);
+    margin-left: -2px;
+    height: 37px;
+    min-height: 37px;
+    padding: 0 12px;
+    font-size: 0.95em;
+    font-weight: 500;
+    line-height: 1;
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    cursor: pointer;
+    white-space: nowrap;
+    box-sizing: border-box;
+    flex: 0 0 auto;
+    appearance: none;
+    -webkit-appearance: none;
+    transition:
+        background 0.2s ease,
+        border-color 0.2s ease,
+        box-shadow 0.2s ease,
+        color 0.2s ease,
+        transform 0.2s ease;
+}
+
+#agentSettingsForm .form-actions button[type="submit"],
+#groupSettingsForm .form-actions button[type="submit"] {
+    color: var(--highlight-text);
+}
+
+#agentSettingsForm .form-actions button[type="submit"]:hover,
+#groupSettingsForm .form-actions button[type="submit"]:hover {
+    background: var(--highlight-text);
+    border-color: var(--highlight-text);
+    color: var(--text-on-accent);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: none;
+}
+
+body.light-theme #agentSettingsForm .form-actions button[type="submit"],
+body.light-theme #groupSettingsForm .form-actions button[type="submit"] {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--user-bubble-bg) 82%, rgba(255, 255, 255, 0.4)),
+        color-mix(in srgb, var(--user-bubble-bg) 70%, rgba(255, 255, 255, 0.22))
+    );
+    border-color: rgba(51, 51, 51, 0.08);
+    backdrop-filter: blur(10px) saturate(130%);
+    -webkit-backdrop-filter: blur(10px) saturate(130%);
+    box-shadow:
+        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.72),
+        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.62),
+        inset 0 0 1px rgba(0, 0, 0, 0.08);
+}
+
+body.light-theme #agentSettingsForm .form-actions button[type="submit"]:hover,
+body.light-theme #groupSettingsForm .form-actions button[type="submit"]:hover {
+    background: var(--highlight-text);
+    border-color: var(--highlight-text);
+    color: #ffffff;
+}
+
+body:not(.light-theme) #agentSettingsForm .form-actions button[type="submit"],
+body:not(.light-theme) #groupSettingsForm .form-actions button[type="submit"] {
+    border-color: rgba(255, 255, 255, 0.08);
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--user-bubble-bg) 52%, rgba(255, 255, 255, 0.06)),
+        color-mix(in srgb, var(--user-bubble-bg) 40%, rgba(255, 255, 255, 0.03))
+    );
+    backdrop-filter: blur(8px) saturate(118%);
+    -webkit-backdrop-filter: blur(8px) saturate(118%);
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.16),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.12),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+
+body:not(.light-theme) #agentSettingsForm .form-actions button[type="submit"]:hover,
+body:not(.light-theme) #groupSettingsForm .form-actions button[type="submit"]:hover {
+    background: var(--highlight-text);
+    background-image: none;
+    color: color-mix(in srgb, #000000 78%, var(--primary-text) 22%);
+    border-color: var(--highlight-text);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: none;
+    filter: none;
+}
+
+#agentSettingsForm .form-actions .danger-button,
+#groupSettingsForm .form-actions .danger-button,
+#agentSettingsForm .form-actions #deleteAgentBtn,
+#groupSettingsForm .form-actions #deleteGroupBtn {
+    color: color-mix(in srgb, var(--danger-color) 88%, #ffffff 12%);
+}
+
+#agentSettingsForm .form-actions .danger-button:hover,
+#groupSettingsForm .form-actions .danger-button:hover,
+#agentSettingsForm .form-actions #deleteAgentBtn:hover,
+#groupSettingsForm .form-actions #deleteGroupBtn:hover {
+    background: var(--danger-color);
+    border-color: var(--danger-color);
+    color: #ffffff;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: none;
+}
+
+body.light-theme #agentSettingsForm .form-actions .danger-button,
+body.light-theme #groupSettingsForm .form-actions .danger-button,
+body.light-theme #agentSettingsForm .form-actions #deleteAgentBtn,
+body.light-theme #groupSettingsForm .form-actions #deleteGroupBtn {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--danger-color) 16%, rgba(255, 255, 255, 0.78)),
+        color-mix(in srgb, var(--danger-color) 11%, rgba(255, 255, 255, 0.54))
+    );
+    border-color: rgba(51, 51, 51, 0.08);
+    color: color-mix(in srgb, var(--danger-color) 92%, #6d0f1f 8%);
+    backdrop-filter: blur(10px) saturate(130%);
+    -webkit-backdrop-filter: blur(10px) saturate(130%);
+    box-shadow:
+        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.74),
+        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.62),
+        inset 0 0 1px rgba(0, 0, 0, 0.08);
+}
+
+body.light-theme #agentSettingsForm .form-actions .danger-button:hover,
+body.light-theme #groupSettingsForm .form-actions .danger-button:hover,
+body.light-theme #agentSettingsForm .form-actions #deleteAgentBtn:hover,
+body.light-theme #groupSettingsForm .form-actions #deleteGroupBtn:hover {
+    background: var(--danger-color);
+    border-color: var(--danger-color);
+    color: #ffffff;
+}
+
+body:not(.light-theme) #agentSettingsForm .form-actions .danger-button,
+body:not(.light-theme) #groupSettingsForm .form-actions .danger-button,
+body:not(.light-theme) #agentSettingsForm .form-actions #deleteAgentBtn,
+body:not(.light-theme) #groupSettingsForm .form-actions #deleteGroupBtn {
+    border-color: rgba(255, 255, 255, 0.08);
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--danger-color) 34%, rgba(255, 255, 255, 0.08)),
+        color-mix(in srgb, var(--danger-color) 24%, rgba(255, 255, 255, 0.04))
+    );
+    color: color-mix(in srgb, var(--danger-color) 78%, #ffdce2 22%);
+    backdrop-filter: blur(8px) saturate(118%);
+    -webkit-backdrop-filter: blur(8px) saturate(118%);
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.16),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.12),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+
+body:not(.light-theme) #agentSettingsForm .form-actions .danger-button:hover,
+body:not(.light-theme) #groupSettingsForm .form-actions .danger-button:hover,
+body:not(.light-theme) #agentSettingsForm .form-actions #deleteAgentBtn:hover,
+body:not(.light-theme) #groupSettingsForm .form-actions #deleteGroupBtn:hover {
+    background: var(--danger-color);
+    border-color: var(--danger-color);
+    color: #ffffff;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: none;
+}
+
+#groupSettingsContainer input[type="text"],
+#groupSettingsContainer select {
+    width: 100%;
+    height: 34px;
+    min-height: 34px;
+    max-height: 34px;
+    padding: 0 12px;
+    margin-bottom: 0;
+    border-radius: var(--agent-settings-pill-radius) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: transparent;
+    background-clip: padding-box;
+    color: var(--highlight-text);
+    font-size: 0.9em;
+    line-height: 1;
+    box-sizing: border-box;
+    transition:
+        background 0.2s ease,
+        border-color 0.2s ease,
+        box-shadow 0.2s ease,
+        color 0.2s ease;
+}
+
+#groupSettingsContainer textarea {
+    width: 100%;
+    box-sizing: border-box;
+    min-height: 96px;
+    padding: 12px 14px;
+    border-radius: 18px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: transparent;
+    background-clip: padding-box;
+    color: var(--highlight-text);
+    font-size: 0.9em;
+    line-height: 1.45;
+    resize: vertical;
+    transition:
+        background 0.2s ease,
+        border-color 0.2s ease,
+        box-shadow 0.2s ease,
+        color 0.2s ease;
+}
+
+#groupSettingsContainer select {
+    padding-right: 34px;
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='rgba(160, 160, 176, 0.7)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+}
+
+body.light-theme #groupSettingsContainer input[type="text"],
+body.light-theme #groupSettingsContainer textarea,
+body.light-theme #groupSettingsContainer select,
+body.light-theme #groupSettingsContainer .group-member-item label,
+body.light-theme #groupSettingsContainer .group-settings-section-summary.summary-with-avatar {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--user-bubble-bg) 18%, rgba(255, 255, 255, 0.52)),
+        color-mix(in srgb, var(--user-bubble-bg) 12%, rgba(255, 255, 255, 0.26))
+    );
+    border-color: rgba(51, 51, 51, 0.08);
+    backdrop-filter: blur(12px) saturate(138%);
+    -webkit-backdrop-filter: blur(12px) saturate(138%);
+    box-shadow:
+        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.82),
+        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.72),
+        inset 6px -6px 1px -6px rgba(255, 255, 255, 0.42),
+        inset -6px 6px 1px -6px rgba(255, 255, 255, 0.3),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.18),
+        inset 0 0 1px rgba(0, 0, 0, 0.06);
+}
+
+body:not(.light-theme) #groupSettingsContainer input[type="text"],
+body:not(.light-theme) #groupSettingsContainer textarea,
+body:not(.light-theme) #groupSettingsContainer select,
+body:not(.light-theme) #groupSettingsContainer .group-member-item label,
+body:not(.light-theme) #groupSettingsContainer .group-settings-section-summary.summary-with-avatar {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--user-bubble-bg) 58%, rgba(255, 255, 255, 0.08)),
+        color-mix(in srgb, var(--user-bubble-bg) 44%, rgba(255, 255, 255, 0.04))
+    );
+    border-color: rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(10px) saturate(124%);
+    -webkit-backdrop-filter: blur(10px) saturate(124%);
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.18),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.14),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.04),
+        inset 0 0 1px rgba(255, 255, 255, 0.03);
+}
+
+body.light-theme #groupSettingsContainer input[type="text"]:hover,
+body.light-theme #groupSettingsContainer input[type="text"]:focus,
+body.light-theme #groupSettingsContainer input[type="text"]:focus-visible,
+body.light-theme #groupSettingsContainer textarea:hover,
+body.light-theme #groupSettingsContainer textarea:focus,
+body.light-theme #groupSettingsContainer textarea:focus-visible,
+body.light-theme #groupSettingsContainer select:hover,
+body.light-theme #groupSettingsContainer select:focus,
+body.light-theme #groupSettingsContainer select:focus-visible,
+body.light-theme #groupSettingsContainer .group-member-item label:hover {
+    outline: none;
+    border-color: color-mix(in srgb, var(--highlight-text) 72%, rgba(51, 51, 51, 0.12));
+    box-shadow:
+        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.82),
+        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.72),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.18),
+        0 0 0 1px color-mix(in srgb, var(--highlight-text) 24%, transparent);
+}
+
+body.light-theme #groupSettingsContainer input[type="text"]:focus,
+body.light-theme #groupSettingsContainer input[type="text"]:focus-visible,
+body.light-theme #groupSettingsContainer textarea:focus,
+body.light-theme #groupSettingsContainer textarea:focus-visible,
+body.light-theme #groupSettingsContainer select:focus,
+body.light-theme #groupSettingsContainer select:focus-visible {
+    border-color: var(--highlight-text);
+    box-shadow:
+        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.82),
+        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.72),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.18),
+        0 0 0 1px color-mix(in srgb, var(--highlight-text) 34%, transparent);
+}
+
+body:not(.light-theme) #groupSettingsContainer input[type="text"]:hover,
+body:not(.light-theme) #groupSettingsContainer input[type="text"]:focus,
+body:not(.light-theme) #groupSettingsContainer input[type="text"]:focus-visible,
+body:not(.light-theme) #groupSettingsContainer textarea:hover,
+body:not(.light-theme) #groupSettingsContainer textarea:focus,
+body:not(.light-theme) #groupSettingsContainer textarea:focus-visible,
+body:not(.light-theme) #groupSettingsContainer select:hover,
+body:not(.light-theme) #groupSettingsContainer select:focus,
+body:not(.light-theme) #groupSettingsContainer select:focus-visible,
+body:not(.light-theme) #groupSettingsContainer .group-member-item label:hover {
+    outline: none;
+    border-color: color-mix(in srgb, var(--highlight-text) 68%, rgba(255, 255, 255, 0.12));
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.2),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.16),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.05),
+        0 0 0 1px color-mix(in srgb, var(--highlight-text) 26%, transparent);
+}
+
+body:not(.light-theme) #groupSettingsContainer input[type="text"]:focus,
+body:not(.light-theme) #groupSettingsContainer input[type="text"]:focus-visible,
+body:not(.light-theme) #groupSettingsContainer textarea:focus,
+body:not(.light-theme) #groupSettingsContainer textarea:focus-visible,
+body:not(.light-theme) #groupSettingsContainer select:focus,
+body:not(.light-theme) #groupSettingsContainer select:focus-visible {
+    border-color: var(--highlight-text);
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.2),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.16),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.05),
+        0 0 0 1px color-mix(in srgb, var(--highlight-text) 34%, transparent);
+}
+
+#groupSettingsContainer .group-member-item label {
+    min-height: 34px;
+    padding: 4px 12px 4px 9px;
+    border-radius: var(--agent-settings-pill-radius);
+    color: var(--highlight-text);
+    background: transparent;
+    background-clip: padding-box;
+}
+
+#groupSettingsContainer .group-member-item input[type="checkbox"]:checked + label {
+    border-color: color-mix(in srgb, var(--highlight-text) 70%, transparent);
+    color: var(--highlight-text);
+}
+
+#groupSettingsContainer .group-settings-section-summary.summary-with-avatar {
+    margin-left: -6px;
+    max-width: calc(100% + 6px);
+    box-sizing: border-box;
+    padding: 8px 12px 8px 16px;
+    border-radius: 18px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: transparent;
+    background-clip: padding-box;
+}
+
+#groupSettingsContainer .group-settings-summary-label {
+    color: var(--highlight-text);
+}
+
+#groupSettingsContainer .member-tag-input-item {
+    gap: 6px;
+}
+
+#groupSettingsContainer .member-tag-input-item label {
+    margin-left: 4px;
+}
+
+#groupSettingsContainer .group-settings-model-shell .model-input-container #openGroupModelSelectBtn {
+    color: var(--highlight-text);
+}
+
+body.light-theme #groupSettingsContainer .group-settings-model-shell .model-input-container #openGroupModelSelectBtn:hover {
+    background-color: color-mix(in srgb, var(--highlight-text) 12%, rgba(255, 255, 255, 0.78));
+}
+
+body:not(.light-theme) #groupSettingsContainer .group-settings-model-shell .model-input-container #openGroupModelSelectBtn:hover {
+    background-color: color-mix(in srgb, var(--highlight-text) 18%, rgba(255, 255, 255, 0.05));
 }

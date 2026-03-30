@@ -577,6 +577,24 @@ window.itemListManager = (() => {
         }, 600); // 与动画持续时间一致
     }
 
+    function updateLoadedItemConfig(itemId, itemType, partialConfig) {
+        if (!itemId || !itemType || !partialConfig || typeof partialConfig !== 'object') {
+            return false;
+        }
+
+        const matchedItem = loadedItemsCache.find(item => item.id === itemId && item.type === itemType);
+        if (!matchedItem) {
+            return false;
+        }
+
+        matchedItem.config = {
+            ...(matchedItem.config || {}),
+            ...partialConfig
+        };
+
+        return true;
+    }
+
     // --- Public API ---
     return {
         init,
@@ -584,6 +602,7 @@ window.itemListManager = (() => {
         highlightActiveItem,
         resetMouseEventStates,
         findItemById, // Expose the new function
+        updateLoadedItemConfig,
         updateUnreadBadges, // Part C: 暴露更新徽章函数供外部调用
         refreshUnreadCounts
     };

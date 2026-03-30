@@ -24,7 +24,7 @@ class OriginalPromptModule {
         this.textarea.className = 'prompt-textarea original-prompt-textarea';
         this.textarea.placeholder = '请输入系统提示词...';
         this.textarea.value = this.cachedContent;
-        this.textarea.rows = 8;
+        this.textarea.rows = 3;
         
         // 添加自动调整大小
         this.textarea.addEventListener('input', () => {

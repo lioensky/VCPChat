@@ -65,6 +65,15 @@ const settingsManager = (() => {
     // A private variable to hold the regex rules for the currently edited agent
     let currentAgentRegexes = [];
     let currentModelSelectCallback = null;
+    const sectionControllers = new Map();
+    let lastPersistedCollapseStateSignature = '';
+    let scheduleStickyButtonsRefresh = () => { };
+    const initializedCollapseStateAgents = new Set();
+    const promptModeFallbackLabels = {
+        original: '文本',
+        modular: '模块',
+        preset: '预置'
+    };
 
     /**
      * Displays the appropriate settings view (agent, group, or default prompt)
@@ -81,7 +90,7 @@ const settingsManager = (() => {
             selectedItemNameForSettingsSpan.textContent = currentSelectedItem.name || currentSelectedItem.id;
 
             if (currentSelectedItem.type === 'agent') {
-                if (agentSettingsExists) agentSettingsContainer.style.display = 'block';
+                if (agentSettingsExists) agentSettingsContainer.style.display = '';
                 if (groupSettingsExists) groupSettingsContainer.style.display = 'none';
                 itemSettingsContainerTitle.textContent = 'Agent 设置: ';
                 deleteItemBtn.textContent = '删除此 Agent';
@@ -115,7 +124,7 @@ const settingsManager = (() => {
      */
     async function populateAgentSettingsForm(agentId, agentConfig) {
         if (groupSettingsContainer) groupSettingsContainer.style.display = 'none';
-        if (agentSettingsContainer) agentSettingsContainer.style.display = 'block';
+        if (agentSettingsContainer) agentSettingsContainer.style.display = '';
 
         if (!agentConfig || agentConfig.error) {
             uiHelper.showToastNotification(`加载Agent配置失败: ${agentConfig?.error || '未知错误'}`, 'error');
@@ -137,7 +146,7 @@ const settingsManager = (() => {
             }
 
             promptManager = new window.PromptManager();
-            promptManager.init({
+            await promptManager.init({
                 agentId: agentId,
                 config: agentConfig,
                 containerElement: systemPromptContainer,
@@ -212,11 +221,8 @@ const settingsManager = (() => {
             useThemeColorsInChatCheckbox.checked = agentConfig.useThemeColorsInChat || false;
         }
 
-        // Restore collapse states
-        restoreCollapseStates(agentConfig);
-
         // Populate bilingual TTS settings
-        populateTtsModels(agentConfig.ttsVoicePrimary, agentConfig.ttsVoiceSecondary);
+        await populateTtsModels(agentConfig.ttsVoicePrimary, agentConfig.ttsVoiceSecondary);
 
         agentTtsRegexPrimaryInput.value = agentConfig.ttsRegexPrimary || '';
         agentTtsRegexSecondaryInput.value = agentConfig.ttsRegexSecondary || '';
@@ -227,6 +233,11 @@ const settingsManager = (() => {
         // Load and render regex rules
         currentAgentRegexes = JSON.parse(JSON.stringify(agentConfig.stripRegexes || [])); // Deep copy
         renderRegexList();
+
+        // Restore collapse states after dynamic content is ready
+        restoreCollapseStates(agentConfig);
+        updateAllSectionSummaries();
+        scheduleStickyButtonsRefresh();
     }
 
     /**
@@ -777,11 +788,8 @@ const settingsManager = (() => {
             // Setup color picker synchronization
             setupColorPickerSync();
 
-            // Setup params collapsible
-            setupParamsCollapsible();
-
-            // Setup TTS collapsible
-            setupTtsCollapsible();
+            // Setup unified collapsible sections
+            setupAgentSettingsSections();
 
             // Setup style collapsible
             setupStyleCollapsible();
@@ -982,8 +990,11 @@ const settingsManager = (() => {
             currentModelSelectCallback = (modelId) => {
                 if (targetInputElement) {
                     targetInputElement.value = modelId;
+                    targetInputElement.dispatchEvent(new Event('input', { bubbles: true }));
+                    targetInputElement.dispatchEvent(new Event('change', { bubbles: true }));
                 }
                 uiHelper.closeModal('modelSelectModal');
+                updateSectionSummary('model');
             };
             uiHelper.openModal('modelSelectModal');
             // 确保在模态框打开后（DOM 元素已从模板实例化）再填充列表
@@ -1165,58 +1176,81 @@ const settingsManager = (() => {
      */
     // --- Regex Settings V2 ---
 
-    function createStripRegexUI() {
-        // 查找语音设置的折叠容器
-        const ttsCollapsibleContainer = document.querySelector('.agent-params-collapsible-container:has(#ttsToggleHeader)');
-        if (!ttsCollapsibleContainer) {
+function createStripRegexUI() {
+        const ttsCollapsibleContainer = getSectionContainer('tts');
+        if (!ttsCollapsibleContainer || !ttsCollapsibleContainer.parentNode) {
             console.warn('[SettingsManager] TTS collapsible container not found for regex UI insertion');
             return;
         }
 
-        const divider = document.createElement('hr');
-        divider.className = 'form-divider';
+        const existingContainer = getSectionContainer('regex');
+        if (existingContainer) {
+            stripRegexListContainer = existingContainer.querySelector('#stripRegexListContainer');
+            return;
+        }
 
-        const container = document.createElement('div');
-        container.className = 'form-group strip-regex-container';
+        const section = document.createElement('div');
+        section.className = 'agent-settings-collapsible-container agent-settings-section strip-regex-container collapsed';
+        section.dataset.sectionKey = 'regex';
 
-        const title = document.createElement('div');
-        title.className = 'form-section-title';
+        const header = document.createElement('div');
+        header.className = 'agent-settings-section-header';
+        header.id = 'regexToggleHeader';
+
+        const title = document.createElement('span');
+        title.className = 'agent-settings-section-title';
         title.textContent = '正则设置';
-        container.appendChild(title);
+        header.appendChild(title);
+
+        const summary = document.createElement('div');
+        summary.className = 'agent-settings-section-summary';
+        summary.id = 'regexSummary';
+        header.appendChild(summary);
+
+        const toggleBtn = document.createElement('button');
+        toggleBtn.type = 'button';
+        toggleBtn.className = 'agent-settings-toggle-btn';
+        toggleBtn.id = 'regexToggleBtn';
+        toggleBtn.setAttribute('aria-label', '展开或收起正则设置');
+        toggleBtn.innerHTML = `
+            <svg class="toggle-icon" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2">
+                <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+        `;
+        header.appendChild(toggleBtn);
+
+        const content = document.createElement('div');
+        content.className = 'agent-settings-section-content';
+        content.id = 'regexContent';
+
+        const shell = document.createElement('div');
+        shell.className = 'agent-settings-card-shell';
 
         stripRegexListContainer = document.createElement('div');
         stripRegexListContainer.id = 'stripRegexListContainer';
         stripRegexListContainer.className = 'strip-regex-list-container';
-        container.appendChild(stripRegexListContainer);
+        shell.appendChild(stripRegexListContainer);
 
-        // 添加正则按钮
         const addBtn = document.createElement('button');
         addBtn.type = 'button';
         addBtn.textContent = '添加正则';
         addBtn.className = 'btn-add-regex';
         addBtn.addEventListener('click', () => openRegexModal());
-        container.appendChild(addBtn);
+        shell.appendChild(addBtn);
 
-        // 导入正则按钮（放在添加正则按钮下方）
         const importBtn = document.createElement('button');
         importBtn.type = 'button';
         importBtn.textContent = '导入正则';
-        importBtn.className = 'btn-add-regex';
-        importBtn.style.marginTop = '8px';
+        importBtn.className = 'btn-add-regex btn-add-regex-secondary';
         importBtn.addEventListener('click', () => handleImportRegex());
-        container.appendChild(importBtn);
+        shell.appendChild(importBtn);
 
-        // 在导入正则按钮后添加分隔线
-        const bottomDivider = document.createElement('hr');
-        bottomDivider.className = 'form-divider';
-        bottomDivider.style.marginTop = '15px';
-        bottomDivider.style.marginBottom = '15px';
-        container.appendChild(bottomDivider);
+        content.appendChild(shell);
+        section.appendChild(header);
+        section.appendChild(content);
 
-        // 在语音设置折叠容器之后插入正则设置
-        const parent = ttsCollapsibleContainer.parentNode;
-        parent.insertBefore(divider, ttsCollapsibleContainer.nextSibling);
-        parent.insertBefore(container, divider.nextSibling);
+        ttsCollapsibleContainer.parentNode.insertBefore(section, ttsCollapsibleContainer.nextSibling);
 
         console.log('[SettingsManager] Regex UI created after TTS collapsible container');
     }
@@ -1228,6 +1262,8 @@ const settingsManager = (() => {
             const row = createRegexRow(rule);
             stripRegexListContainer.appendChild(row);
         });
+        updateSectionSummary('regex');
+        scheduleStickyButtonsRefresh();
     }
 
     function createRegexRow(rule) {
@@ -1406,54 +1442,25 @@ const settingsManager = (() => {
     /**
      * 设置Agent设置的粘性按钮效果
      */
-    function setupAgentSettingsStickyButtons() {
-        if (!agentSettingsContainer) return;
+function setupAgentSettingsStickyButtons() {
+        const applyStableDualButtonsState = () => {
+            const formActions = agentSettingsForm?.querySelector('.form-actions');
+            if (!formActions) return;
 
-        // 监听Agent设置容器的滚动事件
-        const settingsTabContent = agentSettingsContainer.closest('.sidebar-tab-content');
-        if (!settingsTabContent) return;
-
-        let isScrolledToBottom = false;
-
-        const updateStickyButtonState = () => {
-            const scrollTop = settingsTabContent.scrollTop;
-            const scrollHeight = settingsTabContent.scrollHeight;
-            const clientHeight = settingsTabContent.clientHeight;
-
-            // 检查是否滚动到底部（留出一些容差）
-            const newScrolledToBottom = scrollTop + clientHeight >= scrollHeight - 10;
-
-            if (newScrolledToBottom !== isScrolledToBottom) {
-                isScrolledToBottom = newScrolledToBottom;
-
-                // 更新按钮容器类名
-                const formActions = agentSettingsForm?.querySelector('.form-actions');
-                if (formActions) {
-                    if (isScrolledToBottom) {
-                        // 滚动到底部时，显示删除按钮
-                        formActions.classList.add('scrolled-to-bottom');
-                    } else {
-                        // 未滚动到底部时，隐藏删除按钮
-                        formActions.classList.remove('scrolled-to-bottom');
-                    }
-                }
-            }
+            formActions.classList.add('scrolled-to-bottom');
+            formActions.classList.remove('no-scroll-mode');
         };
 
-        // 使用节流函数避免过度调用
-        let scrollTimeout;
-        settingsTabContent.addEventListener('scroll', () => {
-            if (scrollTimeout) {
-                clearTimeout(scrollTimeout);
-            }
-            scrollTimeout = setTimeout(updateStickyButtonState, 10);
-        });
+        scheduleStickyButtonsRefresh = () => {
+            window.requestAnimationFrame(() => {
+                applyStableDualButtonsState();
+            });
+        };
 
-        // 初始检查 - 确保初始状态下删除按钮是隐藏的
-        isScrolledToBottom = false;
-        updateStickyButtonState();
+        applyStableDualButtonsState();
+        scheduleStickyButtonsRefresh();
 
-        console.log('[SettingsManager] Agent settings sticky buttons initialized.');
+        console.log('[SettingsManager] Agent settings sticky buttons initialized in stable dual-button mode.');
     }
 
     /**
@@ -1521,198 +1528,355 @@ const settingsManager = (() => {
     /**
      * 设置参数容器的折叠功能
      */
-    function setupParamsCollapsible() {
-        const paramsContainer = document.querySelector('.agent-params-collapsible-container');
-        const paramsHeader = document.getElementById('paramsToggleHeader');
-        const paramsToggleBtn = document.getElementById('paramsToggleBtn');
-        const paramsSummary = document.getElementById('paramsSummary');
-        const paramsContent = document.getElementById('paramsContent');
-
-        if (!paramsContainer || !paramsHeader || !paramsToggleBtn || !paramsSummary) {
-            console.warn('[SettingsManager] Params collapsible elements not found');
-            return;
-        }
-
-        // 默认展开
-        let isCollapsed = false;
-
-        // 更新摘要显示
-        const updateSummary = () => {
-            if (!isCollapsed) {
-                paramsSummary.textContent = '';
-                return;
-            }
-
-            const temperature = agentTemperatureInput.value || '0.7';
-            const contextLimit = agentContextTokenLimitInput.value || '4000';
-            const maxOutput = agentMaxOutputTokensInput.value || '1000';
-            const topP = agentTopPInput.value || '未设置';
-            const topK = agentTopKInput.value || '未设置';
-            const streamOutput = document.getElementById('agentStreamOutputTrue').checked ? '流式' : '非流式';
-
-            paramsSummary.textContent = `Temperature: ${temperature} | 上下文: ${contextLimit} | 最大输出: ${maxOutput} | Top P: ${topP} | Top K: ${topK} | 输出: ${streamOutput}`;
-        };
-
-        // 切换折叠状态
-        const toggleCollapse = () => {
-            isCollapsed = !isCollapsed;
-            paramsContainer.classList.toggle('collapsed', isCollapsed);
-            updateSummary();
-        };
-
-        // 点击头部切换
-        paramsHeader.addEventListener('click', toggleCollapse);
-
-        // 监听输入变化以更新摘要
-        const inputs = [
-            agentTemperatureInput,
-            agentContextTokenLimitInput,
-            agentMaxOutputTokensInput,
-            agentTopPInput,
-            agentTopKInput,
-            document.getElementById('agentStreamOutputTrue'),
-            document.getElementById('agentStreamOutputFalse')
-        ];
-
-        inputs.forEach(input => {
-            if (input) {
-                input.addEventListener('change', () => {
-                    if (isCollapsed) {
-                        updateSummary();
-                    }
-                });
-            }
-        });
-
-        console.log('[SettingsManager] Params collapsible setup complete.');
+function setupParamsCollapsible() {
+        setupAgentSettingsSections();
     }
 
     /**
      * 设置语音设置容器的折叠功能
      */
     function setupTtsCollapsible() {
-        const ttsContainer = document.querySelector('.agent-params-collapsible-container:has(#ttsToggleHeader)');
-        const ttsHeader = document.getElementById('ttsToggleHeader');
-        const ttsToggleBtn = document.getElementById('ttsToggleBtn');
-        const ttsSummary = document.getElementById('ttsSummary');
-        const ttsContent = document.getElementById('ttsContent');
-
-        if (!ttsContainer || !ttsHeader || !ttsToggleBtn || !ttsSummary) {
-            console.warn('[SettingsManager] TTS collapsible elements not found');
-            return;
-        }
-
-        // 默认展开
-        let isTtsCollapsed = false;
-
-        // 更新摘要显示
-        const updateTtsSummary = () => {
-            if (!isTtsCollapsed) {
-                ttsSummary.textContent = '';
-                return;
-            }
-
-            const primaryVoice = agentTtsVoicePrimarySelect.value || '不使用语音';
-            const primaryRegex = agentTtsRegexPrimaryInput.value || '全部';
-            const secondaryVoice = agentTtsVoiceSecondarySelect.value || '不使用';
-            const secondaryRegex = agentTtsRegexSecondaryInput.value || '无';
-            const speed = agentTtsSpeedSlider.value || '1.0';
-
-            ttsSummary.textContent = `主语言: ${primaryVoice} (${primaryRegex}) | 副语言: ${secondaryVoice} (${secondaryRegex}) | 语速: ${speed}`;
-        };
-
-        // 切换折叠状态
-        const toggleTtsCollapse = () => {
-            isTtsCollapsed = !isTtsCollapsed;
-            ttsContainer.classList.toggle('collapsed', isTtsCollapsed);
-            updateTtsSummary();
-        };
-
-        // 点击头部切换
-        ttsHeader.addEventListener('click', toggleTtsCollapse);
-
-        // 监听输入变化以更新摘要
-        const ttsInputs = [
-            agentTtsVoicePrimarySelect,
-            agentTtsRegexPrimaryInput,
-            agentTtsVoiceSecondarySelect,
-            agentTtsRegexSecondaryInput,
-            agentTtsSpeedSlider
-        ];
-
-        ttsInputs.forEach(input => {
-            if (input) {
-                const eventType = input.tagName === 'SELECT' ? 'change' : 'input';
-                input.addEventListener(eventType, () => {
-                    if (isTtsCollapsed) {
-                        updateTtsSummary();
-                    }
-                });
-            }
-        });
-
-        console.log('[SettingsManager] TTS collapsible setup complete.');
+        setupAgentSettingsSections();
     }
 
     /**
      * 获取当前所有折叠区域的状态
      */
     function getCurrentCollapseStates() {
-        const paramsContainer = document.querySelector('.agent-params-collapsible-container:has(#paramsToggleHeader)');
-        const ttsContainer = document.querySelector('.agent-params-collapsible-container:has(#ttsToggleHeader)');
-
         return {
-            paramsCollapsed: paramsContainer ? paramsContainer.classList.contains('collapsed') : false,
-            ttsCollapsed: ttsContainer ? ttsContainer.classList.contains('collapsed') : false
+            identityCollapsed: getSectionContainer('identity')?.classList.contains('collapsed') ?? true,
+            promptCollapsed: getSectionContainer('prompt')?.classList.contains('collapsed') ?? true,
+            modelCollapsed: getSectionContainer('model')?.classList.contains('collapsed') ?? true,
+            paramsCollapsed: getSectionContainer('params')?.classList.contains('collapsed') ?? true,
+            ttsCollapsed: getSectionContainer('tts')?.classList.contains('collapsed') ?? true,
+            regexCollapsed: getSectionContainer('regex')?.classList.contains('collapsed') ?? true,
+            styleCollapsed: document.querySelector('.agent-style-collapsible-container')?.classList.contains('collapsed') ?? true
         };
+    }
+
+    function getSectionContainer(key) {
+        return agentSettingsForm?.querySelector(`.agent-settings-section[data-section-key="${key}"]`) || null;
+    }
+
+    function createSectionController(key, buildSummary) {
+        const container = getSectionContainer(key);
+        if (!container) {
+            return null;
+        }
+
+        const header = container.querySelector('.agent-settings-section-header');
+        const summary = container.querySelector('.agent-settings-section-summary');
+        const toggleBtn = container.querySelector('.agent-settings-toggle-btn');
+        if (!header || !summary || !toggleBtn) {
+            console.warn(`[SettingsManager] Missing collapsible controls for section "${key}"`);
+            return null;
+        }
+
+        const controller = {
+            key,
+            container,
+            header,
+            summary,
+            toggleBtn,
+            buildSummary,
+            setCollapsed(collapsed) {
+                this.container.classList.toggle('collapsed', !!collapsed);
+            }
+        };
+
+        if (!header.dataset.collapsibleBound) {
+            header.addEventListener('click', (event) => {
+                event.preventDefault();
+                controller.setCollapsed(!controller.container.classList.contains('collapsed'));
+                updateSectionSummary(key);
+                persistCollapseStatesForCurrentSelection();
+                scheduleStickyButtonsRefresh();
+            });
+            header.dataset.collapsibleBound = 'true';
+        }
+
+        sectionControllers.set(key, controller);
+        return controller;
+    }
+
+    function buildIdentitySummary() {
+        const name = agentNameInput?.value?.trim() || '未命名 Agent';
+        const avatarSrc = agentAvatarPreview?.getAttribute('src') || 'assets/default_avatar.png';
+        return {
+            kind: 'identity',
+            text: name,
+            avatarSrc: avatarSrc || 'assets/default_avatar.png'
+        };
+    }
+
+    async function buildPromptSummary() {
+        const mode = promptManager?.getMode?.() || 'original';
+        const modeLabel = promptManager?.getModeName?.(mode) || promptModeFallbackLabels[mode] || mode;
+        let promptContent = '';
+
+        try {
+            promptContent = promptManager?.getCurrentSystemPrompt
+                ? await promptManager.getCurrentSystemPrompt()
+                : '';
+        } catch (error) {
+            console.warn('[SettingsManager] Failed to build prompt summary from PromptManager:', error);
+        }
+
+        if (!promptContent) {
+            const promptTextarea = document.querySelector('#systemPromptContainer textarea');
+            promptContent = promptTextarea?.value?.trim() || '';
+        }
+
+        return buildPromptSummaryText(`模式: ${modeLabel}`, promptContent);
+    }
+
+    function buildPromptSummaryText(modeLine, promptContent) {
+        const normalizedPrompt = (promptContent || '')
+            .replace(/\s+/g, ' ')
+            .trim();
+
+        if (!normalizedPrompt) {
+            return `${modeLine}\n暂无提示词内容`;
+        }
+
+        const preview = normalizedPrompt.length > 96
+            ? `${normalizedPrompt.slice(0, 96)}...`
+            : normalizedPrompt;
+
+        return `${modeLine}\n${preview}`;
+    }
+
+    function buildModelSummary() {
+        return agentModelInput?.value?.trim() || '未选择模型';
+    }
+
+    function buildParamsSummary() {
+        const temperature = agentTemperatureInput?.value || '0.7';
+        const contextLimit = agentContextTokenLimitInput?.value || '4000';
+        const maxOutput = agentMaxOutputTokensInput?.value || '1000';
+        const topP = agentTopPInput?.value || '未设置';
+        const topK = agentTopKInput?.value || '未设置';
+        const streamOutput = document.getElementById('agentStreamOutputTrue')?.checked ? '流式' : '非流式';
+
+        return [
+            `Temperature: ${temperature}`,
+            `上下文: ${contextLimit}`,
+            `最大输出: ${maxOutput}`,
+            `Top P: ${topP}`,
+            `Top K: ${topK}`,
+            `输出: ${streamOutput}`
+        ].join('\n');
+    }
+
+    function buildTtsSummary() {
+        const primaryVoice = agentTtsVoicePrimarySelect?.selectedOptions?.[0]?.textContent?.trim()
+            || agentTtsVoicePrimarySelect?.value
+            || '不使用语音';
+        const primaryRegex = agentTtsRegexPrimaryInput?.value?.trim() || '全部';
+        const secondaryVoice = agentTtsVoiceSecondarySelect?.selectedOptions?.[0]?.textContent?.trim()
+            || agentTtsVoiceSecondarySelect?.value
+            || '不使用';
+        const secondaryRegex = agentTtsRegexSecondaryInput?.value?.trim() || '无';
+        const speed = agentTtsSpeedSlider?.value || '1.0';
+
+        return [
+            `主语言: ${primaryVoice}`,
+            `主语言正则: ${primaryRegex}`,
+            `副语言: ${secondaryVoice}`,
+            `副语言正则: ${secondaryRegex}`,
+            `语速: ${speed}`
+        ].join('\n');
+    }
+
+    function buildRegexSummary() {
+        const count = Array.isArray(currentAgentRegexes) ? currentAgentRegexes.length : 0;
+        return count > 0 ? `${count} 条规则` : '暂无规则';
+    }
+
+    function setupAgentSettingsSections() {
+        sectionControllers.clear();
+
+        createSectionController('identity', buildIdentitySummary);
+        createSectionController('prompt', buildPromptSummary);
+        createSectionController('model', buildModelSummary);
+        createSectionController('params', buildParamsSummary);
+        createSectionController('tts', buildTtsSummary);
+        createSectionController('regex', buildRegexSummary);
+
+        if (!agentSettingsForm?.dataset.sectionSummaryBindings) {
+            const bindSummaryRefresh = (element, events = ['input']) => {
+                if (!element || element.dataset.summaryRefreshBound) return;
+                events.forEach(eventName => {
+                    element.addEventListener(eventName, () => updateAllSectionSummaries());
+                });
+                element.dataset.summaryRefreshBound = 'true';
+            };
+
+            [
+                agentNameInput,
+                agentTemperatureInput,
+                agentContextTokenLimitInput,
+                agentMaxOutputTokensInput,
+                agentTopPInput,
+                agentTopKInput,
+                agentTtsRegexPrimaryInput,
+                agentTtsRegexSecondaryInput,
+                agentTtsSpeedSlider,
+                agentModelInput,
+                document.getElementById('agentStreamOutputTrue'),
+                document.getElementById('agentStreamOutputFalse'),
+                agentTtsVoicePrimarySelect,
+                agentTtsVoiceSecondarySelect
+            ].forEach(element => bindSummaryRefresh(element, ['input', 'change']));
+
+            const systemPromptContainer = document.getElementById('systemPromptContainer');
+            if (systemPromptContainer && !systemPromptContainer.dataset.summaryRefreshBound) {
+                const schedulePromptRefresh = () => {
+                    window.setTimeout(() => updateSectionSummary('prompt'), 0);
+                    scheduleStickyButtonsRefresh();
+                };
+                ['input', 'change', 'click'].forEach(eventName => {
+                    systemPromptContainer.addEventListener(eventName, schedulePromptRefresh);
+                });
+                const promptObserver = new MutationObserver(() => schedulePromptRefresh());
+                promptObserver.observe(systemPromptContainer, {
+                    childList: true,
+                    subtree: true,
+                    characterData: true
+                });
+                systemPromptContainer.dataset.summaryRefreshBound = 'true';
+            }
+
+            if (agentAvatarPreview && !agentAvatarPreview.dataset.summaryObserverBound) {
+                const avatarObserver = new MutationObserver(() => updateSectionSummary('identity'));
+                avatarObserver.observe(agentAvatarPreview, { attributes: true, attributeFilter: ['src'] });
+                agentAvatarPreview.dataset.summaryObserverBound = 'true';
+            }
+
+            agentSettingsForm.dataset.sectionSummaryBindings = 'true';
+        }
+
+        updateAllSectionSummaries();
+    }
+
+    async function updateSectionSummary(key) {
+        const controller = sectionControllers.get(key);
+        if (!controller) return;
+
+        const summaryValue = await Promise.resolve(controller.buildSummary());
+
+        if (summaryValue && typeof summaryValue === 'object' && summaryValue.kind === 'identity') {
+            controller.summary.classList.add('summary-with-avatar');
+            controller.summary.innerHTML = '';
+
+            const avatar = document.createElement('img');
+            avatar.className = 'agent-settings-summary-avatar';
+            avatar.src = summaryValue.avatarSrc || 'assets/default_avatar.png';
+            avatar.alt = '';
+
+            const label = document.createElement('span');
+            label.className = 'agent-settings-summary-label';
+            label.textContent = summaryValue.text || '未命名 Agent';
+
+            controller.summary.appendChild(avatar);
+            controller.summary.appendChild(label);
+            return;
+        }
+
+        controller.summary.classList.remove('summary-with-avatar');
+        controller.summary.textContent = typeof summaryValue === 'string' ? summaryValue : '';
+    }
+
+    function updateAllSectionSummaries() {
+        sectionControllers.forEach((_, key) => {
+            updateSectionSummary(key);
+        });
+    }
+
+    function getCollapseStatesFromConfig(agentConfig) {
+        return agentConfig?.uiCollapseStates || {};
+    }
+
+    function syncCollapseStatesToCurrentSelection(collapseStates = getCurrentCollapseStates()) {
+        const currentSelectedItem = refs.currentSelectedItemRef?.get?.();
+        if (!currentSelectedItem || currentSelectedItem.type !== 'agent') {
+            return;
+        }
+
+        if (currentSelectedItem.config) {
+            currentSelectedItem.config.uiCollapseStates = { ...collapseStates };
+        } else {
+            currentSelectedItem.uiCollapseStates = { ...collapseStates };
+        }
+    }
+
+    async function persistCollapseStatesForCurrentSelection() {
+        const currentSelectedItem = refs.currentSelectedItemRef?.get?.();
+        const agentId = editingAgentIdInput?.value || currentSelectedItem?.id;
+        if (!agentId || !electronAPI?.updateAgentConfig) {
+            return;
+        }
+
+        const collapseStates = getCurrentCollapseStates();
+        const signature = `${agentId}:${JSON.stringify(collapseStates)}`;
+        if (signature === lastPersistedCollapseStateSignature) {
+            return;
+        }
+
+        syncCollapseStatesToCurrentSelection(collapseStates);
+        lastPersistedCollapseStateSignature = signature;
+
+        try {
+            await electronAPI.updateAgentConfig(agentId, { uiCollapseStates: collapseStates });
+        } catch (error) {
+            console.error('[SettingsManager] Failed to persist collapse states:', error);
+            lastPersistedCollapseStateSignature = '';
+        }
     }
 
     /**
      * 恢复折叠区域的状态
      */
     function restoreCollapseStates(agentConfig) {
-        if (!agentConfig.uiCollapseStates) return;
+        const agentId = editingAgentIdInput?.value || agentConfig?.id || '';
+        const isFirstSettingsLoadThisSession = agentId && !initializedCollapseStateAgents.has(agentId);
+        const states = {
+            identityCollapsed: true,
+            promptCollapsed: true,
+            modelCollapsed: true,
+            paramsCollapsed: true,
+            ttsCollapsed: true,
+            regexCollapsed: true,
+            styleCollapsed: true,
+            ...(isFirstSettingsLoadThisSession ? {} : getCollapseStatesFromConfig(agentConfig))
+        };
 
-        const states = agentConfig.uiCollapseStates;
-
-        // 恢复参数设置折叠状态
-        const paramsContainer = document.querySelector('.agent-params-collapsible-container:has(#paramsToggleHeader)');
-        if (paramsContainer && states.paramsCollapsed) {
-            paramsContainer.classList.add('collapsed');
-            // 触发摘要更新
-            const paramsSummary = document.getElementById('paramsSummary');
-            if (paramsSummary) {
-                setTimeout(() => {
-                    const temperature = agentTemperatureInput.value || '0.7';
-                    const contextLimit = agentContextTokenLimitInput.value || '4000';
-                    const maxOutput = agentMaxOutputTokensInput.value || '1000';
-                    const topP = agentTopPInput.value || '未设置';
-                    const topK = agentTopKInput.value || '未设置';
-                    const streamOutput = document.getElementById('agentStreamOutputTrue').checked ? '流式' : '非流式';
-
-                    paramsSummary.textContent = `Temperature: ${temperature} | 上下文: ${contextLimit} | 最大输出: ${maxOutput} | Top P: ${topP} | Top K: ${topK} | 输出: ${streamOutput}`;
-                }, 100);
-            }
+        if (agentId) {
+            initializedCollapseStateAgents.add(agentId);
         }
 
-        // 恢复语音设置折叠状态
-        const ttsContainer = document.querySelector('.agent-params-collapsible-container:has(#ttsToggleHeader)');
-        if (ttsContainer && states.ttsCollapsed) {
-            ttsContainer.classList.add('collapsed');
-            // 触发摘要更新
-            const ttsSummary = document.getElementById('ttsSummary');
-            if (ttsSummary) {
-                setTimeout(() => {
-                    const primaryVoice = agentTtsVoicePrimarySelect.value || '不使用语音';
-                    const primaryRegex = agentTtsRegexPrimaryInput.value || '全部';
-                    const secondaryVoice = agentTtsVoiceSecondarySelect.value || '不使用';
-                    const secondaryRegex = agentTtsRegexSecondaryInput.value || '无';
-                    const speed = agentTtsSpeedSlider.value || '1.0';
-
-                    ttsSummary.textContent = `主语言: ${primaryVoice} (${primaryRegex}) | 副语言: ${secondaryVoice} (${secondaryRegex}) | 语速: ${speed}`;
-                }, 100);
+        [
+            ['identity', states.identityCollapsed],
+            ['prompt', states.promptCollapsed],
+            ['model', states.modelCollapsed],
+            ['params', states.paramsCollapsed],
+            ['tts', states.ttsCollapsed],
+            ['regex', states.regexCollapsed]
+        ].forEach(([key, collapsed]) => {
+            const controller = sectionControllers.get(key);
+            if (controller) {
+                controller.setCollapsed(collapsed);
             }
+        });
+
+        const styleContainer = document.querySelector('.agent-style-collapsible-container');
+        if (styleContainer) {
+            styleContainer.classList.toggle('collapsed', !!states.styleCollapsed);
         }
+
+        syncCollapseStatesToCurrentSelection(states);
+        lastPersistedCollapseStateSignature = `${editingAgentIdInput?.value || agentConfig?.id || ''}:${JSON.stringify(states)}`;
+        updateAllSectionSummaries();
 
         console.log('[SettingsManager] Collapse states restored:', states);
     }
@@ -1729,10 +1893,14 @@ const settingsManager = (() => {
             return;
         }
 
-        // 点击头部切换折叠状态
-        styleHeader.addEventListener('click', () => {
-            styleContainer.classList.toggle('collapsed');
-        });
+        if (!styleHeader.dataset.collapsibleBound) {
+            styleHeader.addEventListener('click', () => {
+                styleContainer.classList.toggle('collapsed');
+                persistCollapseStatesForCurrentSelection();
+                scheduleStickyButtonsRefresh();
+            });
+            styleHeader.dataset.collapsibleBound = 'true';
+        }
 
         console.log('[SettingsManager] Style collapsible setup complete.');
     }
