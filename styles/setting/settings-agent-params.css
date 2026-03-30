@@ -1,0 +1,358 @@
+/* ========================================
+   Agent参数可折叠容器
+   ======================================== */
+.agent-params-collapsible-container {
+    margin: 10px 0;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    background-color: var(--input-bg);
+    overflow: hidden;
+    transition: background-color 0.2s ease;
+}
+
+.agent-params-collapsible-container:has(#paramsToggleHeader) {
+    position: relative;
+    isolation: isolate;
+    border-radius: 14px;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.04);
+    backdrop-filter: blur(3px) saturate(108%);
+    -webkit-backdrop-filter: blur(3px) saturate(108%);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow:
+        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.22),
+        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.18),
+        inset 6px -6px 1px -6px rgba(255, 255, 255, 0.12),
+        inset -6px 6px 1px -6px rgba(255, 255, 255, 0.08),
+        inset 0 0 2px rgba(0, 0, 0, 0.38),
+        0 6px 14px rgba(0, 0, 0, 0.14);
+    transition:
+        border-color 0.22s ease,
+        box-shadow 0.22s ease,
+        background 0.22s ease;
+}
+
+.agent-params-collapsible-container:has(#paramsToggleHeader)::before {
+    content: "";
+    position: absolute;
+    z-index: 0;
+    top: 34%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: calc(100% - 18px);
+    height: calc(100% - 18px);
+    border-radius: inherit;
+    border: 1px solid rgba(0, 0, 0, 0.72);
+    filter: blur(8px);
+    opacity: 0.18;
+}
+
+.agent-params-collapsible-container:has(#paramsToggleHeader)::after {
+    content: none;
+}
+
+.params-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    column-gap: 10px;
+    row-gap: 6px;
+    padding: 12px 15px;
+    cursor: pointer;
+    background-color: var(--input-bg);
+    transition: background-color 0.2s ease;
+    user-select: none;
+}
+
+.agent-params-collapsible-container:not(.collapsed) .params-header {
+    padding-bottom: 8px;
+}
+
+.agent-params-collapsible-container.collapsed .params-header {
+    row-gap: 0;
+    padding-bottom: 16px;
+}
+
+.agent-params-collapsible-container:has(#paramsToggleHeader) .params-header,
+.agent-params-collapsible-container:has(#paramsToggleHeader) .params-content {
+    position: relative;
+    z-index: 1;
+}
+
+.agent-params-collapsible-container:has(#paramsToggleHeader) .params-header,
+.agent-params-collapsible-container:has(#paramsToggleHeader) .params-content,
+.agent-params-collapsible-container:has(#paramsToggleHeader):hover .params-header,
+.agent-params-collapsible-container:has(#paramsToggleHeader).collapsed:hover .params-header {
+    background-color: transparent;
+}
+
+.params-header:hover {
+    background-color: var(--accent-bg);
+}
+
+.agent-params-collapsible-container.collapsed:hover {
+    background-color: var(--accent-bg);
+}
+
+.agent-params-collapsible-container.collapsed:hover .params-header {
+    background-color: transparent;
+}
+
+body.light-theme .agent-params-collapsible-container:has(#paramsToggleHeader) {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(51, 51, 51, 0.08);
+    backdrop-filter: blur(3px) saturate(104%);
+    -webkit-backdrop-filter: blur(3px) saturate(104%);
+    box-shadow:
+        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.9),
+        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.9),
+        inset 6px -6px 1px -6px rgba(255, 255, 255, 0.55),
+        inset -6px 6px 1px -6px rgba(255, 255, 255, 0.55),
+        inset 0 0 2px rgba(0, 0, 0, 0.18),
+        0 4px 8px rgba(0, 0, 0, 0.12);
+}
+
+body.light-theme .agent-params-collapsible-container:has(#paramsToggleHeader):hover {
+    background: rgba(255, 255, 255, 0.08);
+    box-shadow:
+        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.94),
+        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.94),
+        inset 6px -6px 1px -6px rgba(255, 255, 255, 0.62),
+        inset -6px 6px 1px -6px rgba(255, 255, 255, 0.62),
+        inset 0 0 2px rgba(0, 0, 0, 0.2),
+        0 6px 10px rgba(0, 0, 0, 0.14);
+}
+
+body:not(.light-theme) .agent-params-collapsible-container:has(#paramsToggleHeader) {
+    background: color-mix(in srgb, var(--input-bg) 88%, rgba(255, 255, 255, 0.03));
+    border-color: rgba(255, 255, 255, 0.07);
+    backdrop-filter: blur(2px) saturate(104%);
+    -webkit-backdrop-filter: blur(2px) saturate(104%);
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.14),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.1),
+        inset 0 0 1px rgba(0, 0, 0, 0.42),
+        0 3px 8px rgba(0, 0, 0, 0.14);
+}
+
+body:not(.light-theme) .agent-params-collapsible-container:has(#paramsToggleHeader):hover {
+    background: color-mix(in srgb, var(--input-bg) 84%, rgba(255, 255, 255, 0.05));
+    border-color: color-mix(in srgb, var(--highlight-text) 58%, rgba(255, 255, 255, 0.1));
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.16),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.12),
+        inset 0 0 1px rgba(0, 0, 0, 0.46),
+        0 0 0 1px color-mix(in srgb, var(--highlight-text) 34%, transparent),
+        0 4px 10px rgba(0, 0, 0, 0.16);
+}
+
+.params-title {
+    font-weight: 500;
+    color: var(--highlight-text);
+    font-size: 1em;
+    min-width: 0;
+}
+
+.params-summary {
+    grid-column: 1 / -1;
+    font-size: 0.85em;
+    color: var(--secondary-text);
+    overflow: visible;
+    white-space: pre-line;
+    word-wrap: break-word;
+    line-height: 1.5;
+}
+
+.params-toggle-btn {
+    grid-column: 2;
+    grid-row: 1;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--secondary-text);
+    transition: transform 0.3s ease, color 0.2s ease;
+    margin-left: 0;
+}
+
+.params-toggle-btn:hover {
+    color: var(--highlight-text);
+}
+
+.params-toggle-btn .toggle-icon {
+    transition: transform 0.3s ease;
+}
+
+.agent-params-collapsible-container.collapsed .params-toggle-btn .toggle-icon {
+    transform: rotate(-90deg);
+}
+
+.params-content {
+    max-height: 1000px;
+    overflow: hidden;
+    transition: max-height 0.3s ease, opacity 0.3s ease;
+    opacity: 1;
+    padding: 0 15px 9px 15px;
+    margin-top: -11px;
+}
+
+.agent-params-collapsible-container.collapsed .params-content {
+    max-height: 0;
+    opacity: 0;
+    padding: 0 15px;
+}
+
+.params-content>div {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 8px;
+}
+
+.params-content>div:last-child {
+    margin-bottom: 0;
+}
+
+.params-content label {
+    font-size: 0.9em;
+    font-weight: 500;
+    color: var(--secondary-text);
+}
+
+.params-content input[type="number"] {
+    --params-pill-radius: 13px;
+    width: 100%;
+    height: 34px;
+    min-height: 34px;
+    max-height: 34px;
+    padding: 0 34px 0 11px;
+    border-radius: var(--params-pill-radius) !important;
+    overflow: hidden;
+    background-clip: padding-box;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: transparent;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='rgba(160, 160, 176, 0.5)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='7 15 12 20 17 15'%3E%3C/polyline%3E%3Cpolyline points='7 9 12 4 17 9'%3E%3C/polyline%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    color: var(--highlight-text);
+    font-size: 0.9em;
+    line-height: 1;
+    box-sizing: border-box;
+    display: block;
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: textfield;
+    transition:
+        background 0.2s ease,
+        border-color 0.2s ease,
+        box-shadow 0.2s ease,
+        background-image 0.2s ease;
+}
+
+.params-content > div {
+    gap: 4px;
+    margin-bottom: 8px;
+}
+
+.params-content input[type="number"]::-webkit-inner-spin-button,
+.params-content input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.params-content input[type="number"]:focus {
+    outline: none;
+    border-color: var(--highlight-text);
+    border-radius: var(--params-pill-radius) !important;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='rgb(255, 140, 148)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='7 15 12 20 17 15'%3E%3C/polyline%3E%3Cpolyline points='7 9 12 4 17 9'%3E%3C/polyline%3E%3C/svg%3E");
+}
+
+body.light-theme .params-content input[type="number"] {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--user-bubble-bg) 18%, rgba(255, 255, 255, 0.52)),
+        color-mix(in srgb, var(--user-bubble-bg) 12%, rgba(255, 255, 255, 0.26))
+    );
+    border-color: rgba(51, 51, 51, 0.08);
+    backdrop-filter: blur(12px) saturate(138%);
+    -webkit-backdrop-filter: blur(12px) saturate(138%);
+    box-shadow:
+        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.82),
+        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.72),
+        inset 6px -6px 1px -6px rgba(255, 255, 255, 0.42),
+        inset -6px 6px 1px -6px rgba(255, 255, 255, 0.3),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.18),
+        inset 0 0 1px rgba(0, 0, 0, 0.06);
+}
+
+body.light-theme .params-content input[type="number"]:hover {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--user-bubble-bg) 90%, rgba(255, 255, 255, 0.54)),
+        color-mix(in srgb, var(--user-bubble-bg) 80%, rgba(255, 255, 255, 0.32))
+    );
+    border-color: color-mix(in srgb, var(--highlight-text) 72%, rgba(51, 51, 51, 0.12));
+    box-shadow:
+        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.82),
+        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.72),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.18),
+        0 0 0 1px color-mix(in srgb, var(--highlight-text) 24%, transparent);
+}
+
+body.light-theme .params-content input[type="number"]:focus,
+body.light-theme .params-content input[type="number"]:focus-visible {
+    border-color: var(--highlight-text);
+    box-shadow:
+        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.82),
+        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.72),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.18),
+        0 0 0 1px color-mix(in srgb, var(--highlight-text) 34%, transparent);
+}
+
+body:not(.light-theme) .params-content input[type="number"] {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--user-bubble-bg) 58%, rgba(255, 255, 255, 0.08)),
+        color-mix(in srgb, var(--user-bubble-bg) 44%, rgba(255, 255, 255, 0.04))
+    );
+    border-color: rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(10px) saturate(124%);
+    -webkit-backdrop-filter: blur(10px) saturate(124%);
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.18),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.14),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.04),
+        inset 0 0 1px rgba(255, 255, 255, 0.03);
+}
+
+body:not(.light-theme) .params-content input[type="number"]:hover {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--user-bubble-bg) 66%, rgba(255, 255, 255, 0.1)),
+        color-mix(in srgb, var(--user-bubble-bg) 50%, rgba(255, 255, 255, 0.05))
+    );
+    border-color: color-mix(in srgb, var(--highlight-text) 68%, rgba(255, 255, 255, 0.12));
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.2),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.16),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.05),
+        0 0 0 1px color-mix(in srgb, var(--highlight-text) 26%, transparent);
+}
+
+body:not(.light-theme) .params-content input[type="number"]:focus,
+body:not(.light-theme) .params-content input[type="number"]:focus-visible {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--highlight-text) 82%, rgba(255, 255, 255, 0.12)),
+        color-mix(in srgb, var(--highlight-text) 68%, rgba(255, 255, 255, 0.05))
+    );
+    border-color: var(--highlight-text);
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.2),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.16),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.05),
+        0 0 0 1px color-mix(in srgb, var(--highlight-text) 34%, transparent);
+}

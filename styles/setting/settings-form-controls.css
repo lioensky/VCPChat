@@ -1,0 +1,74 @@
+/* --- Form Dividers & Sections --- */
+.form-divider {
+    border: none;
+    height: 1px;
+    background-color: var(--border-color);
+    margin: 15px 0;
+}
+
+.form-section-title {
+    font-size: 1em;
+    font-weight: 500;
+    color: var(--highlight-text);
+    margin-top: 10px;
+    margin-bottom: 5px;
+}
+
+.slider-container {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+#agentTtsSpeed {
+    flex-grow: 1;
+}
+
+#ttsSpeedValue {
+    font-weight: 500;
+    color: var(--secondary-text);
+    min-width: 30px;
+    /* Ensure space for the number */
+}
+
+.form-divider-dashed {
+    display: none;
+}
+
+/* 新增样式：使表单组内的元素水平排列 */
+.form-group-inline {
+    display: flex;
+    flex-direction: row !important;
+    /* 确保水平排列 */
+    align-items: center;
+    justify-content: flex-start;
+    /* 将内容靠左对齐 */
+    gap: 10px;
+    /* 调整元素之间的间距 */
+}
+
+.form-group-inline label {
+    margin-bottom: 0;
+    /* 移除标签的底部外边距 */
+}
+
+/* 新增样式：使用户头像表单组内的元素水平排列 */
+.form-group-inline-avatar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    /* 调整元素之间的间距 */
+}
+
+.form-group-inline-avatar label {
+    margin-bottom: 0;
+    /* 移除标签的底部外边距 */
+}
+
+/* General Input Placeholder Styling */
+input::placeholder,
+textarea::placeholder {
+    color: var(--placeholder-text);
+    opacity: 1;
+    /* Override default opacity */
+}

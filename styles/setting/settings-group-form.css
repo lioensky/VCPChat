@@ -1,0 +1,206 @@
+/* --- Group Settings Specific Styles --- */
+#groupSettingsContainer {
+    width: 100%;
+    box-sizing: border-box;
+    /* Similar to #agentSettingsContainer if needed, or rely on parent #tabContentSettings padding */
+}
+
+#groupSettingsContainer h3 {
+    /* Assuming a title like agent settings */
+    color: var(--highlight-text);
+    margin-top: 0;
+    margin-bottom: 15px;
+    font-size: 1.2em;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 8px;
+}
+
+#groupSettingsForm {
+    width: 100%;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+#groupSettingsForm .form-group {
+    /* Common class for form sections */
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+#groupSettingsForm .form-group-inline {
+    /* For checkbox and label on same line */
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    /* Space between checkbox and label */
+}
+
+#groupSettingsForm .form-group-inline label {
+    margin-bottom: 0;
+    /* Remove bottom margin from label */
+    display: inline-flex;
+    /* Allow label to be inline with checkbox */
+    align-items: center;
+    cursor: pointer;
+}
+
+#groupSettingsForm label {
+    display: block;
+    font-weight: 500;
+    color: var(--secondary-text);
+    font-size: 0.9em;
+}
+
+#groupSettingsForm input[type="text"],
+#groupSettingsForm input[type="file"],
+#groupSettingsForm textarea,
+#groupSettingsForm select {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 9px 10px;
+    margin-bottom: 0;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    background-color: var(--input-bg);
+    color: var(--primary-text);
+    font-size: 0.95em;
+}
+
+#groupSettingsForm input[type="file"] {
+    padding: 5px;
+}
+
+#groupSettingsForm textarea {
+    min-height: 60px;
+    /* Slightly smaller for group prompts */
+    resize: vertical;
+}
+
+/* 被上面合并的样式取代 */
+
+
+#groupSettingsForm .form-actions button {
+    padding: 10px 18px;
+    font-size: 1em;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    color: #ffffff;
+    flex: 0 0 auto;
+    text-align: center;
+    /* Center text within the button */
+}
+
+#groupSettingsForm .form-actions button[type="submit"] {
+    background-color: var(--user-bubble-bg);
+}
+
+#groupSettingsForm .form-actions button[type="submit"]:hover {
+    background-color: var(--button-hover-bg);
+}
+
+#groupSettingsForm .form-actions #deleteGroupBtn {
+    background-color: var(--danger-color);
+}
+
+#groupSettingsForm .form-actions #deleteGroupBtn:hover {
+    background-color: var(--danger-hover-bg);
+}
+
+body.light-theme #groupSettingsForm .form-actions button[type="submit"] {
+    background-color: var(--button-bg);
+}
+
+body.light-theme #groupSettingsForm .form-actions button[type="submit"]:hover {
+    background-color: var(--button-hover-bg);
+}
+
+body.light-theme #groupSettingsForm .form-actions #deleteGroupBtn {
+    background-color: var(--danger-color);
+}
+
+body.light-theme #groupSettingsForm .form-actions #deleteGroupBtn:hover {
+    background-color: var(--danger-hover-bg);
+}
+
+
+.group-members-list-container {
+    max-height: 150px;
+    overflow-y: auto;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 8px;
+    background-color: var(--input-bg);
+}
+
+.group-member-item {
+    display: flex;
+    align-items: center;
+    padding: 5px 0;
+}
+
+.group-member-item input[type="checkbox"] {
+    margin-right: 8px;
+    width: 16px;
+    /* Custom size for checkbox */
+    height: 16px;
+    accent-color: var(--highlight-text);
+    /* Color the checkbox itself */
+}
+
+.group-member-item label {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    font-weight: normal;
+    /* Override general label style if needed */
+    color: var(--primary-text);
+    font-size: 0.95em;
+}
+
+.group-member-item .avatar-small {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    margin-right: 8px;
+    object-fit: cover;
+}
+
+
+#memberTagsInputs {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.member-tag-input-item {
+    display: flex;
+    flex-direction: column;
+    /* Stack label and input */
+    gap: 4px;
+}
+
+.member-tag-input-item label {
+    font-size: 0.85em;
+    color: var(--secondary-text);
+}
+
+.member-tag-input-item input[type="text"] {
+    font-size: 0.9em;
+    padding: 6px 8px;
+}
+
+#groupSettingsForm img#groupAvatarPreview {
+    border: 2px solid var(--button-bg) !important;
+    border-radius: 8px;
+    max-width: 100px;
+    max-height: 100px;
+    object-fit: cover;
+    display: block;
+    margin-top: 10px;
+    margin-bottom: 6px;
+}

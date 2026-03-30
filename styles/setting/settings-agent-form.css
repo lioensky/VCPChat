@@ -1,0 +1,224 @@
+#tabContentSettings {
+    padding: 12px 0 0 3px;
+    box-sizing: border-box;
+}
+
+#agentSettingsContainer {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0 3px 0 12px;
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+#agentSettingsContainer h3 {
+    display: none;
+}
+
+
+#agentSettingsForm {
+    width: 100%;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    gap: 12px;
+}
+
+#agentSettingsForm>div {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+#agentSettingsForm label {
+    display: block;
+    font-weight: 500;
+    color: var(--secondary-text);
+    font-size: 0.9em;
+}
+
+#agentSettingsForm input[type="text"],
+#agentSettingsForm input[type="url"],
+#agentSettingsForm input[type="password"],
+#agentSettingsForm input[type="number"],
+#agentSettingsForm input[type="file"],
+#agentSettingsForm textarea,
+#agentSettingsForm select {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 9px 10px;
+    margin-bottom: 0;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    background-color: var(--input-bg);
+    color: var(--primary-text);
+    font-size: 0.95em;
+}
+
+#agentSettingsForm input[type="file"] {
+    padding: 5px;
+}
+
+
+#agentSettingsForm textarea {
+    min-height: 80px;
+    resize: vertical;
+}
+
+/* 被上面合并的样式取代 */
+
+
+#agentSettingsForm .form-actions button {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: calc(100% + 2px);
+    margin-left: -2px;
+    height: 37px;
+    padding: 0 12px;
+    font-size: 0.95em;
+    font-weight: 500;
+    line-height: 1;
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    cursor: pointer;
+    white-space: nowrap;
+    box-sizing: border-box;
+    transition:
+        background 0.2s ease,
+        border-color 0.2s ease,
+        box-shadow 0.2s ease,
+        color 0.2s ease,
+        transform 0.2s ease;
+}
+
+#agentSettingsForm .form-actions button[type="submit"] {
+    color: var(--highlight-text);
+}
+
+#agentSettingsForm .form-actions button[type="submit"]:hover {
+    background: var(--highlight-text);
+    border-color: var(--highlight-text);
+    color: var(--text-on-accent);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: none;
+}
+
+#agentSettingsForm .form-actions .danger-button {
+    color: color-mix(in srgb, var(--danger-color) 88%, #ffffff 12%);
+}
+
+#agentSettingsForm .form-actions .danger-button:hover {
+    background: var(--danger-color);
+    border-color: var(--danger-color);
+    color: #ffffff;
+}
+
+body.light-theme #agentSettingsForm .form-actions button[type="submit"] {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--user-bubble-bg) 82%, rgba(255, 255, 255, 0.4)),
+        color-mix(in srgb, var(--user-bubble-bg) 70%, rgba(255, 255, 255, 0.22))
+    );
+    border-color: rgba(51, 51, 51, 0.08);
+    backdrop-filter: blur(10px) saturate(130%);
+    -webkit-backdrop-filter: blur(10px) saturate(130%);
+    box-shadow:
+        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.72),
+        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.62),
+        inset 0 0 1px rgba(0, 0, 0, 0.08);
+}
+
+body.light-theme #agentSettingsForm .form-actions button[type="submit"]:hover {
+    background: var(--highlight-text);
+    border-color: var(--highlight-text);
+    color: #ffffff;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: none;
+}
+
+body.light-theme #agentSettingsForm .form-actions .danger-button {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--danger-color) 16%, rgba(255, 255, 255, 0.78)),
+        color-mix(in srgb, var(--danger-color) 11%, rgba(255, 255, 255, 0.54))
+    );
+    border-color: rgba(51, 51, 51, 0.08);
+    color: color-mix(in srgb, var(--danger-color) 92%, #6d0f1f 8%);
+    backdrop-filter: blur(10px) saturate(130%);
+    -webkit-backdrop-filter: blur(10px) saturate(130%);
+    box-shadow:
+        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.74),
+        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.62),
+        inset 0 0 1px rgba(0, 0, 0, 0.08);
+}
+
+body.light-theme #agentSettingsForm .form-actions .danger-button:hover {
+    background: var(--danger-color);
+    border-color: var(--danger-color);
+    color: #ffffff;
+}
+
+body:not(.light-theme) #agentSettingsForm .form-actions button[type="submit"] {
+    border-color: rgba(255, 255, 255, 0.08);
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--user-bubble-bg) 52%, rgba(255, 255, 255, 0.06)),
+        color-mix(in srgb, var(--user-bubble-bg) 40%, rgba(255, 255, 255, 0.03))
+    );
+    backdrop-filter: blur(8px) saturate(118%);
+    -webkit-backdrop-filter: blur(8px) saturate(118%);
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.16),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.12),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+
+body:not(.light-theme) #agentSettingsForm .form-actions button[type="submit"]:hover {
+    background: var(--highlight-text);
+    border-color: var(--highlight-text);
+    color: color-mix(in srgb, #000000 78%, var(--primary-text) 22%);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: none;
+}
+
+body:not(.light-theme) #agentSettingsForm .form-actions .danger-button {
+    border-color: rgba(255, 255, 255, 0.08);
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--danger-color) 34%, rgba(255, 255, 255, 0.08)),
+        color-mix(in srgb, var(--danger-color) 24%, rgba(255, 255, 255, 0.04))
+    );
+    color: color-mix(in srgb, var(--danger-color) 78%, #ffdce2 22%);
+    backdrop-filter: blur(8px) saturate(118%);
+    -webkit-backdrop-filter: blur(8px) saturate(118%);
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.16),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.12),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+
+body:not(.light-theme) #agentSettingsForm .form-actions .danger-button:hover {
+    background: var(--danger-color);
+    border-color: var(--danger-color);
+    color: #ffffff;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: none;
+}
+
+#selectAgentPromptForSettings {
+    text-align: center;
+    padding: 20px;
+    color: var(--secondary-text);
+}

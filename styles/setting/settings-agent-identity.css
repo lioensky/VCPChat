@@ -1,0 +1,548 @@
+/* ========================================
+   Agent身份容器样式 (名称+头像)
+   ======================================== */
+.agent-identity-container {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 4px 15px 0;
+    background-color: var(--input-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    margin: 10px 0;
+}
+
+#agentSettingsContainer .agent-identity-main {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+/* 头像包装器 */
+.agent-avatar-wrapper {
+    position: relative;
+    flex-shrink: 0;
+}
+
+#agentSettingsContainer .agent-avatar-display {
+    width: 76px;
+    height: 76px;
+    border-width: 2px;
+}
+
+.agent-avatar-display {
+    width: 100px;
+    height: 100px;
+    border-radius: 50%;
+    object-fit: cover;
+    object-position: center;
+    border: 3px solid var(--button-bg);
+    transition: border-color 0.3s ease, transform 0.2s ease;
+    cursor: pointer;
+    /* 高质量图片渲染 */
+    image-rendering: -webkit-optimize-contrast;
+    image-rendering: crisp-edges;
+    image-rendering: high-quality;
+}
+
+.agent-avatar-display:hover {
+    transform: scale(1.05);
+    border-color: var(--user-bubble-bg);
+}
+
+/* 头像上传覆盖层 */
+.avatar-upload-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    background-color: rgba(0, 0, 0, 0);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    /*     transition: background-color 0.3s ease, opacity 0.3s ease; */
+    opacity: 0;
+}
+
+/* Agent设置：悬浮时才显示相机图标 */
+#agentSettingsContainer .agent-avatar-wrapper:hover .avatar-upload-overlay {
+    /*     background-color: rgba(0, 0, 0, 0.5);*/
+    opacity: 1;
+}
+
+/* 全局设置：无头像时始终显示相机图标（不需要遮罩背景） */
+#globalSettingsModal .agent-avatar-wrapper.no-avatar .avatar-upload-overlay {
+    opacity: 1;
+    background-color: transparent;
+}
+
+/* 全局设置：有头像时悬浮才显示相机图标 */
+#globalSettingsModal .agent-avatar-wrapper:not(.no-avatar):hover .avatar-upload-overlay {
+    /*         background-color: rgba(0, 0, 0, 0.5); */
+    opacity: 1;
+}
+
+#agentSettingsContainer .avatar-upload-overlay svg {
+    width: 22px;
+    height: 22px;
+}
+
+.avatar-upload-overlay svg {
+    width: 32px;
+    height: 32px;
+    color: white;
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
+}
+
+/* 名称输入包装器 */
+.agent-name-wrapper {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.agent-name-wrapper label {
+    font-size: 0.96em;
+    font-weight: 500;
+    color: var(--secondary-text);
+    margin-left: 4px;
+}
+
+.agent-name-wrapper input[type="text"] {
+    width: calc(100% + 4px);
+    margin-left: -4px;
+    padding: 12px 14px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    background-color: var(--secondary-bg);
+    color: var(--primary-text);
+    font-size: 1.08em;
+    line-height: 1.3;
+    box-sizing: border-box;
+}
+
+/* ========================================
+   自定义样式控制区域 - 可折叠
+   ======================================== */
+.agent-style-collapsible-container {
+    margin-top: 0;
+    /* 与上方名片接壤，无间隙 */
+    border-top: 1px solid var(--border-color);
+    background-color: var(--input-bg);
+    transition: all 0.3s ease;
+}
+
+.style-collapse-header {
+    display: flex;
+    align-items: center;
+    padding: 12px 15px;
+    cursor: pointer;
+    background-color: var(--input-bg);
+    transition: background-color 0.2s ease;
+    user-select: none;
+}
+
+.style-collapse-header:hover {
+    background-color: var(--accent-bg);
+}
+
+.style-collapse-icon {
+    margin-right: 8px;
+    font-size: 0.8em;
+    color: var(--secondary-text);
+    transition: transform 0.3s ease;
+}
+
+.agent-style-collapsible-container:not(.collapsed) .style-collapse-icon {
+    transform: rotate(90deg);
+}
+
+.style-collapse-title {
+    font-weight: 500;
+    color: var(--secondary-text);
+    font-size: 0.9em;
+}
+
+.agent-style-controls {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+    padding: 8px 15px 0;
+    max-height: 800px;
+    /* 增加最大高度 */
+    overflow-y: auto;
+    /* 改为auto，允许滚动 */
+    overflow-x: hidden;
+    opacity: 1;
+    transition: max-height 0.3s ease, opacity 0.3s ease, padding 0.3s ease;
+}
+
+/* 样式控制区域的滚动条样式 */
+.agent-style-controls::-webkit-scrollbar {
+    width: 8px;
+}
+
+.agent-style-controls::-webkit-scrollbar-track {
+    background: var(--scrollbar-track, #f1f1f1);
+    border-radius: 4px;
+}
+
+.agent-style-controls::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb, #c1c1c1);
+    border-radius: 4px;
+}
+
+.agent-style-controls::-webkit-scrollbar-thumb:hover {
+    background: var(--scrollbar-thumb-hover, #a8a8a8);
+}
+
+/* Firefox 滚动条 */
+.agent-style-controls {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb, #c1c1c1) var(--scrollbar-track, #f1f1f1);
+}
+
+.agent-style-collapsible-container.collapsed .agent-style-controls {
+    max-height: 0;
+    opacity: 0;
+    padding: 0 15px;
+}
+
+.style-control-item {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.style-control-item.full-width {
+    grid-column: 1 / -1;
+}
+
+.style-control-item label {
+    font-size: 0.85em;
+    font-weight: 500;
+    color: var(--secondary-text);
+}
+
+/* 颜色输入组 */
+.color-input-group {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.color-input-group input[type="color"] {
+    width: 37px;
+    height: 37px;
+    min-width: 37px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 999px;
+    cursor: pointer;
+    padding: 3px;
+    background: transparent;
+    box-sizing: border-box;
+    overflow: hidden;
+    transition:
+        border-color 0.2s ease,
+        box-shadow 0.2s ease,
+        transform 0.2s ease;
+}
+
+.color-input-group input[type="color"]::-webkit-color-swatch-wrapper {
+    padding: 0;
+    border-radius: 999px;
+}
+
+.color-input-group input[type="color"]::-webkit-color-swatch {
+    border: none;
+    border-radius: 999px;
+}
+
+.color-input-group input[type="color"]::-moz-color-swatch {
+    border: none;
+    border-radius: 999px;
+}
+
+.color-input-group input[type="color"]:hover {
+    border-color: var(--highlight-text);
+}
+
+.color-input-group input[type="color"]:focus,
+.color-input-group input[type="color"]:focus-visible {
+    outline: none;
+    border-color: var(--highlight-text);
+    box-shadow: none;
+}
+
+.color-input-group input[type="text"] {
+    flex-grow: 1;
+    height: 37px;
+    padding: 0 12px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: transparent;
+    color: var(--primary-text);
+    font-size: 0.95em;
+    font-family: monospace;
+    box-sizing: border-box;
+}
+
+body.light-theme .color-input-group input[type="color"],
+body.light-theme .color-input-group input[type="text"] {
+    background: linear-gradient(
+        180deg,
+        rgba(255, 255, 255, 0.82),
+        rgba(255, 255, 255, 0.58)
+    );
+    border-color: rgba(51, 51, 51, 0.08);
+    backdrop-filter: blur(10px) saturate(130%);
+    -webkit-backdrop-filter: blur(10px) saturate(130%);
+    box-shadow:
+        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.74),
+        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.62),
+        inset 0 0 1px rgba(0, 0, 0, 0.08);
+}
+
+body.light-theme .color-input-group input[type="text"]:hover,
+body.light-theme .color-input-group input[type="text"]:focus,
+body.light-theme .color-input-group input[type="text"]:focus-visible {
+    border-color: var(--highlight-text);
+}
+
+body:not(.light-theme) .color-input-group input[type="color"],
+body:not(.light-theme) .color-input-group input[type="text"] {
+    background: linear-gradient(
+        180deg,
+        rgba(255, 255, 255, 0.08),
+        rgba(255, 255, 255, 0.04)
+    );
+    border-color: rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(8px) saturate(118%);
+    -webkit-backdrop-filter: blur(8px) saturate(118%);
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.16),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.12),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+
+body:not(.light-theme) .color-input-group input[type="text"]:hover,
+body:not(.light-theme) .color-input-group input[type="text"]:focus,
+body:not(.light-theme) .color-input-group input[type="text"]:focus-visible {
+    border-color: var(--highlight-text);
+}
+
+/* 自定义CSS文本框 */
+.style-control-item textarea {
+    width: 100%;
+    padding: 10px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    background-color: var(--secondary-bg);
+    color: var(--primary-text);
+    font-size: 0.9em;
+    font-family: 'Consolas', 'Monaco', monospace;
+    resize: vertical;
+    box-sizing: border-box;
+}
+
+.style-control-item textarea::placeholder {
+    color: var(--placeholder-text);
+    opacity: 0.6;
+}
+
+/* 重置颜色按钮 */
+.reset-colors-btn {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    width: 100%;
+    height: 37px;
+    padding: 0 12px;
+    background: transparent;
+    color: var(--highlight-text);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 14px;
+    cursor: pointer;
+    font-size: 0.95em;
+    font-weight: 500;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    box-sizing: border-box;
+    transition:
+        background 0.2s ease,
+        border-color 0.2s ease,
+        box-shadow 0.2s ease,
+        color 0.2s ease,
+        transform 0.2s ease;
+}
+
+.reset-colors-btn:hover {
+    background: var(--highlight-text);
+    border-color: var(--highlight-text);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: none;
+}
+
+.reset-colors-btn svg {
+    flex-shrink: 0;
+    stroke: currentColor;
+}
+
+body.light-theme .reset-colors-btn {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--highlight-text) 10%, rgba(255, 255, 255, 0.82)),
+        color-mix(in srgb, var(--highlight-text) 6%, rgba(255, 255, 255, 0.58))
+    );
+    border-color: rgba(51, 51, 51, 0.08);
+    color: var(--highlight-text);
+    backdrop-filter: blur(10px) saturate(130%);
+    -webkit-backdrop-filter: blur(10px) saturate(130%);
+    box-shadow:
+        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.74),
+        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.62),
+        inset 0 0 1px rgba(0, 0, 0, 0.08);
+}
+
+body.light-theme .reset-colors-btn:hover {
+    background: var(--highlight-text);
+    border-color: var(--highlight-text);
+    color: #ffffff;
+}
+
+body:not(.light-theme) .reset-colors-btn {
+    background: linear-gradient(
+        180deg,
+        rgba(255, 255, 255, 0.08),
+        rgba(255, 255, 255, 0.04)
+    );
+    border-color: rgba(255, 255, 255, 0.08);
+    color: var(--highlight-text);
+    backdrop-filter: blur(8px) saturate(118%);
+    -webkit-backdrop-filter: blur(8px) saturate(118%);
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.16),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.12),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+
+body:not(.light-theme) .reset-colors-btn:hover {
+    background: var(--highlight-text);
+    border-color: var(--highlight-text);
+    color: #000000;
+}
+
+/* ========================================
+   头像裁剪器优化 - 高质量渲染
+   ======================================== */
+#avatarCanvas {
+    image-rendering: -webkit-optimize-contrast;
+    image-rendering: crisp-edges;
+    image-rendering: high-quality;
+    /* 防止图片压缩 */
+    image-rendering: -moz-crisp-edges;
+    image-rendering: pixelated;
+}
+
+/* 确保裁剪后的头像也使用高质量渲染 */
+.agent-list img.avatar,
+.topic-list .topic-item img.avatar {
+    image-rendering: -webkit-optimize-contrast;
+    image-rendering: high-quality;
+    image-rendering: crisp-edges;
+}
+
+/* 头像预览 与 error-feedback 按钮 */
+
+#agentSettingsForm img.avatar-preview,
+#agentSettingsContainer img[alt="Avatar Preview"],
+#agentSettingsForm div>img[src*="blob:"],
+#agentSettingsForm div>img[data-preview-for],
+#agentSettingsForm img[id*="AvatarPreview"],
+#agentSettingsForm img[class*="AvatarPreview"] {
+    border: 2px solid var(--button-bg) !important;
+    border-radius: 8px;
+    max-width: 100px;
+    max-height: 100px;
+    object-fit: cover;
+    display: block;
+    margin-top: 10px;
+    margin-bottom: 10px;
+}
+
+#agentSettingsForm>div>img:only-child {
+    border: 2px solid var(--button-bg) !important;
+    border-radius: 8px;
+    max-width: 100px;
+    max-height: 100px;
+    object-fit: cover;
+    display: block;
+    margin-top: 10px;
+    margin-bottom: 10px;
+}
+
+#agentSettingsForm .form-actions button.error-feedback {
+    background-color: var(--danger-color) !important;
+    color: white !important;
+}
+
+#agentSettingsForm .form-actions button.error-feedback:hover {
+    background-color: var(--danger-hover-bg) !important;
+}
+
+/* 头像文件输入 */
+
+
+input[type="file"] {
+    font-size: 0;
+    background-color: transparent;
+    border: none;
+    padding: 0;
+    margin: 0;
+    width: auto;
+    display: inline-block;
+    vertical-align: middle;
+    /* 保持垂直居中对齐 */
+    position: relative;
+    /* 启用相对定位 */
+    top: 8px;
+    /* 向下微调3像素 */
+}
+
+input[type="file"]::-webkit-file-upload-button,
+input[type="file"]::file-selector-button {
+    background-color: var(--button-bg);
+    color: var(--primary-text);
+    border: 1px solid var(--button-bg);
+    padding: 10px 15px;
+    /* 恢复垂直内边距 */
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.95em;
+    transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+    font-family: inherit;
+}
+
+input[type="file"]::-webkit-file-upload-button:hover,
+input[type="file"]::file-selector-button:hover {
+    background-color: var(--button-hover-bg);
+    border-color: var(--button-hover-bg);
+}
+
+body.light-theme input[type="file"]::-webkit-file-upload-button,
+body.light-theme input[type="file"]::file-selector-button {
+    color: #ffffff;
+}
+
+body.light-theme input[type="file"]::-webkit-file-upload-button:hover,
+body.light-theme input[type="file"]::file-selector-button:hover {
+    color: #ffffff;
+}

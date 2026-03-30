@@ -1,0 +1,583 @@
+/* ========================================
+   Agent Settings Prompt Section Final Polish
+   ======================================== */
+#agentSettingsContainer .agent-settings-prompt-shell {
+    gap: 2px !important;
+}
+
+#agentSettingsContainer .agent-settings-section[data-section-key="prompt"] .agent-settings-section-content {
+    padding-top: 0 !important;
+}
+
+#agentSettingsContainer .agent-settings-prompt-shell > .prompt-section-note {
+    margin: -1px 0 0;
+    color: var(--secondary-text);
+    font-size: 0.82em;
+    line-height: 1.35;
+    font-weight: 400;
+}
+
+#agentSettingsContainer .system-prompt-container .prompt-mode-selector {
+    display: flex;
+    align-items: flex-end;
+    justify-content: flex-start;
+    gap: 20px;
+    margin: 0 0 8px;
+    padding: 1px 0 6px;
+    overflow: visible;
+    border: none;
+    background: transparent;
+}
+
+#agentSettingsContainer .system-prompt-container .prompt-mode-button {
+    position: relative;
+    flex: 0 0 auto;
+    min-width: 0;
+    height: 28px;
+    min-height: 28px;
+    padding: 0 1px;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    color: var(--secondary-text);
+    font-size: 0.95em;
+    font-weight: 400;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 6px;
+    white-space: nowrap;
+    overflow: visible;
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    transition: color 0.2s ease, font-weight 0.2s ease;
+}
+
+#agentSettingsContainer .system-prompt-container .prompt-mode-button::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    bottom: -6px;
+    transform: translateX(-50%);
+    width: 0;
+    height: 3px;
+    border-radius: 999px;
+    background-color: color-mix(in srgb, var(--highlight-text) 55%, transparent);
+    transition: width 0.2s ease, background-color 0.2s ease;
+}
+
+#agentSettingsContainer .system-prompt-container .prompt-mode-button:hover {
+    color: color-mix(in srgb, var(--highlight-text) 88%, var(--primary-text) 12%);
+    border: none;
+    background: transparent;
+    box-shadow: none;
+}
+
+#agentSettingsContainer .system-prompt-container .prompt-mode-button:hover::after {
+    width: 16px;
+    background-color: color-mix(in srgb, var(--highlight-text) 42%, transparent);
+}
+
+#agentSettingsContainer .system-prompt-container .prompt-mode-button.active {
+    color: var(--highlight-text);
+    font-weight: 600;
+    border: none;
+    background: transparent;
+    box-shadow: none;
+    transition: color 0.2s ease, font-weight 0.2s ease;
+}
+
+#agentSettingsContainer .system-prompt-container .prompt-mode-button.active::after,
+#agentSettingsContainer .system-prompt-container .prompt-mode-button.active:hover::after {
+    width: 30px;
+    background-color: var(--highlight-text);
+}
+
+body.light-theme #agentSettingsContainer .system-prompt-container .prompt-mode-button,
+body.light-theme #agentSettingsContainer .system-prompt-container .prompt-mode-button:hover,
+body.light-theme #agentSettingsContainer .system-prompt-container .prompt-mode-button.active,
+body:not(.light-theme) #agentSettingsContainer .system-prompt-container .prompt-mode-button,
+body:not(.light-theme) #agentSettingsContainer .system-prompt-container .prompt-mode-button:hover,
+body:not(.light-theme) #agentSettingsContainer .system-prompt-container .prompt-mode-button.active {
+    border: none;
+    background: transparent;
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
+body.light-theme #agentSettingsContainer .system-prompt-container .prompt-mode-button.active,
+body:not(.light-theme) #agentSettingsContainer .system-prompt-container .prompt-mode-button.active {
+    color: var(--highlight-text);
+    font-weight: 600;
+}
+
+body.light-theme #agentSettingsContainer .system-prompt-container .prompt-mode-button:hover,
+body:not(.light-theme) #agentSettingsContainer .system-prompt-container .prompt-mode-button:hover {
+    color: color-mix(in srgb, var(--highlight-text) 88%, var(--primary-text) 12%);
+}
+
+#agentSettingsContainer .system-prompt-container .prompt-mode-button-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    line-height: 0;
+    transform: translateY(-1px);
+}
+
+#agentSettingsContainer .system-prompt-container .prompt-mode-button-icon svg {
+    width: 14px;
+    height: 14px;
+}
+
+#agentSettingsContainer .system-prompt-container .prompt-mode-button-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#agentSettingsContainer .system-prompt-container .prompt-content-container {
+    padding: 2px 0 0;
+}
+
+#agentSettingsContainer .system-prompt-container .prompt-textarea,
+#agentSettingsContainer .system-prompt-container .preset-path-input,
+#agentSettingsContainer .system-prompt-container .preset-select,
+#agentSettingsContainer .system-prompt-container .block-name-input {
+    border-radius: var(--agent-settings-pill-radius) !important;
+    font-size: 0.9em;
+    color: var(--highlight-text);
+}
+
+#agentSettingsContainer .system-prompt-container .preset-path-input,
+#agentSettingsContainer .system-prompt-container .preset-select,
+#agentSettingsContainer .system-prompt-container .block-name-input {
+    height: 34px;
+    min-height: 34px;
+    max-height: 34px;
+    padding: 0 12px;
+}
+
+#agentSettingsContainer .system-prompt-container .preset-select {
+    padding-right: 34px;
+}
+
+#agentSettingsContainer .system-prompt-container .prompt-textarea {
+    min-height: 76px;
+    padding: 10px 12px;
+    border-radius: 16px !important;
+}
+
+#agentSettingsContainer .system-prompt-container .preset-path-section label,
+#agentSettingsContainer .system-prompt-container .preset-selector-section label,
+#agentSettingsContainer .system-prompt-container .preset-editor-section label {
+    margin: 0 0 4px;
+    color: var(--secondary-text);
+    font-size: 0.9em;
+    font-weight: 500;
+}
+
+#agentSettingsContainer .system-prompt-container .modular-prompt-container,
+#agentSettingsContainer .system-prompt-container .preset-prompt-container {
+    gap: 8px;
+    padding: 2px 0 0;
+}
+
+#agentSettingsContainer .system-prompt-container .modular-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 0 6px;
+    border: none;
+    background: transparent;
+    flex-wrap: wrap;
+}
+
+#agentSettingsContainer .system-prompt-container .toolbar-controls-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+    flex-wrap: wrap;
+}
+
+#agentSettingsContainer .system-prompt-container .toolbar-btn,
+#agentSettingsContainer .system-prompt-container .preset-browse-btn,
+#agentSettingsContainer .system-prompt-container .preset-refresh-btn,
+#agentSettingsContainer .system-prompt-container .add-variant-btn,
+#agentSettingsContainer .system-prompt-container .warehouse-btn,
+#agentSettingsContainer .system-prompt-container .add-warehouse-btn {
+    min-height: 34px;
+    padding: 0 12px;
+    border-radius: var(--agent-settings-pill-radius);
+    font-size: 0.88em;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+}
+
+#agentSettingsContainer .system-prompt-container .preset-refresh-btn {
+    width: 34px;
+    min-width: 34px;
+    padding: 0;
+}
+
+#agentSettingsContainer .system-prompt-container .toolbar-toggle {
+    min-height: 34px;
+    padding: 0 12px;
+    border-radius: var(--agent-settings-pill-radius);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: var(--secondary-text);
+    font-size: 0.88em;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    user-select: none;
+}
+
+#agentSettingsContainer .system-prompt-container .toolbar-toggle input[type="checkbox"] {
+    width: 15px;
+    height: 15px;
+    margin: 0;
+    flex-shrink: 0;
+}
+
+#agentSettingsContainer .system-prompt-container .blocks-container,
+#agentSettingsContainer .system-prompt-container .warehouse-container,
+#agentSettingsContainer .system-prompt-container .preview-container {
+    border-radius: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 12px;
+}
+
+#agentSettingsContainer .system-prompt-container .blocks-container,
+#agentSettingsContainer .system-prompt-container .hidden-blocks-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-content: flex-start;
+}
+
+#agentSettingsContainer .system-prompt-container .blocks-container {
+    min-height: 84px;
+}
+
+#agentSettingsContainer .system-prompt-container .warehouse-container,
+#agentSettingsContainer .system-prompt-container .preview-container {
+    padding: 10px 12px;
+}
+
+#agentSettingsContainer .system-prompt-container .warehouse-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+#agentSettingsContainer .system-prompt-container .warehouse-header h4,
+#agentSettingsContainer .system-prompt-container .preview-label {
+    margin: 0;
+    color: var(--secondary-text);
+    font-size: 0.9em;
+    font-weight: 500;
+}
+
+#agentSettingsContainer .system-prompt-container .warehouse-selector {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 8px;
+}
+
+#agentSettingsContainer .system-prompt-container .warehouse-btn,
+#agentSettingsContainer .system-prompt-container .add-warehouse-btn {
+    position: relative;
+    isolation: isolate;
+    min-width: 0;
+    transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, color 0.2s ease;
+}
+
+#agentSettingsContainer .system-prompt-container .warehouse-btn {
+    padding: 0 12px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: transparent;
+    color: var(--secondary-text);
+    white-space: nowrap;
+}
+
+#agentSettingsContainer .system-prompt-container .add-warehouse-btn {
+    padding: 0 12px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: transparent;
+    color: var(--highlight-text);
+    white-space: nowrap;
+}
+
+#agentSettingsContainer .system-prompt-container .add-warehouse-btn span {
+    line-height: 1;
+    white-space: nowrap;
+}
+
+#agentSettingsContainer .system-prompt-container .add-warehouse-btn svg,
+#agentSettingsContainer .system-prompt-container .warehouse-btn svg {
+    flex-shrink: 0;
+    width: 14px;
+    height: 14px;
+}
+
+#agentSettingsContainer .system-prompt-container .hidden-blocks-list {
+    min-height: 52px;
+    padding: 0;
+}
+
+#agentSettingsContainer .system-prompt-container .prompt-block,
+#agentSettingsContainer .system-prompt-container .hidden-block {
+    position: relative;
+    isolation: isolate;
+    min-height: 32px;
+    padding: 0 11px;
+    border-radius: 999px;
+    font-size: 0.88em;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+#agentSettingsContainer .system-prompt-container .prompt-block.text-block,
+#agentSettingsContainer .system-prompt-container .hidden-block {
+    border-width: 1px;
+}
+
+#agentSettingsContainer .system-prompt-container .hidden-block {
+    max-width: 220px;
+    color: var(--highlight-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#agentSettingsContainer .system-prompt-container .hidden-block.has-custom-name {
+    background-image: none;
+}
+
+#agentSettingsContainer .system-prompt-container .block-content {
+    font-size: 0.9em;
+    line-height: 1.35;
+}
+
+#agentSettingsContainer .system-prompt-container .block-content:empty::before {
+    content: "双击输入内容...";
+    color: var(--secondary-text);
+    opacity: 0.7;
+}
+
+#agentSettingsContainer .system-prompt-container .block-content[contenteditable="true"] {
+    padding: 4px 6px;
+    border-radius: 10px;
+}
+
+#agentSettingsContainer .system-prompt-container .prompt-block.newline-block {
+    min-height: 28px;
+    height: 28px;
+    max-height: 28px;
+    padding: 0 12px;
+    border-radius: 999px;
+}
+
+#agentSettingsContainer .system-prompt-container .newline-label {
+    font-size: 0.82em;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+}
+
+#agentSettingsContainer .system-prompt-container .variant-content-input {
+    min-height: 76px;
+    padding: 10px 12px;
+    border-radius: 16px;
+}
+
+#agentSettingsContainer .system-prompt-container .remove-variant-btn {
+    width: 28px;
+    height: 28px;
+    min-width: 28px;
+    align-self: center;
+    border-radius: 999px;
+}
+
+#agentSettingsContainer .system-prompt-container .path-input-container {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+#agentSettingsContainer .system-prompt-container .preset-path-section,
+#agentSettingsContainer .system-prompt-container .preset-selector-section,
+#agentSettingsContainer .system-prompt-container .preset-editor-section,
+#agentSettingsContainer .system-prompt-container .variants-edit-container {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+#agentSettingsContainer .system-prompt-container .variants-edit-container {
+    margin-bottom: 0;
+}
+
+#agentSettingsContainer .system-prompt-container .variants-list {
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+#agentSettingsContainer .system-prompt-container .variant-item-edit {
+    gap: 8px;
+}
+
+#agentSettingsContainer .system-prompt-container .preview-text {
+    padding: 12px 13px;
+    border-radius: 14px;
+    line-height: 1.55;
+}
+
+#agentSettingsContainer .system-prompt-container .warehouse-item.active .warehouse-btn {
+    color: var(--text-on-accent);
+    background: var(--highlight-text);
+    border-color: var(--highlight-text);
+    box-shadow: none;
+}
+
+#agentSettingsContainer .system-prompt-container .warehouse-btn:hover,
+#agentSettingsContainer .system-prompt-container .add-warehouse-btn:hover {
+    color: var(--highlight-text);
+}
+
+body.light-theme #agentSettingsContainer .system-prompt-container .toolbar-toggle,
+body.light-theme #agentSettingsContainer .system-prompt-container .preview-container {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--user-bubble-bg) 16%, rgba(255, 255, 255, 0.52)),
+        color-mix(in srgb, var(--user-bubble-bg) 10%, rgba(255, 255, 255, 0.26))
+    );
+    border-color: rgba(51, 51, 51, 0.08);
+    box-shadow:
+        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.82),
+        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.72),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.18),
+        inset 0 0 1px rgba(0, 0, 0, 0.06);
+}
+
+body.light-theme #agentSettingsContainer .system-prompt-container .blocks-container,
+body.light-theme #agentSettingsContainer .system-prompt-container .warehouse-container,
+body.light-theme #agentSettingsContainer .system-prompt-container .preview-text,
+body.light-theme #agentSettingsContainer .system-prompt-container .prompt-block.text-block,
+body.light-theme #agentSettingsContainer .system-prompt-container .hidden-block {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--user-bubble-bg) 16%, rgba(255, 255, 255, 0.52)),
+        color-mix(in srgb, var(--user-bubble-bg) 10%, rgba(255, 255, 255, 0.26))
+    );
+    border-color: rgba(51, 51, 51, 0.08);
+    box-shadow:
+        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.82),
+        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.72),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.18),
+        inset 0 0 1px rgba(0, 0, 0, 0.06);
+}
+
+body.light-theme #agentSettingsContainer .system-prompt-container .warehouse-btn,
+body.light-theme #agentSettingsContainer .system-prompt-container .add-warehouse-btn {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--user-bubble-bg) 16%, rgba(255, 255, 255, 0.52)),
+        color-mix(in srgb, var(--user-bubble-bg) 10%, rgba(255, 255, 255, 0.26))
+    );
+    border-color: rgba(51, 51, 51, 0.08);
+    box-shadow:
+        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.82),
+        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.72),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.18),
+        inset 0 0 1px rgba(0, 0, 0, 0.06);
+}
+
+body.light-theme #agentSettingsContainer .system-prompt-container .warehouse-btn:hover,
+body.light-theme #agentSettingsContainer .system-prompt-container .add-warehouse-btn:hover {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--user-bubble-bg) 24%, rgba(255, 255, 255, 0.56)),
+        color-mix(in srgb, var(--user-bubble-bg) 16%, rgba(255, 255, 255, 0.3))
+    );
+    border-color: color-mix(in srgb, var(--highlight-text) 72%, rgba(51, 51, 51, 0.12));
+    box-shadow:
+        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.82),
+        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.72),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.18),
+        0 0 0 1px color-mix(in srgb, var(--highlight-text) 24%, transparent);
+}
+
+body:not(.light-theme) #agentSettingsContainer .system-prompt-container .toolbar-toggle,
+body:not(.light-theme) #agentSettingsContainer .system-prompt-container .preview-container {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--user-bubble-bg) 54%, rgba(255, 255, 255, 0.08)),
+        color-mix(in srgb, var(--user-bubble-bg) 40%, rgba(255, 255, 255, 0.04))
+    );
+    border-color: rgba(255, 255, 255, 0.08);
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.18),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.14),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.04),
+        inset 0 0 1px rgba(255, 255, 255, 0.03);
+}
+
+body:not(.light-theme) #agentSettingsContainer .system-prompt-container .blocks-container,
+body:not(.light-theme) #agentSettingsContainer .system-prompt-container .warehouse-container,
+body:not(.light-theme) #agentSettingsContainer .system-prompt-container .preview-text,
+body:not(.light-theme) #agentSettingsContainer .system-prompt-container .prompt-block.text-block,
+body:not(.light-theme) #agentSettingsContainer .system-prompt-container .hidden-block {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--user-bubble-bg) 54%, rgba(255, 255, 255, 0.08)),
+        color-mix(in srgb, var(--user-bubble-bg) 40%, rgba(255, 255, 255, 0.04))
+    );
+    border-color: rgba(255, 255, 255, 0.08);
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.18),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.14),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.04),
+        inset 0 0 1px rgba(255, 255, 255, 0.03);
+}
+
+body:not(.light-theme) #agentSettingsContainer .system-prompt-container .warehouse-btn,
+body:not(.light-theme) #agentSettingsContainer .system-prompt-container .add-warehouse-btn {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--user-bubble-bg) 54%, rgba(255, 255, 255, 0.08)),
+        color-mix(in srgb, var(--user-bubble-bg) 40%, rgba(255, 255, 255, 0.04))
+    );
+    border-color: rgba(255, 255, 255, 0.08);
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.18),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.14),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.04),
+        inset 0 0 1px rgba(255, 255, 255, 0.03);
+}
+
+body:not(.light-theme) #agentSettingsContainer .system-prompt-container .warehouse-btn:hover,
+body:not(.light-theme) #agentSettingsContainer .system-prompt-container .add-warehouse-btn:hover {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--user-bubble-bg) 66%, rgba(255, 255, 255, 0.1)),
+        color-mix(in srgb, var(--user-bubble-bg) 50%, rgba(255, 255, 255, 0.05))
+    );
+    border-color: color-mix(in srgb, var(--highlight-text) 68%, rgba(255, 255, 255, 0.12));
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.2),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.16),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.05),
+        0 0 0 1px color-mix(in srgb, var(--highlight-text) 26%, transparent);
+}

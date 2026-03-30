@@ -1,0 +1,210 @@
+/* Sidebar Tabs */
+.sidebar-tabs {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    margin-bottom: 13px;
+    padding: 0 2px;
+}
+
+.sidebar-tab-button {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+    height: 30px;
+    padding: 0 6px;
+    background-color: transparent;
+    border: none;
+    color: var(--secondary-text);
+    cursor: pointer;
+    font-size: 15px;
+    font-weight: 400;
+    line-height: 1;
+    text-align: center;
+    white-space: nowrap;
+    overflow: visible;
+    border-radius: 8px;
+    appearance: none;
+    -webkit-appearance: none;
+    transition: color 0.2s ease, font-weight 0.2s ease;
+}
+
+.sidebar-tab-button::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    bottom: -4px;
+    transform: translateX(-50%);
+    width: 0;
+    height: 3px;
+    border-radius: 999px;
+    background-color: color-mix(in srgb, var(--highlight-text) 55%, transparent);
+    transition: width 0.2s ease, background-color 0.2s ease;
+}
+
+.sidebar-tab-button:hover {
+    color: color-mix(in srgb, var(--highlight-text) 88%, var(--primary-text) 12%);
+}
+
+.sidebar-tab-button:hover::after {
+    width: 16px;
+    background-color: color-mix(in srgb, var(--highlight-text) 42%, transparent);
+}
+
+.sidebar-tab-button.active {
+    color: var(--highlight-text);
+    font-weight: 600;
+}
+
+.sidebar-tab-button.active::after {
+    width: 30px;
+    background-color: var(--highlight-text);
+}
+
+.sidebar-tab-button.active:hover::after {
+    width: 30px;
+    background-color: var(--highlight-text);
+}
+
+.sidebar-tab-button:focus-visible {
+    outline: none;
+    color: var(--highlight-text);
+}
+
+.sidebar-tab-button:focus-visible::after {
+    width: 20px;
+    background-color: color-mix(in srgb, var(--highlight-text) 65%, transparent);
+}
+
+.sidebar-tab-button.active:focus-visible::after {
+    width: 30px;
+    background-color: var(--highlight-text);
+}
+
+.sidebar-tab-content {
+    display: flex;
+    flex-direction: column;
+    flex-grow: 0;
+    opacity: 0;
+    max-height: 0;
+    overflow: hidden;
+    transform: translateY(10px);
+    pointer-events: none;
+    transition: opacity 0.25s ease-out,
+        transform 0.25s ease-out,
+        max-height 0.35s cubic-bezier(0.25, 0.1, 0.25, 1),
+        padding-top 0.35s cubic-bezier(0.25, 0.1, 0.25, 1),
+        padding-bottom 0.35s cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+
+.sidebar-tab-content:not(.active) {
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    border-top-width: 0 !important;
+    border-bottom-width: 0 !important;
+}
+
+.sidebar-tab-content.active {
+    opacity: 1;
+    max-height: 100vh;
+    transform: translateY(0);
+    overflow-y: auto;
+    pointer-events: auto;
+    overflow-x: hidden;
+    flex-grow: 1;
+    /* 为滚动条留出空间，避免布局变化 */
+    padding-right: 0;
+    box-sizing: border-box;
+}
+
+#tabContentSettings.sidebar-tab-content.active {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    padding-bottom: 0 !important;
+    padding-right: 8px;
+    margin-right: -8px;
+    margin-bottom: -15px;
+}
+
+/* 始终显示滚动条轨道，避免布局动态变化 */
+.sidebar-tab-content.active::-webkit-scrollbar {
+    width: 12px;
+    /* 固定宽度，避免布局变化 */
+    background: transparent;
+    /* 默认透明 */
+    transition: background-color 0.5s ease-in-out;
+    /* 动画时间延长 */
+}
+
+.sidebar-tab-content.active::-webkit-scrollbar-thumb {
+    background: transparent;
+    /* 默认透明 */
+    border-radius: 6px;
+    border: 2px solid transparent;
+    /* 默认透明 */
+    transition: background-color 0.5s ease-in-out, border-color 0.5s ease-in-out;
+    /* 动画时间延长 */
+}
+
+.sidebar-tab-content.active::-webkit-scrollbar-track {
+    background: transparent;
+    /* 默认透明 */
+    border-radius: 6px;
+    transition: background-color 0.5s ease-in-out;
+    /* 动画时间延长 */
+}
+
+/* 鼠标悬停时显示完整滚动条 */
+.sidebar-tab-content.active:hover::-webkit-scrollbar {
+    width: 12px;
+}
+
+.sidebar-tab-content.active:hover::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb, #c1c1c1);
+    border-color: var(--scrollbar-track, #f1f1f1);
+}
+
+.sidebar-tab-content.active:hover::-webkit-scrollbar-track {
+    background: var(--scrollbar-track, #f1f1f1);
+}
+
+/* Firefox滚动条样式 */
+.sidebar-tab-content.active {
+    scrollbar-width: thin;
+    /* 始终显示细滚动条 */
+    scrollbar-color: transparent transparent;
+    /* 默认透明 */
+}
+
+.sidebar-tab-content.active:hover {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb, #c1c1c1) var(--scrollbar-track, #f1f1f1);
+}
+
+/* Agent/Group设置表单粘性按钮共通布局 */
+#agentSettingsForm .form-actions,
+#groupSettingsForm .form-actions {
+    position: sticky;
+    bottom: 0;
+    margin-top: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 12px 15px 14px;
+    z-index: 10;
+    margin-left: -15px;
+    margin-right: -15px;
+    margin-bottom: -15px;
+}
+
+
+
+/* 确保两个按钮宽度一致 */
+#agentSettingsForm .form-actions button {
+    width: 100%;
+    /* 两个按钮都占满容器宽度 */
+    box-sizing: border-box;
+    display: block;
+    /* 确保块级显示 */
+}

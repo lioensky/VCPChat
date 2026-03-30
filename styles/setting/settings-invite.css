@@ -1,0 +1,85 @@
+/* --- Invite Agent Buttons --- */
+.invite-agent-buttons-container {
+    display: grid;
+    /* 一行尽可能多地显示按钮，每个按钮最小宽度约100px，最大占据1fr空间 */
+    /* 如果希望严格一行3个，可以使用: grid-template-columns: repeat(3, 1fr); */
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: 8px;
+    /* 按钮之间的间距 */
+    padding: 10px 15px;
+    /* 容器的内边距，与 notifications-list 保持一致 */
+    /* border-top: 1px solid var(--border-color); /* 在main.html中已通过style添加 */
+    /* margin-top: 10px; /* 在main.html中已通过style添加 */
+    background-color: var(--panel-bg-dark);
+    /* 与通知区域背景协调 */
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+}
+
+body.light-theme .invite-agent-buttons-container {
+    background-color: var(--panel-bg-light);
+}
+
+.invite-agent-button {
+    display: flex;
+    align-items: center;
+    padding: 6px 10px;
+    /* 较小的内边距 */
+    border: 1px solid var(--button-border-color, var(--border-color));
+    /* 尝试使用按钮边框变量，否则用通用边框 */
+    background-color: var(--button-bg);
+    color: var(--primary-text);
+    /* 使用主题的主文字颜色 */
+    border-radius: 6px;
+    /* 与其他小按钮类似的圆角 */
+    cursor: pointer;
+    font-size: 0.85em;
+    /* 较小的字体 */
+    text-align: left;
+    overflow: hidden;
+    /* 防止内容溢出 */
+    transition: background-color 0.2s ease, border-color 0.2s ease, transform 0.1s ease;
+    min-width: 0;
+    /* 允许按钮在grid中收缩 */
+}
+
+.invite-agent-button:hover {
+    background-color: var(--button-hover-bg);
+    border-color: var(--button-hover-bg);
+    transform: translateY(-1px);
+    /* 轻微上浮效果 */
+}
+
+.invite-agent-button img {
+    width: 20px;
+    /* 小头像 */
+    height: 20px;
+    border-radius: 50%;
+    margin-right: 7px;
+    /* 头像和文字间距 */
+    object-fit: cover;
+    flex-shrink: 0;
+    /* 防止头像被压缩 */
+}
+
+.invite-agent-button span {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    /* 名称过长时显示省略号 */
+    flex-grow: 1;
+    /* 允许文字占据剩余空间 */
+}
+
+/* 亮色主题下的特定调整 (如果需要) */
+body.light-theme .invite-agent-button {
+    border-color: var(--border-color-light);
+    background-color: var(--secondary-bg-light);
+    /* 使用更浅的背景以融入亮色主题 */
+    color: var(--primary-text-light);
+}
+
+body.light-theme .invite-agent-button:hover {
+    background-color: var(--accent-bg-light);
+    border-color: var(--accent-bg-light);
+}
