@@ -11,6 +11,7 @@ const fs = require('fs');
 const path = require('path');
 const { execFile } = require('child_process');
 const { promisify } = require('util');
+const { app } = require('electron');
 const libreHardwareMonitorBridge = require('./libreHardwareMonitorBridge');
 
 const execFileAsync = promisify(execFile);
@@ -1184,6 +1185,23 @@ function initialize({ ipcMain }) {
                 success: false,
                 error: err.message,
             };
+        }
+    });
+
+    ipcMain.handle('desktop-metrics-get-detailed-processes', async () => {
+        try {
+            return {
+                success: true,
+                data: app.getAppMetrics().map(m => ({
+                    pid: m.pid,
+                    type: m.type,
+                    name: m.name || '',
+                    cpu: m.cpu.percentCPUUsage,
+                    memory: m.memory.workingSetSize // Keeping memory for internal use if needed, though user said don't care
+                }))
+            };
+        } catch (err) {
+            return { success: false, error: err.message };
         }
     });
 

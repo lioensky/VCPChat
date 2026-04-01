@@ -382,7 +382,9 @@
     <script src="core/zIndexManager.js"></script>
     <!-- 5. 核心层：拖拽系统（依赖 CONSTANTS, zIndex） -->
     <script src="core/dragSystem.js"></script>
-    <!-- 6. 核心层：挂件管理（依赖 state, CONSTANTS, domRefs, drag, zIndex） -->
+    <!-- 5.5. 核心层：性能管理（无依赖） -->
+    <script src="core/performanceManager.js"></script>
+    <!-- 6. 核心层：挂件管理（依赖 state, CONSTANTS, domRefs, drag, zIndex, performance） -->
     <script src="core/widgetManager.js"></script>
     <!-- 7. UI层：右键菜单（依赖 state, widget, zIndex） -->
     <script src="ui/contextMenu.js"></script>
@@ -422,6 +424,8 @@
     <script src="builtinWidgets/systemMonitorWidget.js"></script>
     <!-- 16.6. VChat 内部应用注册表 & 启动器 -->
     <script src="builtinWidgets/vchatApps.js"></script>
+    <!-- 16.8. 内置挂件：性能监视器（依赖 performanceManager） -->
+    <script src="builtinWidgets/performanceMonitorWidget.js"></script>
     <!-- 17. 调试工具 -->
     <script src="debug/debugTools.js"></script>
     <!-- 18. 主入口：初始化编排 -->

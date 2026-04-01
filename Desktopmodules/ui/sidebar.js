@@ -18,6 +18,7 @@
         { id: 'builtinTranslate', name: 'AI 翻译', icon: '🌐', description: 'AI 驱动的多语言翻译工具', spawnKey: 'builtinTranslate' },
         { id: 'builtinMusic', name: '音乐播放条', icon: '🎵', description: '迷你音乐控制器', spawnKey: 'builtinMusic' },
         { id: 'builtinAppTray', name: '应用托盘', icon: '📦', description: '网格浏览全部应用，拖拽到桌面', spawnKey: 'builtinAppTray' },
+        { id: 'builtinPerformanceMonitor', name: '性能监视器', icon: '⚡', description: '实时监控挂件与系统负载', spawnKey: 'builtinPerformanceMonitor' },
     ];
 
     const THIRD_PARTY_WIDGETS = [

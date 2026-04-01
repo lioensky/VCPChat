@@ -493,6 +493,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // VCPdesktop - 系统指标 IPC 通道
     desktopMetricsGetSnapshot: (options) => ipcRenderer.invoke('desktop-metrics-get-snapshot', options || {}),
     desktopMetricsGetCapabilities: () => ipcRenderer.invoke('desktop-metrics-get-capabilities'),
+    desktopMetricsGetDetailedProcesses: () => ipcRenderer.invoke('desktop-metrics-get-detailed-processes'),
 
     // VCPdesktop - 打开 Windows 系统工具
     desktopOpenSystemTool: (cmd) => ipcRenderer.invoke('desktop-open-system-tool', cmd),
