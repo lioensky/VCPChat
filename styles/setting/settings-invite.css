@@ -28,8 +28,8 @@ body.light-theme .invite-agent-buttons-container {
     border: 1px solid var(--button-border-color, var(--border-color));
     /* 尝试使用按钮边框变量，否则用通用边框 */
     background-color: var(--button-bg);
-    color: var(--primary-text);
-    /* 使用主题的主文字颜色 */
+    color: var(--text-on-accent);
+    /* 使用主题的按钮文字颜色 */
     border-radius: 6px;
     /* 与其他小按钮类似的圆角 */
     cursor: pointer;
@@ -74,9 +74,9 @@ body.light-theme .invite-agent-buttons-container {
 /* 亮色主题下的特定调整 (如果需要) */
 body.light-theme .invite-agent-button {
     border-color: var(--border-color-light);
-    background-color: var(--secondary-bg-light);
-    /* 使用更浅的背景以融入亮色主题 */
-    color: var(--primary-text-light);
+    background-color: var(--button-bg);
+    /* 使用主题按钮背景色 */
+    color: var(--text-on-accent);
 }
 
 body.light-theme .invite-agent-button:hover {
