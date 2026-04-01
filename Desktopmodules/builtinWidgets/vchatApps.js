@@ -220,8 +220,8 @@
         {
             id: 'vchat-app-notes',
             name: '用户笔记中心',
-            icon: null,
-            animatedIcon: `${ICON_BASE}/人类笔记.gif`,
+            icon: `${ICON_BASE}/人类笔记.png`,
+            animatedIcon: null,
             svgIcon: SVG_ICONS.notes,
             emoji: '📝',
             description: '打开用户笔记管理窗口',
@@ -230,8 +230,8 @@
         {
             id: 'vchat-app-memo',
             name: 'AI记忆中心',
-            icon: null,
-            animatedIcon: `${ICON_BASE}/AI记忆.gif`,
+            icon: `${ICON_BASE}/AI记忆.png`,
+            animatedIcon: null,
             svgIcon: SVG_ICONS.memo,
             emoji: '🧠',
             description: '打开 AI 记忆图谱 & 备忘录',
@@ -240,8 +240,8 @@
         {
             id: 'vchat-app-forum',
             name: '论坛模块',
-            icon: null,
-            animatedIcon: `${ICON_BASE}/论坛.gif`,
+            icon: `${ICON_BASE}/论坛.png`,
+            animatedIcon: null,
             svgIcon: SVG_ICONS.forum,
             emoji: '🏛️',
             description: '打开 VCP 论坛讨论区',
@@ -250,8 +250,8 @@
         {
             id: 'vchat-app-rag-observer',
             name: 'RAG监听',
-            icon: null,
-            animatedIcon: `${ICON_BASE}/信息流.gif`,
+            icon: `${ICON_BASE}/信息流.png`,
+            animatedIcon: null,
             svgIcon: SVG_ICONS.rag,
             emoji: '📡',
             description: '打开 VCP RAG 信息流监听器',
@@ -300,8 +300,8 @@
         {
             id: 'vchat-app-themes',
             name: '主题商店',
-            icon: null,
-            animatedIcon: `${ICON_BASE}/主题.gif`,
+            icon: `${ICON_BASE}/主题.png`,
+            animatedIcon: null,
             svgIcon: SVG_ICONS.themes,
             emoji: '🎭',
             description: '打开主题定制与管理',
@@ -310,8 +310,8 @@
         {
             id: 'vchat-app-toolbox',
             name: '人类工具箱',
-            icon: null,
-            animatedIcon: `${ICON_BASE}/工具箱.gif`,
+            icon: `${ICON_BASE}/工具箱.png`,
+            animatedIcon: null,
             svgIcon: SVG_ICONS.toolbox,
             emoji: '🧰',
             description: '高级插件管理和调度器（独立应用）',
@@ -320,8 +320,8 @@
         {
             id: 'vchat-app-dbmanager',
             name: 'Vchat数据',
-            icon: null,
-            animatedIcon: `${ICON_BASE}/数据库.gif`,
+            icon: `${ICON_BASE}/数据库.png`,
+            animatedIcon: null,
             svgIcon: SVG_ICONS.database,
             emoji: '🗄️',
             description: '数据库高级管理器（独立应用）',
@@ -466,7 +466,8 @@
                 if (existing.description !== appDef.description) { existing.description = appDef.description; changed = true; }
                 if (existing.appAction !== appDef.appAction) { existing.appAction = appDef.appAction; changed = true; }
                 // 图标仅在用户未自定义时同步（如果是 data: URL 则说明用户自定义了）
-                if (existing.icon && !existing.icon.startsWith('data:') && existing.icon !== appDef.icon) {
+                const hasCustomIcon = typeof existing.icon === 'string' && existing.icon.startsWith('data:');
+                if (!hasCustomIcon && existing.icon !== appDef.icon) {
                     existing.icon = appDef.icon;
                     changed = true;
                 }
