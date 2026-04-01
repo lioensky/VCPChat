@@ -7,7 +7,7 @@
 class PerformanceManager {
     constructor() {
         this.active = false;
-        this.widgetStats = new Map(); // id -> { totalTime: ms, lastSnapshotTime: ms }
+        this.widgetStats = new Map(); // id -> { totalTime: ms, frameCount: 0 }
         this.processStats = [];
         this.timer = null;
         this.lastTotalTick = performance.now();
@@ -59,6 +59,17 @@ class PerformanceManager {
     }
 
     /**
+     * 记录一次渲染帧触发
+     * @param {string} widgetId
+     */
+    recordFrame(widgetId) {
+        if (!this.active) return;
+        const stats = this.widgetStats.get(widgetId) || { totalTime: 0, frameCount: 0 };
+        stats.frameCount = (stats.frameCount || 0) + 1;
+        this.widgetStats.set(widgetId, stats);
+    }
+
+    /**
      * 获取当前快照
      */
     async getSnapshot() {
@@ -78,15 +89,34 @@ class PerformanceManager {
 
         // 2. 计算挂件 CPU 占用比例 (JS 线程占比)
         const widgetMetrics = [];
-        this.widgetStats.forEach((stats, id) => {
+        
+        // 确保所有当前活跃的挂件都在统计列表中，即使它们在本周期内没有 JS 执行
+        const activeWidgetIds = Array.from(window.VCPDesktop.state.widgets.keys());
+        
+        activeWidgetIds.forEach(id => {
+            const stats = this.widgetStats.get(id) || { totalTime: 0 };
             const cpuUsage = (stats.totalTime / deltaTotal) * 100;
+            const fps = (stats.frameCount || 0) / (deltaTotal / 1000);
+            
             widgetMetrics.push({
                 id,
                 cpuUsage: Math.min(100, Math.round(cpuUsage * 10) / 10), // 保留一位小数
+                fps: Math.round(fps * 10) / 10,
                 executionTimeMs: Math.round(stats.totalTime)
             });
             // 重置该周期的累加计秒
-            stats.totalTime = 0;
+            if (this.widgetStats.has(id)) {
+                const s = this.widgetStats.get(id);
+                s.totalTime = 0;
+                s.frameCount = 0;
+            }
+        });
+
+        // 清理已经不存在的挂件统计数据
+        this.widgetStats.forEach((stats, id) => {
+            if (!window.VCPDesktop.state.widgets.has(id)) {
+                this.widgetStats.delete(id);
+            }
         });
 
         // 3. 获取壁纸状态

@@ -184,7 +184,7 @@
                                     htmlContent += '<div class="perf-item">' +
                                         '<div class="perf-item-info">' +
                                             '<div class="perf-item-name">🧩 ' + name + '</div>' +
-                                            '<div class="perf-item-sub">ID: ' + w.id + ' | 活跃: ' + w.executionTimeMs + 'ms</div>' +
+                                            '<div class="perf-item-sub">ID: ' + w.id + ' | 渲染: ' + (w.fps || 0) + ' FPS</div>' +
                                         '</div>' +
                                         '<div class="perf-item-value">' +
                                             '<div class="perf-cpu-val">' + w.cpuUsage + '%</div>' +

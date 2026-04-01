@@ -1253,6 +1253,17 @@
         });
         dockContextMenu.appendChild(changeIconBtn);
 
+        // 恢复默认图标
+        const restoreIconBtn = document.createElement('button');
+        restoreIconBtn.className = 'desktop-context-menu-item';
+        restoreIconBtn.textContent = '🔄 恢复默认图标';
+        restoreIconBtn.addEventListener('click', () => {
+            dockContextMenu.remove();
+            dockContextMenu = null;
+            handleRestoreIcon(item, null, true);
+        });
+        dockContextMenu.appendChild(restoreIconBtn);
+
         const divider = document.createElement('div');
         divider.className = 'desktop-context-menu-divider';
         dockContextMenu.appendChild(divider);
@@ -1384,6 +1395,17 @@
         });
         dockContextMenu.appendChild(changeIconBtn);
 
+        // 恢复默认图标
+        const restoreIconBtn = document.createElement('button');
+        restoreIconBtn.className = 'desktop-context-menu-item';
+        restoreIconBtn.textContent = '🔄 恢复默认图标';
+        restoreIconBtn.addEventListener('click', () => {
+            dockContextMenu.remove();
+            dockContextMenu = null;
+            handleRestoreIcon(item, iconEl, false);
+        });
+        dockContextMenu.appendChild(restoreIconBtn);
+
         const divider = document.createElement('div');
         divider.className = 'desktop-context-menu-divider';
         dockContextMenu.appendChild(divider);
@@ -1446,6 +1468,109 @@
     // ============================================================
     // 持久化
     // ============================================================
+
+    /**
+     * 恢复默认图标逻辑
+     */
+    async function handleRestoreIcon(item, iconEl, isDock) {
+        let defaultIcon = null;
+        let defaultHtmlIcon = null;
+        let defaultSvgIcon = null;
+
+        if (item.type === 'vchat-app') {
+            const vApps = window.VCPDesktop.vchatApps;
+            const allApps = [...(vApps?.VCHAT_APPS || []), ...(vApps?.SYSTEM_TOOLS || [])];
+            const appDef = allApps.find(a => a.id === item.id);
+            if (appDef) {
+                defaultIcon = appDef.icon || null;
+                defaultHtmlIcon = appDef.htmlIcon || null;
+                defaultSvgIcon = appDef.svgIcon || null;
+            }
+        } else if (item.type === 'shortcut') {
+            if (window.electronAPI?.desktopShortcutParseBatch) {
+                const path = item.originalPath || item.targetPath;
+                if (path) {
+                    try {
+                        const result = await window.electronAPI.desktopShortcutParseBatch([path]);
+                        if (result?.success && result.shortcuts?.length > 0) {
+                            defaultIcon = result.shortcuts[0].icon;
+                        }
+                    } catch (err) {
+                        console.error('[Dock] Restore icon error:', err);
+                    }
+                }
+            }
+        }
+
+        // 如果找到了默认图标（任一形式）
+        if (defaultIcon !== null || defaultHtmlIcon !== null || defaultSvgIcon !== null) {
+            const targetPath = item.targetPath;
+            const appId = item.id;
+            const isVchatApp = item.type === 'vchat-app';
+
+            // 1. 更新 Dock 状态
+            const dockItem = state.dock.items.find(i => i.id === appId || (targetPath && i.targetPath === targetPath));
+            if (dockItem) {
+                dockItem.icon = defaultIcon;
+                dockItem.htmlIcon = defaultHtmlIcon;
+                dockItem.svgIcon = defaultSvgIcon;
+                renderDock();
+                saveDockConfig();
+            }
+
+            // 2. 更新桌面图标状态
+            state.desktopIcons.forEach(iconState => {
+                const match = isVchatApp
+                    ? (iconState.id === appId)
+                    : (targetPath && iconState.targetPath === targetPath);
+                
+                if (match) {
+                    iconState.icon = defaultIcon;
+                    iconState.htmlIcon = defaultHtmlIcon;
+                    iconState.svgIcon = defaultSvgIcon;
+                }
+            });
+
+            // 3. 更新桌面图标 DOM
+            const canvas = domRefs.canvas;
+            if (canvas) {
+                const icons = canvas.querySelectorAll('.desktop-shortcut-icon');
+                icons.forEach(el => {
+                    const elAppId = el.dataset.appId;
+                    const elTargetPath = el.dataset.targetPath;
+                    const match = isVchatApp
+                        ? (elAppId === appId)
+                        : (targetPath && elTargetPath === targetPath);
+                    
+                    if (match) {
+                        // 优先使用图片图标，与 createDesktopIcon 逻辑一致
+                        if (defaultIcon) {
+                            replaceDesktopIconElement(el, 'image', defaultIcon);
+                        } else if (defaultHtmlIcon) {
+                            replaceDesktopIconElement(el, 'html', defaultHtmlIcon);
+                        } else if (defaultSvgIcon) {
+                            replaceDesktopIconElement(el, 'html', defaultSvgIcon);
+                        }
+                    }
+                });
+            }
+
+            // 4. 自动保存桌面图标布局
+            saveDesktopIconsDebounced();
+
+            if (window.VCPDesktop.status) {
+                window.VCPDesktop.status.update('connected', `已恢复默认图标: ${item.name}`);
+                window.VCPDesktop.status.show();
+                setTimeout(() => window.VCPDesktop.status.hide(), 2000);
+            }
+        } else {
+            if (window.VCPDesktop.status) {
+                window.VCPDesktop.status.update('waiting', `无法获取默认图标: ${item.name}`);
+                window.VCPDesktop.status.show();
+                setTimeout(() => window.VCPDesktop.status.hide(), 2000);
+            }
+        }
+    }
 
     /**
      * 保存 Dock 配置到磁盘

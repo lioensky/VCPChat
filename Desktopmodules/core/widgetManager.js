@@ -447,6 +447,15 @@
                             if (prop === 'setTimeout') return setTimeout;
                             if (prop === 'clearTimeout') return clearTimeout;
                             
+                            if (prop === 'requestAnimationFrame') {
+                                return function(callback) {
+                                    return _realWindow.requestAnimationFrame(function(timestamp) {
+                                        if (_perf && _perf.active) _perf.recordFrame(widgetId);
+                                        _wrap(callback)(timestamp);
+                                    });
+                                };
+                            }
+                            
                             var val = target[prop];
                             return typeof val === 'function' ? val.bind(target) : val;
                         }
