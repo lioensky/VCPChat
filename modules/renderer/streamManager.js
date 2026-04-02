@@ -520,7 +520,29 @@ function processAndRenderSmoothChunk(messageId) {
     // Scroll if the message is in the current view.
     const context = messageContextMap.get(messageId);
     if (isMessageForCurrentView(context)) {
-        throttledScrollToBottom(messageId);
+        // [Pretext集成] 智能滚动锚定
+        const chatDiv = refs.chatMessagesDiv;
+        const isNearBottom = chatDiv && (chatDiv.scrollHeight - chatDiv.clientHeight <= chatDiv.scrollTop + 50);
+
+        if (window.pretextBridge && window.pretextBridge.isReady() && chatDiv) {
+            try {
+                const containerWidth = chatDiv.clientWidth || 800;
+                const currentFullText = accumulatedStreamText.get(messageId) || '';
+                const oldHeight = window.pretextBridge.getCachedHeight(messageId) || 0;
+                const newHeight = window.pretextBridge.estimateHeight(messageId, currentFullText, 'body', containerWidth);
+                const delta = (newHeight || 0) - oldHeight;
+
+                if (isNearBottom) {
+                    throttledScrollToBottom(messageId);
+                } else if (delta > 0) {
+                    chatDiv.scrollTop += delta;
+                }
+            } catch (e) {
+                throttledScrollToBottom(messageId);
+            }
+        } else {
+            throttledScrollToBottom(messageId);
+        }
     }
 }
 

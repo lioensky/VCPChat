@@ -1558,6 +1558,16 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true)
         const finalHtml = rawHtml;
         contentDiv.innerHTML = finalHtml;
 
+        // [Pretext集成] 异步填充文本高度缓存，不阻塞渲染
+        if (window.pretextBridge && window.pretextBridge.isReady()) {
+            try {
+                const containerWidth = chatMessagesDiv ? chatMessagesDiv.clientWidth : 800;
+                window.pretextBridge.estimateHeight(message.id, textToRender, 'body', containerWidth);
+            } catch (e) {
+                // Pretext 失败不影响正常渲染
+            }
+        }
+
         // Define the post-processing logic as a function.
         // This allows us to control WHEN it gets executed.
         const runPostRenderProcessing = async () => {
