@@ -311,8 +311,12 @@ export function pauseMessageAnimations(messageItem) {
     cleanupFinishedAnimations(state);
 
     // [新增] 固化高度，辅助 content-visibility 更好地工作
+    // [Pretext集成] 优先使用预算高度，避免 offsetHeight 触发 reflow
     if (!messageItem.style.containIntrinsicSize || messageItem.style.containIntrinsicSize === 'auto 100px') {
-        const height = messageItem.offsetHeight;
+        var cachedHeight = (window.pretextBridge && window.pretextBridge.getCachedHeight)
+            ? window.pretextBridge.getCachedHeight(messageItem.dataset && messageItem.dataset.messageId || messageItem.id)
+            : null;
+        const height = cachedHeight != null ? cachedHeight : messageItem.offsetHeight;
         if (height > 0) {
             messageItem.style.containIntrinsicSize = `auto ${height}px`;
         }
