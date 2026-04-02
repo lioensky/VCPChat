@@ -576,7 +576,7 @@ body.light-theme .message-item.system.welcome-bubble {
     cursor: pointer;
     font-size: 0.9em;
     background-color: var(--button-bg);
-    color: var(--primary-text); 
+    color: var(--text-on-accent);
     transition: background-color 0.2s ease;
 }
 .message-edit-controls button:hover {
