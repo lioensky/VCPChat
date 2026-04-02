@@ -461,7 +461,28 @@ function setupHtmlPreview(preElement, htmlContent) {
     container.appendChild(actionBtn);
 
     let previewFrame = null;
+    let messageHandler = null;
     const frameId = `vcp-frame-${Math.random().toString(36).substr(2, 9)}`;
+
+    const destroyPreview = () => {
+        if (messageHandler) {
+            window.removeEventListener('message', messageHandler);
+            messageHandler = null;
+        }
+        if (previewFrame) {
+            // 🔴 关键修复：彻底切断 iframe 内部进程
+            try {
+                previewFrame.srcdoc = '';
+                previewFrame.src = 'about:blank';
+                previewFrame.contentWindow?.stop?.();
+            } catch (e) { /* ignore */ }
+            previewFrame.remove();
+            previewFrame = null;
+        }
+    };
+
+    // 将清理函数绑定到容器，以便外部（如 messageRenderer）调用
+    container._vcpCleanup = destroyPreview;
 
     actionBtn.addEventListener('click', (e) => {
         // 🔴 彻底阻止事件传播，防止触发任何父级监听器
@@ -514,6 +535,7 @@ function setupHtmlPreview(preElement, htmlContent) {
                         <script>
                             function updateHeight() {
                                 const wrapper = document.getElementById('vcp-wrapper');
+                                if (!wrapper) return;
                                 const height = Math.max(wrapper.scrollHeight + 40, document.body.scrollHeight);
                                 window.parent.postMessage({
                                     type: 'vcp-html-resize',
@@ -531,7 +553,7 @@ function setupHtmlPreview(preElement, htmlContent) {
                     </html>
                 `;
                 
-                const messageHandler = (msg) => {
+                messageHandler = (msg) => {
                     if (msg.data && msg.data.type === 'vcp-html-resize' && msg.data.frameId === frameId) {
                         if (previewFrame) {
                             // 🟢 平滑过渡到新高度
@@ -546,10 +568,6 @@ function setupHtmlPreview(preElement, htmlContent) {
                 window.addEventListener('message', messageHandler);
 
                 container.appendChild(previewFrame);
-            } else {
-                previewFrame.style.display = 'block';
-                // 恢复之前的高度
-                previewFrame.style.height = currentHeight + 'px';
             }
             
             // 🟢 延迟隐藏代码块，确保iframe先显示
@@ -562,16 +580,14 @@ function setupHtmlPreview(preElement, htmlContent) {
             container.classList.remove('preview-mode');
             actionBtn.innerHTML = '<span>▶️ 播放</span>';
             
-            // 🟢 先显示代码块，再隐藏iframe
+            // 🟢 先显示代码块
             preElement.style.display = 'block';
             
-            setTimeout(() => {
-                if (previewFrame) {
-                    previewFrame.style.display = 'none';
-                }
-                // 清除固定高度限制
-                container.style.minHeight = '';
-            }, 50);
+            // 🔴 关键修复：点击返回时销毁预览产生的资源，停止 JS 运行
+            destroyPreview();
+
+            // 清除固定高度限制
+            container.style.minHeight = '';
         }
     });
 }
@@ -1003,6 +1019,27 @@ function deIndentMisinterpretedCodeBlocks(text) {
 }
 
 
+
+/**
+ * 清理指定容器及其子元素中所有的 HTML 预览资源（iframe、事件监听器等）。
+ * @param {HTMLElement} contentDiv - 存储消息内容的容器。
+ */
+function cleanupPreviewsInContent(contentDiv) {
+    if (!contentDiv) return;
+    const containers = contentDiv.querySelectorAll('.vcp-html-preview-container');
+    containers.forEach(container => {
+        if (typeof container._vcpCleanup === 'function') {
+            try {
+                container._vcpCleanup();
+            } catch (e) {
+                console.error('[ContentProcessor] Error during preview cleanup:', e);
+            }
+            delete container._vcpCleanup;
+        }
+    });
+}
+
+
 export {
     initializeContentProcessor,
     ensureNewlineAfterCodeBlock,
@@ -1021,5 +1058,6 @@ export {
     scopeCss, // Export the new CSS scoping function
     applyContentProcessors, // Export the new batch processor
     escapeHtml,
-    processStartEndMarkers
+    processStartEndMarkers,
+    cleanupPreviewsInContent
 };
