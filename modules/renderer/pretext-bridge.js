@@ -36,27 +36,55 @@
     const FONTS = {
         body: "15px 'Segoe UI'",
         code: "14px 'Consolas'",
-        system: "14px 'Segoe UI'"
+        system: "14px 'Segoe UI'",
+        viewer: "15px 'Segoe UI'",
+        widget: "14px 'Segoe UI'",
+        memo: "14px 'Segoe UI'",
+        rag: "14px 'JetBrains Mono', monospace",
+        note: "15px 'Segoe UI'"
     };
 
     const LINE_HEIGHTS = {
         body: 1.6 * 15,     // 24px
         code: 1.5 * 14,     // 21px
-        system: 1.5 * 14    // 21px
+        system: 1.5 * 14,    // 21px
+        viewer: 1.6 * 15,    // 24px
+        widget: 1.5 * 14,    // 21px
+        memo: 1.5 * 14,      // 21px
+        rag: 1.6 * 14,      // 22.4px
+        note: 1.6 * 15       // 24px
     };
 
-    // ─── 气泡宽度计算 ───
+    // ─── 布局间距计算 ───
 
-    const BUBBLE_PADDING = {
+    const PADDINGS = {
         body: { left: 16, right: 16 },
         code: { left: 16, right: 16 },
-        system: { left: 14, right: 14 }
+        system: { left: 14, right: 14 },
+        viewer: { left: 20, right: 20 },
+        widget: { left: 12, right: 12 },
+        memo: { left: 15, right: 15 },
+        rag: { left: 16, right: 16 },
+        note: { left: 20, right: 20 }
     };
 
-    function getBubbleTextWidth(containerWidth, messageType) {
-        const padding = BUBBLE_PADDING[messageType] || BUBBLE_PADDING.body;
-        const bubbleMaxWidth = Math.floor(containerWidth * 0.8);
-        return bubbleMaxWidth - padding.left - padding.right;
+    /**
+     * 根据容器宽度和类型计算文本可用宽度
+     */
+    function getContentWidth(containerWidth, type) {
+        const padding = PADDINGS[type] || PADDINGS.body;
+        let maxWidth;
+
+        const fullWidthTypes = ['viewer', 'widget', 'memo', 'rag', 'note'];
+        if (fullWidthTypes.includes(type)) {
+            // 这些模式通常占满或按比例占满可用宽度
+            maxWidth = containerWidth;
+        } else {
+            // 聊天气泡模式（body/code/system）占 80% 宽度
+            maxWidth = Math.floor(containerWidth * 0.8);
+        }
+
+        return Math.max(0, maxWidth - padding.left - padding.right);
     }
 
     // ─── 核心 API ───
@@ -66,8 +94,8 @@
 
         const font = FONTS[messageType] || FONTS.body;
         const lineHeight = LINE_HEIGHTS[messageType] || LINE_HEIGHTS.body;
-        const maxWidth = getBubbleTextWidth(containerWidth, messageType);
-        const whiteSpace = messageType === 'code' ? 'pre-wrap' : 'normal';
+        const maxWidth = getContentWidth(containerWidth, messageType);
+        const whiteSpace = (messageType === 'code' || messageType === 'rag') ? 'pre-wrap' : 'normal';
 
         // 缓存命中检查
         const cached = heightCache.get(messageId);
@@ -99,11 +127,17 @@
             var prev = heightCache.get(messageId);
             var lineHeight = prev ? prev.lineHeight : LINE_HEIGHTS.body;
 
+            // 根据 lineHeight 逆推 messageType (简单启发式)
             var messageType = 'body';
             if (lineHeight === LINE_HEIGHTS.code) messageType = 'code';
             else if (lineHeight === LINE_HEIGHTS.system) messageType = 'system';
+            else if (lineHeight === LINE_HEIGHTS.viewer) messageType = 'viewer';
+            else if (lineHeight === LINE_HEIGHTS.widget) messageType = 'widget';
+            else if (lineHeight === LINE_HEIGHTS.memo) messageType = 'memo';
+            else if (lineHeight === LINE_HEIGHTS.rag) messageType = 'rag';
+            else if (lineHeight === LINE_HEIGHTS.note) messageType = 'note';
 
-            var maxWidth = getBubbleTextWidth(newContainerWidth, messageType);
+            var maxWidth = getContentWidth(newContainerWidth, messageType);
             var result = Pretext.layout(prepared, maxWidth, lineHeight);
 
             heightCache.set(messageId, { height: result.height, maxWidth: maxWidth, lineHeight: lineHeight });
@@ -134,7 +168,7 @@
         evict: evict,
         clearAll: clearAll,
         isReady: function() { return true; },
-        getBubbleTextWidth: getBubbleTextWidth,
+        getContentWidth: getContentWidth,
         FONTS: FONTS,
         LINE_HEIGHTS: LINE_HEIGHTS
     };

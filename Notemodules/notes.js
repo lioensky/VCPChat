@@ -342,6 +342,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         previewContentDiv.querySelectorAll('pre code').forEach(hljs.highlightElement);
         addCopyButtonsToCodeBlocks();
         makeImagesClickable();
+
+        // --- Pretext Integration ---
+        // 为笔记预览生成 Pretext 高度缓存 (使用当前预览容器宽度)
+        if (window.pretextBridge && window.pretextBridge.isReady() && activeNoteId) {
+            const previewWidth = previewContentDiv.offsetWidth || 500;
+            window.pretextBridge.estimateHeight('note-' + activeNoteId, markdown, 'note', previewWidth);
+        }
     }
 
     function addCopyButtonsToCodeBlocks() {
@@ -1226,6 +1233,11 @@ function handleListDragEnd(e) {
             const dx = e.clientX - x;
             const newSidebarWidth = sidebarWidth + dx;
             sidebar.style.width = `${newSidebarWidth}px`;
+            
+            // 实时通知 Pretext 重新计算布局（应对分屏尺寸变化）
+            if (window.pretextBridge && window.pretextBridge.isReady()) {
+                window.pretextBridge.recalculateAll(window.innerWidth);
+            }
         };
 
         const mouseUpHandler = () => {
@@ -1255,6 +1267,13 @@ function handleListDragEnd(e) {
 
         initResizer();
         searchInput.addEventListener('input', debounce(renderTree, 300));
+        
+        // 监听全局布局变化
+        window.addEventListener('resize', () => {
+            if (window.pretextBridge && window.pretextBridge.isReady()) {
+                window.pretextBridge.recalculateAll(window.innerWidth);
+            }
+        });
 
         // --- Custom Title Bar Listeners ---
         minimizeNotesBtn.addEventListener('click', () => {

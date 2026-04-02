@@ -268,6 +268,23 @@
         // 如果挂件标记了固定尺寸，跳过自动调整
         if (widgetData.fixedSize) return;
 
+        const widgetId = widgetData.element?.dataset?.widgetId;
+        const currentWidth = parseInt(widgetData.element.style.width) || CONSTANTS.AUTO_RESIZE_MIN_W;
+
+        // --- Pretext 优化：如果内容是纯文本或简单 Markdown，尝试预计算高度 ---
+        if (window.pretextBridge && window.pretextBridge.isReady() && widgetData.contentBuffer && widgetId) {
+            // 简单剥离 HTML 标签获取文本内容进行快速估算
+            const plainText = widgetData.contentBuffer.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+            if (plainText.length > 0) {
+                const estimatedHeight = window.pretextBridge.estimateHeight(widgetId, plainText, 'widget', currentWidth);
+                // 如果估算高度与当前高度差异极小，可以考虑跳过后续的 DOM 测量以节省性能
+                const currentHeight = parseInt(widgetData.element.style.height) || 0;
+                if (Math.abs(estimatedHeight - currentHeight) < 2 && !widgetData.isConstructing) {
+                    return; // 高度几乎没变且不是初次构造，跳过昂贵的 DOM 测量
+                }
+            }
+        }
+
         requestAnimationFrame(() => {
             const container = widgetData.contentContainer;
             if (!container) return;

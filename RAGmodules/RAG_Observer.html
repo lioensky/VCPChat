@@ -5,6 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>VCP 灵视中心 | Ether Observer</title>
     <link rel="stylesheet" href="../styles/themes.css">
+    
+    <!-- Pretext 文本布局引擎 -->
+    <script src="../modules/renderer/pretext.bundle.js"></script>
+    <script src="../modules/renderer/pretext-bridge.js"></script>
+
     <style>
         :root {
             --card-enter-duration: 0.4s;
@@ -1817,6 +1822,11 @@
             const isFailed = messageText.includes('Failed') || messageText.includes('error');
             const dotClass = isSucceed ? 'dot-green' : (isFailed ? 'dot-red' : 'dot-orange');
             
+            if (window.pretextBridge && window.pretextBridge.isReady()) {
+                const containerWidth = infoContainer.offsetWidth || 500;
+                window.pretextBridge.estimateHeight('rag-chat-' + Date.now(), messageText, 'rag', containerWidth);
+            }
+
             block.innerHTML = `
                 <h3 style="color: var(--accent-agent);">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="8.5" cy="7" r="4"></circle><polyline points="17 11 19 13 23 9"></polyline></svg>
@@ -1926,6 +1936,11 @@
                 </div>
             `;
 
+            if (window.pretextBridge && window.pretextBridge.isReady()) {
+                const containerWidth = infoContainer.offsetWidth || 500;
+                window.pretextBridge.estimateHeight('rag-tool-' + requestId, String(command), 'rag', containerWidth);
+            }
+
             prependCard(block);
         }
 
@@ -1955,6 +1970,11 @@
                 </div>
                 ${createContentHTML(contentString)}
             `;
+
+            if (window.pretextBridge && window.pretextBridge.isReady()) {
+                const containerWidth = infoContainer.offsetWidth || 500;
+                window.pretextBridge.estimateHeight('rag-sys-' + Date.now(), contentString, 'rag', containerWidth);
+            }
 
             prependCard(block);
         }
@@ -2027,7 +2047,12 @@
         let _resizeTimer = null;
         window.addEventListener('resize', () => {
             if (_resizeTimer) clearTimeout(_resizeTimer);
-            _resizeTimer = setTimeout(resizeCanvas, 150);
+            _resizeTimer = setTimeout(() => {
+                resizeCanvas();
+                if (window.pretextBridge && window.pretextBridge.isReady()) {
+                    window.pretextBridge.recalculateAll(window.innerWidth);
+                }
+            }, 150);
         });
         resizeCanvas();
 

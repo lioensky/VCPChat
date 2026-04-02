@@ -62,6 +62,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     // 绑定事件
     setupEventListeners();
 
+    // 监听窗口尺寸变化以更新 Pretext
+    window.addEventListener('resize', () => {
+        if (window.pretextBridge && window.pretextBridge.isReady()) {
+            window.pretextBridge.recalculateAll(window.innerWidth);
+        }
+    });
+
     // 初始化工作台
     if (window.DiaryWorkbench) {
         window.DiaryWorkbench.init();
@@ -638,10 +645,18 @@ function renderMemos(memos) {
 
         const dateStr = new Date(memo.lastModified).toLocaleString();
 
+        const previewText = memo.preview || '无预览内容';
+        const cardWidth = memoGridEl.offsetWidth / (window.innerWidth > 1200 ? 3 : (window.innerWidth > 800 ? 2 : 1)) - 32; // 估算单卡片宽度
+        
+        if (window.pretextBridge && window.pretextBridge.isReady()) {
+            // 预先测算高度并缓存，减少后续 reflow
+            window.pretextBridge.estimateHeight(memoId, previewText, 'memo', cardWidth || 300);
+        }
+
         card.innerHTML = `
             <div>
                 <h3>${escapeHtml(memo.name)}</h3>
-                <p class="preview">${escapeHtml(memo.preview || '无预览内容')}</p>
+                <p class="preview">${escapeHtml(previewText)}</p>
             </div>
             <div class="meta">
                 <span>📅 ${dateStr}</span>
@@ -757,6 +772,13 @@ async function openMemo(memo) {
 function renderPreview(content) {
     if (window.marked) {
         editorPreview.innerHTML = marked.parse(content);
+
+        // Pretext 高度测算
+        if (window.pretextBridge && window.pretextBridge.isReady() && currentMemo) {
+            const previewWidth = editorPreview.offsetWidth || 600;
+            window.pretextBridge.estimateHeight('memo-preview-' + currentMemo.file, content, 'memo', previewWidth);
+        }
+
         // KaTeX 渲染
         if (window.renderMathInElement) {
             renderMathInElement(editorPreview, {

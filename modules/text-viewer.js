@@ -1355,6 +1355,14 @@ ${codeContent}
                 await enhanceRenderedContent(contentDiv);
                 await waitForImages(contentDiv);
 
+                // --- Pretext Integration: 填充高度缓存 ---
+                if (window.pretextBridge && window.pretextBridge.isReady()) {
+                    const containerWidth = contentDiv.clientWidth;
+                    // 使用 scopeId 作为缓存键，后续 resize 时可快速重算
+                    window.pretextBridge.estimateHeight(scopeId, originalRawContent, 'viewer', containerWidth);
+                    console.log('[TextViewer] Pretext height cache populated for scope:', scopeId);
+                }
+
                 // --- FIX for scroll height race condition ---
                 // After ALL dynamic content has loaded and rendered, force a reflow
                 // using a more reliable requestAnimationFrame-based approach.
@@ -1597,4 +1605,16 @@ ${codeContent}
             window.close();
         });
     }
+
+    // --- Pretext Integration: 窗口缩放重算 ---
+    window.addEventListener('resize', () => {
+        if (window.pretextBridge && window.pretextBridge.isReady() && scopeId) {
+            const containerWidth = contentDiv.clientWidth;
+            const updates = window.pretextBridge.recalculateAll(containerWidth);
+            if (updates.has(scopeId)) {
+                console.log('[TextViewer] Pretext layout recalculated. New height:', updates.get(scopeId));
+                // 这里可以根据需要手动调整容器高度，或者让浏览器自然重排（此时已避开了大量测量开销）
+            }
+        }
+    });
 });
