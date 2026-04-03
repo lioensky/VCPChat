@@ -1308,7 +1308,20 @@ function setUserAvatarColor(color) { // For the user's global avatar
     const globalSettings = mainRendererReferences.globalSettingsRef.get();
     mainRendererReferences.globalSettingsRef.set({ ...globalSettings, userAvatarCalculatedColor: color });
 }
-
+function getAttachmentFileVisualDescriptor(name = '', type = '') {
+    const resolver = window.uiHelperFunctions?.resolveAttachmentFileVisual;
+    if (typeof resolver === 'function') {
+        return resolver(name, type);
+    }
+    return {
+        kind: 'file',
+        iconMarkup: `
+<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"></path>
+    <path d="M14 2v5a1 1 0 0 0 1 1h5"></path>
+</svg>`
+    };
+}
 
 async function renderAttachments(message, contentDiv) {
     const { electronAPI } = mainRendererReferences;
@@ -1344,7 +1357,8 @@ async function renderAttachments(message, contentDiv) {
             } else { // Generic file
                 attachmentElement = document.createElement('a');
                 attachmentElement.href = att.src;
-                attachmentElement.textContent = `📄 ${att.name}`;
+                const fileVisual = getAttachmentFileVisualDescriptor(att.name, att.type);
+                attachmentElement.classList.add('message-attachment-file', `message-attachment-file--${fileVisual.kind}`);
                 attachmentElement.title = `点击打开文件: ${att.name}`;
                 attachmentElement.onclick = (e) => {
                     e.preventDefault();
@@ -1354,6 +1368,16 @@ async function renderAttachments(message, contentDiv) {
                         console.warn("Cannot open local file attachment, API missing or path not a file URI:", att.src);
                     }
                 };
+                attachmentElement.textContent = '';
+                const iconSpan = document.createElement('span');
+                iconSpan.className = 'message-attachment-file-icon';
+                iconSpan.setAttribute('aria-hidden', 'true');
+                iconSpan.innerHTML = fileVisual.iconMarkup;
+                const nameSpan = document.createElement('span');
+                nameSpan.className = 'message-attachment-file-name';
+                nameSpan.textContent = att.name;
+                attachmentElement.appendChild(iconSpan);
+                attachmentElement.appendChild(nameSpan);
             }
             if (attachmentElement) attachmentsContainer.appendChild(attachmentElement);
         });
