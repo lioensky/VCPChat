@@ -81,7 +81,8 @@ body.light-theme #moon-icon {
 }
 
 .message-item {
-    margin-bottom: 18px; /* Increased margin for QQ style */
+    margin-bottom: 15px; /* Offset the added paint-safe area while staying close to the original spacing */
+    padding-bottom: 3px; /* Keep a minimal paint-safe area for the outer bubble shadow */
     max-width: 100%;
     display: flex;
     align-items: flex-start;
@@ -186,12 +187,30 @@ body.light-theme #moon-icon {
     position: relative;
     backdrop-filter: blur(8px); /* Keep if desired */
     -webkit-backdrop-filter: blur(8px); /* Keep if desired */
-    transition: max-width 0.4s ease-in-out; /* Smooth transition for width change */
+    transition: max-width 0.4s ease-in-out, background 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease; /* Smooth transition for width and surface changes */
 }
 
 /* When notifications sidebar is active, make bubbles wider to fill more of the narrower space */
 .main-content.notifications-sidebar-active .message-item .md-content {
     max-width: 90%;
+}
+
+body.light-theme .message-item .md-content {
+    border: 1px solid color-mix(in srgb, var(--border-color) 34%, rgba(255, 255, 255, 0.58));
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.34), rgba(255, 255, 255, 0.14)),
+        linear-gradient(
+            180deg,
+            color-mix(in srgb, var(--panel-bg-light) 82%, rgba(255, 255, 255, 0.72)),
+            color-mix(in srgb, var(--panel-bg-light) 72%, rgba(255, 255, 255, 0.42))
+        );
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.55),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.18),
+        inset 0 -1px 0 rgba(255, 255, 255, 0.12);
+    backdrop-filter: blur(9px) saturate(114%);
+    -webkit-backdrop-filter: blur(9px) saturate(114%);
+    background-clip: padding-box;
 }
 
 .message-item.user .md-content {
@@ -200,7 +219,14 @@ body.light-theme #moon-icon {
     border-bottom-right-radius: 4px;
 }
 body.light-theme .message-item.user .md-content {
-    background-color: var(--user-bubble-bg);
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0.1)),
+        linear-gradient(
+            180deg,
+            color-mix(in srgb, var(--user-bubble-bg) 42%, rgba(255, 255, 255, 0.88)),
+            color-mix(in srgb, var(--user-bubble-bg) 24%, rgba(255, 255, 255, 0.68))
+        );
+    border-color: color-mix(in srgb, var(--button-bg) 14%, rgba(255, 255, 255, 0.72));
     color: var(--user-text);
 }
 
@@ -210,9 +236,15 @@ body.light-theme .message-item.user .md-content {
     border-bottom-left-radius: 4px; 
 }
 body.light-theme .message-item.assistant .md-content {
-    background-color: var(--assistant-bubble-bg);
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.42), rgba(255, 255, 255, 0.18)),
+        linear-gradient(
+            180deg,
+            color-mix(in srgb, var(--assistant-bubble-bg) 58%, rgba(255, 255, 255, 0.92)),
+            color-mix(in srgb, var(--panel-bg-light) 76%, rgba(255, 255, 255, 0.62))
+        );
     color: var(--agent-text);
-    border: 1px solid #d0d8e0; 
+    border: 1px solid color-mix(in srgb, var(--border-color) 32%, rgba(255, 255, 255, 0.68));
 }
 
 /* System messages special layout */

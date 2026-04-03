@@ -123,10 +123,10 @@ body:not(.light-theme) .topic-item.active-topic-glowing {
 .message-item.streaming .md-content::after {
   content: "";
   position: absolute;
-  /* 扩展出 2px 作为边框区域 */
-  inset: -2px;
-  padding: 2px;
-  border-radius: 12px; /* 略大于气泡的 10px，确保圆角契合 */
+  /* Draw the animated border inside the bubble to avoid containment clipping. */
+  inset: 0;
+  padding: 1px;
+  border-radius: 10px;
   
   /* 使用高亮色定义的流光渐变，移除深色背景干扰 */
   background: linear-gradient(90deg,
@@ -151,12 +151,12 @@ body:not(.light-theme) .topic-item.active-topic-glowing {
 
 /* 针对用户侧气泡的适配 */
 .message-item.streaming.user .md-content::after {
-  border-bottom-right-radius: 6px; /* 匹配用户气泡的 4px 圆角 + 2px 偏移 */
+  border-bottom-right-radius: 4px;
 }
 
 /* 针对 AI 侧气泡的适配 */
 .message-item.streaming.assistant .md-content::after {
-  border-bottom-left-radius: 6px; /* 匹配 AI 气泡的 4px 圆角 + 2px 偏移 */
+  border-bottom-left-radius: 4px;
 }
 
 /*
