@@ -337,15 +337,13 @@ class ContextSanitizer {
                 return msg; // 不需要处理，直接返回
             }
 
-            // 需要净化的消息
-            const sanitizedMsg = { ...msg };
-
             // 处理 content 字段
-            if (typeof sanitizedMsg.content === 'string') {
-                sanitizedMsg.content = this.sanitizeContent(sanitizedMsg.content, keepThoughtChains);
-            } else if (Array.isArray(sanitizedMsg.content)) {
+            let processedContent = msg.content;
+            if (typeof processedContent === 'string') {
+                processedContent = this.sanitizeContent(processedContent, keepThoughtChains);
+            } else if (Array.isArray(processedContent)) {
                 // 处理多模态内容（content 是数组的情况）
-                sanitizedMsg.content = sanitizedMsg.content.map(part => {
+                processedContent = processedContent.map(part => {
                     if (part.type === 'text' && typeof part.text === 'string') {
                         return {
                             ...part,
@@ -355,6 +353,15 @@ class ContextSanitizer {
                     return part; // 其他类型（如 image_url）保持不变
                 });
             }
+
+            // 🛡️ 严格脱敏：只构建包含必须字段的新对象
+            const sanitizedMsg = {
+                role: msg.role,
+                content: processedContent
+            };
+            if (msg.name) sanitizedMsg.name = msg.name;
+            if (msg.tool_calls) sanitizedMsg.tool_calls = msg.tool_calls;
+            if (msg.tool_call_id) sanitizedMsg.tool_call_id = msg.tool_call_id;
 
             return sanitizedMsg;
         });

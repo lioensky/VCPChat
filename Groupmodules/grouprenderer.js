@@ -1229,10 +1229,24 @@ window.GroupRenderer = (() => {
                 };
                 uiAttachments.push(attachmentInfoForUI);
 
+                // 🔴 关键修复：在群聊发送前就准备好完整路径
+                const fileManagerData = af._fileManagerData || {};
+                // 🟢 极其关键：优先使用 internalPath (物理路径)
+                const filePathForContext = (fileManagerData && fileManagerData.internalPath) || 
+                                           af.localPath || 
+                                           af.src || 
+                                           af.originalName;
+
                 if (af._fileManagerData && af._fileManagerData.extractedText) {
-                    combinedTextContent += `\n\n[附加文件: ${af.originalName}]\n${af._fileManagerData.extractedText}\n[/附加文件结束: ${af.originalName}]`;
+                    combinedTextContent += `\n\n[附加文件: ${filePathForContext}]\n${af._fileManagerData.extractedText}\n[/附加文件结束: ${af.originalName}]`;
+                } else if (af.file.type.startsWith('audio/')) {
+                    combinedTextContent += `\n\n[附加音频: ${filePathForContext}]`;
+                } else if (af.file.type.startsWith('video/')) {
+                    combinedTextContent += `\n\n[附加视频: ${filePathForContext}]`;
+                } else if (af.file.type.startsWith('image/')) {
+                    combinedTextContent += `\n\n[附加图片: ${filePathForContext}]`;
                 } else if (af._fileManagerData && af.file.type && !af.file.type.startsWith('image/')) {
-                    combinedTextContent += `\n\n[附加文件: ${af.originalName} (无法预览文本内容)]`;
+                    combinedTextContent += `\n\n[附加文件: ${filePathForContext} (无法预览文本内容)]`;
                 }
             }
         }

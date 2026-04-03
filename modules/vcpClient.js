@@ -62,25 +62,36 @@ async function sendToVCP(params) {
                 return { role: 'system', content: '[Invalid message]' };
             }
             
+            let processedContent = msg.content;
+            
             if (msg.content && typeof msg.content === 'object') {
                 if (msg.content.text) {
-                    return { ...msg, content: String(msg.content.text) };
+                    processedContent = String(msg.content.text);
                 } else if (Array.isArray(msg.content)) {
                     // Always keep content as an array for multimodal messages, even if it's just text.
                     // This ensures consistency for endpoints that expect an array.
-                    return msg;
+                    processedContent = msg.content;
                 } else {
                     console.warn('[VCPClient] Message content is object without text field, stringifying:', msg.content);
-                    return { ...msg, content: JSON.stringify(msg.content) };
+                    processedContent = JSON.stringify(msg.content);
                 }
             }
             
-            if (msg.content && !Array.isArray(msg.content) && typeof msg.content !== 'string') {
-                console.warn('[VCPClient] Converting non-string content to string:', msg.content);
-                return { ...msg, content: String(msg.content) };
+            if (processedContent && !Array.isArray(processedContent) && typeof processedContent !== 'string') {
+                processedContent = String(processedContent);
             }
             
-            return msg;
+            // 🛡️ 严格脱敏：只返回由 OpenAI/Gemini 等 API 规范要求的字段
+            // 剔除 attachments, isThinking 等私有元数据，防止泄露给模型
+            const sanitizedMsg = {
+                role: msg.role,
+                content: processedContent
+            };
+            if (msg.name) sanitizedMsg.name = msg.name;
+            if (msg.tool_calls) sanitizedMsg.tool_calls = msg.tool_calls;
+            if (msg.tool_call_id) sanitizedMsg.tool_call_id = msg.tool_call_id;
+            
+            return sanitizedMsg;
         });
     } catch (validationError) {
         console.error('[VCPClient] Error validating messages:', validationError);

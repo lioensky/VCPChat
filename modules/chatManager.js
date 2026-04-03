@@ -18,7 +18,7 @@ window.chatManager = (() => {
 
     // DOM Elements from renderer.js
     let elements = {};
-    
+
     // Functions from main renderer
     let mainRendererFunctions = {};
     let isCanvasWindowOpen = false; // State to track if the canvas window is open
@@ -61,12 +61,12 @@ window.chatManager = (() => {
                     regex = new RegExp(rule.findPattern, 'g');
                 }
             }
-            
+
             if (!regex) {
                 console.error('无法解析正则表达式:', rule.findPattern);
                 return text;
             }
-            
+
             // 应用替换（如果没有替换内容，则默认替换为空字符串）
             return text.replace(regex, rule.replaceWith || '');
         } catch (error) {
@@ -90,31 +90,31 @@ window.chatManager = (() => {
         }
 
         let processedText = text;
-        
+
         rules.forEach(rule => {
             // 检查是否应该应用此规则
-            
+
             // 1. 检查作用域
             const shouldApplyToScope =
                 (scope === 'context' && rule.applyToContext) ||
                 (scope === 'frontend' && rule.applyToFrontend);
-            
+
             if (!shouldApplyToScope) return;
-            
+
             // 2. 检查角色
             const shouldApplyToRole = rule.applyToRoles && rule.applyToRoles.includes(role);
             if (!shouldApplyToRole) return;
-            
+
             // 3. 检查深度（-1 表示无限制）
             const minDepthOk = rule.minDepth === undefined || rule.minDepth === -1 || depth >= rule.minDepth;
             const maxDepthOk = rule.maxDepth === undefined || rule.maxDepth === -1 || depth <= rule.maxDepth;
-            
+
             if (!minDepthOk || !maxDepthOk) return;
-            
+
             // 应用规则
             processedText = applyRegexRule(processedText, rule);
         });
-        
+
         return processedText;
     }
 
@@ -125,7 +125,7 @@ window.chatManager = (() => {
     function init(config) {
         electronAPI = config.electronAPI;
         uiHelper = config.uiHelper;
-        
+
         // Modules
         messageRenderer = config.modules.messageRenderer;
         itemListManager = config.modules.itemListManager;
@@ -141,7 +141,7 @@ window.chatManager = (() => {
 
         // DOM Elements
         elements = config.elements;
-        
+
         // Main Renderer Functions
         mainRendererFunctions = config.mainRendererFunctions;
 
@@ -201,9 +201,9 @@ window.chatManager = (() => {
             console.warn('[ChatManager] Failed to suspend assistant listener before topic load:', error);
         });
     }
- 
+
     // --- Functions moved from renderer.js ---
- 
+
     function displayNoItemSelected() {
         const { currentChatNameH3, chatMessagesDiv, currentItemActionBtn, messageInput, sendMessageBtn, attachFileBtn } = elements;
         const voiceChatBtn = document.getElementById('voiceChatBtn');
@@ -215,7 +215,7 @@ window.chatManager = (() => {
         sendMessageBtn.disabled = true;
         attachFileBtn.disabled = true;
         if (mainRendererFunctions.displaySettingsForItem) {
-            mainRendererFunctions.displaySettingsForItem(); 
+            mainRendererFunctions.displaySettingsForItem();
         }
         if (topicListManager) topicListManager.loadTopicList();
     }
@@ -229,7 +229,7 @@ window.chatManager = (() => {
             console.log('[ChatManager] Blocked agent switch due to active Flowlock');
             return;
         }
-        
+
         // Stop any previous watcher when switching items
         if (electronAPI.watcherStop) {
             await electronAPI.watcherStop();
@@ -267,20 +267,20 @@ window.chatManager = (() => {
                 groupRenderer.clearInviteAgentButtons();
             }
         }
-     
+
         const voiceChatBtn = document.getElementById('voiceChatBtn');
 
         currentChatNameH3.textContent = `与 ${itemName} ${itemType === 'group' ? '(群组)' : ''} 聊天中`;
         setCurrentItemActionButtonText(currentItemActionBtn, itemType === 'group' ? '新建群聊话题' : '新建聊天话题');
         currentItemActionBtn.title = `为 ${itemName} 新建${itemType === 'group' ? '群聊话题' : '聊天话题'}`;
         currentItemActionBtn.style.display = 'inline-flex';
-        
+
         if (voiceChatBtn) {
             voiceChatBtn.style.display = itemType === 'agent' ? 'inline-block' : 'none';
         }
 
         itemListManager.highlightActiveItem(itemId, itemType);
-        if(mainRendererFunctions.displaySettingsForItem) mainRendererFunctions.displaySettingsForItem();
+        if (mainRendererFunctions.displaySettingsForItem) mainRendererFunctions.displaySettingsForItem();
 
         try {
             let topics;
@@ -322,7 +322,7 @@ window.chatManager = (() => {
                             await loadChatHistory(itemId, itemType, null);
                         }
                     } else {
-                         await loadChatHistory(itemId, itemType, null);
+                        await loadChatHistory(itemId, itemType, null);
                     }
                 } else if (itemType === 'group') {
                     const defaultTopicResult = await electronAPI.createNewTopicForGroup(itemId, "主要群聊");
@@ -348,7 +348,7 @@ window.chatManager = (() => {
         if (topicListManager) topicListManager.loadTopicList();
         _saveLastOpenState(); // Save state after selecting an item and its default topic
     }
- 
+
     async function selectTopic(topicId) {
         // 心流锁激活时，不允许切换话题
         if (window.flowlockManager && window.flowlockManager.getState && window.flowlockManager.getState().isActive) {
@@ -358,7 +358,7 @@ window.chatManager = (() => {
             console.log('[ChatManager] Blocked topic switch due to active Flowlock');
             return;
         }
-        
+
         let currentTopicId = currentTopicIdRef.get();
         if (currentTopicId === topicId) {
             return;
@@ -429,16 +429,16 @@ window.chatManager = (() => {
 
         if (messageRenderer) messageRenderer.clearChat();
         currentChatHistoryRef.set([]);
-    
-    
+
+
         document.querySelectorAll('.topic-list .topic-item').forEach(item => {
             const isCurrent = item.dataset.topicId === topicId && item.dataset.itemId === itemId && item.dataset.itemType === itemType;
             item.classList.toggle('active', isCurrent);
             item.classList.toggle('active-topic-glowing', isCurrent);
         });
-    
+
         if (messageRenderer) messageRenderer.setCurrentTopicId(topicId);
-    
+
         if (!itemId) {
             const errorMsg = `错误：无法加载聊天记录，${itemType === 'group' ? '群组' : '助手'}ID (${itemId}) 缺失。`;
             console.error(errorMsg);
@@ -446,36 +446,36 @@ window.chatManager = (() => {
             await displayTopicTimestampBubble(null, null, null);
             return;
         }
-    
+
         if (!topicId) {
             if (messageRenderer) messageRenderer.renderMessage({ role: 'system', content: '请选择或创建一个话题以开始聊天。', timestamp: Date.now() });
             await displayTopicTimestampBubble(itemId, itemType, null);
             return;
         }
-    
+
         // 核心修改：使用 await 确保加载消息被渲染
         if (messageRenderer) {
             await messageRenderer.renderMessage({ role: 'system', name: '系统', content: '加载聊天记录中...', timestamp: Date.now(), isThinking: true, id: 'loading_history' });
         }
-    
+
         let historyResult;
         if (itemType === 'agent') {
             historyResult = await electronAPI.getChatHistory(itemId, topicId);
         } else if (itemType === 'group') {
             historyResult = await electronAPI.getGroupChatHistory(itemId, topicId);
         }
-    
+
         const currentSelectedItem = currentSelectedItemRef.get();
         const agentConfigForHistory = currentSelectedItem.config || currentSelectedItem;
         if (electronAPI.watcherStart && agentConfigForHistory?.agentDataPath) {
             const historyFilePath = `${agentConfigForHistory.agentDataPath}\\topics\\${topicId}\\history.json`;
             await electronAPI.watcherStart(historyFilePath, itemId, topicId);
         }
-    
+
         if (messageRenderer) messageRenderer.removeMessageById('loading_history');
-    
+
         await displayTopicTimestampBubble(itemId, itemType, topicId);
-    
+
         if (historyResult && historyResult.error) {
             if (messageRenderer) messageRenderer.renderMessage({ role: 'system', content: `加载话题 "${topicId}" 的聊天记录失败: ${historyResult.error}`, timestamp: Date.now() });
         } else if (historyResult && historyResult.length > 0) {
@@ -487,22 +487,212 @@ window.chatManager = (() => {
                     batchSize: 10,      // 后续每批10条消息
                     batchDelay: 80      // 批次间延迟80ms，平衡性能和用户体验
                 };
-                
+
                 console.log(`[ChatManager] 开始加载话题历史，共 ${historyResult.length} 条消息`);
                 await messageRenderer.renderHistory(historyResult, renderOptions);
                 console.log(`[ChatManager] 话题历史加载完成`);
             }
-    
+
         } else if (historyResult) { // History is empty
             currentChatHistoryRef.set([]);
         } else {
             if (messageRenderer) messageRenderer.renderMessage({ role: 'system', content: `加载话题 "${topicId}" 的聊天记录时返回了无效数据。`, timestamp: Date.now() });
         }
-    
+
         if (itemId && topicId && !(historyResult && historyResult.error)) {
             localStorage.setItem(`lastActiveTopic_${itemId}_${itemType}`, topicId);
         }
     }
+
+    async function removeAttachmentFromMessage(messageId, attachmentIndex) {
+        const currentChatHistory = currentChatHistoryRef.get();
+        const currentTopicId = currentTopicIdRef.get();
+        const currentSelectedItem = currentSelectedItemRef.get();
+
+        if (!currentChatHistory || !currentTopicId || !currentSelectedItem) {
+            console.error('[ChatManager] Cannot remove attachment: missing state.');
+            return;
+        }
+
+        const messageIndex = currentChatHistory.findIndex(m => m.id === messageId);
+        if (messageIndex === -1) {
+            console.error('[ChatManager] Message not found in history:', messageId);
+            return;
+        }
+
+        const message = currentChatHistory[messageIndex];
+        if (message.attachments && message.attachments[attachmentIndex]) {
+            const attachmentToRemove = message.attachments[attachmentIndex];
+            const fileName = attachmentToRemove.name;
+
+            // 对历史记录进行深拷贝
+            const updatedHistory = JSON.parse(JSON.stringify(currentChatHistory));
+            const updatedMessage = updatedHistory[messageIndex];
+
+            // 1. 从附件数组中物理移除
+            updatedMessage.attachments.splice(attachmentIndex, 1);
+            // 或者：如果我们想兼容标记系统，确保状态是真的移除了，或者强制设置为 removed
+            // attachmentToRemove.status = 'removed'; 
+            // 既然您想要“真正的去除”，我们坚持使用 splice。
+
+            // 2. 清理正文中的文本引用
+            if (updatedMessage.content && fileName) {
+                // 转义文件名以用于正则
+                const escapedFileName = fileName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                
+                // 移除 [附加文件: ...] 标记
+                const genericRegex = new RegExp(`\\n*\\s*\\[附加文件: [^\\]]*${escapedFileName}[^\\]]*\\]`, 'g');
+                // 移除 [附加图片: ...] 标记
+                const imageRegex = new RegExp(`\\n*\\s*\\[附加图片: [^\\]]*${escapedFileName}[^\\]]*\\]`, 'g');
+                // 移除带内容的完整块: [附加文件: ...] ... [/附加文件结束: ...]
+                const fullBlockRegex = new RegExp(`\\n*\\s*\\[附加文件: [^\\]]*${escapedFileName}[^\\]]*\\][\\s\\S]*?\\[/附加文件结束: [^\\]]*${escapedFileName}[^\\]]*\\]`, 'g');
+                
+                updatedMessage.content = updatedMessage.content
+                    .replace(fullBlockRegex, '')
+                    .replace(genericRegex, '')
+                    .replace(imageRegex, '')
+                    .trim();
+            }
+
+            try {
+                // 保存更新后的历史记录
+                await electronAPI.saveChatHistory(currentSelectedItem.id, currentTopicId, updatedHistory);
+
+                // 更新内存中的状态
+                currentChatHistoryRef.set(updatedHistory);
+
+                // 仅更新该条消息的 UI
+                if (messageRenderer && typeof messageRenderer.updateMessageUI === 'function') {
+                    await messageRenderer.updateMessageUI(messageId, updatedMessage);
+                } else {
+                    await loadChatHistory(currentSelectedItem.id, currentSelectedItem.type, currentTopicId);
+                }
+
+                if (uiHelper && uiHelper.showToastNotification) {
+                    uiHelper.showToastNotification('附件已移除', 'success');
+                }
+            } catch (error) {
+                console.error('[ChatManager] Failed to remove attachment:', error);
+            }
+        }
+    }
+
+    /**
+     * Reads a list of File objects and processes them into data objects with Buffers.
+     * Reuses the robust logic from inputEnhancer.js.
+     * @param {FileList|Array} files - The files to process.
+     * @returns {Promise<Array>} - A promise that resolves to an array of processed file data.
+     */
+    async function processFilesData(files) {
+        if (!files || files.length === 0) return [];
+        
+        console.log(`[ChatManager] Processing ${files.length} files...`);
+        const filesToProcess = [];
+
+        for (let i = 0; i < files.length; i++) {
+            const file = files[i];
+            filesToProcess.push(new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const arrayBuffer = e.target.result;
+                    if (!arrayBuffer) {
+                        console.warn(`[ChatManager] FileReader received null ArrayBuffer for ${file.name}`);
+                        resolve({ name: file.name, error: `无法读取文件内容` });
+                        return;
+                    }
+                    const fileBuffer = new Uint8Array(arrayBuffer);
+                    resolve({
+                        name: file.name,
+                        type: file.type || 'application/octet-stream',
+                        data: fileBuffer,
+                        size: file.size,
+                        path: file.path // Still include path if available for metadata
+                    });
+                };
+                reader.onerror = (err) => {
+                    console.error(`[ChatManager] FileReader error for ${file.name}:`, err);
+                    resolve({ name: file.name, error: `无法读取文件: ${err.message}` });
+                };
+                reader.readAsArrayBuffer(file);
+            }));
+        }
+
+        return await Promise.all(filesToProcess);
+    }
+
+    async function addAttachmentsToMessage(messageId, droppedFilesData) {
+        console.log(`[ChatManager] addAttachmentsToMessage triggered for messageId: ${messageId}`, droppedFilesData);
+        
+        const currentChatHistory = currentChatHistoryRef.get();
+        const currentTopicId = currentTopicIdRef.get();
+        const currentSelectedItem = currentSelectedItemRef.get();
+
+        if (!currentChatHistory || !currentTopicId || !currentSelectedItem) {
+            console.error('[ChatManager] Context missing:', { 
+                hasHistory: !!currentChatHistory, 
+                currentTopicId, 
+                selectedItem: currentSelectedItem?.id 
+            });
+            return;
+        }
+
+        const messageIndex = currentChatHistory.findIndex(m => m.id === messageId);
+        if (messageIndex === -1) {
+            console.error(`[ChatManager] Message with ID ${messageId} not found in current history.`);
+            return;
+        }
+
+        try {
+            console.debug(`[ChatManager] Invoking handleFileDrop for ${droppedFilesData.length} files...`);
+            const results = await electronAPI.handleFileDrop(currentSelectedItem.id, currentTopicId, droppedFilesData);
+            
+            console.debug('[ChatManager] handleFileDrop results:', results);
+            
+            const successfulAttachments = results
+                .filter(r => r.success && r.attachment)
+                .map(r => ({ 
+                    ...r.attachment, 
+                    name: r.name,
+                    src: r.attachment.internalPath // 关键修复：映射路径字段以供渲染器使用
+                }));
+
+            if (successfulAttachments.length === 0) {
+                console.warn('[ChatManager] No attachments were successfully processed by the backend.');
+                if (uiHelper && uiHelper.showToastNotification) {
+                    uiHelper.showToastNotification('附件添加失败：无法处理文件', 'error');
+                }
+                return;
+            }
+
+            console.log(`[ChatManager] Successfully processed ${successfulAttachments.length} attachments. Updating history...`);
+
+            const updatedHistory = JSON.parse(JSON.stringify(currentChatHistory));
+            const message = updatedHistory[messageIndex];
+            if (!message.attachments) message.attachments = [];
+            message.attachments.push(...successfulAttachments);
+
+            await electronAPI.saveChatHistory(currentSelectedItem.id, currentTopicId, updatedHistory);
+            currentChatHistoryRef.set(updatedHistory);
+
+            if (messageRenderer && typeof messageRenderer.updateMessageUI === 'function') {
+                console.debug(`[ChatManager] Requesting UI update for message ${messageId}`);
+                await messageRenderer.updateMessageUI(messageId, message);
+            } else {
+                console.debug('[ChatManager] Falling back to full history reload');
+                await loadChatHistory(currentSelectedItem.id, currentSelectedItem.type, currentTopicId);
+            }
+
+            if (uiHelper && uiHelper.showToastNotification) {
+                uiHelper.showToastNotification(`成功添加 ${successfulAttachments.length} 个附件`, 'success');
+            }
+        } catch (error) {
+            console.error('[ChatManager] Failed to add attachments:', error);
+            if (uiHelper && uiHelper.showToastNotification) {
+                uiHelper.showToastNotification(`附件添加出错: ${error.message}`, 'error');
+            }
+        }
+    }
+
 
     async function displayTopicTimestampBubble(itemId, itemType, topicId) {
         const { chatMessagesDiv } = elements;
@@ -650,7 +840,7 @@ window.chatManager = (() => {
             }
             messageInput.value = '';
             attachedFilesRef.set([]);
-            if(mainRendererFunctions.updateAttachmentPreview) mainRendererFunctions.updateAttachmentPreview();
+            if (mainRendererFunctions.updateAttachmentPreview) mainRendererFunctions.updateAttachmentPreview();
             uiHelper.autoResizeTextarea(messageInput);
             // messageInput.focus();
             return;
@@ -660,7 +850,7 @@ window.chatManager = (() => {
         // The 'content' variable still holds the user's raw input, including the placeholder.
         // We will resolve the placeholder later, only for the final message sent to VCP.
         let combinedTextContent = content; // 用于发送给VCP的组合文本内容
- 
+
         const uiAttachments = [];
         if (attachedFiles.length > 0) {
             for (const af of attachedFiles) {
@@ -673,17 +863,27 @@ window.chatManager = (() => {
                     _fileManagerData: fileManagerData
                 });
 
-                // 修正：将文件路径和提取的文本正确地附加到 combinedTextContent
-                const filePathForContext = af.localPath || af.originalName;
+                // 改进：使用更健全的多级路径探测逻辑，确保AI始终能看到完整路径
+                // 🟢 极其关键：优先使用 internalPath (物理路径)，只有在没有物理路径时才回退到 UI 路径 (src)
+                const filePathForContext = (fileManagerData && fileManagerData.internalPath) || 
+                                           af.localPath || 
+                                           af.src || 
+                                           af.originalName;
+                
+                console.debug(`[ChatManager] Resolved filePathForContext for ${af.originalName}:`, filePathForContext);
 
                 if (af.file.type.startsWith('image/')) {
                     // 对于图片，我们只附加路径，因为内容将作为多模态部分发送
                     combinedTextContent += `\n\n[附加图片: ${filePathForContext}]`;
+                } else if (af.file.type.startsWith('audio/')) {
+                    combinedTextContent += `\n\n[附加音频: ${filePathForContext}]`;
+                } else if (af.file.type.startsWith('video/')) {
+                    combinedTextContent += `\n\n[附加视频: ${filePathForContext}]`;
                 } else if (fileManagerData.extractedText) {
-                    // 对于有提取文本的文件，同时附加路径和文本
+                    // 对于有提取文本的文件，同时附加路径 and 文本
                     combinedTextContent += `\n\n[附加文件: ${filePathForContext}]\n${fileManagerData.extractedText}\n[/附加文件结束: ${af.originalName}]`;
                 } else {
-                    // 对于其他文件（如音频、视频、无文本的PDF等），只附加路径
+                    // 对于其他文件（如文档、无文本的PDF等），只附加路径
                     combinedTextContent += `\n\n[附加文件: ${filePathForContext}]`;
                 }
             }
@@ -697,7 +897,7 @@ window.chatManager = (() => {
             id: `msg_${Date.now()}_user_${Math.random().toString(36).substring(2, 9)}`,
             attachments: uiAttachments
         };
-        
+
         if (messageRenderer) {
             await messageRenderer.renderMessage(userMessage);
         }
@@ -718,8 +918,8 @@ window.chatManager = (() => {
 
         messageInput.value = '';
         attachedFilesRef.set([]);
-        if(mainRendererFunctions.updateAttachmentPreview) mainRendererFunctions.updateAttachmentPreview();
-        
+        if (mainRendererFunctions.updateAttachmentPreview) mainRendererFunctions.updateAttachmentPreview();
+
         // After sending, if the canvas window is still open, restore the placeholder
         if (isCanvasWindowOpen) {
             messageInput.value = CANVAS_PLACEHOLDER;
@@ -776,7 +976,7 @@ window.chatManager = (() => {
                             turns.unshift({ assistant: null, user: historySnapshotForVCP[i] });
                         }
                     }
-                    
+
                     // 找到当前消息所在的轮次
                     const turnIndex = turns.findIndex(t => (t.assistant && t.assistant.id === msg.id) || (t.user && t.user.id === msg.id));
                     const depth = turnIndex !== -1 ? (turns.length - 1 - turnIndex) : -1;
@@ -798,7 +998,7 @@ window.chatManager = (() => {
                 if (msg.role === 'user' && msg.id === userMessage.id) {
                     // 关键修复：使用已经包含附件内容的 combinedTextContent
                     currentMessageTextContent = combinedTextContent;
-                    
+
                     // IMPORTANT: We need to handle Canvas placeholder WITHOUT overwriting the combined content
                     // First, check if we need to replace Canvas placeholder
                     if (currentMessageTextContent.includes(CANVAS_PLACEHOLDER)) {
@@ -820,17 +1020,28 @@ window.chatManager = (() => {
                 } else if (msg.attachments && msg.attachments.length > 0) {
                     let historicalAppendedText = "";
                     for (const att of msg.attachments) {
+                        // 🟢 关键：跳过被标记为已移除的附件
+                        if (att.status === 'removed') continue;
+
                         const fileManagerData = att._fileManagerData || {};
-                        // 优先使用 att.src，因为它代表前端的本地可访问路径
-                        // 后备到 internalPath（来自 fileManager），最后才是文件名
-                        const filePathForContext = att.src || (fileManagerData.internalPath ? fileManagerData.internalPath.replace('file://', '') : (att.name || '未知文件'));
+                        // 🟢 极其关键：深度探测路径字段。历史记录中优先使用 internalPath。
+                        const filePathForContext = (fileManagerData && fileManagerData.internalPath) || 
+                                                   att.localPath || 
+                                                   att.src || 
+                                                   (att.name || '未知文件');
+                                                   
+                        console.debug(`[ChatManager] Resolved historical filePathForContext for ${att.name}:`, filePathForContext);
 
                         if (fileManagerData.imageFrames && fileManagerData.imageFrames.length > 0) {
-                             historicalAppendedText += `\n\n[附加文件: ${filePathForContext} (扫描版PDF，已转换为图片)]`;
+                            historicalAppendedText += `\n\n[附加文件: ${filePathForContext} (扫描版PDF，已转换为图片)]`;
+                        } else if (att.type.startsWith('audio/')) {
+                            historicalAppendedText += `\n\n[附加音频: ${filePathForContext}]`;
+                        } else if (att.type.startsWith('video/')) {
+                            historicalAppendedText += `\n\n[附加视频: ${filePathForContext}]`;
                         } else if (fileManagerData.extractedText) {
                             historicalAppendedText += `\n\n[附加文件: ${filePathForContext}]\n${fileManagerData.extractedText}\n[/附加文件结束: ${att.name || '未知文件'}]`;
                         } else {
-                            // 对于没有提取文本的文件（如音视频），只附加路径
+                            // 对于没有提取文本的文件（如文档），只附加路径
                             historicalAppendedText += `\n\n[附加文件: ${filePathForContext}]`;
                         }
                     }
@@ -839,7 +1050,9 @@ window.chatManager = (() => {
 
                 if (msg.attachments && msg.attachments.length > 0) {
                     // --- IMAGE PROCESSING ---
-                    const imageAttachmentsPromises = msg.attachments.map(async att => {
+                    const imageAttachmentsPromises = msg.attachments
+                        .filter(att => att.status !== 'removed') // 🟢 过滤已移除附件
+                        .map(async att => {
                         const fileManagerData = att._fileManagerData || {};
                         // Case 1: Scanned PDF converted to image frames
                         if (fileManagerData.imageFrames && fileManagerData.imageFrames.length > 0) {
@@ -879,7 +1092,7 @@ window.chatManager = (() => {
                     // --- AUDIO PROCESSING ---
                     const supportedAudioTypes = ['audio/wav', 'audio/mpeg', 'audio/mp3', 'audio/aiff', 'audio/aac', 'audio/ogg', 'audio/flac'];
                     const audioAttachmentsPromises = msg.attachments
-                        .filter(att => supportedAudioTypes.includes(att.type))
+                        .filter(att => att.status !== 'removed' && supportedAudioTypes.includes(att.type)) // 🟢 过滤已移除附件
                         .map(async att => {
                             try {
                                 const result = await electronAPI.getFileAsBase64(att.src);
@@ -905,7 +1118,7 @@ window.chatManager = (() => {
 
                     // --- VIDEO PROCESSING ---
                     const videoAttachmentsPromises = msg.attachments
-                        .filter(att => att.type.startsWith('video/'))
+                        .filter(att => att.status !== 'removed' && att.type.startsWith('video/')) // 🟢 过滤已移除附件
                         .map(async att => {
                             try {
                                 const result = await electronAPI.getFileAsBase64(att.src);
@@ -939,9 +1152,9 @@ window.chatManager = (() => {
                 finalContentPartsForVCP.push(...vcpVideoAttachmentsPayload);
 
                 if (finalContentPartsForVCP.length === 0 && msg.role === 'user') {
-                     finalContentPartsForVCP.push({ type: 'text', text: '(用户发送了附件，但无文本或图片内容)' });
+                    finalContentPartsForVCP.push({ type: 'text', text: '(用户发送了附件，但无文本或图片内容)' });
                 }
-                
+
                 return { role: msg.role, content: finalContentPartsForVCP.length > 0 ? finalContentPartsForVCP : msg.content };
             }));
 
@@ -1046,7 +1259,7 @@ window.chatManager = (() => {
                         // Remove any lingering 'thinking' message and add the new one
                         const finalHistory = historyForSave.filter(msg => msg.id !== thinkingMessage.id && !msg.isThinking);
                         finalHistory.push(assistantMessage);
-                        
+
                         // Save the final, complete history to the correct file
                         await electronAPI.saveChatHistory(context.agentId, context.topicId, finalHistory);
 
@@ -1059,7 +1272,7 @@ window.chatManager = (() => {
                             console.log(`[ChatManager] Saved non-streaming response for background chat: Agent ${context.agentId}, Topic ${context.topicId}`);
                         }
                     } else {
-                         console.error(`[ChatManager] Failed to get history for background save:`, historyForSave.error);
+                        console.error(`[ChatManager] Failed to get history for background save:`, historyForSave.error);
                     }
                 } else {
                     if (isForActiveChat && messageRenderer) {
@@ -1080,7 +1293,7 @@ window.chatManager = (() => {
             console.error('发送消息或处理VCP响应时出错:', error);
             if (messageRenderer) messageRenderer.removeMessageById(thinkingMessage.id);
             if (messageRenderer) messageRenderer.renderMessage({ role: 'system', content: `错误: ${error.message}`, timestamp: Date.now() });
-            if(currentSelectedItem.id && currentTopicId) {
+            if (currentSelectedItem.id && currentTopicId) {
                 await electronAPI.saveChatHistory(currentSelectedItem.id, currentTopicId, currentChatHistoryRef.get().filter(msg => !msg.isThinking));
             }
         }
@@ -1091,11 +1304,11 @@ window.chatManager = (() => {
             uiHelper.showToastNotification("请先选择一个项目。", 'error');
             return;
         }
-        
+
         const currentSelectedItem = currentSelectedItemRef.get();
         const itemName = currentSelectedItem.name || (itemType === 'group' ? "当前群组" : "当前助手");
         const newTopicName = `新话题 ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
-        
+
         try {
             let result;
             if (itemType === 'agent') {
@@ -1107,14 +1320,14 @@ window.chatManager = (() => {
             if (result && result.success && result.topicId) {
                 currentTopicIdRef.set(result.topicId);
                 currentChatHistoryRef.set([]);
-                
+
                 if (messageRenderer) {
                     messageRenderer.setCurrentTopicId(result.topicId);
                     messageRenderer.clearChat();
                     // messageRenderer.renderMessage({ role: 'system', content: `新话题 "${result.topicName}" 已开始。`, timestamp: Date.now() });
                 }
                 localStorage.setItem(`lastActiveTopic_${itemId}_${itemType}`, result.topicId);
-                
+
                 // 🔧 关键修复：为新建的话题启动文件监听器
                 const agentConfigForWatcher = currentSelectedItem.config || currentSelectedItem;
                 if (electronAPI.watcherStart && agentConfigForWatcher?.agentDataPath) {
@@ -1122,11 +1335,11 @@ window.chatManager = (() => {
                     await electronAPI.watcherStart(historyFilePath, itemId, result.topicId);
                     console.log(`[ChatManager] Started file watcher for new topic: ${result.topicId}`);
                 }
-                
+
                 if (document.getElementById('tabContentTopics').classList.contains('active')) {
                     if (topicListManager) await topicListManager.loadTopicList();
                 }
-                
+
                 await displayTopicTimestampBubble(itemId, itemType, result.topicId);
                 // elements.messageInput.focus();
             } else {
@@ -1215,7 +1428,7 @@ window.chatManager = (() => {
 
             currentTopicIdRef.set(newTopicId);
             if (messageRenderer) messageRenderer.setCurrentTopicId(newTopicId);
-            
+
             if (document.getElementById('tabContentTopics').classList.contains('active')) {
                 if (topicListManager) await topicListManager.loadTopicList();
             }
@@ -1232,7 +1445,7 @@ window.chatManager = (() => {
 
     async function handleForwardMessage(target, content, attachments) {
         const { messageInput } = elements;
-        
+
         // 1. Find the target item's full config to select it
         let targetItemFullConfig;
         if (target.type === 'agent') {
@@ -1253,7 +1466,7 @@ window.chatManager = (() => {
         setTimeout(async () => {
             // 4. Populate the message input and attachments ref
             messageInput.value = content;
-            
+
             const uiAttachments = attachments.map(att => ({
                 file: { name: att.name, type: att.type, size: att.size },
                 localPath: att.src,
@@ -1261,12 +1474,12 @@ window.chatManager = (() => {
                 _fileManagerData: att._fileManagerData || {}
             }));
             attachedFilesRef.set(uiAttachments);
-            
+
             // Manually trigger attachment preview update
             if (mainRendererFunctions.updateAttachmentPreview) {
                 mainRendererFunctions.updateAttachmentPreview();
             }
-            
+
             // Manually trigger textarea resize
             uiHelper.autoResizeTextarea(messageInput);
 
@@ -1340,7 +1553,7 @@ window.chatManager = (() => {
             if (oldMsg.id === activeStreamingId) {
                 continue; // Protect the currently streaming message
             }
-            
+
             const newMsgData = newHistoryMap.get(oldMsg.id);
 
             if (!newMsgData) {
@@ -1390,7 +1603,7 @@ window.chatManager = (() => {
         // but can cause flicker. For now, we accept this as the individual DOM operations
         // are faster. A subsequent topic load will fix any visual misordering.
         if (messagesWereAdded) {
-             console.log('[Sync] New messages were added. DOM might require a refresh to be perfectly ordered.');
+            console.log('[Sync] New messages were added. DOM might require a refresh to be perfectly ordered.');
         }
     }
 
@@ -1409,6 +1622,9 @@ window.chatManager = (() => {
         attemptTopicSummarizationIfNeeded,
         handleCreateBranch,
         handleForwardMessage,
+        removeAttachmentFromMessage,
+        addAttachmentsToMessage,
+        processFilesData, // Expose for reuse
         syncHistoryFromFile, // Expose the new function
     };
 })();

@@ -769,7 +769,11 @@ async function handleRegenerateResponse(originalAssistantMessage) {
                 let historicalAppendedText = "";
                 for (const att of msg.attachments) {
                     const fileManagerData = att._fileManagerData || {};
-                    const filePathForContext = att.src || (fileManagerData.internalPath ? fileManagerData.internalPath.replace('file://', '') : (att.name || '未知文件'));
+                    // 🟢 同步：重新生成时的多级路径探测。优先使用 internalPath (物理路径)
+                    const filePathForContext = (fileManagerData && fileManagerData.internalPath) || 
+                                               att.localPath || 
+                                               att.src || 
+                                               (att.name || '未知文件');
 
                     if (fileManagerData.imageFrames && fileManagerData.imageFrames.length > 0) {
                          historicalAppendedText += `\n\n[附加文件: ${filePathForContext} (扫描版PDF，已转换为图片)]`;

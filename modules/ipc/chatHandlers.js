@@ -547,32 +547,43 @@ function initialize(mainWindow, context) {
                     return { role: 'system', content: '[Invalid message]' };
                 }
 
+                let processedContent = msg.content;
+
                 // 如果content是对象，尝试提取text字段或转为JSON字符串
                 if (msg.content && typeof msg.content === 'object') {
                     if (msg.content.text) {
-                        // 如果有text字段，使用它
-                        return { ...msg, content: String(msg.content.text) };
+                        processedContent = String(msg.content.text);
                     } else if (Array.isArray(msg.content)) {
-                        // 如果是仅包含一个文本部分的多模态消息，则将其简化为纯字符串，以兼容旧的注入逻辑
+                        // 如果是仅包含一个文本部分的多模态消息，则将其简化为纯字符串，保持兼容
                         if (msg.content.length === 1 && msg.content[0].type === 'text' && typeof msg.content[0].text === 'string') {
-                            return { ...msg, content: msg.content[0].text };
+                            processedContent = msg.content[0].text;
+                        } else {
+                            // 保持多模态数组原样
+                            processedContent = msg.content;
                         }
-                        // 对于真正的多模态消息（例如，包含图片）或空数组，保持原样
-                        return msg;
                     } else {
                         // 否则转为JSON字符串
                         console.warn('[Main - sendToVCP] Message content is object without text field, stringifying:', msg.content);
-                        return { ...msg, content: JSON.stringify(msg.content) };
+                        processedContent = JSON.stringify(msg.content);
                     }
                 }
 
-                // 确保content是字符串（除非是多模态数组）
-                if (msg.content && !Array.isArray(msg.content) && typeof msg.content !== 'string') {
-                    console.warn('[Main - sendToVCP] Converting non-string content to string:', msg.content);
-                    return { ...msg, content: String(msg.content) };
+                // 强制转换为字符串（除非是多模态数组）
+                if (processedContent && !Array.isArray(processedContent) && typeof processedContent !== 'string') {
+                    processedContent = String(processedContent);
                 }
 
-                return msg;
+                // 🛡️ 严格脱敏：只返回由 OpenAI/Gemini/Anthropic 等 API 规范定义的合法字段
+                // 剔除 attachments, isThinking 等非标私有元数据，防止泄露给模型
+                const sanitizedMsg = {
+                    role: msg.role,
+                    content: processedContent
+                };
+                if (msg.name) sanitizedMsg.name = msg.name;
+                if (msg.tool_calls) sanitizedMsg.tool_calls = msg.tool_calls;
+                if (msg.tool_call_id) sanitizedMsg.tool_call_id = msg.tool_call_id;
+                
+                return sanitizedMsg;
             });
         } catch (validationError) {
             console.error('[Main - sendToVCP] Error validating messages:', validationError);

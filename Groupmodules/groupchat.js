@@ -531,15 +531,24 @@ ${canvasData.errors || 'No errors'}
                 textForAIContext = (typeof msg.content === 'string') ? msg.content : '';
                 if (msg.attachments && msg.attachments.length > 0) {
                     for (const att of msg.attachments) {
-                        if (att._fileManagerData && typeof att._fileManagerData.extractedText === 'string' && att._fileManagerData.extractedText.trim() !== '') {
-                            textForAIContext += `
+                        const fileManagerData = att._fileManagerData || {};
+                        // 🟢 同步：多级路径探测。优先使用 internalPath (物理路径)
+                        const filePathForContext = (fileManagerData && fileManagerData.internalPath) || 
+                                                   att.localPath || 
+                                                   att.src || 
+                                                   (att.name || '未知文件');
 
-[附加文件: ${att.name || '未知文件'}]
-${att._fileManagerData.extractedText}
-[/附加文件结束: ${att.name || '未知文件'}]`;
-                        } else if (att._fileManagerData && att.type && !att.type.startsWith('image/')) {
-                            textForAIContext += `\n\n[附加文件: ${att.name || '未知文件'} (无法预览文本内容)]`;
-                        } else if (!att._fileManagerData) {
+                        if (fileManagerData && typeof fileManagerData.extractedText === 'string' && fileManagerData.extractedText.trim() !== '') {
+                            textForAIContext += `\n\n[附加文件: ${filePathForContext}]\n${fileManagerData.extractedText}\n[/附加文件结束: ${att.name || '未知文件'}]`;
+                        } else if (att.type && att.type.startsWith('audio/')) {
+                            textForAIContext += `\n\n[附加音频: ${filePathForContext}]`;
+                        } else if (att.type && att.type.startsWith('video/')) {
+                            textForAIContext += `\n\n[附加视频: ${filePathForContext}]`;
+                        } else if (att.type && att.type.startsWith('image/')) {
+                             textForAIContext += `\n\n[附加图片: ${filePathForContext}]`;
+                        } else if (att.type && !att.type.startsWith('image/')) {
+                            textForAIContext += `\n\n[附加文件: ${filePathForContext} (无法预览文本内容)]`;
+                        } else if (!fileManagerData) {
                             console.warn(`[GroupChat Context] Historical message attachment for "${att.name}" is missing _fileManagerData. Text content cannot be appended.`);
                         }
                     }
@@ -1038,15 +1047,24 @@ ${canvasData.errors || 'No errors'}
 
         if (msg.attachments && msg.attachments.length > 0) {
             for (const att of msg.attachments) {
-                if (att._fileManagerData && typeof att._fileManagerData.extractedText === 'string' && att._fileManagerData.extractedText.trim() !== '') {
-                    textForAIContext += `
+                const fileManagerData = att._fileManagerData || {};
+                // 🟢 极其关键：直接强取物理路径，不给文件名回退的机会
+                const filePathForContext = (fileManagerData && fileManagerData.internalPath) || 
+                                           att.localPath || 
+                                           att.src || 
+                                           (att.name || '未知文件');
 
-[附加文件: ${att.name || '未知文件'}]
-${att._fileManagerData.extractedText}
-[/附加文件结束: ${att.name || '未知文件'}]`;
-                } else if (att._fileManagerData && att.type && !att.type.startsWith('image/')) {
-                    textForAIContext += `\n\n[附加文件: ${att.name || '未知文件'} (无法预览文本内容)]`;
-                } else if (!att._fileManagerData) {
+                if (fileManagerData && typeof fileManagerData.extractedText === 'string' && fileManagerData.extractedText.trim() !== '') {
+                    textForAIContext += `\n\n[附加文件: ${filePathForContext}]\n${fileManagerData.extractedText}\n[/附加文件结束: ${att.name || '未知文件'}]`;
+                } else if (att.type && att.type.startsWith('audio/')) {
+                    textForAIContext += `\n\n[附加音频: ${filePathForContext}]`;
+                } else if (att.type && att.type.startsWith('video/')) {
+                    textForAIContext += `\n\n[附加视频: ${filePathForContext}]`;
+                } else if (att.type && att.type.startsWith('image/')) {
+                     textForAIContext += `\n\n[附加图片: ${filePathForContext}]`;
+                } else if (fileManagerData && att.type && !att.type.startsWith('image/')) {
+                    textForAIContext += `\n\n[附加文件: ${filePathForContext} (无法预览文本内容)]`;
+                } else if (!fileManagerData) {
                     console.warn(`[GroupChat Invite Context] Historical message attachment for "${att.name}" is missing _fileManagerData. Text content cannot be appended.`);
                 }
             }

@@ -92,60 +92,17 @@ function initializeInputEnhancer(refs) {
         const files = event.dataTransfer.files;
         if (files && files.length > 0) {
             console.log(`[InputEnhancer] Dropped ${files.length} files.`);
-            const filesToProcess = [];
-
-            for (let i = 0; i < files.length; i++) {
-                const file = files[i];
-                // Always try to read the file as a Buffer/ArrayBuffer, regardless of 'path' property.
-                // This is more robust for drag-and-drop in Electron.
-                filesToProcess.push(new Promise((resolve) => {
-                    const reader = new FileReader();
-                    reader.onload = (e) => {
-                        const arrayBuffer = e.target.result;
-                        // If arrayBuffer is null or empty, it means FileReader couldn't read it.
-                        if (!arrayBuffer) {
-                            console.warn(`[InputEnhancer] FileReader received null ArrayBuffer for ${file.name}. Original size: ${file.size}.`);
-                            resolve({ name: file.name, error: `无法读取文件内容` });
-                            return;
-                        }
-                        const fileBuffer = new Uint8Array(arrayBuffer);
-                        console.log(`[InputEnhancer] FileReader finished for ${file.name}. Size: ${file.size}, Buffer length: ${fileBuffer.length}, Type: ${file.type}`);
-                        
-                        // If fileBuffer is empty but original file size is not 0, it's still an issue.
-                        // However, for very small files (e.g., 0-byte files), fileBuffer.length will be 0.
-                        // We should allow 0-byte files to pass through if file.size is also 0.
-                        // Removed the strict check for fileBuffer.length === 0 && file.size > 0 here,
-                        // as it might be overly aggressive for certain file types or empty files.
-                        // The main process's fileManager.storeFile will handle empty buffers.
-
-                        resolve({
-                            name: file.name,
-                            type: file.type || 'application/octet-stream',
-                            data: fileBuffer, // Send the buffer data
-                            size: file.size
-                        });
-                    };
-                    reader.onerror = (err) => {
-                        console.error(`[InputEnhancer] FileReader error for ${file.name}:`, err);
-                        resolve({ name: file.name, error: `无法读取文件: ${err.message}` });
-                    };
-                    reader.readAsArrayBuffer(file);
-                }));
-            }
-
-            const droppedFilesData = await Promise.all(filesToProcess);
+            // 调用全局通用的文件处理管线（已在 chatManager.js 中定义）
+            const droppedFilesData = await window.chatManager.processFilesData(files);
             const successfulFiles = droppedFilesData.filter(f => !f.error);
             const failedFiles = droppedFilesData.filter(f => f.error);
-
             if (failedFiles.length > 0) {
                 failedFiles.forEach(f => {
                     alert(`处理拖拽的文件 ${f.name} 失败: ${f.error}`);
-                    console.error(`[InputEnhancer] Failed to process dropped file ${f.name}: ${f.error}`);
                 });
             }
-
             if (successfulFiles.length === 0) {
-                console.warn('[InputEnhancer] No processable files found in drop event after reading attempts.');
+                console.warn('[InputEnhancer] No processable files found in drop event.');
                 return;
             }
 

@@ -43,14 +43,17 @@ function buildSummaryContent(groupHistory, globalVcpSettings) {
         // 如果消息有附件且包含提取的文本，也将其包含在内
         if (msg.attachments && msg.attachments.length > 0) {
             for (const att of msg.attachments) {
-                if (att._fileManagerData && typeof att._fileManagerData.extractedText === 'string' && att._fileManagerData.extractedText.trim() !== '') {
-                    contentText += `
+                const fileManagerData = att._fileManagerData || {};
+                // 🟢 同步：多级路径探测。优先使用 internalPath (物理路径)
+                const filePathForContext = (fileManagerData && fileManagerData.internalPath) || 
+                                           att.localPath || 
+                                           att.src || 
+                                           (att.name || '未知文件');
 
-[附加文件: ${att.name || '未知文件'}]
-${att._fileManagerData.extractedText}
-[/附加文件结束: ${att.name || '未知文件'}]`;
-                } else if (att._fileManagerData && att.type && !att.type.startsWith('image/')) {
-                    contentText += `\n\n[附加文件: ${att.name || '未知文件'} (无法预览文本内容)]`;
+                if (fileManagerData && typeof fileManagerData.extractedText === 'string' && fileManagerData.extractedText.trim() !== '') {
+                    contentText += `\n\n[附加文件: ${filePathForContext}]\n${fileManagerData.extractedText}\n[/附加文件结束: ${att.name || '未知文件'}]`;
+                } else if (att.type && !att.type.startsWith('image/')) {
+                    contentText += `\n\n[附加文件: ${filePathForContext} (无法预览文本内容)]`;
                 }
             }
         }
