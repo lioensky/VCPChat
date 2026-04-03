@@ -81,8 +81,8 @@ body.light-theme #moon-icon {
 }
 
 .message-item {
-    margin-bottom: 13px; /* Preserve visual rhythm after adding bottom paint space */
-    padding-bottom: 5px; /* Keep bubble shadow inside the message item's paint containment */
+    margin-bottom: 15px; /* Offset the added paint-safe area while staying close to the original spacing */
+    padding-bottom: 3px; /* Keep a minimal paint-safe area for the outer bubble shadow */
     max-width: 100%;
     display: flex;
     align-items: flex-start;
