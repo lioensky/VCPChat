@@ -5,123 +5,130 @@
 #agentSettingsContainer .agent-identity-container,
 #agentSettingsContainer .agent-params-collapsible-container,
 #agentSettingsContainer .strip-regex-container {
-    position: relative;
-    isolation: isolate;
-    margin: 0;
-    border-radius: 14px;
-    overflow: hidden;
-    background: rgba(255, 255, 255, 0.04);
-    backdrop-filter: blur(3px) saturate(108%);
-    -webkit-backdrop-filter: blur(3px) saturate(108%);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    box-shadow:
-        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.22),
-        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.18),
-        inset 6px -6px 1px -6px rgba(255, 255, 255, 0.12),
-        inset -6px 6px 1px -6px rgba(255, 255, 255, 0.08),
-        inset 0 0 2px rgba(0, 0, 0, 0.38),
-        0 6px 14px rgba(0, 0, 0, 0.14);
-    transition:
-        border-color 0.22s ease,
-        box-shadow 0.22s ease,
-        background 0.22s ease;
+  position: relative;
+  isolation: isolate;
+  margin: 0;
+  border-radius: 14px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(3px) saturate(108%);
+  -webkit-backdrop-filter: blur(3px) saturate(108%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: inset 2px -2px 1px -1px rgba(255, 255, 255, 0.22),
+    inset -2px 2px 1px -1px rgba(255, 255, 255, 0.18),
+    inset 6px -6px 1px -6px rgba(255, 255, 255, 0.12),
+    inset -6px 6px 1px -6px rgba(255, 255, 255, 0.08),
+    inset 0 0 2px rgba(0, 0, 0, 0.38), 0 6px 14px rgba(0, 0, 0, 0.14);
+  transition: border-color 0.22s ease, box-shadow 0.22s ease,
+    background 0.22s ease;
 }
 
 #agentSettingsForm > .agent-settings-card-shell::before,
 #agentSettingsContainer .agent-identity-container::before,
 #agentSettingsContainer .agent-params-collapsible-container::before,
 #agentSettingsContainer .strip-regex-container::before {
-    content: "";
-    position: absolute;
-    z-index: 0;
-    top: 34%;
-    left: 50%;
-    transform: translateX(-50%);
-    width: calc(100% - 18px);
-    height: calc(100% - 18px);
-    border-radius: inherit;
-    border: 1px solid rgba(0, 0, 0, 0.72);
-    filter: blur(8px);
-    opacity: 0.18;
-    pointer-events: none;
+  content: "";
+  position: absolute;
+  z-index: 0;
+  top: 34%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: calc(100% - 18px);
+  height: calc(100% - 18px);
+  border-radius: inherit;
+  border: 1px solid rgba(0, 0, 0, 0.72);
+  filter: blur(8px);
+  opacity: 0.18;
+  pointer-events: none;
 }
 
 #agentSettingsForm > .agent-settings-card-shell:hover,
 #agentSettingsContainer .agent-identity-container:hover,
 #agentSettingsContainer .agent-params-collapsible-container:hover,
 #agentSettingsContainer .strip-regex-container:hover {
-    border-color: color-mix(in srgb, var(--highlight-text) 58%, rgba(255, 255, 255, 0.1));
+  border-color: color-mix(
+    in srgb,
+    var(--highlight-text) 58%,
+    rgba(255, 255, 255, 0.1)
+  );
 }
 
 body.light-theme #agentSettingsForm > .agent-settings-card-shell,
 body.light-theme #agentSettingsContainer .agent-identity-container,
 body.light-theme #agentSettingsContainer .agent-params-collapsible-container,
 body.light-theme #agentSettingsContainer .strip-regex-container {
-    background: rgba(255, 255, 255, 0.06);
-    border-color: rgba(51, 51, 51, 0.08);
-    backdrop-filter: blur(3px) saturate(104%);
-    -webkit-backdrop-filter: blur(3px) saturate(104%);
-    box-shadow:
-        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.9),
-        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.9),
-        inset 6px -6px 1px -6px rgba(255, 255, 255, 0.55),
-        inset -6px 6px 1px -6px rgba(255, 255, 255, 0.55),
-        inset 0 0 2px rgba(0, 0, 0, 0.18),
-        0 4px 8px rgba(0, 0, 0, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(51, 51, 51, 0.08);
+  backdrop-filter: blur(3px) saturate(104%);
+  -webkit-backdrop-filter: blur(3px) saturate(104%);
+  box-shadow: inset 2px -2px 1px -1px rgba(255, 255, 255, 0.9),
+    inset -2px 2px 1px -1px rgba(255, 255, 255, 0.9),
+    inset 6px -6px 1px -6px rgba(255, 255, 255, 0.55),
+    inset -6px 6px 1px -6px rgba(255, 255, 255, 0.55),
+    inset 0 0 2px rgba(0, 0, 0, 0.18), 0 4px 8px rgba(0, 0, 0, 0.12);
 }
 
 body.light-theme #agentSettingsForm > .agent-settings-card-shell:hover,
 body.light-theme #agentSettingsContainer .agent-identity-container:hover,
-body.light-theme #agentSettingsContainer .agent-params-collapsible-container:hover,
+body.light-theme
+  #agentSettingsContainer
+  .agent-params-collapsible-container:hover,
 body.light-theme #agentSettingsContainer .strip-regex-container:hover {
-    background: rgba(255, 255, 255, 0.08);
-    box-shadow:
-        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.94),
-        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.94),
-        inset 6px -6px 1px -6px rgba(255, 255, 255, 0.62),
-        inset -6px 6px 1px -6px rgba(255, 255, 255, 0.62),
-        inset 0 0 2px rgba(0, 0, 0, 0.2),
-        0 6px 10px rgba(0, 0, 0, 0.14);
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: inset 2px -2px 1px -1px rgba(255, 255, 255, 0.94),
+    inset -2px 2px 1px -1px rgba(255, 255, 255, 0.94),
+    inset 6px -6px 1px -6px rgba(255, 255, 255, 0.62),
+    inset -6px 6px 1px -6px rgba(255, 255, 255, 0.62),
+    inset 0 0 2px rgba(0, 0, 0, 0.2), 0 6px 10px rgba(0, 0, 0, 0.14);
 }
 
 body:not(.light-theme) #agentSettingsForm > .agent-settings-card-shell,
 body:not(.light-theme) #agentSettingsContainer .agent-identity-container,
-body:not(.light-theme) #agentSettingsContainer .agent-params-collapsible-container,
+body:not(.light-theme)
+  #agentSettingsContainer
+  .agent-params-collapsible-container,
 body:not(.light-theme) #agentSettingsContainer .strip-regex-container {
-    background: color-mix(in srgb, var(--input-bg) 88%, rgba(255, 255, 255, 0.03));
-    border-color: rgba(255, 255, 255, 0.07);
-    backdrop-filter: blur(2px) saturate(104%);
-    -webkit-backdrop-filter: blur(2px) saturate(104%);
-    box-shadow:
-        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.14),
-        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.1),
-        inset 0 0 1px rgba(0, 0, 0, 0.42),
-        0 3px 8px rgba(0, 0, 0, 0.14);
+  background: color-mix(
+    in srgb,
+    var(--input-bg) 88%,
+    rgba(255, 255, 255, 0.03)
+  );
+  border-color: rgba(255, 255, 255, 0.07);
+  backdrop-filter: blur(2px) saturate(104%);
+  -webkit-backdrop-filter: blur(2px) saturate(104%);
+  box-shadow: inset 1px -1px 1px -1px rgba(255, 255, 255, 0.14),
+    inset -1px 1px 1px -1px rgba(255, 255, 255, 0.1),
+    inset 0 0 1px rgba(0, 0, 0, 0.42), 0 3px 8px rgba(0, 0, 0, 0.14);
 }
 
 body:not(.light-theme) #agentSettingsForm > .agent-settings-card-shell:hover,
 body:not(.light-theme) #agentSettingsContainer .agent-identity-container:hover,
-body:not(.light-theme) #agentSettingsContainer .agent-params-collapsible-container:hover,
+body:not(.light-theme)
+  #agentSettingsContainer
+  .agent-params-collapsible-container:hover,
 body:not(.light-theme) #agentSettingsContainer .strip-regex-container:hover {
-    background: color-mix(in srgb, var(--input-bg) 84%, rgba(255, 255, 255, 0.05));
-    box-shadow:
-        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.16),
-        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.12),
-        inset 0 0 1px rgba(0, 0, 0, 0.46),
-        0 0 0 1px color-mix(in srgb, var(--highlight-text) 34%, transparent),
-        0 4px 10px rgba(0, 0, 0, 0.16);
+  background: color-mix(
+    in srgb,
+    var(--input-bg) 84%,
+    rgba(255, 255, 255, 0.05)
+  );
+  box-shadow: inset 1px -1px 1px -1px rgba(255, 255, 255, 0.16),
+    inset -1px 1px 1px -1px rgba(255, 255, 255, 0.12),
+    inset 0 0 1px rgba(0, 0, 0, 0.46),
+    0 0 0 1px color-mix(in srgb, var(--highlight-text) 34%, transparent),
+    0 4px 10px rgba(0, 0, 0, 0.16);
 }
 
 #agentSettingsForm > .agent-settings-card-shell,
 #agentSettingsContainer .agent-identity-container,
 #agentSettingsContainer .strip-regex-container {
-    padding: 13px 15px;
+  padding: 13px 15px;
 }
 
 #agentSettingsForm > .agent-settings-card-shell,
 #agentSettingsContainer .agent-identity-container,
 #agentSettingsContainer .strip-regex-container {
-    gap: 8px;
+  gap: 8px;
 }
 
 #agentSettingsForm > .agent-settings-card-shell > *,
@@ -129,536 +136,764 @@ body:not(.light-theme) #agentSettingsContainer .strip-regex-container:hover {
 #agentSettingsContainer .strip-regex-container > *,
 #agentSettingsContainer .agent-params-collapsible-container .params-header,
 #agentSettingsContainer .agent-params-collapsible-container .params-content {
-    position: relative;
-    z-index: 1;
+  position: relative;
+  z-index: 1;
 }
 
 #agentSettingsContainer .agent-params-collapsible-container .params-header,
 #agentSettingsContainer .agent-params-collapsible-container .params-content,
-#agentSettingsContainer .agent-params-collapsible-container:hover .params-header,
-#agentSettingsContainer .agent-params-collapsible-container.collapsed:hover .params-header {
-    background-color: transparent;
+#agentSettingsContainer
+  .agent-params-collapsible-container:hover
+  .params-header,
+#agentSettingsContainer
+  .agent-params-collapsible-container.collapsed:hover
+  .params-header {
+  background-color: transparent;
 }
 
 #agentSettingsForm > .agent-settings-card-shell > label,
 #agentSettingsContainer .strip-regex-container .form-section-title {
-    margin: 0;
-    color: var(--highlight-text);
-    font-size: 1em;
-    font-weight: 500;
+  margin: 0;
+  color: var(--highlight-text);
+  font-size: 1em;
+  font-weight: 500;
 }
 
 #agentSettingsContainer .agent-settings-model-shell .model-input-container {
-    margin-top: 2px;
+  margin-top: 2px;
 }
 
 #agentSettingsForm > .agent-settings-card-shell,
 #agentSettingsContainer .agent-identity-container,
 #agentSettingsContainer .agent-params-collapsible-container,
 #agentSettingsContainer .strip-regex-container {
-    margin: 0;
-    padding: 0;
-    border: none;
-    border-radius: 0;
-    background: transparent;
-    box-shadow: none;
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-    overflow: visible;
-    isolation: auto;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  overflow: visible;
+  isolation: auto;
 }
 
 #agentSettingsForm > .agent-settings-card-shell::before,
 #agentSettingsContainer .agent-identity-container::before,
 #agentSettingsContainer .agent-params-collapsible-container::before,
 #agentSettingsContainer .strip-regex-container::before {
-    display: none;
+  display: none;
 }
 
 #agentSettingsForm > .agent-settings-card-shell:hover,
 #agentSettingsContainer .agent-identity-container:hover,
 #agentSettingsContainer .agent-params-collapsible-container:hover,
 #agentSettingsContainer .strip-regex-container:hover {
-    border: none;
-    background: transparent;
-    box-shadow: none;
+  border: none;
+  background: transparent;
+  box-shadow: none;
 }
 
 #agentSettingsForm > .agent-settings-card-shell > label,
 #agentSettingsContainer .strip-regex-container .form-section-title {
-    margin: 0 0 6px;
+  margin: 0 0 6px;
 }
 
 #agentSettingsContainer .agent-identity-container {
-    gap: 12px;
+  gap: 12px;
 }
 
 #agentSettingsContainer .agent-params-collapsible-container {
-    padding-bottom: 2px;
+  padding-bottom: 2px;
 }
 
 #agentSettingsContainer .params-header {
-    padding: 8px 0;
+  padding: 8px 0;
 }
 
-#agentSettingsContainer .agent-params-collapsible-container:not(.collapsed) .params-header {
-    padding-bottom: 6px;
+#agentSettingsContainer
+  .agent-params-collapsible-container:not(.collapsed)
+  .params-header {
+  padding-bottom: 6px;
 }
 
-#agentSettingsContainer .agent-params-collapsible-container.collapsed .params-header {
-    padding-bottom: 8px;
+#agentSettingsContainer
+  .agent-params-collapsible-container.collapsed
+  .params-header {
+  padding-bottom: 8px;
 }
 
 #agentSettingsContainer .params-content {
-    padding: 0 0 2px;
-    margin-top: 0;
+  padding: 0 0 2px;
+  margin-top: 0;
 }
 
-#agentSettingsContainer .agent-params-collapsible-container.collapsed .params-content {
-    padding: 0;
+#agentSettingsContainer
+  .agent-params-collapsible-container.collapsed
+  .params-content {
+  padding: 0;
 }
 
 #agentSettingsContainer .agent-settings-prompt-shell {
-    padding-bottom: 0;
-    gap: 6px;
+  padding-bottom: 0;
+  gap: 6px;
 }
 
 #agentSettingsContainer .agent-settings-prompt-shell .system-prompt-container {
-    margin: 0;
-    border: none;
-    border-radius: 0;
-    background: transparent;
-    overflow: visible;
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  overflow: visible;
 }
 
 #agentSettingsContainer .system-prompt-container .prompt-mode-selector {
-    display: flex;
-    gap: 8px;
-    padding: 10px 12px 0;
-    border-bottom: none;
-    background: transparent;
-    flex-wrap: wrap;
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px 0;
+  border-bottom: none;
+  background: transparent;
+  flex-wrap: wrap;
 }
 
 #agentSettingsContainer .system-prompt-container .prompt-mode-button {
-    flex: 1 1 0;
-    min-width: 0;
-    min-height: 34px;
-    padding: 0 10px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-right: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: var(--agent-settings-pill-radius);
-    background: transparent;
-    color: var(--secondary-text);
-    font-size: 0.9em;
-    font-weight: 500;
-    line-height: 1;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--agent-settings-pill-radius);
+  background: transparent;
+  color: var(--secondary-text);
+  font-size: 0.9em;
+  font-weight: 500;
+  line-height: 1;
 }
 
-#agentSettingsContainer .system-prompt-container .prompt-mode-button:last-child {
-    border-right: 1px solid rgba(255, 255, 255, 0.08);
+#agentSettingsContainer
+  .system-prompt-container
+  .prompt-mode-button:last-child {
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 #agentSettingsContainer .system-prompt-container .prompt-mode-button-icon svg {
-    width: 14px;
-    height: 14px;
+  width: 14px;
+  height: 14px;
 }
 
 #agentSettingsContainer .system-prompt-container .prompt-content-container {
-    padding: 10px 12px 12px;
-    background: transparent;
+  padding: 10px 12px 12px;
+  background: transparent;
+}
+
+#agentSettingsContainer
+  .system-prompt-container
+  .prompt-content-container.original-mode {
+  padding-bottom: 0;
 }
 
 #agentSettingsContainer .system-prompt-container .prompt-textarea,
 #agentSettingsContainer .system-prompt-container .preset-path-input,
 #agentSettingsContainer .system-prompt-container .preset-select,
 #agentSettingsContainer .system-prompt-container .block-name-input {
-    width: 100%;
-    box-sizing: border-box;
-    border-radius: 14px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    background: transparent;
-    color: var(--highlight-text);
-    transition:
-        background 0.2s ease,
-        border-color 0.2s ease,
-        box-shadow 0.2s ease;
+  width: 100%;
+  box-sizing: border-box;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: transparent;
+  color: var(--highlight-text);
+  transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 #agentSettingsContainer .system-prompt-container .prompt-textarea,
 #agentSettingsContainer .system-prompt-container .block-content-input,
 #agentSettingsContainer .system-prompt-container .variant-content-input {
-    border-radius: 14px;
+  border-radius: 14px;
 }
 
-#agentSettingsContainer .system-prompt-container .prompt-content-container > .prompt-textarea {
-    border-top: 1px solid rgba(255, 255, 255, 0.08);
+#agentSettingsContainer
+  .system-prompt-container
+  .prompt-content-container
+  > .prompt-textarea {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+#agentSettingsContainer
+  .system-prompt-container
+  .prompt-content-container.original-mode
+  > .prompt-textarea {
+  max-height: min(320px, 40vh);
+  overflow-y: auto;
 }
 
 #agentSettingsContainer .system-prompt-container .prompt-textarea {
-    min-height: 76px;
-    padding: 10px 12px;
+  min-height: 76px;
+  padding: 10px 12px;
 }
 
 #agentSettingsContainer .system-prompt-container .modular-prompt-container,
 #agentSettingsContainer .system-prompt-container .preset-prompt-container {
-    gap: 2px;
-    padding: 0;
+  gap: 2px;
+  padding: 0;
 }
 
 #agentSettingsContainer .system-prompt-container .modular-toolbar {
-    padding: 0;
-    border-bottom: none;
-    gap: 8px;
+  padding: 0;
+  border-bottom: none;
+  gap: 8px;
 }
 
 #agentSettingsContainer .system-prompt-container .toolbar-controls-group,
 #agentSettingsContainer .system-prompt-container .path-input-container {
-    gap: 8px;
+  gap: 8px;
 }
 
 #agentSettingsContainer .system-prompt-container .toolbar-btn,
 #agentSettingsContainer .system-prompt-container .preset-browse-btn,
 #agentSettingsContainer .system-prompt-container .preset-refresh-btn,
 #agentSettingsContainer .system-prompt-container .add-variant-btn {
-    min-height: 34px;
-    padding: 0 12px;
-    border-radius: var(--agent-settings-pill-radius);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    background: transparent;
-    color: var(--highlight-text);
-    font-size: 0.88em;
-    font-weight: 500;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: var(--agent-settings-pill-radius);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: transparent;
+  color: var(--highlight-text);
+  font-size: 0.88em;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
 }
 
 #agentSettingsContainer .system-prompt-container .preset-refresh-btn {
-    width: 34px;
-    min-width: 34px;
-    padding: 0;
+  width: 34px;
+  min-width: 34px;
+  padding: 0;
 }
 
 #agentSettingsContainer .system-prompt-container .blocks-container,
 #agentSettingsContainer .system-prompt-container .warehouse-container,
 #agentSettingsContainer .system-prompt-container .preview-text {
-    border-radius: 16px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    background: transparent;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: transparent;
 }
 
 #agentSettingsContainer .system-prompt-container .blocks-container,
 #agentSettingsContainer .system-prompt-container .warehouse-container {
-    min-height: 82px;
-    padding: 10px;
+  min-height: 82px;
+  padding: 10px;
 }
 
 #agentSettingsContainer .system-prompt-container .preview-text {
-    padding: 12px 13px;
+  padding: 12px 13px;
 }
 
 #agentSettingsContainer .system-prompt-container .prompt-block.text-block {
-    border-radius: 14px;
-    border-width: 1px;
+  border-radius: 14px;
+  border-width: 1px;
 }
 
 #agentSettingsContainer .system-prompt-container .prompt-block.newline-block {
-    border-radius: 999px;
+  border-radius: 999px;
 }
 
-body.light-theme #agentSettingsContainer .system-prompt-container .prompt-mode-button,
-body.light-theme #agentSettingsContainer .system-prompt-container .prompt-textarea,
-body.light-theme #agentSettingsContainer .system-prompt-container .preset-path-input,
-body.light-theme #agentSettingsContainer .system-prompt-container .preset-select,
-body.light-theme #agentSettingsContainer .system-prompt-container .block-name-input,
+body.light-theme
+  #agentSettingsContainer
+  .system-prompt-container
+  .prompt-mode-button,
+body.light-theme
+  #agentSettingsContainer
+  .system-prompt-container
+  .prompt-textarea,
+body.light-theme
+  #agentSettingsContainer
+  .system-prompt-container
+  .preset-path-input,
+body.light-theme
+  #agentSettingsContainer
+  .system-prompt-container
+  .preset-select,
+body.light-theme
+  #agentSettingsContainer
+  .system-prompt-container
+  .block-name-input,
 body.light-theme #agentSettingsContainer .system-prompt-container .toolbar-btn,
-body.light-theme #agentSettingsContainer .system-prompt-container .preset-browse-btn,
-body.light-theme #agentSettingsContainer .system-prompt-container .preset-refresh-btn,
-body.light-theme #agentSettingsContainer .system-prompt-container .add-variant-btn,
-body.light-theme #agentSettingsContainer .system-prompt-container .blocks-container,
-body.light-theme #agentSettingsContainer .system-prompt-container .warehouse-container,
+body.light-theme
+  #agentSettingsContainer
+  .system-prompt-container
+  .preset-browse-btn,
+body.light-theme
+  #agentSettingsContainer
+  .system-prompt-container
+  .preset-refresh-btn,
+body.light-theme
+  #agentSettingsContainer
+  .system-prompt-container
+  .add-variant-btn,
+body.light-theme
+  #agentSettingsContainer
+  .system-prompt-container
+  .blocks-container,
+body.light-theme
+  #agentSettingsContainer
+  .system-prompt-container
+  .warehouse-container,
 body.light-theme #agentSettingsContainer .system-prompt-container .preview-text,
-body.light-theme #agentSettingsContainer .system-prompt-container .prompt-block.text-block {
-    background: linear-gradient(
-        180deg,
-        color-mix(in srgb, var(--user-bubble-bg) 16%, rgba(255, 255, 255, 0.52)),
-        color-mix(in srgb, var(--user-bubble-bg) 10%, rgba(255, 255, 255, 0.26))
-    );
-    border-color: rgba(51, 51, 51, 0.08);
-    backdrop-filter: blur(12px) saturate(138%);
-    -webkit-backdrop-filter: blur(12px) saturate(138%);
-    box-shadow:
-        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.82),
-        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.72),
-        inset 0 0 0 1px rgba(255, 255, 255, 0.18),
-        inset 0 0 1px rgba(0, 0, 0, 0.06);
+body.light-theme
+  #agentSettingsContainer
+  .system-prompt-container
+  .prompt-block.text-block {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--user-bubble-bg) 16%, rgba(255, 255, 255, 0.52)),
+    color-mix(in srgb, var(--user-bubble-bg) 10%, rgba(255, 255, 255, 0.26))
+  );
+  border-color: rgba(51, 51, 51, 0.08);
+  backdrop-filter: blur(12px) saturate(138%);
+  -webkit-backdrop-filter: blur(12px) saturate(138%);
+  box-shadow: inset 2px -2px 1px -1px rgba(255, 255, 255, 0.82),
+    inset -2px 2px 1px -1px rgba(255, 255, 255, 0.72),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.18), inset 0 0 1px rgba(0, 0, 0, 0.06);
 }
 
-body.light-theme #agentSettingsContainer .system-prompt-container .prompt-mode-button:hover,
-body.light-theme #agentSettingsContainer .system-prompt-container .prompt-textarea:hover,
-body.light-theme #agentSettingsContainer .system-prompt-container .preset-path-input:hover,
-body.light-theme #agentSettingsContainer .system-prompt-container .preset-select:hover,
-body.light-theme #agentSettingsContainer .system-prompt-container .block-name-input:hover,
-body.light-theme #agentSettingsContainer .system-prompt-container .toolbar-btn:hover,
-body.light-theme #agentSettingsContainer .system-prompt-container .preset-browse-btn:hover,
-body.light-theme #agentSettingsContainer .system-prompt-container .preset-refresh-btn:hover,
-body.light-theme #agentSettingsContainer .system-prompt-container .add-variant-btn:hover,
-body.light-theme #agentSettingsContainer .system-prompt-container .prompt-block.text-block:hover {
-    border-color: color-mix(in srgb, var(--highlight-text) 72%, rgba(51, 51, 51, 0.12));
-    box-shadow:
-        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.82),
-        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.72),
-        inset 0 0 0 1px rgba(255, 255, 255, 0.18),
-        0 0 0 1px color-mix(in srgb, var(--highlight-text) 24%, transparent);
+body.light-theme
+  #agentSettingsContainer
+  .system-prompt-container
+  .prompt-mode-button:hover,
+body.light-theme
+  #agentSettingsContainer
+  .system-prompt-container
+  .prompt-textarea:hover,
+body.light-theme
+  #agentSettingsContainer
+  .system-prompt-container
+  .preset-path-input:hover,
+body.light-theme
+  #agentSettingsContainer
+  .system-prompt-container
+  .preset-select:hover,
+body.light-theme
+  #agentSettingsContainer
+  .system-prompt-container
+  .block-name-input:hover,
+body.light-theme
+  #agentSettingsContainer
+  .system-prompt-container
+  .toolbar-btn:hover,
+body.light-theme
+  #agentSettingsContainer
+  .system-prompt-container
+  .preset-browse-btn:hover,
+body.light-theme
+  #agentSettingsContainer
+  .system-prompt-container
+  .preset-refresh-btn:hover,
+body.light-theme
+  #agentSettingsContainer
+  .system-prompt-container
+  .add-variant-btn:hover,
+body.light-theme
+  #agentSettingsContainer
+  .system-prompt-container
+  .prompt-block.text-block:hover {
+  border-color: color-mix(
+    in srgb,
+    var(--highlight-text) 72%,
+    rgba(51, 51, 51, 0.12)
+  );
+  box-shadow: inset 2px -2px 1px -1px rgba(255, 255, 255, 0.82),
+    inset -2px 2px 1px -1px rgba(255, 255, 255, 0.72),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.18),
+    0 0 0 1px color-mix(in srgb, var(--highlight-text) 24%, transparent);
 }
 
-body.light-theme #agentSettingsContainer .system-prompt-container .prompt-mode-button.active {
-    background: linear-gradient(
-        180deg,
-        color-mix(in srgb, var(--highlight-text) 92%, rgba(255, 255, 255, 0.18)),
-        color-mix(in srgb, var(--highlight-text) 80%, rgba(255, 255, 255, 0.08))
-    );
-    border-color: color-mix(in srgb, var(--highlight-text) 90%, rgba(51, 51, 51, 0.16));
-    color: var(--text-on-accent);
-    box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.28),
-        0 0 0 1px color-mix(in srgb, var(--highlight-text) 30%, transparent);
+body.light-theme
+  #agentSettingsContainer
+  .system-prompt-container
+  .prompt-mode-button.active {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--highlight-text) 92%, rgba(255, 255, 255, 0.18)),
+    color-mix(in srgb, var(--highlight-text) 80%, rgba(255, 255, 255, 0.08))
+  );
+  border-color: color-mix(
+    in srgb,
+    var(--highlight-text) 90%,
+    rgba(51, 51, 51, 0.16)
+  );
+  color: var(--text-on-accent);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28),
+    0 0 0 1px color-mix(in srgb, var(--highlight-text) 30%, transparent);
 }
 
-body:not(.light-theme) #agentSettingsContainer .system-prompt-container .prompt-mode-button,
-body:not(.light-theme) #agentSettingsContainer .system-prompt-container .prompt-textarea,
-body:not(.light-theme) #agentSettingsContainer .system-prompt-container .preset-path-input,
-body:not(.light-theme) #agentSettingsContainer .system-prompt-container .preset-select,
-body:not(.light-theme) #agentSettingsContainer .system-prompt-container .block-name-input,
-body:not(.light-theme) #agentSettingsContainer .system-prompt-container .toolbar-btn,
-body:not(.light-theme) #agentSettingsContainer .system-prompt-container .preset-browse-btn,
-body:not(.light-theme) #agentSettingsContainer .system-prompt-container .preset-refresh-btn,
-body:not(.light-theme) #agentSettingsContainer .system-prompt-container .add-variant-btn,
-body:not(.light-theme) #agentSettingsContainer .system-prompt-container .blocks-container,
-body:not(.light-theme) #agentSettingsContainer .system-prompt-container .warehouse-container,
-body:not(.light-theme) #agentSettingsContainer .system-prompt-container .preview-text,
-body:not(.light-theme) #agentSettingsContainer .system-prompt-container .prompt-block.text-block {
-    background: linear-gradient(
-        180deg,
-        color-mix(in srgb, var(--user-bubble-bg) 54%, rgba(255, 255, 255, 0.08)),
-        color-mix(in srgb, var(--user-bubble-bg) 40%, rgba(255, 255, 255, 0.04))
-    );
-    border-color: rgba(255, 255, 255, 0.08);
-    backdrop-filter: blur(10px) saturate(124%);
-    -webkit-backdrop-filter: blur(10px) saturate(124%);
-    box-shadow:
-        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.18),
-        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.14),
-        inset 0 0 0 1px rgba(255, 255, 255, 0.04),
-        inset 0 0 1px rgba(255, 255, 255, 0.03);
+body:not(.light-theme)
+  #agentSettingsContainer
+  .system-prompt-container
+  .prompt-mode-button,
+body:not(.light-theme)
+  #agentSettingsContainer
+  .system-prompt-container
+  .prompt-textarea,
+body:not(.light-theme)
+  #agentSettingsContainer
+  .system-prompt-container
+  .preset-path-input,
+body:not(.light-theme)
+  #agentSettingsContainer
+  .system-prompt-container
+  .preset-select,
+body:not(.light-theme)
+  #agentSettingsContainer
+  .system-prompt-container
+  .block-name-input,
+body:not(.light-theme)
+  #agentSettingsContainer
+  .system-prompt-container
+  .toolbar-btn,
+body:not(.light-theme)
+  #agentSettingsContainer
+  .system-prompt-container
+  .preset-browse-btn,
+body:not(.light-theme)
+  #agentSettingsContainer
+  .system-prompt-container
+  .preset-refresh-btn,
+body:not(.light-theme)
+  #agentSettingsContainer
+  .system-prompt-container
+  .add-variant-btn,
+body:not(.light-theme)
+  #agentSettingsContainer
+  .system-prompt-container
+  .blocks-container,
+body:not(.light-theme)
+  #agentSettingsContainer
+  .system-prompt-container
+  .warehouse-container,
+body:not(.light-theme)
+  #agentSettingsContainer
+  .system-prompt-container
+  .preview-text,
+body:not(.light-theme)
+  #agentSettingsContainer
+  .system-prompt-container
+  .prompt-block.text-block {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--user-bubble-bg) 54%, rgba(255, 255, 255, 0.08)),
+    color-mix(in srgb, var(--user-bubble-bg) 40%, rgba(255, 255, 255, 0.04))
+  );
+  border-color: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(10px) saturate(124%);
+  -webkit-backdrop-filter: blur(10px) saturate(124%);
+  box-shadow: inset 1px -1px 1px -1px rgba(255, 255, 255, 0.18),
+    inset -1px 1px 1px -1px rgba(255, 255, 255, 0.14),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.04),
+    inset 0 0 1px rgba(255, 255, 255, 0.03);
 }
 
-body:not(.light-theme) #agentSettingsContainer .system-prompt-container .prompt-mode-button:hover,
-body:not(.light-theme) #agentSettingsContainer .system-prompt-container .prompt-textarea:hover,
-body:not(.light-theme) #agentSettingsContainer .system-prompt-container .preset-path-input:hover,
-body:not(.light-theme) #agentSettingsContainer .system-prompt-container .preset-select:hover,
-body:not(.light-theme) #agentSettingsContainer .system-prompt-container .block-name-input:hover,
-body:not(.light-theme) #agentSettingsContainer .system-prompt-container .toolbar-btn:hover,
-body:not(.light-theme) #agentSettingsContainer .system-prompt-container .preset-browse-btn:hover,
-body:not(.light-theme) #agentSettingsContainer .system-prompt-container .preset-refresh-btn:hover,
-body:not(.light-theme) #agentSettingsContainer .system-prompt-container .add-variant-btn:hover,
-body:not(.light-theme) #agentSettingsContainer .system-prompt-container .prompt-block.text-block:hover {
-    border-color: color-mix(in srgb, var(--highlight-text) 68%, rgba(255, 255, 255, 0.12));
-    box-shadow:
-        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.2),
-        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.16),
-        inset 0 0 0 1px rgba(255, 255, 255, 0.05),
-        0 0 0 1px color-mix(in srgb, var(--highlight-text) 26%, transparent);
+body:not(.light-theme)
+  #agentSettingsContainer
+  .system-prompt-container
+  .prompt-mode-button:hover,
+body:not(.light-theme)
+  #agentSettingsContainer
+  .system-prompt-container
+  .prompt-textarea:hover,
+body:not(.light-theme)
+  #agentSettingsContainer
+  .system-prompt-container
+  .preset-path-input:hover,
+body:not(.light-theme)
+  #agentSettingsContainer
+  .system-prompt-container
+  .preset-select:hover,
+body:not(.light-theme)
+  #agentSettingsContainer
+  .system-prompt-container
+  .block-name-input:hover,
+body:not(.light-theme)
+  #agentSettingsContainer
+  .system-prompt-container
+  .toolbar-btn:hover,
+body:not(.light-theme)
+  #agentSettingsContainer
+  .system-prompt-container
+  .preset-browse-btn:hover,
+body:not(.light-theme)
+  #agentSettingsContainer
+  .system-prompt-container
+  .preset-refresh-btn:hover,
+body:not(.light-theme)
+  #agentSettingsContainer
+  .system-prompt-container
+  .add-variant-btn:hover,
+body:not(.light-theme)
+  #agentSettingsContainer
+  .system-prompt-container
+  .prompt-block.text-block:hover {
+  border-color: color-mix(
+    in srgb,
+    var(--highlight-text) 68%,
+    rgba(255, 255, 255, 0.12)
+  );
+  box-shadow: inset 1px -1px 1px -1px rgba(255, 255, 255, 0.2),
+    inset -1px 1px 1px -1px rgba(255, 255, 255, 0.16),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.05),
+    0 0 0 1px color-mix(in srgb, var(--highlight-text) 26%, transparent);
 }
 
-body:not(.light-theme) #agentSettingsContainer .system-prompt-container .prompt-mode-button.active {
-    background: linear-gradient(
-        180deg,
-        color-mix(in srgb, var(--highlight-text) 86%, rgba(255, 255, 255, 0.14)),
-        color-mix(in srgb, var(--highlight-text) 74%, rgba(255, 255, 255, 0.05))
-    );
-    border-color: var(--highlight-text);
-    color: var(--text-on-accent);
-    box-shadow:
-        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.22),
-        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.18),
-        0 0 0 1px color-mix(in srgb, var(--highlight-text) 32%, transparent);
+body:not(.light-theme)
+  #agentSettingsContainer
+  .system-prompt-container
+  .prompt-mode-button.active {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--highlight-text) 86%, rgba(255, 255, 255, 0.14)),
+    color-mix(in srgb, var(--highlight-text) 74%, rgba(255, 255, 255, 0.05))
+  );
+  border-color: var(--highlight-text);
+  color: var(--text-on-accent);
+  box-shadow: inset 1px -1px 1px -1px rgba(255, 255, 255, 0.22),
+    inset -1px 1px 1px -1px rgba(255, 255, 255, 0.18),
+    0 0 0 1px color-mix(in srgb, var(--highlight-text) 32%, transparent);
 }
 
-body.light-theme #agentSettingsContainer .system-prompt-container .prompt-textarea:focus,
-body.light-theme #agentSettingsContainer .system-prompt-container .prompt-textarea:focus-visible,
-body.light-theme #agentSettingsContainer .system-prompt-container .preset-path-input:focus,
-body.light-theme #agentSettingsContainer .system-prompt-container .preset-path-input:focus-visible,
-body.light-theme #agentSettingsContainer .system-prompt-container .preset-select:focus,
-body.light-theme #agentSettingsContainer .system-prompt-container .preset-select:focus-visible,
-body.light-theme #agentSettingsContainer .system-prompt-container .block-name-input:focus,
-body.light-theme #agentSettingsContainer .system-prompt-container .block-name-input:focus-visible {
-    outline: none;
-    border-color: var(--highlight-text);
-    box-shadow:
-        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.82),
-        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.72),
-        inset 0 0 0 1px rgba(255, 255, 255, 0.18),
-        0 0 0 1px color-mix(in srgb, var(--highlight-text) 34%, transparent);
+body.light-theme
+  #agentSettingsContainer
+  .system-prompt-container
+  .prompt-textarea:focus,
+body.light-theme
+  #agentSettingsContainer
+  .system-prompt-container
+  .prompt-textarea:focus-visible,
+body.light-theme
+  #agentSettingsContainer
+  .system-prompt-container
+  .preset-path-input:focus,
+body.light-theme
+  #agentSettingsContainer
+  .system-prompt-container
+  .preset-path-input:focus-visible,
+body.light-theme
+  #agentSettingsContainer
+  .system-prompt-container
+  .preset-select:focus,
+body.light-theme
+  #agentSettingsContainer
+  .system-prompt-container
+  .preset-select:focus-visible,
+body.light-theme
+  #agentSettingsContainer
+  .system-prompt-container
+  .block-name-input:focus,
+body.light-theme
+  #agentSettingsContainer
+  .system-prompt-container
+  .block-name-input:focus-visible {
+  outline: none;
+  border-color: var(--highlight-text);
+  box-shadow: inset 2px -2px 1px -1px rgba(255, 255, 255, 0.82),
+    inset -2px 2px 1px -1px rgba(255, 255, 255, 0.72),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.18),
+    0 0 0 1px color-mix(in srgb, var(--highlight-text) 34%, transparent);
 }
 
-body:not(.light-theme) #agentSettingsContainer .system-prompt-container .prompt-textarea:focus,
-body:not(.light-theme) #agentSettingsContainer .system-prompt-container .prompt-textarea:focus-visible,
-body:not(.light-theme) #agentSettingsContainer .system-prompt-container .preset-path-input:focus,
-body:not(.light-theme) #agentSettingsContainer .system-prompt-container .preset-path-input:focus-visible,
-body:not(.light-theme) #agentSettingsContainer .system-prompt-container .preset-select:focus,
-body:not(.light-theme) #agentSettingsContainer .system-prompt-container .preset-select:focus-visible,
-body:not(.light-theme) #agentSettingsContainer .system-prompt-container .block-name-input:focus,
-body:not(.light-theme) #agentSettingsContainer .system-prompt-container .block-name-input:focus-visible {
-    outline: none;
-    border-color: var(--highlight-text);
-    box-shadow:
-        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.2),
-        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.16),
-        inset 0 0 0 1px rgba(255, 255, 255, 0.05),
-        0 0 0 1px color-mix(in srgb, var(--highlight-text) 34%, transparent);
+body:not(.light-theme)
+  #agentSettingsContainer
+  .system-prompt-container
+  .prompt-textarea:focus,
+body:not(.light-theme)
+  #agentSettingsContainer
+  .system-prompt-container
+  .prompt-textarea:focus-visible,
+body:not(.light-theme)
+  #agentSettingsContainer
+  .system-prompt-container
+  .preset-path-input:focus,
+body:not(.light-theme)
+  #agentSettingsContainer
+  .system-prompt-container
+  .preset-path-input:focus-visible,
+body:not(.light-theme)
+  #agentSettingsContainer
+  .system-prompt-container
+  .preset-select:focus,
+body:not(.light-theme)
+  #agentSettingsContainer
+  .system-prompt-container
+  .preset-select:focus-visible,
+body:not(.light-theme)
+  #agentSettingsContainer
+  .system-prompt-container
+  .block-name-input:focus,
+body:not(.light-theme)
+  #agentSettingsContainer
+  .system-prompt-container
+  .block-name-input:focus-visible {
+  outline: none;
+  border-color: var(--highlight-text);
+  box-shadow: inset 1px -1px 1px -1px rgba(255, 255, 255, 0.2),
+    inset -1px 1px 1px -1px rgba(255, 255, 255, 0.16),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.05),
+    0 0 0 1px color-mix(in srgb, var(--highlight-text) 34%, transparent);
 }
 
 #agentSettingsContainer .system-prompt-container .blocks-container,
 #agentSettingsContainer .system-prompt-container .warehouse-container,
 #agentSettingsContainer .system-prompt-container .preview-text {
-    border: none;
-    border-radius: 0;
-    background: transparent;
-    box-shadow: none;
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 #agentSettingsContainer .system-prompt-container .prompt-block.text-block {
-    box-shadow: none;
+  box-shadow: none;
 }
 
 #agentSettingsContainer .system-prompt-container .modular-toolbar,
 #agentSettingsContainer .system-prompt-container .preset-path-section,
 #agentSettingsContainer .system-prompt-container .preset-selector-section,
 #agentSettingsContainer .system-prompt-container .preset-editor-section {
-    background: transparent;
-    box-shadow: none;
+  background: transparent;
+  box-shadow: none;
 }
 
 #agentSettingsContainer .params-header:hover,
 #agentSettingsContainer .agent-params-collapsible-container.collapsed:hover,
-#agentSettingsContainer .agent-params-collapsible-container.collapsed:hover .params-header,
+#agentSettingsContainer
+  .agent-params-collapsible-container.collapsed:hover
+  .params-header,
 #agentSettingsContainer .agent-identity-container .style-collapse-header:hover {
-    background: transparent;
-    box-shadow: none;
+  background: transparent;
+  box-shadow: none;
 }
 
 #agentSettingsContainer .strip-regex-row {
-    background: transparent;
-    box-shadow: none;
+  background: transparent;
+  box-shadow: none;
 }
 
 #agentSettingsContainer .strip-regex-row,
 #agentSettingsContainer .system-prompt-container .blocks-container,
 #agentSettingsContainer .system-prompt-container .warehouse-container,
 #agentSettingsContainer .system-prompt-container .preview-text {
-    border-color: color-mix(in srgb, var(--border-color) 72%, transparent);
+  border-color: color-mix(in srgb, var(--border-color) 72%, transparent);
 }
 
-#agentSettingsContainer .agent-identity-container .agent-style-collapsible-container {
-    margin: 0;
-    border-top: 1px solid color-mix(in srgb, var(--border-color) 72%, transparent);
-    background: transparent;
+#agentSettingsContainer
+  .agent-identity-container
+  .agent-style-collapsible-container {
+  margin: 0;
+  border-top: 1px solid color-mix(in srgb, var(--border-color) 72%, transparent);
+  background: transparent;
 }
 
 #agentSettingsContainer .agent-identity-container .style-collapse-header,
 #agentSettingsContainer .agent-identity-container .agent-style-controls {
-    background: transparent;
+  background: transparent;
 }
 
 #agentSettingsContainer .strip-regex-container {
-    margin-top: 0;
+  margin-top: 0;
 }
 
 #agentSettingsContainer {
-    --agent-settings-pill-radius: 16px;
+  --agent-settings-pill-radius: 16px;
 }
 
-#agentSettingsContainer input[type="text"]:not(.prompt-textarea):not(.strip-regex-input),
+#agentSettingsContainer
+  input[type="text"]:not(.prompt-textarea):not(.strip-regex-input),
 #agentSettingsContainer input[type="url"],
 #agentSettingsContainer input[type="password"],
 #agentSettingsContainer input[type="number"],
 #agentSettingsContainer select {
-    width: 100%;
-    height: 34px;
-    min-height: 34px;
-    max-height: 34px;
-    padding: 0 12px;
-    margin-bottom: 0;
-    border-radius: var(--agent-settings-pill-radius) !important;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    background: transparent;
-    background-clip: padding-box;
-    color: var(--highlight-text);
-    font-size: 0.9em;
-    line-height: 1;
-    box-sizing: border-box;
-    transition:
-        background 0.2s ease,
-        border-color 0.2s ease,
-        box-shadow 0.2s ease;
+  width: 100%;
+  height: 34px;
+  min-height: 34px;
+  max-height: 34px;
+  padding: 0 12px;
+  margin-bottom: 0;
+  border-radius: var(--agent-settings-pill-radius) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: transparent;
+  background-clip: padding-box;
+  color: var(--highlight-text);
+  font-size: 0.9em;
+  line-height: 1;
+  box-sizing: border-box;
+  transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 #agentSettingsContainer select {
-    padding-right: 34px;
-    appearance: none;
-    -webkit-appearance: none;
-    -moz-appearance: none;
-    background-repeat: no-repeat;
-    background-position: right 12px center;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='rgba(160, 160, 176, 0.7)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  padding-right: 34px;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='rgba(160, 160, 176, 0.7)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
 }
 
 #agentSettingsContainer #agentModel {
-    padding-right: 38px;
+  padding-right: 38px;
 }
 
-body.light-theme #agentSettingsContainer input[type="text"]:not(.prompt-textarea):not(.strip-regex-input),
+body.light-theme
+  #agentSettingsContainer
+  input[type="text"]:not(.prompt-textarea):not(.strip-regex-input),
 body.light-theme #agentSettingsContainer input[type="url"],
 body.light-theme #agentSettingsContainer input[type="password"],
 body.light-theme #agentSettingsContainer input[type="number"],
 body.light-theme #agentSettingsContainer select {
-    background: linear-gradient(
-        180deg,
-        color-mix(in srgb, var(--user-bubble-bg) 18%, rgba(255, 255, 255, 0.52)),
-        color-mix(in srgb, var(--user-bubble-bg) 12%, rgba(255, 255, 255, 0.26))
-    );
-    border-color: rgba(51, 51, 51, 0.08);
-    backdrop-filter: blur(12px) saturate(138%);
-    -webkit-backdrop-filter: blur(12px) saturate(138%);
-    box-shadow:
-        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.82),
-        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.72),
-        inset 6px -6px 1px -6px rgba(255, 255, 255, 0.42),
-        inset -6px 6px 1px -6px rgba(255, 255, 255, 0.3),
-        inset 0 0 0 1px rgba(255, 255, 255, 0.18),
-        inset 0 0 1px rgba(0, 0, 0, 0.06);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--user-bubble-bg) 18%, rgba(255, 255, 255, 0.52)),
+    color-mix(in srgb, var(--user-bubble-bg) 12%, rgba(255, 255, 255, 0.26))
+  );
+  border-color: rgba(51, 51, 51, 0.08);
+  backdrop-filter: blur(12px) saturate(138%);
+  -webkit-backdrop-filter: blur(12px) saturate(138%);
+  box-shadow: inset 2px -2px 1px -1px rgba(255, 255, 255, 0.82),
+    inset -2px 2px 1px -1px rgba(255, 255, 255, 0.72),
+    inset 6px -6px 1px -6px rgba(255, 255, 255, 0.42),
+    inset -6px 6px 1px -6px rgba(255, 255, 255, 0.3),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.18), inset 0 0 1px rgba(0, 0, 0, 0.06);
 }
 
-body.light-theme #agentSettingsContainer input[type="text"]:not(.prompt-textarea):not(.strip-regex-input):hover,
+body.light-theme
+  #agentSettingsContainer
+  input[type="text"]:not(.prompt-textarea):not(.strip-regex-input):hover,
 body.light-theme #agentSettingsContainer input[type="url"]:hover,
 body.light-theme #agentSettingsContainer input[type="password"]:hover,
 body.light-theme #agentSettingsContainer input[type="number"]:hover,
 body.light-theme #agentSettingsContainer select:hover {
-    border-color: color-mix(in srgb, var(--highlight-text) 72%, rgba(51, 51, 51, 0.12));
-    box-shadow:
-        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.82),
-        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.72),
-        inset 0 0 0 1px rgba(255, 255, 255, 0.18),
-        0 0 0 1px color-mix(in srgb, var(--highlight-text) 24%, transparent);
+  border-color: color-mix(
+    in srgb,
+    var(--highlight-text) 72%,
+    rgba(51, 51, 51, 0.12)
+  );
+  box-shadow: inset 2px -2px 1px -1px rgba(255, 255, 255, 0.82),
+    inset -2px 2px 1px -1px rgba(255, 255, 255, 0.72),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.18),
+    0 0 0 1px color-mix(in srgb, var(--highlight-text) 24%, transparent);
 }
 
-body.light-theme #agentSettingsContainer input[type="text"]:not(.prompt-textarea):not(.strip-regex-input):focus,
-body.light-theme #agentSettingsContainer input[type="text"]:not(.prompt-textarea):not(.strip-regex-input):focus-visible,
+body.light-theme
+  #agentSettingsContainer
+  input[type="text"]:not(.prompt-textarea):not(.strip-regex-input):focus,
+body.light-theme
+  #agentSettingsContainer
+  input[type="text"]:not(.prompt-textarea):not(
+    .strip-regex-input
+  ):focus-visible,
 body.light-theme #agentSettingsContainer input[type="url"]:focus,
 body.light-theme #agentSettingsContainer input[type="url"]:focus-visible,
 body.light-theme #agentSettingsContainer input[type="password"]:focus,
@@ -667,181 +902,218 @@ body.light-theme #agentSettingsContainer input[type="number"]:focus,
 body.light-theme #agentSettingsContainer input[type="number"]:focus-visible,
 body.light-theme #agentSettingsContainer select:focus,
 body.light-theme #agentSettingsContainer select:focus-visible {
-    outline: none;
-    border-color: var(--highlight-text);
-    box-shadow:
-        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.82),
-        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.72),
-        inset 0 0 0 1px rgba(255, 255, 255, 0.18),
-        0 0 0 1px color-mix(in srgb, var(--highlight-text) 34%, transparent);
+  outline: none;
+  border-color: var(--highlight-text);
+  box-shadow: inset 2px -2px 1px -1px rgba(255, 255, 255, 0.82),
+    inset -2px 2px 1px -1px rgba(255, 255, 255, 0.72),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.18),
+    0 0 0 1px color-mix(in srgb, var(--highlight-text) 34%, transparent);
 }
 
-body:not(.light-theme) #agentSettingsContainer input[type="text"]:not(.prompt-textarea):not(.strip-regex-input),
+body:not(.light-theme)
+  #agentSettingsContainer
+  input[type="text"]:not(.prompt-textarea):not(.strip-regex-input),
 body:not(.light-theme) #agentSettingsContainer input[type="url"],
 body:not(.light-theme) #agentSettingsContainer input[type="password"],
 body:not(.light-theme) #agentSettingsContainer input[type="number"],
 body:not(.light-theme) #agentSettingsContainer select {
-    background: linear-gradient(
-        180deg,
-        color-mix(in srgb, var(--user-bubble-bg) 58%, rgba(255, 255, 255, 0.08)),
-        color-mix(in srgb, var(--user-bubble-bg) 44%, rgba(255, 255, 255, 0.04))
-    );
-    border-color: rgba(255, 255, 255, 0.08);
-    backdrop-filter: blur(10px) saturate(124%);
-    -webkit-backdrop-filter: blur(10px) saturate(124%);
-    box-shadow:
-        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.18),
-        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.14),
-        inset 0 0 0 1px rgba(255, 255, 255, 0.04),
-        inset 0 0 1px rgba(255, 255, 255, 0.03);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--user-bubble-bg) 58%, rgba(255, 255, 255, 0.08)),
+    color-mix(in srgb, var(--user-bubble-bg) 44%, rgba(255, 255, 255, 0.04))
+  );
+  border-color: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(10px) saturate(124%);
+  -webkit-backdrop-filter: blur(10px) saturate(124%);
+  box-shadow: inset 1px -1px 1px -1px rgba(255, 255, 255, 0.18),
+    inset -1px 1px 1px -1px rgba(255, 255, 255, 0.14),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.04),
+    inset 0 0 1px rgba(255, 255, 255, 0.03);
 }
 
-body:not(.light-theme) #agentSettingsContainer input[type="text"]:not(.prompt-textarea):not(.strip-regex-input):hover,
+body:not(.light-theme)
+  #agentSettingsContainer
+  input[type="text"]:not(.prompt-textarea):not(.strip-regex-input):hover,
 body:not(.light-theme) #agentSettingsContainer input[type="url"]:hover,
 body:not(.light-theme) #agentSettingsContainer input[type="password"]:hover,
 body:not(.light-theme) #agentSettingsContainer input[type="number"]:hover,
 body:not(.light-theme) #agentSettingsContainer select:hover {
-    border-color: color-mix(in srgb, var(--highlight-text) 68%, rgba(255, 255, 255, 0.12));
-    box-shadow:
-        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.2),
-        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.16),
-        inset 0 0 0 1px rgba(255, 255, 255, 0.05),
-        0 0 0 1px color-mix(in srgb, var(--highlight-text) 26%, transparent);
+  border-color: color-mix(
+    in srgb,
+    var(--highlight-text) 68%,
+    rgba(255, 255, 255, 0.12)
+  );
+  box-shadow: inset 1px -1px 1px -1px rgba(255, 255, 255, 0.2),
+    inset -1px 1px 1px -1px rgba(255, 255, 255, 0.16),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.05),
+    0 0 0 1px color-mix(in srgb, var(--highlight-text) 26%, transparent);
 }
 
-body:not(.light-theme) #agentSettingsContainer input[type="text"]:not(.prompt-textarea):not(.strip-regex-input):focus,
-body:not(.light-theme) #agentSettingsContainer input[type="text"]:not(.prompt-textarea):not(.strip-regex-input):focus-visible,
+body:not(.light-theme)
+  #agentSettingsContainer
+  input[type="text"]:not(.prompt-textarea):not(.strip-regex-input):focus,
+body:not(.light-theme)
+  #agentSettingsContainer
+  input[type="text"]:not(.prompt-textarea):not(
+    .strip-regex-input
+  ):focus-visible,
 body:not(.light-theme) #agentSettingsContainer input[type="url"]:focus,
 body:not(.light-theme) #agentSettingsContainer input[type="url"]:focus-visible,
 body:not(.light-theme) #agentSettingsContainer input[type="password"]:focus,
-body:not(.light-theme) #agentSettingsContainer input[type="password"]:focus-visible,
+body:not(.light-theme)
+  #agentSettingsContainer
+  input[type="password"]:focus-visible,
 body:not(.light-theme) #agentSettingsContainer input[type="number"]:focus,
-body:not(.light-theme) #agentSettingsContainer input[type="number"]:focus-visible,
+body:not(.light-theme)
+  #agentSettingsContainer
+  input[type="number"]:focus-visible,
 body:not(.light-theme) #agentSettingsContainer select:focus,
 body:not(.light-theme) #agentSettingsContainer select:focus-visible {
-    outline: none;
-    border-color: var(--highlight-text);
-    box-shadow:
-        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.2),
-        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.16),
-        inset 0 0 0 1px rgba(255, 255, 255, 0.05),
-        0 0 0 1px color-mix(in srgb, var(--highlight-text) 34%, transparent);
+  outline: none;
+  border-color: var(--highlight-text);
+  box-shadow: inset 1px -1px 1px -1px rgba(255, 255, 255, 0.2),
+    inset -1px 1px 1px -1px rgba(255, 255, 255, 0.16),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.05),
+    0 0 0 1px color-mix(in srgb, var(--highlight-text) 34%, transparent);
 }
 
 #agentSettingsContainer input[type="number"] {
-    padding: 0 12px;
-    background-image: none;
+  padding: 0 12px;
+  background-image: none;
 }
 
 body.light-theme #agentSettingsContainer input[type="number"]:hover,
 body.light-theme #agentSettingsContainer input[type="number"]:focus,
 body.light-theme #agentSettingsContainer input[type="number"]:focus-visible {
-    background: linear-gradient(
-        180deg,
-        color-mix(in srgb, var(--user-bubble-bg) 18%, rgba(255, 255, 255, 0.52)),
-        color-mix(in srgb, var(--user-bubble-bg) 12%, rgba(255, 255, 255, 0.26))
-    );
-    background-image: none;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--user-bubble-bg) 18%, rgba(255, 255, 255, 0.52)),
+    color-mix(in srgb, var(--user-bubble-bg) 12%, rgba(255, 255, 255, 0.26))
+  );
+  background-image: none;
 }
 
 body:not(.light-theme) #agentSettingsContainer input[type="number"]:hover,
 body:not(.light-theme) #agentSettingsContainer input[type="number"]:focus,
-body:not(.light-theme) #agentSettingsContainer input[type="number"]:focus-visible {
-    background: linear-gradient(
-        180deg,
-        color-mix(in srgb, var(--user-bubble-bg) 58%, rgba(255, 255, 255, 0.08)),
-        color-mix(in srgb, var(--user-bubble-bg) 44%, rgba(255, 255, 255, 0.04))
-    );
-    background-image: none;
+body:not(.light-theme)
+  #agentSettingsContainer
+  input[type="number"]:focus-visible {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--user-bubble-bg) 58%, rgba(255, 255, 255, 0.08)),
+    color-mix(in srgb, var(--user-bubble-bg) 44%, rgba(255, 255, 255, 0.04))
+  );
+  background-image: none;
 }
 
 #agentSettingsContainer .model-input-container button:not(#openModelSelectBtn) {
-    width: 34px;
-    height: 34px;
-    border-radius: var(--agent-settings-pill-radius);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    background: transparent;
-    color: var(--highlight-text);
+  width: 34px;
+  height: 34px;
+  border-radius: var(--agent-settings-pill-radius);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: transparent;
+  color: var(--highlight-text);
 }
 
-body.light-theme #agentSettingsContainer .model-input-container button:not(#openModelSelectBtn) {
-    background: linear-gradient(
-        180deg,
-        color-mix(in srgb, var(--user-bubble-bg) 18%, rgba(255, 255, 255, 0.52)),
-        color-mix(in srgb, var(--user-bubble-bg) 12%, rgba(255, 255, 255, 0.26))
-    );
-    border-color: rgba(51, 51, 51, 0.08);
-    box-shadow:
-        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.82),
-        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.72),
-        inset 0 0 0 1px rgba(255, 255, 255, 0.18),
-        inset 0 0 1px rgba(0, 0, 0, 0.06);
+body.light-theme
+  #agentSettingsContainer
+  .model-input-container
+  button:not(#openModelSelectBtn) {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--user-bubble-bg) 18%, rgba(255, 255, 255, 0.52)),
+    color-mix(in srgb, var(--user-bubble-bg) 12%, rgba(255, 255, 255, 0.26))
+  );
+  border-color: rgba(51, 51, 51, 0.08);
+  box-shadow: inset 2px -2px 1px -1px rgba(255, 255, 255, 0.82),
+    inset -2px 2px 1px -1px rgba(255, 255, 255, 0.72),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.18), inset 0 0 1px rgba(0, 0, 0, 0.06);
 }
 
-body:not(.light-theme) #agentSettingsContainer .model-input-container button:not(#openModelSelectBtn) {
-    background: linear-gradient(
-        180deg,
-        color-mix(in srgb, var(--user-bubble-bg) 58%, rgba(255, 255, 255, 0.08)),
-        color-mix(in srgb, var(--user-bubble-bg) 44%, rgba(255, 255, 255, 0.04))
-    );
-    border-color: rgba(255, 255, 255, 0.08);
-    box-shadow:
-        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.18),
-        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.14),
-        inset 0 0 0 1px rgba(255, 255, 255, 0.04),
-        inset 0 0 1px rgba(255, 255, 255, 0.03);
+body:not(.light-theme)
+  #agentSettingsContainer
+  .model-input-container
+  button:not(#openModelSelectBtn) {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--user-bubble-bg) 58%, rgba(255, 255, 255, 0.08)),
+    color-mix(in srgb, var(--user-bubble-bg) 44%, rgba(255, 255, 255, 0.04))
+  );
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow: inset 1px -1px 1px -1px rgba(255, 255, 255, 0.18),
+    inset -1px 1px 1px -1px rgba(255, 255, 255, 0.14),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.04),
+    inset 0 0 1px rgba(255, 255, 255, 0.03);
 }
 
-body.light-theme #agentSettingsContainer .model-input-container button:not(#openModelSelectBtn):hover,
-body.light-theme #agentSettingsContainer .model-input-container button:not(#openModelSelectBtn):focus-visible {
-    background: linear-gradient(
-        180deg,
-        color-mix(in srgb, var(--user-bubble-bg) 24%, rgba(255, 255, 255, 0.56)),
-        color-mix(in srgb, var(--user-bubble-bg) 16%, rgba(255, 255, 255, 0.3))
-    );
-    border-color: color-mix(in srgb, var(--highlight-text) 72%, rgba(51, 51, 51, 0.12));
-    box-shadow:
-        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.82),
-        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.72),
-        inset 0 0 0 1px rgba(255, 255, 255, 0.18),
-        0 0 0 1px color-mix(in srgb, var(--highlight-text) 24%, transparent);
+body.light-theme
+  #agentSettingsContainer
+  .model-input-container
+  button:not(#openModelSelectBtn):hover,
+body.light-theme
+  #agentSettingsContainer
+  .model-input-container
+  button:not(#openModelSelectBtn):focus-visible {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--user-bubble-bg) 24%, rgba(255, 255, 255, 0.56)),
+    color-mix(in srgb, var(--user-bubble-bg) 16%, rgba(255, 255, 255, 0.3))
+  );
+  border-color: color-mix(
+    in srgb,
+    var(--highlight-text) 72%,
+    rgba(51, 51, 51, 0.12)
+  );
+  box-shadow: inset 2px -2px 1px -1px rgba(255, 255, 255, 0.82),
+    inset -2px 2px 1px -1px rgba(255, 255, 255, 0.72),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.18),
+    0 0 0 1px color-mix(in srgb, var(--highlight-text) 24%, transparent);
 }
 
-body:not(.light-theme) #agentSettingsContainer .model-input-container button:not(#openModelSelectBtn):hover,
-body:not(.light-theme) #agentSettingsContainer .model-input-container button:not(#openModelSelectBtn):focus-visible {
-    background: linear-gradient(
-        180deg,
-        color-mix(in srgb, var(--user-bubble-bg) 66%, rgba(255, 255, 255, 0.1)),
-        color-mix(in srgb, var(--user-bubble-bg) 50%, rgba(255, 255, 255, 0.05))
-    );
-    border-color: color-mix(in srgb, var(--highlight-text) 68%, rgba(255, 255, 255, 0.12));
-    box-shadow:
-        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.2),
-        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.16),
-        inset 0 0 0 1px rgba(255, 255, 255, 0.05),
-        0 0 0 1px color-mix(in srgb, var(--highlight-text) 26%, transparent);
+body:not(.light-theme)
+  #agentSettingsContainer
+  .model-input-container
+  button:not(#openModelSelectBtn):hover,
+body:not(.light-theme)
+  #agentSettingsContainer
+  .model-input-container
+  button:not(#openModelSelectBtn):focus-visible {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--user-bubble-bg) 66%, rgba(255, 255, 255, 0.1)),
+    color-mix(in srgb, var(--user-bubble-bg) 50%, rgba(255, 255, 255, 0.05))
+  );
+  border-color: color-mix(
+    in srgb,
+    var(--highlight-text) 68%,
+    rgba(255, 255, 255, 0.12)
+  );
+  box-shadow: inset 1px -1px 1px -1px rgba(255, 255, 255, 0.2),
+    inset -1px 1px 1px -1px rgba(255, 255, 255, 0.16),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.05),
+    0 0 0 1px color-mix(in srgb, var(--highlight-text) 26%, transparent);
 }
 
 .agent-name-wrapper input[type="text"] {
-    font-size: 0.95em;
+  font-size: 0.95em;
 }
 
 .params-content .form-group-inline {
-    flex-direction: row !important;
-    align-items: center;
-    gap: 0;
+  flex-direction: row !important;
+  align-items: center;
+  gap: 0;
 }
 
 .params-content .form-group-inline label {
-    margin-bottom: 0;
-    display: inline-flex;
-    align-items: center;
-    cursor: pointer;
+  margin-bottom: 0;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
 }
 
 .params-content .form-group-inline input[type="radio"] {
-    width: 16px;
-    height: 16px;
-    margin-right: 5px;
-    accent-color: var(--user-bubble-bg);
+  width: 16px;
+  height: 16px;
+  margin-right: 5px;
+  accent-color: var(--user-bubble-bg);
 }
