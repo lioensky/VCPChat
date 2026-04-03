@@ -1144,12 +1144,17 @@ export async function finalizeStreamedMessage(messageId, finishReason, context, 
     const payloadResponseIsUsable = payloadFullResponse.trim() !== "" && !isThinkingPlaceholderText(payloadFullResponse);
 
     let finalFullText = accumulatedText;
-    if (storedContext.isGroupMessage === true && !streamedTextIsUsable) {
-        if (payloadResponseIsUsable) {
-            finalFullText = payloadFullResponse;
-        } else if (payloadError) {
-            finalFullText = `[错误] ${payloadError}`;
-        } else if (isThinkingPlaceholderText(finalFullText)) {
+    
+    // --- Consistency Logic: Choose the most complete text available ---
+    // If the main process payload has more content (as in error recovery) or is explicitly marked as recovery, prefer it.
+    if (payloadResponseIsUsable && (payloadFullResponse.length > accumulatedText.length || payloadFullResponse.includes('[!WARNING]'))) {
+        finalFullText = payloadFullResponse;
+    }
+
+    if (!finalFullText || isThinkingPlaceholderText(finalFullText)) {
+        if (payloadError) {
+            finalFullText = `[系统错误] ${payloadError}`;
+        } else {
             finalFullText = "";
         }
     }

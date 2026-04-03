@@ -476,11 +476,19 @@ import { setupEventListeners } from './modules/event-listeners.js';
 
             case 'error':
                 console.error('VCP Stream Error on ID', messageId, ':', error, 'Context:', context);
+                
+                // --- Recovery Logic: Use accumulated text from main if fullResponse is missing ---
+                let finalContent = fullResponse || eventData.accumulatedResponse || "";
+                if (finalContent && finalContent.trim() !== "") {
+                    // Add a visual indicator that the stream was cut short
+                    finalContent += "\n\n> [!WARNING]\n> **流式响应中断**: " + (error || "未知连接错误") + "。已保存已接收的部分内容。";
+                }
+
                 window.messageRenderer.finalizeStreamedMessage(
                     messageId,
                     'error',
                     context,
-                    { fullResponse, error }
+                    { fullResponse: finalContent, error }
                 );
                 
                 // --- Flowlock: 处理错误情况，重置状态并可能触发下一次续写 ---

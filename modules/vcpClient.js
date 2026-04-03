@@ -208,11 +208,11 @@ async function sendToVCP(params) {
     activeRequests.set(messageId, controller);
     console.log(`[VCPClient] Registered AbortController for messageId: ${messageId}. Active requests: ${activeRequests.size}`);
 
-    // 设置超时（30秒）
+    // 设置超时（300秒，适应长推理模型和流式传输）
     const timeoutId = setTimeout(() => {
-        console.log(`[VCPClient] Timeout triggered for messageId: ${messageId}`);
+        console.log(`[VCPClient] Timeout triggered for messageId: ${messageId} (300s limit reached)`);
         controller.abort();
-    }, 30000);
+    }, 300000);
 
     try {
         console.log(`[VCPClient] Sending request to: ${finalVcpUrl}`);
@@ -271,7 +271,7 @@ async function sendToVCP(params) {
                     detailedErrorMessage += ` 详情: ${errorData.details}`;
                 }
 
-                const errorPayload = { type: 'error', error: `VCP请求失败: ${detailedErrorMessage}`, details: errorData, messageId: messageId };
+            const errorPayload = { type: 'error', error: `VCP请求失败: ${detailedErrorMessage}`, details: errorData, messageId: messageId, accumulatedResponse: "" };
                 if (context) errorPayload.context = context;
                 webContents.send(streamChannel, errorPayload);
                 
@@ -364,18 +364,23 @@ async function sendToVCP(params) {
                         }
                     }
                 } catch (streamError) {
-                    console.error(`[VCPClient] Stream reading error for messageId: ${messageId}:`, streamError);
-                    const streamErrPayload = { type: 'error', error: `VCP流读取错误: ${streamError.message}`, messageId: messageId };
+                    const streamErrPayload = { 
+                        type: 'error', 
+                        error: `VCP流读取错误: ${streamError.message}`, 
+                        messageId: messageId,
+                        accumulatedResponse: accumulatedResponse // Propagate partial data on error
+                    };
                     if (context) streamErrPayload.context = context;
                     if (webContents && !webContents.isDestroyed()) {
                         webContents.send(streamChannel, streamErrPayload);
                     }
                     if (onStreamEnd) {
-                        onStreamEnd({ success: false, error: streamError.message });
+                        onStreamEnd({ success: false, error: streamError.message, content: accumulatedResponse });
                     }
                 } finally {
                     reader.releaseLock();
-                    console.log(`[VCPClient] Stream lock released for messageId: ${messageId}`);
+                    activeRequests.delete(messageId); // Move cleanup here for streaming requests
+                    console.log(`[VCPClient] Stream cleanup: Lock released and AbortController removed for messageId: ${messageId}`);
                 }
             }
 
@@ -383,6 +388,7 @@ async function sendToVCP(params) {
                 console.log(`[VCPClient] Stream processing completed for messageId: ${messageId}`);
             }).catch(err => {
                 console.error(`[VCPClient] Stream processing error for messageId: ${messageId}:`, err);
+                activeRequests.delete(messageId); // Extra safety cleanup
             });
 
             return { streamingStarted: true };
@@ -413,9 +419,14 @@ async function sendToVCP(params) {
         }
         return { error: `VCP请求错误: ${error.message}` };
     } finally {
-        // 清理 AbortController
-        activeRequests.delete(messageId);
-        console.log(`[VCPClient] Cleaned up AbortController for messageId: ${messageId}. Active requests: ${activeRequests.size}`);
+        // Only clean up here if we ARE NOT streaming. 
+        // For streaming, the cleanup is handled in processStream's finally block to ensure the request is interruptible.
+        if (modelConfig.stream !== true) {
+            activeRequests.delete(messageId);
+            console.log(`[VCPClient] SendToVCP cleanup: Cleaned up AbortController for non-streaming messageId: ${messageId}.`);
+        } else {
+            console.log(`[VCPClient] SendToVCP detour: Cleanup for streaming messageId ${messageId} deferred to processStream.`);
+        }
     }
 }
 
