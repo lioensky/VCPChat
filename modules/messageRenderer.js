@@ -1479,7 +1479,24 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true)
         // Apply special formatting for user button clicks
         if (message.role === 'user') {
             // 🔴 关键安全修复：用户输入属于不可信内容，必须先行进行 HTML 转义以防 XSS
+            // 🟢 改进：允许用户发送 <img> 标签（表情包），但需排除包含事件处理器的恶意标签
+            const userImgBlocks = [];
+            textToRender = textToRender.replace(/<img\s+[^>]*src=["']([^"']+)["'][^>]*>/gi, (match) => {
+                // 拒绝包含 onXXX 事件或 javascript: 协议的标签
+                if (/on\w+\s*=/i.test(match) || /src\s*=\s*["']\s*javascript:/i.test(match)) {
+                    return match; // 包含潜在恶意代码，不保护，后续会被转义
+                }
+                const placeholder = `__VCP_USER_IMG_${userImgBlocks.length}__`;
+                userImgBlocks.push(match);
+                return placeholder;
+            });
+
             textToRender = escapeHtml(textToRender);
+
+            // 还原受保护的 <img> 标签
+            userImgBlocks.forEach((img, i) => {
+                textToRender = textToRender.replace(`__VCP_USER_IMG_${i}__`, img);
+            });
 
             textToRender = transformUserButtonClick(textToRender);
             textToRender = transformVCPChatCanvas(textToRender);
@@ -1966,6 +1983,30 @@ function updateMessageContent(messageId, newContent) {
     // --- 深度计算 (用于历史消息渲染) ---
     const currentChatHistoryForUpdate = mainRendererReferences.currentChatHistoryRef.get();
     const messageInHistory = currentChatHistoryForUpdate.find(m => m.id === messageId);
+
+    // 🔴 修复：如果是用户消息，必须先转义以防 XSS，并应用用户特有转换
+    if (messageInHistory && messageInHistory.role === 'user') {
+        // 🟢 允许用户发送 <img> 标签（表情包），但需排除包含事件处理器的恶意标签
+        const userImgBlocks = [];
+        textToRender = textToRender.replace(/<img\s+[^>]*src=["']([^"']+)["'][^>]*>/gi, (match) => {
+            if (/on\w+\s*=/i.test(match) || /src\s*=\s*["']\s*javascript:/i.test(match)) {
+                return match;
+            }
+            const placeholder = `__VCP_USER_IMG_${userImgBlocks.length}__`;
+            userImgBlocks.push(match);
+            return placeholder;
+        });
+
+        textToRender = escapeHtml(textToRender);
+
+        // 还原受保护的 <img> 标签
+        userImgBlocks.forEach((img, i) => {
+            textToRender = textToRender.replace(`__VCP_USER_IMG_${i}__`, img);
+        });
+
+        textToRender = transformUserButtonClick(textToRender);
+        textToRender = transformVCPChatCanvas(textToRender);
+    }
 
     // --- 按“对话轮次”计算深度 ---
     const depthForUpdate = calculateDepthByTurns(messageId, currentChatHistoryForUpdate);
