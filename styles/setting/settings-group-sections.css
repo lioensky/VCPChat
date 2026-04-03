@@ -751,6 +751,7 @@ body:not(.light-theme) #groupSettingsForm .form-actions .danger-button {
     max-height: 50px;
     opacity: 1;
     margin-top: 4px;
+    overflow: visible;
 }
 
 
