@@ -377,6 +377,56 @@ body.light-theme .message-item.system.welcome-bubble {
     margin-top: 8px;
 }
 
+.message-item .md-content .message-attachment-file {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    max-width: min(260px, 100%);
+    padding: 7px 11px;
+    border-radius: 10px;
+    border: 1px solid color-mix(in srgb, var(--border-color) 30%, transparent);
+    background-color: color-mix(in srgb, var(--input-bg) 70%, transparent);
+    color: inherit;
+    text-decoration: none;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+    transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.message-item .md-content .message-attachment-file:hover,
+.message-item .md-content .message-attachment-file:focus-visible {
+    background-color: color-mix(in srgb, var(--input-bg) 80%, transparent);
+    border-color: color-mix(in srgb, var(--border-color) 48%, transparent);
+    box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+    transform: translateY(-1px);
+}
+
+.message-item .md-content .message-attachment-file:focus-visible {
+    outline: none;
+}
+
+.message-item .md-content .message-attachment-file-icon {
+    width: 28px;
+    height: 28px;
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.message-item .md-content .message-attachment-file-icon svg {
+    width: 16px;
+    height: 16px;
+    color: var(--secondary-text);
+}
+
+.message-item .md-content .message-attachment-file-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    line-height: 1.2;
+}
+
 .topic-timestamp-bubble {
     display: none; 
     text-align: center;
