@@ -81,7 +81,8 @@ body.light-theme #moon-icon {
 }
 
 .message-item {
-    margin-bottom: 18px; /* Increased margin for QQ style */
+    margin-bottom: 13px; /* Preserve visual rhythm after adding bottom paint space */
+    padding-bottom: 5px; /* Keep bubble shadow inside the message item's paint containment */
     max-width: 100%;
     display: flex;
     align-items: flex-start;
