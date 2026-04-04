@@ -719,9 +719,10 @@ pub async fn run_server(port: u16, config: AppConfig, settings_manager: SharedSe
     // Print ready signal for parent process
     println!("RUST_AUDIO_ENGINE_READY");
     
+    let server_state = Arc::clone(&state);
     let server = HttpServer::new(move || {
         App::new()
-            .app_data(web::Data::new(Arc::clone(&state)))
+            .app_data(web::Data::new(Arc::clone(&server_state)))
             .wrap(middleware::Logger::default())
             .wrap(
                 middleware::DefaultHeaders::new()

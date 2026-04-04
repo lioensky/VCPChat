@@ -51,6 +51,11 @@ function initialize(mainWindow, openChildWindows) {
                     win.hide();
                 } else {
                     // 桌面窗口不存在时，正常退出
+                    // 优化：立即隐藏所有窗口提供即时反馈，因为主进程清理（如音频引擎、分布式服务器）可能耗时数秒
+                    BrowserWindow.getAllWindows().forEach(w => {
+                        if (!w.isDestroyed()) w.hide();
+                    });
+                    app.isQuitting = true; // 标记正在退出，允许窗口关闭事件通过
                     app.quit();
                 }
             } else {

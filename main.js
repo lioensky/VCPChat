@@ -1176,6 +1176,11 @@ if (!gotTheLock) {
             return;
         }
 
+        // 优化：立即隐藏所有窗口提供即时反馈，因为主进程清理（如音频引擎、分布式服务器）可能耗时数秒
+        BrowserWindow.getAllWindows().forEach(w => {
+            if (!w.isDestroyed()) w.hide();
+        });
+
         event.preventDefault();
         isFinalizingQuit = true;
         try {

@@ -8,7 +8,15 @@ if (!(Test-Path $VcpkgBase)) {
 
 # Inject environment variables for pkg-config discovery
 $env:PATH = "$VcpkgBase\tools\pkgconf;$env:PATH"
-$env:PKG_CONFIG_PATH = "$VcpkgBase\lib\pkgconfig"
+$env:PKG_CONFIG_PATH = "$VcpkgBase\lib\pkgconfig;$(Join-Path (Get-Location) 'pkgconfig')"
+
+# Force vcpkg root and triplet for cargo vcpkg-crate
+$env:VCPKG_ROOT = "H:\VCP\vcpkg"
+if ($VcpkgBase -match "static-md") {
+    $env:VCPKG_DEFAULT_TRIPLET = "x64-windows-static-md"
+} else {
+    $env:VCPKG_DEFAULT_TRIPLET = "x64-windows-static"
+}
 
 # Directory Setup
 $RootDir = Get-Location
