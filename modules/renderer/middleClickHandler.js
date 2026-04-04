@@ -298,9 +298,9 @@ function startAdvancedMiddleClickTimer(event, messageItem, message, globalSettin
                                 'forward': '转发消息',
                                 'delete': '删除消息'
                             };
-                            mainRendererReferences.uiHelper.showToastNotification(`九宫格操作已取消，当前中键功能保持为: ${actionNames[globalSettings.middleClickQuickAction] || globalSettings.middleClickQuickAction}`, 'info');
+                            mainRendererReferences.uiHelper.showToastNotification(`快捷环操作已取消，当前中键功能保持为: ${actionNames[globalSettings.middleClickQuickAction] || globalSettings.middleClickQuickAction}`, 'info');
                         } else {
-                            mainRendererReferences.uiHelper.showToastNotification('九宫格操作已取消，中键快速功能未设置', 'info');
+                            mainRendererReferences.uiHelper.showToastNotification('快捷环操作已取消，中键快速功能未设置', 'info');
                         }
                     }
                 }
@@ -792,7 +792,7 @@ async function handleMiddleClickQuickAction(event, messageItem, message, quickAc
             break;
 
         case 'delete':
-            // 删除消息 - 完全阻止九宫格取消提示
+            // 删除消息 - 完全阻止快捷环取消提示
             let textForConfirm = "";
             if (typeof message.content === 'string') {
                 textForConfirm = message.content;
@@ -803,14 +803,14 @@ async function handleMiddleClickQuickAction(event, messageItem, message, quickAc
             }
 
             if (await uiHelper.showConfirmDialog(`确定要删除此消息吗？\n"${textForConfirm.substring(0, 50)}${textForConfirm.length > 50 ? '...' : ''}"`, '删除确认', '删除', '取消', true)) {
-                // 设置标志位阻止九宫格取消提示
+                // 设置标志位阻止快捷环取消提示
                 isDeletingMessage = true;
                 freezeGridCancellation = true;
 
                 // 立即清理所有中键相关状态和定时器
                 cleanupAllMiddleClickTimers();
 
-                // 立即重置九宫格显示状态
+                // 立即重置快捷环显示状态
                 if (middleClickGrid) {
                     middleClickGrid.remove();
                     middleClickGrid = null;
@@ -818,11 +818,11 @@ async function handleMiddleClickQuickAction(event, messageItem, message, quickAc
                 currentGridSelection = '';
                 isAdvancedModeActive = false;
 
-                // 创建临时的提示函数，过滤掉九宫格相关提示
+                // 创建临时的提示函数，过滤掉快捷环相关提示
                 const originalShowToast = uiHelper.showToastNotification;
                 let tempShowToast = function(message, type) {
-                    // 拦截所有九宫格相关的提示
-                    if (message.includes('九宫格操作已取消') ||
+                    // 拦截所有快捷环相关的提示
+                    if (message.includes('快捷环操作已取消') ||
                         message.includes('中键快速功能保持为') ||
                         message.includes('中键快速功能未设置')) {
                         console.log('[Delete] Blocked grid cancellation message:', message);

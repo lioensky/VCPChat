@@ -1106,14 +1106,14 @@ export function setupEventListeners(deps) {
                 const value = parseInt(e.target.value, 10);
                 if (value < 1000) {
                     e.target.value = 1000;
-                    uiHelperFunctions.showToastNotification('九宫格出现延迟不能小于1000ms，已自动调整', 'info');
+                    uiHelperFunctions.showToastNotification('快捷环出现延迟不能小于1000ms，已自动调整', 'info');
                 }
             });
             middleClickAdvancedDelayInput.addEventListener('blur', (e) => {
                 const value = parseInt(e.target.value, 10);
                 if (isNaN(value) || value < 1000) {
                     e.target.value = 1000;
-                    uiHelperFunctions.showToastNotification('九宫格出现延迟不能小于1000ms，已自动调整', 'info');
+                    uiHelperFunctions.showToastNotification('快捷环出现延迟不能小于1000ms，已自动调整', 'info');
                 }
             });
         }
