@@ -7,6 +7,8 @@
 
 (function () {
     const { state, CONSTANTS, domRefs, drag, zIndex } = window.VCPDesktop;
+    const removingWidgetIds = new Set();
+    const REMOVE_FALLBACK_MS = 450;
 
     // ============================================================
     // 挂件创建
@@ -19,6 +21,11 @@
      * @returns {object} widgetData
      */
     function createWidget(widgetId, options = {}) {
+        if (removingWidgetIds.has(widgetId)) {
+            console.warn(`[Desktop] Widget ${widgetId} is being removed, skipping recreation.`);
+            return null;
+        }
+
         if (state.widgets.has(widgetId)) {
             console.log(`[Desktop] Widget ${widgetId} already exists, reusing.`);
             return state.widgets.get(widgetId);
@@ -145,6 +152,11 @@
      * @param {string} fullContent - HTML 内容
      */
     function appendWidgetContent(widgetId, fullContent) {
+        if (removingWidgetIds.has(widgetId)) {
+            console.warn(`[Desktop] Widget ${widgetId} is being removed, skipping content append.`);
+            return;
+        }
+
         let widgetData = state.widgets.get(widgetId);
         if (!widgetData) {
             // 并发情况下，如果 createWidget 还没来得及把 widget 放入 state.widgets，
@@ -154,6 +166,7 @@
                 x: 100 + Math.random() * 200,
                 y: 100 + Math.random() * 200,
             });
+            if (!widgetData) return;
         }
 
         // 如果内容没有变化，跳过重复渲染，减少并发时的 DOM 压力
@@ -198,6 +211,8 @@
      * @param {string} widgetId
      */
     function finalizeWidget(widgetId) {
+        if (removingWidgetIds.has(widgetId)) return;
+
         const widgetData = state.widgets.get(widgetId);
         if (!widgetData) return;
 
@@ -218,8 +233,12 @@
      * @param {string} widgetId
      */
     function removeWidget(widgetId) {
+        if (removingWidgetIds.has(widgetId)) return;
+
         const widgetData = state.widgets.get(widgetId);
         if (!widgetData) return;
+        removingWidgetIds.add(widgetId);
+        widgetData.isRemoving = true;
 
         // 断开内容观察器，防止内存泄漏
         if (widgetData._resizeObserver) {
@@ -241,19 +260,44 @@
             widgetData._windowListeners = [];
         }
 
-        widgetData.element.classList.add('removing');
-        widgetData.element.addEventListener('animationend', () => {
-            widgetData.element.remove();
-            state.widgets.delete(widgetId);
-            console.log(`[Desktop] Widget removed: ${widgetId}`);
-        }, { once: true });
+        state.widgets.delete(widgetId);
+
+        let finalized = false;
+        let fallbackTimerId = null;
+        const widgetElement = widgetData.element;
+
+        const finalizeRemove = (reason) => {
+            if (finalized) return;
+            finalized = true;
+
+            if (fallbackTimerId) {
+                clearTimeout(fallbackTimerId);
+                fallbackTimerId = null;
+            }
+
+            widgetElement.removeEventListener('animationend', onAnimationEnd);
+            widgetElement.remove();
+            removingWidgetIds.delete(widgetId);
+            console.log(`[Desktop] Widget removed: ${widgetId} (${reason})`);
+        };
+
+        const onAnimationEnd = (event) => {
+            if (event.target !== widgetElement) return;
+            if (event.animationName && event.animationName !== 'desktop-widget-remove') return;
+            finalizeRemove('animationend');
+        };
+
+        widgetElement.classList.remove('entering');
+        widgetElement.classList.add('removing');
+        widgetElement.addEventListener('animationend', onAnimationEnd);
+        fallbackTimerId = setTimeout(() => finalizeRemove('timeout'), REMOVE_FALLBACK_MS);
     }
 
     /**
      * 清除所有挂件
      */
     function clearAllWidgets() {
-        state.widgets.forEach((_, id) => removeWidget(id));
+        Array.from(state.widgets.keys()).forEach((id) => removeWidget(id));
     }
 
     // ============================================================
@@ -527,12 +571,12 @@
                                 }
                             } catch(e) {}
                             if (!_savedId) return Promise.reject('Widget not saved yet. Save it first via favorites.');
-                            return window.electronAPI ? window.electronAPI.desktopSaveWidgetFile({
+                            return _musicBridge ? _musicBridge.desktopSaveWidgetFile({
                                 widgetId: _savedId,
                                 fileName: fileName,
                                 content: content,
                                 encoding: encoding || 'utf-8'
-                            }) : Promise.reject('electronAPI not available');
+                            }) : Promise.reject('desktop bridge not available');
                         },
                         loadFile: function(fileName) {
                             var _savedId = null;
@@ -541,10 +585,10 @@
                                 if (_wd) _savedId = _wd.savedId;
                             } catch(e) {}
                             if (!_savedId) return Promise.reject('Widget not saved yet.');
-                            return window.electronAPI ? window.electronAPI.desktopLoadWidgetFile({
+                            return _musicBridge ? _musicBridge.desktopLoadWidgetFile({
                                 widgetId: _savedId,
                                 fileName: fileName
-                            }) : Promise.reject('electronAPI not available');
+                            }) : Promise.reject('desktop bridge not available');
                         },
                         listFiles: function() {
                             var _savedId = null;
@@ -553,23 +597,27 @@
                                 if (_wd) _savedId = _wd.savedId;
                             } catch(e) {}
                             if (!_savedId) return Promise.reject('Widget not saved yet.');
-                            return window.electronAPI ? window.electronAPI.desktopListWidgetFiles(_savedId) : Promise.reject('electronAPI not available');
+                            return _musicBridge ? _musicBridge.desktopListWidgetFiles(_savedId) : Promise.reject('desktop bridge not available');
                         },
                     };
                     
-                    var _electron = window.electron;
+                    var _musicBridge = window.desktopAPI || window.electronAPI;
                     var musicAPI = {
-                        play: function() { return _electron ? _electron.invoke('music-play') : Promise.reject('electron not available'); },
-                        pause: function() { return _electron ? _electron.invoke('music-pause') : Promise.reject('electron not available'); },
+                        play: function() { return _musicBridge && _musicBridge.musicPlay ? _musicBridge.musicPlay() : Promise.reject('music bridge not available'); },
+                        pause: function() { return _musicBridge && _musicBridge.musicPause ? _musicBridge.musicPause() : Promise.reject('music bridge not available'); },
                         getState: function() {
-                            if (!_electron) return Promise.reject('electron not available');
-                            return _electron.invoke('music-get-state').then(function(r) {
+                            if (!_musicBridge || !_musicBridge.getMusicState) return Promise.reject('music bridge not available');
+                            return _musicBridge.getMusicState().then(function(r) {
                                 return (r && r.state) ? r.state : r;
                             });
                         },
-                        setVolume: function(v) { return _electron ? _electron.invoke('music-set-volume', v) : Promise.reject('electron not available'); },
-                        seek: function(pos) { return _electron ? _electron.invoke('music-seek', pos) : Promise.reject('electron not available'); },
-                        send: function(channel, data) { if (_electron) _electron.send(channel, data); },
+                        setVolume: function(v) { return _musicBridge && _musicBridge.setMusicVolume ? _musicBridge.setMusicVolume(v) : Promise.reject('music bridge not available'); },
+                        seek: function(pos) { return _musicBridge && _musicBridge.seekMusic ? _musicBridge.seekMusic(pos) : Promise.reject('music bridge not available'); },
+                        send: function(channel, data) {
+                            if (channel === 'music-remote-command' && _musicBridge && _musicBridge.sendMusicRemoteCommand) {
+                                _musicBridge.sendMusicRemoteCommand(data);
+                            }
+                        },
                     };
                     
                     ${userCode}

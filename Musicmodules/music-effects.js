@@ -47,14 +47,14 @@ function setupEffects(app) {
     };
 
     app.sendEqSettings = async () => {
-        if (!window.electron) return;
+        if (!app.api?.setMusicEq) return;
         const newBands = {};
         for (const band in app.eqBands) {
             const slider = document.getElementById(`eq-${band}`);
             newBands[band] = parseInt(slider.value, 10);
         }
         app.eqEnabled = app.eqSwitch.checked;
-        await window.electron.invoke('music-set-eq', { bands: newBands, enabled: app.eqEnabled });
+        await app.api.setMusicEq({ bands: newBands, enabled: app.eqEnabled });
     };
 
     // --- IR Convolver ---
@@ -67,10 +67,10 @@ function setupEffects(app) {
     };
 
     app.loadIrFile = async (filePath) => {
-        if (!window.electron) return;
+        if (!app.api?.musicLoadIr) return;
         app.updateIrStatus('加载中...', 'idle');
         try {
-            const result = await window.electron.invoke('music-load-ir', { path: filePath });
+            const result = await app.api.musicLoadIr({ path: filePath });
             if (result.status === 'success') {
                 app.irLoadedPath = filePath;
                 app.irEnabled = true;
@@ -87,9 +87,9 @@ function setupEffects(app) {
     };
 
     app.unloadIr = async () => {
-        if (!window.electron) return;
+        if (!app.api?.musicUnloadIr) return;
         try {
-            await window.electron.invoke('music-unload-ir');
+            await app.api.musicUnloadIr();
             app.irLoadedPath = null; app.irEnabled = false; app.irSwitch.checked = false;
             app.updateIrStatus('未加载', 'idle');
         } catch (e) {}
@@ -97,13 +97,13 @@ function setupEffects(app) {
 
     // --- Loudness ---
     app.updateLoudnessSettings = async () => {
-        if (!window.electron) return;
+        if (!app.api?.configureMusicNormalization) return;
         app.loudnessEnabled = app.loudnessSwitch.checked;
         app.loudnessMode = app.loudnessModeSelect.value;
         app.targetLufs = parseFloat(app.loudnessLufsSlider.value);
         app.loudnessPreampDb = parseFloat(app.loudnessPreampSlider.value);
 
-        await window.electron.invoke('music-configure-normalization', {
+        await app.api.configureMusicNormalization({
             enabled: app.loudnessEnabled, target_lufs: app.targetLufs,
             mode: app.loudnessMode, preamp_db: app.loudnessPreampDb
         });
@@ -124,12 +124,12 @@ function setupEffects(app) {
 
     // --- Saturation ---
     app.updateSaturationSettings = async () => {
-        if (!window.electron) return;
+        if (!app.api?.setMusicSaturation) return;
         app.saturationEnabled = app.saturationSwitch.checked;
         app.saturationType = app.saturationTypeSelect.value;
         app.saturationDrive = parseFloat(app.saturationDriveSlider.value) / 100;
         app.saturationMix = parseFloat(app.saturationMixSlider.value) / 100;
-        await window.electron.invoke('music-set-saturation', {
+        await app.api.setMusicSaturation({
             enabled: app.saturationEnabled, drive: app.saturationDrive, mix: app.saturationMix
         });
         app.saveSettings();
@@ -140,10 +140,10 @@ function setupEffects(app) {
 
     // --- Crossfeed ---
     app.updateCrossfeedSettings = async () => {
-        if (!window.electron) return;
+        if (!app.api?.setMusicCrossfeed) return;
         app.crossfeedEnabled = app.crossfeedSwitch.checked;
         app.crossfeedMix = parseFloat(app.crossfeedMixSlider.value) / 100;
-        await window.electron.invoke('music-set-crossfeed', { enabled: app.crossfeedEnabled, mix: app.crossfeedMix });
+        await app.api.setMusicCrossfeed({ enabled: app.crossfeedEnabled, mix: app.crossfeedMix });
         app.saveSettings();
     };
 
@@ -151,10 +151,10 @@ function setupEffects(app) {
 
     // --- Dynamic Loudness ---
     app.updateDynamicLoudnessSettings = async () => {
-        if (!window.electron) return;
+        if (!app.api?.setMusicDynamicLoudness) return;
         app.dynamicLoudnessEnabled = app.dynamicLoudnessSwitch.checked;
         app.dynamicLoudnessStrength = parseFloat(app.dynamicLoudnessStrengthSlider.value) / 100;
-        await window.electron.invoke('music-set-dynamic-loudness', {
+        await app.api.setMusicDynamicLoudness({
             enabled: app.dynamicLoudnessEnabled, strength: app.dynamicLoudnessStrength
         });
         app.saveSettings();
@@ -164,15 +164,15 @@ function setupEffects(app) {
 
     // --- Noise Shaper ---
     app.updateNoiseShaperSettings = async () => {
-        if (!window.electron) return;
+        if (!app.api?.configureMusicOutputBits || !app.api?.setMusicNoiseShaperCurve) return;
         app.outputBits = parseInt(app.outputBitsSelect.value, 10);
         app.noiseShaperCurve = app.noiseShaperCurveSelect.value;
-        await window.electron.invoke('music-configure-output-bits', { bits: app.outputBits });
-        await window.electron.invoke('music-set-noise-shaper-curve', { curve: app.noiseShaperCurve });
+        await app.api.configureMusicOutputBits({ bits: app.outputBits });
+        await app.api.setMusicNoiseShaperCurve({ curve: app.noiseShaperCurve });
     };
 
     app.updateOptimizations = async () => {
-        if (!window.electron) return;
-        await window.electron.invoke('music-configure-optimizations', { dither_enabled: app.ditherSwitch.checked });
+        if (!app.api?.configureMusicOptimizations) return;
+        await app.api.configureMusicOptimizations({ dither_enabled: app.ditherSwitch.checked });
     };
 }

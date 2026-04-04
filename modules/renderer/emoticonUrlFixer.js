@@ -103,19 +103,19 @@ function initialize(api) {
         try {
             console.log('[EmoticonFixer] Initializing and fetching library...');
             const library = await electronAPI.getEmoticonLibrary();
-            if (library && library.length > 0) {
-                emoticonLibrary = library;
-                isInitialized = true;
+            emoticonLibrary = Array.isArray(library) ? library : [];
+            isInitialized = true;
+            if (emoticonLibrary.length > 0) {
                 console.log(`[EmoticonFixer] Library loaded with ${emoticonLibrary.length} items.`);
-                resolve();
             } else {
-                console.warn('[EmoticonFixer] Fetched library is empty.');
-                isInitialized = true; // Mark as initialized even if empty to prevent re-fetching
-                resolve();
+                console.log('[EmoticonFixer] Library unavailable, fixer running in degraded passthrough mode.');
             }
+            resolve();
         } catch (error) {
-            console.error('[EmoticonFixer] Failed to initialize:', error);
-            reject(error);
+            emoticonLibrary = [];
+            isInitialized = true;
+            console.warn(`[EmoticonFixer] Library fetch failed, skipping URL repair: ${error.message || error}`);
+            resolve();
         }
     });
 

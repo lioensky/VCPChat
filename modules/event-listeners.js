@@ -7,6 +7,7 @@ import { handleSaveGlobalSettings } from './global-settings-manager.js';
 // This function will be called from renderer.js to attach all event listeners.
 // It receives a 'deps' object containing all necessary references to elements, state, and functions.
 export function setupEventListeners(deps) {
+    const chatAPI = window.chatAPI || window.electronAPI;
     const {
         // DOM Elements from a future dom-elements.js or passed directly
         chatMessagesDiv, sendMessageBtn, messageInput, attachFileBtn, globalSettingsBtn,
@@ -125,7 +126,7 @@ export function setupEventListeners(deps) {
                 return;
             }
 
-            const result = await window.electronAPI.exportTopicAsMarkdown({
+            const result = await chatAPI.exportTopicAsMarkdown({
                 topicName: topicName,
                 markdownContent: markdownContent
             });
@@ -279,7 +280,7 @@ export function setupEventListeners(deps) {
                 isGroupMessage: false
             };
 
-            const vcpResponse = await window.electronAPI.sendToVCP(
+            const vcpResponse = await chatAPI.sendToVCP(
                 globalSettings.vcpServerUrl,
                 globalSettings.vcpApiKey,
                 messagesForVCP,
@@ -314,11 +315,11 @@ export function setupEventListeners(deps) {
                         id: response.id || `regen_nonstream_${Date.now()}`
                     };
 
-                    const historyForSave = await window.electronAPI.getChatHistory(context.agentId, context.topicId);
+                    const historyForSave = await chatAPI.getChatHistory(context.agentId, context.topicId);
                     if (historyForSave && !historyForSave.error) {
                         const finalHistory = historyForSave.filter(msg => msg.id !== thinkingMessage.id && !msg.isThinking);
                         finalHistory.push(assistantMessage);
-                        await window.electronAPI.saveChatHistory(context.agentId, context.topicId, finalHistory);
+                        await chatAPI.saveChatHistory(context.agentId, context.topicId, finalHistory);
 
                         if (isForActiveChat) {
                             currentChatHistory.length = 0;
@@ -339,7 +340,7 @@ export function setupEventListeners(deps) {
             if (window.messageRenderer) window.messageRenderer.removeMessageById(thinkingMessage.id);
             if (window.messageRenderer) window.messageRenderer.renderMessage({ role: 'system', content: `错误: ${error.message}`, timestamp: Date.now() });
             if (currentSelectedItem.id && currentTopicId) {
-                await window.electronAPI.saveChatHistory(currentSelectedItem.id, currentTopicId, currentChatHistory.filter(msg => !msg.isThinking));
+                await chatAPI.saveChatHistory(currentSelectedItem.id, currentTopicId, currentChatHistory.filter(msg => !msg.isThinking));
             }
         }
     }
@@ -355,9 +356,9 @@ export function setupEventListeners(deps) {
                 console.log('[UI] Speaking avatar clicked. Requesting TTS stop via sovitsStop.');
                 event.preventDefault();
                 event.stopPropagation();
-                if (window.electronAPI && window.electronAPI.sovitsStop) {
+                if (chatAPI?.sovitsStop) {
                     // This sends the stop request to the main process
-                    window.electronAPI.sovitsStop();
+                    chatAPI.sovitsStop();
                 }
                 return;
             }
@@ -377,8 +378,8 @@ export function setupEventListeners(deps) {
                     return;
                 }
                 if (href.startsWith('http:') || href.startsWith('https:') || href.startsWith('file:') || href.startsWith('magnet:')) {
-                    if (window.electronAPI && window.electronAPI.sendOpenExternalLink) {
-                        window.electronAPI.sendOpenExternalLink(href);
+                    if (chatAPI?.sendOpenExternalLink) {
+                        chatAPI.sendOpenExternalLink(href);
                     } else {
                         console.warn('[Renderer] electronAPI.sendOpenExternalLink is not available.');
                     }
@@ -430,7 +431,7 @@ export function setupEventListeners(deps) {
             uiHelperFunctions.showToastNotification("请先选择一个项目和话题以上传附件。", 'error');
             return;
         }
-        const result = await window.electronAPI.selectFilesToSend(currentSelectedItem.id, currentTopicId);
+        const result = await chatAPI.selectFilesToSend(currentSelectedItem.id, currentTopicId);
 
         if (result && result.success && result.attachments && result.attachments.length > 0) {
             result.attachments.forEach(att => {
@@ -712,12 +713,12 @@ export function setupEventListeners(deps) {
 
     async function loadAndPopulateRustConfig() {
         try {
-            if (!window.electronAPI) {
+            if (!chatAPI) {
                 console.warn('[EventListeners] electronAPI not available, skipping rust config load');
                 return;
             }
 
-            const result = await window.electronAPI.getRustAssistantConfig?.() || {};
+            const result = await chatAPI.getRustAssistantConfig?.() || {};
             if (result.error) {
                 console.warn('[EventListeners] Failed to load rust config:', result.error);
                 return;
@@ -936,7 +937,7 @@ export function setupEventListeners(deps) {
         createNewAgentBtn.style.width = 'auto';
         createNewAgentBtn.addEventListener('click', async () => {
             const defaultAgentName = `新Agent_${Date.now()}`;
-            const result = await window.electronAPI.createAgent(defaultAgentName);
+            const result = await chatAPI.createAgent(defaultAgentName);
             if (result.success) {
                 await itemListManager.loadItems();
                 await chatManager.selectItem(result.agentId, 'agent', result.agentName, null, result.config);
@@ -1026,7 +1027,7 @@ export function setupEventListeners(deps) {
 
         try {
             // 调用后端 API 创建话题，传入 locked 参数
-            const result = await window.electronAPI.createNewTopicForAgent(
+            const result = await chatAPI.createNewTopicForAgent(
                 currentSelectedItem.id,
                 newTopicName,
                 false, // isBranch
@@ -1119,8 +1120,8 @@ export function setupEventListeners(deps) {
         }
 
         openForumBtn.addEventListener('click', async () => {
-            if (window.electronAPI && window.electronAPI.openForumWindow) {
-                await window.electronAPI.openForumWindow();
+            if (chatAPI?.openForumWindow) {
+                await chatAPI.openForumWindow();
             } else {
                 console.warn('[Renderer] electronAPI.openForumWindow is not available.');
                 uiHelperFunctions.showToastNotification('无法打开论坛：功能不可用。', 'error');
@@ -1130,8 +1131,8 @@ export function setupEventListeners(deps) {
         // 右键点击 - 打开 VCPMemo 中心
         openForumBtn.addEventListener('contextmenu', async (e) => {
             e.preventDefault();
-            if (window.electronAPI && window.electronAPI.openMemoWindow) {
-                await window.electronAPI.openMemoWindow();
+            if (chatAPI?.openMemoWindow) {
+                await chatAPI.openMemoWindow();
             } else {
                 console.warn('[Renderer] electronAPI.openMemoWindow is not available.');
                 uiHelperFunctions.showToastNotification('无法打开 VCPMemo 中心：功能不可用。', 'error');
@@ -1141,8 +1142,8 @@ export function setupEventListeners(deps) {
 
     if (openTranslatorBtn) {
         openTranslatorBtn.addEventListener('click', async () => {
-            if (window.electronAPI && window.electronAPI.openTranslatorWindow) {
-                await window.electronAPI.openTranslatorWindow();
+            if (chatAPI?.openTranslatorWindow) {
+                await chatAPI.openTranslatorWindow();
             } else {
                 console.warn('[Renderer] electronAPI.openTranslatorWindow is not available.');
                 uiHelperFunctions.showToastNotification('无法打开翻译助手：功能不可用。', 'error');
@@ -1152,8 +1153,8 @@ export function setupEventListeners(deps) {
 
     if (openNotesBtn) {
         openNotesBtn.addEventListener('click', async () => {
-            if (window.electronAPI && window.electronAPI.openNotesWindow) {
-                await window.electronAPI.openNotesWindow();
+            if (chatAPI?.openNotesWindow) {
+                await chatAPI.openNotesWindow();
             } else {
                 console.warn('[Renderer] electronAPI.openNotesWindow is not available.');
                 uiHelperFunctions.showToastNotification('无法打开笔记：功能不可用。', 'error');
@@ -1163,8 +1164,8 @@ export function setupEventListeners(deps) {
 
     if (openMusicBtn) {
         openMusicBtn.addEventListener('click', () => {
-            if (window.electronAPI && window.electronAPI.openMusicWindow) {
-                window.electronAPI.openMusicWindow();
+            if (chatAPI?.openMusicWindow) {
+                chatAPI.openMusicWindow();
             } else {
                 console.error('Music Player: electronAPI.openMusicWindow not found.');
             }
@@ -1173,8 +1174,8 @@ export function setupEventListeners(deps) {
 
     if (openCanvasBtn) {
         openCanvasBtn.addEventListener('click', () => {
-            if (window.electronAPI && window.electronAPI.openCanvasWindow) {
-                window.electronAPI.openCanvasWindow();
+            if (chatAPI?.openCanvasWindow) {
+                chatAPI.openCanvasWindow();
             } else {
                 console.error('Canvas: electronAPI.openCanvasWindow not found.');
             }
@@ -1183,20 +1184,20 @@ export function setupEventListeners(deps) {
 
     if (toggleNotificationsBtn && notificationsSidebar) {
         toggleNotificationsBtn.addEventListener('click', () => {
-            window.electronAPI.sendToggleNotificationsSidebar();
+            chatAPI.sendToggleNotificationsSidebar();
         });
 
         toggleNotificationsBtn.addEventListener('contextmenu', (e) => {
             e.preventDefault();
-            if (window.electronAPI && window.electronAPI.openRAGObserverWindow) {
-                window.electronAPI.openRAGObserverWindow();
+            if (chatAPI?.openRAGObserverWindow) {
+                chatAPI.openRAGObserverWindow();
             } else {
                 console.error('electronAPI.openRAGObserverWindow is not defined!');
                 uiHelperFunctions.showToastNotification('功能缺失: preload.js需要更新。', 'error');
             }
         });
 
-        window.electronAPI.onDoToggleNotificationsSidebar(() => {
+        chatAPI.onDoToggleNotificationsSidebar(() => {
             const isActive = notificationsSidebar.classList.toggle('active');
             const mainContent = document.querySelector('.main-content');
             if (mainContent) {
@@ -1216,7 +1217,7 @@ export function setupEventListeners(deps) {
             wasLongPress = false;
             longPressTimer = setTimeout(() => {
                 console.log('[Assistant] Long press detected on toggle button');
-                window.electronAPI.assistantAction('open');
+                chatAPI.assistantAction('open');
                 wasLongPress = true;
                 longPressTimer = null;
             }, 600);
@@ -1242,8 +1243,8 @@ export function setupEventListeners(deps) {
             const globalSettings = refs.globalSettings.get();
             const isActive = toggleAssistantBtn.classList.toggle('active');
             globalSettings.assistantEnabled = isActive;
-            window.electronAPI.toggleSelectionListener(isActive);
-            const result = await window.electronAPI.saveSettings({
+            chatAPI.toggleSelectionListener(isActive);
+            const result = await chatAPI.saveSettings({
                 ...globalSettings,
                 assistantEnabled: isActive
             });
@@ -1275,8 +1276,8 @@ export function setupEventListeners(deps) {
                 globalSettings.sidebarActive = isActive;
 
                 // 异步保存设置
-                if (window.electronAPI && window.electronAPI.saveSettings) {
-                    window.electronAPI.saveSettings(globalSettings).then(result => {
+                if (chatAPI?.saveSettings) {
+                    chatAPI.saveSettings(globalSettings).then(result => {
                         if (!result.success) {
                             console.error('保存侧边栏状态失败:', result.error);
                         }
@@ -1308,7 +1309,7 @@ export function setupEventListeners(deps) {
 
             try {
                 console.log(`[VoiceChat] Opening voice chat for agent: ${currentSelectedItem.id}`);
-                await window.electronAPI.openVoiceChatWindow({
+                await chatAPI.openVoiceChatWindow({
                     agentId: currentSelectedItem.id
                 });
             } catch (error) {
@@ -1325,7 +1326,7 @@ export function setupEventListeners(deps) {
 
     if (minimizeToTrayBtn) {
         minimizeToTrayBtn.addEventListener('click', () => {
-            window.electronAPI.minimizeToTray();
+            chatAPI.minimizeToTray();
         });
     }
 
@@ -1400,8 +1401,8 @@ export function setupEventListeners(deps) {
     });
 
     // 监听来自主进程的全局快捷键触发的创建未锁定话题事件
-    if (window.electronAPI && window.electronAPI.onCreateUnlockedTopic) {
-        window.electronAPI.onCreateUnlockedTopic(() => {
+    if (chatAPI?.onCreateUnlockedTopic) {
+        chatAPI.onCreateUnlockedTopic(() => {
             console.log('[快捷键] 收到来自主进程的创建未锁定话题请求');
             const currentSelectedItem = refs.currentSelectedItem.get();
             if (!currentSelectedItem.id) {

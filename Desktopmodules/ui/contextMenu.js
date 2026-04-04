@@ -6,6 +6,7 @@
 'use strict';
 
 (function () {
+    const desktopApi = window.desktopAPI || window.electronAPI;
     const { state, widget, zIndex } = window.VCPDesktop;
 
     let contextMenuElement = null;
@@ -252,11 +253,11 @@
         const presetId = state.lastLoadedPresetId;
         if (!presetId) return;
 
-        if (!window.electronAPI?.desktopSaveLayout || !window.electronAPI?.desktopLoadLayout) return;
+        if (!desktopApi?.desktopSaveLayout || !desktopApi?.desktopLoadLayout) return;
 
         try {
             // 加载现有数据
-            const result = await window.electronAPI.desktopLoadLayout();
+            const result = await desktopApi.desktopLoadLayout();
             if (!result?.success || !result.data) return;
 
             const layoutData = result.data;
@@ -300,7 +301,7 @@
 
             // 保存
             layoutData.presets = presets;
-            await window.electronAPI.desktopSaveLayout(layoutData);
+            await desktopApi.desktopSaveLayout(layoutData);
 
             if (window.VCPDesktop.status) {
                 window.VCPDesktop.status.update('connected', `预设已更新: ${target.name}`);
@@ -321,8 +322,8 @@
      * 打开 Windows 系统工具
      */
     function openSystemTool(cmd) {
-        if (window.electronAPI?.desktopOpenSystemTool) {
-            window.electronAPI.desktopOpenSystemTool(cmd).catch(err => {
+        if (desktopApi?.desktopOpenSystemTool) {
+            desktopApi.desktopOpenSystemTool(cmd).catch(err => {
                 console.error('[ContextMenu] Open system tool error:', err);
             });
         } else {

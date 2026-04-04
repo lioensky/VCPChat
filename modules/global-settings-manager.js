@@ -2,6 +2,7 @@
  * This module handles the logic for saving global settings.
  */
 export async function handleSaveGlobalSettings(e, deps) {
+    const chatAPI = window.chatAPI || window.electronAPI;
     e.preventDefault();
 
     const {
@@ -96,7 +97,7 @@ export async function handleSaveGlobalSettings(e, deps) {
     if (userAvatarCropped) {
         try {
             const arrayBuffer = await userAvatarCropped.arrayBuffer();
-            const avatarSaveResult = await window.electronAPI.saveUserAvatar({
+            const avatarSaveResult = await chatAPI.saveUserAvatar({
                 name: userAvatarCropped.name,
                 type: userAvatarCropped.type,
                 buffer: arrayBuffer
@@ -116,11 +117,11 @@ export async function handleSaveGlobalSettings(e, deps) {
                 if (window.messageRenderer) {
                     window.messageRenderer.setUserAvatar(avatarSaveResult.avatarUrl);
                 }
-                if (avatarSaveResult.needsColorExtraction && window.electronAPI && window.electronAPI.saveAvatarColor) {
+                if (avatarSaveResult.needsColorExtraction && chatAPI?.saveAvatarColor) {
                     if (window.getDominantAvatarColor) {
                         window.getDominantAvatarColor(avatarSaveResult.avatarUrl).then(avgColor => {
                             if (avgColor) {
-                                window.electronAPI.saveAvatarColor({ type: 'user', id: 'user_global', color: avgColor })
+                                chatAPI.saveAvatarColor({ type: 'user', id: 'user_global', color: avgColor })
                                     .then((saveColorResult) => {
                                         if (saveColorResult && saveColorResult.success) {
                                             refs.globalSettings.get().userAvatarCalculatedColor = avgColor;
@@ -154,7 +155,7 @@ export async function handleSaveGlobalSettings(e, deps) {
                 replyUsername: newSettings.userName || '用户',
                 rememberCredentials: true
             };
-            const forumResult = await window.electronAPI.saveForumConfig(forumConfig);
+            const forumResult = await chatAPI.saveForumConfig(forumConfig);
             if (!forumResult?.success) {
                 console.warn('[GlobalSettings] Failed to save forum config:', forumResult?.error);
             }
@@ -163,10 +164,10 @@ export async function handleSaveGlobalSettings(e, deps) {
         }
     }
 
-    const result = await window.electronAPI.saveSettings(newSettings);
+    const result = await chatAPI.saveSettings(newSettings);
     if (result.success) {
-        if (window.electronAPI?.saveRustAssistantConfig) {
-            const rustSaveResult = await window.electronAPI.saveRustAssistantConfig(rustConfigPatch);
+        if (chatAPI?.saveRustAssistantConfig) {
+            const rustSaveResult = await chatAPI.saveRustAssistantConfig(rustConfigPatch);
             if (!rustSaveResult?.success) {
                 uiHelperFunctions.showToastNotification(`Rust助手配置保存失败: ${rustSaveResult?.error || '未知错误'}`, 'warning');
             } else if (rustSaveResult.reconcile?.modeChanged) {
@@ -180,9 +181,9 @@ export async function handleSaveGlobalSettings(e, deps) {
         uiHelperFunctions.showToastNotification('全局设置已保存！部分设置（如通知URL/Key）可能需要重新连接生效。');
         uiHelperFunctions.closeModal('globalSettingsModal');
         if (refs.globalSettings.get().vcpLogUrl && refs.globalSettings.get().vcpLogKey) {
-             window.electronAPI.connectVCPLog(refs.globalSettings.get().vcpLogUrl, refs.globalSettings.get().vcpLogKey);
+             chatAPI.connectVCPLog(refs.globalSettings.get().vcpLogUrl, refs.globalSettings.get().vcpLogKey);
         } else {
-             window.electronAPI.disconnectVCPLog();
+             chatAPI.disconnectVCPLog();
              if (window.notificationRenderer) window.notificationRenderer.updateVCPLogStatus({ status: 'error', message: 'VCPLog未配置' }, document.getElementById('vcpLogConnectionStatus'));
         }
    } else {

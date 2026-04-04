@@ -6,7 +6,7 @@ function setupPlayer(app) {
         const requestId = ++app.pendingLoadRequestId;
         app.isPreloadingNext = false;
         try {
-            await window.electron.invoke('music-cancel-preload');
+            await app.api?.cancelMusicPreload?.();
         } catch (e) {}
 
         if (app.playlist.length === 0) {
@@ -44,7 +44,7 @@ function setupPlayer(app) {
         app.updateMediaSessionMetadata();
         if (app.wnpAdapter) app.wnpAdapter.sendUpdate();
 
-        const result = await window.electron.invoke('music-load', track);
+        const result = await app.api.musicLoad(track);
         if (result && result.status === 'success') {
             app.updateUIWithState(result.state);
 
@@ -56,7 +56,7 @@ function setupPlayer(app) {
                 while (Date.now() < timeoutAt) {
                     if (requestId !== app.pendingLoadRequestId) return false;
 
-                    const stateResult = await window.electron.invoke('music-get-state');
+                    const stateResult = await app.api.getMusicState();
                     if (stateResult && stateResult.status === 'success' && stateResult.state) {
                         const state = stateResult.state;
                         app.updateUIWithState(state);
@@ -82,7 +82,7 @@ function setupPlayer(app) {
 
     app.playTrack = async () => {
         if (app.playlist.length === 0 || app.isTrackLoading) return;
-        const result = await window.electron.invoke('music-play');
+        const result = await app.api.musicPlay();
         if (result.status === 'success') {
             app.isChangingState = true;
             app.lastCommandTime = Date.now();
@@ -99,7 +99,7 @@ function setupPlayer(app) {
     };
 
     app.pauseTrack = async () => {
-        const result = await window.electron.invoke('music-pause');
+        const result = await app.api.musicPause();
         if (result.status === 'success') {
             app.isChangingState = true;
             app.lastCommandTime = Date.now();
@@ -226,7 +226,7 @@ function setupPlayer(app) {
 
             app.isPreloadingNext = true;
             try {
-                await window.electron.invoke('music-queue-next', {
+                await app.api.queueNextMusicTrack({
                     path: nextTrackToPreload.path,
                     username: nextTrackToPreload.username,
                     password: nextTrackToPreload.password
@@ -240,7 +240,7 @@ function setupPlayer(app) {
     };
 
     app.pollState = async () => {
-        const result = await window.electron.invoke('music-get-state');
+        const result = await app.api.getMusicState();
         if (result.status === 'success') app.updateUIWithState(result.state);
     };
 

@@ -1,3 +1,5 @@
+const api = window.utilityAPI || window.electronAPI;
+
 document.addEventListener('DOMContentLoaded', async () => {
     // 获取所有需要的 DOM 元素
     const sourceTextarea = document.getElementById('sourceText');
@@ -31,7 +33,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // 从主进程加载配置
     async function loadConfig() {
         try {
-            const settings = await window.electronAPI.loadSettings();
+            const settings = await api.loadSettings();
             if (settings.vcpServerUrl && settings.vcpApiKey) {
                 vcpServerUrl = settings.vcpServerUrl;
                 vcpApiKey = settings.vcpApiKey;
@@ -149,30 +151,34 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // Then initialize theme
         try {
-            const theme = await window.electronAPI.getCurrentTheme();
+            const theme = await api.getCurrentTheme();
             applyTheme(theme || 'dark');
         } catch (error) {
             console.error('Failed to get initial theme:', error);
             applyTheme('dark'); // Fallback
         }
 
-        if (window.electronAPI) {
-            window.electronAPI.onThemeUpdated(applyTheme);
+        if (api) {
+            api.onThemeUpdated(applyTheme);
         } else {
-            console.warn('electronAPI not found. Theme updates will not work.');
+            console.warn('utilityAPI not found. Theme updates will not work.');
         }
 
         // --- Custom Title Bar Listeners ---
         minimizeTranslatorBtn.addEventListener('click', () => {
-            if (window.electronAPI) window.electronAPI.minimizeWindow();
+            if (api) api.minimizeWindow();
         });
 
         maximizeTranslatorBtn.addEventListener('click', () => {
-            if (window.electronAPI) window.electronAPI.maximizeWindow();
+            if (api) api.maximizeWindow();
         });
 
         closeTranslatorBtn.addEventListener('click', () => {
-            window.close();
+            if (api?.closeWindow) {
+                api.closeWindow();
+            } else {
+                window.close();
+            }
         });
     }
 

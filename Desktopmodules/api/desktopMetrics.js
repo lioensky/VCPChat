@@ -6,6 +6,7 @@
 'use strict';
 
 (function () {
+    const desktopApi = window.desktopAPI || window.electronAPI;
     let _capabilitiesCache = null;
     let _capabilitiesUpdatedAt = 0;
     const COMPONENT_DEFINITIONS = [
@@ -92,14 +93,14 @@
             return _capabilitiesCache;
         }
 
-        if (!window.electronAPI?.desktopMetricsGetCapabilities) {
+        if (!desktopApi?.desktopMetricsGetCapabilities) {
             _capabilitiesCache = createUnavailableCapabilities('desktopMetricsGetCapabilities 不可用');
             _capabilitiesUpdatedAt = now;
             return _capabilitiesCache;
         }
 
         try {
-            const result = await window.electronAPI.desktopMetricsGetCapabilities();
+            const result = await desktopApi.desktopMetricsGetCapabilities();
             if (result?.success && result.data) {
                 _capabilitiesCache = result.data;
                 _capabilitiesUpdatedAt = now;
@@ -118,12 +119,12 @@
     async function getSnapshot(options) {
         const capabilities = await getCapabilities(false);
 
-        if (!window.electronAPI?.desktopMetricsGetSnapshot) {
+        if (!desktopApi?.desktopMetricsGetSnapshot) {
             return createUnavailableSnapshot('desktopMetricsGetSnapshot 不可用');
         }
 
         try {
-            const result = await window.electronAPI.desktopMetricsGetSnapshot(options || {});
+            const result = await desktopApi.desktopMetricsGetSnapshot(options || {});
             if (result?.success && result.data) {
                 if (result.data.capabilities) {
                     _capabilitiesCache = result.data.capabilities;

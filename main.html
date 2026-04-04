@@ -32,7 +32,7 @@
         <div class="title-bar-text"><img src="assets/icon.png" alt="Logo" class="title-bar-logo"> VCPChat</div>
         <div class="title-bar-controls">
             <button id="themes-btn" class="title-bar-button" title="主题商店"
-                onclick="window.electronAPI.openThemesWindow()">
+                onclick="(window.chatAPI || window.electronAPI)?.openThemesWindow?.()">
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"
                     style="width: 12px; height: 12px;">
                     <path

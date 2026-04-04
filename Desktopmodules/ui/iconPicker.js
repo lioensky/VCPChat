@@ -12,6 +12,7 @@
 'use strict';
 
 (function () {
+    const desktopApi = window.desktopAPI || window.electronAPI;
     let pickerOverlay = null;
     let currentCallback = null;
     let currentPreset = '';
@@ -141,7 +142,7 @@
         presetSelect.innerHTML = '<option value="">加载中...</option>';
 
         try {
-            const result = await window.electronAPI.desktopIconsetListPresets();
+            const result = await desktopApi.desktopIconsetListPresets();
             if (result?.success && result.presets.length > 0) {
                 presetSelect.innerHTML = '';
                 for (const preset of result.presets) {
@@ -179,7 +180,7 @@
         grid.innerHTML = '<div class="desktop-iconpicker-loading">加载中...</div>';
 
         try {
-            const result = await window.electronAPI.desktopIconsetListIcons({
+            const result = await desktopApi.desktopIconsetListIcons({
                 presetName: currentPreset,
                 page: currentPage,
                 pageSize: PAGE_SIZE,
@@ -222,7 +223,7 @@
                     // 延迟加载 HTML 内容（性能优化）
                     const loadHtmlPreview = async () => {
                         try {
-                            const dataResult = await window.electronAPI.desktopIconsetGetIconData(icon.relativePath);
+                            const dataResult = await desktopApi.desktopIconsetGetIconData(icon.relativePath);
                             if (dataResult?.success && dataResult.htmlContent) {
                                 const shadow = previewEl.attachShadow({ mode: 'closed' });
                                 shadow.innerHTML = `<style>:host{display:block;width:100%;height:100%;overflow:hidden;}.vcp-html-icon-wrap{width:100%;height:100%;display:flex;align-items:center;justify-content:center;overflow:hidden;transform-origin:center center;}</style><div class="vcp-html-icon-wrap">${dataResult.htmlContent}</div>`;
@@ -281,7 +282,7 @@
 
                     // 读取图标数据
                     try {
-                        const dataResult = await window.electronAPI.desktopIconsetGetIconData(icon.relativePath);
+                        const dataResult = await desktopApi.desktopIconsetGetIconData(icon.relativePath);
                         if (dataResult?.success && currentCallback) {
                             currentCallback({
                                 relativePath: icon.relativePath,

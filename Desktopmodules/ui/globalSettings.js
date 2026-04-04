@@ -14,6 +14,7 @@
 'use strict';
 
 (function () {
+    const desktopApi = window.desktopAPI || window.electronAPI;
     const { state } = window.VCPDesktop;
 
     // 默认壁纸设置
@@ -306,8 +307,8 @@
         const dragRegion = titleBar?.querySelector('.desktop-title-bar-drag-region');
 
         if (s.autoMaximize) {
-            if (window.electronAPI?.maximizeWindow) {
-                window.electronAPI.maximizeWindow();
+            if (desktopApi?.maximizeWindow) {
+                desktopApi.maximizeWindow();
             }
             // 禁用标题栏最大化按钮，锁死最大化状态
             const maxBtn = document.getElementById('desktop-btn-maximize');
@@ -343,8 +344,8 @@
         }
 
         // 2. 窗口置底
-        if (window.electronAPI?.setAlwaysOnBottom) {
-            window.electronAPI.setAlwaysOnBottom(!!s.alwaysOnBottom);
+        if (desktopApi?.setAlwaysOnBottom) {
+            desktopApi.setAlwaysOnBottom(!!s.alwaysOnBottom);
         }
 
         // 2.5. 可见性冻结开关
@@ -422,9 +423,9 @@
      * 辅助：从磁盘加载预设列表（与 sidebar 共用 API）
      */
     async function loadPresetsFromDisk() {
-        if (!window.electronAPI?.desktopLoadLayout) return [];
+        if (!desktopApi?.desktopLoadLayout) return [];
         try {
-            const result = await window.electronAPI.desktopLoadLayout();
+            const result = await desktopApi.desktopLoadLayout();
             if (result?.success && result.data && result.data.presets) {
                 return result.data.presets;
             }
@@ -442,7 +443,7 @@
      * 保存设置到磁盘（合并写入 layout.json）
      */
     async function saveSettings() {
-        if (!window.electronAPI?.desktopSaveLayout || !window.electronAPI?.desktopLoadLayout) {
+        if (!desktopApi?.desktopSaveLayout || !desktopApi?.desktopLoadLayout) {
             console.warn('[GlobalSettings] Layout API not available, cannot save settings');
             return;
         }
@@ -453,7 +454,7 @@
             // 合并 globalSettings 字段
             existing.globalSettings = { ...state.globalSettings };
             // 写回
-            await window.electronAPI.desktopSaveLayout(existing);
+            await desktopApi.desktopSaveLayout(existing);
             console.log('[GlobalSettings] Settings saved to layout.json');
         } catch (err) {
             console.error('[GlobalSettings] Save error:', err);
@@ -464,7 +465,7 @@
      * 从磁盘加载设置（从 layout.json 的 globalSettings 字段读取）
      */
     async function loadSettings() {
-        if (!window.electronAPI?.desktopLoadLayout) {
+        if (!desktopApi?.desktopLoadLayout) {
             console.log('[GlobalSettings] Layout API not available, skipping settings load');
             return;
         }
@@ -501,7 +502,7 @@
      */
     async function loadLayoutData() {
         try {
-            const result = await window.electronAPI.desktopLoadLayout();
+            const result = await desktopApi.desktopLoadLayout();
             if (result?.success && result.data) {
                 return result.data;
             }
@@ -734,12 +735,12 @@
         const selectBtn = document.getElementById('desktop-setting-wallpaper-select');
         if (selectBtn) {
             selectBtn.addEventListener('click', async () => {
-                if (!window.electronAPI?.desktopSelectWallpaper) {
+                if (!desktopApi?.desktopSelectWallpaper) {
                     console.warn('[GlobalSettings] desktopSelectWallpaper API not available');
                     return;
                 }
 
-                const result = await window.electronAPI.desktopSelectWallpaper();
+                const result = await desktopApi.desktopSelectWallpaper();
                 if (!result.success || result.canceled) return;
 
                 const wp = state.globalSettings.wallpaper || (state.globalSettings.wallpaper = { ...DEFAULT_WALLPAPER });

@@ -75,11 +75,12 @@ class PerformanceManager {
     async getSnapshot() {
         const now = performance.now();
         const deltaTotal = now - this.lastTotalTick;
+        const desktopApi = window.desktopAPI || window.electronAPI;
         
         // 1. 获取 Electron 进程指标
         let processData = [];
         try {
-            const res = await window.electronAPI.desktopMetricsGetDetailedProcesses();
+            const res = await desktopApi.desktopMetricsGetDetailedProcesses();
             if (res.success) {
                 processData = res.data;
             }

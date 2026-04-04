@@ -6,6 +6,7 @@
 'use strict';
 
 (function () {
+    const desktopApi = window.desktopAPI || window.electronAPI;
     let _vcpCredentials = null; // 缓存凭据（admin API: Basic Auth）
     let _vcpApiCredentials = null; // 缓存凭据（VCP Chat API: Bearer Token）
 
@@ -14,12 +15,12 @@
      * @returns {Promise<boolean>} 是否初始化成功
      */
     async function initVcpApi() {
-        if (!window.electronAPI?.desktopGetCredentials) {
+        if (!desktopApi?.desktopGetCredentials) {
             console.warn('[VCPdesktop] desktopGetCredentials not available');
             return false;
         }
         try {
-            const result = await window.electronAPI.desktopGetCredentials();
+            const result = await desktopApi.desktopGetCredentials();
             if (result?.success && result.apiBaseUrl) {
                 _vcpCredentials = {
                     apiBaseUrl: result.apiBaseUrl,

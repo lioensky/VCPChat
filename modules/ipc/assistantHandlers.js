@@ -4,8 +4,10 @@ const { ipcMain, BrowserWindow, screen, nativeTheme, globalShortcut } = require(
 const path = require('path');
 const fs = require('fs-extra');
 const { getAgentConfigById } = require('./agentHandlers');
-const notesHandlers = require('./notesHandlers');
 const { createRustAssistantAdapter } = require('../assistant/assistant-rust-adapter');
+const windowService = require('../services/windowService');
+const WINDOW_APP_IDS = require('../services/windowAppIds');
+const { PRELOAD_ROLES, resolveProjectPreload } = require('../services/preloadPaths');
 
 let assistantWindow = null;
 let assistantBarWindow = null;
@@ -52,6 +54,20 @@ let assistantRuntimeCache = {
     agentConfig: null,
     agentConfigLoadedAt: 0
 };
+
+function buildAssistantNotePayload(selectionText, isDarkTheme) {
+    return {
+        title: `来自划词笔记：${selectionText.substring(0, 20)}...`,
+        content: selectionText,
+        theme: isDarkTheme ? 'dark' : 'light'
+    };
+}
+
+async function sendAssistantNoteToNotesWindow(selectionText, isDarkTheme, sendPayload = windowService.sendPayload) {
+    const data = buildAssistantNotePayload(selectionText, isDarkTheme);
+    await sendPayload(WINDOW_APP_IDS.NOTES, data, { timeoutMs: 10000 });
+    return data;
+}
 
 function getRustAssistantConfigPath() {
     return path.join(__dirname, '..', '..', 'AppData', 'rust-assistant-config.json');
@@ -974,7 +990,7 @@ function createAssistantBarWindow() {
         skipTaskbar: true,
         focusable: false,
         webPreferences: {
-            preload: path.join(__dirname, '..', '..', 'preload.js'),
+                preload: resolveProjectPreload(path.join(__dirname, '..', '..'), PRELOAD_ROLES.CHAT),
             contextIsolation: true,
         }
     });
@@ -1022,7 +1038,7 @@ function createAssistantWindow(data) {
         frame: false,
         ...(process.platform === 'darwin' ? {} : { titleBarStyle: 'hidden' }),
         webPreferences: {
-            preload: path.join(__dirname, '..', '..', 'preload.js'),
+                preload: resolveProjectPreload(path.join(__dirname, '..', '..'), PRELOAD_ROLES.CHAT),
             contextIsolation: true,
             nodeIntegration: false,
         },
@@ -1216,25 +1232,10 @@ async function initialize(options) {
         
         if (action === 'note') {
             try {
-                const noteTitle = `来自划词笔记：${lastProcessedSelection.substring(0, 20)}...`;
-                const noteContent = lastProcessedSelection;
-                const data = {
-                    title: noteTitle,
-                    content: noteContent,
-                    theme: nativeTheme.shouldUseDarkColors ? 'dark' : 'light'
-                };
-                // Use the imported handler
-                const targetWindow = notesHandlers.createOrFocusNotesWindow();
-                const wc = targetWindow.webContents;
-                if (!wc.isLoading()) {
-                    wc.send('shared-note-data', data);
-                } else {
-                    ipcMain.once('notes-window-ready', (e) => {
-                        if (e.sender === wc) {
-                            wc.send('shared-note-data', data);
-                        }
-                    });
-                }
+                await sendAssistantNoteToNotesWindow(
+                    lastProcessedSelection,
+                    nativeTheme.shouldUseDarkColors
+                );
             } catch (error) {
                 console.error('[Assistant] Error creating note from assistant action:', error);
             }
@@ -1272,5 +1273,9 @@ module.exports = {
                 mouseListener = null;
             }
         }
+    },
+    __test: {
+        buildAssistantNotePayload,
+        sendAssistantNoteToNotesWindow
     }
 };

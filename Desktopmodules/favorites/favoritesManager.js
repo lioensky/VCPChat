@@ -6,6 +6,7 @@
 'use strict';
 
 (function () {
+    const desktopApi = window.desktopAPI || window.electronAPI;
     const { state, status, widget, sidebar, thumbnail } = window.VCPDesktop;
 
     // ============================================================
@@ -41,10 +42,10 @@
         }
 
         // 通过IPC发送到主进程持久化
-        if (window.electronAPI?.desktopSaveWidget) {
+        if (desktopApi?.desktopSaveWidget) {
             try {
                 console.log('[Desktop] Calling desktopSaveWidget IPC...');
-                const result = await window.electronAPI.desktopSaveWidget({
+                const result = await desktopApi.desktopSaveWidget({
                     id: saveId,
                     name: name,
                     html: htmlContent,
@@ -79,12 +80,12 @@
      * 从主进程加载收藏列表
      */
     async function loadFavoritesList() {
-        if (!window.electronAPI?.desktopListWidgets) {
+        if (!desktopApi?.desktopListWidgets) {
             console.log('[Desktop] desktopListWidgets API not available yet, skipping.');
             return;
         }
         try {
-            const result = await window.electronAPI.desktopListWidgets();
+            const result = await desktopApi.desktopListWidgets();
             if (result?.success) {
                 state.favorites = result.widgets || [];
                 sidebar.render();
@@ -105,15 +106,18 @@
      * @param {number} [y] - 放置 Y 坐标
      */
     async function spawnFromFavorite(favoriteId, x, y) {
-        if (window.electronAPI?.desktopLoadWidget) {
+        if (desktopApi?.desktopLoadWidget) {
             try {
-                const result = await window.electronAPI.desktopLoadWidget(favoriteId);
+                const result = await desktopApi.desktopLoadWidget(favoriteId);
                 if (result?.success && result.html) {
                     const widgetId = `fav-${favoriteId}-${Date.now()}`;
                     const widgetData = widget.create(widgetId, {
                         x: x || 150 + Math.random() * 200,
                         y: y || 100 + Math.random() * 200,
                     });
+                    if (!widgetData) {
+                        throw new Error(`Widget "${widgetId}" is being removed. Try again shortly.`);
+                    }
                     widgetData.savedId = favoriteId;
                     widgetData.savedName = result.name || favoriteId;
                     widgetData.contentBuffer = result.html;
@@ -149,9 +153,9 @@
             return;
         }
 
-        if (window.electronAPI?.desktopLoadWidget) {
+        if (desktopApi?.desktopLoadWidget) {
             try {
-                const result = await window.electronAPI.desktopLoadWidget(widgetData.savedId);
+                const result = await desktopApi.desktopLoadWidget(widgetData.savedId);
                 if (result?.success && result.html) {
                     widgetData.contentBuffer = result.html;
                     widgetData.contentContainer.innerHTML = result.html;
@@ -179,9 +183,9 @@
      * @param {string} favoriteId
      */
     async function deleteFavorite(favoriteId) {
-        if (window.electronAPI?.desktopDeleteWidget) {
+        if (desktopApi?.desktopDeleteWidget) {
             try {
-                const result = await window.electronAPI.desktopDeleteWidget(favoriteId);
+                const result = await desktopApi.desktopDeleteWidget(favoriteId);
                 if (result?.success) {
                     status.update('connected', '已删除收藏');
                     loadFavoritesList();

@@ -43,6 +43,7 @@ const ragHandlers = require('./modules/ipc/ragHandlers'); // Import RAG handlers
 const canvasHandlers = require('./modules/ipc/canvasHandlers'); // Import canvas handlers
 const desktopHandlers = require('./modules/ipc/desktopHandlers'); // Import VCPdesktop handlers
 const desktopRemoteHandlers = require('./modules/ipc/desktopRemoteHandlers'); // Import desktop remote control handlers
+const { PRELOAD_ROLES, resolveProjectPreload } = require('./modules/services/preloadPaths');
 // chokidar is now lazy-loaded
 
 // --- File Watcher ---
@@ -149,6 +150,10 @@ let cachedModels = []; // Cache for models fetched from VCP server
 const NOTES_MODULE_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'Notemodules');
 const isRagObserverOnlyMode = process.argv.includes('--rag-observer-only');
 const isAutoOpenDesktop = process.argv.includes('--desktop-only');
+let audioEngineStopPromise = null;
+let isAudioEngineStopping = false;
+let appQuitCleanupPromise = null;
+let isFinalizingQuit = false;
 
 // --- Audio Engine Management ---
 // Now uses the Rust native audio engine instead of Python
@@ -174,6 +179,9 @@ function startAudioEngine() {
             return;
         }
 
+        audioEngineStopPromise = null;
+        isAudioEngineStopping = false;
+
         const args = ['--port', '63789'];
         audioEngineProcess = spawn(rustBinaryPath, args);
 
@@ -196,13 +204,17 @@ function startAudioEngine() {
         audioEngineProcess.stderr.on('data', (data) => {
             const logLine = data.toString().trim();
             if (logLine && !logLine.includes('GET /state HTTP/1.1')) {
-                console.error(`[AudioEngine STDERR]: ${logLine}`);
+                const logMethod = isAudioEngineStopping ? console.warn : console.error;
+                logMethod(`[AudioEngine STDERR]: ${logLine}`);
             }
         });
 
         audioEngineProcess.on('close', (code) => {
             console.log(`[Main] Audio Engine process exited with code ${code}`);
+            clearTimeout(readyTimeout);
             audioEngineProcess = null;
+            audioEngineStopPromise = null;
+            isAudioEngineStopping = false;
         });
 
         audioEngineProcess.on('error', (err) => {
@@ -213,13 +225,81 @@ function startAudioEngine() {
     });
 }
 
-function stopAudioEngine() {
-    if (audioEngineProcess && !audioEngineProcess.killed) {
-        console.log('[Main] Stopping Rust Audio Engine...');
-        // Send a termination signal. The 'close' event handler on the process
-        // will handle setting audioEngineProcess to null. This prevents a race condition.
-        audioEngineProcess.kill();
+async function stopAudioEngine() {
+    if (!audioEngineProcess || audioEngineProcess.killed) {
+        return;
     }
+
+    if (audioEngineStopPromise) {
+        return audioEngineStopPromise;
+    }
+
+    console.log('[Main] Stopping Rust Audio Engine...');
+    isAudioEngineStopping = true;
+    const processRef = audioEngineProcess;
+    const exitPromise = new Promise((resolve) => {
+        processRef.once('close', () => resolve());
+    });
+
+    audioEngineStopPromise = (async () => {
+        try {
+            const controller = new AbortController();
+            const shutdownTimer = setTimeout(() => controller.abort(), 2000);
+            try {
+                await fetch('http://127.0.0.1:63789/shutdown', {
+                    method: 'POST',
+                    signal: controller.signal
+                });
+            } catch (error) {
+                if (error.name !== 'AbortError') {
+                    console.warn(`[Main] Audio Engine shutdown request failed: ${error.message}`);
+                }
+            } finally {
+                clearTimeout(shutdownTimer);
+            }
+
+            await Promise.race([
+                exitPromise,
+                new Promise((resolve) => setTimeout(resolve, 2500))
+            ]);
+
+            if (audioEngineProcess === processRef && !processRef.killed) {
+                console.warn('[Main] Audio Engine did not exit after graceful shutdown request. Force killing process.');
+                processRef.kill();
+                await Promise.race([
+                    exitPromise,
+                    new Promise((resolve) => setTimeout(resolve, 2000))
+                ]);
+            }
+        } finally {
+            if (audioEngineProcess !== processRef || processRef.killed) {
+                audioEngineStopPromise = null;
+            }
+        }
+    })();
+
+    return audioEngineStopPromise;
+}
+
+async function performQuitCleanup() {
+    if (appQuitCleanupPromise) {
+        return appQuitCleanupPromise;
+    }
+
+    appQuitCleanupPromise = (async () => {
+        if (distributedServer) {
+            console.log('[Main] Stopping distributed server...');
+            try {
+                await distributedServer.stop();
+            } finally {
+                distributedServer = null;
+            }
+        }
+
+        await stopAudioEngine();
+    })();
+
+    return appQuitCleanupPromise;
 }
 
 
@@ -233,7 +313,7 @@ function createWindow() {
         frame: false, // 移除原生窗口框架
         ...(process.platform === 'darwin' ? {} : { titleBarStyle: 'hidden' }),
         webPreferences: {
-            preload: path.join(__dirname, 'preload.js'),
+            preload: resolveProjectPreload(__dirname, PRELOAD_ROLES.CHAT),
             contextIsolation: true,    // 恢复: 开启上下文隔离
             nodeIntegration: false,  // 恢复: 关闭Node.js集成在渲染进程
             spellcheck: true, // Enable spellcheck for input fields
@@ -303,6 +383,14 @@ function createWindow() {
         }, 3000); // 3-second delay
 
         mainWindow.show();
+    });
+
+    mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
+        console.error('[Main] Main window did-fail-load', errorCode, errorDescription, validatedURL);
+    });
+
+    mainWindow.webContents.on('render-process-gone', (event, details) => {
+        console.error('[Main] Main window render-process-gone', details);
     });
 
     // mainWindow.setMenu(null); // 移除应用程序菜单栏 - 注释掉以启用macOS的标准菜单
@@ -797,7 +885,7 @@ if (!gotTheLock) {
                 ...(process.platform === 'darwin' ? {} : { titleBarStyle: 'hidden' }),
                 modal: false,
                 webPreferences: {
-                    preload: path.join(__dirname, 'preload.js'),
+                    preload: resolveProjectPreload(__dirname, PRELOAD_ROLES.UTILITY),
                     contextIsolation: true,
                     nodeIntegration: false,
                     devTools: true
@@ -978,11 +1066,12 @@ if (!gotTheLock) {
                         handleDesktopRemoteControl: desktopRemoteHandlers.handleDesktopRemoteControl // Inject the desktop remote control handler
                     };
                     distributedServer = new DistributedServer(config);
-                    distributedServer.initialize();
+                    await distributedServer.initialize();
                 } else {
                     console.log('[Main] Distributed server is disabled in settings.');
                 }
             } catch (error) {
+                distributedServer = null;
                 console.error('[Main] Failed to read settings or initialize distributed server:', error);
             }
         })();
@@ -1082,6 +1171,22 @@ if (!gotTheLock) {
         }
     });
 
+    app.on('before-quit', async (event) => {
+        if (isFinalizingQuit) {
+            return;
+        }
+
+        event.preventDefault();
+        isFinalizingQuit = true;
+        try {
+            await performQuitCleanup();
+        } catch (error) {
+            console.warn('[Main] Cleanup before quit encountered an issue:', error);
+        } finally {
+            app.quit();
+        }
+    });
+
     app.on('will-quit', () => {
         // 0. Clean up the ready signal file for the native splash screen
         const readyFile = path.join(__dirname, '.vcp_ready');
@@ -1110,18 +1215,12 @@ if (!gotTheLock) {
             clearTimeout(vcpLogReconnectInterval);
         }
 
-        // 5. Stop the distributed server
-        if (distributedServer) {
-            console.log('[Main] Stopping distributed server...');
-            distributedServer.stop();
-            distributedServer = null;
-        }
+        // 5. Distributed server cleanup is handled in before-quit.
 
         // 6. Stop the dice server
         diceHandlers.stopDiceServer();
 
-        // 7. Stop the Python Audio Engine
-        stopAudioEngine();
+        // 7. Audio engine cleanup is handled in before-quit.
 
         // 8. 强制销毁所有窗口
         console.log('[Main] Destroying all open windows...');
@@ -1265,7 +1364,7 @@ ipcMain.on('open-voice-chat-window', (event, { agentId }) => {
         ...(process.platform === 'darwin' ? {} : { titleBarStyle: 'hidden' }),
         title: '语音聊天',
         webPreferences: {
-            preload: path.join(__dirname, 'preload.js'),
+            preload: resolveProjectPreload(__dirname, PRELOAD_ROLES.CHAT),
             contextIsolation: true,
             nodeIntegration: false,
         },

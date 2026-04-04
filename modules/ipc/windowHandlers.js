@@ -1,6 +1,7 @@
 // modules/ipc/windowHandlers.js
 const { ipcMain, app, BrowserWindow } = require('electron');
 const path = require('path');
+const { PRELOAD_ROLES, resolveAppPreload } = require('../services/preloadPaths');
 
 /**
  * Initializes window control IPC handlers.
@@ -95,7 +96,7 @@ function initialize(mainWindow, openChildWindows) {
             frame: false, // 移除原生窗口框架
             ...(process.platform === 'darwin' ? {} : { titleBarStyle: 'hidden' }), // 隐藏标题栏
             webPreferences: {
-                preload: path.join(__dirname, '../../preload.js'), // Correct path from this file's location
+                preload: resolveAppPreload(app.getAppPath(), PRELOAD_ROLES.UTILITY),
                 contextIsolation: true,
                 nodeIntegration: false,
             },
@@ -143,7 +144,7 @@ function initialize(mainWindow, openChildWindows) {
             frame: false,
             ...(process.platform === 'darwin' ? {} : { titleBarStyle: 'hidden' }),
             webPreferences: {
-                preload: path.join(__dirname, '../../preload.js'),
+                preload: resolveAppPreload(app.getAppPath(), PRELOAD_ROLES.UTILITY),
                 contextIsolation: true,
                 nodeIntegration: false,
             },
@@ -200,7 +201,7 @@ function initialize(mainWindow, openChildWindows) {
             frame: false,
             ...(process.platform === 'darwin' ? {} : { titleBarStyle: 'hidden' }),
             webPreferences: {
-                preload: path.join(__dirname, '../../preload.js'),
+                preload: resolveAppPreload(app.getAppPath(), PRELOAD_ROLES.UTILITY),
                 contextIsolation: true,
                 nodeIntegration: false,
             },

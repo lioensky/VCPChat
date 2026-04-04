@@ -4,6 +4,7 @@ const { ipcMain, BrowserWindow, nativeTheme } = require('electron');
 const path = require('path');
 const fs = require('fs-extra');
 const crypto = require('crypto');
+const { PRELOAD_ROLES, resolveProjectPreload } = require('../services/preloadPaths');
 // sharp is now lazy-loaded
 
 let themesWindow = null;
@@ -25,7 +26,7 @@ function createThemesWindow() {
         modal: false,
         frame: false, // 移除原生窗口框架
         webPreferences: {
-            preload: path.join(PROJECT_ROOT, 'preload.js'),
+            preload: resolveProjectPreload(PROJECT_ROOT, PRELOAD_ROLES.UTILITY),
             contextIsolation: true,
         },
         icon: path.join(PROJECT_ROOT, 'assets', 'icon.png'),
@@ -174,10 +175,10 @@ function initialize(options) {
 
         try {
             if (!(await fs.pathExists(absolutePath))) {
-                throw new Error(`Original wallpaper file not found at: ${absolutePath}`);
+                return null;
             }
         } catch (e) {
-            console.error(e.message);
+            console.error(`Error checking wallpaper source file: ${absolutePath}`, e);
             throw e;
         }
 

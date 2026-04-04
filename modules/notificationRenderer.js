@@ -1,5 +1,7 @@
 // modules/notificationRenderer.js
 
+var notificationRendererApi = window.chatAPI || window.electronAPI;
+
 /**
  * @typedef {Object} VCPLogStatus
  * @property {'open'|'closed'|'error'|'connecting'} status
@@ -202,7 +204,7 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
             allowBtn.classList.add('vcp-btn', 'vcp-btn-success');
             allowBtn.onclick = (e) => {
                 e.stopPropagation();
-                window.electronAPI.sendVCPLogMessage({
+                notificationRendererApi.sendVCPLogMessage({
                     type: 'tool_approval_response',
                     data: {
                         requestId: logData.data.requestId,
@@ -221,7 +223,7 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
             rejectBtn.classList.add('vcp-btn', 'vcp-btn-danger');
             rejectBtn.onclick = (e) => {
                 e.stopPropagation();
-                window.electronAPI.sendVCPLogMessage({
+                notificationRendererApi.sendVCPLogMessage({
                     type: 'tool_approval_response',
                     data: {
                         requestId: logData.data.requestId,

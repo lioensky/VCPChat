@@ -155,7 +155,7 @@ Widget脚本中：
 
 ```
 桌面 Widget → musicAPI.play/pause/getState/seek/setVolume
-           → window.electron.invoke('music-play/pause/get-state/seek/set-volume')
+           → window.desktopAPI.invoke('music-play/pause/get-state/seek/set-volume')
            → 主进程 musicHandlers → Rust Audio Engine HTTP API
 
 上一首/下一首：

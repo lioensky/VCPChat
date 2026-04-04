@@ -1,6 +1,7 @@
 const { BrowserWindow, ipcMain, screen, app } = require('electron');
 const path = require('path');
 const fs = require('fs-extra');
+const { PRELOAD_ROLES, resolveAppPreload } = require('../services/preloadPaths');
 
 let ragObserverWindow = null;
 let ragOverlayWindow = null;
@@ -168,7 +169,7 @@ function ensureRagOverlayWindow() {
         alwaysOnTop: true,
         hasShadow: true,
         webPreferences: {
-            preload: path.join(app.getAppPath(), 'preload.js'),
+            preload: resolveAppPreload(app.getAppPath(), PRELOAD_ROLES.UTILITY),
             contextIsolation: true,
             nodeIntegration: false,
         },
@@ -237,7 +238,7 @@ async function openRagObserverWindow() {
         frame: false,
         ...(process.platform === 'darwin' ? {} : { titleBarStyle: 'hidden' }),
         webPreferences: {
-            preload: path.join(app.getAppPath(), 'preload.js'),
+            preload: resolveAppPreload(app.getAppPath(), PRELOAD_ROLES.UTILITY),
             contextIsolation: true,
             nodeIntegration: false,
         },

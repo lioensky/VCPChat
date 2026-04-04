@@ -2,7 +2,7 @@
 //!
 //! REST API compatible with existing frontend, with WebSocket for spectrum data.
 
-use actix_web::{web, App, HttpServer, HttpResponse, middleware, http::Method};
+use actix_web::{dev::ServerHandle, web, App, HttpServer, HttpResponse, middleware, http::Method};
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
@@ -41,6 +41,8 @@ pub struct AppState {
     pub scan_task_ttl_secs: u64,
     /// Max time for one analysis job before timeout
     pub analysis_task_timeout_secs: u64,
+    /// Local-only graceful shutdown handle
+    pub shutdown_handle: Mutex<Option<ServerHandle>>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -609,6 +611,18 @@ async fn cors_preflight() -> HttpResponse {
     HttpResponse::Ok().finish()
 }
 
+async fn shutdown_server(data: web::Data<Arc<AppState>>) -> HttpResponse {
+    let handle = data.shutdown_handle.lock().clone();
+    if let Some(handle) = handle {
+        actix_web::rt::spawn(async move {
+            handle.stop(true).await;
+        });
+        HttpResponse::Ok().json(serde_json::json!({ "status": "shutting_down" }))
+    } else {
+        HttpResponse::ServiceUnavailable().json(serde_json::json!({ "status": "shutdown_handle_unavailable" }))
+    }
+}
+
 // ============ Server Entry Point ============
 
 use crate::config::AppConfig;
@@ -697,6 +711,7 @@ pub async fn run_server(port: u16, config: AppConfig, settings_manager: SharedSe
         scan_task_max_entries,
         scan_task_ttl_secs,
         analysis_task_timeout_secs,
+        shutdown_handle: Mutex::new(None),
     });
     
     log::info!("Starting VCP Audio Engine on http://127.0.0.1:{}", port);
@@ -704,7 +719,7 @@ pub async fn run_server(port: u16, config: AppConfig, settings_manager: SharedSe
     // Print ready signal for parent process
     println!("RUST_AUDIO_ENGINE_READY");
     
-    HttpServer::new(move || {
+    let server = HttpServer::new(move || {
         App::new()
             .app_data(web::Data::new(Arc::clone(&state)))
             .wrap(middleware::Logger::default())
@@ -716,6 +731,7 @@ pub async fn run_server(port: u16, config: AppConfig, settings_manager: SharedSe
             )
             // CORS preflight handler - catch all OPTIONS requests
             .default_service(web::route().method(Method::OPTIONS).to(cors_preflight))
+                .route("/shutdown", web::post().to(shutdown_server))
                 .configure(playback::configure_routes)
                 .configure(effects::configure_routes)
                 .configure(settings_handlers::configure_routes)
@@ -723,6 +739,22 @@ pub async fn run_server(port: u16, config: AppConfig, settings_manager: SharedSe
                 .configure(ws_handlers::configure_routes)
     })
     .bind(("127.0.0.1", port))?
-    .run()
-    .await
+    .run();
+
+    {
+        let mut shutdown_handle = state.shutdown_handle.lock();
+        *shutdown_handle = Some(server.handle());
+    }
+
+    let server_result = server.await;
+
+    if let Ok(app_state) = Arc::try_unwrap(state) {
+        if let Ok(runtime) = Arc::try_unwrap(app_state.analysis_runtime) {
+            let _ = actix_web::rt::task::spawn_blocking(move || {
+                runtime.shutdown_timeout(Duration::from_secs(2));
+            }).await;
+        }
+    }
+
+    server_result
 }
