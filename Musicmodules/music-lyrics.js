@@ -5,9 +5,9 @@ function setupLyrics(app) {
     app.fetchAndDisplayLyrics = async (artist, title) => {
         const requestToken = ++app.lyricsRequestToken;
         app.resetLyrics();
-        if (!window.electron) return;
+        if (!app.api?.getMusicLyrics) return;
 
-        const lrcContent = await window.electron.invoke('music-get-lyrics', { artist, title });
+        const lrcContent = await app.api.getMusicLyrics({ artist, title });
         if (requestToken !== app.lyricsRequestToken) return;
 
         if (lrcContent) {
@@ -17,7 +17,7 @@ function setupLyrics(app) {
             // 尝试从网络获取歌词
             app.lyricsList.innerHTML = '<li class="no-lyrics">正在网络上搜索歌词...</li>';
             try {
-                const fetchedLrc = await window.electron.invoke('music-fetch-lyrics', { artist, title });
+                const fetchedLrc = await app.api.fetchMusicLyrics({ artist, title });
                 if (requestToken !== app.lyricsRequestToken) return;
                 if (fetchedLrc) {
                     app.currentLyrics = app.parseLrc(fetchedLrc);

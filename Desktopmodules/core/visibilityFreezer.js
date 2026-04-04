@@ -23,6 +23,7 @@
 'use strict';
 
 (function () {
+    const desktopApi = window.desktopAPI || window.electronAPI;
     const { state, domRefs } = window.VCPDesktop;
 
     let isFrozen = false;
@@ -57,8 +58,8 @@
         document.addEventListener('visibilitychange', onVisibilityChange);
 
         // 2. Electron IPC — 系统级遮挡检测（若 preload 暴露了此接口）
-        if (window.electronAPI?.onWindowOccluded) {
-            window.electronAPI.onWindowOccluded((occluded) => {
+        if (desktopApi?.onWindowOccluded) {
+            desktopApi.onWindowOccluded((occluded) => {
                 if (!isEnabled()) return;
                 if (occluded) {
                     freeze('electron-occluded');

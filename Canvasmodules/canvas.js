@@ -1,3 +1,5 @@
+const api = window.utilityAPI || window.electronAPI;
+
 document.addEventListener('DOMContentLoaded', () => {
     const editorTextarea = document.getElementById('editor');
     const historyList = document.getElementById('historyList');
@@ -81,8 +83,8 @@ document.addEventListener('DOMContentLoaded', () => {
             debounceTimer = setTimeout(() => {
                 const content = editor.getValue();
                 const path = filePathSpan.textContent;
-                if (path !== '未保存' && window.electronAPI) {
-                    window.electronAPI.saveCanvasFile({ path, content });
+                if (path !== '未保存' && api) {
+                    api.saveCanvasFile({ path, content });
                     addContentHistory(path, content);
                 }
             }, 2000);
@@ -154,18 +156,18 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // --- IPC Event Listeners ---
-    if (window.electronAPI) {
-        window.electronAPI.onCanvasLoadData(async (data) => {
+    if (api) {
+        api.onCanvasLoadData(async (data) => {
             initializeEditor(data);
             // After editor is initialized, get and apply the current theme
             try {
-                const theme = await window.electronAPI.getCurrentTheme();
+                const theme = await api.getCurrentTheme();
                 applyTheme(theme);
 
                 // Attach the theme update listener only after the editor is initialized
                 // to prevent race conditions where the theme updates before the editor exists.
                 if (!window.isThemeListenerAttached) {
-                    window.electronAPI.onThemeUpdated(applyTheme);
+                    api.onThemeUpdated(applyTheme);
                     window.isThemeListenerAttached = true;
                 }
 
@@ -175,7 +177,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
-        window.electronAPI.onCanvasFileChanged((file) => {
+        api.onCanvasFileChanged((file) => {
             const path = file.path;
             // Initialize history for this file path if it doesn't exist
             if (!filesHistory[path]) {
@@ -198,13 +200,13 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         // Listen for direct load commands from the main process
-        window.electronAPI.onLoadCanvasFileByPath((filePath) => {
-            if (window.electronAPI) {
-                window.electronAPI.loadCanvasFile(filePath);
+        api.onLoadCanvasFileByPath((filePath) => {
+            if (api) {
+                api.loadCanvasFile(filePath);
             }
         });
  
-        window.electronAPI.onExternalFileChanged((file) => {
+        api.onExternalFileChanged((file) => {
             if (editor && editor.getValue() !== file.content) {
                 console.log('External change detected, showing notification bar.');
                 externalFileContent = file.content; // Store the new content
@@ -213,7 +215,10 @@ document.addEventListener('DOMContentLoaded', () => {
         });
  
         // Inform main process that the window is ready to receive data
-        window.electronAPI.canvasReady();
+        api?.canvasReady?.();
+        if (api?.windowReady) {
+            api.windowReady('canvas');
+        }
     }
 
     // --- Diff View Logic ---
@@ -268,11 +273,11 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     function rejectChanges() {
-        if (editor && window.electronAPI) {
+        if (editor && api) {
             const userContent = editor.getValue();
             const path = filePathSpan.textContent;
             // Force save the user's current content back to the file system
-            window.electronAPI.saveCanvasFile({ path, content: userContent });
+            api.saveCanvasFile({ path, content: userContent });
         }
         closeDiffViewAndBar();
     }
@@ -282,8 +287,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- UI Event Listeners ---
     newCanvasBtn.addEventListener('click', () => {
-        if (window.electronAPI) {
-            window.electronAPI.createNewCanvas();
+        if (api) {
+            api.createNewCanvas();
         }
     });
 
@@ -406,8 +411,8 @@ document.addEventListener('DOMContentLoaded', () => {
     historyList.addEventListener('click', (e) => {
         if (e.target && e.target.matches('li[data-path]')) {
             const filePath = e.target.dataset.path;
-            if (window.electronAPI) {
-                window.electronAPI.loadCanvasFile(filePath);
+            if (api) {
+                api.loadCanvasFile(filePath);
             }
         }
     });
@@ -471,20 +476,20 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     copyBtn.addEventListener('click', () => {
-        if (activeListItem && window.electronAPI) {
+        if (activeListItem && api) {
             const filePath = activeListItem.dataset.path;
-            window.electronAPI.copyCanvasFile(filePath);
+            api.copyCanvasFile(filePath);
         }
         contextMenu.style.display = 'none';
     });
 
     deleteBtn.addEventListener('click', async () => {
-        if (activeListItem && window.electronAPI) {
+        if (activeListItem && api) {
             const filePath = activeListItem.dataset.path;
             const fileName = await window.electronPath.basename(filePath);
             // Add a confirmation dialog before deleting
             if (confirm(`确定要删除文件 "${fileName}"? 这个操作无法撤销。`)) {
-                window.electronAPI.deleteCanvasFile(filePath);
+                api.deleteCanvasFile(filePath);
             }
         }
         contextMenu.style.display = 'none';
@@ -507,9 +512,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const oldPath = li.dataset.path;
 
             if (newTitle && newTitle !== originalTitle) {
-                if (window.electronAPI) {
+                if (api) {
                     try {
-                        const newPath = await window.electronAPI.renameCanvasFile({ oldPath, newTitle });
+                        const newPath = await api.renameCanvasFile({ oldPath, newTitle });
                         li.textContent = newTitle;
                         li.dataset.path = newPath;
                         // If the renamed file is the active one, update the file path display
@@ -540,13 +545,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (minimizeBtn && maximizeBtn && closeBtn) {
         minimizeBtn.addEventListener('click', () => {
-            if (window.electronAPI) window.electronAPI.minimizeWindow();
+            if (api) api.minimizeWindow();
         });
         maximizeBtn.addEventListener('click', () => {
-            if (window.electronAPI) window.electronAPI.maximizeWindow();
+            if (api) api.maximizeWindow();
         });
         closeBtn.addEventListener('click', () => {
-            if (window.electronAPI) window.electronAPI.closeWindow();
+            if (api) api.closeWindow();
         });
     }
 
@@ -612,9 +617,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     runPyBtn.addEventListener('click', () => {
-       if (editor && window.electronAPI) {
+       if (editor && api) {
            const code = editor.getValue();
-           window.electronAPI.executePythonCode(code).then(({ stdout, stderr }) => {
+           api.executePythonCode(code).then(({ stdout, stderr }) => {
                // For now, just log the output. A dedicated output panel would be better.
                console.log('Python stdout:', stdout);
                console.error('Python stderr:', stderr);
@@ -627,17 +632,17 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     renderMdBtn.addEventListener('click', () => {
-       if (editor && window.electronAPI) {
+       if (editor && api) {
            const content = editor.getValue();
-           window.electronAPI.openTextInNewWindow(content, 'Markdown Preview', 'dark');
+           api.openTextInNewWindow(content, 'Markdown Preview', 'dark');
        }
     });
 
     renderHtmlBtn.addEventListener('click', () => {
-       if (editor && window.electronAPI) {
+       if (editor && api) {
            const content = editor.getValue();
            // We can reuse the text viewer for HTML rendering as it supports iframes
-           window.electronAPI.openTextInNewWindow(content, 'HTML Preview', 'dark');
+           api.openTextInNewWindow(content, 'HTML Preview', 'dark');
        }
     });
 
@@ -732,8 +737,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Search in content (if we have it or can get it)
             try {
-                const fileData = await window.electronAPI.getTextContent(file.path);
-                if (fileData && fileData.toLowerCase().includes(searchTerm)) {
+                const fileData = await api.getTextContent(file.path);
+                const fileText = typeof fileData === 'string'
+                    ? fileData
+                    : (typeof fileData?.text === 'string' ? fileData.text : '');
+                if (fileText.toLowerCase().includes(searchTerm)) {
                     filteredFiles.push(file);
                 }
             } catch (err) {

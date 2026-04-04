@@ -1,4 +1,6 @@
 document.addEventListener('DOMContentLoaded', async () => {
+    const viewerAPI = window.utilityAPI || window.electronAPI;
+
     const imgElement = document.getElementById('viewerImage');
     const errorDiv = document.getElementById('errorMessage');
     const imageControls = document.getElementById('imageControls');
@@ -70,8 +72,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     applyTheme(initialTheme);
 
-    if (window.electronAPI) {
-        window.electronAPI.onThemeUpdated(applyTheme);
+    if (viewerAPI) {
+        viewerAPI.onThemeUpdated(applyTheme);
     }
 
     const decodedTitle = decodeURIComponent(imageTitle);
@@ -609,7 +611,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (currentTool !== 'select') {
                 setTool('select');
             } else {
-                window.close();
+                if (viewerAPI?.closeWindow) {
+                    viewerAPI.closeWindow();
+                } else {
+                    window.close();
+                }
             }
         }
         
@@ -642,15 +648,19 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // ========== 窗口控制 ==========
     document.getElementById('minimize-viewer-btn').addEventListener('click', () => {
-        if (window.electronAPI) window.electronAPI.minimizeWindow();
+        if (viewerAPI) viewerAPI.minimizeWindow();
     });
 
     document.getElementById('maximize-viewer-btn').addEventListener('click', () => {
-        if (window.electronAPI) window.electronAPI.maximizeWindow();
+        if (viewerAPI) viewerAPI.maximizeWindow();
     });
 
     document.getElementById('close-viewer-btn').addEventListener('click', () => {
-        window.close();
+        if (viewerAPI?.closeWindow) {
+            viewerAPI.closeWindow();
+        } else {
+            window.close();
+        }
     });
 
     // ========== 动态工具栏布局 ==========

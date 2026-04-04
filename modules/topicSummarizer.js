@@ -1,5 +1,7 @@
 // modules/topicSummarizer.js
 
+var topicSummarizerApi = window.chatAPI || window.electronAPI;
+
 /**
  * 根据消息列表尝试用AI总结一个话题标题。
  * @param {Array<Object>} messages - 聊天消息对象数组。
@@ -14,7 +16,7 @@ async function summarizeTopicFromMessages(messages, agentName) {
     // --- Load settings dynamically ---
     let settings;
     try {
-        settings = await window.electronAPI.loadSettings();
+        settings = await topicSummarizerApi.loadSettings();
         if (!settings || !settings.vcpServerUrl || !settings.vcpApiKey) {
             console.error('[TopicSummarizer] VCP settings are missing or invalid.');
             return null; // Can't proceed without settings

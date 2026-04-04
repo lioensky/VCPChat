@@ -1,5 +1,7 @@
 // modules/forum.js
 
+const api = window.utilityAPI || window.electronAPI;
+
 // ========== Global State ==========
 let apiAuthHeader = null;
 let forumConfig = {
@@ -48,9 +50,15 @@ const settingsError = document.getElementById('settings-error');
 
 
 // ========== Window Controls ==========
-document.getElementById('minimize-forum-btn')?.addEventListener('click', () => window.electronAPI?.minimizeWindow());
-document.getElementById('maximize-forum-btn')?.addEventListener('click', () => window.electronAPI?.maximizeWindow());
-document.getElementById('close-forum-btn')?.addEventListener('click', () => window.close());
+document.getElementById('minimize-forum-btn')?.addEventListener('click', () => api?.minimizeWindow());
+document.getElementById('maximize-forum-btn')?.addEventListener('click', () => api?.maximizeWindow());
+document.getElementById('close-forum-btn')?.addEventListener('click', () => {
+    if (api?.closeWindow) {
+        api.closeWindow();
+    } else {
+        window.close();
+    }
+});
 
 // ========== Initialization & Config ==========
 // ========== Theme Management ==========
@@ -61,21 +69,18 @@ function applyTheme(theme) {
 document.addEventListener('DOMContentLoaded', async () => {
     window.addEventListener('resize', handleResize);
 
-    // Emoticon manager initialization
-    if (window.emoticonManager) {
-        const emoticonPanel = document.getElementById('emoticon-panel');
-        if (emoticonPanel) {
-            window.emoticonManager.initialize({ emoticonPanel });
-        }
+    const emoticonPanel = document.getElementById('emoticon-panel');
+    if (window.emoticonManager && emoticonPanel) {
+        await window.emoticonManager.initialize({ emoticonPanel });
     }
 
     await loadForumConfig();
     await loadAgentsList(); // Load agents list for avatar matching
     await loadEmoticonLibrary(); // Load emoticon library for URL fixing
     try {
-        const settings = await window.electronAPI?.loadSettings();
+        const settings = await api?.loadSettings();
         if (settings?.currentThemeMode) applyTheme(settings.currentThemeMode);
-        window.electronAPI?.onThemeUpdated(applyTheme); // Listen for live theme changes
+        api?.onThemeUpdated(applyTheme); // Listen for live theme changes
     } catch (e) { /* ignore */ }
 
     // Intercept external links and open them in the default browser
@@ -84,7 +89,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Check if it's an external link
         if (link && (link.protocol === 'http:' || link.protocol === 'https:')) {
             event.preventDefault();
-            window.electronAPI?.openExternal(link.href);
+            api?.sendOpenExternalLink?.(link.href);
         }
     });
 });
@@ -96,7 +101,7 @@ function handleResize() {
 
 async function loadForumConfig() {
     try {
-        const config = await window.electronAPI?.loadForumConfig();
+        const config = await api?.loadForumConfig();
         if (config && !config.error) {
             forumConfig = { ...forumConfig, ...config };
             if (forumConfig.username) usernameInput.value = forumConfig.username;
@@ -130,7 +135,7 @@ function switchView(viewName) {
 // ========== API & Auth ==========
 async function getServerUrl() {
     try {
-        const settings = await window.electronAPI.loadSettings();
+        const settings = await api.loadSettings();
         if (!settings?.vcpServerUrl) throw new Error('VCP Server URL not configured');
         serverBaseUrl = settings.vcpServerUrl.replace(/\/v1\/chat\/completions\/?$/, '');
         if (!serverBaseUrl.endsWith('/')) serverBaseUrl += '/';
@@ -179,7 +184,7 @@ async function handleLogin() {
         forumConfig.username = user;
         forumConfig.password = pass;
         forumConfig.rememberCredentials = rememberMeCheckbox.checked;
-        window.electronAPI?.saveForumConfig(forumConfig);
+        api?.saveForumConfig(forumConfig);
 
         switchView('forum');
         loadPosts();
@@ -205,7 +210,7 @@ function showError(element, message) {
 // ========== Avatar Loading Functions ==========
 async function loadAgentsList() {
     try {
-        const agentsData = await window.electronAPI?.loadAgentsList();
+        const agentsData = await api?.loadAgentsList();
         if (agentsData && Array.isArray(agentsData)) {
             agentsList = agentsData;
             console.log('[Forum] Loaded', agentsList.length, 'agents for avatar matching');
@@ -217,14 +222,21 @@ async function loadAgentsList() {
 
 // ========== Emoticon URL Fixer ==========
 async function loadEmoticonLibrary() {
+    if (!api?.getEmoticonLibrary) {
+        emoticonLibrary = [];
+        return;
+    }
+
     try {
-        const library = await window.electronAPI?.getEmoticonLibrary();
-        if (library && Array.isArray(library)) {
+        const library = await api.getEmoticonLibrary();
+        if (Array.isArray(library)) {
             emoticonLibrary = library;
-            console.log('[Forum] Loaded', emoticonLibrary.length, 'emoticons for URL fixing');
+            return;
         }
+
+        emoticonLibrary = [];
     } catch (error) {
-        console.error('[Forum] Failed to load emoticon library:', error);
+        emoticonLibrary = [];
     }
 }
 
@@ -418,8 +430,8 @@ function setupImageViewer(container) {
         img.style.cursor = 'pointer';
         img.addEventListener('click', (e) => {
             e.stopPropagation(); // Prevent the post from closing or other parent events
-            if (window.electronAPI?.openImageViewer) {
-                window.electronAPI.openImageViewer({
+            if (api?.openImageViewer) {
+                api.openImageViewer({
                     src: img.src,
                     title: '图片查看' // A generic title for the viewer window
                 });
@@ -442,7 +454,7 @@ async function getAvatarForUser(username) {
                              (forumConfig.username && username === forumConfig.username);
         
         if (isCurrentUser) {
-            const userAvatar = await window.electronAPI?.loadUserAvatar();
+            const userAvatar = await api?.loadUserAvatar();
             if (userAvatar) {
                 avatarCache[username] = userAvatar;
                 return userAvatar;
@@ -455,7 +467,7 @@ async function getAvatarForUser(username) {
             const usernameLower = username.toLowerCase();
             
             if (agentNameLower.includes(usernameLower) || usernameLower.includes(agentNameLower)) {
-                const agentAvatar = await window.electronAPI?.loadAgentAvatar(agent.folder);
+                const agentAvatar = await api?.loadAgentAvatar(agent.folder);
                 if (agentAvatar) {
                     avatarCache[username] = agentAvatar;
                     return agentAvatar;
@@ -502,7 +514,7 @@ async function saveSettings() {
     saveSettingsBtn.textContent = '保存中...';
     saveSettingsBtn.disabled = true;
     try {
-        await window.electronAPI?.saveForumConfig(newConfig);
+        await api?.saveForumConfig(newConfig);
         forumConfig = newConfig;
         // Update login form fields as well, in case user logs out
         usernameInput.value = forumConfig.username;
@@ -1414,7 +1426,7 @@ submitPostBtn.addEventListener('click', async () => {
     submitPostBtn.disabled = true;
     submitPostBtn.textContent = '发布中...';
     try {
-        const settings = await window.electronAPI.loadSettings();
+        const settings = await api.loadSettings();
         if (!settings?.vcpApiKey) throw new Error('API Key missing');
         const toolRequest = `<<<[TOOL_REQUEST]>>>
 tool_name:「始」VCPForum「末」,

@@ -11,6 +11,7 @@ const Box = new DiceBox({
 });
 
 Box.init().then(() => {
+    const api = window.utilityAPI || window.electronAPI;
     console.log("Dice Box is ready.");
     const notationInput = document.getElementById('notation-input');
     const rollButton = document.getElementById('roll-button');
@@ -28,23 +29,29 @@ Box.init().then(() => {
     };
 
     // Listen for theme changes from the main process
-    if (window.electronAPI && window.electronAPI.onThemeUpdated) {
-        window.electronAPI.onThemeUpdated(applyTheme);
+    if (api && api.onThemeUpdated) {
+        api.onThemeUpdated(applyTheme);
     }
 
     // Get the initial theme from the main process
-    if (window.electronAPI && window.electronAPI.getCurrentTheme) {
-        window.electronAPI.getCurrentTheme().then(theme => {
+    if (api && api.getCurrentTheme) {
+        api.getCurrentTheme().then(theme => {
             applyTheme(theme);
             // Now that the theme is set, we can signal readiness.
-            if (window.electronAPI.sendDiceModuleReady) {
-                window.electronAPI.sendDiceModuleReady();
+            if (api.sendDiceModuleReady) {
+                api.sendDiceModuleReady();
+            }
+            if (api.windowReady) {
+                api.windowReady('dice');
             }
         });
     } else {
         // Fallback if getCurrentTheme is not available, signal ready immediately
-        if (window.electronAPI && window.electronAPI.sendDiceModuleReady) {
-            window.electronAPI.sendDiceModuleReady();
+        if (api && api.sendDiceModuleReady) {
+            api.sendDiceModuleReady();
+        }
+        if (api?.windowReady) {
+            api.windowReady('dice');
         }
     }
 
@@ -70,8 +77,8 @@ Box.init().then(() => {
     });
 
     // 监听来自主进程的AI投掷请求
-    if (window.electronAPI && window.electronAPI.onRollDice) {
-        window.electronAPI.onRollDice((notation, options) => {
+    if (api && api.onRollDice) {
+        api.onRollDice((notation, options) => {
             console.log(`Received roll from main process: ${notation}`, options);
             
             // 智能处理颜色：如果AI提供了颜色，就使用它。
@@ -93,8 +100,8 @@ Box.init().then(() => {
     // 监听投掷完成事件，并将结果发送回主进程 (为AI指令提供反馈)
     Box.onRollComplete = (results) => {
         console.log("Roll complete:", results);
-        if (window.electronAPI && window.electronAPI.sendDiceRollComplete) {
-            window.electronAPI.sendDiceRollComplete(results);
+        if (api && api.sendDiceRollComplete) {
+            api.sendDiceRollComplete(results);
         }
     };
     

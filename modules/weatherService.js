@@ -12,6 +12,7 @@
  */
 
 const weatherService = (() => {
+    const chatAPI = window.chatAPI || window.electronAPI;
     let weatherData = null;
     let lastFetchTime = 0;
     const CACHE_DURATION = 30 * 60 * 1000; // 30分钟缓存
@@ -39,7 +40,7 @@ const weatherService = (() => {
     async function fetchWeatherData() {
         try {
             // 读取全局设置中的 vcpServerUrl
-            const settings = await window.electronAPI.loadSettings();
+            const settings = await chatAPI.loadSettings();
             if (!settings || settings.error || !settings.vcpServerUrl) {
                 console.warn('[WeatherService] vcpServerUrl not configured');
                 return null;
@@ -48,7 +49,7 @@ const weatherService = (() => {
             // 读取 forum.config.json 中的账号密码
             let forumConfig = null;
             try {
-                forumConfig = await window.electronAPI.readForumConfig();
+                forumConfig = await chatAPI.loadForumConfig();
             } catch (e) {
                 console.warn('[WeatherService] Failed to read forum config:', e);
             }

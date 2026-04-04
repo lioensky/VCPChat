@@ -3,9 +3,9 @@
 
 function setupOutput(app) {
     app.populateDeviceList = async (forceRefresh = false) => {
-        if (!window.electron) return;
+        if (!app.api?.getMusicDevices) return;
         try {
-            const result = await window.electron.invoke('music-get-devices', { refresh: forceRefresh });
+            const result = await app.api.getMusicDevices({ refresh: forceRefresh });
             if (result.status === 'success' && result.devices) {
                 app.deviceSelect.innerHTML = '';
                 const defaultOption = document.createElement('option');
@@ -43,7 +43,7 @@ function setupOutput(app) {
     };
 
     app.configureOutput = async () => {
-        if (!window.electron) return;
+        if (!app.api?.configureMusicOutput) return;
         const selectedId = app.deviceSelect.value === 'default' ? null : parseInt(app.deviceSelect.value, 10);
         const useExc = app.wasapiSwitch.checked;
 
@@ -55,7 +55,7 @@ function setupOutput(app) {
         try {
             app.currentDeviceId = selectedId;
             app.useWasapiExclusive = useExc;
-            await window.electron.invoke('music-configure-output', {
+            await app.api.configureMusicOutput({
                 device_id: app.currentDeviceId,
                 exclusive: app.useWasapiExclusive
             });
@@ -69,19 +69,19 @@ function setupOutput(app) {
     };
 
     app.configureUpsampling = async () => {
-        if (!window.electron) return;
+        if (!app.api?.configureMusicUpsampling) return;
         const rate = parseInt(app.upsamplingSelect.value, 10);
         if (rate === app.targetUpsamplingRate) return;
         app.targetUpsamplingRate = rate;
-        await window.electron.invoke('music-configure-upsampling', {
+        await app.api.configureMusicUpsampling({
             target_samplerate: app.targetUpsamplingRate > 0 ? app.targetUpsamplingRate : null
         });
         app.saveSettings();
     };
 
     app.configureResampling = async () => {
-        if (!window.electron) return;
-        await window.electron.invoke('music-configure-resampling', {
+        if (!app.api?.configureMusicResampling) return;
+        await app.api.configureMusicResampling({
             quality: app.resampleQualitySelect.value,
             use_cache: app.resampleCacheSwitch.checked,
             preemptive_resample: app.preemptiveResampleSwitch.checked

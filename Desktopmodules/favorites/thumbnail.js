@@ -6,6 +6,7 @@
 'use strict';
 
 (function () {
+    const desktopApi = window.desktopAPI || window.electronAPI;
 
     /**
      * 捕获 widget 缩略图
@@ -20,7 +21,7 @@
         // 使用 Electron 的 webContents.capturePage() 原生截图
         // 注意：getBoundingClientRect() 返回 CSS 像素，capturePage() 也接受 CSS 像素
         // Electron 内部会自动处理 DPR 缩放，无需手动乘以 devicePixelRatio
-        if (window.electronAPI?.desktopCaptureWidget) {
+        if (desktopApi?.desktopCaptureWidget) {
             const rect = widget.getBoundingClientRect();
             const captureRect = {
                 x: Math.round(rect.x),
@@ -30,7 +31,7 @@
             };
 
             console.log(`[Desktop] Capturing widget at rect:`, captureRect, `(CSS pixels, dpr: ${window.devicePixelRatio})`);
-            const result = await window.electronAPI.desktopCaptureWidget(captureRect);
+            const result = await desktopApi.desktopCaptureWidget(captureRect);
             if (result?.success && result.thumbnail) {
                 return result.thumbnail;
             } else {

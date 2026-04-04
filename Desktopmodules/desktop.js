@@ -31,19 +31,20 @@
 
 document.addEventListener('DOMContentLoaded', () => {
     const D = window.VCPDesktop;
+    const desktopApi = window.desktopAPI || window.electronAPI;
 
     // 1. 初始化 DOM 引用
     D.initDomRefs();
 
     // 2. 标题栏窗口控制按钮
     document.getElementById('desktop-btn-minimize')?.addEventListener('click', () => {
-        window.electronAPI?.minimizeWindow();
+        desktopApi?.minimizeWindow();
     });
     document.getElementById('desktop-btn-maximize')?.addEventListener('click', () => {
-        window.electronAPI?.maximizeWindow();
+        desktopApi?.maximizeWindow();
     });
     document.getElementById('desktop-btn-close')?.addEventListener('click', () => {
-        window.electronAPI?.closeWindow();
+        desktopApi?.closeWindow();
     });
 
     // 3. 侧栏开关按钮

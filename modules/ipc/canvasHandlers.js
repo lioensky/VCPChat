@@ -2,6 +2,9 @@ const { ipcMain, BrowserWindow } = require('electron');
 const path = require('path');
 const fs = require('fs-extra');
 const chokidar = require('chokidar');
+const windowService = require('../services/windowService');
+const WINDOW_APP_IDS = require('../services/windowAppIds');
+const { PRELOAD_ROLES, resolveProjectPreload } = require('../services/preloadPaths');
 
 let mainWindow;
 let openChildWindows;
@@ -40,7 +43,10 @@ function initialize(config) {
     });
 }
 
-async function createCanvasWindow(filePath = null) {
+async function createCanvasWindow(eventOrFilePath = null, maybeFilePath = null) {
+    const filePath = eventOrFilePath && typeof eventOrFilePath === 'object' && 'sender' in eventOrFilePath
+        ? maybeFilePath
+        : eventOrFilePath;
     console.log('[CanvasHandlers] Received request to open canvas window.');
     if (canvasWindow && !canvasWindow.isDestroyed()) {
         if (!canvasWindow.isVisible()) {
@@ -66,7 +72,7 @@ async function createCanvasWindow(filePath = null) {
         frame: false,
         ...(process.platform === 'darwin' ? {} : { titleBarStyle: 'hidden' }),
         webPreferences: {
-            preload: path.join(__dirname, '..', '..', 'preload.js'),
+            preload: resolveProjectPreload(path.join(__dirname, '..', '..'), PRELOAD_ROLES.UTILITY),
             contextIsolation: true,
             nodeIntegration: false,
         },
@@ -75,6 +81,7 @@ async function createCanvasWindow(filePath = null) {
     });
 
     await canvasWindow.loadFile(path.join(__dirname, '..', '..', 'Canvasmodules', 'canvas.html'));
+    windowService.attachWindow(WINDOW_APP_IDS.CANVAS, canvasWindow);
 
     openChildWindows.push(canvasWindow);
 

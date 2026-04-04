@@ -1,13 +1,15 @@
 import * as emoticonFixer from './renderer/emoticonUrlFixer.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
+    const viewerAPI = window.utilityAPI || window.electronAPI;
+
     // --- Start: Emoticon URL Fixer (Module) ---
     // The main logic is now imported from emoticonUrlFixer.js
     async function fixEmoticonImagesInContainer(container) {
         // Ensure the fixer is initialized before trying to fix URLs.
         // The initialize function is idempotent and returns a promise.
-        if (window.electronAPI) {
-            await emoticonFixer.initialize(window.electronAPI);
+        if (viewerAPI) {
+            await emoticonFixer.initialize(viewerAPI);
         }
 
         const images = container.querySelectorAll('img');
@@ -569,10 +571,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     applyTheme(initialTheme);
     console.log(`[TextViewer] Initial theme set from URL: ${initialTheme}`);
 
-    if (window.electronAPI) {
-        window.electronAPI.onThemeUpdated(applyTheme);
+    if (viewerAPI) {
+        viewerAPI.onThemeUpdated(applyTheme);
     } else {
-        console.log('[TextViewer] electronAPI not found. Theme updates will not be received.');
+        console.log('[TextViewer] viewer API not found. Theme updates will not be received.');
     }
 
     mermaid.initialize({ startOnLoad: false }); // 初始化 Mermaid，但不自动渲染
@@ -717,11 +719,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     async function py_penetration_executor(code, outputContainer) {
         console.log('[text-viewer] Entering py_penetration_executor.');
         outputContainer.textContent = 'Executing with local Python...';
-        if (window.electronAPI && window.electronAPI.executePythonCode) {
+        if (viewerAPI && viewerAPI.executePythonCode) {
             try {
-                console.log('[text-viewer] Calling electronAPI.executePythonCode...');
-                const { stdout, stderr } = await window.electronAPI.executePythonCode(code);
-                console.log('[text-viewer] electronAPI.executePythonCode returned.');
+                console.log('[text-viewer] Calling viewerAPI.executePythonCode...');
+                const { stdout, stderr } = await viewerAPI.executePythonCode(code);
+                console.log('[text-viewer] viewerAPI.executePythonCode returned.');
                 console.log('[text-viewer] Python stdout (from renderer):', stdout);
                 console.log('[text-viewer] Python stderr (from renderer):', stderr);
 
@@ -738,8 +740,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 outputContainer.textContent = `Local Execution Error:\n${error.toString()}`;
             }
         } else {
-            outputContainer.textContent = 'Error: electronAPI.executePythonCode is not available.';
-            console.error('[text-viewer] electronAPI.executePythonCode is not available.');
+            outputContainer.textContent = 'Error: viewerAPI.executePythonCode is not available.';
+            console.error('[text-viewer] viewerAPI.executePythonCode is not available.');
         }
         console.log('[text-viewer] Exiting py_penetration_executor.');
     }
@@ -947,18 +949,18 @@ document.addEventListener('DOMContentLoaded', async () => {
             const noteTitle = document.title || '来自阅读模式的分享'; // 使用页面标题或默认标题
             
             // 尝试通过 electronAPI 打开新窗口或通知主进程处理
-            if (window.electronAPI && window.electronAPI.openNotesWithContent) {
-                console.log('[text-viewer] Attempting to share via electronAPI.openNotesWithContent');
-                window.electronAPI.openNotesWithContent({
+            if (viewerAPI && viewerAPI.openNotesWithContent) {
+                console.log('[text-viewer] Attempting to share via viewerAPI.openNotesWithContent');
+                viewerAPI.openNotesWithContent({
                     title: noteTitle,
                     content: originalRawContent, // Use the raw source content
                 }).catch(err => {
-                    console.error('[text-viewer] Error calling electronAPI.openNotesWithContent:', err);
+                    console.error('[text-viewer] Error calling viewerAPI.openNotesWithContent:', err);
                     // 如果API调用失败，可以在这里给用户一些提示
                     alert('分享到笔记失败，请检查控制台获取更多信息。');
                 });
             } else {
-                console.error('[text-viewer] electronAPI.openNotesWithContent is not available.');
+                console.error('[text-viewer] viewerAPI.openNotesWithContent is not available.');
                 alert('分享功能不可用，无法连接到主进程。');
             }
         });
@@ -1558,13 +1560,13 @@ ${codeContent}
                     }
                 }).then(canvas => {
                     const imageDataUrl = canvas.toDataURL('image/png');
-                    if (window.electronAPI && window.electronAPI.openImageViewer) {
-                        window.electronAPI.openImageViewer({
+                    if (viewerAPI && viewerAPI.openImageViewer) {
+                        viewerAPI.openImageViewer({
                             src: imageDataUrl,
                             title: `截图分享 - ${document.title}`
                         });
                     } else {
-                        console.error('electronAPI.openImageViewer is not available.');
+                        console.error('viewerAPI.openImageViewer is not available.');
                         alert('截图功能不可用。');
                     }
                 }).catch(err => {
@@ -1583,7 +1585,11 @@ ${codeContent}
     // Add keyboard listener for Escape key to close the window
     document.addEventListener('keydown', (event) => {
         if (event.key === 'Escape') {
-            window.close();
+            if (viewerAPI?.closeWindow) {
+                viewerAPI.closeWindow();
+            } else {
+                window.close();
+            }
         }
     });
 
@@ -1594,15 +1600,19 @@ ${codeContent}
 
     if (minimizeBtn && maximizeBtn && closeBtn) {
         minimizeBtn.addEventListener('click', () => {
-            if (window.electronAPI) window.electronAPI.minimizeWindow();
+            if (viewerAPI) viewerAPI.minimizeWindow();
         });
 
         maximizeBtn.addEventListener('click', () => {
-            if (window.electronAPI) window.electronAPI.maximizeWindow();
+            if (viewerAPI) viewerAPI.maximizeWindow();
         });
 
         closeBtn.addEventListener('click', () => {
-            window.close();
+            if (viewerAPI?.closeWindow) {
+                viewerAPI.closeWindow();
+            } else {
+                window.close();
+            }
         });
     }
 

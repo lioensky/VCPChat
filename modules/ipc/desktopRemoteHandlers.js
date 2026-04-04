@@ -1,49 +1,147 @@
-/**
- * modules/ipc/desktopRemoteHandlers.js
- * 桌面远程控制处理模块（从 main.js 中独立抽取）
- * 
- * 负责：
- *   - DesktopRemote 插件命令处理（SetWallpaper、QueryDesktop、ViewWidgetSource、CreateWidget）
- *   - Canvas 控制（从分布式服务器触发打开 canvas 窗口）
- *   - Flowlock 控制（从分布式服务器触发心流锁操作）
- * 
- * 这些 handler 主要供 VCPDistributedServer 注入使用，
- * 不直接注册 IPC 监听器，而是作为函数导出给调用方。
- */
-
 const { ipcMain } = require('electron');
 const path = require('path');
 const fs = require('fs-extra');
+const { CHANNELS } = require('./ipcContracts');
 
-// --- 模块依赖引用 ---
-let desktopHandlersRef = null;   // modules/ipc/desktopHandlers
-let canvasHandlersRef = null;    // modules/ipc/canvasHandlers
-let mainWindowRef = null;        // 主窗口引用
+let desktopHandlersRef = null;
+let canvasHandlersRef = null;
+let mainWindowRef = null;
 
 const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
+const pendingDesktopRemoteRequests = new Map();
+const pendingFlowlockRequests = new Map();
+let bridgeInitialized = false;
 
-/**
- * 初始化模块，注入必要的依赖引用
- * @param {object} params
- * @param {BrowserWindow} params.mainWindow - 主窗口引用
- */
+function createRequestId(prefix) {
+    return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function settlePendingRequest(map, event, envelope) {
+    const requestId = envelope?.requestId;
+    if (!requestId || !map.has(requestId)) {
+        return false;
+    }
+
+    const pending = map.get(requestId);
+    if (pending.webContentsId && pending.webContentsId !== event.sender.id) {
+        return false;
+    }
+
+    clearTimeout(pending.timeoutId);
+    map.delete(requestId);
+
+    if (envelope.ok === false) {
+        pending.reject(new Error(envelope.error || 'Renderer RPC failed.'));
+        return true;
+    }
+
+    pending.resolve(envelope.data);
+    return true;
+}
+
+function initBridgeListeners() {
+    if (bridgeInitialized) {
+        return;
+    }
+
+    ipcMain.on(CHANNELS.DESKTOP_REMOTE_RESPONSE, (event, envelope) => {
+        settlePendingRequest(pendingDesktopRemoteRequests, event, envelope);
+    });
+
+    ipcMain.on(CHANNELS.FLOWLOCK_RESPONSE, (event, envelope) => {
+        settlePendingRequest(pendingFlowlockRequests, event, envelope);
+    });
+
+    bridgeInitialized = true;
+}
+
+function requestRendererRpc(targetWindow, channel, pendingMap, prefix, command, payload, options = {}) {
+    if (!targetWindow || targetWindow.isDestroyed()) {
+        return Promise.reject(new Error(options.unavailableMessage || 'Target window is not available.'));
+    }
+
+    const requestId = createRequestId(prefix);
+    const timeoutMs = options.timeoutMs || 5000;
+
+    return new Promise((resolve, reject) => {
+        const timeoutId = setTimeout(() => {
+            pendingMap.delete(requestId);
+            if (options.resolveOnTimeout !== undefined) {
+                resolve(options.resolveOnTimeout);
+                return;
+            }
+            reject(new Error(options.timeoutMessage || `${command} timed out.`));
+        }, timeoutMs);
+
+        pendingMap.set(requestId, {
+            resolve,
+            reject,
+            timeoutId,
+            webContentsId: targetWindow.webContents.id,
+        });
+
+        targetWindow.webContents.send(channel, {
+            requestId,
+            command,
+            payload: payload || {},
+            source: options.source || 'main-process',
+        });
+    });
+}
+
+async function ensureDesktopWindow(desktopWin, options = {}) {
+    let targetWin = desktopWin;
+    let openedNow = false;
+
+    if (!targetWin || targetWin.isDestroyed()) {
+        await desktopHandlersRef.openDesktopWindow();
+        targetWin = desktopHandlersRef.getDesktopWindow();
+        openedNow = true;
+    }
+
+    if (!targetWin || targetWin.isDestroyed()) {
+        throw new Error(options.errorMessage || 'Failed to open desktop window.');
+    }
+
+    if (openedNow && options.waitAfterOpenMs) {
+        await new Promise((resolve) => setTimeout(resolve, options.waitAfterOpenMs));
+    }
+
+    return targetWin;
+}
+
+function requestDesktopRemote(desktopWin, command, payload, options = {}) {
+    return requestRendererRpc(
+        desktopWin,
+        CHANNELS.DESKTOP_REMOTE_REQUEST,
+        pendingDesktopRemoteRequests,
+        'desktop-remote',
+        command,
+        payload,
+        options
+    );
+}
+
+function requestFlowlock(commandPayload, options = {}) {
+    return requestRendererRpc(
+        mainWindowRef,
+        CHANNELS.FLOWLOCK_REQUEST,
+        pendingFlowlockRequests,
+        'flowlock',
+        commandPayload.command,
+        commandPayload,
+        options
+    );
+}
+
 function initialize(params) {
     mainWindowRef = params.mainWindow;
-    // 延迟 require 避免循环依赖
     desktopHandlersRef = require('./desktopHandlers');
     canvasHandlersRef = require('./canvasHandlers');
+    initBridgeListeners();
     console.log('[DesktopRemoteHandlers] Initialized.');
 }
 
-// ============================================================
-// Canvas Control Handler (for Distributed Server)
-// ============================================================
-
-/**
- * 处理 canvas 控制指令（分布式服务器调用）
- * @param {string} filePath - 要打开的 canvas 文件路径
- * @returns {Promise<{status: string, message: string}>}
- */
 async function handleCanvasControl(filePath) {
     try {
         if (!filePath) {
@@ -54,9 +152,7 @@ async function handleCanvasControl(filePath) {
             canvasHandlersRef = require('./canvasHandlers');
         }
 
-        // createCanvasWindow 同时处理打开窗口和加载文件
         await canvasHandlersRef.createCanvasWindow(filePath);
-
         return { status: 'success', message: 'Canvas window command processed.' };
     } catch (error) {
         console.error('[DesktopRemoteHandlers] handleCanvasControl error:', error);
@@ -64,99 +160,75 @@ async function handleCanvasControl(filePath) {
     }
 }
 
-// ============================================================
-// Flowlock Control Handler (for Distributed Server)
-// ============================================================
-
-/**
- * 处理心流锁控制指令（分布式服务器调用）
- * @param {object} commandPayload - 心流锁命令参数
- * @returns {Promise<{status: string, message: string}>}
- */
 async function handleFlowlockControl(commandPayload) {
     try {
         const { command, agentId, topicId, prompt, promptSource, target, oldText, newText } = commandPayload;
-
         console.log(`[DesktopRemoteHandlers] handleFlowlockControl received command: ${command}`, commandPayload);
 
         if (!mainWindowRef || mainWindowRef.isDestroyed()) {
             throw new Error('Main window is not available.');
         }
 
-        // 对于 'get' 和 'status' 命令，需要等待渲染进程的响应
         if (command === 'get' || command === 'status') {
-            return new Promise((resolve, reject) => {
-                const timeout = setTimeout(() => {
-                    ipcMain.removeListener('flowlock-response', responseHandler);
-                    reject(new Error(`${command === 'get' ? '获取输入框内容' : '获取心流锁状态'}超时`));
-                }, 5000);
+            const responseData = await requestFlowlock(
+                { command, agentId, topicId, prompt, promptSource, target, oldText, newText },
+                {
+                    timeoutMs: 5000,
+                    timeoutMessage: command === 'get'
+                        ? 'Timed out while querying current input content.'
+                        : 'Timed out while querying flowlock status.',
+                }
+            );
 
-                const responseHandler = (event, responseData) => {
-                    clearTimeout(timeout);
-                    ipcMain.removeListener('flowlock-response', responseHandler);
-
-                    if (responseData.success) {
-                        if (command === 'get') {
-                            resolve({
-                                status: 'success',
-                                message: `输入框当前内容为: "${responseData.content}"`,
-                                content: responseData.content
-                            });
-                        } else if (command === 'status') {
-                            const statusInfo = responseData.status;
-                            const statusText = statusInfo.isActive
-                                ? `心流锁已启用 (Agent: ${statusInfo.agentId}, Topic: ${statusInfo.topicId}, 处理中: ${statusInfo.isProcessing ? '是' : '否'})`
-                                : '心流锁未启用';
-                            resolve({
-                                status: 'success',
-                                message: statusText,
-                                flowlockStatus: statusInfo
-                            });
-                        }
-                    } else {
-                        reject(new Error(responseData.error || `${command === 'get' ? '获取输入框内容' : '获取心流锁状态'}失败`));
-                    }
+            if (command === 'get') {
+                return {
+                    status: 'success',
+                    message: `Current input content: "${responseData?.content || ''}"`,
+                    content: responseData?.content || '',
                 };
+            }
 
-                ipcMain.on('flowlock-response', responseHandler);
+            const statusInfo = responseData?.status || {};
+            const statusText = statusInfo.isActive
+                ? `Flowlock is active (Agent: ${statusInfo.agentId}, Topic: ${statusInfo.topicId}, Processing: ${statusInfo.isProcessing ? 'yes' : 'no'})`
+                : 'Flowlock is inactive.';
 
-                mainWindowRef.webContents.send('flowlock-command', {
-                    command, agentId, topicId, prompt, promptSource, target, oldText, newText
-                });
-            });
+            return {
+                status: 'success',
+                message: statusText,
+                flowlockStatus: statusInfo,
+            };
         }
 
-        // 对于其他命令，发送后立即返回
         mainWindowRef.webContents.send('flowlock-command', {
-            command, agentId, topicId, prompt, promptSource, target, oldText, newText
+            command, agentId, topicId, prompt, promptSource, target, oldText, newText,
         });
 
-        // 构建自然语言响应
         let naturalResponse = '';
         switch (command) {
             case 'start':
-                naturalResponse = `已为 Agent "${agentId}" 的话题 "${topicId}" 启动心流锁。`;
+                naturalResponse = `Flowlock started for agent "${agentId}" topic "${topicId}".`;
                 break;
             case 'stop':
-                naturalResponse = `已停止心流锁。`;
+                naturalResponse = 'Flowlock stopped.';
                 break;
             case 'promptee':
-                naturalResponse = `已设置下次续写提示词为: "${prompt}"`;
+                naturalResponse = `Prompt appended: "${prompt}"`;
                 break;
             case 'prompter':
-                naturalResponse = `已从来源 "${promptSource}" 获取提示词。`;
+                naturalResponse = `Prompt source requested: "${promptSource}"`;
                 break;
             case 'clear':
-                naturalResponse = `已清空输入框中的所有提示词。`;
+                naturalResponse = 'Input box cleared.';
                 break;
             case 'remove':
-                naturalResponse = `已从输入框中移除: "${target}"`;
+                naturalResponse = `Removed target text: "${target}"`;
                 break;
             case 'edit':
-                naturalResponse = `已将 "${oldText}" 编辑为 "${newText}"`;
+                naturalResponse = `Edited "${oldText}" to "${newText}".`;
                 break;
             default:
-                naturalResponse = `心流锁命令 "${command}" 已执行。`;
+                naturalResponse = `Flowlock command "${command}" dispatched.`;
         }
 
         return { status: 'success', message: naturalResponse };
@@ -166,15 +238,6 @@ async function handleFlowlockControl(commandPayload) {
     }
 }
 
-// ============================================================
-// Desktop Remote Control Handler (for Distributed Server)
-// ============================================================
-
-/**
- * 处理桌面远程控制指令（DesktopRemote 插件命令）
- * @param {object} commandPayload - 命令参数
- * @returns {Promise<{status: string, result?: object, message?: string}>}
- */
 async function handleDesktopRemoteControl(commandPayload) {
     try {
         const { command } = commandPayload;
@@ -186,22 +249,23 @@ async function handleDesktopRemoteControl(commandPayload) {
 
         const desktopWin = desktopHandlersRef.getDesktopWindow();
 
-        if (command === 'SetWallpaper') {
-            return await _handleSetWallpaper(commandPayload, desktopWin);
-        } else if (command === 'QueryDesktop') {
-            return await _handleQueryDesktop(desktopWin);
-        } else if (command === 'QueryDock') {
-            return await _handleQueryDock(desktopWin);
-        } else if (command === 'ViewWidgetSource') {
-            return await _handleViewWidgetSource(commandPayload, desktopWin);
-        } else if (command === 'SetStyleAutomation') {
-            return await _handleSetStyleAutomation(commandPayload, desktopWin);
-        } else if (command === 'GetStyleAutomationStatus') {
-            return await _handleGetStyleAutomationStatus(desktopWin);
-        } else if (command === 'CreateWidget') {
-            return await _handleCreateWidget(commandPayload, desktopWin);
-        } else {
-            throw new Error(`未知的桌面控制命令: ${command}`);
+        switch (command) {
+            case 'SetWallpaper':
+                return await _handleSetWallpaper(commandPayload, desktopWin);
+            case 'QueryDesktop':
+                return await _handleQueryDesktop(desktopWin);
+            case 'QueryDock':
+                return await _handleQueryDock(desktopWin);
+            case 'ViewWidgetSource':
+                return await _handleViewWidgetSource(commandPayload, desktopWin);
+            case 'SetStyleAutomation':
+                return await _handleSetStyleAutomation(commandPayload, desktopWin);
+            case 'GetStyleAutomationStatus':
+                return await _handleGetStyleAutomationStatus(desktopWin);
+            case 'CreateWidget':
+                return await _handleCreateWidget(commandPayload, desktopWin);
+            default:
+                throw new Error(`Unknown desktop remote command: ${command}`);
         }
     } catch (error) {
         console.error('[DesktopRemoteHandlers] handleDesktopRemoteControl error:', error);
@@ -209,9 +273,16 @@ async function handleDesktopRemoteControl(commandPayload) {
     }
 }
 
-// ============================================================
-// 内部实现：SetWallpaper
-// ============================================================
+function inferWallpaperType(source) {
+    const ext = path.extname(source).toLowerCase().replace('.', '');
+    if (['mp4', 'webm'].includes(ext)) {
+        return 'video';
+    }
+    if (['html', 'htm'].includes(ext)) {
+        return 'html';
+    }
+    return 'image';
+}
 
 async function _handleSetWallpaper(commandPayload, desktopWin) {
     const { wallpaperSource } = commandPayload;
@@ -221,248 +292,181 @@ async function _handleSetWallpaper(commandPayload, desktopWin) {
 
     const trimmedSource = wallpaperSource.trim();
     const isHtmlContent = /^<!DOCTYPE|^<html/i.test(trimmedSource);
-    const typeLabels = { image: '🖼️ 图片', video: '🎬 视频', html: '🌐 HTML动态' };
-
     let wallpaperConfig;
 
     if (isHtmlContent) {
-        // 保存 HTML 内容为文件
         const htmlFileName = `ai_wallpaper_${Date.now()}.html`;
-        const htmlFilePath = path.join(PROJECT_ROOT, 'AppData', 'DesktopData', htmlFileName);
-        await fs.ensureDir(path.join(PROJECT_ROOT, 'AppData', 'DesktopData'));
+        const htmlDir = path.join(PROJECT_ROOT, 'AppData', 'DesktopData');
+        const htmlFilePath = path.join(htmlDir, htmlFileName);
+        await fs.ensureDir(htmlDir);
         await fs.writeFile(htmlFilePath, wallpaperSource, 'utf-8');
-        const fileUrl = `file:///${htmlFilePath.replace(/\\/g, '/')}`;
         wallpaperConfig = {
-            enabled: true, type: 'html', source: fileUrl,
-            filePath: htmlFilePath, opacity: 1, blur: 0, brightness: 1,
+            enabled: true,
+            type: 'html',
+            source: `file:///${htmlFilePath.replace(/\\/g, '/')}`,
+            filePath: htmlFilePath,
+            opacity: 1,
+            blur: 0,
+            brightness: 1,
         };
-        console.log(`[DesktopRemoteHandlers] HTML wallpaper saved to: ${htmlFilePath}`);
     } else if (trimmedSource.startsWith('http://') || trimmedSource.startsWith('https://')) {
-        const urlPath = new URL(trimmedSource).pathname;
-        const ext = path.extname(urlPath).toLowerCase().replace('.', '');
-        const videoExts = ['mp4', 'webm'];
-        const htmlExts = ['html', 'htm'];
-        let type = 'image';
-        if (videoExts.includes(ext)) type = 'video';
-        else if (htmlExts.includes(ext)) type = 'html';
-
         wallpaperConfig = {
-            enabled: true, type, source: trimmedSource,
-            filePath: trimmedSource, opacity: 1, blur: 0, brightness: 1,
+            enabled: true,
+            type: inferWallpaperType(new URL(trimmedSource).pathname),
+            source: trimmedSource,
+            filePath: trimmedSource,
+            opacity: 1,
+            blur: 0,
+            brightness: 1,
         };
     } else if (trimmedSource.startsWith('file://')) {
         const localPath = trimmedSource.replace(/^file:\/\/\/?/, '');
-        const ext = path.extname(localPath).toLowerCase().replace('.', '');
-        const videoExts = ['mp4', 'webm'];
-        const htmlExts = ['html', 'htm'];
-        let type = 'image';
-        if (videoExts.includes(ext)) type = 'video';
-        else if (htmlExts.includes(ext)) type = 'html';
-
         wallpaperConfig = {
-            enabled: true, type, source: trimmedSource,
-            filePath: localPath, opacity: 1, blur: 0, brightness: 1,
+            enabled: true,
+            type: inferWallpaperType(localPath),
+            source: trimmedSource,
+            filePath: localPath,
+            opacity: 1,
+            blur: 0,
+            brightness: 1,
         };
     } else {
-        throw new Error('wallpaperSource must be an HTTP/HTTPS URL, a file:// URL, or HTML content starting with <!DOCTYPE or <html>.');
+        throw new Error('wallpaperSource must be an HTTP/HTTPS URL, a file:// URL, or inline HTML.');
     }
 
-    const typeLabel = typeLabels[wallpaperConfig.type] || wallpaperConfig.type;
-    let resultMessage;
+    const targetWin = await ensureDesktopWindow(desktopWin, {
+        waitAfterOpenMs: desktopWin ? 0 : 2000,
+        errorMessage: 'Unable to open desktop window for wallpaper update.',
+    });
 
-    if (desktopWin && !desktopWin.isDestroyed()) {
-        desktopWin.webContents.send('desktop-remote-set-wallpaper', wallpaperConfig);
-        resultMessage = `壁纸已成功推送到桌面。`;
-    } else {
-        await desktopHandlersRef.openDesktopWindow();
-        const newDesktopWin = desktopHandlersRef.getDesktopWindow();
-        if (newDesktopWin && !newDesktopWin.isDestroyed()) {
-            setTimeout(() => {
-                newDesktopWin.webContents.send('desktop-remote-set-wallpaper', wallpaperConfig);
-            }, 2000);
-            resultMessage = `桌面窗口已自动打开，壁纸已推送。`;
-        } else {
-            throw new Error('无法打开桌面窗口来设置壁纸。');
-        }
-    }
+    targetWin.webContents.send('desktop-remote-set-wallpaper', wallpaperConfig);
 
-    const mdReport = `### 壁纸推送成功\n\n` +
-        `- **类型**: ${typeLabel}\n` +
-        `- **来源**: \`${wallpaperConfig.filePath || wallpaperConfig.source}\`\n` +
-        `- **状态**: ${resultMessage}`;
+    const mdReport = [
+        '### Wallpaper Updated',
+        '',
+        `- type: ${wallpaperConfig.type}`,
+        `- source: \`${wallpaperConfig.filePath || wallpaperConfig.source}\``,
+        '- status: dispatched to desktop renderer.',
+    ].join('\n');
 
     return {
         status: 'success',
-        result: { content: [{ type: 'text', text: mdReport }] }
+        result: { content: [{ type: 'text', text: mdReport }] },
     };
 }
 
-// ============================================================
-// 内部实现：QueryDesktop
-// ============================================================
-
 async function _handleQueryDesktop(desktopWin) {
     if (!desktopWin || desktopWin.isDestroyed()) {
-        const mdReport = `### 桌面状态报告\n\n` +
-            `**桌面窗口状态**: ❌ 未打开\n\n` +
-            `桌面画布窗口当前未启动，无法查询挂件和图标信息。`;
         return {
             status: 'success',
-            result: { content: [{ type: 'text', text: mdReport }] }
+            result: {
+                content: [{
+                    type: 'text',
+                    text: '### Desktop Status Report\n\n- desktopWindow: closed\n- details: Desktop window is not available.',
+                }],
+            },
         };
     }
 
-    return new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => {
-            ipcMain.removeListener('desktop-remote-query-response', responseHandler);
-            reject(new Error('查询桌面状态超时。'));
-        }, 5000);
-
-        const responseHandler = (event, responseData) => {
-            clearTimeout(timeout);
-            ipcMain.removeListener('desktop-remote-query-response', responseHandler);
-
-            if (responseData.success) {
-                const widgets = responseData.widgets || [];
-                const icons = responseData.icons || [];
-
-                let mdReport = `### 桌面状态报告\n\n**桌面窗口状态**: ✅ 已打开\n\n`;
-
-                mdReport += `#### 活跃挂件 (${widgets.length}个)\n\n`;
-                if (widgets.length === 0) {
-                    mdReport += `*桌面上没有活跃的挂件。*\n\n`;
-                } else {
-                    mdReport += `| 挂件ID | 收藏状态 | 收藏名 | 持久化目录 |\n|---|---|---|---|\n`;
-                    for (const w of widgets) {
-                        if (w.savedName) {
-                            mdReport += `| \`${w.id}\` | ⭐ 已收藏 | ${w.savedName} | \`${w.savedDir}\` |\n`;
-                        } else {
-                            mdReport += `| \`${w.id}\` | 未收藏 | - | - |\n`;
-                        }
-                    }
-                    mdReport += `\n`;
-                }
-
-                mdReport += `#### 桌面图标 (${icons.length}个)\n\n`;
-                if (icons.length === 0) {
-                    mdReport += `*桌面上没有快捷方式图标。*\n`;
-                } else {
-                    for (const iconName of icons) {
-                        mdReport += `- ${iconName}\n`;
-                    }
-                }
-
-                resolve({
-                    status: 'success',
-                    result: { content: [{ type: 'text', text: mdReport }] }
-                });
-            } else {
-                reject(new Error(responseData.error || '查询桌面状态失败。'));
-            }
-        };
-
-        ipcMain.on('desktop-remote-query-response', responseHandler);
-        desktopWin.webContents.send('desktop-remote-query');
+    const responseData = await requestDesktopRemote(desktopWin, 'QueryDesktop', {}, {
+        timeoutMs: 5000,
+        timeoutMessage: 'Timed out while querying desktop state.',
     });
-}
 
-// ============================================================
-// 内部实现：QueryDock
-// ============================================================
+    const widgets = responseData?.widgets || [];
+    const icons = responseData?.icons || [];
+
+    let mdReport = '### Desktop Status Report\n\n';
+    mdReport += `- desktopWindow: open\n- widgets: ${widgets.length}\n- icons: ${icons.length}\n\n`;
+    mdReport += '#### Widgets\n\n';
+    if (widgets.length === 0) {
+        mdReport += '- none\n\n';
+    } else {
+        mdReport += '| widgetId | saved | savedName | savedDir |\n|---|---|---|---|\n';
+        for (const widgetInfo of widgets) {
+            mdReport += `| \`${widgetInfo.id}\` | ${widgetInfo.savedName ? 'yes' : 'no'} | ${widgetInfo.savedName || '-'} | ${widgetInfo.savedDir ? `\`${widgetInfo.savedDir}\`` : '-'} |\n`;
+        }
+        mdReport += '\n';
+    }
+
+    mdReport += '#### Desktop Icons\n\n';
+    if (icons.length === 0) {
+        mdReport += '- none\n';
+    } else {
+        for (const iconName of icons) {
+            mdReport += `- ${iconName}\n`;
+        }
+    }
+
+    return {
+        status: 'success',
+        result: { content: [{ type: 'text', text: mdReport }] },
+    };
+}
 
 async function _handleQueryDock(desktopWin) {
     if (!desktopWin || desktopWin.isDestroyed()) {
-        const mdReport = `### Dock 应用列表报告\n\n` +
-            `**桌面窗口状态**: ❌ 未打开\n\n` +
-            `桌面画布窗口当前未启动，无法查询 Dock 应用列表。`;
         return {
             status: 'success',
-            result: { content: [{ type: 'text', text: mdReport }] }
+            result: {
+                content: [{
+                    type: 'text',
+                    text: '### Dock Report\n\n- desktopWindow: closed\n- details: Desktop window is not available.',
+                }],
+            },
         };
     }
 
-    return new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => {
-            ipcMain.removeListener('desktop-remote-query-dock-response', responseHandler);
-            reject(new Error('查询 Dock 应用列表超时。'));
-        }, 5000);
-
-        const responseHandler = (event, responseData) => {
-            clearTimeout(timeout);
-            ipcMain.removeListener('desktop-remote-query-dock-response', responseHandler);
-
-            if (responseData.success) {
-                const dockItems = responseData.dockItems || [];
-                const vchatApps = responseData.vchatApps || [];
-                const systemTools = responseData.systemTools || [];
-                const builtinWidgets = responseData.builtinWidgets || [];
-
-                let mdReport = `### Dock 应用列表报告\n\n**桌面窗口状态**: ✅ 已打开\n\n`;
-
-                // Dock 中的用户快捷方式
-                mdReport += `#### Dock 快捷方式 (${dockItems.length}个)\n\n`;
-                if (dockItems.length === 0) {
-                    mdReport += `*Dock 中没有用户添加的快捷方式。*\n\n`;
-                } else {
-                    mdReport += `| 名称 | 类型 | 可见 | 启动方式 |\n|---|---|---|---|\n`;
-                    for (const item of dockItems) {
-                        const visible = item.visible !== false ? '✅' : '❌';
-                        let launchMethod = '';
-                        if (item.type === 'vchat-app') {
-                            launchMethod = `\`dock.launch({type:'vchat-app', appAction:'${item.appAction}'})\``;
-                        } else if (item.type === 'builtin') {
-                            launchMethod = `\`dock.launch({type:'builtin', builtinId:'${item.builtinId}'})\``;
-                        } else {
-                            launchMethod = `\`dock.launch({type:'shortcut', targetPath:'${item.targetPath}'})\``;
-                        }
-                        mdReport += `| ${item.name} | ${item.type || 'shortcut'} | ${visible} | ${launchMethod} |\n`;
-                    }
-                    mdReport += `\n`;
-                }
-
-                // VChat 内部应用（硬编码，始终可用）
-                mdReport += `#### VChat 内部应用 (${vchatApps.length}个，始终可用)\n\n`;
-                mdReport += `| 名称 | emoji | appAction | 启动代码 |\n|---|---|---|---|\n`;
-                for (const app of vchatApps) {
-                    mdReport += `| ${app.name} | ${app.emoji || '-'} | \`${app.appAction}\` | \`dock.launch({type:'vchat-app', appAction:'${app.appAction}'})\` |\n`;
-                }
-                mdReport += `\n`;
-
-                // 系统工具
-                mdReport += `#### Windows 系统工具 (${systemTools.length}个，始终可用)\n\n`;
-                mdReport += `| 名称 | emoji | appAction | 启动代码 |\n|---|---|---|---|\n`;
-                for (const tool of systemTools) {
-                    mdReport += `| ${tool.name} | ${tool.emoji || '-'} | \`${tool.appAction}\` | \`dock.launch({type:'vchat-app', appAction:'${tool.appAction}'})\` |\n`;
-                }
-                mdReport += `\n`;
-
-                // 内置挂件
-                mdReport += `#### 内置桌面挂件 (${builtinWidgets.length}个)\n\n`;
-                mdReport += `| 名称 | builtinId | 启动代码 |\n|---|---|---|\n`;
-                for (const w of builtinWidgets) {
-                    mdReport += `| ${w.name} | \`${w.builtinId}\` | \`dock.launch({type:'builtin', builtinId:'${w.builtinId}'})\` |\n`;
-                }
-                mdReport += `\n`;
-
-                mdReport += `---\n**提示**: 在 Widget 脚本中，所有启动操作都通过 \`window.VCPDesktop.dock.launch(item)\` 调用。`;
-
-                resolve({
-                    status: 'success',
-                    result: { content: [{ type: 'text', text: mdReport }] }
-                });
-            } else {
-                reject(new Error(responseData.error || '查询 Dock 应用列表失败。'));
-            }
-        };
-
-        ipcMain.on('desktop-remote-query-dock-response', responseHandler);
-        desktopWin.webContents.send('desktop-remote-query-dock');
+    const responseData = await requestDesktopRemote(desktopWin, 'QueryDock', {}, {
+        timeoutMs: 5000,
+        timeoutMessage: 'Timed out while querying dock state.',
     });
-}
 
-// ============================================================
-// 内部实现：ViewWidgetSource
-// ============================================================
+    const dockItems = responseData?.dockItems || [];
+    const vchatApps = responseData?.vchatApps || [];
+    const systemTools = responseData?.systemTools || [];
+    const builtinWidgets = responseData?.builtinWidgets || [];
+
+    let mdReport = '### Dock Report\n\n';
+    mdReport += `- dockItems: ${dockItems.length}\n- vchatApps: ${vchatApps.length}\n- systemTools: ${systemTools.length}\n- builtinWidgets: ${builtinWidgets.length}\n\n`;
+    mdReport += '#### Dock Items\n\n';
+
+    if (dockItems.length === 0) {
+        mdReport += '- none\n\n';
+    } else {
+        mdReport += '| name | type | visible | launch |\n|---|---|---|---|\n';
+        for (const item of dockItems) {
+            let launchMethod = '';
+            if (item.type === 'vchat-app') {
+                launchMethod = `dock.launch({type:'vchat-app', appAction:'${item.appAction}'})`;
+            } else if (item.type === 'builtin') {
+                launchMethod = `dock.launch({type:'builtin', builtinId:'${item.builtinId}'})`;
+            } else {
+                launchMethod = `dock.launch({type:'shortcut', targetPath:'${item.targetPath}'})`;
+            }
+            mdReport += `| ${item.name} | ${item.type || 'shortcut'} | ${item.visible !== false ? 'yes' : 'no'} | \`${launchMethod}\` |\n`;
+        }
+        mdReport += '\n';
+    }
+
+    mdReport += '#### VChat Apps\n\n';
+    for (const appInfo of vchatApps) {
+        mdReport += `- ${appInfo.name} (\`${appInfo.appAction}\`)\n`;
+    }
+    mdReport += '\n#### System Tools\n\n';
+    for (const tool of systemTools) {
+        mdReport += `- ${tool.name} (\`${tool.appAction}\`)\n`;
+    }
+    mdReport += '\n#### Builtin Widgets\n\n';
+    for (const builtin of builtinWidgets) {
+        mdReport += `- ${builtin.name} (\`${builtin.builtinId}\`)\n`;
+    }
+
+    return {
+        status: 'success',
+        result: { content: [{ type: 'text', text: mdReport }] },
+    };
+}
 
 async function _handleViewWidgetSource(commandPayload, desktopWin) {
     const { widgetId } = commandPayload;
@@ -471,349 +475,227 @@ async function _handleViewWidgetSource(commandPayload, desktopWin) {
     }
 
     if (!desktopWin || desktopWin.isDestroyed()) {
-        throw new Error('桌面窗口未打开，无法查看挂件源码。');
+        throw new Error('Desktop window is not available.');
     }
 
-    return new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => {
-            ipcMain.removeListener('desktop-remote-view-source-response', responseHandler);
-            reject(new Error('查看挂件源码超时。'));
-        }, 5000);
-
-        const responseHandler = (event, responseData) => {
-            if (responseData.widgetId !== widgetId) return;
-
-            clearTimeout(timeout);
-            ipcMain.removeListener('desktop-remote-view-source-response', responseHandler);
-
-            if (responseData.success) {
-                const htmlSource = responseData.html || '';
-                const savedName = responseData.savedName || null;
-                const savedId = responseData.savedId || null;
-
-                let mdReport = `### 挂件源码: \`${widgetId}\`\n\n`;
-                if (savedName) {
-                    mdReport += `- **收藏名**: ${savedName}\n`;
-                    mdReport += `- **收藏ID**: \`${savedId}\`\n\n`;
-                }
-                mdReport += `**HTML内容** (${htmlSource.length} 字符):\n\n\`\`\`html\n${htmlSource}\n\`\`\``;
-
-                resolve({
-                    status: 'success',
-                    result: {
-                        content: [{ type: 'text', text: mdReport }]
-                    }
-                });
-            } else {
-                reject(new Error(responseData.error || '查看挂件源码失败。'));
-            }
-        };
-
-        ipcMain.on('desktop-remote-view-source-response', responseHandler);
-        desktopWin.webContents.send('desktop-remote-view-source', { widgetId });
+    const responseData = await requestDesktopRemote(desktopWin, 'ViewWidgetSource', { widgetId }, {
+        timeoutMs: 5000,
+        timeoutMessage: 'Timed out while loading widget source.',
     });
-}
 
-// ============================================================
-// 内部实现：SetStyleAutomation / GetStyleAutomationStatus
-// ============================================================
+    let mdReport = `### Widget Source: \`${widgetId}\`\n\n`;
+    if (responseData?.savedName) {
+        mdReport += `- savedName: ${responseData.savedName}\n`;
+        mdReport += `- savedId: \`${responseData.savedId}\`\n\n`;
+    }
+    mdReport += `\`\`\`html\n${responseData?.html || ''}\n\`\`\``;
+
+    return {
+        status: 'success',
+        result: { content: [{ type: 'text', text: mdReport }] },
+    };
+}
 
 async function _handleSetStyleAutomation(commandPayload, desktopWin) {
     const { configPatch, persist } = commandPayload;
-
     if (!configPatch || typeof configPatch !== 'object') {
         throw new Error('configPatch parameter (object) is required for SetStyleAutomation.');
     }
 
-    let targetWin = desktopWin;
-    if (!targetWin || targetWin.isDestroyed()) {
-        await desktopHandlersRef.openDesktopWindow();
-        targetWin = desktopHandlersRef.getDesktopWindow();
-        if (!targetWin || targetWin.isDestroyed()) {
-            throw new Error('无法打开桌面窗口来设置全局样式自动化。');
-        }
-        await new Promise(resolve => setTimeout(resolve, 2000));
+    const targetWin = await ensureDesktopWindow(desktopWin, {
+        waitAfterOpenMs: 2000,
+        errorMessage: 'Unable to open desktop window for style automation update.',
+    });
+
+    const responseData = await requestDesktopRemote(targetWin, 'SetStyleAutomation', {
+        configPatch,
+        persist: !!persist,
+    }, {
+        timeoutMs: 8000,
+        resolveOnTimeout: { timedOut: true },
+    });
+
+    if (responseData?.timedOut) {
+        return {
+            status: 'success',
+            result: {
+                content: [{
+                    type: 'text',
+                    text: `### Style Automation Update Queued\n\n- persist: ${persist ? 'true' : 'false'}\n- status: renderer response timed out, but request was dispatched.`,
+                }],
+            },
+        };
     }
 
-    return new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => {
-            ipcMain.removeListener('desktop-remote-style-automation-response', responseHandler);
-            resolve({
-                status: 'success',
-                result: {
-                    content: [{
-                        type: 'text',
-                        text: `### 全局样式自动化设置已下发\n\n` +
-                            `- **状态**: 已发送到桌面（响应超时，可能仍已生效）\n` +
-                            `- **persist**: ${persist ? 'true' : 'false'}`
-                    }]
-                }
-            });
-        }, 8000);
+    const statusInfo = responseData?.status || {};
+    let mdReport = '### Style Automation Updated\n\n';
+    mdReport += `- enabled: ${statusInfo.enabled ? 'true' : 'false'}\n`;
+    if (typeof statusInfo.intervalMs === 'number') {
+        mdReport += `- intervalMs: ${statusInfo.intervalMs}\n`;
+    }
+    mdReport += `- running: ${statusInfo.running ? 'true' : 'false'}\n`;
+    if (statusInfo.lastError) {
+        mdReport += `- lastError: ${statusInfo.lastError}\n`;
+    }
 
-        const responseHandler = (event, responseData) => {
-            clearTimeout(timeout);
-            ipcMain.removeListener('desktop-remote-style-automation-response', responseHandler);
-
-            if (responseData && responseData.success) {
-                const running = responseData.status?.running ? 'true' : 'false';
-                const enabled = responseData.status?.enabled ? 'true' : 'false';
-                const intervalMs = responseData.status?.intervalMs;
-                const lastError = responseData.status?.lastError;
-
-                let mdReport = `### 全局样式自动化设置成功 ✅\n\n` +
-                    `- **enabled**: ${enabled}\n` +
-                    (typeof intervalMs === 'number' ? `- **intervalMs**: ${intervalMs}\n` : '') +
-                    `- **running**: ${running}\n` +
-                    (lastError ? `- **lastError**: ${lastError}\n` : '');
-
-                resolve({
-                    status: 'success',
-                    result: { content: [{ type: 'text', text: mdReport }] }
-                });
-            } else {
-                reject(new Error(responseData?.error || '设置全局样式自动化失败。'));
-            }
-        };
-
-        ipcMain.on('desktop-remote-style-automation-response', responseHandler);
-        targetWin.webContents.send('desktop-remote-style-automation', {
-            action: 'set',
-            configPatch,
-            persist: !!persist,
-        });
-    });
+    return {
+        status: 'success',
+        result: { content: [{ type: 'text', text: mdReport }] },
+    };
 }
 
 async function _handleGetStyleAutomationStatus(desktopWin) {
     if (!desktopWin || desktopWin.isDestroyed()) {
-        const mdReport = `### 全局样式自动化状态\n\n` +
-            `- **桌面窗口**: 未打开\n` +
-            `- **状态**: 无法查询（请先打开 VCPdesktop 桌面窗口）`;
         return {
             status: 'success',
-            result: { content: [{ type: 'text', text: mdReport }] }
+            result: {
+                content: [{
+                    type: 'text',
+                    text: '### Style Automation Status\n\n- desktopWindow: closed\n- details: open the desktop window first.',
+                }],
+            },
         };
     }
 
-    return new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => {
-            ipcMain.removeListener('desktop-remote-style-automation-response', responseHandler);
-            reject(new Error('查询全局样式自动化状态超时。'));
-        }, 5000);
-
-        const responseHandler = (event, responseData) => {
-            clearTimeout(timeout);
-            ipcMain.removeListener('desktop-remote-style-automation-response', responseHandler);
-
-            if (responseData && responseData.success) {
-                const running = responseData.status?.running ? 'true' : 'false';
-                const enabled = responseData.status?.enabled ? 'true' : 'false';
-                const intervalMs = responseData.status?.intervalMs;
-                const lastError = responseData.status?.lastError;
-
-                let mdReport = `### 全局样式自动化状态\n\n` +
-                    `- **enabled**: ${enabled}\n` +
-                    (typeof intervalMs === 'number' ? `- **intervalMs**: ${intervalMs}\n` : '') +
-                    `- **running**: ${running}\n` +
-                    (lastError ? `- **lastError**: ${lastError}\n` : '');
-
-                resolve({
-                    status: 'success',
-                    result: { content: [{ type: 'text', text: mdReport }] }
-                });
-            } else {
-                reject(new Error(responseData?.error || '查询全局样式自动化状态失败。'));
-            }
-        };
-
-        ipcMain.on('desktop-remote-style-automation-response', responseHandler);
-        desktopWin.webContents.send('desktop-remote-style-automation', { action: 'status' });
+    const responseData = await requestDesktopRemote(desktopWin, 'GetStyleAutomationStatus', {}, {
+        timeoutMs: 5000,
+        timeoutMessage: 'Timed out while querying style automation status.',
     });
+
+    const statusInfo = responseData?.status || {};
+    let mdReport = '### Style Automation Status\n\n';
+    mdReport += `- enabled: ${statusInfo.enabled ? 'true' : 'false'}\n`;
+    if (typeof statusInfo.intervalMs === 'number') {
+        mdReport += `- intervalMs: ${statusInfo.intervalMs}\n`;
+    }
+    mdReport += `- running: ${statusInfo.running ? 'true' : 'false'}\n`;
+    if (statusInfo.lastError) {
+        mdReport += `- lastError: ${statusInfo.lastError}\n`;
+    }
+
+    return {
+        status: 'success',
+        result: { content: [{ type: 'text', text: mdReport }] },
+    };
 }
 
-// ============================================================
-// 内部实现：CreateWidget（新增指令）
-// ============================================================
-
-/**
- * 远程创建桌面 Widget
- *
- * 支持参数：
- *   - htmlContent (必需): Widget 的 HTML 内容
- *   - x (可选): 初始 X 坐标，默认 100
- *   - y (可选): 初始 Y 坐标，默认 100
- *   - width (可选): 初始宽度，默认 320
- *   - height (可选): 初始高度，默认 200
- *   - widgetId (可选): 自定义 widget ID，默认自动生成
- *   - autoSave (可选): 是否自动收藏，默认 false
- *   - saveName (可选): 收藏名称（当 autoSave 为 true 时使用）
- *   - scriptCode (可选): 外部 JS 源码字符串，自动保存为 app.js
- */
 async function _handleCreateWidget(commandPayload, desktopWin) {
-    const { htmlContent, x, y, width, height, widgetId, autoSave, saveName, scriptCode } = commandPayload;
+    const {
+        htmlContent,
+        x,
+        y,
+        width,
+        height,
+        widgetId,
+        autoSave,
+        saveName,
+        scriptCode,
+        builtinWidgetKey,
+        metricComponent,
+    } = commandPayload;
 
-    if (!htmlContent) {
+    if (!htmlContent && !builtinWidgetKey && !metricComponent) {
         throw new Error('htmlContent parameter is required for CreateWidget.');
     }
 
-    // 确保桌面窗口已打开
-    let targetWin = desktopWin;
-    if (!targetWin || targetWin.isDestroyed()) {
-        await desktopHandlersRef.openDesktopWindow();
-        targetWin = desktopHandlersRef.getDesktopWindow();
-        if (!targetWin || targetWin.isDestroyed()) {
-            throw new Error('无法打开桌面窗口来创建挂件。');
-        }
-        // 等待窗口就绪
-        await new Promise(resolve => setTimeout(resolve, 2000));
-    }
+    const targetWin = await ensureDesktopWindow(desktopWin, {
+        waitAfterOpenMs: 2000,
+        errorMessage: 'Unable to open desktop window for widget creation.',
+    });
 
-    // 生成 widget ID
     const finalWidgetId = widgetId || `remote-widget-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
-
-    // 构建选项
     const options = {};
     if (typeof x === 'number') options.x = x;
     if (typeof y === 'number') options.y = y;
     if (typeof width === 'number') options.width = width;
     if (typeof height === 'number') options.height = height;
 
-    // 如果有 scriptCode，需要先保存为 app.js，再将文件路径信息传递给渲染进程
     let savedId = null;
     let finalHtmlContent = htmlContent;
     const hasScriptCode = typeof scriptCode === 'string' && scriptCode.trim().length > 0;
 
     if (hasScriptCode) {
-        // 强制 autoSave，生成 savedId
         savedId = `saved-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
         const widgetDir = path.join(PROJECT_ROOT, 'AppData', 'DesktopWidgets', savedId);
         await fs.ensureDir(widgetDir);
-
-        // 保存 JS 代码为 app.js
-        const appJsPath = path.join(widgetDir, 'app.js');
-        await fs.writeFile(appJsPath, scriptCode, 'utf-8');
-        console.log(`[DesktopRemoteHandlers] Script file saved: ${savedId}/app.js`);
-
-        // 保存 widget.html
+        await fs.writeFile(path.join(widgetDir, 'app.js'), scriptCode, 'utf-8');
         await fs.writeFile(path.join(widgetDir, 'widget.html'), htmlContent, 'utf-8');
-
-        // 保存 meta.json
-        const meta = {
+        await fs.writeJson(path.join(widgetDir, 'meta.json'), {
             id: savedId,
             name: saveName || 'AI Widget',
             createdAt: Date.now(),
             updatedAt: Date.now(),
-        };
-        await fs.writeJson(path.join(widgetDir, 'meta.json'), meta, { spaces: 2 });
+        }, { spaces: 2 });
 
-        console.log(`[DesktopRemoteHandlers] Widget pre-saved with app.js: ${savedId}`);
-
-        // 构建 file:// URL，将 HTML 中 <script src="app.js"> 替换为绝对路径
         const widgetDirUrl = `file:///${widgetDir.replace(/\\/g, '/')}`;
         const appJsUrl = `${widgetDirUrl}/app.js`;
-
-        // 替换 <script src="app.js"> 为绝对路径
         finalHtmlContent = finalHtmlContent.replace(
             /(<script[^>]*\ssrc\s*=\s*)(["'])app\.js\2/gi,
             `$1$2${appJsUrl}$2`
         );
-        // 也处理无引号的情况
         finalHtmlContent = finalHtmlContent.replace(
             /(<script[^>]*\ssrc\s*=\s*)app\.js(\s|>)/gi,
             `$1"${appJsUrl}"$2`
         );
 
-        // 如果 HTML 中没有 <script src="app.js">，自动追加一个
         if (!htmlContent.match(/<script[^>]*\ssrc\s*=\s*["']?app\.js/i)) {
-            // 在 </body> 或末尾追加
             if (finalHtmlContent.includes('</body>')) {
                 finalHtmlContent = finalHtmlContent.replace('</body>', `<script src="${appJsUrl}"></script>\n</body>`);
             } else {
                 finalHtmlContent += `\n<script src="${appJsUrl}"></script>`;
             }
-            console.log(`[DesktopRemoteHandlers] Auto-appended <script src="app.js"> to HTML`);
         }
     }
 
-    // 通过 IPC 向桌面窗口发送创建指令
-    return new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => {
-            ipcMain.removeListener('desktop-remote-create-widget-response', responseHandler);
-            let timeoutReport = `### 挂件创建完成\n\n` +
-                `- **挂件ID**: \`${finalWidgetId}\`\n` +
-                `- **位置**: (${options.x || 100}, ${options.y || 100})\n` +
-                `- **尺寸**: ${options.width || 320} × ${options.height || 200}\n` +
-                `- **状态**: 已推送到桌面（响应超时，可能已创建成功）`;
-            if (hasScriptCode) {
-                timeoutReport += `\n- **外部脚本**: \`app.js\` 已保存`;
-            }
-            resolve({
-                status: 'success',
-                result: {
-                    content: [{
-                        type: 'text',
-                        text: timeoutReport
-                    }]
-                }
-            });
-        }, 8000);
-
-        const responseHandler = (event, responseData) => {
-            // 增加 ID 匹配检查，确保并发请求时响应正确对应
-            if (responseData.widgetId !== finalWidgetId) return;
-
-            clearTimeout(timeout);
-            ipcMain.removeListener('desktop-remote-create-widget-response', responseHandler);
-
-            if (responseData.success) {
-                let mdReport = `### 挂件创建成功 ✅\n\n` +
-                    `- **挂件ID**: \`${finalWidgetId}\`\n` +
-                    `- **位置**: (${options.x || 100}, ${options.y || 100})\n` +
-                    `- **尺寸**: ${options.width || 320} × ${options.height || 200}\n`;
-
-                const finalSavedId = savedId || responseData.savedId;
-                const finalSavedName = saveName || responseData.savedName;
-
-                if (finalSavedId) {
-                    mdReport += `- **收藏状态**: ⭐ 已自动收藏为 "${finalSavedName}"\n`;
-                    mdReport += `- **持久化目录**: \`AppData/DesktopWidgets/${finalSavedId}\`\n`;
-                }
-
-                if (hasScriptCode) {
-                    mdReport += `- **外部脚本**: \`app.js\`\n`;
-                }
-
-                mdReport += `\n*挂件已成功创建并渲染在桌面画布上。*`;
-
-                resolve({
-                    status: 'success',
-                    result: {
-                        content: [{ type: 'text', text: mdReport }]
-                    }
-                });
-            } else {
-                reject(new Error(responseData.error || '创建挂件失败。'));
-            }
-        };
-
-        ipcMain.on('desktop-remote-create-widget-response', responseHandler);
-
-        // 发送创建指令到桌面渲染进程
-        targetWin.webContents.send('desktop-remote-create-widget', {
-            widgetId: finalWidgetId,
-            htmlContent: finalHtmlContent,
-            options,
-            autoSave: hasScriptCode ? true : !!autoSave,
-            saveName: saveName || (hasScriptCode ? 'AI Widget' : null),
-            preSavedId: savedId || null,
-        });
+    const responseData = await requestDesktopRemote(targetWin, 'CreateWidget', {
+        widgetId: finalWidgetId,
+        htmlContent: finalHtmlContent,
+        options,
+        autoSave: hasScriptCode ? true : !!autoSave,
+        saveName: saveName || (hasScriptCode ? 'AI Widget' : null),
+        preSavedId: savedId || null,
+        builtinWidgetKey: builtinWidgetKey || null,
+        metricComponent: metricComponent || null,
+    }, {
+        timeoutMs: 8000,
+        resolveOnTimeout: { timedOut: true },
     });
-}
 
-// ============================================================
-// 导出
-// ============================================================
+    if (responseData?.timedOut) {
+        let timeoutReport = '### Widget Creation Queued\n\n';
+        timeoutReport += `- widgetId: \`${finalWidgetId}\`\n`;
+        timeoutReport += `- position: (${options.x || 100}, ${options.y || 100})\n`;
+        timeoutReport += `- size: ${options.width || 320} x ${options.height || 200}\n`;
+        timeoutReport += '- status: renderer response timed out, but request was dispatched.';
+        return {
+            status: 'success',
+            result: { content: [{ type: 'text', text: timeoutReport }] },
+        };
+    }
+
+    let mdReport = '### Widget Created\n\n';
+    mdReport += `- widgetId: \`${responseData?.widgetId || finalWidgetId}\`\n`;
+    mdReport += `- position: (${options.x || 100}, ${options.y || 100})\n`;
+    mdReport += `- size: ${options.width || 320} x ${options.height || 200}\n`;
+
+    const finalSavedId = savedId || responseData?.savedId;
+    const finalSavedName = saveName || responseData?.savedName;
+    if (finalSavedId) {
+        mdReport += `- savedName: ${finalSavedName}\n`;
+        mdReport += `- savedDir: \`AppData/DesktopWidgets/${finalSavedId}\`\n`;
+    }
+    if (responseData?.builtinWidgetKey) {
+        mdReport += `- builtinWidgetKey: ${responseData.builtinWidgetKey}\n`;
+    }
+    if (hasScriptCode) {
+        mdReport += '- script: `app.js`\n';
+    }
+
+    return {
+        status: 'success',
+        result: { content: [{ type: 'text', text: mdReport }] },
+    };
+}
 
 module.exports = {
     initialize,

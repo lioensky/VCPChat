@@ -10,9 +10,35 @@ const os = require('os');
 const mime = require('mime-types');
  // const { ipcMain } = require('electron'); // This was incorrect. ipcMain should be injected.
  const pluginManager = require('./Plugin.js');
+const GENERATED_LISTS_CONFIG_PATH = path.join(__dirname, '..', 'AppData', 'generated_lists', 'config.env');
 
 // DEBUG_MODE is now passed in config
 // const DEBUG_MODE = (process.env.DebugMode || "False").toLowerCase() === "true";
+
+function loadGeneratedListsConfig() {
+    try {
+        if (!fsSync.existsSync(GENERATED_LISTS_CONFIG_PATH)) {
+            return {};
+        }
+        return dotenv.parse(fsSync.readFileSync(GENERATED_LISTS_CONFIG_PATH));
+    } catch (error) {
+        console.error('[DistributedServer] Failed to read generated_lists/config.env:', error.message);
+        return {};
+    }
+}
+
+function getRequestRemoteAddress(req) {
+    return req.socket?.remoteAddress || req.ip || '';
+}
+
+function isLoopbackAddress(address) {
+    if (!address) return false;
+
+    const normalized = String(address).trim().toLowerCase();
+    return normalized === '127.0.0.1'
+        || normalized === '::1'
+        || normalized === '::ffff:127.0.0.1';
+}
 
 class DistributedServer {
     constructor(config = {}) {
@@ -31,11 +57,41 @@ class DistributedServer {
         this.app = express(); // 创建 Express 应用
         this.server = http.createServer(this.app); // 创建 HTTP 服务器
         this.reconnectInterval = 5000;
+        this.app.use(express.json({ limit: '2mb' }));
+        this.app.use(express.urlencoded({ extended: false, limit: '2mb' }));
         this.maxReconnectInterval = 60000;
         this.reconnectTimeoutId = null; // To keep track of the reconnect timeout
         this.stopped = false; // Flag to prevent reconnection when stopped manually
+        this.stopPromise = null;
         this.initialConnection = true; // Flag to handle one-time actions on first connect
         this.staticPlaceholderUpdateInterval = null; // 新增：静态占位符更新定时器
+    }
+
+    async bindHttpServer(preferredPort) {
+        const tryListen = (port) => new Promise((resolve, reject) => {
+            const onError = (error) => {
+                this.server.off('listening', onListening);
+                reject(error);
+            };
+            const onListening = () => {
+                this.server.off('error', onError);
+                resolve(this.server.address());
+            };
+
+            this.server.once('error', onError);
+            this.server.once('listening', onListening);
+            this.server.listen(port, '0.0.0.0');
+        });
+
+        try {
+            return await tryListen(preferredPort);
+        } catch (error) {
+            if (error && error.code === 'EADDRINUSE' && preferredPort !== 0) {
+                console.warn(`[${this.serverName}] Port ${preferredPort} is already in use. Falling back to a random available port.`);
+                return tryListen(0);
+            }
+            throw error;
+        }
     }
 
     async initialize() {
@@ -65,13 +121,91 @@ class DistributedServer {
 
         // 初始化服务类插件
         await pluginManager.initializeServices(this.app, null, basePath);
+        this.registerDiagnosticRoutes();
 
-        this.server.listen(this.port, '0.0.0.0', () => {
+        const address = await this.bindHttpServer(this.port);
             this.port = this.server.address().port; // 获取实际监听的端口
             console.log(`[${this.serverName}] HTTP server listening on 0.0.0.0:${this.port}`);
             // 在 HTTP 服务器启动后，再连接到主服务器
             this.connect();
+    }
+
+    registerDiagnosticRoutes() {
+        const generatedConfig = loadGeneratedListsConfig();
+        const fileKey = generatedConfig.file_key;
+
+        if (!fileKey) {
+            console.error(`[${this.serverName}] DesktopRemote test route disabled: missing file_key in AppData/generated_lists/config.env.`);
+            return;
+        }
+
+        this.app.post(/\/pw=([^\/]+)\/desktop-remote-test/, async (req, res) => {
+            const requestKey = req.params[0];
+            const remoteAddress = getRequestRemoteAddress(req);
+
+            if (!isLoopbackAddress(remoteAddress)) {
+                return res.status(403).json({
+                    success: false,
+                    error: `Loopback only. Remote address: ${remoteAddress || 'unknown'}`,
+                    stage: 'auth',
+                });
+            }
+
+            if (requestKey !== fileKey) {
+                return res.status(401).json({
+                    success: false,
+                    error: 'Unauthorized',
+                    stage: 'auth',
+                });
+            }
+
+            let commandPayload;
+            try {
+                const normalized = await pluginManager.processToolCall('DesktopRemote', req.body || {});
+                commandPayload = typeof normalized === 'string' ? JSON.parse(normalized) : normalized;
+            } catch (error) {
+                return res.status(400).json({
+                    success: false,
+                    error: error.message || 'Failed to normalize DesktopRemote request.',
+                    stage: 'normalize',
+                });
+            }
+
+            try {
+                if (typeof this.handleDesktopRemoteControl !== 'function') {
+                    throw new Error('Desktop remote control handler is not configured.');
+                }
+
+                const result = await this.handleDesktopRemoteControl(commandPayload);
+                if (!result || result.status !== 'success') {
+                    const message = result?.message || result?.error || 'DesktopRemote handler failed.';
+                    const stage = /timed out/i.test(message) ? 'renderer-timeout' : 'main-handler';
+                    return res.status(stage === 'renderer-timeout' ? 504 : 500).json({
+                        success: false,
+                        error: message,
+                        stage,
+                        commandPayload,
+                    });
+                }
+
+                return res.json({
+                    success: true,
+                    commandPayload,
+                    result,
+                });
+            } catch (error) {
+                const message = error.message || 'DesktopRemote handler failed.';
+                const stage = /timed out/i.test(message) ? 'renderer-timeout' : 'main-handler';
+                return res.status(stage === 'renderer-timeout' ? 504 : 500).json({
+                    success: false,
+                    error: message,
+                    stage,
+                    commandPayload,
+                });
+            }
         });
+
+        console.log(`[${this.serverName}] DesktopRemote test route enabled: /pw=<file_key>/desktop-remote-test`);
     }
 
     connect() {
@@ -524,7 +658,12 @@ class DistributedServer {
     }
 
     async stop() {
+        if (this.stopPromise) {
+            return this.stopPromise;
+        }
+
         console.log(`[${this.serverName}] Stopping server...`);
+        this.stopPromise = Promise.resolve().then(async () => {
         this.stopped = true;
         
         // 新增：清理静态占位符更新定时器
@@ -544,12 +683,19 @@ class DistributedServer {
             // Remove listeners to prevent reconnection logic from firing on manual close
             this.ws.removeAllListeners('close');
             this.ws.removeAllListeners('error');
-            if (this.ws.readyState === WebSocket.OPEN) {
+            if (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING) {
                 this.ws.close(1000, 'Client initiated disconnect'); // 1000 is a normal closure
             }
             this.ws = null;
         }
+        if (this.server && this.server.listening) {
+            await new Promise((resolve) => {
+                this.server.close(() => resolve());
+            });
+        }
         console.log(`[${this.serverName}] Server stopped.`);
+        });
+        return this.stopPromise;
     }
 }
 

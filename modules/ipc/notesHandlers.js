@@ -3,6 +3,9 @@
 const { ipcMain, BrowserWindow, shell, dialog, clipboard } = require('electron');
 const path = require('path');
 const fs = require('fs-extra');
+const windowService = require('../services/windowService');
+const WINDOW_APP_IDS = require('../services/windowAppIds');
+const { PRELOAD_ROLES, resolveProjectPreload } = require('../services/preloadPaths');
 
 let notesWindow = null;
 let openChildWindows = []; // To keep track of open windows for broadcasting
@@ -237,7 +240,7 @@ function createOrFocusNotesWindow() {
         ...(process.platform === 'darwin' ? {} : { titleBarStyle: 'hidden' }),
         modal: false,
         webPreferences: {
-            preload: path.join(__dirname, '..', '..', 'preload.js'), // Corrected path
+            preload: resolveProjectPreload(path.join(__dirname, '..', '..'), PRELOAD_ROLES.UTILITY),
             contextIsolation: true,
             nodeIntegration: false,
             devTools: true
@@ -248,6 +251,7 @@ function createOrFocusNotesWindow() {
 
     const notesUrl = `file://${path.join(__dirname, '..', '..', 'Notemodules', 'notes.html')}`; // Corrected path
     notesWindow.loadURL(notesUrl);
+    windowService.attachWindow(WINDOW_APP_IDS.NOTES, notesWindow);
     
     openChildWindows.push(notesWindow); // Add to the broadcast list
     notesWindow.setMenu(null);
@@ -668,24 +672,10 @@ function initialize(options) {
     });
 
     ipcMain.handle('open-notes-with-content', async (event, data) => {
-        const targetWindow = createOrFocusNotesWindow();
-        const wc = targetWindow.webContents;
-
-        // If the window is already loaded (not new), send the data immediately.
-        if (!wc.isLoading()) {
-            console.log(`[Main Process] Notes window already loaded. Sending shared content immediately.`);
-            wc.send('shared-note-data', data);
-            return;
-        }
-
-        // If the window is new and loading, wait for our custom 'ready' signal.
-        console.log(`[Main Process] Notes window is new. Waiting for 'notes-window-ready' signal...`);
-        ipcMain.once('notes-window-ready', (e) => {
-            // Ensure the signal came from the window we just created.
-            if (e.sender === wc) {
-                console.log(`[Main Process] Received 'notes-window-ready' signal. Sending shared content.`);
-                wc.send('shared-note-data', data);
-            }
+        createOrFocusNotesWindow();
+        await windowService.sendPayload(WINDOW_APP_IDS.NOTES, data, {
+            focus: false,
+            timeoutMs: 10000,
         });
     });
 

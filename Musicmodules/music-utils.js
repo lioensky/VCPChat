@@ -2,6 +2,7 @@
 // 通用辅助函数，挂载到 app 上下文
 
 function setupUtils(app) {
+    const api = app.api || window.utilityAPI || window.electronAPI;
     app.formatTime = (seconds) => {
         const minutes = Math.floor(seconds / 60);
         const secs = Math.floor(seconds % 60);
@@ -33,7 +34,7 @@ function setupUtils(app) {
         app.semanticSearchBtn.classList.add('loading');
 
         try {
-            const settings = await window.electronAPI.loadSettings();
+            const settings = await api.loadSettings();
             let serverBaseUrl = settings.vcpServerUrl.replace(/\/v1\/chat\/completions\/?$/, '');
             if (!serverBaseUrl.endsWith('/')) serverBaseUrl += '/';
 

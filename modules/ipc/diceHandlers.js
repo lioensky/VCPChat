@@ -2,6 +2,9 @@
 
 const { ipcMain, BrowserWindow, dialog } = require('electron');
 const path = require('path');
+const windowService = require('../services/windowService');
+const WINDOW_APP_IDS = require('../services/windowAppIds');
+const { PRELOAD_ROLES, resolveProjectPreload } = require('../services/preloadPaths');
 // express is now lazy-loaded
 
 let diceWindow = null;
@@ -59,7 +62,7 @@ async function createOrFocusDiceWindow(projectRoot) {
         title: '超级骰子',
         modal: false,
         webPreferences: {
-            preload: path.join(projectRoot, 'preload.js'),
+            preload: resolveProjectPreload(projectRoot, PRELOAD_ROLES.UTILITY),
             contextIsolation: true,
             nodeIntegration: false,
             devTools: true
@@ -70,6 +73,7 @@ async function createOrFocusDiceWindow(projectRoot) {
 
     // Load the dice page from our local web server
     diceWindow.loadURL('http://localhost:6677/dice.html');
+    windowService.attachWindow(WINDOW_APP_IDS.DICE, diceWindow);
     
     diceWindow.setMenu(null);
 
@@ -103,14 +107,10 @@ async function handleDiceControl(args) {
         await createOrFocusDiceWindow(projectRoot);
 
         if (diceWindow && !diceWindow.isDestroyed()) {
-            await new Promise(resolve => {
-                ipcMain.once('dice-module-ready', (event) => {
-                    if (event.sender === diceWindow.webContents) resolve();
-                });
-                // A simple check to see if it's already loaded
-                if (diceWindow.webContents.getURL().startsWith('http')) resolve();
-            });
-
+            await windowService.ensureReady(WINDOW_APP_IDS.DICE, {
+                focus: false,
+                timeoutMs: 10000,
+            }).catch(() => diceWindow);
             diceWindow.webContents.send('roll-dice', notation, options);
 
             return new Promise((resolve) => {
@@ -171,6 +171,7 @@ function stopDiceServer() {
 module.exports = {
     initialize,
     handleDiceControl,
+    createOrFocusDiceWindow,
     stopDiceServer,
     getDiceWindow: () => diceWindow
 };

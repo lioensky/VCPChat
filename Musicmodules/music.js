@@ -108,6 +108,7 @@ document.addEventListener('DOMContentLoaded', () => {
         webdavDialogStatus: document.getElementById('webdav-dialog-status'),
         addWebDavBtn: document.getElementById('add-webdav-btn'),
         semanticSearchBtn: document.getElementById('semantic-search-btn'),
+        api: window.utilityAPI || window.electronAPI,
 
         // --- State Variables ---
         playlist: [],
@@ -237,15 +238,15 @@ document.addEventListener('DOMContentLoaded', () => {
         app.phantomAudio.src = app.createSilentAudio();
         app.wnpAdapter = new WebNowPlayingAdapter(app);
 
-        if (window.electron) {
-            const savedPlaylist = await window.electron.invoke('get-music-playlist');
+        if (app.api?.getMusicPlaylist) {
+            const savedPlaylist = await app.api.getMusicPlaylist();
             if (savedPlaylist && savedPlaylist.length > 0) {
                 app.playlist = savedPlaylist;
                 app.renderPlaylist();
             }
 
             // 检查是否有待播放的曲目（AI 点歌触发的新窗口）
-            const pendingTrack = await window.electron.invoke('music-get-pending-track');
+            const pendingTrack = await app.api.getMusicPendingTrack();
             if (pendingTrack && pendingTrack.path) {
                 console.log('[Music] Found pending track from main process:', pendingTrack.title);
                 // 在播放列表中查找匹配的曲目
@@ -268,7 +269,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     app.playlist.push(pendingTrack);
                     app.renderPlaylist();
                     await app.loadTrack(app.playlist.length - 1, true);
-                    window.electron.invoke('save-music-playlist', app.playlist);
+                    app.api.saveMusicPlaylist(app.playlist);
                 }
             } else if (app.playlist.length > 0) {
                 // 没有待播放曲目，按默认行为加载第一首（不自动播放）
@@ -278,7 +279,7 @@ document.addEventListener('DOMContentLoaded', () => {
             await app.loadCustomPlaylists();
             app.renderSidebarContent('all');
 
-            const initialState = await window.electron.invoke('music-get-state');
+            const initialState = await app.api.getMusicState();
             if (initialState?.state?.volume !== undefined) {
                 app.volumeSlider.value = initialState.state.volume;
                 app.updateVolumeSliderBackground(initialState.state.volume);
@@ -288,9 +289,12 @@ document.addEventListener('DOMContentLoaded', () => {
         app.populateDeviceList(false);
 
         // Signal that the renderer is ready to handle commands
-        if (window.electron) {
+        if (app.api?.musicRendererReady) {
             console.log('[Music] Sending "music-renderer-ready" signal to main process.');
-            window.electron.send('music-renderer-ready');
+            app.api.musicRendererReady();
+        }
+        if (app.api?.windowReady) {
+            app.api.windowReady('music');
         }
         app.createEqBands();
         app.populateEqPresets();
@@ -309,7 +313,7 @@ document.addEventListener('DOMContentLoaded', () => {
         app.volumeSlider.oninput = (e) => {
             const val = parseFloat(e.target.value);
             app.updateVolumeSliderBackground(val);
-            if (window.electron) window.electron.invoke('music-set-volume', val);
+            app.api?.setMusicVolume?.(val);
             if (app.wnpAdapter) app.wnpAdapter.sendUpdate();
             app.saveSettings();
         };
@@ -326,7 +330,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 app.currentTimeEl.textContent = app.formatTime(newTime);
 
                 if (shouldSeek) {
-                    await window.electron.invoke('music-seek', newTime);
+                    await app.api.seekMusic(newTime);
                     if (app.isPlaying) app.startStatePolling();
                 }
             }
@@ -354,9 +358,9 @@ document.addEventListener('DOMContentLoaded', () => {
         };
 
 
-        app.addFolderBtn.onclick = () => window.electron.invoke('music-add-folder');
+        app.addFolderBtn.onclick = () => app.api?.addMusicFolder?.();
         app.shareBtn.onclick = () => {
-            if (app.pendingTrackPath) window.electron.invoke('music-share-track', app.pendingTrackPath);
+            if (app.pendingTrackPath) app.api?.shareMusicTrack?.(app.pendingTrackPath);
         };
 
         app.deviceSelect.onchange = () => app.configureOutput();
@@ -394,7 +398,7 @@ document.addEventListener('DOMContentLoaded', () => {
             } else {
                 app.irLoadBtn.style.display = 'none';
                 try {
-                    const filePath = await window.electron.invoke('music-get-ir-preset-path', val);
+                    const filePath = await app.api.getMusicIrPresetPath(val);
                     if (filePath) app.loadIrFile(filePath);
                     else app.updateIrStatus('预设文件未找到', 'error');
                 } catch (err) {
@@ -406,7 +410,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         app.loadAvailableIrPresets = async () => {
             try {
-                const presets = await window.electron.invoke('music-list-ir-presets');
+                const presets = await app.api.listMusicIrPresets();
                 if (presets && presets.length > 0) {
                     const select = app.irPresetSelect;
                     // 保留第一个和最后一个选项
@@ -431,7 +435,7 @@ document.addEventListener('DOMContentLoaded', () => {
         };
         app.loadAvailableIrPresets();
         app.irLoadBtn.onclick = async () => {
-            const filePath = await window.electron.invoke('select-ir-file');
+            const filePath = await app.api.selectMusicIrFile();
             if (filePath) app.loadIrFile(filePath);
         };
 
@@ -455,8 +459,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 irAutoEqLink.onclick = (e) => {
                     e.preventDefault();
                     console.log('[IR Help] AutoEq link clicked');
-                    if (window.electronAPI && window.electronAPI.sendOpenExternalLink) {
-                        window.electronAPI.sendOpenExternalLink('https://autoeq.app/');
+                    if (app.api?.sendOpenExternalLink) {
+                        app.api.sendOpenExternalLink('https://autoeq.app/');
                     }
                 };
             }
@@ -524,7 +528,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (action === 'play') app.loadTrack(app.contextMenuTrackIndex);
                 else if (action === 'play-next') {
                     const t = app.playlist[app.contextMenuTrackIndex];
-                    if (window.electron) window.electron.invoke('music-queue-next', { path: t.path, username: t.username, password: t.password });
+                    if (app.api?.queueNextMusicTrack) app.api.queueNextMusicTrack({ path: t.path, username: t.username, password: t.password });
                 } else if (action === 'create-playlist-add') {
                     app.showPlaylistDialog((name) => {
                         const id = Date.now().toString(), track = app.playlist[app.contextMenuTrackIndex];
@@ -545,7 +549,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         app.playlist.splice(app.contextMenuTrackIndex, 1);
                         if (app.currentTrackIndex === app.contextMenuTrackIndex) app.nextTrack();
                         else if (app.currentTrackIndex > app.contextMenuTrackIndex) app.currentTrackIndex--;
-                        app.renderPlaylist(); window.electron.invoke('save-music-playlist', app.playlist);
+                        app.renderPlaylist(); app.api?.saveMusicPlaylist?.(app.playlist);
                     }
                 }
                 app.contextMenu.classList.remove('visible');
@@ -579,9 +583,9 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         };
 
-        app.minimizeBtn.onclick = () => { if (window.electronAPI) window.electronAPI.minimizeWindow(); };
-        app.maximizeBtn.onclick = () => { if (window.electronAPI) window.electronAPI.maximizeWindow(); };
-        app.closeBtn.onclick = () => { if (window.electronAPI) window.electronAPI.closeWindow(); };
+        app.minimizeBtn.onclick = () => { app.api?.minimizeWindow?.(); };
+        app.maximizeBtn.onclick = () => { app.api?.maximizeWindow?.(); };
+        app.closeBtn.onclick = () => { app.api?.closeWindow?.(); };
 
 
         window.addEventListener('resize', () => {
@@ -592,15 +596,15 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const setupElectronHandlers = () => {
-        if (!window.electron) return;
-        window.electron.on('music-scan-start', () => { app.loadingIndicator.style.display = 'flex'; app.scanProgressContainer.style.display = 'none'; });
-        window.electron.on('music-scan-progress', (data) => {
+        if (!app.api?.onMusicScanStart) return;
+        app.api.onMusicScanStart(() => { app.loadingIndicator.style.display = 'flex'; app.scanProgressContainer.style.display = 'none'; });
+        app.api.onMusicScanProgress((data) => {
             app.scanProgressContainer.style.display = 'block';
             const percent = (data.current / data.total) * 100;
             app.scanProgressBar.style.width = `${percent}%`;
             app.scanProgressLabel.textContent = `正在扫描: ${data.current} / ${data.total}`;
         });
-        window.electron.on('music-scan-complete', (data) => {
+        app.api.onMusicScanComplete((data) => {
             app.loadingIndicator.style.display = 'none';
             // data may be { tracks, folderPath } (new format) or plain array (legacy)
             const newPlaylist = Array.isArray(data) ? data : (data.tracks || []);
@@ -640,10 +644,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
             app.playlist = updatedPlaylist;
             app.renderPlaylist(); app.renderSidebarContent(app.currentSidebarView);
-            window.electron.invoke('save-music-playlist', app.playlist);
+            app.api.saveMusicPlaylist(app.playlist);
         });
-        window.electron.on('theme-updated', (theme) => app.applyTheme(theme));
-        window.electron.on('music-control', (command) => {
+        if (app.api?.onThemeUpdated) {
+            app.api.onThemeUpdated((theme) => app.applyTheme(theme));
+        }
+        app.api.onMusicControl((command) => {
             console.log('[Music] Received music-control command:', command);
             if (command === 'play') app.playTrack();
             else if (command === 'pause') app.pauseTrack();
@@ -654,7 +660,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // --- 处理从主进程发来的 "点歌" 命令 ---
         // 当 AI 或分布式服务器点歌时，主进程会发送 music-set-track 通知
         // 前端在播放列表中查找匹配的曲目，并通过 loadTrack() 统一处理加载+UI更新+播放
-        window.electron.on('music-set-track', (track) => {
+        app.api.onMusicSetTrack((track) => {
             console.log('[Music] Received music-set-track:', track?.title, track?.path);
             if (!track || !track.path) return;
 
@@ -684,7 +690,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 app.renderPlaylist(app.currentFilteredTracks);
                 app.loadTrack(newIndex, true);
                 // 持久化
-                if (window.electron) window.electron.invoke('save-music-playlist', app.playlist);
+                app.api?.saveMusicPlaylist?.(app.playlist);
             }
         });
     };
@@ -819,8 +825,8 @@ document.addEventListener('DOMContentLoaded', () => {
     app.saveSettings = () => {
         if (app.saveSettingsTimer) clearTimeout(app.saveSettingsTimer);
         app.saveSettingsTimer = setTimeout(() => {
-            if (window.electron) {
-                window.electron.invoke('music-save-settings', {
+            if (app.api?.saveMusicSettings) {
+                app.api.saveMusicSettings({
                     settings: {
                         volume: parseFloat(app.volumeSlider.value),
                         target_samplerate: app.targetUpsamplingRate,
@@ -842,7 +848,9 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const initializeTheme = async () => {
-        if (window.electron) app.applyTheme(await window.electron.invoke('get-theme'));
+        if (app.api?.getCurrentTheme) {
+            app.applyTheme(await app.api.getCurrentTheme());
+        }
     };
 
     init();

@@ -26,6 +26,7 @@ let currentTopicId = null;
 let currentChatHistory = [];
 window.__vcpRendererReady = false;
 window.__vcpPendingTopicSelection = null;
+const chatAPI = window.chatAPI || window.electronAPI;
 
 // 暴露到window对象以便其他模块访问
 window.currentSelectedItem = currentSelectedItem;
@@ -168,7 +169,7 @@ import { setupEventListeners } from './modules/event-listeners.js';
             elements: {
                 itemListUl: itemListUl,
             },
-            electronAPI: window.electronAPI,
+            electronAPI: chatAPI,
             refs: {
                 currentSelectedItemRef: { get: () => currentSelectedItem },
             },
@@ -208,7 +209,7 @@ import { setupEventListeners } from './modules/event-listeners.js';
         console.log('[Renderer PRE-INIT GroupRenderer] selectItemPromptForSettings within that object:', mainRendererElementsForGroupRenderer.selectItemPromptForSettings);
 
         window.GroupRenderer.init({
-            electronAPI: window.electronAPI,
+            electronAPI: chatAPI,
             globalSettingsRef: { get: () => globalSettings, set: (newSettings) => globalSettings = newSettings },
             currentSelectedItemRef: {
                 get: () => currentSelectedItem,
@@ -264,7 +265,7 @@ import { setupEventListeners } from './modules/event-listeners.js';
 
     // Initialize other modules after GroupRenderer, in case they depend on its setup
     if (window.messageRenderer) {
-        interruptHandler.initialize(window.electronAPI);
+        interruptHandler.initialize(chatAPI);
 
         window.messageRenderer.initializeMessageRenderer({
             currentChatHistoryRef: { get: () => currentChatHistory, set: (val) => currentChatHistory = val },
@@ -284,7 +285,7 @@ import { setupEventListeners } from './modules/event-listeners.js';
             },
             globalSettingsRef: { get: () => globalSettings, set: (newSettings) => globalSettings = newSettings },
             chatMessagesDiv: chatMessagesDiv,
-            electronAPI: window.electronAPI,
+            electronAPI: chatAPI,
             markedInstance: markedInstance, // Assuming marked.js is loaded
             uiHelper: uiHelperFunctions,
             interruptHandler: interruptHandler, // Pass the handler
@@ -319,7 +320,7 @@ import { setupEventListeners } from './modules/event-listeners.js';
         window.inputEnhancer.initializeInputEnhancer({
             messageInput: messageInput,
             dropTargetElement: chatInputCard,
-            electronAPI: window.electronAPI,
+            electronAPI: chatAPI,
             attachedFiles: { get: () => attachedFiles, set: (val) => attachedFiles = val },
             updateAttachmentPreview: () => uiHelperFunctions.updateAttachmentPreview(attachedFiles, attachmentPreviewArea),
             getCurrentAgentId: () => currentSelectedItem.id, // Corrected: pass a function that returns the ID
@@ -331,12 +332,12 @@ import { setupEventListeners } from './modules/event-listeners.js';
     }
 
 
-    window.electronAPI.onVCPLogStatus((statusUpdate) => {
+    chatAPI.onVCPLogStatus((statusUpdate) => {
         if (window.notificationRenderer) {
             window.notificationRenderer.updateVCPLogStatus(statusUpdate, vcpLogConnectionStatusDiv);
         }
     });
-    window.electronAPI.onVCPLogMessage((logData) => {
+    chatAPI.onVCPLogMessage((logData) => {
         if (window.notificationRenderer) {
             const computedStyle = getComputedStyle(document.body);
             const themeColors = {
@@ -353,7 +354,7 @@ import { setupEventListeners } from './modules/event-listeners.js';
     });
 
     // Unified listener for all VCP stream events (agent and group)
-    window.electronAPI.onVCPStreamEvent(async (eventData) => {
+    chatAPI.onVCPStreamEvent(async (eventData) => {
         if (!window.messageRenderer) {
             console.error("onVCPStreamEvent: messageRenderer not available.");
             return;
@@ -692,7 +693,7 @@ import { setupEventListeners } from './modules/event-listeners.js';
     });
 
     // Listener for group topic title updates
-    window.electronAPI.onVCPGroupTopicUpdated(async (eventData) => {
+    chatAPI.onVCPGroupTopicUpdated(async (eventData) => {
         const { groupId, topicId, newTitle, topics } = eventData;
         console.log(`[Renderer] Received topic update for group ${groupId}, topic ${topicId}: "${newTitle}"`);
         if (currentSelectedItem.id === groupId && currentSelectedItem.type === 'group') {
@@ -729,7 +730,7 @@ import { setupEventListeners } from './modules/event-listeners.js';
             elements: {
                 topicListContainer: tabContentTopics,
             },
-            electronAPI: window.electronAPI,
+            electronAPI: chatAPI,
             refs: {
                 currentSelectedItemRef: {
                     get: () => currentSelectedItem
@@ -770,7 +771,7 @@ import { setupEventListeners } from './modules/event-listeners.js';
     // Initialize ChatManager
     if (window.chatManager) {
         window.chatManager.init({
-            electronAPI: window.electronAPI,
+            electronAPI: chatAPI,
             uiHelper: uiHelperFunctions,
             modules: {
                 messageRenderer: window.messageRenderer,
@@ -820,7 +821,7 @@ import { setupEventListeners } from './modules/event-listeners.js';
     // Initialize Settings Manager
     if (window.settingsManager) {
         window.settingsManager.init({
-            electronAPI: window.electronAPI,
+            electronAPI: chatAPI,
             uiHelper: uiHelperFunctions,
             refs: {
                 currentSelectedItemRef: {
@@ -891,7 +892,7 @@ import { setupEventListeners } from './modules/event-listeners.js';
         // Initialize UI Manager after settings are loaded to ensure correct theme, widths, etc.
         if (window.uiManager) {
             await window.uiManager.init({
-                electronAPI: window.electronAPI,
+                electronAPI: chatAPI,
                 refs: {
                     globalSettingsRef: { get: () => globalSettings, set: (newSettings) => globalSettings = newSettings },
                 },
@@ -920,7 +921,7 @@ import { setupEventListeners } from './modules/event-listeners.js';
         // Initialize Filter Manager
         if (window.filterManager) {
             window.filterManager.init({
-                electronAPI: window.electronAPI,
+                electronAPI: chatAPI,
                 uiHelper: uiHelperFunctions,
                 refs: {
                     globalSettingsRef: { get: () => globalSettings, set: (newSettings) => globalSettings = newSettings },
@@ -1041,7 +1042,7 @@ import { setupEventListeners } from './modules/event-listeners.js';
         // Initialize Search Manager
         if (searchManager) {
             searchManager.init({
-                electronAPI: window.electronAPI,
+                electronAPI: chatAPI,
                 uiHelper: uiHelperFunctions,
                 refs: {
                     currentSelectedItemRef: { get: () => currentSelectedItem },
@@ -1057,7 +1058,7 @@ import { setupEventListeners } from './modules/event-listeners.js';
        // Emoticon URL fixer is now initialized within messageRenderer
         window.__vcpRendererReady = true;
 
-        window.electronAPI.toggleSelectionListener(!!globalSettings.assistantEnabled);
+        chatAPI.toggleSelectionListener(!!globalSettings.assistantEnabled);
 
         if (window.__vcpPendingTopicSelection && window.chatManager) {
             const pending = window.__vcpPendingTopicSelection;
@@ -1082,8 +1083,8 @@ import { setupEventListeners } from './modules/event-listeners.js';
     console.log('[Renderer DOMContentLoaded END] createNewGroupBtn textContent:', document.getElementById('createNewGroupBtn')?.textContent);
     
     // --- Agent Settings Reload Listener ---
-    if (window.electronAPI && window.electronAPI.onReloadAgentSettings) {
-        window.electronAPI.onReloadAgentSettings(async ({ agentId }) => {
+    if (chatAPI?.onReloadAgentSettings) {
+        chatAPI.onReloadAgentSettings(async ({ agentId }) => {
             console.log('[Renderer] Received reload-agent-settings event for agent:', agentId);
             if (window.settingsManager && typeof window.settingsManager.reloadAgentSettings === 'function') {
                 const result = await window.settingsManager.reloadAgentSettings(agentId);
@@ -1101,7 +1102,7 @@ import { setupEventListeners } from './modules/event-listeners.js';
     // --- TTS Audio Playback and Visuals ---
     setupTtsListeners();
     // --- File Watcher Listener ---
-    window.electronAPI.onHistoryFileUpdated(({ agentId, topicId, path }) => {
+    chatAPI.onHistoryFileUpdated(({ agentId, topicId, path }) => {
         if (currentSelectedItem && currentSelectedItem.id === agentId && currentTopicId === topicId) {
             console.log('[Renderer] Active chat history was modified externally. Syncing...');
             uiHelperFunctions.showToastNotification("聊天记录已同步。", "info");
@@ -1120,12 +1121,30 @@ import { setupEventListeners } from './modules/event-listeners.js';
     }
 
     // --- Listen for Flowlock commands from plugins (via main process) ---
-    if (window.electronAPI && window.electronAPI.onFlowlockCommand) {
-        window.electronAPI.onFlowlockCommand(async (commandData) => {
+    if (chatAPI?.onFlowlockCommand) {
+        const respondToFlowlockRequest = (commandData, responseData) => {
+            if (!commandData?.requestId || !chatAPI?.sendFlowlockRpcResponse) {
+                return;
+            }
+
+            chatAPI.sendFlowlockRpcResponse({
+                requestId: commandData.requestId,
+                ok: responseData?.success !== false,
+                data: responseData?.success === false ? undefined : responseData,
+                error: responseData?.success === false ? responseData.error : undefined,
+            });
+        };
+
+        const flowlockCommandHandler = async (commandData) => {
             console.log('[Renderer] Received flowlock command from plugin:', commandData);
             
             if (!window.flowlockManager) {
                 console.error('[Renderer] flowlockManager not available');
+                respondToFlowlockRequest(commandData, {
+                    command: commandData?.command,
+                    success: false,
+                    error: 'flowlockManager not available'
+                });
                 return;
             }
             
@@ -1260,23 +1279,18 @@ import { setupEventListeners } from './modules/event-listeners.js';
                             if (messageInput) {
                                 const content = messageInput.value;
                                 console.log(`[Renderer] Retrieved input box content: "${content}"`);
-                                // Send the content back to main process
-                                if (window.electronAPI && window.electronAPI.sendFlowlockResponse) {
-                                    window.electronAPI.sendFlowlockResponse({
-                                        command: 'get',
-                                        success: true,
-                                        content: content
-                                    });
-                                }
+                                respondToFlowlockRequest(commandData, {
+                                    command: 'get',
+                                    success: true,
+                                    content: content
+                                });
                             } else {
                                 console.error('[Renderer] Message input element not found');
-                                if (window.electronAPI && window.electronAPI.sendFlowlockResponse) {
-                                    window.electronAPI.sendFlowlockResponse({
-                                        command: 'get',
-                                        success: false,
-                                        error: 'Message input element not found'
-                                    });
-                                }
+                                respondToFlowlockRequest(commandData, {
+                                    command: 'get',
+                                    success: false,
+                                    error: 'Message input element not found'
+                                });
                             }
                         }
                         break;
@@ -1287,28 +1301,23 @@ import { setupEventListeners } from './modules/event-listeners.js';
                             if (window.flowlockManager) {
                                 const state = window.flowlockManager.getState();
                                 console.log(`[Renderer] Retrieved flowlock status:`, state);
-                                // Send the status back to main process
-                                if (window.electronAPI && window.electronAPI.sendFlowlockResponse) {
-                                    window.electronAPI.sendFlowlockResponse({
-                                        command: 'status',
-                                        success: true,
-                                        status: {
-                                            isActive: state.isActive,
-                                            isProcessing: state.isProcessing,
-                                            agentId: state.agentId,
-                                            topicId: state.topicId
-                                        }
-                                    });
-                                }
+                                respondToFlowlockRequest(commandData, {
+                                    command: 'status',
+                                    success: true,
+                                    status: {
+                                        isActive: state.isActive,
+                                        isProcessing: state.isProcessing,
+                                        agentId: state.agentId,
+                                        topicId: state.topicId
+                                    }
+                                });
                             } else {
                                 console.error('[Renderer] flowlockManager not available');
-                                if (window.electronAPI && window.electronAPI.sendFlowlockResponse) {
-                                    window.electronAPI.sendFlowlockResponse({
-                                        command: 'status',
-                                        success: false,
-                                        error: 'flowlockManager not available'
-                                    });
-                                }
+                                respondToFlowlockRequest(commandData, {
+                                    command: 'status',
+                                    success: false,
+                                    error: 'flowlockManager not available'
+                                });
                             }
                         }
                         break;
@@ -1319,7 +1328,12 @@ import { setupEventListeners } from './modules/event-listeners.js';
             } catch (error) {
                 console.error('[Renderer] Error executing flowlock command:', error);
             }
-        });
+        };
+
+        chatAPI.onFlowlockCommand(flowlockCommandHandler);
+        if (chatAPI.onFlowlockRequest) {
+            chatAPI.onFlowlockRequest(flowlockCommandHandler);
+        }
         console.log('[Renderer] Flowlock command listener initialized');
     }
 
@@ -1346,7 +1360,7 @@ function setupTtsListeners() {
     window.ensureAudioContext = initAudioContext;
 
     // 新的TTS播放逻辑：使用sessionId来处理异步时序问题
-    window.electronAPI.onPlayTtsAudio(async ({ audioData, msgId, sessionId }) => {
+    chatAPI.onPlayTtsAudio(async ({ audioData, msgId, sessionId }) => {
         // 如果收到的sessionId小于当前的，说明是过时的事件，直接忽略
         if (sessionId < currentTtsSessionId) {
             console.log(`[TTS Renderer] Discarding stale audio data from old session ${sessionId}. Current session is ${currentTtsSessionId}.`);
@@ -1433,7 +1447,7 @@ function setupTtsListeners() {
         }
     }
 
-    window.electronAPI.onStopTtsAudio(() => {
+    chatAPI.onStopTtsAudio(() => {
         console.error("!!!!!!!!!! [TTS RENDERER] STOP EVENT RECEIVED !!!!!!!!!!");
         
         // 关键：增加会话ID，使所有后续到达的、属于旧会话的play-tts-audio事件全部失效
@@ -1473,7 +1487,7 @@ function setupTtsListeners() {
 
 
 async function loadAndApplyGlobalSettings() {
-    const settings = await window.electronAPI.loadSettings();
+    const settings = await chatAPI.loadSettings();
     if (settings && !settings.error) {
         globalSettings = { ...globalSettings, ...settings }; // Merge with defaults
         
@@ -1489,7 +1503,7 @@ async function loadAndApplyGlobalSettings() {
 
         if (globalSettings.vcpLogUrl && globalSettings.vcpLogKey) {
             if (window.notificationRenderer) window.notificationRenderer.updateVCPLogStatus({ status: 'connecting', message: '连接中...' }, vcpLogConnectionStatusDiv);
-            window.electronAPI.connectVCPLog(globalSettings.vcpLogUrl, globalSettings.vcpLogKey);
+            chatAPI.connectVCPLog(globalSettings.vcpLogUrl, globalSettings.vcpLogKey);
         } else {
             if (window.notificationRenderer) window.notificationRenderer.updateVCPLogStatus({ status: 'error', message: 'VCPLog未配置' }, vcpLogConnectionStatusDiv);
         }
@@ -1609,7 +1623,7 @@ async function syncGlobalSettingsToUI() {
 
     // 加载论坛配置并填充管理员账号/密码
     try {
-        const forumConfig = await window.electronAPI.loadForumConfig();
+        const forumConfig = await chatAPI.loadForumConfig();
         if (forumConfig && !forumConfig.error) {
             safeSet('adminUsername', forumConfig.username || '');
             safeSet('adminPassword', forumConfig.password || '');
@@ -1644,9 +1658,9 @@ async function syncGlobalSettingsToUI() {
     safeSet('middleClickAdvancedDelay', Math.max(1000, globalSettings.middleClickAdvancedDelay ?? 1000));
     safeCheck('enableRegenerateConfirmation', globalSettings.enableRegenerateConfirmation !== false);
 
-    if (window.electronAPI?.getRustAssistantConfig) {
+    if (chatAPI?.getRustAssistantConfig) {
         try {
-            const rustConfig = await window.electronAPI.getRustAssistantConfig();
+            const rustConfig = await chatAPI.getRustAssistantConfig();
             if (rustConfig && !rustConfig.error) {
                 safeCheck('rustUseAssistant', rustConfig.useRustAssistant === true);
                 safeCheck('rustDebugMode', rustConfig.debugMode === true);
@@ -1674,9 +1688,9 @@ async function syncGlobalSettingsToUI() {
         }
     }
 
-    if (window.electronAPI?.getAssistantRuntimeStatus && document.getElementById('rustDebugMode')?.checked) {
+    if (chatAPI?.getAssistantRuntimeStatus && document.getElementById('rustDebugMode')?.checked) {
         try {
-            const runtime = await window.electronAPI.getAssistantRuntimeStatus();
+            const runtime = await chatAPI.getAssistantRuntimeStatus();
             if (runtime && runtime.success) {
                 const modeText = runtime.mode === 'rust'
                     ? 'Rust'
@@ -1799,7 +1813,7 @@ async function showForwardModal(message) {
     searchInput.value = '';
     confirmBtn.disabled = true;
 
-    const result = await window.electronAPI.getAllItems();
+    const result = await chatAPI.getAllItems();
     if (result.success) {
         renderForwardTargetList(result.items);
     } else {
@@ -1867,7 +1881,7 @@ async function handleConfirmForward() {
     const additionalComment = document.getElementById('forwardAdditionalComment').value.trim();
     
     // We need to get the original message from history to ensure we have all data
-    const originalMessageResult = await window.electronAPI.getOriginalMessageContent(
+    const originalMessageResult = await chatAPI.getOriginalMessageContent(
         currentSelectedItem.id,
         currentSelectedItem.type,
         currentTopicId,

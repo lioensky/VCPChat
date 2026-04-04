@@ -1,3 +1,5 @@
+const api = window.utilityAPI || window.electronAPI;
+
 document.addEventListener('DOMContentLoaded', async () => {
     // --- DOM Element References ---
     const noteList = document.getElementById('noteList');
@@ -378,8 +380,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 e.preventDefault();
                 const imageUrl = img.getAttribute('src');
                 const imageTitle = img.getAttribute('alt') || '图片预览';
-                if (window.electronAPI && window.electronAPI.openImageInNewWindow) {
-                    window.electronAPI.openImageInNewWindow(imageUrl, imageTitle);
+                if (api && api.openImageInNewWindow) {
+                    api.openImageInNewWindow(imageUrl, imageTitle);
                 } else {
                     console.error('Image viewer API is not available.');
                 }
@@ -390,7 +392,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // --- Core Data & File System Logic ---
     async function loadNoteTree() {
         try {
-            const result = await window.electronAPI.readNotesTree();
+            const result = await api.readNotesTree();
             if (result.error) {
                 console.error('加载笔记树失败:', result.error);
                 localNoteTree = [];
@@ -629,12 +631,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         } else {
             // No active item, create at root.
-            parentPath = await window.electronAPI.getNotesRootDir();
+            parentPath = await api.getNotesRootDir();
         }
 
         if (type === 'folder') {
             const folderName = '新建文件夹';
-            await window.electronAPI.createNoteFolder({ parentPath, folderName });
+            await api.createNoteFolder({ parentPath, folderName });
         } else {
             const newNote = {
                 title: '无标题笔记',
@@ -644,7 +646,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 directoryPath: parentPath,
                 ext: ext // Pass the extension to the backend
             };
-            const result = await window.electronAPI.writeTxtNote(newNote);
+            const result = await api.writeTxtNote(newNote);
             if (result.success) {
                 activeItemId = result.id;
                 activeNoteId = result.id;
@@ -687,7 +689,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         if (titleChanged) {
             // If title changes, we must use rename-item to change filename and content
-            result = await window.electronAPI.renameItem({
+            result = await api.renameItem({
                 oldPath: noteInTree.path,
                 newName: newTitle,
                 newContentBody: newContent,
@@ -709,7 +711,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 oldFilePath: noteInTree.path, // Pass the path to identify the file
                 ext: extension
             };
-            result = await window.electronAPI.writeTxtNote(noteData);
+            result = await api.writeTxtNote(noteData);
         }
 
         if (result.success) {
@@ -829,11 +831,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
         
         // Asynchronously check and disable selection listener without blocking dragstart
-        if (window.electronAPI && window.electronAPI.getSelectionListenerStatus) {
-            window.electronAPI.getSelectionListenerStatus().then(isActive => {
+        if (api && api.getSelectionListenerStatus) {
+            api.getSelectionListenerStatus().then(isActive => {
                 wasSelectionListenerActive = isActive;
-                if (isActive && window.electronAPI.toggleSelectionListener) {
-                    window.electronAPI.toggleSelectionListener(false);
+                if (isActive && api.toggleSelectionListener) {
+                    api.toggleSelectionListener(false);
                 }
             }).catch(err => {
                 console.error('Failed to get selection listener status:', err);
@@ -971,7 +973,7 @@ async function handleListDrop(e) {
     
     // --- Execute operation with feedback ---
     try {
-        const result = await window.electronAPI['notes:move-items']({ sourcePaths, target });
+        const result = await api['notes:move-items']({ sourcePaths, target });
         
         if (!result || !result.success) {
             await showErrorModal('移动失败', result.error || '发生未知错误。');
@@ -1019,9 +1021,9 @@ function handleListDragEnd(e) {
     });
 
     // Re-enable global selection listener only if it was active before the drag.
-    if (window.electronAPI && window.electronAPI.toggleSelectionListener) {
+    if (api && api.toggleSelectionListener) {
         if (wasSelectionListenerActive) {
-            window.electronAPI.toggleSelectionListener(true);
+            api.toggleSelectionListener(true);
         }
         wasSelectionListenerActive = false; // Reset state
     }
@@ -1068,7 +1070,7 @@ function handleListDragEnd(e) {
         }
         
         copyNoteBtn.onclick = async () => {
-            const result = await window.electronAPI.copyNoteContent(item.path);
+            const result = await api.copyNoteContent(item.path);
             if (result.success) {
                 const originalText = copyNoteBtn.textContent;
                 copyNoteBtn.textContent = '已复制!';
@@ -1131,7 +1133,7 @@ function handleListDragEnd(e) {
             if (newName && newName !== currentName) {
                 const item = findItemById(getCombinedTree(), itemId);
                 const extension = await window.electronPath.extname(item.path);
-                await window.electronAPI.renameItem({ oldPath: item.path, newName: newName, ext: extension });
+                await api.renameItem({ oldPath: item.path, newName: newName, ext: extension });
                 await loadNoteTree();
             }
         };
@@ -1194,7 +1196,7 @@ function handleListDragEnd(e) {
 
         if (confirmed) {
             for (const item of itemsToDelete) {
-                const result = await window.electronAPI.deleteItem(item.path);
+                const result = await api.deleteItem(item.path);
                 if (result.success) {
                     removeItemById(localNoteTree, item.id);
                     if (networkNoteTree && networkNoteTree.length > 0) {
@@ -1251,11 +1253,11 @@ function handleListDragEnd(e) {
     // --- Initialization ---
     async function initializeApp() {
         // Initialize theme first to prevent flash of unstyled content
-        if (window.electronAPI) {
+        if (api) {
             // Use the new robust theme listener
-            window.electronAPI.onThemeUpdated(applyTheme);
+            api.onThemeUpdated(applyTheme);
             try {
-                const initialTheme = await window.electronAPI.getCurrentTheme();
+                const initialTheme = await api.getCurrentTheme();
                 applyTheme(initialTheme);
             } catch (e) {
                 console.error("Failed to get initial theme", e);
@@ -1277,15 +1279,19 @@ function handleListDragEnd(e) {
 
         // --- Custom Title Bar Listeners ---
         minimizeNotesBtn.addEventListener('click', () => {
-            if (window.electronAPI) window.electronAPI.minimizeWindow();
+            if (api) api.minimizeWindow();
         });
 
         maximizeNotesBtn.addEventListener('click', () => {
-            if (window.electronAPI) window.electronAPI.maximizeWindow();
+            if (api) api.maximizeWindow();
         });
 
         closeNotesBtn.addEventListener('click', () => {
-            window.close();
+            if (api?.closeWindow) {
+                api.closeWindow();
+            } else {
+                window.close();
+            }
         });
 
         // --- Attach Delegated Event Listeners ---
@@ -1311,9 +1317,9 @@ function handleListDragEnd(e) {
         noteList.addEventListener('dragend', handleListDragEnd);
 
         try {
-            const settings = await window.electronAPI.loadSettings();
+            const settings = await api.loadSettings();
             currentUsername = settings?.userName || 'defaultUser';
-            NOTES_DIR_CACHE = await window.electronAPI.getNotesRootDir();
+            NOTES_DIR_CACHE = await api.getNotesRootDir();
         } catch (error) {
             console.error('加载用户设置或根目录失败:', error);
         }
@@ -1321,7 +1327,7 @@ function handleListDragEnd(e) {
         // No longer need to clear collapsed state, as the default is now collapsed.
         // --- New Initialization Logic ---
         // 1. Load local notes first for immediate display
-        const localResult = await window.electronAPI.readNotesTree();
+        const localResult = await api.readNotesTree();
         if (localResult.error) {
             console.error('加载本地笔记失败:', localResult.error);
         } else {
@@ -1330,7 +1336,7 @@ function handleListDragEnd(e) {
 
         // 2. Try to load network notes from cache for faster startup
         // 2. Try to load network notes from cache for faster startup (now returns array)
-        const cachedNetworkNotes = await window.electronAPI.getCachedNetworkNotes();
+        const cachedNetworkNotes = await api.getCachedNetworkNotes();
         // Ensure it's always an array, handling both old object format and null/undefined
         networkNoteTree = Array.isArray(cachedNetworkNotes) ? cachedNetworkNotes : (cachedNetworkNotes ? [cachedNetworkNotes] : []);
 
@@ -1338,18 +1344,19 @@ function handleListDragEnd(e) {
         renderTree();
 
         // 4. Asynchronously ask the main process to scan for fresh network notes
-        window.electronAPI.scanNetworkNotes();
+        api.scanNetworkNotes();
 
         // 5. Listen for the updated network notes to be returned
-        window.electronAPI.onNetworkNotesScanned((freshNetworkTree) => {
+        api.onNetworkNotesScanned((freshNetworkTree) => {
             // Ensure it's always an array, handling both old object format and null/undefined
             networkNoteTree = Array.isArray(freshNetworkTree) ? freshNetworkTree : (freshNetworkTree ? [freshNetworkTree] : []);
             renderTree(); // Re-render with the fresh data
         });
 
-        window.electronAPI.onSharedNoteData(async (data) => {
+        api.onSharedNoteData(async (data) => {
             // Generate a robust, unique title based on date and time, as suggested.
             const now = new Date();
+            const generatedTitleSuffix = `.${String(now.getMilliseconds()).padStart(3, '0')}`;
             const generatedTitle = `分享笔记 ${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}.${String(now.getMinutes()).padStart(2, '0')}.${String(now.getSeconds()).padStart(2, '0')}`;
 
             // Prepend the original title to the content for context.
@@ -1358,14 +1365,14 @@ function handleListDragEnd(e) {
                 : data.content || '';
 
             const newNoteData = {
-                title: generatedTitle, // Use the safe, generated title for the filename and header
+                title: `${generatedTitle}${generatedTitleSuffix}`, // Keep assistant note filenames unique under burst writes
                 content: finalContent,
                 username: currentUsername,
                 timestamp: Date.now(),
-                directoryPath: await window.electronAPI.getNotesRootDir() // Create in root by default
+                directoryPath: await api.getNotesRootDir() // Create in root by default
             };
 
-            const result = await window.electronAPI.writeTxtNote(newNoteData);
+            const result = await api.writeTxtNote(newNoteData);
             if (result.success) {
                 await loadNoteTree();
                 // Activate the new note
@@ -1378,8 +1385,8 @@ function handleListDragEnd(e) {
             }
         });
 
-        if (window.electronAPI.sendNotesWindowReady) {
-            window.electronAPI.sendNotesWindowReady();
+        if (api?.windowReady) {
+            api.windowReady('notes');
         }
     }
 
@@ -1396,7 +1403,7 @@ function handleListDragEnd(e) {
                     const base64Data = e.target.result.split(',')[1];
                     const extension = file.type.split('/')[1];
                     
-                    const result = await window.electronAPI.savePastedImageToFile({ data: base64Data, extension }, activeNoteId);
+                    const result = await api.savePastedImageToFile({ data: base64Data, extension }, activeNoteId);
 
                     if (result.success && result.attachment) {
                         const markdownImage = `![${result.attachment.name}](${result.attachment.internalPath})`;

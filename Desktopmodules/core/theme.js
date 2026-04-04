@@ -6,6 +6,7 @@
 'use strict';
 
 (function () {
+    const desktopApi = window.desktopAPI || window.electronAPI;
     /**
      * 初始化主题同步
      * 从 URL 参数读取初始主题，并监听主进程的主题更新
@@ -17,8 +18,8 @@
             document.body.classList.add('light-theme');
         }
 
-        if (window.electronAPI?.onThemeUpdated) {
-            window.electronAPI.onThemeUpdated((theme) => {
+        if (desktopApi?.onThemeUpdated) {
+            desktopApi.onThemeUpdated((theme) => {
                 if (theme === 'light') {
                     document.body.classList.add('light-theme');
                 } else {

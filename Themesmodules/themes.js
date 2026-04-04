@@ -1,3 +1,5 @@
+const api = window.utilityAPI || window.electronAPI;
+
 document.addEventListener('DOMContentLoaded', () => {
     const themesGrid = document.getElementById('themesGrid');
     const previewBox = document.getElementById('previewBox');
@@ -44,19 +46,20 @@ document.addEventListener('DOMContentLoaded', () => {
            const fixedPath = fixWallpaperPath(wallpaperPath);
            
            // Request the thumbnail from the main process. If it fails, fallback to full image.
-           window.electronAPI.getWallpaperThumbnail(fixedPath).then(thumbnailUrl => {
-               element.style.backgroundImage = `url('${escapeCssUrl(thumbnailUrl)}')`;
-           }).catch(err => {
-               console.error(`Failed to generate or load thumbnail for ${fixedPath}:`, err);
-               element.style.backgroundImage = `url('${escapeCssUrl(fixedPath)}')`;
-           });
+            api.getWallpaperThumbnail(fixedPath).then(thumbnailUrl => {
+                const previewUrl = thumbnailUrl || fixedPath;
+                element.style.backgroundImage = `url('${escapeCssUrl(previewUrl)}')`;
+            }).catch(err => {
+                console.error(`Failed to generate or load thumbnail for ${fixedPath}:`, err);
+                element.style.backgroundImage = `url('${escapeCssUrl(fixedPath)}')`;
+            });
        } else {
            element.style.backgroundImage = 'none';
        }
    }
 
     // 1. Fetch themes from the main process
-    window.electronAPI.getThemes().then(themeList => {
+    api.getThemes().then(themeList => {
         themes = themeList;
         // The backend now returns { dark: {...}, light: {...} }.
         // We don't need to pre-process themes here anymore as updatePreview handles it.
@@ -218,7 +221,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // 5. Save the selected theme
     saveThemeBtn.addEventListener('click', () => {
         if (selectedTheme) {
-            window.electronAPI.applyTheme(selectedTheme.fileName);
+            api.applyTheme(selectedTheme.fileName);
         }
     });
 
@@ -228,15 +231,19 @@ document.addEventListener('DOMContentLoaded', () => {
     const closeBtn = document.getElementById('close-theme-btn');
 
     minimizeBtn.addEventListener('click', () => {
-        if (window.electronAPI) window.electronAPI.minimizeWindow();
+        if (api) api.minimizeWindow();
     });
 
     maximizeBtn.addEventListener('click', () => {
-        if (window.electronAPI) window.electronAPI.maximizeWindow();
+        if (api) api.maximizeWindow();
     });
 
     closeBtn.addEventListener('click', () => {
-        window.close();
+        if (api?.closeWindow) {
+            api.closeWindow();
+        } else {
+            window.close();
+        }
     });
  
      // --- Theme Handling for the window itself ---
@@ -246,7 +253,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function initializeTheme() {
         try {
-            const theme = await window.electronAPI.getCurrentTheme();
+            const theme = await api.getCurrentTheme();
             applyThemeForWindow(theme || 'dark');
         } catch (error) {
             console.error('Failed to get initial theme for themes window:', error);
@@ -254,11 +261,11 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    if (window.electronAPI) {
+    if (api) {
         initializeTheme();
-        window.electronAPI.onThemeUpdated(applyThemeForWindow);
+        api.onThemeUpdated(applyThemeForWindow);
     } else {
-        console.warn('electronAPI not found. Theme updates will not work.');
+        console.warn('utilityAPI not found. Theme updates will not work.');
         applyThemeForWindow('dark');
     }
 });

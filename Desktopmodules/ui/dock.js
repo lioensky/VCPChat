@@ -16,6 +16,7 @@
 'use strict';
 
 (function () {
+    const desktopApi = window.desktopAPI || window.electronAPI;
     const { state, domRefs, CONSTANTS } = window.VCPDesktop;
 
     let dockElement = null;
@@ -658,9 +659,9 @@
         }
 
         // 快捷方式 - 通过 IPC 启动
-        if (window.electronAPI?.desktopShortcutLaunch) {
+        if (desktopApi?.desktopShortcutLaunch) {
             try {
-                const result = await window.electronAPI.desktopShortcutLaunch(item);
+                const result = await desktopApi.desktopShortcutLaunch(item);
                 if (!result.success) {
                     console.error('[Dock] Launch failed:', result.error);
                     if (window.VCPDesktop.status) {
@@ -775,7 +776,7 @@
      * 扫描 Windows 桌面上的 .lnk 快捷方式并导入
      */
     async function scanWindowsShortcuts() {
-        if (!window.electronAPI?.desktopScanShortcuts) {
+        if (!desktopApi?.desktopScanShortcuts) {
             console.warn('[Dock] desktopScanShortcuts API not available');
             return;
         }
@@ -786,7 +787,7 @@
         }
 
         try {
-            const result = await window.electronAPI.desktopScanShortcuts();
+            const result = await desktopApi.desktopScanShortcuts();
             if (result?.success && result.shortcuts) {
                 const count = addDockItems(result.shortcuts);
                 if (window.VCPDesktop.status) {
@@ -909,10 +910,10 @@
      * 导入 .lnk 文件到 Dock
      */
     async function importLnkFiles(filePaths) {
-        if (!window.electronAPI?.desktopShortcutParseBatch) return [];
+        if (!desktopApi?.desktopShortcutParseBatch) return [];
 
         try {
-            const result = await window.electronAPI.desktopShortcutParseBatch(filePaths);
+            const result = await desktopApi.desktopShortcutParseBatch(filePaths);
             if (result?.success && result.shortcuts) {
                 const count = addDockItems(result.shortcuts);
                 if (window.VCPDesktop.status) {
@@ -1487,11 +1488,11 @@
                 defaultSvgIcon = appDef.svgIcon || null;
             }
         } else if (item.type === 'shortcut') {
-            if (window.electronAPI?.desktopShortcutParseBatch) {
+            if (desktopApi?.desktopShortcutParseBatch) {
                 const path = item.originalPath || item.targetPath;
                 if (path) {
                     try {
-                        const result = await window.electronAPI.desktopShortcutParseBatch([path]);
+                        const result = await desktopApi.desktopShortcutParseBatch([path]);
                         if (result?.success && result.shortcuts?.length > 0) {
                             defaultIcon = result.shortcuts[0].icon;
                         }
@@ -1576,10 +1577,10 @@
      * 保存 Dock 配置到磁盘
      */
     async function saveDockConfig() {
-        if (!window.electronAPI?.desktopSaveDock) return;
+        if (!desktopApi?.desktopSaveDock) return;
 
         try {
-            await window.electronAPI.desktopSaveDock({
+            await desktopApi.desktopSaveDock({
                 items: state.dock.items,
                 maxVisible: state.dock.maxVisible,
             });
@@ -1592,10 +1593,10 @@
      * 从磁盘加载 Dock 配置
      */
     async function loadDockConfig() {
-        if (!window.electronAPI?.desktopLoadDock) return;
+        if (!desktopApi?.desktopLoadDock) return;
 
         try {
-            const result = await window.electronAPI.desktopLoadDock();
+            const result = await desktopApi.desktopLoadDock();
             if (result?.success && result.data) {
                 state.dock.items = result.data.items || [];
                 // 兼容旧数据：没有 visible 字段的 item 根据原来的位置逻辑设置默认值
@@ -1854,10 +1855,10 @@
      * 保存桌面图标到 layout.json 的 desktopIcons 字段
      */
     async function saveDesktopIcons() {
-        if (!window.electronAPI?.desktopSaveLayout || !window.electronAPI?.desktopLoadLayout) return;
+        if (!desktopApi?.desktopSaveLayout || !desktopApi?.desktopLoadLayout) return;
 
         try {
-            const result = await window.electronAPI.desktopLoadLayout();
+            const result = await desktopApi.desktopLoadLayout();
             const layoutData = (result?.success && result.data) ? result.data : {};
             // 保存到 currentDesktopIcons 字段（清除旧的 desktopIcons 避免混淆）
             layoutData.currentDesktopIcons = state.desktopIcons.map(icon => {
@@ -1866,7 +1867,7 @@
                 return copy;
             });
             delete layoutData.desktopIcons; // 清除旧字段
-            await window.electronAPI.desktopSaveLayout(layoutData);
+            await desktopApi.desktopSaveLayout(layoutData);
             console.log(`[Dock] Desktop icons saved: ${state.desktopIcons.length} icons`);
         } catch (err) {
             console.error('[Dock] Save desktop icons error:', err);
@@ -1880,10 +1881,10 @@
      * 从 layout.json 恢复桌面图标
      */
     async function restoreDesktopIcons() {
-        if (!window.electronAPI?.desktopLoadLayout) return;
+        if (!desktopApi?.desktopLoadLayout) return;
 
         try {
-            const result = await window.electronAPI.desktopLoadLayout();
+            const result = await desktopApi.desktopLoadLayout();
             if (!result?.success || !result.data) return;
 
             // 支持两个字段名：currentDesktopIcons（新）和 desktopIcons（旧兼容）

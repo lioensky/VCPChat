@@ -82,6 +82,7 @@
     "files": [
       "main.js",
       "preload.js",
+      "preloads/**/*",
       "renderer.js",
       "main.html",
       "image-viewer.html",

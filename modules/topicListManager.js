@@ -62,6 +62,21 @@ window.topicListManager = (() => {
         return shouldActivateCount(history) ? 1 : 0;
     }
 
+    function normalizeTopicTitle(topicTitle) {
+        if (typeof topicTitle !== 'string') return topicTitle;
+
+        const trimmedTitle = topicTitle.trim();
+        if (!trimmedTitle) return trimmedTitle;
+        if (trimmedTitle.includes('新话题')) return trimmedTitle;
+
+        const timeMatch = trimmedTitle.match(/(\d{1,2}:\d{2}:\d{2})/);
+        if (trimmedTitle.includes('新话') && timeMatch) {
+            return `新话题 ${timeMatch[1]}`;
+        }
+
+        return trimmedTitle;
+    }
+
     /**
      * Part C: 计算单个话题的未读消息数
      * @param {Object} topic - 话题对象
@@ -149,7 +164,8 @@ window.topicListManager = (() => {
 
             if (searchTerm) {
                 let frontendFilteredTopics = topicsToProcess.filter(topic => {
-                    const nameMatch = topic.name.toLowerCase().includes(searchTerm);
+                    const normalizedTopicTitle = normalizeTopicTitle(topic.name || '');
+                    const nameMatch = normalizedTopicTitle.toLowerCase().includes(searchTerm);
                     let dateMatch = false;
                     if (topic.createdAt) {
                         const date = new Date(topic.createdAt);
@@ -207,12 +223,13 @@ window.topicListManager = (() => {
                         avatarImg.classList.add('avatar');
                         // 优化：延迟加载头像，仅在需要时添加时间戳
                         avatarImg.src = currentSelectedItem.avatarUrl ? currentSelectedItem.avatarUrl : (currentSelectedItem.type === 'group' ? 'assets/default_group_avatar.png' : 'assets/default_avatar.png');
-                        avatarImg.alt = `${currentSelectedItem.name} - ${topic.name}`;
+                        const displayTopicTitle = normalizeTopicTitle(topic.name || `话题 ${topic.id}`);
+                        avatarImg.alt = `${currentSelectedItem.name} - ${displayTopicTitle}`;
                         avatarImg.onerror = () => { avatarImg.src = (currentSelectedItem.type === 'group' ? 'assets/default_group_avatar.png' : 'assets/default_avatar.png'); };
 
                         const topicTitleDisplay = document.createElement('span');
                         topicTitleDisplay.classList.add('topic-title-display');
-                        topicTitleDisplay.textContent = topic.name || `话题 ${topic.id}`;
+                        topicTitleDisplay.textContent = displayTopicTitle;
 
                         const messageCountSpan = document.createElement('span');
                         messageCountSpan.classList.add('message-count');
@@ -357,18 +374,18 @@ window.topicListManager = (() => {
             dragClass: 'sortable-drag-topic',
             onStart: async function (evt) {
                 // Check original state, store it, and then disable if it was active.
-                if (window.electronAPI && window.electronAPI.getSelectionListenerStatus) {
-                    wasSelectionListenerActive = await window.electronAPI.getSelectionListenerStatus();
+                if (electronAPI?.getSelectionListenerStatus) {
+                    wasSelectionListenerActive = await electronAPI.getSelectionListenerStatus();
                     if (wasSelectionListenerActive) {
-                        window.electronAPI.toggleSelectionListener(false);
+                        electronAPI.toggleSelectionListener(false);
                     }
                 }
             },
             onEnd: async function (evt) {
                 // Re-enable selection hook only if it was active before the drag.
-                if (window.electronAPI && window.electronAPI.toggleSelectionListener) {
+                if (electronAPI?.toggleSelectionListener) {
                     if (wasSelectionListenerActive) {
-                        window.electronAPI.toggleSelectionListener(true);
+                        electronAPI.toggleSelectionListener(true);
                     }
                     wasSelectionListenerActive = false; // Reset state
                 }

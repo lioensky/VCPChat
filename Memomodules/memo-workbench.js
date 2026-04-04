@@ -3,6 +3,8 @@
  * 日记工作台逻辑模块 - 负责多日记整合与参考阅读
  */
 
+const memoWorkbenchApi = window.utilityAPI || window.electronAPI;
+
 function escapeHtmlWb(str) {
     if (typeof str !== 'string') return str;
     return str
@@ -161,7 +163,7 @@ const DiaryWorkbench = {
         submitBtn.textContent = '正在发布...';
 
         try {
-            const settings = await window.electronAPI.loadSettings();
+            const settings = await memoWorkbenchApi.loadSettings();
             if (!settings?.vcpApiKey) throw new Error('API Key 未配置');
 
             // 构造 TOOL_REQUEST

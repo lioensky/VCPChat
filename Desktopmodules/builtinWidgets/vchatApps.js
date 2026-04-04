@@ -15,6 +15,7 @@
 'use strict';
 
 (function () {
+    const desktopApi = window.desktopAPI || window.electronAPI;
     const { state } = window.VCPDesktop;
 
     // ============================================================
@@ -409,8 +410,8 @@
         }
 
         try {
-            if (window.electronAPI?.desktopLaunchVchatApp) {
-                const result = await window.electronAPI.desktopLaunchVchatApp(appDef.appAction);
+            if (desktopApi?.desktopLaunchVchatApp) {
+                const result = await desktopApi.desktopLaunchVchatApp(appDef.appAction);
                 if (result?.success) {
                     console.log(`[VChatApps] Successfully launched: ${appDef.name}`);
                     if (window.VCPDesktop.status) {

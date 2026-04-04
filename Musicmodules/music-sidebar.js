@@ -3,11 +3,15 @@
 
 function setupSidebar(app) {
     app.loadCustomPlaylists = async () => {
-        if (window.electron) app.customPlaylists = await window.electron.invoke('get-custom-playlists') || [];
+        if (app.api?.getCustomPlaylists) {
+            app.customPlaylists = await app.api.getCustomPlaylists() || [];
+        }
     };
 
     app.saveCustomPlaylists = () => {
-        if (window.electron) window.electron.invoke('save-custom-playlists', app.customPlaylists);
+        if (app.api?.saveCustomPlaylists) {
+            app.api.saveCustomPlaylists(app.customPlaylists);
+        }
     };
 
     app.getAlbumGroups = () => {
