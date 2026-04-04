@@ -11,6 +11,164 @@ let isDeletingMessage = false; // Flag to suppress grid cancellation messages du
 let freezeGridCancellation = false; // Flag to completely freeze grid cancellation logic
 let activeMiddleClickTimers = new Map();
 
+const RADIAL_MENU_CONFIG = Object.freeze({
+    size: 248,
+    centerRadius: 48,
+    activeInnerRadius: 72,
+    activeOuterRadius: 122,
+    slotRadius: 98,
+    viewportPadding: 12
+});
+
+const MIDDLE_CLICK_ACTIONS = Object.freeze([
+    {
+        key: 'edit',
+        label: '编辑',
+        toastLabel: '编辑消息',
+        angle: 225,
+        svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 21a8 8 0 0 1 10.821-7.487"/><path d="M21.378 16.626a1 1 0 0 0-3.004-3.004l-4.01 4.012a2 2 0 0 0-.506.854l-.837 2.87a.5.5 0 0 0 .62.62l2.87-.837a2 2 0 0 0 .854-.506z"/><circle cx="10" cy="8" r="5"/></svg>`
+    },
+    {
+        key: 'copy',
+        label: '复制',
+        toastLabel: '复制文本',
+        angle: 270,
+        svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>`
+    },
+    {
+        key: 'createBranch',
+        label: '分支',
+        toastLabel: '创建分支',
+        angle: 315,
+        svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6a9 9 0 0 0-9 9V3"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/></svg>`
+    },
+    {
+        key: 'readAloud',
+        label: '朗读',
+        toastLabel: '朗读气泡',
+        angle: 180,
+        svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20"/><path d="M8 12v-2a4 4 0 0 1 8 0v2"/><circle cx="15" cy="12" r="1"/><circle cx="9" cy="12" r="1"/></svg>`
+    },
+    {
+        key: 'readMode',
+        label: '阅读',
+        toastLabel: '阅读模式',
+        angle: 0,
+        svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21V7"/><path d="m16 12 2 2 4-4"/><path d="M22 6V4a1 1 0 0 0-1-1h-5a4 4 0 0 0-4 4 4 4 0 0 0-4-4H3a1 1 0 0 0-1 1v13a1 1 0 0 0 1 1h6a3 3 0 0 1 3 3 3 3 0 0 1 3-3h6a1 1 0 0 0 1-1v-1.3"/></svg>`
+    },
+    {
+        key: 'regenerate',
+        label: '重回',
+        toastLabel: '重新回复',
+        angle: 135,
+        svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>`
+    },
+    {
+        key: 'forward',
+        label: '转发',
+        toastLabel: '转发消息',
+        angle: 90,
+        svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 17 5-5-5-5"/><path d="M4 18v-2a4 4 0 0 1 4-4h12"/></svg>`
+    },
+    {
+        key: 'delete',
+        label: '删除',
+        toastLabel: '删除消息',
+        angle: 45,
+        svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`
+    }
+]);
+
+const MIDDLE_CLICK_ACTION_MAP = new Map(MIDDLE_CLICK_ACTIONS.map(action => [action.key, action]));
+const RADIAL_SELECTION_ORDER = Object.freeze([
+    'readMode',
+    'delete',
+    'forward',
+    'regenerate',
+    'readAloud',
+    'edit',
+    'copy',
+    'createBranch'
+]);
+
+function getMiddleClickActionMeta(actionKey) {
+    return MIDDLE_CLICK_ACTION_MAP.get(actionKey) || null;
+}
+
+function getMiddleClickActionName(actionKey) {
+    return getMiddleClickActionMeta(actionKey)?.toastLabel || actionKey;
+}
+
+function normalizeAngle(angle) {
+    return (angle + 360) % 360;
+}
+
+function updateRadialMenuCenter(isClearActive = false) {
+    if (!middleClickGrid) return;
+
+    const centerIcon = middleClickGrid.querySelector('.middle-click-grid__center-icon');
+    const centerLabel = middleClickGrid.querySelector('.middle-click-grid__center-label');
+
+    if (centerIcon) {
+        centerIcon.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>`;
+    }
+
+    if (centerLabel) {
+        centerLabel.textContent = '清空';
+        centerLabel.classList.toggle('is-active', isClearActive);
+    }
+}
+
+function updateRadialMenuVisualState(activeActionKey = '', isCenterActive = false) {
+    if (!middleClickGrid) return;
+
+    const tooltip = middleClickGrid.querySelector('.middle-click-grid__tooltip');
+    const centerNode = middleClickGrid.querySelector('.middle-click-grid__center');
+    const actionButtons = middleClickGrid.querySelectorAll('.middle-click-grid__action');
+
+    actionButtons.forEach(button => {
+        button.classList.toggle('is-active', button.dataset.function === activeActionKey);
+    });
+
+    if (centerNode) {
+        centerNode.classList.toggle('is-active', isCenterActive);
+    }
+
+    updateRadialMenuCenter(isCenterActive);
+
+    if (tooltip) {
+        const tooltipText = isCenterActive
+            ? '清空'
+            : (getMiddleClickActionMeta(activeActionKey)?.label || '');
+        tooltip.textContent = tooltipText;
+        tooltip.classList.toggle('is-visible', Boolean(tooltipText));
+    }
+}
+
+function getRadialMenuSelection(mouseX, mouseY) {
+    if (!middleClickGrid) return '';
+
+    const rect = middleClickGrid.getBoundingClientRect();
+    const centerX = rect.left + (rect.width / 2);
+    const centerY = rect.top + (rect.height / 2);
+    const deltaX = mouseX - centerX;
+    const deltaY = mouseY - centerY;
+    const distance = Math.hypot(deltaX, deltaY);
+
+    if (distance <= RADIAL_MENU_CONFIG.centerRadius) {
+        return 'none';
+    }
+
+    if (distance < RADIAL_MENU_CONFIG.activeInnerRadius || distance > RADIAL_MENU_CONFIG.activeOuterRadius) {
+        return '';
+    }
+
+    const angle = normalizeAngle(Math.atan2(deltaY, deltaX) * (180 / Math.PI));
+    const sectorIndex = Math.round(angle / 45) % RADIAL_SELECTION_ORDER.length;
+
+    return RADIAL_SELECTION_ORDER[sectorIndex] || '';
+}
+
 /**
  * 检查气泡是否处于完成状态，可以进行中键操作
  * @param {Object} message - 消息对象
@@ -115,7 +273,7 @@ function startAdvancedMiddleClickTimer(event, messageItem, message, globalSettin
                 console.log(`[AdvancedMiddleClick] Within delay (${holdTime}ms < ${delay}ms) - letting basic mode handle`);
             } else {
                 // After delay time - check if a valid selection was made
-                if (currentGridSelection && currentGridSelection !== '' && currentGridSelection !== 'none') {
+                if (getMiddleClickActionMeta(currentGridSelection)) {
                     console.log(`[AdvancedMiddleClick] Setting quick action to: ${currentGridSelection}`);
                     // Update the global setting only if a valid function was selected
                     updateMiddleClickQuickAction(currentGridSelection);
@@ -178,8 +336,7 @@ function startAdvancedMiddleClickTimer(event, messageItem, message, globalSettin
             showMiddleClickGrid(event.clientX, event.clientY, messageItem, message);
             document.addEventListener('mousemove', handleMouseMove);
 
-            // Set initial selection to center (none)
-            currentGridSelection = 'none';
+            updateGridSelection(event.clientX, event.clientY);
 
             // Ensure grid background persists by adding a CSS class
             if (middleClickGrid) {
@@ -730,10 +887,10 @@ function showMiddleClickGrid(x, y, messageItem, message) {
     // Create grid container
     middleClickGrid = document.createElement('div');
     middleClickGrid.id = 'middleClickGrid';
-    middleClickGrid.className = 'middle-click-grid persistent-background';
+    middleClickGrid.className = 'middle-click-grid middle-click-grid--radial persistent-background';
     middleClickGrid.style.position = 'fixed';
-    middleClickGrid.style.left = `${x - 100}px`;
-    middleClickGrid.style.top = `${y - 100}px`;
+    middleClickGrid.style.left = `${x - (RADIAL_MENU_CONFIG.size / 2)}px`;
+    middleClickGrid.style.top = `${y - (RADIAL_MENU_CONFIG.size / 2)}px`;
     middleClickGrid.style.width = '200px';
     middleClickGrid.style.height = '200px';
     middleClickGrid.style.zIndex = '10000';
@@ -795,6 +952,36 @@ function showMiddleClickGrid(x, y, messageItem, message) {
         middleClickGrid.appendChild(cell);
     });
 
+    const tooltip = document.createElement('div');
+    tooltip.className = 'middle-click-grid__tooltip';
+    middleClickGrid.appendChild(tooltip);
+
+    const centerDisplay = document.createElement('div');
+    centerDisplay.className = 'middle-click-grid__center';
+    centerDisplay.innerHTML = `
+        <div class="middle-click-grid__center-icon"></div>
+        <div class="middle-click-grid__center-label"></div>
+    `;
+    middleClickGrid.appendChild(centerDisplay);
+
+    MIDDLE_CLICK_ACTIONS.forEach(action => {
+        const angleInRadians = (action.angle * Math.PI) / 180;
+        const offsetX = Math.cos(angleInRadians) * RADIAL_MENU_CONFIG.slotRadius;
+        const offsetY = Math.sin(angleInRadians) * RADIAL_MENU_CONFIG.slotRadius;
+
+        const actionNode = document.createElement('div');
+        actionNode.className = 'middle-click-grid__action';
+        actionNode.dataset.function = action.key;
+        actionNode.style.setProperty('--slot-x', `${offsetX.toFixed(2)}px`);
+        actionNode.style.setProperty('--slot-y', `${offsetY.toFixed(2)}px`);
+        actionNode.innerHTML = `
+            <div class="middle-click-grid__action-icon">
+                ${action.svg}
+            </div>
+        `;
+        middleClickGrid.appendChild(actionNode);
+    });
+
     // Add to body
     document.body.appendChild(middleClickGrid);
 
@@ -818,6 +1005,7 @@ function showMiddleClickGrid(x, y, messageItem, message) {
 
     // Initialize current selection to center (none)
     currentGridSelection = 'none';
+    updateRadialMenuVisualState('', true);
 }
 
 /**
@@ -828,46 +1016,9 @@ function showMiddleClickGrid(x, y, messageItem, message) {
 function updateGridSelection(mouseX, mouseY) {
     if (!middleClickGrid) return;
 
-    const rect = middleClickGrid.getBoundingClientRect();
-    const relativeX = mouseX - rect.left;
-    const relativeY = mouseY - rect.top;
-
-    // Calculate which cell the mouse is over (3x3 grid)
-    const cellWidth = rect.width / 3;
-    const cellHeight = rect.height / 3;
-
-    const col = Math.floor(relativeX / cellWidth);
-    const row = Math.floor(relativeY / cellHeight);
-
-    // Ensure within bounds
-    if (col >= 0 && col < 3 && row >= 0 && row < 3) {
-        const cellIndex = row * 3 + col;
-        const cells = middleClickGrid.querySelectorAll('.grid-cell');
-        const targetCell = cells[cellIndex];
-
-        if (targetCell) {
-            // Reset all cells to default state
-            cells.forEach(cell => {
-                const func = cell.dataset.function;
-                if (func === 'none') {
-                    cell.style.backgroundColor = 'var(--button-bg)';
-                    cell.style.color = 'var(--primary-text)';
-                } else {
-                    cell.style.backgroundColor = 'var(--bg-color)';
-                    cell.style.color = 'var(--primary-text)';
-                }
-            });
-
-            // Highlight target cell
-            targetCell.style.backgroundColor = 'var(--accent-color)';
-            targetCell.style.color = 'white';
-
-            currentGridSelection = targetCell.dataset.function;
-        }
-    } else {
-        // Mouse is outside grid - reset selection
-        currentGridSelection = '';
-    }
+    currentGridSelection = getRadialMenuSelection(mouseX, mouseY);
+    const activeActionKey = getMiddleClickActionMeta(currentGridSelection) ? currentGridSelection : '';
+    updateRadialMenuVisualState(activeActionKey, currentGridSelection === 'none');
 }
 
 /**
@@ -908,7 +1059,7 @@ function updateMiddleClickQuickAction(newAction) {
                     'delete': '删除消息'
                 };
 
-                const actionName = actionNames[newAction] || newAction;
+                const actionName = getMiddleClickActionName(newAction);
                 if (newAction && newAction.trim() !== '') {
                     mainRendererReferences.uiHelper.showToastNotification(`中键快速功能已设置为: ${actionName}`, 'success');
                 } else {

@@ -1089,6 +1089,320 @@ body.light-theme .grid-cell[data-function="none"]:hover {
     color: white !important;
 }
 
+.middle-click-grid--radial {
+    width: 248px !important;
+    height: 248px !important;
+    display: block !important;
+    padding: 0 !important;
+    gap: 0 !important;
+    border: none !important;
+    border-radius: 50% !important;
+    background: transparent !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    box-shadow: none !important;
+    overflow: visible;
+    pointer-events: none;
+    isolation: isolate;
+}
+
+.middle-click-grid--radial::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.04)),
+        linear-gradient(
+            180deg,
+            color-mix(in srgb, var(--assistant-bubble-bg) 74%, rgba(255, 255, 255, 0.14)),
+            color-mix(in srgb, var(--panel-bg) 82%, rgba(255, 255, 255, 0.05))
+        );
+    border: 1px solid color-mix(in srgb, var(--border-color) 28%, rgba(255, 255, 255, 0.34));
+    backdrop-filter: blur(14px) saturate(124%);
+    -webkit-backdrop-filter: blur(14px) saturate(124%);
+    box-shadow:
+        0 16px 34px rgba(0, 0, 0, 0.22),
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.32),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.22),
+        inset 0 0 1px rgba(0, 0, 0, 0.22);
+    -webkit-mask: radial-gradient(circle at center, transparent 0 71px, #000 72px);
+    mask: radial-gradient(circle at center, transparent 0 71px, #000 72px);
+}
+
+.middle-click-grid--radial::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background:
+        linear-gradient(
+            45deg,
+            rgba(255, 255, 255, 0.24) 0%,
+            rgba(255, 255, 255, 0.08) 14%,
+            transparent 28%,
+            transparent 72%,
+            rgba(255, 255, 255, 0.08) 86%,
+            rgba(255, 255, 255, 0.2) 100%
+        );
+    filter: blur(1px);
+    -webkit-mask: radial-gradient(circle at center, transparent 0 71px, #000 72px);
+    mask: radial-gradient(circle at center, transparent 0 71px, #000 72px);
+    pointer-events: none;
+    opacity: 0.52;
+}
+
+.middle-click-grid--radial .grid-cell {
+    display: none !important;
+}
+
+.middle-click-grid__tooltip {
+    position: absolute;
+    top: -12px;
+    left: 50%;
+    transform: translate(-50%, -100%);
+    padding: 6px 10px;
+    border-radius: 999px;
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0.08)),
+        linear-gradient(
+            180deg,
+            color-mix(in srgb, var(--assistant-bubble-bg) 64%, rgba(255, 255, 255, 0.14)),
+            color-mix(in srgb, var(--panel-bg) 80%, rgba(255, 255, 255, 0.04))
+        );
+    color: var(--primary-text);
+    border: 1px solid color-mix(in srgb, var(--border-color) 34%, rgba(255, 255, 255, 0.36));
+    backdrop-filter: blur(10px) saturate(122%);
+    -webkit-backdrop-filter: blur(10px) saturate(122%);
+    box-shadow:
+        0 10px 24px rgba(0, 0, 0, 0.18),
+        inset 0 1px 0 rgba(255, 255, 255, 0.2);
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1;
+    opacity: 0;
+    transition: opacity 0.12s ease, transform 0.12s ease;
+    white-space: nowrap;
+    z-index: 3;
+}
+
+.middle-click-grid__tooltip.is-visible {
+    opacity: 1;
+    transform: translate(-50%, calc(-100% - 4px));
+}
+
+.middle-click-grid__center {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 96px;
+    height: 96px;
+    transform: translate(-50%, -50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    border-radius: 50%;
+    overflow: hidden;
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0.08)),
+        linear-gradient(
+            180deg,
+            color-mix(in srgb, var(--user-bubble-bg) 58%, rgba(255, 255, 255, 0.18)),
+            color-mix(in srgb, var(--assistant-bubble-bg) 62%, rgba(255, 255, 255, 0.06))
+        );
+    color: var(--primary-text);
+    border: 1px solid color-mix(in srgb, var(--border-color) 30%, rgba(255, 255, 255, 0.34));
+    backdrop-filter: blur(11px) saturate(120%);
+    -webkit-backdrop-filter: blur(11px) saturate(120%);
+    box-shadow:
+        0 10px 24px rgba(0, 0, 0, 0.18),
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.4),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.28),
+        inset 0 0 1px rgba(0, 0, 0, 0.2);
+    z-index: 2;
+    transition: background-color 0.12s ease, color 0.12s ease, border-color 0.12s ease, transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+.middle-click-grid__center::before {
+    content: "";
+    position: absolute;
+    z-index: 0;
+    top: 34%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: calc(100% - 16px);
+    height: calc(100% - 16px);
+    border-radius: 50%;
+    border: 1px solid rgba(0, 0, 0, 0.22);
+    filter: blur(6px);
+    opacity: 0.28;
+}
+
+.middle-click-grid__center::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    border-radius: 50%;
+    background: linear-gradient(
+        45deg,
+        rgba(255, 255, 255, 0.42) 0%,
+        transparent 26%,
+        transparent 74%,
+        rgba(255, 255, 255, 0.3) 100%
+    );
+    filter: blur(2px);
+    opacity: 0.52;
+}
+
+.middle-click-grid__center.is-active {
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0.12)),
+        linear-gradient(
+            180deg,
+            color-mix(in srgb, var(--highlight-text) 16%, rgba(255, 255, 255, 0.22)),
+            color-mix(in srgb, var(--assistant-bubble-bg) 70%, rgba(255, 255, 255, 0.06))
+        );
+    color: var(--highlight-text);
+    border-color: var(--highlight-text);
+    box-shadow:
+        0 0 0 1px color-mix(in srgb, var(--highlight-text) 28%, transparent),
+        0 10px 24px rgba(0, 0, 0, 0.18),
+        inset 0 1px 0 rgba(255, 255, 255, 0.24),
+        inset 0 0 0 1px color-mix(in srgb, var(--highlight-text) 24%, rgba(255, 255, 255, 0.04));
+    transform: translate(-50%, -50%) scale(1.03);
+}
+
+.middle-click-grid__center-icon {
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    z-index: 1;
+    filter: drop-shadow(0 12px 2px rgba(0, 0, 0, 0.08));
+}
+
+.middle-click-grid__center-icon svg {
+    width: 28px;
+    height: 28px;
+}
+
+.middle-click-grid__center-label {
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1;
+    position: relative;
+    z-index: 1;
+    filter: drop-shadow(0 10px 2px rgba(0, 0, 0, 0.06));
+}
+
+.middle-click-grid__center-label.is-active {
+    color: inherit;
+}
+
+.middle-click-grid__action {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 42px;
+    height: 42px;
+    transform: translate(-50%, -50%) translate(var(--slot-x), var(--slot-y));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2;
+}
+
+.middle-click-grid__action-icon {
+    width: 42px;
+    height: 42px;
+    position: relative;
+    overflow: hidden;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.05)),
+        linear-gradient(
+            180deg,
+            color-mix(in srgb, var(--assistant-bubble-bg) 68%, rgba(255, 255, 255, 0.14)),
+            color-mix(in srgb, var(--panel-bg) 86%, rgba(255, 255, 255, 0.03))
+        );
+    color: var(--primary-text);
+    border: 1px solid color-mix(in srgb, var(--border-color) 28%, rgba(255, 255, 255, 0.3));
+    backdrop-filter: blur(10px) saturate(120%);
+    -webkit-backdrop-filter: blur(10px) saturate(120%);
+    box-shadow:
+        0 7px 16px rgba(0, 0, 0, 0.14),
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.38),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.28),
+        inset 0 0 1px rgba(0, 0, 0, 0.2);
+    transition: transform 0.12s ease, background-color 0.12s ease, color 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+.middle-click-grid__action-icon::before {
+    content: "";
+    position: absolute;
+    z-index: 0;
+    top: 36%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: calc(100% - 8px);
+    height: calc(100% - 8px);
+    border-radius: 50%;
+    border: 1px solid rgba(0, 0, 0, 0.18);
+    filter: blur(4px);
+    opacity: 0.22;
+}
+
+.middle-click-grid__action-icon::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    border-radius: 50%;
+    background: linear-gradient(
+        45deg,
+        rgba(255, 255, 255, 0.36) 0%,
+        transparent 28%,
+        transparent 72%,
+        rgba(255, 255, 255, 0.22) 100%
+    );
+    filter: blur(2px);
+    opacity: 0.44;
+}
+
+.middle-click-grid__action.is-active .middle-click-grid__action-icon {
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0.08)),
+        linear-gradient(
+            180deg,
+            color-mix(in srgb, var(--highlight-text) 14%, rgba(255, 255, 255, 0.18)),
+            color-mix(in srgb, var(--panel-bg) 84%, rgba(255, 255, 255, 0.04))
+        );
+    color: var(--highlight-text);
+    border-color: var(--highlight-text);
+    transform: scale(1.08);
+    box-shadow:
+        0 0 0 1px color-mix(in srgb, var(--highlight-text) 28%, transparent),
+        0 9px 20px rgba(0, 0, 0, 0.18),
+        inset 0 1px 0 rgba(255, 255, 255, 0.22),
+        inset 0 0 0 1px color-mix(in srgb, var(--highlight-text) 22%, rgba(255, 255, 255, 0.04));
+}
+
+.middle-click-grid__action-icon svg {
+    width: 20px;
+    height: 20px;
+    position: relative;
+    z-index: 1;
+    filter: drop-shadow(0 10px 2px rgba(0, 0, 0, 0.08));
+}
+
 
 /* Unread Topic Badge */
 /* 为头像创建一个定位包装器 */
