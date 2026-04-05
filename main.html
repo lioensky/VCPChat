@@ -92,14 +92,16 @@
                         </div>
                     </div>
                 </div>
-                <ul class="agent-list" id="agentList">
+                <div class="sidebar-list-scroll">
+                    <ul class="agent-list" id="agentList">
                     <!-- 示例:
                     <li class="active" data-agent-id="xiaoke">
                         <img src="path/to/xiaoke_avatar.png" alt="小克头像" class="avatar">
                         <span class="agent-name">猫娘小克</span>
                     </li>
                     -->
-                </ul>
+                    </ul>
+                </div>
                 <div class="sidebar-actions">
                     <button id="createNewAgentBtn" class="sidebar-button create-agent-btn small-button">
                         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
@@ -147,9 +149,11 @@
                         </div>
                     </div>
                 </div>
-                <ul class="topic-list" id="topicList">
+                <div class="sidebar-list-scroll">
+                    <ul class="topic-list" id="topicList">
                     <!-- 话题列表将在这里动态加载 -->
-                </ul>
+                    </ul>
+                </div>
             </div>
             <div class="sidebar-tab-content" id="tabContentSettings" role="tabpanel" aria-hidden="true">
                 <!-- 设置内容区 -->
@@ -898,35 +902,239 @@
                             <!-- 渲染设置 -->
                             <div class="settings-section" id="section-render-settings">
                                 <h3 class="settings-section-title">渲染设置</h3>
-                                <div class="form-group-inline"
-                                    style="justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                                    <label for="enableAgentBubbleTheme">开启Agent自定义气泡主题</label>
-                                    <label class="switch">
-                                        <input type="checkbox" id="enableAgentBubbleTheme" name="enableAgentBubbleTheme"
-                                            checked>
-                                        <span class="slider round"></span>
-                                    </label>
-                                </div>
-                                <div class="form-group-inline"
-                                    style="justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                                    <label for="enableSmoothStreaming">开启高级流式渲染</label>
-                                    <label class="switch">
-                                        <input type="checkbox" id="enableSmoothStreaming" name="enableSmoothStreaming">
-                                        <span class="slider round"></span>
-                                    </label>
-                                </div>
-                                <div class="form-group-inline">
-                                    <div>
-                                        <label for="minChunkBufferSize"
-                                            style="display: block; margin-bottom: 4px;">最小渲染Chunk字数 (≥1):</label>
-                                        <input type="number" id="minChunkBufferSize" name="minChunkBufferSize" min="1"
-                                            value="16" style="width: 80px;">
+                                <div class="settings-subsection">
+                                    <div class="settings-subsection-heading">
+                                        <div class="settings-subsection-title">基础渲染</div>
+                                        <p class="settings-subsection-description">控制气泡主题、流式输出以及基础渲染节奏。</p>
                                     </div>
-                                    <div style="margin-left: 20px;">
-                                        <label for="smoothStreamIntervalMs"
-                                            style="display: block; margin-bottom: 4px;">最小渲染Chunk间隔 (ms, ≥1):</label>
-                                        <input type="number" id="smoothStreamIntervalMs" name="smoothStreamIntervalMs"
-                                            min="1" value="100" style="width: 80px;">
+                                    <div class="form-group-inline"
+                                        style="justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                                        <label for="enableAgentBubbleTheme">开启Agent自定义气泡主题</label>
+                                        <label class="switch">
+                                            <input type="checkbox" id="enableAgentBubbleTheme" name="enableAgentBubbleTheme"
+                                                checked>
+                                            <span class="slider round"></span>
+                                        </label>
+                                    </div>
+                                    <div class="form-group-inline"
+                                        style="justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                                        <label for="enableSmoothStreaming">开启高级流式渲染</label>
+                                        <label class="switch">
+                                            <input type="checkbox" id="enableSmoothStreaming" name="enableSmoothStreaming">
+                                            <span class="slider round"></span>
+                                        </label>
+                                    </div>
+                                    <div class="settings-inline-number-row">
+                                        <div>
+                                            <label for="minChunkBufferSize"
+                                                style="display: block; margin-bottom: 4px;">最小渲染Chunk字数 (≥1):</label>
+                                            <input type="number" id="minChunkBufferSize" name="minChunkBufferSize" min="1"
+                                                value="16" style="width: 80px;">
+                                        </div>
+                                        <div>
+                                            <label for="smoothStreamIntervalMs"
+                                                style="display: block; margin-bottom: 4px;">最小渲染Chunk间隔 (ms, ≥1):</label>
+                                            <input type="number" id="smoothStreamIntervalMs" name="smoothStreamIntervalMs"
+                                                min="1" value="100" style="width: 80px;">
+                                        </div>
+                                    </div>
+                                    <div class="settings-form-group" id="chatFontSettingsGroup" style="margin-top: 18px;">
+                                        <label for="chatFontPreset">聊天字体</label>
+                                        <select id="chatFontPreset" name="chatFontPreset">
+                                            <option value="system">系统默认</option>
+                                            <option value="segoe">Segoe UI</option>
+                                            <option value="ubuntu">Ubuntu</option>
+                                            <option value="yahei">Microsoft YaHei</option>
+                                            <option value="pingfang">PingFang SC</option>
+                                            <option value="source-han">Source Han Sans SC</option>
+                                            <option value="serif">衬线体</option>
+                                            <option value="custom">自定义</option>
+                                        </select>
+                                        <div id="chatFontCustomRow" style="display: none; margin-top: 8px;">
+                                            <input type="text" id="chatFontCustom" name="chatFontCustom"
+                                                placeholder='例如: "LXGW WenKai", "Microsoft YaHei", sans-serif'>
+                                            <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
+                                                支持输入完整的 CSS `font-family` 值，保存后会立即应用到聊天正文。
+                                            </small>
+                                        </div>
+                                    </div>
+                                    <div class="settings-form-group" id="chatCodeFontSettingsGroup" style="margin-top: 15px;">
+                                        <label for="chatCodeFontPreset">代码字体</label>
+                                        <select id="chatCodeFontPreset" name="chatCodeFontPreset">
+                                            <option value="cascadia">Cascadia Code</option>
+                                            <option value="fira">Fira Code</option>
+                                            <option value="consolas">Consolas</option>
+                                            <option value="system">系统默认</option>
+                                            <option value="jetbrains">JetBrains Mono</option>
+                                            <option value="monaspace">Monaspace</option>
+                                            <option value="custom">自定义</option>
+                                        </select>
+                                        <div id="chatCodeFontCustomRow" style="display: none; margin-top: 8px;">
+                                            <input type="text" id="chatCodeFontCustom" name="chatCodeFontCustom"
+                                                placeholder='例如: "Maple Mono", "JetBrains Mono", monospace'>
+                                            <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
+                                                会应用到聊天代码块、行内代码，以及工具/思维链中的代码样式。
+                                            </small>
+                                        </div>
+                                    </div>
+                                    <div class="settings-form-group" style="margin-top: 18px;">
+                                        <label>场景预览</label>
+                                        <div class="scenario-preview-grid" id="fontScenarioPreviewGrid">
+                                            <div class="scenario-preview-card">
+                                                <div class="scenario-preview-title">聊天正文</div>
+                                                <div class="scenario-preview-body" id="scenarioPreviewBody">
+                                                    这是普通聊天正文的显示效果，适合长段阅读与自然对话。
+                                                </div>
+                                            </div>
+                                            <div class="scenario-preview-card scenario-preview-card-code">
+                                                <div class="scenario-preview-title">代码块</div>
+                                                <pre class="scenario-preview-body scenario-preview-code" id="scenarioPreviewCode">const sum = (a, b) =>
+  a + b;</pre>
+                                            </div>
+                                            <div class="scenario-preview-card scenario-preview-card-diary">
+                                                <div class="scenario-preview-title">日记 / 文学块</div>
+                                                <div class="scenario-preview-body" id="scenarioPreviewDiary">
+                                                    晚风穿过窗边，纸页轻轻翻动，像一段被放慢的心事。
+                                                </div>
+                                                <div class="scenario-preview-controls">
+                                                    <label for="chatDiaryFontPreset">场景字体</label>
+                                                    <select id="chatDiaryFontPreset" name="chatDiaryFontPreset">
+                                                        <option value="serif">衬线体</option>
+                                                        <option value="system">系统默认</option>
+                                                        <option value="segoe">Segoe UI</option>
+                                                        <option value="ubuntu">Ubuntu</option>
+                                                        <option value="yahei">Microsoft YaHei</option>
+                                                        <option value="pingfang">PingFang SC</option>
+                                                        <option value="source-han">Source Han Sans SC</option>
+                                                        <option value="custom">自定义</option>
+                                                    </select>
+                                                    <div id="chatDiaryFontCustomRow" style="display: none; margin-top: 8px;">
+                                                        <input type="text" id="chatDiaryFontCustom" name="chatDiaryFontCustom"
+                                                            placeholder='例如: "Noto Serif SC", Georgia, serif'>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="scenario-preview-card scenario-preview-card-tool">
+                                                <div class="scenario-preview-title">工具结果 / 系统卡片</div>
+                                                <div class="scenario-preview-body" id="scenarioPreviewTool">
+                                                    status: success
+                                                    <br>
+                                                    result: 已完成内容整理与渲染。
+                                                </div>
+                                                <div class="scenario-preview-controls">
+                                                    <label for="chatToolFontPreset">场景字体</label>
+                                                    <select id="chatToolFontPreset" name="chatToolFontPreset">
+                                                        <option value="system">系统默认</option>
+                                                        <option value="segoe">Segoe UI</option>
+                                                        <option value="ubuntu">Ubuntu</option>
+                                                        <option value="yahei">Microsoft YaHei</option>
+                                                        <option value="pingfang">PingFang SC</option>
+                                                        <option value="source-han">Source Han Sans SC</option>
+                                                        <option value="cascadia">Cascadia Code</option>
+                                                        <option value="fira">Fira Code</option>
+                                                        <option value="consolas">Consolas</option>
+                                                        <option value="jetbrains">JetBrains Mono</option>
+                                                        <option value="monaspace">Monaspace</option>
+                                                        <option value="serif">衬线体</option>
+                                                        <option value="custom">自定义</option>
+                                                    </select>
+                                                    <div id="chatToolFontCustomRow" style="display: none; margin-top: 8px;">
+                                                        <input type="text" id="chatToolFontCustom" name="chatToolFontCustom"
+                                                            placeholder='例如: "Segoe UI", "Microsoft YaHei", sans-serif'>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <small style="color: var(--text-secondary); margin-top: 8px; display: block;">
+                                            当前规则预览：正文和代码沿用上方设置；日记和工具卡片可以在各自场景卡片里单独自定义。
+                                        </small>
+                                    </div>
+                                </div>
+                                <div class="settings-subsection settings-subsection-new">
+                                    <div class="settings-subsection-heading">
+                                        <div class="settings-subsection-title">聊天布局与用户气泡</div>
+                                        <p class="settings-subsection-description">这里集中调整用户消息样式，以及宽屏模式下的自定义气泡宽度。</p>
+                                    </div>
+                                    <div class="form-group" style="margin-bottom: 15px;">
+                                        <label style="display: block; margin-bottom: 8px;">聊天布局模式</label>
+                                        <div class="form-group-inline" style="gap: 18px; align-items: center; flex-wrap: wrap;">
+                                            <label for="chatLayoutModeNormal"
+                                                style="display: inline-flex; align-items: center; gap: 6px; margin: 0;">
+                                                <input type="radio" id="chatLayoutModeNormal" name="chatLayoutMode"
+                                                    value="normal" checked>
+                                                <span>标准模式</span>
+                                            </label>
+                                            <label for="chatLayoutModeWide"
+                                                style="display: inline-flex; align-items: center; gap: 6px; margin: 0;">
+                                                <input type="radio" id="chatLayoutModeWide" name="chatLayoutMode"
+                                                    value="wide">
+                                                <span>宽屏模式（自定义模式）</span>
+                                            </label>
+                                        </div>
+                                        <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
+                                            选择宽屏模式（自定义模式）后，可单独调整这一模式下的聊天气泡宽度。
+                                        </small>
+                                    </div>
+                                    <div class="settings-dependent-panel">
+                                        <div class="form-group-inline"
+                                            style="justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                                            <div>
+                                                <label for="enableUserChatBubbleUi">以聊天气泡形式显示对话内容</label>
+                                                <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
+                                                    仅作用于用户消息。关闭后，用户消息会改为靠左的文档流样式。
+                                                </small>
+                                            </div>
+                                            <label class="switch">
+                                                <input type="checkbox" id="enableUserChatBubbleUi" name="enableUserChatBubbleUi"
+                                                    checked>
+                                                <span class="slider round"></span>
+                                            </label>
+                                        </div>
+                                        <div id="userChatBubbleMetaSettings" class="form-group-inline"
+                                            style="justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                                            <div>
+                                                <label for="showUserMetaInChatBubbleUi">在气泡模式下显示用户头像和名字</label>
+                                                <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
+                                                    关闭后，用户消息保留右侧气泡样式，但隐藏头像、名字和时间。
+                                                </small>
+                                            </div>
+                                            <label class="switch">
+                                                <input type="checkbox" id="showUserMetaInChatBubbleUi"
+                                                    name="showUserMetaInChatBubbleUi" checked>
+                                                <span class="slider round"></span>
+                                            </label>
+                                        </div>
+                                        <div id="chatBubbleWidthSettings" class="settings-nested-panel" style="display: none;">
+                                            <div id="wideChatLayoutSettings" class="form-group" style="margin-bottom: 0;">
+                                                <label style="display: block; margin-bottom: 8px;">宽屏模式自定义宽度（%）</label>
+                                                <div class="form-group-inline" style="align-items: flex-end; gap: 16px; flex-wrap: wrap;">
+                                                    <div>
+                                                        <label for="chatBubbleMaxWidthWideDefault"
+                                                            style="display: block; margin-bottom: 4px;">普通聊天</label>
+                                                        <input type="number" id="chatBubbleMaxWidthWideDefault"
+                                                            name="chatBubbleMaxWidthWideDefault" min="50" max="98" step="1"
+                                                            value="92" style="width: 80px;">
+                                                    </div>
+                                                    <div>
+                                                        <label for="chatBubbleMaxWidthWideNotifications"
+                                                            style="display: block; margin-bottom: 4px;">通知侧栏打开</label>
+                                                        <input type="number" id="chatBubbleMaxWidthWideNotifications"
+                                                            name="chatBubbleMaxWidthWideNotifications" min="50" max="98" step="1"
+                                                            value="96" style="width: 80px;">
+                                                    </div>
+                                                    <div>
+                                                        <label for="chatBubbleMaxWidthWideNarrow"
+                                                            style="display: block; margin-bottom: 4px;">窄窗口/小屏</label>
+                                                        <input type="number" id="chatBubbleMaxWidthWideNarrow"
+                                                            name="chatBubbleMaxWidthWideNarrow" min="50" max="98" step="1"
+                                                            value="92" style="width: 80px;">
+                                                    </div>
+                                                </div>
+                                                <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
+                                                    可设置范围为 50% - 98%。默认模式沿用系统默认宽度，这里只调整宽屏模式（自定义模式）。
+                                                </small>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>

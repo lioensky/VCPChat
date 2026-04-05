@@ -97,12 +97,13 @@ body.light-theme .resizer {
     -webkit-backdrop-filter: blur(12px);
     min-width: 180px;
     max-width: 600px;
-    padding: 9px 8px 15px 8px;
+    padding: 9px 3px 15px 8px;
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
     transition: width 0.3s ease, min-width 0.3s ease, padding 0.3s ease, opacity 0.3s ease;
     overflow-x: hidden;
+    overflow-y: hidden;
     flex-shrink: 0;
     text-shadow: var(--panel-text-shadow);
 }
@@ -113,6 +114,11 @@ body.light-theme .sidebar {
 .sidebar {
     container-type: inline-size;
     container-name: sidebar;
+}
+
+.sidebar:has(#tabContentSettings.active) {
+    padding-right: 8px;
+    overflow-y: hidden;
 }
 
 /* --- Main Content (Chat Area) --- */

@@ -28,6 +28,52 @@ function fixVoiceChatAssetPath(url) {
     return url;
 }
 
+function padTimestampPart(value) {
+    return String(value).padStart(2, '0');
+}
+
+export function formatMessageTimestamp(timestamp) {
+    const date = new Date(timestamp);
+    if (Number.isNaN(date.getTime())) {
+        return '';
+    }
+
+    const year = date.getFullYear();
+    const month = padTimestampPart(date.getMonth() + 1);
+    const day = padTimestampPart(date.getDate());
+    const hours = padTimestampPart(date.getHours());
+    const minutes = padTimestampPart(date.getMinutes());
+
+    return `${year}-${month}-${day} ${hours}:${minutes}`;
+}
+
+const USER_MESSAGE_LAYOUT_CLASSES = [
+    'user-bubble-ui-enabled',
+    'user-bubble-ui-disabled',
+    'user-bubble-meta-hidden'
+];
+
+export function applyUserMessageLayoutState(messageItem, globalSettings) {
+    if (!messageItem?.classList || !messageItem.classList.contains('user')) {
+        return;
+    }
+
+    messageItem.classList.remove(...USER_MESSAGE_LAYOUT_CLASSES);
+
+    const bubbleUiEnabled = globalSettings?.enableUserChatBubbleUi !== false;
+    const showUserMeta = globalSettings?.showUserMetaInChatBubbleUi !== false;
+
+    if (bubbleUiEnabled) {
+        messageItem.classList.add('user-bubble-ui-enabled');
+        if (!showUserMeta) {
+            messageItem.classList.add('user-bubble-meta-hidden');
+        }
+        return;
+    }
+
+    messageItem.classList.add('user-bubble-ui-disabled');
+}
+
 export function createMessageSkeleton(message, globalSettings, currentSelectedItem) {
     const messageItem = document.createElement('div');
     messageItem.classList.add('message-item', message.role);
@@ -35,6 +81,7 @@ export function createMessageSkeleton(message, globalSettings, currentSelectedIt
     messageItem.dataset.timestamp = String(message.timestamp);
     messageItem.dataset.messageId = message.id;
     if (message.agentId) messageItem.dataset.agentId = message.agentId;
+    applyUserMessageLayoutState(messageItem, globalSettings);
 
     const contentDiv = document.createElement('div');
     contentDiv.classList.add('md-content');
@@ -83,7 +130,7 @@ export function createMessageSkeleton(message, globalSettings, currentSelectedIt
         if (message.timestamp && !message.isThinking) {
             const timestampDiv = document.createElement('div');
             timestampDiv.classList.add('message-timestamp');
-            timestampDiv.textContent = new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            timestampDiv.textContent = formatMessageTimestamp(message.timestamp);
             nameTimeDiv.appendChild(timestampDiv);
         }
 
@@ -104,5 +151,7 @@ export function createMessageSkeleton(message, globalSettings, currentSelectedIt
 
 // Expose to global scope for classic scripts
 window.domBuilder = {
-    createMessageSkeleton
+    createMessageSkeleton,
+    formatMessageTimestamp,
+    applyUserMessageLayoutState
 };

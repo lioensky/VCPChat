@@ -264,6 +264,7 @@ window.chatManager = (() => {
         currentSelectedItemRef.set(currentSelectedItem);
         currentTopicIdRef.set(null); // Reset topic
         currentChatHistoryRef.set([]);
+        window.updateSendButtonState?.();
 
         document.querySelectorAll('.topic-list .topic-item.active-topic-glowing').forEach(item => {
             item.classList.remove('active-topic-glowing');
@@ -457,6 +458,7 @@ window.chatManager = (() => {
 
         if (messageRenderer) messageRenderer.clearChat();
         currentChatHistoryRef.set([]);
+        window.updateSendButtonState?.();
     
     
         document.querySelectorAll('.topic-list .topic-item').forEach(item => {
@@ -524,6 +526,7 @@ window.chatManager = (() => {
             if (messageRenderer) messageRenderer.renderMessage({ role: 'system', content: `加载话题 "${topicId}" 的聊天记录失败: ${historyResult.error}`, timestamp: Date.now() });
         } else if (historyResult && historyResult.length > 0) {
             currentChatHistoryRef.set(historyResult);
+            window.updateSendButtonState?.();
             if (messageRenderer) {
                 // 使用优化的分批渲染策略
                 const renderOptions = {
@@ -540,6 +543,7 @@ window.chatManager = (() => {
     
         } else if (historyResult) { // History is empty
             currentChatHistoryRef.set([]);
+            window.updateSendButtonState?.();
         } else {
             if (messageRenderer) messageRenderer.renderMessage({ role: 'system', content: `加载话题 "${topicId}" 的聊天记录时返回了无效数据。`, timestamp: Date.now() });
         }
@@ -954,6 +958,7 @@ window.chatManager = (() => {
         const currentChatHistoryWithThinking = currentChatHistoryRef.get();
         currentChatHistoryWithThinking.push(thinkingMessage);
         currentChatHistoryRef.set(currentChatHistoryWithThinking);
+        window.updateSendButtonState?.();
 
         try {
             const agentConfig = currentSelectedItem.config || currentSelectedItem;
@@ -1265,6 +1270,7 @@ window.chatManager = (() => {
                         if (isForActiveChat) {
                             // If it's the active chat, also update the UI and in-memory state
                             currentChatHistoryRef.set(finalHistory);
+                            window.updateSendButtonState?.();
                             if (messageRenderer) messageRenderer.renderMessage(assistantMessage);
                             await attemptTopicSummarizationIfNeeded();
                         } else {
@@ -1319,7 +1325,8 @@ window.chatManager = (() => {
             if (result && result.success && result.topicId) {
                 currentTopicIdRef.set(result.topicId);
                 currentChatHistoryRef.set([]);
-                
+                window.updateSendButtonState?.();
+
                 if (messageRenderer) {
                     messageRenderer.setCurrentTopicId(result.topicId);
                     messageRenderer.clearChat();

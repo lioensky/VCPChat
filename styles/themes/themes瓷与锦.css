@@ -134,6 +134,9 @@ body.light-theme {
     --shimmer-color-transparent: rgba(52, 73, 94, 0.04);
     --shimmer-color-highlight: rgba(52, 73, 94, 0.08);
 
+    /* --- Text Shadow for Frosted Panels --- */
+    --panel-text-shadow: none;
+
     /* --- Unified Panel Background --- */
     --panel-bg: var(--panel-bg-light);
 }

@@ -135,9 +135,12 @@ body.light-theme {
     --scrollbar-thumb-hover: rgba(120, 120, 120, 0.6);
 
     /* --- Shimmer Effect --- */
-    
+
     --shimmer-color-transparent: rgba(44, 62, 80, 0.04);
     --shimmer-color-highlight: rgba(44, 62, 80, 0.08);
+
+    /* --- Text Shadow for Frosted Panels --- */
+    --panel-text-shadow: none;
 
     /* --- Unified Panel Background --- */
     --panel-bg: var(--panel-bg-light);

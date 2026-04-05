@@ -104,6 +104,11 @@
     border-bottom-width: 0 !important;
 }
 
+#tabContentSettings.sidebar-tab-content {
+    transform: none;
+    transition: opacity 0.2s ease-out;
+}
+
 .sidebar-tab-content.active {
     opacity: 1;
     max-height: 100vh;
@@ -121,15 +126,24 @@
     display: flex;
     flex-direction: column;
     min-height: 0;
+    max-height: none;
     padding-bottom: 0 !important;
     padding-right: 8px;
     margin-right: -8px;
     margin-bottom: -15px;
+    scrollbar-gutter: stable;
+}
+
+#tabContentAgents.sidebar-tab-content.active,
+#tabContentTopics.sidebar-tab-content.active {
+    min-height: 0;
+    overflow-y: hidden;
 }
 
 /* 始终显示滚动条轨道，避免布局动态变化 */
-.sidebar-tab-content.active::-webkit-scrollbar {
-    width: 12px;
+#tabContentSettings.sidebar-tab-content.active::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
     /* 固定宽度，避免布局变化 */
     background: transparent;
     /* 默认透明 */
@@ -137,7 +151,7 @@
     /* 动画时间延长 */
 }
 
-.sidebar-tab-content.active::-webkit-scrollbar-thumb {
+#tabContentSettings.sidebar-tab-content.active::-webkit-scrollbar-thumb {
     background: transparent;
     /* 默认透明 */
     border-radius: 6px;
@@ -147,7 +161,7 @@
     /* 动画时间延长 */
 }
 
-.sidebar-tab-content.active::-webkit-scrollbar-track {
+#tabContentSettings.sidebar-tab-content.active::-webkit-scrollbar-track {
     background: transparent;
     /* 默认透明 */
     border-radius: 6px;
@@ -156,30 +170,76 @@
 }
 
 /* 鼠标悬停时显示完整滚动条 */
-.sidebar-tab-content.active:hover::-webkit-scrollbar {
-    width: 12px;
+#tabContentSettings.sidebar-tab-content.active:hover::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
 }
 
-.sidebar-tab-content.active:hover::-webkit-scrollbar-thumb {
+#tabContentSettings.sidebar-tab-content.active:hover::-webkit-scrollbar-thumb {
     background: var(--scrollbar-thumb, #c1c1c1);
     border-color: var(--scrollbar-track, #f1f1f1);
 }
 
-.sidebar-tab-content.active:hover::-webkit-scrollbar-track {
+#tabContentSettings.sidebar-tab-content.active:hover::-webkit-scrollbar-track {
     background: var(--scrollbar-track, #f1f1f1);
 }
 
 /* Firefox滚动条样式 */
-.sidebar-tab-content.active {
+#tabContentSettings.sidebar-tab-content.active {
     scrollbar-width: thin;
     /* 始终显示细滚动条 */
     scrollbar-color: transparent transparent;
     /* 默认透明 */
 }
 
-.sidebar-tab-content.active:hover {
-    scrollbar-width: thin;
+#tabContentSettings.sidebar-tab-content.active:hover {
     scrollbar-color: var(--scrollbar-thumb, #c1c1c1) var(--scrollbar-track, #f1f1f1);
+}
+
+/* Keep settings-page scrollbar track transparent while preserving the thumb. */
+#tabContentSettings.sidebar-tab-content.active:hover::-webkit-scrollbar-track,
+#tabContentSettings.sidebar-tab-content.active:hover::-webkit-scrollbar-corner {
+    background: transparent !important;
+}
+
+#tabContentSettings.sidebar-tab-content.active:hover::-webkit-scrollbar-thumb {
+    border-color: transparent !important;
+}
+
+#tabContentSettings.sidebar-tab-content.active:hover {
+    scrollbar-color: var(--scrollbar-thumb, #c1c1c1) transparent;
+}
+
+/* Final sidebar scrollbar rules:
+   hide parent tab scrollbars for agents/topics only,
+   keep settings page on its original stylesheet behavior.
+*/
+#tabContentAgents.sidebar-tab-content.active,
+#tabContentTopics.sidebar-tab-content.active {
+    scrollbar-width: none !important;
+}
+
+#tabContentAgents.sidebar-tab-content.active::-webkit-scrollbar,
+#tabContentTopics.sidebar-tab-content.active::-webkit-scrollbar {
+    width: 0 !important;
+    height: 0 !important;
+}
+
+#tabContentAgents.sidebar-tab-content.active::-webkit-scrollbar-button,
+#tabContentAgents.sidebar-tab-content.active::-webkit-scrollbar-button:single-button,
+#tabContentAgents.sidebar-tab-content.active::-webkit-scrollbar-button:start,
+#tabContentAgents.sidebar-tab-content.active::-webkit-scrollbar-button:end,
+#tabContentAgents.sidebar-tab-content.active::-webkit-resizer,
+#tabContentTopics.sidebar-tab-content.active::-webkit-scrollbar-button,
+#tabContentTopics.sidebar-tab-content.active::-webkit-scrollbar-button:single-button,
+#tabContentTopics.sidebar-tab-content.active::-webkit-scrollbar-button:start,
+#tabContentTopics.sidebar-tab-content.active::-webkit-scrollbar-button:end,
+#tabContentTopics.sidebar-tab-content.active::-webkit-resizer {
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
+    background: transparent !important;
+    border: none !important;
 }
 
 /* Agent/Group设置表单粘性按钮共通布局 */

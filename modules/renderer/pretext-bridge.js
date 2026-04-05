@@ -159,6 +159,20 @@
         textSnapshot.clear();
     }
 
+    function setChatFonts(bodyFontFamily, codeFontFamily) {
+        const resolvedBody = bodyFontFamily && String(bodyFontFamily).trim()
+            ? String(bodyFontFamily).trim()
+            : "'Segoe UI'";
+        const resolvedCode = codeFontFamily && String(codeFontFamily).trim()
+            ? String(codeFontFamily).trim()
+            : "'Consolas', monospace";
+
+        FONTS.body = `15px ${resolvedBody}`;
+        FONTS.system = `14px ${resolvedBody}`;
+        FONTS.code = `14px ${resolvedCode}`;
+        clearAll();
+    }
+
     // ─── 暴露全局 API ───
 
     window.pretextBridge = {
@@ -167,6 +181,7 @@
         recalculateAll: recalculateAll,
         evict: evict,
         clearAll: clearAll,
+        setChatFonts: setChatFonts,
         isReady: function() { return true; },
         getContentWidth: getContentWidth,
         FONTS: FONTS,

@@ -139,7 +139,10 @@ body.light-theme {
     /* --- 流式输出动画光晕 Shimmer Effect --- */
     --shimmer-color-transparent: rgba(254, 250, 244, 0.892);
     --shimmer-color-highlight: rgba(255, 174, 35, 0.973);
-    
+
+    /* --- Text Shadow for Frosted Panels --- */
+    --panel-text-shadow: none;
+
     /* --- Unified Panel Background --- */
     --panel-bg: var(--panel-bg-light);
 }
