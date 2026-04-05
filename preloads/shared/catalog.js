@@ -214,6 +214,7 @@ function createCatalog(ops) {
         ragOverlayShow: command((payload) => ops.send('rag-overlay-show', payload)),
         ragOverlayHide: command(() => ops.send('rag-overlay-hide')),
         ragOverlaySetEnabled: command((enabled) => ops.send('rag-overlay-set-enabled', enabled)),
+        ragOverlaySetNotificationCategoryEnabled: command((enabled) => ops.send('rag-overlay-set-notification-category-enabled', enabled)),
         ragOverlaySetOpacity: command((opacity) => ops.send('rag-overlay-set-opacity', opacity)),
         ragOverlaySetPassThrough: command((passThrough) => ops.send('rag-overlay-set-pass-through', passThrough)),
         ragOverlayResize: command((payload) => ops.send('rag-overlay-resize', payload)),
