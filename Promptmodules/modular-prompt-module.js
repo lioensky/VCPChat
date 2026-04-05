@@ -1195,7 +1195,7 @@ class ModularPromptModule {
 
         const previewText = document.createElement('pre');
         previewText.className = 'preview-text';
-        previewText.textContent = this.formatBlocks();
+        previewText.textContent = this.getFormattedPrompt();
         previewContainer.appendChild(previewText);
 
         this.blocksContainer.appendChild(previewContainer);
@@ -1221,6 +1221,15 @@ class ModularPromptModule {
                 }
             })
             .join('');
+    }
+
+    /**
+     * 获取格式化后的提示词内容
+     * 兼容 PromptManager 中对 `getFormattedPrompt` 的调用
+     * @returns {string}
+     */
+    getFormattedPrompt() {
+        return this.formatBlocks();
     }
 
     /**
