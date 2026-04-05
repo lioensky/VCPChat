@@ -7,6 +7,14 @@ let AGENT_DIR_CACHE; // Cache the agent directory path
 let USER_DATA_DIR_CACHE; // Cache the user data directory path
 let AVATAR_IMAGE_DIR; // Centralized avatar storage directory
 let agentConfigManagerInstance; // Cache the agentConfigManager instance
+let cachedAgents = null; // Memory cache for full agent list
+let cachedMetadata = null; // Memory cache for lightweight metadata list
+
+function invalidateCaches() {
+    console.log('[agentHandlers] Invalidating agent caches.');
+    cachedAgents = null;
+    cachedMetadata = null;
+}
 
 async function getAgentConfigById(agentId) {
     if (!AGENT_DIR_CACHE) {
@@ -88,108 +96,101 @@ function initialize(context) {
     const appDataRoot = path.dirname(USER_DATA_DIR);
     AVATAR_IMAGE_DIR = path.join(appDataRoot, 'avatarimage');
 
+    ipcMain.handle('get-agents-metadata', async () => {
+        if (cachedMetadata) return cachedMetadata;
+        
+        try {
+            const agents = await ipcMain.invoke('get-agents');
+            if (agents.error) return agents;
+            
+            cachedMetadata = agents.map(a => ({
+                id: a.id,
+                name: a.name,
+                avatarUrl: a.avatarUrl,
+                avatarCalculatedColor: a.config?.avatarCalculatedColor
+            }));
+            return cachedMetadata;
+        } catch (error) {
+            return { error: error.message };
+        }
+    });
+
     ipcMain.handle('get-agents', async () => {
+        if (cachedAgents) return cachedAgents;
+
         try {
             const agentFolders = await fs.readdir(AGENT_DIR);
-            let agents = [];
-            for (const folderName of agentFolders) {
+            const agentResults = await Promise.all(agentFolders.map(async (folderName) => {
                 const agentPath = path.join(AGENT_DIR, folderName);
                 const stat = await fs.stat(agentPath);
-                if (stat.isDirectory()) {
-                    const configPath = path.join(agentPath, 'config.json');
-                    const avatarPathPng = path.join(agentPath, 'avatar.png');
-                    const avatarPathJpg = path.join(agentPath, 'avatar.jpg');
-                    const avatarPathJpeg = path.join(agentPath, 'avatar.jpeg');
-                    const avatarPathGif = path.join(agentPath, 'avatar.gif');
+                if (!stat.isDirectory()) return null;
 
-                    let agentData = { id: folderName, name: folderName, avatarUrl: null, config: {} };
+                const configPath = path.join(agentPath, 'config.json');
+                const avatarExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.webp'];
+                
+                let agentData = { id: folderName, name: folderName, avatarUrl: null, config: {} };
 
-                    if (await fs.pathExists(configPath)) {
-                        let config;
+                if (await fs.pathExists(configPath)) {
+                    let config;
+                    try {
+                        if (agentConfigManager) {
+                            config = await agentConfigManager.readAgentConfig(folderName);
+                        } else {
+                            config = await fs.readJson(configPath);
+                        }
+                    } catch (readError) {
+                        console.error(`[agentHandlers] Skipping corrupted agent ${folderName}:`, readError);
+                        return null;
+                    }
+
+                    // Load external regex rules if they exist
+                    const regexPath = path.join(agentPath, 'regex_rules.json');
+                    if (await fs.pathExists(regexPath)) {
                         try {
-                            if (agentConfigManager) {
-                                // 不再允许静默返回默认配置，如有错误则通过 catch 处理
-                                config = await agentConfigManager.readAgentConfig(folderName);
-                            } else {
-                                config = await fs.readJson(configPath);
-                            }
-                        } catch (readError) {
-                            console.error(`[agentHandlers] Skipping corrupted agent ${folderName}:`, readError);
-                            continue; // 跳过此 Agent，防止损坏的数据进入前端
-                        }
-
-                        // Load external regex rules if they exist
-                        const regexPath = path.join(agentPath, 'regex_rules.json');
-                        if (await fs.pathExists(regexPath)) {
-                            try {
-                                config.stripRegexes = await fs.readJson(regexPath);
-                            } catch (e) {
-                                console.error(`Error reading regex_rules.json for agent ${folderName} in get-agents:`, e);
-                            }
-                        }
-
-                        agentData.name = config.name || folderName;
-                        agentData.config.avatarCalculatedColor = config.avatarCalculatedColor || null;
-                        let topicsArray = config.topics && Array.isArray(config.topics) && config.topics.length > 0
-                            ? config.topics
-                            : [{ id: "default", name: "主要对话", createdAt: Date.now() }];
-
-                        if (!config.topics || !Array.isArray(config.topics) || config.topics.length === 0) {
-                            try {
-                                config.topics = topicsArray;
-                                if (agentConfigManager) {
-                                    await agentConfigManager.updateAgentConfig(folderName, existingConfig => ({
-                                        ...existingConfig,
-                                        topics: topicsArray
-                                    }));
-                                } else {
-                                    console.error(`AgentConfigManager not available, cannot save topics for agent ${folderName}`);
-                                }
-                            } catch (e) {
-                                console.error(`Error saving default/fixed topics for agent ${folderName}:`, e);
-                            }
-                        }
-                        agentData.topics = topicsArray;
-                        agentData.config = config;
-                        // 注入正确的用户数据目录路径
-                        agentData.config.agentDataPath = path.join(AGENT_DIR, '..', 'UserData', folderName);
-                    } else {
-                        agentData.name = folderName;
-                        agentData.topics = [{ id: "default", name: "主要对话", createdAt: Date.now() }];
-                        const defaultConfigData = {
-                            name: agentData.name,
-                            topics: agentData.topics,
-                            systemPrompt: `你是 ${agentData.name}。`,
-                            model: '',
-                            temperature: 0.7,
-                            avatarCalculatedColor: null,
-                            contextTokenLimit: 4000,
-                            maxOutputTokens: 1000,
-                            disableCustomColors: true,  // 默认启用：禁用自定义颜色（使用主题默认颜色）
-                            useThemeColorsInChat: true  // 默认启用：会话中使用主题颜色
-                        };
-                        try {
-                            await fs.ensureDir(agentPath);
-                            if (agentConfigManager) {
-                                await agentConfigManager.writeAgentConfig(folderName, defaultConfigData);
-                            } else {
-                                console.warn(`AgentConfigManager not available, writing default config directly for new agent ${folderName}`);
-                                await fs.writeJson(configPath, defaultConfigData, { spaces: 2 });
-                            }
-                            agentData.config = defaultConfigData;
+                            config.stripRegexes = await fs.readJson(regexPath);
                         } catch (e) {
-                            console.error(`Error creating default config for agent ${folderName}:`, e);
+                            console.error(`Error reading regex_rules.json for agent ${folderName}:`, e);
                         }
                     }
 
-                    if (await fs.pathExists(avatarPathPng)) agentData.avatarUrl = `file://${avatarPathPng}`;
-                    else if (await fs.pathExists(avatarPathJpg)) agentData.avatarUrl = `file://${avatarPathJpg}`;
-                    else if (await fs.pathExists(avatarPathJpeg)) agentData.avatarUrl = `file://${avatarPathJpeg}`;
-                    else if (await fs.pathExists(avatarPathGif)) agentData.avatarUrl = `file://${avatarPathGif}`;
-
-                    agents.push(agentData);
+                    agentData.name = config.name || folderName;
+                    agentData.config = config;
+                    agentData.topics = (config.topics && Array.isArray(config.topics) && config.topics.length > 0)
+                        ? config.topics
+                        : [{ id: "default", name: "主要对话", createdAt: Date.now() }];
+                    
+                    // Inject correct paths
+                    agentData.config.id = folderName;
+                    agentData.config.agentDataPath = path.join(AGENT_DIR, '..', 'UserData', folderName);
+                } else {
+                    // Default config for missing config.json
+                    agentData.topics = [{ id: "default", name: "主要对话", createdAt: Date.now() }];
+                    agentData.config = {
+                        name: folderName,
+                        topics: agentData.topics,
+                        systemPrompt: `你是 ${folderName}。`,
+                        model: '',
+                        temperature: 0.7,
+                        contextTokenLimit: 4000,
+                        maxOutputTokens: 1000,
+                        disableCustomColors: true,
+                        useThemeColorsInChat: true
+                    };
                 }
-            }
+
+                // Avatar detection (Parallelize if many, but 4-5 is fine)
+                for (const ext of avatarExtensions) {
+                    const avatarPath = path.join(agentPath, `avatar${ext}`);
+                    if (await fs.pathExists(avatarPath)) {
+                        agentData.avatarUrl = `file://${avatarPath}`;
+                        break;
+                    }
+                }
+
+                return agentData;
+            }));
+
+            let agents = agentResults.filter(Boolean);
 
             let settings = {};
             try {
@@ -212,6 +213,8 @@ function initialize(context) {
             } else {
                 agents.sort((a, b) => a.name.localeCompare(b.name));
             }
+            
+            cachedAgents = agents;
             return agents;
         } catch (error) {
             console.error('获取Agent列表失败:', error);
@@ -238,6 +241,7 @@ function initialize(context) {
                 ...settings,
                 agentOrder: orderedAgentIds
             }));
+            invalidateCaches();
             return result;
         } catch (error) {
             console.error('Error saving agent order:', error);
@@ -291,6 +295,7 @@ function initialize(context) {
                     ...existingConfig,
                     ...configToSave
                 }));
+                invalidateCaches();
                 return { success: true, message: `Agent ${agentId} 配置已保存。` };
             } else {
                 // AgentConfigManager 不可用，报错而非静默 fallback
@@ -311,6 +316,7 @@ function initialize(context) {
                     ...existingConfig,
                     ...updates
                 }));
+                invalidateCaches();
                 return { success: true, message: `Agent ${agentId} 配置已更新。` };
             } else {
                 // AgentConfigManager 不可用，报错而非静默 fallback
@@ -404,6 +410,7 @@ function initialize(context) {
                 await fs.writeFile(centralizedNewAvatarPath, nodeBuffer);
             }
 
+            invalidateCaches();
             return { success: true, avatarUrl: `file://${newAvatarPath}?t=${Date.now()}`, needsColorExtraction: true };
         } catch (error) {
             console.error(`保存Agent ${agentId} 头像失败:`, error);
@@ -460,6 +467,7 @@ function initialize(context) {
                 }
             }
 
+            invalidateCaches();
             return { success: true, agentId: agentId, agentName: agentName, config: configToSave, avatarUrl: null };
         } catch (error) {
             console.error('创建Agent失败:', error);
@@ -473,6 +481,7 @@ function initialize(context) {
             const userDataAgentDir = path.join(USER_DATA_DIR, agentId);
             if (await fs.pathExists(agentDir)) await fs.remove(agentDir);
             if (await fs.pathExists(userDataAgentDir)) await fs.remove(userDataAgentDir);
+            invalidateCaches();
             return { success: true, message: `Agent ${agentId} 已删除。` };
         } catch (error) {
             console.error(`删除Agent ${agentId} 失败:`, error);

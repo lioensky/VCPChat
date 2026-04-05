@@ -3,9 +3,9 @@
 
 class PresetPromptModule {
     constructor(options) {
-        this.agentId = options.agentId;
-        this.config = options.config;
         this.electronAPI = options.electronAPI;
+        this.agentId = null;
+        this.config = null;
         
         this.textarea = null;
         this.presetSelect = null;
@@ -13,12 +13,25 @@ class PresetPromptModule {
         this.presets = [];
         
         // 缓存内容数据
-        this.cachedContent = this.config.presetSystemPrompt || '';
-        this.cachedSelectedPreset = this.config.selectedPreset || '';
+        this.cachedContent = '';
+        this.cachedSelectedPreset = '';
         
         // 默认预设路径
         this.defaultPresetPath = './AppData/systemPromptPresets';
-        this.loadPresetPath();
+    }
+
+    /**
+     * 更新上下文并加载数据
+     * @param {string} agentId 
+     * @param {Object} config 
+     */
+    async updateContext(agentId, config) {
+        this.agentId = agentId;
+        this.config = config;
+        this.cachedContent = config.presetSystemPrompt || '';
+        this.cachedSelectedPreset = config.selectedPreset || '';
+        this.presetPath = this.config.presetPromptPath || this.defaultPresetPath;
+        await this.loadPresets();
     }
 
     /**
@@ -305,12 +318,21 @@ class PresetPromptModule {
     /**
      * 获取提示词内容
      */
-    async getPrompt() {
-        if (this.textarea) {
-            return this.textarea.value.trim();
-        }
-        return this.cachedContent;
+  async getPrompt() {
+    if (this.textarea) {
+      return this.textarea.value.trim();
     }
+    return this.cachedContent;
+  }
+
+  /**
+   * 销毁模块，释放资源
+   */
+  destroy() {
+    this.textarea = null;
+    this.presetSelect = null;
+    this.container = null;
+  }
 }
 
 // 导出到全局

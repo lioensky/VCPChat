@@ -25,30 +25,49 @@ class PromptManager {
     // 右键长按计时器
     this.rightClickTimer = null;
     this.rightClickDelay = 1000; // 1秒
+    
+    this.isInitialized = false;
+    this.containerElement = null;
+    this.electronAPI = null;
   }
 
   /**
-   * 初始化提示词管理器
+   * 初始化提示词管理器（全局单次初始化）
    * @param {Object} options - 初始化选项
    */
   async init(options) {
-    const { agentId, config, containerElement, electronAPI } = options;
-
-    this.agentId = agentId;
-    this.config = config;
+    if (this.isInitialized) return;
+    
+    const { containerElement, electronAPI } = options;
     this.containerElement = containerElement;
     this.electronAPI = electronAPI;
 
-    // 从配置中读取当前模式
-    this.currentMode = config.promptMode || "original";
-
-    // 加载自定义模式名称
-    await this.loadCustomModeNames();
-
-    // 初始化三个模块
+    // 初始化三个模块（仅实例化，不加载数据）
     this.initModules();
 
-    // 渲染UI
+    this.isInitialized = true;
+    console.log('[PromptManager] Global initialization complete.');
+  }
+
+  /**
+   * 更新当前 Agent 上下文并切换显示
+   * @param {string} agentId 
+   * @param {Object} config 
+   */
+  async updateAgentContext(agentId, config) {
+    this.agentId = agentId;
+    this.config = config;
+    this.currentMode = config.promptMode || "original";
+
+    // 加载自定义模式名称 (这步可以异步)
+    await this.loadCustomModeNames();
+
+    // 更新各个子模块的上下文
+    if (this.originalModule) this.originalModule.updateContext(agentId, config);
+    if (this.modularModule) await this.modularModule.updateContext(agentId, config);
+    if (this.presetModule) await this.presetModule.updateContext(agentId, config);
+
+    // 重新渲染主框架
     this.render();
   }
 
@@ -58,24 +77,18 @@ class PromptManager {
   initModules() {
     if (window.OriginalPromptModule) {
       this.originalModule = new window.OriginalPromptModule({
-        agentId: this.agentId,
-        config: this.config,
         electronAPI: this.electronAPI,
       });
     }
 
     if (window.ModularPromptModule) {
       this.modularModule = new window.ModularPromptModule({
-        agentId: this.agentId,
-        config: this.config,
         electronAPI: this.electronAPI,
       });
     }
 
     if (window.PresetPromptModule) {
       this.presetModule = new window.PresetPromptModule({
-        agentId: this.agentId,
-        config: this.config,
         electronAPI: this.electronAPI,
       });
     }
@@ -460,6 +473,38 @@ class PromptManager {
    */
   getMode() {
     return this.currentMode;
+  }
+
+  /**
+   * 销毁管理器，清理子模块和定时器
+   */
+  destroy() {
+    // 1. 清理子模块
+    if (this.originalModule && typeof this.originalModule.destroy === "function") {
+      this.originalModule.destroy();
+    }
+    if (this.modularModule && typeof this.modularModule.destroy === "function") {
+      this.modularModule.destroy();
+    }
+    if (this.presetModule && typeof this.presetModule.destroy === "function") {
+      this.presetModule.destroy();
+    }
+
+    // 2. 清理计时器
+    if (this.rightClickTimer) {
+      clearTimeout(this.rightClickTimer);
+      this.rightClickTimer = null;
+    }
+
+    // 3. 清理 DOM 引用
+    this.containerElement = null;
+
+    // 4. 重置模块引用
+    this.originalModule = null;
+    this.modularModule = null;
+    this.presetModule = null;
+
+    console.debug(`[PromptManager] Destroyed for agent: ${this.agentId}`);
   }
 }
 

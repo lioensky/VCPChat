@@ -881,6 +881,11 @@ import { setupEventListeners } from './modules/event-listeners.js';
                 }
             }
         });
+
+        // Pre-warm PromptManager to avoid first-click delay (Singleton Pattern)
+        if (window.settingsManager.prewarmPromptManager) {
+            window.settingsManager.prewarmPromptManager();
+        }
     } else {
         console.error('[RENDERER_INIT] settingsManager module not found!');
     }

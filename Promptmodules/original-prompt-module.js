@@ -3,15 +3,23 @@
 
 class OriginalPromptModule {
   constructor(options) {
-    this.agentId = options.agentId;
-    this.config = options.config;
     this.electronAPI = options.electronAPI;
+    this.agentId = null;
+    this.config = null;
     this.textarea = null;
     this.maxAutoHeight = 320;
+    this.cachedContent = "";
+  }
 
-    // 缓存内容数据
-    this.cachedContent =
-      this.config.originalSystemPrompt || this.config.systemPrompt || "";
+  /**
+   * 更新上下文
+   * @param {string} agentId 
+   * @param {Object} config 
+   */
+  updateContext(agentId, config) {
+    this.agentId = agentId;
+    this.config = config;
+    this.cachedContent = config.originalSystemPrompt || config.systemPrompt || "";
   }
 
   /**
@@ -78,6 +86,14 @@ class OriginalPromptModule {
       return this.textarea.value.trim();
     }
     return this.cachedContent;
+  }
+
+  /**
+   * 销毁模块，释放资源
+   */
+  destroy() {
+    this.textarea = null;
+    this.container = null;
   }
 }
 

@@ -79,7 +79,7 @@ const settingsManager = (() => {
      * Displays the appropriate settings view (agent, group, or default prompt)
      * based on the currently selected item.
      */
-    function displaySettingsForItem() {
+    async function displaySettingsForItem() {
         const currentSelectedItem = refs.currentSelectedItemRef.get();
 
         const agentSettingsExists = agentSettingsContainer && typeof agentSettingsContainer.style !== 'undefined';
@@ -94,7 +94,7 @@ const settingsManager = (() => {
                 if (groupSettingsExists) groupSettingsContainer.style.display = 'none';
                 itemSettingsContainerTitle.textContent = 'Agent 设置: ';
                 deleteItemBtn.textContent = '删除此 Agent';
-                populateAgentSettingsForm(currentSelectedItem.id, (currentSelectedItem.config || currentSelectedItem));
+                await populateAgentSettingsForm(currentSelectedItem.id, (currentSelectedItem.config || currentSelectedItem));
             } else if (currentSelectedItem.type === 'group') {
                 if (agentSettingsExists) agentSettingsContainer.style.display = 'none';
                 if (groupSettingsExists) groupSettingsContainer.style.display = 'block';
@@ -137,21 +137,21 @@ const settingsManager = (() => {
         editingAgentIdInput.value = agentId;
         agentNameInput.value = agentConfig.name || agentId;
 
-        // Initialize PromptManager
+        // Initialize PromptManager (Singleton Pattern)
         const systemPromptContainer = document.getElementById('systemPromptContainer');
         if (systemPromptContainer && window.PromptManager) {
-            if (promptManager) {
-                // Save current state before switching
+            if (!promptManager) {
+                promptManager = new window.PromptManager();
+                await promptManager.init({
+                    containerElement: systemPromptContainer,
+                    electronAPI: electronAPI
+                });
+            } else {
+                // Save current state before switching context
                 await promptManager.saveCurrentModeData();
             }
 
-            promptManager = new window.PromptManager();
-            await promptManager.init({
-                agentId: agentId,
-                config: agentConfig,
-                containerElement: systemPromptContainer,
-                electronAPI: electronAPI
-            });
+            await promptManager.updateAgentContext(agentId, agentConfig);
         }
 
         agentModelInput.value = agentConfig.model || '';
@@ -815,6 +815,17 @@ const settingsManager = (() => {
                 vcpServerUrlInput.addEventListener('blur', () => {
                     const completedUrl = completeVcpUrl(vcpServerUrlInput.value);
                     vcpServerUrlInput.value = completedUrl;
+                });
+            }
+        },
+        prewarmPromptManager: async () => {
+            const systemPromptContainer = document.getElementById('systemPromptContainer');
+            if (systemPromptContainer && window.PromptManager && !promptManager) {
+                console.log('[SettingsManager] Pre-warming PromptManager...');
+                promptManager = new window.PromptManager();
+                await promptManager.init({
+                    containerElement: systemPromptContainer,
+                    electronAPI: electronAPI
                 });
             }
         },

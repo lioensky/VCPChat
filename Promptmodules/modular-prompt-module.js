@@ -4,9 +4,9 @@
 
 class ModularPromptModule {
     constructor(options) {
-        this.agentId = options.agentId;
-        this.config = options.config;
         this.electronAPI = options.electronAPI;
+        this.agentId = null;
+        this.config = null;
         
         // 积木块数据
         this.blocks = [];
@@ -29,9 +29,17 @@ class ModularPromptModule {
         this.dropIndicator = null;
         this.draggedHiddenBlock = null; // 从小仓拖拽的积木块
         this.draggedWarehouse = null; // 拖拽的仓库
-        
-        // 加载保存的数据
-        this.loadData();
+    }
+
+    /**
+     * 更新上下文并加载数据
+     * @param {string} agentId 
+     * @param {Object} config 
+     */
+    async updateContext(agentId, config) {
+        this.agentId = agentId;
+        this.config = config;
+        await this.loadData();
     }
 
       /**
@@ -1216,10 +1224,42 @@ class ModularPromptModule {
     }
 
     /**
-     * 获取格式化后的提示词
+     * 获取提示词内容
      */
-    async getFormattedPrompt() {
-        return this.formatBlocks();
+    async getPrompt() {
+        return this.getFormattedPrompt();
+    }
+
+    /**
+     * 销毁模块，释放资源
+     */
+    destroy() {
+        // 1. 移除可能存在的全局右键菜单
+        const existingMenu = document.querySelector('.block-context-menu');
+        if (existingMenu) {
+            existingMenu.remove();
+        }
+
+        // 2. 清理 DOM 引用
+        this.container = null;
+        this.blocksContainer = null;
+        this.warehouseContainer = null;
+        this.dropIndicator = null;
+
+        // 3. 清理状态和数据引用
+        this.blocks = [];
+        this.hiddenBlocks = {};
+        this.draggedBlock = null;
+        this.draggedHiddenBlock = null;
+        this.draggedWarehouse = null;
+
+        // 4. 清理定时器（如果有）
+        if (this.pushTimer) {
+            clearInterval(this.pushTimer);
+            this.pushTimer = null;
+        }
+
+        console.debug(`[ModularPromptModule] Destroyed for agent: ${this.agentId}`);
     }
 
     /**

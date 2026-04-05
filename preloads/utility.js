@@ -158,6 +158,7 @@ function createCatalog(ops) {
 
         // Chat/app shell APIs
         getAgents: query(() => ops.invoke('get-agents')),
+        getAgentsMetadata: query(() => ops.invoke('get-agents-metadata')),
         getAgentConfig: query((agentId) => ops.invoke('get-agent-config', agentId)),
         saveAgentConfig: query((agentId, config) => ops.invoke('save-agent-config', agentId, config)),
         selectAvatar: query(() => ops.invoke('select-avatar')),
@@ -461,6 +462,7 @@ const ALLOWED_KEYS = [
     "saveForumConfig",
     "getTextContent",
     "loadAgentsList",
+    "getAgentsMetadata",
     "loadUserAvatar",
     "loadAgentAvatar",
     "loadMemoConfig",
