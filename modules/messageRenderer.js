@@ -1035,6 +1035,21 @@ let mainRendererReferences = {
 };
 
 
+let activeRenderSessionId = 0;
+
+function invalidateRenderSession() {
+    activeRenderSessionId += 1;
+    return activeRenderSessionId;
+}
+
+function getActiveRenderSessionId() {
+    return activeRenderSessionId;
+}
+
+function isRenderSessionActive(sessionId) {
+    return sessionId === activeRenderSessionId;
+}
+
 function removeMessageById(messageId, saveHistory = false) {
     const item = mainRendererReferences.chatMessagesDiv.querySelector(`.message-item[data-message-id="${messageId}"]`);
     if (item) {
@@ -1075,6 +1090,8 @@ function removeMessageById(messageId, saveHistory = false) {
 }
 
 function clearChat() {
+    invalidateRenderSession();
+
     if (mainRendererReferences.chatMessagesDiv) {
         // --- NEW: Cleanup all messages before clearing the container ---
         const allMessages = mainRendererReferences.chatMessagesDiv.querySelectorAll('.message-item');
@@ -1472,7 +1489,7 @@ async function renderAttachments(message, contentDiv) {
     }
 }
 
-async function renderMessage(message, isInitialLoad = false, appendToDom = true) {
+async function renderMessage(message, isInitialLoad = false, appendToDom = true, renderSessionId = getActiveRenderSessionId()) {
     // console.debug('[MessageRenderer renderMessage] Received message:', JSON.parse(JSON.stringify(message)));
     const { chatMessagesDiv, electronAPI, markedInstance, uiHelper } = mainRendererReferences;
     const globalSettings = mainRendererReferences.globalSettingsRef.get();
@@ -1710,17 +1727,29 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true)
         // Define the post-processing logic as a function.
         // This allows us to control WHEN it gets executed.
         const runPostRenderProcessing = async () => {
+            if (!isRenderSessionActive(renderSessionId) || !messageItem.isConnected || !contentDiv.isConnected) {
+                return;
+            }
+
             // This function should only be called when messageItem is connected to the DOM.
 
             // Process images, attachments, and synchronous content first.
             setContentAndProcessImages(contentDiv, finalHtml, message.id);
+            if (!isRenderSessionActive(renderSessionId) || !messageItem.isConnected || !contentDiv.isConnected) {
+                return;
+            }
+
             renderAttachments(message, contentDiv);
             contentProcessor.processRenderedContent(contentDiv, globalSettings);
             await renderMermaidDiagrams(contentDiv); // Render mermaid diagrams
 
+            if (!isRenderSessionActive(renderSessionId) || !messageItem.isConnected || !contentDiv.isConnected) {
+                return;
+            }
+
             // Defer TreeWalker-based highlighters with a hardcoded delay to ensure the DOM is stable.
             setTimeout(() => {
-                if (contentDiv && contentDiv.isConnected) {
+                if (isRenderSessionActive(renderSessionId) && contentDiv && contentDiv.isConnected) {
                     contentProcessor.highlightAllPatternsInMessage(contentDiv);
                 }
             }, 0);
@@ -1732,12 +1761,19 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true)
         // If we are appending directly to the DOM, schedule the processing immediately.
         if (appendToDom) {
             // We still use requestAnimationFrame to ensure the element is painted before we process it.
-            requestAnimationFrame(() => runPostRenderProcessing());
+            requestAnimationFrame(() => {
+                if (!isRenderSessionActive(renderSessionId) || !messageItem.isConnected) return;
+                runPostRenderProcessing();
+            });
         } else {
             // If not, attach the processing function to the element itself.
             // The caller (e.g., a batch renderer) will be responsible for executing it
             // AFTER the element has been attached to the DOM.
-            messageItem._vcp_process = () => runPostRenderProcessing();
+            messageItem._vcp_process = () => {
+                if (!isRenderSessionActive(renderSessionId) || !messageItem.isConnected) return;
+                return runPostRenderProcessing();
+            };
+            messageItem._vcp_renderSessionId = renderSessionId;
         }
     }
 
@@ -2174,6 +2210,8 @@ function updateMessageContent(messageId, newContent) {
  * @param {number} options.batchDelay - Delay between batches in ms (default: 100)
  */
 async function renderHistory(history, options = {}) {
+    const renderSessionId = invalidateRenderSession();
+
     const {
         initialBatch = 5,
         batchSize = 10,
@@ -2189,7 +2227,7 @@ async function renderHistory(history, options = {}) {
 
     // 如果消息数量很少，直接使用原来的方式渲染
     if (history.length <= initialBatch) {
-        return renderHistoryLegacy(history);
+        return renderHistoryLegacy(history, renderSessionId);
     }
 
     console.debug(`[MessageRenderer] 开始分批渲染 ${history.length} 条消息，首批 ${initialBatch} 条，后续每批 ${batchSize} 条`);
@@ -2199,13 +2237,16 @@ async function renderHistory(history, options = {}) {
     const olderMessages = history.slice(0, -initialBatch);
 
     // 第一阶段：立即渲染最新的消息
-    await renderMessageBatch(latestMessages, true);
+    await renderMessageBatch(latestMessages, true, renderSessionId);
+    if (!isRenderSessionActive(renderSessionId)) return;
     console.debug(`[MessageRenderer] 首批 ${latestMessages.length} 条最新消息已渲染`);
 
     // 第二阶段：分批渲染历史消息（从旧到新）
     if (olderMessages.length > 0) {
-        await renderOlderMessagesInBatches(olderMessages, batchSize, batchDelay);
+        await renderOlderMessagesInBatches(olderMessages, batchSize, batchDelay, renderSessionId);
     }
+
+    if (!isRenderSessionActive(renderSessionId)) return;
 
     // 最终滚动到底部
     mainRendererReferences.uiHelper.scrollToBottom();
@@ -2217,13 +2258,15 @@ async function renderHistory(history, options = {}) {
  * @param {Array<Message>} messages 要渲染的消息数组
  * @param {boolean} scrollToBottom 是否滚动到底部
  */
-async function renderMessageBatch(messages, scrollToBottom = false) {
+async function renderMessageBatch(messages, scrollToBottom = false, renderSessionId = getActiveRenderSessionId()) {
+    if (!isRenderSessionActive(renderSessionId)) return;
+
     const fragment = document.createDocumentFragment();
     const messageElements = [];
 
     // 使用 Promise.allSettled 避免单个失败影响整体
     const results = await Promise.allSettled(
-        messages.map(msg => renderMessage(msg, true, false))
+        messages.map(msg => renderMessage(msg, true, false, renderSessionId))
     );
 
     results.forEach((result, index) => {
@@ -2235,17 +2278,32 @@ async function renderMessageBatch(messages, scrollToBottom = false) {
         }
     });
 
+    if (!isRenderSessionActive(renderSessionId)) return;
+
     // 一次性添加到 fragment
     messageElements.forEach(el => fragment.appendChild(el));
 
     // 使用 requestAnimationFrame 确保 DOM 更新不阻塞 UI
     return new Promise(resolve => {
         requestAnimationFrame(() => {
+            if (!isRenderSessionActive(renderSessionId)) {
+                resolve();
+                return;
+            }
+
             // Step 1: Append all elements to the DOM at once.
             mainRendererReferences.chatMessagesDiv.appendChild(fragment);
 
             // Step 2: Now that they are in the DOM, run the deferred processing for each.
             messageElements.forEach(el => {
+                if (!isRenderSessionActive(renderSessionId) || !el.isConnected) {
+                    if (typeof el._vcp_process === 'function') {
+                        delete el._vcp_process;
+                    }
+                    delete el._vcp_renderSessionId;
+                    return;
+                }
+
                 // 观察批量渲染的消息
                 visibilityOptimizer.observeMessage(el);
 
@@ -2253,9 +2311,10 @@ async function renderMessageBatch(messages, scrollToBottom = false) {
                     el._vcp_process();
                     delete el._vcp_process; // Clean up to avoid memory leaks
                 }
+                delete el._vcp_renderSessionId;
             });
 
-            if (scrollToBottom) {
+            if (scrollToBottom && isRenderSessionActive(renderSessionId)) {
                 mainRendererReferences.uiHelper.scrollToBottom();
             }
             resolve();
@@ -2272,10 +2331,12 @@ async function renderMessageBatch(messages, scrollToBottom = false) {
 /**
  * 智能批量渲染：使用 requestIdleCallback 在浏览器空闲时渲染
  */
-async function renderOlderMessagesInBatches(olderMessages, batchSize, batchDelay) {
+async function renderOlderMessagesInBatches(olderMessages, batchSize, batchDelay, renderSessionId = getActiveRenderSessionId()) {
     const totalBatches = Math.ceil(olderMessages.length / batchSize);
 
     for (let i = totalBatches - 1; i >= 0; i--) {
+        if (!isRenderSessionActive(renderSessionId)) return;
+
         const startIndex = i * batchSize;
         const endIndex = Math.min(startIndex + batchSize, olderMessages.length);
         const batch = olderMessages.slice(startIndex, endIndex);
@@ -2285,7 +2346,9 @@ async function renderOlderMessagesInBatches(olderMessages, batchSize, batchDelay
         const elementsForProcessing = [];
 
         for (const msg of batch) {
-            const messageElement = await renderMessage(msg, true, false);
+            if (!isRenderSessionActive(renderSessionId)) return;
+
+            const messageElement = await renderMessage(msg, true, false, renderSessionId);
             if (messageElement) {
                 batchFragment.appendChild(messageElement);
                 elementsForProcessing.push(messageElement);
@@ -2295,6 +2358,11 @@ async function renderOlderMessagesInBatches(olderMessages, batchSize, batchDelay
         // 🟢 使用 requestIdleCallback 在空闲时插入（降级到 requestAnimationFrame）
         await new Promise(resolve => {
             const insertBatch = () => {
+                if (!isRenderSessionActive(renderSessionId)) {
+                    resolve();
+                    return;
+                }
+
                 const chatMessagesDiv = mainRendererReferences.chatMessagesDiv;
                 let insertPoint = chatMessagesDiv.firstChild;
                 while (insertPoint?.classList?.contains('topic-timestamp-bubble')) {
@@ -2308,6 +2376,14 @@ async function renderOlderMessagesInBatches(olderMessages, batchSize, batchDelay
                 }
 
                 elementsForProcessing.forEach(el => {
+                    if (!isRenderSessionActive(renderSessionId) || !el.isConnected) {
+                        if (typeof el._vcp_process === 'function') {
+                            delete el._vcp_process;
+                        }
+                        delete el._vcp_renderSessionId;
+                        return;
+                    }
+
                     // 观察批量渲染的历史消息
                     visibilityOptimizer.observeMessage(el);
 
@@ -2315,6 +2391,7 @@ async function renderOlderMessagesInBatches(olderMessages, batchSize, batchDelay
                         el._vcp_process();
                         delete el._vcp_process;
                     }
+                    delete el._vcp_renderSessionId;
                 });
 
                 resolve();
@@ -2328,6 +2405,8 @@ async function renderOlderMessagesInBatches(olderMessages, batchSize, batchDelay
             }
         });
 
+        if (!isRenderSessionActive(renderSessionId)) return;
+
         // 动态调整延迟：如果批次小，减少延迟
         if (i > 0 && batchDelay > 0) {
             const actualDelay = batch.length < batchSize / 2 ? batchDelay / 2 : batchDelay;
@@ -2340,28 +2419,47 @@ async function renderOlderMessagesInBatches(olderMessages, batchSize, batchDelay
  * 原始的历史渲染方法（用于少量消息的情况）
  * @param {Array<Message>} history 聊天历史
  */
-async function renderHistoryLegacy(history) {
+async function renderHistoryLegacy(history, renderSessionId = getActiveRenderSessionId()) {
+    if (!isRenderSessionActive(renderSessionId)) return;
+
     const fragment = document.createDocumentFragment();
     const allMessageElements = [];
 
     // Phase 1: Create all message elements in memory without appending to DOM
     for (const msg of history) {
-        const messageElement = await renderMessage(msg, true, false);
+        if (!isRenderSessionActive(renderSessionId)) return;
+
+        const messageElement = await renderMessage(msg, true, false, renderSessionId);
         if (messageElement) {
             allMessageElements.push(messageElement);
         }
     }
+
+    if (!isRenderSessionActive(renderSessionId)) return;
 
     // Phase 2: Append all created elements at once using a DocumentFragment
     allMessageElements.forEach(el => fragment.appendChild(el));
 
     return new Promise(resolve => {
         requestAnimationFrame(() => {
+            if (!isRenderSessionActive(renderSessionId)) {
+                resolve();
+                return;
+            }
+
             // Step 1: Append all elements to the DOM.
             mainRendererReferences.chatMessagesDiv.appendChild(fragment);
 
             // Step 2: Run the deferred processing for each element now that it's attached.
             allMessageElements.forEach(el => {
+                if (!isRenderSessionActive(renderSessionId) || !el.isConnected) {
+                    if (typeof el._vcp_process === 'function') {
+                        delete el._vcp_process;
+                    }
+                    delete el._vcp_renderSessionId;
+                    return;
+                }
+
                 // 观察历史消息
                 visibilityOptimizer.observeMessage(el);
 
@@ -2369,9 +2467,12 @@ async function renderHistoryLegacy(history) {
                     el._vcp_process();
                     delete el._vcp_process; // Clean up
                 }
+                delete el._vcp_renderSessionId;
             });
 
-            mainRendererReferences.uiHelper.scrollToBottom();
+            if (isRenderSessionActive(renderSessionId)) {
+                mainRendererReferences.uiHelper.scrollToBottom();
+            }
             resolve();
         });
     });

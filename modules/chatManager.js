@@ -23,6 +23,7 @@ window.chatManager = (() => {
     let mainRendererFunctions = {};
     let isCanvasWindowOpen = false; // State to track if the canvas window is open
     let lastAssistantSuspendAt = 0;
+    let activeHistoryLoadToken = 0;
 
     function setCurrentItemActionButtonText(button, text) {
         if (!button) return;
@@ -441,6 +442,17 @@ window.chatManager = (() => {
     }
 
     async function loadChatHistory(itemId, itemType, topicId) {
+        const loadToken = ++activeHistoryLoadToken;
+
+        const isLoadStillActive = () => loadToken === activeHistoryLoadToken;
+        const abortIfStale = () => {
+            if (!isLoadStillActive()) {
+                console.debug(`[ChatManager] Ignoring stale history load for ${itemType}:${itemId}:${topicId}`);
+                return true;
+            }
+            return false;
+        };
+
         suspendAssistantListenerForTopicLoad(topicId);
 
         if (messageRenderer) messageRenderer.clearChat();
@@ -454,6 +466,7 @@ window.chatManager = (() => {
         });
     
         if (messageRenderer) messageRenderer.setCurrentTopicId(topicId);
+        if (abortIfStale()) return;
     
         if (!itemId) {
             const errorMsg = `错误：无法加载聊天记录，${itemType === 'group' ? '群组' : '助手'}ID (${itemId}) 缺失。`;
@@ -473,12 +486,21 @@ window.chatManager = (() => {
         if (messageRenderer) {
             await messageRenderer.renderMessage({ role: 'system', name: '系统', content: '加载聊天记录中...', timestamp: Date.now(), isThinking: true, id: 'loading_history' });
         }
+        if (abortIfStale()) {
+            if (messageRenderer) messageRenderer.removeMessageById('loading_history');
+            return;
+        }
     
         let historyResult;
         if (itemType === 'agent') {
             historyResult = await electronAPI.getChatHistory(itemId, topicId);
         } else if (itemType === 'group') {
             historyResult = await electronAPI.getGroupChatHistory(itemId, topicId);
+        }
+
+        if (abortIfStale()) {
+            if (messageRenderer) messageRenderer.removeMessageById('loading_history');
+            return;
         }
     
         const currentSelectedItem = currentSelectedItemRef.get();
@@ -487,10 +509,16 @@ window.chatManager = (() => {
             const historyFilePath = `${agentConfigForHistory.agentDataPath}\\topics\\${topicId}\\history.json`;
             await electronAPI.watcherStart(historyFilePath, itemId, topicId);
         }
+
+        if (abortIfStale()) {
+            if (messageRenderer) messageRenderer.removeMessageById('loading_history');
+            return;
+        }
     
         if (messageRenderer) messageRenderer.removeMessageById('loading_history');
     
         await displayTopicTimestampBubble(itemId, itemType, topicId);
+        if (abortIfStale()) return;
     
         if (historyResult && historyResult.error) {
             if (messageRenderer) messageRenderer.renderMessage({ role: 'system', content: `加载话题 "${topicId}" 的聊天记录失败: ${historyResult.error}`, timestamp: Date.now() });
@@ -506,6 +534,7 @@ window.chatManager = (() => {
                 
                 console.log(`[ChatManager] 开始加载话题历史，共 ${historyResult.length} 条消息`);
                 await messageRenderer.renderHistory(historyResult, renderOptions);
+                if (abortIfStale()) return;
                 console.log(`[ChatManager] 话题历史加载完成`);
             }
     
@@ -514,6 +543,8 @@ window.chatManager = (() => {
         } else {
             if (messageRenderer) messageRenderer.renderMessage({ role: 'system', content: `加载话题 "${topicId}" 的聊天记录时返回了无效数据。`, timestamp: Date.now() });
         }
+
+        if (abortIfStale()) return;
     
         if (itemId && topicId && !(historyResult && historyResult.error)) {
             localStorage.setItem(`lastActiveTopic_${itemId}_${itemType}`, topicId);
