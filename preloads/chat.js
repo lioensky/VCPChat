@@ -13,11 +13,13 @@ function subscription(value) {
 }
 
 function createOps() {
+    const createMultiArgs = (...values) => ({ __multiArgs: true, values });
+
     const subscribeIpc = (channel, callback, mapper = (_event, ...args) => args) => {
         const listener = (event, ...args) => {
             const mapped = mapper(event, ...args);
-            if (Array.isArray(mapped)) {
-                callback(...mapped);
+            if (mapped && mapped.__multiArgs === true && Array.isArray(mapped.values)) {
+                callback(...mapped.values);
                 return;
             }
             callback(mapped);
@@ -33,6 +35,7 @@ function createOps() {
         invoke: (channel, ...args) => ipcRenderer.invoke(channel, ...args),
         send: (channel, ...args) => ipcRenderer.send(channel, ...args),
         subscribe: (channel, mapper) => (callback) => subscribeIpc(channel, callback, mapper),
+        multiArgs: createMultiArgs,
         pathApi: {
             dirname: (filePath) => ipcRenderer.invoke('path:dirname', filePath),
             extname: (filePath) => ipcRenderer.invoke('path:extname', filePath),
@@ -299,7 +302,7 @@ function createCatalog(ops) {
         getLatestCanvasContent: query(() => ops.invoke('get-latest-canvas-content')),
         watcherStart: query((filePath, agentId, topicId) => ops.invoke('watcher:start', filePath, agentId, topicId)),
         watcherStop: query(() => ops.invoke('watcher:stop')),
-        onRollDice: subscription(ops.subscribe('roll-dice', (_event, notation, options) => [notation, options])),
+        onRollDice: subscription(ops.subscribe('roll-dice', (_event, notation, options) => ops.multiArgs(notation, options))),
         sendDiceModuleReady: command(() => ops.send('dice-module-ready')),
         sendDiceRollComplete: command((results) => ops.send('dice-roll-complete', results)),
         ragOverlayShow: command((payload) => ops.send('rag-overlay-show', payload)),
