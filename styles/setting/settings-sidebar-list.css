@@ -185,12 +185,29 @@ body.light-theme .settings-header-bar .global-settings-btn:hover {
 .agent-list,
 .topic-list {
     list-style-type: none;
-    padding: 0 4px 0 3px;
+    width: 100%;
+    padding: 0 0 0 3px;
     margin: 0;
+    overflow: visible;
+    min-height: 0;
+    box-sizing: border-box;
+}
+
+.sidebar-list-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    width: 100%;
+    margin-right: 0;
+    padding: 4px 0 4px 0;
     overflow-y: auto;
     overflow-x: hidden;
-    flex-grow: 1;
     box-sizing: border-box;
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+}
+
+.sidebar-list-scroll.is-scrolling {
+    scrollbar-color: var(--scrollbar-thumb) transparent;
 }
 
 .sidebar .agent-list li,

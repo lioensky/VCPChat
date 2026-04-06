@@ -232,6 +232,247 @@ body:not(.light-theme) .global-settings-title {
 }
 
 /* 底部保存按钮区域 */
+.settings-subsection {
+    margin-bottom: 18px;
+    padding: 14px 16px;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    background: var(--input-bg);
+}
+
+.settings-subsection:last-child {
+    margin-bottom: 0;
+}
+
+.settings-subsection-heading {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 14px;
+}
+
+.settings-subsection-kicker {
+    font-size: 0.74em;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--secondary-text);
+}
+
+.settings-subsection-title {
+    font-size: 0.98em;
+    font-weight: 600;
+    color: var(--highlight-text);
+}
+
+.settings-subsection-description {
+    margin: 0;
+    font-size: 0.86em;
+    line-height: 1.5;
+    color: var(--secondary-text);
+}
+
+.settings-subsection-new {
+    box-shadow: inset 3px 0 0 var(--user-bubble-bg);
+}
+
+.settings-inline-number-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 20px;
+    flex-wrap: wrap;
+}
+
+.settings-inline-number-row > div {
+    min-width: 160px;
+}
+
+.settings-dependent-panel {
+    padding: 14px;
+    border-radius: 10px;
+    border: 1px dashed var(--border-color);
+    background: rgba(127, 127, 127, 0.05);
+}
+
+.settings-nested-panel {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-color);
+}
+
+.font-preview-card {
+    margin-top: 10px;
+    padding: 12px 14px;
+    border-radius: 10px;
+    border: 1px solid color-mix(in srgb, var(--border-color) 78%, transparent);
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.01)),
+        color-mix(in srgb, var(--input-bg) 88%, transparent);
+}
+
+.font-preview-card-code {
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.01)),
+        color-mix(in srgb, var(--tertiary-bg) 82%, transparent);
+}
+
+.font-preview-label {
+    font-size: 0.78em;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--secondary-text);
+    margin-bottom: 8px;
+}
+
+.font-preview-sample {
+    margin: 0;
+    color: var(--primary-text);
+    line-height: 1.65;
+    font-size: 1rem;
+    word-break: break-word;
+}
+
+.font-preview-sample-code {
+    white-space: pre-wrap;
+    overflow-x: auto;
+    font-size: 0.95rem;
+    line-height: 1.55;
+}
+
+.font-preview-meta {
+    margin-top: 8px;
+    font-size: 0.8em;
+    color: var(--secondary-text);
+    word-break: break-all;
+}
+
+.scenario-preview-grid {
+    margin-top: 10px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+}
+
+.scenario-preview-card {
+    padding: 12px 14px;
+    border-radius: 12px;
+    border: 1px solid color-mix(in srgb, var(--border-color) 76%, transparent);
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.01)),
+        color-mix(in srgb, var(--input-bg) 90%, transparent);
+    min-height: 112px;
+}
+
+.scenario-preview-card-code {
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.01)),
+        color-mix(in srgb, var(--tertiary-bg) 84%, transparent);
+}
+
+.scenario-preview-card-diary {
+    background:
+        linear-gradient(180deg, rgba(230, 210, 180, 0.08), rgba(255, 255, 255, 0.01)),
+        color-mix(in srgb, var(--input-bg) 88%, transparent);
+}
+
+.scenario-preview-card-tool {
+    background:
+        linear-gradient(180deg, rgba(90, 160, 255, 0.08), rgba(255, 255, 255, 0.01)),
+        color-mix(in srgb, var(--input-bg) 88%, transparent);
+}
+
+.scenario-preview-title {
+    font-size: 0.82em;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    color: var(--secondary-text);
+    margin-bottom: 8px;
+}
+
+.scenario-preview-body {
+    margin: 0;
+    color: var(--primary-text);
+    line-height: 1.6;
+    font-size: 0.96rem;
+    word-break: break-word;
+}
+
+.scenario-preview-code {
+    white-space: pre-wrap;
+    overflow-x: auto;
+    font-size: 0.9rem;
+}
+
+.scenario-preview-note {
+    margin-top: 10px;
+    font-size: 0.78em;
+    color: var(--secondary-text);
+}
+
+.scenario-preview-settings-slot {
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px dashed color-mix(in srgb, var(--border-color) 72%, transparent);
+}
+
+.scenario-preview-settings-slot .settings-form-group {
+    margin: 0;
+}
+
+.scenario-preview-settings-slot .settings-form-group label {
+    display: block;
+    margin-bottom: 6px;
+    font-size: 0.8em;
+    font-weight: 600;
+    color: var(--secondary-text);
+}
+
+.scenario-preview-settings-slot .settings-form-group input[type="text"],
+.scenario-preview-settings-slot .settings-form-group select {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 8px 10px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    background-color: var(--input-bg);
+    color: var(--primary-text);
+    font-size: 0.9em;
+}
+
+.scenario-preview-settings-slot .settings-form-group small {
+    display: block;
+    margin-top: 6px;
+    font-size: 0.78em;
+    color: var(--secondary-text);
+}
+
+.scenario-preview-controls {
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px dashed color-mix(in srgb, var(--border-color) 72%, transparent);
+}
+
+.scenario-preview-controls label {
+    display: block;
+    margin-bottom: 6px;
+    font-size: 0.8em;
+    font-weight: 600;
+    color: var(--secondary-text);
+}
+
+.scenario-preview-controls select,
+.scenario-preview-controls input[type="text"] {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 8px 10px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    background-color: var(--input-bg);
+    color: var(--primary-text);
+    font-size: 0.9em;
+}
+
 .global-settings-footer {
     grid-column: 2;
     background: var(--secondary-bg);

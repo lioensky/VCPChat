@@ -27,6 +27,28 @@ export function setupEventListeners(deps) {
         addNetworkPathInput
     } = deps;
 
+    const setupAutoHideScrollbar = (container, hideDelayMs = 700) => {
+        if (!container) return;
+        if (container.dataset.autoHideScrollbarBound === 'true') return;
+
+        let hideTimer = null;
+        const showScrollingState = () => {
+            container.classList.add('is-scrolling');
+            if (hideTimer) clearTimeout(hideTimer);
+            hideTimer = setTimeout(() => {
+                container.classList.remove('is-scrolling');
+                hideTimer = null;
+            }, hideDelayMs);
+        };
+
+        container.addEventListener('scroll', showScrollingState, { passive: true });
+        container.dataset.autoHideScrollbarBound = 'true';
+    };
+
+    setupAutoHideScrollbar(document.querySelector('#tabContentAgents .sidebar-list-scroll'));
+    setupAutoHideScrollbar(document.querySelector('#tabContentTopics .sidebar-list-scroll'));
+    setupAutoHideScrollbar(chatMessagesDiv?.closest('.chat-messages-container'), 1500);
+
     // --- Keyboard Shortcut Handlers ---
 
     /**
@@ -392,7 +414,13 @@ export function setupEventListeners(deps) {
         console.error('[Renderer] chatMessagesDiv not found during setupEventListeners.');
     }
 
-    sendMessageBtn.addEventListener('click', () => chatManager.handleSendMessage());
+    sendMessageBtn.addEventListener('click', async () => {
+        if (typeof window.handleSendButtonAction === 'function' && sendMessageBtn?.dataset.mode === 'interrupt') {
+            await window.handleSendButtonAction();
+            return;
+        }
+        chatManager.handleSendMessage();
+    });
     messageInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();

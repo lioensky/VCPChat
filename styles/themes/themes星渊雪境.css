@@ -119,6 +119,9 @@ body.light-theme {
     --shimmer-color-transparent: rgba(44, 62, 80, 0.08);
     --shimmer-color-highlight: rgba(44, 62, 80, 0.15);
     
+    /* --- Text Shadow for Frosted Panels --- */
+    --panel-text-shadow: none;
+
     /* --- Scrollbar --- */
     --scrollbar-track: rgba(0, 0, 0, 0.1);
     --scrollbar-thumb: rgba(93, 156, 236, 0.6);

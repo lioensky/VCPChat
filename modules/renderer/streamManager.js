@@ -1,4 +1,5 @@
 // modules/renderer/streamManager.js
+import { formatMessageTimestamp } from './domBuilder.js';
 
 // --- Stream State ---
 const streamingChunkQueues = new Map(); // messageId -> array of original chunk strings
@@ -682,6 +683,7 @@ export async function startStreamingMessage(message, passedMessageItem = null) {
     if (isForCurrentView) {
         // Update in-memory reference for current view
         currentChatHistoryRef.set([...historyForThisMessage]);
+        window.updateSendButtonState?.();
     }
     
     // 🟢 使用防抖保存
@@ -1186,11 +1188,11 @@ export async function finalizeStreamedMessage(messageId, finishReason, context, 
     // Update UI if it's the current view
     if (isForCurrentView) {
         refs.currentChatHistoryRef.set([...historyForThisMessage]);
-        
+
         const messageItem = chatMessagesDiv.querySelector(`.message-item[data-message-id="${messageId}"]`);
         if (messageItem) {
             messageItem.classList.remove('streaming', 'thinking');
-            
+
             const contentDiv = messageItem.querySelector('.md-content');
             if (contentDiv) {
                 const globalSettings = refs.globalSettingsRef.get();
@@ -1222,17 +1224,19 @@ export async function finalizeStreamedMessage(messageId, finishReason, context, 
             if (nameTimeBlock && !nameTimeBlock.querySelector('.message-timestamp')) {
                 const timestampDiv = document.createElement('div');
                 timestampDiv.classList.add('message-timestamp');
-                timestampDiv.textContent = new Date(message.timestamp || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                timestampDiv.textContent = formatMessageTimestamp(message.timestamp || Date.now());
                 nameTimeBlock.appendChild(timestampDiv);
             }
-            
+
             messageItem.addEventListener('contextmenu', (e) => {
                 e.preventDefault();
                 refs.showContextMenu(e, messageItem, message);
             });
-            
+
             uiHelper.scrollToBottom();
         }
+
+        window.updateSendButtonState?.();
     }
     
     // 🟢 使用防抖保存
@@ -1261,6 +1265,10 @@ window.streamManager = {
     appendStreamChunk,
     finalizeStreamedMessage,
     getActiveStreamingMessageId: () => activeStreamingMessageId,
+    getActiveStreamingContext: () => {
+        if (!activeStreamingMessageId) return null;
+        return messageContextMap.get(activeStreamingMessageId) || null;
+    },
     isMessageInitialized: (messageId) => {
         // Check if message is being tracked by streamManager
         return messageInitializationStatus.has(messageId);

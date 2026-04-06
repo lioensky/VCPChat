@@ -12,6 +12,13 @@ export async function handleSaveGlobalSettings(e, deps) {
         uiHelperFunctions,
         settingsManager
     } = deps;
+    const currentSettings = refs.globalSettings.get();
+
+    const clampBubbleWidthPercent = (rawValue, fallback) => {
+        const parsed = Number.parseInt(rawValue, 10);
+        if (!Number.isFinite(parsed)) return fallback;
+        return Math.min(98, Math.max(50, parsed));
+    };
 
     const networkNotesPathsContainer = document.getElementById('networkNotesPathsContainer');
     const pathInputs = networkNotesPathsContainer.querySelectorAll('input[name="networkNotesPath"]');
@@ -46,6 +53,26 @@ export async function handleSaveGlobalSettings(e, deps) {
         notificationsSidebarWidth: refs.globalSettings.get().notificationsSidebarWidth,
         enableAgentBubbleTheme: document.getElementById('enableAgentBubbleTheme').checked,
         enableSmoothStreaming: document.getElementById('enableSmoothStreaming').checked,
+        chatFontPreset: document.getElementById('chatFontPreset')?.value || currentSettings.chatFontPreset || 'system',
+        chatFontCustom: document.getElementById('chatFontCustom')?.value.trim() || '',
+        chatCodeFontPreset: document.getElementById('chatCodeFontPreset')?.value || currentSettings.chatCodeFontPreset || 'consolas',
+        chatCodeFontCustom: document.getElementById('chatCodeFontCustom')?.value.trim() || '',
+        chatDiaryFontPreset: document.getElementById('chatDiaryFontPreset')?.value || currentSettings.chatDiaryFontPreset || 'serif',
+        chatDiaryFontCustom: document.getElementById('chatDiaryFontCustom')?.value.trim() || '',
+        chatToolFontPreset: document.getElementById('chatToolFontPreset')?.value || currentSettings.chatToolFontPreset || 'system',
+        chatToolFontCustom: document.getElementById('chatToolFontCustom')?.value.trim() || '',
+        enableWideChatLayout: document.getElementById('chatLayoutModeWide')?.checked || false,
+        enableUserChatBubbleUi: document.getElementById('enableUserChatBubbleUi')?.checked !== false,
+        showUserMetaInChatBubbleUi: document.getElementById('showUserMetaInChatBubbleUi')?.checked !== false,
+        chatBubbleMaxWidthDefault: clampBubbleWidthPercent(currentSettings.chatBubbleMaxWidthDefault, 82),
+        chatBubbleMaxWidthNotifications: clampBubbleWidthPercent(currentSettings.chatBubbleMaxWidthNotifications, 90),
+        chatBubbleMaxWidthNarrow: clampBubbleWidthPercent(currentSettings.chatBubbleMaxWidthNarrow, 85),
+        chatBubbleMaxWidthWideDefault: clampBubbleWidthPercent(document.getElementById('chatBubbleMaxWidthWideDefault')?.value, 92),
+        chatBubbleMaxWidthWideNotifications: clampBubbleWidthPercent(document.getElementById('chatBubbleMaxWidthWideNotifications')?.value, 96),
+        chatBubbleMaxWidthWideNarrow: clampBubbleWidthPercent(
+            document.getElementById('chatBubbleMaxWidthWideNarrow')?.value,
+            clampBubbleWidthPercent(currentSettings.chatBubbleMaxWidthWideNarrow, 92)
+        ),
         minChunkBufferSize: parseInt(document.getElementById('minChunkBufferSize').value, 10) || 16,
         smoothStreamIntervalMs: parseInt(document.getElementById('smoothStreamIntervalMs').value, 10) || 100,
         assistantAgent: document.getElementById('assistantAgent').value,
@@ -178,6 +205,9 @@ export async function handleSaveGlobalSettings(e, deps) {
         }
 
         Object.assign(refs.globalSettings.get(), newSettings);
+        if (typeof window.applyChatBubbleLayoutSettings === 'function') {
+            window.applyChatBubbleLayoutSettings(refs.globalSettings.get());
+        }
         uiHelperFunctions.showToastNotification('全局设置已保存！部分设置（如通知URL/Key）可能需要重新连接生效。');
         uiHelperFunctions.closeModal('globalSettingsModal');
         if (refs.globalSettings.get().vcpLogUrl && refs.globalSettings.get().vcpLogKey) {

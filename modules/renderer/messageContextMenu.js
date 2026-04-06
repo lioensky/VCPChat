@@ -719,8 +719,11 @@ async function handleRegenerateResponse(originalAssistantMessage) {
         avatarUrl: currentSelectedItemVal.avatarUrl,
         avatarColor: currentSelectedItemVal.config?.avatarCalculatedColor,
     };
-    
+
     contextMenuDependencies.renderMessage(regenerationThinkingMessage, false);
+    currentChatHistoryArray.push(regenerationThinkingMessage);
+    mainRefs.currentChatHistoryRef.set([...currentChatHistoryArray]);
+    window.updateSendButtonState?.();
 
     try {
         const agentConfig = await electronAPI.getAgentConfig(currentSelectedItemVal.id);

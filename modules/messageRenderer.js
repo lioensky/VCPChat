@@ -9,7 +9,7 @@ import { avatarColorCache, getDominantAvatarColor } from './renderer/colorUtils.
 import { initializeImageHandler, setContentAndProcessImages } from './renderer/imageHandler.js';
 import { processAnimationsInContent, cleanupAnimationsInContent } from './renderer/animation.js';
 import * as visibilityOptimizer from './renderer/visibilityOptimizer.js';
-import { createMessageSkeleton } from './renderer/domBuilder.js';
+import { createMessageSkeleton, formatMessageTimestamp } from './renderer/domBuilder.js';
 import * as streamManager from './renderer/streamManager.js';
 import * as emoticonUrlFixer from './renderer/emoticonUrlFixer.js';
 
@@ -1074,6 +1074,7 @@ function removeMessageById(messageId, saveHistory = false) {
     if (index > -1) {
         currentChatHistoryArray.splice(index, 1);
         mainRendererReferences.currentChatHistoryRef.set([...currentChatHistoryArray]);
+        window.updateSendButtonState?.();
 
         if (saveHistory) {
             const currentSelectedItemVal = mainRendererReferences.currentSelectedItemRef.get();
@@ -1116,6 +1117,7 @@ function clearChat() {
         mainRendererReferences.chatMessagesDiv.innerHTML = '';
     }
     mainRendererReferences.currentChatHistoryRef.set([]); // Clear the history array via its ref
+    window.updateSendButtonState?.();
 }
 
 
@@ -2062,6 +2064,7 @@ async function renderFullMessage(messageId, fullContent, agentName, agentId) {
     }
 
     messageItem.classList.remove('thinking', 'streaming');
+    window.updateSendButtonState?.();
 
     const contentDiv = messageItem.querySelector('.md-content');
     if (!contentDiv) {
@@ -2075,7 +2078,7 @@ async function renderFullMessage(messageId, fullContent, agentName, agentId) {
         const timestampDiv = document.createElement('div');
         timestampDiv.classList.add('message-timestamp');
         const messageFromHistory = currentChatHistoryArray.find(m => m.id === messageId);
-        timestampDiv.textContent = new Date(messageFromHistory?.timestamp || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        timestampDiv.textContent = formatMessageTimestamp(messageFromHistory?.timestamp || Date.now());
         nameTimeBlock.appendChild(timestampDiv);
     }
 
