@@ -1,5 +1,6 @@
 // modules/renderer/streamManager.js
 import { formatMessageTimestamp } from './domBuilder.js';
+import { createContentPipeline, PIPELINE_MODES } from './contentPipeline.js';
 
 // --- Stream State ---
 const streamingChunkQueues = new Map(); // messageId -> array of original chunk strings
@@ -36,13 +37,9 @@ const messageContextMap = new Map(); // messageId -> {agentId, groupId, topicId,
 
 // --- Local Reference Store ---
 let refs = {};
+let contentPipeline = null;
 
 // --- Pre-compiled Regular Expressions for Performance ---
-const SPEAKER_TAG_REGEX = /^\[(?:(?!\]:\s).)*的发言\]:\s*/gm;
-const NEWLINE_AFTER_CODE_REGEX = /^(\s*```)(?![\r\n])/gm;
-const SPACE_AFTER_TILDE_REGEX = /(^|[^\w/\\=])~(?![\s~])/g;
-const CODE_MARKER_INDENT_REGEX = /^(\s*)(```.*)/gm;
-const IMG_CODE_SEPARATOR_REGEX = /(<img[^>]+>)\s*(```)/g;
 
 /**
  * Initializes the Stream Manager with necessary dependencies from the main renderer.
@@ -50,6 +47,45 @@ const IMG_CODE_SEPARATOR_REGEX = /(<img[^>]+>)\s*(```)/g;
  */
 export function initStreamManager(dependencies) {
     refs = dependencies;
+
+    contentPipeline = createContentPipeline({
+        fixEmoticonUrlsInMarkdown: (text) => {
+            if (!text || typeof text !== 'string' || !refs.emoticonUrlFixer) return text;
+
+            let processedText = text;
+
+            processedText = processedText.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (match, alt, url) => {
+                const fixedUrl = refs.emoticonUrlFixer.fixEmoticonUrl(url);
+                return `![${alt}](${fixedUrl})`;
+            });
+
+            processedText = processedText.replace(/<img([^>]*?)src=["']([^"']+)["']([^>]*?)>/gi, (match, before, url, after) => {
+                const fixedUrl = refs.emoticonUrlFixer.fixEmoticonUrl(url);
+                return `<img${before}src="${fixedUrl}"${after}>`;
+            });
+
+            return processedText;
+        },
+        processStartEndMarkers: (text) => refs.processStartEndMarkers ? refs.processStartEndMarkers(text) : text,
+        deIndentMisinterpretedCodeBlocks: (text) => refs.deIndentMisinterpretedCodeBlocks ? refs.deIndentMisinterpretedCodeBlocks(text) : text,
+        applyContentProcessors: (text) => {
+            let processedText = text;
+            if (refs.removeSpeakerTags) {
+                processedText = refs.removeSpeakerTags(processedText);
+            }
+            if (refs.ensureNewlineAfterCodeBlock) {
+                processedText = refs.ensureNewlineAfterCodeBlock(processedText);
+            }
+            if (refs.ensureSpaceAfterTilde) {
+                processedText = refs.ensureSpaceAfterTilde(processedText);
+            }
+            if (refs.ensureSeparatorBetweenImgAndCode) {
+                processedText = refs.ensureSeparatorBetweenImgAndCode(processedText);
+            }
+            return processedText;
+        }
+    });
+
     // Assume morphdom is passed in dependencies, warn if not present.
     if (!refs.morphdom) {
         console.warn('[StreamManager] `morphdom` not provided. Streaming rendering will fall back to inefficient innerHTML updates.');
@@ -191,51 +227,15 @@ async function saveHistoryForContext(context, history) {
 
 /**
  * 批量应用流式渲染所需的轻量级预处理
- * 减少函数调用开销
+ * 通过统一流水线维持与完整渲染一致的顺序协议。
  */
 function applyStreamingPreprocessors(text) {
     if (!text) return '';
-    
-    // 🟢 在流式渲染前也修复一次（双重保险）
-    // 因为流式输出可能绕过 preprocessFullContent
-    if (refs.emoticonUrlFixer) {
-        // Markdown 语法
-        text = text.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (match, alt, url) => {
-            const fixedUrl = refs.emoticonUrlFixer.fixEmoticonUrl(url);
-            return `![${alt}](${fixedUrl})`;
-        });
-        
-        // HTML 标签
-        text = text.replace(/<img([^>]*?)src=["']([^"']+)["']([^>]*?)>/gi, (match, before, url, after) => {
-            const fixedUrl = refs.emoticonUrlFixer.fixEmoticonUrl(url);
-            return `<img${before}src="${fixedUrl}"${after}>`;
-        });
-    }
-    
-    // 🟢 重置 lastIndex（全局正则）
-    SPEAKER_TAG_REGEX.lastIndex = 0;
-    NEWLINE_AFTER_CODE_REGEX.lastIndex = 0;
-    SPACE_AFTER_TILDE_REGEX.lastIndex = 0;
-    IMG_CODE_SEPARATOR_REGEX.lastIndex = 0;
-    
-    let processedText = text;
+    if (!contentPipeline) return text;
 
-    // 🟢 新增：在流式处理中也修复错误的缩进代码块
-    // 🟢 使用精细化的缩进处理，只处理HTML标签
-    if (refs.deIndentMisinterpretedCodeBlocks) {
-        processedText = refs.deIndentMisinterpretedCodeBlocks(processedText);
-    }
-    
-    // 🔴 关键安全修复：在流式传输中也转义「始」和「末」之间的内容
-    if (refs.processStartEndMarkers) {
-        processedText = refs.processStartEndMarkers(processedText);
-    }
-    
-    return processedText
-        .replace(SPEAKER_TAG_REGEX, '')
-        .replace(NEWLINE_AFTER_CODE_REGEX, '$1\n')
-        .replace(SPACE_AFTER_TILDE_REGEX, '$1~ ')
-        .replace(IMG_CODE_SEPARATOR_REGEX, '$1\n\n<!-- VCP-Renderer-Separator -->\n\n$2');
+    return contentPipeline.process(text, {
+        mode: PIPELINE_MODES.STREAM_FAST
+    }).text;
 }
 
 /**

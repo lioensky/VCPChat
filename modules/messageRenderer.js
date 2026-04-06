@@ -12,6 +12,7 @@ import * as visibilityOptimizer from './renderer/visibilityOptimizer.js';
 import { createMessageSkeleton, formatMessageTimestamp } from './renderer/domBuilder.js';
 import * as streamManager from './renderer/streamManager.js';
 import * as emoticonUrlFixer from './renderer/emoticonUrlFixer.js';
+import { createContentPipeline, PIPELINE_MODES } from './renderer/contentPipeline.js';
 
 const colorExtractionPromises = new Map();
 
@@ -32,8 +33,6 @@ import * as middleClickHandler from './renderer/middleClickHandler.js';
 // --- LaTeX Protection ---
 // 用于在 marked 解析前保护 LaTeX 块，防止 Markdown 解析器破坏 LaTeX 语法
 // （如 \\ 被当作转义、_ 被当作斜体等）
-let latexBlockMap = null;
-let latexPlaceholderId = 0;
 
 /**
  * 在 marked 解析前保护 LaTeX 块，用占位符替换。
@@ -833,124 +832,17 @@ function calculateDepthByTurns(messageId, history) {
  * @returns {string} The processed text.
  */
 function preprocessFullContent(text, settings = {}, messageRole = 'assistant', depth = 0) {
-    //  新增：第一层修复 - Markdown 图片语法修复
-    text = fixEmoticonUrlsInMarkdown(text);
-
-    // 🔴 关键安全修复：将「始」和「末」之间的内容视为纯文本并进行 HTML 转义
-    text = contentProcessor.processStartEndMarkers(text);
-
-    // 一次性处理 Mermaid（合并两种情况）
-    text = text.replace(MERMAID_CODE_REGEX, (match, lang, code) => {
-        const tempEl = document.createElement('textarea');
-        tempEl.innerHTML = code;
-        const encodedCode = encodeURIComponent(tempEl.value.trim());
-        return `<div class="mermaid-placeholder" data-mermaid-code="${encodedCode}"></div>`;
-    });
-
-    text = text.replace(MERMAID_FENCE_REGEX, (match, lang, code) => {
-        const encodedCode = encodeURIComponent(code.trim());
-        return `<div class="mermaid-placeholder" data-mermaid-code="${encodedCode}"></div>`;
-    });
-
-    // 🔴 关键修复：在提取代码块之前先处理缩进
-    text = contentProcessor.deIndentMisinterpretedCodeBlocks(text);
-    text = deIndentHtml(text);
-
-    // 🟢 保护工具调用结果块：在代码块保护和 DESKTOP_PUSH/TOOL_REQUEST 处理之前
-    // 工具调用结果块内部可能包含 <<<[TOOL_REQUEST]>>> 或 <<<[DESKTOP_PUSH]>>> 语法
-    // 这些是文档内容的一部分，不应被当作真正的工具调用或桌面推送来渲染
-    let toolResultMap = null;
-    let toolResultPlaceholderId = 0;
-    TOOL_RESULT_REGEX.lastIndex = 0;
-    const hasToolResults = TOOL_RESULT_REGEX.test(text);
-    TOOL_RESULT_REGEX.lastIndex = 0; // 重置，后续 transformSpecialBlocks 还要用
-
-    if (hasToolResults) {
-        toolResultMap = new Map();
-        text = text.replace(TOOL_RESULT_REGEX, (match) => {
-            const placeholder = `__VCP_TOOL_RESULT_PLACEHOLDER_${toolResultPlaceholderId}__`;
-            toolResultMap.set(placeholder, match);
-            toolResultPlaceholderId++;
-            return placeholder;
-        });
-        TOOL_RESULT_REGEX.lastIndex = 0; // 重置
+    if (!contentPipeline) {
+        console.warn('[MessageRenderer] contentPipeline not initialized, falling back to raw text');
+        return text;
     }
 
-    // 保护代码块（优化：只在需要时创建 Map）
-    let codeBlockMap = null;
-    let placeholderId = 0;
-
-    // Use a lookahead to test without consuming the match
-    const hasCodeBlocks = /```/.test(text);
-
-    if (hasCodeBlocks) {
-        codeBlockMap = new Map();
-        text = text.replace(CODE_FENCE_REGEX, (match) => {
-            const placeholder = `__VCP_CODE_BLOCK_PLACEHOLDER_${placeholderId}__`;
-            codeBlockMap.set(placeholder, match);
-            placeholderId++;
-            return placeholder;
-        });
-    }
-
-    // The order of the remaining operations is critical.
-    text = contentProcessor.deIndentToolRequestBlocks(text);
-
-    // 🔴 VCPdesktop 转义封印：在代码块保护之后执行（代码块内的语法不会被误匹配）
-    // 工具调用结果块已被保护，内部的推送语法不会被误匹配
-    DESKTOP_PUSH_REGEX.lastIndex = 0;
-    DESKTOP_PUSH_PARTIAL_REGEX.lastIndex = 0;
-    text = text.replace(DESKTOP_PUSH_REGEX, (match, rawContent) => {
-        const content = rawContent.trim();
-        const escapedPreview = escapeHtml(content.length > 120 ? content.substring(0, 120) + '...' : content);
-        return `<div class="vcp-desktop-push-placeholder">` +
-            `<div class="vcp-desktop-push-header">` +
-            `<span class="vcp-desktop-push-icon">🖥️</span>` +
-            `<span class="vcp-desktop-push-label">已推送到桌面画布</span>` +
-            `</div>` +
-            `<div class="vcp-desktop-push-preview"><pre>${escapedPreview}</pre></div>` +
-            `</div>`;
-    });
-    text = text.replace(DESKTOP_PUSH_PARTIAL_REGEX, (match, partialContent) => {
-        const content = partialContent.trim();
-        // 🟢 改进：显示末尾内容而非开头，让用户看到推送进度
-        const lines = content.split('\n');
-        const totalLines = lines.length;
-        const tailLines = lines.slice(-3).join('\n'); // 显示最后3行
-        const escapedPreview = escapeHtml(tailLines.length > 120 ? tailLines.substring(tailLines.length - 120) : tailLines);
-        const lineCountInfo = totalLines > 3 ? `(${totalLines} 行)` : '';
-        return `<div class="vcp-desktop-push-placeholder constructing">` +
-            `<div class="vcp-desktop-push-header">` +
-            `<span class="vcp-desktop-push-icon">🖥️</span>` +
-            `<span class="vcp-desktop-push-label">正在向桌面推送 ${escapeHtml(lineCountInfo)}<span class="thinking-indicator-dots">...</span></span>` +
-            `</div>` +
-            `<div class="vcp-desktop-push-preview"><pre>${escapedPreview}</pre></div>` +
-            `</div>`;
-    });
-
-    // 🟢 恢复工具调用结果块（在 DESKTOP_PUSH 处理之后、transformSpecialBlocks 之前）
-    // 这样 transformSpecialBlocks 中的 TOOL_RESULT_REGEX 可以正常匹配并渲染结果气泡
-    if (toolResultMap) {
-        for (const [placeholder, block] of toolResultMap.entries()) {
-            text = text.replace(placeholder, () => block);
-        }
-    }
-
-    text = transformSpecialBlocks(text, codeBlockMap);
-    text = ensureHtmlFenced(text);
-
-    // 批量应用内容处理器（减少函数调用）
-    text = contentProcessor.applyContentProcessors(text);
-
-    // 恢复代码块
-    if (codeBlockMap) {
-        for (const [placeholder, block] of codeBlockMap.entries()) {
-            // Use a function for replacement to handle special characters in the block
-            text = text.replace(placeholder, () => block);
-        }
-    }
-
-    return text;
+    return contentPipeline.process(text, {
+        mode: PIPELINE_MODES.FULL_RENDER,
+        settings,
+        messageRole,
+        depth
+    }).text;
 }
 
 /**
@@ -1034,6 +926,8 @@ let mainRendererReferences = {
     // activeStreamingMessageId: null, // ID of the message currently being streamed - REMOVED
 };
 
+
+let contentPipeline = null;
 
 let activeRenderSessionId = 0;
 
@@ -1123,6 +1017,37 @@ function clearChat() {
 
 function initializeMessageRenderer(refs) {
     Object.assign(mainRendererReferences, refs);
+
+    contentPipeline = createContentPipeline({
+        escapeHtml,
+        processStartEndMarkers: contentProcessor.processStartEndMarkers,
+        fixEmoticonUrlsInMarkdown,
+        deIndentMisinterpretedCodeBlocks: contentProcessor.deIndentMisinterpretedCodeBlocks,
+        deIndentHtml,
+        deIndentToolRequestBlocks: contentProcessor.deIndentToolRequestBlocks,
+        applyContentProcessors: contentProcessor.applyContentProcessors,
+        transformSpecialBlocks,
+        ensureHtmlFenced,
+        transformMermaidPlaceholders: (text) => {
+            let transformed = text.replace(MERMAID_CODE_REGEX, (match, lang, code) => {
+                const tempEl = document.createElement('textarea');
+                tempEl.innerHTML = code;
+                const encodedCode = encodeURIComponent(tempEl.value.trim());
+                return `<div class="mermaid-placeholder" data-mermaid-code="${encodedCode}"></div>`;
+            });
+
+            transformed = transformed.replace(MERMAID_FENCE_REGEX, (match, lang, code) => {
+                const encodedCode = encodeURIComponent(code.trim());
+                return `<div class="mermaid-placeholder" data-mermaid-code="${encodedCode}"></div>`;
+            });
+
+            return transformed;
+        },
+        getToolResultRegex: () => TOOL_RESULT_REGEX,
+        getCodeFenceRegex: () => CODE_FENCE_REGEX,
+        getDesktopPushRegex: () => DESKTOP_PUSH_REGEX,
+        getDesktopPushPartialRegex: () => DESKTOP_PUSH_PARTIAL_REGEX,
+    });
 
     initializeImageHandler({
         electronAPI: mainRendererReferences.electronAPI,
@@ -1606,30 +1531,8 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true,
             textToRender = "[消息内容格式异常]";
         }
 
-        // Apply special formatting for user button clicks
         if (message.role === 'user') {
-            // 🔴 关键安全修复：用户输入属于不可信内容，必须先行进行 HTML 转义以防 XSS
-            // 🟢 改进：允许用户发送 <img> 标签（表情包），但需排除包含事件处理器的恶意标签
-            const userImgBlocks = [];
-            textToRender = textToRender.replace(/<img\s+[^>]*src=["']([^"']+)["'][^>]*>/gi, (match) => {
-                // 拒绝包含 onXXX 事件或 javascript: 协议的标签
-                if (/on\w+\s*=/i.test(match) || /src\s*=\s*["']\s*javascript:/i.test(match)) {
-                    return match; // 包含潜在恶意代码，不保护，后续会被转义
-                }
-                const placeholder = `__VCP_USER_IMG_${userImgBlocks.length}__`;
-                userImgBlocks.push(match);
-                return placeholder;
-            });
-
-            textToRender = escapeHtml(textToRender);
-
-            // 还原受保护的 <img> 标签
-            userImgBlocks.forEach((img, i) => {
-                textToRender = textToRender.replace(`__VCP_USER_IMG_${i}__`, img);
-            });
-
-            textToRender = transformUserButtonClick(textToRender);
-            textToRender = transformVCPChatCanvas(textToRender);
+            textToRender = prepareUserMessageText(textToRender);
         } else if (message.role === 'assistant' && scopeId) {
             // --- 🟢 关键修复：先保护所有可能包含 <style> 的特殊区域，再提取样式 ---
             // 这样可以避免代码块、推送块、工具请求块和「始」「末」标记内的 <style> 被误当作真正的样式注入
@@ -2134,28 +2037,8 @@ function updateMessageContent(messageId, newContent) {
     const currentChatHistoryForUpdate = mainRendererReferences.currentChatHistoryRef.get();
     const messageInHistory = currentChatHistoryForUpdate.find(m => m.id === messageId);
 
-    // 🔴 修复：如果是用户消息，必须先转义以防 XSS，并应用用户特有转换
     if (messageInHistory && messageInHistory.role === 'user') {
-        // 🟢 允许用户发送 <img> 标签（表情包），但需排除包含事件处理器的恶意标签
-        const userImgBlocks = [];
-        textToRender = textToRender.replace(/<img\s+[^>]*src=["']([^"']+)["'][^>]*>/gi, (match) => {
-            if (/on\w+\s*=/i.test(match) || /src\s*=\s*["']\s*javascript:/i.test(match)) {
-                return match;
-            }
-            const placeholder = `__VCP_USER_IMG_${userImgBlocks.length}__`;
-            userImgBlocks.push(match);
-            return placeholder;
-        });
-
-        textToRender = escapeHtml(textToRender);
-
-        // 还原受保护的 <img> 标签
-        userImgBlocks.forEach((img, i) => {
-            textToRender = textToRender.replace(`__VCP_USER_IMG_${i}__`, img);
-        });
-
-        textToRender = transformUserButtonClick(textToRender);
-        textToRender = transformVCPChatCanvas(textToRender);
+        textToRender = prepareUserMessageText(textToRender);
     }
 
     // --- 按“对话轮次”计算深度 ---
@@ -2200,6 +2083,33 @@ function updateMessageContent(messageId, newContent) {
 
     // 5. Re-run animations/scripts/3D scenes
     processAnimationsInContent(contentDiv);
+}
+
+function prepareUserMessageText(text) {
+    let processedText = text;
+
+    // 🔴 关键安全修复：用户输入属于不可信内容，必须先行进行 HTML 转义以防 XSS
+    // 🟢 改进：允许用户发送 <img> 标签（表情包），但需排除包含事件处理器的恶意标签
+    const userImgBlocks = [];
+    processedText = processedText.replace(/<img\s+[^>]*src=["']([^"']+)["'][^>]*>/gi, (match) => {
+        if (/on\w+\s*=/i.test(match) || /src\s*=\s*["']\s*javascript:/i.test(match)) {
+            return match;
+        }
+        const placeholder = `__VCP_USER_IMG_${userImgBlocks.length}__`;
+        userImgBlocks.push(match);
+        return placeholder;
+    });
+
+    processedText = escapeHtml(processedText);
+
+    userImgBlocks.forEach((img, i) => {
+        processedText = processedText.replace(`__VCP_USER_IMG_${i}__`, img);
+    });
+
+    processedText = transformUserButtonClick(processedText);
+    processedText = transformVCPChatCanvas(processedText);
+
+    return processedText;
 }
 
 // Expose methods to renderer.js
