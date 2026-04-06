@@ -23,6 +23,7 @@ let startAudioEngine; // To hold the function from main.js
 let stopAudioEngine; // To hold the function from main.js
 let musicWindowPromise = null; // To handle concurrent window creation requests
 let pendingTrackForNewWindow = null; // 用于在新窗口创建时传递待播放的曲目
+let ipcHandlersRegistered = false;
 
 // --- Singleton Music Window Creation Function ---
 function createOrFocusMusicWindow() {
@@ -257,6 +258,11 @@ function initialize(options) {
     MUSIC_PLAYLIST_FILE = path.join(APP_DATA_ROOT_IN_PROJECT, 'songlist.json');
     MUSIC_COVER_CACHE_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'MusicCoverCache');
     LYRIC_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'lyric');
+
+    if (ipcHandlersRegistered) {
+        console.log('[Music] IPC handlers already registered, skipping duplicate registration.');
+        return;
+    }
 
     const registerIpcHandlers = () => {
         console.log('[Music] registerIpcHandlers called');
@@ -798,6 +804,7 @@ function initialize(options) {
     // 先注册 IPC 处理器，再异步加载 node-fetch
     console.error('[Music] About to call registerIpcHandlers...');
     registerIpcHandlers();
+    ipcHandlersRegistered = true;
     console.error('[Music] IPC handlers registered.');
     console.log('[Music] IPC handlers registered.');
     

@@ -8,9 +8,15 @@ const { PRELOAD_ROLES, resolveAppPreload } = require('../services/preloadPaths')
  * @param {BrowserWindow} mainWindow The main window instance.
  * @param {BrowserWindow[]} openChildWindows - A reference to the array holding all open child windows.
  */
+let ipcHandlersRegistered = false;
+let forumWindowInstance = null;
+let memoWindowInstance = null;
+
 function initialize(mainWindow, openChildWindows) {
-    let forumWindowInstance = null;
-    let memoWindowInstance = null;
+    if (ipcHandlersRegistered) {
+        return;
+    }
+
     // --- Window Control IPC Handlers ---
     ipcMain.on('minimize-window', (event) => {
         const win = BrowserWindow.fromWebContents(event.sender);
@@ -243,6 +249,8 @@ function initialize(mainWindow, openChildWindows) {
             memoWindowInstance = null;
         });
     });
+
+    ipcHandlersRegistered = true;
 }
 
 module.exports = {
