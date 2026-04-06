@@ -6,6 +6,7 @@ import { createContentPipeline, PIPELINE_MODES } from './contentPipeline.js';
 const streamingChunkQueues = new Map(); // messageId -> array of original chunk strings
 const streamingTimers = new Map();      // messageId -> intervalId
 const accumulatedStreamText = new Map(); // messageId -> string
+const streamSegmentStates = new Map(); // messageId -> { stableCutoff, stableHtml, lastTailText }
 let activeStreamingMessageId = null; // Track the currently active streaming message
 const elementContentLengthCache = new Map(); // 跟踪每个元素的内容长度
 
@@ -17,6 +18,14 @@ const DESKTOP_PUSH_THROTTLE_MS = 100; // 每100ms推送一次累积内容到桌�
 const DESKTOP_PUSH_TIMEOUT_MS = 150000; // 150秒超时：未闭合的推送块自动finalize
 const DESKTOP_PUSH_VALID_PREFIXES = ['<!doctype', '<div', '<section', '<article', '<main', '<header', '<nav', '<aside', '<canvas', '<svg', '<style', 'target:','<!--'];
 let desktopWindowAvailable = false; // 缓存桌面窗口是否可用，避免每个token都发IPC
+
+const TOOL_REQUEST_START = '<<<[TOOL_REQUEST]>>>';
+const TOOL_REQUEST_END = '<<<[END_TOOL_REQUEST]>>>';
+const TOOL_RESULT_START = '[[VCP调用结果信息汇总:';
+const TOOL_RESULT_END = 'VCP调用结果结束]]';
+const DESKTOP_PUSH_START = '<<<[DESKTOP_PUSH]>>>';
+const DESKTOP_PUSH_END = '<<<[DESKTOP_PUSH_END]>>>';
+const CODE_FENCE = '```';
 
 // --- DOM Cache ---
 const messageDomCache = new Map(); // messageId -> { messageItem, contentDiv }
@@ -238,6 +247,105 @@ function applyStreamingPreprocessors(text) {
     }).text;
 }
 
+function ensureStreamingRoots(contentDiv) {
+    let stableRoot = contentDiv.querySelector('.vcp-stream-stable-root');
+    let tailRoot = contentDiv.querySelector('.vcp-stream-tail-root');
+
+    if (!stableRoot || !tailRoot) {
+        contentDiv.innerHTML = '';
+        stableRoot = document.createElement('div');
+        stableRoot.className = 'vcp-stream-stable-root';
+        tailRoot = document.createElement('div');
+        tailRoot.className = 'vcp-stream-tail-root';
+        contentDiv.appendChild(stableRoot);
+        contentDiv.appendChild(tailRoot);
+    }
+
+    return { stableRoot, tailRoot };
+}
+
+function getOrCreateStreamSegmentState(messageId) {
+    let state = streamSegmentStates.get(messageId);
+    if (!state) {
+        state = {
+            stableCutoff: 0,
+            stableHtml: '',
+            lastTailText: ''
+        };
+        streamSegmentStates.set(messageId, state);
+    }
+    return state;
+}
+
+function startsWithAt(text, index, token) {
+    return text.startsWith(token, index);
+}
+
+function findMatchingFenceEnd(text, startIndex) {
+    const openEnd = text.indexOf('\n', startIndex);
+    if (openEnd === -1) return -1;
+
+    let searchIndex = openEnd + 1;
+    while (searchIndex < text.length) {
+        const closeIndex = text.indexOf(CODE_FENCE, searchIndex);
+        if (closeIndex === -1) return -1;
+
+        const lineStart = closeIndex === 0 ? 0 : text.lastIndexOf('\n', closeIndex - 1) + 1;
+        const prefix = text.slice(lineStart, closeIndex);
+        if (prefix.trim() === '') {
+            const lineEnd = text.indexOf('\n', closeIndex);
+            return lineEnd === -1 ? text.length : lineEnd + 1;
+        }
+
+        searchIndex = closeIndex + CODE_FENCE.length;
+    }
+
+    return -1;
+}
+
+function findExplicitStablePrefix(text, startOffset = 0) {
+    let index = Math.max(0, startOffset);
+    let stableCutoff = startOffset;
+
+    while (index < text.length) {
+        if (startsWithAt(text, index, CODE_FENCE)) {
+            const fenceEnd = findMatchingFenceEnd(text, index);
+            if (fenceEnd === -1) break;
+            stableCutoff = fenceEnd;
+            index = fenceEnd;
+            continue;
+        }
+
+        if (startsWithAt(text, index, TOOL_REQUEST_START)) {
+            const endIndex = text.indexOf(TOOL_REQUEST_END, index + TOOL_REQUEST_START.length);
+            if (endIndex === -1) break;
+            stableCutoff = endIndex + TOOL_REQUEST_END.length;
+            index = stableCutoff;
+            continue;
+        }
+
+        if (startsWithAt(text, index, TOOL_RESULT_START)) {
+            const endIndex = text.indexOf(TOOL_RESULT_END, index + TOOL_RESULT_START.length);
+            if (endIndex === -1) break;
+            stableCutoff = endIndex + TOOL_RESULT_END.length;
+            index = stableCutoff;
+            continue;
+        }
+
+        if (startsWithAt(text, index, DESKTOP_PUSH_START)) {
+            const endIndex = text.indexOf(DESKTOP_PUSH_END, index + DESKTOP_PUSH_START.length);
+            if (endIndex === -1) break;
+            stableCutoff = endIndex + DESKTOP_PUSH_END.length;
+            index = stableCutoff;
+            continue;
+        }
+
+        index += 1;
+    }
+
+    return stableCutoff;
+}
+
 /**
  * 获取或缓存消息的 DOM 引用
  */
@@ -302,6 +410,23 @@ function setupEmoticonHandlers(img) {
     };
 }
 
+function processStreamTailImages(container) {
+    if (!refs.emoticonUrlFixer || !container) return;
+
+    const newImages = container.querySelectorAll('img[src*="表情包"]:not([data-emoticon-handler-attached])');
+
+    newImages.forEach(img => {
+        img.dataset.emoticonHandlerAttached = 'true';
+        img.style.visibility = 'hidden';
+
+        if (img.complete && img.naturalWidth > 0) {
+            img.style.visibility = 'visible';
+        } else {
+            setupEmoticonHandlers(img);
+        }
+    });
+}
+
 /**
  * Renders a single frame of the streaming message using morphdom for efficient DOM updates.
  * This version performs minimal processing to keep it fast and avoid destroying JS state.
@@ -325,20 +450,32 @@ function renderStreamFrame(messageId) {
     if (!cachedDom) return;
     
     const { contentDiv } = cachedDom;
+    const { stableRoot, tailRoot } = ensureStreamingRoots(contentDiv);
+    const segmentState = getOrCreateStreamSegmentState(messageId);
 
     const textForRendering = accumulatedStreamText.get(messageId) || "";
+    const nextStableCutoff = findExplicitStablePrefix(textForRendering, segmentState.stableCutoff);
 
     // 移除思考指示器
     const streamingIndicator = contentDiv.querySelector('.streaming-indicator, .thinking-indicator');
     if (streamingIndicator) streamingIndicator.remove();
 
-    // 🟢 使用批量处理函数
-    const processedText = applyStreamingPreprocessors(textForRendering);
+    if (nextStableCutoff > segmentState.stableCutoff) {
+        const stableText = textForRendering.slice(0, nextStableCutoff);
+        const processedStableText = applyStreamingPreprocessors(stableText);
+        const stableHtml = refs.markedInstance.parse(processedStableText);
+        stableRoot.innerHTML = stableHtml;
+        segmentState.stableCutoff = nextStableCutoff;
+        segmentState.stableHtml = stableHtml;
+    }
+
+    const tailText = textForRendering.slice(segmentState.stableCutoff);
+    const processedText = applyStreamingPreprocessors(tailText);
     const rawHtml = refs.markedInstance.parse(processedText);
 
     if (refs.morphdom) {
         try {
-            refs.morphdom(contentDiv, `<div>${rawHtml}</div>`, {
+            refs.morphdom(tailRoot, `<div>${rawHtml}</div>`, {
                 childrenOnly: true,
                 
                 onBeforeElUpdated: function(fromEl, toEl) {
@@ -460,28 +597,12 @@ function renderStreamFrame(messageId) {
             console.debug('[StreamManager] morphdom skipped frame due to incomplete HTML, waiting for more chunks...');
         }
     } else {
-        contentDiv.innerHTML = rawHtml;
+        tailRoot.innerHTML = rawHtml;
     }
 
-    // 🟢 新增：为表情包图片添加防闪烁和错误修复逻辑
-    if (refs.emoticonUrlFixer) {
-        const newImages = contentDiv.querySelectorAll('img[src*="表情包"]:not([data-emoticon-handler-attached])');
-        
-        newImages.forEach(img => {
-            img.dataset.emoticonHandlerAttached = 'true';
-            
-            // Hide image initially to prevent broken icon flicker
-            img.style.visibility = 'hidden';
-    
-            // If image is already loaded (e.g., from cache), show it immediately.
-            // Otherwise, set up handlers to show it on load/error.
-            if (img.complete && img.naturalWidth > 0) {
-                img.style.visibility = 'visible';
-            } else {
-                setupEmoticonHandlers(img);
-            }
-        });
-    }
+    processStreamTailImages(stableRoot);
+    processStreamTailImages(tailRoot);
+    segmentState.lastTailText = tailText;
 }
 
 /**
@@ -1195,6 +1316,8 @@ export async function finalizeStreamedMessage(messageId, finishReason, context, 
 
             const contentDiv = messageItem.querySelector('.md-content');
             if (contentDiv) {
+                contentDiv.querySelectorAll('.vcp-stream-stable-root, .vcp-stream-tail-root').forEach((el) => el.remove());
+
                 const globalSettings = refs.globalSettingsRef.get();
                 // Use the more thorough preprocessFullContent for the final render
                 const processedFinalText = refs.preprocessFullContent(finalFullText, globalSettings);
@@ -1247,6 +1370,8 @@ export async function finalizeStreamedMessage(messageId, finishReason, context, 
     // Cleanup
     streamingChunkQueues.delete(messageId);
     accumulatedStreamText.delete(messageId);
+    streamSegmentStates.delete(messageId);
+    cleanupDesktopPushState(messageId);
     
     // Delayed cleanup
     setTimeout(() => {
