@@ -91,11 +91,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     setupEventListeners();
 
     // 监听窗口尺寸变化以更新 Pretext
-    window.addEventListener('resize', () => {
+    const debouncedRecalculatePretext = debounce(() => {
         if (window.pretextBridge && window.pretextBridge.isReady()) {
             window.pretextBridge.recalculateAll(window.innerWidth);
         }
-    });
+    }, 180);
+
+    window.addEventListener('resize', debouncedRecalculatePretext);
 
     // 初始化工作台
     if (window.DiaryWorkbench) {
@@ -665,6 +667,10 @@ function renderMemos(memos) {
         return;
     }
 
+    const gridWidth = memoGridEl.offsetWidth;
+    const columns = window.innerWidth > 1200 ? 3 : (window.innerWidth > 800 ? 2 : 1);
+    const estimatedCardWidth = (gridWidth ? (gridWidth / columns) - 32 : 300);
+
     memos.forEach(memo => {
         const card = document.createElement('div');
         const memoFolder = memo.folderName || currentFolder;
@@ -675,12 +681,9 @@ function renderMemos(memos) {
         const dateStr = new Date(memo.lastModified).toLocaleString();
 
         const previewText = memo.preview || '无预览内容';
-        const cardWidth = memoGridEl.offsetWidth / (window.innerWidth > 1200 ? 3 : (window.innerWidth > 800 ? 2 : 1)) - 32; // 估算单卡片宽度
-        
-        if (window.pretextBridge && window.pretextBridge.isReady()) {
-            // 预先测算高度并缓存，减少后续 reflow
-            window.pretextBridge.estimateHeight(memoId, previewText, 'memo', cardWidth || 300);
-        }
+
+        card.dataset.memoId = memoId;
+        card.dataset.pretextWidth = String(Math.max(estimatedCardWidth, 240));
 
         card.innerHTML = `
             <div>
@@ -719,6 +722,39 @@ function renderMemos(memos) {
         };
         memoGridEl.appendChild(card);
     });
+
+    scheduleVisibleMemoPretextEstimation();
+}
+
+function scheduleVisibleMemoPretextEstimation() {
+    if (!window.pretextBridge || !window.pretextBridge.isReady()) return;
+
+    const cards = Array.from(memoGridEl.querySelectorAll('.memo-card'));
+    if (cards.length === 0) return;
+
+    const run = () => {
+        const visibleCards = cards.filter(card => {
+            const rect = card.getBoundingClientRect();
+            return rect.bottom >= -200 && rect.top <= window.innerHeight + 200;
+        });
+
+        visibleCards.forEach(card => {
+            const previewEl = card.querySelector('.preview');
+            const memoId = card.dataset.memoId;
+            const width = Number(card.dataset.pretextWidth) || 300;
+            const text = previewEl?.textContent || '';
+
+            if (memoId && text) {
+                window.pretextBridge.estimateHeight(memoId, text, 'memo', width);
+            }
+        });
+    };
+
+    if (typeof window.requestIdleCallback === 'function') {
+        window.requestIdleCallback(run, { timeout: 300 });
+    } else {
+        setTimeout(run, 0);
+    }
 }
 
 function updateBatchUI() {
@@ -805,7 +841,15 @@ function renderPreview(content) {
         // Pretext 高度测算
         if (window.pretextBridge && window.pretextBridge.isReady() && currentMemo) {
             const previewWidth = editorPreview.offsetWidth || 600;
-            window.pretextBridge.estimateHeight('memo-preview-' + currentMemo.file, content, 'memo', previewWidth);
+            const estimatePreviewHeight = () => {
+                window.pretextBridge.estimateHeight('memo-preview-' + currentMemo.file, content, 'memo', previewWidth);
+            };
+
+            if (typeof window.requestIdleCallback === 'function') {
+                window.requestIdleCallback(estimatePreviewHeight, { timeout: 250 });
+            } else {
+                setTimeout(estimatePreviewHeight, 0);
+            }
         }
 
         // KaTeX 渲染
