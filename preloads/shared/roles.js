@@ -257,6 +257,7 @@ const UTILITY_KEYS = [
     'ragOverlayShow',
     'ragOverlayHide',
     'ragOverlaySetEnabled',
+    'ragOverlaySetNotificationCategoryEnabled',
     'ragOverlaySetOpacity',
     'ragOverlaySetPassThrough',
     'ragOverlayResize',

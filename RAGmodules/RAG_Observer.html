@@ -846,9 +846,9 @@
                 <div class="settings-item">
                     <div class="settings-label">
                         <span>悬浮窗透明度</span>
-                        <span id="overlayOpacityValue">92%</span>
+                        <span id="overlayOpacityValue">90%</span>
                     </div>
-                    <input id="overlayOpacityRange" type="range" min="20" max="100" step="1" value="92" oninput="setOverlayOpacity(this.value)" style="width: 100%; accent-color: #3498db;">
+                    <input id="overlayOpacityRange" type="range" min="20" max="100" step="1" value="90" oninput="setOverlayOpacity(this.value)" style="width: 100%; accent-color: #3498db;">
                 </div>
             </div>
         </div>
@@ -967,7 +967,7 @@
 
         const overlayState = {
             passThrough: true,
-            opacity: 0.92,
+            opacity: 0.9,
             hideTimer: null,
             pendingApprovalIds: new Set(),
             lastPayload: null
@@ -1041,6 +1041,10 @@
 
             if (shouldSyncToConfig && typeof window.setNotificationChannelEnabledFromObserver === 'function') {
                 window.setNotificationChannelEnabledFromObserver(observerRuntimeState.notificationsEnabled);
+            }
+
+            if (shouldSyncToConfig && window.electronAPI?.ragOverlaySetNotificationCategoryEnabled) {
+                window.electronAPI.ragOverlaySetNotificationCategoryEnabled(observerRuntimeState.notificationsEnabled);
             }
         }
 
@@ -1125,7 +1129,7 @@
         }
 
         function setOverlayOpacity(opacityPercent, shouldSyncToMain = true) {
-            const numeric = Math.max(20, Math.min(100, Number(opacityPercent) || 92));
+            const numeric = Math.max(20, Math.min(100, Number(opacityPercent) || 90));
             overlayState.opacity = numeric / 100;
 
             const opacityRange = document.getElementById('overlayOpacityRange');
@@ -2108,14 +2112,17 @@
                 }, 100); // A small delay to ensure layout is calculated
             }
 
-            // 初始化开关状态
-            setNotificationCategoryEnabled(false, false);
-
-            // 初始化悬浮通知窗控制（从主进程恢复持久化状态）
+            // 初始化开关状态（从主进程恢复持久化状态）
             try {
                 if (window.electronAPI?.ragOverlayGetState) {
                     const restoredState = await window.electronAPI.ragOverlayGetState();
                     if (restoredState && typeof restoredState === 'object') {
+                        if (typeof restoredState.notificationCategoryEnabled === 'boolean') {
+                            setNotificationCategoryEnabled(restoredState.notificationCategoryEnabled, false);
+                        } else {
+                            setNotificationCategoryEnabled(false, false);
+                        }
+
                         if (typeof restoredState.enabled === 'boolean') {
                             setOverlayEnabled(restoredState.enabled, false);
                         } else {
@@ -2132,23 +2139,30 @@
                         if (Number.isFinite(opacityPercent)) {
                             setOverlayOpacity(opacityPercent, false);
                         } else {
-                            setOverlayOpacity(92, false);
+                            setOverlayOpacity(90, false);
                         }
                     } else {
+                        setNotificationCategoryEnabled(false, false);
                         setOverlayEnabled(true, false);
                         updateOverlayControlButtons();
-                        setOverlayOpacity(92, false);
+                        setOverlayOpacity(90, false);
                     }
                 } else {
+                    setNotificationCategoryEnabled(false, false);
                     setOverlayEnabled(true, false);
                     updateOverlayControlButtons();
-                    setOverlayOpacity(92, false);
+                    setOverlayOpacity(90, false);
                 }
             } catch (overlayStateError) {
                 console.warn('[RAG Observer] 读取悬浮窗持久化状态失败，回退默认值:', overlayStateError);
+                setNotificationCategoryEnabled(false, false);
                 setOverlayEnabled(true, false);
                 updateOverlayControlButtons();
-                setOverlayOpacity(92, false);
+                setOverlayOpacity(90, false);
+            }
+
+            if (typeof window.setNotificationChannelEnabledFromObserver === 'function') {
+                window.setNotificationChannelEnabledFromObserver(observerRuntimeState.notificationsEnabled);
             }
 
             if (observerRuntimeState.overlayEnabled && window.electronAPI?.ragOverlayHide) {
@@ -2167,8 +2181,8 @@
             window.addEventListener('beforeunload', () => {
                 observerRuntimeState.mounted = false;
                 clearOverlayHideTimer();
-                if (window.electronAPI?.ragOverlaySetEnabled) {
-                    window.electronAPI.ragOverlaySetEnabled(false);
+                if (window.electronAPI?.ragOverlayHide) {
+                    window.electronAPI.ragOverlayHide();
                 }
                 if (typeof window.setNotificationChannelEnabledFromObserver === 'function') {
                     window.setNotificationChannelEnabledFromObserver(false);

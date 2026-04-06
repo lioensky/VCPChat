@@ -82,6 +82,14 @@ class SettingsManager extends EventEmitter {
             agentMusicControl: false,
             enableDistributedServerLogs: false,
             enableVcpToolInjection: false,
+            ragOverlaySettings: {
+                enabled: true,
+                passThrough: true,
+                opacity: 0.9,
+                bounds: null,
+                useCustomBounds: false,
+                notificationCategoryEnabled: false
+            },
             lastOpenItemId: null,
             lastOpenItemType: null,
             lastOpenTopicId: null,
