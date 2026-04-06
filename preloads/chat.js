@@ -566,6 +566,13 @@ const ALLOWED_KEYS = [
     "onFlowlockCommand",
     "onFlowlockRequest",
     "sendFlowlockRpcResponse",
+    "desktopPush",
+    "onDesktopPush",
+    "onDesktopStatus",
+    "openDesktopWindow",
+    "onDesktopRemoteSetWallpaper",
+    "onDesktopRemoteRequest",
+    "sendDesktopRemoteResponse",
     "minimizeToTray",
     "closeApp"
 ];
