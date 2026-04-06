@@ -13,6 +13,148 @@ let openChildWindows = []; // To be initialized
 let WALLPAPER_THUMBNAIL_CACHE_DIR;
 let PROJECT_ROOT;
 let settingsManager;
+let isInitialized = false;
+
+const handleOpenThemesWindow = () => {
+    createThemesWindow();
+};
+
+const handleSetThemeMode = async (event, themeMode) => {
+    if (['light', 'dark', 'system'].includes(themeMode)) {
+        console.log(`[ThemeHandlers] Setting theme source to: ${themeMode}`);
+        nativeTheme.themeSource = themeMode;
+        if (settingsManager) {
+            try {
+                await settingsManager.updateSettings(settings => ({
+                    ...settings,
+                    currentThemeMode: themeMode,
+                    themeLastUpdated: Date.now()
+                }));
+                console.log(`[ThemeHandlers] Saved theme mode '${themeMode}' to settings.`);
+            } catch (error) {
+                console.error('[ThemeHandlers] Failed to save theme mode setting:', error);
+            }
+        }
+    }
+};
+
+const handleNativeThemeUpdated = () => {
+    const theme = nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
+    broadcastThemeUpdate(theme);
+};
+
+const handleGetCurrentTheme = () => {
+    return nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
+};
+
+const handleGetThemes = async () => {
+    const themesDir = path.join(PROJECT_ROOT, 'styles', 'themes');
+    const files = await fs.readdir(themesDir);
+    const themePromises = files
+        .filter(file => file.startsWith('themes') && file.endsWith('.css'))
+        .map(async (file) => {
+            const filePath = path.join(themesDir, file);
+            const content = await fs.readFile(filePath, 'utf-8');
+            
+            const nameMatch = content.match(/\* Theme Name: (.*)/);
+            const name = nameMatch ? nameMatch[1].trim() : path.basename(file, '.css').replace('themes', '');
+
+            const extractVariables = (scopeRegex) => {
+                const scopeMatch = content.match(scopeRegex);
+                if (!scopeMatch || !scopeMatch[1]) return {};
+                
+                const variables = {};
+                const varRegex = /(--[\w-]+)\s*:\s*(.*?);/g;
+                let match;
+                while ((match = varRegex.exec(scopeMatch[1])) !== null) {
+                    variables[match[1]] = match[2].trim();
+                }
+                return variables;
+            };
+
+            const rootScopeRegex = /:root\s*\{([\s\S]*?)\}/;
+            const lightThemeScopeRegex = /body\.light-theme\s*\{([\s\S]*?)\}/;
+
+            const darkVariables = extractVariables(rootScopeRegex);
+            const lightVariables = extractVariables(lightThemeScopeRegex);
+
+            return {
+                fileName: file,
+                name: name,
+                variables: {
+                    dark: darkVariables,
+                    light: lightVariables
+                }
+            };
+        });
+    return Promise.all(themePromises);
+};
+
+const handleApplyTheme = async (event, themeFileName) => {
+    try {
+        const sourcePath = path.join(PROJECT_ROOT, 'styles', 'themes', themeFileName);
+        const targetPath = path.join(PROJECT_ROOT, 'styles', 'themes.css');
+        const themeContent = await fs.readFile(sourcePath, 'utf-8');
+        await fs.writeFile(targetPath, themeContent, 'utf-8');
+        
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.reload();
+        }
+        if (themesWindow && !themesWindow.isDestroyed()) {
+            themesWindow.reload();
+        }
+    } catch (error) {
+        console.error('Failed to apply theme:', error);
+    }
+};
+
+const handleGetWallpaperThumbnail = async (event, rawPath) => {
+    const THUMBNAIL_WIDTH = 400;
+
+    if (!rawPath || typeof rawPath !== 'string' || rawPath === 'none') {
+        throw new Error('Invalid path provided for thumbnail generation.');
+    }
+
+    const match = rawPath.match(/url\(['"]?(.*?)['"]?\)/);
+    const cleanedPath = match ? match[1] : rawPath;
+
+    const absolutePath = path.resolve(PROJECT_ROOT, 'Themesmodules', cleanedPath);
+
+    const hash = crypto.createHash('md5').update(absolutePath).digest('hex');
+    const thumbnailFilename = `${hash}.jpeg`;
+    const cachedThumbnailPath = path.join(WALLPAPER_THUMBNAIL_CACHE_DIR, thumbnailFilename);
+
+    try {
+        if (await fs.pathExists(cachedThumbnailPath)) {
+            return cachedThumbnailPath;
+        }
+    } catch (e) {
+        console.error(`Error checking for existing thumbnail: ${cachedThumbnailPath}`, e);
+    }
+
+    try {
+        if (!(await fs.pathExists(absolutePath))) {
+            return null;
+        }
+    } catch (e) {
+        console.error(`Error checking wallpaper source file: ${absolutePath}`, e);
+        throw e;
+    }
+
+    try {
+        const sharp = require('sharp'); // Lazy load
+        await sharp(absolutePath)
+            .resize(THUMBNAIL_WIDTH)
+            .jpeg({ quality: 80 })
+            .toFile(cachedThumbnailPath);
+
+        console.log(`Generated thumbnail for ${absolutePath} at ${cachedThumbnailPath}`);
+        return cachedThumbnailPath;
+    } catch (error) {
+        console.error(`Sharp failed to generate thumbnail for ${absolutePath}:`, error);
+        throw error;
+    }
+};
 
 function createThemesWindow() {
     if (themesWindow && !themesWindow.isDestroyed()) {
@@ -54,148 +196,23 @@ function initialize(options) {
     settingsManager = options.settingsManager;
     WALLPAPER_THUMBNAIL_CACHE_DIR = path.join(options.APP_DATA_ROOT_IN_PROJECT, 'WallpaperThumbnailCache');
 
-    ipcMain.on('open-themes-window', () => {
-        createThemesWindow();
-    });
+    if (isInitialized) {
+        return;
+    }
 
-    ipcMain.on('set-theme-mode', async (event, themeMode) => {
-        if (['light', 'dark', 'system'].includes(themeMode)) {
-            console.log(`[ThemeHandlers] Setting theme source to: ${themeMode}`);
-            nativeTheme.themeSource = themeMode;
-            if (settingsManager) {
-                try {
-                    await settingsManager.updateSettings(settings => ({
-                        ...settings,
-                        currentThemeMode: themeMode,
-                        themeLastUpdated: Date.now()
-                    }));
-                    console.log(`[ThemeHandlers] Saved theme mode '${themeMode}' to settings.`);
-                } catch (error) {
-                    console.error('[ThemeHandlers] Failed to save theme mode setting:', error);
-                }
-            }
-        }
-    });
+    ipcMain.on('open-themes-window', handleOpenThemesWindow);
+    ipcMain.on('set-theme-mode', handleSetThemeMode);
 
     // Listen for theme changes and notify all relevant windows
-    nativeTheme.on('updated', () => {
-        const theme = nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
-        broadcastThemeUpdate(theme);
-    });
+    nativeTheme.on('updated', handleNativeThemeUpdated);
 
     // Allow renderer processes to get the current theme
-    ipcMain.handle('get-current-theme', () => {
-        return nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
-    });
+    ipcMain.handle('get-current-theme', handleGetCurrentTheme);
+    ipcMain.handle('get-themes', handleGetThemes);
+    ipcMain.on('apply-theme', handleApplyTheme);
+    ipcMain.handle('get-wallpaper-thumbnail', handleGetWallpaperThumbnail);
 
-    ipcMain.handle('get-themes', async () => {
-        const themesDir = path.join(PROJECT_ROOT, 'styles', 'themes');
-        const files = await fs.readdir(themesDir);
-        const themePromises = files
-            .filter(file => file.startsWith('themes') && file.endsWith('.css'))
-            .map(async (file) => {
-                const filePath = path.join(themesDir, file);
-                const content = await fs.readFile(filePath, 'utf-8');
-                
-                const nameMatch = content.match(/\* Theme Name: (.*)/);
-                const name = nameMatch ? nameMatch[1].trim() : path.basename(file, '.css').replace('themes', '');
-
-                const extractVariables = (scopeRegex) => {
-                    const scopeMatch = content.match(scopeRegex);
-                    if (!scopeMatch || !scopeMatch[1]) return {};
-                    
-                    const variables = {};
-                    const varRegex = /(--[\w-]+)\s*:\s*(.*?);/g;
-                    let match;
-                    while ((match = varRegex.exec(scopeMatch[1])) !== null) {
-                        variables[match[1]] = match[2].trim();
-                    }
-                    return variables;
-                };
-
-                const rootScopeRegex = /:root\s*\{([\s\S]*?)\}/;
-                const lightThemeScopeRegex = /body\.light-theme\s*\{([\s\S]*?)\}/;
-
-                const darkVariables = extractVariables(rootScopeRegex);
-                const lightVariables = extractVariables(lightThemeScopeRegex);
-
-                return {
-                    fileName: file,
-                    name: name,
-                    variables: {
-                        dark: darkVariables,
-                        light: lightVariables
-                    }
-                };
-            });
-        return Promise.all(themePromises);
-    });
-
-    ipcMain.on('apply-theme', async (event, themeFileName) => {
-        try {
-            const sourcePath = path.join(PROJECT_ROOT, 'styles', 'themes', themeFileName);
-            const targetPath = path.join(PROJECT_ROOT, 'styles', 'themes.css');
-            const themeContent = await fs.readFile(sourcePath, 'utf-8');
-            await fs.writeFile(targetPath, themeContent, 'utf-8');
-            
-            if (mainWindow && !mainWindow.isDestroyed()) {
-                mainWindow.reload();
-            }
-            if (themesWindow && !themesWindow.isDestroyed()) {
-                themesWindow.reload();
-            }
-        } catch (error) {
-            console.error('Failed to apply theme:', error);
-        }
-    });
-
-    ipcMain.handle('get-wallpaper-thumbnail', async (event, rawPath) => {
-        const THUMBNAIL_WIDTH = 400;
-
-        if (!rawPath || typeof rawPath !== 'string' || rawPath === 'none') {
-            throw new Error('Invalid path provided for thumbnail generation.');
-        }
-
-        const match = rawPath.match(/url\(['"]?(.*?)['"]?\)/);
-        const cleanedPath = match ? match[1] : rawPath;
-
-        const absolutePath = path.resolve(PROJECT_ROOT, 'Themesmodules', cleanedPath);
-
-        const hash = crypto.createHash('md5').update(absolutePath).digest('hex');
-        const thumbnailFilename = `${hash}.jpeg`;
-        const cachedThumbnailPath = path.join(WALLPAPER_THUMBNAIL_CACHE_DIR, thumbnailFilename);
-
-        try {
-            if (await fs.pathExists(cachedThumbnailPath)) {
-                return cachedThumbnailPath;
-            }
-        } catch (e) {
-            console.error(`Error checking for existing thumbnail: ${cachedThumbnailPath}`, e);
-        }
-
-        try {
-            if (!(await fs.pathExists(absolutePath))) {
-                return null;
-            }
-        } catch (e) {
-            console.error(`Error checking wallpaper source file: ${absolutePath}`, e);
-            throw e;
-        }
-
-        try {
-            const sharp = require('sharp'); // Lazy load
-            await sharp(absolutePath)
-                .resize(THUMBNAIL_WIDTH)
-                .jpeg({ quality: 80 })
-                .toFile(cachedThumbnailPath);
-
-            console.log(`Generated thumbnail for ${absolutePath} at ${cachedThumbnailPath}`);
-            return cachedThumbnailPath;
-        } catch (error) {
-            console.error(`Sharp failed to generate thumbnail for ${absolutePath}:`, error);
-            throw error;
-        }
-    });
+    isInitialized = true;
 }
 
 // Function to broadcast theme updates to all windows

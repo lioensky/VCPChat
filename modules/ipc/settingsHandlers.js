@@ -2,6 +2,7 @@
 const { ipcMain, nativeTheme } = require('electron');
 const fs = require('fs-extra');
 const path = require('path');
+const themeHandlers = require('./themeHandlers');
 
 /**
  * Initializes settings and theme related IPC handlers.
@@ -149,20 +150,11 @@ function initialize(paths) {
                     themeLastUpdated: Date.now()
                 }));
                 console.log(`[Main] Settings.json safely updated: currentThemeMode=${theme}, themeLastUpdated=${Date.now()}`);
-                
-                // 在发生错误时，尝试将主题更新传送给渲染进程
-                // 这样即使设置文件更新失败，用户界面也可以正确显示主题
-                if (event && event.sender && !event.sender.isDestroyed()) {
-                    event.sender.send('theme-updated', { theme, timestamp: Date.now() });
-                }
+                themeHandlers.broadcastThemeUpdate(theme);
             } catch (error) {
                 console.error('[Main] Error updating settings.json for theme change:', error);
                 console.error('[Main] Theme change in nativeTheme was successful, but settings.json update failed');
-                
-                // 在发生错误时，尝试将主题更新传送给渲染进程
-                if (event && event.sender && !event.sender.isDestroyed()) {
-                    event.sender.send('theme-updated', { theme, timestamp: Date.now() });
-                }
+                themeHandlers.broadcastThemeUpdate(theme);
             }
         }
     });
