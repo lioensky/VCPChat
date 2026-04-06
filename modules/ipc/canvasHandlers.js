@@ -13,6 +13,7 @@ let canvasWindow = null;
 let fileWatcher = null;
 const internalSaveInProgress = new Set(); // Track internal saves
 let initialFilePath = null;
+let ipcHandlersRegistered = false;
 const SUPPORTED_EXTENSIONS = [
     '.txt', '.js', '.py', '.css', '.html', '.json', '.md', '.rs', '.ts',
     '.cpp', '.h', '.cs', '.java', '.go', '.rb', '.php', '.swift', '.kt',
@@ -25,6 +26,10 @@ function initialize(config) {
     
     // Ensure the canvas directory exists
     fs.ensureDirSync(CANVAS_CACHE_DIR);
+
+    if (ipcHandlersRegistered) {
+        return;
+    }
 
     ipcMain.handle('open-canvas-window', createCanvasWindow);
     ipcMain.on('canvas-ready', handleCanvasReady);
@@ -41,6 +46,8 @@ function initialize(config) {
             handleLoadCanvasFile({ sender: canvasWindow.webContents }, filePath);
         }
     });
+
+    ipcHandlersRegistered = true;
 }
 
 async function createCanvasWindow(eventOrFilePath = null, maybeFilePath = null) {

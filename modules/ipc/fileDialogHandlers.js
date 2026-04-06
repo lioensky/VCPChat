@@ -15,8 +15,14 @@ const { PRELOAD_ROLES, resolveAppPreload } = require('../services/preloadPaths')
  * @param {function} context.startSelectionListener - Function to start the selection listener.
  * @param {Array<BrowserWindow>} context.openChildWindows - Array of open child windows.
  */
+let ipcHandlersRegistered = false;
+
 function initialize(mainWindow, context) {
     let { openChildWindows } = context;
+
+    if (ipcHandlersRegistered) {
+        return;
+    }
 
     ipcMain.handle('select-avatar', async () => {
         const listenerWasActive = context.getSelectionListenerStatus();
@@ -348,6 +354,8 @@ function initialize(mainWindow, context) {
             if (mainWindow && !mainWindow.isDestroyed()) mainWindow.focus();
         });
     });
+
+    ipcHandlersRegistered = true;
 }
 
 module.exports = {

@@ -16,12 +16,18 @@ const contextSanitizer = require('../contextSanitizer');
  * @param {function} context.stopSelectionListener - Function to stop the selection listener.
  * @param {function} context.startSelectionListener - Function to start the selection listener.
  */
+let ipcHandlersRegistered = false;
+
 function initialize(mainWindow, context) {
     const { AGENT_DIR, USER_DATA_DIR, APP_DATA_ROOT_IN_PROJECT, NOTES_AGENT_ID, getMusicState, fileWatcher, agentConfigManager } = context;
 
     // Ensure the watcher is in a clean state on initialization
     if (fileWatcher) {
         fileWatcher.stopWatching();
+    }
+
+    if (ipcHandlersRegistered) {
+        return;
     }
 
     ipcMain.handle('save-topic-order', async (event, agentId, orderedTopicIds) => {
@@ -1185,6 +1191,8 @@ function initialize(mainWindow, context) {
             return { success: false, error: error.message };
         }
     });
+
+    ipcHandlersRegistered = true;
 }
 
 module.exports = {

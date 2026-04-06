@@ -23,6 +23,7 @@ let appSettingsManager = null;
 let mainWindow = null;
 let openChildWindows = [];
 let SETTINGS_FILE = '';
+let ipcHandlersRegistered = false;
 
 function normalizeRagOverlayState(rawState = {}) {
     const state = rawState && typeof rawState === 'object' ? rawState : {};
@@ -326,6 +327,10 @@ function initialize(params) {
     appSettingsManager = params.settingsManager;
     SETTINGS_FILE = params.SETTINGS_FILE;
 
+    if (ipcHandlersRegistered) {
+        return;
+    }
+
     ipcMain.handle('open-rag-observer-window', openRagObserverWindow);
 
     ipcMain.on('rag-overlay-show', (event, payload = {}) => {
@@ -480,6 +485,8 @@ function initialize(params) {
             });
         }
     });
+
+    ipcHandlersRegistered = true;
 }
 
 module.exports = {
