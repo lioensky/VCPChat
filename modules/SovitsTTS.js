@@ -74,11 +74,53 @@ class SovitsTTS {
      * @returns {Promise<Object>} 模型列表
      */
     async getModels(forceRefresh = false) {
+        const normalizeNetworkVoiceItems = (items) => {
+            if (!Array.isArray(items)) {
+                return [];
+            }
+
+            return items.map(item => ({
+                id: item?.id || item?.uri || item?.voice,
+                voice: item?.voice || item?.uri || item?.id,
+                displayName: item?.displayName || item?.customName || item?.name || item?.voice || item?.uri || item?.id,
+                uri: item?.uri || item?.voice || item?.id || '',
+                type: item?.type || 'remote',
+                raw: item?.raw || item
+            })).filter(item => item.voice);
+        };
+
+        const extractNetworkModelsFromCache = (payload) => {
+            if (Array.isArray(payload)) {
+                return normalizeNetworkVoiceItems(payload);
+            }
+
+            if (Array.isArray(payload?.mergedVoiceOptions)) {
+                return normalizeNetworkVoiceItems(payload.mergedVoiceOptions);
+            }
+
+            if (Array.isArray(payload?.models)) {
+                const flattened = payload.models.flatMap(model => {
+                    if (Array.isArray(model?.mergedVoiceOptions) && model.mergedVoiceOptions.length) {
+                        return model.mergedVoiceOptions;
+                    }
+                    const defaults = Array.isArray(model?.defaults) ? model.defaults : [];
+                    const remoteVoices = Array.isArray(model?.remoteVoices) ? model.remoteVoices : [];
+                    return [...defaults, ...remoteVoices];
+                });
+                return normalizeNetworkVoiceItems(flattened);
+            }
+
+            const defaults = Array.isArray(payload?.defaults) ? payload.defaults : [];
+            const remoteVoices = Array.isArray(payload?.remoteVoices) ? payload.remoteVoices : [];
+            return normalizeNetworkVoiceItems([...defaults, ...remoteVoices]);
+        };
+
         if (!forceRefresh) {
             try {
                 const cachedModels = await fs.readFile(MODELS_CACHE_PATH, 'utf-8');
                 console.log('从缓存加载Sovits模型列表。');
-                return JSON.parse(cachedModels);
+                const parsedCache = JSON.parse(cachedModels);
+                return extractNetworkModelsFromCache(parsedCache);
             } catch (error) {
                 console.log('Sovits模型缓存不存在或读取失败，将从API获取。');
             }
@@ -93,6 +135,7 @@ class SovitsTTS {
                     headers: this.buildHeaders(runtimeConfig.apiKey)
                 });
 
+                const defaults = Array.isArray(response.data?.defaults) ? response.data.defaults : [];
                 const remoteVoices = Array.isArray(response.data?.results)
                     ? response.data.results
                     : Array.isArray(response.data?.result)
@@ -100,18 +143,18 @@ class SovitsTTS {
                         : Array.isArray(response.data)
                             ? response.data
                             : [];
+                const mergedVoiceOptions = normalizeNetworkVoiceItems([...defaults, ...remoteVoices]);
 
-                const normalized = remoteVoices.map(item => ({
-                    id: item.uri || item.voice || item.id,
-                    voice: item.uri || item.voice || item.id,
-                    displayName: item.customName || item.voice || item.uri || item.id,
-                    uri: item.uri || '',
-                    raw: item
-                })).filter(item => item.voice);
-
-                await fs.writeFile(MODELS_CACHE_PATH, JSON.stringify(normalized, null, 2));
+                await fs.writeFile(MODELS_CACHE_PATH, JSON.stringify({
+                    providerUrl: response.data?.providerUrl || runtimeConfig.baseUrl,
+                    modelId: response.data?.modelId || DEFAULT_NETWORK_TTS_MODEL,
+                    defaults,
+                    remoteVoices,
+                    mergedVoiceOptions,
+                    updatedAt: new Date().toISOString()
+                }, null, 2));
                 console.log('网络音色列表已获取并缓存。');
-                return normalized;
+                return mergedVoiceOptions;
             }
 
             console.log(`正在从 ${runtimeConfig.baseUrl}/models 获取模型列表...`);
@@ -131,7 +174,7 @@ class SovitsTTS {
             console.error("请求Sovits模型列表API时出错: ", error.message);
             try {
                 const cachedModels = await fs.readFile(MODELS_CACHE_PATH, 'utf-8');
-                return JSON.parse(cachedModels);
+                return extractNetworkModelsFromCache(JSON.parse(cachedModels));
             } catch (e) {
                 return null;
             }

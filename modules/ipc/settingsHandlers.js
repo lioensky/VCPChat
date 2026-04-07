@@ -145,22 +145,55 @@ function initialize(paths) {
                     success: true,
                     exists: false,
                     path: WEBINDEX_MODEL_FILE,
-                    models: []
+                    models: [],
+                    defaults: [],
+                    remoteVoices: [],
+                    mergedVoiceOptions: []
                 };
             }
 
             const payload = await fs.readJson(WEBINDEX_MODEL_FILE);
+
+            const defaults = Array.isArray(payload?.defaults) ? payload.defaults : [];
+            const remoteVoices = Array.isArray(payload?.remoteVoices) ? payload.remoteVoices : [];
+            const mergedVoiceOptions = Array.isArray(payload?.mergedVoiceOptions)
+                ? payload.mergedVoiceOptions
+                : [...defaults, ...remoteVoices];
+
+            const legacyModels = Array.isArray(payload?.models) ? payload.models : [];
+            const normalizedLegacyModels = legacyModels.flatMap(model => {
+                if (Array.isArray(model?.mergedVoiceOptions) && model.mergedVoiceOptions.length) {
+                    return model.mergedVoiceOptions;
+                }
+                const legacyDefaults = Array.isArray(model?.defaults) ? model.defaults : [];
+                const legacyRemoteVoices = Array.isArray(model?.remoteVoices) ? model.remoteVoices : [];
+                return [...legacyDefaults, ...legacyRemoteVoices];
+            });
+
             return {
                 success: true,
                 exists: true,
                 path: WEBINDEX_MODEL_FILE,
-                models: Array.isArray(payload?.models) ? payload.models : [],
+                models: mergedVoiceOptions.length ? mergedVoiceOptions : normalizedLegacyModels,
+                defaults,
+                remoteVoices,
+                mergedVoiceOptions: mergedVoiceOptions.length ? mergedVoiceOptions : normalizedLegacyModels,
                 updatedAt: payload?.updatedAt || null,
-                source: payload?.source || 'unknown'
+                source: payload?.source || 'unknown',
+                providerUrl: payload?.providerUrl || null,
+                modelId: payload?.modelId || null
             };
         } catch (error) {
             console.error('读取 webindexmodel.json 失败:', error);
-            return { success: false, error: error.message, path: WEBINDEX_MODEL_FILE, models: [] };
+            return {
+                success: false,
+                error: error.message,
+                path: WEBINDEX_MODEL_FILE,
+                models: [],
+                defaults: [],
+                remoteVoices: [],
+                mergedVoiceOptions: []
+            };
         }
     });
 

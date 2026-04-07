@@ -464,19 +464,53 @@ const settingsManager = (() => {
 
             if (isNetworkMode && electronAPI.loadWebindexModels) {
                 const webindexPayload = await electronAPI.loadWebindexModels();
-                const models = Array.isArray(webindexPayload?.models) ? webindexPayload.models : [];
-                optionList = models.flatMap(model => Array.isArray(model.mergedVoiceOptions) ? model.mergedVoiceOptions : []);
+
+                if (Array.isArray(webindexPayload?.mergedVoiceOptions) && webindexPayload.mergedVoiceOptions.length) {
+                    optionList = webindexPayload.mergedVoiceOptions;
+                } else if (Array.isArray(webindexPayload?.models) && webindexPayload.models.length) {
+                    const firstItem = webindexPayload.models[0];
+                    if (firstItem && Array.isArray(firstItem?.mergedVoiceOptions)) {
+                        optionList = webindexPayload.models.flatMap(model => Array.isArray(model?.mergedVoiceOptions) ? model.mergedVoiceOptions : []);
+                    } else {
+                        optionList = webindexPayload.models;
+                    }
+                } else {
+                    const defaults = Array.isArray(webindexPayload?.defaults) ? webindexPayload.defaults : [];
+                    const remoteVoices = Array.isArray(webindexPayload?.remoteVoices) ? webindexPayload.remoteVoices : [];
+                    optionList = [...defaults, ...remoteVoices];
+                }
             } else {
                 const localModels = await electronAPI.sovitsGetModels();
-                optionList = localModels && typeof localModels === 'object'
-                    ? Object.keys(localModels).map(modelName => ({
-                        id: modelName,
-                        voice: modelName,
-                        displayName: modelName,
-                        type: 'local'
-                    }))
-                    : [];
+                if (Array.isArray(localModels)) {
+                    optionList = localModels;
+                } else {
+                    optionList = localModels && typeof localModels === 'object'
+                        ? Object.keys(localModels).map(modelName => ({
+                            id: modelName,
+                            voice: modelName,
+                            displayName: modelName,
+                            type: 'local'
+                        }))
+                        : [];
+                }
             }
+
+            const seenVoices = new Set();
+            optionList = optionList
+                .map(item => ({
+                    ...item,
+                    id: item?.id || item?.voice || item?.uri,
+                    voice: item?.voice || item?.uri || item?.id,
+                    displayName: item?.displayName || item?.customName || item?.name || item?.voice || item?.uri || item?.id
+                }))
+                .filter(item => {
+                    const optionValue = item.voice || item.id;
+                    if (!optionValue || seenVoices.has(optionValue)) {
+                        return false;
+                    }
+                    seenVoices.add(optionValue);
+                    return true;
+                });
 
             if (optionList.length > 0) {
                 optionList.forEach(item => {
@@ -501,7 +535,7 @@ const settingsManager = (() => {
                 });
             } else {
                 const disabledOption = isNetworkMode
-                    ? '<option value="" disabled>未找到网络音色，请先生成 webindexmodel.json</option>'
+                    ? '<option value="" disabled>未找到网络音色，请先获取列表并刷新 webindexmodel.json</option>'
                     : '<option value="" disabled>未找到模型,请启动Sovits</option>';
                 agentTtsVoicePrimarySelect.innerHTML += disabledOption;
                 agentTtsVoiceSecondarySelect.innerHTML += disabledOption;
@@ -796,10 +830,10 @@ const settingsManager = (() => {
                     const isNetworkMode = (window.globalSettings || {}).voiceMode === 'network';
                     uiHelper.showToastNotification(isNetworkMode ? '正在刷新网络音色列表...' : '正在刷新语音模型...', 'info');
                     try {
-                        if (!isNetworkMode) {
-                            await electronAPI.sovitsGetModels(true); // force refresh
+                        if (electronAPI.sovitsGetModels) {
+                            await electronAPI.sovitsGetModels(true);
                         }
-                        await populateTtsModels(agentTtsVoicePrimarySelect.value, agentTtsVoiceSecondarySelect.value); // repopulate
+                        await populateTtsModels(agentTtsVoicePrimarySelect.value, agentTtsVoiceSecondarySelect.value);
                         uiHelper.showToastNotification(isNetworkMode ? '网络音色列表已刷新' : '语音模型列表已刷新', 'success');
                     } catch (e) {
                         uiHelper.showToastNotification(isNetworkMode ? '刷新网络音色失败' : '刷新语音模型失败', 'error');
