@@ -788,12 +788,12 @@
         const messageItem = document.querySelector(`.message-item[data-message-id="${msgId}"]`);
         if (messageItem) {
             const avatarElement = messageItem.querySelector('.chat-avatar');
-            if (avatarElement) {
-                if (isSpeaking) {
-                    avatarElement.classList.add('speaking');
-                } else {
-                    avatarElement.classList.remove('speaking');
-                }
+            if (isSpeaking) {
+                messageItem.classList.add('speaking-active');
+                if (avatarElement) avatarElement.classList.add('speaking');
+            } else {
+                messageItem.classList.remove('speaking-active');
+                if (avatarElement) avatarElement.classList.remove('speaking');
             }
         }
     };

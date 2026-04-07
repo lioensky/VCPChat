@@ -161,25 +161,104 @@ body:not(.light-theme) .topic-item.active-topic-glowing {
 
 /*
  * =======================================================
- * TTS 朗读中：头像呼吸发光效果
+ * TTS 朗读中：头像环绕流动光晕效果
+ * 颜色优先跟随主题高亮色（如 CodeIDE 的 --highlight-text / --button-bg）
  * =======================================================
  */
-@keyframes speaking-glow {
+@keyframes speaking-orbit {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes speaking-avatar-float {
   0%, 100% {
-    transform: scale(1);
-    box-shadow: 0 0 5px rgba(0, 150, 255, 0.5), 0 0 10px rgba(0, 150, 255, 0.3);
+    transform: translateZ(0) scale(1);
   }
   50% {
-    transform: scale(1.05);
-    box-shadow: 0 0 15px rgba(0, 150, 255, 0.8), 0 0 25px rgba(0, 150, 255, 0.6);
+    transform: translateZ(0) scale(1.018);
   }
 }
 
 .chat-avatar.speaking {
-  animation: speaking-glow 2s ease-in-out infinite;
+  position: relative;
+  z-index: 3;
   cursor: pointer; /* Indicate it's clickable */
-  transition: transform 0.3s ease, box-shadow 0.3s ease;
-  will-change: transform, box-shadow;
+  animation: speaking-avatar-float 3.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  transition: transform 0.35s ease, filter 0.35s ease;
+  will-change: transform, filter;
+  filter: drop-shadow(0 0 2px color-mix(in srgb, var(--highlight-text, #E5C07B) 16%, transparent));
+}
+
+.message-item.speaking-active .chat-avatar {
+  position: relative;
+}
+
+.message-item.speaking-active::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 0;
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--highlight-text, #E5C07B) 8%, transparent) 0%,
+    color-mix(in srgb, var(--button-bg, #E5C07B) 5%, transparent) 48%,
+    transparent 72%
+  );
+  opacity: 0.55;
+  box-shadow:
+    0 0 3px color-mix(in srgb, var(--highlight-text, #E5C07B) 12%, transparent),
+    0 0 6px color-mix(in srgb, var(--button-bg, #E5C07B) 8%, transparent);
+}
+
+.message-item.speaking-active::after {
+  content: "";
+  position: absolute;
+  top: -2px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 1;
+  padding: 1.5px;
+  background:
+    conic-gradient(
+      from 0deg,
+      transparent 0deg 316deg,
+      color-mix(in srgb, var(--highlight-text, #E5C07B) 12%, transparent) 324deg,
+      color-mix(in srgb, var(--highlight-text, #E5C07B) 30%, transparent) 332deg,
+      color-mix(in srgb, var(--highlight-text, #E5C07B) 72%, transparent) 340deg,
+      color-mix(in srgb, var(--highlight-text, #E5C07B) 100%, white 0%) 348deg,
+      color-mix(in srgb, var(--button-bg, #E5C07B) 100%, white 22%) 354deg,
+      rgba(255, 255, 255, 1) 358deg,
+      transparent 360deg
+    );
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: speaking-orbit 1.8s linear infinite;
+  box-shadow:
+    0 0 4px color-mix(in srgb, var(--highlight-text, #E5C07B) 48%, transparent),
+    0 0 8px color-mix(in srgb, var(--button-bg, #E5C07B) 28%, transparent);
+}
+
+.message-item.assistant.speaking-active::before,
+.message-item.assistant.speaking-active::after {
+  left: -2px;
+}
+
+.message-item.user.speaking-active::before,
+.message-item.user.speaking-active::after {
+  right: -2px;
 }
 
 /* =======================================================
