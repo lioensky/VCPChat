@@ -35,5 +35,5 @@ styles/themes.css
 vendor/LibreHardwareMonitor/*
 !vendor/LibreHardwareMonitor/README.md
 
-# 忽略根目录 WebIndexTTS2
-/WebIndexTTS2/
+# 忽略 WebIndexTTS2 生成输出目录
+/WebIndexTTS2/tmp-output/

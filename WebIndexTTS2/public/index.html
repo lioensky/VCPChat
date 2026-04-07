@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>IndexTTS-2 文档验证工具</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <main class="container">
+    <header class="hero">
+      <h1>IndexTTS-2 开发文档验证</h1>
+      <p>用于验证默认音色、上传参考音频、已上传参考音频生成、动态 references 生成、列表查询与删除功能。</p>
+    </header>
+
+    <section class="card">
+      <h2>基础信息</h2>
+      <div id="configPanel" class="info-grid"></div>
+      <button id="refreshConfigBtn">刷新配置</button>
+    </section>
+
+    <section class="card">
+      <h2>1. 默认音色生成</h2>
+      <label>输入文本</label>
+      <textarea id="presetInput">你好，这里是默认音色 alex 的测试。</textarea>
+      <label>音色</label>
+      <input id="presetVoice" value="IndexTeam/IndexTTS-2:alex" />
+      <button id="presetBtn">生成默认音色</button>
+    </section>
+
+    <section class="card">
+      <h2>2. 本地参考音频目录管理</h2>
+      <label>目标参考音频目录</label>
+      <select id="targetFolder"></select>
+      <p>先选择目录，再对该目录下的参考音频文档进行上传与动态引用。</p>
+
+      <label>选择样本</label>
+      <select id="uploadSample"></select>
+      <label>自定义名称</label>
+      <input id="uploadName" placeholder="amis_voice_test_001" />
+      <button id="uploadBtn">上传参考音频</button>
+
+      <hr />
+
+      <h3>2.1 当前目录批量上传</h3>
+      <p>仅对当前选定目录中的样本逐个调用上传接口。</p>
+      <div id="groupUploadCheckboxes" class="checkbox-group"></div>
+      <label>组名前缀</label>
+      <input id="groupUploadPrefix" placeholder="amis_batch" />
+      <button id="groupUploadBtn">批量上传所选样本</button>
+    </section>
+
+    <section class="card">
+      <h2>3. 已上传 uri 生成</h2>
+      <label>参考音频 uri</label>
+      <input id="voiceUri" placeholder="speech:my_own_voice:xxx:xxx" />
+      <label>输入文本</label>
+      <textarea id="referenceInput">你好，这里是已上传参考音频的生成测试。</textarea>
+      <button id="referenceBtn">使用 uri 生成</button>
+    </section>
+
+    <section class="card">
+      <h2>4. 当前目录 dynamic references 生成</h2>
+      <label>多选样本</label>
+      <div id="sampleCheckboxes" class="checkbox-group"></div>
+      <label>输入文本</label>
+      <textarea id="dynamicInput">[S1]你好，这是一号角色。[S2]你好，这是二号角色。</textarea>
+      <button id="dynamicBtn">生成 dynamic references 语音</button>
+    </section>
+
+    <section class="card">
+      <h2>5. 参考音频管理</h2>
+      <div class="inline-actions">
+        <button id="listBtn">获取参考音频列表</button>
+        <button id="fillDeleteBtn">用首个列表项填充删除框</button>
+      </div>
+      <label>删除 uri</label>
+      <input id="deleteUri" placeholder="speech:xxx:xxx:xxx" />
+      <button id="deleteBtn" class="danger">删除参考音频</button>
+      <div id="voiceList" class="voice-list"></div>
+    </section>
+
+    <section class="card">
+      <h2>结果</h2>
+      <pre id="resultBox">等待操作...</pre>
+      <audio id="audioPlayer" controls></audio>
+    </section>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>
