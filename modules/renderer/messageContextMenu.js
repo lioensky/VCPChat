@@ -301,17 +301,10 @@ function showContextMenu(event, messageItem, message) {
                     
                     if (agentConfig && agentConfig.ttsVoicePrimary) {
                         const contentDiv = messageItem.querySelector('.md-content');
-                        let textToRead = '';
-                        if (contentDiv) {
-                            // Clone the content element to avoid modifying the actual displayed content
-                            const contentClone = contentDiv.cloneNode(true);
-                            // Remove all tool-use bubbles, tool-result bubbles, diary bubbles, role dividers, style tags, and script tags from the clone
-                            contentClone.querySelectorAll('.vcp-tool-use-bubble, .vcp-tool-result-bubble, .maid-diary-bubble, .vcp-role-divider, style, script').forEach(el => el.remove());
-                            // Now, get the innerText from the cleaned-up clone
-                            // 修复：清理多余的空行，确保最多只有一个空行
-                            textToRead = (contentClone.innerText || '').replace(/\n{3,}/g, '\n\n').trim();
-                        }
-                        
+                        const textToRead = contextMenuDependencies.extractSpeakableTextFromContentElement
+                            ? contextMenuDependencies.extractSpeakableTextFromContentElement(contentDiv)
+                            : '';
+
                         if (textToRead.trim()) {
                             // Pass bilingual TTS settings
                             electronAPI.sovitsSpeak({

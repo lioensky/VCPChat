@@ -639,6 +639,19 @@ function transformVCPChatCanvas(text) {
     });
 }
 
+function extractSpeakableTextFromContentElement(contentElement) {
+    if (!contentElement) return '';
+
+    const contentClone = contentElement.cloneNode(true);
+    contentClone.querySelectorAll(
+        '.vcp-tool-use-bubble, .vcp-tool-result-bubble, .maid-diary-bubble, .vcp-role-divider, .vcp-thought-chain-bubble, style, script'
+    ).forEach(el => el.remove());
+
+    return (contentClone.innerText || '')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+}
+
 /**
  * Extracts <style> tags from content, scopes the CSS, and injects it into the document head.
  * @param {string} content - The raw message content string.
@@ -1173,6 +1186,7 @@ function initializeMessageRenderer(refs) {
         renderAttachments: renderAttachments,
         interruptHandler: mainRendererReferences.interruptHandler,
         updateMessageContent: updateMessageContent, // 🟢 新增：传递 updateMessageContent
+        extractSpeakableTextFromContentElement: extractSpeakableTextFromContentElement,
     });
 
     if (typeof contextMenu.toggleEditMode === 'function') {
@@ -2422,6 +2436,7 @@ window.messageRenderer = {
     clearChat,
     removeMessageById,
     updateMessageContent, // Expose the new function
+    extractSpeakableTextFromContentElement,
     updateMessageUI: async (messageId, updatedMessage) => {
         const { chatMessagesDiv } = mainRendererReferences;
         const existingMessageDom = chatMessagesDiv.querySelector(`.message-item[data-message-id="${messageId}"]`);

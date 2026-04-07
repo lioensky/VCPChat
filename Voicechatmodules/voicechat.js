@@ -385,10 +385,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (messageElement) {
             const contentElement = messageElement.querySelector('.md-content');
-            if (contentElement) {
+            if (contentElement && window.messageRenderer?.extractSpeakableTextFromContentElement) {
+                textToSpeak = window.messageRenderer.extractSpeakableTextFromContentElement(contentElement);
+            } else if (contentElement) {
                 const contentClone = contentElement.cloneNode(true);
-                contentClone.querySelectorAll('.vcp-tool-use-bubble, .vcp-tool-result-bubble, .maid-diary-bubble, .vcp-role-divider').forEach(el => el.remove());
-                textToSpeak = contentClone.innerText || '';
+                contentClone.querySelectorAll('.vcp-tool-use-bubble, .vcp-tool-result-bubble, .maid-diary-bubble, .vcp-role-divider, .vcp-thought-chain-bubble, style, script').forEach(el => el.remove());
+                textToSpeak = (contentClone.innerText || '').replace(/\n{3,}/g, '\n\n').trim();
             } else {
                 textToSpeak = messageElement.textContent || messageElement.innerText;
             }
@@ -421,7 +423,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         console.log(`[VoiceChat] 找到备用匹配元素: ${idAttr}`);
                         const contentElement = item.querySelector('.md-content');
                         if (contentElement) {
-                            const backupText = contentElement.innerText || '';
+                            const backupText = window.messageRenderer?.extractSpeakableTextFromContentElement
+                                ? window.messageRenderer.extractSpeakableTextFromContentElement(contentElement)
+                                : (contentElement.innerText || '').replace(/\n{3,}/g, '\n\n').trim();
                             if (backupText.trim().length > 0) {
                                 console.log(`[VoiceChat] 使用备用元素提取到文本长度: ${backupText.trim().length}`);
                                 playTTS(backupText.trim(), messageId);
