@@ -83,42 +83,104 @@ body, html {
 }
 
 .chat-input-area {
-    display: flex;
-    padding: 10px;
-    border-top: 1px solid var(--border-color);
-    background-color: var(--secondary-bg);
-    align-items: flex-end;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 48px 48px;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px 12px;
+    border-top: 1px solid color-mix(in srgb, var(--border-color) 72%, transparent);
+    background-color: var(--panel-bg, var(--secondary-bg));
+    -webkit-backdrop-filter: blur(12px) saturate(120%);
+    backdrop-filter: blur(12px) saturate(120%);
+    box-sizing: border-box;
 }
 
 #messageInput {
-    flex-grow: 1;
+    grid-column: 1;
+    grid-row: 1;
+    width: 100%;
+    min-width: 0;
+    min-height: 48px;
     resize: none;
-    border-radius: 6px;
-    border: 1px solid var(--border-color);
-    padding: 8px 12px;
+    border-radius: 14px;
+    border: 1px solid color-mix(in srgb, var(--border-color) 82%, transparent);
+    padding: 12px 14px;
     font-size: 1em;
-    background-color: var(--input-bg);
+    line-height: 1.45;
+    background-color: color-mix(in srgb, var(--input-bg) 90%, transparent);
     color: var(--primary-text);
     max-height: 150px;
     overflow-y: auto;
+    box-sizing: border-box;
 }
 
-#sendMessageBtn, #toggleInputModeBtn {
-    background-color: var(--button-bg);
+#messageInput:focus {
+    outline: none;
+    border-color: color-mix(in srgb, var(--button-bg) 56%, var(--border-color));
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--button-bg) 18%, transparent);
+}
+
+#toggleInputModeBtn,
+#sendMessageBtn {
+    width: 48px;
+    height: 48px;
     border: none;
-    border-radius: 6px;
-    padding: 8px;
-    margin-left: 8px;
+    border-radius: 14px;
+    padding: 0;
     cursor: pointer;
-    display: flex;
+    display: inline-flex;
     align-items: center;
     justify-content: center;
+    align-self: center;
+    justify-self: center;
+    background-color: var(--button-bg);
+    color: var(--text-on-accent);
+    box-sizing: border-box;
+    transition: background-color 0.2s ease, transform 0.2s ease;
 }
 
-#sendMessageBtn:hover, #toggleInputModeBtn:hover {
+#toggleInputModeBtn {
+    grid-column: 2;
+    grid-row: 1;
+}
+
+#sendMessageBtn {
+    grid-column: 3;
+    grid-row: 1;
+}
+
+#sendMessageBtn:hover,
+#toggleInputModeBtn:hover {
     background-color: var(--button-hover-bg);
+    transform: translateY(-1px);
 }
 
-#sendMessageBtn svg, #toggleInputModeBtn svg {
-    fill: var(--primary-text);
+#sendMessageBtn svg,
+#toggleInputModeBtn svg,
+#sendMessageBtn svg *,
+#toggleInputModeBtn svg * {
+    width: 22px;
+    height: 22px;
+    fill: currentColor !important;
+    color: currentColor;
+}
+
+@media (max-width: 420px) {
+    .chat-input-area {
+        grid-template-columns: minmax(0, 1fr) 44px 44px;
+        gap: 8px;
+        padding: 8px 10px 10px;
+    }
+
+    #sendMessageBtn,
+    #toggleInputModeBtn {
+        width: 44px;
+        height: 44px;
+        border-radius: 12px;
+    }
+
+    #messageInput {
+        min-height: 44px;
+        padding: 10px 12px;
+    }
 }
