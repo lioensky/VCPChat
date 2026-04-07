@@ -1,5 +1,6 @@
 const SHARED_KEYS = [
     'loadSettings',
+    'loadWebindexModels',
     'saveSettings',
     'saveUserAvatar',
     'saveAvatarColor',

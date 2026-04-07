@@ -1,0 +1,140 @@
+:root {
+  color-scheme: dark;
+  --bg: #10131a;
+  --panel: #171c26;
+  --panel-2: #1d2430;
+  --text: #eef3ff;
+  --muted: #9eabc7;
+  --accent: #6ea8ff;
+  --danger: #ff6b6b;
+  --border: #2a3344;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.page-header {
+  padding: 24px;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(180deg, #141a23 0%, #10131a 100%);
+}
+
+.page-header h1 {
+  margin: 0 0 8px;
+}
+
+.page-header p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.layout {
+  display: grid;
+  gap: 16px;
+  padding: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+}
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px;
+}
+
+.card h2 {
+  margin-top: 0;
+  font-size: 18px;
+}
+
+label {
+  display: block;
+  margin: 12px 0 6px;
+  color: var(--muted);
+}
+
+input,
+button,
+textarea {
+  font: inherit;
+}
+
+input {
+  width: 100%;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text);
+  padding: 10px 12px;
+}
+
+button {
+  border: none;
+  border-radius: 10px;
+  padding: 10px 14px;
+  background: var(--accent);
+  color: #08111f;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+button.danger {
+  background: var(--danger);
+  color: white;
+}
+
+button.small-action {
+  margin-top: 8px;
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
+.inline-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+.info-grid,
+.model-list,
+.voice-list {
+  display: grid;
+  gap: 10px;
+}
+
+.info-item,
+.model-item,
+.voice-item {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: var(--panel-2);
+}
+
+.info-item strong,
+.model-item strong,
+.voice-item strong {
+  color: var(--muted);
+  margin-right: 6px;
+}
+
+#resultBox {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 420px;
+  overflow: auto;
+  background: #0d1117;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+}

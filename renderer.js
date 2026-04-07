@@ -34,7 +34,7 @@ let globalSettings = {
     speechRecognizerBrowserPath: '',
     speechRecognizerPagePath: 'Voicechatmodules/recognizer.html',
     voiceNetworkSettings: {
-        sovitsUrl: '',
+        sovitsUrl: 'https://api.siliconflow.cn',
         sovitsKey: ''
     },
     voiceLocalSettings: {

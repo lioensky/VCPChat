@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WebIndexTTSManager</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="page-header">
+    <h1>WebIndexTTSManager</h1>
+    <p>独立参考音频管理迷你项目。主程序只消费 `AppData/webindexmodel.json`。</p>
+  </header>
+
+  <main class="layout">
+    <section class="card">
+      <h2>基础信息</h2>
+      <div id="configPanel" class="info-grid"></div>
+      <div class="inline-actions">
+        <button id="refreshConfigBtn">刷新配置</button>
+        <button id="refreshTruthBtn">生成真相 JSON</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>模型目录管理</h2>
+      <label for="newModelId">新模型 ID</label>
+      <input id="newModelId" placeholder="例如: IndexTeam/IndexTTS-2">
+      <button id="createModelBtn">创建模型目录</button>
+      <div id="modelList" class="model-list"></div>
+    </section>
+
+    <section class="card">
+      <h2>线上参考音色列表</h2>
+      <div class="inline-actions">
+        <button id="listVoiceBtn">获取线上参考音色</button>
+      </div>
+      <div id="voiceList" class="voice-list"></div>
+    </section>
+
+    <section class="card">
+      <h2>删除线上参考音色</h2>
+      <label for="deleteUri">参考音色 URI</label>
+      <input id="deleteUri" placeholder="speech:xxx:xxx:xxx">
+      <button id="deleteVoiceBtn" class="danger">删除</button>
+    </section>
+
+    <section class="card">
+      <h2>结果</h2>
+      <pre id="resultBox">等待操作...</pre>
+    </section>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>

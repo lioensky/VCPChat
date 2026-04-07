@@ -14,6 +14,7 @@ const themeHandlers = require('./themeHandlers');
  */
 function initialize(paths) {
     const { SETTINGS_FILE, USER_AVATAR_FILE, AGENT_DIR, settingsManager, agentConfigManager } = paths;
+    const WEBINDEX_MODEL_FILE = path.join(path.dirname(SETTINGS_FILE), 'webindexmodel.json');
 
     // Settings Management
     ipcMain.handle('load-settings', async () => {
@@ -134,6 +135,32 @@ function initialize(paths) {
             }
             
             return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('load-webindex-models', async () => {
+        try {
+            if (!await fs.pathExists(WEBINDEX_MODEL_FILE)) {
+                return {
+                    success: true,
+                    exists: false,
+                    path: WEBINDEX_MODEL_FILE,
+                    models: []
+                };
+            }
+
+            const payload = await fs.readJson(WEBINDEX_MODEL_FILE);
+            return {
+                success: true,
+                exists: true,
+                path: WEBINDEX_MODEL_FILE,
+                models: Array.isArray(payload?.models) ? payload.models : [],
+                updatedAt: payload?.updatedAt || null,
+                source: payload?.source || 'unknown'
+            };
+        } catch (error) {
+            console.error('读取 webindexmodel.json 失败:', error);
+            return { success: false, error: error.message, path: WEBINDEX_MODEL_FILE, models: [] };
         }
     });
 

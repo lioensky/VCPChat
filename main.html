@@ -1376,25 +1376,7 @@
                                 <div class="settings-subsection">
                                     <div class="settings-subsection-heading">
                                         <div class="settings-subsection-title">网络 API 模式</div>
-                                        <p class="settings-subsection-description">当语音模式为“网络 API 模式”时，优先使用这组配置。</p>
-                                    </div>
-
-                                    <div class="settings-form-group">
-                                        <label for="voiceNetworkSovitsUrl">本地 Sovits URL:</label>
-                                        <input type="url" id="voiceNetworkSovitsUrl" name="voiceNetworkSovitsUrl"
-                                            placeholder="例如: http://127.0.0.1:9880">
-                                    </div>
-                                    <div class="settings-form-group">
-                                        <label for="voiceNetworkSovitsKey">本地 Sovits Key:</label>
-                                        <input type="password" id="voiceNetworkSovitsKey" name="voiceNetworkSovitsKey"
-                                            placeholder="如无可留空">
-                                    </div>
-                                </div>
-
-                                <div class="settings-subsection">
-                                    <div class="settings-subsection-heading">
-                                        <div class="settings-subsection-title">本地推理模式</div>
-                                        <p class="settings-subsection-description">当语音模式为“本地推理模式”时，可补充网络供应商配置作为扩展能力入口。</p>
+                                        <p class="settings-subsection-description">当语音模式为“网络 API 模式”时，使用网络供应商配置作为主要推理入口。</p>
                                     </div>
 
                                     <div class="settings-form-group">
@@ -1405,6 +1387,24 @@
                                     <div class="settings-form-group">
                                         <label for="voiceLocalProviderKey">网络供应商 Key:</label>
                                         <input type="password" id="voiceLocalProviderKey" name="voiceLocalProviderKey">
+                                    </div>
+                                </div>
+
+                                <div class="settings-subsection">
+                                    <div class="settings-subsection-heading">
+                                        <div class="settings-subsection-title">本地推理模式</div>
+                                        <p class="settings-subsection-description">当语音模式为“本地推理模式”时，优先使用本地 SoVITS；下方填写本地推理服务配置。</p>
+                                    </div>
+
+                                    <div class="settings-form-group">
+                                        <label for="voiceNetworkSovitsUrl">本地 SoVITS URL:</label>
+                                        <input type="url" id="voiceNetworkSovitsUrl" name="voiceNetworkSovitsUrl"
+                                            placeholder="例如: http://127.0.0.1:9880">
+                                    </div>
+                                    <div class="settings-form-group">
+                                        <label for="voiceNetworkSovitsKey">本地 SoVITS Key:</label>
+                                        <input type="password" id="voiceNetworkSovitsKey" name="voiceNetworkSovitsKey"
+                                            placeholder="如无可留空">
                                     </div>
                                 </div>
                             </div>

@@ -4,6 +4,7 @@ const path = require('path');
 const crypto = require('crypto');
 
 const DEFAULT_SOVITS_API_BASE_URL = "http://127.0.0.1:8000";
+const DEFAULT_NETWORK_TTS_MODEL = 'IndexTeam/IndexTTS-2';
 // 修正路径问题，确保缓存和模型列表都在项目内的AppData目录
 const PROJECT_ROOT = path.join(__dirname, '..'); // 更可靠的方式获取项目根目录
 const APP_DATA_ROOT_IN_PROJECT = path.join(PROJECT_ROOT, 'AppData');
@@ -31,17 +32,23 @@ class SovitsTTS {
         }
 
         const voiceMode = settings?.voiceMode || 'local';
-        const networkConfig = settings?.voiceNetworkSettings || {};
-        const sovitsUrl = (networkConfig.sovitsUrl || '').trim();
-        const sovitsKey = networkConfig.sovitsKey || '';
+        const localSovitsConfig = settings?.voiceNetworkSettings || {};
+        const networkProviderConfig = settings?.voiceLocalSettings || {};
 
-        const baseUrl = sovitsUrl || DEFAULT_SOVITS_API_BASE_URL;
+        const baseUrl = voiceMode === 'network'
+            ? ((networkProviderConfig.providerUrl || '').trim() || DEFAULT_SOVITS_API_BASE_URL)
+            : ((localSovitsConfig.sovitsUrl || '').trim() || DEFAULT_SOVITS_API_BASE_URL);
+
+        const apiKey = voiceMode === 'network'
+            ? (networkProviderConfig.providerKey || '')
+            : (localSovitsConfig.sovitsKey || '');
+
         const normalizedBaseUrl = baseUrl.replace(/\/+$/, '');
 
         return {
             voiceMode,
             baseUrl: normalizedBaseUrl,
-            apiKey: sovitsKey
+            apiKey
         };
     }
 
@@ -79,6 +86,34 @@ class SovitsTTS {
 
         try {
             const runtimeConfig = await this.getRuntimeConfig();
+
+            if (runtimeConfig.voiceMode === 'network') {
+                console.log(`正在从 ${runtimeConfig.baseUrl}/api/voice/list 获取网络音色列表...`);
+                const response = await axios.get(`${runtimeConfig.baseUrl}/api/voice/list`, {
+                    headers: this.buildHeaders(runtimeConfig.apiKey)
+                });
+
+                const remoteVoices = Array.isArray(response.data?.results)
+                    ? response.data.results
+                    : Array.isArray(response.data?.result)
+                        ? response.data.result
+                        : Array.isArray(response.data)
+                            ? response.data
+                            : [];
+
+                const normalized = remoteVoices.map(item => ({
+                    id: item.uri || item.voice || item.id,
+                    voice: item.uri || item.voice || item.id,
+                    displayName: item.customName || item.voice || item.uri || item.id,
+                    uri: item.uri || '',
+                    raw: item
+                })).filter(item => item.voice);
+
+                await fs.writeFile(MODELS_CACHE_PATH, JSON.stringify(normalized, null, 2));
+                console.log('网络音色列表已获取并缓存。');
+                return normalized;
+            }
+
             console.log(`正在从 ${runtimeConfig.baseUrl}/models 获取模型列表...`);
             const response = await axios.post(`${runtimeConfig.baseUrl}/models`, { version: "v2ProPlus" }, {
                 headers: this.buildHeaders(runtimeConfig.apiKey)
@@ -125,43 +160,65 @@ class SovitsTTS {
         }
 
         // 2. 如果没有缓存，请求API
-        // 根据模型名称动态确定语言
-        let promptLang = "中文";
-        if (voice.includes('日语')) {
-            promptLang = "日语";
-        }
-        // 可以在这里添加更多语言的判断，例如 '英语', '韩语' 等
-
-        const payload = {
-            model: "tts-v2ProPlus",
-            input: text,
-            voice: voice,
-            response_format: "mp3",
-            speed: speed,
-            other_params: {
-                text_lang: promptLang === "日语" ? "日语" : "中英混合", // 动态设置 text_lang
-                prompt_lang: promptLang, // 动态设置语言
-                emotion: "默认",
-                text_split_method: "按标点符号切",
-            }
-        };
-
         try {
             const runtimeConfig = await this.getRuntimeConfig();
+
+            let payload;
+            let endpoint;
+
+            if (runtimeConfig.voiceMode === 'network') {
+                payload = {
+                    model: DEFAULT_NETWORK_TTS_MODEL,
+                    input: text,
+                    voice: voice,
+                    response_format: "mp3",
+                    speed: speed
+                };
+                endpoint = '/v1/audio/speech';
+            } else {
+                let promptLang = "中文";
+                if (voice.includes('日语')) {
+                    promptLang = "日语";
+                }
+
+                payload = {
+                    model: "tts-v2ProPlus",
+                    input: text,
+                    voice: voice,
+                    response_format: "mp3",
+                    speed: speed,
+                    other_params: {
+                        text_lang: promptLang === "日语" ? "日语" : "中英混合",
+                        prompt_lang: promptLang,
+                        emotion: "默认",
+                        text_split_method: "按标点符号切",
+                    }
+                };
+                endpoint = '/v1/audio/speech';
+            }
+
             console.log('[TTS] 发送API请求:', JSON.stringify({
                 baseUrl: runtimeConfig.baseUrl,
                 voiceMode: runtimeConfig.voiceMode,
                 payload
             }));
-            const response = await axios.post(`${runtimeConfig.baseUrl}/v1/audio/speech`, payload, {
+
+            const response = await axios.post(`${runtimeConfig.baseUrl}${endpoint}`, payload, {
                 responseType: 'arraybuffer',
-                headers: this.buildHeaders(runtimeConfig.apiKey)
+                headers: this.buildHeaders(runtimeConfig.apiKey),
+                validateStatus: () => true
             });
+
+            if (response.status < 200 || response.status >= 300) {
+                const errorBody = Buffer.from(response.data || []).toString('utf8');
+                console.error("[TTS] 请求语音合成API时出错:", `status=${response.status}`, errorBody);
+                return null;
+            }
+
             console.log(`[TTS]收到API响应: 状态 ${response.status}, 类型 ${response.headers['content-type']}`);
 
-            if (response.headers['content-type'] === 'audio/mpeg') {
+            if ((response.headers['content-type'] || '').includes('audio/')) {
                 const audioBuffer = Buffer.from(response.data);
-                // 3. 保存到缓存
                 try {
                     await fs.writeFile(cacheFilePath, audioBuffer);
                     console.log(`[TTS] 音频已成功缓存: ${cacheKey}`);
@@ -170,7 +227,8 @@ class SovitsTTS {
                 }
                 return audioBuffer;
             } else {
-                console.error("[TTS] API没有返回正确的音频文件类型。");
+                const nonAudioBody = Buffer.from(response.data || []).toString('utf8');
+                console.error("[TTS] API没有返回正确的音频文件类型。", nonAudioBody);
                 return null;
             }
         } catch (error) {

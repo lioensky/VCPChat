@@ -8,6 +8,7 @@ function createCatalog(ops) {
     return {
         // Shared shell/config/theme helpers
         loadSettings: query(() => ops.invoke('load-settings')),
+        loadWebindexModels: query(() => ops.invoke('load-webindex-models')),
         saveSettings: query((settings) => ops.invoke('save-settings', settings)),
         saveUserAvatar: query((avatarData) => ops.invoke('save-user-avatar', avatarData)),
         saveAvatarColor: query((data) => ops.invoke('save-avatar-color', data)),
