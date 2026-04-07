@@ -34,3 +34,6 @@ styles/themes.css
 # LibreHardwareMonitor 官方二进制由开发者本地自行准备，不进入仓库
 vendor/LibreHardwareMonitor/*
 !vendor/LibreHardwareMonitor/README.md
+
+# 忽略根目录 WebIndexTTS2
+/WebIndexTTS2/
