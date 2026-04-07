@@ -208,6 +208,7 @@ function normalizeUploadedVoice(payload) {
 }
 
 function buildTruthPayload(remoteVoices = []) {
+  const env = getEnvConfig();
   const defaultVoices = DEFAULT_VOICES.map(voice => ({
     id: voice,
     type: 'default',
@@ -230,26 +231,25 @@ function buildTruthPayload(remoteVoices = []) {
       raw: voice
     }));
 
-  const sources = getReferenceSources();
+  const localSamples = getReferenceSamples().map(sample => ({
+    id: sample.id,
+    sampleName: sample.sampleName,
+    fileName: sample.fileName,
+    text: sample.text,
+    folderName: sample.folderName,
+    modelId: sample.modelId
+  }));
 
   return {
     updatedAt: new Date().toISOString(),
     source: 'WebIndexTTS2',
+    providerUrl: env.siliconflowUrl,
     referenceRootDir: REFERENCE_ROOT_DIR,
-    models: sources.map(source => ({
-      modelId: MODEL_NAME,
-      folderName: source.folderName,
-      defaults: defaultVoices,
-      remoteVoices: remoteVoiceItems,
-      localSamples: source.samples.map(sample => ({
-        id: sample.id,
-        sampleName: sample.sampleName,
-        fileName: sample.fileName,
-        text: sample.text,
-        folderName: sample.folderName
-      })),
-      mergedVoiceOptions: [...defaultVoices, ...remoteVoiceItems]
-    }))
+    modelId: MODEL_NAME,
+    defaults: defaultVoices,
+    remoteVoices: remoteVoiceItems,
+    mergedVoiceOptions: [...defaultVoices, ...remoteVoiceItems],
+    localSamples
   };
 }
 
@@ -624,9 +624,24 @@ async function handleListVoices(req, res) {
   const data = await siliconJsonFetch('/v1/audio/voice/list', {
     method: 'GET'
   });
+  const results = normalizeRemoteVoiceListPayload(data);
+  const env = getEnvConfig();
+  const truthPayload = await refreshTruthJson(results);
   json(res, 200, {
     ok: true,
-    ...data
+    providerUrl: env.siliconflowUrl,
+    modelId: MODEL_NAME,
+    defaults: DEFAULT_VOICES.map(voice => ({
+      id: voice,
+      type: 'default',
+      modelId: MODEL_NAME,
+      displayName: voice.split(':').pop() || voice,
+      voice
+    })),
+    results,
+    raw: data,
+    truthJsonPath: TRUTH_JSON_PATH,
+    truthPayload
   });
 }
 

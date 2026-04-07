@@ -128,14 +128,14 @@ function renderConfig(config) {
 }
 
 function renderVoiceList(results) {
-  latestVoiceList = results || [];
+  latestVoiceList = Array.isArray(results) ? results.filter(item => item && item.uri) : [];
   if (!latestVoiceList.length) {
-    voiceList.innerHTML = '<p>暂无已上传参考音频。</p>';
+    voiceList.innerHTML = '<p>服务器当前未返回任何已上传参考音频。</p>';
     return;
   }
   voiceList.innerHTML = latestVoiceList.map(item => `
     <div class="voice-item">
-      <div><strong>customName:</strong> ${item.customName || ''}</div>
+      <div><strong>customName:</strong> ${item.customName || item.name || ''}</div>
       <div><strong>uri:</strong> ${item.uri || ''}</div>
       <div><strong>model:</strong> ${item.model || ''}</div>
       <div><strong>text:</strong> ${(item.text || '').slice(0, 120)}</div>
@@ -242,7 +242,7 @@ document.getElementById('dynamicBtn').addEventListener('click', async () => {
 
 document.getElementById('listBtn').addEventListener('click', async () => {
   const data = await request('/api/voice/list', { method: 'GET' });
-  renderVoiceList(data.results || []);
+  renderVoiceList(data.results);
 });
 
 document.getElementById('fillDeleteBtn').addEventListener('click', () => {
