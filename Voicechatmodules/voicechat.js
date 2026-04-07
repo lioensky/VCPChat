@@ -387,7 +387,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const contentElement = messageElement.querySelector('.md-content');
             if (contentElement) {
                 const contentClone = contentElement.cloneNode(true);
-                contentClone.querySelectorAll('.vcp-tool-use-bubble').forEach(el => el.remove());
+                contentClone.querySelectorAll('.vcp-tool-use-bubble, .vcp-tool-result-bubble, .vcp-role-divider').forEach(el => el.remove());
                 textToSpeak = contentClone.innerText || '';
             } else {
                 textToSpeak = messageElement.textContent || messageElement.innerText;
