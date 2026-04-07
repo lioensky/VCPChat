@@ -1227,10 +1227,41 @@ const settingsManager = (() => {
     /**
      * Handles the refresh models button click.
      */
-    function handleRefreshModels() {
-        if (electronAPI.refreshModels) {
-            electronAPI.refreshModels();
-            uiHelper.showToastNotification('正在刷新模型列表...', 'info');
+    async function handleRefreshModels() {
+        if (!electronAPI.refreshModels) {
+            uiHelper.showToastNotification('当前环境不支持刷新模型列表', 'error');
+            return;
+        }
+
+        uiHelper.showToastNotification('正在刷新模型列表...', 'info');
+
+        try {
+            const result = await electronAPI.refreshModels();
+            const models = Array.isArray(result?.models) ? result.models : await electronAPI.getCachedModels();
+
+            let hotModelIds = [];
+            let favoriteModelIds = [];
+            try {
+                if (electronAPI.getHotModels) {
+                    hotModelIds = await electronAPI.getHotModels();
+                }
+                if (electronAPI.getFavoriteModels) {
+                    favoriteModelIds = await electronAPI.getFavoriteModels();
+                }
+            } catch (e) {
+                console.warn('[SettingsManager] Failed to refresh model metadata:', e);
+            }
+
+            populateModelList(models, currentModelSelectCallback, hotModelIds, favoriteModelIds);
+
+            if (Array.isArray(models) && models.length > 0) {
+                uiHelper.showToastNotification(`模型列表已刷新，共 ${models.length} 个模型`, 'success');
+            } else {
+                uiHelper.showToastNotification('模型列表刷新完成，但服务器未返回可用模型', 'warning');
+            }
+        } catch (error) {
+            console.error('[SettingsManager] Failed to refresh models:', error);
+            uiHelper.showToastNotification(`刷新模型列表失败: ${error.message || error}`, 'error');
         }
     }
 

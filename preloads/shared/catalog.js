@@ -75,7 +75,7 @@ function createCatalog(ops) {
         createAgent: query((agentName, initialConfig) => ops.invoke('create-agent', agentName, initialConfig)),
         deleteAgent: query((agentId) => ops.invoke('delete-agent', agentId)),
         getCachedModels: query(() => ops.invoke('get-cached-models')),
-        refreshModels: command(() => ops.send('refresh-models')),
+        refreshModels: query(() => ops.invoke('refresh-models')),
         getHotModels: query(() => ops.invoke('get-hot-models')),
         getFavoriteModels: query(() => ops.invoke('get-favorite-models')),
         toggleFavoriteModel: query((modelId) => ops.invoke('toggle-favorite-model', modelId)),

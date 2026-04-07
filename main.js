@@ -833,13 +833,25 @@ if (!gotTheLock) {
         });
 
         // IPC handler to trigger a refresh of the model list
-        ipcMain.on('refresh-models', async () => {
+        ipcMain.handle('refresh-models', async (event) => {
             console.log('[Main] Received refresh-models request. Re-fetching models...');
             await fetchAndCacheModels();
-            // Optionally, notify the renderer that models have been updated
-            if (mainWindow && !mainWindow.isDestroyed()) {
+
+            const result = {
+                success: Array.isArray(cachedModels) && cachedModels.length > 0,
+                models: cachedModels,
+                count: Array.isArray(cachedModels) ? cachedModels.length : 0
+            };
+
+            if (event?.sender && !event.sender.isDestroyed()) {
+                event.sender.send('models-updated', cachedModels);
+            }
+
+            if (mainWindow && !mainWindow.isDestroyed() && event?.sender !== mainWindow.webContents) {
                 mainWindow.webContents.send('models-updated', cachedModels);
             }
+
+            return result;
         });
 
 
