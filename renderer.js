@@ -30,6 +30,17 @@ let globalSettings = {
     chatToolFontCustom: '',
     enableUserChatBubbleUi: true,
     showUserMetaInChatBubbleUi: true,
+    voiceMode: 'local',
+    speechRecognizerBrowserPath: '',
+    speechRecognizerPagePath: 'Voicechatmodules/recognizer.html',
+    voiceNetworkSettings: {
+        sovitsUrl: '',
+        sovitsKey: ''
+    },
+    voiceLocalSettings: {
+        providerUrl: '',
+        providerKey: ''
+    }
 };
 // Unified selected item state
 let currentSelectedItem = {
@@ -1978,6 +1989,14 @@ async function syncGlobalSettingsToUI() {
     safeSet('topicSummaryModel', globalSettings.topicSummaryModel || '');
     safeSet('continueWritingPrompt', globalSettings.continueWritingPrompt || '请继续');
     safeSet('flowlockContinueDelay', globalSettings.flowlockContinueDelay ?? 5);
+    safeCheck('voiceModeLocal', (globalSettings.voiceMode || 'local') !== 'network');
+    safeCheck('voiceModeNetwork', (globalSettings.voiceMode || 'local') === 'network');
+    safeSet('speechRecognizerBrowserPath', globalSettings.speechRecognizerBrowserPath || '');
+    safeSet('speechRecognizerPagePath', globalSettings.speechRecognizerPagePath || 'Voicechatmodules/recognizer.html');
+    safeSet('voiceNetworkSovitsUrl', globalSettings.voiceNetworkSettings?.sovitsUrl || '');
+    safeSet('voiceNetworkSovitsKey', globalSettings.voiceNetworkSettings?.sovitsKey || '');
+    safeSet('voiceLocalProviderUrl', globalSettings.voiceLocalSettings?.providerUrl || '');
+    safeSet('voiceLocalProviderKey', globalSettings.voiceLocalSettings?.providerKey || '');
     
     // Network Notes Paths
     const networkNotesPathsContainer = document.getElementById('networkNotesPathsContainer');

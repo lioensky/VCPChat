@@ -95,6 +95,17 @@ class SettingsManager extends EventEmitter {
             minChunkBufferSize: 1,
             smoothStreamIntervalMs: 25,
             assistantAgent: '',
+            voiceMode: 'local',
+            speechRecognizerBrowserPath: '',
+            speechRecognizerPagePath: 'Voicechatmodules/recognizer.html',
+            voiceNetworkSettings: {
+                sovitsUrl: '',
+                sovitsKey: ''
+            },
+            voiceLocalSettings: {
+                providerUrl: '',
+                providerKey: ''
+            },
             enableDistributedServer: true,
             agentMusicControl: false,
             enableDistributedServerLogs: false,

@@ -2,21 +2,23 @@ const { ipcMain } = require('electron');
 
 let sovitsTTSInstance = null;
 let internalMainWindow = null; // 用于在 handler 内部可靠地访问 mainWindow
+let internalSettingsManager = null;
 
 function getSovitsTTS() {
     if (!sovitsTTSInstance) {
         const SovitsTTS = require('../SovitsTTS');
-        sovitsTTSInstance = new SovitsTTS();
+        sovitsTTSInstance = new SovitsTTS(internalSettingsManager);
     }
     return sovitsTTSInstance;
 }
 
-function initialize(mainWindow) {
+function initialize(mainWindow, settingsManager) {
     if (!mainWindow) {
         console.error("SovitsTTS needs the main window to initialize."); // Translated for clarity
         return;
     }
     internalMainWindow = mainWindow; // Save reference to mainWindow
+    internalSettingsManager = settingsManager || null;
 
     ipcMain.handle('sovits-get-models', async (event, forceRefresh) => {
         const instance = getSovitsTTS();

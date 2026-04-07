@@ -1029,7 +1029,7 @@ if (!gotTheLock) {
             }
             return { success: false, error: 'File watcher not initialized.' };
         });
-        sovitsHandlers.initialize(mainWindow); // Initialize SovitsTTS handlers
+        sovitsHandlers.initialize(mainWindow, appSettingsManager); // Initialize SovitsTTS handlers
         musicHandlers.initialize({ mainWindow, openChildWindows, APP_DATA_ROOT_IN_PROJECT, startAudioEngine, stopAudioEngine });
         diceHandlers.initialize({ projectRoot: PROJECT_ROOT });
         themeHandlers.initialize({ mainWindow, openChildWindows, projectRoot: PROJECT_ROOT, APP_DATA_ROOT_IN_PROJECT, settingsManager: appSettingsManager });
@@ -1400,16 +1400,27 @@ ipcMain.on('open-voice-chat-window', (event, { agentId }) => {
 });
 
 // --- Speech Recognition IPC Handlers ---
-ipcMain.on('start-speech-recognition', (event) => {
+ipcMain.on('start-speech-recognition', async (event) => {
     const voiceChatWindow = openChildWindows.find(win => win.webContents === event.sender);
     if (!voiceChatWindow) return;
+
+    let speechConfig = {};
+    try {
+        const settings = await appSettingsManager.readSettings();
+        speechConfig = {
+            browserPath: settings?.speechRecognizerBrowserPath || '',
+            recognizerPagePath: settings?.speechRecognizerPagePath || 'Voicechatmodules/recognizer.html'
+        };
+    } catch (error) {
+        console.warn('[Main] Failed to read speech recognition settings, using defaults:', error.message);
+    }
 
     const speechRecognizer = require('./modules/speechRecognizer');
     speechRecognizer.start((text) => {
         if (voiceChatWindow && !voiceChatWindow.isDestroyed()) {
             voiceChatWindow.webContents.send('speech-recognition-result', text);
         }
-    });
+    }, speechConfig);
 });
 
 ipcMain.on('stop-speech-recognition', () => {

@@ -31,6 +31,10 @@ export async function handleSaveGlobalSettings(e, deps) {
             .filter(Boolean);
     };
 
+    const voiceMode = document.getElementById('voiceModeNetwork')?.checked ? 'network' : 'local';
+    const speechRecognizerBrowserPath = document.getElementById('speechRecognizerBrowserPath')?.value.trim() || '';
+    const speechRecognizerPagePath = document.getElementById('speechRecognizerPagePath')?.value.trim() || '';
+
     const newSettings = {
         userName: document.getElementById('userName').value.trim() || '用户',
         userAvatarBorderColor: document.getElementById('userAvatarBorderColor')?.value || '#3d5a80',
@@ -76,6 +80,17 @@ export async function handleSaveGlobalSettings(e, deps) {
         minChunkBufferSize: parseInt(document.getElementById('minChunkBufferSize').value, 10) || 16,
         smoothStreamIntervalMs: parseInt(document.getElementById('smoothStreamIntervalMs').value, 10) || 100,
         assistantAgent: document.getElementById('assistantAgent').value,
+        voiceMode,
+        speechRecognizerBrowserPath,
+        speechRecognizerPagePath,
+        voiceNetworkSettings: {
+            sovitsUrl: document.getElementById('voiceNetworkSovitsUrl')?.value.trim() || '',
+            sovitsKey: document.getElementById('voiceNetworkSovitsKey')?.value || ''
+        },
+        voiceLocalSettings: {
+            providerUrl: document.getElementById('voiceLocalProviderUrl')?.value.trim() || '',
+            providerKey: document.getElementById('voiceLocalProviderKey')?.value || ''
+        },
         enableDistributedServer: document.getElementById('enableDistributedServer').checked,
         agentMusicControl: document.getElementById('agentMusicControl').checked,
         enableVcpToolInjection: document.getElementById('enableVcpToolInjection').checked,

@@ -762,6 +762,15 @@
                                 </svg>
                                 <span>划词助手</span>
                             </li>
+                            <li class="settings-nav-item" data-section="voice-settings">
+                                <svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2">
+                                    <path d="M12 19v3"></path>
+                                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                                    <rect x="9" y="2" width="6" height="13" rx="3"></rect>
+                                </svg>
+                                <span>语音设置</span>
+                            </li>
                             <li class="settings-nav-item" data-section="advanced-features">
                                 <svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                                     stroke-width="2">
@@ -1312,6 +1321,90 @@
                                                 </small>
                                             </div>
                                         </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 语音设置 -->
+                            <div class="settings-section" id="section-voice-settings">
+                                <h3 class="settings-section-title">语音设置</h3>
+
+                                <div class="settings-subsection">
+                                    <div class="settings-subsection-heading">
+                                        <div class="settings-subsection-title">全局语音模式</div>
+                                        <p class="settings-subsection-description">为后续语音聊天、STT 与 TTS 能力扩展预留统一配置入口。</p>
+                                    </div>
+
+                                    <div class="form-group" style="margin-bottom: 18px;">
+                                        <label style="display: block; margin-bottom: 8px;">语音工作模式</label>
+                                        <div class="form-group-inline" style="gap: 18px; align-items: center; flex-wrap: wrap;">
+                                            <label for="voiceModeLocal"
+                                                style="display: inline-flex; align-items: center; gap: 6px; margin: 0;">
+                                                <input type="radio" id="voiceModeLocal" name="voiceMode" value="local" checked>
+                                                <span>本地推理模式</span>
+                                            </label>
+                                            <label for="voiceModeNetwork"
+                                                style="display: inline-flex; align-items: center; gap: 6px; margin: 0;">
+                                                <input type="radio" id="voiceModeNetwork" name="voiceMode" value="network">
+                                                <span>网络 API 模式</span>
+                                            </label>
+                                        </div>
+                                        <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
+                                            该选项为全局语音管线预留主开关，当前主要作用于语音聊天体系配置分流。
+                                        </small>
+                                    </div>
+
+                                    <div class="settings-form-group">
+                                        <label for="speechRecognizerBrowserPath">STT 浏览器路径:</label>
+                                        <input type="text" id="speechRecognizerBrowserPath" name="speechRecognizerBrowserPath"
+                                            placeholder="留空自动探测系统 Chrome / Puppeteer Chromium">
+                                        <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
+                                            用于反代网页获取 STT 功能时启动浏览器。支持自定义 Chrome / Chromium 可执行文件路径。
+                                        </small>
+                                    </div>
+
+                                    <div class="settings-form-group">
+                                        <label for="speechRecognizerPagePath">STT 浏览器识别页路径:</label>
+                                        <input type="text" id="speechRecognizerPagePath" name="speechRecognizerPagePath"
+                                            placeholder="默认: Voicechatmodules/recognizer.html">
+                                        <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
+                                            可配置用于浏览器语音识别的本地 HTML 页面相对路径，默认使用内置识别页。
+                                        </small>
+                                    </div>
+                                </div>
+
+                                <div class="settings-subsection">
+                                    <div class="settings-subsection-heading">
+                                        <div class="settings-subsection-title">网络 API 模式</div>
+                                        <p class="settings-subsection-description">当语音模式为“网络 API 模式”时，优先使用这组配置。</p>
+                                    </div>
+
+                                    <div class="settings-form-group">
+                                        <label for="voiceNetworkSovitsUrl">本地 Sovits URL:</label>
+                                        <input type="url" id="voiceNetworkSovitsUrl" name="voiceNetworkSovitsUrl"
+                                            placeholder="例如: http://127.0.0.1:9880">
+                                    </div>
+                                    <div class="settings-form-group">
+                                        <label for="voiceNetworkSovitsKey">本地 Sovits Key:</label>
+                                        <input type="password" id="voiceNetworkSovitsKey" name="voiceNetworkSovitsKey"
+                                            placeholder="如无可留空">
+                                    </div>
+                                </div>
+
+                                <div class="settings-subsection">
+                                    <div class="settings-subsection-heading">
+                                        <div class="settings-subsection-title">本地推理模式</div>
+                                        <p class="settings-subsection-description">当语音模式为“本地推理模式”时，可补充网络供应商配置作为扩展能力入口。</p>
+                                    </div>
+
+                                    <div class="settings-form-group">
+                                        <label for="voiceLocalProviderUrl">网络供应商 URL:</label>
+                                        <input type="url" id="voiceLocalProviderUrl" name="voiceLocalProviderUrl"
+                                            placeholder="例如: https://api.example.com/voice">
+                                    </div>
+                                    <div class="settings-form-group">
+                                        <label for="voiceLocalProviderKey">网络供应商 Key:</label>
+                                        <input type="password" id="voiceLocalProviderKey" name="voiceLocalProviderKey">
                                     </div>
                                 </div>
                             </div>

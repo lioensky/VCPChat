@@ -1,10 +1,9 @@
 const axios = require('axios');
 const fs = require('fs').promises;
 const path = require('path');
-const { app } = require('electron');
 const crypto = require('crypto');
 
-const SOVITS_API_BASE_URL = "http://127.0.0.1:8000";
+const DEFAULT_SOVITS_API_BASE_URL = "http://127.0.0.1:8000";
 // 修正路径问题，确保缓存和模型列表都在项目内的AppData目录
 const PROJECT_ROOT = path.join(__dirname, '..'); // 更可靠的方式获取项目根目录
 const APP_DATA_ROOT_IN_PROJECT = path.join(PROJECT_ROOT, 'AppData');
@@ -12,12 +11,46 @@ const MODELS_CACHE_PATH = path.join(APP_DATA_ROOT_IN_PROJECT, 'sovits_models.jso
 const TTS_CACHE_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'tts_cache');
 
 class SovitsTTS {
-    constructor() {
+    constructor(settingsManager = null) {
+        this.settingsManager = settingsManager;
         this.isSpeaking = false;
         this.speechQueue = [];
         this.currentSpeechItemId = null; // 用于跟踪当前朗读的气泡ID
         this.sessionId = 0; // 新增：会话ID，用于作废过时的播放事件
         this.initCacheDir();
+    }
+
+    async getRuntimeConfig() {
+        let settings = null;
+        try {
+            settings = this.settingsManager?.readSettings
+                ? await this.settingsManager.readSettings()
+                : null;
+        } catch (error) {
+            console.warn('[TTS] Failed to read global settings, using default Sovits config:', error.message);
+        }
+
+        const voiceMode = settings?.voiceMode || 'local';
+        const networkConfig = settings?.voiceNetworkSettings || {};
+        const sovitsUrl = (networkConfig.sovitsUrl || '').trim();
+        const sovitsKey = networkConfig.sovitsKey || '';
+
+        const baseUrl = sovitsUrl || DEFAULT_SOVITS_API_BASE_URL;
+        const normalizedBaseUrl = baseUrl.replace(/\/+$/, '');
+
+        return {
+            voiceMode,
+            baseUrl: normalizedBaseUrl,
+            apiKey: sovitsKey
+        };
+    }
+
+    buildHeaders(apiKey = '') {
+        const headers = {};
+        if (apiKey) {
+            headers.Authorization = `Bearer ${apiKey}`;
+        }
+        return headers;
     }
 
     async initCacheDir() {
@@ -45,8 +78,11 @@ class SovitsTTS {
         }
 
         try {
-            console.log(`正在从 ${SOVITS_API_BASE_URL}/models 获取模型列表...`);
-            const response = await axios.post(`${SOVITS_API_BASE_URL}/models`, { version: "v2ProPlus" });
+            const runtimeConfig = await this.getRuntimeConfig();
+            console.log(`正在从 ${runtimeConfig.baseUrl}/models 获取模型列表...`);
+            const response = await axios.post(`${runtimeConfig.baseUrl}/models`, { version: "v2ProPlus" }, {
+                headers: this.buildHeaders(runtimeConfig.apiKey)
+            });
 
             if (response.data && response.data.msg === "获取成功" && response.data.models) {
                 await fs.writeFile(MODELS_CACHE_PATH, JSON.stringify(response.data.models, null, 2));
@@ -111,9 +147,15 @@ class SovitsTTS {
         };
 
         try {
-            console.log('[TTS] 发送API请求:', JSON.stringify(payload));
-            const response = await axios.post(`${SOVITS_API_BASE_URL}/v1/audio/speech`, payload, {
-                responseType: 'arraybuffer'
+            const runtimeConfig = await this.getRuntimeConfig();
+            console.log('[TTS] 发送API请求:', JSON.stringify({
+                baseUrl: runtimeConfig.baseUrl,
+                voiceMode: runtimeConfig.voiceMode,
+                payload
+            }));
+            const response = await axios.post(`${runtimeConfig.baseUrl}/v1/audio/speech`, payload, {
+                responseType: 'arraybuffer',
+                headers: this.buildHeaders(runtimeConfig.apiKey)
             });
             console.log(`[TTS]收到API响应: 状态 ${response.status}, 类型 ${response.headers['content-type']}`);
 

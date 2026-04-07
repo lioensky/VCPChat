@@ -1,29 +1,61 @@
 const path = require('path');
+const fs = require('fs');
 
 let browser = null;
 let page = null;
 let isProcessing = false; // State lock to prevent race conditions
 let textCallback = null; // Store the callback function globally within the module
+let lastResolvedConfigSignature = '';
+let recognizerConfig = {
+    browserPath: '',
+    recognizerPagePath: path.join(__dirname, '..', 'Voicechatmodules', 'recognizer.html')
+};
 
 // --- Private Functions ---
 
-async function initializeBrowser() {
-    if (browser) return; // Already initialized
+function getDefaultRecognizerPagePath() {
+    return path.join(__dirname, '..', 'Voicechatmodules', 'recognizer.html');
+}
 
-    console.log('[SpeechRecognizer] Initializing Puppeteer browser...');
-    const puppeteer = require('puppeteer'); // Lazy load
-    
-    // Try to find system Chrome as Chromium doesn't support WebSpeech API well
+function resolveRecognizerPagePath(customPagePath = '') {
+    const candidate = String(customPagePath || '').trim();
+    if (!candidate) {
+        return getDefaultRecognizerPagePath();
+    }
+
+    if (path.isAbsolute(candidate)) {
+        return candidate;
+    }
+
+    return path.join(__dirname, '..', candidate);
+}
+
+function resolveRecognizerPageUrl(customPagePath = '') {
+    const resolvedPath = resolveRecognizerPagePath(customPagePath);
+    return `file://${resolvedPath.replace(/\\/g, '/')}`;
+}
+
+function resolveBrowserExecutablePath(puppeteer, customBrowserPath = '') {
+    const customPath = String(customBrowserPath || '').trim();
+    if (customPath) {
+        if (fs.existsSync(customPath)) {
+            console.log(`[SpeechRecognizer] Using custom browser path: ${customPath}`);
+            return customPath;
+        }
+        console.warn(`[SpeechRecognizer] Custom browser path does not exist: ${customPath}. Falling back to auto detection.`);
+    }
+
     let executablePath = puppeteer.executablePath();
     const platform = process.platform;
     if (platform === 'win32') {
         const chromePaths = [
             'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
             'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
-            path.join(process.env.LOCALAPPDATA, 'Google\\Chrome\\Application\\chrome.exe')
-        ];
+            process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, 'Google\\Chrome\\Application\\chrome.exe') : null
+        ].filter(Boolean);
+
         for (const p of chromePaths) {
-            if (require('fs').existsSync(p)) {
+            if (fs.existsSync(p)) {
                 executablePath = p;
                 console.log(`[SpeechRecognizer] Using system Chrome: ${p}`);
                 break;
@@ -31,8 +63,46 @@ async function initializeBrowser() {
         }
     }
 
+    return executablePath;
+}
+
+function normalizeConfig(config = {}) {
+    return {
+        browserPath: String(config.browserPath || '').trim(),
+        recognizerPagePath: resolveRecognizerPagePath(config.recognizerPagePath)
+    };
+}
+
+function getConfigSignature(config) {
+    return JSON.stringify({
+        browserPath: config.browserPath || '',
+        recognizerPagePath: config.recognizerPagePath || ''
+    });
+}
+
+async function ensureConfigApplied(nextConfig = {}) {
+    const normalized = normalizeConfig(nextConfig);
+    const nextSignature = getConfigSignature(normalized);
+
+    recognizerConfig = normalized;
+
+    if (browser && nextSignature !== lastResolvedConfigSignature) {
+        console.log('[SpeechRecognizer] Configuration changed, restarting browser instance.');
+        await shutdown();
+    }
+
+    lastResolvedConfigSignature = nextSignature;
+}
+
+async function initializeBrowser() {
+    if (browser) return; // Already initialized
+
+    console.log('[SpeechRecognizer] Initializing Puppeteer browser...');
+    const puppeteer = require('puppeteer'); // Lazy load
+    const executablePath = resolveBrowserExecutablePath(puppeteer, recognizerConfig.browserPath);
+
     browser = await puppeteer.launch({
-        executablePath: executablePath,
+        executablePath,
         headless: true, // Set to false for debugging
         args: [
             '--no-sandbox',
@@ -43,7 +113,7 @@ async function initializeBrowser() {
     });
 
     page = await browser.newPage();
-    
+
     // Grant microphone permissions
     const context = browser.defaultBrowserContext();
     try {
@@ -67,28 +137,33 @@ async function initializeBrowser() {
 
     console.log('[SpeechRecognizer] Functions exposed.');
 
-    const recognizerPath = `file://${path.join(__dirname, '..', 'Voicechatmodules', 'recognizer.html')}`;
-    console.log(`[SpeechRecognizer] Loading recognizer page: ${recognizerPath}`);
-    await page.goto(recognizerPath);
-    
+    const recognizerPageUrl = resolveRecognizerPageUrl(recognizerConfig.recognizerPagePath);
+    console.log(`[SpeechRecognizer] Loading recognizer page: ${recognizerPageUrl}`);
+    await page.goto(recognizerPageUrl);
+
     console.log('[SpeechRecognizer] Browser and page initialized.');
 }
 
 
 // --- Public API ---
 
-async function start(callback) {
+async function start(callback, config = {}) {
     if (isProcessing) {
         console.log('[SpeechRecognizer] Already processing a request.');
         return;
     }
     isProcessing = true;
-    
+
     try {
         // Store the callback
         if (callback) {
             textCallback = callback;
         }
+
+        await ensureConfigApplied({
+            browserPath: config.browserPath,
+            recognizerPagePath: config.recognizerPagePath
+        });
 
         // Initialize browser if it's not already running
         await initializeBrowser();

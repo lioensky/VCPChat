@@ -145,6 +145,20 @@ document.addEventListener('DOMContentLoaded', () => {
         check();
     }
 
+    function getVoiceRuntimeSettings(settings = {}) {
+        return {
+            voiceMode: settings.voiceMode || 'local',
+            speechRecognizerBrowserPath: settings.speechRecognizerBrowserPath || '',
+            speechRecognizerPagePath: settings.speechRecognizerPagePath || 'Voicechatmodules/recognizer.html',
+            voiceNetworkSettings: settings.voiceNetworkSettings || { sovitsUrl: '', sovitsKey: '' },
+            voiceLocalSettings: settings.voiceLocalSettings || { providerUrl: '', providerKey: '' }
+        };
+    }
+
+    function getVoiceModeLabel(runtimeSettings) {
+        return runtimeSettings.voiceMode === 'network' ? '网络语音模式' : '本地语音模式';
+    }
+
     waitForElectronAPI(() => {
         window.electronAPI.onVoiceChatData(async (data) => {
         console.log('Received voice chat data:', data);
@@ -152,6 +166,10 @@ document.addEventListener('DOMContentLoaded', () => {
         
         agentId = receivedAgentId;
         globalSettings = await window.electronAPI.loadSettings();
+        globalSettings = {
+            ...globalSettings,
+            ...getVoiceRuntimeSettings(globalSettings)
+        };
         agentConfig = await window.electronAPI.getAgentConfig(agentId);
 
         if (!agentConfig || agentConfig.error) {
@@ -163,7 +181,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.body.classList.toggle('light-theme', theme === 'light');
         document.body.classList.toggle('dark-theme', theme === 'dark');
         agentAvatarImg.src = agentConfig.avatarUrl || '../assets/default_avatar.png';
-        agentNameSpan.textContent = `${agentConfig.name} - 语音模式`;
+        agentNameSpan.textContent = `${agentConfig.name} - ${getVoiceModeLabel(globalSettings)}`;
 
         initializeRenderer();
         });
@@ -216,7 +234,7 @@ document.addEventListener('DOMContentLoaded', () => {
             inputMode = 'voice';
             keyboardIcon.style.display = 'none';
             micIcon.style.display = 'block';
-            messageInput.placeholder = '正在聆听...';
+            messageInput.placeholder = `正在聆听... (${getVoiceModeLabel(globalSettings)})`;
             messageInput.value = '';
             window.electronAPI.startSpeechRecognition();
         } else {
@@ -424,7 +442,11 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        console.log(`[VoiceChat] Requesting TTS for message ${msgId}`);
+        console.log(`[VoiceChat] Requesting TTS for message ${msgId}`, {
+            voiceMode: globalSettings.voiceMode || 'local',
+            networkSovitsUrl: globalSettings.voiceNetworkSettings?.sovitsUrl || '',
+            localProviderUrl: globalSettings.voiceLocalSettings?.providerUrl || ''
+        });
         window.electronAPI.sovitsSpeak({
             text: text,
             voice: agentConfig.ttsVoicePrimary,
