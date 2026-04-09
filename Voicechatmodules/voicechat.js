@@ -72,35 +72,85 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Event Listeners ---
     closeBtn.addEventListener('click', async () => {
-        await saveVoiceChatToHistory();
-        window.close();
+        closeBtn.disabled = true;
+        try {
+            await saveVoiceChatToHistory();
+        } finally {
+            window.close();
+        }
     });
 
-    async function saveVoiceChatToHistory() {
-        if (!agentId || currentChatHistory.length === 0) return;
+    function getVoiceTopicId() {
+        return agentId ? `voicechat_${agentId}` : null;
+    }
 
-        // Filter out thinking messages and system messages if they are just placeholders
-        const validMessages = currentChatHistory.filter(msg => !msg.isThinking && msg.role !== 'system');
-        if (validMessages.length === 0) return;
+    function isEventForCurrentVoiceSession(eventData) {
+        if (!eventData || !activeStreamingMessageId || eventData.messageId !== activeStreamingMessageId) {
+            return false;
+        }
+
+        const expectedTopicId = getVoiceTopicId();
+        const eventTopicId = eventData.context?.topicId;
+        const eventAgentId = eventData.context?.agentId;
+
+        return !!expectedTopicId && eventTopicId === expectedTopicId && eventAgentId === agentId;
+    }
+
+    async function waitForActiveStreamToSettle(timeoutMs = 4000) {
+        if (!activeStreamingMessageId) return true;
+
+        const pendingMessageId = activeStreamingMessageId;
+        console.log(`[VoiceChat] Waiting for active stream to settle before close: ${pendingMessageId}`);
+
+        return await new Promise((resolve) => {
+            let settled = false;
+            const startedAt = Date.now();
+
+            const check = () => {
+                if (settled) return;
+                if (activeStreamingMessageId !== pendingMessageId) {
+                    settled = true;
+                    resolve(true);
+                    return;
+                }
+
+                if (Date.now() - startedAt >= timeoutMs) {
+                    console.warn(`[VoiceChat] Timed out while waiting stream to settle: ${pendingMessageId}`);
+                    settled = true;
+                    resolve(false);
+                    return;
+                }
+
+                setTimeout(check, 80);
+            };
+
+            check();
+        });
+    }
+
+    async function saveVoiceChatToHistory() {
+        if (!agentId) return;
+
+        await waitForActiveStreamToSettle();
+
+        const persistedHistory = currentChatHistory.filter(msg => !msg.isThinking && msg.role !== 'system');
+        if (persistedHistory.length === 0) return;
 
         console.log('[VoiceChat] Saving chat history before exit...');
         try {
-            // 1. Create a new topic for this voice chat
             const timestamp = new Date().toLocaleString();
             const defaultTitle = `语音通话 ${timestamp}`;
             const result = await window.electronAPI.createNewTopicForAgent(agentId, defaultTitle);
 
             if (result && result.success && result.topicId) {
                 const newTopicId = result.topicId;
-                
-                // 2. Save the history to the new topic
-                await window.electronAPI.saveChatHistory(agentId, newTopicId, currentChatHistory);
+
+                await window.electronAPI.saveChatHistory(agentId, newTopicId, persistedHistory);
                 console.log(`[VoiceChat] History saved to new topic: ${newTopicId}`);
 
-                // 3. Attempt to summarize the topic title
                 if (window.summarizeTopicFromMessages) {
                     const agentName = agentConfig?.name || 'AI';
-                    const summarizedTitle = await window.summarizeTopicFromMessages(validMessages, agentName);
+                    const summarizedTitle = await window.summarizeTopicFromMessages(persistedHistory, agentName);
                     if (summarizedTitle) {
                         await window.electronAPI.saveAgentTopicTitle(agentId, newTopicId, summarizedTitle);
                         console.log(`[VoiceChat] Topic summarized: ${summarizedTitle}`);
@@ -208,7 +258,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 set: (newSettings) => { globalSettings = newSettings; }
             };
             const topicIdRef = {
-                get: () => `voicechat_${agentId}`,
+                get: () => getVoiceTopicId(),
                 set: () => {}
             };
             window.messageRenderer.initializeMessageRenderer({
@@ -275,7 +325,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const context = {
             agentId: agentId,
-            topicId: `voicechat_${agentId}`
+            topicId: getVoiceTopicId()
         };
 
         try {
@@ -325,7 +375,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const activeStreams = new Set();
     window.electronAPI.onVCPStreamEvent((eventData) => {
-        if (!window.messageRenderer || eventData.messageId !== activeStreamingMessageId) return;
+        if (!window.messageRenderer || !isEventForCurrentVoiceSession(eventData)) return;
 
         const { messageId, type, chunk, error, context } = eventData;
 

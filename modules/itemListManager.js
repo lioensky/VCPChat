@@ -7,6 +7,8 @@ window.itemListManager = (() => {
     let currentSelectedItemRef;
     let mainRendererFunctions; // To call back into renderer.js for actions like selectItem
     let wasSelectionListenerActive = false; // To store the state of the selection listener before dragging
+    let uiHelper;
+    let activeLoadItemsToken = 0;
 
     /**
      * Initializes the ItemListManager module.
@@ -132,6 +134,148 @@ window.itemListManager = (() => {
     // To hold the loaded items in memory for quick access
     let loadedItemsCache = [];
 
+    function createItemElement(item) {
+        const li = document.createElement('li');
+        li.dataset.itemId = item.id;
+        li.dataset.itemType = item.type;
+
+        // 创建头像包装器
+        const avatarWrapper = document.createElement('div');
+        avatarWrapper.classList.add('avatar-wrapper');
+
+        const avatarImg = document.createElement('img');
+        avatarImg.classList.add('avatar');
+        avatarImg.src = item.avatarUrl ? `${item.avatarUrl}${item.avatarUrl.includes('?') ? '&' : '?'}t=${Date.now()}` : (item.type === 'group' ? 'assets/default_group_avatar.png' : 'assets/default_avatar.png');
+        avatarImg.alt = `${item.name} 头像`;
+        avatarImg.onerror = () => { avatarImg.src = (item.type === 'group' ? 'assets/default_group_avatar.png' : 'assets/default_avatar.png'); };
+
+        // 将头像添加到包装器中
+        avatarWrapper.appendChild(avatarImg);
+
+        const nameSpan = document.createElement('span');
+        nameSpan.classList.add('agent-name');
+        nameSpan.textContent = item.name;
+        if (item.type === 'group') {
+            nameSpan.textContent += " (群)";
+        }
+
+        // 应用自定义样式（仅对agent类型）
+        if (item.type === 'agent' && item.config) {
+            // 只有在未禁用自定义颜色时才应用颜色设置
+            if (!item.config.disableCustomColors) {
+                // 应用头像边框颜色
+                if (item.config.avatarBorderColor) {
+                    avatarImg.style.borderColor = item.config.avatarBorderColor;
+                }
+
+                // 应用名称文字颜色
+                if (item.config.nameTextColor) {
+                    nameSpan.style.color = item.config.nameTextColor;
+                }
+            }
+            // 注意：当disableCustomColors为true时，头像边框和名称颜色将使用主题默认值
+
+            // 自定义CSS始终应用（不受disableCustomColors影响）
+            if (item.config.customCss) {
+                try {
+                    // 解析并应用自定义CSS
+                    const cssRules = item.config.customCss.split(';').filter(rule => rule.trim());
+                    cssRules.forEach(rule => {
+                        const [property, value] = rule.split(':').map(s => s.trim());
+                        if (property && value) {
+                            li.style.setProperty(property, value);
+                        }
+                    });
+                } catch (error) {
+                    console.warn(`[ItemListManager] Failed to apply custom CSS for agent ${item.id}:`, error);
+                }
+            }
+        }
+
+        li.appendChild(avatarWrapper);
+        li.appendChild(nameSpan);
+
+        // 为每个项目添加独立的状态管理
+        li._lastClickTime = 0;
+        li._middleClickHandled = false;
+
+        // 添加鼠标事件监听器
+        // 专门处理中键点击的辅助事件
+        li.addEventListener('auxclick', (e) => {
+            if (e.button === 1) { // 中键
+                console.log('[ItemListManager] 检测到中键auxclick事件');
+                e.preventDefault();
+                e.stopPropagation();
+                li._middleClickHandled = true;
+                handleMiddleClick(item);
+            }
+        });
+
+        // 普通点击事件（左键双击检测）
+        li.addEventListener('click', (e) => {
+            // 如果是中键点击，已经被auxclick处理了，直接返回
+            if (li._middleClickHandled) {
+                li._middleClickHandled = false;
+                return;
+            }
+
+            const currentTime = Date.now();
+            const timeDiff = currentTime - li._lastClickTime;
+
+            if (e.button === 0 && timeDiff < 300) {
+                // 双击 - 打开设置页面
+                console.log('[ItemListManager] 检测到双击');
+                e.preventDefault();
+                e.stopPropagation();
+                handleDoubleClick(item);
+            } else if (e.button === 0) {
+                // 普通左键点击 - 选择项目
+                console.log('[ItemListManager] 普通左键点击');
+                if (mainRendererFunctions && typeof mainRendererFunctions.selectItem === 'function') {
+                    mainRendererFunctions.selectItem(item.id, item.type, item.name, item.avatarUrl, item.config || item);
+                }
+            }
+
+            li._lastClickTime = currentTime;
+        });
+
+        // 防止中键点击的默认行为
+        li.addEventListener('contextmenu', (e) => {
+            // 不阻止右键菜单，但记录中键状态
+            if (e.button === 1) {
+                console.log('[ItemListManager] 中键contextmenu事件');
+            }
+        });
+
+        return li;
+    }
+
+    function renderItems(items, fallbackHtml = null) {
+        itemListUl.innerHTML = '';
+
+        if (items.length === 0) {
+            itemListUl.innerHTML = fallbackHtml || '<li>没有找到Agent或群组。请创建一个。</li>';
+            return;
+        }
+
+        const fragment = document.createDocumentFragment();
+        items.forEach(item => {
+            fragment.appendChild(createItemElement(item));
+        });
+        itemListUl.appendChild(fragment);
+
+        const currentSelectedItem = currentSelectedItemRef.get();
+        if (currentSelectedItem && currentSelectedItem.id) {
+            highlightActiveItem(currentSelectedItem.id, currentSelectedItem.type);
+        }
+
+        if (typeof Sortable !== 'undefined') {
+            initializeItemSortable();
+        } else {
+            console.warn('[ItemListManager] SortableJS library not found. Item list drag-and-drop ordering will not be available.');
+        }
+    }
+
     /**
      * Loads agents and groups, sorts them, and renders them in the list.
      */
@@ -140,25 +284,36 @@ window.itemListManager = (() => {
             console.error('[ItemListManager] Cannot load items. Module not initialized or missing dependencies.');
             return;
         }
-        itemListUl.innerHTML = '<li><div class="loading-spinner-small"></div>加载列表中...</li>';
+
+        const loadToken = ++activeLoadItemsToken;
+        const hadPreviousItems = loadedItemsCache.length > 0;
+
+        if (!hadPreviousItems) {
+            itemListUl.innerHTML = '<li><div class="loading-spinner-small"></div>加载列表中...</li>';
+        }
+
         const agentsResult = await electronAPI.getAgents();
         const groupsResult = await electronAPI.getAgentGroups();
-        itemListUl.innerHTML = '';
+
+        if (loadToken !== activeLoadItemsToken) {
+            console.debug('[ItemListManager] Ignoring stale loadItems result.');
+            return;
+        }
 
         let items = [];
+        const errors = [];
+
         if (agentsResult && !agentsResult.error) {
             items.push(...agentsResult.map(a => ({ ...a, type: 'agent', id: a.id, avatarUrl: a.avatarUrl || 'assets/default_avatar.png' })));
         } else if (agentsResult && agentsResult.error) {
-            itemListUl.innerHTML += `<li>加载Agent失败: ${agentsResult.error}</li>`;
+            errors.push(`加载Agent失败: ${agentsResult.error}`);
         }
 
         if (groupsResult && !groupsResult.error) {
             items.push(...groupsResult.map(g => ({ ...g, type: 'group', id: g.id, avatarUrl: g.avatarUrl || 'assets/default_group_avatar.png' })));
         } else if (groupsResult && groupsResult.error) {
-            itemListUl.innerHTML += `<li>加载群组失败: ${groupsResult.error}</li>`;
+            errors.push(`加载群组失败: ${groupsResult.error}`);
         }
-
-        loadedItemsCache = [...items]; // Cache the loaded items
 
         let combinedOrderFromSettings = [];
         try {
@@ -191,135 +346,17 @@ window.itemListManager = (() => {
             });
         }
 
-        if (items.length === 0 && !(agentsResult && agentsResult.error) && !(groupsResult && groupsResult.error)) {
-            itemListUl.innerHTML = '<li>没有找到Agent或群组。请创建一个。</li>';
+        if (items.length > 0) {
+            loadedItemsCache = [...items]; // Cache the loaded items only when we have valid fresh data
+            renderItems(items);
+        } else if (errors.length > 0) {
+            console.warn('[ItemListManager] Failed to fully reload items, preserving previous list where possible:', errors.join(' | '));
+            if (!hadPreviousItems) {
+                itemListUl.innerHTML = errors.map(error => `<li>${error}</li>`).join('');
+            }
         } else {
-            items.forEach(item => {
-                const li = document.createElement('li');
-                li.dataset.itemId = item.id;
-                li.dataset.itemType = item.type;
-
-                // 创建头像包装器
-                const avatarWrapper = document.createElement('div');
-                avatarWrapper.classList.add('avatar-wrapper');
-
-                const avatarImg = document.createElement('img');
-                avatarImg.classList.add('avatar');
-                avatarImg.src = item.avatarUrl ? `${item.avatarUrl}${item.avatarUrl.includes('?') ? '&' : '?'}t=${Date.now()}` : (item.type === 'group' ? 'assets/default_group_avatar.png' : 'assets/default_avatar.png');
-                avatarImg.alt = `${item.name} 头像`;
-                avatarImg.onerror = () => { avatarImg.src = (item.type === 'group' ? 'assets/default_group_avatar.png' : 'assets/default_avatar.png'); };
-
-                // 将头像添加到包装器中
-                avatarWrapper.appendChild(avatarImg);
-
-                const nameSpan = document.createElement('span');
-                nameSpan.classList.add('agent-name');
-                nameSpan.textContent = item.name;
-                if (item.type === 'group') {
-                    nameSpan.textContent += " (群)";
-                }
-
-                // 应用自定义样式（仅对agent类型）
-                if (item.type === 'agent' && item.config) {
-                    // 只有在未禁用自定义颜色时才应用颜色设置
-                    if (!item.config.disableCustomColors) {
-                        // 应用头像边框颜色
-                        if (item.config.avatarBorderColor) {
-                            avatarImg.style.borderColor = item.config.avatarBorderColor;
-                        }
-                        
-                        // 应用名称文字颜色
-                        if (item.config.nameTextColor) {
-                            nameSpan.style.color = item.config.nameTextColor;
-                        }
-                    }
-                    // 注意：当disableCustomColors为true时，头像边框和名称颜色将使用主题默认值
-                    
-                    // 自定义CSS始终应用（不受disableCustomColors影响）
-                    if (item.config.customCss) {
-                        try {
-                            // 解析并应用自定义CSS
-                            const cssRules = item.config.customCss.split(';').filter(rule => rule.trim());
-                            cssRules.forEach(rule => {
-                                const [property, value] = rule.split(':').map(s => s.trim());
-                                if (property && value) {
-                                    li.style.setProperty(property, value);
-                                }
-                            });
-                        } catch (error) {
-                            console.warn(`[ItemListManager] Failed to apply custom CSS for agent ${item.id}:`, error);
-                        }
-                    }
-                }
-
-                li.appendChild(avatarWrapper);
-                li.appendChild(nameSpan);
-
-
-                // 为每个项目添加独立的状态管理
-                li._lastClickTime = 0;
-                li._middleClickHandled = false;
-
-                // 添加鼠标事件监听器
-                // 专门处理中键点击的辅助事件
-                li.addEventListener('auxclick', (e) => {
-                    if (e.button === 1) { // 中键
-                        console.log('[ItemListManager] 检测到中键auxclick事件');
-                        e.preventDefault();
-                        e.stopPropagation();
-                        li._middleClickHandled = true;
-                        handleMiddleClick(item);
-                    }
-                });
-
-                // 普通点击事件（左键双击检测）
-                li.addEventListener('click', (e) => {
-                    // 如果是中键点击，已经被auxclick处理了，直接返回
-                    if (li._middleClickHandled) {
-                        li._middleClickHandled = false;
-                        return;
-                    }
-
-                    const currentTime = Date.now();
-                    const timeDiff = currentTime - li._lastClickTime;
-
-                    if (e.button === 0 && timeDiff < 300) {
-                        // 双击 - 打开设置页面
-                        console.log('[ItemListManager] 检测到双击');
-                        e.preventDefault();
-                        e.stopPropagation();
-                        handleDoubleClick(item);
-                    } else if (e.button === 0) {
-                        // 普通左键点击 - 选择项目
-                        console.log('[ItemListManager] 普通左键点击');
-                        if (mainRendererFunctions && typeof mainRendererFunctions.selectItem === 'function') {
-                            mainRendererFunctions.selectItem(item.id, item.type, item.name, item.avatarUrl, item.config || item);
-                        }
-                    }
-
-                    li._lastClickTime = currentTime;
-                });
-
-                // 防止中键点击的默认行为
-                li.addEventListener('contextmenu', (e) => {
-                    // 不阻止右键菜单，但记录中键状态
-                    if (e.button === 1) {
-                        console.log('[ItemListManager] 中键contextmenu事件');
-                    }
-                });
-                itemListUl.appendChild(li);
-            });
-
-            const currentSelectedItem = currentSelectedItemRef.get();
-            if (currentSelectedItem && currentSelectedItem.id) {
-                highlightActiveItem(currentSelectedItem.id, currentSelectedItem.type);
-            }
-
-            if (typeof Sortable !== 'undefined') {
-                initializeItemSortable();
-            } else {
-                console.warn('[ItemListManager] SortableJS library not found. Item list drag-and-drop ordering will not be available.');
-            }
+            loadedItemsCache = [];
+            renderItems([], '<li>没有找到Agent或群组。请创建一个。</li>');
         }
 
         // Asynchronously fetch and update unread counts to avoid blocking initial render
@@ -497,33 +534,33 @@ window.itemListManager = (() => {
     function updateUnreadBadges(counts) {
         // 获取当前所有的列表项
         const listItems = itemListUl.querySelectorAll('li[data-item-type="agent"]');
-        
+
         listItems.forEach(listItem => {
             const agentId = listItem.dataset.itemId;
             const count = counts[agentId];
             const avatarWrapper = listItem.querySelector('.avatar-wrapper');
             const existingBadge = listItem.querySelector('.unread-badge');
-            
+
             // 检查是否需要显示徽章 (count 为数字且 >= 0)
             if (count !== undefined && (count > 0 || count === 0)) {
                 const displayCount = count > 0 ? count.toString() : '';
                 const isDotOnly = count === 0;
-                
+
                 if (existingBadge) {
                     // 徽章已存在，检查内容是否变化
                     const currentCount = existingBadge.textContent;
                     const currentIsDot = existingBadge.classList.contains('unread-badge-dot-only');
-                    
+
                     if (currentCount !== displayCount || currentIsDot !== isDotOnly) {
                         // 内容有变化，更新内容并触发动画
                         existingBadge.textContent = displayCount;
                         existingBadge.classList.toggle('unread-badge-dot-only', isDotOnly);
-                        
+
                         // 触发徽章更新动画
                         existingBadge.classList.remove('badge-appear');
                         void existingBadge.offsetWidth; // 强制重绘
                         existingBadge.classList.add('badge-appear');
-                        
+
                         // 触发头像动画
                         const avatarImg = avatarWrapper.querySelector('.avatar');
                         triggerAvatarAnimation(avatarImg);
@@ -531,7 +568,7 @@ window.itemListManager = (() => {
                 } else {
                     // 徽章不存在，创建新徽章
                     if (!avatarWrapper) return;
-                    
+
                     const unreadBadge = document.createElement('span');
                     unreadBadge.className = 'unread-badge';
                     if (isDotOnly) {
@@ -539,9 +576,9 @@ window.itemListManager = (() => {
                     }
                     unreadBadge.textContent = displayCount;
                     unreadBadge.classList.add('badge-appear');
-                    
+
                     avatarWrapper.appendChild(unreadBadge);
-                    
+
                     // 触发头像动画
                     const avatarImg = avatarWrapper.querySelector('.avatar');
                     triggerAvatarAnimation(avatarImg);
@@ -561,16 +598,16 @@ window.itemListManager = (() => {
      */
     function triggerAvatarAnimation(avatarElement) {
         if (!avatarElement) return;
-        
+
         // 移除可能存在的动画类
         avatarElement.classList.remove('avatar-animate');
-        
+
         // 强制重绘
         void avatarElement.offsetWidth;
-        
+
         // 添加动画类
         avatarElement.classList.add('avatar-animate');
-        
+
         // 动画结束后移除类，以便下次可以再次触发
         setTimeout(() => {
             avatarElement.classList.remove('avatar-animate');

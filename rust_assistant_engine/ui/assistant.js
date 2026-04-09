@@ -28,12 +28,11 @@ document.addEventListener('DOMContentLoaded', () => {
     closeBtn.addEventListener('click', async () => {
         if (isClosing) return;
         isClosing = true;
+        closeBtn.disabled = true;
 
-        // 立即隐藏窗口，解决“卡顿”感
         if (window.electronAPI.hideWindow) {
             window.electronAPI.hideWindow();
         } else {
-            // 退而求其次，改变透明度
             document.body.style.opacity = '0';
             document.body.style.pointerEvents = 'none';
         }
@@ -47,31 +46,75 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    async function saveAssistantChatToHistory() {
-        if (!agentId || currentChatHistory.length === 0) return;
+    function getAssistantTopicId() {
+        return 'assistant_chat';
+    }
 
-        // Filter out thinking messages and system messages if they are just placeholders
-        const validMessages = currentChatHistory.filter(msg => !msg.isThinking && msg.role !== 'system');
-        if (validMessages.length === 0) return;
+    function isEventForCurrentAssistantSession(eventData) {
+        if (!eventData || !activeStreamingMessageId || eventData.messageId !== activeStreamingMessageId) {
+            return false;
+        }
+
+        const eventTopicId = eventData.context?.topicId;
+        const eventAgentId = eventData.context?.agentId;
+        return eventTopicId === getAssistantTopicId() && eventAgentId === agentId;
+    }
+
+    async function waitForActiveStreamToSettle(timeoutMs = 4000) {
+        if (!activeStreamingMessageId) return true;
+
+        const pendingMessageId = activeStreamingMessageId;
+        console.log(`[Assistant] Waiting for active stream to settle before close: ${pendingMessageId}`);
+
+        return await new Promise((resolve) => {
+            let settled = false;
+            const startedAt = Date.now();
+
+            const check = () => {
+                if (settled) return;
+                if (activeStreamingMessageId !== pendingMessageId) {
+                    settled = true;
+                    resolve(true);
+                    return;
+                }
+
+                if (Date.now() - startedAt >= timeoutMs) {
+                    console.warn(`[Assistant] Timed out while waiting stream to settle: ${pendingMessageId}`);
+                    settled = true;
+                    resolve(false);
+                    return;
+                }
+
+                setTimeout(check, 80);
+            };
+
+            check();
+        });
+    }
+
+    async function saveAssistantChatToHistory() {
+        if (!agentId) return;
+
+        await waitForActiveStreamToSettle();
+
+        const persistedHistory = currentChatHistory.filter(msg => !msg.isThinking && msg.role !== 'system');
+        if (persistedHistory.length === 0) return;
 
         console.log('[Assistant] Saving chat history before exit...');
         try {
-            // 1. Create a new topic for this assistant chat
             const timestamp = new Date().toLocaleString();
             const defaultTitle = `划词助手 ${timestamp}`;
             const result = await window.electronAPI.createNewTopicForAgent(agentId, defaultTitle);
 
             if (result && result.success && result.topicId) {
                 const newTopicId = result.topicId;
-                
-                // 2. Save the history to the new topic
-                await window.electronAPI.saveChatHistory(agentId, newTopicId, currentChatHistory);
+
+                await window.electronAPI.saveChatHistory(agentId, newTopicId, persistedHistory);
                 console.log(`[Assistant] History saved to new topic: ${newTopicId}`);
 
-                // 3. Attempt to summarize the topic title
                 if (window.summarizeTopicFromMessages) {
                     const agentName = agentConfig?.name || 'AI';
-                    const summarizedTitle = await window.summarizeTopicFromMessages(validMessages, agentName);
+                    const summarizedTitle = await window.summarizeTopicFromMessages(persistedHistory, agentName);
                     if (summarizedTitle) {
                         await window.electronAPI.saveAgentTopicTitle(agentId, newTopicId, summarizedTitle);
                         console.log(`[Assistant] Topic summarized: ${summarizedTitle}`);
@@ -152,7 +195,7 @@ window.electronAPI.onAssistantData(async (data) => {
                 set: (newSettings) => { globalSettings = newSettings; }
             };
             const topicIdRef = {
-                get: () => 'assistant_chat', // Assistant has a single, non-persistent topic
+                get: () => getAssistantTopicId(), // Assistant has a single, non-persistent topic
                 set: () => {}
             };
             const interruptHandler = {
@@ -304,7 +347,7 @@ window.electronAPI.onAssistantData(async (data) => {
         // Context is required for the new sendToVCP API
         const context = {
             agentId: agentId,
-            topicId: 'assistant_chat'
+            topicId: getAssistantTopicId()
         };
 
         try {
@@ -393,7 +436,7 @@ window.electronAPI.onAssistantData(async (data) => {
     const activeStreams = new Set();
     // Listen to the new, unified stream event
     window.electronAPI.onVCPStreamEvent((eventData) => {
-        if (!window.messageRenderer || eventData.messageId !== activeStreamingMessageId) return;
+        if (!window.messageRenderer || !isEventForCurrentAssistantSession(eventData)) return;
 
         const { messageId, type, chunk, error, context } = eventData;
 
