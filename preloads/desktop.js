@@ -474,7 +474,9 @@ const ALLOWED_KEYS = [
     "getMusicState",
     "setMusicVolume",
     "seekMusic",
-    "sendMusicRemoteCommand"
+    "sendMusicRemoteCommand",
+    "searchNotes",
+    "handleFileDrop",
 ];
 
 const ops = createOps();

@@ -296,12 +296,20 @@ function initializeInputEnhancer(refs) {
 
         if (atMatch) {
             const query = atMatch[1];
+        try {
+            console.log('[inputEnhancer] Searching notes for query:', query);
             const notes = await localElectronAPI.searchNotes(query);
-            if (notes.length > 0) {
+            console.log('[inputEnhancer] Search results:', notes);
+            
+            if (notes && notes.length > 0) {
                 showNoteSuggestions(notes, query);
             } else {
                 hideNoteSuggestions();
             }
+        } catch (error) {
+            console.error('[inputEnhancer] Failed to search notes:', error);
+            hideNoteSuggestions();
+        }
         } else {
             hideNoteSuggestions();
         }

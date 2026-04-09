@@ -505,6 +505,7 @@ const ALLOWED_KEYS = [
     "getTextContent",
     "handleTextPasteAsFile",
     "handleFileDrop",
+    "searchNotes",
     "onAddFileToInput",
     "saveAgentOrder",
     "saveTopicOrder",
