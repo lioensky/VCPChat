@@ -163,6 +163,34 @@ document.addEventListener('DOMContentLoaded', () => {
             console.error('[VoiceChat] Error saving voice chat history:', error);
         }
     }
+    // --- Click Handler for Images and Links ---
+    chatMessagesDiv.addEventListener('click', (event) => {
+        const target = event.target;
+
+        // Handle image clicks
+        if (target.tagName === 'IMG' && target.closest('.message-content')) {
+            event.preventDefault();
+            const imageUrl = target.src;
+            const imageTitle = target.alt || '图片预览';
+            const theme = document.body.classList.contains('light-theme') ? 'light' : 'dark';
+            console.log(`[VoiceChat] Image clicked. Opening in new window. URL: ${imageUrl}`);
+            window.electronAPI.openImageInNewWindow(imageUrl, imageTitle, theme);
+            return;
+        }
+
+        // Handle link clicks
+        if (target.tagName === 'A' && target.href) {
+            event.preventDefault();
+            const url = target.href;
+            // Ensure it's a web link before opening
+            if (url.startsWith('http:') || url.startsWith('https:')) {
+                console.log(`[VoiceChat] Link clicked. Opening externally. URL: ${url}`);
+                window.electronAPI.sendOpenExternalLink(url);
+            }
+            return;
+        }
+    });
+
     sendMessageBtn.addEventListener('click', () => sendMessage(messageInput.value));
     messageInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
