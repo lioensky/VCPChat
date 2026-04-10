@@ -500,16 +500,7 @@ window.deleteTaskByIndex = (index) => {
 window.toggleTaskEnabled = async (index, enabled) => {
     currentFAConfig[index].enabled = enabled;
     renderFAConfig(); // UI immediate feedback
-    
-    // Auto save the entire list (or we could expose a patch API if available, but /config POST is standard here)
-    try {
-        await apiFetch('/task-assistant/config', {
-            method: 'POST',
-            body: JSON.stringify({ tasks: currentFAConfig })
-        });
-    } catch(e) {
-        console.error('Toggle save failed', e);
-    }
+    saveFAConfig(true); // Auto save to server silently
 };
 
 // Temporary debug utility to trigger task
@@ -536,23 +527,32 @@ document.getElementById('create-task-btn')?.addEventListener('click', () => {
 
 document.getElementById('save-tasks-btn')?.addEventListener('click', saveFAConfig);
 
-async function saveFAConfig() {
+async function saveFAConfig(silent = false) {
     if (!currentFAConfig) return;
     const btn = document.getElementById('save-tasks-btn');
-    if(btn) btn.textContent = '保存中...';
+    if(btn && !silent) btn.textContent = '保存中...';
     try {
+        const payload = {
+            globalEnabled: currentStatus?.globalEnabled ?? true,
+            tasks: currentFAConfig,
+            settings: { maxHistory: 200 }
+        };
         await apiFetch('/task-assistant/config', {
             method: 'POST',
-            body: JSON.stringify({ tasks: currentFAConfig })
+            body: JSON.stringify(payload)
         });
-        if(btn) btn.textContent = '✅ 保存成功';
-        setTimeout(() => { if(btn) btn.textContent = '保存所有配置'; }, 2000);
+        if(btn && !silent) {
+            btn.textContent = '✅ 保存成功';
+            setTimeout(() => { if(btn) btn.textContent = '保存所有配置'; }, 2000);
+        }
         fetchFAConfig(); // Refresh
-        fetchFAStatus(); // Refresh status just in case
+        fetchFAStatus(); // Refresh status
     } catch(e) {
-        if(btn) btn.textContent = '❌ 保存失败';
+        if(btn && !silent) {
+            btn.textContent = '❌ 保存失败';
+            setTimeout(() => { if(btn) btn.textContent = '保存所有配置'; }, 3000);
+        }
         console.error(e);
-        setTimeout(() => { if(btn) btn.textContent = '保存所有配置'; }, 3000);
     }
 }
 
@@ -600,8 +600,22 @@ function openTaskModal(task, index) {
         </div>
 
         <div class="form-group">
-            <label>指派 Agent (中文名，逗号分隔)</label>
-            <input type="text" data-keypath="targets.agents" value="${(task.targets?.agents || []).join(', ')}" placeholder="例如：诺娃, 可可">
+            <label>指派 Agent (可多选，支持随机逻辑)</label>
+            <div class="input-with-select" style="display:flex; flex-direction:column; gap:8px;">
+                <div style="display:flex; gap:10px;">
+                    <input type="text" data-keypath="targets.agents" value="${(task.targets?.agents || []).join(', ')}" placeholder="例如：诺娃, 可可" style="flex:1">
+                    <select class="agent-quick-select" style="width:100px;" onchange="updateModalAgent(this.value)">
+                        <option value="">+ 选择</option>
+                        ${(currentAAConfig?.agents || []).map(a => `<option value="${escapeHtml(a.chineseName || a.baseName)}">${escapeHtml(a.chineseName || a.baseName)}</option>`).join('')}
+                    </select>
+                </div>
+                <div class="random-tags-group" style="display:flex; gap:8px; align-items:center;">
+                    <span style="font-size:0.8rem; opacity:0.8;">🎲 随机逻辑:</span>
+                    <input type="number" id="random-count-input" value="1" min="1" style="width:50px; padding:4px 8px; font-size:0.8rem; text-align:center;">
+                    <button class="glass-btn" style="padding:4px 10px; font-size:0.75rem; border-color:var(--accent-color); color:var(--accent-color);" onclick="event.preventDefault(); const val = document.getElementById('random-count-input').value || 1; appendAgentTag('random' + val)">添加随机规则</button>
+                    <span style="font-size:0.7rem; opacity:0.5;">(从前文列表中选择 N 个)</span>
+                </div>
+            </div>
         </div>
 
         <div class="form-group">
@@ -646,6 +660,25 @@ function openTaskModal(task, index) {
         if (val === 'forum_patrol' && (!promptArea.value || promptArea.value.trim() === '')) {
             const defaultTemplate = `[论坛小助手:]现在是论坛时间~ 你可以选择分享一个感兴趣的话题/趣味性话题/亦或者分享一些互联网新鲜事/或者发起一个最近几天想要讨论的话题作为新帖子；或者单纯只是先阅读一些别人的你感兴趣帖子，然后做出你的回复(先读帖再回复是好习惯)~\n\n以下是完整的论坛帖子列表:\n{{forum_post_list}}`;
             promptArea.value = defaultTemplate;
+        }
+    };
+    window.updateModalAgent = (val) => {
+        if (!val) return;
+        appendAgentTag(val);
+        // Reset select
+        taskModalBody.querySelector('.agent-quick-select').value = '';
+    };
+    window.appendAgentTag = (val) => {
+        const input = taskModalBody.querySelector('input[data-keypath="targets.agents"]');
+        let current = input.value.trim();
+        if (current) {
+            const agents = current.split(',').map(s => s.trim()).filter(Boolean);
+            if (!agents.includes(val)) {
+                agents.push(val);
+                input.value = agents.join(', ');
+            }
+        } else {
+            input.value = val;
         }
     };
     window.updateModalSchedule = (val) => {
@@ -702,19 +735,24 @@ function openTaskModal(task, index) {
 
 window.toggleGlobalScheduler = async (enabled) => {
     try {
-        // Fetch current config first to preserve other settings
         const data = await apiFetch('/task-assistant/config');
-        const payload = data.config || {};
-        payload.globalEnabled = enabled;
-        
+        const payload = {
+            ...data,
+            globalEnabled: enabled,
+            tasks: data.config?.tasks || data.tasks || [], // Support both structures
+            settings: data.settings || { maxHistory: 200 }
+        };
+        // Clean up redundant nesting if exists
+        delete payload.config; 
+
         await apiFetch('/task-assistant/config', {
             method: 'POST',
-            body: JSON.stringify({ ...data, config: payload })
+            body: JSON.stringify(payload)
         });
         fetchFAStatus(); 
     } catch(e) {
         console.error('Global switch failed', e);
-        fetchFAStatus(); // Reset UI
+        fetchFAStatus(); 
     }
 };
 
