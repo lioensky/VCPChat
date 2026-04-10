@@ -456,8 +456,20 @@ function renderFAConfig() {
                     </label>
                 </div>
                 <div class="task-meta-item">
+                    <label class="switch-container" onclick="event.stopPropagation()">
+                        <input type="checkbox" ${!!task.dispatch?.taskDelegation ? 'checked' : ''} onchange="toggleTaskDelegation(${index}, this.checked)">
+                        <span class="switch-slider"></span>
+                        <span class="stat-label" style="font-size:0.75rem; margin-left:5px;">异步委托</span>
+                    </label>
+                </div>
+                <div class="task-meta-item">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-                    <span>${escapeHtml(task.schedule?.mode || '未知')} | ${task.schedule?.intervalMinutes || '-'} min</span>
+                    <span>
+                        ${escapeHtml(task.schedule?.mode === 'cron' ? `cron | ${task.schedule.cronValue || '未设置'}` : 
+                          task.schedule?.mode === 'once' ? `once | ${task.schedule.runAt ? new Date(task.schedule.runAt).toLocaleString() : '未设置'}` :
+                          task.schedule?.mode === 'manual' ? 'manual | 手动触发' :
+                          `${task.schedule?.mode || '未知'} | ${task.schedule?.intervalMinutes || '-'} min`)}
+                    </span>
                 </div>
             </div>
             <div class="task-targets">
@@ -501,6 +513,13 @@ window.toggleTaskEnabled = async (index, enabled) => {
     currentFAConfig[index].enabled = enabled;
     renderFAConfig(); // UI immediate feedback
     saveFAConfig(true); // Auto save to server silently
+};
+
+window.toggleTaskDelegation = async (index, delegated) => {
+    if (!currentFAConfig[index].dispatch) currentFAConfig[index].dispatch = {};
+    currentFAConfig[index].dispatch.taskDelegation = delegated;
+    renderFAConfig(); 
+    saveFAConfig(true); 
 };
 
 // Temporary debug utility to trigger task
@@ -581,6 +600,13 @@ function openTaskModal(task, index) {
                     <option value="manual" ${task.schedule?.mode === 'manual' ? 'selected' : ''}>手动触发</option>
                     <option value="once" ${task.schedule?.mode === 'once' ? 'selected' : ''}>一次性执行</option>
                 </select>
+            </div>
+            <div class="form-group" style="flex:1; display:flex; align-items:flex-end; padding-bottom:5px;">
+                <label class="switch-container">
+                    <span style="margin-right:10px;">异步高级委托</span>
+                    <input type="checkbox" data-keypath="dispatch.taskDelegation" ${!!task.dispatch?.taskDelegation ? 'checked' : ''}>
+                    <span class="switch-slider"></span>
+                </label>
             </div>
         </div>
 
