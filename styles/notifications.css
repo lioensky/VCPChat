@@ -252,9 +252,9 @@ body.light-theme .notes-section {
 .notes-section button.header-button,
 .notes-section .capsule-button,
 .notes-section > button {
-    background-color: var(--button-bg);
+    background-color: var(--highlight-text);
     color: var(--accent-bg) !important;
-    border: 1px solid var(--button-bg);
+    border: 1px solid var(--highlight-text);
     padding: 0 10px;
     height: 32px;
     border-radius: 12px;
@@ -299,9 +299,9 @@ body:not(.light-theme) .notes-section > button:hover {
 }
 
 body.light-theme .notes-section > button {
-    background-color: var(--button-bg);
+    background-color: var(--highlight-text);
     color: #ffffff;
-    border: 1px solid var(--button-bg);
+    border: 1px solid var(--highlight-text);
 }
 
 body.light-theme .notes-section > button:hover {
@@ -436,8 +436,8 @@ body.light-theme .notes-section > button:hover {
     display: flex;
     align-items: center;
     justify-content: center;
-    background: var(--button-bg);
-    border: 1px solid var(--button-bg);
+    background: var(--highlight-text);
+    border: 1px solid var(--highlight-text);
     border-radius: 12px;
     cursor: pointer;
     color: var(--accent-bg) !important;
