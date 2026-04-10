@@ -342,6 +342,30 @@ body.light-theme .notes-section > button:hover {
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+.app-tray-drawer::before {
+    content: '';
+    position: absolute;
+    bottom: -11px;
+    right: 17px;
+    width: 14px;
+    height: 11px;
+    background: var(--border-color);
+    clip-path: polygon(0 0, 100% 0, 100% 100%);
+    z-index: -2;
+}
+
+.app-tray-drawer::after {
+    content: '';
+    position: absolute;
+    bottom: -10px;
+    right: 18px;
+    width: 12px;
+    height: 10px;
+    background: var(--notification-bg);
+    clip-path: polygon(0 0, 100% 0, 100% 100%);
+    z-index: -1;
+}
+
 .app-tray-drawer.active {
     opacity: 1;
     visibility: visible;
