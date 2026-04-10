@@ -482,6 +482,12 @@ function createTray() {
                 void toggleRagObserverVisibility();
             }
         },
+        {
+            label: '打开 VCP 桌面',
+            click: () => {
+                desktopHandlers.openDesktopWindow();
+            }
+        },
         { type: 'separator' },
         {
             label: '退出',

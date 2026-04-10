@@ -562,6 +562,8 @@ function resolveAppActionToAppId(appAction) {
             return WINDOW_APP_IDS.THEMES;
         case 'open-task-window':
             return WINDOW_APP_IDS.TASK;
+        case 'open-desktop-window':
+            return WINDOW_APP_IDS.DESKTOP;
         default:
             return null;
     }
