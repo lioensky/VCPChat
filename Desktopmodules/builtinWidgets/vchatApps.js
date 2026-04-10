@@ -131,12 +131,10 @@
         </svg>`,
         // 独立 Electron App 图标
         toolbox: `<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <rect x="4" y="18" width="40" height="26" rx="4" fill="currentColor" opacity="0.1"/>
-            <rect x="4" y="18" width="40" height="26" rx="4" stroke="currentColor" stroke-width="2.5" fill="none"/>
-            <path d="M16 18V12a4 4 0 014-4h8a4 4 0 014 4v6" stroke="currentColor" stroke-width="2.5" fill="none"/>
-            <line x1="4" y1="28" x2="44" y2="28" stroke="currentColor" stroke-width="2" opacity="0.3"/>
-            <rect x="20" y="24" width="8" height="8" rx="2" fill="currentColor" opacity="0.3"/>
-            <circle cx="24" cy="28" r="2" fill="currentColor"/>
+            <circle cx="24" cy="24" r="18" fill="currentColor" opacity="0.08"/>
+            <circle cx="24" cy="24" r="18" stroke="currentColor" stroke-width="2.5" fill="none"/>
+            <path d="M35 13c-2.8-2.8-7.2-2.8-10 0l2 2a2 2 0 010 2.8l-1.5 1.5M13 35c2.8 2.8 7.2 2.8 10 0l-2-2a2 2 0 010-2.8l1.5-1.5" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+            <path d="M28.5 19.5L19.5 28.5" stroke="currentColor" stroke-width="6" stroke-linecap="round"/>
         </svg>`,
         database: `<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
             <ellipse cx="24" cy="12" rx="16" ry="6" fill="currentColor" opacity="0.12"/>
@@ -310,7 +308,7 @@
         },
         {
             id: 'vchat-app-toolbox',
-            name: '人类工具箱',
+            name: '工具',
             icon: `${ICON_BASE}/工具箱.png`,
             animatedIcon: null,
             svgIcon: SVG_ICONS.toolbox,
