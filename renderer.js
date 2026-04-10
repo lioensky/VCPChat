@@ -311,6 +311,13 @@ import { setupEventListeners } from './modules/event-listeners.js';
         console.error('[RENDERER_INIT] emoticonManager module not found!');
     }
 
+    // Initialize App Tray Manager
+    if (window.trayManager) {
+        window.trayManager.init();
+    } else {
+        console.error('[RENDERER_INIT] trayManager module not found!');
+    }
+
     // 确保在GroupRenderer初始化之前，其容器已准备好
     uiHelperFunctions.prepareGroupSettingsDOM();
     inviteAgentButtonsContainerElement = document.getElementById('inviteAgentButtonsContainer'); // 新增：获取容器引用

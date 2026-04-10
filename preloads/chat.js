@@ -576,6 +576,8 @@ const ALLOWED_KEYS = [
     "onDesktopRemoteSetWallpaper",
     "onDesktopRemoteRequest",
     "sendDesktopRemoteResponse",
+    "desktopLaunchVchatApp",
+    "desktopOpenSystemTool",
     "minimizeToTray",
     "closeApp"
 ];

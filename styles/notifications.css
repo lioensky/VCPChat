@@ -219,13 +219,22 @@ body.light-theme .notification-header-actions > button.active svg {
 }
  
 .notes-section {
-    padding: 10px 8px 15px 8px;
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    padding: 10px 10px 15px 12px;
+    display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
     background-color: transparent;
     flex-shrink: 0;
+    position: relative; /* Base for drawer positioning */
+    overflow: visible !important; /* Ensure drawer can pop up */
+}
+
+/* 动态渲染的按钮容器 */
+.app-tray-pinned-apps {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+    flex: 1;
 }
 
 body.light-theme .notes-section {
@@ -240,9 +249,11 @@ body.light-theme .notes-section {
     padding: 0 15px;
 }
 
+.notes-section button.header-button,
+.notes-section .capsule-button,
 .notes-section > button {
     background-color: var(--button-bg);
-    color: var(--secondary-text);
+    color: var(--accent-bg) !important;
     border: 1px solid var(--button-bg);
     padding: 0 10px;
     height: 32px;
@@ -259,8 +270,9 @@ body.light-theme .notes-section {
     min-width: 0;
 }
 
+body:not(.light-theme) .notes-section .capsule-button,
 body:not(.light-theme) .notes-section > button {
-    color: var(--text-on-accent);
+    color: var(--accent-bg) !important;
 }
 
 .notes-section > button:hover {
@@ -303,10 +315,150 @@ body.light-theme .notes-section > button:hover {
         display: none;
     }
 
-    .notes-section > button {
+    .notes-section > button,
+    .app-tray-pinned-apps > button {
         padding: 0;
         gap: 0;
     }
+}
+
+/* 扩展抽屉样式 */
+.app-tray-drawer {
+    position: absolute;
+    bottom: calc(100% + 10px);
+    right: 8px;
+    left: 8px;
+    background: var(--notification-bg);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    padding: 12px;
+    z-index: 10000;
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(10px) scale(0.95);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.app-tray-drawer.active {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0) scale(1);
+}
+
+.app-tray-drawer-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    padding: 0 4px;
+}
+
+.app-tray-drawer-title {
+    font-size: 0.9em;
+    font-weight: 600;
+    color: var(--primary-text);
+    opacity: 0.8;
+}
+
+.app-tray-drawer-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.app-tray-drawer-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr); /* 3 columns for better density */
+    gap: 8px;
+    max-height: 400px;
+    overflow-y: auto;
+    padding: 4px;
+}
+
+/* 统一胶囊按钮内样式 */
+.header-button.capsule-button {
+    border-radius: 999px !important; /* Force capsule shape */
+    padding: 0 10px !important; /* Compact padding */
+    justify-content: center !important; /* Center icon + text */
+    gap: 6px !important; /* Compact gap */
+    white-space: nowrap;
+}
+
+.app-tray-drawer-item {
+    width: 100% !important;
+}
+
+.app-tray-item-icon svg {
+    width: 24px;
+    height: 24px;
+}
+
+.app-tray-item-label {
+    font-size: 0.75em;
+    color: var(--secondary-text);
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    width: 100%;
+}
+
+/* "更多" 按钮样式 */
+.app-tray-more-btn {
+    flex: 0 0 34px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--button-bg);
+    border: 1px solid var(--button-bg);
+    border-radius: 12px;
+    cursor: pointer;
+    color: var(--accent-bg) !important;
+    transition: all 0.2s;
+    pointer-events: auto !important; /* 确保能点击 */
+    position: relative;
+    z-index: 2;
+}
+
+.app-tray-more-btn:hover {
+    background: var(--button-hover-bg);
+    color: var(--primary-text);
+    transform: scale(1.05);
+}
+
+.app-tray-more-btn.active {
+    background: var(--highlight-text);
+    color: var(--text-on-accent);
+}
+
+.app-tray-settings-btn {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    color: var(--primary-text);
+    padding: 4px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    pointer-events: auto !important; /* 深度修复：确保能接收点击 */
+    position: relative;
+    z-index: 5;
+}
+
+.app-tray-settings-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--primary-text);
+    transform: rotate(45deg);
+}
+
+body.light-theme .app-tray-drawer {
+    background: rgba(255, 255, 255, 0.8);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
 }
 
 .notification-item {

@@ -658,59 +658,30 @@
                 <!-- 邀请发言按钮将由 JavaScript 动态填充到这里 -->
             </div>
             <hr class="section-divider">
-            <div class="notes-section">
-                <button id="openTranslatorBtn" class="header-button" title="翻译">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
-                        fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                        stroke-linejoin="round" class="lucide lucide-languages-icon lucide-languages"
-                        aria-hidden="true">
-                        <path d="m5 8 6 6" />
-                        <path d="m4 14 6-6 2-3" />
-                        <path d="M2 5h12" />
-                        <path d="M7 2h1" />
-                        <path d="m22 22-5-10-5 10" />
-                        <path d="M14 18h6" />
+            <div id="vchatAppTray" class="notes-section">
+                <!-- App tray UI -->
+                <div id="appTrayPinnedApps" class="app-tray-pinned-apps"></div>
+                <button id="appTrayMoreBtn" class="app-tray-more-btn" title="更多应用">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="1"></circle>
+                        <circle cx="19" cy="12" r="1"></circle>
+                        <circle cx="5" cy="12" r="1"></circle>
                     </svg>
-                    <span class="notes-button-label">翻译</span>
                 </button>
-                <button id="openNotesBtn" class="header-button" title="打开笔记">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
-                        fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                        stroke-linejoin="round" class="lucide lucide-notebook-pen-icon lucide-notebook-pen"
-                        aria-hidden="true">
-                        <path d="M13.4 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7.4" />
-                        <path d="M2 6h4" />
-                        <path d="M2 10h4" />
-                        <path d="M2 14h4" />
-                        <path d="M2 18h4" />
-                        <path d="M21.378 5.626a1 1 0 1 0-3.004-3.004l-5.01 5.012a2 2 0 0 0-.506.854l-.837 2.87a.5.5 0 0 0 .62.62l2.87-.837a2 2 0 0 0 .854-.506z" />
-                    </svg>
-                    <span class="notes-button-label">笔记</span>
-                </button>
-                <button id="openMusicBtn" class="header-button" title="音乐播放器">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
-                        fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                        stroke-linejoin="round" class="lucide lucide-list-music-icon lucide-list-music"
-                        aria-hidden="true">
-                        <path d="M16 5H3" />
-                        <path d="M11 12H3" />
-                        <path d="M11 19H3" />
-                        <path d="M21 16V5" />
-                        <circle cx="18" cy="16" r="3" />
-                    </svg>
-                    <span class="notes-button-label">音乐</span>
-                </button>
-                <button id="openCanvasBtn" class="header-button" title="协同">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
-                        fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                        stroke-linejoin="round" class="lucide lucide-code-xml-icon lucide-code-xml"
-                        aria-hidden="true">
-                        <path d="m18 16 4-4-4-4" />
-                        <path d="m6 8-4 4 4 4" />
-                        <path d="m14.5 4-5 16" />
-                    </svg>
-                    <span class="notes-button-label">协同</span>
-                </button>
+                <div id="appTrayDrawer" class="app-tray-drawer">
+                    <div class="app-tray-drawer-header">
+                        <span class="app-tray-drawer-title">全部应用</span>
+                        <div class="app-tray-drawer-actions">
+                            <button id="appTraySettingsBtn" class="app-tray-settings-btn" title="设置托盘显示的按钮">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <circle cx="12" cy="12" r="3"></circle>
+                                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                    <div id="appTrayDrawerGrid" class="app-tray-drawer-grid"></div>
+                </div>
             </div>
         </aside>
     </div>
@@ -1940,6 +1911,7 @@
     <script src="modules/settingsManager.js"></script>
     <script src="modules/emoticonManager.js"></script> <!-- 新增：用户表情包管理器 -->
     <script src="modules/filterManager.js"></script> <!-- 新增：过滤规则管理器 -->
+    <script src="modules/trayManager.js"></script> <!-- 新增：应用托盘管理器 -->
     <script src="modules/ui-helpers.js"></script>
     <!-- Promptmodules -->
     <script src="Promptmodules/original-prompt-module.js"></script>

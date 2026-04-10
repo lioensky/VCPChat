@@ -11,6 +11,7 @@ const { PRELOAD_ROLES, resolveAppPreload } = require('../services/preloadPaths')
 let ipcHandlersRegistered = false;
 let forumWindowInstance = null;
 let memoWindowInstance = null;
+let taskWindowInstance = null;
 
 function initialize(mainWindow, openChildWindows) {
     if (ipcHandlersRegistered) {
@@ -246,8 +247,14 @@ function initialize(mainWindow, openChildWindows) {
             if (index > -1) {
                 openChildWindows.splice(index, 1);
             }
-            memoWindowInstance = null;
+        memoWindowInstance = null;
         });
+    });
+
+    ipcMain.on('open-task-window', async (event) => {
+        const windowService = require('../services/windowService');
+        const WINDOW_APP_IDS = require('../services/windowAppIds');
+        await windowService.open(WINDOW_APP_IDS.TASK);
     });
 
     ipcHandlersRegistered = true;

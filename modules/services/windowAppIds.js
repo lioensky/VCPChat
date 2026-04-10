@@ -10,4 +10,5 @@ module.exports = Object.freeze({
     TRANSLATOR: 'translator',
     MUSIC: 'music',
     THEMES: 'themes',
+    TASK: 'task',
 });

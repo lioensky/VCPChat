@@ -1,7 +1,7 @@
-﻿/**
+/**
  * modules/ipc/desktopHandlers.js
- * VCPdesktop IPC 澶勭悊妯″潡
- * 璐熻矗锛氭闈㈢獥鍙ｅ垱寤虹鐞嗐€佹祦寮忔帹閫佽浆鍙戙€佹敹钘忕郴缁熸寔涔呭寲銆佸揩鎹锋柟寮忚В鏋?鍚姩銆丏ock鎸佷箙鍖栥€佸竷灞€鎸佷箙鍖栥€佸绾告枃浠堕€夋嫨銆乂Chat鍐呴儴搴旂敤鍚姩
+ * VCPdesktop IPC 处理模块
+ * 负责：桌面窗口创建管理、流式推送转发、收藏系统持久化、快捷方式解析及启动、Dock持久化、布局持久化、壁纸文件选择、VChat内部应用启动
  */
 
 const { BrowserWindow, ipcMain, app, screen, shell, dialog, nativeTheme } = require('electron');
@@ -12,7 +12,7 @@ const windowService = require('../services/windowService');
 const WINDOW_APP_IDS = require('../services/windowAppIds');
 const { PRELOAD_ROLES, resolveAppPreload } = require('../services/preloadPaths');
 
-// --- 妯″潡鐘舵€?---
+// --- 模块状态 ---
 let desktopWindow = null;
 let mainWindow = null;
 let openChildWindows = [];
@@ -20,17 +20,18 @@ let appSettingsManager = null;
 let alwaysOnBottomEnabled = false;
 let alwaysOnBottomInterval = null;
 
-// --- 鐙珛 Electron App 瀛愯繘绋嬪紩鐢紙闃叉閲嶅鍚姩锛?---
+// --- 独立 Electron App 子进程引用（防止重复启动） ---
 const standaloneAppProcesses = new Map(); // appDir -> child_process
 
-// --- VChat 鍐呴儴瀛愮獥鍙ｅ崟渚嬪紩鐢?---
+// --- VChat 内部子窗口单例引用 ---
 let vchatForumWindow = null;
 let vchatMemoWindow = null;
 let vchatTranslatorWindow = null;
 let vchatMusicWindow = null;
 let vchatThemesWindow = null;
+let vchatTaskWindow = null;
 
-// --- 鏀惰棌绯荤粺璺緞 - 浣跨敤椤圭洰鏍圭洰褰曠殑 AppData ---
+// --- 收藏系统路径 - 使用项目根目录的 AppData ---
 const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
 const DESKTOP_WIDGETS_DIR = path.join(PROJECT_ROOT, 'AppData', 'DesktopWidgets');
 const DESKTOP_DATA_DIR = path.join(PROJECT_ROOT, 'AppData', 'DesktopData');
@@ -39,23 +40,23 @@ const LAYOUT_CONFIG_PATH = path.join(DESKTOP_DATA_DIR, 'layout.json');
 const CATALOG_PATH = path.join(DESKTOP_WIDGETS_DIR, 'CATALOG.md');
 
 /**
- * 鑷姩鐢熸垚 CATALOG.md 鈥斺€?鏀惰棌鎸備欢鐩綍绱㈠紩
+ * 自动生成 CATALOG.md —— 收藏挂件目录索引
  *
- * 閬嶅巻 DesktopWidgets 鐩綍涓墍鏈夊瓙鏂囦欢澶癸紝璇诲彇 meta.json锛?
- * 鐢熸垚涓€浠戒汉绫诲彲璇荤殑 Markdown 鏂囨。锛屾柟渚?AI 鎴栫敤鎴烽€氳繃 list 鎸囦护
- * 蹇€熶簡瑙ｆ瘡涓枃浠跺す瀵瑰簲鐨勬彃浠跺悕绉板拰鍐呴儴鏂囦欢缁撴瀯銆?
+ * 遍历 DesktopWidgets 目录中所有子文件夹，读取 meta.json：
+ * 生成一份人类可读的 Markdown 文档，方便 AI 或用户通过 list 指令
+ * 快速了解每个文件夹对应的插件名称 and 内部文件结构。
  *
- * 璇ュ嚱鏁板湪浠ヤ笅鏃舵満鑷姩璋冪敤锛?
- *   - 淇濆瓨/鏇存柊鏀惰棌鍚?(desktop-save-widget)
- *   - 鍒犻櫎鏀惰棌鍚?(desktop-delete-widget)
- *   - 鍒濆鍖栨椂 (initialize)
+ * 该函数在以下时机自动调用：
+ *   - 保存/更新收藏后 (desktop-save-widget)
+ *   - 删除收藏后 (desktop-delete-widget)
+ *   - 初始化时 (initialize)
  */
 async function generateCatalog() {
     try {
         await fs.ensureDir(DESKTOP_WIDGETS_DIR);
         const entries = await fs.readdir(DESKTOP_WIDGETS_DIR, { withFileTypes: true });
 
-        // 鏀堕泦鎵€鏈?widget 淇℃伅
+        // 收集所有 widget 信息
         const widgets = [];
         for (const entry of entries) {
             if (!entry.isDirectory()) continue;
@@ -70,7 +71,7 @@ async function generateCatalog() {
                 } catch (e) { /* ignore */ }
             }
 
-            // 閫掑綊鏀堕泦鏂囦欢鏍?
+            // 递归收集文件树
             const fileTree = await collectFileTree(widgetDir, '');
 
             widgets.push({
@@ -83,12 +84,12 @@ async function generateCatalog() {
             });
         }
 
-        // 鎸夊悕绉版帓搴?
+        // 按名称排序
         widgets.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'zh-CN'));
 
-        // 鐢熸垚 Markdown 鍐呭
+        // 生成 Markdown 内容
         const lines = [];
-        lines.push('# 馃摝 妗岄潰鎸備欢鏀惰棌鐩綍 (CATALOG)');
+        lines.push('# 📦 桌面挂件收藏目录 (CATALOG)');
         lines.push('');
         lines.push('> Auto-generated catalog. Do not edit manually.');
         lines.push(`> Last updated: ${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}`);
@@ -97,31 +98,31 @@ async function generateCatalog() {
         lines.push('');
 
         if (widgets.length > 0) {
-            // 蹇€熺储寮曡〃
+            // 快速索引表
             lines.push('## Quick Index');
             lines.push('');
-            lines.push('| # | 鏀惰棌鍚嶇О | 鏂囦欢澶?ID | 鍒涘缓鏃堕棿 | 鏇存柊鏃堕棿 |');
+            lines.push('| # | 收藏名称 | 文件夹 ID | 创建时间 | 更新时间 |');
             lines.push('|---|---------|----------|---------|---------|');
             widgets.forEach((w, i) => {
-                const created = w.createdAt ? new Date(w.createdAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) : '鏈煡';
-                const updated = w.updatedAt ? new Date(w.updatedAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) : '鏈煡';
+                const created = w.createdAt ? new Date(w.createdAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) : '未知';
+                const updated = w.updatedAt ? new Date(w.updatedAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) : '未知';
                 lines.push(`| ${i + 1} | **${w.name}** | \`${w.dirName}\` | ${created} | ${updated} |`);
             });
             lines.push('');
 
-            // 璇︾粏鏂囦欢鏍?
+            // 详细文件树
             lines.push('## File Tree');
             lines.push('');
             for (const w of widgets) {
                 lines.push(`### ${w.name}`);
                 lines.push('');
-                lines.push(`- **鏂囦欢澶?*: \`${w.dirName}/\``);
-                lines.push(`- **鏀惰棌 ID**: \`${w.id}\``);
+                lines.push(`- **文件夹**: \`${w.dirName}/\``);
+                lines.push(`- **收藏 ID**: \`${w.id}\``);
                 if (w.createdAt) {
-                    lines.push(`- **鍒涘缓鏃堕棿**: ${new Date(w.createdAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}`);
+                    lines.push(`- **创建时间**: ${new Date(w.createdAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}`);
                 }
                 if (w.updatedAt) {
-                    lines.push(`- **鏇存柊鏃堕棿**: ${new Date(w.updatedAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}`);
+                    lines.push(`- **更新时间**: ${new Date(w.updatedAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}`);
                 }
                 lines.push('');
                 lines.push('```');
@@ -142,16 +143,16 @@ async function generateCatalog() {
 }
 
 /**
- * 閫掑綊鏀堕泦鐩綍涓嬬殑鏂囦欢鍒楄〃锛堢浉瀵硅矾寰勶級
- * @param {string} dirPath - 缁濆鐩綍璺緞
- * @param {string} prefix - 褰撳墠閫掑綊鍓嶇紑锛堢敤浜庣缉杩涙樉绀猴級
- * @returns {Promise<string[]>} 鏂囦欢璺緞鍒楄〃
+ * 递归收集目录下的文件列表（相对路径）
+ * @param {string} dirPath - 绝对目录路径
+ * @param {string} prefix - 当前递归前缀（用于缩进显示）
+ * @returns {Promise<string[]>} 文件路径列表
  */
 async function collectFileTree(dirPath, prefix) {
     const result = [];
     try {
         const entries = await fs.readdir(dirPath, { withFileTypes: true });
-        // 鎺掑簭锛氱洰褰曞湪鍓嶏紝鏂囦欢鍦ㄥ悗
+        // 排序：目录在前，文件在后
         entries.sort((a, b) => {
             if (a.isDirectory() && !b.isDirectory()) return -1;
             if (!a.isDirectory() && b.isDirectory()) return 1;
@@ -159,13 +160,13 @@ async function collectFileTree(dirPath, prefix) {
         });
 
         for (const entry of entries) {
-            if (entry.name === 'CATALOG.md') continue; // 璺宠繃鑷韩
+            if (entry.name === 'CATALOG.md') continue; // 跳过自身
             if (entry.isDirectory()) {
                 result.push(`${prefix}${entry.name}/`);
                 const subFiles = await collectFileTree(path.join(dirPath, entry.name), prefix + '  ');
                 result.push(...subFiles);
             } else {
-                // 闄勫姞鏂囦欢澶у皬淇℃伅
+                // 附加文件大小信息
                 try {
                     const stat = await fs.stat(path.join(dirPath, entry.name));
                     const sizeStr = formatFileSize(stat.size);
@@ -180,7 +181,7 @@ async function collectFileTree(dirPath, prefix) {
 }
 
 /**
- * 鏍煎紡鍖栨枃浠跺ぇ灏?
+ * 格式化文件大小
  * @param {number} bytes
  * @returns {string}
  */
@@ -191,11 +192,11 @@ function formatFileSize(bytes) {
 }
 
 /**
- * 妫€娴嬪浘鏍囨槸鍚︽湁鏁堬紙闈炵┖鐧?闈炲叏閫忔槑锛?
- * Windows 瀵规煇浜涚郴缁熷簲鐢紙濡?UWP/MSIX锛夊彲鑳借繑鍥炰竴涓潪绌轰絾鍑犱箮鍏ㄩ€忔槑鎴栧叏鐧界殑鍥炬爣锛?
- * 杩欑被鍥炬爣铏界劧 isEmpty() 杩斿洖 false锛屼絾瑙嗚涓婃槸绌虹櫧鐨勩€?
- * @param {Electron.NativeImage} nativeImg - Electron NativeImage 瀵硅薄
- * @returns {boolean} 鍥炬爣鏄惁鏈夋剰涔夛紙鏈夊彲瑙佸唴瀹癸級
+ * 检测图标是否有效（非空白、非全透明）：
+ * Windows 对某些系统应用（如 UWP/MSIX）可能返回一个非空但几乎全透明或全白的图标，
+ * 这类图标虽然 isEmpty() 返回 false，但视觉上是空白的。
+ * @param {Electron.NativeImage} nativeImg - Electron NativeImage 对象
+ * @returns {boolean} 图标是否有意义（有可见内容）
  */
 function isIconValid(nativeImg) {
     try {
@@ -206,11 +207,11 @@ function isIconValid(nativeImg) {
         }
 
         const totalPixels = size.width * size.height;
-        let opaquePixels = 0;          // 鏈変笉閫忔槑搴︾殑鍍忕礌
-        let colorfulPixels = 0;        // 鏈夊疄闄呴鑹诧紙闈炵函鐧?绾粦锛夌殑鍍忕礌
+        let opaquePixels = 0;          // 有不透明度的像素
+        let colorfulPixels = 0;        // 有实际颜色（非纯白、纯黑）的像素
 
-        // RGBA 鏍煎紡锛屾瘡鍍忕礌 4 瀛楄妭
-        // 閲囨牱妫€娴嬶細涓轰簡鎬ц兘锛屽澶у浘鍙噰鏍烽儴鍒嗗儚绱?
+        // RGBA 格式，每像素 4 字节
+        // 采样检测：为了性能，对大图只采样部分像素
         const step = totalPixels > 1024 ? Math.floor(totalPixels / 512) : 1;
 
         for (let i = 0; i < totalPixels; i += step) {
@@ -222,7 +223,7 @@ function isIconValid(nativeImg) {
 
             if (a > 20) {
                 opaquePixels++;
-                // 妫€鏌ユ槸鍚︽湁瀹為檯棰滆壊锛堥潪鎺ヨ繎绾櫧鎴栫函榛戯級
+                // 检查是否有实际颜色（非接近纯白或纯黑）
                 if (!((r > 240 && g > 240 && b > 240) || (r < 15 && g < 15 && b < 15))) {
                     colorfulPixels++;
                 }
@@ -232,23 +233,23 @@ function isIconValid(nativeImg) {
         const sampledPixels = Math.ceil(totalPixels / step);
         const opaqueRatio = opaquePixels / sampledPixels;
 
-        // 濡傛灉涓嶉€忔槑鍍忕礌灏戜簬 5%锛屽垽瀹氫负绌虹櫧鍥炬爣
+        // 如果不透明像素少于 5%，判定为空白图标
         if (opaqueRatio < 0.05) {
             return false;
         }
 
-        // 鍥炬爣鏈夎冻澶熺殑涓嶉€忔槑鍐呭锛岃涓烘湁鏁?
+        // 图标有足够的不透明内容，视为有效
         return true;
     } catch (e) {
-        // 妫€娴嬪け璐ユ椂淇濆畧鍦拌涓哄浘鏍囨湁鏁?
+        // 检测失败时保守地认为图标有效
         console.warn('[DesktopHandlers] isIconValid check failed:', e.message);
         return true;
     }
 }
 
 /**
- * 鍦ㄦ墍鏈夊凡鎵撳紑鐨勭獥鍙ｄ腑鏌ユ壘 URL 鍖呭惈鎸囧畾鍏抽敭璇嶇殑绐楀彛
- * @param {string} urlKeyword - URL 涓渶瑕佸寘鍚殑鍏抽敭璇嶏紙濡?'forum.html'锛?
+ * 在所有已打开的窗口中查找 URL 包含指定关键词的窗口
+ * @param {string} urlKeyword - URL 中需要包含的关键词（如 'forum.html'）
  * @returns {BrowserWindow|null}
  */
 function findWindowByUrl(urlKeyword) {
@@ -265,10 +266,10 @@ function findWindowByUrl(urlKeyword) {
 }
 
 /**
- * 鍒涘缓鎴栬仛鐒︿竴涓€氱敤瀛愮獥鍙ｏ紙鐢ㄤ簬 VChat 鍐呴儴搴旂敤锛?
- * @param {BrowserWindow|null} existingWindow - 鐜版湁绐楀彛寮曠敤
- * @param {object} options - 绐楀彛閰嶇疆
- * @returns {BrowserWindow} 鍒涘缓鎴栬仛鐒﹀悗鐨勭獥鍙?
+ * 创建或聚焦一个通用子窗口（用于 VChat 内部应用）：
+ * @param {BrowserWindow|null} existingWindow - 现有窗口引用
+ * @param {object} options - 窗口配置
+ * @returns {BrowserWindow} 创建或聚焦后的窗口
  */
 function createOrFocusChildWindow(existingWindow, options) {
     if (existingWindow && !existingWindow.isDestroyed()) {
@@ -296,7 +297,7 @@ function createOrFocusChildWindow(existingWindow, options) {
         show: false,
     });
 
-    // 鏋勫缓 URL
+    // 构建 URL
     let url = `file://${options.htmlPath}`;
     if (options.queryParams) {
         url += `?${options.queryParams}`;
@@ -325,7 +326,7 @@ function createOrFocusChildWindow(existingWindow, options) {
             const idx = openChildWindows.indexOf(win);
             if (idx > -1) openChildWindows.splice(idx, 1);
         }
-        // 娓呯悊鍗曚緥寮曠敤
+        // 清理单例引用
         if (win === vchatForumWindow) vchatForumWindow = null;
         if (win === vchatMemoWindow) vchatMemoWindow = null;
         if (win === vchatTranslatorWindow) vchatTranslatorWindow = null;
@@ -515,6 +516,26 @@ function registerManagedWindows() {
             return vchatThemesWindow;
         },
     });
+
+    windowService.register(WINDOW_APP_IDS.TASK, {
+        owner: 'desktopHandlers',
+        getWindow: () => vchatTaskWindow || findWindowByUrl('task.html'),
+        open: async () => {
+            const existingTask = findWindowByUrl('task.html');
+            if (existingTask) {
+                if (!existingTask.isVisible()) existingTask.show();
+                existingTask.focus();
+                vchatTaskWindow = existingTask;
+                return existingTask;
+            }
+            vchatTaskWindow = createOrFocusChildWindow(vchatTaskWindow, {
+                width: 1200, height: 800, minWidth: 800, minHeight: 600,
+                title: 'VCP 任务助手',
+                htmlPath: path.join(app.getAppPath(), 'Agenttaskmodules', 'task.html'),
+            });
+            return vchatTaskWindow;
+        },
+    });
 }
 
 function resolveAppActionToAppId(appAction) {
@@ -539,38 +560,40 @@ function resolveAppActionToAppId(appAction) {
             return WINDOW_APP_IDS.MUSIC;
         case 'open-themes-window':
             return WINDOW_APP_IDS.THEMES;
+        case 'open-task-window':
+            return WINDOW_APP_IDS.TASK;
         default:
             return null;
     }
 }
 
 /**
- * 鍚姩 Windows 绯荤粺宸ュ叿
- * 鏀寔鐨勫懡浠ゆ牸寮忥細
- *   - ms-settings:display     鈫?鎵撳紑 Windows 鏄剧ず璁剧疆
- *   - ms-settings:            鈫?鎵撳紑 Windows 璁剧疆棣栭〉
- *   - control                 鈫?鎵撳紑鎺у埗闈㈡澘
- *   - shell:RecycleBinFolder  鈫?鎵撳紑鍥炴敹绔?
- *   - shell:MyComputerFolder  鈫?鎵撳紑姝ょ數鑴?
- * @param {string} cmd - 绯荤粺鍛戒护
+ * 启动 Windows 系统工具
+ * 支持的命令格式：
+ *   - ms-settings:display     → 打开 Windows 显示设置
+ *   - ms-settings:            → 打开 Windows 设置首页
+ *   - control                 → 打开控制面板
+ *   - shell:RecycleBinFolder  → 打开回收站
+ *   - shell:MyComputerFolder  → 打开此电脑
+ * @param {string} cmd - 系统命令
  * @returns {Promise<{success: boolean, error?: string}>}
  */
 async function launchSystemTool(cmd) {
     try {
         if (!cmd) {
-            return { success: false, error: '缂哄皯鍛戒护鍙傛暟' };
+            return { success: false, error: '缺少命令参数' };
         }
 
         console.log(`[DesktopHandlers] Launching system tool: ${cmd}`);
 
         if (cmd.startsWith('ms-settings:')) {
-            // Windows 璁剧疆 URI - 浣跨敤 shell.openExternal
+            // Windows 设置 URI - 使用 shell.openExternal
             await shell.openExternal(cmd);
             return { success: true };
         }
 
         if (cmd === 'control') {
-            // 鎺у埗闈㈡澘 - 浣跨敤 shell.openPath
+            // 控制面板 - 使用 shell.openPath
             const { exec } = require('child_process');
             exec('control.exe', (err) => {
                 if (err) console.warn('[DesktopHandlers] control.exe launch warning:', err.message);
@@ -579,7 +602,7 @@ async function launchSystemTool(cmd) {
         }
 
         if (cmd.startsWith('shell:')) {
-            // Windows Shell 鏂囦欢澶?- 浣跨敤 explorer.exe
+            // Windows Shell 文件夹 - 使用 explorer.exe
             const { exec } = require('child_process');
             exec(`explorer.exe ${cmd}`, (err) => {
                 if (err) console.warn('[DesktopHandlers] explorer.exe launch warning:', err.message);
@@ -587,7 +610,7 @@ async function launchSystemTool(cmd) {
             return { success: true };
         }
 
-        // 閫氱敤鏂规锛氬皾璇曠洿鎺ユ墦寮€
+        // 通用方案：尝试直接打开
         await shell.openPath(cmd);
         return { success: true };
     } catch (err) {
@@ -597,12 +620,12 @@ async function launchSystemTool(cmd) {
 }
 
 /**
- * 鍚姩鐙珛鐨?Electron App锛堝浜虹被宸ュ叿绠便€乂chatManager锛?
- * 杩欎簺搴旂敤鏄」鐩唴鐨勭嫭绔?Electron 鍏ュ彛锛屾嫢鏈夊悇鑷殑 main.js銆?
- * 閫氳繃 child_process.spawn 鍚姩涓€涓柊鐨?electron 瀹炰緥銆?
+ * 启动独立的 Electron App（如人类工具箱、VchatManager）：
+ * 这些应用是项目内部的独立 Electron 入口，拥有各自的 main.js。
+ * 通过 child_process.spawn 启动一个新的 electron 实例。
  *
- * @param {string} appDir - 搴旂敤鐩綍鍚嶏紙鐩稿浜庨」鐩牴鐩綍锛屽 'VCPHumanToolBox'锛?
- * @param {string} displayName - 鏄剧ず鍚嶇О锛堢敤浜庢棩蹇楀拰鐘舵€佹彁绀猴級
+ * @param {string} appDir - 应用目录名（相对于项目根目录，如 'VCPHumanToolBox'）
+ * @param {string} displayName - 显示名称（用于日志和状态提示）
  * @returns {Promise<{success: boolean, error?: string}>}
  */
 async function launchStandaloneElectronApp(appDir, displayName) {
@@ -610,50 +633,50 @@ async function launchStandaloneElectronApp(appDir, displayName) {
         const appPath = path.join(PROJECT_ROOT, appDir);
         const mainJsPath = path.join(appPath, 'main.js');
 
-        // 妫€鏌ョ洰褰曞拰鍏ュ彛鏂囦欢鏄惁瀛樺湪
+        // 检查目录和入口文件是否存在
         if (!await fs.pathExists(mainJsPath)) {
             console.error(`[DesktopHandlers] Standalone app not found: ${mainJsPath}`);
-            return { success: false, error: `${displayName} 鍏ュ彛鏂囦欢涓嶅瓨鍦? ${appDir}/main.js` };
+            return { success: false, error: `${displayName} 入口文件不存在: ${appDir}/main.js` };
         }
 
-        // 妫€鏌ユ槸鍚﹀凡鏈夎搴旂敤鐨勮繘绋嬪湪杩愯
+        // 检查是否已有该应用的进程在运行
         const existingProcess = standaloneAppProcesses.get(appDir);
         if (existingProcess && !existingProcess.killed) {
-            // 杩涚▼瀛樺湪锛屾鏌ユ槸鍚﹁繕娲荤潃
+            // 进程存在，检查是否还活着
             try {
-                process.kill(existingProcess.pid, 0); // 鍙戦€佷俊鍙?0 妫€娴嬭繘绋嬫槸鍚﹀瓨娲?
+                process.kill(existingProcess.pid, 0); // 发送信号 0 检测进程是否存活
                 console.log(`[DesktopHandlers] ${displayName} already running (PID: ${existingProcess.pid})`);
                 return { success: true, alreadyRunning: true };
             } catch (e) {
-                // 杩涚▼宸查€€鍑猴紝娓呯悊寮曠敤
+                // 进程已退出，清理引用
                 standaloneAppProcesses.delete(appDir);
             }
         }
 
-        // 鑾峰彇褰撳墠 Electron 鍙墽琛屾枃浠惰矾寰?
+        // 获取当前 Electron 可执行文件路径
         const electronExe = process.execPath;
 
         console.log(`[DesktopHandlers] Launching standalone app: ${displayName}`);
         console.log(`[DesktopHandlers]   Electron: ${electronExe}`);
         console.log(`[DesktopHandlers]   App path: ${appPath}`);
 
-        // 浣跨敤 spawn 鍚姩鐙珛鐨?electron 杩涚▼
+        // 使用 spawn 启动独立的 electron 进程
         const { spawn } = require('child_process');
         const child = spawn(electronExe, [mainJsPath], {
             cwd: appPath,
-            detached: true,       // 鐙珛杩涚▼锛屼笉闅忕埗杩涚▼閫€鍑?
-            stdio: 'ignore',      // 涓嶇户鎵挎爣鍑咺O
+            detached: true,       // 独立进程，不随父进程退出
+            stdio: 'ignore',      // 不继承标准 IO
             env: {
                 ...process.env,
-                // 纭繚瀛愯繘绋嬬煡閬撻」鐩牴鐩綍
+                // 确保子进程知道项目根目录
                 VCP_PROJECT_ROOT: PROJECT_ROOT,
             },
         });
 
-        // 瑙ｉ櫎鐖惰繘绋嬪瀛愯繘绋嬬殑寮曠敤锛屽厑璁稿瓙杩涚▼鐙珛杩愯
+        // 解除父进程对子进程的引用，允许子进程独立运行
         child.unref();
 
-        // 璁板綍杩涚▼寮曠敤锛堢敤浜庨槻姝㈤噸澶嶅惎鍔級
+        // 记录进程引用（用于防止重复启动）
         standaloneAppProcesses.set(appDir, child);
 
         child.on('exit', (code) => {
@@ -675,7 +698,7 @@ async function launchStandaloneElectronApp(appDir, displayName) {
 }
 
 /**
- * 鍒濆鍖栨闈㈠鐞嗘ā鍧?
+ * 初始化桌面处理模块
  */
 function initialize(params) {
     mainWindow = params.mainWindow;
@@ -684,52 +707,52 @@ function initialize(params) {
     registerManagedWindows();
 
 
-    // 纭繚鐩綍瀛樺湪
+    // 确保目录存在
     fs.ensureDirSync(DESKTOP_WIDGETS_DIR);
     fs.ensureDirSync(DESKTOP_DATA_DIR);
 
-    // 鍚姩鏃剁敓鎴?鏇存柊 CATALOG.md
+    // 启动时生成/更新 CATALOG.md
     generateCatalog().catch(err => {
         console.warn('[DesktopHandlers] Initial CATALOG.md generation failed:', err.message);
     });
 
-    // --- IPC: 鎵撳紑妗岄潰绐楀彛 ---
+    // --- IPC: 打开桌面窗口 ---
     ipcMain.handle('open-desktop-window', async () => {
         await openDesktopWindow();
     });
 
-    // --- IPC: 绐楀彛濮嬬粓缃簳鎺у埗 ---
+    // --- IPC: 窗口始终置底控制 ---
     ipcMain.handle('desktop-set-always-on-bottom', (event, enabled) => {
         setAlwaysOnBottom(enabled);
         return { success: true };
     });
 
-    // --- IPC: 涓荤獥鍙?鈫?妗岄潰鐢诲竷鐨勬祦寮忔帹閫?---
+    // --- IPC: 主窗口 -> 桌面画布的流式推送 ---
     ipcMain.on('desktop-push', (event, data) => {
         if (desktopWindow && !desktopWindow.isDestroyed()) {
             desktopWindow.webContents.send('desktop-push-to-canvas', data);
         }
     });
 
-    // --- IPC: 鏀惰棌绯荤粺 ---
+    // --- IPC: 收藏系统 ---
 
-    // 淇濆瓨/鏇存柊鏀惰棌
+    // 保存/更新收藏
     ipcMain.handle('desktop-save-widget', async (event, data) => {
         try {
             const { id, name, html, thumbnail } = data;
             console.log(`[DesktopHandlers] desktop-save-widget called: id=${id}, name=${name}, html length=${html?.length}, has thumbnail=${!!thumbnail}`);
             if (!id || !name || !html) {
                 console.error('[DesktopHandlers] Missing required params:', { id: !!id, name: !!name, html: !!html });
-                return { success: false, error: '缂哄皯蹇呰鍙傛暟' };
+                return { success: false, error: '缺少必要参数' };
             }
 
             const widgetDir = path.join(DESKTOP_WIDGETS_DIR, id);
             await fs.ensureDir(widgetDir);
 
-            // 淇濆瓨HTML鍐呭
+            // 保存 HTML 内容
             await fs.writeFile(path.join(widgetDir, 'widget.html'), html, 'utf-8');
 
-            // 淇濆瓨鍏冩暟鎹?
+            // 保存元数据
             const meta = {
                 id,
                 name,
@@ -737,7 +760,7 @@ function initialize(params) {
                 updatedAt: Date.now(),
             };
 
-            // 璇诲彇宸叉湁鍏冩暟鎹繚鐣檆reatedAt
+            // 读取已有元数据保留 createdAt
             const metaPath = path.join(widgetDir, 'meta.json');
             if (await fs.pathExists(metaPath)) {
                 try {
@@ -748,7 +771,7 @@ function initialize(params) {
 
             await fs.writeJson(metaPath, meta, { spaces: 2 });
 
-            // 淇濆瓨缂╃暐鍥撅紙Base64 Data URL 鈫?PNG鏂囦欢锛?
+            // 保存缩略图（Base64 Data URL -> PNG 文件）
             if (thumbnail && thumbnail.startsWith('data:image/')) {
                 const base64Data = thumbnail.replace(/^data:image\/\w+;base64,/, '');
                 const thumbBuffer = Buffer.from(base64Data, 'base64');
@@ -757,7 +780,7 @@ function initialize(params) {
 
             console.log(`[DesktopHandlers] Widget saved: ${name} (${id}) to ${widgetDir}`);
 
-            // 淇濆瓨鎴愬姛鍚庡紓姝ユ洿鏂?CATALOG.md锛堜笉闃诲杩斿洖锛?
+            // 保存成功后异步更新 CATALOG.md（不阻塞返回）
             generateCatalog().catch(err => {
                 console.warn('[DesktopHandlers] CATALOG.md update after save failed:', err.message);
             });
@@ -770,31 +793,31 @@ function initialize(params) {
     });
 
     /**
-     * 淇濆瓨棰濆鏂囦欢鍒版敹钘忕洰褰曪紙鐢ㄤ簬 AI 鐢熸垚鐨勫鏂囦欢 widget锛?
-     * 鍏佽 AI 灏嗗閮?JS/CSS/璧勬簮鏂囦欢淇濆瓨鍒?widget 鏀惰棌鐩綍涓€?
-     * 鍙傛暟锛歿 widgetId, fileName, content, encoding }
-     * - widgetId: 鏀惰棌 ID锛堢洰褰曞悕锛?
-     * - fileName: 鏂囦欢鍚嶏紙濡?'app.js', 'style.css'锛屼笉鍏佽璺緞绌胯秺锛?
-     * - content: 鏂囦欢鍐呭锛堝瓧绗︿覆锛?
-     * - encoding: 缂栫爜鏂瑰紡锛岄粯璁?'utf-8'锛屼篃鏀寔 'base64'
+     * 保存额外文件到收藏目录（用于 AI 生成的多文件 widget）：
+     * 允许 AI 将外部 JS/CSS/资源文件保存到 widget 收藏目录中。
+     * 参数：{ widgetId, fileName, content, encoding }
+     * - widgetId: 收藏 ID（目录名）
+     * - fileName: 文件名（如 'app.js', 'style.css'，不允许路径穿越）
+     * - content: 文件内容（字符串）
+     * - encoding: 编码方式，默认 'utf-8'，也支持 'base64'
      */
     ipcMain.handle('desktop-save-widget-file', async (event, data) => {
         try {
             const { widgetId, fileName, content, encoding } = data;
             if (!widgetId || !fileName || content === undefined) {
-                return { success: false, error: '缂哄皯蹇呰鍙傛暟 (widgetId, fileName, content)' };
+                return { success: false, error: '缺少必要参数 (widgetId, fileName, content)' };
             }
 
-            // 瀹夊叏妫€鏌ワ細闃叉璺緞绌胯秺
+            // 安全检查：防止路径穿越
             const safeName = path.basename(fileName);
             if (safeName !== fileName || fileName.includes('..')) {
-                return { success: false, error: `涓嶅畨鍏ㄧ殑鏂囦欢鍚? ${fileName}` };
+                return { success: false, error: `不安全的文件名: ${fileName}` };
             }
 
-            // 绂佹瑕嗙洊鏍稿績鏂囦欢
+            // 禁止覆盖核心文件
             const protectedFiles = ['meta.json', 'widget.html', 'thumbnail.png'];
             if (protectedFiles.includes(safeName.toLowerCase())) {
-                return { success: false, error: `涓嶅厑璁歌鐩栨牳蹇冩枃浠? ${safeName}` };
+                return { success: false, error: `不允许覆盖核心文件: ${safeName}` };
             }
 
             const widgetDir = path.join(DESKTOP_WIDGETS_DIR, widgetId);
@@ -813,21 +836,21 @@ function initialize(params) {
     });
 
     /**
-     * 璇诲彇鏀惰棌鐩綍涓殑棰濆鏂囦欢
-     * 鍙傛暟锛歿 widgetId, fileName }
-     * 杩斿洖锛歿 success, content, encoding }
+     * 读取收藏目录中的额外文件
+     * 参数：{ widgetId, fileName }
+     * 返回：{ success, content, encoding }
      */
     ipcMain.handle('desktop-load-widget-file', async (event, data) => {
         try {
             const { widgetId, fileName } = data;
             if (!widgetId || !fileName) {
-                return { success: false, error: '缂哄皯蹇呰鍙傛暟' };
+                return { success: false, error: '缺少必要参数' };
             }
 
-            // 瀹夊叏妫€鏌?
+            // 安全检查
             const safeName = path.basename(fileName);
             if (safeName !== fileName || fileName.includes('..')) {
-                return { success: false, error: `涓嶅畨鍏ㄧ殑鏂囦欢鍚? ${fileName}` };
+                return { success: false, error: `不安全的文件名: ${fileName}` };
             }
 
             const filePath = path.join(DESKTOP_WIDGETS_DIR, widgetId, safeName);
@@ -835,14 +858,14 @@ function initialize(params) {
                 return { success: false, error: 'File not found.' };
             }
 
-            // 鏍规嵁鎵╁睍鍚嶅垽鏂槸鍚︿负鏂囨湰鏂囦欢
+            // 根据扩展名判断是否为文本文件
             const ext = path.extname(safeName).toLowerCase();
             const textExts = ['.js', '.css', '.html', '.htm', '.json', '.txt', '.md', '.svg', '.xml'];
             if (textExts.includes(ext)) {
                 const content = await fs.readFile(filePath, 'utf-8');
                 return { success: true, content, encoding: 'utf-8' };
             } else {
-                // 浜岃繘鍒舵枃浠惰繑鍥?base64
+                // 二进制文件返回 base64
                 const buffer = await fs.readFile(filePath);
                 return { success: true, content: buffer.toString('base64'), encoding: 'base64' };
             }
@@ -853,14 +876,14 @@ function initialize(params) {
     });
 
     /**
-     * 鍒楀嚭鏀惰棌鐩綍涓殑鎵€鏈夋枃浠?
-     * 鍙傛暟锛歸idgetId
-     * 杩斿洖锛歿 success, files: [{ name, size, isText }] }
+     * 列出收藏目录中的所有文件
+     * 参数：widgetId
+     * 返回：{ success, files: [{ name, size, isText }] }
      */
     ipcMain.handle('desktop-list-widget-files', async (event, widgetId) => {
         try {
             if (!widgetId) {
-                return { success: false, error: '缂哄皯 widgetId' };
+                return { success: false, error: '缺少 widgetId' };
             }
 
             const widgetDir = path.join(DESKTOP_WIDGETS_DIR, widgetId);
@@ -894,7 +917,7 @@ function initialize(params) {
         }
     });
 
-    // 鍔犺浇鏀惰棌锛堣鍙朒TML鍐呭锛?
+    // 加载收藏（读取 HTML 内容）
     ipcMain.handle('desktop-load-widget', async (event, id) => {
         try {
             const widgetDir = path.join(DESKTOP_WIDGETS_DIR, id);
@@ -921,7 +944,7 @@ function initialize(params) {
         }
     });
 
-    // 鍒犻櫎鏀惰棌
+    // 删除收藏
     ipcMain.handle('desktop-delete-widget', async (event, id) => {
         try {
             const widgetDir = path.join(DESKTOP_WIDGETS_DIR, id);
@@ -930,7 +953,7 @@ function initialize(params) {
                 console.log(`[DesktopHandlers] Widget deleted: ${id}`);
             }
 
-            // 鍒犻櫎鎴愬姛鍚庡紓姝ユ洿鏂?CATALOG.md锛堜笉闃诲杩斿洖锛?
+            // 删除成功后异步更新 CATALOG.md（不阻塞返回）
             generateCatalog().catch(err => {
                 console.warn('[DesktopHandlers] CATALOG.md update after delete failed:', err.message);
             });
@@ -942,7 +965,7 @@ function initialize(params) {
         }
     });
 
-    // 鍒楀嚭鎵€鏈夋敹钘忥紙杩斿洖id銆乶ame銆乼humbnail鐨凞ata URL锛?
+    // 列出所有收藏（返回 id、name、thumbnail 的 Data URL）
     ipcMain.handle('desktop-list-widgets', async () => {
         try {
             console.log(`[DesktopHandlers] desktop-list-widgets called, dir: ${DESKTOP_WIDGETS_DIR}`);
@@ -965,7 +988,7 @@ function initialize(params) {
                     } catch (e) { /* ignore */ }
                 }
 
-                // 璇诲彇缂╃暐鍥句负Data URL
+                // 读取缩略图为 Data URL
                 let thumbnail = '';
                 if (await fs.pathExists(thumbPath)) {
                     try {
@@ -983,7 +1006,7 @@ function initialize(params) {
                 });
             }
 
-            // 鎸夋洿鏂版椂闂村€掑簭鎺掑垪
+            // 按更新时间倒序排列
             widgets.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
 
             return { success: true, widgets };
@@ -993,7 +1016,7 @@ function initialize(params) {
         }
     });
 
-    // 鎴彇妗岄潰绐楀彛鎸囧畾鐭╁舰鍖哄煙鐨勬埅鍥?
+    // 截取桌面窗口指定矩形区域的截图
     ipcMain.handle('desktop-capture-widget', async (event, rect) => {
         try {
             if (!desktopWindow || desktopWindow.isDestroyed()) {
@@ -1001,7 +1024,7 @@ function initialize(params) {
             }
 
             const { x, y, width, height } = rect;
-            // capturePage 闇€瑕佹暣鏁板潗鏍?
+            // capturePage 需要整数坐标
             const captureRect = {
                 x: Math.round(x),
                 y: Math.round(y),
@@ -1012,7 +1035,7 @@ function initialize(params) {
             console.log(`[DesktopHandlers] Capturing widget area:`, captureRect);
             const image = await desktopWindow.webContents.capturePage(captureRect);
             
-            // 缂╂斁鍒板悎鐞嗙殑缂╃暐鍥惧昂瀵?
+            // 缩放到合理的缩略图尺寸
             const MAX_THUMB = 300;
             const scale = Math.min(MAX_THUMB / captureRect.width, MAX_THUMB / captureRect.height, 1);
             const thumbWidth = Math.round(captureRect.width * scale);
@@ -1029,7 +1052,7 @@ function initialize(params) {
         }
     });
 
-    // 鑾峰彇 VCP 鍚庣鍑嵁锛堜緵妗岄潰 widget 鐨?vcpAPI 浣跨敤锛?
+    // 获取 VCP 后端凭据（供桌面 widget 的 vcpAPI 使用）：
     ipcMain.handle('desktop-get-credentials', async () => {
         try {
             const settingsPath = path.join(PROJECT_ROOT, 'AppData', 'settings.json');
@@ -1056,7 +1079,7 @@ function initialize(params) {
                 } catch (e) { /* ignore */ }
             }
 
-            // 浠?vcpServerUrl 鎺ㄥ鍑?admin API base URL
+            // 从 vcpServerUrl 推导出 admin API base URL
             let apiBaseUrl = '';
             if (vcpServerUrl) {
                 try {
@@ -1112,17 +1135,17 @@ function initialize(params) {
     });
 
     // ============================================================
-    // --- IPC: 蹇嵎鏂瑰紡瑙ｆ瀽 & 鍚姩 ---
+    // --- IPC: 快捷方式解析 & 启动 ---
     // ============================================================
 
     /**
-     * 瑙ｆ瀽 Windows .url 蹇嵎鏂瑰紡鏂囦欢锛圛nternet Shortcut锛?
-     * 鏀寔 Steam 绛変娇鐢ㄨ嚜瀹氫箟鍗忚鐨勫簲鐢紙濡?steam://rungameid/570锛?
-     * @param {string} filePath - .url 鏂囦欢璺緞
-     * @returns {object|null} 瑙ｆ瀽鍚庣殑蹇嵎鏂瑰紡淇℃伅
+     * 解析 Windows .url 快捷方式文件（Internet Shortcut）：
+     * 支持 Steam 等使用自定义协议的应用（如 steam://rungameid/570）
+     * @param {string} filePath - .url 文件路径
+     * @returns {object|null} 解析后的快捷方式信息
      */
     /**
-     * 甯﹁秴鏃剁殑 Promise 鍖呰鍣?
+     * 带超时的 Promise 包装器
      */
     function withTimeout(promise, ms, fallback) {
         return Promise.race([
@@ -1155,21 +1178,21 @@ function initialize(params) {
 
             const name = path.basename(filePath, '.url');
 
-            // 鎻愬彇鍥炬爣锛堝甫瓒呮椂淇濇姢锛岄槻姝?getFileIcon 鎸傝捣锛?
+            // 提取图标（带超时保护，防止 getFileIcon 挂起）
             let iconDataUrl = '';
             try {
-                // 浼樺厛浠?IconFile 鎸囧畾鐨勬枃浠舵彁鍙栧浘鏍?
+                // 优先以 IconFile 指定的文件提取图标
                 if (iconFile && await fs.pathExists(iconFile)) {
                     const nativeImage = await withTimeout(
                         app.getFileIcon(iconFile, { size: 'large' }),
-                        3000, // 3绉掕秴鏃?
+                        3000, // 3秒超时
                         null
                     );
                     if (nativeImage && !nativeImage.isEmpty() && isIconValid(nativeImage)) {
                         iconDataUrl = nativeImage.toDataURL();
                     }
                 }
-                // 濡傛灉娌℃湁鏈夋晥鍥炬爣锛屽皾璇曚粠 .url 鏂囦欢鏈韩鎻愬彇
+                // 如果没有有效图标，尝试从 .url 文件本身提取
                 if (!iconDataUrl) {
                     const nativeImage = await withTimeout(
                         app.getFileIcon(filePath, { size: 'large' }),
@@ -1186,13 +1209,13 @@ function initialize(params) {
 
             return {
                 name,
-                targetPath: url,      // 瀵?.url 鏂囦欢锛宼argetPath 瀛樺偍鐨勬槸 URL锛堝 steam://rungameid/570锛?
+                targetPath: url,      // 对于 .url 文件，targetPath 存储的是 URL（如 steam://rungameid/570）：
                 args: '',
                 workingDir: '',
                 description: url,
                 icon: iconDataUrl,
                 originalPath: filePath,
-                isUrlShortcut: true,   // 鏍囪涓?URL 蹇嵎鏂瑰紡锛屽惎鍔ㄦ椂浣跨敤 shell.openExternal
+                isUrlShortcut: true,   // 标记为 URL 快捷方式，启动时使用 shell.openExternal
             };
         } catch (e) {
             console.warn(`[DesktopHandlers] Failed to parse .url file: ${filePath}`, e.message);
@@ -1201,8 +1224,8 @@ function initialize(params) {
     }
 
     /**
-     * 瑙ｆ瀽 Windows 蹇嵎鏂瑰紡 (.lnk) 鏂囦欢
-     * 杩斿洖锛歿 name, targetPath, args, icon (DataURL), workingDir }
+     * 解析 Windows 快捷方式 (.lnk) 文件
+     * 返回：{ name, targetPath, args, icon (DataURL), workingDir }
      */
     ipcMain.handle('desktop-shortcut-parse', async (event, filePath) => {
         try {
@@ -1210,25 +1233,25 @@ function initialize(params) {
                 return { success: false, error: 'Invalid shortcut file.' };
             }
 
-            // 鏀寔 .url 鏂囦欢
+            // 支持 .url 文件
             if (filePath.toLowerCase().endsWith('.url')) {
                 const result = await parseUrlShortcut(filePath);
                 if (result) {
                     return { success: true, shortcut: result };
                 }
-                return { success: false, error: '鏃犳硶瑙ｆ瀽 .url 蹇嵎鏂瑰紡' };
+                return { success: false, error: '无法解析 .url 快捷方式' };
             }
 
             if (!filePath.toLowerCase().endsWith('.lnk')) {
                 return { success: false, error: 'Invalid shortcut file.' };
             }
 
-            // 浣跨敤 Electron 鍘熺敓 API 瑙ｆ瀽 .lnk
+            // 使用 Electron 原生 API 解析 .lnk
             let shortcutDetails;
             try {
                 shortcutDetails = shell.readShortcutLink(filePath);
             } catch (e) {
-                return { success: false, error: `瑙ｆ瀽蹇嵎鏂瑰紡澶辫触: ${e.message}` };
+                return { success: false, error: `解析快捷方式失败: ${e.message}` };
             }
 
             const targetPath = shortcutDetails.target || '';
@@ -1236,13 +1259,11 @@ function initialize(params) {
             const workingDir = shortcutDetails.cwd || '';
             const description = shortcutDetails.description || '';
 
-            // 浠庢枃浠跺悕鎻愬彇鏄剧ず鍚嶇О
+            // 从文件名提取显示名称
             const name = path.basename(filePath, '.lnk');
 
-            // 鎻愬彇鍥炬爣
-            let iconDataUrl = '';
             try {
-                // 浼樺厛浠庣洰鏍囧彲鎵ц鏂囦欢鎻愬彇鍥炬爣
+                // 优先从目标可执行文件提取图标
                 const iconTarget = targetPath || filePath;
                 const nativeImage = await withTimeout(
                     app.getFileIcon(iconTarget, { size: 'large' }),
@@ -1254,7 +1275,7 @@ function initialize(params) {
                 }
             } catch (iconErr) {
                 console.warn('[DesktopHandlers] Icon extraction failed:', iconErr.message);
-                // 灏濊瘯浠?.lnk 鏂囦欢鏈韩鎻愬彇鍥炬爣
+                // 尝试从 .lnk 文件本身提取图标
                 try {
                     const nativeImage = await withTimeout(
                         app.getFileIcon(filePath, { size: 'large' }),
@@ -1287,7 +1308,7 @@ function initialize(params) {
     });
 
     /**
-     * 鎵归噺瑙ｆ瀽澶氫釜蹇嵎鏂瑰紡鏂囦欢
+     * 批量解析多个快捷方式文件
      */
     ipcMain.handle('desktop-shortcut-parse-batch', async (event, filePaths) => {
         try {
@@ -1300,7 +1321,7 @@ function initialize(params) {
                 try {
                     const lowerPath = filePath.toLowerCase();
 
-                    // 鏀寔 .url 鏂囦欢锛圫team 绛夊簲鐢ㄧ殑蹇嵎鏂瑰紡锛?
+                    // 支持 .url 文件（Steam 等应用的快捷方式）：
                     if (lowerPath.endsWith('.url')) {
                         const urlResult = await parseUrlShortcut(filePath);
                         if (urlResult) {
@@ -1368,14 +1389,14 @@ function initialize(params) {
     });
 
     /**
-     * 鍚姩蹇嵎鏂瑰紡鐩爣绋嬪簭
+     * 启动快捷方式目标程序
      */
     ipcMain.handle('desktop-shortcut-launch', async (event, shortcutData) => {
         try {
             const { targetPath, args, workingDir, originalPath, isUrlShortcut } = shortcutData;
 
             if (!targetPath && !originalPath) {
-                return { success: false, error: '缂哄皯鐩爣璺緞' };
+                return { success: false, error: '缺少目标路径' };
             }
 
             // URL 蹇嵎鏂瑰紡锛堝 steam://rungameid/570锛夛細浣跨敤 shell.openExternal 鎵撳紑
@@ -1413,19 +1434,19 @@ function initialize(params) {
     });
 
     /**
-     * 鎵弿 Windows 妗岄潰涓婄殑蹇嵎鏂瑰紡
-     * 鑷姩鎵弿鍏叡妗岄潰鍜岀敤鎴锋闈?
+     * 扫描 Windows 桌面上的快捷方式
+     * 自动扫描公共桌面和用户桌面
      */
     ipcMain.handle('desktop-scan-shortcuts', async () => {
         try {
             if (process.platform !== 'win32') {
-                return { success: false, error: '姝ゅ姛鑳戒粎鏀寔 Windows 骞冲彴' };
+                return { success: false, error: '此功能仅支持 Windows 平台' };
             }
 
             const shortcuts = [];
             const desktopPaths = [
-                app.getPath('desktop'),  // 鐢ㄦ埛妗岄潰
-                path.join(process.env.PUBLIC || 'C:\\Users\\Public', 'Desktop'),  // 鍏叡妗岄潰
+                app.getPath('desktop'),  // 用户桌面
+                path.join(process.env.PUBLIC || 'C:\\Users\\Public', 'Desktop'),  // 公共桌面
             ];
 
             for (const desktopPath of desktopPaths) {
@@ -1437,7 +1458,7 @@ function initialize(params) {
                         const lowerFile = file.toLowerCase();
                         const filePath = path.join(desktopPath, file);
 
-                        // 澶勭悊 .url 鏂囦欢锛圫team 绛夊簲鐢ㄧ殑蹇嵎鏂瑰紡锛?
+                        // 处理 .url 文件（Steam 等应用的快捷方式）：
                         if (lowerFile.endsWith('.url')) {
                             try {
                                 const urlResult = await parseUrlShortcut(filePath);
@@ -1450,7 +1471,7 @@ function initialize(params) {
                             continue;
                         }
 
-                        // 澶勭悊 .lnk 鏂囦欢
+                        // 处理 .lnk 文件
                         if (!lowerFile.endsWith('.lnk')) continue;
 
                         try {
@@ -1481,7 +1502,7 @@ function initialize(params) {
                                 originalPath: filePath,
                             });
                         } catch (e) {
-                            // 璺宠繃鏃犳硶瑙ｆ瀽鐨勫揩鎹锋柟寮?
+                            // 跳过无法解析的快捷方式
                             console.warn(`[DesktopHandlers] Cannot parse: ${file}`, e.message);
                         }
                     }
@@ -1490,7 +1511,7 @@ function initialize(params) {
                 }
             }
 
-            // 鎸夊悕绉版帓搴?
+            // 按名称排序
             shortcuts.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
 
             console.log(`[DesktopHandlers] Scanned ${shortcuts.length} shortcuts from Windows desktop (including .url)`);
@@ -1502,11 +1523,11 @@ function initialize(params) {
     });
 
     // ============================================================
-    // --- IPC: Dock 鎸佷箙鍖?---
+    // --- IPC: Dock 持久化 ---
     // ============================================================
 
     /**
-     * 淇濆瓨 Dock 閰嶇疆
+     * 保存 Dock 配置
      */
     ipcMain.handle('desktop-save-dock', async (event, dockData) => {
         try {
@@ -1520,7 +1541,7 @@ function initialize(params) {
     });
 
     /**
-     * 鍔犺浇 Dock 閰嶇疆
+     * 加载 Dock 配置
      */
     ipcMain.handle('desktop-load-dock', async () => {
         try {
@@ -1536,11 +1557,11 @@ function initialize(params) {
     });
 
     // ============================================================
-    // --- IPC: 甯冨眬鎸佷箙鍖?---
+    // --- IPC: 布局持久化 ---
     // ============================================================
 
     /**
-     * 淇濆瓨妗岄潰甯冨眬
+     * 保存桌面布局
      */
     ipcMain.handle('desktop-save-layout', async (event, layoutData) => {
         try {
@@ -1554,7 +1575,7 @@ function initialize(params) {
     });
 
     /**
-     * 鍔犺浇妗岄潰甯冨眬
+     * 加载桌面布局
      */
     ipcMain.handle('desktop-load-layout', async () => {
         try {
@@ -1570,14 +1591,14 @@ function initialize(params) {
     });
 
     // ============================================================
-    // --- IPC: 鍥炬爣闆嗙郴缁燂紙iconset锛?---
+    // --- IPC: 图标集系统（iconset）： ---
     // ============================================================
 
     const ICONSET_DIR = path.join(PROJECT_ROOT, 'assets', 'iconset');
 
     /**
-     * 鑾峰彇鎵€鏈夊浘鏍囬璁炬枃浠跺す鍒楄〃
-     * 杩斿洖锛歿 success, presets: [{ name, iconCount }] }
+     * 获取所有图标预设文件夹列表
+     * 返回：{ success, presets: [{ name, iconCount }] }
      */
     ipcMain.handle('desktop-iconset-list-presets', async () => {
         try {
@@ -1605,9 +1626,9 @@ function initialize(params) {
     });
 
     /**
-     * 鑾峰彇鎸囧畾棰勮鏂囦欢澶逛腑鐨勫浘鏍囧垪琛?
-     * 鍙傛暟锛歿 presetName, page, pageSize, search }
-     * 杩斿洖锛歿 success, icons: [{ name, relativePath }], total, page, pageSize }
+     * 获取指定预设文件夹中的图标列表
+     * 参数：{ presetName, page, pageSize, search }
+     * 返回：{ success, icons: [{ name, relativePath }], total, page, pageSize }
      */
     ipcMain.handle('desktop-iconset-list-icons', async (event, params) => {
         try {
@@ -1615,13 +1636,13 @@ function initialize(params) {
             const presetDir = path.join(ICONSET_DIR, presetName);
 
             if (!await fs.pathExists(presetDir)) {
-                return { success: false, error: '棰勮鏂囦欢澶逛笉瀛樺湪', icons: [], total: 0 };
+                return { success: false, error: '预设文件夹不存在', icons: [], total: 0 };
             }
 
             const files = await fs.readdir(presetDir);
             let iconFiles = files.filter(f => /\.(png|jpg|jpeg|svg|ico|webp|gif|html|htm)$/i.test(f));
 
-            // 鎼滅储杩囨护
+            // 搜索过滤
             if (search) {
                 const searchLower = search.toLowerCase();
                 iconFiles = iconFiles.filter(f => f.toLowerCase().includes(searchLower));
@@ -1635,8 +1656,8 @@ function initialize(params) {
 
             const icons = pagedFiles.map(f => {
                 const ext = path.extname(f).toLowerCase();
-                // 鍒ゆ柇鍥炬爣绫诲瀷
-                let iconType = 'image'; // 榛樿涓哄浘鐗囷紙png/jpg/svg/ico/webp锛?
+                // 判断图标类型
+                let iconType = 'image'; // 默认为图片（png/jpg/svg/ico/webp）：
                 if (ext === '.gif') iconType = 'gif';
                 else if (ext === '.html' || ext === '.htm') iconType = 'html';
                 else if (ext === '.svg') iconType = 'svg';
@@ -1645,7 +1666,7 @@ function initialize(params) {
                     name: path.basename(f, ext),
                     fileName: f,
                     iconType,
-                    // 鐩稿浜庨」鐩牴鐩綍鐨勮矾寰勶紝鍓嶇浣跨敤 ../assets/iconset/... 璁块棶
+                    // 相对于项目根目录的路径，前端使用 ../assets/iconset/... 访问
                     relativePath: `assets/iconset/${presetName}/${f}`,
                 };
             });
@@ -1658,9 +1679,9 @@ function initialize(params) {
     });
 
     /**
-     * 灏嗗浘鏍囨枃浠惰鍙栦负 Data URL锛堢敤浜庨珮璐ㄩ噺鏄剧ず鎴栨寔涔呭寲锛?
-     * 鍙傛暟锛歳elativePath - 鐩稿浜庨」鐩牴鐩綍鐨勮矾寰?
-     * 杩斿洖锛歿 success, dataUrl }
+     * 将图标文件读取为 Data URL（用于高质量显示或持久化）：
+     * 参数：relativePath - 相对于项目根目录的路径
+     * 返回：{ success, dataUrl }
      */
     ipcMain.handle('desktop-iconset-get-icon-data', async (event, relativePath) => {
         try {
@@ -1671,20 +1692,20 @@ function initialize(params) {
 
             const ext = path.extname(fullPath).toLowerCase();
 
-            // HTML 鍥炬爣锛氳繑鍥?HTML 鍐呭瀛楃涓诧紙鐢ㄤ簬 Shadow DOM 娓叉煋锛?
+            // HTML 图标：返回 HTML 内容字符串（用于 Shadow DOM 渲染）：
             if (ext === '.html' || ext === '.htm') {
                 const htmlContent = await fs.readFile(fullPath, 'utf-8');
                 return { success: true, dataUrl: null, htmlContent, iconType: 'html' };
             }
 
-            // GIF 鍥炬爣锛氳繑鍥?Data URL
+            // GIF 图标：返回 Data URL
             if (ext === '.gif') {
                 const buffer = await fs.readFile(fullPath);
                 const dataUrl = `data:image/gif;base64,${buffer.toString('base64')}`;
                 return { success: true, dataUrl, iconType: 'gif' };
             }
 
-            // SVG 鍥炬爣锛氳繑鍥?Data URL + 鍘熷 SVG 鏂囨湰锛堜緵鍐呰仈浣跨敤锛?
+            // SVG 图标：返回 Data URL + 原始 SVG 文本（供内联使用）：
             if (ext === '.svg') {
                 const buffer = await fs.readFile(fullPath);
                 const svgContent = buffer.toString('utf-8');
@@ -1692,7 +1713,7 @@ function initialize(params) {
                 return { success: true, dataUrl, svgContent, iconType: 'svg' };
             }
 
-            // 鍏朵粬鍥剧墖鏍煎紡锛氳繑鍥?Data URL
+            // 其他图片格式：返回 Data URL
             const buffer = await fs.readFile(fullPath);
             const mimeTypes = {
                 '.png': 'image/png',
@@ -1712,24 +1733,24 @@ function initialize(params) {
     });
 
     // ============================================================
-    // --- IPC: 澹佺焊鏂囦欢閫夋嫨 ---
+    // --- IPC: 壁纸文件选择 ---
     // ============================================================
 
     /**
-     * 鎵撳紑鏂囦欢閫夋嫨瀵硅瘽妗嗭紝閫夋嫨澹佺焊鏂囦欢
-     * 鏀寔鍥剧墖銆佽棰?mp4)銆丠TML 鏂囦欢
-     * 杩斿洖锛歿 success, filePath, fileUrl, type }
+     * 打开文件选择对话框，选择壁纸文件
+     * 支持图片、视频 (mp4)、HTML 文件
+     * 返回：{ success, filePath, fileUrl, type }
      */
     ipcMain.handle('desktop-select-wallpaper', async () => {
         try {
             const targetWindow = desktopWindow && !desktopWindow.isDestroyed() ? desktopWindow : mainWindow;
             const result = await dialog.showOpenDialog(targetWindow, {
-                title: '閫夋嫨澹佺焊鏂囦欢',
+                title: '选择壁纸文件',
                 properties: ['openFile'],
                 filters: [
                     { name: 'All supported wallpapers', extensions: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'avif', 'mp4', 'webm', 'html', 'htm'] },
-                    { name: '鍥剧墖', extensions: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'avif'] },
-                    { name: '瑙嗛', extensions: ['mp4', 'webm'] },
+                    { name: '图片', extensions: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'avif'] },
+                    { name: '视频', extensions: ['mp4', 'webm'] },
                     { name: 'HTML wallpapers', extensions: ['html', 'htm'] },
                 ],
             });
@@ -1741,7 +1762,7 @@ function initialize(params) {
             const filePath = result.filePaths[0];
             const ext = path.extname(filePath).toLowerCase().replace('.', '');
 
-            // 妫€娴嬫枃浠剁被鍨?
+            // 检测文件类型
             const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'avif'];
             const videoExts = ['mp4', 'webm'];
             const htmlExts = ['html', 'htm'];
@@ -1751,7 +1772,7 @@ function initialize(params) {
             else if (videoExts.includes(ext)) type = 'video';
             else if (htmlExts.includes(ext)) type = 'html';
 
-            // 灏嗘枃浠惰矾寰勮浆涓?file:// URL锛圗lectron 娓叉煋杩涚▼鍙互瀹夊叏鍔犺浇锛?
+            // 将文件路径转为 file:// URL（Electron 渲染进程可以安全加载）：
             const fileUrl = `file:///${filePath.replace(/\\/g, '/')}`;
 
             console.log(`[DesktopHandlers] Wallpaper selected: ${type} - ${filePath}`);
@@ -1763,8 +1784,8 @@ function initialize(params) {
     });
 
     /**
-     * 璇诲彇澹佺焊鏂囦欢骞惰繑鍥?Data URL锛堢敤浜庡浘鐗囧绾搁瑙堟垨宓屽叆锛?
-     * 瀵逛簬澶ф枃浠朵娇鐢?file:// URL 鏇村悎閫傦紝姝?API 涓昏鐢ㄤ簬缂╃暐鍥鹃瑙?
+     * 读取壁纸文件并返回 Data URL（用于图片壁纸预览或嵌入）：
+     * 对于大文件使用 file:// URL 更合适，此 API 主要用于缩略图预览
      */
     ipcMain.handle('desktop-read-wallpaper-thumbnail', async (event, filePath) => {
         try {
@@ -1776,11 +1797,11 @@ function initialize(params) {
             const imageExts = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg', '.avif'];
 
             if (!imageExts.includes(ext)) {
-                // 闈炲浘鐗囩被鍨嬭繑鍥炵┖缂╃暐鍥?
+                // 非图片类型返回空缩略图
                 return { success: true, thumbnail: '', type: ext.replace('.', '') };
             }
 
-            // 璇诲彇骞剁缉鏀句负缂╃暐鍥?
+            // 读取并缩放为缩略图
             const buffer = await fs.readFile(filePath);
             const mimeTypes = {
                 '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
@@ -1799,7 +1820,7 @@ function initialize(params) {
     });
 
     // ============================================================
-    // --- IPC: 鎵撳紑 Windows 绯荤粺宸ュ叿 ---
+    // --- IPC: 打开 Windows 系统工具 ---
     // ============================================================
 
     ipcMain.handle('desktop-open-system-tool', async (event, cmd) => {
@@ -1812,7 +1833,7 @@ function initialize(params) {
 }
 
 /**
- * 鎵撳紑鎴栬仛鐒︽闈㈢敾甯冪獥鍙?
+ * 打开或聚焦桌面画布窗口
  */
 async function openDesktopWindow() {
     if (desktopWindow && !desktopWindow.isDestroyed()) {
@@ -1821,7 +1842,7 @@ async function openDesktopWindow() {
         return desktopWindow;
     }
 
-    // 璇诲彇璁剧疆鑾峰彇涓婚妯″紡
+    // 读取设置获取主题模式
     let currentThemeMode = 'dark';
     try {
         if (appSettingsManager) {
@@ -1854,7 +1875,7 @@ async function openDesktopWindow() {
     windowService.attachWindow(WINDOW_APP_IDS.DESKTOP, desktopWindow);
     desktopWindow.setMenu(null);
 
-    // 璇诲彇鍏ㄥ眬璁剧疆锛堣嚜鍔ㄦ渶澶у寲銆佺獥鍙ｇ疆搴曠瓑锛?
+    // 读取全局设置（自动最大化、窗口置底等）：
     let desktopGlobalSettings = {};
     try {
         if (fs.pathExistsSync(LAYOUT_CONFIG_PATH)) {
@@ -1866,37 +1887,37 @@ async function openDesktopWindow() {
     }
 
     desktopWindow.once('ready-to-show', () => {
-        // 鍚姩鏃惰嚜鍔ㄦ渶澶у寲
+        // 启动时自动最大化
         if (desktopGlobalSettings.autoMaximize) {
             desktopWindow.maximize();
             console.log('[Desktop] Auto-maximized on startup');
         }
 
-        // 浣跨敤 showInactive() 閬垮厤鎶㈠崰涓荤獥鍙ｇ劍鐐?
+        // 使用 showInactive() 避免抢占主窗口焦点
         desktopWindow.showInactive();
 
-        // 绐楀彛鑷姩缃簳
+        // 窗口自动置底
         if (desktopGlobalSettings.alwaysOnBottom) {
-            // 寤惰繜涓€灏忔鏃堕棿鍐嶅惎鐢紝纭繚绐楀彛宸插畬鍏ㄦ樉绀?
+            // 延迟一小段时间再启用，确保窗口已完全显示
             setTimeout(() => {
                 setAlwaysOnBottom(true);
             }, 500);
         }
 
-        // 閫氱煡妗岄潰绐楀彛鑷韩杩炴帴鐘舵€?
+        // 通知桌面窗口自身连接状态
         if (desktopWindow && !desktopWindow.isDestroyed()) {
             desktopWindow.webContents.send('desktop-status', { connected: true, message: 'Connected.' });
         }
-        // 鍏抽敭锛氶€氱煡涓荤獥鍙ｆ闈㈢敾甯冨凡灏辩华锛岃涓荤獥鍙ｇ殑streamManager鐭ラ亾鍙互鎺ㄩ€佷簡
+        // 关键：通知主窗口桌面画布已就绪，让主窗口的 streamManager 知道可以推送了
         if (mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.webContents.send('desktop-status', { connected: true, message: 'Desktop window is ready.' });
         }
     });
 
-    // 閿佸畾鏈€澶у寲鐘舵€侊細濡傛灉寮€鍚簡鑷姩鏈€澶у寲锛岄樆姝㈢敤鎴锋墜鍔ㄨ繕鍘?
+    // 锁定最大化状态：如果开启了自动最大化，阻止用户手动还原
     if (desktopGlobalSettings.autoMaximize) {
         desktopWindow.on('unmaximize', () => {
-            // 鍦ㄤ笅涓€涓簨浠跺惊鐜腑閲嶆柊鏈€澶у寲锛屽疄鐜伴攣瀹氭晥鏋?
+            // 在下一个事件循环中重新最大化，实现锁定效果
             setImmediate(() => {
                 if (desktopWindow && !desktopWindow.isDestroyed()) {
                     desktopWindow.maximize();
@@ -1917,7 +1938,7 @@ async function openDesktopWindow() {
     });
 
     desktopWindow.on('closed', () => {
-        // 娓呯悊缃簳鐩稿叧璧勬簮
+        // 清理置底相关资源
         alwaysOnBottomEnabled = false;
         if (alwaysOnBottomInterval) {
             clearInterval(alwaysOnBottomInterval);
@@ -1931,7 +1952,7 @@ async function openDesktopWindow() {
         }
         desktopWindow = null;
         console.log('[Desktop] Desktop window closed.');
-        // 閫氱煡涓荤獥鍙ｆ闈㈢敾甯冨凡鍏抽棴
+        // 通知主窗口桌面画布已关闭
         if (mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.webContents.send('desktop-status', { connected: false, message: 'Desktop window closed.' });
         }
@@ -1940,22 +1961,22 @@ async function openDesktopWindow() {
     return desktopWindow;
 }
 
-// --- 绐楀彛缃簳 Win32 鍘熺敓瀹炵幇 ---
-let bottomHelperProcess = null;  // 鎸佷箙鍖栫殑 PowerShell 杩涚▼
-let bottomHwnd = 0;             // 缂撳瓨鐨勭獥鍙ｅ彞鏌?
+// --- 窗口置底 Win32 原生实现 ---
+let bottomHelperProcess = null;  // 持久化的 PowerShell 进程
+let bottomHwnd = 0;             // 缓存的窗口句柄
 
 /**
- * 鍚姩涓€涓寔涔呭寲鐨?PowerShell 杩涚▼鐢ㄤ簬绐楀彛缃簳鎿嶄綔
- * 閬垮厤姣忔璋冪敤閮藉垱寤烘柊杩涚▼
+ * 启动一个持久化的 PowerShell 进程用于窗口置底操作
+ * 避免每次调用都创建新进程
  */
 function startBottomHelper(hwnd) {
     if (process.platform !== 'win32') return;
-    if (bottomHelperProcess) return; // 宸插惎鍔?
+    if (bottomHelperProcess) return; // 已启动
 
     bottomHwnd = hwnd;
 
     try {
-        // 鍒涘缓涓€涓寔涔呭寲鐨?PowerShell 杩涚▼锛岄€氳繃 stdin 鎺ユ敹鍛戒护
+        // 创建一个持久化的 PowerShell 进程，通过 stdin 接收命令
         const { spawn } = require('child_process');
         bottomHelperProcess = spawn('powershell.exe', [
             '-NoProfile', '-NoLogo', '-NonInteractive', '-Command', '-'
@@ -1964,7 +1985,7 @@ function startBottomHelper(hwnd) {
             stdio: ['pipe', 'pipe', 'pipe'],
         });
 
-        // 鍙戦€佸垵濮嬪寲鑴氭湰锛氬畾涔?Win32 API
+        // 发送初始化脚本：定义 Win32 API
         const initScript = `
 Add-Type @"
 using System;
@@ -1993,7 +2014,7 @@ Write-Host "VCPREADY"
         });
 
         bottomHelperProcess.stderr.on('data', (data) => {
-            // 蹇界暐璀﹀憡锛屽彧璁板綍閿欒
+            // 忽略警告，只记录错误
             const msg = data.toString().trim();
             if (msg && !msg.includes('WARNING')) {
                 console.warn('[Desktop] Bottom helper stderr:', msg);
@@ -2017,7 +2038,7 @@ Write-Host "VCPREADY"
 }
 
 /**
- * 鍋滄鎸佷箙鍖栫殑 PowerShell 杩涚▼
+ * 停止持久化的 PowerShell 进程
  */
 function stopBottomHelper() {
     if (bottomHelperProcess) {
@@ -2031,7 +2052,7 @@ function stopBottomHelper() {
 }
 
 /**
- * 浣跨敤鎸佷箙鍖栫殑 PowerShell 杩涚▼璋冪敤 Win32 API 灏嗙獥鍙ｆ帹鍒板簳灞?
+ * 使用持久化的 PowerShell 进程调用 Win32 API 将窗口推到底层
  */
 function nativePushToBottom() {
     if (!bottomHelperProcess || !bottomHwnd) return;
@@ -2043,30 +2064,30 @@ function nativePushToBottom() {
 }
 
 /**
- * 璁剧疆妗岄潰绐楀彛濮嬬粓缃簳
- * Windows: 浣跨敤鍘熺敓 SetWindowPos(HWND_BOTTOM) + focus 浜嬩欢鐩戝惉
- * 鍏朵粬骞冲彴: 浣跨敤 Electron setAlwaysOnTop 杩戜技鏂规
- * @param {boolean} enabled - 鏄惁鍚敤缃簳
+ * 设置桌面窗口始终置底
+ * Windows: 使用原生 SetWindowPos(HWND_BOTTOM) + focus 事件监听
+ * 其他平台: 使用 Electron setAlwaysOnTop 近似方案
+ * @param {boolean} enabled - 是否启用置底
  */
 function setAlwaysOnBottom(enabled) {
     alwaysOnBottomEnabled = enabled;
 
     if (!desktopWindow || desktopWindow.isDestroyed()) return;
 
-    // 娓呴櫎涔嬪墠鐨勫畾鏃跺櫒
+    // 清除之前的定时器
     if (alwaysOnBottomInterval) {
         clearInterval(alwaysOnBottomInterval);
         alwaysOnBottomInterval = null;
     }
 
-    // 绉婚櫎涔嬪墠鐨?focus 浜嬩欢鐩戝惉鍣?
+    // 移除之前的 focus 事件监听器
     desktopWindow.removeAllListeners('focus');
-    // 閲嶆柊娉ㄥ唽蹇呰鐨?focus 鐩戝惉锛堝鏋滄湁鍏朵粬妯″潡闇€瑕佺殑璇濆彲浠ュ湪杩欓噷鎭㈠锛?
+    // 重新注册必要的 focus 监听（如果有其他模块需要的话可以在这里恢复）：
 
     if (enabled) {
         console.log('[Desktop] Enabling always-on-bottom mode');
 
-        // Windows: 鍚姩鎸佷箙鍖栫殑 PowerShell 杩涚▼
+        // Windows: 启动持久化的 PowerShell 进程
         if (process.platform === 'win32') {
             try {
                 const handle = desktopWindow.getNativeWindowHandle();
@@ -2081,10 +2102,10 @@ function setAlwaysOnBottom(enabled) {
             if (!desktopWindow || desktopWindow.isDestroyed() || !alwaysOnBottomEnabled) return;
 
             if (process.platform === 'win32') {
-                // Windows: 閫氳繃鎸佷箙鍖?PowerShell 璋冪敤 Win32 SetWindowPos(HWND_BOTTOM)
+                // Windows: 通过持久化 PowerShell 调用 Win32 SetWindowPos(HWND_BOTTOM)
                 nativePushToBottom();
             } else {
-                // 鍏朵粬骞冲彴: 浣跨敤 Electron API 杩戜技
+                // 其他平台: 使用 Electron API 近似
                 try {
                     desktopWindow.setAlwaysOnTop(true, 'screen-saver', -1);
                     desktopWindow.setAlwaysOnTop(false);
@@ -2092,16 +2113,16 @@ function setAlwaysOnBottom(enabled) {
             }
         };
 
-        // 褰撶獥鍙ｈ幏寰楃劍鐐规椂锛岀珛鍗冲皢鍏舵帹鍒板簳閮?
+        // 当窗口获得焦点时，立即将其推到底部
         desktopWindow.on('focus', () => {
             if (!alwaysOnBottomEnabled) return;
-            // 鐭殏寤惰繜鍚庝笅娌?
+            // 短暂延迟后下沉
             setTimeout(() => {
                 pushToBottom();
             }, 50);
         });
 
-        // 瀹氭椂寮哄埗缃簳锛堟瘡 1.5 绉掓墽琛屼竴娆★紝纭繚鎸佺画鍦ㄥ簳灞傦級
+        // 定时强制置底（每 1.5 秒执行一次，确保持续在底层）
         alwaysOnBottomInterval = setInterval(() => {
             if (!desktopWindow || desktopWindow.isDestroyed() || !alwaysOnBottomEnabled) {
                 clearInterval(alwaysOnBottomInterval);
@@ -2111,14 +2132,14 @@ function setAlwaysOnBottom(enabled) {
             pushToBottom();
         }, 1500);
 
-        // 鍒濆涓嬫矇锛堝欢杩?200ms 纭繚 PowerShell 杩涚▼宸插垵濮嬪寲锛?
+        // 初始下沉（延迟 200ms 确保 PowerShell 进程已初始化）：
         setTimeout(() => pushToBottom(), 200);
 
     } else {
         console.log('[Desktop] Disabling always-on-bottom mode');
-        // 鍋滄 PowerShell 杩涚▼
+        // 停止 PowerShell 进程
         stopBottomHelper();
-        // 鎭㈠姝ｅ父绐楀彛琛屼负
+        // 恢复正常窗口行为
         try {
             desktopWindow.setAlwaysOnTop(false);
         } catch (e) { /* ignore */ }
@@ -2126,8 +2147,8 @@ function setAlwaysOnBottom(enabled) {
 }
 
 /**
- * 鍚戞闈㈢敾甯冩帹閫佹暟鎹?
- * 鍙鍏朵粬妯″潡鐩存帴璋冪敤锛堜笉缁忚繃IPC锛?
+ * 向桌面画布推送数据
+ * 可被其他模块直接调用（不经过 IPC）：
  */
 function pushToDesktop(data) {
     if (desktopWindow && !desktopWindow.isDestroyed()) {
@@ -2138,7 +2159,7 @@ function pushToDesktop(data) {
 }
 
 /**
- * 鑾峰彇妗岄潰绐楀彛瀹炰緥
+ * 获取桌面窗口实例
  */
 function getDesktopWindow() {
     return desktopWindow;
