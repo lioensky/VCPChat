@@ -8,7 +8,8 @@ const DEFAULT_NETWORK_TTS_MODEL = 'IndexTeam/IndexTTS-2';
 // 修正路径问题，确保缓存和模型列表都在项目内的AppData目录
 const PROJECT_ROOT = path.join(__dirname, '..'); // 更可靠的方式获取项目根目录
 const APP_DATA_ROOT_IN_PROJECT = path.join(PROJECT_ROOT, 'AppData');
-const MODELS_CACHE_PATH = path.join(APP_DATA_ROOT_IN_PROJECT, 'sovits_models.json');
+const LOCAL_MODELS_CACHE_PATH = path.join(APP_DATA_ROOT_IN_PROJECT, 'sovits_local_models.json');
+const NETWORK_MODELS_CACHE_PATH = path.join(APP_DATA_ROOT_IN_PROJECT, 'sovits_network_models.json');
 const TTS_CACHE_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'tts_cache');
 
 class SovitsTTS {
@@ -32,6 +33,10 @@ class SovitsTTS {
         }
 
         const voiceMode = settings?.voiceMode || 'local';
+        // 注意：由于历史原因，设置中的 key 命名与实际存储的内容是反的：
+        // voiceNetworkSettings.sovitsUrl 实际存储的是「本地 SoVITS」的 URL
+        // voiceLocalSettings.providerUrl 实际存储的是「网络供应商」的 URL
+        // 下方变量名以实际用途命名，而非 settings key 名
         const localSovitsConfig = settings?.voiceNetworkSettings || {};
         const networkProviderConfig = settings?.voiceLocalSettings || {};
 
@@ -73,63 +78,70 @@ class SovitsTTS {
      * @param {boolean} forceRefresh 是否强制刷新缓存
      * @returns {Promise<Object>} 模型列表
      */
+    _normalizeNetworkVoiceItems(items) {
+        if (!Array.isArray(items)) {
+            return [];
+        }
+
+        return items.map(item => ({
+            id: item?.id || item?.uri || item?.voice,
+            voice: item?.voice || item?.uri || item?.id,
+            displayName: item?.displayName || item?.customName || item?.name || item?.voice || item?.uri || item?.id,
+            uri: item?.uri || item?.voice || item?.id || '',
+            type: item?.type || 'remote',
+            raw: item?.raw || item
+        })).filter(item => item.voice);
+    }
+
+    _extractNetworkModelsFromCache(payload) {
+        if (Array.isArray(payload)) {
+            return this._normalizeNetworkVoiceItems(payload);
+        }
+
+        if (Array.isArray(payload?.mergedVoiceOptions)) {
+            return this._normalizeNetworkVoiceItems(payload.mergedVoiceOptions);
+        }
+
+        if (Array.isArray(payload?.models)) {
+            const flattened = payload.models.flatMap(model => {
+                if (Array.isArray(model?.mergedVoiceOptions) && model.mergedVoiceOptions.length) {
+                    return model.mergedVoiceOptions;
+                }
+                const defaults = Array.isArray(model?.defaults) ? model.defaults : [];
+                const remoteVoices = Array.isArray(model?.remoteVoices) ? model.remoteVoices : [];
+                return [...defaults, ...remoteVoices];
+            });
+            return this._normalizeNetworkVoiceItems(flattened);
+        }
+
+        const defaults = Array.isArray(payload?.defaults) ? payload.defaults : [];
+        const remoteVoices = Array.isArray(payload?.remoteVoices) ? payload.remoteVoices : [];
+        return this._normalizeNetworkVoiceItems([...defaults, ...remoteVoices]);
+    }
+
+    /**
+     * 获取模型列表，优先从缓存读取
+     * @param {boolean} forceRefresh 是否强制刷新缓存
+     * @returns {Promise<Object>} 模型列表
+     */
     async getModels(forceRefresh = false) {
-        const normalizeNetworkVoiceItems = (items) => {
-            if (!Array.isArray(items)) {
-                return [];
-            }
-
-            return items.map(item => ({
-                id: item?.id || item?.uri || item?.voice,
-                voice: item?.voice || item?.uri || item?.id,
-                displayName: item?.displayName || item?.customName || item?.name || item?.voice || item?.uri || item?.id,
-                uri: item?.uri || item?.voice || item?.id || '',
-                type: item?.type || 'remote',
-                raw: item?.raw || item
-            })).filter(item => item.voice);
-        };
-
-        const extractNetworkModelsFromCache = (payload) => {
-            if (Array.isArray(payload)) {
-                return normalizeNetworkVoiceItems(payload);
-            }
-
-            if (Array.isArray(payload?.mergedVoiceOptions)) {
-                return normalizeNetworkVoiceItems(payload.mergedVoiceOptions);
-            }
-
-            if (Array.isArray(payload?.models)) {
-                const flattened = payload.models.flatMap(model => {
-                    if (Array.isArray(model?.mergedVoiceOptions) && model.mergedVoiceOptions.length) {
-                        return model.mergedVoiceOptions;
-                    }
-                    const defaults = Array.isArray(model?.defaults) ? model.defaults : [];
-                    const remoteVoices = Array.isArray(model?.remoteVoices) ? model.remoteVoices : [];
-                    return [...defaults, ...remoteVoices];
-                });
-                return normalizeNetworkVoiceItems(flattened);
-            }
-
-            const defaults = Array.isArray(payload?.defaults) ? payload.defaults : [];
-            const remoteVoices = Array.isArray(payload?.remoteVoices) ? payload.remoteVoices : [];
-            return normalizeNetworkVoiceItems([...defaults, ...remoteVoices]);
-        };
+        const runtimeConfig = await this.getRuntimeConfig();
+        const isNetwork = runtimeConfig.voiceMode === 'network';
+        const cachePath = isNetwork ? NETWORK_MODELS_CACHE_PATH : LOCAL_MODELS_CACHE_PATH;
 
         if (!forceRefresh) {
             try {
-                const cachedModels = await fs.readFile(MODELS_CACHE_PATH, 'utf-8');
-                console.log('从缓存加载Sovits模型列表。');
+                const cachedModels = await fs.readFile(cachePath, 'utf-8');
+                console.log(`从缓存加载 ${isNetwork ? '网络' : '本地'} Sovits模型列表。`);
                 const parsedCache = JSON.parse(cachedModels);
-                return extractNetworkModelsFromCache(parsedCache);
+                return isNetwork ? this._extractNetworkModelsFromCache(parsedCache) : parsedCache;
             } catch (error) {
-                console.log('Sovits模型缓存不存在或读取失败，将从API获取。');
+                console.log(`${isNetwork ? '网络' : '本地'} Sovits模型缓存不存在或读取失败，将从API获取。`);
             }
         }
 
         try {
-            const runtimeConfig = await this.getRuntimeConfig();
-
-            if (runtimeConfig.voiceMode === 'network') {
+            if (isNetwork) {
                 console.log(`正在从 ${runtimeConfig.baseUrl}/api/voice/list 获取网络音色列表...`);
                 const response = await axios.get(`${runtimeConfig.baseUrl}/api/voice/list`, {
                     headers: this.buildHeaders(runtimeConfig.apiKey)
@@ -143,9 +155,9 @@ class SovitsTTS {
                         : Array.isArray(response.data)
                             ? response.data
                             : [];
-                const mergedVoiceOptions = normalizeNetworkVoiceItems([...defaults, ...remoteVoices]);
+                const mergedVoiceOptions = this._normalizeNetworkVoiceItems([...defaults, ...remoteVoices]);
 
-                await fs.writeFile(MODELS_CACHE_PATH, JSON.stringify({
+                await fs.writeFile(NETWORK_MODELS_CACHE_PATH, JSON.stringify({
                     providerUrl: response.data?.providerUrl || runtimeConfig.baseUrl,
                     modelId: response.data?.modelId || DEFAULT_NETWORK_TTS_MODEL,
                     defaults,
@@ -155,26 +167,27 @@ class SovitsTTS {
                 }, null, 2));
                 console.log('网络音色列表已获取并缓存。');
                 return mergedVoiceOptions;
-            }
-
-            console.log(`正在从 ${runtimeConfig.baseUrl}/models 获取模型列表...`);
-            const response = await axios.post(`${runtimeConfig.baseUrl}/models`, { version: "v2ProPlus" }, {
-                headers: this.buildHeaders(runtimeConfig.apiKey)
-            });
-
-            if (response.data && response.data.msg === "获取成功" && response.data.models) {
-                await fs.writeFile(MODELS_CACHE_PATH, JSON.stringify(response.data.models, null, 2));
-                console.log('Sovits模型列表已获取并缓存。');
-                return response.data.models;
             } else {
-                console.error("获取Sovits模型列表失败: ", response.data);
-                return null;
+                console.log(`正在从 ${runtimeConfig.baseUrl}/models 获取本地模型列表...`);
+                const response = await axios.post(`${runtimeConfig.baseUrl}/models`, { version: "v2ProPlus" }, {
+                    headers: this.buildHeaders(runtimeConfig.apiKey)
+                });
+
+                if (response.data && response.data.msg === "获取成功" && response.data.models) {
+                    await fs.writeFile(LOCAL_MODELS_CACHE_PATH, JSON.stringify(response.data.models, null, 2));
+                    console.log('本地Sovits模型列表已获取并缓存。');
+                    return response.data.models;
+                } else {
+                    console.error("获取本地Sovits模型列表失败: ", response.data);
+                    return null;
+                }
             }
         } catch (error) {
-            console.error("请求Sovits模型列表API时出错: ", error.message);
+            console.error(`请求 ${isNetwork ? '网络' : '本地'} Sovits模型列表API时出错: `, error.message);
             try {
-                const cachedModels = await fs.readFile(MODELS_CACHE_PATH, 'utf-8');
-                return extractNetworkModelsFromCache(JSON.parse(cachedModels));
+                const cachedModels = await fs.readFile(cachePath, 'utf-8');
+                const parsedCache = JSON.parse(cachedModels);
+                return isNetwork ? this._extractNetworkModelsFromCache(parsedCache) : parsedCache;
             } catch (e) {
                 return null;
             }
