@@ -263,6 +263,29 @@
             contain: content; /* CSS Containment: 限制布局/绘制范围 */
         }
 
+        .card-raw-copy-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.1);
+            color: rgba(255,255,255,0.4);
+            cursor: pointer;
+            padding: 5px;
+            border-radius: 6px;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 2;
+        }
+        .card-raw-copy-btn:hover {
+            background: rgba(255,255,255,0.15);
+            color: #fff;
+            border-color: rgba(255,255,255,0.25);
+        }
+        .card-raw-copy-btn svg { width: 14px; height: 14px; }
+
         .card-base:hover {
             transform: translateY(-2px);
             box-shadow: 0 12px 40px rgba(0,0,0,0.4);
@@ -877,6 +900,17 @@
         let currentFilter = 'all';
         let _cardCount = 0; // 跟踪当前卡片数量，避免频繁querySelectorAll
 
+        // --- Raw Data Store for Copy Button ---
+        const _rawDataStore = new Map();
+        let _rawDataIdCounter = 0;
+
+        function copyRawData(dataId, btn) {
+            const rawJson = _rawDataStore.get(dataId);
+            if (rawJson) {
+                copyToClipboard(rawJson, btn);
+            }
+        }
+
         // --- HTML Sanitization Utility ---
         // 性能优化：使用字符替换代替DOM操作
         const _escapeMap = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
@@ -1485,7 +1519,14 @@
             }
 
             // Header
+            // 用于复制原始数据：存入 Map，按 ID 索引，避免内联字符串转义问题
+            const rawDataId = 'raw_' + (++_rawDataIdCounter);
+            _rawDataStore.set(rawDataId, JSON.stringify(data, null, 2));
+
             let headerHTML = `
+                <button class="card-raw-copy-btn" title="复制原始JSON数据" onclick="copyRawData('${rawDataId}', this)">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect></svg>
+                </button>
                 <h3>
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
                     ${data.dbName}
@@ -1495,6 +1536,8 @@
                     <span class="meta-pill">Time: ${data.useTime}</span>
                     <span class="meta-pill">ReRank: ${data.useRerank}</span>
                     ${data.useTagMemo ? `<span class="meta-pill" style="color:#ffc107; border-color:#ffc107;">TagBoost: ${data.tagWeight}</span>` : ''}
+                    ${data.useGeodesicRerank ? `<span class="meta-pill" style="color:#1abc9c; border-color:#1abc9c;">GeoReRank: true</span>` : ''}
+                    ${data.geoAlpha !== undefined && data.geoAlpha !== null ? `<span class="meta-pill" style="color:#1abc9c; border-color:#1abc9c;">geoAlpha: ${data.geoAlpha}</span>` : ''}
                 </div>
                 ${coreTagsHTML}
                 ${createContentHTML(data.query)}
@@ -1511,26 +1554,33 @@
                 const isBoosted = data.useTagMemo && r.originalScore && r.originalScore !== r.score;
                 
                 let tagsHTML = '';
-                if(r.matchedTags && r.matchedTags.length) {
-                    const coreMatched = r.coreTagsMatched || [];
-                    // 排序：核心匹配的标签排在前面
-                    const sortedTags = [...r.matchedTags].sort((a, b) => {
-                        const aIsCore = coreMatched.includes(a);
-                        const bIsCore = coreMatched.includes(b);
-                        if (aIsCore && !bIsCore) return -1;
-                        if (!aIsCore && bIsCore) return 1;
+                // 时间召回的结果（source === 'time'）不显示标签区域
+                const isTimeRecall = r.source === 'time' || (!r.matchedTags || r.matchedTags.length === 0);
+                // 收集全局唯一标签池 (uniqueMatchedTags) 和当前 result 的 matchedTags
+                const globalUniqueTags = ((data.tagStats && data.tagStats.uniqueMatchedTags) || []).filter(t => t !== 'time' && t !== 'Time');
+                const resultMatchedTags = new Set((r.matchedTags || []).filter(t => t !== 'time' && t !== 'Time'));
+                // 合并去重：全局 uniqueMatchedTags + 当前 matchedTags
+                const allTagsSet = new Set([...globalUniqueTags, ...resultMatchedTags]);
+                
+                if (allTagsSet.size > 0 && !isTimeRecall) {
+                    // 排序：当前 result 匹配命中的标签排在前面
+                    const sortedTags = [...allTagsSet].sort((a, b) => {
+                        const aIsMatched = resultMatchedTags.has(a);
+                        const bIsMatched = resultMatchedTags.has(b);
+                        if (aIsMatched && !bIsMatched) return -1;
+                        if (!aIsMatched && bIsMatched) return 1;
                         return 0;
                     });
 
                     const renderedTags = sortedTags.map(tag => {
-                        if (coreMatched.includes(tag)) {
+                        if (resultMatchedTags.has(tag)) {
                             return `<span class="tag-match-highlight">${tag}</span>`;
                         }
                         return tag;
                     }).join(', ');
                     
-                    const hasCoreMatch = coreMatched.length > 0;
-                    const tagIcon = hasCoreMatch ?
+                    const hasMatched = resultMatchedTags.size > 0;
+                    const tagIcon = hasMatched ?
                         `<span style="filter: drop-shadow(0 0 5px #ffc107); color: #ffc107; font-weight: bold;">🏷️</span>` :
                         `🏷️`;
 

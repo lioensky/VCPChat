@@ -120,21 +120,25 @@ async function getVcpGlobalSettings() {
                 enableAgentBubbleTheme: settings.enableAgentBubbleTheme === true,
                 // 添加净化器相关配置
                 enableContextSanitizer: settings.enableContextSanitizer === true,
-                contextSanitizerDepth: settings.contextSanitizerDepth
+                contextSanitizerDepth: settings.contextSanitizerDepth,
+                // 添加元思考链注入配置
+                enableThoughtChainInjection: settings.enableThoughtChainInjection === true
             };
         } catch (e) {
             console.error("[GroupChat] Error reading VCP settings from settings.json", e);
         }
     }
-    return { 
-        vcpUrl: null, 
-        vcpApiKey: null, 
-        userName: '用户', 
-        topicSummaryModel: null, 
+    return {
+        vcpUrl: null,
+        vcpApiKey: null,
+        userName: '用户',
+        topicSummaryModel: null,
         enableAgentBubbleTheme: false,
         // 添加净化器默认值
         enableContextSanitizer: false,
-        contextSanitizerDepth: 2
+        contextSanitizerDepth: 2,
+        // 添加元思考链注入默认值
+        enableThoughtChainInjection: false
     };
 }
 
@@ -601,20 +605,51 @@ ${canvasData.errors || 'No errors'}
         messagesForAI.push(...contextForAgent);
         // 添加触发AI发言的模拟用户输入 (as text part of a content array)
         messagesForAI.push({ role: 'user', content: [{ type: 'text', text: invitePromptContent }], name: userNameForMessage });
-        // 添加净化器处理  
-        if (globalVcpSettings.enableContextSanitizer === true) {    
-            const sanitizerDepth = globalVcpSettings.contextSanitizerDepth !== undefined ? globalVcpSettings.contextSanitizerDepth : 2;    
-            console.log(`[GroupChat Context Sanitizer] Enabled with depth: ${sanitizerDepth}`);    
+        // --- VCP Thought Chain Stripping ---
+        try {
+            // 默认不注入元思考链，除非明确开启
+            if (globalVcpSettings.enableThoughtChainInjection !== true) {
+                messagesForAI = messagesForAI.map(msg => {
+                    if (typeof msg.content === 'string') {
+                        return { ...msg, content: contextSanitizer.stripThoughtChains(msg.content) };
+                    } else if (Array.isArray(msg.content)) {
+                        return {
+                            ...msg,
+                            content: msg.content.map(part => {
+                                if (part.type === 'text' && typeof part.text === 'string') {
+                                    return { ...part, text: contextSanitizer.stripThoughtChains(part.text) };
+                                }
+                                return part;
+                            })
+                        };
+                    }
+                    return msg;
+                });
+                console.log(`[GroupChat ThoughtChain] Thought chains stripped from context`);
+            }
+        } catch (e) {
+            console.error('[GroupChat ThoughtChain] Failed to strip thought chains:', e);
+        }
+        // --- End of Thought Chain Stripping ---
+
+        // 添加净化器处理
+        if (globalVcpSettings.enableContextSanitizer === true) {
+            const sanitizerDepth = globalVcpSettings.contextSanitizerDepth !== undefined ? globalVcpSettings.contextSanitizerDepth : 2;
+            console.log(`[GroupChat Context Sanitizer] Enabled with depth: ${sanitizerDepth}`);
               
-            const systemMessages = messagesForAI.filter(m => m.role === 'system');    
-            const nonSystemMessages = messagesForAI.filter(m => m.role !== 'system');    
+            const systemMessages = messagesForAI.filter(m => m.role === 'system');
+            const nonSystemMessages = messagesForAI.filter(m => m.role !== 'system');
               
-            // 使用已加载的净化器
-            const sanitizedNonSystemMessages = contextSanitizer.sanitizeMessages(nonSystemMessages, sanitizerDepth);
+            // 使用已加载的净化器，传入 enableThoughtChainInjection 参数
+            const sanitizedNonSystemMessages = contextSanitizer.sanitizeMessages(
+                nonSystemMessages,
+                sanitizerDepth,
+                globalVcpSettings.enableThoughtChainInjection === true
+            );
               
             messagesForAI = [...systemMessages, ...sanitizedNonSystemMessages];
               
-            console.log(`[GroupChat Context Sanitizer] Messages processed successfully`);    
+            console.log(`[GroupChat Context Sanitizer] Messages processed successfully`);
         }
         // --- Agent Bubble Theme Injection ---
         if (globalVcpSettings.enableAgentBubbleTheme) {
@@ -1111,20 +1146,51 @@ ${canvasData.errors || 'No errors'}
     }
     messagesForAI.push(...contextForAgent);
     messagesForAI.push({ role: 'user', content: [{ type: 'text', text: invitePromptContent }], name: (globalVcpSettings.userName || '用户') }); // 模拟用户触发
-    // 添加净化器处理  
-    if (globalVcpSettings.enableContextSanitizer === true) {    
-        const sanitizerDepth = globalVcpSettings.contextSanitizerDepth !== undefined ? globalVcpSettings.contextSanitizerDepth : 2;    
-        console.log(`[GroupChat Context Sanitizer] Enabled with depth: ${sanitizerDepth}`);    
+    // --- VCP Thought Chain Stripping ---
+    try {
+        // 默认不注入元思考链，除非明确开启
+        if (globalVcpSettings.enableThoughtChainInjection !== true) {
+            messagesForAI = messagesForAI.map(msg => {
+                if (typeof msg.content === 'string') {
+                    return { ...msg, content: contextSanitizer.stripThoughtChains(msg.content) };
+                } else if (Array.isArray(msg.content)) {
+                    return {
+                        ...msg,
+                        content: msg.content.map(part => {
+                            if (part.type === 'text' && typeof part.text === 'string') {
+                                return { ...part, text: contextSanitizer.stripThoughtChains(part.text) };
+                            }
+                            return part;
+                        })
+                    };
+                }
+                return msg;
+            });
+            console.log(`[GroupChat Invite ThoughtChain] Thought chains stripped from context`);
+        }
+    } catch (e) {
+        console.error('[GroupChat Invite ThoughtChain] Failed to strip thought chains:', e);
+    }
+    // --- End of Thought Chain Stripping ---
+
+    // 添加净化器处理
+    if (globalVcpSettings.enableContextSanitizer === true) {
+        const sanitizerDepth = globalVcpSettings.contextSanitizerDepth !== undefined ? globalVcpSettings.contextSanitizerDepth : 2;
+        console.log(`[GroupChat Context Sanitizer] Enabled with depth: ${sanitizerDepth}`);
           
-        const systemMessages = messagesForAI.filter(m => m.role === 'system');    
-        const nonSystemMessages = messagesForAI.filter(m => m.role !== 'system');    
+        const systemMessages = messagesForAI.filter(m => m.role === 'system');
+        const nonSystemMessages = messagesForAI.filter(m => m.role !== 'system');
           
-        // 使用已加载的净化器
-        const sanitizedNonSystemMessages = contextSanitizer.sanitizeMessages(nonSystemMessages, sanitizerDepth);
+        // 使用已加载的净化器，传入 enableThoughtChainInjection 参数
+        const sanitizedNonSystemMessages = contextSanitizer.sanitizeMessages(
+            nonSystemMessages,
+            sanitizerDepth,
+            globalVcpSettings.enableThoughtChainInjection === true
+        );
           
         messagesForAI = [...systemMessages, ...sanitizedNonSystemMessages];
           
-        console.log(`[GroupChat Context Sanitizer] Messages processed successfully`);    
+        console.log(`[GroupChat Context Sanitizer] Messages processed successfully`);
     }
     // --- Agent Bubble Theme Injection ---
     if (globalVcpSettings.enableAgentBubbleTheme) {
