@@ -68,7 +68,13 @@ function readMainSettings() {
 function getEnvConfig() {
   const env = readEnvFile(CONFIG_PATH);
   const mainSettings = readMainSettings();
-  const networkModeSettings = mainSettings.voiceLocalSettings || {};
+  // 兼容旧版 settings.json：旧版中 voiceLocalSettings 存的是网络供应商配置（命名反了）。
+  // 新版已修正：voiceNetworkSettings 存网络供应商配置。
+  // 通过检测字段名自动适配新旧两种格式。
+  const rawNetwork = mainSettings.voiceNetworkSettings || {};
+  const rawLocal = mainSettings.voiceLocalSettings || {};
+  const networkModeSettings = rawNetwork.providerUrl !== undefined ? rawNetwork
+    : (rawLocal.providerUrl !== undefined ? rawLocal : rawNetwork);
 
   const resolvedUrl = (networkModeSettings.providerUrl || env.siliconflow_url || 'https://api.siliconflow.cn').replace(/\/+$/, '');
   const resolvedKey = networkModeSettings.providerKey || env.siliconflow_key || '';

@@ -98,11 +98,11 @@ class SettingsManager extends EventEmitter {
             voiceMode: 'local',
             speechRecognizerBrowserPath: '',
             speechRecognizerPagePath: 'Voicechatmodules/recognizer.html',
-            voiceNetworkSettings: {
+            voiceLocalSettings: {
                 sovitsUrl: '',
                 sovitsKey: ''
             },
-            voiceLocalSettings: {
+            voiceNetworkSettings: {
                 providerUrl: '',
                 providerKey: ''
             },

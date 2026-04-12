@@ -33,12 +33,12 @@ let globalSettings = {
     voiceMode: 'local',
     speechRecognizerBrowserPath: '',
     speechRecognizerPagePath: 'Voicechatmodules/recognizer.html',
-    voiceNetworkSettings: {
-        sovitsUrl: 'https://api.siliconflow.cn',
+    voiceLocalSettings: {
+        sovitsUrl: '',
         sovitsKey: ''
     },
-    voiceLocalSettings: {
-        providerUrl: '',
+    voiceNetworkSettings: {
+        providerUrl: 'https://api.siliconflow.cn',
         providerKey: ''
     }
 };
@@ -2000,10 +2000,10 @@ async function syncGlobalSettingsToUI() {
     safeCheck('voiceModeNetwork', (globalSettings.voiceMode || 'local') === 'network');
     safeSet('speechRecognizerBrowserPath', globalSettings.speechRecognizerBrowserPath || '');
     safeSet('speechRecognizerPagePath', globalSettings.speechRecognizerPagePath || 'Voicechatmodules/recognizer.html');
-    safeSet('voiceNetworkSovitsUrl', globalSettings.voiceNetworkSettings?.sovitsUrl || '');
-    safeSet('voiceNetworkSovitsKey', globalSettings.voiceNetworkSettings?.sovitsKey || '');
-    safeSet('voiceLocalProviderUrl', globalSettings.voiceLocalSettings?.providerUrl || '');
-    safeSet('voiceLocalProviderKey', globalSettings.voiceLocalSettings?.providerKey || '');
+    safeSet('voiceLocalSovitsUrl', globalSettings.voiceLocalSettings?.sovitsUrl || '');
+    safeSet('voiceLocalSovitsKey', globalSettings.voiceLocalSettings?.sovitsKey || '');
+    safeSet('voiceNetworkProviderUrl', globalSettings.voiceNetworkSettings?.providerUrl || '');
+    safeSet('voiceNetworkProviderKey', globalSettings.voiceNetworkSettings?.providerKey || '');
     
     // Network Notes Paths
     const networkNotesPathsContainer = document.getElementById('networkNotesPathsContainer');

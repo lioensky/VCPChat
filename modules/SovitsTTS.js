@@ -33,12 +33,18 @@ class SovitsTTS {
         }
 
         const voiceMode = settings?.voiceMode || 'local';
-        // 注意：由于历史原因，设置中的 key 命名与实际存储的内容是反的：
-        // voiceNetworkSettings.sovitsUrl 实际存储的是「本地 SoVITS」的 URL
-        // voiceLocalSettings.providerUrl 实际存储的是「网络供应商」的 URL
-        // 下方变量名以实际用途命名，而非 settings key 名
-        const localSovitsConfig = settings?.voiceNetworkSettings || {};
-        const networkProviderConfig = settings?.voiceLocalSettings || {};
+
+        // 兼容旧版 settings.json：旧版中 voiceNetworkSettings 存的是本地 SoVITS 配置，
+        // voiceLocalSettings 存的是网络供应商配置（命名反了）。
+        // 新版已修正：voiceLocalSettings 存本地，voiceNetworkSettings 存网络。
+        // 这里通过检测字段名来自动适配新旧两种格式。
+        const rawLocal = settings?.voiceLocalSettings || {};
+        const rawNetwork = settings?.voiceNetworkSettings || {};
+
+        const localSovitsConfig = rawLocal.sovitsUrl !== undefined ? rawLocal
+            : (rawNetwork.sovitsUrl !== undefined ? rawNetwork : rawLocal);
+        const networkProviderConfig = rawNetwork.providerUrl !== undefined ? rawNetwork
+            : (rawLocal.providerUrl !== undefined ? rawLocal : rawNetwork);
 
         const baseUrl = voiceMode === 'network'
             ? ((networkProviderConfig.providerUrl || '').trim() || DEFAULT_SOVITS_API_BASE_URL)
