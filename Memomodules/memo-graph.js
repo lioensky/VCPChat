@@ -18,7 +18,7 @@ let graphState = {
     animationId: null,
     config: {
         k: 10,
-        boost: 0.15,
+        boost: '0.6+',
         range: []
     }
 };
@@ -70,7 +70,7 @@ async function openAssociationConfig(memo, isAppend = false) {
 
 async function startAssociation() {
     const k = parseInt(document.getElementById('input-assoc-k').value);
-    const boost = parseFloat(document.getElementById('input-assoc-boost').value);
+    const boost = document.getElementById('input-assoc-boost').value.trim();
     let selectedTags = Array.from(document.querySelectorAll('.folder-tag.active')).map(t => t.textContent);
     
     // 保底逻辑：如果用户没有选择任何文件夹，则默认使用当前日记所在的文件夹

@@ -284,12 +284,9 @@ function setupEventListeners() {
 
     // 联想弹窗事件
     const kInput = document.getElementById('input-assoc-k');
-    const boostInput = document.getElementById('input-assoc-boost');
     const kValueLabel = document.getElementById('label-k-value');
-    const boostValueLabel = document.getElementById('label-boost-value');
 
     if (kInput) kInput.oninput = () => kValueLabel.textContent = kInput.value;
-    if (boostInput) boostInput.oninput = () => boostValueLabel.textContent = boostInput.value;
 
     document.getElementById('close-assoc-config-btn').onclick = () => {
         document.getElementById('assoc-config-modal').style.display = 'none';

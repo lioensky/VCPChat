@@ -369,8 +369,8 @@ export const tools = {
             { name: 'folder', type: 'text', required: false, placeholder: '特定的索引文件夹' },
             { name: 'query', type: 'textarea', required: true, placeholder: '记忆检索内容' },
             { name: 'k', type: 'number', required: false, default: 5 },
-            { name: 'rerank', type: 'checkbox', required: false, default: true },
-            { name: 'tag_boost', type: 'number', required: false, placeholder: '0.1-0.9', min: 0, max: 1, step: 0.01 },
+            { name: 'rerank', type: 'text', required: false, placeholder: 'true / false / 0.6 (RRF融合)' },
+            { name: 'tag_boost', type: 'text', required: false, placeholder: '0.6 或 0.6+ (浪潮V8)' },
             { name: 'search_all_knowledge_bases', type: 'checkbox', required: false, default: true }
         ]
     },
