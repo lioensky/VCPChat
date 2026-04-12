@@ -83,13 +83,13 @@ export async function handleSaveGlobalSettings(e, deps) {
         voiceMode,
         speechRecognizerBrowserPath,
         speechRecognizerPagePath,
-        voiceNetworkSettings: {
-            sovitsUrl: document.getElementById('voiceNetworkSovitsUrl')?.value.trim() || '',
-            sovitsKey: document.getElementById('voiceNetworkSovitsKey')?.value || ''
+        voiceLocalSovitsSettings: {
+            sovitsUrl: document.getElementById('voiceLocalSovitsUrl')?.value.trim() || '',
+            sovitsKey: document.getElementById('voiceLocalSovitsKey')?.value || ''
         },
-        voiceLocalSettings: {
-            providerUrl: document.getElementById('voiceLocalProviderUrl')?.value.trim() || '',
-            providerKey: document.getElementById('voiceLocalProviderKey')?.value || ''
+        voiceNetworkProviderSettings: {
+            providerUrl: document.getElementById('voiceNetworkProviderUrl')?.value.trim() || '',
+            providerKey: document.getElementById('voiceNetworkProviderKey')?.value || ''
         },
         enableDistributedServer: document.getElementById('enableDistributedServer').checked,
         agentMusicControl: document.getElementById('agentMusicControl').checked,

@@ -228,8 +228,8 @@ document.addEventListener('DOMContentLoaded', () => {
             voiceMode: settings.voiceMode || 'local',
             speechRecognizerBrowserPath: settings.speechRecognizerBrowserPath || '',
             speechRecognizerPagePath: settings.speechRecognizerPagePath || 'Voicechatmodules/recognizer.html',
-            voiceNetworkSettings: settings.voiceNetworkSettings || { sovitsUrl: '', sovitsKey: '' },
-            voiceLocalSettings: settings.voiceLocalSettings || { providerUrl: '', providerKey: '' }
+            voiceLocalSovitsSettings: settings.voiceLocalSovitsSettings || { sovitsUrl: '', sovitsKey: '' },
+            voiceNetworkProviderSettings: settings.voiceNetworkProviderSettings || { providerUrl: '', providerKey: '' }
         };
     }
 
@@ -526,8 +526,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         console.log(`[VoiceChat] Requesting TTS for message ${msgId}`, {
             voiceMode: globalSettings.voiceMode || 'local',
-            networkSovitsUrl: globalSettings.voiceNetworkSettings?.sovitsUrl || '',
-            localProviderUrl: globalSettings.voiceLocalSettings?.providerUrl || ''
+            localSovitsUrl: globalSettings.voiceLocalSovitsSettings?.sovitsUrl || '',
+            networkProviderUrl: globalSettings.voiceNetworkProviderSettings?.providerUrl || ''
         });
         window.electronAPI.sovitsSpeak({
             text: text,

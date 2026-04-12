@@ -98,11 +98,11 @@ class SettingsManager extends EventEmitter {
             voiceMode: 'local',
             speechRecognizerBrowserPath: '',
             speechRecognizerPagePath: 'Voicechatmodules/recognizer.html',
-            voiceNetworkSettings: {
+            voiceLocalSovitsSettings: {
                 sovitsUrl: '',
                 sovitsKey: ''
             },
-            voiceLocalSettings: {
+            voiceNetworkProviderSettings: {
                 providerUrl: '',
                 providerKey: ''
             },
@@ -143,6 +143,35 @@ class SettingsManager extends EventEmitter {
         await fs.remove(this.lockFile).catch(() => {});
     }
 
+    hasLegacyVoiceSettingsKeys(settings = {}) {
+        return Object.prototype.hasOwnProperty.call(settings, 'voiceNetworkSettings')
+            || Object.prototype.hasOwnProperty.call(settings, 'voiceLocalSettings');
+    }
+
+    normalizeVoiceSettings(settings = {}) {
+        const normalized = { ...settings };
+
+        const localSovitsSettings = settings?.voiceLocalSovitsSettings || {};
+        const networkProviderSettings = settings?.voiceNetworkProviderSettings || {};
+        const legacyLocalSovitsSettings = settings?.voiceLocalSettings || {};
+        const legacyNetworkProviderSettings = settings?.voiceNetworkSettings || {};
+
+        normalized.voiceLocalSovitsSettings = {
+            sovitsUrl: localSovitsSettings.sovitsUrl ?? legacyLocalSovitsSettings.sovitsUrl ?? '',
+            sovitsKey: localSovitsSettings.sovitsKey ?? legacyLocalSovitsSettings.sovitsKey ?? ''
+        };
+
+        normalized.voiceNetworkProviderSettings = {
+            providerUrl: networkProviderSettings.providerUrl ?? legacyNetworkProviderSettings.providerUrl ?? '',
+            providerKey: networkProviderSettings.providerKey ?? legacyNetworkProviderSettings.providerKey ?? ''
+        };
+
+        delete normalized.voiceNetworkSettings;
+        delete normalized.voiceLocalSettings;
+
+        return normalized;
+    }
+
     async readSettings() {
         try {
             // 使用缓存机制减少文件读取
@@ -152,7 +181,15 @@ class SettingsManager extends EventEmitter {
             }
 
             const content = await fs.readFile(this.settingsPath, 'utf8');
-            const settings = JSON.parse(content);
+            const parsedSettings = JSON.parse(content);
+            const hasLegacyVoiceKeys = this.hasLegacyVoiceSettingsKeys(parsedSettings);
+            const settings = this.normalizeVoiceSettings(parsedSettings);
+
+            if (hasLegacyVoiceKeys) {
+                await this.writeSettings(settings);
+                console.log('Migrated legacy voice settings keys to the new schema.');
+                return { ...settings };
+            }
             
             // 更新缓存
             this.cache = settings;
@@ -171,7 +208,7 @@ class SettingsManager extends EventEmitter {
             if (await fs.pathExists(backupPath)) {
                 try {
                     const backupContent = await fs.readFile(backupPath, 'utf8');
-                    const backupSettings = JSON.parse(backupContent);
+                    const backupSettings = this.normalizeVoiceSettings(JSON.parse(backupContent));
                     
                     // 验证备份数据是否有效且包含用户自定义数据（例如 Agent 列表顺序或非默认用户名）
                     const isNonDefault = backupSettings && (
@@ -201,8 +238,12 @@ class SettingsManager extends EventEmitter {
         const backupFile = this.settingsPath + '.backup';
         
         try {
+            const normalizedSettings = this.normalizeVoiceSettings(settings);
+
             // 验证设置
-            const { validated } = SettingsValidator.validate(settings, this.defaultSettings);
+            const { validated } = SettingsValidator.validate(normalizedSettings, this.defaultSettings);
+            delete validated.voiceNetworkSettings;
+            delete validated.voiceLocalSettings;
             
             // 写入临时文件
             await fs.writeJson(tempFile, validated, { spaces: 2 });

@@ -68,7 +68,7 @@ function readMainSettings() {
 function getEnvConfig() {
   const env = readEnvFile(CONFIG_PATH);
   const mainSettings = readMainSettings();
-  const networkModeSettings = mainSettings.voiceLocalSettings || {};
+  const networkModeSettings = mainSettings.voiceNetworkProviderSettings || {};
 
   const resolvedUrl = (networkModeSettings.providerUrl || env.siliconflow_url || 'https://api.siliconflow.cn').replace(/\/+$/, '');
   const resolvedKey = networkModeSettings.providerKey || env.siliconflow_key || '';
