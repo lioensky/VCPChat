@@ -376,7 +376,7 @@ function transformSpecialBlocks(text, codeBlockMap) {
         html += `<div class="vcp-tool-result-details">`;
         details.forEach(({ key, value }) => {
             const isMarkdownField = (key === '返回内容' || key === '内容' || key === 'Result' || key === '返回结果' || key === 'output');
-            const isImageUrl = typeof value === 'string' && value.match(/^https?:\/\/[^\s]+\.(jpeg|jpg|png|gif|webp)$/i);
+            const isImageUrl = typeof value === 'string' && /^https?:\/\/[^\s]+$/i.test(value) && /\.(jpeg|jpg|png|gif|webp)([?&#]|$)/i.test(value);
             let processedValue;
 
             if (isImageUrl && (key === '可访问URL' || key === '返回内容' || key === 'url' || key === 'image')) {
