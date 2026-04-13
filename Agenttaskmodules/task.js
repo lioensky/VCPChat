@@ -663,13 +663,13 @@ function openTaskModal(task, index) {
 
             <div class="form-group">
                 <label>论坛列表占位符</label>
-                <input type="text" data-keypath="payload.forumPostListPlaceholder" value="${escapeHtml(task.payload?.forumPostListPlaceholder || '{{forum_post_list}}')}">
+                <input type="text" data-keypath="payload.forumListPlaceholder" value="${escapeHtml(task.payload?.forumListPlaceholder || '{{forum_post_list}}')}">
                 <span style="font-size:0.75rem; opacity:0.6; margin-top:2px;">提示词中出现该占位符时，会自动替换为论坛帖子列表。</span>
             </div>
 
             <div class="form-group">
                 <label>最大读取帖子数</label>
-                <input type="number" data-keypath="payload.forumPostMaxCount" value="${task.payload?.forumPostMaxCount || 100}">
+                <input type="number" data-keypath="payload.maxPosts" value="${task.payload?.maxPosts || 200}">
                 <span style="font-size:0.75rem; opacity:0.6; margin-top:2px;">用于控制注入到提示词中的帖子条目数量。</span>
             </div>
         </div>
