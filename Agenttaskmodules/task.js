@@ -101,13 +101,39 @@ function setupModals() {
         });
     });
     
-    // Save Editing Agent
+    // Save Editing Agent (supports both edit and create)
     document.getElementById('agent-modal-confirm').addEventListener('click', () => {
-        if (currentEditingAgentIndex >= 0 && currentAAConfig) {
-            const body = document.getElementById('agent-modal-body');
-            const inputs = body.querySelectorAll('input, textarea');
+        if (!currentAAConfig) return;
+        if (!currentAAConfig.agents) currentAAConfig.agents = [];
+
+        const body = document.getElementById('agent-modal-body');
+        const inputs = body.querySelectorAll('input, textarea');
+
+        if (currentEditingAgentIndex === -1) {
+            // Creating new agent
+            const newAgent = {};
             inputs.forEach(input => {
                 const key = input.dataset.key;
+                if (!key) return;
+                let val = input.value;
+                if (input.type === 'number') val = Number(val);
+                newAgent[key] = val;
+            });
+
+            // Validate required fields
+            if (!newAgent.chineseName && !newAgent.baseName) {
+                alert('请至少填写"显示名称"或"基础标识"。');
+                return;
+            }
+
+            currentAAConfig.agents.push(newAgent);
+            agentModal.classList.remove('active');
+            renderAAConfig();
+        } else if (currentEditingAgentIndex >= 0) {
+            // Editing existing agent
+            inputs.forEach(input => {
+                const key = input.dataset.key;
+                if (!key) return;
                 let val = input.value;
                 if (input.type === 'number') val = Number(val);
                 currentAAConfig.agents[currentEditingAgentIndex][key] = val;
@@ -221,6 +247,16 @@ async function getAvatarForUser(username) {
 refreshAgentsBtn.addEventListener('click', fetchAAConfig);
 saveAgentsBtn.addEventListener('click', saveAAConfig);
 
+// Create New Agent Button
+document.getElementById('create-agent-btn')?.addEventListener('click', () => {
+    if (!currentAAConfig) {
+        currentAAConfig = { agents: [], maxHistoryRounds: 7, contextTtlHours: 24, globalSystemPrompt: '' };
+    }
+    if (!currentAAConfig.agents) currentAAConfig.agents = [];
+
+    openAgentModal(-1); // -1 means new agent
+});
+
 async function fetchAAConfig() {
     try {
         refreshAgentsBtn.classList.add('spinning'); // Assume a spinner CSS is added or opacity drops
@@ -286,11 +322,19 @@ function renderAAConfig() {
         card.innerHTML = `
             <div class="agent-card-header">
                 <div class="agent-avatar" data-name="${escapeHtml(agent.chineseName || agent.baseName)}">
-                    ${(agent.chineseName || agent.baseName).slice(0,1)}
+                    ${(agent.chineseName || agent.baseName || '?').slice(0,1)}
                 </div>
                 <div class="agent-info">
-                    <h3>${escapeHtml(agent.chineseName || agent.baseName)}</h3>
+                    <h3>${escapeHtml(agent.chineseName || agent.baseName || '未命名')}</h3>
                     <div class="model-id">${escapeHtml(agent.modelId || 'default')}</div>
+                </div>
+                <div class="agent-card-actions" style="margin-left:auto; display:flex; gap:6px;">
+                    <button class="action-btn" title="编辑" onclick="event.stopPropagation(); openAgentModalByIndex(${index})">
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                    </button>
+                    <button class="action-btn delete-btn" title="删除" onclick="event.stopPropagation(); deleteAgentByIndex(${index})">
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                    </button>
                 </div>
             </div>
             <div class="agent-description">${escapeHtml(agent.description || '无介绍...')}</div>
@@ -310,6 +354,21 @@ function renderAAConfig() {
     });
 }
 
+// ========== Agent Add/Delete Helpers ==========
+window.openAgentModalByIndex = (index) => {
+    openAgentModal(index);
+};
+
+window.deleteAgentByIndex = (index) => {
+    if (!currentAAConfig || !currentAAConfig.agents) return;
+    const agent = currentAAConfig.agents[index];
+    const agentName = agent?.chineseName || agent?.baseName || '未命名';
+    if (confirm(`确定要删除 Agent "${agentName}" 吗？`)) {
+        currentAAConfig.agents.splice(index, 1);
+        renderAAConfig();
+    }
+};
+
 window.updateAAGlobal = (key, val, type) => {
     if (currentAAConfig) {
         currentAAConfig[key] = type === 'number' ? Number(val) : val;
@@ -317,20 +376,74 @@ window.updateAAGlobal = (key, val, type) => {
 };
 
 function openAgentModal(index) {
-    const agent = currentAAConfig.agents[index];
+    const isNew = index === -1;
+    const agent = isNew
+        ? { chineseName: '', baseName: '', modelId: '', description: '', systemPrompt: '', maxOutputTokens: 8000, temperature: 0.7 }
+        : currentAAConfig.agents[index];
+
     currentEditingAgentIndex = index;
-    document.getElementById('agent-modal-title').textContent = `编辑 ${agent.chineseName || agent.baseName}`;
     
+    const agentName = agent.chineseName || agent.baseName || '新 Agent';
+    document.getElementById('agent-modal-title').textContent = isNew ? '新建 Agent' : `编辑 ${agentName}`;
+
+    // Show/hide the modal delete button
+    const deleteBtn = document.getElementById('agent-modal-delete');
+    if (deleteBtn) {
+        deleteBtn.style.display = isNew ? 'none' : 'inline-flex';
+        deleteBtn.onclick = () => {
+            if (confirm(`确定要删除 Agent "${agentName}" 吗？`)) {
+                currentAAConfig.agents.splice(index, 1);
+                agentModal.classList.remove('active');
+                renderAAConfig();
+            }
+        };
+    }
+
+    // Define the fields we want to display with friendly labels
+    const fieldDefs = [
+        { key: 'chineseName', label: '显示名称', type: 'text', placeholder: '例如：诺娃' },
+        { key: 'baseName', label: '基础标识 (baseName)', type: 'text', placeholder: '例如：nova' },
+        { key: 'modelId', label: '模型 ID', type: 'text', placeholder: '例如：gpt-4o / claude-3' },
+        { key: 'description', label: '角色描述', type: 'textarea', placeholder: '描述该 Agent 的角色和性格...' },
+        { key: 'systemPrompt', label: '系统提示词', type: 'textarea', placeholder: '可为空，若需引用已注册 Agent 的 prompt 可使用 {{baseName}}' },
+        { key: 'maxOutputTokens', label: '最大输出 Token', type: 'number', placeholder: '8000' },
+        { key: 'temperature', label: '温度 (Temperature)', type: 'number', placeholder: '0.7' },
+    ];
+
     const body = document.getElementById('agent-modal-body');
-    const fieldsHtml = Object.keys(agent).map(key => {
+    
+    // Build fields from definition, also include any extra unknown keys from the agent
+    const knownKeys = new Set(fieldDefs.map(f => f.key));
+    const extraKeys = Object.keys(agent).filter(k => !knownKeys.has(k));
+
+    let fieldsHtml = fieldDefs.map(fd => {
+        const val = agent[fd.key] ?? '';
+        if (fd.type === 'textarea') {
+            return `
+                <div class="form-group">
+                    <label>${fd.label}</label>
+                    <textarea data-key="${fd.key}" placeholder="${fd.placeholder || ''}">${escapeHtml(String(val))}</textarea>
+                </div>
+            `;
+        } else {
+            return `
+                <div class="form-group">
+                    <label>${fd.label}</label>
+                    <input type="${fd.type}" data-key="${fd.key}" value="${escapeHtml(String(val))}" placeholder="${fd.placeholder || ''}" ${fd.type === 'number' ? 'step="any"' : ''}>
+                </div>
+            `;
+        }
+    }).join('');
+
+    // Render any extra/unknown fields from the agent object
+    fieldsHtml += extraKeys.map(key => {
         const val = agent[key];
         const isLongText = typeof val === 'string' && val.length > 50;
-        
         if (isLongText) {
             return `
                 <div class="form-group">
                     <label>${key}</label>
-                    <textarea data-key="${key}">${escapeHtml(val)}</textarea>
+                    <textarea data-key="${key}">${escapeHtml(String(val))}</textarea>
                 </div>
             `;
         } else {
@@ -342,7 +455,7 @@ function openAgentModal(index) {
             `;
         }
     }).join('');
-    
+
     body.innerHTML = fieldsHtml;
     agentModal.classList.add('active');
 }

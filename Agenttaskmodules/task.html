@@ -54,6 +54,7 @@
                     </div>
                     <div class="view-actions">
                         <button id="refresh-agents-btn" class="glass-btn primary"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg> 刷新配置</button>
+                        <button id="create-agent-btn" class="glass-btn primary">➕ 新建 Agent</button>
                         <button id="save-agents-btn" class="glass-btn success">保存所有更改</button>
                     </div>
                 </div>
@@ -106,8 +107,9 @@
             <div class="modal-body" id="agent-modal-body">
                 <!-- Inner Form Fields -->
             </div>
-            <div class="modal-footer">
-                <button id="agent-modal-confirm" class="glass-btn block primary">确定配置</button>
+            <div class="modal-footer" style="justify-content: space-between;">
+                <button id="agent-modal-delete" class="glass-btn danger" style="display:none;">🗑️ 删除此 Agent</button>
+                <button id="agent-modal-confirm" class="glass-btn primary">确定配置</button>
             </div>
         </div>
     </div>
