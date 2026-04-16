@@ -9,8 +9,9 @@ const ExcelJS = require('exceljs');
 const axios = require('axios');
 const { validateCode } = require('./CodeValidator');
 
-// Load environment variables
-require('dotenv').config();
+// Load environment variables without writing tips to stdout,
+// because plugin stdout must remain clean JSON for the VCP protocol.
+require('dotenv').config({ quiet: true });
 
 // Configuration
 const CANVAS_DIRECTORY = path.join(__dirname, '..', '..', '..', 'AppData', 'Canvas');
