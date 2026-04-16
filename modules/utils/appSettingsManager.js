@@ -70,6 +70,7 @@ class SettingsManager extends EventEmitter {
             userName: '用户',
             vcpServerUrl: '',
             vcpApiKey: '',
+            fileKey: '',
             vcpLogUrl: '',
             vcpLogKey: '',
             networkNotesPaths: [],

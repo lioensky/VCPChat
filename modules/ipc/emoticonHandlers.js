@@ -7,7 +7,6 @@ const { URL } = require('url');
 
 let emoticonLibrary = [];
 let settingsFilePath;
-let generatedListsPath;
 let emoticonLibraryPath;
 let degradedReason = null;
 let hasWarnedForCurrentReason = false;
@@ -30,19 +29,13 @@ function clearDegradedState() {
 
 async function initialize(paths) {
     settingsFilePath = paths.SETTINGS_FILE;
-    generatedListsPath = path.join(paths.APP_DATA_ROOT_IN_PROJECT, 'generated_lists');
-    emoticonLibraryPath = path.join(generatedListsPath, 'emoticon_library.json');
+    emoticonLibraryPath = path.join(paths.APP_DATA_ROOT_IN_PROJECT, 'emoticon_library.json');
 }
 
 async function generateEmoticonLibrary() {
     console.log('[EmoticonFixer] Starting to generate emoticon library...');
 
     try {
-        if (!await fs.pathExists(generatedListsPath)) {
-            setDegradedState(`missing generated_lists directory at ${generatedListsPath}`);
-            return [];
-        }
-
         const settings = await fs.readJson(settingsFilePath);
         const vcpServerUrl = settings.vcpServerUrl;
         if (!vcpServerUrl) {
@@ -50,42 +43,64 @@ async function generateEmoticonLibrary() {
             return [];
         }
 
-        const configEnvPath = path.join(generatedListsPath, 'config.env');
-        if (!await fs.pathExists(configEnvPath)) {
-            setDegradedState(`missing config.env at ${configEnvPath}`);
+        const fileKey = typeof settings.fileKey === 'string' ? settings.fileKey.trim() : '';
+        if (!fileKey) {
+            setDegradedState('missing fileKey in settings.json');
             return [];
         }
 
-        const configContent = await fs.readFile(configEnvPath, 'utf-8');
-        const passwordMatch = configContent.match(/^\s*file_key\s*=\s*(.+)\s*$/m);
-        if (!passwordMatch || !passwordMatch[1]) {
-            setDegradedState(`missing file_key in ${configEnvPath}`);
-            return [];
-        }
-
-        const password = passwordMatch[1].trim();
         const urlObject = new URL(vcpServerUrl);
         const baseUrl = `${urlObject.protocol}//${urlObject.host}`;
-        const files = await fs.readdir(generatedListsPath);
-        const txtFiles = files.filter(file => file.endsWith('表情包.txt'));
+
+        const forumConfigPath = path.join(path.dirname(settingsFilePath), 'UserData', 'forum.config.json');
+        let authHeader = null;
+        if (await fs.pathExists(forumConfigPath)) {
+            try {
+                const forumConfig = await fs.readJson(forumConfigPath);
+                if (forumConfig?.username && forumConfig?.password) {
+                    authHeader = `Basic ${Buffer.from(`${forumConfig.username}:${forumConfig.password}`).toString('base64')}`;
+                }
+            } catch (forumConfigError) {
+                console.warn(`[EmoticonFixer] Failed to read forum config for emoji API auth: ${forumConfigError.message}`);
+            }
+        }
+
+        const response = await fetch(`${baseUrl}/admin_api/emojis/list`, {
+            method: 'GET',
+            headers: authHeader ? { Authorization: authHeader } : {}
+        });
+
+        if (!response.ok) {
+            const authHint = response.status === 401 || response.status === 403
+                ? ' (admin auth required, please login in Forum page)'
+                : '';
+            setDegradedState(`failed to fetch emoji list: HTTP ${response.status}${authHint}`);
+            return [];
+        }
+
+        const payload = await response.json();
+        if (!payload?.success || !payload?.data || typeof payload.data !== 'object') {
+            setDegradedState('invalid emoji list response payload');
+            return [];
+        }
 
         const library = [];
-        for (const txtFile of txtFiles) {
-            const category = path.basename(txtFile, '.txt');
-            const filePath = path.join(generatedListsPath, txtFile);
-            const fileContent = await fs.readFile(filePath, 'utf-8');
-            const filenames = fileContent.split('|').filter(name => name.trim() !== '');
+        for (const [category, filenames] of Object.entries(payload.data)) {
+            if (!Array.isArray(filenames)) continue;
 
-            for (const filename of filenames) {
+            for (const rawFilename of filenames) {
+                const filename = typeof rawFilename === 'string' ? rawFilename.trim() : '';
+                if (!filename) continue;
+
                 const encodedFilename = encodeURIComponent(filename);
                 const encodedCategory = encodeURIComponent(category);
-                const fullUrl = `${baseUrl}/pw=${password}/images/${encodedCategory}/${encodedFilename}`;
+                const fullUrl = `${baseUrl}/pw=${fileKey}/images/${encodedCategory}/${encodedFilename}`;
 
                 library.push({
                     url: fullUrl,
                     category,
                     filename,
-                    searchKey: `${category.toLowerCase()}/${filename.toLowerCase()}`
+                    searchKey: `${String(category).toLowerCase()}/${filename.toLowerCase()}`
                 });
             }
         }
@@ -105,20 +120,24 @@ function setupEmoticonHandlers() {
     generateEmoticonLibrary();
 
     ipcMain.handle('get-emoticon-library', async () => {
-        if (degradedReason) {
-            return [];
+        if (emoticonLibrary.length > 0) {
+            return emoticonLibrary;
         }
 
-        if (emoticonLibrary.length === 0 && await fs.pathExists(emoticonLibraryPath)) {
+        if (await fs.pathExists(emoticonLibraryPath)) {
             try {
                 emoticonLibrary = await fs.readJson(emoticonLibraryPath);
+                if (Array.isArray(emoticonLibrary) && emoticonLibrary.length > 0) {
+                    return emoticonLibrary;
+                }
             } catch (error) {
-                setDegradedState(`failed to read cache ${emoticonLibraryPath}: ${error.message}`);
-                return [];
+                console.warn(`[EmoticonFixer] Failed to read cache ${emoticonLibraryPath}: ${error.message}`);
             }
         }
 
-        return emoticonLibrary;
+        clearDegradedState();
+        const generatedLibrary = await generateEmoticonLibrary();
+        return Array.isArray(generatedLibrary) ? generatedLibrary : [];
     });
 
     ipcMain.on('regenerate-emoticon-library', async () => {

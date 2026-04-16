@@ -13,6 +13,7 @@ let globalSettings = {
     enableRegenerateConfirmation: true, // 重新回复确认机制开关
     flowlockContinueDelay: 5, // 心流锁续写延迟（秒）
     enableThoughtChainInjection: false, // 元思考注入上下文开关
+    fileKey: '',
     enableWideChatLayout: false,
     chatBubbleMaxWidthDefault: 82,
     chatBubbleMaxWidthNotifications: 90,
@@ -1991,6 +1992,7 @@ async function syncGlobalSettingsToUI() {
     const completedUrl = window.settingsManager.completeVcpUrl(globalSettings.vcpServerUrl || '');
     safeSet('vcpServerUrl', completedUrl);
     safeSet('vcpApiKey', globalSettings.vcpApiKey || '');
+    safeSet('fileKey', globalSettings.fileKey || '');
     safeSet('vcpLogUrl', globalSettings.vcpLogUrl || '');
     safeSet('vcpLogKey', globalSettings.vcpLogKey || '');
     safeSet('topicSummaryModel', globalSettings.topicSummaryModel || '');
