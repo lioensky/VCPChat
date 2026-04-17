@@ -171,6 +171,32 @@ function stripAnsi(str) {
     );
 }
 
+/**
+ * 清理终端控制字符，避免退格、响铃等字符污染返回结果。
+ * @param {string} str - 原始终端输出。
+ * @returns {string} - 清理后的文本。
+ */
+function sanitizeTerminalOutput(str) {
+    if (!str) {
+        return '';
+    }
+
+    const withoutAnsi = stripAnsi(str);
+
+    // 处理退格：按终端语义移除“前一个字符 + \b”
+    let cleaned = withoutAnsi;
+    while (/[^\n]\x08/.test(cleaned)) {
+        cleaned = cleaned.replace(/[^\n]\x08/g, '');
+    }
+
+    return cleaned
+        .replace(/\x08/g, '')                 // 孤立 backspace
+        .replace(/\x07/g, '')                 // bell
+        .replace(/\x00/g, '')                 // null
+        .replace(/\u001b\][^\u0007]*(?:\u0007|\u001b\\)/g, '') // OSC 序列
+        .replace(/\r(?!\n)/g, '');            // 裸 \r
+}
+
 
 // --- 模块级状态 ---
 // 用于保存持久化的伪终端（PowerShell）进程
@@ -566,45 +592,81 @@ function executeSingleCommandInPty(ptyProcess, singleCommand) {
             return reject(new Error("PTY process is not available."));
         }
 
-        let commandOutput = '';
-        const boundary = `--- VCP_COMMAND_BOUNDARY_${crypto.randomUUID()} ---`;
+        let rawOutput = '';
+        let hasSeenStartBoundary = false;
+        let settled = false;
 
-        const dataListener = (data) => {
-            const dataStr = data.toString('utf-8');
+        const startBoundary = `__VCP_COMMAND_START_${crypto.randomUUID()}__`;
+        const endBoundary = `__VCP_COMMAND_END_${crypto.randomUUID()}__`;
 
-            // 检查数据是否包含边界
-            if (dataStr.includes(boundary)) {
+        const cleanupListener = (listenerDisposable, timeoutId) => {
+            if (timeoutId) {
                 clearTimeout(timeoutId);
-                ptyProcess.removeListener('data', dataListener);
-
-                // 提取边界之前最后的有效数据
-                const finalChunk = dataStr.substring(0, dataStr.indexOf(boundary));
-                commandOutput += finalChunk;
-
-                // 将最后的干净数据块发送到GUI
-                if (guiWindow && !guiWindow.isDestroyed() && finalChunk) {
-                    guiWindow.webContents.send('powershell-data', finalChunk);
-                }
-
-                // 解析Promise，完成AI工具调用
-                resolve(stripAnsi(commandOutput.trim()));
-            } else {
-                // 如果没有边界，这是正常的命令输出
-                commandOutput += dataStr;
-                // 将中间输出实时发送到GUI
-                if (guiWindow && !guiWindow.isDestroyed()) {
-                    guiWindow.webContents.send('powershell-data', dataStr);
-                }
+            }
+            if (listenerDisposable && typeof listenerDisposable.dispose === 'function') {
+                listenerDisposable.dispose();
             }
         };
 
+        const flushToGui = (text) => {
+            if (guiWindow && !guiWindow.isDestroyed() && text) {
+                guiWindow.webContents.send('powershell-data', text);
+            }
+        };
+
+        const listenerDisposable = ptyProcess.onData((data) => {
+            if (settled) {
+                return;
+            }
+
+            let chunk = data.toString('utf-8');
+
+            // 丢弃开始边界之前的所有迟到输出，避免上一条命令残留串入本次结果
+            if (!hasSeenStartBoundary) {
+                const startIndex = chunk.indexOf(startBoundary);
+                if (startIndex === -1) {
+                    return;
+                }
+
+                hasSeenStartBoundary = true;
+                chunk = chunk.substring(startIndex + startBoundary.length);
+            }
+
+            const endIndex = chunk.indexOf(endBoundary);
+            if (endIndex !== -1) {
+                const finalChunk = chunk.substring(0, endIndex);
+                rawOutput += finalChunk;
+                flushToGui(finalChunk);
+
+                settled = true;
+                cleanupListener(listenerDisposable, timeoutId);
+                resolve(sanitizeTerminalOutput(rawOutput).trim());
+                return;
+            }
+
+            rawOutput += chunk;
+            flushToGui(chunk);
+        });
+
         const timeoutId = setTimeout(() => {
-            ptyProcess.removeListener('data', dataListener);
+            if (settled) {
+                return;
+            }
+            settled = true;
+            cleanupListener(listenerDisposable, timeoutId);
             reject(new Error(`Command "${singleCommand}" timed out after 60 seconds.`));
         }, 60000);
 
-        ptyProcess.on('data', dataListener);
-        ptyProcess.write(`${singleCommand}\r\nWrite-Host "${boundary}"\r\n`);
+        const escapedCommand = singleCommand.replace(/`/g, '``');
+        const wrappedCommand = [
+            `Write-Host "${startBoundary}"`,
+            `& {`,
+            escapedCommand,
+            `}`,
+            `Write-Host "${endBoundary}"`
+        ].join('\r\n');
+
+        ptyProcess.write(`${wrappedCommand}\r\n`);
     });
 }
 
