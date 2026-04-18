@@ -445,14 +445,17 @@ function transformSpecialBlocks(text, codeBlockMap) {
             const maidRegex = /(?:maid|maidName):\s*(?:「始ESCAPE」([\s\S]*?)「末ESCAPE」|「始」([^「」]*)「末」)/;
             const dateRegex = /Date:\s*(?:「始ESCAPE」([\s\S]*?)「末ESCAPE」|「始」([^「」]*)「末」)/;
             const contentRegex = /Content:\s*(?:「始ESCAPE」([\s\S]*?)「末ESCAPE」|「始」([\s\S]*?)「末」)/;
+            const tagRegex = /Tag:\s*(?:「始ESCAPE」([\s\S]*?)「末ESCAPE」|「始」([\s\S]*?)「末」)/;
 
             const maidMatch = content.match(maidRegex);
             const dateMatch = content.match(dateRegex);
             const contentMatch = content.match(contentRegex);
+            const tagMatch = content.match(tagRegex);
 
             const maid = maidMatch ? (maidMatch[1] || maidMatch[2] || '').trim() : '';
             const date = dateMatch ? (dateMatch[1] || dateMatch[2] || '').trim() : '';
             const diaryContent = contentMatch ? (contentMatch[1] || contentMatch[2] || '').trim() : '[日记内容解析失败]';
+            const diaryTag = tagMatch ? (tagMatch[1] || tagMatch[2] || '').trim() : '';
 
             let html = `<div class="maid-diary-bubble">`;
             html += `<div class="diary-header">`;
@@ -469,15 +472,20 @@ function transformSpecialBlocks(text, codeBlockMap) {
                 html += `</div>`;
             }
 
+            let diaryBody = restoreBlocks(diaryContent);
+            if (diaryTag) {
+                diaryBody += `\n\nTag:${diaryTag}`;
+            }
+
             let processedDiaryContent;
             if (mainRendererReferences.markedInstance) {
                 try {
-                    processedDiaryContent = mainRendererReferences.markedInstance.parse(restoreBlocks(diaryContent));
+                    processedDiaryContent = mainRendererReferences.markedInstance.parse(diaryBody);
                 } catch (e) {
-                    processedDiaryContent = escapeHtml(restoreBlocks(diaryContent));
+                    processedDiaryContent = escapeHtml(diaryBody);
                 }
             } else {
-                processedDiaryContent = escapeHtml(restoreBlocks(diaryContent));
+                processedDiaryContent = escapeHtml(diaryBody);
             }
             html += `<div class="diary-content">${processedDiaryContent}</div>`;
             html += `</div>`;
