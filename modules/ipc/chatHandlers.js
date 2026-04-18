@@ -1,8 +1,11 @@
-// modules/ipc/chatHandlers.js
+﻿// modules/ipc/chatHandlers.js
 const { ipcMain, dialog, BrowserWindow } = require('electron');
 const fs = require('fs-extra');
 const path = require('path');
 const contextSanitizer = require('../contextSanitizer');
+const { getAgentConfigById } = require('./agentHandlers');
+
+}
 
 /**
  * Initializes chat and topic related IPC handlers.
@@ -32,13 +35,13 @@ function initialize(mainWindow, context) {
 
     ipcMain.handle('save-topic-order', async (event, agentId, orderedTopicIds) => {
         if (!agentId || !Array.isArray(orderedTopicIds)) {
-            return { success: false, error: '无效的 agentId 或 topic IDs' };
+            return { success: false, error: '鏃犳晥鐨?agentId 鎴?topic IDs' };
         }
         try {
             if (agentConfigManager) {
                 await agentConfigManager.updateAgentConfig(agentId, config => {
                     if (!config.topics || !Array.isArray(config.topics)) {
-                        console.error(`保存Agent ${agentId} 的话题顺序失败: 配置文件损坏或缺少话题列表。`);
+                        console.error(`淇濆瓨Agent ${agentId} 鐨勮瘽棰橀『搴忓け璐? 閰嶇疆鏂囦欢鎹熷潖鎴栫己灏戣瘽棰樺垪琛ㄣ€俙);
                         return config;
                     }
                     const topicMap = new Map(config.topics.map(topic => [topic.id, topic]));
@@ -54,7 +57,7 @@ function initialize(mainWindow, context) {
                 });
             } else {
                 console.error(`AgentConfigManager not available, cannot safely save topic order for agent ${agentId}`);
-                return { success: false, error: 'AgentConfigManager 未初始化，无法安全保存话题顺序。' };
+                return { success: false, error: 'AgentConfigManager 鏈垵濮嬪寲锛屾棤娉曞畨鍏ㄤ繚瀛樿瘽棰橀『搴忋€? };
             }
             return { success: true };
         } catch (error) {
@@ -65,7 +68,7 @@ function initialize(mainWindow, context) {
 
     ipcMain.handle('save-group-topic-order', async (event, groupId, orderedTopicIds) => {
         if (!groupId || !Array.isArray(orderedTopicIds)) {
-            return { success: false, error: '无效的 groupId 或 topic IDs' };
+            return { success: false, error: '鏃犳晥鐨?groupId 鎴?topic IDs' };
         }
         const groupConfigPath = path.join(APP_DATA_ROOT_IN_PROJECT, 'AgentGroups', groupId, 'config.json');
         try {
@@ -139,7 +142,7 @@ function initialize(mainWindow, context) {
     });
 
     ipcMain.handle('save-agent-topic-title', async (event, agentId, topicId, newTitle) => {
-        if (!topicId || !newTitle) return { error: "保存话题标题失败: topicId 或 newTitle 未提供。" };
+        if (!topicId || !newTitle) return { error: "淇濆瓨璇濋鏍囬澶辫触: topicId 鎴?newTitle 鏈彁渚涖€? };
         try {
             if (agentConfigManager) {
                 await agentConfigManager.updateAgentConfig(agentId, existingConfig => {
@@ -157,16 +160,16 @@ function initialize(mainWindow, context) {
                 return { success: true, topics: updatedConfig.topics };
             } else {
                 console.error(`AgentConfigManager not available, cannot safely save topic title for agent ${agentId}`);
-                return { error: 'AgentConfigManager 未初始化，无法安全保存话题标题。' };
+                return { error: 'AgentConfigManager 鏈垵濮嬪寲锛屾棤娉曞畨鍏ㄤ繚瀛樿瘽棰樻爣棰樸€? };
             }
         } catch (error) {
-            console.error(`保存Agent ${agentId} 话题 ${topicId} 标题为 "${newTitle}" 失败:`, error);
+            console.error(`淇濆瓨Agent ${agentId} 璇濋 ${topicId} 鏍囬涓?"${newTitle}" 澶辫触:`, error);
             return { error: error.message };
         }
     });
 
     ipcMain.handle('get-chat-history', async (event, agentId, topicId) => {
-        if (!topicId) return { error: `获取Agent ${agentId} 聊天历史失败: topicId 未提供。` };
+        if (!topicId) return { error: `鑾峰彇Agent ${agentId} 鑱婂ぉ鍘嗗彶澶辫触: topicId 鏈彁渚涖€俙 };
         try {
             const historyFile = path.join(USER_DATA_DIR, agentId, 'topics', topicId, 'history.json');
             await fs.ensureDir(path.dirname(historyFile));
@@ -177,13 +180,13 @@ function initialize(mainWindow, context) {
             }
             return [];
         } catch (error) {
-            console.error(`获取Agent ${agentId} 话题 ${topicId} 聊天历史失败:`, error);
+            console.error(`鑾峰彇Agent ${agentId} 璇濋 ${topicId} 鑱婂ぉ鍘嗗彶澶辫触:`, error);
             return { error: error.message };
         }
     });
 
     ipcMain.handle('save-chat-history', async (event, agentId, topicId, history) => {
-        if (!topicId) return { error: `保存Agent ${agentId} 聊天历史失败: topicId 未提供。` };
+        if (!topicId) return { error: `淇濆瓨Agent ${agentId} 鑱婂ぉ鍘嗗彶澶辫触: topicId 鏈彁渚涖€俙 };
         try {
             if (fileWatcher) {
                 fileWatcher.signalInternalSave();
@@ -194,7 +197,7 @@ function initialize(mainWindow, context) {
             await fs.writeJson(historyFile, history, { spaces: 2 });
             return { success: true };
         } catch (error) {
-            console.error(`保存Agent ${agentId} 话题 ${topicId} 聊天历史失败:`, error);
+            console.error(`淇濆瓨Agent ${agentId} 璇濋 ${topicId} 鑱婂ぉ鍘嗗彶澶辫触:`, error);
             return { error: error.message };
         }
     });
@@ -206,8 +209,8 @@ function initialize(mainWindow, context) {
                 try {
                     config = await agentConfigManager.readAgentConfig(agentId, { allowDefault: true });
                 } catch (readError) {
-                    console.error(`读取Agent ${agentId} 的配置失败 (get-agent-topics):`, readError);
-                    return { error: `读取配置文件失败: ${readError.message}` };
+                    console.error(`璇诲彇Agent ${agentId} 鐨勯厤缃け璐?(get-agent-topics):`, readError);
+                    return { error: `璇诲彇閰嶇疆鏂囦欢澶辫触: ${readError.message}` };
                 }
             } else {
                 const configPath = path.join(AGENT_DIR, agentId, 'config.json');
@@ -215,14 +218,14 @@ function initialize(mainWindow, context) {
                     try {
                         config = await fs.readJson(configPath);
                     } catch (readError) {
-                        console.error(`读取Agent ${agentId} 的 config.json 失败:`, readError);
-                        return { error: `读取配置文件失败: ${readError.message}` };
+                        console.error(`璇诲彇Agent ${agentId} 鐨?config.json 澶辫触:`, readError);
+                        return { error: `璇诲彇閰嶇疆鏂囦欢澶辫触: ${readError.message}` };
                     }
                 }
             }
 
             if (config && config.topics && Array.isArray(config.topics)) {
-                // Part A: 历史数据兼容处理 - 自动为缺少新字段的话题添加默认值
+                // Part A: 鍘嗗彶鏁版嵁鍏煎澶勭悊 - 鑷姩涓虹己灏戞柊瀛楁鐨勮瘽棰樻坊鍔犻粯璁ゅ€?
                 const normalizedTopics = config.topics.map(topic => ({
                     ...topic,
                     locked: topic.locked !== undefined ? topic.locked : true,
@@ -233,7 +236,7 @@ function initialize(mainWindow, context) {
             }
             return [];
         } catch (error) {
-            console.error(`获取Agent ${agentId} 话题列表时发生意外错误:`, error);
+            console.error(`鑾峰彇Agent ${agentId} 璇濋鍒楄〃鏃跺彂鐢熸剰澶栭敊璇?`, error);
             return { error: error.message };
         }
     });
@@ -244,16 +247,16 @@ function initialize(mainWindow, context) {
             const timestamp = Date.now();
 
             if (agentConfigManager) {
-                // 先读取当前配置以确定话题命名序号
+                // 鍏堣鍙栧綋鍓嶉厤缃互纭畾璇濋鍛藉悕搴忓彿
                 const currentConfig = await agentConfigManager.readAgentConfig(agentId, { allowDefault: true });
                 if (currentConfig.topics && !Array.isArray(currentConfig.topics)) {
-                    return { error: `配置文件已损坏: 'topics' 字段不是一个数组。` };
+                    return { error: `閰嶇疆鏂囦欢宸叉崯鍧? 'topics' 瀛楁涓嶆槸涓€涓暟缁勩€俙 };
                 }
                 const existingTopics = currentConfig.topics || [];
 
                 const newTopic = {
                     id: newTopicId,
-                    name: topicName || `新话题 ${existingTopics.length + 1}`,
+                    name: topicName || `鏂拌瘽棰?${existingTopics.length + 1}`,
                     createdAt: timestamp,
                     locked: locked,
                     unread: false,
@@ -273,10 +276,10 @@ function initialize(mainWindow, context) {
                 return { success: true, topicId: newTopicId, topicName: newTopic.name, topics: updatedConfig.topics };
             } else {
                 console.error(`AgentConfigManager not available, cannot safely create topic for agent ${agentId}`);
-                return { error: 'AgentConfigManager 未初始化，无法安全创建话题。' };
+                return { error: 'AgentConfigManager 鏈垵濮嬪寲锛屾棤娉曞畨鍏ㄥ垱寤鸿瘽棰樸€? };
             }
         } catch (error) {
-            console.error(`为Agent ${agentId} 创建新话题失败:`, error);
+            console.error(`涓篈gent ${agentId} 鍒涘缓鏂拌瘽棰樺け璐?`, error);
             return { error: error.message };
         }
     });
@@ -284,26 +287,26 @@ function initialize(mainWindow, context) {
     ipcMain.handle('delete-topic', async (event, agentId, topicIdToDelete) => {
         try {
             if (agentConfigManager) {
-                // 先读取当前配置进行验证
+                // 鍏堣鍙栧綋鍓嶉厤缃繘琛岄獙璇?
                 const currentConfig = await agentConfigManager.readAgentConfig(agentId);
                 if (!currentConfig.topics || !Array.isArray(currentConfig.topics)) {
-                    return { error: `配置文件损坏或缺少话题列表。` };
+                    return { error: `閰嶇疆鏂囦欢鎹熷潖鎴栫己灏戣瘽棰樺垪琛ㄣ€俙 };
                 }
                 if (!currentConfig.topics.some(t => t.id === topicIdToDelete)) {
-                    return { error: `未找到要删除的话题 ID: ${topicIdToDelete}` };
+                    return { error: `鏈壘鍒拌鍒犻櫎鐨勮瘽棰?ID: ${topicIdToDelete}` };
                 }
 
                 let remainingTopics;
                 await agentConfigManager.updateAgentConfig(agentId, existingConfig => {
                     let filtered = (existingConfig.topics || []).filter(topic => topic.id !== topicIdToDelete);
                     if (filtered.length === 0) {
-                        filtered = [{ id: "default", name: "主要对话", createdAt: Date.now() }];
+                        filtered = [{ id: "default", name: "涓昏瀵硅瘽", createdAt: Date.now() }];
                     }
                     remainingTopics = filtered;
                     return { ...existingConfig, topics: filtered };
                 });
 
-                // 如果删空了并创建了默认话题，确保其 history 目录存在
+                // 濡傛灉鍒犵┖浜嗗苟鍒涘缓浜嗛粯璁よ瘽棰橈紝纭繚鍏?history 鐩綍瀛樺湪
                 if (remainingTopics.length === 1 && remainingTopics[0].id === 'default') {
                     const defaultTopicHistoryDir = path.join(USER_DATA_DIR, agentId, 'topics', 'default');
                     await fs.ensureDir(defaultTopicHistoryDir);
@@ -319,16 +322,16 @@ function initialize(mainWindow, context) {
                 return { success: true, remainingTopics };
             } else {
                 console.error(`AgentConfigManager not available, cannot safely delete topic for agent ${agentId}`);
-                return { error: 'AgentConfigManager 未初始化，无法安全删除话题。' };
+                return { error: 'AgentConfigManager 鏈垵濮嬪寲锛屾棤娉曞畨鍏ㄥ垹闄よ瘽棰樸€? };
             }
         } catch (error) {
-            console.error(`删除Agent ${agentId} 的话题 ${topicIdToDelete} 失败:`, error);
+            console.error(`鍒犻櫎Agent ${agentId} 鐨勮瘽棰?${topicIdToDelete} 澶辫触:`, error);
             return { error: error.message };
         }
     });
 
     ipcMain.handle('handle-file-paste', async (event, agentId, topicId, fileData) => {
-        if (!topicId) return { error: "处理文件粘贴失败: topicId 未提供。" };
+        if (!topicId) return { error: "澶勭悊鏂囦欢绮樿创澶辫触: topicId 鏈彁渚涖€? };
         try {
             let storedFileObject;
             if (fileData.type === 'path') {
@@ -355,11 +358,11 @@ function initialize(mainWindow, context) {
                 const fileTypeHint = `image/${fileData.extension || 'png'}`;
                 storedFileObject = await fileManager.storeFile(buffer, originalFileName, agentId, topicId, fileTypeHint);
             } else {
-                throw new Error('不支持的文件粘贴类型');
+                throw new Error('涓嶆敮鎸佺殑鏂囦欢绮樿创绫诲瀷');
             }
             return { success: true, attachment: storedFileObject };
         } catch (error) {
-            console.error('处理粘贴文件失败:', error);
+            console.error('澶勭悊绮樿创鏂囦欢澶辫触:', error);
             return { error: error.message };
         }
     });
@@ -377,7 +380,7 @@ function initialize(mainWindow, context) {
         }
 
         const result = await dialog.showOpenDialog(mainWindow, {
-            title: '选择要发送的文件',
+            title: '閫夋嫨瑕佸彂閫佺殑鏂囦欢',
             properties: ['openFile', 'multiSelections']
         });
 
@@ -418,8 +421,8 @@ function initialize(mainWindow, context) {
     });
 
     ipcMain.handle('handle-text-paste-as-file', async (event, agentId, topicId, textContent) => {
-        if (!agentId || !topicId) return { error: "处理长文本粘贴失败: agentId 或 topicId 未提供。" };
-        if (typeof textContent !== 'string') return { error: "处理长文本粘贴失败: 无效的文本内容。" };
+        if (!agentId || !topicId) return { error: "澶勭悊闀挎枃鏈矘璐村け璐? agentId 鎴?topicId 鏈彁渚涖€? };
+        if (typeof textContent !== 'string') return { error: "澶勭悊闀挎枃鏈矘璐村け璐? 鏃犳晥鐨勬枃鏈唴瀹广€? };
 
         try {
             const originalFileName = `pasted_text_${Date.now()}.txt`;
@@ -428,14 +431,14 @@ function initialize(mainWindow, context) {
             const storedFileObject = await fileManager.storeFile(buffer, originalFileName, agentId, topicId, 'text/plain');
             return { success: true, attachment: storedFileObject };
         } catch (error) {
-            console.error('[Main - handle-text-paste-as-file] 长文本转存为文件失败:', error);
-            return { error: `长文本转存为文件失败: ${error.message}` };
+            console.error('[Main - handle-text-paste-as-file] 闀挎枃鏈浆瀛樹负鏂囦欢澶辫触:', error);
+            return { error: `闀挎枃鏈浆瀛樹负鏂囦欢澶辫触: ${error.message}` };
         }
     });
 
     ipcMain.handle('handle-file-drop', async (event, agentId, topicId, droppedFilesData) => {
-        if (!agentId || !topicId) return { error: "处理文件拖放失败: agentId 或 topicId 未提供。" };
-        if (!Array.isArray(droppedFilesData) || droppedFilesData.length === 0) return { error: "处理文件拖放失败: 未提供文件数据。" };
+        if (!agentId || !topicId) return { error: "澶勭悊鏂囦欢鎷栨斁澶辫触: agentId 鎴?topicId 鏈彁渚涖€? };
+        if (!Array.isArray(droppedFilesData) || droppedFilesData.length === 0) return { error: "澶勭悊鏂囦欢鎷栨斁澶辫触: 鏈彁渚涙枃浠舵暟鎹€? };
 
         const storedFilesInfo = [];
         for (const fileData of droppedFilesData) {
@@ -443,7 +446,7 @@ function initialize(mainWindow, context) {
                 // Check if we have a path or data. One of them must exist.
                 if (!fileData.data && !fileData.path) {
                     console.warn('[Main - handle-file-drop] Skipping a dropped file due to missing data and path. fileData:', JSON.stringify(fileData));
-                    storedFilesInfo.push({ name: fileData.name || '未知文件', error: '文件内容或路径缺失' });
+                    storedFilesInfo.push({ name: fileData.name || '鏈煡鏂囦欢', error: '鏂囦欢鍐呭鎴栬矾寰勭己澶? });
                     continue;
                 }
 
@@ -482,7 +485,7 @@ function initialize(mainWindow, context) {
             } catch (error) {
                 console.error(`[Main - handle-file-drop] Error storing dropped file ${fileData.name || 'unknown'}:`, error);
                 console.error(`[Main - handle-file-drop] Full error details:`, error.stack);
-                storedFilesInfo.push({ name: fileData.name || '未知文件', error: error.message });
+                storedFilesInfo.push({ name: fileData.name || '鏈煡鏂囦欢', error: error.message });
             }
         }
         return storedFilesInfo;
@@ -510,7 +513,7 @@ function initialize(mainWindow, context) {
     });
     ipcMain.handle('get-original-message-content', async (event, itemId, itemType, topicId, messageId) => {
         if (!itemId || !itemType || !topicId || !messageId) {
-            return { success: false, error: '无效的参数' };
+            return { success: false, error: '鏃犳晥鐨勫弬鏁? };
         }
 
         try {
@@ -520,7 +523,7 @@ function initialize(mainWindow, context) {
             } else if (itemType === 'group') {
                 historyFile = path.join(USER_DATA_DIR, itemId, 'topics', topicId, 'history.json');
             } else {
-                return { success: false, error: '不支持的项目类型' };
+                return { success: false, error: '涓嶆敮鎸佺殑椤圭洰绫诲瀷' };
             }
 
             if (await fs.pathExists(historyFile)) {
@@ -529,24 +532,23 @@ function initialize(mainWindow, context) {
                 if (message) {
                     return { success: true, content: message.content };
                 } else {
-                    return { success: false, error: '在历史记录中未找到该消息' };
+                    return { success: false, error: '鍦ㄥ巻鍙茶褰曚腑鏈壘鍒拌娑堟伅' };
                 }
             } else {
-                return { success: false, error: '聊天历史文件不存在' };
+                return { success: false, error: '鑱婂ぉ鍘嗗彶鏂囦欢涓嶅瓨鍦? };
             }
         } catch (error) {
-            console.error(`获取原始消息内容失败 (itemId: ${itemId}, topicId: ${topicId}, messageId: ${messageId}):`, error);
+            console.error(`鑾峰彇鍘熷娑堟伅鍐呭澶辫触 (itemId: ${itemId}, topicId: ${topicId}, messageId: ${messageId}):`, error);
             return { success: false, error: error.message };
         }
     });
 
     ipcMain.handle('send-to-vcp', async (event, vcpUrl, vcpApiKey, messages, modelConfig, messageId, isGroupCall = false, context = null) => {
-        console.log(`[Main - sendToVCP] ***** sendToVCP HANDLER EXECUTED for messageId: ${messageId}, isGroupCall: ${isGroupCall} *****`, context);
         const streamChannel = 'vcp-stream-event'; // Use a single, unified channel for all stream events.
 
-        // 🔧 数据验证和规范化
+        // 馃敡 鏁版嵁楠岃瘉鍜岃鑼冨寲
         try {
-            // 确保messages数组中的content都是正确的格式
+            // 纭繚messages鏁扮粍涓殑content閮芥槸姝ｇ‘鐨勬牸寮?
             messages = messages.map(msg => {
                 if (!msg || typeof msg !== 'object') {
                     console.error('[Main - sendToVCP] Invalid message object:', msg);
@@ -555,32 +557,32 @@ function initialize(mainWindow, context) {
 
                 let processedContent = msg.content;
 
-                // 如果content是对象，尝试提取text字段或转为JSON字符串
+                // 濡傛灉content鏄璞★紝灏濊瘯鎻愬彇text瀛楁鎴栬浆涓篔SON瀛楃涓?
                 if (msg.content && typeof msg.content === 'object') {
                     if (msg.content.text) {
                         processedContent = String(msg.content.text);
                     } else if (Array.isArray(msg.content)) {
-                        // 如果是仅包含一个文本部分的多模态消息，则将其简化为纯字符串，保持兼容
+                        // 濡傛灉鏄粎鍖呭惈涓€涓枃鏈儴鍒嗙殑澶氭ā鎬佹秷鎭紝鍒欏皢鍏剁畝鍖栦负绾瓧绗︿覆锛屼繚鎸佸吋瀹?
                         if (msg.content.length === 1 && msg.content[0].type === 'text' && typeof msg.content[0].text === 'string') {
                             processedContent = msg.content[0].text;
                         } else {
-                            // 保持多模态数组原样
+                            // 淇濇寔澶氭ā鎬佹暟缁勫師鏍?
                             processedContent = msg.content;
                         }
                     } else {
-                        // 否则转为JSON字符串
+                        // 鍚﹀垯杞负JSON瀛楃涓?
                         console.warn('[Main - sendToVCP] Message content is object without text field, stringifying:', msg.content);
                         processedContent = JSON.stringify(msg.content);
                     }
                 }
 
-                // 强制转换为字符串（除非是多模态数组）
+                // 寮哄埗杞崲涓哄瓧绗︿覆锛堥櫎闈炴槸澶氭ā鎬佹暟缁勶級
                 if (processedContent && !Array.isArray(processedContent) && typeof processedContent !== 'string') {
                     processedContent = String(processedContent);
                 }
 
-                // 🛡️ 严格脱敏：只返回由 OpenAI/Gemini/Anthropic 等 API 规范定义的合法字段
-                // 剔除 attachments, isThinking 等非标私有元数据，防止泄露给模型
+                // 馃洝锔?涓ユ牸鑴辨晱锛氬彧杩斿洖鐢?OpenAI/Gemini/Anthropic 绛?API 瑙勮寖瀹氫箟鐨勫悎娉曞瓧娈?
+                // 鍓旈櫎 attachments, isThinking 绛夐潪鏍囩鏈夊厓鏁版嵁锛岄槻姝㈡硠闇茬粰妯″瀷
                 const sanitizedMsg = {
                     role: msg.role,
                     content: processedContent
@@ -593,7 +595,7 @@ function initialize(mainWindow, context) {
             });
         } catch (validationError) {
             console.error('[Main - sendToVCP] Error validating messages:', validationError);
-            return { error: `消息格式验证失败: ${validationError.message}` };
+            return { error: `娑堟伅鏍煎紡楠岃瘉澶辫触: ${validationError.message}` };
         }
 
         let finalVcpUrl = vcpUrl;
@@ -604,7 +606,7 @@ function initialize(mainWindow, context) {
                 settings = await fs.readJson(settingsPath);
             }
 
-            // **强制检查和切换URL**
+            // **寮哄埗妫€鏌ュ拰鍒囨崲URL**
             if (settings.enableVcpToolInjection === true) {
                 const urlObject = new URL(vcpUrl);
                 urlObject.pathname = '/v1/chatvcp/completions';
@@ -625,30 +627,30 @@ function initialize(mainWindow, context) {
                     const topParts = [];
                     const bottomParts = [];
 
-                    // 1. 始终注入当前播放的歌曲信息（如果存在）
+                    // 1. 濮嬬粓娉ㄥ叆褰撳墠鎾斁鐨勬瓕鏇蹭俊鎭紙濡傛灉瀛樺湪锛?
                     if (currentSongInfo) {
-                        bottomParts.push(`[当前播放音乐：${currentSongInfo.title} - ${currentSongInfo.artist} (${currentSongInfo.album || '未知专辑'})]`);
+                        bottomParts.push(`[褰撳墠鎾斁闊充箰锛?{currentSongInfo.title} - ${currentSongInfo.artist} (${currentSongInfo.album || '鏈煡涓撹緫'})]`);
                     }
 
-                    // 2. 如果启用了音乐控制，则注入播放列表和控制器
+                    // 2. 濡傛灉鍚敤浜嗛煶涔愭帶鍒讹紝鍒欐敞鍏ユ挱鏀惧垪琛ㄥ拰鎺у埗鍣?
                     if (settings.agentMusicControl) {
-                        // 2a. 构建播放列表信息 (注入到顶部)
+                        // 2a. 鏋勫缓鎾斁鍒楄〃淇℃伅 (娉ㄥ叆鍒伴《閮?
                         const songlistPath = path.join(APP_DATA_ROOT_IN_PROJECT, 'songlist.json');
                         if (await fs.pathExists(songlistPath)) {
                             const songlistJson = await fs.readJson(songlistPath);
                             if (Array.isArray(songlistJson) && songlistJson.length > 0) {
                                 const titles = songlistJson.map(song => song.title).filter(Boolean);
                                 if (titles.length > 0) {
-                                    topParts.push(`[播放列表——\n${titles.join('\n')}\n]`);
+                                    topParts.push(`[鎾斁鍒楄〃鈥斺€擻n${titles.join('\n')}\n]`);
                                 }
                             }
                         }
 
-                        // 2b. 注入插件权限
-                        bottomParts.push(`点歌台{{VCPMusicController}}`);
+                        // 2b. 娉ㄥ叆鎻掍欢鏉冮檺
+                        bottomParts.push(`鐐规瓕鍙皗{VCPMusicController}}`);
                     }
 
-                    // 3. 组合并注入到消息数组
+                    // 3. 缁勫悎骞舵敞鍏ュ埌娑堟伅鏁扮粍
                     if (topParts.length > 0 || bottomParts.length > 0) {
                         let systemMsgIndex = messages.findIndex(m => m.role === 'system');
                         let originalContent = '';
@@ -682,7 +684,7 @@ function initialize(mainWindow, context) {
                         systemMsgIndex = 0;
                     }
 
-                    const injection = '输出规范要求：{{VarDivRender}}';
+                    const injection = '杈撳嚭瑙勮寖瑕佹眰锛歿{VarDivRender}}';
                     if (!messages[systemMsgIndex].content.includes(injection)) {
                         messages[systemMsgIndex].content += `\n\n${injection}`;
                         messages[systemMsgIndex].content = messages[systemMsgIndex].content.trim();
@@ -695,7 +697,7 @@ function initialize(mainWindow, context) {
 
             // --- VCP Thought Chain Stripping ---
             try {
-                // 默认不注入元思考链，除非明确开启
+                // 榛樿涓嶆敞鍏ュ厓鎬濊€冮摼锛岄櫎闈炴槑纭紑鍚?
                 if (settings.enableThoughtChainInjection !== true) {
                     messages = messages.map(msg => {
                         if (typeof msg.content === 'string') {
@@ -725,42 +727,61 @@ function initialize(mainWindow, context) {
                     const sanitizerDepth = settings.contextSanitizerDepth !== undefined ? settings.contextSanitizerDepth : 2;
                     console.log(`[Context Sanitizer] Enabled with depth: ${sanitizerDepth}`);
 
-                    // 只处理非系统消息（排除 system role）
+                    // 鍙鐞嗛潪绯荤粺娑堟伅锛堟帓闄?system role锛?
                     const systemMessages = messages.filter(m => m.role === 'system');
                     const nonSystemMessages = messages.filter(m => m.role !== 'system');
 
-                    // 对非系统消息应用净化
+                    // 瀵归潪绯荤粺娑堟伅搴旂敤鍑€鍖?
                     const sanitizedNonSystemMessages = contextSanitizer.sanitizeMessages(
                         nonSystemMessages,
                         sanitizerDepth,
                         settings.enableThoughtChainInjection === true
                     );
 
-                    // 重新组合消息数组（保持系统消息在最前面）
+                    // 閲嶆柊缁勫悎娑堟伅鏁扮粍锛堜繚鎸佺郴缁熸秷鎭湪鏈€鍓嶉潰锛?
                     messages = [...systemMessages, ...sanitizedNonSystemMessages];
 
                     console.log(`[Context Sanitizer] Messages processed successfully`);
                 }
             } catch (sanitizerError) {
                 console.error('[Context Sanitizer] Error during sanitization, proceeding with original messages:', sanitizerError);
-                // 出错时继续使用原始消息，不影响正常流程
+                // 鍑洪敊鏃剁户缁娇鐢ㄥ師濮嬫秷鎭紝涓嶅奖鍝嶆甯告祦绋?
             }
             // --- End of Context Sanitizer Integration ---
 
-            console.log(`发送到VCP服务器: ${finalVcpUrl} for messageId: ${messageId}`);
-            console.log('VCP API Key:', vcpApiKey ? '已设置' : '未设置');
-            console.log('模型配置:', modelConfig);
-            if (context) console.log('上下文:', context);
+            console.log(`鍙戦€佸埌VCP鏈嶅姟鍣? ${finalVcpUrl} for messageId: ${messageId}`);
+            console.log('VCP API Key:', vcpApiKey ? '宸茶缃? : '鏈缃?);
+            console.log('妯″瀷閰嶇疆:', modelConfig);
+            if (context) console.log('涓婁笅鏂?', context);
 
-            // 🔧 在发送前验证请求体
+            // 琛ュ叏缂哄け鐨?agentName (鍓嶇 UI 鍙兘鏈紶閫掓纭殑鍙鍚嶇О)
+            if (context && context.agentId && (!context.agentName || context.agentName === context.agentId)) {
+                try {
+                    const agentConfig = await getAgentConfigById(context.agentId);
+                    if (agentConfig && !agentConfig.error && agentConfig.name) {
+                        context.agentName = agentConfig.name;
+                        
+                    }
+                } catch (e) {
+
+                }
+            }
+
+            // 馃敡 鍦ㄥ彂閫佸墠楠岃瘉璇锋眰浣?
             const requestBody = {
                 messages: messages,
                 ...modelConfig,
                 stream: modelConfig.stream === true,
-                requestId: messageId
+                requestId: messageId,
+                ...(context ? { context } : {}),
+                ...(context?.agentName ? { agentName: context.agentName } : {}),
+                ...(context?.agentId ? { agentId: context.agentId } : {}),
+                ...(context?.topicId ? { topicId: context.topicId } : {})
             };
 
-            // 🔥 记录模型使用频率
+            
+
+            // 馃敟 璁板綍妯″瀷浣跨敤棰戠巼
             try {
                 if (modelConfig && modelConfig.model) {
                     const modelUsageTracker = require('../modelUsageTracker');
@@ -770,16 +791,16 @@ function initialize(mainWindow, context) {
                 console.error('[ModelUsage] Failed to record model usage:', e);
             }
 
-            // 验证JSON可序列化性
+            // 楠岃瘉JSON鍙簭鍒楀寲鎬?
             let serializedBody;
             try {
                 serializedBody = JSON.stringify(requestBody);
-                // 调试：记录前100个字符
+                // 璋冭瘯锛氳褰曞墠100涓瓧绗?
                 console.log('[Main - sendToVCP] Request body preview:', serializedBody.substring(0, 100) + '...');
             } catch (serializeError) {
                 console.error('[Main - sendToVCP] Failed to serialize request body:', serializeError);
                 console.error('[Main - sendToVCP] Problematic request body:', requestBody);
-                return { error: `请求体序列化失败: ${serializeError.message}` };
+                return { error: `璇锋眰浣撳簭鍒楀寲澶辫触: ${serializeError.message}` };
             }
 
             const response = await fetch(finalVcpUrl, {
@@ -793,8 +814,8 @@ function initialize(mainWindow, context) {
 
             if (!response.ok) {
                 const errorText = await response.text();
-                console.error(`[Main - sendToVCP] VCP请求失败. Status: ${response.status}, Response Text:`, errorText);
-                let errorData = { message: `服务器返回状态 ${response.status}`, details: errorText };
+                console.error(`[Main - sendToVCP] VCP璇锋眰澶辫触. Status: ${response.status}, Response Text:`, errorText);
+                let errorData = { message: `鏈嶅姟鍣ㄨ繑鍥炵姸鎬?${response.status}`, details: errorText };
                 try {
                     const parsedError = JSON.parse(errorText);
                     if (typeof parsedError === 'object' && parsedError !== null) {
@@ -802,7 +823,7 @@ function initialize(mainWindow, context) {
                     }
                 } catch (e) { /* Not JSON, use raw text */ }
 
-                // 🔧 改进错误消息构造，防止 [object Object]
+                // 馃敡 鏀硅繘閿欒娑堟伅鏋勯€狅紝闃叉 [object Object]
                 let errorMessage = '';
                 if (errorData.message && typeof errorData.message === 'string') {
                     errorMessage = errorData.message;
@@ -812,36 +833,36 @@ function initialize(mainWindow, context) {
                     } else if (errorData.error.message && typeof errorData.error.message === 'string') {
                         errorMessage = errorData.error.message;
                     } else if (typeof errorData.error === 'object') {
-                        // 如果error是对象，尝试JSON序列化
+                        // 濡傛灉error鏄璞★紝灏濊瘯JSON搴忓垪鍖?
                         errorMessage = JSON.stringify(errorData.error);
                     }
                 } else if (typeof errorData === 'string') {
                     errorMessage = errorData;
                 } else {
-                    errorMessage = '未知服务端错误';
+                    errorMessage = '鏈煡鏈嶅姟绔敊璇?;
                 }
 
-                const errorMessageToPropagate = `VCP请求失败: ${response.status} - ${errorMessage}`;
+                const errorMessageToPropagate = `VCP璇锋眰澶辫触: ${response.status} - ${errorMessage}`;
 
                 if (modelConfig.stream === true && event && event.sender && !event.sender.isDestroyed()) {
-                    // 构造更详细的错误信息
-                    let detailedErrorMessage = `服务器返回状态 ${response.status}.`;
+                    // 鏋勯€犳洿璇︾粏鐨勯敊璇俊鎭?
+                    let detailedErrorMessage = `鏈嶅姟鍣ㄨ繑鍥炵姸鎬?${response.status}.`;
                     if (errorData && errorData.message && typeof errorData.message === 'string') {
-                        detailedErrorMessage += ` 错误: ${errorData.message}`;
+                        detailedErrorMessage += ` 閿欒: ${errorData.message}`;
                     } else if (errorData && errorData.error && errorData.error.message && typeof errorData.error.message === 'string') {
-                        detailedErrorMessage += ` 错误: ${errorData.error.message}`;
+                        detailedErrorMessage += ` 閿欒: ${errorData.error.message}`;
                     } else if (typeof errorData === 'string' && errorData.length < 200) {
-                        detailedErrorMessage += ` 响应: ${errorData}`;
+                        detailedErrorMessage += ` 鍝嶅簲: ${errorData}`;
                     } else if (errorData && errorData.details && typeof errorData.details === 'string' && errorData.details.length < 200) {
-                        detailedErrorMessage += ` 详情: ${errorData.details}`;
+                        detailedErrorMessage += ` 璇︽儏: ${errorData.details}`;
                     }
 
-                    const errorPayload = { type: 'error', error: `VCP请求失败: ${detailedErrorMessage}`, details: errorData, messageId: messageId };
+                    const errorPayload = { type: 'error', error: `VCP璇锋眰澶辫触: ${detailedErrorMessage}`, details: errorData, messageId: messageId };
                     if (context) errorPayload.context = context;
                     event.sender.send(streamChannel, errorPayload);
-                    // 为函数返回值构造统一的 errorDetail.message
-                    const finalErrorMessageForReturn = `VCP请求失败: ${response.status} - ${errorMessage}`;
-                    return { streamError: true, error: `VCP请求失败 (${response.status})`, errorDetail: { message: finalErrorMessageForReturn, originalData: errorData } };
+                    // 涓哄嚱鏁拌繑鍥炲€兼瀯閫犵粺涓€鐨?errorDetail.message
+                    const finalErrorMessageForReturn = `VCP璇锋眰澶辫触: ${response.status} - ${errorMessage}`;
+                    return { streamError: true, error: `VCP璇锋眰澶辫触 (${response.status})`, errorDetail: { message: finalErrorMessageForReturn, originalData: errorData } };
                 }
                 const err = new Error(errorMessageToPropagate);
                 err.details = errorData;
@@ -850,12 +871,12 @@ function initialize(mainWindow, context) {
             }
 
             if (modelConfig.stream === true) {
-                console.log(`VCP响应: 开始流式处理 for ${messageId} on channel ${streamChannel}`);
+                console.log(`VCP鍝嶅簲: 寮€濮嬫祦寮忓鐞?for ${messageId} on channel ${streamChannel}`);
                 const reader = response.body.getReader();
                 const decoder = new TextDecoder();
 
-                // 【全新的、修正后的 processStream 函数】
-                // 它现在接收 reader 和 decoder 作为参数
+                // 銆愬叏鏂扮殑銆佷慨姝ｅ悗鐨?processStream 鍑芥暟銆?
+                // 瀹冪幇鍦ㄦ帴鏀?reader 鍜?decoder 浣滀负鍙傛暟
                 async function processStream(reader, decoder) {
                     let buffer = '';
 
@@ -868,7 +889,7 @@ function initialize(mainWindow, context) {
 
                             const lines = buffer.split('\n');
 
-                            // 如果流已结束，则处理所有行。否则，保留最后一行（可能不完整）。
+                            // 濡傛灉娴佸凡缁撴潫锛屽垯澶勭悊鎵€鏈夎銆傚惁鍒欙紝淇濈暀鏈€鍚庝竴琛岋紙鍙兘涓嶅畬鏁达級銆?
                             buffer = done ? '' : lines.pop();
 
                             for (const line of lines) {
@@ -877,12 +898,12 @@ function initialize(mainWindow, context) {
                                 if (line.startsWith('data: ')) {
                                     const jsonData = line.substring(5).trim();
                                     if (jsonData === '[DONE]') {
-                                        console.log(`VCP流明确[DONE] for messageId: ${messageId}`);
+                                        console.log(`VCP娴佹槑纭甗DONE] for messageId: ${messageId}`);
                                         const donePayload = { type: 'end', messageId: messageId, context };
                                         event.sender.send(streamChannel, donePayload);
-                                        return; // [DONE] 是明确的结束信号，退出函数
+                                        return; // [DONE] 鏄槑纭殑缁撴潫淇″彿锛岄€€鍑哄嚱鏁?
                                     }
-                                    // 如果 jsonData 为空，则忽略该行，这可能是网络波动或心跳信号
+                                    // 濡傛灉 jsonData 涓虹┖锛屽垯蹇界暐璇ヨ锛岃繖鍙兘鏄綉缁滄尝鍔ㄦ垨蹇冭烦淇″彿
                                     if (jsonData === '') {
                                         continue;
                                     }
@@ -891,7 +912,7 @@ function initialize(mainWindow, context) {
                                         const dataPayload = { type: 'data', chunk: parsedChunk, messageId: messageId, context };
                                         event.sender.send(streamChannel, dataPayload);
                                     } catch (e) {
-                                        console.error(`解析VCP流数据块JSON失败 for messageId: ${messageId}:`, e, '原始数据:', jsonData);
+                                        console.error(`瑙ｆ瀽VCP娴佹暟鎹潡JSON澶辫触 for messageId: ${messageId}:`, e, '鍘熷鏁版嵁:', jsonData);
                                         const errorChunkPayload = { type: 'data', chunk: { raw: jsonData, error: 'json_parse_error' }, messageId: messageId, context };
                                         event.sender.send(streamChannel, errorChunkPayload);
                                     }
@@ -899,17 +920,17 @@ function initialize(mainWindow, context) {
                             }
 
                             if (done) {
-                                // 流因连接关闭而结束，而不是[DONE]消息。
-                                // 缓冲区已被处理，现在发送最终的 'end' 信号。
-                                console.log(`VCP流结束 for messageId: ${messageId}`);
+                                // 娴佸洜杩炴帴鍏抽棴鑰岀粨鏉燂紝鑰屼笉鏄痆DONE]娑堟伅銆?
+                                // 缂撳啿鍖哄凡琚鐞嗭紝鐜板湪鍙戦€佹渶缁堢殑 'end' 淇″彿銆?
+                                console.log(`VCP娴佺粨鏉?for messageId: ${messageId}`);
                                 const endPayload = { type: 'end', messageId: messageId, context };
                                 event.sender.send(streamChannel, endPayload);
-                                break; // 退出 while 循环
+                                break; // 閫€鍑?while 寰幆
                             }
                         }
                     } catch (streamError) {
-                        console.error(`VCP流读取错误 for messageId: ${messageId}:`, streamError);
-                        const streamErrPayload = { type: 'error', error: `VCP流读取错误: ${streamError.message}`, messageId: messageId };
+                        console.error(`VCP娴佽鍙栭敊璇?for messageId: ${messageId}:`, streamError);
+                        const streamErrPayload = { type: 'error', error: `VCP娴佽鍙栭敊璇? ${streamError.message}`, messageId: messageId };
                         if (context) streamErrPayload.context = context;
                         event.sender.send(streamChannel, streamErrPayload);
                     } finally {
@@ -918,17 +939,17 @@ function initialize(mainWindow, context) {
                     }
                 }
 
-                // 将 reader 和 decoder 作为参数传递给 processStream
-                // 并且我们依然需要 await 来等待流处理完成
+                // 灏?reader 鍜?decoder 浣滀负鍙傛暟浼犻€掔粰 processStream
+                // 骞朵笖鎴戜滑渚濈劧闇€瑕?await 鏉ョ瓑寰呮祦澶勭悊瀹屾垚
                 processStream(reader, decoder).then(() => {
-                    console.log(`[Main - sendToVCP] 流处理函数 processStream 已正常结束 for ${messageId}`);
+                    console.log(`[Main - sendToVCP] 娴佸鐞嗗嚱鏁?processStream 宸叉甯哥粨鏉?for ${messageId}`);
                 }).catch(err => {
-                    console.error(`[Main - sendToVCP] processStream 内部抛出未捕获的错误 for ${messageId}:`, err);
+                    console.error(`[Main - sendToVCP] processStream 鍐呴儴鎶涘嚭鏈崟鑾风殑閿欒 for ${messageId}:`, err);
                 });
 
                 return { streamingStarted: true };
             } else { // Non-streaming
-                console.log('VCP响应: 非流式处理');
+                console.log('VCP鍝嶅簲: 闈炴祦寮忓鐞?);
                 const vcpResponse = await response.json();
                 // For non-streaming, wrap the response with the original context
                 // so the renderer knows where to save the history.
@@ -936,13 +957,13 @@ function initialize(mainWindow, context) {
             }
 
         } catch (error) {
-            console.error('VCP请求错误 (catch block):', error);
+            console.error('VCP璇锋眰閿欒 (catch block):', error);
             if (modelConfig.stream === true && event && event.sender && !event.sender.isDestroyed()) {
-                const catchErrorPayload = { type: 'error', error: `VCP请求错误: ${error.message}`, messageId: messageId, context };
+                const catchErrorPayload = { type: 'error', error: `VCP璇锋眰閿欒: ${error.message}`, messageId: messageId, context };
                 event.sender.send(streamChannel, catchErrorPayload);
-                return { streamError: true, error: `VCP客户端请求错误`, errorDetail: { message: error.message, stack: error.stack } };
+                return { streamError: true, error: `VCP瀹㈡埛绔姹傞敊璇痐, errorDetail: { message: error.message, stack: error.stack } };
             }
-            return { error: `VCP请求错误: ${error.message}` };
+            return { error: `VCP璇锋眰閿欒: ${error.message}` };
         }
     });
 
@@ -995,25 +1016,25 @@ function initialize(mainWindow, context) {
     });
 
     /**
-     * Part C: 智能计数逻辑辅助函数
-     * 判断是否应该激活计数
-     * 规则：上下文（排除系统消息）有且只有一个 AI 的回复，且没有用户回复
-     * @param {Array} history - 消息历史
+     * Part C: 鏅鸿兘璁℃暟閫昏緫杈呭姪鍑芥暟
+     * 鍒ゆ柇鏄惁搴旇婵€娲昏鏁?
+     * 瑙勫垯锛氫笂涓嬫枃锛堟帓闄ょ郴缁熸秷鎭級鏈変笖鍙湁涓€涓?AI 鐨勫洖澶嶏紝涓旀病鏈夌敤鎴峰洖澶?
+     * @param {Array} history - 娑堟伅鍘嗗彶
      * @returns {boolean}
      */
     function shouldActivateCount(history) {
         if (!history || history.length === 0) return false;
 
-        // 过滤掉系统消息
+        // 杩囨护鎺夌郴缁熸秷鎭?
         const nonSystemMessages = history.filter(msg => msg.role !== 'system');
 
-        // 必须有且只有一条消息，且该消息是 AI 回复
+        // 蹇呴』鏈変笖鍙湁涓€鏉℃秷鎭紝涓旇娑堟伅鏄?AI 鍥炲
         return nonSystemMessages.length === 1 && nonSystemMessages[0].role === 'assistant';
     }
 
     /**
-     * Part C: 计算未读消息数量
-     * @param {Array} history - 消息历史
+     * Part C: 璁＄畻鏈娑堟伅鏁伴噺
+     * @param {Array} history - 娑堟伅鍘嗗彶
      * @returns {number}
      */
     function countUnreadMessages(history) {
@@ -1021,24 +1042,24 @@ function initialize(mainWindow, context) {
     }
 
     /**
-     * Part C: 计算单个话题的未读消息数
-     * @param {Object} topic - 话题对象
-     * @param {Array} history - 话题历史消息
-     * @returns {number} - 未读消息数，-1 表示仅显示小点
+     * Part C: 璁＄畻鍗曚釜璇濋鐨勬湭璇绘秷鎭暟
+     * @param {Object} topic - 璇濋瀵硅薄
+     * @param {Array} history - 璇濋鍘嗗彶娑堟伅
+     * @returns {number} - 鏈娑堟伅鏁帮紝-1 琛ㄧず浠呮樉绀哄皬鐐?
      */
     function calculateTopicUnreadCount(topic, history) {
-        // 优先检查自动计数条件（AI回复了但用户没回）
+        // 浼樺厛妫€鏌ヨ嚜鍔ㄨ鏁版潯浠讹紙AI鍥炲浜嗕絾鐢ㄦ埛娌″洖锛?
         if (shouldActivateCount(history)) {
             const count = countUnreadMessages(history);
             if (count > 0) return count;
         }
 
-        // 如果不满足自动计数条件，但被手动标记为未读，则显示小点
+        // 濡傛灉涓嶆弧瓒宠嚜鍔ㄨ鏁版潯浠讹紝浣嗚鎵嬪姩鏍囪涓烘湭璇伙紝鍒欐樉绀哄皬鐐?
         if (topic.unread === true) {
-            return -1; // 仅显示小点，不显示数字
+            return -1; // 浠呮樉绀哄皬鐐癸紝涓嶆樉绀烘暟瀛?
         }
 
-        return 0; // 不显示
+        return 0; // 涓嶆樉绀?
     }
 
     ipcMain.handle('get-unread-topic-counts', async () => {
@@ -1049,7 +1070,7 @@ function initialize(mainWindow, context) {
                 if (dirent.isDirectory()) {
                     const agentId = dirent.name;
                     let totalCount = 0;
-                    let hasUnreadMarker = false; // 用于标记是否有未读标记但无计数
+                    let hasUnreadMarker = false; // 鐢ㄤ簬鏍囪鏄惁鏈夋湭璇绘爣璁颁絾鏃犺鏁?
                     const configPath = path.join(AGENT_DIR, agentId, 'config.json');
 
                     if (await fs.pathExists(configPath)) {
@@ -1064,64 +1085,64 @@ function initialize(mainWindow, context) {
                                         if (topicCount > 0) {
                                             totalCount += topicCount;
                                         } else if (topicCount === -1) {
-                                            // 有未读标记但无计数，记录这个状态
+                                            // 鏈夋湭璇绘爣璁颁絾鏃犺鏁帮紝璁板綍杩欎釜鐘舵€?
                                             hasUnreadMarker = true;
                                         }
                                     } catch (readJsonError) {
-                                        console.error(`读取 history.json 失败: ${historyPath}`, readJsonError);
+                                        console.error(`璇诲彇 history.json 澶辫触: ${historyPath}`, readJsonError);
                                     }
                                 }
                             }
                         }
                     }
 
-                    // 如果有计数，显示数字
+                    // 濡傛灉鏈夎鏁帮紝鏄剧ず鏁板瓧
                     if (totalCount > 0) {
                         counts[agentId] = totalCount;
                     } else if (hasUnreadMarker) {
-                        // 如果只有未读标记没有计数，返回 0（前端会识别为仅显示小点）
+                        // 濡傛灉鍙湁鏈鏍囪娌℃湁璁℃暟锛岃繑鍥?0锛堝墠绔細璇嗗埆涓轰粎鏄剧ず灏忕偣锛?
                         counts[agentId] = 0;
                     }
                 }
             }
             return { success: true, counts };
         } catch (error) {
-            console.error('获取未读话题计数时出错:', error);
+            console.error('鑾峰彇鏈璇濋璁℃暟鏃跺嚭閿?', error);
             return { success: false, error: error.message, counts: {} };
         }
     });
 
-    // Part A: 切换话题锁定状态
+    // Part A: 鍒囨崲璇濋閿佸畾鐘舵€?
     ipcMain.handle('toggle-topic-lock', async (event, agentId, topicId) => {
         try {
             const agentConfigPath = path.join(AGENT_DIR, agentId, 'config.json');
             if (!await fs.pathExists(agentConfigPath)) {
-                return { success: false, error: `Agent ${agentId} 的配置文件不存在` };
+                return { success: false, error: `Agent ${agentId} 鐨勯厤缃枃浠朵笉瀛樺湪` };
             }
 
             let config;
             try {
                 config = await fs.readJson(agentConfigPath);
             } catch (e) {
-                console.error(`读取Agent ${agentId} 配置文件失败 (toggle-topic-lock):`, e);
-                return { success: false, error: `读取配置文件失败: ${e.message}` };
+                console.error(`璇诲彇Agent ${agentId} 閰嶇疆鏂囦欢澶辫触 (toggle-topic-lock):`, e);
+                return { success: false, error: `璇诲彇閰嶇疆鏂囦欢澶辫触: ${e.message}` };
             }
 
             if (!config.topics || !Array.isArray(config.topics)) {
-                return { success: false, error: '配置文件损坏或缺少话题列表' };
+                return { success: false, error: '閰嶇疆鏂囦欢鎹熷潖鎴栫己灏戣瘽棰樺垪琛? };
             }
 
             const topic = config.topics.find(t => t.id === topicId);
             if (!topic) {
-                return { success: false, error: `未找到话题 ${topicId}` };
+                return { success: false, error: `鏈壘鍒拌瘽棰?${topicId}` };
             }
 
-            // Part A: 历史数据兼容 - 如果话题没有 locked 字段，默认设置为 true
+            // Part A: 鍘嗗彶鏁版嵁鍏煎 - 濡傛灉璇濋娌℃湁 locked 瀛楁锛岄粯璁よ缃负 true
             if (topic.locked === undefined) {
                 topic.locked = true;
             }
 
-            // 切换锁定状态
+            // 鍒囨崲閿佸畾鐘舵€?
             topic.locked = !topic.locked;
 
             if (agentConfigManager) {
@@ -1136,7 +1157,7 @@ function initialize(mainWindow, context) {
             return {
                 success: true,
                 locked: topic.locked,
-                message: topic.locked ? '话题已锁定' : '话题已解锁'
+                message: topic.locked ? '璇濋宸查攣瀹? : '璇濋宸茶В閿?
             };
         } catch (error) {
             console.error('[toggleTopicLock] Error:', error);
@@ -1144,32 +1165,32 @@ function initialize(mainWindow, context) {
         }
     });
 
-    // Part A: 设置话题未读状态
+    // Part A: 璁剧疆璇濋鏈鐘舵€?
     ipcMain.handle('set-topic-unread', async (event, agentId, topicId, unread) => {
         try {
             const agentConfigPath = path.join(AGENT_DIR, agentId, 'config.json');
             if (!await fs.pathExists(agentConfigPath)) {
-                return { success: false, error: `Agent ${agentId} 的配置文件不存在` };
+                return { success: false, error: `Agent ${agentId} 鐨勯厤缃枃浠朵笉瀛樺湪` };
             }
 
             let config;
             try {
                 config = await fs.readJson(agentConfigPath);
             } catch (e) {
-                console.error(`读取Agent ${agentId} 配置文件失败 (set-topic-unread):`, e);
-                return { success: false, error: `读取配置文件失败: ${e.message}` };
+                console.error(`璇诲彇Agent ${agentId} 閰嶇疆鏂囦欢澶辫触 (set-topic-unread):`, e);
+                return { success: false, error: `璇诲彇閰嶇疆鏂囦欢澶辫触: ${e.message}` };
             }
 
             if (!config.topics || !Array.isArray(config.topics)) {
-                return { success: false, error: '配置文件损坏或缺少话题列表' };
+                return { success: false, error: '閰嶇疆鏂囦欢鎹熷潖鎴栫己灏戣瘽棰樺垪琛? };
             }
 
             const topic = config.topics.find(t => t.id === topicId);
             if (!topic) {
-                return { success: false, error: `未找到话题 ${topicId}` };
+                return { success: false, error: `鏈壘鍒拌瘽棰?${topicId}` };
             }
 
-            // Part A: 历史数据兼容 - 如果话题没有 unread 字段，默认设置为 false
+            // Part A: 鍘嗗彶鏁版嵁鍏煎 - 濡傛灉璇濋娌℃湁 unread 瀛楁锛岄粯璁よ缃负 false
             if (topic.unread === undefined) {
                 topic.unread = false;
             }

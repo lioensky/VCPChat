@@ -1,19 +1,19 @@
-// modules/vcpClient.js - 统一的 VCP 请求处理模块
+﻿// modules/vcpClient.js - 缁熶竴鐨?VCP 璇锋眰澶勭悊妯″潡
 const fs = require('fs-extra');
 const path = require('path');
 
-// 全局的 AbortController 映射：messageId -> AbortController
+// 鍏ㄥ眬鐨?AbortController 鏄犲皠锛歮essageId -> AbortController
 const activeRequests = new Map();
 
-// 模块配置（将在初始化时设置）
+// 妯″潡閰嶇疆锛堝皢鍦ㄥ垵濮嬪寲鏃惰缃級
 let moduleConfig = {
     APP_DATA_ROOT_IN_PROJECT: null,
     getMusicState: null
 };
 
 /**
- * 初始化 VCP 客户端模块
- * @param {object} config - 配置对象
+ * 鍒濆鍖?VCP 瀹㈡埛绔ā鍧?
+ * @param {object} config - 閰嶇疆瀵硅薄
  */
 function initialize(config) {
     moduleConfig = {
@@ -24,18 +24,18 @@ function initialize(config) {
 }
 
 /**
- * 统一的 VCP 请求函数
- * @param {object} params - 请求参数
- * @param {string} params.vcpUrl - VCP服务器URL
- * @param {string} params.vcpApiKey - API密钥
- * @param {array} params.messages - 消息数组
- * @param {object} params.modelConfig - 模型配置
- * @param {string} params.messageId - 消息ID（用于中止）
- * @param {object} params.context - 上下文信息（agentId, topicId等）
+ * 缁熶竴鐨?VCP 璇锋眰鍑芥暟
+ * @param {object} params - 璇锋眰鍙傛暟
+ * @param {string} params.vcpUrl - VCP鏈嶅姟鍣║RL
+ * @param {string} params.vcpApiKey - API瀵嗛挜
+ * @param {array} params.messages - 娑堟伅鏁扮粍
+ * @param {object} params.modelConfig - 妯″瀷閰嶇疆
+ * @param {string} params.messageId - 娑堟伅ID锛堢敤浜庝腑姝級
+ * @param {object} params.context - 涓婁笅鏂囦俊鎭紙agentId, topicId绛夛級
  * @param {object} params.webContents - The webContents of the main window for sending events.
- * @param {string} params.streamChannel - 流式数据频道名称
+ * @param {string} params.streamChannel - 娴佸紡鏁版嵁棰戦亾鍚嶇О
  * @param {function} [params.onStreamEnd] - (optional) Callback for when stream ends, receives { success, content, error }
- * @returns {Promise<object>} - 返回响应对象
+ * @returns {Promise<object>} - 杩斿洖鍝嶅簲瀵硅薄
  */
 async function sendToVCP(params) {
     const {
@@ -52,9 +52,9 @@ async function sendToVCP(params) {
 
     console.log(`[VCPClient] sendToVCP called for messageId: ${messageId}, context:`, context);
 
-    let messages = [...originalMessages]; // 创建副本以避免修改原始数组
+    let messages = [...originalMessages]; // 鍒涘缓鍓湰浠ラ伩鍏嶄慨鏀瑰師濮嬫暟缁?
 
-    // === 数据验证和规范化 ===
+    // === 鏁版嵁楠岃瘉鍜岃鑼冨寲 ===
     try {
         messages = messages.map(msg => {
             if (!msg || typeof msg !== 'object') {
@@ -81,8 +81,8 @@ async function sendToVCP(params) {
                 processedContent = String(processedContent);
             }
             
-            // 🛡️ 严格脱敏：只返回由 OpenAI/Gemini 等 API 规范要求的字段
-            // 剔除 attachments, isThinking 等私有元数据，防止泄露给模型
+            // 馃洝锔?涓ユ牸鑴辨晱锛氬彧杩斿洖鐢?OpenAI/Gemini 绛?API 瑙勮寖瑕佹眰鐨勫瓧娈?
+            // 鍓旈櫎 attachments, isThinking 绛夌鏈夊厓鏁版嵁锛岄槻姝㈡硠闇茬粰妯″瀷
             const sanitizedMsg = {
                 role: msg.role,
                 content: processedContent
@@ -95,10 +95,10 @@ async function sendToVCP(params) {
         });
     } catch (validationError) {
         console.error('[VCPClient] Error validating messages:', validationError);
-        return { error: `消息格式验证失败: ${validationError.message}` };
+        return { error: `娑堟伅鏍煎紡楠岃瘉澶辫触: ${validationError.message}` };
     }
 
-    // === URL 切换（根据工具注入设置）===
+    // === URL 鍒囨崲锛堟牴鎹伐鍏锋敞鍏ヨ缃級===
     let finalVcpUrl = vcpUrl;
     let settings = {};
     try {
@@ -119,7 +119,7 @@ async function sendToVCP(params) {
         console.error(`[VCPClient] Error reading settings or switching URL: ${e.message}. Proceeding with original URL.`);
     }
 
-    // === 音乐控制注入 ===
+    // === 闊充箰鎺у埗娉ㄥ叆 ===
     if (moduleConfig.getMusicState) {
         try {
             const { musicWindow, currentSongInfo } = moduleConfig.getMusicState();
@@ -127,7 +127,7 @@ async function sendToVCP(params) {
             const bottomParts = [];
 
             if (currentSongInfo) {
-                bottomParts.push(`[当前播放音乐：${currentSongInfo.title} - ${currentSongInfo.artist} (${currentSongInfo.album || '未知专辑'})]`);
+                bottomParts.push(`[褰撳墠鎾斁闊充箰锛?{currentSongInfo.title} - ${currentSongInfo.artist} (${currentSongInfo.album || '鏈煡涓撹緫'})]`);
             }
 
             if (settings.agentMusicControl) {
@@ -137,11 +137,11 @@ async function sendToVCP(params) {
                     if (Array.isArray(songlistJson) && songlistJson.length > 0) {
                         const titles = songlistJson.map(song => song.title).filter(Boolean);
                         if (titles.length > 0) {
-                            topParts.push(`[播放列表——\n${titles.join('\n')}\n]`);
+                            topParts.push(`[鎾斁鍒楄〃鈥斺€擻n${titles.join('\n')}\n]`);
                         }
                     }
                 }
-                bottomParts.push(`点歌台{{VCPMusicController}}`);
+                bottomParts.push(`鐐规瓕鍙皗{VCPMusicController}}`);
             }
 
             if (topParts.length > 0 || bottomParts.length > 0) {
@@ -167,7 +167,7 @@ async function sendToVCP(params) {
         }
     }
 
-    // === Agent Bubble Theme 注入 ===
+    // === Agent Bubble Theme 娉ㄥ叆 ===
     try {
         if (settings.enableAgentBubbleTheme) {
             let systemMsgIndex = messages.findIndex(m => m.role === 'system');
@@ -176,7 +176,7 @@ async function sendToVCP(params) {
                 systemMsgIndex = 0;
             }
             
-            const injection = '输出规范要求：{{VarDivRender}}';
+            const injection = '杈撳嚭瑙勮寖瑕佹眰锛歿{VarDivRender}}';
             if (!messages[systemMsgIndex].content.includes(injection)) {
                 messages[systemMsgIndex].content += `\n\n${injection}`;
                 messages[systemMsgIndex].content = messages[systemMsgIndex].content.trim();
@@ -186,29 +186,33 @@ async function sendToVCP(params) {
         console.error('[VCPClient] Failed to inject bubble theme info:', e);
     }
 
-    // === 准备请求体 ===
+    // === 鍑嗗璇锋眰浣?===
     const requestBody = {
         messages: messages,
         ...modelConfig,
         stream: modelConfig.stream === true,
-        requestId: messageId
+        requestId: messageId,
+        ...(context ? { context } : {}),
+        ...(context?.agentName ? { agentName: context.agentName } : {}),
+        ...(context?.agentId ? { agentId: context.agentId } : {}),
+        ...(context?.topicId ? { topicId: context.topicId } : {})
     };
+
 
     let serializedBody;
     try {
         serializedBody = JSON.stringify(requestBody);
-        console.log('[VCPClient] Request body preview:', serializedBody.substring(0, 100) + '...');
     } catch (serializeError) {
         console.error('[VCPClient] Failed to serialize request body:', serializeError);
-        return { error: `请求体序列化失败: ${serializeError.message}` };
+        return { error: `璇锋眰浣撳簭鍒楀寲澶辫触: ${serializeError.message}` };
     }
 
-    // === 创建 AbortController 并注册 ===
+    // === 鍒涘缓 AbortController 骞舵敞鍐?===
     const controller = new AbortController();
     activeRequests.set(messageId, controller);
     console.log(`[VCPClient] Registered AbortController for messageId: ${messageId}. Active requests: ${activeRequests.size}`);
 
-    // 设置超时（300秒，适应长推理模型和流式传输）
+    // 璁剧疆瓒呮椂锛?00绉掞紝閫傚簲闀挎帹鐞嗘ā鍨嬪拰娴佸紡浼犺緭锛?
     const timeoutId = setTimeout(() => {
         console.log(`[VCPClient] Timeout triggered for messageId: ${messageId} (300s limit reached)`);
         controller.abort();
@@ -232,7 +236,7 @@ async function sendToVCP(params) {
             const errorText = await response.text();
             console.error(`[VCPClient] VCP request failed. Status: ${response.status}, Response Text:`, errorText);
             
-            let errorData = { message: `服务器返回状态 ${response.status}`, details: errorText };
+            let errorData = { message: `鏈嶅姟鍣ㄨ繑鍥炵姸鎬?${response.status}`, details: errorText };
             try {
                 const parsedError = JSON.parse(errorText);
                 if (typeof parsedError === 'object' && parsedError !== null) {
@@ -254,28 +258,28 @@ async function sendToVCP(params) {
             } else if (typeof errorData === 'string') {
                 errorMessage = errorData;
             } else {
-                errorMessage = '未知服务端错误';
+                errorMessage = '鏈煡鏈嶅姟绔敊璇?;
             }
             
-            const errorMessageToPropagate = `VCP请求失败: ${response.status} - ${errorMessage}`;
+            const errorMessageToPropagate = `VCP璇锋眰澶辫触: ${response.status} - ${errorMessage}`;
             
             if (modelConfig.stream === true && webContents && !webContents.isDestroyed()) {
-                let detailedErrorMessage = `服务器返回状态 ${response.status}.`;
+                let detailedErrorMessage = `鏈嶅姟鍣ㄨ繑鍥炵姸鎬?${response.status}.`;
                 if (errorData && errorData.message && typeof errorData.message === 'string') {
-                    detailedErrorMessage += ` 错误: ${errorData.message}`;
+                    detailedErrorMessage += ` 閿欒: ${errorData.message}`;
                 } else if (errorData && errorData.error && errorData.error.message && typeof errorData.error.message === 'string') {
-                    detailedErrorMessage += ` 错误: ${errorData.error.message}`;
+                    detailedErrorMessage += ` 閿欒: ${errorData.error.message}`;
                 } else if (typeof errorData === 'string' && errorData.length < 200) {
-                    detailedErrorMessage += ` 响应: ${errorData}`;
+                    detailedErrorMessage += ` 鍝嶅簲: ${errorData}`;
                 } else if (errorData && errorData.details && typeof errorData.details === 'string' && errorData.details.length < 200) {
-                    detailedErrorMessage += ` 详情: ${errorData.details}`;
+                    detailedErrorMessage += ` 璇︽儏: ${errorData.details}`;
                 }
 
-            const errorPayload = { type: 'error', error: `VCP请求失败: ${detailedErrorMessage}`, details: errorData, messageId: messageId, accumulatedResponse: "" };
+            const errorPayload = { type: 'error', error: `VCP璇锋眰澶辫触: ${detailedErrorMessage}`, details: errorData, messageId: messageId, accumulatedResponse: "" };
                 if (context) errorPayload.context = context;
                 webContents.send(streamChannel, errorPayload);
                 
-                return { streamError: true, error: `VCP请求失败 (${response.status})`, errorDetail: { message: errorMessageToPropagate, originalData: errorData } };
+                return { streamError: true, error: `VCP璇锋眰澶辫触 (${response.status})`, errorDetail: { message: errorMessageToPropagate, originalData: errorData } };
             }
             
             const err = new Error(errorMessageToPropagate);
@@ -284,7 +288,7 @@ async function sendToVCP(params) {
             throw err;
         }
 
-        // === 处理流式响应 ===
+        // === 澶勭悊娴佸紡鍝嶅簲 ===
         if (modelConfig.stream === true) {
             console.log(`[VCPClient] Starting stream processing for messageId: ${messageId}`);
             const reader = response.body.getReader();
@@ -342,7 +346,7 @@ async function sendToVCP(params) {
                                         webContents.send(streamChannel, dataPayload);
                                     }
                                 } catch (e) {
-                                    console.error(`[VCPClient] Failed to parse stream chunk for messageId: ${messageId}:`, e, '原始数据:', jsonData);
+                                    console.error(`[VCPClient] Failed to parse stream chunk for messageId: ${messageId}:`, e, '鍘熷鏁版嵁:', jsonData);
                                     const errorChunkPayload = { type: 'data', chunk: { raw: jsonData, error: 'json_parse_error' }, messageId: messageId, context };
                                     if (webContents && !webContents.isDestroyed()) {
                                         webContents.send(streamChannel, errorChunkPayload);
@@ -366,7 +370,7 @@ async function sendToVCP(params) {
                 } catch (streamError) {
                     const streamErrPayload = { 
                         type: 'error', 
-                        error: `VCP流读取错误: ${streamError.message}`, 
+                        error: `VCP娴佽鍙栭敊璇? ${streamError.message}`, 
                         messageId: messageId,
                         accumulatedResponse: accumulatedResponse // Propagate partial data on error
                     };
@@ -393,7 +397,7 @@ async function sendToVCP(params) {
 
             return { streamingStarted: true };
         } else {
-            // === 处理非流式响应 ===
+            // === 澶勭悊闈炴祦寮忓搷搴?===
             console.log('[VCPClient] Processing non-streaming response');
             const vcpResponse = await response.json();
             return { response: vcpResponse, context };
@@ -405,19 +409,19 @@ async function sendToVCP(params) {
         if (error.name === 'AbortError') {
             console.log(`[VCPClient] Request aborted for messageId: ${messageId}`);
             if (modelConfig.stream === true && webContents && !webContents.isDestroyed()) {
-                const abortPayload = { type: 'error', error: '请求已中止', messageId: messageId, context };
+                const abortPayload = { type: 'error', error: '璇锋眰宸蹭腑姝?, messageId: messageId, context };
                 webContents.send(streamChannel, abortPayload);
             }
-            return { aborted: true, error: '请求已中止' };
+            return { aborted: true, error: '璇锋眰宸蹭腑姝? };
         }
         
         console.error('[VCPClient] Request error:', error);
         if (modelConfig.stream === true && webContents && !webContents.isDestroyed()) {
-            const catchErrorPayload = { type: 'error', error: `VCP请求错误: ${error.message}`, messageId: messageId, context };
+            const catchErrorPayload = { type: 'error', error: `VCP璇锋眰閿欒: ${error.message}`, messageId: messageId, context };
             webContents.send(streamChannel, catchErrorPayload);
-            return { streamError: true, error: `VCP客户端请求错误`, errorDetail: { message: error.message, stack: error.stack } };
+            return { streamError: true, error: `VCP瀹㈡埛绔姹傞敊璇痐, errorDetail: { message: error.message, stack: error.stack } };
         }
-        return { error: `VCP请求错误: ${error.message}` };
+        return { error: `VCP璇锋眰閿欒: ${error.message}` };
     } finally {
         // Only clean up here if we ARE NOT streaming. 
         // For streaming, the cleanup is handled in processStream's finally block to ensure the request is interruptible.
@@ -431,8 +435,8 @@ async function sendToVCP(params) {
 }
 
 /**
- * 中止指定的 VCP 请求
- * @param {string} messageId - 要中止的消息ID
+ * 涓鎸囧畾鐨?VCP 璇锋眰
+ * @param {string} messageId - 瑕佷腑姝㈢殑娑堟伅ID
  * @returns {object} - { success: boolean, message?: string, error?: string }
  */
 function interruptRequest(messageId) {
@@ -444,15 +448,15 @@ function interruptRequest(messageId) {
         controller.abort();
         activeRequests.delete(messageId);
         console.log(`[VCPClient] Request interrupted for messageId: ${messageId}. Remaining active requests: ${activeRequests.size}`);
-        return { success: true, message: `请求 ${messageId} 已中止` };
+        return { success: true, message: `璇锋眰 ${messageId} 宸蹭腑姝 };
     } else {
         console.log(`[VCPClient] No active request found for messageId: ${messageId}`);
-        return { success: false, error: `未找到活跃的请求 ${messageId}` };
+        return { success: false, error: `鏈壘鍒版椿璺冪殑璇锋眰 ${messageId}` };
     }
 }
 
 /**
- * 获取当前活跃的请求数量（用于调试）
+ * 鑾峰彇褰撳墠娲昏穬鐨勮姹傛暟閲忥紙鐢ㄤ簬璋冭瘯锛?
  * @returns {number}
  */
 function getActiveRequestCount() {
