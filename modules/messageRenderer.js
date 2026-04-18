@@ -437,22 +437,22 @@ function transformSpecialBlocks(text, codeBlockMap) {
     // Process Tool Requests
     processed = processed.replace(TOOL_REGEX, (match, content) => {
         // Check if this is a DailyNote tool call with the 'create' command
-        const isDailyNoteCreate = /tool_name:\s*「始」\s*DailyNote\s*「末」/.test(content) &&
-            /command:\s*「始」\s*create\s*「末」/.test(content);
+        const isDailyNoteCreate = /tool_name:\s*(?:「始ESCAPE」\s*DailyNote\s*「末ESCAPE」|「始」\s*DailyNote\s*「末」)/.test(content) &&
+            /command:\s*(?:「始ESCAPE」\s*create\s*「末ESCAPE」|「始」\s*create\s*「末」)/.test(content);
 
         if (isDailyNoteCreate) {
             // --- It's a DailyNote Tool, render it as a diary bubble ---
-            const maidRegex = /(?:maid|maidName):\s*「始」([^「」]*)「末」/;
-            const dateRegex = /Date:\s*「始」([^「」]*)「末」/;
-            const contentRegex = /Content:\s*「始」([\s\S]*?)「末」/;
+            const maidRegex = /(?:maid|maidName):\s*(?:「始ESCAPE」([\s\S]*?)「末ESCAPE」|「始」([^「」]*)「末」)/;
+            const dateRegex = /Date:\s*(?:「始ESCAPE」([\s\S]*?)「末ESCAPE」|「始」([^「」]*)「末」)/;
+            const contentRegex = /Content:\s*(?:「始ESCAPE」([\s\S]*?)「末ESCAPE」|「始」([\s\S]*?)「末」)/;
 
             const maidMatch = content.match(maidRegex);
             const dateMatch = content.match(dateRegex);
             const contentMatch = content.match(contentRegex);
 
-            const maid = maidMatch ? maidMatch[1].trim() : '';
-            const date = dateMatch ? dateMatch[1].trim() : '';
-            const diaryContent = contentMatch ? contentMatch[1].trim() : '[日记内容解析失败]';
+            const maid = maidMatch ? (maidMatch[1] || maidMatch[2] || '').trim() : '';
+            const date = dateMatch ? (dateMatch[1] || dateMatch[2] || '').trim() : '';
+            const diaryContent = contentMatch ? (contentMatch[1] || contentMatch[2] || '').trim() : '[日记内容解析失败]';
 
             let html = `<div class="maid-diary-bubble">`;
             html += `<div class="diary-header">`;
@@ -485,14 +485,14 @@ function transformSpecialBlocks(text, codeBlockMap) {
             return html;
         } else {
             // --- It's a regular tool call, render it normally ---
-            const toolNameRegex = /<tool_name>([\s\S]*?)<\/tool_name>|tool_name:\s*「始」([^「」]*)「末」/;
+            const toolNameRegex = /<tool_name>([\s\S]*?)<\/tool_name>|tool_name:\s*(?:「始ESCAPE」([\s\S]*?)「末ESCAPE」|「始」([^「」]*)「末」)/;
             const toolNameMatch = content.match(toolNameRegex);
 
             let toolName = 'Processing...';
             if (toolNameMatch) {
-                let extractedName = (toolNameMatch[1] || toolNameMatch[2] || '').trim();
+                let extractedName = (toolNameMatch[1] || toolNameMatch[2] || toolNameMatch[3] || '').trim();
                 if (extractedName) {
-                    extractedName = extractedName.replace(/「始」|「末」/g, '').replace(/,$/, '').trim();
+                    extractedName = extractedName.replace(/「始ESCAPE」|「末ESCAPE」|「始」|「末」/g, '').replace(/,$/, '').trim();
                 }
                 if (extractedName) {
                     toolName = extractedName;
@@ -713,25 +713,37 @@ function ensureHtmlFenced(text) {
         return text;
     }
 
-    // 🟢 构建「始」「末」保护区域
+    // 🟢 构建「始」「末」与「始ESCAPE」「末ESCAPE」保护区域
     const protectedRanges = [];
-    const START_MARKER = '「始」';
-    const END_MARKER = '「末」';
+    const markerPairs = [
+        { start: '「始ESCAPE」', end: '「末ESCAPE」' },
+        { start: '「始」', end: '「末」' }
+    ];
     let searchStart = 0;
 
     while (true) {
-        const startPos = text.indexOf(START_MARKER, searchStart);
-        if (startPos === -1) break;
+        let matchedPair = null;
+        let startPos = -1;
 
-        const endPos = text.indexOf(END_MARKER, startPos + START_MARKER.length);
+        for (const pair of markerPairs) {
+            const index = text.indexOf(pair.start, searchStart);
+            if (index !== -1 && (startPos === -1 || index < startPos)) {
+                startPos = index;
+                matchedPair = pair;
+            }
+        }
+
+        if (startPos === -1 || !matchedPair) break;
+
+        const endPos = text.indexOf(matchedPair.end, startPos + matchedPair.start.length);
         if (endPos === -1) {
-            // 未闭合的「始」，保护到文本末尾（流式传输场景）
+            // 未闭合的开始标记，保护到文本末尾（流式传输场景）
             protectedRanges.push({ start: startPos, end: text.length });
             break;
         }
 
-        protectedRanges.push({ start: startPos, end: endPos + END_MARKER.length });
-        searchStart = endPos + END_MARKER.length;
+        protectedRanges.push({ start: startPos, end: endPos + matchedPair.end.length });
+        searchStart = endPos + matchedPair.end.length;
     }
 
     // 🟢 检查位置是否在保护区域内
@@ -1561,9 +1573,9 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true,
                 return placeholder;
             });
             
-            // 🔴 保护「始」「末」标记区域
+            // 🔴 保护「始」「末」与「始ESCAPE」「末ESCAPE」标记区域
             // 这些标记内的内容是工具参数，可能包含任意HTML（含<style>），不应被提取
-            textWithProtectedBlocks = textWithProtectedBlocks.replace(/「始」[\s\S]*?(「末」|$)/g, (match) => {
+            textWithProtectedBlocks = textWithProtectedBlocks.replace(/「始ESCAPE」[\s\S]*?(「末ESCAPE」|$)|「始」[\s\S]*?(「末」|$)/g, (match) => {
                 const placeholder = `__VCP_STYLE_PROTECT_${protectedBlocks.length}__`;
                 protectedBlocks.push(match);
                 return placeholder;

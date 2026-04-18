@@ -26,18 +26,83 @@ function escapeHtml(text) {
 }
 
 /**
- * 处理「始」和「末」之间的内容，将其视为纯文本并转义。
+ * 处理「始」/「末」与「始ESCAPE」/「末ESCAPE」之间的内容，将其视为纯文本并转义。
  * 支持流式传输中未闭合的情况。
  * @param {string} text 输入文本
  * @returns {string} 处理后的文本
  */
 function processStartEndMarkers(text) {
-    if (typeof text !== 'string' || !text.includes('「始」')) return text;
-    
-    // 使用非贪婪匹配，同时支持匹配到字符串末尾（处理流式传输中未闭合的情况）
-    return text.replace(/「始」([\s\S]*?)(「末」|$)/g, (match, content, end) => {
-        return `「始」${escapeHtml(content)}${end}`;
-    });
+    if (typeof text !== 'string' || (!text.includes('「始」') && !text.includes('「始ESCAPE」'))) {
+        return text;
+    }
+
+    const startMarkers = ['「始ESCAPE」', '「始」'];
+    const endMarkerMap = new Map([
+        ['「始ESCAPE」', '「末ESCAPE」'],
+        ['「始」', '「末」']
+    ]);
+
+    const isLikelyLiteralMention = (source, markerIndex, marker) => {
+        const prevChar = markerIndex > 0 ? source[markerIndex - 1] : '';
+        const nextChar = source[markerIndex + marker.length] || '';
+
+        // 跳过正文中“提到语法名”的场景，例如：
+        // [「始ESCAPE」]、`「始」`、"「始ESCAPE」"
+        if (['[', '【', '(', '（', '`', '"', "'", '“', '‘'].includes(prevChar)) {
+            return true;
+        }
+        if ([']', '】', ')', '）', '`', '"', "'", '”', '’'].includes(nextChar)) {
+            return true;
+        }
+
+        return false;
+    };
+
+    let result = '';
+    let cursor = 0;
+
+    while (cursor < text.length) {
+        let nextStartIndex = -1;
+        let matchedStartMarker = null;
+
+        for (const marker of startMarkers) {
+            let searchFrom = cursor;
+            while (true) {
+                const index = text.indexOf(marker, searchFrom);
+                if (index === -1) break;
+                if (!isLikelyLiteralMention(text, index, marker)) {
+                    if (nextStartIndex === -1 || index < nextStartIndex) {
+                        nextStartIndex = index;
+                        matchedStartMarker = marker;
+                    }
+                    break;
+                }
+                searchFrom = index + marker.length;
+            }
+        }
+
+        if (nextStartIndex === -1 || !matchedStartMarker) {
+            result += text.slice(cursor);
+            break;
+        }
+
+        result += text.slice(cursor, nextStartIndex);
+
+        const endMarker = endMarkerMap.get(matchedStartMarker);
+        const contentStart = nextStartIndex + matchedStartMarker.length;
+        const endIndex = text.indexOf(endMarker, contentStart);
+
+        if (endIndex === -1) {
+            result += matchedStartMarker + escapeHtml(text.slice(contentStart));
+            break;
+        }
+
+        const content = text.slice(contentStart, endIndex);
+        result += matchedStartMarker + escapeHtml(content) + endMarker;
+        cursor = endIndex + endMarker.length;
+    }
+
+    return result;
 }
 
 /**

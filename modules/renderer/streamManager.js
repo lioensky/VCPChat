@@ -974,13 +974,13 @@ function processDesktopPushToken(messageId, textToAppend) {
 
                     if (canPush && state.created) {
                         if (state.isReplaceMode) {
-                            // 替换模式：解析 target:「始」...「末」和 replace:「始」...「末」
-                            const targetMatch = state.buffer.match(/target:「始」([\s\S]*?)「末」/);
-                            const replaceMatch = state.buffer.match(/replace:「始」([\s\S]*?)「末」/);
+                            // 替换模式：解析 target/replace 的「始ESCAPE」「末ESCAPE」或旧版「始」「末」
+                            const targetMatch = state.buffer.match(/target:(?:「始ESCAPE」([\s\S]*?)「末ESCAPE」|「始」([\s\S]*?)「末」)/);
+                            const replaceMatch = state.buffer.match(/replace:(?:「始ESCAPE」([\s\S]*?)「末ESCAPE」|「始」([\s\S]*?)「末」)/);
                             
                             if (targetMatch && replaceMatch) {
-                                const targetSelector = targetMatch[1].trim();
-                                const replaceContent = replaceMatch[1].trim();
+                                const targetSelector = (targetMatch[1] || targetMatch[2] || '').trim();
+                                const replaceContent = (replaceMatch[1] || replaceMatch[2] || '').trim();
                                 electronAPI.desktopPush({
                                     action: 'replace',
                                     targetSelector: targetSelector,
