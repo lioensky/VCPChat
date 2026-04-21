@@ -137,6 +137,14 @@
                 <label style="display: block; margin-bottom: 5px; font-size: 0.9rem; color: var(--text-secondary);">文件夹</label>
                 <input type="text" id="new-memo-maid" class="glass-input" style="width: 100%;" placeholder="日记的目标文件夹">
             </div>
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 5px; font-size: 0.9rem; color: var(--text-secondary);">文件名 <span style="opacity: 0.5; font-size: 0.8rem;">(可选，留空自动生成)</span></label>
+                <input type="text" id="new-memo-filename" class="glass-input" style="width: 100%;" placeholder="自定义文件名，如：莱恩日记提示词哲学">
+            </div>
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 5px; font-size: 0.9rem; color: var(--text-secondary);">标签 <span style="opacity: 0.5; font-size: 0.8rem;">(可选，逗号分隔)</span></label>
+                <input type="text" id="new-memo-tags" class="glass-input" style="width: 100%;" placeholder="如：日记系统重构, RAG语义检索, 提示词工程">
+            </div>
             <div style="margin-bottom: 20px;">
                 <label style="display: block; margin-bottom: 5px; font-size: 0.9rem; color: var(--text-secondary);">内容</label>
                 <textarea id="new-memo-content" class="glass-input" style="width: 100%; min-height: 150px; resize: vertical;" placeholder="写下今天的故事..."></textarea>
@@ -181,6 +189,25 @@
             </div>
             <div style="display: flex; justify-content: flex-end;">
                 <button id="hidden-modal-ok-btn" class="jelly-btn" style="width: auto; padding: 10px 40px;">完成</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 工作台发布后旧日记处理弹窗 -->
+    <div id="post-publish-modal" class="modal" style="display: none; align-items: center; justify-content: center; position: fixed; top:0; left:0; right:0; bottom:0; z-index: 10200; background: rgba(0,0,0,0.6); backdrop-filter: blur(10px);">
+        <div class="modal-glass-content glass" style="max-width: 500px; width: 90%; text-align: center; padding: 30px; border-radius: 20px;">
+            <h3 style="margin-top: 0; margin-bottom: 10px; color: var(--accent-color);">✅ 整合日记发布成功</h3>
+            <p style="margin-bottom: 20px; line-height: 1.6; color: var(--text-secondary); font-size: 0.9rem;">如何处理已引用的 <strong id="post-publish-count">0</strong> 篇原始日记？</p>
+            <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 10px;">
+                <button id="post-publish-keep-btn" class="glass-btn" style="width: 100%; padding: 12px; justify-content: center; font-size: 0.95rem;">
+                    📌 保留原位 — 不做任何变动
+                </button>
+                <button id="post-publish-archive-btn" class="glass-btn primary" style="width: 100%; padding: 12px; justify-content: center; font-size: 0.95rem;">
+                    📦 归档到「已整理」文件夹
+                </button>
+                <button id="post-publish-delete-btn" class="glass-btn danger" style="width: 100%; padding: 12px; justify-content: center; font-size: 0.95rem;">
+                    🗑️ 删除原始日记（不可撤销）
+                </button>
             </div>
         </div>
     </div>
@@ -240,6 +267,16 @@
                             <div class="form-group">
                                 <label>目标文件夹</label>
                                 <input type="text" id="workbench-new-folder" class="glass-input" placeholder="例如：整合记忆">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>文件名 <span style="opacity: 0.5; font-size: 0.8rem;">(可选)</span></label>
+                                <input type="text" id="workbench-new-filename" class="glass-input" placeholder="自定义文件名，留空自动生成">
+                            </div>
+                            <div class="form-group">
+                                <label>标签 <span style="opacity: 0.5; font-size: 0.8rem;">(可选，逗号分隔)</span></label>
+                                <input type="text" id="workbench-new-tags" class="glass-input" placeholder="如：整合记忆, 多源归纳">
                             </div>
                         </div>
                         <div class="form-group" style="flex: 1; display: flex; flex-direction: column;">

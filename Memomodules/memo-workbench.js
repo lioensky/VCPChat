@@ -27,6 +27,8 @@ const DiaryWorkbench = {
         // 编辑器元素
         this.newDateInput = document.getElementById('workbench-new-date');
         this.newFolderInput = document.getElementById('workbench-new-folder');
+        this.newFilenameInput = document.getElementById('workbench-new-filename');
+        this.newTagsInput = document.getElementById('workbench-new-tags');
         this.newContentInput = document.getElementById('workbench-new-content');
         
         // 绑定关闭按钮
@@ -79,6 +81,8 @@ const DiaryWorkbench = {
             } else {
                 this.newFolderInput.value = '整合记忆';
             }
+            this.newFilenameInput.value = '';
+            this.newTagsInput.value = '';
             this.newContentInput.value = '';
         }
 
@@ -150,6 +154,8 @@ const DiaryWorkbench = {
     async handleCreateIntegratedMemo() {
         const date = this.newDateInput.value;
         const folder = this.newFolderInput.value.trim();
+        const fileName = this.newFilenameInput.value.trim();
+        const tags = this.newTagsInput.value.trim();
         const content = this.newContentInput.value.trim();
 
         if (!date || !folder || !content) {
@@ -166,14 +172,22 @@ const DiaryWorkbench = {
             const settings = await memoWorkbenchApi.loadSettings();
             if (!settings?.vcpApiKey) throw new Error('API Key 未配置');
 
-            // 构造 TOOL_REQUEST
-            const toolRequest = `<<<[TOOL_REQUEST]>>>
-maid:「始」${folder}「末」,
+            // 构造 TOOL_REQUEST（可选字段仅在有值时加入）
+            let toolFields = `maid:「始」${folder}「末」,
 tool_name:「始」DailyNote「末」,
 command:「始」create「末」,
-Date:「始」${date}「末」,
-Content:「始」${content}「末」
-<<<[END_TOOL_REQUEST]>>>`;
+Date:「始」${date}「末」,`;
+
+            if (fileName) {
+                toolFields += `\nfileName:「始」${fileName}「末」,`;
+            }
+            if (tags) {
+                toolFields += `\nTag:「始」${tags}「末」,`;
+            }
+
+            toolFields += `\nContent:「始」${content}「末」`;
+
+            const toolRequest = `<<<[TOOL_REQUEST]>>>\n${toolFields}\n<<<[END_TOOL_REQUEST]>>>`;
 
             const res = await fetch(`${serverBaseUrl}v1/human/tool`, {
                 method: 'POST',
@@ -186,8 +200,17 @@ Content:「始」${content}「末」
 
             if (!res.ok) throw new Error(await res.text());
 
-            // 成功后处理
-            alert('整合日记发布成功！');
+            // 发布成功 → 弹出旧日记处理弹窗
+            const referencedMemos = [...this.selectedMemos];
+            const action = await this.showPostPublishDialog(referencedMemos.length);
+
+            if (action === 'archive') {
+                await this.handleArchiveOldMemos(referencedMemos);
+            } else if (action === 'delete') {
+                await this.handleDeleteOldMemos(referencedMemos);
+            }
+            // action === 'keep' → 不做任何操作
+
             this.close();
             
             // 刷新主界面列表
@@ -203,6 +226,70 @@ Content:「始」${content}「末」
         } finally {
             submitBtn.disabled = false;
             submitBtn.textContent = originalText;
+        }
+    },
+
+    // 显示发布后旧日记处理弹窗，返回 'keep' | 'archive' | 'delete'
+    showPostPublishDialog(count) {
+        return new Promise((resolve) => {
+            const modal = document.getElementById('post-publish-modal');
+            const countEl = document.getElementById('post-publish-count');
+            const keepBtn = document.getElementById('post-publish-keep-btn');
+            const archiveBtn = document.getElementById('post-publish-archive-btn');
+            const deleteBtn = document.getElementById('post-publish-delete-btn');
+
+            countEl.textContent = count;
+            modal.style.display = 'flex';
+
+            const cleanup = () => {
+                modal.style.display = 'none';
+                keepBtn.removeEventListener('click', onKeep);
+                archiveBtn.removeEventListener('click', onArchive);
+                deleteBtn.removeEventListener('click', onDelete);
+            };
+
+            const onKeep = () => { cleanup(); resolve('keep'); };
+            const onArchive = () => { cleanup(); resolve('archive'); };
+            const onDelete = () => { cleanup(); resolve('delete'); };
+
+            keepBtn.addEventListener('click', onKeep);
+            archiveBtn.addEventListener('click', onArchive);
+            deleteBtn.addEventListener('click', onDelete);
+        });
+    },
+
+    // 归档旧日记：移动到「已整理」文件夹
+    async handleArchiveOldMemos(memos) {
+        if (!memos || memos.length === 0) return;
+        try {
+            const sourceNotes = memos.map(m => ({ folder: m.folder, file: m.name }));
+            await apiFetch('/move', {
+                method: 'POST',
+                body: JSON.stringify({
+                    sourceNotes,
+                    targetFolder: '已整理'
+                })
+            });
+            console.log(`[Workbench] ${memos.length} 篇日记已归档到「已整理」`);
+        } catch (error) {
+            console.error('[Workbench] 归档失败:', error);
+            alert('归档旧日记失败: ' + error.message);
+        }
+    },
+
+    // 删除旧日记
+    async handleDeleteOldMemos(memos) {
+        if (!memos || memos.length === 0) return;
+        try {
+            const notesToDelete = memos.map(m => ({ folder: m.folder, file: m.name }));
+            await apiFetch('/delete-batch', {
+                method: 'POST',
+                body: JSON.stringify({ notesToDelete })
+            });
+            console.log(`[Workbench] ${memos.length} 篇旧日记已删除`);
+        } catch (error) {
+            console.error('[Workbench] 删除失败:', error);
+            alert('删除旧日记失败: ' + error.message);
         }
     }
 };

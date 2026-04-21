@@ -40,6 +40,8 @@ const editorStatus = document.getElementById('editor-status');
 const createModal = document.getElementById('create-modal');
 const newMemoDateInput = document.getElementById('new-memo-date');
 const newMemoMaidInput = document.getElementById('new-memo-maid');
+const newMemoFilenameInput = document.getElementById('new-memo-filename');
+const newMemoTagsInput = document.getElementById('new-memo-tags');
 const newMemoContentInput = document.getElementById('new-memo-content');
 
 function blockStartup(message) {
@@ -991,6 +993,8 @@ async function handleDeleteMemo() {
 async function handleCreateMemo() {
     const date = newMemoDateInput.value;
     const maid = newMemoMaidInput.value.trim();
+    const fileName = newMemoFilenameInput.value.trim();
+    const tags = newMemoTagsInput.value.trim();
     const content = newMemoContentInput.value.trim();
 
     if (!date || !maid || !content) {
@@ -1006,14 +1010,22 @@ async function handleCreateMemo() {
         const settings = await api.loadSettings();
         if (!settings?.vcpApiKey) throw new Error('API Key 未配置');
 
-        // 构造 TOOL_REQUEST
-        const toolRequest = `<<<[TOOL_REQUEST]>>>
-maid:「始」${maid}「末」,
+        // 构造 TOOL_REQUEST（可选字段仅在有值时加入）
+        let toolFields = `maid:「始」${maid}「末」,
 tool_name:「始」DailyNote「末」,
 command:「始」create「末」,
-Date:「始」${date}「末」,
-Content:「始」${content}「末」
-<<<[END_TOOL_REQUEST]>>>`;
+Date:「始」${date}「末」,`;
+
+        if (fileName) {
+            toolFields += `\nfileName:「始」${fileName}「末」,`;
+        }
+        if (tags) {
+            toolFields += `\nTag:「始」${tags}「末」,`;
+        }
+
+        toolFields += `\nContent:「始」${content}「末」`;
+
+        const toolRequest = `<<<[TOOL_REQUEST]>>>\n${toolFields}\n<<<[END_TOOL_REQUEST]>>>`;
 
         const res = await fetch(`${serverBaseUrl}v1/human/tool`, {
             method: 'POST',
@@ -1029,6 +1041,8 @@ Content:「始」${content}「末」
         // 成功后处理
         createModal.style.display = 'none';
         newMemoContentInput.value = '';
+        newMemoFilenameInput.value = '';
+        newMemoTagsInput.value = '';
 
         // 延迟刷新，给后端一点处理时间
         setTimeout(async () => {
