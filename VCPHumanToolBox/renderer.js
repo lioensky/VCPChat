@@ -464,7 +464,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         const requiredParams = [];
         const optionalParams = [];
         params.forEach(param => {
-            if (param.name === 'maid') return; // 隐藏maid字段
             if (param.required) {
                 requiredParams.push(param);
             } else {
@@ -602,6 +601,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (param.type !== 'dragdrop_image') {
                 input.placeholder = param.placeholder || '';
                 if (param.default) input.value = param.default;
+                // maid 字段预填充 USER_NAME，用户可修改以测试不同 Agent
+                if (param.name === 'maid' && !input.value) input.value = USER_NAME;
             }
             if (param.required) input.required = true;
         } else {
@@ -1011,8 +1012,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         }
 
-        // 防御性注入 maid
-        args.maid = USER_NAME;
+        // maid 兜底：用户未填写时使用默认值
+        if (!args.maid) args.maid = USER_NAME;
         // 计时器
         const startTime = Date.now();
         let timerInterval;
