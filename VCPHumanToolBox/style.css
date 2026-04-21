@@ -993,4 +993,75 @@ header p {
         opacity: 0;
         transform: translate(-50%, -50%) scale(0.8);
     }
+}/* --- Tool Search & Filter Bar --- */
+.tool-search-bar {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.tool-search-input:focus {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}
+
+.tool-category-select:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}
+
+.tool-count-badge {
+    animation: fadeIn 0.3s ease;
+}
+
+/* --- Optional Params Folding --- */
+.optional-params-group {
+    transition: all 0.2s ease;
+}
+
+.optional-params-group summary {
+    list-style: none;
+}
+
+.optional-params-group summary::-webkit-details-marker {
+    display: none;
+}
+
+.optional-params-group summary::before {
+    content: '▶ ';
+    display: inline;transition: transform 0.2s;
+}
+
+.optional-params-group[open] summary::before {
+    content: '▼ ';
+}
+
+.optional-params-group[open] {
+    border-color: var(--primary-color);
+}
+
+.optional-params-group summary:hover {
+    background: rgba(59, 130, 246, 0.08);
+}
+
+/* --- Execution History --- */
+#execution-history {
+    animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(5px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* --- Tool Card Category Badge --- */
+.tool-card .category-badge {
+    display: inline-block;
+    margin-top: 8px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    background: rgba(255, 152, 0, 0.1);
+    color: var(--highlight-text);
 }
