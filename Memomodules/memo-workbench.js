@@ -38,6 +38,10 @@ const DiaryWorkbench = {
         // 绑定发布按钮
         const submitBtn = document.getElementById('workbench-submit-btn');
         if (submitBtn) submitBtn.onclick = () => this.handleCreateIntegratedMemo();
+
+        // 绑定完整阅读按钮
+        const fullReadBtn = document.getElementById('workbench-fullread-btn');
+        if (fullReadBtn) fullReadBtn.onclick = () => this.handleFullRead();
         
         console.log('[Workbench] Module initialized');
     },
@@ -274,6 +278,56 @@ Date:「始」${date}「末」,`;
         } catch (error) {
             console.error('[Workbench] 归档失败:', error);
             alert('归档旧日记失败: ' + error.message);
+        }
+    },
+
+    // 完整阅读：加载所有引用日记的全文，用 text-viewer 展示
+    async handleFullRead() {
+        if (this.selectedMemos.length === 0) {
+            alert('工作台中没有引用的日记');
+            return;
+        }
+
+        const fullReadBtn = document.getElementById('workbench-fullread-btn');
+        const originalText = fullReadBtn.textContent;
+        fullReadBtn.disabled = true;
+        fullReadBtn.textContent = '📖 加载中...';
+
+        try {
+            const sections = [];
+            const pathList = [];
+
+            for (const memo of this.selectedMemos) {
+                const path = `${memo.folder}/${memo.name}`;
+                pathList.push(path);
+
+                try {
+                    const data = await apiFetch(`/note/${encodeURIComponent(memo.folder)}/${encodeURIComponent(memo.name)}`);
+                    sections.push(`${'═'.repeat(60)}\n📁 ${path}\n${'═'.repeat(60)}\n\n${data.content}\n`);
+                } catch (err) {
+                    sections.push(`${'═'.repeat(60)}\n📁 ${path}\n${'═'.repeat(60)}\n\n⚠️ 加载失败: ${err.message}\n`);
+                }
+            }
+
+            // 构建完整文本：路径索引 + 每篇日记全文
+            const header = `# 工作台引用日记 — 完整阅读\n\n共 ${this.selectedMemos.length} 篇日记\n\n## 📋 路径索引\n\n${pathList.map((p, i) => `${i + 1}. \`${p}\``).join('\n')}\n\n---\n\n`;
+            const fullText = header + sections.join('\n');
+
+            // 调用 VCP 阅读器打开
+            if (memoWorkbenchApi.openTextInNewWindow) {
+                const theme = await memoWorkbenchApi.getCurrentTheme?.() || 'dark';
+                await memoWorkbenchApi.openTextInNewWindow(fullText, `工作台完整阅读 (${this.selectedMemos.length} 篇)`, theme);
+            } else {
+                // 降级：复制到剪贴板
+                await navigator.clipboard.writeText(fullText);
+                alert('阅读器不可用，已将全部内容复制到剪贴板');
+            }
+        } catch (error) {
+            console.error('[Workbench] 完整阅读失败:', error);
+            alert('完整阅读失败: ' + error.message);
+        } finally {
+            fullReadBtn.disabled = false;
+            fullReadBtn.textContent = originalText;
         }
     },
 
