@@ -1,4 +1,6 @@
 // VCPHumanToolBox/renderer.js
+// Enhanced by CodeCC &赵枫 - 2026-04-21
+// 8features: search+filter, hide maid, param folding, timer, retry, copy, form cache, history
 import { tools } from './renderer_modules/config.js';
 import * as canvasHandler from './renderer_modules/ui/canvas-handler.js';
 import * as dynamicImageHandler from './renderer_modules/ui/dynamic-image-handler.js';
@@ -19,6 +21,36 @@ document.addEventListener('DOMContentLoaded', async () => {
     let USER_NAME = 'Human';
     let settings = {};
     let MAX_FILENAME_LENGTH = 400;
+    let currentToolName = '';
+    const formStateCache = new Map();
+    const executionHistory = [];
+
+    // --- 工具分类映射 ---
+    const TOOL_CATEGORIES = {
+        '多媒体生成': ['ZImageGen','FluxGen','DoubaoGen','QwenImageGen',
+            'GeminiImageGen','NovelAIGen','ComfyCloudGen','SunoGen',
+            'WanVideoGen','GrokVideoGen','WebUIGen','ComfyUIGen','NanoBananaGen2'],
+        '联网搜索': ['VSearch','TavilySearch','GoogleSearch','SerpSearch',
+            'UrlFetch','BilibiliFetch','FlashDeepSearch','AnimeFinder'],
+        '代码与仓库': ['GitSearch','DeepWikiVCP'],
+        '学术研究': ['PubMedSearch','PaperReader'],
+        '记忆与思考': ['DeepMemo','LightMemo','ThoughtClusterManager',
+            'TopicMemo','AgentTopicCreator'],
+        '通讯与社区': ['AgentAssistant','AgentDream','AgentMessage','VCPForum'],
+        '占卜与趣味': ['TarotDivination'],
+        '工具与计算': ['SciCalculator','MusicController','VCPAlarm','TableLampRemote'],
+        '文件管理': ['LocalSearchController','ServerSearchController',
+            'PowerShellExecutor','ServerPowerShellExecutor',
+            'CodeSearcher','ServerCodeSearcher'],
+        '日程管理': ['ScheduleManager']
+    };
+
+    function getCategoryForTool(toolName) {
+        for (const [cat, list] of Object.entries(TOOL_CATEGORIES)) {
+            if (list.includes(toolName)) return cat;
+        }
+        return '其他';
+    }
 
     // --- 设置加载与保存 ---
     async function loadSettings() {
@@ -38,8 +70,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
             console.log('[VCPHumanToolBox] Settings saved successfully');
         } catch (error) {
-            console.error('[VCPHumanToolBox] Failed to save settings:', error);
-            throw error;
+            console.error('[VCPHumanToolBox] Failed to save settings:', error);throw error;
         }
     }
 
@@ -55,44 +86,211 @@ document.addEventListener('DOMContentLoaded', async () => {
             } catch (e) {
                 console.error("Invalid vcpServerUrl in settings:", settings.vcpServerUrl);
             }
-        }
-        VCP_API_KEY = settings.vcpApiKey || '';
+        }VCP_API_KEY = settings.vcpApiKey || '';
         USER_NAME = settings.userName || 'Human';
         MAX_FILENAME_LENGTH = settings.maxFilenameLength || 400;
+    // 恢复执行历史
+        if (Array.isArray(settings.vcpht_executionHistory)) {
+            executionHistory.push(...settings.vcpht_executionHistory.slice(0, 15));
+        }
         
-        // 动态加载模块并传递配置
-        // 注意：由于移除了 require，模块需要重构为浏览器兼容的格式
         canvasHandler.setMaxFilenameLength(MAX_FILENAME_LENGTH);
 
         if (!VCP_SERVER_URL || !VCP_API_KEY) {
-            toolGrid.innerHTML = `<div class="error">错误：无法加载配置文件 (settings.json)。请确保文件存在且格式正确。<br>未能从 settings.json 中找到 vcpServerUrl 或 vcpApiKey</div>`;
+            toolGrid.innerHTML = `<div class="info-box"><p><strong>错误：无法加载配置文件 (settings.json)。请确保文件存在且格式正确。</strong></p><p>未能从settings.json 中找到 vcpServerUrl 或 vcpApiKey</p></div>`;
             return;
         }
 
         initializeUI();
     }
-    
-
 
     // --- 函数定义 ---
 
     function renderToolGrid() {
         toolGrid.innerHTML = '';
+
+        // 读取收藏列表
+        let favorites = [];
+        try {
+            favorites = JSON.parse(localStorage.getItem('vcpht_favorites') || '[]');
+        } catch (e) { favorites = []; }
+
+        //搜索栏容器
+        const searchBar = document.createElement('div');
+        searchBar.className = 'tool-search-bar';
+        searchBar.style.cssText = `
+            display: flex; gap: 10px; margin-bottom: 20px; align-items: center;
+            grid-column: 1 / -1;
+        `;
+
+        const searchInput = document.createElement('input');
+        searchInput.type = 'text';
+        searchInput.placeholder = '🔍 搜索工具...';
+        searchInput.className = 'tool-search-input';
+        searchInput.style.cssText = `
+            flex: 1; padding: 10px 14px; border-radius: 8px;
+            border: 1px solid var(--border-color);
+            background: var(--input-bg); color: var(--primary-text);
+            font-size: 14px; outline: none; transition: border-color 0.2s;
+        `;
+
+        const categorySelect = document.createElement('select');
+        categorySelect.className = 'tool-category-select';
+        categorySelect.style.cssText = `
+            padding: 10px 14px; border-radius: 8px;
+            border: 1px solid var(--border-color);
+            background: var(--input-bg); color: var(--primary-text);
+            font-size: 14px; cursor: pointer; min-width: 140px;
+        `;
+        const allOption = document.createElement('option');
+        allOption.value = '';
+        allOption.textContent = '全部分类';
+        categorySelect.appendChild(allOption);
+
+        // 收藏选项
+        const favOption = document.createElement('option');
+        favOption.value = '__favorites__';
+        favOption.textContent = '⭐ 收藏';
+        categorySelect.appendChild(favOption);
+
+        for (const cat of Object.keys(TOOL_CATEGORIES)) {
+            const opt = document.createElement('option');
+            opt.value = cat;
+            opt.textContent = cat;
+            categorySelect.appendChild(opt);
+        }
+
+        const countBadge = document.createElement('span');
+        countBadge.className = 'tool-count-badge';
+        countBadge.style.cssText = `
+            padding: 6px 12px; border-radius: 20px; font-size: 12px;
+            background: rgba(255,152,0,0.15); color: var(--highlight-text);
+            white-space: nowrap; font-weight: 600;
+        `;
+        const totalTools = Object.keys(tools).length;
+        countBadge.textContent = `共${totalTools} 个`;
+
+        searchBar.appendChild(searchInput);
+        searchBar.appendChild(categorySelect);
+        searchBar.appendChild(countBadge);
+        toolGrid.appendChild(searchBar);
+
+        // 生成工具卡片
         for (const toolName in tools) {
             const tool = tools[toolName];
+            const category = getCategoryForTool(toolName);
+            const isFav = favorites.includes(toolName);
+
             const card = document.createElement('div');
             card.className = 'tool-card';
             card.dataset.toolName = toolName;
+            card.dataset.category = category;
+            card.dataset.search = `${toolName} ${tool.displayName} ${tool.description} ${category}`.toLowerCase();
+
             card.innerHTML = `
-                <h3>${tool.displayName}</h3>
-                <p>${tool.description}</p>
+                <div style="position: relative;">
+                    <span class="fav-star" data-tool="${toolName}" style="
+                        position: absolute; top: -8px; right: -8px;
+                        font-size: 18px; cursor: pointer; z-index: 2;
+                        filter: ${isFav ? 'none' : 'grayscale(1) opacity(0.3)'};
+                        transition: all 0.2s;
+                    ">${isFav ? '★' : '☆'}</span>
+                    <h3>${tool.displayName}</h3>
+                    <p>${tool.description}</p>
+                    <span style="display:inline-block; margin-top:8px; padding:2px 8px; border-radius:10px; font-size:11px; background:rgba(255,152,0,0.1); color:var(--highlight-text);">${category}</span>
+                </div>
             `;
-            card.addEventListener('click', () => showToolDetail(toolName));
+
+            //卡片点击 → 进入工具
+            card.addEventListener('click', (e) => {
+                if (e.target.classList.contains('fav-star')) return;
+                showToolDetail(toolName);
+            });
+
+            // 星星点击 → 切换收藏
+            const star = card.querySelector('.fav-star');
+            star.addEventListener('click', (e) => {
+                e.stopPropagation();
+                let favs = [];
+                try { favs = JSON.parse(localStorage.getItem('vcpht_favorites') || '[]'); } catch(err) { favs = []; }
+
+                const idx = favs.indexOf(toolName);
+                if (idx >= 0) {
+                    favs.splice(idx, 1);
+                    star.textContent = '☆';
+                    star.style.filter = 'grayscale(1) opacity(0.3)';
+                } else {
+                    favs.push(toolName);
+                    star.textContent = '★';
+                    star.style.filter = 'none';
+                }
+                localStorage.setItem('vcpht_favorites', JSON.stringify(favs));// 如果当前在收藏筛选模式，重新过滤
+                if (categorySelect.value === '__favorites__') {
+                    filterCards();
+                }
+            });
+
+            // 星星hover效果
+            star.addEventListener('mouseenter', () => {
+                if (star.style.filter.includes('grayscale')) {
+                    star.style.filter = 'grayscale(0) opacity(0.7)';
+                }
+            });
+            star.addEventListener('mouseleave', () => {
+                const currentFavs = JSON.parse(localStorage.getItem('vcpht_favorites') || '[]');
+                if (!currentFavs.includes(toolName)) {
+                    star.style.filter = 'grayscale(1) opacity(0.3)';
+                }
+            });
+
             toolGrid.appendChild(card);
         }
+
+        // 搜索与筛选逻辑
+        function filterCards() {
+            const query = searchInput.value.toLowerCase().trim();
+            const selectedCat = categorySelect.value;
+            const cards = toolGrid.querySelectorAll('.tool-card');
+            let visibleCount = 0;
+
+            // 收藏模式需要实时读取
+            let currentFavs = [];
+            if (selectedCat === '__favorites__') {
+                try { currentFavs = JSON.parse(localStorage.getItem('vcpht_favorites') || '[]'); } catch(e) { currentFavs = []; }
+            }
+
+            cards.forEach(card => {
+                const matchSearch = !query || card.dataset.search.includes(query);
+                let matchCat;
+                if (selectedCat === '__favorites__') {
+                    matchCat = currentFavs.includes(card.dataset.toolName);
+                } else {
+                    matchCat = !selectedCat || card.dataset.category === selectedCat;
+                }
+
+                if (matchSearch && matchCat) {
+                    card.style.display = '';visibleCount++;
+                } else {
+                    card.style.display = 'none';
+                }
+            });
+
+            countBadge.textContent = query || selectedCat
+                ? `匹配 ${visibleCount} / ${totalTools}`
+                : `共 ${totalTools} 个`;
+        }
+
+        searchInput.addEventListener('input', filterCards);
+        categorySelect.addEventListener('change', filterCards);
     }
 
     function showToolDetail(toolName) {
+        // 保存当前表单状态
+        if (currentToolName) {
+            saveFormState(currentToolName);
+        }
+        currentToolName = toolName;
+
         const tool = tools[toolName];
         toolTitle.textContent = tool.displayName;
         toolDescription.textContent = tool.description;
@@ -102,6 +300,44 @@ document.addEventListener('DOMContentLoaded', async () => {
         toolGrid.style.display = 'none';
         toolDetailView.style.display = 'block';
         resultContainer.innerHTML = '';
+        renderHistory();
+    }
+
+    // --- 表单状态缓存 ---
+    function saveFormState(toolName) {
+        if (!toolForm) return;
+        const state = {};
+        const inputs = toolForm.querySelectorAll('input, textarea, select');
+        inputs.forEach(el => {
+            if (!el.name) return;
+            //跳过dragdrop类型和文件输入
+            if (el.closest('.dragdrop-image-container')) return;
+            if (el.type === 'file') return;
+            if (el.type === 'checkbox' || el.type === 'radio') {
+                state[el.name + (el.type === 'radio' ? '_' + el.value : '')] = el.checked;
+            } else {
+                state[el.name] = el.value;
+            }
+        });
+        formStateCache.set(toolName, state);
+    }
+
+    function restoreFormState(toolName) {
+        const state = formStateCache.get(toolName);
+        if (!state) return;
+        const inputs = toolForm.querySelectorAll('input, textarea, select');
+        inputs.forEach(el => {
+            if (!el.name) return;
+            if (el.closest('.dragdrop-image-container')) return;
+            if (el.type === 'checkbox') {
+                if (state[el.name] !== undefined) el.checked = state[el.name];
+            } else if (el.type === 'radio') {
+                const key = el.name + '_' + el.value;
+                if (state[key] !== undefined) el.checked = state[key];
+            } else {
+                if (state[el.name] !== undefined) el.value = state[el.name];
+            }
+        });
     }
 
     function buildToolForm(toolName) {
@@ -113,7 +349,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (tool.commands) {
             const commandSelectGroup = document.createElement('div');
             commandSelectGroup.className = 'form-group';
-            commandSelectGroup.innerHTML = `<label for="command-select">选择操作 (Command):</label>`;
+            commandSelectGroup.innerHTML = `<label>选择操作 (Command):</label>`;
             const commandSelect = document.createElement('select');
             commandSelect.id = 'command-select';
             commandSelect.name = 'command';
@@ -126,17 +362,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
             commandSelectGroup.appendChild(commandSelect);
             toolForm.appendChild(commandSelectGroup);
-            
             toolForm.appendChild(paramsContainer);
 
             commandSelect.addEventListener('change', (e) => {
                 renderFormParams(tool.commands[e.target.value].params, paramsContainer, toolName, e.target.value);
-            });
-            renderFormParams(tool.commands[commandSelect.value].params, paramsContainer, toolName, commandSelect.value);
-
-        } else {
-            toolForm.appendChild(paramsContainer);
-            renderFormParams(tool.params, paramsContainer, toolName);
+            });renderFormParams(tool.commands[commandSelect.value].params, paramsContainer, toolName, commandSelect.value);} else {
+            toolForm.appendChild(paramsContainer);renderFormParams(tool.params, paramsContainer, toolName);
         }
 
         // 添加按钮容器
@@ -154,8 +385,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             border-radius: 5px;
             cursor: pointer;
             font-size: 16px;
-            transition: background-color 0.2s;
-        `;
+            transition: background-color 0.2s;`;
         buttonContainer.appendChild(submitButton);
         
         // 添加全部清空按钮
@@ -179,7 +409,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         
         buttonContainer.appendChild(clearAllButton);
 
-        // 为 ComfyUI 工具添加设置按钮
+        // 为ComfyUI 工具添加设置按钮
         if (toolName === 'ComfyUIGen') {
             const settingsButton = document.createElement('button');
             settingsButton.type = 'button';
@@ -219,145 +449,63 @@ document.addEventListener('DOMContentLoaded', async () => {
             e.preventDefault();
             executeTool(toolName);
         };
+
+        // 恢复缓存的表单状态
+        setTimeout(() => restoreFormState(toolName), 0);
     }
 
     function renderFormParams(params, container, toolName = '', commandName = '') {
         container.innerHTML = '';
         const dependencyListeners = [];
 
-        // 检查是否为 NanoBananaGen 的 compose 命令
         const isNanoBananaCompose = toolName === 'NanoBananaGen' && commandName === 'compose';
-        let imageUrlCounter = 1; // 用于动态图片输入框的计数器
 
+        // 分离必填和可选参数
+        const requiredParams = [];
+        const optionalParams = [];
         params.forEach(param => {
-            const paramGroup = document.createElement('div');
-            paramGroup.className = 'form-group';
-            
-            let labelText = param.description || param.name;
-            const label = document.createElement('label');
-            label.textContent = `${labelText}${param.required ? ' *' : ''}`;
-            
-            let input;
-            if (param.type === 'textarea') {
-                input = document.createElement('textarea');
-            } else if (param.type === 'select') {
-                input = document.createElement('select');
-                param.options.forEach(opt => {
-                    const option = document.createElement('option');
-                    option.value = opt;
-                    option.textContent = opt || `(${param.name})`;
-                    input.appendChild(option);
-                });
-            } else if (param.type === 'radio') {
-                input = document.createElement('div');
-                input.className = 'radio-group';
-                param.options.forEach(opt => {
-                    const radioLabel = document.createElement('label');
-                    const radioInput = document.createElement('input');
-                    radioInput.type = 'radio';
-                    radioInput.name = param.name;
-                    radioInput.value = opt;
-                    if (opt === param.default) radioInput.checked = true;
-                    
-                    radioLabel.appendChild(radioInput);
-                    radioLabel.append(` ${opt}`);
-                    input.appendChild(radioLabel);
-
-                    // Add listener for dependency changes
-                    radioInput.addEventListener('change', () => {
-                        dependencyListeners.forEach(listener => listener());
-                    });
-                });
-            } else if (param.type === 'dragdrop_image') {
-                // 创建拖拽上传图片输入框
-                input = canvasHandler.createDragDropImageInput(param);
-
-            } else if (param.type === 'checkbox') {
-                input = document.createElement('div');
-                input.className = 'checkbox-group';
-                
-                const checkboxLabel = document.createElement('label');
-                checkboxLabel.className = 'checkbox-label';
-                checkboxLabel.style.cssText = `
-                    display: flex;
-                    align-items: center;
-                    gap: 8px;
-                    cursor: pointer;
-                    margin-top: 5px;
-                `;
-                
-                const checkbox = document.createElement('input');
-                checkbox.type = 'checkbox';
-                checkbox.name = param.name;
-                checkbox.checked = param.default || false;
-                
-                const checkboxText = document.createElement('span');
-                checkboxText.textContent = param.description || param.name;
-                
-                checkboxLabel.appendChild(checkbox);
-                checkboxLabel.appendChild(checkboxText);
-                input.appendChild(checkboxLabel);
-                
-                // 添加翻译相关的UI元素
-                if (param.name === 'enable_translation') {
-                    const translationContainer = createTranslationContainer(param.name);
-                    input.appendChild(translationContainer);
-                    
-                    // 监听 checkbox 状态变化
-                    checkbox.addEventListener('change', (e) => {
-                        const container = input.querySelector('.translation-container');
-                        if (container) {
-                            container.style.display = e.target.checked ? 'block' : 'none';
-                        }
-                    });
-                }
+            if (param.name === 'maid') return; // 隐藏maid字段
+            if (param.required) {
+                requiredParams.push(param);
             } else {
-                input = document.createElement('input');
-                input.type = param.type || 'text';
-                
-                // 为数字类型添加属性支持
-                if (input.type === 'number') {
-                    if (param.min !== undefined) input.min = param.min;
-                    if (param.max !== undefined) input.max = param.max;
-                    // 默认步长为 any，允许输入小数，除非另有指定
-                    input.step = param.step || 'any';
-                }
-            }
-            
-            if (input.tagName !== 'DIV' || param.type === 'dragdrop_image') {
-                input.name = param.name;
-                if (param.type !== 'dragdrop_image') {
-                    input.placeholder = param.placeholder || '';
-                    if (param.default) input.value = param.default;
-                }
-                if (param.required) input.required = true;
-            } else {
-                // For radio group, we need a hidden input to carry the name for FormData
-                const hiddenInput = document.createElement('input');
-                hiddenInput.type = 'hidden';
-                hiddenInput.name = param.name;
-                paramGroup.appendChild(hiddenInput);
-            }
-
-            paramGroup.appendChild(label);
-            paramGroup.appendChild(input);
-            container.appendChild(paramGroup);
-
-            // Handle conditional visibility
-            if (param.dependsOn) {
-                const dependencyCheck = () => {
-                    const dependencyField = toolForm.querySelector(`[name="${param.dependsOn.field}"]:checked`) || toolForm.querySelector(`[name="${param.dependsOn.field}"]`);
-                    if (dependencyField && dependencyField.value === param.dependsOn.value) {
-                        paramGroup.style.display = '';
-                    } else {
-                        paramGroup.style.display = 'none';
-                    }
-                };
-                dependencyListeners.push(dependencyCheck);
+                optionalParams.push(param);
             }
         });
 
-        // 如果是 NanoBanana compose 模式，添加动态图片管理区域
+        //渲染必填参数
+        requiredParams.forEach(param => {
+            const el = createParamElement(param, dependencyListeners, toolName);
+            container.appendChild(el);
+        });
+
+        // 渲染可选参数（折叠）
+        if (optionalParams.length > 0) {
+            const details = document.createElement('details');
+            details.className = 'optional-params-group';
+            details.style.cssText = `
+                margin-top: 10px; border: 1px solid var(--border-color);
+                border-radius: 8px; overflow: hidden;
+            `;
+            const summary = document.createElement('summary');
+            summary.style.cssText = `
+                padding: 10px 14px; cursor: pointer;
+                background: rgba(255,255,255,0.03);
+                color: var(--secondary-text); font-size: 14px;
+                user-select: none;
+            `;
+            summary.textContent = `高级选项 (${optionalParams.length} 项)`;
+            details.appendChild(summary);
+
+            const optContainer = document.createElement('div');
+            optContainer.style.cssText = 'padding: 10px 14px;';
+            optionalParams.forEach(param => {
+                const el = createParamElement(param, dependencyListeners, toolName);
+                optContainer.appendChild(el);
+            });
+            details.appendChild(optContainer);
+            container.appendChild(details);
+        }
+
         if (isNanoBananaCompose) {
             dynamicImageHandler.createDynamicImageContainer(container);
         }
@@ -365,7 +513,119 @@ document.addEventListener('DOMContentLoaded', async () => {
         dependencyListeners.forEach(listener => listener());
     }
 
-    // 创建翻译容器
+    //提取的单参数渲染函数
+    function createParamElement(param, dependencyListeners, toolName) {
+        const paramGroup = document.createElement('div');
+        paramGroup.className = 'form-group';
+        
+        let labelText = param.description || param.name;
+        const label = document.createElement('label');
+        label.textContent = `${labelText}${param.required ? ' *' : ''}`;
+        
+        let input;
+        if (param.type === 'textarea') {
+            input = document.createElement('textarea');
+        } else if (param.type === 'select') {
+            input = document.createElement('select');param.options.forEach(opt => {
+                const option = document.createElement('option');
+                option.value = opt;
+                option.textContent = opt || `(${param.name})`;
+                input.appendChild(option);
+            });
+        } else if (param.type === 'radio') {
+            input = document.createElement('div');
+            input.className = 'radio-group';
+            param.options.forEach(opt => {
+                const radioLabel = document.createElement('label');
+                const radioInput = document.createElement('input');
+                radioInput.type = 'radio';
+                radioInput.name = param.name;
+                radioInput.value = opt;
+                if (opt === param.default) radioInput.checked = true;
+                radioLabel.appendChild(radioInput);
+                radioLabel.append(` ${opt}`);
+                input.appendChild(radioLabel);
+
+                radioInput.addEventListener('change', () => {
+                    dependencyListeners.forEach(listener => listener());
+                });
+            });
+        } else if (param.type === 'dragdrop_image') {
+            input = canvasHandler.createDragDropImageInput(param);
+        } else if (param.type === 'checkbox') {
+            input = document.createElement('div');
+            input.className = 'checkbox-group';
+            
+            const checkboxLabel = document.createElement('label');
+            checkboxLabel.className = 'checkbox-label';
+            checkboxLabel.style.cssText = `
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                cursor: pointer;margin-top: 5px;
+            `;
+            
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.name = param.name;
+            checkbox.checked = param.default || false;
+            
+            const checkboxText = document.createElement('span');
+            checkboxText.textContent = param.description || param.name;
+            
+            checkboxLabel.appendChild(checkbox);
+            checkboxLabel.appendChild(checkboxText);
+            input.appendChild(checkboxLabel);
+            
+            if (param.name === 'enable_translation') {
+                const translationContainer = createTranslationContainer(param.name);
+                input.appendChild(translationContainer);
+                
+                checkbox.addEventListener('change', (e) => {
+                    const container = input.querySelector('.translation-container');
+                    if (container) {
+                        container.style.display = e.target.checked ? 'block' : 'none';
+                    }
+                });
+            }
+        } else {
+            input = document.createElement('input');
+            input.type = param.type || 'text';
+            if (input.type === 'number') {
+                if (param.min !== undefined) input.min = param.min;
+                if (param.max !== undefined) input.max = param.max;
+                input.step = param.step || 'any';
+            }}
+        
+        if (input.tagName !== 'DIV' || param.type === 'dragdrop_image') {
+            input.name = param.name;
+            if (param.type !== 'dragdrop_image') {
+                input.placeholder = param.placeholder || '';
+                if (param.default) input.value = param.default;
+            }
+            if (param.required) input.required = true;
+        } else {
+            const hiddenInput = document.createElement('input');
+            hiddenInput.type = 'hidden';
+            hiddenInput.name = param.name;
+            paramGroup.appendChild(hiddenInput);}
+
+        paramGroup.appendChild(label);
+        paramGroup.appendChild(input);
+
+        if (param.dependsOn) {
+            const dependencyCheck = () => {
+                const dependencyField = toolForm.querySelector(`[name="${param.dependsOn.field}"]:checked`) || toolForm.querySelector(`[name="${param.dependsOn.field}"]`);
+                if (dependencyField && dependencyField.value === param.dependsOn.value) {
+                    paramGroup.style.display = '';
+                } else {
+                    paramGroup.style.display = 'none';
+                }
+            };
+            dependencyListeners.push(dependencyCheck);}
+
+        return paramGroup;
+    }
     function createTranslationContainer(paramName) {
         const container = document.createElement('div');
         container.className = 'translation-container';
@@ -378,7 +638,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             background: rgba(59, 130, 246, 0.05);
         `;
         
-        // 翻译设置区域
         const settingsArea = document.createElement('div');
         settingsArea.style.cssText = `
             display: flex;
@@ -399,9 +658,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         const qualitySelect = document.createElement('select');
         qualitySelect.className = 'translation-quality-select';
         qualitySelect.innerHTML = `
-            <option value="gemini-2.5-flash-lite-preview-06-17">快速</option>
-            <option value="gemini-2.5-flash" selected>均衡</option>
-            <option value="gemini-2.5-pro">质量</option>
+            <option value="gemini-2.5-flash">快速</option>
+            <option value="gemini-2.0-flash" selected>均衡</option>
+            <option value="gpt-4o">质量</option>
         `;
         qualitySelect.style.cssText = `
             padding: 6px 12px;
@@ -455,7 +714,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const translatedPromptArea = document.createElement('textarea');
         translatedPromptArea.className = 'translated-prompt';
         translatedPromptArea.placeholder = '翻译结果将显示在这里…';
-        translatedPromptArea.readOnly = false; // 允许用户编辑
+        translatedPromptArea.readOnly = false;
         translatedPromptArea.style.cssText = `
             width: 100%;
             min-height: 80px;
@@ -486,8 +745,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             padding: 8px 16px;
             border-radius: 4px;
             cursor: pointer;
-            font-size: 14px;
-        `;
+            font-size: 14px;`;
         
         const useOriginalButton = document.createElement('button');
         useOriginalButton.type = 'button';
@@ -502,7 +760,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             font-size: 14px;
         `;
         
-        // 翻译功能
         translateButton.addEventListener('click', async () => {
             const promptTextarea = toolForm.querySelector('textarea[name="prompt"]');
             if (promptTextarea && promptTextarea.value.trim()) {
@@ -514,7 +771,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         });
         
-        // 使用原文
         useOriginalButton.addEventListener('click', () => {
             const promptTextarea = toolForm.querySelector('textarea[name="prompt"]');
             if (promptTextarea) {
@@ -540,7 +796,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         button.disabled = true;
         
         try {
-            // 获取目标语言名称
             const languageMap = {
                 'en': '英语',
                 'zh': '中文', 
@@ -552,8 +807,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             };
             
             const targetLanguageText = languageMap[targetLang] || '英语';
-            
-            // 构建系统提示词（与 VCPChat 翻译模块保持一致）
             const systemPrompt = `你是一个专业的翻译助手。请将用户提供的文本翻译成${targetLanguageText}。 仅返回翻译结果，不要包含任何解释或额外信息。`;
             
             const messages = [
@@ -561,7 +814,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                 { role: 'user', content: text }
             ];
             
-            // 使用 VCP 的 chat 接口进行翻译
             const chatUrl = VCP_SERVER_URL.replace('/v1/human/tool', '/v1/chat/completions');
             const response = await fetch(chatUrl, {
                 method: 'POST',
@@ -603,40 +855,31 @@ document.addEventListener('DOMContentLoaded', async () => {
     // 全部清空功能
     function clearAllFormData(toolName) {
         const confirmed = confirm('确定要清空所有内容吗？包括提示词、翻译内容、图片和额外图片。');
-        
         if (!confirmed) return;
         
-        // 1. 清空所有输入框
         const inputs = toolForm.querySelectorAll('input, textarea, select');
         inputs.forEach(input => {
             if (input.type === 'checkbox' || input.type === 'radio') {
                 input.checked = input.defaultChecked || false;
             } else if (input.tagName === 'SELECT') {
-                input.selectedIndex = 0; // 重置为默认选项
+                input.selectedIndex = 0;
             } else {
                 input.value = '';
             }
         });
         
-        // 2. 清空翻译容器
         const translationContainers = toolForm.querySelectorAll('.translation-container');
         translationContainers.forEach(container => {
             const translatedPrompt = container.querySelector('.translated-prompt');
-            if (translatedPrompt) {
-                translatedPrompt.value = '';
-            }
-            // 隐藏翻译容器
+            if (translatedPrompt) translatedPrompt.value = '';
             container.style.display = 'none';
         });
         
-        // 3. 清空图片预览区域
         const previewAreas = toolForm.querySelectorAll('.image-preview-area');
         previewAreas.forEach(preview => {
-            preview.style.display = 'none';
-            preview.innerHTML = '';
+            preview.style.display = 'none';preview.innerHTML = '';
         });
         
-        // 4. 显示所有拖拽区域，隐藏清空按钮
         const dropZones = toolForm.querySelectorAll('.drop-zone');
         const clearButtons = toolForm.querySelectorAll('.clear-image-btn');
         
@@ -644,62 +887,43 @@ document.addEventListener('DOMContentLoaded', async () => {
             dropZone.style.display = 'block';
             dropZone.innerHTML = `
                 <div class="drop-icon">📁</div>
-                <div class="drop-text">拖拽图片文件到此处或点击选择</div>
-            `;
-            dropZone.style.color = 'var(--secondary-text)';
+                <p>拖拽图片文件到此处或点击选择</p>
+            `;dropZone.style.color = 'var(--secondary-text)';
         });
         
-        clearButtons.forEach(btn => {
-            btn.style.display = 'none';
-        });
+        clearButtons.forEach(btn => { btn.style.display = 'none'; });
         
-        // 5. 清空动态图片区域（仅限 NanoBananaGen compose 模式）
         if (toolName === 'NanoBananaGen') {
             const dynamicContainer = toolForm.querySelector('.dynamic-images-container');
             if (dynamicContainer) {
                 const imagesList = dynamicContainer.querySelector('.sortable-images-list');
                 if (imagesList) {
-                    // 清空所有动态添加的图片
                     const dynamicItems = imagesList.querySelectorAll('.dynamic-image-item');
-                    dynamicItems.forEach(item => {
-                        item.remove();
-                    });
-                }
-            }
+                    dynamicItems.forEach(item => { item.remove(); });
+                }}
         }
         
-        // 6. 清空结果容器
-        if (resultContainer) {
-            resultContainer.innerHTML = '';
-        }
+        if (resultContainer) resultContainer.innerHTML = '';
         
-        // 7. 显示成功提示
+        // 清除该工具的缓存
+        formStateCache.delete(toolName);
         const successMessage = document.createElement('div');
         successMessage.className = 'success-notification';
         successMessage.style.cssText = `
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            background: var(--success-color);
-            color: white;
-            padding: 12px 20px;
-            border-radius: 6px;
-            z-index: 1000;
-            font-size: 14px;
-            font-weight: 500;
+            position: fixed; top: 20px; right: 20px;
+            background: var(--success-color); color: white;
+            padding: 12px 20px; border-radius: 6px;
+            z-index: 1000; font-size: 14px; font-weight: 500;
             box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
         `;
         successMessage.textContent = '✓ 已清空所有内容';
         document.body.appendChild(successMessage);
         
-        // 3秒后移除提示
         setTimeout(() => {
             if (successMessage.parentNode) {
                 successMessage.classList.add('removing');
                 setTimeout(() => {
-                    if (successMessage.parentNode) {
-                        successMessage.parentNode.removeChild(successMessage);
-                    }
+                    if (successMessage.parentNode) successMessage.parentNode.removeChild(successMessage);
                 }, 300);
             }
         }, 2700);
@@ -709,71 +933,28 @@ document.addEventListener('DOMContentLoaded', async () => {
     function showFilenameSettings() {
         const overlay = document.createElement('div');
         overlay.style.cssText = `
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.5);
-            z-index: 10000;
-            display: flex;
-            justify-content: center;
-            align-items: center;
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.5); z-index: 10000;
+            display: flex; justify-content: center; align-items: center;
         `;
         
         const dialog = document.createElement('div');
         dialog.style.cssText = `
-            background: var(--card-bg);
-            border-radius: 8px;
-            padding: 30px;
-            width: 90%;
-            width: 90%;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            background: var(--card-bg); border-radius: 8px; padding: 30px;
+            width: 90%; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
             border: 1px solid var(--border-color);
         `;
         
         dialog.innerHTML = `
-            <h3 style="margin: 0 0 20px 0; color: var(--primary-text); text-align: center;">文件名显示设置</h3>
-            <div style="margin-bottom: 20px;">
-                <label style="display: block; margin-bottom: 8px; color: var(--secondary-text); font-weight: bold;">
-                    文件名最大长度（超过则省略）：
-                </label>
-                <input type="number" id="filename-length-input" 
-                    value="${MAX_FILENAME_LENGTH}" 
-                    min="50" 
-                    max="1000" 
-                    style="
-                        width: 100%;
-                        padding: 10px;
-                        border: 1px solid var(--border-color);
-                        border-radius: 4px;
-                        background: var(--input-bg);
-                        color: var(--primary-text);
-                        font-size: 14px;
-                        box-sizing: border-box;
-                    "
-                >
-                <div style="font-size: 12px; color: var(--secondary-text); margin-top: 5px;">
-                    建议范围：50-1000 字符，默认为 400
-                </div>
+            <h3>文件名显示设置</h3>
+            <div style="margin: 15px 0;">
+                <label>文件名最大长度（超过则省略）：</label>
+                <input type="number" id="filename-length-input" value="${MAX_FILENAME_LENGTH}" min="50" max="1000" style="width: 100%; padding: 8px; margin-top: 5px; background: var(--input-bg); color: var(--primary-text); border: 1px solid var(--border-color); border-radius: 4px;">
             </div>
-            <div style="display: flex; gap: 10px; justify-content: flex-end;">
-                <button id="cancel-btn" style="
-                    background: var(--secondary-color, #6b7280);
-                    color: white;
-                    border: none;
-                    padding: 10px 20px;
-                    border-radius: 4px;
-                    cursor: pointer;
-                ">取消</button>
-                <button id="save-btn" style="
-                    background: var(--primary-color);
-                    color: white;
-                    border: none;
-                    padding: 10px 20px;
-                    border-radius: 4px;
-                    cursor: pointer;
-                ">保存</button>
+            <p style="font-size: 12px; color: var(--secondary-text);">建议范围：50-1000 字符，默认为 400</p>
+            <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px;">
+                <button id="cancel-btn" style="padding: 8px 16px; background: var(--secondary-color, #6b7280); color: white; border: none; border-radius: 4px; cursor: pointer;">取消</button>
+                <button id="save-btn" style="padding: 8px 16px; background: var(--success-color); color: white; border: none; border-radius: 4px; cursor: pointer;">保存</button>
             </div>
         `;
         
@@ -781,43 +962,25 @@ document.addEventListener('DOMContentLoaded', async () => {
         const cancelBtn = dialog.querySelector('#cancel-btn');
         const saveBtn = dialog.querySelector('#save-btn');
         
-        cancelBtn.addEventListener('click', () => {
-            document.body.removeChild(overlay);
-        });
+        cancelBtn.addEventListener('click', () => { document.body.removeChild(overlay); });
         
         saveBtn.addEventListener('click', async () => {
             const newLength = parseInt(input.value, 10);
             if (newLength >= 50 && newLength <= 1000) {
                 MAX_FILENAME_LENGTH = newLength;
                 settings.maxFilenameLength = newLength;
-                
                 try {
                     await saveSettings();
-                    
-                    // 显示成功提示
                     const successMsg = document.createElement('div');
                     successMsg.className = 'success-notification';
                     successMsg.style.cssText = `
-                        position: fixed;
-                        top: 20px;
-                        right: 20px;
-                        background: var(--success-color);
-                        color: white;
-                        padding: 12px 20px;
-                        border-radius: 6px;
-                        z-index: 10001;
-                        font-size: 14px;
-                        font-weight: 500;
-                    `;
+                        position: fixed; top: 20px; right: 20px;
+                        background: var(--success-color); color: white;
+                        padding: 12px 20px; border-radius: 6px;
+                        z-index: 10001; font-size: 14px; font-weight: 500;`;
                     successMsg.textContent = '✓ 设置已保存';
                     document.body.appendChild(successMsg);
-                    
-                    setTimeout(() => {
-                        if (successMsg.parentNode) {
-                            successMsg.parentNode.removeChild(successMsg);
-                        }
-                    }, 2000);
-                    
+                    setTimeout(() => { if (successMsg.parentNode) successMsg.parentNode.removeChild(successMsg); }, 2000);
                     document.body.removeChild(overlay);
                 } catch (saveError) {
                     console.error('[VCPHumanToolBox] Failed to save settings:', saveError);
@@ -829,13 +992,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
         
         overlay.appendChild(dialog);
-        document.body.appendChild(overlay);
-        
-        // 点击背景关闭
-        overlay.addEventListener('click', (e) => {
-            if (e.target === overlay) {
-                document.body.removeChild(overlay);
-            }
+        document.body.appendChild(overlay);overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) document.body.removeChild(overlay);
         });
     }
 
@@ -844,11 +1002,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const args = {};
         let finalToolName = toolName;
 
-        const tool = tools[toolName];
-        // The finalToolName is always the toolName. The 'command' is an argument.
-
         for (let [key, value] of formData.entries()) {
-            // Handle checkbox
             const inputElement = toolForm.querySelector(`[name="${key}"]`);
             if (inputElement && inputElement.type === 'checkbox') {
                 args[key] = inputElement.checked;
@@ -857,7 +1011,17 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         }
 
-        resultContainer.innerHTML = '<div class="loader"></div>';
+        // 防御性注入 maid
+        args.maid = USER_NAME;
+        // 计时器
+        const startTime = Date.now();
+        let timerInterval;
+        resultContainer.innerHTML = '<div class="loader"></div><p class="loading" id="loading-timer">⏱ 执行中...</p>';
+        const timerEl = document.getElementById('loading-timer');
+        timerInterval = setInterval(() => {
+            const elapsed = Math.floor((Date.now() - startTime) / 1000);
+            if (timerEl) timerEl.textContent = `⏱ 已等待 ${elapsed}s...`;
+        }, 1000);
 
         try {
             const result = await window.electronAPI.invoke('vcp-ht-execute-tool-proxy', {
@@ -868,48 +1032,109 @@ document.addEventListener('DOMContentLoaded', async () => {
                 args: args
             });
 
+            clearInterval(timerInterval);
+            const duration = ((Date.now() - startTime) / 1000).toFixed(1);
+
+            // 记录执行历史
+            executionHistory.unshift({
+                toolName: finalToolName,
+                displayName: tools[finalToolName]?.displayName || finalToolName,
+                command: args.command || '',
+                time: new Date().toLocaleTimeString(),
+                success: result.success,
+                duration: duration
+            });
+            if (executionHistory.length > 15) executionHistory.pop();
+
             if (result.success) {
-                renderResult(result.data, toolName);
+                renderResult(result.data, toolName, duration);
             } else {
-                renderResult({ status: 'error', error: result.error }, toolName);
+                renderResult({ status: 'error', error: result.error }, toolName, duration);
             }
         } catch (error) {
-            renderResult({ status: 'error', error: error.message }, toolName);
+            clearInterval(timerInterval);
+            const duration = ((Date.now() - startTime) / 1000).toFixed(1);
+            executionHistory.unshift({
+                toolName: finalToolName,
+                displayName: tools[finalToolName]?.displayName || finalToolName,
+                command: args.command || '',
+                time: new Date().toLocaleTimeString(),
+                success: false,
+                duration: duration
+            });
+            if (executionHistory.length > 15) executionHistory.pop();
+            renderResult({ status: 'error', error: error.message }, toolName, duration);
         }
+
+        renderHistory();
+        // 持久化执行历史到settings
+        settings.vcpht_executionHistory = executionHistory.slice(0, 15);
+        saveSettings().catch(e => console.warn('History save failed:', e));
     }
 
-    function renderResult(data, toolName) {
+    function renderResult(data, toolName, duration = '') {
         resultContainer.innerHTML = '';
-    
-        // 1. Handle errors first
+
+        //耗时标签
+        if (duration) {
+            const durationTag = document.createElement('div');
+            durationTag.style.cssText = `
+                display: inline-block; padding: 4px 10px; border-radius: 12px;
+                font-size: 11px; margin-bottom: 10px;
+                background: ${data.status === 'error' || data.error ? 'rgba(239,68,68,0.15)' : 'rgba(16,185,129,0.15)'};
+                color: ${data.status === 'error' || data.error ? 'var(--danger-color)' : 'var(--success-color)'};`;
+            durationTag.textContent = `${data.status === 'error' || data.error ? '❌' : '✅'} 耗时 ${duration}s`;
+            resultContainer.appendChild(durationTag);
+        }
+        
+        // 错误处理
         if (data.status === 'error' || data.error) {
             const errorMessage = data.error || data.message || '未知错误';
             const pre = document.createElement('pre');
             pre.className = 'error';
             pre.textContent = typeof errorMessage === 'object' ? JSON.stringify(errorMessage, null, 2) : errorMessage;
             resultContainer.appendChild(pre);
-            return; // Exit on error, no images to process
+
+            // 重试按钮
+            const retryBtn = document.createElement('button');
+            retryBtn.type = 'button';
+            retryBtn.innerHTML = '🔄 重试';
+            retryBtn.style.cssText = `
+                margin-top: 10px; padding: 8px 16px; border-radius: 5px;
+                border: 1px solid var(--danger-color); background: transparent;
+                color: var(--danger-color); cursor: pointer; font-size: 14px;
+                transition: all 0.2s;
+            `;
+            retryBtn.addEventListener('click', () => executeTool(toolName));
+            retryBtn.addEventListener('mouseenter', () => {
+                retryBtn.style.background = 'var(--danger-color)';
+                retryBtn.style.color = 'white';
+            });
+            retryBtn.addEventListener('mouseleave', () => {
+                retryBtn.style.background = 'transparent';
+                retryBtn.style.color = 'var(--danger-color)';
+            });
+            resultContainer.appendChild(retryBtn);
+            return;
         }
-    
-        // 2. Extract the core content, handling nested JSON from certain tools
+        
+        // 提取核心内容
         let content = data.result || data.message || data;
         if (content && typeof content.content === 'string') {
             try {
                 const parsedContent = JSON.parse(content.content);
-                // Prioritize 'original_plugin_output' as it often contains the final, formatted result.
                 content = parsedContent.original_plugin_output || parsedContent;
             } catch (e) {
-                // If it's not a valid JSON string, just use the string from 'content' property.
                 content = content.content;
             }
         }
-    
-        // 3. Render content based on its type
+        
+        // 渲染内容
         if (content == null) {
             const p = document.createElement('p');
             p.textContent = '插件执行完毕，但没有返回明确内容。';
             resultContainer.appendChild(p);
-        } else if (content && Array.isArray(content.content)) { // Multi-modal content (e.g., from GPT-4V)
+        } else if (content && Array.isArray(content.content)) {
             content.content.forEach(item => {
                 if (item.type === 'text') {
                     const pre = document.createElement('pre');
@@ -921,17 +1146,15 @@ document.addEventListener('DOMContentLoaded', async () => {
                     resultContainer.appendChild(imgElement);
                 }
             });
-        } else if (typeof content === 'string' && (content.startsWith('data:image') || /\.(jpg|jpeg|png|gif|webp)$/i.test(content))) { // Direct image URL string
+        } else if (typeof content === 'string' && (content.startsWith('data:image') || /\.(jpg|jpeg|png|gif|webp)$/i.test(content))) {
             const imgElement = document.createElement('img');
             imgElement.src = content;
             resultContainer.appendChild(imgElement);
-        } else if (typeof content === 'string') { // Markdown/HTML string
+        } else if (typeof content === 'string') {
             const div = document.createElement('div');
-            // Use marked to render markdown, which will also render raw HTML like <img> tags
             if (window.marked && typeof window.marked.parse === 'function') {
                 div.innerHTML = window.marked.parse(content);
             } else {
-                console.error("'marked' library not loaded. Displaying content as plain text.");
                 div.textContent = content;
             }
             resultContainer.appendChild(div);
@@ -939,7 +1162,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             const searchResultsWrapper = document.createElement('div');
             searchResultsWrapper.className = 'tavily-search-results';
 
-            // Render images
             if (content.images && content.images.length > 0) {
                 const imagesContainer = document.createElement('div');
                 imagesContainer.className = 'tavily-images-container';
@@ -957,34 +1179,28 @@ document.addEventListener('DOMContentLoaded', async () => {
                 searchResultsWrapper.appendChild(imagesContainer);
             }
 
-            // Render search results
             if (content.results && content.results.length > 0) {
                 const resultsContainer = document.createElement('div');
                 resultsContainer.className = 'tavily-results-container';
                 content.results.forEach(result => {
                     const resultItem = document.createElement('div');
                     resultItem.className = 'tavily-result-item';
-
                     const title = document.createElement('h4');
                     const link = document.createElement('a');
                     link.href = result.url;
                     link.textContent = result.title;
-                    link.target = '_blank'; // Open in new tab
+                    link.target = '_blank';
                     title.appendChild(link);
-
                     const url = document.createElement('p');
                     url.className = 'tavily-result-url';
                     url.textContent = result.url;
-
                     const snippet = document.createElement('div');
                     snippet.className = 'tavily-result-snippet';
                     if (window.marked && typeof window.marked.parse === 'function') {
                         snippet.innerHTML = window.marked.parse(result.content);
                     } else {
-                        console.error("'marked' library not loaded. Displaying content as plain text.");
                         snippet.textContent = result.content;
                     }
-
                     resultItem.appendChild(title);
                     resultItem.appendChild(url);
                     resultItem.appendChild(snippet);
@@ -994,36 +1210,80 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
 
             resultContainer.appendChild(searchResultsWrapper);
-        } else if (typeof content === 'object') { // Generic object
-            // Check for common image/text properties within the object
+        } else if (typeof content === 'object') {
             const imageUrl = content.image_url || content.url || content.image;
             const textResult = content.result || content.message || content.original_plugin_output || content.content;
-    
+            
             if (typeof imageUrl === 'string') {
                 const imgElement = document.createElement('img');
                 imgElement.src = imageUrl;
                 resultContainer.appendChild(imgElement);
             } else if (typeof textResult === 'string') {
                 if (window.marked && typeof window.marked.parse === 'function') {
-                    resultContainer.innerHTML = window.marked.parse(textResult);
+                    resultContainer.innerHTML += window.marked.parse(textResult);
                 } else {
-                    console.error("'marked' library not loaded. Displaying content as plain text.");
                     resultContainer.textContent = textResult;
                 }
             } else {
-                // Fallback for other objects: pretty-print the JSON
                 const pre = document.createElement('pre');
                 pre.textContent = JSON.stringify(content, null, 2);
                 resultContainer.appendChild(pre);
             }
-        } else { // Fallback for any other data type
+        } else {
             const pre = document.createElement('pre');
             pre.textContent = `插件返回了未知类型的数据: ${String(content)}`;
             resultContainer.appendChild(pre);
         }
-    
-        // 4. Finally, ensure all rendered images (newly created or from HTML) have the context menu
-        // attachEventListenersToImages(resultContainer);
+
+        // 复制按钮（仅文本结果）
+        const textContent = resultContainer.innerText.trim();
+        if (textContent && textContent.length > 10) {
+            const copyBtn = document.createElement('button');
+            copyBtn.type = 'button';
+            copyBtn.innerHTML = '📋 复制结果';
+            copyBtn.style.cssText = `
+                margin-top: 12px; padding: 6px 14px; border-radius: 5px;
+                border: 1px solid var(--border-color); background: transparent;
+                color: var(--secondary-text); cursor: pointer; font-size: 12px;
+                transition: all 0.2s;
+            `;
+            copyBtn.addEventListener('click', async () => {
+                try {
+                    await navigator.clipboard.writeText(textContent);
+                    copyBtn.innerHTML = '✅ 已复制';
+                    setTimeout(() => { copyBtn.innerHTML = '📋 复制结果'; }, 2000);
+                } catch (e) {
+                    copyBtn.innerHTML = '❌ 复制失败';
+                    setTimeout(() => { copyBtn.innerHTML = '📋 复制结果'; }, 2000);
+                }
+            });
+            resultContainer.appendChild(copyBtn);
+        }
+    }
+
+    // --- 执行历史 ---
+    function renderHistory() {
+        const historyContainer = document.getElementById('execution-history');
+        if (!historyContainer) return;
+        if (executionHistory.length === 0) {
+            historyContainer.innerHTML = '';
+            return;
+        }
+
+        historyContainer.innerHTML = `
+            <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid var(--border-color);">
+                <h4 style="margin: 0 0 10px; color: var(--secondary-text); font-size: 13px;">📜 执行历史 (最近${executionHistory.length}条)</h4>
+                ${executionHistory.map(h => `
+                    <div style="display: flex; align-items: center; gap: 8px; padding: 6px 0; font-size: 12px; color: var(--placeholder-text); border-bottom: 1px solid rgba(255,255,255,0.03);">
+                        <span>${h.success ? '✅' : '❌'}</span>
+                        <span style="color: var(--secondary-text); font-weight: 500;">${h.displayName}</span>
+                        ${h.command ? `<span style="color: var(--placeholder-text);">→ ${h.command}</span>` : ''}
+                        <span style="margin-left: auto; color: var(--placeholder-text);">${h.duration}s</span>
+                        <span style="color: var(--placeholder-text);">${h.time}</span>
+                    </div>
+                `).join('')}
+            </div>
+        `;
     }
 
     // --- Image Viewer Modal ---
@@ -1046,8 +1306,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             align-items: center;
         `;
         viewer.innerHTML = `
-            <span style="position: absolute; top: 15px; right: 35px; color: #f1f1f1; font-size: 40px; font-weight: bold; cursor: pointer;">&times;</span>
-            <img style="margin: auto; display: block; max-width: 90%; max-height: 90%;">
+            <span style="position:absolute;top:15px;right:35px;color:#f1f1f1;font-size:40px;font-weight:bold;cursor:pointer;">&times;</span>
+            <img style="margin:auto;display:block;max-width:90%;max-height:90%;">
         `;
         document.body.appendChild(viewer);
 
@@ -1067,25 +1327,19 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         function handleEscKeyModal(e) {
-            if (e.key === 'Escape') {
-                closeModal();
-            }
+            if (e.key === 'Escape') closeModal();
         }
 
         closeBtn.onclick = closeModal;
         viewer.onclick = function(e) {
-            if (e.target === viewer) {
-                closeModal();
-            }
+            if (e.target === viewer) closeModal();
         };
 
         resultContainer.addEventListener('click', (e) => {
             let target = e.target;
-            // Handle case where user clicks an IMG inside an A tag
             if (target.tagName === 'IMG' && target.parentElement.tagName === 'A') {
                 target = target.parentElement;
             }
-
             if (target.tagName === 'A' && target.href && (target.href.match(/\.(jpeg|jpg|gif|png|webp)$/i) || target.href.startsWith('data:image'))) {
                 e.preventDefault();
                 openModal(target.href);
@@ -1109,8 +1363,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 try {
                     const processedImageBase64 = await window.electronAPI.invoke('vcp-ht-process-wallpaper', imagePath);
                     if (processedImageBase64) {
-                        document.body.style.backgroundImage = `url('${processedImageBase64}')`;
-                    }
+                        document.body.style.backgroundImage = `url('${processedImageBase64}')`;}
                 } catch (error) {
                     console.error('Wallpaper processing failed:', error);
                 }
@@ -1119,9 +1372,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function initializeUI() {
-        // Window controls
         document.getElementById('minimize-btn').addEventListener('click', () => {
-            window.electronAPI.send('window-control', 'minimize');
+            window.electronAPI.send('window-control','minimize');
         });
         document.getElementById('maximize-btn').addEventListener('click', () => {
             window.electronAPI.send('window-control', 'maximize');
@@ -1130,20 +1382,17 @@ document.addEventListener('DOMContentLoaded', async () => {
             window.electronAPI.send('window-control', 'close');
         });
 
-        // Theme toggle
         const themeToggleBtn = document.getElementById('theme-toggle-btn');
         
         function applyTheme(theme) {
             if (theme === 'light') {
                 document.body.classList.add('light-theme');
-                themeToggleBtn.textContent = '☀️';
-            } else {
+                themeToggleBtn.textContent = '☀️';} else {
                 document.body.classList.remove('light-theme');
                 themeToggleBtn.textContent = '🌙';
             }
         }
 
-        // Apply initial theme from settings
         applyTheme(settings.vcpht_theme);
 
         themeToggleBtn.addEventListener('click', async () => {
@@ -1159,18 +1408,18 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         });
 
-        // App controls
         backToGridBtn.addEventListener('click', () => {
+            if (currentToolName) {
+                saveFormState(currentToolName);
+            }
             toolDetailView.style.display = 'none';
             toolGrid.style.display = 'grid';
         });
 
-        // 工作流编排按钮
         const workflowBtn = document.getElementById('workflow-btn');
         if (workflowBtn) {
             workflowBtn.addEventListener('click', openWorkflowEditor);
         }
-        
         renderToolGrid();
         loadAndProcessWallpaper();
         setupImageViewer();
@@ -1190,10 +1439,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         const drawer = document.createElement('div');
         drawer.className = 'drawer-panel';
         drawer.innerHTML = `
-            <div class="drawer-content" id="comfyui-drawer-content">
-                <div style="text-align: center; padding: 50px; color: var(--secondary-text);">
+            <div id="comfyui-drawer-content">
+                <p style="text-align: center; color: var(--secondary-text);">
                     正在加载 ComfyUI 配置...
-                </div>
+                </p>
             </div>
         `;
 
@@ -1236,9 +1485,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const drawerContent = document.getElementById('comfyui-drawer-content');
                 if (drawerContent) {
                     drawerContent.innerHTML = `
-                        <div style="text-align: center; padding: 50px; color: var(--danger-color);">
+                        <p style="color: var(--danger-color); text-align: center;">
                             加载 ComfyUI 配置失败: ${error.message}
-                        </div>
+                        </p>
                     `;
                 }
             }
@@ -1257,15 +1506,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function handleEscKey(e) {
-        if (e.key === 'Escape') {
-            closeComfyUISettings();
-        }
+        if (e.key === 'Escape') closeComfyUISettings();
     }
 
     async function loadComfyUIModules() {
         const loaderScript = document.createElement('script');
         loaderScript.src = 'ComfyUImodules/ComfyUILoader.js';
-        
         return new Promise((resolve, reject) => {
             loaderScript.onload = resolve;
             loaderScript.onerror = () => reject(new Error('无法加载 ComfyUILoader.js'));
@@ -1318,7 +1564,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    // 将函数暴露到全局作用域，以便按钮点击时调用
     window.openComfyUISettings = openComfyUISettings;
     window.closeComfyUISettings = closeComfyUISettings;
     window.openWorkflowEditor = openWorkflowEditor;

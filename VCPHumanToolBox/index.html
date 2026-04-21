@@ -18,8 +18,7 @@
             <div class="control-btn" id="maximize-btn">□</div>
             <div class="control-btn" id="close-btn">&times;</div>
         </div>
-    </div>
-    <div class="container">
+    </div><div class="container">
         <header>
             <h1>工具箱</h1>
             <p>一个为人类设计的直观工具调用界面。</p>
@@ -34,9 +33,7 @@
         </header>
 
         <main id="main-content">
-            <div id="tool-grid" class="tool-grid">
-                <!-- 工具卡片将由JS动态生成 -->
-            </div>
+            <div id="tool-grid" class="tool-grid"></div>
 
             <div id="tool-detail-view" class="tool-detail-view" style="display: none;">
                 <button id="back-to-grid-btn" class="back-btn">&larr; 返回工具列表</button>
@@ -44,16 +41,13 @@
                 <p id="tool-description"></p>
                 <form id="tool-form"></form>
                 <div id="result-container" class="result-container"></div>
+                <div id="execution-history"></div>
             </div>
         </main>
     </div>
 
-    <!-- 引入jsPlumb库 -->
     <script src="WorkflowEditormodules/jsplumb.min.js"></script>
-    
-    <!-- 引入工作流编辑器模块 -->
     <script src="WorkflowEditormodules/WorkflowEditor_ApiConfigDialog.js"></script>
-    <!-- AI 客户端（HTTP 实现 + 工厂），必须在 NodeManager 之前加载 -->
     <script src="WorkflowEditormodules/ai/HttpAiClient.js"></script>
     <script src="WorkflowEditormodules/ai/AiClientFactory.js"></script>
     <script src="WorkflowEditormodules/WorkflowEditor_PluginManager.js"></script>
@@ -66,10 +60,7 @@
     <script src="WorkflowEditormodules/WorkflowEditor_ConnectionManager_Simplified.js"></script>
     <script src="WorkflowEditormodules/WorkflowEditor_Config.js"></script>
     <script src="WorkflowEditormodules/WorkflowEditor_PluginDialog.js"></script>
-    
-    <!-- 引入 marked 库 -->
     <script src="../vendor/marked.min.js"></script>
     <script type="module" src="renderer.js"></script>
 </body>
 </html>
-
