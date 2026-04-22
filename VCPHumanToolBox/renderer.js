@@ -1,5 +1,5 @@
 // VCPHumanToolBox/renderer.js
-// Enhanced by CodeCC &赵枫 - 2026-04-21
+// Enhanced by infinite-vector - 2026-04-21
 // 8features: search+filter, hide maid, param folding, timer, retry, copy, form cache, history
 import { tools } from './renderer_modules/config.js';
 import * as canvasHandler from './renderer_modules/ui/canvas-handler.js';
@@ -463,14 +463,18 @@ document.addEventListener('DOMContentLoaded', async () => {
         // 分离必填和可选参数
         const requiredParams = [];
         const optionalParams = [];
-        params.forEach(param => {
-            if (param.name === 'maid') return; // 隐藏maid字段
-            if (param.required) {
-                requiredParams.push(param);
-            } else {
-                optionalParams.push(param);
-            }
-        });
+       params.forEach(param => {
+    if (param.name === 'maid') {
+        param.default = param.default || USER_NAME;
+        requiredParams.push(param);
+        return;
+    }
+    if (param.required) {
+        requiredParams.push(param);
+    } else {
+        optionalParams.push(param);
+    }
+});
 
         //渲染必填参数
         requiredParams.forEach(param => {
@@ -1011,8 +1015,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         }
 
-        // 防御性注入 maid
-        args.maid = USER_NAME;
+        if (!args.maid) {
+    args.maid = USER_NAME;
+}
         // 计时器
         const startTime = Date.now();
         let timerInterval;

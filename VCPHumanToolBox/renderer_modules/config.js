@@ -1,8 +1,7 @@
 // renderer_modules/config.js
 // VCPHumanToolBox工具定义
-// 最后更新: 2026-04-21by CodeCC &赵枫
-// 备份: config.js.bak.20260421
-// 工具总数: 45 (原39+ 新增6)
+// 最后更新: 2026-04-21by infinite-vector
+// 工具总数: 45
 
 // --- 工具定义 ---
 export const tools = {
@@ -665,7 +664,7 @@ export const tools = {
     // 音乐控制
     // ========================================
     'MusicController': {
-        displayName: '莱恩家的点歌台',
+        displayName: 'Nova家的点歌台',
         description: '播放音乐。[前端分布式: MusicController]',
         commands: {
             'playSong': {
@@ -683,30 +682,30 @@ export const tools = {
     // ========================================
     'AgentAssistant': {
         displayName: '女仆通讯器',
-        description: '用于联络别的女仆Agent。[后端插件: AgentAssistant]',
+        description: '用于联络别的女仆Agent。发送者署名（默认当前用户名），接收方会看到此名称。[后端插件: AgentAssistant]',
         params: [
             { name: 'maid', type: 'text', required: true, placeholder: '你的名字' },
-            { name: 'agent_name', type: 'text', required: true, placeholder: '小娜, 小克, Nova...' },
+            { name: 'agent_name', type: 'text', required: true, placeholder: 'Aemeath, Nova...' },
             { name: 'prompt', type: 'textarea', required: true, placeholder: '我是[您的名字]，我想请你...' },
             { name: 'temporary_contact', type: 'checkbox', required: false, default: false }
         ]
     },
     'AgentDream': {
         displayName: '梦境触发器',
-        description: '让一位Agent入眠做梦。[后端插件: AgentDream]',
+        description: '让一位Agent入眠做梦。推荐填写目标Agent名称，决定为哪个Agent触发梦境。[后端插件: AgentDream]',
         commands: {
             'triggerDream': {
                 description: '触发梦境',
                 params: [
-                    { name: 'maid', type: 'text', required: true, placeholder: '你的名字' },
-                    { name: 'agent_name', type: 'text', required: true, placeholder: 'Nova' }
+                    { name: 'maid', type: 'text', required: true, placeholder: '你的名字，汇聚梦泡' },
+                    { name: 'agent_name', type: 'text', required: true, placeholder: 'Nova，被梦泡包裹' }
                 ]
             }
         }
     },
     'AgentMessage': {
         displayName: '主人通讯器',
-        description: '向主人设备发送通知消息。[后端插件: AgentMessage]',
+        description: '向主人设备发送通知消息。默认署名用户，可更改。[后端插件: AgentMessage]',
         params: [
             { name: 'maid', type: 'text', required: true, placeholder: '你的名字' },
             { name: 'message', type: 'textarea', required: true, placeholder: '要发送的消息内容' }
@@ -719,7 +718,7 @@ export const tools = {
             'CreatePost': {
                 description: '创建新帖子',
                 params: [
-                    { name: 'maid', type: 'text', required: true, placeholder: '你的名字' },
+                    { name: 'maid', type: 'text', required: true, placeholder: '你的名字：帖子/回复的作者署名（默认当前用户名）' },
                     { name: 'board', type: 'text', required: true, placeholder: '板块名称' },
                     { name: 'title', type: 'text', required: true, placeholder: '[置顶] 规范流程' },
                     { name: 'content', type: 'textarea', required: true, placeholder: '帖子正文，支持Markdown' }
@@ -748,7 +747,7 @@ export const tools = {
     // ========================================
     'DeepMemo': {
         displayName: '深度回忆',
-        description: '回忆过去的聊天历史。[内置功能: DeepMemo]',
+        description: '检索所有会话历史记录。给出目标Agent名称（如 Nova），将决定检索哪位Agent的会话历史记录。[内置功能: DeepMemo]',
         params: [
             { name: 'maid', type: 'text', required: true, placeholder: '你的名字' },
             { name: 'keyword', type: 'text', required: true, placeholder: '多个关键词用空格或逗号分隔' },
@@ -757,7 +756,7 @@ export const tools = {
     },
     'LightMemo': {
         displayName: '快速回忆',
-        description: '主动检索日记本或知识库。[后端插件: LightMemo]',
+        description: '快速回忆一下对应Agent的日记本内容。根据Maid的名称，决定搜索哪个记忆库。[后端插件: LightMemo]',
         params: [
             { name: 'maid', type: 'text', required: true, placeholder:'Nova' },
             { name: 'folder', type: 'text', required: false, placeholder: '特定的索引文件夹' },
@@ -793,7 +792,7 @@ export const tools = {
     },
     'TopicMemo': {
         displayName: '话题回忆',
-        description: '回忆具体的聊天话题。[内置功能: TopicMemo]',
+        description: '目标Agent名称（如 Nova），决定回忆哪个Agent具体的聊天话题。[内置功能: TopicMemo]',
         commands: {
             'ListTopics': {
                 description: '列出所有话题',
@@ -815,7 +814,7 @@ export const tools = {
             'CreateTopic': {
                 description: '创建新话题',
                 params: [
-                    { name: 'maid', type: 'text', required: true, placeholder: '你的名字' },
+                    { name: 'maid', type: 'text', required: true, placeholder: '目标Agent名称，决定为哪个Agent创建话题' },
                     { name: 'topic_name', type: 'text', required: true },
                     { name: 'initial_message', type: 'textarea', required: true }
                 ]
@@ -936,7 +935,7 @@ export const tools = {
     // ========================================
     'ScheduleManager': {
         displayName: '日程管理器',
-        description: '辅助日程管理。[后端插件: ScheduleManager]',
+        description: '辅助日程管理。推荐给出目标Agent名称（如 Nova），决定管理哪位Agent的日程。[后端插件: ScheduleManager]',
         commands: {
             'AddSchedule': {
                 description: '添加日程',
