@@ -969,6 +969,27 @@ body.light-theme .vcp-tool-result-status:containing("SUCCESS") {
     font-family: var(--vcp-chat-code-font-family, 'Consolas', 'Monaco', 'Courier New', monospace) !important;
 }
 
+/* 🔴 工具结果纯文本内容（禁止 markdown 渲染后的 <pre> 容器） */
+.vcp-tool-result-raw-content {
+    margin: 4px 0;
+    padding: 8px 10px;
+    background: rgba(0, 0, 0, 0.06);
+    border-radius: 6px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: var(--vcp-chat-code-font-family, 'Consolas', 'Monaco', 'Courier New', monospace) !important;
+    font-size: 0.88em;
+    line-height: 1.5;
+    color: var(--tool-result-item-value-color);
+    max-height: 400px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+}
+
+body:not(.light-theme) .vcp-tool-result-raw-content {
+    background: rgba(255, 255, 255, 0.04);
+}
+
 /* Markdown support inside tool result bubble */
 .vcp-tool-result-item-value>p:first-child,
 .vcp-tool-result-footer>p:first-child {

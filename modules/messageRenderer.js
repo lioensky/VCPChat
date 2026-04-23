@@ -381,17 +381,11 @@ function transformSpecialBlocks(text, codeBlockMap) {
 
             if (isImageUrl && (key === '可访问URL' || key === '返回内容' || key === 'url' || key === 'image')) {
                 processedValue = `<a href="${value}" target="_blank" rel="noopener noreferrer" title="点击预览"><img src="${value}" class="vcp-tool-result-image" alt="Generated Image"></a>`;
-            } else if (isMarkdownField && mainRendererReferences.markedInstance) {
-                try {
-                    // 🔴 关键安全修复：工具结果属于外部不可信内容，必须先进行 HTML 转义
-                    // 这样可以确保任何 XSS 变种（如 <img onerror=>, <svg onload=> 等）都被转为纯文本显示
-                    // 同时不影响 Markdown 语法（如 **粗体**）的解析
-                    const escapedValue = escapeHtml(restoreBlocks(value));
-                    processedValue = mainRendererReferences.markedInstance.parse(escapedValue);
-                } catch (e) {
-                    console.error('Failed to parse markdown in tool result', e);
-                    processedValue = escapeHtml(restoreBlocks(value));
-                }
+            } else if (isMarkdownField) {
+                // 🔴 关键修复：工具结果内容直接 HTML 转义 + <pre> 包裹，完全禁止 markdown 渲染
+                // 工具结果可能包含 ```、「始」/「末」标记、<<<[TOOL_REQUEST]>>> 等危险语法，
+                // 若经过 markdown 解析器会导致代码围栏泄漏、双重转义和结构破坏
+                processedValue = `<pre class="vcp-tool-result-raw-content">${escapeHtml(restoreBlocks(value))}</pre>`;
             } else {
                 const urlRegex = /(https?:\/\/[^\s]+)/g;
                 processedValue = escapeHtml(restoreBlocks(value));
@@ -412,19 +406,8 @@ function transformSpecialBlocks(text, codeBlockMap) {
 
         if (otherContent.length > 0) {
             const footerText = otherContent.join('\n');
-            let processedFooter;
-            if (mainRendererReferences.markedInstance) {
-                try {
-                    // 🔴 关键安全修复：页脚同样需要转义处理
-                    const escapedFooter = escapeHtml(restoreBlocks(footerText));
-                    processedFooter = mainRendererReferences.markedInstance.parse(escapedFooter);
-                } catch (e) {
-                    console.error('Failed to parse markdown in tool result footer', e);
-                    processedFooter = `<pre>${escapeHtml(restoreBlocks(footerText))}</pre>`;
-                }
-            } else {
-                processedFooter = `<pre>${escapeHtml(restoreBlocks(footerText))}</pre>`;
-            }
+            // 🔴 关键修复：页脚内容同样禁止 markdown 渲染，防止内部语法干扰外部结构
+            const processedFooter = `<pre class="vcp-tool-result-raw-content">${escapeHtml(restoreBlocks(footerText))}</pre>`;
             html += `<div class="vcp-tool-result-footer">${processedFooter}</div>`;
         }
 
@@ -1569,13 +1552,24 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true,
             textToRender = prepareUserMessageText(textToRender);
         } else if (message.role === 'assistant' && scopeId) {
             // --- 🟢 关键修复：先保护所有可能包含 <style> 的特殊区域，再提取样式 ---
-            // 这样可以避免代码块、推送块、工具请求块和「始」「末」标记内的 <style> 被误当作真正的样式注入
+            // 这样可以避免代码块、推送块、工具请求块、工具结果块和「始」「末」标记内的 <style> 被误当作真正的样式注入
             const protectedBlocks = [];
+
+            // 🔴 最高优先级：保护工具结果块（[[VCP调用结果信息汇总:...VCP调用结果结束]]）
+            // 工具结果可能包含任意内容（大型 markdown 文件、代码、「始」「末」标记等）
+            // 必须在「始」「末」标记保护之前运行，否则结果内部的标记会被错误匹配
+            TOOL_RESULT_REGEX.lastIndex = 0;
+            let textWithProtectedBlocks = textToRender.replace(TOOL_RESULT_REGEX, (match) => {
+                const placeholder = `__VCP_STYLE_PROTECT_${protectedBlocks.length}__`;
+                protectedBlocks.push(match);
+                return placeholder;
+            });
+            TOOL_RESULT_REGEX.lastIndex = 0;
             
             // 🔴 保护工具请求块（<<<[TOOL_REQUEST]>>>...<<<[END_TOOL_REQUEST]>>>）
             // 工具请求参数中可能包含完整的HTML文档（如壁纸HTML），其中的 <style> 不应被注入
             // 使用与 TOOL_REGEX 相同的加固版正则（排除反引号包裹）
-            let textWithProtectedBlocks = textToRender.replace(TOOL_REGEX, (match) => {
+            textWithProtectedBlocks = textWithProtectedBlocks.replace(TOOL_REGEX, (match) => {
                 const placeholder = `__VCP_STYLE_PROTECT_${protectedBlocks.length}__`;
                 protectedBlocks.push(match);
                 return placeholder;

@@ -91,8 +91,15 @@ function createContentPipeline(deps = {}) {
 
         ctx.state.toolResultMap = new Map();
         const result = text.replace(toolResultRegex, (match) => {
+            // 🔴 关键修复：清除工具结果内部的所有危险 markdown 语法
+            // 工具结果可能包含来自外部文件（如 SKILL.md）的代码围栏（```），
+            // 这些围栏会穿透保护机制，被外层 markedInstance.parse() 解释为代码块，
+            // 导致后续内容被吞掉（角色分界线消失、<div> 不渲染等）
+            const sanitizedMatch = match
+                .replace(/```/g, '\\`\\`\\`');  // 转义代码围栏，防止 markdown 解析器匹配
+
             const placeholder = `__VCP_TOOL_RESULT_PLACEHOLDER_${ctx.state.toolResultPlaceholderId}__`;
-            ctx.state.toolResultMap.set(placeholder, match);
+            ctx.state.toolResultMap.set(placeholder, sanitizedMatch);
             ctx.state.toolResultPlaceholderId += 1;
             return placeholder;
         });
@@ -167,26 +174,33 @@ function createContentPipeline(deps = {}) {
         const ctx = createContext(inputText, { ...options, mode: PIPELINE_MODES.FULL_RENDER });
 
         step(ctx, 'normalize-emoticon-urls', (text) => fixEmoticonUrlsInMarkdown(text));
+
+        // 顺序协议：
+        // 🔴 关键修复：工具结果必须在「始」/「末」标记转义之前被保护
+        // 否则 processStartEndMarkers 会错误地转义工具结果内部的标记，
+        // 导致后续 transformSpecialBlocks 处理时产生双重转义和内容泄漏
+        // 1. 最先做工具结果保护（它们可能包含任意内容，包括代码块、标记等）
+        step(ctx, 'protect-tool-results', protectToolResults);
+
+        // 2. 然后安全地处理标记转义（此时只处理工具结果外部的标记）
         step(ctx, 'escape-start-end-markers', (text) => processStartEndMarkers(text));
         step(ctx, 'transform-mermaid-placeholders', (text) => transformMermaidPlaceholders(text));
 
-        // 顺序协议：
-        // 1. 先做结构保护
-        step(ctx, 'protect-tool-results', protectToolResults);
+        // 3. 保护代码块
         step(ctx, 'protect-code-blocks', protectCodeBlocks);
 
-        // 2. 再做会改变行首语义/结构边界的修正
+        // 4. 再做会改变行首语义/结构边界的修正
         step(ctx, 'deindent-misinterpreted-code-blocks', (text) => deIndentMisinterpretedCodeBlocks(text));
         step(ctx, 'deindent-html', (text) => deIndentHtml(text));
         step(ctx, 'deindent-tool-request-blocks', (text) => deIndentToolRequestBlocks(text));
 
-        // 3. 再做结构转换
+        // 5. 再做结构转换
         step(ctx, 'transform-desktop-push', transformDesktopPush);
 
-        // 4. 恢复一部分被保护的结构，以便特殊块转换能够识别
+        // 6. 恢复工具结果，以便特殊块转换能够识别
         step(ctx, 'restore-tool-results', restoreToolResults);
 
-        // 5. 特殊块转换、HTML 文档 fenced、通用处理
+        // 7. 特殊块转换、HTML 文档 fenced、通用处理
         step(ctx, 'transform-special-blocks', (text) => transformSpecialBlocks(text, ctx.state.codeBlockMap));
         step(ctx, 'ensure-html-fenced', (text) => ensureHtmlFenced(text));
         step(ctx, 'apply-common-content-processors', (text) => applyContentProcessors(text));
