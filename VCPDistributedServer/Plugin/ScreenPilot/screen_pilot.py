@@ -2,6 +2,7 @@
 """
 ScreenPilot - VCP 屏幕视觉与操控插件
 功能：截图(ScreenCapture)、点击模拟(ClickAt)、UI元素探测(InspectUI)
+      支持 DirectX/OpenGL/Vulkan 游戏窗口智能截图（自动学习 DXGI fallback）
 """
 
 import sys
@@ -71,6 +72,237 @@ def normalize_args(args):
     """处理参数同义词和大小写兼容"""
     lower = {k.lower(): v for k, v in args.items()}
     return lower
+
+
+# ============================================================
+# 截图策略学习记忆（capture_strategy.json 持久化）
+# ============================================================
+# 记住哪些进程需要 DXGI 截图（因为 GDI 截到黑屏），
+# 下次直接走 DXGI，省掉一次黑屏检测的开销。
+# 格式: { "进程名.exe": { "method": "dxgi", "learned_at": "...", "reason": "..." } }
+
+_STRATEGY_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "capture_strategy.json")
+_capture_strategy_cache = None  # 内存缓存，避免每次读磁盘
+
+
+def _load_capture_strategy():
+    """加载截图策略缓存"""
+    global _capture_strategy_cache
+    if _capture_strategy_cache is not None:
+        return _capture_strategy_cache
+    try:
+        if os.path.exists(_STRATEGY_FILE):
+            with open(_STRATEGY_FILE, "r", encoding="utf-8") as f:
+                _capture_strategy_cache = json.load(f)
+                debug_log(f"截图策略已加载: {len(_capture_strategy_cache)} 条记录")
+        else:
+            _capture_strategy_cache = {}
+    except Exception as e:
+        debug_log(f"加载截图策略失败: {e}")
+        _capture_strategy_cache = {}
+    return _capture_strategy_cache
+
+
+def _save_capture_strategy():
+    """持久化截图策略到 JSON 文件"""
+    global _capture_strategy_cache
+    if _capture_strategy_cache is None:
+        return
+    try:
+        with open(_STRATEGY_FILE, "w", encoding="utf-8") as f:
+            json.dump(_capture_strategy_cache, f, ensure_ascii=False, indent=2)
+        debug_log(f"截图策略已保存: {_STRATEGY_FILE}")
+    except Exception as e:
+        debug_log(f"保存截图策略失败: {e}")
+
+
+def _get_strategy_for_process(process_name):
+    """查询某个进程的截图策略，返回 'gdi' / 'dxgi' / None"""
+    if not process_name:
+        return None
+    strategies = _load_capture_strategy()
+    entry = strategies.get(process_name.lower())
+    if entry:
+        return entry.get("method", None)
+    return None
+
+
+def _learn_strategy(process_name, method, reason="auto-detected"):
+    """学习并持久化某个进程的截图策略"""
+    if not process_name:
+        return
+    strategies = _load_capture_strategy()
+    key = process_name.lower()
+    strategies[key] = {
+        "method": method,
+        "learned_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "reason": reason,
+    }
+    _capture_strategy_cache.update(strategies)
+    _save_capture_strategy()
+    debug_log(f"已学习截图策略: {process_name} → {method} (原因: {reason})")
+
+
+# ============================================================
+# 黑屏检测 & DXGI Fallback
+# ============================================================
+
+def is_black_image(img, threshold=5):
+    """
+    检测截图是否为纯黑/近黑（DirectX 截图失败的典型特征）。
+    threshold: 平均像素亮度低于此值视为黑屏，默认 5。
+    """
+    import numpy as np
+    arr = np.array(img.convert("RGB"), dtype=np.uint8)
+    mean_val = arr.mean()
+    debug_log(f"黑屏检测: 平均亮度={mean_val:.1f}, 阈值={threshold}")
+    return mean_val < threshold
+
+
+def capture_dxgi_region(hwnd):
+    """
+    通过 DXGI（全屏截图+裁剪）截取指定窗口区域。
+    pyautogui.screenshot() 底层使用 DXGI Desktop Duplication，
+    能正确捕获 DirectX/OpenGL/Vulkan 渲染的内容。
+    需要窗口处于前台可见状态。
+    """
+    import pyautogui
+    import win32gui
+    import win32con
+
+    # 确保窗口可见且在前台
+    try:
+        if win32gui.IsIconic(hwnd):
+            win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+            time.sleep(0.3)
+        win32gui.SetForegroundWindow(hwnd)
+        time.sleep(0.3)  # 等待窗口完全显示
+    except Exception as e:
+        debug_log(f"DXGI: 置前窗口失败: {e}")
+
+    # 获取窗口在屏幕上的位置
+    left, top, right, bottom = win32gui.GetWindowRect(hwnd)
+    w = right - left
+    h = bottom - top
+
+    if w <= 0 or h <= 0:
+        raise ValueError(f"窗口尺寸无效: {w}x{h}")
+
+    # 全屏截图
+    full_img = pyautogui.screenshot()
+    screen_w, screen_h = full_img.size
+
+    # 裁剪到窗口区域（确保不越界）
+    crop_left = max(0, left)
+    crop_top = max(0, top)
+    crop_right = min(screen_w, right)
+    crop_bottom = min(screen_h, bottom)
+
+    if crop_right <= crop_left or crop_bottom <= crop_top:
+        debug_log(f"DXGI: 裁剪区域无效 ({crop_left},{crop_top},{crop_right},{crop_bottom})，返回全屏")
+        return full_img
+
+    img = full_img.crop((crop_left, crop_top, crop_right, crop_bottom))
+    debug_log(f"DXGI: 截图成功 {img.size}, 窗口区域 ({crop_left},{crop_top})→({crop_right},{crop_bottom})")
+    return img
+
+
+# ============================================================
+# 进程名查找窗口
+# ============================================================
+
+def _get_process_name_by_hwnd(hwnd):
+    """根据 HWND 获取进程名（如 'YuanShen.exe'）"""
+    try:
+        import win32process
+        import win32api
+        _, pid = win32process.GetWindowThreadProcessId(hwnd)
+        # 尝试用 psutil（更可靠）
+        try:
+            import psutil
+            proc = psutil.Process(pid)
+            return proc.name()
+        except ImportError:
+            pass
+        # 降级到 Win32 API
+        try:
+            handle = win32api.OpenProcess(0x0400 | 0x0010, False, pid)  # PROCESS_QUERY_INFORMATION | PROCESS_VM_READ
+            exe_path = win32process.GetModuleFileNameEx(handle, 0)
+            win32api.CloseHandle(handle)
+            return os.path.basename(exe_path)
+        except Exception:
+            pass
+    except Exception as e:
+        debug_log(f"获取进程名失败 (HWND:{hwnd}): {e}")
+    return None
+
+
+def find_window_by_process(process_name):
+    """
+    根据进程名查找窗口（适用于启动器+游戏分离架构）。
+    返回 (hwnd, full_title, process_name) 或 (None, None, None)。
+    优先返回面积最大的可见窗口（通常是游戏主窗口而非启动器小窗口）。
+    """
+    import win32gui
+    import win32process
+
+    target_pids = set()
+    actual_process_name = process_name
+
+    # 方法1: 优先用 psutil（更准确，支持模糊匹配）
+    try:
+        import psutil
+        for proc in psutil.process_iter(['name', 'pid']):
+            try:
+                pname = proc.info['name']
+                if pname and process_name.lower() in pname.lower():
+                    target_pids.add(proc.info['pid'])
+                    actual_process_name = pname  # 记录真实进程名
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+    except ImportError:
+        debug_log("psutil 未安装，使用 Win32 API 枚举进程（精度较低）")
+        # 方法2: 降级到 EnumWindows + GetWindowThreadProcessId
+        # 这种方式无法直接按进程名搜索，只能遍历所有窗口后检查
+
+    results = []
+
+    def enum_callback(hwnd, _):
+        if not win32gui.IsWindowVisible(hwnd):
+            return
+        try:
+            _, pid = win32process.GetWindowThreadProcessId(hwnd)
+        except Exception:
+            return
+
+        if target_pids and pid not in target_pids:
+            return
+
+        # 如果没用 psutil，尝试通过 pid 反查进程名
+        if not target_pids:
+            pname = _get_process_name_by_hwnd(hwnd)
+            if not pname or process_name.lower() not in pname.lower():
+                return
+
+        title = win32gui.GetWindowText(hwnd) or ""
+        try:
+            left, top, right, bottom = win32gui.GetWindowRect(hwnd)
+            w = right - left
+            h = bottom - top
+            if w > 50 and h > 50:  # 过滤掉太小的窗口
+                results.append((hwnd, title, w * h, actual_process_name))
+        except Exception:
+            pass
+
+    win32gui.EnumWindows(enum_callback, None)
+
+    if not results:
+        return None, None, None
+
+    # 按面积降序，返回最大的窗口
+    results.sort(key=lambda x: x[2], reverse=True)
+    hwnd, title, _, pname = results[0]
+    return hwnd, title or f"HWND:{hwnd}", pname
 
 
 # ============================================================
@@ -164,7 +396,7 @@ def run_ocr(img, window_rect=None):
 
 
 # ============================================================
-# ScreenCapture 指令
+# ScreenCapture — GDI 截图（原始方法，适用于标准窗口）
 # ============================================================
 
 def find_window_by_title(title_keyword):
@@ -187,8 +419,8 @@ def find_window_by_title(title_keyword):
     return results[0]
 
 
-def capture_window_by_hwnd(hwnd):
-    """通过 Win32 API 截取指定窗口的图像，返回 PIL Image"""
+def _capture_window_gdi(hwnd):
+    """通过 Win32 GDI API 截取指定窗口的图像，返回 PIL Image（原始方法）"""
     import win32gui
     import win32ui
     import win32con
@@ -240,9 +472,102 @@ def capture_window_by_hwnd(hwnd):
     return img
 
 
+# ============================================================
+# 智能截图（自动选择 GDI / DXGI，带学习记忆）
+# ============================================================
+
+# 记录最近一次截图使用的方法（供上层 cmd 读取报告）
+_last_capture_info = {
+    "method": None,       # "gdi" / "dxgi" / "fullscreen"
+    "process_name": None,
+    "learned": False,     # 是否使用了学习到的策略
+    "fallback": False,    # 是否触发了 fallback
+}
+
+
+def capture_window_smart(hwnd):
+    """
+    智能截图：根据学习记忆选择最优截图方式。
+    流程：
+    1. 查询进程名 → 检查 capture_strategy.json 是否有记录
+    2. 如已知该进程需要 DXGI → 直接走 DXGI（跳过 GDI，节省时间）
+    3. 如未知 → 先尝试 GDI，检测黑屏 → 黑屏则 fallback 到 DXGI 并学习记忆
+    4. 返回 PIL Image
+    """
+    global _last_capture_info
+    _last_capture_info = {
+        "method": None, "process_name": None,
+        "learned": False, "fallback": False,
+    }
+
+    # 获取进程名
+    process_name = _get_process_name_by_hwnd(hwnd)
+    _last_capture_info["process_name"] = process_name
+    debug_log(f"智能截图: HWND={hwnd}, 进程={process_name}")
+
+    # 查询已学习的策略
+    known_strategy = _get_strategy_for_process(process_name)
+
+    if known_strategy == "dxgi":
+        # 已知该进程需要 DXGI，直接跳过 GDI
+        debug_log(f"智能截图: 已学习 {process_name} 需要 DXGI，直接使用")
+        _last_capture_info["method"] = "dxgi"
+        _last_capture_info["learned"] = True
+        try:
+            return capture_dxgi_region(hwnd)
+        except Exception as e:
+            debug_log(f"DXGI 截图失败: {e}，降级到 GDI")
+            _last_capture_info["method"] = "gdi"
+            _last_capture_info["fallback"] = True
+            return _capture_window_gdi(hwnd)
+
+    # 未知策略：先尝试 GDI
+    debug_log(f"智能截图: 尝试 GDI 截图...")
+    try:
+        img = _capture_window_gdi(hwnd)
+    except Exception as e:
+        debug_log(f"GDI 截图异常: {e}，尝试 DXGI")
+        _last_capture_info["method"] = "dxgi"
+        _last_capture_info["fallback"] = True
+        img = capture_dxgi_region(hwnd)
+        _learn_strategy(process_name, "dxgi", reason="GDI 截图异常，自动切换")
+        return img
+
+    # 黑屏检测
+    if is_black_image(img):
+        debug_log(f"智能截图: GDI 截到黑屏！fallback 到 DXGI...")
+        _last_capture_info["method"] = "dxgi"
+        _last_capture_info["fallback"] = True
+        try:
+            img_dxgi = capture_dxgi_region(hwnd)
+            # 检查 DXGI 结果是否也是黑屏
+            if is_black_image(img_dxgi):
+                debug_log(f"智能截图: DXGI 也是黑屏（窗口可能最小化或完全遮挡）")
+                # 不学习，可能是临时状态
+                return img_dxgi
+            # DXGI 成功，学习记忆
+            _learn_strategy(process_name, "dxgi", reason="GDI 截到黑屏，DXGI 成功")
+            return img_dxgi
+        except Exception as e:
+            debug_log(f"DXGI fallback 也失败: {e}")
+            return img  # 返回黑屏的 GDI 结果，总比崩溃好
+    else:
+        # GDI 成功（非黑屏）
+        _last_capture_info["method"] = "gdi"
+        # 如果之前没有记录，学习为 GDI（避免下次还要检测）
+        if process_name and known_strategy is None:
+            _learn_strategy(process_name, "gdi", reason="GDI 截图正常")
+        return img
+
+
 def capture_fullscreen():
     """全屏截图，返回 PIL Image"""
     import pyautogui
+    global _last_capture_info
+    _last_capture_info = {
+        "method": "fullscreen", "process_name": None,
+        "learned": False, "fallback": False,
+    }
     return pyautogui.screenshot()
 
 
@@ -255,12 +580,17 @@ def image_to_base64(img, fmt="PNG"):
     return f"data:{mime};base64,{b64}"
 
 
+# ============================================================
+# ScreenCapture 指令
+# ============================================================
+
 def cmd_screen_capture(args):
-    """执行 ScreenCapture 指令"""
+    """执行 ScreenCapture 指令（支持 processName 按进程名查找游戏窗口）"""
     a = normalize_args(args)
 
     hwnd = a.get("hwnd")
     window_title = a.get("windowtitle") or a.get("window_title") or a.get("title")
+    process_name_arg = a.get("processname") or a.get("process_name") or a.get("process")
     save = str(a.get("save", "false")).lower() in ("true", "1", "yes")
     do_ocr = str(a.get("ocr", "false")).lower() in ("true", "1", "yes")
     filename = a.get("filename")
@@ -275,7 +605,7 @@ def cmd_screen_capture(args):
         captured_title = win32gui.GetWindowText(hwnd) or f"HWND:{hwnd}"
         left, top, right, bottom = win32gui.GetWindowRect(hwnd)
         window_rect = {"x": left, "y": top, "width": right - left, "height": bottom - top}
-        img = capture_window_by_hwnd(hwnd)
+        img = capture_window_smart(hwnd)
     elif window_title:
         found_hwnd, found_title = find_window_by_title(window_title)
         if found_hwnd is None:
@@ -284,7 +614,16 @@ def cmd_screen_capture(args):
         import win32gui
         left, top, right, bottom = win32gui.GetWindowRect(found_hwnd)
         window_rect = {"x": left, "y": top, "width": right - left, "height": bottom - top, "hwnd": found_hwnd}
-        img = capture_window_by_hwnd(found_hwnd)
+        img = capture_window_smart(found_hwnd)
+    elif process_name_arg:
+        found_hwnd, found_title, found_pname = find_window_by_process(process_name_arg)
+        if found_hwnd is None:
+            return {"status": "error", "error": f"未找到进程名包含 '{process_name_arg}' 的窗口。请检查程序是否正在运行。"}
+        captured_title = found_title
+        import win32gui
+        left, top, right, bottom = win32gui.GetWindowRect(found_hwnd)
+        window_rect = {"x": left, "y": top, "width": right - left, "height": bottom - top, "hwnd": found_hwnd}
+        img = capture_window_smart(found_hwnd)
     else:
         img = capture_fullscreen()
         captured_title = "全屏截图"
@@ -296,6 +635,16 @@ def cmd_screen_capture(args):
         f"截图成功: {captured_title}",
         f"分辨率: {width} × {height} 像素",
     ]
+
+    # 报告截图方法
+    ci = _last_capture_info
+    if ci["method"] == "dxgi" and ci["learned"]:
+        text_parts.append(f"📌 截图方式: DXGI（已记忆进程 {ci['process_name']} 需要此方式）")
+    elif ci["method"] == "dxgi" and ci["fallback"]:
+        text_parts.append(f"⚡ 截图方式: DXGI fallback（GDI 黑屏，已自动学习并记忆进程 {ci['process_name']}）")
+    elif ci["method"] == "gdi":
+        text_parts.append(f"截图方式: GDI (PrintWindow)")
+
     if window_rect:
         text_parts.append(
             f"窗口屏幕位置: 左上角({window_rect['x']}, {window_rect['y']})  "
@@ -348,6 +697,10 @@ def cmd_screen_capture(args):
         result["savedPath"] = saved_path
     if ocr_blocks is not None:
         result["ocrResults"] = ocr_blocks
+    # 附加截图方法信息
+    result["captureMethod"] = ci["method"]
+    if ci["process_name"]:
+        result["processName"] = ci["process_name"]
 
     return {"status": "success", "result": result}
 
@@ -383,7 +736,7 @@ _BUTTON_MSG_MAP = {
 
 def _resolve_hwnd(a):
     """
-    双轨窗口查找：优先 hwnd，其次 windowTitle 模糊匹配。
+    窗口查找：优先 hwnd → windowTitle → processName。
     返回 (hwnd: int, title: str) 或 (None, None)。
     """
     hwnd = a.get("hwnd")
@@ -402,6 +755,14 @@ def _resolve_hwnd(a):
         if found_hwnd:
             return found_hwnd, found_title
         return None, f"未找到标题包含 '{window_title}' 的窗口"
+
+    # 新增: 支持按进程名查找
+    process_name = a.get("processname") or a.get("process_name") or a.get("process")
+    if process_name:
+        found_hwnd, found_title, _ = find_window_by_process(process_name)
+        if found_hwnd:
+            return found_hwnd, found_title
+        return None, f"未找到进程名包含 '{process_name}' 的窗口"
 
     return None, None
 
@@ -726,6 +1087,50 @@ def cmd_inspect_ui(args):
 # ClickText 指令
 # ============================================================
 
+def _resolve_capture_target(a):
+    """
+    通用截图目标解析（供 ClickText / ClickVisual 共用）。
+    按优先级: hwnd → windowTitle → processName → 全屏
+    返回 (img, hwnd, window_rect, captured_title)
+    """
+    hwnd = a.get("hwnd")
+    window_title = a.get("windowtitle") or a.get("window_title") or a.get("title")
+    process_name = a.get("processname") or a.get("process_name") or a.get("process")
+
+    if hwnd:
+        hwnd = int(hwnd)
+        import win32gui
+        captured_title = win32gui.GetWindowText(hwnd) or f"HWND:{hwnd}"
+        left, top, right, bottom = win32gui.GetWindowRect(hwnd)
+        window_rect = {"x": left, "y": top, "width": right - left, "height": bottom - top}
+        img = capture_window_smart(hwnd)
+        return img, hwnd, window_rect, captured_title
+
+    if window_title:
+        found_hwnd, found_title = find_window_by_title(window_title)
+        if found_hwnd is None:
+            return None, None, None, f"未找到标题包含 '{window_title}' 的窗口。"
+        import win32gui
+        left, top, right, bottom = win32gui.GetWindowRect(found_hwnd)
+        window_rect = {"x": left, "y": top, "width": right - left, "height": bottom - top}
+        img = capture_window_smart(found_hwnd)
+        return img, found_hwnd, window_rect, found_title
+
+    if process_name:
+        found_hwnd, found_title, _ = find_window_by_process(process_name)
+        if found_hwnd is None:
+            return None, None, None, f"未找到进程名包含 '{process_name}' 的窗口。"
+        import win32gui
+        left, top, right, bottom = win32gui.GetWindowRect(found_hwnd)
+        window_rect = {"x": left, "y": top, "width": right - left, "height": bottom - top}
+        img = capture_window_smart(found_hwnd)
+        return img, found_hwnd, window_rect, found_title
+
+    # 全屏
+    img = capture_fullscreen()
+    return img, None, None, "全屏"
+
+
 def cmd_click_text(args):
     """
     执行 ClickText 指令:
@@ -738,38 +1143,15 @@ def cmd_click_text(args):
     if not target_text:
         return {"status": "error", "error": "必须提供 text 参数指定要点击的文本内容。"}
 
-    hwnd = a.get("hwnd")
-    window_title = a.get("windowtitle") or a.get("window_title") or a.get("title")
     button = str(a.get("button", "left")).lower()
     clicks = int(a.get("clicks", 1))
     match_mode = str(a.get("matchmode") or a.get("match_mode") or a.get("match") or "fuzzy").lower()
     index = int(a.get("index") or a.get("nth") or 1)  # 第几个匹配（从1开始）
 
-    # 1. 截图
-    img = None
-    window_rect = None
-    captured_title = None
-
-    if hwnd:
-        hwnd = int(hwnd)
-        import win32gui
-        captured_title = win32gui.GetWindowText(hwnd) or f"HWND:{hwnd}"
-        left, top, right, bottom = win32gui.GetWindowRect(hwnd)
-        window_rect = {"x": left, "y": top, "width": right - left, "height": bottom - top}
-        img = capture_window_by_hwnd(hwnd)
-    elif window_title:
-        found_hwnd, found_title = find_window_by_title(window_title)
-        if found_hwnd is None:
-            return {"status": "error", "error": f"未找到标题包含 '{window_title}' 的窗口。"}
-        captured_title = found_title
-        import win32gui
-        left, top, right, bottom = win32gui.GetWindowRect(found_hwnd)
-        window_rect = {"x": left, "y": top, "width": right - left, "height": bottom - top}
-        hwnd = found_hwnd
-        img = capture_window_by_hwnd(found_hwnd)
-    else:
-        img = capture_fullscreen()
-        captured_title = "全屏"
+    # 1. 截图（通用解析，支持 hwnd/windowTitle/processName/全屏）
+    img, hwnd, window_rect, captured_title = _resolve_capture_target(a)
+    if img is None:
+        return {"status": "error", "error": captured_title}  # captured_title 此时是错误信息
 
     # 2. OCR
     try:
@@ -783,7 +1165,7 @@ def cmd_click_text(args):
     # 3. 查找匹配文本
     def strip_noise(s):
         """去除空格、标点和特殊符号，只留下字母数字和 CJK 文字"""
-        return re.sub(r'[\s\u3000\p{P}\p{S}]' if False else r'[\s\u3000!-/:-@\[-`{-~\u2000-\u206f\u3000-\u303f\uff00-\uff0f\uff1a-\uff20\uff3b-\uff40\uff5b-\uff65\u2010-\u2027\u2030-\u205e\u00a0-\u00bf]', '', s)
+        return re.sub(r'[\s\u3000!-/:-@\[-`{-~\u2000-\u206f\u3000-\u303f\uff00-\uff0f\uff1a-\uff20\uff3b-\uff40\uff5b-\uff65\u2010-\u2027\u2030-\u205e\u00a0-\u00bf]', '', s)
 
     matches = []
     target_lower = target_text.lower()
@@ -1135,36 +1517,13 @@ def cmd_click_visual(args):
     if not description:
         return {"status": "error", "error": "必须提供 description 参数描述要点击的视觉元素。"}
 
-    hwnd = a.get("hwnd")
-    window_title = a.get("windowtitle") or a.get("window_title") or a.get("title")
     button = str(a.get("button", "left")).lower()
     clicks = int(a.get("clicks", 1))
 
-    # 1. 截图
-    img = None
-    window_rect = None
-    captured_title = None
-
-    if hwnd:
-        hwnd = int(hwnd)
-        import win32gui
-        captured_title = win32gui.GetWindowText(hwnd) or f"HWND:{hwnd}"
-        left, top, right, bottom = win32gui.GetWindowRect(hwnd)
-        window_rect = {"x": left, "y": top, "width": right - left, "height": bottom - top}
-        img = capture_window_by_hwnd(hwnd)
-    elif window_title:
-        found_hwnd, found_title = find_window_by_title(window_title)
-        if found_hwnd is None:
-            return {"status": "error", "error": f"未找到标题包含 '{window_title}' 的窗口。"}
-        captured_title = found_title
-        import win32gui
-        left, top, right, bottom = win32gui.GetWindowRect(found_hwnd)
-        window_rect = {"x": left, "y": top, "width": right - left, "height": bottom - top}
-        hwnd = found_hwnd
-        img = capture_window_by_hwnd(found_hwnd)
-    else:
-        img = capture_fullscreen()
-        captured_title = "全屏"
+    # 1. 截图（通用解析，支持 hwnd/windowTitle/processName/全屏）
+    img, hwnd, window_rect, captured_title = _resolve_capture_target(a)
+    if img is None:
+        return {"status": "error", "error": captured_title}
 
     # 2. 原图转 base64
     original_data_uri = image_to_base64(img, fmt="PNG")
