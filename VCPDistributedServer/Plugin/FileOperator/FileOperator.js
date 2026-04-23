@@ -577,7 +577,7 @@ async function listDirectory(dirPath, showHidden = ENABLE_HIDDEN_FILES) {
         truncated: items.length > MAX_DIRECTORY_ITEMS,
         message: message,
         content: [
-          { type: 'text', text: `### ${message}\n\n${mdTable}` }
+          { type: 'text', text: `### ${message}\n\n---\n${mdTable}---` }
         ]
       },
     };
@@ -904,7 +904,7 @@ async function searchFiles(searchPath, pattern, options = {}) {
         options: options,
         message: message,
         content: [
-          { type: 'text', text: `### ${message}\n\n${mdTable}` }
+          { type: 'text', text: `### ${message}\n\n---\n${mdTable}---` }
         ]
       },
     };
@@ -1033,11 +1033,11 @@ async function listAllowedDirectories() {
       if (items.length === 0) {
         mdStr += `*(空目录)*\n\n`;
       } else {
-        mdStr += `| 名称 | 类型 |\n|---|---|\n`;
+        mdStr += `---\n| 名称 | 类型 |\n|---|---|\n`;
         for (const item of items) {
           mdStr += `| ${item.name} | ${item.type === 'directory' ? '📁 目录' : '📄 文件'} |\n`;
         }
-        mdStr += `\n`;
+        mdStr += `---\n\n`;
       }
     }
 
