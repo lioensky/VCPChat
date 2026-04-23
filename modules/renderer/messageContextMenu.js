@@ -491,7 +491,8 @@ function toggleEditMode(messageItem, message) {
             contextMenuDependencies.updateMessageContent(message.id, textToDisplay);
         } else {
             // Fallback for safety, though updateMessageContent should be available now
-            const rawHtml = markedInstance.parse(contextMenuDependencies.preprocessFullContent(textToDisplay));
+            const ppResult = contextMenuDependencies.preprocessFullContent(textToDisplay);
+            const rawHtml = markedInstance.parse(ppResult.text || ppResult);
             contextMenuDependencies.setContentAndProcessImages(contentDiv, rawHtml, message.id);
             contextMenuDependencies.processRenderedContent(contentDiv);
             setTimeout(() => {
@@ -602,7 +603,8 @@ function toggleEditMode(messageItem, message) {
                     contextMenuDependencies.updateMessageContent(message.id, newContent);
                 } else {
                     // Fallback for safety
-                    const rawHtml = markedInstance.parse(contextMenuDependencies.preprocessFullContent(newContent));
+                    const ppResult2 = contextMenuDependencies.preprocessFullContent(newContent);
+                    const rawHtml = markedInstance.parse(ppResult2.text || ppResult2);
                     contextMenuDependencies.setContentAndProcessImages(contentDiv, rawHtml, message.id);
                     contextMenuDependencies.processRenderedContent(contentDiv);
                     contextMenuDependencies.renderAttachments(message, contentDiv);

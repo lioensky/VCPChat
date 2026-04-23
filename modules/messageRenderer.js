@@ -315,107 +315,9 @@ function transformSpecialBlocks(text, codeBlockMap) {
         return res;
     };
 
-    // Process VCP Tool Results
-    processed = processed.replace(TOOL_RESULT_REGEX, (match, rawContent) => {
-        const content = rawContent.trim();
-        const lines = content.split('\n');
-
-        let toolName = 'Unknown Tool';
-        let status = 'Unknown Status';
-        const details = [];
-        let otherContent = [];
-
-        let currentKey = null;
-        let currentValue = [];
-
-        lines.forEach(line => {
-            const kvMatch = line.match(/^-\s*([^:]+):\s*(.*)/);
-            if (kvMatch) {
-                if (currentKey) {
-                    const val = currentValue.join('\n').trim();
-                    if (currentKey === '工具名称') {
-                        toolName = val;
-                    } else if (currentKey === '执行状态') {
-                        status = val;
-                    } else {
-                        details.push({ key: currentKey, value: val });
-                    }
-                }
-                currentKey = kvMatch[1].trim();
-                currentValue = [kvMatch[2].trim()];
-            } else if (currentKey) {
-                currentValue.push(line);
-            } else if (line.trim() !== '') {
-                otherContent.push(line);
-            }
-        });
-
-        if (currentKey) {
-            const val = currentValue.join('\n').trim();
-            if (currentKey === '工具名称') {
-                toolName = val;
-            } else if (currentKey === '执行状态') {
-                status = val;
-            } else {
-                details.push({ key: currentKey, value: val });
-            }
-        }
-
-        // Add 'collapsible' class for the new functionality, default to collapsed
-        let html = `<div class="vcp-tool-result-bubble collapsible">`;
-        html += `<div class="vcp-tool-result-header">`;
-        html += `<span class="vcp-tool-result-label">VCP-ToolResult</span>`;
-        html += `<span class="vcp-tool-result-name">${escapeHtml(toolName)}</span>`;
-        html += `<span class="vcp-tool-result-status">${escapeHtml(status)}</span>`;
-        html += `<span class="vcp-result-toggle-icon"></span>`; // Toggle icon
-        html += `</div>`;
-
-        // Wrap details and footer in a new collapsible container
-        html += `<div class="vcp-tool-result-collapsible-content">`;
-
-        html += `<div class="vcp-tool-result-details">`;
-        details.forEach(({ key, value }) => {
-            const isMarkdownField = (key === '返回内容' || key === '内容' || key === 'Result' || key === '返回结果' || key === 'output');
-            const isImageUrl = typeof value === 'string' && /^https?:\/\/[^\s]+$/i.test(value) && /\.(jpeg|jpg|png|gif|webp)([?&#]|$)/i.test(value);
-            let processedValue;
-
-            if (isImageUrl && (key === '可访问URL' || key === '返回内容' || key === 'url' || key === 'image')) {
-                processedValue = `<a href="${value}" target="_blank" rel="noopener noreferrer" title="点击预览"><img src="${value}" class="vcp-tool-result-image" alt="Generated Image"></a>`;
-            } else if (isMarkdownField) {
-                // 🔴 关键修复：工具结果内容直接 HTML 转义 + <pre> 包裹，完全禁止 markdown 渲染
-                // 工具结果可能包含 ```、「始」/「末」标记、<<<[TOOL_REQUEST]>>> 等危险语法，
-                // 若经过 markdown 解析器会导致代码围栏泄漏、双重转义和结构破坏
-                processedValue = `<pre class="vcp-tool-result-raw-content">${escapeHtml(restoreBlocks(value))}</pre>`;
-            } else {
-                const urlRegex = /(https?:\/\/[^\s]+)/g;
-                processedValue = escapeHtml(restoreBlocks(value));
-                processedValue = processedValue.replace(urlRegex, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
-
-                if (key === '返回内容') {
-                    processedValue = processedValue.replace(/###(.*?)###/g, '<strong>$1</strong>');
-                }
-            }
-
-            html += `<div class="vcp-tool-result-item">`;
-            html += `<span class="vcp-tool-result-item-key">${escapeHtml(key)}:</span> `;
-            const valueTag = (isMarkdownField && !isImageUrl) ? 'div' : 'span';
-            html += `<${valueTag} class="vcp-tool-result-item-value">${processedValue}</${valueTag}>`;
-            html += `</div>`;
-        });
-        html += `</div>`; // End of vcp-tool-result-details
-
-        if (otherContent.length > 0) {
-            const footerText = otherContent.join('\n');
-            // 🔴 关键修复：页脚内容同样禁止 markdown 渲染，防止内部语法干扰外部结构
-            const processedFooter = `<pre class="vcp-tool-result-raw-content">${escapeHtml(restoreBlocks(footerText))}</pre>`;
-            html += `<div class="vcp-tool-result-footer">${processedFooter}</div>`;
-        }
-
-        html += `</div>`; // End of vcp-tool-result-collapsible-content
-        html += `</div>`; // End of vcp-tool-result-bubble
-
-        return html;
-    });
+    // 🟢 架构级修复：VCP Tool Results 不再在此处理
+    // 工具结果块在 contentPipeline 中被提取为占位符，贯穿 Markdown 解析后
+    // 由 restoreRenderedToolResults() 独立渲染并恢复，彻底避免内部语法干扰
 
     // Process Tool Requests
     processed = processed.replace(TOOL_REGEX, (match, content) => {
@@ -850,15 +752,151 @@ function calculateDepthByTurns(messageId, history) {
 function preprocessFullContent(text, settings = {}, messageRole = 'assistant', depth = 0) {
     if (!contentPipeline) {
         console.warn('[MessageRenderer] contentPipeline not initialized, falling back to raw text');
-        return text;
+        return { text, toolResultMap: null };
     }
 
-    return contentPipeline.process(text, {
+    const result = contentPipeline.process(text, {
         mode: PIPELINE_MODES.FULL_RENDER,
         settings,
         messageRole,
         depth
-    }).text;
+    });
+
+    return { text: result.text, toolResultMap: result.state.toolResultMap || null };
+}
+
+/**
+ * 🟢 独立渲染单个工具结果块为 HTML
+ * 从 transformSpecialBlocks 中提取出来，支持工具结果内部的完整 Markdown 渲染
+ * （表格、代码围栏等），同时避免与外部 Markdown 解析器产生冲突。
+ * @param {string} fullMatch - 完整的工具结果文本（含 [[VCP调用结果信息汇总: ... VCP调用结果结束]] 标记）
+ * @returns {string} 渲染后的 HTML
+ */
+function renderToolResultBlock(fullMatch) {
+    const startMarker = '[[VCP调用结果信息汇总:';
+    const endMarker = 'VCP调用结果结束]]';
+    let content = fullMatch;
+    if (content.startsWith(startMarker)) {
+        content = content.slice(startMarker.length);
+    }
+    if (content.endsWith(endMarker)) {
+        content = content.slice(0, -endMarker.length);
+    }
+    content = content.trim();
+
+    const lines = content.split('\n');
+    let toolName = 'Unknown Tool';
+    let status = 'Unknown Status';
+    const details = [];
+    let otherContent = [];
+    let currentKey = null;
+    let currentValue = [];
+
+    lines.forEach(line => {
+        const kvMatch = line.match(/^-\s*([^:]+):\s*(.*)/);
+        if (kvMatch) {
+            if (currentKey) {
+                const val = currentValue.join('\n').trim();
+                if (currentKey === '工具名称') toolName = val;
+                else if (currentKey === '执行状态') status = val;
+                else details.push({ key: currentKey, value: val });
+            }
+            currentKey = kvMatch[1].trim();
+            currentValue = [kvMatch[2].trim()];
+        } else if (currentKey) {
+            currentValue.push(line);
+        } else if (line.trim() !== '') {
+            otherContent.push(line);
+        }
+    });
+
+    if (currentKey) {
+        const val = currentValue.join('\n').trim();
+        if (currentKey === '工具名称') toolName = val;
+        else if (currentKey === '执行状态') status = val;
+        else details.push({ key: currentKey, value: val });
+    }
+
+    let html = `<div class="vcp-tool-result-bubble collapsible">`;
+    html += `<div class="vcp-tool-result-header">`;
+    html += `<span class="vcp-tool-result-label">VCP-ToolResult</span>`;
+    html += `<span class="vcp-tool-result-name">${escapeHtml(toolName)}</span>`;
+    html += `<span class="vcp-tool-result-status">${escapeHtml(status)}</span>`;
+    html += `<span class="vcp-result-toggle-icon"></span>`;
+    html += `</div>`;
+
+    html += `<div class="vcp-tool-result-collapsible-content">`;
+    html += `<div class="vcp-tool-result-details">`;
+
+    details.forEach(({ key, value }) => {
+        const isMarkdownField = (key === '返回内容' || key === '内容' || key === 'Result' || key === '返回结果' || key === 'output');
+        const isImageUrl = typeof value === 'string' && /^https?:\/\/[^\s]+$/i.test(value) && /\.(jpeg|jpg|png|gif|webp)([?&#]|$)/i.test(value);
+        let processedValue;
+
+        if (isImageUrl && (key === '可访问URL' || key === '返回内容' || key === 'url' || key === 'image')) {
+            processedValue = `<a href="${value}" target="_blank" rel="noopener noreferrer" title="点击预览"><img src="${value}" class="vcp-tool-result-image" alt="Generated Image"></a>`;
+        } else if (isMarkdownField) {
+            // 🟢 架构级修复：工具结果内容使用独立的 Markdown 渲染
+            // 由于工具结果块已经从外部文本中完全隔离，这里可以安全地使用 Markdown 解析器
+            // 支持表格、代码围栏、列表等完整 Markdown 语法，不再需要 escapeHtml + <pre> 的妥协方案
+            let renderedMarkdown;
+            if (mainRendererReferences.markedInstance) {
+                try {
+                    renderedMarkdown = mainRendererReferences.markedInstance.parse(value);
+                } catch (e) {
+                    renderedMarkdown = `<pre class="vcp-tool-result-raw-content">${escapeHtml(value)}</pre>`;
+                }
+            } else {
+                renderedMarkdown = `<pre class="vcp-tool-result-raw-content">${escapeHtml(value)}</pre>`;
+            }
+            processedValue = `<div class="vcp-tool-result-markdown-content">${renderedMarkdown}</div>`;
+        } else {
+            const urlRegex = /(https?:\/\/[^\s]+)/g;
+            processedValue = escapeHtml(value);
+            processedValue = processedValue.replace(urlRegex, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
+
+            if (key === '返回内容') {
+                processedValue = processedValue.replace(/###(.*?)###/g, '<strong>$1</strong>');
+            }
+        }
+
+        html += `<div class="vcp-tool-result-item">`;
+        html += `<span class="vcp-tool-result-item-key">${escapeHtml(key)}:</span> `;
+        const valueTag = (isMarkdownField && !isImageUrl) ? 'div' : 'span';
+        html += `<${valueTag} class="vcp-tool-result-item-value">${processedValue}</${valueTag}>`;
+        html += `</div>`;
+    });
+    html += `</div>`;
+
+    if (otherContent.length > 0) {
+        const footerText = otherContent.join('\n');
+        const processedFooter = `<pre class="vcp-tool-result-raw-content">${escapeHtml(footerText)}</pre>`;
+        html += `<div class="vcp-tool-result-footer">${processedFooter}</div>`;
+    }
+
+    html += `</div>`;
+    html += `</div>`;
+
+    return html;
+}
+
+/**
+ * 🟢 在 Markdown 解析后恢复工具结果占位符为渲染好的 HTML
+ * @param {string} html - marked.parse() 输出的 HTML
+ * @param {Map|null} toolResultMap - 占位符到原始工具结果文本的映射
+ * @returns {string} 恢复后的 HTML
+ */
+function restoreRenderedToolResults(html, toolResultMap) {
+    if (!toolResultMap || toolResultMap.size === 0) return html;
+
+    let result = html;
+    for (const [placeholder, rawMatch] of toolResultMap.entries()) {
+        const renderedHtml = renderToolResultBlock(rawMatch);
+        // 占位符可能被 marked 包裹在 <p> 标签中
+        result = result.split(`<p>${placeholder}</p>`).join(renderedHtml);
+        result = result.split(placeholder).join(renderedHtml);
+    }
+    return result;
 }
 
 /**
@@ -1160,12 +1198,14 @@ function initializeMessageRenderer(refs) {
         ...mainRendererReferences.markedInstance,
         parse: (text) => {
             const globalSettings = mainRendererReferences.globalSettingsRef.get();
-            const processedText = preprocessFullContent(text, globalSettings);
+            const { text: processedText, toolResultMap } = preprocessFullContent(text, globalSettings);
             // 🟢 LaTeX 保护：在 marked 解析前保护 LaTeX 块
             const { text: protectedText, map: latexMap } = protectLatexBlocks(processedText);
             let html = originalMarkedParse(protectedText);
             // 🟢 LaTeX 恢复：在 marked 解析后恢复 LaTeX 块
             html = restoreLatexBlocks(html, latexMap);
+            // 🟢 工具结果恢复：在 Markdown 解析后恢复工具结果占位符为渲染好的 HTML
+            html = restoreRenderedToolResults(html, toolResultMap);
             return html;
         }
     };
@@ -1632,12 +1672,14 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true,
         }
         // --- 正则规则应用结束 ---
 
-        const processedContent = preprocessFullContent(textToRender, globalSettings, message.role, depth);
+        const { text: processedContent, toolResultMap } = preprocessFullContent(textToRender, globalSettings, message.role, depth);
         // 🟢 LaTeX 保护：在 marked 解析前保护 LaTeX 块
         const { text: protectedContent, map: latexMap } = protectLatexBlocks(processedContent);
         let rawHtml = markedInstance.parse(protectedContent);
         // 🟢 LaTeX 恢复：在 marked 解析后恢复 LaTeX 块
         rawHtml = restoreLatexBlocks(rawHtml, latexMap);
+        // 🟢 工具结果恢复：在 Markdown 解析后恢复工具结果占位符为渲染好的 HTML
+        rawHtml = restoreRenderedToolResults(rawHtml, toolResultMap);
 
         // 修复：清理 Markdown 解析器可能生成的损坏的 SVG viewBox 属性
         // 错误 "Unexpected end of attribute" 表明 viewBox 的值不完整, 例如 "0 "
@@ -2016,12 +2058,14 @@ async function renderFullMessage(messageId, fullContent, agentName, agentId) {
         fullContent = applyFrontendRegexRules(fullContent, agentConfigForRegex.stripRegexes, messageFromHistoryForRegex.role, depth);
     }
     // --- 正则规则应用结束 ---
-    const processedFinalText = preprocessFullContent(fullContent, globalSettings, 'assistant');
+    const { text: processedFinalText, toolResultMap: toolResultMapFinal } = preprocessFullContent(fullContent, globalSettings, 'assistant');
     // 🟢 LaTeX 保护：在 marked 解析前保护 LaTeX 块
     const { text: protectedFinalText, map: latexMapFinal } = protectLatexBlocks(processedFinalText);
     let rawHtml = markedInstance.parse(protectedFinalText);
     // 🟢 LaTeX 恢复：在 marked 解析后恢复 LaTeX 块
     rawHtml = restoreLatexBlocks(rawHtml, latexMapFinal);
+    // 🟢 工具结果恢复
+    rawHtml = restoreRenderedToolResults(rawHtml, toolResultMapFinal);
 
     setContentAndProcessImages(contentDiv, rawHtml, messageId);
 
@@ -2091,12 +2135,14 @@ function updateMessageContent(messageId, newContent) {
         textToRender = applyFrontendRegexRules(textToRender, agentConfigForRegex.stripRegexes, messageInHistory.role, depthForUpdate);
     }
     // --- 正则规则应用结束 ---
-    const processedContent = preprocessFullContent(textToRender, globalSettings, messageInHistory?.role || 'assistant', depthForUpdate);
+    const { text: processedContent, toolResultMap: toolResultMapUpdate } = preprocessFullContent(textToRender, globalSettings, messageInHistory?.role || 'assistant', depthForUpdate);
     // 🟢 LaTeX 保护：在 marked 解析前保护 LaTeX 块
     const { text: protectedContentUpdate, map: latexMapUpdate } = protectLatexBlocks(processedContent);
     let rawHtml = markedInstance.parse(protectedContentUpdate);
     // 🟢 LaTeX 恢复：在 marked 解析后恢复 LaTeX 块
     rawHtml = restoreLatexBlocks(rawHtml, latexMapUpdate);
+    // 🟢 工具结果恢复
+    rawHtml = restoreRenderedToolResults(rawHtml, toolResultMapUpdate);
 
     // --- Post-Render Processing (aligned with renderMessage logic) ---
 

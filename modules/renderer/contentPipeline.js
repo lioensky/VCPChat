@@ -91,15 +91,11 @@ function createContentPipeline(deps = {}) {
 
         ctx.state.toolResultMap = new Map();
         const result = text.replace(toolResultRegex, (match) => {
-            // 🔴 关键修复：清除工具结果内部的所有危险 markdown 语法
-            // 工具结果可能包含来自外部文件（如 SKILL.md）的代码围栏（```），
-            // 这些围栏会穿透保护机制，被外层 markedInstance.parse() 解释为代码块，
-            // 导致后续内容被吞掉（角色分界线消失、<div> 不渲染等）
-            const sanitizedMatch = match
-                .replace(/```/g, '\\`\\`\\`');  // 转义代码围栏，防止 markdown 解析器匹配
-
-            const placeholder = `__VCP_TOOL_RESULT_PLACEHOLDER_${ctx.state.toolResultPlaceholderId}__`;
-            ctx.state.toolResultMap.set(placeholder, sanitizedMatch);
+            // 🟢 架构级修复：工具结果块保持原始内容不做任何转义
+            // 占位符将贯穿整个 Markdown 解析过程，在 parse() 之后才恢复为渲染好的 HTML
+            // 🔴 关键：使用 HTML 注释格式，避免 __ 被 Markdown 解释为粗体
+            const placeholder = `<!--VCP_TOOL_RESULT_${ctx.state.toolResultPlaceholderId}-->`;
+            ctx.state.toolResultMap.set(placeholder, match);
             ctx.state.toolResultPlaceholderId += 1;
             return placeholder;
         });
@@ -118,10 +114,6 @@ function createContentPipeline(deps = {}) {
             ctx.state.codeBlockPlaceholderId += 1;
             return placeholder;
         });
-    }
-
-    function restoreToolResults(text, ctx) {
-        return createMapPlaceholderReplacer(ctx.state.toolResultMap)(text);
     }
 
     function restoreCodeBlocks(text, ctx) {
@@ -197,15 +189,16 @@ function createContentPipeline(deps = {}) {
         // 5. 再做结构转换
         step(ctx, 'transform-desktop-push', transformDesktopPush);
 
-        // 6. 恢复工具结果，以便特殊块转换能够识别
-        step(ctx, 'restore-tool-results', restoreToolResults);
+        // 6. 🟢 架构级修复：不再恢复工具结果
+        // 工具结果占位符将贯穿 Markdown 解析，在 parse() 之后才由调用方替换为渲染好的 HTML
+        // 这彻底避免了工具结果内部的 Markdown 语法（表格、代码围栏等）干扰外部解析
 
-        // 7. 特殊块转换、HTML 文档 fenced、通用处理
+        // 7. 特殊块转换（此时工具结果仍为占位符，transformSpecialBlocks 中的 TOOL_RESULT_REGEX 不会匹配到任何内容）
         step(ctx, 'transform-special-blocks', (text) => transformSpecialBlocks(text, ctx.state.codeBlockMap));
         step(ctx, 'ensure-html-fenced', (text) => ensureHtmlFenced(text));
         step(ctx, 'apply-common-content-processors', (text) => applyContentProcessors(text));
 
-        // 6. 最后恢复代码块
+        // 8. 最后恢复代码块
         step(ctx, 'restore-code-blocks', restoreCodeBlocks);
 
         return {
