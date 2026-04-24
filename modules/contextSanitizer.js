@@ -238,12 +238,31 @@ class ContextSanitizer {
     }
 
     /**
+     * 检查内容是否包含原始 VCP 特殊块，避免进入 HTML -> Markdown 后被额外转义。
+     * @param {string} content - 要检查的内容
+     * @returns {boolean} - 是否包含需要原样保留的 VCP 特殊块
+     */
+    containsRawVcpBlocks(content) {
+        if (typeof content !== 'string') return false;
+
+        return (
+            (content.includes('<<<[TOOL_REQUEST]>>>') && content.includes('<<<[END_TOOL_REQUEST]>>>')) ||
+            (content.includes('<<<DailyNoteStart>>>') && content.includes('<<<DailyNoteEnd>>>'))
+        );
+    }
+
+    /**
      * 净化单条消息内容：HTML -> Markdown
      * @param {string} content - 原始内容
      * @returns {string} - 净化后的内容
      */
     sanitizeContent(content, keepThoughtChains = false) {
         if (typeof content !== 'string' || !content.trim()) {
+            return content;
+        }
+
+        // 🔴 对原始工具调用块 / DailyNote 块做直通保护，避免被 Markdown 转义污染
+        if (this.containsRawVcpBlocks(content)) {
             return content;
         }
 
