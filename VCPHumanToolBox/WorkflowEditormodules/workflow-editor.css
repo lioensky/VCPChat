@@ -1,4 +1,4 @@
-/* WorkflowEditor 样式文件 */
+﻿/* WorkflowEditor 样式文件 */
 
 /* 主容器样式 */
 .workflow-editor-container {
@@ -50,6 +50,7 @@
     gap: 20px;
     background: #0f172a;
 }
+
 /* WorkflowEditor 样式文件 */
 
 /* 主容器样式 */
@@ -115,12 +116,15 @@
     box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
 }
 
-.workflow-editor-actions { /* 修改类名为更具特异性的名称 */
+.workflow-editor-actions {
+    /* 修改类名为更具特异性的名称 */
     margin-left: auto;
     display: flex;
     gap: 10px;
-    overflow: visible; /* 确保不会裁剪子元素的点击区域 */
-    /* pointer-events: auto !important; */ /* 强制响应鼠标事件 */
+    overflow: visible;
+    /* 确保不会裁剪子元素的点击区域 */
+    /* pointer-events: auto !important; */
+    /* 强制响应鼠标事件 */
 }
 
 .workflow-btn {
@@ -132,7 +136,8 @@
     cursor: pointer;
     transition: all 0.2s;
     position: relative;
-    z-index: 10001 !important; /* 设置更高的 z-index */
+    z-index: 10001 !important;
+    /* 设置更高的 z-index */
     pointer-events: auto !important;
     -webkit-user-select: none;
     -moz-user-select: none;
@@ -140,8 +145,9 @@
     -webkit-user-select: none;
     -moz-user-select: none;
     -ms-user-select: none;
-    user-select: none; /* keep, Safari handled above */
-    
+    user-select: none;
+    /* keep, Safari handled above */
+
     /* 使用固定高度和居中对齐 */
     display: inline-flex;
     align-items: center;
@@ -149,7 +155,7 @@
     height: 36px;
     padding: 0 16px;
     min-width: 60px;
-    
+
     /* 确保按钮完全可点击 */
     box-sizing: border-box;
     vertical-align: middle;
@@ -159,28 +165,39 @@
     background: #27a532;
     color: white;
     border: none;
-    border-radius: 6px !important; /* 强制覆盖 style.css 的 border-radius */
+    border-radius: 6px !important;
+    /* 强制覆盖 style.css 的 border-radius */
     font-size: 14px;
     cursor: pointer;
     transition: all 0.2s;
     position: relative;
-    z-index: 9999 !important; /* 提高 z-index 并强制 */
-    pointer-events: auto !important; /* 强制响应鼠标事件 */
+    z-index: 9999 !important;
+    /* 提高 z-index 并强制 */
+    pointer-events: auto !important;
+    /* 强制响应鼠标事件 */
 
     /* 强制覆盖 style.css 的 flex 属性和 padding */
-    display: block; /* 从 flex 改为 block，简化布局 */
-    align-items: initial !important; /* 重置 align-items */
-    gap: 0 !important; /* 重置 gap */
-    height: 50px !important; /* 强制设置高度 */
-    line-height: 50px !important; /* 强制垂直居中 */
-    padding: 0 16px !important; /* 强制设置 padding */
-    text-align: center !important; /* 强制水平居中 */
+    display: block;
+    /* 从 flex 改为 block，简化布局 */
+    align-items: initial !important;
+    /* 重置 align-items */
+    gap: 0 !important;
+    /* 重置 gap */
+    height: 50px !important;
+    /* 强制设置高度 */
+    line-height: 50px !important;
+    /* 强制垂直居中 */
+    padding: 0 16px !important;
+    /* 强制设置 padding */
+    text-align: center !important;
+    /* 强制水平居中 */
 }
 
 
 .workflow-btn:hover {
     background: #2563eb;
-    transform: translateY(-1px); /* 恢复动画 */
+    transform: translateY(-1px);
+    /* 恢复动画 */
 }
 
 .workflow-btn.secondary {
@@ -309,7 +326,7 @@
 .workflow-canvas {
     flex: 1;
     position: relative;
-    background: 
+    background:
         radial-gradient(circle at 1px 1px, #475569 1px, transparent 0);
     background-size: 20px 20px;
     overflow: hidden;
@@ -813,17 +830,31 @@
 
 /* 动画 */
 @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.5; }
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.5;
+    }
 }
 
 @keyframes dash {
-    to { stroke-dashoffset: -10; }
+    to {
+        stroke-dashoffset: -10;
+    }
 }
 
 @keyframes spin {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
 }
 
 /* URL渲染区域样式 */
@@ -837,7 +868,8 @@
     display: block;
     position: relative;
     overflow: hidden;
-    width: 520px; /* 固定容器宽度，避免被图片撑开 */
+    width: 520px;
+    /* 固定容器宽度，避免被图片撑开 */
 }
 
 .url-render-area img,
@@ -910,7 +942,7 @@
     .workflow-sidebar {
         width: 240px;
     }
-    
+
     .workflow-properties {
         width: 280px;
     }
@@ -949,7 +981,8 @@
 
 /* 隐藏元素 */
 .hidden {
-    display: none !important; /* 使用 !important 确保隐藏 */
+    display: none !important;
+    /* 使用 !important 确保隐藏 */
 }
 
 /* 插件对话框样式 */
@@ -1421,19 +1454,19 @@
         width: 95%;
         height: 90%;
     }
-    
+
     .plugin-list {
         grid-template-columns: 1fr;
     }
-    
+
     .stats-grid {
         grid-template-columns: repeat(2, 1fr);
     }
-    
+
     .manage-actions {
         flex-direction: column;
     }
-    
+
     .custom-plugin-item {
         flex-direction: column;
         align-items: flex-start;
@@ -1481,6 +1514,70 @@
 .canvas-node.error {
     border-color: #ef4444;
     box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.3);
+}
+
+/* ===== 执行状态增强动画 (CodeCC 2026-04-22) ===== */
+
+/* executing 状态 - 呼吸光晕 */
+.canvas-node.executing {
+    border-color: #f59e0b;
+    box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.3);
+    animation: node-executing-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes node-executing-pulse {
+
+    0%,
+    100% {
+        box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.3);
+    }
+
+    50% {
+        box-shadow: 0 0 12px 4px rgba(245, 158, 11, 0.25), 0 0 0 2px rgba(245, 158, 11, 0.4);
+    }
+}
+
+/* success 状态 - 柔和绿光 */
+.canvas-node.success {
+    border-color: #10b981;
+    box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.3);
+    transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+/* error 状态 - 红色警示 */
+.canvas-node.error {
+    border-color: #ef4444;
+    box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.3), 0 0 8px rgba(239, 68, 68, 0.15);
+    animation: node-error-flash 0.6s ease-in-out 2;
+}
+
+@keyframes node-error-flash {
+
+    0%,
+    100% {
+        box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.3);
+    }
+
+    50% {
+        box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.5), 0 0 12px rgba(239, 68, 68, 0.3);
+    }
+}
+
+/* skipped 状态 - 半透明灰色 */
+.canvas-node.skipped {
+    border-color: #6b7280;
+    opacity: 0.55;
+    box-shadow: none;
+    filter: grayscale(40%);
+    transition: opacity 0.3s ease, filter 0.3s ease;
+}
+
+.canvas-node.skipped .canvas-node-header {
+    background: #1e293b;
+}
+
+.canvas-node.skipped .canvas-node-status {
+    background: #6b7280;
 }
 
 /* 图片上传节点特殊样式 */
@@ -1570,4 +1667,3 @@
     border-color: #3b82f6 !important;
     background: rgba(59, 130, 246, 0.2) !important;
 }
-

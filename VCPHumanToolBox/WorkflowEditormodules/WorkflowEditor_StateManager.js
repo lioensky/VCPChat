@@ -1,5 +1,5 @@
 // WorkflowEditor State Manager Module
-(function() {
+(function () {
     'use strict';
 
     class WorkflowEditor_StateManager {
@@ -7,35 +7,35 @@
             if (WorkflowEditor_StateManager.instance) {
                 return WorkflowEditor_StateManager.instance;
             }
-            
+
             this.state = {
                 // 工作流基本信息
                 workflowName: '未命名工作流',
                 workflowId: null,
-                
+
                 // 画布状态
                 canvasOffset: { x: 0, y: 0 },
                 canvasZoom: 1,
-                
+
                 // 节点和连接
                 nodes: new Map(),
                 connections: new Map(),
-                
+
                 // 选择状态
                 selectedNodes: new Set(),
                 selectedConnections: new Set(),
-                
+
                 // 可用插件
                 availablePlugins: {
                     vcpChat: [],
                     vcpToolBox: [],
                     auxiliary: []
                 },
-                
+
                 // 执行状态
                 isExecuting: false,
                 executionHistory: [],
-                
+
                 // UI状态
                 isVisible: false,
                 activePropertyPanel: null,
@@ -44,11 +44,11 @@
                 undoStack: [],
                 redoStack: []
             };
-            
+
             this.listeners = new Map();
             this.nodeIdCounter = 1;
             this.connectionIdCounter = 1;
-            
+
             WorkflowEditor_StateManager.instance = this;
         }
 
@@ -148,7 +148,7 @@
                 status: 'idle', // idle, running, success, error
                 ...nodeData
             };
-            
+
             this.state.nodes.set(nodeId, node);
             this.emit('nodeAdded', node);
             return node;
@@ -185,7 +185,7 @@
                     connectionsToRemove.push(connectionId);
                 }
             });
-            
+
             connectionsToRemove.forEach(connectionId => {
                 this._removeConnection(connectionId); // 使用内部方法，不记录历史
             });
@@ -342,7 +342,7 @@
             switch (action.type) {
                 case 'addConnection':
                     // 撤销添加，即删除
-                    const connection = Array.from(this.state.connections.values()).find(c => 
+                    const connection = Array.from(this.state.connections.values()).find(c =>
                         c.sourceNodeId === action.data.connectionData.sourceNodeId &&
                         c.targetNodeId === action.data.connectionData.targetNodeId &&
                         c.targetParam === action.data.connectionData.targetParam
@@ -367,7 +367,7 @@
                     });
                     break;
             }
-            
+
             this.emit('historyChanged', {
                 undoCount: this.state.undoStack.length,
                 redoCount: this.state.redoStack.length
@@ -426,7 +426,7 @@
             console.log('[StateManager] Starting serialization...');
             console.log('[StateManager] Current nodes in state:', this.state.nodes.size);
             console.log('[StateManager] Current connections in state:', this.state.connections.size);
-            
+
             const nodes = {};
             this.state.nodes.forEach((node, id) => {
                 console.log(`[StateManager] Serializing node ${id}:`, {
@@ -434,14 +434,14 @@
                     pluginId: node.pluginId,
                     name: node.name || 'unnamed'
                 });
-                
+
                 // 复制节点数据，但排除图片上传器的base64数据
                 const nodeData = { ...node };
-                
+
                 // 如果是图片上传节点，移除base64数据以减小文件大小
-                if (node.type === 'imageUpload' || node.pluginId === 'imageUpload' || 
+                if (node.type === 'imageUpload' || node.pluginId === 'imageUpload' ||
                     (node.type === 'auxiliary' && node.pluginId === 'imageUpload')) {
-                    
+
                     // 移除base64数据，但保留文件名等元信息
                     if (nodeData.uploadedImage) {
                         nodeData.uploadedImage = {
@@ -449,15 +449,15 @@
                             base64Data: null // 清除base64数据
                         };
                     }
-                    
+
                     // 也清除旧格式的base64数据
                     if (nodeData.uploadedImageData) {
                         delete nodeData.uploadedImageData;
                     }
-                    
+
                     console.log(`[StateManager] Excluded base64 data from image upload node: ${id}`);
                 }
-                
+
                 nodes[id] = nodeData;
             });
 
@@ -484,14 +484,14 @@
                 createdAt: new Date().toISOString(),
                 updatedAt: new Date().toISOString()
             };
-            
+
             console.log('[StateManager] Serialization completed:', {
                 nodeCount: Object.keys(nodes).length,
                 connectionCount: Object.keys(connections).length,
                 workflowName: serializedData.name,
                 workflowId: serializedData.id
             });
-            
+
             return serializedData;
         }
 
@@ -499,7 +499,7 @@
         deserialize(data) {
             try {
                 console.log('[StateManager] Starting workflow deserialization:', data);
-                
+
                 // 清空当前状态
                 this.state.nodes.clear();
                 this.state.connections.clear();
@@ -520,9 +520,9 @@
                     console.log('[StateManager] Loading nodes:', Object.keys(data.nodes));
                     Object.entries(data.nodes).forEach(([id, nodeData]) => {
                         // 对图片上传节点进行特殊处理
-                        if (nodeData.type === 'imageUpload' || nodeData.pluginId === 'imageUpload' || 
+                        if (nodeData.type === 'imageUpload' || nodeData.pluginId === 'imageUpload' ||
                             (nodeData.type === 'auxiliary' && nodeData.pluginId === 'imageUpload')) {
-                            
+
                             // 如果图片上传节点没有base64数据，设置为未上传状态
                             if (nodeData.uploadedImage && !nodeData.uploadedImage.base64Data) {
                                 console.log(`[StateManager] Image upload node ${id} loaded without base64 data, setting to empty state`);
@@ -532,7 +532,7 @@
                                 delete nodeData.uploadedFileName;
                             }
                         }
-                        
+
                         this.state.nodes.set(id, nodeData);
                     });
                 }
@@ -551,7 +551,7 @@
                 // 发出工作流加载事件，延迟确保所有节点都已渲染
                 setTimeout(() => {
                     this.emit('workflowLoaded', data);
-                    
+
                     // 恢复节点的动态输入参数
                     Object.entries(data.nodes).forEach(([id, nodeData]) => {
                         if (nodeData.dynamicInputs && Array.isArray(nodeData.dynamicInputs) && nodeData.dynamicInputs.length > 0) {
@@ -563,7 +563,7 @@
                         }
                     });
                 }, 100);
-                
+
                 console.log('[StateManager] Workflow deserialization completed successfully');
                 return true;
             } catch (error) {
@@ -754,6 +754,53 @@
             }
 
             return result;
+        }
+
+        // 获取按拓扑层级分组的执行顺序（供ExecutionEngine并行执行使用）
+        getExecutionLayers() {
+            const inDegree = new Map();
+            const adjList = new Map();
+
+            // 初始化
+            this.state.nodes.forEach((node, nodeId) => {
+                inDegree.set(nodeId, 0);
+                adjList.set(nodeId, []);
+            });
+
+            // 构建图
+            this.state.connections.forEach(connection => {
+                const source = connection.sourceNodeId;
+                const target = connection.targetNodeId; if (adjList.has(source) && inDegree.has(target)) {
+                    adjList.get(source).push(target);
+                    inDegree.set(target, inDegree.get(target) + 1);
+                }
+            });
+
+            // Kahn 分层拓扑排序
+            const layers = [];
+            let currentLayer = [];
+            inDegree.forEach((deg, id) => { if (deg === 0) currentLayer.push(id); });
+
+            while (currentLayer.length > 0) {
+                layers.push([...currentLayer]);
+                const nextLayer = [];
+                currentLayer.forEach(nodeId => {
+                    (adjList.get(nodeId) || []).forEach(target => {
+                        inDegree.set(target, inDegree.get(target) - 1);
+                        if (inDegree.get(target) === 0) nextLayer.push(target);
+                    });
+                });
+                currentLayer = nextLayer;
+            }
+
+            // 如果处理的节点总数不等于全部节点数，说明有环
+            const totalProcessed = layers.reduce((sum, l) => sum + l.length, 0);
+            if (totalProcessed !== this.state.nodes.size) {
+                console.warn('[StateManager] getExecutionLayers: 存在循环依赖');
+                return null;
+            }
+
+            return layers;
         }
 
         // 重置状态

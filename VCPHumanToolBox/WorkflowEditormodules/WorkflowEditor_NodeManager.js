@@ -1,5 +1,5 @@
 // WorkflowEditor Node Manager Module
-(function() {
+(function () {
     'use strict';
 
     class WorkflowEditor_NodeManager {
@@ -7,11 +7,11 @@
             if (WorkflowEditor_NodeManager.instance) {
                 return WorkflowEditor_NodeManager.instance;
             }
-            
+
             this.stateManager = null;
             this.nodeTypes = new Map();
             this.nodeExecutors = new Map();
-            
+
             WorkflowEditor_NodeManager.instance = this;
             // 注入本地轻量右键菜单（用于未加载补丁文件时的兜底）
             try {
@@ -26,7 +26,7 @@
                         <div data-act="download"style="padding:8px 12px;cursor:pointer;">⬇️ 下载图片</div>`;
                     document.body.appendChild(menu);
 
-                    const copyText = async (text) => { try { await navigator.clipboard.writeText(text); } catch(e) { console.warn('复制链接失败', e); } };
+                    const copyText = async (text) => { try { await navigator.clipboard.writeText(text); } catch (e) { console.warn('复制链接失败', e); } };
                     const copyImage = async (url) => {
                         console.log('[LocalUrlMenu] 开始复制图片:', url);
                         try {
@@ -36,13 +36,13 @@
                             }
                             const blob = await res.blob();
                             console.log('[LocalUrlMenu] 获取到blob:', blob.type, blob.size);
-                            
+
                             // 检查浏览器支持的剪贴板类型
                             if (navigator.clipboard && window.ClipboardItem) {
                                 // 直接转换为PNG，避免格式兼容性问题
                                 console.log('[LocalUrlMenu] 转换为PNG格式以确保兼容性');
                                 const pngBlob = await convertToPng(blob);
-                                
+
                                 const item = new ClipboardItem({ 'image/png': pngBlob });
                                 await navigator.clipboard.write([item]);
                                 console.log('[LocalUrlMenu] 复制图片成功');
@@ -56,7 +56,7 @@
                             await copyText(url);
                         }
                     };
-                    
+
                     // 将图片转换为PNG格式
                     const convertToPng = async (blob) => {
                         return new Promise((resolve, reject) => {
@@ -103,7 +103,7 @@
                             console.log('[LocalUrlMenu] 显示菜单，URL:', url);
                             ev.preventDefault();
                             menu.style.left = ev.clientX + 'px';
-                            menu.style.top  = ev.clientY + 'px';
+                            menu.style.top = ev.clientY + 'px';
                             menu.style.display = 'block';
                             const onClick = async (e) => {
                                 e.stopPropagation();
@@ -129,18 +129,18 @@
                                 }
                                 hide();
                             };
-                            const hide = () => { 
+                            const hide = () => {
                                 console.log('[LocalUrlMenu] 隐藏菜单');
-                                menu.style.display='none'; 
-                                document.removeEventListener('click', hide, false); 
-                                menu.removeEventListener('click', onClick); 
+                                menu.style.display = 'none';
+                                document.removeEventListener('click', hide, false);
+                                menu.removeEventListener('click', onClick);
                             };
                             document.addEventListener('click', hide, false);
                             menu.addEventListener('click', onClick);
                         }
                     };
                 }
-            } catch (_) {}
+            } catch (_) { }
         }
 
         static getInstance() {
@@ -164,9 +164,9 @@
                     client.listModels().then(models => {
                         window.__WE_AI_MODELS__ = models;
                         console.log('[NodeManager] AI models cached:', models?.length || 0);
-                    }).catch(() => {});
+                    }).catch(() => { });
                 }
-            } catch (_) {}
+            } catch (_) { }
         }
 
         // 注册节点类型
@@ -285,37 +285,37 @@
                 inputs: ['input'],
                 outputs: ['output', 'matches'],
                 configSchema: {
-                    pattern: { 
-                        type: 'string', 
-                        required: true, 
+                    pattern: {
+                        type: 'string',
+                        required: true,
                         default: '',
                         label: '正则表达式 (Pattern)',
                         description: '用于匹配或替换的正则表达式模式，如: \\d+ 匹配数字，[a-zA-Z]+ 匹配字母',
                         placeholder: '例如: https?://[^\\s]+ 匹配URL'
                     },
-                    flags: { 
-                        type: 'string', 
+                    flags: {
+                        type: 'string',
                         default: 'g',
                         label: '正则标志 (Flags)',
                         description: '正则表达式标志：g=全局匹配，i=忽略大小写，m=多行模式，s=单行模式',
                         placeholder: '例如: gi 表示全局忽略大小写'
                     },
-                    operation: { 
-                        type: 'enum', 
+                    operation: {
+                        type: 'enum',
                         options: ['match', 'replace', 'test', 'split'],
                         default: 'match',
                         label: '操作类型 (Operation)',
                         description: '选择正则操作：match=匹配提取，replace=替换文本，test=测试匹配，split=分割字符串'
                     },
-                    replacement: { 
-                        type: 'string', 
+                    replacement: {
+                        type: 'string',
                         default: '',
                         label: '替换文本 (Replacement)',
                         description: '替换操作时的目标文本，支持 $1, $2 等捕获组引用',
                         placeholder: '例如: $1 引用第一个捕获组'
                     },
-                    outputParamName: { 
-                        type: 'string', 
+                    outputParamName: {
+                        type: 'string',
                         default: 'regexResult',
                         label: '输出参数名 (Output Param Name)',
                         description: '输出结果的参数名称，用于下游节点引用处理结果',
@@ -337,15 +337,15 @@
                         label: '转换类型 (Transform Type)',
                         description: '数据转换方式：json-parse=解析JSON，json-stringify=转为JSON字符串，to-string=转为字符串，to-number=转为数字，to-array=转为数组，custom=自定义脚本'
                     },
-                    customScript: { 
-                        type: 'string', 
+                    customScript: {
+                        type: 'string',
                         default: '',
                         label: '自定义脚本 (Custom Script)',
                         description: '自定义JavaScript代码进行数据转换，输入数据通过 input 变量访问，返回转换结果',
                         placeholder: '例如: return input.map(item => item.toUpperCase())'
                     },
-                    outputParamName: { 
-                        type: 'string', 
+                    outputParamName: {
+                        type: 'string',
                         default: 'transformedData',
                         label: '输出参数名 (Output Param Name)',
                         description: '输出结果的参数名称，用于下游节点引用转换后的数据',
@@ -367,8 +367,8 @@
                         label: '编程语言 (Language)',
                         description: '选择代码的编程语言类型，影响语法高亮和处理方式'
                     },
-                    code: { 
-                        type: 'string', 
+                    code: {
+                        type: 'string',
                         default: '',
                         label: '代码内容 (Code)',
                         description: '要处理的代码内容，支持多行输入和语法高亮显示',
@@ -390,9 +390,9 @@
                 inputs: ['input'],
                 outputs: ['true', 'false'],
                 configSchema: {
-                    condition: { 
-                        type: 'string', 
-                        required: true, 
+                    condition: {
+                        type: 'string',
+                        required: true,
                         default: '',
                         label: '条件表达式 (Condition)',
                         description: '要判断的条件表达式或字段路径，如: input.status 或 input.length',
@@ -405,8 +405,8 @@
                         label: '比较运算符 (Operator)',
                         description: '条件比较运算符：==等于，!=不等于，>大于，<小于，>=大于等于，<=小于等于，contains包含，startsWith开头匹配，endsWith结尾匹配'
                     },
-                    value: { 
-                        type: 'string', 
+                    value: {
+                        type: 'string',
                         default: '',
                         label: '比较值 (Value)',
                         description: '用于比较的目标值，支持字符串、数字等类型',
@@ -428,8 +428,8 @@
                         label: '循环类型 (Loop Type)',
                         description: '循环执行方式：forEach=遍历数组每个元素，times=指定次数循环，while=条件循环'
                     },
-                    maxIterations: { 
-                        type: 'number', 
+                    maxIterations: {
+                        type: 'number',
                         default: 100,
                         label: '最大迭代次数 (Max Iterations)',
                         description: '循环的最大执行次数，防止无限循环导致系统卡死',
@@ -445,9 +445,9 @@
                 inputs: ['input'],
                 outputs: ['output'],
                 configSchema: {
-                    delay: { 
-                        type: 'number', 
-                        default: 1000, 
+                    delay: {
+                        type: 'number',
+                        default: 1000,
                         min: 0,
                         label: '延时时长 (Delay Duration)',
                         description: '等待的时间长度，配合时间单位使用，用于控制执行节奏',
@@ -469,9 +469,9 @@
                 inputs: ['input', 'trigger'],
                 outputs: ['result'],
                 configSchema: {
-                    urlPath: { 
-                        type: 'string', 
-                        default: 'url', 
+                    urlPath: {
+                        type: 'string',
+                        default: 'url',
                         required: false,
                         label: 'URL路径 (URL Path)',
                         description: 'JSON中URL字段的路径，如: url 或 data.imageUrl 或 result.images[0]，支持数组路径如: images',
@@ -484,15 +484,15 @@
                         label: '渲染类型 (Render Type)',
                         description: '选择URL内容的渲染方式：auto=自动检测，image=图片，video=视频，iframe=网页嵌入，text=纯文本链接'
                     },
-                    allowFullscreen: { 
-                        type: 'boolean', 
+                    allowFullscreen: {
+                        type: 'boolean',
                         default: true,
                         label: '允许全屏 (Allow Fullscreen)',
                         description: '允许点击图片进入全屏查看模式，方便查看大图'
                     },
-                    outputParamName: { 
-                        type: 'string', 
-                        default: 'renderedUrl', 
+                    outputParamName: {
+                        type: 'string',
+                        default: 'renderedUrl',
                         label: '输出参数名 (Output Param Name)',
                         description: '输出结果的参数名称，用于下游节点引用渲染结果',
                         placeholder: '例如: displayedImage 或 renderedContent'
@@ -521,8 +521,8 @@
                         }
                     },
                     outputParamName: { // 移动到 configSchema 内部
-                        type: 'string', 
-                        default: 'output', 
+                        type: 'string',
+                        default: 'output',
                         required: false,
                         label: '输出参数名 (Output Param Name)',
                         description: '自定义输出参数名称，用于下游节点引用此内容',
@@ -722,34 +722,24 @@
             }
         }
 
-        // 执行VCPChat插件
+        /** @deprecated 使用 ExecutionEngine.executePluginNode() 代替 */
         async executeVCPChatPlugin(node, inputData) {
-            // TODO: 集成VCPChat插件系统
-            console.log(`Executing VCPChat plugin: ${node.pluginId}`, inputData);
-            
-            // 模拟插件执行
-            await this.delay(1000);
-            
-            return {
-                result: `VCPChat ${node.pluginId} executed successfully`,
-                data: inputData,
-                timestamp: new Date().toISOString()
-            };
+            console.warn('[NodeManager] executeVCPChatPlugin is deprecated. Use ExecutionEngine.executePluginNode()');
+            const engine = window.WorkflowEditor_ExecutionEngine;
+            if (engine && typeof engine.executePluginNode === 'function') {
+                return await engine.executePluginNode(node);
+            }
+            throw new Error('ExecutionEngine not available');
         }
 
-        // 执行VCPToolBox插件
+        /** @deprecated 使用 ExecutionEngine.executePluginNode() 代替 */
         async executeVCPToolBoxPlugin(node, inputData) {
-            // TODO: 集成VCPToolBox插件系统
-            console.log(`Executing VCPToolBox plugin: ${node.pluginId}`, inputData);
-            
-            // 模拟插件执行
-            await this.delay(1500);
-            
-            return {
-                result: `VCPToolBox ${node.pluginId} executed successfully`,
-                data: inputData,
-                timestamp: new Date().toISOString()
-            };
+            console.warn('[NodeManager] executeVCPToolBoxPlugin is deprecated. Use ExecutionEngine.executePluginNode()');
+            const engine = window.WorkflowEditor_ExecutionEngine;
+            if (engine && typeof engine.executePluginNode === 'function') {
+                return await engine.executePluginNode(node);
+            }
+            throw new Error('ExecutionEngine not available');
         }
 
         // 执行正则处理节点
@@ -769,19 +759,19 @@
                     case 'match':
                         result = input.match(regex);
                         return { output: result, matches: result };
-                    
+
                     case 'replace':
                         result = input.replace(regex, replacement || '');
                         return { output: result };
-                    
+
                     case 'test':
                         result = regex.test(input);
                         return { output: result };
-                    
+
                     case 'split':
                         result = input.split(regex);
                         return { output: result };
-                    
+
                     default:
                         throw new Error(`Unknown regex operation: ${operation}`);
                 }
@@ -802,26 +792,26 @@
                     case 'json-parse':
                         result = JSON.parse(input);
                         break;
-                    
+
                     case 'json-stringify':
                         result = JSON.stringify(input, null, 2);
                         break;
-                    
+
                     case 'to-string':
                         result = String(input);
                         break;
-                    
+
                     case 'to-number':
                         result = Number(input);
                         if (isNaN(result)) {
                             throw new Error('Cannot convert to number');
                         }
                         break;
-                    
+
                     case 'to-array':
                         result = Array.isArray(input) ? input : [input];
                         break;
-                    
+
                     default:
                         if (customScript) {
                             // 执行自定义脚本
@@ -851,17 +841,17 @@
                         // 简单的代码格式化
                         result = this.formatCode(input, language);
                         break;
-                    
+
                     case 'minify':
                         // 简单的代码压缩
                         result = this.minifyCode(input, language);
                         break;
-                    
+
                     case 'validate':
                         // 代码验证
                         result = this.validateCode(input, language);
                         break;
-                    
+
                     case 'execute':
                         // 执行代码（仅JavaScript）
                         if (language === 'javascript') {
@@ -871,7 +861,7 @@
                             throw new Error(`Cannot execute ${language} code`);
                         }
                         break;
-                    
+
                     default:
                         result = input;
                 }
@@ -949,7 +939,7 @@
                             });
                         }
                         break;
-                    
+
                     case 'times':
                         const times = Math.min(Number(input) || 1, maxIterations);
                         for (let i = 0; i < times; i++) {
@@ -960,7 +950,7 @@
                             });
                         }
                         break;
-                    
+
                     case 'while':
                         // 简单的while循环实现
                         let count = 0;
@@ -1003,7 +993,7 @@
         // 执行URL渲染节点
         async executeUrlRendererNode(node, inputData) {
             const { urlPath, renderType, allowFullscreen } = node.config;
-            
+
             // 优先使用 input 字段，如果没有则使用整个 inputData 对象
             const input = inputData.input || inputData;
 
@@ -1017,16 +1007,16 @@
                 if (cleanPath.startsWith('{{') && cleanPath.endsWith('}}')) {
                     cleanPath = cleanPath.slice(2, -2).trim();
                 }
-                
+
                 // 从输入数据中提取URL
                 console.log('[URLRenderer] 调试信息:');
                 console.log('[URLRenderer] - input:', input);
                 console.log('[URLRenderer] - urlPath:', urlPath);
                 console.log('[URLRenderer] - cleanPath:', cleanPath);
-                
+
                 const urlData = this.extractUrlFromData(input, cleanPath);
                 console.log('[URLRenderer] - extractUrlFromData 返回:', urlData);
-                
+
                 if (!urlData) {
                     throw new Error(`URL not found in input data using path: ${urlPath || 'url'}`);
                 }
@@ -1070,7 +1060,7 @@
                         let html = `
                             <div class="we-url-gallery" style="width:100%; max-width:${galleryWidth}px; display:grid; grid-template-columns: repeat(2, 1fr); gap:6px; padding:4px;">
                         `;
-                        validUrls.forEach((u)=>{
+                        validUrls.forEach((u) => {
                             html += `
                                 <div class="we-url-card" style="${cardStyle}">
                                     <img src="${u}" style="${imgStyle}" />
@@ -1081,18 +1071,18 @@
                         renderArea.innerHTML = html;
 
                         // 事件绑定（灯箱/右键 或 新标签）
-                        renderArea.querySelectorAll('img').forEach((img)=>{
+                        renderArea.querySelectorAll('img').forEach((img) => {
                             const u = img.getAttribute('src');
-                            img.addEventListener('click',(e)=>{
+                            img.addEventListener('click', (e) => {
                                 e.preventDefault(); e.stopPropagation();
                                 if (window.__UrlRenderer && window.__UrlRenderer.openLightbox) window.__UrlRenderer.openLightbox(u); else window.open(u, '_blank');
                             });
-                            img.addEventListener('contextmenu',(e)=>{
+                            img.addEventListener('contextmenu', (e) => {
                                 if (window.__UrlRenderer && window.__UrlRenderer.showContextMenu) window.__UrlRenderer.showContextMenu(e, u);
                                 else if (window.__LocalUrlMenu) window.__LocalUrlMenu.show(e, u);
                             });
                         });
-                    } catch(e) { console.warn('[URLRenderer] 内联多图渲染失败', e); }
+                    } catch (e) { console.warn('[URLRenderer] 内联多图渲染失败', e); }
                     return {
                         result: validUrls,
                         rendered: true,
@@ -1215,27 +1205,27 @@
         // 检测URL类型
         detectUrlType(url) {
             const urlLower = url.toLowerCase();
-            
+
             // 图片格式
             if (/\.(jpg|jpeg|png|gif|bmp|webp|svg)(\?.*)?$/i.test(urlLower)) {
                 return 'image';
             }
-            
+
             // 视频格式
             if (/\.(mp4|webm|ogg|avi|mov|wmv|flv|mkv)(\?.*)?$/i.test(urlLower)) {
                 return 'video';
             }
-            
+
             // 音频格式
             if (/\.(mp3|wav|ogg|aac|flac|m4a)(\?.*)?$/i.test(urlLower)) {
                 return 'audio';
             }
-            
+
             // 文档格式
             if (/\.(pdf|doc|docx|txt)(\?.*)?$/i.test(urlLower)) {
                 return 'iframe';
             }
-            
+
             // 默认使用iframe
             return 'iframe';
         }
@@ -1247,7 +1237,7 @@
             const thumbAspect = '4 / 3';
             const fitMode = 'contain';
             let renderArea = nodeElement.querySelector('.url-render-area');
-            
+
             if (!renderArea) {
                 // 创建渲染区域
                 renderArea = document.createElement('div');
@@ -1263,7 +1253,7 @@
                     width: ${galleryWidth}px;
                     max-width: ${galleryWidth}px;
                 `;
-                
+
                 // 插入到节点内容区域
                 const nodeContent = nodeElement.querySelector('.node-content') || nodeElement;
                 const nodeHeader = nodeElement.querySelector('.node-header');
@@ -1309,7 +1299,7 @@
                         renderArea.style.setProperty('width', galleryWidth + 'px', 'important');
                         renderArea.style.setProperty('max-width', galleryWidth + 'px', 'important');
                         console.log('[URLRenderer(NodeManager)] 容器宽度锁定:', renderArea.getBoundingClientRect().width);
-                    } catch (_) {}
+                    } catch (_) { }
                 } catch (error) {
                     this.showRenderError(renderArea, error.message);
                 }
@@ -1333,7 +1323,7 @@
 
             // 确保渲染增强存在（灯箱/右键）
             if (window.WorkflowEditor_NodeManager && typeof window.WorkflowEditor_NodeManager.ensureUrlRendererEnhancements === 'function') {
-                try { window.WorkflowEditor_NodeManager.ensureUrlRendererEnhancements(); } catch(e) {}
+                try { window.WorkflowEditor_NodeManager.ensureUrlRendererEnhancements(); } catch (e) { }
             }
 
             switch (type) {
@@ -1345,9 +1335,9 @@
                     img.style.cssText = `width:100%; height:100%; object-fit:${fitMode}; border-radius:4px; cursor:pointer;`;
                     img.onerror = () => this.showRenderError(container, '图片加载失败');
                     try {
-                        img.addEventListener('click', (e)=>{ if (window.__UrlRenderer) { e.preventDefault(); e.stopPropagation(); window.__UrlRenderer.openLightbox(url); }});
-                        img.addEventListener('contextmenu', (e)=>{ if (window.__UrlRenderer) { window.__UrlRenderer.showContextMenu(e, url); }});
-                    } catch(_) {}
+                        img.addEventListener('click', (e) => { if (window.__UrlRenderer) { e.preventDefault(); e.stopPropagation(); window.__UrlRenderer.openLightbox(url); } });
+                        img.addEventListener('contextmenu', (e) => { if (window.__UrlRenderer) { window.__UrlRenderer.showContextMenu(e, url); } });
+                    } catch (_) { }
                     card.appendChild(img);
                     element = card;
                     break;
@@ -1408,7 +1398,7 @@
                         font-size: 12px;
                         line-height: 1.4;
                     `;
-                    
+
                     // 异步加载文本内容
                     fetch(url)
                         .then(response => response.text())
@@ -1571,10 +1561,10 @@
         // 动态输入端点管理
         updateNodeInputsForCommand(nodeId, command, pluginKey) {
             console.log('[NodeManager] updateNodeInputsForCommand called:', { nodeId, command, pluginKey });
-            
+
             const node = this.stateManager.getNode(nodeId);
             console.log('[NodeManager] Found node:', node);
-            
+
             if (!node || (node.type !== 'VCPToolBox' && node.type !== 'vcpChat')) {
                 console.warn('[NodeManager] Invalid node or type:', node?.type);
                 return;
@@ -1606,7 +1596,7 @@
             // 获取动态输入端点
             const dynamicInputs = this.getDynamicInputsForCommand(commandInfo);
             console.log('[NodeManager] Generated dynamicInputs:', dynamicInputs);
-            
+
             // 更新节点配置
             node.command = command;
             node.dynamicInputs = dynamicInputs;
@@ -1614,7 +1604,7 @@
             // 通知画布管理器更新节点输入端点
             // 通知画布管理器更新节点输入端点
             let canvasManager = null;
-            
+
             // 尝试多种方式获取 CanvasManager
             if (window.WorkflowEditor_CanvasManager) {
                 canvasManager = window.WorkflowEditor_CanvasManager;
@@ -1623,11 +1613,11 @@
                 canvasManager = this.stateManager.canvasManager;
                 console.log('[NodeManager] Found CanvasManager via StateManager');
             }
-            
+
             if (canvasManager) {
                 console.log('[NodeManager] CanvasManager found, checking methods...');
                 console.log('[NodeManager] updateNodeInputs method type:', typeof canvasManager.updateNodeInputs);
-                
+
                 if (typeof canvasManager.updateNodeInputs === 'function') {
                     console.log('[NodeManager] Calling canvasManager.updateNodeInputs');
                     canvasManager.updateNodeInputs(nodeId, dynamicInputs);
@@ -1641,12 +1631,12 @@
                     console.log('[NodeManager] No suitable method found, updating node directly');
                     // 直接更新节点的 dynamicInputs 属性
                     this.stateManager.updateNode(nodeId, { dynamicInputs });
-                    
+
                     // 尝试触发画布重新渲染
                     if (this.stateManager.emit) {
                         this.stateManager.emit('nodeNeedsRerender', { nodeId, dynamicInputs });
                     }
-                    
+
                     // 尝试直接调用画布渲染方法
                     if (canvasManager.renderNodes) {
                         console.log('[NodeManager] Triggering full canvas rerender');
@@ -1657,26 +1647,26 @@
                 console.log('[NodeManager] CanvasManager not found, updating node directly');
                 // 直接更新节点的 dynamicInputs 属性
                 this.stateManager.updateNode(nodeId, { dynamicInputs });
-                
+
                 // 触发画布重新渲染该节点
                 if (this.stateManager.emit) {
                     this.stateManager.emit('nodeNeedsRerender', { nodeId, dynamicInputs });
                 }
             }
-            
+
             console.log('[NodeManager] Updated node inputs for command:', { nodeId, command, dynamicInputs });
         }
 
         getDynamicInputsForCommand(commandInfo) {
             const inputs = [];
-            
+
             if (commandInfo && commandInfo.parameters) {
                 Object.entries(commandInfo.parameters).forEach(([paramName, paramInfo]) => {
                     // 跳过 tool_name 和 command 参数，这些不需要输入端点
                     if (paramName.toLowerCase() === 'tool_name' || paramName.toLowerCase() === 'command') {
                         return;
                     }
-                    
+
                     inputs.push({
                         name: paramName,
                         label: paramInfo.description || paramName,
@@ -1708,7 +1698,7 @@
         // 更新辅助节点的输入端点 - 辅助节点不需要动态输入端点
         updateNodeInputsForAuxiliary(nodeId, auxiliaryType) {
             console.log('[NodeManager] updateNodeInputsForAuxiliary called - 辅助节点不需要动态输入端点:', { nodeId, auxiliaryType });
-            
+
             // 辅助节点不需要动态输入端点功能，直接返回
             // 这个功能只针对插件节点
             return;
@@ -1723,7 +1713,7 @@
         // 执行图片上传节点
         async executeImageUploadNode(node, inputData = {}) {
             console.log('[NodeManager] 执行图片上传节点:', node.id);
-            
+
             const config = node.config || {};
             const {
                 outputParamName = 'imageBase64',
@@ -1737,7 +1727,7 @@
             // 检查节点是否已经有上传的图片数据
             if (node.uploadedImageData) {
                 console.log('[NodeManager] 使用已上传的图片数据');
-                
+
                 // 简洁输出：只返回自定义输出名对应的 base64 数据
                 const result = {
                     [outputParamName]: node.uploadedImageData
@@ -1748,7 +1738,7 @@
             } else {
                 // 如果没有上传的图片，返回等待上传的状态
                 console.log('[NodeManager] 等待用户上传图片');
-                
+
                 const result = {
                     [outputParamName]: null,
                     message: '请上传图片文件',
@@ -1823,7 +1813,7 @@
         // 处理图片上传（由UI调用）
         async handleImageUpload(nodeId, file) {
             console.log('[NodeManager] 处理图片上传:', { nodeId, fileName: file.name, fileSize: file.size });
-            
+
             const node = this.stateManager.getNode(nodeId);
             if (!node) {
                 throw new Error(`节点 ${nodeId} 不存在`);
@@ -1890,10 +1880,10 @@
 
             return new Promise((resolve, reject) => {
                 const reader = new FileReader();
-                
+
                 reader.onload = (e) => {
                     const img = new Image();
-                    
+
                     img.onload = () => {
                         try {
                             // 创建canvas进行图片处理
@@ -1902,9 +1892,9 @@
 
                             // 计算新的尺寸（保持宽高比）
                             let { width, height } = this.calculateNewDimensions(
-                                img.width, 
-                                img.height, 
-                                maxWidth, 
+                                img.width,
+                                img.height,
+                                maxWidth,
                                 maxHeight
                             );
 
