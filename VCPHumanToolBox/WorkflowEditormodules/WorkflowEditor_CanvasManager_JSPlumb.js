@@ -1,5 +1,5 @@
 // WorkflowEditor Canvas Manager with JSPlumb integration
-(function() {
+(function () {
     'use strict';
 
     class WorkflowEditor_CanvasManager {
@@ -7,17 +7,17 @@
             if (WorkflowEditor_CanvasManager.instance) {
                 return WorkflowEditor_CanvasManager.instance;
             }
-            
+
             this.canvas = null;
             this.viewport = null;
             this.content = null;
             this.stateManager = null;
             this.jsPlumbInstance = null;
-            
+
             // 节点管理
             this.nodes = new Map();
             this.connections = new Map();
-            
+
             WorkflowEditor_CanvasManager.instance = this;
         }
 
@@ -34,12 +34,12 @@
             this.canvas = document.getElementById('workflowCanvas');
             this.viewport = document.getElementById('canvasViewport');
             this.content = document.getElementById('canvasContent');
-            
+
             this.initJSPlumb();
             this.bindEvents();
-            
+
             console.log('[WorkflowEditor_CanvasManager] Initialized with JSPlumb');
-            
+
             // 添加全局测试函数
             window.testConnectionEvent = () => {
                 this.testConnectionEvent();
@@ -51,7 +51,7 @@
             console.log('[CanvasManager] 🧪 Testing connection event...');
             const sourceNode = document.querySelector('[data-node-id="node_4"]');
             const targetNode = document.querySelector('[data-node-id="node_1"]');
-            
+
             if (sourceNode && targetNode) {
                 console.log('[CanvasManager] 🧪 Found test nodes:', sourceNode.id, targetNode.id);
                 const connection = this.jsPlumbInstance.connect({
@@ -69,10 +69,10 @@
         // 重新绑定连线事件
         rebindConnectionEvents() {
             console.log('[CanvasManager] 🔄 Rebinding connection events after workflow load...');
-            
+
             // 解绑现有事件
             this.jsPlumbInstance.unbind('connection');
-            
+
             // 重新绑定事件
             this.jsPlumbInstance.bind('connection', (info) => {
                 console.log('[CanvasManager] 🔗 Connection event triggered (rebound):', info);
@@ -81,7 +81,7 @@
                 console.log('[CanvasManager] 🔗 Target:', info.target);
                 this.handleConnectionCreated(info);
             });
-            
+
             console.log('[CanvasManager] ✅ Connection events rebound successfully');
         }
 
@@ -178,7 +178,7 @@
                         this.deleteConnection(connection);
                         if (originalEvent && originalEvent.preventDefault) originalEvent.preventDefault();
                     }
-                } catch (_) {}
+                } catch (_) { }
             });
 
             // 画布级右键菜单兜底：识别连接线右键
@@ -195,7 +195,7 @@
                             e.preventDefault();
                             this.showConnectionContextMenu(hit, e);
                         }
-                    } catch (_) {}
+                    } catch (_) { }
                 });
             }
         }
@@ -206,7 +206,7 @@
 
             // 画布缩放和平移
             this.viewport.addEventListener('wheel', (e) => this.handleCanvasWheel(e));
-            
+
             // 画布拖拽
             let isDraggingCanvas = false;
             let dragStart = { x: 0, y: 0 };
@@ -216,7 +216,7 @@
                     isDraggingCanvas = true;
                     dragStart = { x: e.clientX, y: e.clientY };
                     this.viewport.style.cursor = 'grabbing';
-                    
+
                     // 清除选择
                     this.stateManager.clearSelection();
                 }
@@ -227,12 +227,12 @@
                     const deltaX = e.clientX - dragStart.x;
                     const deltaY = e.clientY - dragStart.y;
                     const currentOffset = this.stateManager.getCanvasOffset();
-                    
+
                     this.stateManager.setCanvasOffset({
                         x: currentOffset.x + deltaX,
                         y: currentOffset.y + deltaY
                     });
-                    
+
                     dragStart = { x: e.clientX, y: e.clientY };
                 }
             });
@@ -252,10 +252,10 @@
                 }
             });
 
-        // 键盘事件
-        document.addEventListener('keydown', (e) => this.handleKeyDown(e));
+            // 键盘事件
+            document.addEventListener('keydown', (e) => this.handleKeyDown(e));
 
-        // 状态管理器事件
+            // 状态管理器事件
             if (this.stateManager) {
                 this.stateManager.on('nodeAdded', (node) => this.renderNode(node));
                 this.stateManager.on('nodeRemoved', (data) => this.removeNode(data.nodeId));
@@ -267,6 +267,10 @@
                             const nodeElement = this.nodes.get(data.nodeId);
                             if (nodeElement && data.node && data.node.position) {
                                 this.updateNode(data.nodeId, data.node);
+                                // 如果节点状态发生变化，同步更新视觉样式
+                                if (data.node && data.node.status) {
+                                    this.updateNodeStatus(data.nodeId, data.node.status);
+                                }
                             }
                         } catch (error) {
                             console.warn('[CanvasManager] Failed to update node on nodeUpdated event:', error);
@@ -278,7 +282,7 @@
                 this.stateManager.on('canvasOffsetChanged', () => this.updateCanvasTransform());
                 this.stateManager.on('canvasZoomChanged', () => this.updateCanvasTransform());
                 this.stateManager.on('selectionChanged', (data) => this.updateSelection(data));
-                
+
                 // 监听工作流加载完成事件：先全局重绘，再对图片上传节点做安全 revalidate
                 this.stateManager.on('workflowLoaded', (data) => {
                     console.log('[CanvasManager] Workflow loaded, fixing image upload node connections...');
@@ -311,24 +315,24 @@
         // 处理画布滚轮缩放
         handleCanvasWheel(e) {
             e.preventDefault();
-            
+
             const rect = this.viewport.getBoundingClientRect();
             const mouseX = e.clientX - rect.left;
             const mouseY = e.clientY - rect.top;
-            
+
             const currentZoom = this.stateManager.getCanvasZoom();
             const currentOffset = this.stateManager.getCanvasOffset();
-            
+
             const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
             const newZoom = Math.max(0.1, Math.min(3, currentZoom * zoomFactor));
-            
+
             // 计算缩放中心点
             const zoomRatio = newZoom / currentZoom;
             const newOffset = {
                 x: mouseX - (mouseX - currentOffset.x) * zoomRatio,
                 y: mouseY - (mouseY - currentOffset.y) * zoomRatio
             };
-            
+
             this.stateManager.setCanvasZoom(newZoom);
             this.stateManager.setCanvasOffset(newOffset);
         }
@@ -383,24 +387,24 @@
 
             const nodeElement = document.createElement('div');
             let nodeClasses = `canvas-node ${node.category === 'auxiliary' ? 'auxiliary' : ''}`;
-            
+
             // 为URL渲染节点添加特殊类
             if (node.type === 'urlRenderer' || node.pluginId === 'urlRenderer') {
                 nodeClasses += ' url-renderer';
             }
-            
+
             // 为图片上传节点添加特殊类
             if (node.type === 'imageUpload' || node.pluginId === 'imageUpload') {
                 nodeClasses += ' image-upload';
             }
-            
+
             nodeElement.className = nodeClasses;
             nodeElement.id = node.id; // 直接使用节点ID，不添加前缀
             nodeElement.setAttribute('data-node-id', node.id); // 添加数据属性
             nodeElement.style.left = node.position.x + 'px';
             nodeElement.style.top = node.position.y + 'px';
             nodeElement.style.position = 'absolute';
-            
+
             // 为图片上传节点创建特殊UI
             if (node.type === 'imageUpload' || node.pluginId === 'imageUpload') {
                 nodeElement.innerHTML = `
@@ -440,10 +444,10 @@
 
             // 使节点可拖拽
             this.makeNodeDraggable(nodeElement, node);
-            
+
             // 添加连接点
             this.addEndpoints(nodeElement, node);
-            
+
             // 绑定节点事件
             this.bindNodeEvents(nodeElement, node);
 
@@ -454,13 +458,49 @@
         getNodeIcon(node) {
             const icons = {
                 assistant: '🤖', music: '🎵', note: '📝', search: '🔍',
-                TodoManager: '✅', FluxGen: '🎨', ComfyUIGen: '🖼️', 
+                TodoManager: '✅', FluxGen: '🎨', ComfyUIGen: '🖼️',
                 BilibiliFetch: '📺', VideoGenerator: '🎬',
                 regex: '🔤', dataTransform: '🔄', codeEdit: '💻',
                 condition: '🔀', loop: '🔁', delay: '⏱️', urlRenderer: '🖼️',
                 imageUpload: '📤'
             };
             return icons[node.pluginId || node.type] || '⚙️';
+        }
+
+        // 获取节点类型颜色（用于端点和连线着色）
+        getNodeTypeColors(node) {
+            const colorMap = {
+                // 数据源 - 绿色系
+                'contentInput': { main: '#22c55e', dark: '#16a34a', hover: '#4ade80' },
+                'imageUpload': { main: '#10b981', dark: '#059669', hover: '#34d399' },
+                // 文本处理 - 青色系
+                'regex': { main: '#06b6d4', dark: '#0891b2', hover: '#22d3ee' },
+                'urlExtractor': { main: '#0ea5e9', dark: '#0284c7', hover: '#38bdf8' },
+                // 数据变换 - 紫色系
+                'dataTransform': { main: '#a855f7', dark: '#9333ea', hover: '#c084fc' },
+                'codeEdit': { main: '#8b5cf6', dark: '#7c3aed', hover: '#a78bfa' },
+                // 控制流 - 粉橙色系
+                'condition': { main: '#ec4899', dark: '#db2777', hover: '#f472b6' },
+                'loop': { main: '#f97316', dark: '#ea580c', hover: '#fb923c' },
+                'delay': { main: '#f59e0b', dark: '#d97706', hover: '#fbbf24' },
+                // 渲染/展示 - 靛蓝色系
+                'urlRenderer': { main: '#6366f1', dark: '#4f46e5', hover: '#818cf8' },
+                'textDisplay': { main: '#64748b', dark: '#475569', hover: '#94a3b8' },
+                'imageDisplay': { main: '#64748b', dark: '#475569', hover: '#94a3b8' },
+                'htmlDisplay': { main: '#64748b', dark: '#475569', hover: '#94a3b8' },
+                'jsonDisplay': { main: '#64748b', dark: '#475569', hover: '#94a3b8' },
+                // AI节点 - 金色
+                'aiCompose': { main: '#eab308', dark: '#ca8a04', hover: '#facc15' },
+            };
+
+            const pluginId = node.pluginId || node.type;
+            const colors = colorMap[pluginId];
+            if (colors) return colors;
+
+            // 非辅助节点按 category 区分
+            if (node.category === 'vcpToolBox') return { main: '#f59e0b', dark: '#d97706', hover: '#fbbf24' };
+            // 默认蓝色（vcpChat和未知类型）
+            return { main: '#3b82f6', dark: '#2563eb', hover: '#60a5fa' };
         }
 
         // 获取节点描述
@@ -503,13 +543,13 @@
                         // 标记正在拖拽，避免频繁重新验证连接
                         nodeElement._isDragging = true;
                         // 在拖动期间暂停大规模绘制，减少端点漂移
-                        try { this.jsPlumbInstance.setSuspendDrawing(true); } catch (_) {}
+                        try { this.jsPlumbInstance.setSuspendDrawing(true); } catch (_) { }
                     },
                     drag: (params) => {
                         // 拖拽过程中：仅重绘当前元素，提升跟随稳定性
-                        try { this.jsPlumbInstance.repaint(params.el); } catch (_) {}
+                        try { this.jsPlumbInstance.repaint(params.el); } catch (_) { }
                         // 同步容器级连线，降低视觉延迟
-                        try { this.jsPlumbInstance.repaintEverything(); } catch (_) {}
+                        try { this.jsPlumbInstance.repaintEverything(); } catch (_) { }
                     },
                     stop: (params) => {
                         // 拖拽结束后更新最终位置
@@ -517,21 +557,21 @@
                             x: parseInt(params.el.style.left) || 0,
                             y: parseInt(params.el.style.top) || 0
                         };
-                        
+
                         // 清除拖拽标记
                         nodeElement._isDragging = false;
-                        
+
                         // 更新StateManager中的节点位置
                         if (this.stateManager && this.stateManager.updateNode) {
                             this.stateManager.updateNode(node.id, { position: newPos });
                         }
-                        
+
                         // 继续与画布同步：恢复绘制，并多次repaint降低错位
-                        try { this.jsPlumbInstance.setSuspendDrawing(false, true); } catch (_) {}
+                        try { this.jsPlumbInstance.setSuspendDrawing(false, true); } catch (_) { }
                         const safeRepaint = () => {
                             if (this.jsPlumbInstance && nodeElement.offsetParent !== null) {
-                                try { this.jsPlumbInstance.revalidate(nodeElement); } catch (_) {}
-                                try { this.jsPlumbInstance.repaint(nodeElement); } catch (_) {}
+                                try { this.jsPlumbInstance.revalidate(nodeElement); } catch (_) { }
+                                try { this.jsPlumbInstance.repaint(nodeElement); } catch (_) { }
                             }
                         };
                         safeRepaint();
@@ -540,7 +580,7 @@
                         if (typeof requestAnimationFrame === 'function') {
                             requestAnimationFrame(safeRepaint);
                         }
-                        
+
                         console.log(`[CanvasManager] Node ${node.id} moved to:`, newPos);
                     }
                 });
@@ -556,7 +596,7 @@
         // 添加连接点
         addEndpoints(nodeElement, node) {
             if (!this.jsPlumbInstance) return;
-
+            const typeColors = this.getNodeTypeColors(node);
             console.log('[CanvasManager] Adding endpoints for node:', node.id, node.category);
 
             let inputEndpoint = null;
@@ -575,26 +615,31 @@
                     isTarget: false,
                     maxConnections: -1,
                     endpoint: ['Dot', { radius: 8 }],
-                    paintStyle: { 
-                        fill: '#f59e0b', 
-                        stroke: '#d97706',
+                    paintStyle: {
+                        fill: typeColors.main,
+                        stroke: typeColors.dark,
                         strokeWidth: 3
                     },
-                    hoverPaintStyle: { 
-                        fill: '#b45309', 
-                        stroke: '#92400e',
+                    hoverPaintStyle: {
+                        fill: typeColors.hover,
+                        stroke: typeColors.dark,
                         strokeWidth: 3
                     },
-                    connectorStyle: { stroke: '#3b82f6', strokeWidth: 2 },
-                    connectorHoverStyle: { stroke: '#1d4ed8', strokeWidth: 3 },
-                    dragOptions: { cursor: 'pointer', zIndex: 2000 },
+                    connectorStyle: {
+                        stroke: typeColors.main,
+                        strokeWidth: 2
+                    },
+                    connectorHoverStyle: {
+                        stroke: typeColors.dark,
+                        strokeWidth: 3
+                    },
                     // 启用连接拖拽重连
                     connectionsDetachable: true,
                     reattachConnections: true,
                     // 启用端点拖拽
                     dragOptions: { cursor: 'pointer', zIndex: 2000 }
                 });
-                
+
                 // 设置端点的节点ID，用于连接创建时的识别
                 if (outputEndpoint) {
                     outputEndpoint.nodeId = node.id;
@@ -611,13 +656,13 @@
                     isSource: false,
                     maxConnections: -1,
                     endpoint: ['Dot', { radius: 8 }],
-                    paintStyle: { 
-                        fill: '#10b981', 
+                    paintStyle: {
+                        fill: '#10b981',
                         stroke: '#059669',
                         strokeWidth: 3
                     },
-                    hoverPaintStyle: { 
-                        fill: '#047857', 
+                    hoverPaintStyle: {
+                        fill: '#047857',
                         stroke: '#065f46',
                         strokeWidth: 3
                     },
@@ -637,18 +682,24 @@
                     isTarget: false,
                     maxConnections: -1,
                     endpoint: ['Dot', { radius: 8 }],
-                    paintStyle: { 
-                        fill: '#f59e0b', 
-                        stroke: '#d97706',
+                    paintStyle: {
+                        fill: typeColors.main,
+                        stroke: typeColors.dark,
                         strokeWidth: 3
                     },
-                    hoverPaintStyle: { 
-                        fill: '#b45309', 
-                        stroke: '#92400e',
+                    hoverPaintStyle: {
+                        fill: typeColors.hover,
+                        stroke: typeColors.dark,
                         strokeWidth: 3
                     },
-                    connectorStyle: { stroke: '#3b82f6', strokeWidth: 2 },
-                    connectorHoverStyle: { stroke: '#1d4ed8', strokeWidth: 3 },
+                    connectorStyle: {
+                        stroke: typeColors.main,
+                        strokeWidth: 2
+                    },
+                    connectorHoverStyle: {
+                        stroke: typeColors.dark,
+                        strokeWidth: 3
+                    },
                     dragOptions: { cursor: 'pointer', zIndex: 2000 },
                     // 启用连接拖拽重连
                     connectionsDetachable: true,
@@ -656,7 +707,7 @@
                     // 启用端点拖拽
                     dragOptions: { cursor: 'pointer', zIndex: 2000 }
                 });
-                
+
                 // 设置端点的节点ID和参数名，用于连接创建时的识别
                 if (inputEndpoint) {
                     inputEndpoint.nodeId = node.id;
@@ -679,12 +730,12 @@
             // 为辅助节点确保端点正确设置 (现在已经包含在上面的逻辑中，但保留以防万一)
             if (node.category === 'auxiliary') {
                 console.log('[CanvasManager] Setting up auxiliary node endpoints:', node.id);
-                
+
                 if (inputEndpoint) {
                     inputEndpoint.setVisible(true);
                     inputEndpoint.setEnabled(true);
                 }
-                
+
                 if (outputEndpoint) {
                     outputEndpoint.setVisible(true);
                     outputEndpoint.setEnabled(true);
@@ -748,7 +799,7 @@
             // 支持两种数据格式：uploadedImage（新格式）和uploadedImageData（旧格式）
             let imageData = null;
             let fileName = null;
-            
+
             if (node.uploadedImage && node.uploadedImage.base64Data) {
                 // 新格式
                 imageData = node.uploadedImage.base64Data;
@@ -758,7 +809,7 @@
                 imageData = node.uploadedImageData;
                 fileName = node.uploadedFileName || '已上传图片';
             }
-            
+
             if (imageData) {
                 console.log('[CanvasManager] Restoring uploaded image for node:', node.id);
                 uploadText.textContent = fileName || '已上传图片';
@@ -766,7 +817,7 @@
                 uploadText.style.wordBreak = 'break-all';
                 previewImg.src = imageData;
                 uploadPreview.style.display = 'block';
-                
+
                 // 确保图片加载完成后重新计算连接线位置（含缓存命中的兜底）
                 const doRefresh = () => {
                     setTimeout(() => {
@@ -833,11 +884,11 @@
                 const nodeElement = this.nodes && this.nodes.get ? this.nodes.get(nodeId) : document.getElementById(nodeId);
                 if (!nodeElement) return;
                 if (nodeElement.offsetParent !== null && document.contains(nodeElement)) {
-                    try { this.jsPlumbInstance.revalidate(nodeElement); } catch (_) {}
-                    try { this.jsPlumbInstance.repaint(nodeElement); } catch (_) {}
+                    try { this.jsPlumbInstance.revalidate(nodeElement); } catch (_) { }
+                    try { this.jsPlumbInstance.repaint(nodeElement); } catch (_) { }
                     if (typeof requestAnimationFrame === 'function') {
                         requestAnimationFrame(() => {
-                            try { this.jsPlumbInstance.repaint(nodeElement); } catch (_) {}
+                            try { this.jsPlumbInstance.repaint(nodeElement); } catch (_) { }
                         });
                     }
                 }
@@ -852,7 +903,7 @@
             const maxSizeMB = (node.config && node.config.maxFileSize) || 10; // 10MB
             const maxSizeBytes = maxSizeMB * 1024 * 1024; // 转换为字节
             const fileSizeMB = file.size / (1024 * 1024);
-            
+
             if (file.size > maxSizeBytes) {
                 alert(`文件大小超过限制: ${fileSizeMB.toFixed(2)}MB > ${maxSizeMB}MB`);
                 return;
@@ -861,10 +912,10 @@
             // 检查文件格式
             const acceptedFormats = (node.config && node.config.acceptedFormats) || ['jpg', 'png', 'gif', 'webp'];
             const fileExtension = file.name.split('.').pop().toLowerCase();
-            
+
             // 处理acceptedFormats可能是数组或字符串的情况
             const formatArray = Array.isArray(acceptedFormats) ? acceptedFormats : acceptedFormats.split(',');
-            
+
             if (!formatArray.includes(fileExtension)) {
                 alert(`不支持的文件格式，支持的格式: ${formatArray.join(', ')}`);
                 return;
@@ -874,7 +925,7 @@
             const reader = new FileReader();
             reader.onload = (e) => {
                 const base64Data = e.target.result;
-                
+
                 // 更新UI显示
                 uploadText.textContent = file.name;
                 uploadText.style.fontSize = '10px';
@@ -901,12 +952,12 @@
 
                 // 更新节点状态为已准备
                 this.updateNodeStatus(node.id, 'ready');
-                
+
                 // 重新计算并更新JSPlumb连接点位置
                 setTimeout(() => {
                     this.refreshNodeConnections(node.id);
                 }, 100);
-                
+
                 console.log('[CanvasManager] Image uploaded successfully:', file.name, 'Size:', file.size);
             };
 
@@ -918,13 +969,23 @@
             reader.readAsDataURL(file);
         }
 
-        // 更新节点状态
+        // 更新节点状态（增强版：同时更新内部圆点 + 整个节点边框/阴影样式）
         updateNodeStatus(nodeId, status) {
             const nodeElement = this.nodes.get(nodeId);
             if (nodeElement) {
+                // 1. 更新内部 status 圆点（原有逻辑）
                 const statusElement = nodeElement.querySelector('.canvas-node-status');
                 if (statusElement) {
                     statusElement.className = `canvas-node-status ${status}`;
+                }
+                // 2. 更新整个节点的 class，触发 CSS 中已有的
+                //    .canvas-node.executing / .success / .error 样式
+                const statusClasses = ['idle', 'running', 'executing', 'success', 'error', 'skipped', 'ready'];
+                statusClasses.forEach(s => nodeElement.classList.remove(s));
+                // ExecutionEngine 传入 'running'，CSS 定义的是 .canvas-node.executing
+                const mappedClass = (status === 'running') ? 'executing' : status;
+                if (mappedClass && mappedClass !== 'idle') {
+                    nodeElement.classList.add(mappedClass);
                 }
             }
         }
@@ -932,26 +993,26 @@
         // 刷新节点连接点位置
         refreshNodeConnections(nodeId) {
             if (!this.jsPlumbInstance) return;
-            
+
             try {
                 const nodeElement = this.nodes.get(nodeId);
                 if (!nodeElement) {
                     console.warn('[CanvasManager] Node element not found for refresh:', nodeId);
                     return;
                 }
-                
+
                 // 更严格的DOM存在性检查
-                if (nodeElement.offsetParent !== null && 
-                    nodeElement.offsetLeft !== undefined && 
+                if (nodeElement.offsetParent !== null &&
+                    nodeElement.offsetLeft !== undefined &&
                     nodeElement.offsetTop !== undefined &&
                     document.contains(nodeElement)) {
-                    
+
                     // 重新计算节点的连接点位置
                     this.jsPlumbInstance.revalidate(nodeElement);
-                    
+
                     // 重绘所有与该节点相关的连接
                     this.jsPlumbInstance.repaint(nodeElement);
-                    
+
                     console.log('[CanvasManager] Refreshed connections for node:', nodeId);
                 } else {
                     console.warn('[CanvasManager] Cannot refresh connections - node not properly in DOM:', nodeId);
@@ -971,7 +1032,7 @@
                 // 下一帧再重绘一次，确保布局稳定后刷新
                 if (typeof requestAnimationFrame === 'function') {
                     requestAnimationFrame(() => {
-                        try { this.jsPlumbInstance.repaintEverything(); } catch (_) {}
+                        try { this.jsPlumbInstance.repaintEverything(); } catch (_) { }
                     });
                 }
                 console.log('[CanvasManager] All connections repaired');
@@ -983,26 +1044,26 @@
         // 启用所有连接的拖拽功能
         enableConnectionDragging() {
             if (!this.jsPlumbInstance) return;
-            
+
             try {
                 console.log('[CanvasManager] Enabling connection dragging for all connections...');
-                
+
                 // 获取所有连接
                 const allConnections = this.jsPlumbInstance.getAllConnections();
-                
+
                 allConnections.forEach(connection => {
                     if (connection && connection.setParameter) {
                         // 确保连接支持拖拽重连
                         connection.setParameter('connectionsDetachable', true);
                         connection.setParameter('reattachConnections', true);
-                        
+
                         // 设置连接为可拖拽
                         if (connection.connector && connection.connector.canvas) {
                             connection.connector.canvas.style.cursor = 'pointer';
                         }
                     }
                 });
-                
+
                 console.log(`[CanvasManager] Enabled dragging for ${allConnections.length} connections`);
             } catch (error) {
                 console.error('[CanvasManager] Error enabling connection dragging:', error);
@@ -1024,19 +1085,19 @@
             if (!sourceNode || !targetNode) {
                 console.warn(`[CanvasManager] Nodes not ready for connection. Source: ${sourceNode ? 'found' : 'NOT FOUND'}, Target: ${targetNode ? 'found' : 'NOT FOUND'}`);
                 console.log(`[CanvasManager] Available nodes:`, Array.from(this.nodes.keys()));
-                
+
                 // 延迟重试，增加重试次数和间隔
                 let retryCount = 0;
                 const maxRetries = 5;
                 const retryInterval = 200;
-                
+
                 const retryConnection = () => {
                     retryCount++;
                     console.log(`[CanvasManager] Retry attempt ${retryCount}/${maxRetries} for connection ${connectionData.sourceNodeId} -> ${connectionData.targetNodeId}`);
-                    
+
                     const retrySourceNode = this.nodes.get(connectionData.sourceNodeId);
                     const retryTargetNode = this.nodes.get(connectionData.targetNodeId);
-                    
+
                     if (retrySourceNode && retryTargetNode) {
                         console.log(`[CanvasManager] Retry ${retryCount} successful, creating connection`);
                         this.createConnectionInternal(connectionData, retrySourceNode, retryTargetNode);
@@ -1047,7 +1108,7 @@
                         console.error(`[CanvasManager] Missing nodes - Source: ${connectionData.sourceNodeId}, Target: ${connectionData.targetNodeId}`);
                     }
                 };
-                
+
                 setTimeout(retryConnection, retryInterval);
                 return;
             }
@@ -1067,13 +1128,13 @@
                 // 检查是否已存在相同的JSPlumb连接（基于源和目标节点）
                 const existingJSPlumbConnection = Array.from(this.connections.values()).find(conn => {
                     if (!conn || !conn.source || !conn.target) return false;
-                    
+
                     const connSourceId = conn.source.id || conn.sourceId;
                     const connTargetId = conn.target.id || conn.targetId;
-                    
+
                     return connSourceId === sourceNode.id && connTargetId === targetNode.id;
                 });
-                
+
                 if (existingJSPlumbConnection) {
                     console.log('[CanvasManager] JSPlumb connection already exists between nodes, skipping creation');
                     return;
@@ -1090,7 +1151,7 @@
                             force: true // 强制启用拖拽
                         });
                     }
-                    
+
                     if (!targetNode.classList.contains('jtk-draggable')) {
                         console.log('[CanvasManager] Making target node draggable:', targetNode.id);
                         this.jsPlumbInstance.draggable(targetNode, {
@@ -1107,17 +1168,17 @@
                 // 查找源端点和目标端点
                 let sourceEndpoint = null;
                 let targetEndpoint = null;
-                
+
                 // 查找源端点（通常是输出端点）
                 if (sourceNode._outputEndpoint) {
                     sourceEndpoint = sourceNode._outputEndpoint;
                 }
-                
+
                 // 查找目标端点
                 if (targetNode._inputEndpoint) {
                     targetEndpoint = targetNode._inputEndpoint;
                 }
-                
+
                 // 如果找到了端点，使用端点连接，否则使用节点连接
                 let connection;
                 if (sourceEndpoint && targetEndpoint) {
@@ -1195,7 +1256,7 @@
                         connection.setParameter('targetNodeId', connectionData.targetNodeId);
                         connection.setParameter('sourceParam', connectionData.sourceParam || 'output');
                         connection.setParameter('targetParam', connectionData.targetParam || 'input');
-                    } catch (_) {}
+                    } catch (_) { }
                     this.connections.set(connectionData.id, connection);
                     console.log(`[CanvasManager] Connection created successfully: ${connectionData.sourceNodeId} -> ${connectionData.targetNodeId}`);
                     console.log('[CanvasManager] Current connections size:', this.connections.size);
@@ -1207,7 +1268,7 @@
                 console.error('Connection data:', connectionData);
                 console.error('Source node:', sourceNode);
                 console.error('Target node:', targetNode);
-                
+
                 // 如果连接创建失败，尝试延迟重试一次
                 setTimeout(() => {
                     console.log('[CanvasManager] Retrying connection creation after error...');
@@ -1225,7 +1286,7 @@
                             },
                             doNotFireConnectionEvent: false
                         });
-                        
+
                         if (retryConnection) {
                             retryConnection._programmaticConnection = true;
                             retryConnection.connectionId = connectionData.id;
@@ -1247,7 +1308,7 @@
             console.log('[CanvasManager] 🎯 Target element:', info.target);
             console.log('[CanvasManager] 🎯 Source endpoint:', info.sourceEndpoint);
             console.log('[CanvasManager] 🎯 Target endpoint:', info.targetEndpoint);
-            
+
             // 检查是否是程序化创建的连接（避免重复处理）
             if (info.connection._programmaticConnection) {
                 // 如果连接已经存在于我们自己的映射中，则安全跳过
@@ -1262,7 +1323,7 @@
                 // 如果连接被标记为程序化但尚未记录到 canvas/state，则继续处理，防止误判导致丢失
                 console.log('[CanvasManager] Programmatic flag present but connection not tracked — proceeding to handle it to avoid loss');
             }
-            
+
             try {
                 // 更强健的节点ID获取逻辑
                 let sourceNodeId, targetNodeId;
@@ -1336,8 +1397,8 @@
 
                 // 检查是否已存在相同的连接
                 const existingConnections = this.stateManager.getAllConnections();
-                const isDuplicate = existingConnections.some(conn => 
-                    conn.sourceNodeId === sourceNodeId && 
+                const isDuplicate = existingConnections.some(conn =>
+                    conn.sourceNodeId === sourceNodeId &&
                     conn.targetNodeId === targetNodeId &&
                     conn.targetParam === targetParam
                 );
@@ -1359,7 +1420,7 @@
                         sourceParam = info.sourceEndpoint.paramName;
                     }
                 }
-                
+
                 if (info.targetEndpoint && info.targetEndpoint.element) {
                     const targetElement = info.targetEndpoint.element;
                     const targetParamFromDOM = targetElement.getAttribute('data-param');
@@ -1381,7 +1442,7 @@
                     sourceParam: sourceParam,
                     targetParam: targetParam
                 };
-                
+
                 console.log('[CanvasManager] Creating connection:', connectionData);
 
                 // 标记连接ID与参数到JSPlumb连接对象
@@ -1392,7 +1453,7 @@
                 info.connection.setParameter('sourceParam', sourceParam);
                 info.connection.setParameter('targetParam', targetParam);
                 this.connections.set(connectionData.id, info.connection);
-                
+
                 // 通过状态管理器添加连接前，进行更严格的去重
                 if (this.stateManager && this.stateManager.addConnection) {
                     console.log('[CanvasManager] 调用 StateManager.addConnection:', connectionData);
@@ -1403,7 +1464,7 @@
                             console.log('[CanvasManager] 去重：发现同一(source,target,targetParam)已存在，跳过重复保存，回收JSPlumb重复连接');
                             // 保留新的可视连接，但不重复保存到state；或者直接删除本次可视连接
                             // 为保持一致，这里删除新建的重复可视连接
-                            try { this.jsPlumbInstance.deleteConnection(info.connection); } catch (_) {}
+                            try { this.jsPlumbInstance.deleteConnection(info.connection); } catch (_) { }
                             return;
                         }
                     } catch (e) {
@@ -1412,7 +1473,7 @@
                     // 调用 addConnection，skipRender=true（因为连接已经在画布上了），recordHistory=true（记录历史）
                     const result = this.stateManager.addConnection(connectionData, true, true);
                     console.log('[CanvasManager] StateManager.addConnection 结果:', result);
-                    
+
                     // 验证连接是否成功添加到 StateManager
                     const savedConnection = this.stateManager.getConnection(connectionData.id);
                     if (savedConnection) {
@@ -1433,20 +1494,20 @@
         // 处理连接断开
         handleConnectionDetached(info) {
             console.log('[CanvasManager] Connection detached:', info);
-            
+
             // 检查是否是程序化删除的连接（避免重复处理）
             if (info.connection._programmaticDelete) {
                 console.log('[CanvasManager] Skipping programmatic delete event');
                 return;
             }
-            
+
             try {
                 if (info.connection.connectionId) {
                     console.log('[CanvasManager] Removing connection from state:', info.connection.connectionId);
-                    
+
                     // 从内部连接映射中移除
                     this.connections.delete(info.connection.connectionId);
-                    
+
                     // 通知状态管理器移除连接
                     if (this.stateManager && this.stateManager.removeConnection) {
                         // 调用 removeConnection，它会记录历史
@@ -1464,7 +1525,7 @@
         handleConnectionClick(connection) {
             // 选择连接线
             console.log('[CanvasManager] Connection clicked:', connection.connectionId);
-            
+
             // 选中连接线时添加视觉反馈
             this.selectConnection(connection);
         }
@@ -1473,12 +1534,12 @@
         selectConnection(connection) {
             // 清除其他连接的选择状态
             this.clearConnectionSelection();
-            
+
             // 添加选中样式
             if (connection.canvas) {
                 connection.canvas.classList.add('connection-selected');
             }
-            
+
             // 存储当前选中的连接
             this.selectedConnection = connection;
         }
@@ -1494,7 +1555,7 @@
         // 显示连接右键菜单
         showConnectionContextMenu(connection, event) {
             event.preventDefault();
-            
+
             // 创建右键菜单
             const menu = document.createElement('div');
             menu.className = 'connection-context-menu';
@@ -1508,7 +1569,7 @@
                 min-width: 120px;
                 overflow: hidden;
             `;
-            
+
             menu.innerHTML = `
                 <div class="menu-item" data-action="delete" style="padding: 8px 12px; cursor: pointer; color: #e2e8f0; font-size: 14px; border-bottom: 1px solid #334155;">
                     🗑️ 删除连接
@@ -1517,13 +1578,13 @@
                     ℹ️ 连接信息
                 </div>
             `;
-            
+
             // 定位菜单
             menu.style.left = event.clientX + 'px';
             menu.style.top = event.clientY + 'px';
-            
+
             document.body.appendChild(menu);
-            
+
             // 添加菜单项悬停效果
             const menuItems = menu.querySelectorAll('.menu-item');
             menuItems.forEach(item => {
@@ -1534,11 +1595,11 @@
                     item.style.backgroundColor = '';
                 });
             });
-            
+
             // 处理菜单点击
             const handleMenuClick = (e) => {
                 const action = e.target.getAttribute('data-action');
-                
+
                 switch (action) {
                     case 'delete':
                         this.deleteConnection(connection);
@@ -1547,19 +1608,19 @@
                         this.showConnectionInfo(connection);
                         break;
                 }
-                
+
                 // 清理菜单
                 document.body.removeChild(menu);
                 document.removeEventListener('click', hideMenu);
             };
-            
+
             const hideMenu = () => {
                 if (document.body.contains(menu)) {
                     document.body.removeChild(menu);
                 }
                 document.removeEventListener('click', hideMenu);
             };
-            
+
             // 绑定事件
             menu.addEventListener('click', handleMenuClick);
             document.addEventListener('click', hideMenu);
@@ -1568,22 +1629,22 @@
         // 删除连接
         deleteConnection(connection) {
             if (!connection) return;
-            
+
             const connectionId = connection.connectionId || connection.getParameter('connectionId');
             if (connectionId) {
                 console.log('[CanvasManager] Deleting connection:', connectionId);
-                
+
                 // 从JSPlumb中删除连接
                 this.jsPlumbInstance.deleteConnection(connection);
-                
+
                 // 从内部状态中删除
                 this.connections.delete(connectionId);
-                
+
                 // 从状态管理器中删除
                 if (this.stateManager && this.stateManager.removeConnection) {
                     this.stateManager.removeConnection(connectionId, true);
                 }
-                
+
                 console.log('[CanvasManager] Connection deleted successfully');
             }
         }
@@ -1593,42 +1654,42 @@
             const connectionId = connection.connectionId || connection.getParameter('connectionId');
             const sourceNodeId = connection.getParameter('sourceNodeId');
             const targetNodeId = connection.getParameter('targetNodeId');
-            
+
             const info = `
 连接ID: ${connectionId}
 源节点: ${sourceNodeId}
 目标节点: ${targetNodeId}
             `.trim();
-            
+
             alert(info);
         }
 
         // 处理连接移动（拖拽重连）
         handleConnectionMoved(info) {
             console.log('[CanvasManager] Connection moved event:', info);
-            
+
             try {
                 // 获取旧连接信息
                 const oldConnection = info.originalConnection;
                 const newConnection = info.connection;
-                
+
                 if (oldConnection && oldConnection.connectionId) {
                     // 移除旧连接
                     this.connections.delete(oldConnection.connectionId);
-                    
+
                     // 通知状态管理器移除旧连接
                     if (this.stateManager && this.stateManager.removeConnection) {
                         this.stateManager.removeConnection(oldConnection.connectionId, true);
                     }
                 }
-                
+
                 // 处理新连接
                 if (newConnection) {
                     // 标记为程序化创建的连接，避免重复处理
                     newConnection._programmaticConnection = true;
                     this.handleConnectionCreated({ connection: newConnection, source: newConnection.source, target: newConnection.target });
                 }
-                
+
             } catch (error) {
                 console.error('[CanvasManager] Error handling connection moved:', error);
             }
@@ -1645,17 +1706,17 @@
                         endpoint._tooltip.remove();
                     }
                 });
-                
+
                 // 移除JSPlumb管理的连接和端点
                 if (this.jsPlumbInstance) {
                     this.jsPlumbInstance.remove(nodeElement);
                 }
-                
+
                 // 从DOM中移除
                 if (nodeElement.parentNode) {
                     nodeElement.parentNode.removeChild(nodeElement);
                 }
-                
+
                 this.nodes.delete(nodeId);
             }
         }
@@ -1667,20 +1728,20 @@
                 console.warn('[CanvasManager] Node element not found for update:', nodeId);
                 return;
             }
-            
+
             if (nodeData.position) {
                 nodeElement.style.left = nodeData.position.x + 'px';
                 nodeElement.style.top = nodeData.position.y + 'px';
-                
+
                 // 如果节点正在拖拽中，跳过重新验证，避免连接线错乱
                 if (nodeElement._isDragging) {
                     return;
                 }
-                
+
                 // 更严格的DOM存在性检查
-                if (this.jsPlumbInstance && 
-                    nodeElement.offsetParent !== null && 
-                    nodeElement.offsetLeft !== undefined && 
+                if (this.jsPlumbInstance &&
+                    nodeElement.offsetParent !== null &&
+                    nodeElement.offsetLeft !== undefined &&
                     nodeElement.offsetTop !== undefined &&
                     document.contains(nodeElement)) {
                     try {
@@ -1695,7 +1756,7 @@
         // 移除连接
         removeConnection(connectionId) {
             console.log('[CanvasManager] Removing connection:', connectionId);
-            
+
             const connection = this.connections.get(connectionId);
             if (connection && this.jsPlumbInstance) {
                 try {
@@ -1710,7 +1771,7 @@
                     console.warn('[CanvasManager] Error deleting connection from JSPlumb:', error);
                     // 即使JSPlumb删除失败，也要清理内部状态
                 }
-                
+
                 this.connections.delete(connectionId);
                 console.log('[CanvasManager] Connection removed from internal state');
             } else {
@@ -1719,7 +1780,7 @@
                     connectionExists: !!connection,
                     jsPlumbExists: !!this.jsPlumbInstance
                 });
-                
+
                 // 确保从内部状态中移除，即使连接对象不存在
                 this.connections.delete(connectionId);
             }
@@ -1728,12 +1789,12 @@
         // 更新画布变换
         updateCanvasTransform() {
             if (!this.content) return;
-            
+
             const offset = this.stateManager.getCanvasOffset();
             const zoom = this.stateManager.getCanvasZoom();
-            
+
             this.content.style.transform = `translate(${offset.x}px, ${offset.y}px) scale(${zoom})`;
-            
+
             // 重绘所有连接线
             if (this.jsPlumbInstance) {
                 this.jsPlumbInstance.repaintEverything();
@@ -1779,7 +1840,7 @@
         // 更新节点输入端点
         updateNodeInputs(nodeId, dynamicInputs) {
             console.log('[CanvasManager_JSPlumb] Updating node inputs for:', nodeId, dynamicInputs);
-            
+
             const nodeElement = document.getElementById(nodeId);
             if (!nodeElement) {
                 console.warn('[CanvasManager_JSPlumb] Node element not found:', nodeId);
@@ -1794,7 +1855,7 @@
                 paramInputs.forEach(el => {
                     if (this.jsPlumbInstance) {
                         try { this.jsPlumbInstance.removeAllEndpoints(el); } catch (e) { console.warn('[CanvasManager] removeAllEndpoints failed:', e); }
-                        try { if (typeof this.jsPlumbInstance.unmanage === 'function') this.jsPlumbInstance.unmanage(el); } catch (_) {}
+                        try { if (typeof this.jsPlumbInstance.unmanage === 'function') this.jsPlumbInstance.unmanage(el); } catch (_) { }
                     }
                 });
                 existingParamsContainer.remove();
@@ -1874,13 +1935,13 @@
                             },
                             isTarget: true,
                             maxConnections: -1, // 允许无限连接，确保端点不会因连接断开而消失
-                            connectorStyle: { 
-                                stroke: '#3b82f6', 
-                                strokeWidth: 2 
+                            connectorStyle: {
+                                stroke: '#3b82f6',
+                                strokeWidth: 2
                             },
-                            connectorHoverStyle: { 
-                                stroke: '#1d4ed8', 
-                                strokeWidth: 3 
+                            connectorHoverStyle: {
+                                stroke: '#1d4ed8',
+                                strokeWidth: 3
                             },
                             // 启用连接拖拽重连
                             connectionsDetachable: true,
@@ -1895,19 +1956,19 @@
                             // 确保端点元素有正确的节点关联
                             paramInput.setAttribute('data-node-id', nodeId);
                             paramInput.setAttribute('data-param-name', input.name);
-                            
+
                             // 初始化端点映射（如果不存在）
                             if (!nodeElement._inputEndpoints) {
                                 nodeElement._inputEndpoints = {};
                             }
-                            
+
                             // 将端点添加到映射中
                             nodeElement._inputEndpoints[input.name] = endpoint;
-                            
+
                             // 确保端点支持连接拖拽重连
                             endpoint.setParameter('connectionsDetachable', true);
                             endpoint.setParameter('reattachConnections', true);
-                            
+
                             console.log(`[CanvasManager] Added dynamic input endpoint for param: ${input.name} on node: ${nodeId}`);
                         }
                     }
@@ -1942,11 +2003,11 @@
             // 延迟执行，确保JSPlumb端点已经创建
             setTimeout(() => {
                 const endpoints = nodeElement.querySelectorAll('.jtk-endpoint');
-                
+
                 endpoints.forEach(endpoint => {
                     // 添加鼠标悬停提示
                     this.addEndpointTooltip(endpoint, node);
-                    
+
                     // 添加点击反馈
                     endpoint.addEventListener('mousedown', (e) => {
                         endpoint.style.transform = 'scale(0.9)';
@@ -1954,7 +2015,7 @@
                             endpoint.style.transform = '';
                         }, 150);
                     });
-                    
+
                     // 添加键盘导航支持
                     endpoint.setAttribute('tabindex', '0');
                     endpoint.addEventListener('keydown', (e) => {
@@ -1964,12 +2025,12 @@
                         }
                     });
                 });
-                
+
                 // 为节点添加悬停时高亮连接点的效果
                 nodeElement.addEventListener('mouseenter', () => {
                     this.highlightNodeEndpoints(nodeElement, true);
                 });
-                
+
                 nodeElement.addEventListener('mouseleave', () => {
                     this.highlightNodeEndpoints(nodeElement, false);
                 });
@@ -1979,7 +2040,7 @@
         // 高亮节点连接点
         highlightNodeEndpoints(nodeElement, highlight) {
             const endpoints = nodeElement.querySelectorAll('.jtk-endpoint');
-            
+
             endpoints.forEach(endpoint => {
                 if (highlight) {
                     endpoint.style.opacity = '1';
@@ -1997,13 +2058,13 @@
         addEndpointTooltip(endpoint, node) {
             const tooltip = document.createElement('div');
             tooltip.className = 'endpoint-tooltip';
-            
+
             // 判断端点类型
-            const isInput = endpoint.classList.contains('jtk-endpoint-target') || 
-                           endpoint.getAttribute('data-endpoint-type') === 'input';
-            const isOutput = endpoint.classList.contains('jtk-endpoint-source') || 
-                            endpoint.getAttribute('data-endpoint-type') === 'output';
-            
+            const isInput = endpoint.classList.contains('jtk-endpoint-target') ||
+                endpoint.getAttribute('data-endpoint-type') === 'input';
+            const isOutput = endpoint.classList.contains('jtk-endpoint-source') ||
+                endpoint.getAttribute('data-endpoint-type') === 'output';
+
             let tooltipText = '';
             if (isInput) {
                 tooltipText = `输入连接点\n拖拽到此创建连接`;
@@ -2012,10 +2073,10 @@
             } else {
                 tooltipText = `连接点\n点击或拖拽创建连接`;
             }
-            
+
             tooltip.textContent = tooltipText;
             document.body.appendChild(tooltip);
-            
+
             // 鼠标悬停显示提示
             endpoint.addEventListener('mouseenter', (e) => {
                 const rect = endpoint.getBoundingClientRect();
@@ -2024,11 +2085,11 @@
                 tooltip.style.transform = 'translateX(-50%)';
                 tooltip.classList.add('show');
             });
-            
+
             endpoint.addEventListener('mouseleave', () => {
                 tooltip.classList.remove('show');
             });
-            
+
             // 存储工具提示引用，用于清理
             endpoint._tooltip = tooltip;
         }
@@ -2092,7 +2153,7 @@
         showConnectionGuide(info) {
             const sourceElement = info.source;
             const targetElement = info.target;
-            
+
             if (!sourceElement || !targetElement) return;
 
             const sourceNode = this.findNodeElement(sourceElement);
@@ -2101,7 +2162,7 @@
             if (sourceNode && targetNode) {
                 const sourceName = sourceNode.querySelector('.canvas-node-title')?.textContent || '源节点';
                 const targetName = targetNode.querySelector('.canvas-node-title')?.textContent || '目标节点';
-                
+
                 this.connectionGuide.innerHTML = `
                     <div style="font-weight: 600; margin-bottom: 4px;">🔗 创建连接</div>
                     <div style="font-size: 12px; color: #ccc;">
@@ -2112,7 +2173,7 @@
                         释放鼠标完成连接
                     </div>
                 `;
-                
+
                 this.connectionGuide.style.opacity = '1';
                 this.positionConnectionGuide(info);
             }
@@ -2129,7 +2190,7 @@
         positionConnectionGuide(info) {
             const mouseX = info.e?.clientX || 0;
             const mouseY = info.e?.clientY || 0;
-            
+
             this.connectionGuide.style.left = (mouseX + 20) + 'px';
             this.connectionGuide.style.top = (mouseY - 20) + 'px';
         }
@@ -2151,12 +2212,12 @@
         // 处理连接拖拽开始
         handleConnectionDragStart(info) {
             console.log('[CanvasManager] Connection drag start:', info);
-            
+
             // 为连接线添加重连样式
             if (info.connection && info.connection.canvas) {
                 info.connection.canvas.classList.add('jtk-connector-reconnecting');
             }
-            
+
             // 为拖拽的端点添加样式
             if (info.endpoint && info.endpoint.canvas) {
                 info.endpoint.canvas.classList.add('jtk-endpoint-dragging');
@@ -2166,13 +2227,13 @@
         // 处理连接拖拽结束
         handleConnectionDragStop() {
             console.log('[CanvasManager] Connection drag stop');
-            
+
             // 移除所有重连样式
             const reconnectingConnectors = document.querySelectorAll('.jtk-connector-reconnecting');
             reconnectingConnectors.forEach(connector => {
                 connector.classList.remove('jtk-connector-reconnecting');
             });
-            
+
             const draggingEndpoints = document.querySelectorAll('.jtk-endpoint-dragging');
             draggingEndpoints.forEach(endpoint => {
                 endpoint.classList.remove('jtk-endpoint-dragging');
@@ -2188,14 +2249,14 @@
         // 清空画布
         clear() {
             console.log('[CanvasManager] Clearing canvas...');
-            
+
             // 先移除所有JSPlumb管理的连接和端点
             if (this.jsPlumbInstance) {
                 try {
                     this.jsPlumbInstance.deleteEveryConnection();
                     this.jsPlumbInstance.deleteEveryEndpoint();
                     // 注意：不要调用 jsPlumbInstance.reset()，否则会清空事件绑定，导致新建后连线无法触发保存
-                    
+
                     // 清除所有拖拽元素
                     this.nodes.forEach((nodeElement) => {
                         if (nodeElement) {
@@ -2210,11 +2271,11 @@
                     console.warn('[CanvasManager] Error clearing JSPlumb elements:', error);
                 }
             }
-            
+
             // 清空内部状态
             this.nodes.clear();
             this.connections.clear();
-            
+
             // 清空DOM内容
             if (this.content) {
                 // 确保彻底清空所有子元素
@@ -2223,7 +2284,7 @@
                 }
                 this.content.innerHTML = '';
             }
-            
+
             console.log('[CanvasManager] Canvas cleared successfully');
         }
 
@@ -2337,7 +2398,7 @@
                                 targetEndpoint = targetNode._inputEndpoint;
                             }
                         }
-                        
+
                         if (!sourceEndpoint || !targetEndpoint) {
                             console.error('[CanvasManager] Missing endpoints for connection:', {
                                 sourceHasEndpoint: !!sourceEndpoint,
@@ -2391,10 +2452,10 @@
                                 connection.setParameter('targetNodeId', connectionData.targetNodeId);
                                 connection.setParameter('sourceParam', connectionData.sourceParam || 'output');
                                 connection.setParameter('targetParam', connectionData.targetParam || 'input');
-                            } catch (_) {}
+                            } catch (_) { }
                             this.connections.set(connectionData.id, connection);
                             console.log('[CanvasManager] Current connections size:', this.connections.size);
-                            
+
                             // 重要：将恢复的连接添加到状态管理器中，确保保存时不会丢失
                             if (this.stateManager && this.stateManager.addConnection) {
                                 // 使用 skipRender=true 避免重复渲染，recordHistory=false 避免记录历史
@@ -2417,7 +2478,7 @@
                                     console.log(`[CanvasManager] 🔧 Force added connection via global StateManager: ${connectionData.id}`);
                                 }
                             }
-                            
+
                             console.log(`[CanvasManager] ✅ Connection restored successfully: ${connectionData.sourceNodeId} -> ${connectionData.targetNodeId} (${connectionData.targetParam}) at ${Date.now()}`);
                         } else {
                             console.error('[CanvasManager] ❌ Failed to restore connection:', connectionData.id, '- jsPlumb.connect returned null');
