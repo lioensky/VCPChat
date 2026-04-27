@@ -44,11 +44,68 @@ function protectLatexBlocks(text) {
     const map = new Map();
     let id = 0;
 
+    // 🟢 关键修复：先保护代码围栏，防止代码块内的 $ / $$ 被误匹配为 LaTeX
+    // 例如 Python 代码 `b'$$' in data` 中的 $$ 会与文档后面的 $$ 数学公式匹配，
+    // 导致 LaTeX 占位符跨越并吞噬中间的代码围栏标记
+    const codeFenceMap = new Map();
+    let codeFenceId = 0;
+
+    // 使用逐行状态机识别代码围栏（比正则更可靠）
+    const lines = text.split('\n');
+    const resultLines = [];
+    let fenceStartLine = -1;
+    let fenceBacktickCount = 0;
+
+    for (let i = 0; i < lines.length; i++) {
+        const trimmed = lines[i].trimStart();
+
+        if (fenceStartLine === -1) {
+            // 不在代码块内：检测开始围栏
+            const openMatch = trimmed.match(/^(`{3,})/);
+            if (openMatch) {
+                fenceStartLine = resultLines.length;
+                fenceBacktickCount = openMatch[1].length;
+                resultLines.push(lines[i]);
+            } else {
+                resultLines.push(lines[i]);
+            }
+        } else {
+            // 在代码块内：检测关闭围栏
+            const closeMatch = trimmed.match(/^(`{3,})\s*$/);
+            if (closeMatch && closeMatch[1].length >= fenceBacktickCount) {
+                // 找到关闭围栏，将整个代码块替换为占位符
+                resultLines.push(lines[i]);
+                const blockLines = resultLines.splice(fenceStartLine);
+                const blockContent = blockLines.join('\n');
+                const placeholder = `%%CODEFENCE_FOR_LATEX_${codeFenceId}%%`;
+                codeFenceMap.set(placeholder, blockContent);
+                codeFenceId++;
+                resultLines.push(placeholder);
+                fenceStartLine = -1;
+                fenceBacktickCount = 0;
+            } else {
+                resultLines.push(lines[i]);
+            }
+        }
+    }
+
+    // 如果有未关闭的代码围栏（流式传输场景），也保护起来
+    if (fenceStartLine !== -1) {
+        const blockLines = resultLines.splice(fenceStartLine);
+        const blockContent = blockLines.join('\n');
+        const placeholder = `%%CODEFENCE_FOR_LATEX_${codeFenceId}%%`;
+        codeFenceMap.set(placeholder, blockContent);
+        codeFenceId++;
+        resultLines.push(placeholder);
+    }
+
+    let processed = resultLines.join('\n');
+
     // 保护顺序很重要：先保护 display math ($$...$$)，再保护 inline math ($...$)
     // 同时保护 \[...\] 和 \(...\)
 
     // 1. 保护 $$...$$ (display math) - 支持多行
-    text = text.replace(/\$\$([\s\S]*?)\$\$/g, (match) => {
+    processed = processed.replace(/\$\$([\s\S]*?)\$\$/g, (match) => {
         const placeholder = `%%LATEX_BLOCK_${id}%%`;
         map.set(placeholder, match);
         id++;
@@ -56,7 +113,7 @@ function protectLatexBlocks(text) {
     });
 
     // 2. 保护 \[...\] (display math) - 支持多行
-    text = text.replace(/\\\[([\s\S]*?)\\\]/g, (match) => {
+    processed = processed.replace(/\\\[([\s\S]*?)\\\]/g, (match) => {
         const placeholder = `%%LATEX_BLOCK_${id}%%`;
         map.set(placeholder, match);
         id++;
@@ -64,7 +121,7 @@ function protectLatexBlocks(text) {
     });
 
     // 3. 保护 \(...\) (inline math)
-    text = text.replace(/\\\(([\s\S]*?)\\\)/g, (match) => {
+    processed = processed.replace(/\\\(([\s\S]*?)\\\)/g, (match) => {
         const placeholder = `%%LATEX_BLOCK_${id}%%`;
         map.set(placeholder, match);
         id++;
@@ -73,7 +130,7 @@ function protectLatexBlocks(text) {
 
     // 4. 保护 $...$ (inline math) - 不跨行，避免误匹配价格等
     // 使用更严格的匹配：$ 后面不能是空格，$ 前面不能是空格，不跨行
-    text = text.replace(/\$([^\$\n]+?)\$/g, (match, content) => {
+    processed = processed.replace(/\$([^\$\n]+?)\$/g, (match, content) => {
         // 跳过看起来像价格的情况（如 $100）
         if (/^\d/.test(content.trim())) return match;
         const placeholder = `%%LATEX_BLOCK_${id}%%`;
@@ -82,7 +139,12 @@ function protectLatexBlocks(text) {
         return placeholder;
     });
 
-    return { text, map };
+    // 🟢 恢复代码围栏（占位符 → 原始代码块）
+    for (const [placeholder, original] of codeFenceMap.entries()) {
+        processed = processed.split(placeholder).join(original);
+    }
+
+    return { text: processed, map };
 }
 
 /**
@@ -110,8 +172,8 @@ const CANVAS_PLACEHOLDER_REGEX = /\{\{VCPChatCanvas\}\}/g;
 const STYLE_REGEX = /<style\b[^>]*>([\s\S]*?)<\/style>/gi;
 const HTML_FENCE_CHECK_REGEX = /```\w*\n<!DOCTYPE html>/i;
 const MERMAID_CODE_REGEX = /<code.*?>\s*(flowchart|graph|mermaid)\s+([\s\S]*?)<\/code>/gi;
-const MERMAID_FENCE_REGEX = /```(mermaid|flowchart|graph)\n([\s\S]*?)```/g;
-const CODE_FENCE_REGEX = /```\w*([\s\S]*?)```/g;
+const MERMAID_FENCE_REGEX = /```(mermaid|flowchart|graph)[^\S\n]*\n([\s\S]*?)```/g;
+const CODE_FENCE_REGEX = /```[^\n]*([\s\S]*?)```/g;
 const THOUGHT_CHAIN_REGEX = /\[--- VCP元思考链(?::\s*"([^"]*)")?\s*---\]([\s\S]*?)\[--- 元思考链结束 ---\]/gs;
 const CONVENTIONAL_THOUGHT_REGEX = /<think(?:ing)?>([\s\S]*?)<\/think(?:ing)?>/gi;
 const ROLE_DIVIDER_REGEX = /<<<\[(END_)?ROLE_DIVIDE_(SYSTEM|ASSISTANT|USER)\]>>>/g;
@@ -1647,10 +1709,12 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true,
             const { processedContent: contentWithoutStyles } = processAndInjectScopedCss(textWithProtectedBlocks, scopeId);
 
             // 恢复所有被保护的块
+            // 🟢 关键修复：使用函数回调替换，避免代码块中的 $ 字符
+            // （如 $'、$$、$&）被 String.replace() 误解释为特殊替换模式
             textToRender = contentWithoutStyles;
             protectedBlocks.forEach((block, i) => {
                 const placeholder = `__VCP_STYLE_PROTECT_${i}__`;
-                textToRender = textToRender.replace(placeholder, block);
+                textToRender = textToRender.split(placeholder).join(block);
             });
             // --- 修复结束 ---
         }
