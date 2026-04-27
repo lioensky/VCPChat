@@ -443,19 +443,17 @@
      * 保存设置到磁盘（合并写入 layout.json）
      */
     async function saveSettings() {
-        if (!desktopApi?.desktopSaveLayout || !desktopApi?.desktopLoadLayout) {
-            console.warn('[GlobalSettings] Layout API not available, cannot save settings');
+        if (!desktopApi?.desktopPatchLayout) {
+            console.warn('[GlobalSettings] Layout Patch API not available, cannot save settings');
             return;
         }
 
         try {
-            // 先读取现有的 layout.json 数据（包含预设等）
-            const existing = await loadLayoutData();
-            // 合并 globalSettings 字段
-            existing.globalSettings = { ...state.globalSettings };
-            // 写回
-            await desktopApi.desktopSaveLayout(existing);
-            console.log('[GlobalSettings] Settings saved to layout.json');
+            // 使用增量更新 API，只更新 globalSettings 字段，由主进程负责合并
+            await desktopApi.desktopPatchLayout({
+                globalSettings: { ...state.globalSettings }
+            });
+            console.log('[GlobalSettings] Settings patched to layout.json');
         } catch (err) {
             console.error('[GlobalSettings] Save error:', err);
         }

@@ -253,15 +253,14 @@
         const presetId = state.lastLoadedPresetId;
         if (!presetId) return;
 
-        if (!desktopApi?.desktopSaveLayout || !desktopApi?.desktopLoadLayout) return;
+        if (!desktopApi?.desktopLoadLayout || !desktopApi?.desktopPatchLayout) return;
 
         try {
-            // 加载现有数据
+            // 加载现有预设列表
             const result = await desktopApi.desktopLoadLayout();
             if (!result?.success || !result.data) return;
 
-            const layoutData = result.data;
-            const presets = layoutData.presets || [];
+            const presets = result.data.presets || [];
             const target = presets.find(p => p.id === presetId);
             if (!target) {
                 if (window.VCPDesktop.status) {
@@ -299,9 +298,8 @@
             };
             target.updatedAt = Date.now();
 
-            // 保存
-            layoutData.presets = presets;
-            await desktopApi.desktopSaveLayout(layoutData);
+            // 使用增量更新 API 只写 presets 字段，避免竞态覆盖其他字段
+            await desktopApi.desktopPatchLayout({ presets });
 
             if (window.VCPDesktop.status) {
                 window.VCPDesktop.status.update('connected', `预设已更新: ${target.name}`);

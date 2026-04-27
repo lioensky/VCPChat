@@ -39,6 +39,9 @@ const DOCK_CONFIG_PATH = path.join(DESKTOP_DATA_DIR, 'dock.json');
 const LAYOUT_CONFIG_PATH = path.join(DESKTOP_DATA_DIR, 'layout.json');
 const CATALOG_PATH = path.join(DESKTOP_WIDGETS_DIR, 'CATALOG.md');
 
+// --- 布局文件写锁/队列 ---
+let layoutOpQueue = Promise.resolve();
+
 /**
  * 自动生成 CATALOG.md —— 收藏挂件目录索引
  *
@@ -1563,17 +1566,53 @@ function initialize(params) {
     // ============================================================
 
     /**
-     * 保存桌面布局
+     * 保存桌面布局（全量覆盖，带队列保护）
      */
     ipcMain.handle('desktop-save-layout', async (event, layoutData) => {
-        try {
-            await fs.writeJson(LAYOUT_CONFIG_PATH, layoutData, { spaces: 2 });
-            console.log(`[DesktopHandlers] Layout saved`);
-            return { success: true };
-        } catch (err) {
-            console.error('[DesktopHandlers] Save layout error:', err);
-            return { success: false, error: err.message };
-        }
+        layoutOpQueue = layoutOpQueue.then(async () => {
+            try {
+                await fs.writeJson(LAYOUT_CONFIG_PATH, layoutData, { spaces: 2 });
+                console.log(`[DesktopHandlers] Layout saved (full)`);
+                return { success: true };
+            } catch (err) {
+                console.error('[DesktopHandlers] Save layout error:', err);
+                return { success: false, error: err.message };
+            }
+        }).catch(err => ({ success: false, error: err.message }));
+        return layoutOpQueue;
+    });
+
+    /**
+     * 增量更新桌面布局（推荐，防止竞态丢失数据）
+     * 参数 patch: { presets?: Array, globalSettings?: Object, desktopIcons?: Array }
+     */
+    ipcMain.handle('desktop-patch-layout', async (event, patch) => {
+        layoutOpQueue = layoutOpQueue.then(async () => {
+            try {
+                let current = {};
+                if (await fs.pathExists(LAYOUT_CONFIG_PATH)) {
+                    current = await fs.readJson(LAYOUT_CONFIG_PATH);
+                }
+                
+                // 合并补丁
+                const updated = {
+                    ...current,
+                    ...patch,
+                    // 对于对象类型的字段进行深度合并（可选，目前 globalSettings 结构较扁平，直接覆盖即可）
+                    globalSettings: patch.globalSettings
+                        ? { ...(current.globalSettings || {}), ...patch.globalSettings }
+                        : current.globalSettings
+                };
+
+                await fs.writeJson(LAYOUT_CONFIG_PATH, updated, { spaces: 2 });
+                console.log(`[DesktopHandlers] Layout patched: keys=[${Object.keys(patch).join(', ')}]`);
+                return { success: true, data: updated };
+            } catch (err) {
+                console.error('[DesktopHandlers] Patch layout error:', err);
+                return { success: false, error: err.message };
+            }
+        }).catch(err => ({ success: false, error: err.message }));
+        return layoutOpQueue;
     });
 
     /**

@@ -1852,22 +1852,22 @@
     }
 
     /**
-     * 保存桌面图标到 layout.json 的 desktopIcons 字段
+     * 保存桌面图标到 layout.json 的 currentDesktopIcons 字段
+     * 使用增量更新 API，避免与其他模块的读写竞态
      */
     async function saveDesktopIcons() {
-        if (!desktopApi?.desktopSaveLayout || !desktopApi?.desktopLoadLayout) return;
+        if (!desktopApi?.desktopPatchLayout) return;
 
         try {
-            const result = await desktopApi.desktopLoadLayout();
-            const layoutData = (result?.success && result.data) ? result.data : {};
-            // 保存到 currentDesktopIcons 字段（清除旧的 desktopIcons 避免混淆）
-            layoutData.currentDesktopIcons = state.desktopIcons.map(icon => {
+            const iconsCopy = state.desktopIcons.map(icon => {
                 const copy = {...icon};
                 delete copy._exactPos; // 清除临时标记
                 return copy;
             });
-            delete layoutData.desktopIcons; // 清除旧字段
-            await desktopApi.desktopSaveLayout(layoutData);
+            await desktopApi.desktopPatchLayout({
+                currentDesktopIcons: iconsCopy,
+                desktopIcons: undefined, // 清除旧字段
+            });
             console.log(`[Dock] Desktop icons saved: ${state.desktopIcons.length} icons`);
         } catch (err) {
             console.error('[Dock] Save desktop icons error:', err);

@@ -505,22 +505,15 @@
     }
 
     /**
-     * 保存预设列表，同时保留 layout.json 中的 globalSettings 等其他字段
+     * 保存预设列表（使用增量更新 API，由主进程负责合并，避免竞态覆盖）
      */
     async function savePresetsAndKeepSettings(presets) {
-        if (!desktopApi?.desktopSaveLayout) return;
+        if (!desktopApi?.desktopPatchLayout) {
+            console.warn('[Sidebar] desktopPatchLayout API not available');
+            return;
+        }
         try {
-            // 读取现有数据以保留 globalSettings 等字段
-            let existingData = {};
-            if (desktopApi?.desktopLoadLayout) {
-                const result = await desktopApi.desktopLoadLayout();
-                if (result?.success && result.data) {
-                    existingData = result.data;
-                }
-            }
-            // 更新预设列表，保留其他字段
-            existingData.presets = presets;
-            await desktopApi.desktopSaveLayout(existingData);
+            await desktopApi.desktopPatchLayout({ presets });
         } catch (err) {
             console.error('[Sidebar] Save presets error:', err);
         }
