@@ -1,0 +1,47 @@
+{
+  "manifestVersion": "1.0.0",
+  "name": "VirusTotalAnalyzer",
+  "version": "1.0.0",
+  "displayName": "VirusTotal 查毒分析插件",
+  "description": "使用 VirusTotal API v3 进行文件查毒分析。支持通过文件 Hash 查询报告或上传新文件进行扫描。支持批量操作。",
+  "author": "Kilo Code",
+  "pluginType": "asynchronous",
+  "entryPoint": {
+    "type": "python",
+    "command": "python vt_analyzer.py"
+  },
+  "communication": {
+    "protocol": "stdio",
+    "timeout": 300000
+  },
+  "configSchema": {
+    "VT_API_KEY": {
+      "type": "string",
+      "description": "VirusTotal API Key",
+      "required": true
+    }
+  },
+  "capabilities": {
+    "invocationCommands": [
+      {
+        "commandIdentifier": "AnalyzeFile",
+        "description": "分析指定路径的文件。插件会先尝试通过文件 Hash 查询已有报告，如果没有报告则会自动上传文件进行扫描。这是一个异步操作。\n参数:\n- filePath (字符串, 必需): 要分析的文件路径（支持 file:// 协议）。\n- forceUpload (布尔值, 可选): 是否强制重新上传扫描，默认为 false。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」VirusTotalAnalyzer「末」,\ncommand:「始」AnalyzeFile「末」,\nfilePath:「始」C:/path/to/file.exe「末」\n<<<[END_TOOL_REQUEST]>>>\n\n注意：这是一个异步任务。调用成功后，请在你的回复中包含以下占位符原文：{{{{VCP_ASYNC_RESULT::VirusTotalAnalyzer::{req_id}}}}}}",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」VirusTotalAnalyzer「末」,\ncommand:「始」AnalyzeFile「末」,\nfilePath:「始」file:///C:/test.exe「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "commandIdentifier": "BatchAnalyze",
+        "description": "批量操作指令。支持同时进行多个分析或查询任务。通过 command1, filePath1, command2, filePath2 这种递增后缀格式调用。可以混合使用 AnalyzeFile 和 GetReport。\n示例:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」VirusTotalAnalyzer「末」,\ncommand1:「始」GetReport「末」,\nfilePath1:「始」file:///C:/1.exe「末」,\ncommand2:「始」AnalyzeFile「末」,\nfilePath2:「始」file:///C:/2.exe「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "commandIdentifier": "GetReport",
+        "description": "通过文件路径查询 VirusTotal 报告。插件会自动计算文件 Hash 并查询。\n参数:\n- filePath (字符串, 必需): 要查询的文件路径（支持 file:// 协议）。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」VirusTotalAnalyzer「末」,\ncommand:「始」GetReport「末」,\nfilePath:「始」C:/path/to/file.exe「末」\n<<<[END_TOOL_REQUEST]>>>"
+      }
+    ]
+  },
+  "webSocketPush": {
+    "enabled": true,
+    "messageType": "vt_analysis_status",
+    "usePluginResultAsMessage": true,
+    "targetClientType": "VCPLog"
+  }
+}

@@ -15,7 +15,12 @@ class PluginManager {
         this.staticPlaceholderValues = new Map(); // 新增：用于存储静态插件占位符值
         this.scheduledJobs = new Map(); // 新增：用于存储定时任务
         this.projectBasePath = null;
+        this.serverPort = null; // 新增：用于构造回调 URL
         this.debugMode = (process.env.DebugMode || "False").toLowerCase() === "true";
+    }
+
+    setServerPort(port) {
+        this.serverPort = port;
     }
 
     setProjectBasePath(basePath) {
@@ -178,24 +183,55 @@ class PluginManager {
         if (this.projectBasePath) {
             envForProcess.PROJECT_BASE_PATH = this.projectBasePath;
         }
+
+        // --- 异步插件特殊环境变量注入 ---
+        const isAsyncPlugin = plugin.pluginType === 'asynchronous';
+        if (isAsyncPlugin) {
+            if (this.serverPort) {
+                envForProcess.CALLBACK_BASE_URL = `http://127.0.0.1:${this.serverPort}/plugin/callback`;
+            }
+            envForProcess.PLUGIN_NAME_FOR_CALLBACK = pluginName;
+        }
+
         envForProcess.PYTHONIOENCODING = 'utf-8';
 
         return new Promise((resolve, reject) => {
             const [command, ...args] = plugin.entryPoint.command.split(' ');
-            const pluginProcess = spawn(command, args, { cwd: plugin.basePath, shell: true, env: envForProcess });
+            const pluginProcess = spawn(command, args, { cwd: plugin.basePath, shell: true, env: envForProcess, windowsHide: true });
 
             let outputBuffer = '';
             let errorOutput = '';
-            const timeoutDuration = plugin.entryPoint?.timeout || plugin.communication?.timeout || 60000;
+            let initialResponseSent = false;
+            const timeoutDuration = plugin.entryPoint?.timeout || plugin.communication?.timeout || (isAsyncPlugin ? 1800000 : 60000);
 
             const timeoutId = setTimeout(() => {
-                pluginProcess.kill('SIGKILL');
-                reject(new Error(`Plugin "${pluginName}" execution timed out.`));
+                if (!initialResponseSent) {
+                    pluginProcess.kill('SIGKILL');
+                    reject(new Error(`Plugin "${pluginName}" execution timed out.`));
+                }
             }, timeoutDuration);
 
             pluginProcess.stdout.setEncoding('utf8');
             pluginProcess.stdout.on('data', (data) => {
+                if (isAsyncPlugin && initialResponseSent) return;
+
                 outputBuffer += data;
+
+                // 异步插件早期返回逻辑
+                if (isAsyncPlugin) {
+                    try {
+                        const potentialJsonMatch = outputBuffer.match(/(\{[\s\S]*?\})(?:\s|$)/);
+                        if (potentialJsonMatch && potentialJsonMatch[1]) {
+                            const parsedOutput = JSON.parse(potentialJsonMatch[1]);
+                            if (parsedOutput && (parsedOutput.status === "success" || parsedOutput.status === "error")) {
+                                initialResponseSent = true;
+                                resolve(outputBuffer.trim());
+                            }
+                        }
+                    } catch (e) {
+                        // Incomplete JSON, wait for more data
+                    }
+                }
             });
 
             pluginProcess.stderr.setEncoding('utf8');
@@ -208,18 +244,22 @@ class PluginManager {
                 reject(new Error(`Failed to start plugin "${pluginName}": ${err.message}`));
             });
 
-            pluginProcess.on('exit', (code) => {
+            pluginProcess.on('exit', (code, signal) => {
                 clearTimeout(timeoutId);
-                if (code !== 0) {
+                if (isAsyncPlugin && initialResponseSent) {
+                    if (this.debugMode) console.log(`[DistPluginManager] Async plugin ${pluginName} exited after initial response.`);
+                    return;
+                }
+
+                if (code !== 0 && signal !== 'SIGKILL') {
                     const errMsg = `Plugin ${pluginName} exited with code ${code}. Stderr: ${errorOutput.trim()}`;
                     console.error(`[DistPluginManager] ${errMsg}`);
-                    reject(new Error(errMsg));
+                    if (!initialResponseSent) reject(new Error(errMsg));
                 } else {
                     if (errorOutput.trim() && this.debugMode) {
                         console.warn(`[DistPluginManager] Plugin ${pluginName} produced stderr: ${errorOutput.trim()}`);
                     }
-                    // The raw result from the plugin's stdout
-                    resolve(outputBuffer.trim());
+                    if (!initialResponseSent) resolve(outputBuffer.trim());
                 }
             });
 
