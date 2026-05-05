@@ -1,362 +1,642 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
-<head>
+  <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RAG Overlay Notification</title>
     <style>
-        :root {
-            --bg: rgba(18, 20, 26, 0.78);
-            --border: rgba(255, 255, 255, 0.18);
-            --text: #f4f7ff;
-            --sub: rgba(235, 240, 255, 0.72);
-            --accent: #5ab2ff;
-            --warning: #ffb347;
-            --success: #69d28a;
-            --error: #ff7d7d;
-        }
+      :root {
+        --bg: rgba(18, 20, 26, 0.78);
+        --border: rgba(255, 255, 255, 0.18);
+        --text: #f4f7ff;
+        --sub: rgba(235, 240, 255, 0.72);
+        --accent: #5ab2ff;
+        --warning: #ffb347;
+        --success: #69d28a;
+        --error: #ff7d7d;
+      }
 
-        html, body {
-            width: 100%;
-            height: 100%;
-            margin: 0;
-            overflow: hidden;
-            background: transparent;
-            color: var(--text);
-            font-family: 'JetBrains Mono', 'Segoe UI', sans-serif;
-            user-select: none;
-        }
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        background: transparent;
+        color: var(--text);
+        font-family: "JetBrains Mono", "Segoe UI", sans-serif;
+        user-select: none;
+      }
 
-        #overlayRoot {
-            position: relative;
-            width: 100%;
-            height: 100%;
-            border-radius: 14px;
-            border: 1px solid var(--border);
-            background: var(--bg);
-            backdrop-filter: blur(12px) saturate(140%);
-            box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
-            overflow: hidden;
-        }
+      #overlayRoot {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        border-radius: 14px;
+        border: 1px solid var(--border);
+        background: var(--bg);
+        backdrop-filter: blur(12px) saturate(140%);
+        box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+        overflow: hidden;
+      }
 
-        #overlayRoot.interactive {
-            border-color: rgba(90, 178, 255, 0.46);
-            box-shadow: 0 0 0 1px rgba(90, 178, 255, 0.24) inset, 0 12px 30px rgba(0, 0, 0, 0.45);
-        }
+      #overlayRoot.interactive {
+        border-color: rgba(90, 178, 255, 0.46);
+        box-shadow: 0 0 0 1px rgba(90, 178, 255, 0.24) inset,
+          0 12px 30px rgba(0, 0, 0, 0.45);
+      }
 
-        .overlay-header {
-            height: 34px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 0 10px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-            background: linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0));
-            -webkit-app-region: drag;
-        }
+      .overlay-header {
+        height: 34px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 10px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        background: linear-gradient(
+          180deg,
+          rgba(255, 255, 255, 0.08),
+          rgba(255, 255, 255, 0)
+        );
+        -webkit-app-region: drag;
+      }
 
-        .left {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            min-width: 0;
-        }
+      .left {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+      }
 
-        .dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 999px;
-            background: var(--accent);
-            box-shadow: 0 0 8px var(--accent);
-        }
+      .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 999px;
+        background: var(--accent);
+        box-shadow: 0 0 8px var(--accent);
+      }
 
-        .header-title {
-            font-size: 12px;
-            letter-spacing: 0.3px;
-            color: #d6e9ff;
-            white-space: nowrap;
-        }
+      .header-title {
+        font-size: 12px;
+        letter-spacing: 0.3px;
+        color: #d6e9ff;
+        white-space: nowrap;
+      }
 
-        .header-meta {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            font-size: 11px;
-            color: var(--sub);
-            -webkit-app-region: no-drag;
-        }
+      .header-meta {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 11px;
+        color: var(--sub);
+        -webkit-app-region: no-drag;
+      }
 
-        .pill {
-            border: 1px solid rgba(255,255,255,0.24);
-            border-radius: 999px;
-            padding: 1px 8px;
-            line-height: 1.6;
-        }
+      .pill {
+        border: 1px solid rgba(255, 255, 255, 0.24);
+        border-radius: 999px;
+        padding: 1px 8px;
+        line-height: 1.6;
+      }
 
-        .content {
-            padding: 10px 12px 12px;
-            height: calc(100% - 34px);
-            box-sizing: border-box;
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
+      .content {
+        padding: 10px 12px 12px;
+        height: calc(100% - 34px);
+        box-sizing: border-box;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
 
-        .title {
-            font-size: 14px;
-            font-weight: 700;
-            line-height: 1.4;
-            color: #fff;
-            word-break: break-word;
-        }
+      .title {
+        font-size: 14px;
+        font-weight: 700;
+        line-height: 1.4;
+        color: #fff;
+        word-break: break-word;
+      }
 
-        .message {
-            flex: 1;
-            min-height: 0;
-            font-size: 12px;
-            line-height: 1.55;
-            color: rgba(244, 247, 255, 0.92);
-            white-space: pre-wrap;
-            word-break: break-word;
-            overflow: auto;
-            padding-right: 2px;
-        }
+      .message {
+        flex: 1;
+        min-height: 0;
+        font-size: 12px;
+        line-height: 1.55;
+        color: rgba(244, 247, 255, 0.92);
+        white-space: pre-wrap;
+        word-break: break-word;
+        overflow: auto;
+        padding-right: 2px;
+      }
 
-        .message::-webkit-scrollbar { width: 6px; }
-        .message::-webkit-scrollbar-thumb {
-            background: rgba(255,255,255,0.2);
-            border-radius: 4px;
-        }
+      .message::-webkit-scrollbar {
+        width: 6px;
+      }
+      .message::-webkit-scrollbar-thumb {
+        background: rgba(255, 255, 255, 0.2);
+        border-radius: 4px;
+      }
 
-        .approval-actions {
-            display: none;
-            gap: 8px;
-            -webkit-app-region: no-drag;
-        }
+      .approval-actions {
+        display: none;
+        gap: 8px;
+        -webkit-app-region: no-drag;
+      }
 
-        .approval-actions.visible {
-            display: flex;
-        }
+      .approval-actions.visible {
+        display: flex;
+      }
 
-        .btn {
-            border: 1px solid rgba(255,255,255,0.26);
-            border-radius: 8px;
-            padding: 6px 12px;
-            cursor: pointer;
-            font-size: 12px;
-            color: #fff;
-            background: rgba(255,255,255,0.08);
-            transition: all 0.2s ease;
-        }
+      .btn {
+        border: 1px solid rgba(255, 255, 255, 0.26);
+        border-radius: 8px;
+        padding: 6px 12px;
+        cursor: pointer;
+        font-size: 12px;
+        color: #fff;
+        background: rgba(255, 255, 255, 0.08);
+        transition: all 0.2s ease;
+      }
 
-        .btn:hover:not(:disabled) {
-            transform: translateY(-1px);
-            filter: brightness(1.08);
-        }
+      .btn:hover:not(:disabled) {
+        transform: translateY(-1px);
+        filter: brightness(1.08);
+      }
 
-        .btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
+      .btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
 
-        .btn.approve {
-            border-color: rgba(105, 210, 138, 0.62);
-            background: rgba(105, 210, 138, 0.2);
-            color: #c8ffd9;
-        }
+      .btn.approve {
+        border-color: rgba(105, 210, 138, 0.62);
+        background: rgba(105, 210, 138, 0.2);
+        color: #c8ffd9;
+      }
 
-        .btn.reject {
-            border-color: rgba(255, 125, 125, 0.62);
-            background: rgba(255, 125, 125, 0.2);
-            color: #ffd2d2;
-        }
+      .btn.reject {
+        border-color: rgba(255, 125, 125, 0.62);
+        background: rgba(255, 125, 125, 0.2);
+        color: #ffd2d2;
+      }
 
-        .resize-handle {
-            position: absolute;
-            z-index: 20;
-            -webkit-app-region: no-drag;
-            display: none;
-        }
+      /* ── 多审批导航 ── */
+      .approval-nav {
+        display: none;
+        align-items: center;
+        gap: 6px;
+        -webkit-app-region: no-drag;
+      }
+      .approval-nav.visible {
+        display: flex;
+      }
+      .approval-nav .nav-btn {
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        border-radius: 6px;
+        cursor: pointer;
+        padding: 2px 8px;
+        color: var(--text);
+        font-size: 11px;
+        transition: all 0.15s ease;
+        user-select: none;
+      }
+      .approval-nav .nav-btn:hover:not(:disabled) {
+        background: rgba(255, 255, 255, 0.16);
+      }
+      .approval-nav .nav-btn:disabled {
+        opacity: 0.35;
+        cursor: not-allowed;
+      }
+      .approval-nav .nav-counter {
+        font-size: 11px;
+        color: var(--sub);
+        padding: 0 4px;
+        white-space: nowrap;
+        min-width: 32px;
+        text-align: center;
+      }
+      .approval-nav .nav-badge {
+        background: var(--warning);
+        color: #1a1a1a;
+        border-radius: 999px;
+        padding: 0 8px;
+        font-size: 10px;
+        font-weight: 700;
+        line-height: 1.7;
+      }
 
-        #overlayRoot.interactive .resize-handle { display: block; }
+      .resize-handle {
+        position: absolute;
+        z-index: 20;
+        -webkit-app-region: no-drag;
+        display: none;
+      }
 
-        .resize-handle.n, .resize-handle.s { left: 10px; right: 10px; height: 6px; cursor: ns-resize; }
-        .resize-handle.n { top: 0; }
-        .resize-handle.s { bottom: 0; }
+      #overlayRoot.interactive .resize-handle {
+        display: block;
+      }
 
-        .resize-handle.e, .resize-handle.w { top: 10px; bottom: 10px; width: 6px; cursor: ew-resize; }
-        .resize-handle.e { right: 0; }
-        .resize-handle.w { left: 0; }
+      .resize-handle.n,
+      .resize-handle.s {
+        left: 10px;
+        right: 10px;
+        height: 6px;
+        cursor: ns-resize;
+      }
+      .resize-handle.n {
+        top: 0;
+      }
+      .resize-handle.s {
+        bottom: 0;
+      }
 
-        .resize-handle.nw, .resize-handle.ne, .resize-handle.sw, .resize-handle.se {
-            width: 12px;
-            height: 12px;
-        }
-        .resize-handle.nw { left: 0; top: 0; cursor: nwse-resize; }
-        .resize-handle.ne { right: 0; top: 0; cursor: nesw-resize; }
-        .resize-handle.sw { left: 0; bottom: 0; cursor: nesw-resize; }
-        .resize-handle.se { right: 0; bottom: 0; cursor: nwse-resize; }
+      .resize-handle.e,
+      .resize-handle.w {
+        top: 10px;
+        bottom: 10px;
+        width: 6px;
+        cursor: ew-resize;
+      }
+      .resize-handle.e {
+        right: 0;
+      }
+      .resize-handle.w {
+        left: 0;
+      }
+
+      .resize-handle.nw,
+      .resize-handle.ne,
+      .resize-handle.sw,
+      .resize-handle.se {
+        width: 12px;
+        height: 12px;
+      }
+      .resize-handle.nw {
+        left: 0;
+        top: 0;
+        cursor: nwse-resize;
+      }
+      .resize-handle.ne {
+        right: 0;
+        top: 0;
+        cursor: nesw-resize;
+      }
+      .resize-handle.sw {
+        left: 0;
+        bottom: 0;
+        cursor: nesw-resize;
+      }
+      .resize-handle.se {
+        right: 0;
+        bottom: 0;
+        cursor: nwse-resize;
+      }
     </style>
-</head>
-<body>
+  </head>
+  <body>
     <div id="overlayRoot">
-        <div class="overlay-header">
-            <div class="left">
-                <span class="dot" id="statusDot"></span>
-                <span class="header-title">信息流通知</span>
-            </div>
-            <div class="header-meta">
-                <span class="pill" id="modePill">穿透</span>
-                <span id="timeText">--:--:--</span>
-            </div>
+      <div class="overlay-header">
+        <div class="left">
+          <span class="dot" id="statusDot"></span>
+          <span class="header-title">信息流通知</span>
         </div>
-
-        <div class="content">
-            <div class="title" id="titleText">等待通知</div>
-            <div class="message" id="messageText">当有消息时，此悬浮通知窗会短暂显示。</div>
-            <div class="approval-actions" id="approvalActions">
-                <button class="btn approve" id="approveBtn">允许</button>
-                <button class="btn reject" id="rejectBtn">拒绝</button>
-            </div>
+        <div class="header-meta">
+          <span class="pill" id="modePill">穿透</span>
+          <span id="timeText">--:--:--</span>
         </div>
+      </div>
 
-        <div class="resize-handle n" data-edge="n"></div>
-        <div class="resize-handle s" data-edge="s"></div>
-        <div class="resize-handle e" data-edge="e"></div>
-        <div class="resize-handle w" data-edge="w"></div>
-        <div class="resize-handle nw" data-edge="nw"></div>
-        <div class="resize-handle ne" data-edge="ne"></div>
-        <div class="resize-handle sw" data-edge="sw"></div>
-        <div class="resize-handle se" data-edge="se"></div>
+      <div class="content">
+        <div class="title" id="titleText">等待通知</div>
+        <div class="message" id="messageText">
+          当有消息时，此悬浮通知窗会短暂显示。
+        </div>
+        <div class="approval-nav" id="approvalNav">
+          <span class="nav-badge" id="navBadge">⚡</span>
+          <button class="nav-btn" id="navPrevBtn">◀</button>
+          <span class="nav-counter" id="navCounter">1/2</span>
+          <button class="nav-btn" id="navNextBtn">▶</button>
+        </div>
+        <div class="approval-actions" id="approvalActions">
+          <button class="btn approve" id="approveBtn">允许</button>
+          <button class="btn reject" id="rejectBtn">拒绝</button>
+        </div>
+      </div>
+
+      <div class="resize-handle n" data-edge="n"></div>
+      <div class="resize-handle s" data-edge="s"></div>
+      <div class="resize-handle e" data-edge="e"></div>
+      <div class="resize-handle w" data-edge="w"></div>
+      <div class="resize-handle nw" data-edge="nw"></div>
+      <div class="resize-handle ne" data-edge="ne"></div>
+      <div class="resize-handle sw" data-edge="sw"></div>
+      <div class="resize-handle se" data-edge="se"></div>
     </div>
 
     <script>
-        const overlayRoot = document.getElementById('overlayRoot');
-        const statusDot = document.getElementById('statusDot');
-        const modePill = document.getElementById('modePill');
-        const timeText = document.getElementById('timeText');
-        const titleText = document.getElementById('titleText');
-        const messageText = document.getElementById('messageText');
-        const approvalActions = document.getElementById('approvalActions');
-        const approveBtn = document.getElementById('approveBtn');
-        const rejectBtn = document.getElementById('rejectBtn');
+      const overlayRoot = document.getElementById("overlayRoot");
+      const statusDot = document.getElementById("statusDot");
+      const modePill = document.getElementById("modePill");
+      const timeText = document.getElementById("timeText");
+      const titleText = document.getElementById("titleText");
+      const messageText = document.getElementById("messageText");
+      const approvalActions = document.getElementById("approvalActions");
+      const approveBtn = document.getElementById("approveBtn");
+      const rejectBtn = document.getElementById("rejectBtn");
 
-        const state = {
-            passThrough: true,
-            approvalRequestId: ''
-        };
+      const state = {
+        passThrough: true,
+        approvalRequests: new Map(), // Map<requestId, {toolName, maid, command, timestamp}>
+        approvalRequestIds: [], // ordered keys for navigation
+        currentApprovalIndex: 0,
+        processedApprovalIds: new Set(), // 已审核的 requestId，用于过滤下次 payload
+      };
 
-        function setDotColor(level) {
-            let color = '#5ab2ff';
-            if (level === 'warning') color = '#ffb347';
-            else if (level === 'success') color = '#69d28a';
-            else if (level === 'error') color = '#ff7d7d';
-            statusDot.style.background = color;
-            statusDot.style.boxShadow = `0 0 8px ${color}`;
+      function setDotColor(level) {
+        let color = "#5ab2ff";
+        if (level === "warning") color = "#ffb347";
+        else if (level === "success") color = "#69d28a";
+        else if (level === "error") color = "#ff7d7d";
+        statusDot.style.background = color;
+        statusDot.style.boxShadow = `0 0 8px ${color}`;
+      }
+
+      function setPassThroughState(passThrough) {
+        state.passThrough = !!passThrough;
+        modePill.textContent = state.passThrough ? "穿透" : "可交互";
+        overlayRoot.classList.toggle("interactive", !state.passThrough);
+      }
+
+      function renderCurrentApproval() {
+        const ids = state.approvalRequestIds;
+        if (ids.length === 0) {
+          approvalActions.classList.remove("visible");
+          document.getElementById("approvalNav").classList.remove("visible");
+          return;
         }
 
-        function setPassThroughState(passThrough) {
-            state.passThrough = !!passThrough;
-            modePill.textContent = state.passThrough ? '穿透' : '可交互';
-            overlayRoot.classList.toggle('interactive', !state.passThrough);
+        // 确保索引在有效范围
+        if (state.currentApprovalIndex >= ids.length) {
+          state.currentApprovalIndex = ids.length - 1;
+        }
+        if (state.currentApprovalIndex < 0) {
+          state.currentApprovalIndex = 0;
         }
 
-        function renderPayload(payload) {
-            const title = String(payload?.title || '信息流通知');
-            const content = String(payload?.content || '收到一条新消息');
-            const level = String(payload?.level || 'info');
-            const time = String(payload?.timestamp || new Date().toLocaleTimeString());
-            const approval = payload?.approval || null;
+        const currentId = ids[state.currentApprovalIndex];
+        const req = state.approvalRequests.get(currentId);
+        if (!req) return;
 
+        // 更新标题和消息显示当前请求详情
+        titleText.textContent = `🛠️ 工具调用审核 (${req.toolName})`;
+        messageText.textContent =
+          `助手: ${req.maid}\n` +
+          `命令: ${req.command}\n` +
+          `时间: ${req.timestamp}`;
+
+        // 更新导航
+        const navEl = document.getElementById("approvalNav");
+        if (ids.length > 1) {
+          navEl.classList.add("visible");
+          document.getElementById("navCounter").textContent = `${
+            state.currentApprovalIndex + 1
+          }/${ids.length}`;
+          document.getElementById("navPrevBtn").disabled =
+            state.currentApprovalIndex === 0;
+          document.getElementById("navNextBtn").disabled =
+            state.currentApprovalIndex >= ids.length - 1;
+        } else {
+          navEl.classList.remove("visible");
+        }
+
+        // 显示审批按钮（已审核项为只读态）
+        const isProcessed = state.processedApprovalIds.has(currentId);
+        approvalActions.classList.add("visible");
+        approveBtn.disabled = isProcessed;
+        rejectBtn.disabled = isProcessed;
+        approveBtn.textContent = isProcessed ? "已允许" : "允许";
+        rejectBtn.textContent = isProcessed ? "已拒绝" : "拒绝";
+      }
+
+      function renderPayload(payload) {
+        const title = String(payload?.title || "信息流通知");
+        const content = String(payload?.content || "收到一条新消息");
+        const level = String(payload?.level || "info");
+        const time = String(
+          payload?.timestamp || new Date().toLocaleTimeString()
+        );
+        const approval = payload?.approval || null;
+        const pendingApprovals = payload?.pendingApprovals || null;
+
+        // 处理 pendingApprovals 列表（多审批场景）
+        if (
+          pendingApprovals &&
+          Array.isArray(pendingApprovals) &&
+          pendingApprovals.length > 0
+        ) {
+          // 用最新列表重建 Map 和有序 keys
+          const newMap = new Map();
+          const newIds = [];
+          let preservedIndex = state.currentApprovalIndex;
+          const oldIds = state.approvalRequestIds;
+
+          for (const p of pendingApprovals) {
+            if (p.requestId && !newMap.has(p.requestId)) {
+              // 跳过已经审核过的项
+              if (state.processedApprovalIds.has(p.requestId)) continue;
+              newMap.set(p.requestId, {
+                toolName: p.toolName || "未知工具",
+                maid: p.maid || "未知助手",
+                command: p.command || "",
+                timestamp: p.timestamp || "",
+              });
+              newIds.push(p.requestId);
+            }
+          }
+
+          // 尝试保持当前查看的 requestId 不变
+          const currentId = oldIds[preservedIndex];
+          const newIndex = currentId ? newIds.indexOf(currentId) : -1;
+          state.currentApprovalIndex = newIndex >= 0 ? newIndex : 0;
+          state.approvalRequests = newMap;
+          state.approvalRequestIds = newIds;
+
+          if (newIds.length === 0) {
+            // 所有项都已被审核过（过滤完了），恢复穿透模式
+            setPassThroughState(true);
             titleText.textContent = title;
             messageText.textContent = content;
-            timeText.textContent = time;
             setDotColor(level);
-
-            if (approval && approval.requestId) {
-                state.approvalRequestId = String(approval.requestId);
-                approvalActions.classList.add('visible');
-                approveBtn.disabled = false;
-                rejectBtn.disabled = false;
-                approveBtn.textContent = '允许';
-                rejectBtn.textContent = '拒绝';
-            } else {
-                state.approvalRequestId = '';
-                approvalActions.classList.remove('visible');
-            }
+          } else {
+            renderCurrentApproval();
+            setDotColor("warning");
+          }
+          timeText.textContent = time;
+          return;
         }
 
-        function sendApprovalAction(approved, btn) {
-            if (!state.approvalRequestId || !window.electronAPI?.sendRagOverlayApprovalAction) return;
-
-            window.electronAPI.sendRagOverlayApprovalAction({
-                requestId: state.approvalRequestId,
-                approved: !!approved
-            });
-
-            approveBtn.disabled = true;
-            rejectBtn.disabled = true;
-            btn.textContent = approved ? '已允许' : '已拒绝';
+        // ── 无 pendingApprovals 列表时的原有逻辑 ──
+        // 如果当前有待审批，保留审批界面不变，仅更新时间
+        if (state.approvalRequestIds.length > 0) {
+          timeText.textContent = time;
+          setDotColor("warning");
+          return;
         }
 
-        approveBtn.addEventListener('click', () => sendApprovalAction(true, approveBtn));
-        rejectBtn.addEventListener('click', () => sendApprovalAction(false, rejectBtn));
+        titleText.textContent = title;
+        messageText.textContent = content;
+        timeText.textContent = time;
+        setDotColor(level);
 
-        function setupResizeHandles() {
-            const handles = overlayRoot.querySelectorAll('.resize-handle');
-            handles.forEach((handle) => {
-                handle.addEventListener('mousedown', (event) => {
-                    if (state.passThrough) return;
-                    const edge = handle.dataset.edge;
-                    if (!edge || !window.electronAPI?.ragOverlayResize) return;
-
-                    event.preventDefault();
-                    let lastX = event.screenX;
-                    let lastY = event.screenY;
-
-                    const onMove = (moveEvent) => {
-                        const dx = moveEvent.screenX - lastX;
-                        const dy = moveEvent.screenY - lastY;
-                        lastX = moveEvent.screenX;
-                        lastY = moveEvent.screenY;
-
-                        window.electronAPI.ragOverlayResize({ edge, dx, dy });
-                    };
-
-                    const onUp = () => {
-                        window.removeEventListener('mousemove', onMove);
-                        window.removeEventListener('mouseup', onUp);
-                    };
-
-                    window.addEventListener('mousemove', onMove);
-                    window.addEventListener('mouseup', onUp);
-                });
-            });
+        if (approval && approval.requestId) {
+          // 单次审批（向后兼容）
+          state.approvalRequests = new Map();
+          state.approvalRequestIds = [];
+          state.currentApprovalIndex = 0;
+          state.approvalRequests.set(String(approval.requestId), {
+            toolName: approval.toolName || "未知工具",
+            maid: approval.maid || "未知助手",
+            command: approval.command || "",
+            timestamp: approval.timestamp || "",
+          });
+          state.approvalRequestIds.push(String(approval.requestId));
+          renderCurrentApproval();
+        } else {
+          // 普通消息
+          state.approvalRequests.clear();
+          state.approvalRequestIds = [];
+          state.currentApprovalIndex = 0;
+          approvalActions.classList.remove("visible");
+          document.getElementById("approvalNav").classList.remove("visible");
         }
+      }
 
-        document.addEventListener('DOMContentLoaded', () => {
-            setPassThroughState(true);
-            setupResizeHandles();
+      function navigateApproval(direction) {
+        const ids = state.approvalRequestIds;
+        if (ids.length === 0) return;
+        let newIndex = state.currentApprovalIndex + direction;
+        if (newIndex < 0) newIndex = 0;
+        if (newIndex >= ids.length) newIndex = ids.length - 1;
+        if (newIndex !== state.currentApprovalIndex) {
+          state.currentApprovalIndex = newIndex;
+          renderCurrentApproval();
+        }
+      }
 
-            if (window.electronAPI?.onRagOverlayPayload) {
-                window.electronAPI.onRagOverlayPayload((payload) => {
-                    if (typeof payload?.opacity === 'number') {
-                        const v = Math.max(0.15, Math.min(1, payload.opacity));
-                        document.body.style.opacity = String(v);
-                    }
-                    if (typeof payload?.passThrough === 'boolean') {
-                        setPassThroughState(payload.passThrough);
-                    }
-                    renderPayload(payload || {});
-                });
-            }
+      function sendApprovalAction(approved, btn) {
+        const ids = state.approvalRequestIds;
+        if (ids.length === 0) return;
+        const currentId = ids[state.currentApprovalIndex];
+        if (!currentId || !window.electronAPI?.sendRagOverlayApprovalAction)
+          return;
 
-            if (window.electronAPI?.onRagOverlayPassThroughChanged) {
-                window.electronAPI.onRagOverlayPassThroughChanged((payload) => {
-                    setPassThroughState(!!payload?.passThrough);
-                });
-            }
+        window.electronAPI.sendRagOverlayApprovalAction({
+          requestId: currentId,
+          approved: !!approved,
         });
+
+        // ── 记录已审核并立即从本地列表中移除 ──
+        state.processedApprovalIds.add(currentId);
+        state.approvalRequests.delete(currentId);
+        state.approvalRequestIds = state.approvalRequestIds.filter(
+          (id) => id !== currentId
+        );
+
+        if (state.approvalRequestIds.length > 0) {
+          // 还有待审批：如果当前索引已经超出范围，则选最后一项
+          if (state.currentApprovalIndex >= state.approvalRequestIds.length) {
+            state.currentApprovalIndex = state.approvalRequestIds.length - 1;
+          }
+          renderCurrentApproval();
+        } else {
+          // 全部处理完毕：清除审批 UI，恢复穿透/隐藏
+          state.currentApprovalIndex = 0;
+          approvalActions.classList.remove("visible");
+          document.getElementById("approvalNav").classList.remove("visible");
+          titleText.textContent = "全部审核完毕";
+          messageText.textContent = "所有待审批的工具调用请求已处理。";
+          setDotColor("success");
+          // 本地立即切换到穿透模式（更新 UI + state）
+          setPassThroughState(true);
+          // 同步通知主进程和观察器
+          if (window.electronAPI?.ragOverlaySetPassThrough) {
+            window.electronAPI.ragOverlaySetPassThrough(true);
+          }
+          // 穿透模式下直接隐藏窗口（观察器有 pending 残留时不会发 hide 指令）
+          if (window.electronAPI?.ragOverlayHide) {
+            window.electronAPI.ragOverlayHide();
+          }
+        }
+      }
+
+      approveBtn.addEventListener("click", () =>
+        sendApprovalAction(true, approveBtn)
+      );
+      rejectBtn.addEventListener("click", () =>
+        sendApprovalAction(false, rejectBtn)
+      );
+      document
+        .getElementById("navPrevBtn")
+        .addEventListener("click", () => navigateApproval(-1));
+      document
+        .getElementById("navNextBtn")
+        .addEventListener("click", () => navigateApproval(1));
+
+      function setupResizeHandles() {
+        const handles = overlayRoot.querySelectorAll(".resize-handle");
+        handles.forEach((handle) => {
+          handle.addEventListener("mousedown", (event) => {
+            if (state.passThrough) return;
+            const edge = handle.dataset.edge;
+            if (!edge || !window.electronAPI?.ragOverlayResize) return;
+
+            event.preventDefault();
+            let lastX = event.screenX;
+            let lastY = event.screenY;
+
+            const onMove = (moveEvent) => {
+              const dx = moveEvent.screenX - lastX;
+              const dy = moveEvent.screenY - lastY;
+              lastX = moveEvent.screenX;
+              lastY = moveEvent.screenY;
+
+              window.electronAPI.ragOverlayResize({ edge, dx, dy });
+            };
+
+            const onUp = () => {
+              window.removeEventListener("mousemove", onMove);
+              window.removeEventListener("mouseup", onUp);
+            };
+
+            window.addEventListener("mousemove", onMove);
+            window.addEventListener("mouseup", onUp);
+          });
+        });
+      }
+
+      document.addEventListener("DOMContentLoaded", () => {
+        setPassThroughState(true);
+        setupResizeHandles();
+
+        if (window.electronAPI?.onRagOverlayPayload) {
+          window.electronAPI.onRagOverlayPayload((payload) => {
+            if (typeof payload?.opacity === "number") {
+              const v = Math.max(0.15, Math.min(1, payload.opacity));
+              document.body.style.opacity = String(v);
+            }
+            if (typeof payload?.passThrough === "boolean") {
+              setPassThroughState(payload.passThrough);
+            }
+            renderPayload(payload || {});
+          });
+        }
+
+        if (window.electronAPI?.onRagOverlayPassThroughChanged) {
+          window.electronAPI.onRagOverlayPassThroughChanged((payload) => {
+            setPassThroughState(!!payload?.passThrough);
+          });
+        }
+      });
     </script>
-</body>
+  </body>
 </html>
