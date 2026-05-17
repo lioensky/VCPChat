@@ -371,7 +371,8 @@ textarea:focus {
 /* Containers for editor and preview areas */
 .editor-container,
 .preview-container {
-    flex: 1; /* Each takes half the space */
+    flex: 1 1 0; /* Each takes half the space */
+    min-width: 0;
     display: flex;
     flex-direction: column; /* Stack content and bubble vertically */
     position: relative; /* For positioning the bubble */
@@ -379,6 +380,35 @@ textarea:focus {
     background-color: var(--input-bg); /* Give them a distinct background */
     border: 1px solid var(--border-color);
     border-radius: 6px;
+    transition: flex-basis 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+                flex-grow 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+                opacity 0.22s ease,
+                transform 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+                border-width 0.22s ease,
+                margin 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+                padding 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+body.preview-collapsed .note-body {
+    gap: 0;
+}
+
+body.preview-collapsed .editor-container {
+    flex-grow: 1;
+    flex-basis: 100%;
+}
+
+body.preview-collapsed .preview-container {
+    flex: 0 1 0;
+    min-width: 0;
+    opacity: 0;
+    transform: translateX(16px) scaleX(0.98);
+    border-width: 0;
+    pointer-events: none;
+}
+
+body.preview-collapsed .preview-container > * {
+    visibility: hidden;
 }
 
 #noteContent,
@@ -805,10 +835,20 @@ body.light-theme .markdown-preview pre .hljs-meta {
     -webkit-app-region: no-drag;
 }
 
+#custom-title-bar .titlebar-actions,
 #custom-title-bar .window-controls {
     display: flex;
+    align-items: center;
     gap: 10px;
     -webkit-app-region: no-drag;
+}
+
+#custom-title-bar .titlebar-actions {
+    margin-left: auto;
+}
+
+#custom-title-bar .window-controls {
+    padding-left: 2px;
 }
 
 .window-control-btn {
@@ -822,12 +862,21 @@ body.light-theme .markdown-preview pre .hljs-meta {
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    transition: background-color 0.2s ease, color 0.2s ease;
+    transition: background-color 0.2s ease, color 0.2s ease, transform 0.2s ease;
 }
 
 .window-control-btn:hover {
     background-color: var(--hover-bg, rgba(255, 255, 255, 0.08)); /* Fallback hover color */
     color: var(--music-text, var(--primary-text)); /* Fallback text color */
+}
+
+.preview-toggle-btn svg {
+    transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+    transform-origin: center;
+}
+
+.preview-toggle-btn.is-collapsed svg {
+    transform: rotate(180deg);
 }
 
 #close-notes-btn:hover {

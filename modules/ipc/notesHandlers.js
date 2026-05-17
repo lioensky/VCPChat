@@ -14,6 +14,9 @@ let NOTES_DIR;
 let SETTINGS_FILE;
 let NETWORK_NOTES_CACHE_FILE;
 let networkNotesTreeCache = null; // In-memory cache
+let localNotesWatcher = null;
+let localNotesWatchRefreshTimer = null;
+const LOCAL_NOTES_WATCH_DEBOUNCE_MS = 250;
 
 // Helper to check if a file path is on the network notes drive
 async function isNetworkNote(filePath) {
@@ -78,6 +81,98 @@ async function writeOrRemoveOrderFile(orderFilePath, order) {
     }
 }
 
+async function ensureNewItemNearTop(itemPath) {
+    try {
+        if (!itemPath || !(itemPath.endsWith('.txt') || itemPath.endsWith('.md'))) return;
+        if (!await fs.pathExists(itemPath)) return;
+
+        const stat = await fs.stat(itemPath);
+        if (!stat.isFile()) return;
+
+        const dirPath = path.dirname(itemPath);
+        const itemId = itemIdFromPath(itemPath, false);
+        const orderFilePath = path.join(dirPath, '.folder-order.json');
+        const currentOrder = (await getCompleteDisplayOrderIds(dirPath)).filter(id => id !== itemId);
+
+        // Keep user habit: folders stay at the top. Insert the newly discovered note
+        // right after the last top-level folder in this directory.
+        let insertIndex = 0;
+        for (let i = 0; i < currentOrder.length; i++) {
+            const id = currentOrder[i];
+            const isFolderId = id.startsWith('folder-');
+            if (!isFolderId) break;
+            insertIndex = i + 1;
+        }
+
+        const finalOrder = [
+            ...currentOrder.slice(0, insertIndex),
+            itemId,
+            ...currentOrder.slice(insertIndex)
+        ];
+        await writeOrRemoveOrderFile(orderFilePath, finalOrder);
+    } catch (error) {
+        console.error(`[NotesWatcher] Failed to place new note near top: ${itemPath}`, error);
+    }
+}
+
+function notifyLocalNotesChanged() {
+    if (localNotesWatchRefreshTimer) {
+        clearTimeout(localNotesWatchRefreshTimer);
+    }
+
+    localNotesWatchRefreshTimer = setTimeout(() => {
+        localNotesWatchRefreshTimer = null;
+        if (notesWindow && !notesWindow.isDestroyed()) {
+            notesWindow.webContents.send('local-notes-changed');
+        }
+    }, LOCAL_NOTES_WATCH_DEBOUNCE_MS);
+}
+
+function startLocalNotesWatcher() {
+    if (localNotesWatcher || !NOTES_DIR) return;
+
+    try {
+        const chokidar = require('chokidar');
+        localNotesWatcher = chokidar.watch(NOTES_DIR, {
+            persistent: true,
+            ignoreInitial: true,
+            depth: 99,
+            ignored: /(^|[\\/])\./,
+            awaitWriteFinish: {
+                stabilityThreshold: 300,
+                pollInterval: 100
+            }
+        });
+
+        localNotesWatcher
+            .on('add', async (changedPath) => {
+                await ensureNewItemNearTop(changedPath);
+                notifyLocalNotesChanged();
+            })
+            .on('unlink', notifyLocalNotesChanged)
+            .on('addDir', notifyLocalNotesChanged)
+            .on('unlinkDir', notifyLocalNotesChanged)
+            .on('error', error => console.error('[NotesWatcher] Error:', error));
+
+        console.log(`[NotesWatcher] Watching local notes directory: ${NOTES_DIR}`);
+    } catch (error) {
+        console.error('[NotesWatcher] Failed to start local notes watcher:', error);
+    }
+}
+
+function stopLocalNotesWatcher() {
+    if (localNotesWatchRefreshTimer) {
+        clearTimeout(localNotesWatchRefreshTimer);
+        localNotesWatchRefreshTimer = null;
+    }
+
+    if (localNotesWatcher) {
+        console.log('[NotesWatcher] Stopping local notes watcher.');
+        localNotesWatcher.close();
+        localNotesWatcher = null;
+    }
+}
+
 async function getCompleteDisplayOrderIds(dirPath) {
     const orderFilePath = path.join(dirPath, '.folder-order.json');
     const orderedIds = await readOrderIds(orderFilePath);
@@ -116,8 +211,11 @@ async function getCompleteDisplayOrderIds(dirPath) {
         return a.name.localeCompare(b.name);
     });
 
-    // Return a complete order, not only the ids already present in .folder-order.json.
-    return items.map(item => item.id);
+    const allIds = items.map(item => item.id);
+    const orderedExistingIds = orderedIds.filter(id => allIds.includes(id));
+    const unorderedIds = allIds.filter(id => !orderedIds.includes(id));
+
+    return [...orderedExistingIds, ...unorderedIds];
 }
 
 // Helper function to recursively read the directory structure
@@ -279,6 +377,7 @@ async function scanAndCacheNetworkNotes() {
 function createOrFocusNotesWindow() {
     if (notesWindow && !notesWindow.isDestroyed()) {
         console.log('[Main Process] Notes window already exists. Focusing it.');
+        startLocalNotesWatcher();
         if (!notesWindow.isVisible()) {
             notesWindow.show();
         }
@@ -287,6 +386,7 @@ function createOrFocusNotesWindow() {
     }
 
     console.log('[Main Process] Creating new notes window instance.');
+    startLocalNotesWatcher();
     notesWindow = new BrowserWindow({
         width: 1000,
         height: 700,
@@ -326,6 +426,7 @@ function createOrFocusNotesWindow() {
 
     notesWindow.on('closed', () => {
         console.log('[Main Process] Notes window has been closed.');
+        stopLocalNotesWatcher();
         openChildWindows = openChildWindows.filter(win => win !== notesWindow); // Remove from broadcast list
         notesWindow = null; // Clear the reference
     });

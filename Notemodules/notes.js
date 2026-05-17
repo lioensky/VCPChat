@@ -24,6 +24,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const modalCancelBtn = document.getElementById('modalCancelBtn');
 
     // --- Custom Title Bar Elements ---
+    const previewToggleBtn = document.getElementById('preview-toggle-btn');
     const minimizeNotesBtn = document.getElementById('minimize-notes-btn');
     const maximizeNotesBtn = document.getElementById('maximize-notes-btn');
     const closeNotesBtn = document.getElementById('close-notes-btn');
@@ -55,6 +56,25 @@ document.addEventListener('DOMContentLoaded', async () => {
     const CLOUD_FOLDER_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="item-icon"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"></path></svg>`;
     const NOTE_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="item-icon"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zM6 20V4h7v5h5v11H6z"></path></svg>`;
     const TOGGLE_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="folder-toggle"><path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"></path></svg>`;
+
+
+    // --- Preview Panel Toggle ---
+    function updatePreviewToggleState(isPreviewCollapsed) {
+        document.body.classList.toggle('preview-collapsed', isPreviewCollapsed);
+        previewToggleBtn.classList.toggle('is-collapsed', isPreviewCollapsed);
+        previewToggleBtn.title = isPreviewCollapsed ? '打开预览区' : '关闭预览区';
+        previewToggleBtn.setAttribute('aria-label', isPreviewCollapsed ? '打开预览区' : '关闭预览区');
+        previewToggleBtn.setAttribute('aria-pressed', String(isPreviewCollapsed));
+        localStorage.setItem('notesPreviewCollapsed', String(isPreviewCollapsed));
+
+        if (window.pretextBridge && window.pretextBridge.isReady()) {
+            requestAnimationFrame(() => window.pretextBridge.recalculateAll(window.innerWidth));
+        }
+    }
+
+    function togglePreviewPanel() {
+        updatePreviewToggleState(!document.body.classList.contains('preview-collapsed'));
+    }
 
 
     // --- Debounce & Utility Functions ---
@@ -1478,6 +1498,11 @@ function handleListDragEnd(e) {
         });
 
         // --- Custom Title Bar Listeners ---
+        const isPreviewCollapsed = localStorage.getItem('notesPreviewCollapsed') === 'true';
+        updatePreviewToggleState(isPreviewCollapsed);
+
+        previewToggleBtn.addEventListener('click', togglePreviewPanel);
+
         minimizeNotesBtn.addEventListener('click', () => {
             if (api) api.minimizeWindow();
         });
@@ -1551,6 +1576,11 @@ function handleListDragEnd(e) {
             // Ensure it's always an array, handling both old object format and null/undefined
             networkNoteTree = Array.isArray(freshNetworkTree) ? freshNetworkTree : (freshNetworkTree ? [freshNetworkTree] : []);
             renderTree(); // Re-render with the fresh data
+        });
+
+        // 6. Listen for local note tree changes so external file drops appear immediately.
+        api.onLocalNotesChanged?.(() => {
+            loadNoteTree();
         });
 
         api.onSharedNoteData(async (data) => {
