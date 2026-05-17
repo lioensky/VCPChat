@@ -404,43 +404,55 @@
     align-items: center;
 }
 
-.tavern-edit-actions button {
-    padding: 7px 16px;
+/* 用 .modal-content 前缀提高特异度 (0,3,1)，强势覆盖 components.css 里
+   `.modal-content .danger-button` 等全局按钮规则，确保保存 / 取消 / 删除三颗按钮尺寸一致 */
+.modal-content .tavern-edit-actions button,
+.modal-content .tavern-edit-actions button[type="submit"],
+.modal-content .tavern-edit-actions .save-button,
+.modal-content .tavern-edit-actions .secondary-button,
+.modal-content .tavern-edit-actions .danger-button {
+    height: 32px;
+    padding: 0 16px;
     border-radius: 6px;
     border: none;
     cursor: pointer;
     font-size: 13px;
-    line-height: 1.2;
+    line-height: 1;
+    box-sizing: border-box;
+    margin: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
 }
 
-.tavern-edit-actions .save-button {
+.modal-content .tavern-edit-actions .save-button {
     background: var(--button-bg, #4a90e2);
     color: var(--text-on-accent, #fff);
     font-weight: 500;
 }
 
-.tavern-edit-actions .save-button:hover {
+.modal-content .tavern-edit-actions .save-button:hover {
     background: var(--button-hover-bg, var(--button-bg, #4a90e2));
 }
 
-.tavern-edit-actions .secondary-button {
+.modal-content .tavern-edit-actions .secondary-button {
     background: transparent;
     color: var(--primary-text, #fff);
     border: 1px solid var(--border-color, rgba(255,255,255,0.18));
 }
 
-.tavern-edit-actions .secondary-button:hover {
+.modal-content .tavern-edit-actions .secondary-button:hover {
     background: var(--accent-bg, rgba(255,255,255,0.06));
 }
 
-.tavern-edit-actions .danger-button {
+.modal-content .tavern-edit-actions .danger-button {
     background: var(--danger-color, #d9534f);
     color: var(--text-on-accent, #fff);
     margin-left: auto;
     font-weight: 500;
 }
 
-.tavern-edit-actions .danger-button:hover {
+.modal-content .tavern-edit-actions .danger-button:hover {
     background: var(--danger-hover-bg, var(--danger-color, #d9534f));
 }
 
