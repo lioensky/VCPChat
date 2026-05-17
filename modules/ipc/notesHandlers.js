@@ -54,21 +54,78 @@ async function generateUniquePath(basePath) {
     return newPath;
 }
 
+function itemIdFromPath(itemPath, isDirectory) {
+    return `${isDirectory ? 'folder' : 'note'}-${Buffer.from(itemPath).toString('hex')}`;
+}
+
+async function readOrderIds(orderFilePath) {
+    try {
+        if (await fs.pathExists(orderFilePath)) {
+            const orderData = await fs.readJson(orderFilePath);
+            return Array.isArray(orderData.order) ? orderData.order : [];
+        }
+    } catch (e) {
+        console.error(`Error reading order file ${orderFilePath}:`, e);
+    }
+    return [];
+}
+
+async function writeOrRemoveOrderFile(orderFilePath, order) {
+    if (order.length > 0) {
+        await fs.writeJson(orderFilePath, { order }, { spaces: 2 });
+    } else {
+        await fs.remove(orderFilePath);
+    }
+}
+
+async function getCompleteDisplayOrderIds(dirPath) {
+    const orderFilePath = path.join(dirPath, '.folder-order.json');
+    const orderedIds = await readOrderIds(orderFilePath);
+    const items = [];
+
+    const files = await fs.readdir(dirPath, { withFileTypes: true });
+    for (const file of files) {
+        if (file.name.startsWith('.') || file.name.endsWith('.json')) continue;
+
+        const fullPath = path.join(dirPath, file.name);
+        if (file.isDirectory()) {
+            items.push({
+                id: itemIdFromPath(fullPath, true),
+                type: 'folder',
+                name: file.name
+            });
+        } else if (file.isFile() && (file.name.endsWith('.txt') || file.name.endsWith('.md'))) {
+            items.push({
+                id: itemIdFromPath(fullPath, false),
+                type: 'note',
+                name: path.basename(file.name, path.extname(file.name))
+            });
+        }
+    }
+
+    items.sort((a, b) => {
+        const indexA = orderedIds.indexOf(a.id);
+        const indexB = orderedIds.indexOf(b.id);
+
+        if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+        if (indexA !== -1) return -1;
+        if (indexB !== -1) return 1;
+
+        if (a.type === 'folder' && b.type !== 'folder') return -1;
+        if (a.type !== 'folder' && b.type === 'folder') return 1;
+        return a.name.localeCompare(b.name);
+    });
+
+    // Return a complete order, not only the ids already present in .folder-order.json.
+    return items.map(item => item.id);
+}
+
 // Helper function to recursively read the directory structure
 async function readDirectoryStructure(dirPath) {
     const items = [];
     const files = await fs.readdir(dirPath, { withFileTypes: true });
     const orderFilePath = path.join(dirPath, '.folder-order.json');
-    let orderedIds = [];
-
-    try {
-        if (await fs.pathExists(orderFilePath)) {
-            const orderData = await fs.readJson(orderFilePath);
-            orderedIds = orderData.order || [];
-        }
-    } catch (e) {
-        console.error(`Error reading order file ${orderFilePath}:`, e);
-    }
+    const orderedIds = await readOrderIds(orderFilePath);
 
     for (const file of files) {
         const fullPath = path.join(dirPath, file.name);
@@ -76,7 +133,7 @@ async function readDirectoryStructure(dirPath) {
 
         if (file.isDirectory()) {
             items.push({
-                id: `folder-${Buffer.from(fullPath).toString('hex')}`,
+                id: itemIdFromPath(fullPath, true),
                 type: 'folder',
                 name: file.name,
                 path: fullPath,
@@ -86,7 +143,7 @@ async function readDirectoryStructure(dirPath) {
             try {
                 const content = await fs.readFile(fullPath, 'utf8');
                 const lines = content.split('\n');
-                const id = `note-${Buffer.from(fullPath).toString('hex')}`;
+                const id = itemIdFromPath(fullPath, false);
 
                 let title, username, timestamp, noteContent;
 
@@ -597,23 +654,16 @@ function initialize(options) {
 
             if (sourceDir !== destPath) {
                 const sourceOrderPath = path.join(sourceDir, '.folder-order.json');
-                if (await fs.pathExists(sourceOrderPath)) {
-                    try {
-                        const sourceOrder = await fs.readJson(sourceOrderPath);
-                        sourceOrder.order = sourceOrder.order.filter(id => !movedOldIdsSet.has(id));
-                        if(sourceOrder.order.length > 0) await fs.writeJson(sourceOrderPath, sourceOrder, { spaces: 2 });
-                        else await fs.remove(sourceOrderPath);
-                    } catch(e) { console.error(`Could not process source order file ${sourceOrderPath}:`, e); }
-                }
+                try {
+                    const sourceOrder = (await getCompleteDisplayOrderIds(sourceDir)).filter(id => !movedOldIdsSet.has(id));
+                    await writeOrRemoveOrderFile(sourceOrderPath, sourceOrder);
+                } catch(e) { console.error(`Could not process source order file ${sourceOrderPath}:`, e); }
             }
             
             const destOrderPath = path.join(destPath, '.folder-order.json');
-            let destOrderIds = [];
-            if (await fs.pathExists(destOrderPath)) {
-                try { destOrderIds = (await fs.readJson(destOrderPath)).order || []; } catch(e) { console.error(`Could not read dest order file ${destOrderPath}:`, e); }
-            }
+            let finalOrder = (await getCompleteDisplayOrderIds(destPath))
+                .filter(id => !movedIdsSet.has(id) && !movedOldIdsSet.has(id));
 
-            let finalOrder = destOrderIds.filter(id => !movedIdsSet.has(id));
             if (targetId && position !== 'inside') {
                 const targetIndex = finalOrder.indexOf(targetId);
                 if (targetIndex !== -1) {
@@ -624,7 +674,7 @@ function initialize(options) {
             } else {
                 finalOrder.unshift(...newIdsArray);
             }
-            await fs.writeJson(destOrderPath, { order: finalOrder }, { spaces: 2 });
+            await writeOrRemoveOrderFile(destOrderPath, finalOrder);
 
 
             // --- Step 4: Sync network notes if necessary ---
