@@ -421,6 +421,16 @@ export function setupEventListeners(deps) {
         }
         chatManager.handleSendMessage();
     });
+
+    // 发送按钮右键 - 打开「高级回复」(VCPChatTarven) 浮窗
+    sendMessageBtn.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        if (window.TavernManager && typeof window.TavernManager.togglePopover === 'function') {
+            window.TavernManager.togglePopover(sendMessageBtn);
+        } else {
+            console.warn('[EventListeners] TavernManager not available.');
+        }
+    });
     messageInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();

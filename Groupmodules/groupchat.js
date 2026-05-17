@@ -6,6 +6,8 @@ const { ipcMain } = require('electron');
 const contextSanitizer = require('../modules/contextSanitizer');
 const fileManager = require('../modules/fileManager');
 const canvasHandlers = require('../modules/ipc/canvasHandlers');
+const tavernHandlers = require('../modules/ipc/tavernHandlers');
+const tavernEngine = require('../modules/tavernRulesEngine');
 
 // 群聊模式策略模块
 const sequentialMode = require('./modes/sequentialMode');
@@ -410,6 +412,17 @@ async function handleGroupChatMessage(groupId, topicId, userMessage, sendStreamC
     const globalVcpSettings = await getVcpGlobalSettings();
     const userNameForMessage = userMessage.name || globalVcpSettings.userName || '用户';
 
+    // VCPChatTarven (高级回复) - 收集生效的群聊规则
+    const tavernRules = (typeof tavernHandlers.getActiveRules === 'function')
+        ? tavernHandlers.getActiveRules()
+        : [];
+
+    // user_suffix 规则只追加到本轮提交给 AI 的用户文本上，不写入历史
+    if (Array.isArray(tavernRules) && tavernRules.length > 0 &&
+        userMessage.content && typeof userMessage.content.text === 'string') {
+        userMessage.content.text = tavernEngine.applyUserSuffix(userMessage.content.text, tavernRules, 'group');
+    }
+
     // 确保 userMessage.content 是对象，并且 text 存在
     // userMessage.content.text is combinedTextContent (user input + non-image file texts)
     // userMessage.originalUserText is the raw user input
@@ -492,6 +505,11 @@ async function handleGroupChatMessage(groupId, topicId, userMessage, sendStreamC
                 groupPrompt = groupPrompt.replace(new RegExp(GROUP_SESSION_WATCHER_PLACEHOLDER, 'g'), JSON.stringify(sessionWatcherInfo));
             }
             combinedSystemPrompt += `\n\n[群聊设定]:\n${groupPrompt}`;
+        }
+
+        // VCPChatTarven: 在系统提示词尾部追加 system_suffix 规则
+        if (Array.isArray(tavernRules) && tavernRules.length > 0) {
+            combinedSystemPrompt = tavernEngine.applySystemSuffix(combinedSystemPrompt, tavernRules, 'group');
         }
 
         // 2. 构建上下文结构 (每次循环都基于最新的 groupHistory)
@@ -605,6 +623,19 @@ ${canvasData.errors || 'No errors'}
         messagesForAI.push(...contextForAgent);
         // 添加触发AI发言的模拟用户输入 (as text part of a content array)
         messagesForAI.push({ role: 'user', content: [{ type: 'text', text: invitePromptContent }], name: userNameForMessage });
+
+        // VCPChatTarven: 应用 context_inject 规则（按深度插入消息，跳过 system）
+        if (Array.isArray(tavernRules) && tavernRules.some(r => r.type === 'context_inject' && r.enabled !== false)) {
+            const sysMsgs = messagesForAI.filter(m => m.role === 'system');
+            const nonSysMsgs = messagesForAI.filter(m => m.role !== 'system');
+            const injected = tavernEngine.applyContextInject(nonSysMsgs, tavernRules, 'group', {
+                makeMessage: (role, text) => ({
+                    role,
+                    content: [{ type: 'text', text }]
+                })
+            });
+            messagesForAI = [...sysMsgs, ...injected];
+        }
         // --- VCP Thought Chain Stripping ---
         try {
             // 默认不注入元思考链，除非明确开启
@@ -1033,6 +1064,11 @@ async function handleInviteAgentToSpeak(groupId, topicId, invitedAgentId, sendSt
     const agentName = agentConfig.name || invitedAgentId; // 修复：如果名称丢失，回退到 invitedAgentId
     const messageIdForAgentResponse = `msg_group_invited_${groupId}_${topicId}_${invitedAgentId}_${Date.now()}`;
 
+    // VCPChatTarven (高级回复) - 收集生效的群聊规则
+    const tavernRulesInvite = (typeof tavernHandlers.getActiveRules === 'function')
+        ? tavernHandlers.getActiveRules()
+        : [];
+
     // 1. 构建 SystemPrompt
     let combinedSystemPrompt = agentConfig.systemPrompt || `你是${agentName}。`;
     if (groupConfig.groupPrompt) {
@@ -1043,6 +1079,11 @@ async function handleInviteAgentToSpeak(groupId, topicId, invitedAgentId, sendSt
             groupPrompt = groupPrompt.replace(new RegExp(GROUP_SESSION_WATCHER_PLACEHOLDER, 'g'), JSON.stringify(sessionWatcherInfo));
         }
         combinedSystemPrompt += `\n\n[群聊设定]:\n${groupPrompt}`;
+    }
+
+    // VCPChatTarven: 在系统提示词尾部追加 system_suffix 规则
+    if (Array.isArray(tavernRulesInvite) && tavernRulesInvite.length > 0) {
+        combinedSystemPrompt = tavernEngine.applySystemSuffix(combinedSystemPrompt, tavernRulesInvite, 'group');
     }
 
     // 2. 构建上下文结构 (基于最新的 groupHistory)
@@ -1146,6 +1187,19 @@ ${canvasData.errors || 'No errors'}
     }
     messagesForAI.push(...contextForAgent);
     messagesForAI.push({ role: 'user', content: [{ type: 'text', text: invitePromptContent }], name: (globalVcpSettings.userName || '用户') }); // 模拟用户触发
+
+    // VCPChatTarven: 应用 context_inject 规则（按深度插入消息，跳过 system）
+    if (Array.isArray(tavernRulesInvite) && tavernRulesInvite.some(r => r.type === 'context_inject' && r.enabled !== false)) {
+        const sysMsgs = messagesForAI.filter(m => m.role === 'system');
+        const nonSysMsgs = messagesForAI.filter(m => m.role !== 'system');
+        const injected = tavernEngine.applyContextInject(nonSysMsgs, tavernRulesInvite, 'group', {
+            makeMessage: (role, text) => ({
+                role,
+                content: [{ type: 'text', text }]
+            })
+        });
+        messagesForAI = [...sysMsgs, ...injected];
+    }
     // --- VCP Thought Chain Stripping ---
     try {
         // 默认不注入元思考链，除非明确开启

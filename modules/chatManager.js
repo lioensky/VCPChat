@@ -120,6 +120,58 @@ window.chatManager = (() => {
     }
 
     /**
+     * 收集当前生效的 Tavern (VCPChatTarven) 规则
+     * @param {string} scope - 'agent' | 'group'
+     * @returns {Array} active rules
+     */
+    function getTavernRules(scope) {
+        const manager = window.TavernManager;
+        if (manager && typeof manager.getActiveRulesForScope === 'function') {
+            return manager.getActiveRulesForScope(scope) || [];
+        }
+        return [];
+    }
+
+    /**
+     * 把 user_suffix 规则的内容追加到给定文本尾部
+     * @param {string} text
+     * @param {Array} rules
+     * @returns {string}
+     */
+    function applyTavernUserSuffix(text, rules) {
+        const engine = window.TavernRulesEngine;
+        if (!engine || !Array.isArray(rules) || rules.length === 0) return text || '';
+        return engine.applyUserSuffix(text || '', rules, 'agent');
+    }
+
+    /**
+     * 把 system_suffix 规则的内容追加到系统提示词尾部
+     */
+    function applyTavernSystemSuffix(systemPromptContent, rules) {
+        const engine = window.TavernRulesEngine;
+        if (!engine || !Array.isArray(rules) || rules.length === 0) return systemPromptContent || '';
+        return engine.applySystemSuffix(systemPromptContent || '', rules, 'agent');
+    }
+
+    /**
+     * 把 context_inject 规则按 depth 插入到 VCP 消息数组中（不含 system）
+     * 用于单聊场景；message 的 content 使用 multimodal text 部分
+     */
+    function applyTavernContextInject(messagesForVCP, rules) {
+        const engine = window.TavernRulesEngine;
+        if (!engine || !Array.isArray(rules) || rules.length === 0) {
+            return messagesForVCP;
+        }
+        return engine.applyContextInject(messagesForVCP, rules, 'agent', {
+            makeMessage: (role, text) => ({
+                role,
+                content: [{ type: 'text', text }],
+                __tavernInjected: true
+            })
+        });
+    }
+
+    /**
      * Initializes the ChatManager module.
      * @param {object} config - The configuration object.
      */
@@ -965,6 +1017,9 @@ window.chatManager = (() => {
             const currentChatHistory = currentChatHistoryRef.get();
             const historySnapshotForVCP = currentChatHistory.filter(msg => msg.id !== thinkingMessage.id && !msg.isThinking);
 
+            // VCPChatTarven (高级回复) - 收集生效的规则
+            const tavernRules = getTavernRules('agent');
+
             const messagesForVCP = await Promise.all(historySnapshotForVCP.map(async msg => {
                 let vcpImageAttachmentsPayload = [];
                 let vcpAudioAttachmentsPayload = [];
@@ -1010,7 +1065,10 @@ window.chatManager = (() => {
                 if (msg.role === 'user' && msg.id === userMessage.id) {
                     // 关键修复：使用已经包含附件内容的 combinedTextContent
                     currentMessageTextContent = combinedTextContent;
-                    
+
+                    // VCPChatTarven: 在当前用户消息尾部追加 user_suffix 规则
+                    currentMessageTextContent = applyTavernUserSuffix(currentMessageTextContent, tavernRules);
+
                     // IMPORTANT: We need to handle Canvas placeholder WITHOUT overwriting the combined content
                     // First, check if we need to replace Canvas placeholder
                     if (currentMessageTextContent.includes(CANVAS_PLACEHOLDER)) {
@@ -1183,7 +1241,26 @@ window.chatManager = (() => {
                     systemPromptContent = prependedContent.join('\n') + '\n\n' + systemPromptContent;
                 }
 
+                // VCPChatTarven: 在系统提示词尾部追加 system_suffix 规则
+                systemPromptContent = applyTavernSystemSuffix(systemPromptContent, tavernRules);
+
                 messagesForVCP.unshift({ role: 'system', content: systemPromptContent });
+            } else {
+                // 没有 systemPrompt，但仍可能存在 system_suffix 规则
+                const tavernSysOnly = applyTavernSystemSuffix('', tavernRules);
+                if (tavernSysOnly && tavernSysOnly.trim()) {
+                    messagesForVCP.unshift({ role: 'system', content: tavernSysOnly });
+                }
+            }
+
+            // VCPChatTarven: 应用 context_inject 规则（按深度插入消息）
+            // 注意：只对非 system 消息计算深度，因此先临时分离 system
+            if (Array.isArray(tavernRules) && tavernRules.some(r => r.type === 'context_inject' && r.enabled !== false)) {
+                const systemMsgs = messagesForVCP.filter(m => m.role === 'system');
+                const nonSystemMsgs = messagesForVCP.filter(m => m.role !== 'system');
+                const injected = applyTavernContextInject(nonSystemMsgs, tavernRules);
+                messagesForVCP.length = 0;
+                messagesForVCP.push(...systemMsgs, ...injected);
             }
 
             const useStreaming = (agentConfig && agentConfig.streamOutput !== undefined) ? (agentConfig.streamOutput === true || agentConfig.streamOutput === 'true') : true;

@@ -43,6 +43,7 @@ const ragHandlers = require('./modules/ipc/ragHandlers'); // Import RAG handlers
 const canvasHandlers = require('./modules/ipc/canvasHandlers'); // Import canvas handlers
 const desktopHandlers = require('./modules/ipc/desktopHandlers'); // Import VCPdesktop handlers
 const desktopRemoteHandlers = require('./modules/ipc/desktopRemoteHandlers'); // Import desktop remote control handlers
+const tavernHandlers = require('./modules/ipc/tavernHandlers'); // Import VCPChatTarven (advanced reply) handlers
 const { PRELOAD_ROLES, resolveProjectPreload } = require('./modules/services/preloadPaths');
 // chokidar is now lazy-loaded
 
@@ -1057,6 +1058,7 @@ if (!gotTheLock) {
         desktopHandlers.initialize({ mainWindow, openChildWindows, settingsManager: appSettingsManager });
         desktopRemoteHandlers.initialize({ mainWindow });
         promptHandlers.initialize({ AGENT_DIR, APP_DATA_ROOT_IN_PROJECT });
+        tavernHandlers.initialize({ APP_DATA_ROOT_IN_PROJECT });
 
         ipcMain.on('minimize-to-tray', () => {
             if (mainWindow) {

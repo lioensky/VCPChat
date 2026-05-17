@@ -1,0 +1,452 @@
+/* Tavernmodules/tavern.css - 高级回复 (VCPChatTarven) */
+
+/* ===== 高级回复浮窗（弹出式） ===== */
+.tavern-popover {
+    position: fixed;
+    z-index: 5000;
+    width: 360px;
+    max-height: 70vh;
+    background: var(--secondary-bg, #2a2d3a);
+    color: var(--primary-text, #fff);
+    border: 1px solid var(--border-color, rgba(255,255,255,0.12));
+    border-radius: 12px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    font-size: 13px;
+}
+
+.tavern-popover-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border-color, rgba(255,255,255,0.08));
+    background: var(--button-bg, rgba(255,255,255,0.03));
+}
+
+.tavern-popover-title {
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--text-on-accent);
+}
+
+.tavern-popover-actions {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+
+.tavern-icon-btn {
+    background: transparent;
+    border: none;
+    color: var(--secondary-text, rgba(255,255,255,0.7));
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 6px;
+    line-height: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.tavern-icon-btn:hover {
+    color: var(--primary-text, #fff);
+    background: rgba(255,255,255,0.06);
+}
+
+.tavern-popover-body {
+    overflow-y: auto;
+    padding: 8px 6px;
+}
+
+.tavern-popover-empty {
+    padding: 18px 14px;
+    color: var(--secondary-text, rgba(255,255,255,0.6));
+    text-align: center;
+    font-size: 12.5px;
+}
+
+.tavern-popover-empty button {
+    margin-top: 10px;
+    padding: 5px 10px;
+    background: var(--user-bubble-bg, #4a90e2);
+    color: var(--text-on-accent, #fff);
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.tavern-rule-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    transition: background-color 0.12s ease;
+}
+
+.tavern-rule-row:hover {
+    background: rgba(255,255,255,0.04);
+}
+
+.tavern-rule-info {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.tavern-rule-name {
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.tavern-rule-meta {
+    font-size: 11px;
+    color: var(--secondary-text, rgba(255,255,255,0.55));
+    margin-top: 2px;
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.tavern-rule-tag {
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.06);
+    font-size: 10.5px;
+}
+
+.tavern-rule-tag.tag-system { background: rgba(99,179,237,0.16); color: #63b3ed; }
+.tavern-rule-tag.tag-user   { background: rgba(72,187,120,0.16); color: #48bb78; }
+.tavern-rule-tag.tag-context{ background: rgba(237,137,54,0.16); color: #ed8936; }
+.tavern-rule-tag.tag-scope-agent { background: rgba(159,122,234,0.16); color: #9f7aea; }
+.tavern-rule-tag.tag-scope-group { background: rgba(237,100,166,0.16); color: #ed64a6; }
+.tavern-rule-tag.tag-scope-global{ background: rgba(255,255,255,0.08); color: var(--secondary-text, #aaa); }
+
+/* 滑动开关 */
+.tavern-switch {
+    position: relative;
+    display: inline-block;
+    width: 36px;
+    height: 20px;
+    flex-shrink: 0;
+}
+.tavern-switch input { opacity: 0; width: 0; height: 0; }
+.tavern-switch .tavern-slider {
+    position: absolute;
+    cursor: pointer;
+    inset: 0;
+    background: rgba(255,255,255,0.18);
+    border-radius: 999px;
+    transition: background-color 0.18s ease;
+}
+.tavern-switch .tavern-slider::before {
+    content: "";
+    position: absolute;
+    height: 14px;
+    width: 14px;
+    left: 3px;
+    top: 3px;
+    background: #fff;
+    border-radius: 50%;
+    transition: transform 0.18s ease;
+}
+.tavern-switch input:checked + .tavern-slider {
+    background: var(--user-bubble-bg, #4a90e2);
+}
+.tavern-switch input:checked + .tavern-slider::before {
+    transform: translateX(16px);
+}
+
+/* 大号开关（仅在独立行如"包裹标记"中使用） */
+.tavern-switch.tavern-switch-large {
+    width: 40px;
+    height: 22px;
+}
+.tavern-switch.tavern-switch-large .tavern-slider::before {
+    height: 16px;
+    width: 16px;
+    left: 3px;
+    top: 3px;
+}
+.tavern-switch.tavern-switch-large input:checked + .tavern-slider::before {
+    transform: translateX(18px);
+}
+
+/* ===== 规则管理模态窗 ===== */
+.tavern-modal-content {
+    max-width: 920px;
+    width: 90vw;
+    max-height: 82vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.tavern-manager-layout {
+    display: flex;
+    flex: 1 1 auto;
+    min-height: 420px;
+    gap: 0;
+    border-top: 1px solid var(--border-color, rgba(255,255,255,0.1));
+    overflow: hidden;
+}
+
+.tavern-manager-list-panel {
+    flex: 0 0 290px;
+    border-right: 1px solid var(--border-color, rgba(255,255,255,0.1));
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.tavern-manager-list-toolbar {
+    display: flex;
+    gap: 8px;
+    padding: 10px;
+    border-bottom: 1px solid var(--border-color, rgba(255,255,255,0.08));
+    align-items: stretch;
+}
+
+.tavern-manager-list-toolbar select,
+.tavern-manager-list-toolbar button {
+    height: 34px;
+    box-sizing: border-box;
+    line-height: 1.2;
+    font-size: 12.5px;
+}
+
+.tavern-manager-list-toolbar select {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 0 10px;
+}
+
+.tavern-manager-list-toolbar button {
+    flex: 0 0 auto;
+    padding: 0 14px;
+    background: var(--button-bg, #4a90e2);
+    color: var(--text-on-accent, #fff);
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    white-space: nowrap;
+    font-weight: 500;
+}
+
+.tavern-manager-list-toolbar button:hover {
+    background: var(--button-hover-bg, var(--button-bg, #4a90e2));
+}
+
+.tavern-manager-list {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    padding: 4px;
+}
+
+.tavern-manager-list-item {
+    padding: 8px 10px;
+    border-radius: 8px;
+    cursor: pointer;
+    margin: 2px 0;
+    border: 1px solid transparent;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.tavern-manager-list-item:hover {
+    background: rgba(255,255,255,0.04);
+}
+
+.tavern-manager-list-item.selected {
+    background: rgba(74,144,226,0.16);
+    border-color: rgba(74,144,226,0.45);
+}
+
+.tavern-manager-list-item .item-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.tavern-manager-list-item.disabled .item-name {
+    opacity: 0.55;
+    text-decoration: line-through;
+}
+
+.tavern-manager-edit-panel {
+    flex: 1 1 auto;
+    padding: 16px;
+    overflow-y: auto;
+    min-height: 0;
+}
+
+.tavern-manager-edit-empty {
+    text-align: center;
+    color: var(--secondary-text, rgba(255,255,255,0.55));
+    padding: 60px 20px;
+    font-size: 13px;
+}
+
+.tavern-form-row {
+    margin-bottom: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.tavern-form-row label {
+    font-size: 12px;
+    color: var(--secondary-text, rgba(255,255,255,0.7));
+    margin-bottom: 0;
+}
+
+.tavern-form-row input[type="text"],
+.tavern-form-row input[type="number"],
+.tavern-form-row select,
+.tavern-form-row textarea {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.tavern-form-row textarea {
+    min-height: 110px;
+    resize: vertical;
+    font-family: inherit;
+}
+
+/* 行内三列：让选择器和开关高度一致、上下对齐 */
+.tavern-form-row-inline {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    align-items: flex-start;
+}
+
+.tavern-form-row-inline > div {
+    flex: 1 1 140px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.tavern-form-row-inline > div > label {
+    height: 18px;
+    line-height: 18px;
+    display: block;
+}
+
+.tavern-form-row-inline select,
+.tavern-form-row-inline input[type="text"],
+.tavern-form-row-inline input[type="number"] {
+    height: 34px;
+    box-sizing: border-box;
+    padding: 0 10px;
+    font-size: 13px;
+}
+
+/* "启用"那一格：与左侧 select 共享同一基线，开关用普通尺寸 */
+.tavern-form-toggle-cell {
+    flex: 0 0 auto !important;
+    min-width: 64px;
+}
+
+.tavern-form-toggle-cell .tavern-switch {
+    height: 34px;
+    width: 36px;
+    display: inline-flex;
+    align-items: center;
+}
+
+.tavern-form-toggle-cell .tavern-switch .tavern-slider {
+    /* 把 slider 限定在 20px 高，垂直居中到 34px 容器内 */
+    top: 7px;
+    bottom: 7px;
+    height: 20px;
+}
+
+/* 包裹开关那一行 */
+.tavern-form-toggle-row .tavern-form-toggle-line {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    padding: 10px 12px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--border-color, rgba(255,255,255,0.08));
+    border-radius: 8px;
+}
+
+.tavern-form-toggle-info {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.tavern-form-toggle-title {
+    font-weight: 500;
+    font-size: 13px;
+    margin-bottom: 2px;
+    color: var(--primary-text, #fff);
+}
+
+.tavern-edit-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-color, rgba(255,255,255,0.08));
+    align-items: center;
+}
+
+.tavern-edit-actions button {
+    padding: 7px 16px;
+    border-radius: 6px;
+    border: none;
+    cursor: pointer;
+    font-size: 13px;
+    line-height: 1.2;
+}
+
+.tavern-edit-actions .save-button {
+    background: var(--button-bg, #4a90e2);
+    color: var(--text-on-accent, #fff);
+    font-weight: 500;
+}
+
+.tavern-edit-actions .save-button:hover {
+    background: var(--button-hover-bg, var(--button-bg, #4a90e2));
+}
+
+.tavern-edit-actions .secondary-button {
+    background: transparent;
+    color: var(--primary-text, #fff);
+    border: 1px solid var(--border-color, rgba(255,255,255,0.18));
+}
+
+.tavern-edit-actions .secondary-button:hover {
+    background: var(--accent-bg, rgba(255,255,255,0.06));
+}
+
+.tavern-edit-actions .danger-button {
+    background: var(--danger-color, #d9534f);
+    color: var(--text-on-accent, #fff);
+    margin-left: auto;
+    font-weight: 500;
+}
+
+.tavern-edit-actions .danger-button:hover {
+    background: var(--danger-hover-bg, var(--danger-color, #d9534f));
+}
+
+.tavern-help-text {
+    font-size: 11.5px;
+    color: var(--secondary-text, rgba(255,255,255,0.55));
+    margin-top: 2px;
+    line-height: 1.4;
+}
