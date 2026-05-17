@@ -541,6 +541,34 @@ document.addEventListener('DOMContentLoaded', async () => {
         renderTree(); // Re-render to reflect the change
     }
 
+    // PERFORMANCE: Update only the selection/active visual state without rebuilding the tree.
+    // Used by click & context-menu paths so they don't block the main thread on large trees.
+    function updateSelectionVisuals() {
+        // Clear current visuals
+        noteList.querySelectorAll('.selected, .active').forEach(el => {
+            el.classList.remove('selected', 'active');
+        });
+
+        const getVisualTarget = (li) => {
+            if (!li) return null;
+            return li.matches('.note-item') ? li : li.querySelector(':scope > .folder-header-row');
+        };
+
+        // Apply selection
+        selectedItems.forEach(id => {
+            const li = noteList.querySelector(`li[data-id="${CSS.escape(id)}"]`);
+            const target = getVisualTarget(li);
+            if (target) target.classList.add('selected');
+        });
+
+        // Apply active
+        if (activeItemId) {
+            const li = noteList.querySelector(`li[data-id="${CSS.escape(activeItemId)}"]`);
+            const target = getVisualTarget(li);
+            if (target) target.classList.add('active');
+        }
+    }
+
     // --- Event Handlers ---
     function handleItemClick(event, item) {
         event.stopPropagation();
@@ -577,7 +605,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         } else {
             clearNoteEditor();
         }
-        renderTree();
+        // PERFORMANCE: Avoid re-rendering the whole tree just to move the selection highlight.
+        updateSelectionVisuals();
     }
 
     async function selectNote(id, notePath) {
@@ -1040,7 +1069,8 @@ function handleListDragEnd(e) {
             selectedItems.clear();
             selectedItems.add(item.id);
             activeItemId = item.id;
-            renderTree();
+            // PERFORMANCE: Only repaint selection state instead of rebuilding the tree.
+            updateSelectionVisuals();
         }
 
         const menu = document.getElementById('customContextMenu');
