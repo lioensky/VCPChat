@@ -743,6 +743,7 @@ body.preview-collapsed .preview-container > * {
 .modal-actions .button {
     width: 120px; /* Give buttons a fixed width */
     padding: 10px;
+    color: var(--text-on-accent);
 }
 
 @keyframes modal-fade-in {
