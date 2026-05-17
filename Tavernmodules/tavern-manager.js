@@ -196,6 +196,9 @@
             }
             body.innerHTML = '';
             rules.forEach(rule => {
+                // 仅捕获 ID;saveStore 后 this.store 会被整体替换,
+                // 闭包里直接持有 rule 引用会指向"游魂对象",改了也不会被持久化
+                const ruleId = rule.id;
                 const row = document.createElement('div');
                 row.className = 'tavern-rule-row';
                 const typeTagClass = rule.type === 'system_suffix' ? 'tag-system'
@@ -217,8 +220,35 @@
                 `;
                 const checkbox = row.querySelector('input[type="checkbox"]');
                 checkbox.addEventListener('change', async () => {
-                    rule.enabled = checkbox.checked;
-                    await this.saveStore();
+                    // 防止快速连点引发的并发保存
+                    if (checkbox.disabled) return;
+                    checkbox.disabled = true;
+                    const desired = checkbox.checked;
+                    try {
+                        const latestRule = (this.store.rules || []).find(r => r.id === ruleId);
+                        if (!latestRule) {
+                            // 规则已被外部删除,直接刷新一次列表
+                            this._renderPopoverList();
+                            return;
+                        }
+                        latestRule.enabled = desired;
+                        const result = await this.saveStore();
+                        if (!result || !result.success) {
+                            // 保存失败时把开关回滚
+                            checkbox.checked = !desired;
+                            if (window.uiHelperFunctions?.showToastNotification) {
+                                window.uiHelperFunctions.showToastNotification(
+                                    `保存失败: ${result?.error || '未知错误'}`,
+                                    'error'
+                                );
+                            }
+                        }
+                    } catch (err) {
+                        checkbox.checked = !desired;
+                        console.error('[TavernManager] toggle save failed:', err);
+                    } finally {
+                        checkbox.disabled = false;
+                    }
                 });
                 body.appendChild(row);
             });
