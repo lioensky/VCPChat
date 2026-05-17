@@ -147,6 +147,7 @@ function createCatalog(ops) {
 
         // Shared window launching
         openNotesWindow: query((theme) => ops.invoke('open-notes-window', theme)),
+        openNoteMiniWindow: query(() => ops.invoke('open-note-mini-window')),
         openNotesWithContent: query((data) => ops.invoke('open-notes-with-content', data)),
         openTranslatorWindow: query((theme) => ops.invoke('open-translator-window', theme)),
         openRAGObserverWindow: query(() => ops.invoke('open-rag-observer-window')),
@@ -264,6 +265,7 @@ function createCatalog(ops) {
         // Utility APIs
         readNotesTree: query(() => ops.invoke('read-notes-tree')),
         writeTxtNote: query((noteData) => ops.invoke('write-txt-note', noteData)),
+        saveMiniNote: query((noteData) => ops.invoke('save-mini-note', noteData)),
         deleteItem: query((itemPath) => ops.invoke('delete-item', itemPath)),
         createNoteFolder: query((data) => ops.invoke('create-note-folder', data)),
         renameItem: query((data) => ops.invoke('rename-item', data)),
@@ -453,6 +455,7 @@ const ALLOWED_KEYS = [
     "getPlatform",
     "getWallpaperThumbnail",
     "openNotesWindow",
+    "openNoteMiniWindow",
     "openNotesWithContent",
     "openTranslatorWindow",
     "openRAGObserverWindow",
@@ -477,6 +480,7 @@ const ALLOWED_KEYS = [
     "executePythonCode",
     "readNotesTree",
     "writeTxtNote",
+    "saveMiniNote",
     "deleteItem",
     "createNoteFolder",
     "renameItem",

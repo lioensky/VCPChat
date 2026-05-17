@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>迷你便签</title>
+    <link rel="stylesheet" href="../styles/themes.css">
+    <link rel="stylesheet" href="notemini.css">
+</head>
+<body>
+    <div id="mini-title-bar">
+        <div class="mini-title">VCP 便签</div>
+        <div class="mini-status" id="saveStatus">未保存</div>
+        <div class="mini-window-controls">
+            <button id="minimizeMiniBtn" class="mini-window-btn" title="最小化" aria-label="最小化">
+                <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+                    <line x1="0" y1="5" x2="10" y2="5" stroke="currentColor" stroke-width="1.2"></line>
+                </svg>
+            </button>
+            <button id="closeMiniBtn" class="mini-window-btn" title="关闭" aria-label="关闭">
+                <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+                    <path fill="none" stroke="currentColor" stroke-width="1.2" d="M0.5,0.5 L9.5,9.5 M9.5,0.5 L0.5,9.5"></path>
+                </svg>
+            </button>
+        </div>
+    </div>
+
+    <main class="mini-note-shell">
+        <input id="miniNoteTitle" class="mini-note-title" type="text" placeholder="便签标题" aria-label="便签标题">
+        <textarea id="miniNoteContent" class="mini-note-content" placeholder="快速记录..." aria-label="便签正文"></textarea>
+    </main>
+
+    <script src="notemini.js"></script>
+</body>
+</html>

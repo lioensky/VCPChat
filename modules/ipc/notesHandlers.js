@@ -8,6 +8,7 @@ const WINDOW_APP_IDS = require('../services/windowAppIds');
 const { PRELOAD_ROLES, resolveProjectPreload } = require('../services/preloadPaths');
 
 let notesWindow = null;
+let noteMiniWindow = null;
 let openChildWindows = []; // To keep track of open windows for broadcasting
 let APP_DATA_ROOT_IN_PROJECT;
 let NOTES_DIR;
@@ -38,6 +39,14 @@ async function isNetworkNote(filePath) {
         }
     } catch (e) { console.error("Error checking for network note:", e); }
     return false;
+}
+
+function sanitizeNoteFileName(name) {
+    const sanitized = String(name || '')
+        .replace(/[\\/:*?"<>|]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+    return sanitized || '便签';
 }
 
 // 辅助函数：生成唯一路径，避免文件覆盖
@@ -371,6 +380,57 @@ async function scanAndCacheNetworkNotes() {
             reject(e); // Reject promise on error
         }
     });
+}
+
+function createOrFocusNoteMiniWindow() {
+    if (noteMiniWindow && !noteMiniWindow.isDestroyed()) {
+        if (!noteMiniWindow.isVisible()) {
+            noteMiniWindow.show();
+        }
+        if (noteMiniWindow.isMinimized()) {
+            noteMiniWindow.restore();
+        }
+        noteMiniWindow.focus();
+        return noteMiniWindow;
+    }
+
+    noteMiniWindow = new BrowserWindow({
+        width: 420,
+        height: 360,
+        minWidth: 320,
+        minHeight: 260,
+        title: '迷你便签',
+        frame: false,
+        ...(process.platform === 'darwin' ? {} : { titleBarStyle: 'hidden' }),
+        modal: false,
+        resizable: true,
+        alwaysOnTop: false,
+        webPreferences: {
+            preload: resolveProjectPreload(path.join(__dirname, '..', '..'), PRELOAD_ROLES.UTILITY),
+            contextIsolation: true,
+            nodeIntegration: false,
+            devTools: true
+        },
+        icon: path.join(__dirname, '..', '..', 'assets', 'icon.png'),
+        show: false
+    });
+
+    const noteMiniUrl = `file://${path.join(__dirname, '..', '..', 'Notemodules', 'notemini.html')}`;
+    noteMiniWindow.loadURL(noteMiniUrl);
+    openChildWindows.push(noteMiniWindow);
+    noteMiniWindow.setMenu(null);
+
+    noteMiniWindow.once('ready-to-show', () => {
+        noteMiniWindow.show();
+        noteMiniWindow.focus();
+    });
+
+    noteMiniWindow.on('closed', () => {
+        openChildWindows = openChildWindows.filter(win => win !== noteMiniWindow);
+        noteMiniWindow = null;
+    });
+
+    return noteMiniWindow;
 }
 
 // --- Singleton Notes Window Creation Function ---
@@ -813,9 +873,54 @@ function initialize(options) {
         }
     });
 
+    ipcMain.handle('save-mini-note', async (event, noteData = {}) => {
+        try {
+            const rawTitle = String(noteData.title || '').trim();
+            const content = String(noteData.content || '').trimEnd();
+
+            if (!rawTitle && !content.trim()) {
+                return { success: false, error: '空便签不会保存。' };
+            }
+
+            const title = sanitizeNoteFileName(rawTitle || content.split(/\r?\n/).find(Boolean)?.slice(0, 30) || '便签');
+            const existingPath = typeof noteData.filePath === 'string' ? noteData.filePath : '';
+            const shouldOverwrite = existingPath
+                && path.dirname(existingPath) === NOTES_DIR
+                && path.extname(existingPath).toLowerCase() === '.md'
+                && await fs.pathExists(existingPath);
+
+            const targetPath = shouldOverwrite
+                ? existingPath
+                : await generateUniquePath(path.join(NOTES_DIR, `${title}.md`));
+            const timestamp = Date.now();
+            const fileContent = `${title}-mini-${timestamp}\n${content}`;
+
+            await fs.ensureDir(NOTES_DIR);
+            await fs.writeFile(targetPath, fileContent, 'utf8');
+
+            if (!shouldOverwrite) {
+                await ensureNewItemNearTop(targetPath);
+            }
+            notifyLocalNotesChanged();
+
+            return {
+                success: true,
+                path: targetPath,
+                fileName: path.basename(targetPath)
+            };
+        } catch (error) {
+            console.error('[NoteMini] Failed to save mini note:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
     // IPC handler to get the root directory for notes
     ipcMain.handle('get-notes-root-dir', () => {
         return NOTES_DIR;
+    });
+
+    ipcMain.handle('open-note-mini-window', () => {
+        createOrFocusNoteMiniWindow();
     });
 
     ipcMain.handle('open-notes-window', () => {
@@ -916,8 +1021,10 @@ function initialize(options) {
     });
 }
 
-module.exports = { 
+module.exports = {
     initialize,
     createOrFocusNotesWindow: () => createOrFocusNotesWindow(),
-    getNotesWindow: () => notesWindow
+    createOrFocusNoteMiniWindow: () => createOrFocusNoteMiniWindow(),
+    getNotesWindow: () => notesWindow,
+    getNoteMiniWindow: () => noteMiniWindow
 };

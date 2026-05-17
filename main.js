@@ -1118,6 +1118,13 @@ if (!gotTheLock) {
             }
         });
 
+        const noteMiniShortcutRegistered = globalShortcut.register('Super+Alt+Z', () => {
+            notesHandlers.createOrFocusNoteMiniWindow();
+        });
+        if (!noteMiniShortcutRegistered) {
+            console.warn('[Main] Failed to register global shortcut: Super+Alt+Z');
+        }
+
         // 移除全局 Command+Q 快捷键，改用标准的应用程序菜单
 
         // 全局快捷键 'CommandOrControl+Shift+N' 已通过菜单栏实现
