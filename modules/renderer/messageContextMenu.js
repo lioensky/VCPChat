@@ -739,7 +739,14 @@ async function handleRegenerateResponse(originalAssistantMessage) {
             }
             return;
         }
-        
+
+        // VCPChatTarven (高级回复) - 收集当前生效的规则,
+        // 让"重新回复"与正常发送消息保持完全一致的注入行为
+        const tavernRules = (window.TavernManager && typeof window.TavernManager.getActiveRulesForScope === 'function')
+            ? (window.TavernManager.getActiveRulesForScope('agent') || [])
+            : [];
+        const tavernEngine = window.TavernRulesEngine;
+
         const messagesForVCP = await Promise.all(historyForRegeneration.map(async (msg, index) => {
             let vcpImageAttachmentsPayload = [];
             let vcpAudioAttachmentsPayload = [];
@@ -786,6 +793,15 @@ async function handleRegenerateResponse(originalAssistantMessage) {
                 currentMessageTextContent = originalText + historicalAppendedText;
             } else {
                 currentMessageTextContent = originalText;
+            }
+
+            // VCPChatTarven: 仅在最后一条 user 消息尾部追加 user_suffix(只作用于本次 VCP 提交,不写入历史)
+            if (isLastUserMessage && tavernEngine) {
+                currentMessageTextContent = tavernEngine.applyUserSuffix(
+                    currentMessageTextContent || '',
+                    tavernRules,
+                    'agent'
+                );
             }
 
             if (msg.attachments && msg.attachments.length > 0) {
@@ -920,7 +936,33 @@ async function handleRegenerateResponse(originalAssistantMessage) {
                 systemPromptContent = prependedContent.join('\n') + '\n\n' + systemPromptContent;
             }
 
+            // VCPChatTarven: 在系统提示词尾部追加 system_suffix
+            if (tavernEngine) {
+                systemPromptContent = tavernEngine.applySystemSuffix(systemPromptContent, tavernRules, 'agent');
+            }
+
             messagesForVCP.unshift({ role: 'system', content: systemPromptContent });
+        } else if (tavernEngine) {
+            // 没有 systemPrompt,但仍可能存在 system_suffix 规则
+            const tavernSysOnly = tavernEngine.applySystemSuffix('', tavernRules, 'agent');
+            if (tavernSysOnly && tavernSysOnly.trim()) {
+                messagesForVCP.unshift({ role: 'system', content: tavernSysOnly });
+            }
+        }
+
+        // VCPChatTarven: 应用 context_inject 规则(按深度插入消息;system 不参与深度计算)
+        if (tavernEngine && Array.isArray(tavernRules) && tavernRules.some(r => r.type === 'context_inject' && r.enabled !== false)) {
+            const systemMsgs = messagesForVCP.filter(m => m.role === 'system');
+            const nonSystemMsgs = messagesForVCP.filter(m => m.role !== 'system');
+            const injected = tavernEngine.applyContextInject(nonSystemMsgs, tavernRules, 'agent', {
+                makeMessage: (role, text) => ({
+                    role,
+                    content: [{ type: 'text', text }],
+                    __tavernInjected: true
+                })
+            });
+            messagesForVCP.length = 0;
+            messagesForVCP.push(...systemMsgs, ...injected);
         }
 
         const modelConfigForVCP = {
