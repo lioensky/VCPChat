@@ -191,7 +191,7 @@ function updateSendButtonState() {
     sendMessageBtn.dataset.mode = nextMode;
     sendMessageBtn.classList.toggle('interrupt-mode', nextMode === 'interrupt');
     sendMessageBtn.innerHTML = nextMode === 'interrupt' ? INTERRUPT_SEND_BUTTON_HTML : DEFAULT_SEND_BUTTON_HTML;
-    sendMessageBtn.title = nextMode === 'interrupt' ? '中止回复' : '发送消息 (Ctrl+Enter)';
+    sendMessageBtn.title = nextMode === 'interrupt' ? '中止回复' : '发送消息/右键高级回复';
 }
 
 async function interruptActiveResponseFromSendButton() {
