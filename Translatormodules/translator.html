@@ -15,6 +15,9 @@
     <div id="custom-title-bar">
         <div class="title">VCP - 翻译</div>
         <div class="window-controls">
+            <button id="translator-settings-btn" class="window-control-btn" title="翻译设置">
+                <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.49.49 0 0 0 .12-.63l-1.92-3.32a.49.49 0 0 0-.6-.22l-2.39.96a7.03 7.03 0 0 0-1.63-.94L14.39 2.8a.48.48 0 0 0-.48-.4h-3.82a.48.48 0 0 0-.48.4l-.36 2.53c-.58.23-1.12.54-1.63.94l-2.39-.96a.49.49 0 0 0-.6.22L2.71 8.85a.49.49 0 0 0 .12.63l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58a.49.49 0 0 0-.12.63l1.92 3.32c.13.23.4.32.6.22l2.39-.96c.51.4 1.05.71 1.63.94l.36 2.53c.04.23.24.4.48.4h3.82c.24 0 .44-.17.48-.4l.36-2.53c.58-.23 1.12-.54 1.63-.94l2.39.96c.2.1.47.01.6-.22l1.92-3.32a.49.49 0 0 0-.12-.63l-2.03-1.58ZM12 15.5A3.5 3.5 0 1 1 12 8a3.5 3.5 0 0 1 0 7.5Z"></path></svg>
+            </button>
             <button id="minimize-translator-btn" class="window-control-btn" title="最小化">
                 <svg width="10" height="10" viewBox="0 0 10 10"><line x1="0" y1="5" x2="10" y2="5" stroke="currentColor" stroke-width="1.2"></line></svg>
             </button>
@@ -31,9 +34,9 @@
             <h2>翻译助手</h2>
             <div class="translator-controls">
                 <select id="modelSelect">
-                    <option value="gemini-3.1-flash-lite-preview">快速</option>
-                    <option value="gemini-3-flash-preview">均衡</option>
-                    <option value="gemini-3.1-pro">质量</option>
+                    <option value="fast">快速</option>
+                    <option value="balanced">均衡</option>
+                    <option value="quality">质量</option>
                 </select>
                 <select id="targetLanguageSelect">
                     <option value="en">英语</option>
@@ -65,6 +68,44 @@
             </div>
         </main>
     </div>
+
+    <div id="settingsModal" class="settings-modal hidden" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle">
+        <div class="settings-modal-backdrop" id="settingsModalBackdrop"></div>
+        <div class="settings-modal-panel">
+            <div class="settings-modal-header">
+                <h3 id="settingsModalTitle">翻译设置</h3>
+                <button id="closeSettingsModalBtn" class="settings-close-btn" title="关闭设置">×</button>
+            </div>
+            <div class="settings-modal-body">
+                <label class="setting-field">
+                    <span>快速模型</span>
+                    <input type="text" id="fastModelInput" placeholder="gemini-3.1-flash-lite-preview">
+                </label>
+                <label class="setting-field">
+                    <span>均衡模型</span>
+                    <input type="text" id="balancedModelInput" placeholder="gemini-3-flash-preview">
+                </label>
+                <label class="setting-field">
+                    <span>质量模型</span>
+                    <input type="text" id="qualityModelInput" placeholder="gemini-3.1-pro">
+                </label>
+                <label class="setting-toggle">
+                    <span>
+                        <strong>流式翻译</strong>
+                        <small>开启后逐步显示译文；关闭后等待完整结果返回。</small>
+                    </span>
+                    <input type="checkbox" id="streamModeToggle">
+                    <span class="toggle-slider" aria-hidden="true"></span>
+                </label>
+                <div id="settingsSaveStatus" class="settings-save-status" aria-live="polite"></div>
+            </div>
+            <div class="settings-modal-footer">
+                <button id="resetSettingsBtn" class="secondary-btn">恢复默认</button>
+                <button id="saveSettingsBtn" class="primary-btn">保存设置</button>
+            </div>
+        </div>
+    </div>
+
     <script src="translator.js"></script>
 </body>
 </html>

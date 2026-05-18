@@ -11,18 +11,103 @@ document.addEventListener('DOMContentLoaded', async () => {
     const copyBtn = document.getElementById('copyBtn');
 
     // --- Custom Title Bar Elements ---
+    const settingsTranslatorBtn = document.getElementById('translator-settings-btn');
     const minimizeTranslatorBtn = document.getElementById('minimize-translator-btn');
     const maximizeTranslatorBtn = document.getElementById('maximize-translator-btn');
     const closeTranslatorBtn = document.getElementById('close-translator-btn');
+
+    // --- Settings Modal Elements ---
+    const settingsModal = document.getElementById('settingsModal');
+    const settingsModalBackdrop = document.getElementById('settingsModalBackdrop');
+    const closeSettingsModalBtn = document.getElementById('closeSettingsModalBtn');
+    const fastModelInput = document.getElementById('fastModelInput');
+    const balancedModelInput = document.getElementById('balancedModelInput');
+    const qualityModelInput = document.getElementById('qualityModelInput');
+    const streamModeToggle = document.getElementById('streamModeToggle');
+    const resetSettingsBtn = document.getElementById('resetSettingsBtn');
+    const saveSettingsBtn = document.getElementById('saveSettingsBtn');
+    const settingsSaveStatus = document.getElementById('settingsSaveStatus');
+
+    const DEFAULT_TRANSLATOR_SETTINGS = {
+        models: {
+            fast: 'gemini-3.1-flash-lite-preview',
+            balanced: 'gemini-3-flash-preview',
+            quality: 'gemini-3.1-pro'
+        },
+        stream: false
+    };
 
     // 配置和状态变量
     let vcpServerUrl = '';
     let vcpApiKey = '';
     let currentTheme = 'dark'; // 默认是暗色主题
     let abortController = null; // 用于中止 fetch 请求
+    let translatorSettings = structuredClone(DEFAULT_TRANSLATOR_SETTINGS);
 
     // 保存复制按钮原始的 SVG 图标
     const originalCopyBtnIcon = copyBtn.innerHTML;
+
+    const cloneDefaultSettings = () => structuredClone(DEFAULT_TRANSLATOR_SETTINGS);
+
+    const normalizeTranslatorSettings = (settings = {}) => ({
+        models: {
+            ...DEFAULT_TRANSLATOR_SETTINGS.models,
+            ...(settings.models || {})
+        },
+        stream: Boolean(settings.stream)
+    });
+
+    const getSelectedModelConfig = () => {
+        const selectedMode = modelSelect.value;
+        const model = translatorSettings.models[selectedMode] || DEFAULT_TRANSLATOR_SETTINGS.models[selectedMode] || DEFAULT_TRANSLATOR_SETTINGS.models.balanced;
+        return { model, temperature: 0.7, stream: translatorSettings.stream };
+    };
+
+    const refreshModelSelectLabels = () => {
+        const labels = {
+            fast: '快速',
+            balanced: '均衡',
+            quality: '质量'
+        };
+
+        Array.from(modelSelect.options).forEach((option) => {
+            const modelName = translatorSettings.models[option.value] || DEFAULT_TRANSLATOR_SETTINGS.models[option.value] || '';
+            option.textContent = `${labels[option.value] || option.value} · ${modelName}`;
+            option.title = modelName;
+        });
+    };
+
+    const fillSettingsForm = () => {
+        fastModelInput.value = translatorSettings.models.fast;
+        balancedModelInput.value = translatorSettings.models.balanced;
+        qualityModelInput.value = translatorSettings.models.quality;
+        streamModeToggle.checked = translatorSettings.stream;
+        settingsSaveStatus.textContent = '';
+    };
+
+    const readSettingsForm = () => ({
+        models: {
+            fast: fastModelInput.value.trim() || DEFAULT_TRANSLATOR_SETTINGS.models.fast,
+            balanced: balancedModelInput.value.trim() || DEFAULT_TRANSLATOR_SETTINGS.models.balanced,
+            quality: qualityModelInput.value.trim() || DEFAULT_TRANSLATOR_SETTINGS.models.quality
+        },
+        stream: streamModeToggle.checked
+    });
+
+    const openSettingsModal = () => {
+        fillSettingsForm();
+        settingsModal.classList.remove('hidden');
+        setTimeout(() => fastModelInput.focus(), 0);
+    };
+
+    const closeSettingsModal = () => {
+        settingsModal.classList.add('hidden');
+    };
+
+    const setSettingsStatus = (message, type = '') => {
+        settingsSaveStatus.textContent = message;
+        settingsSaveStatus.dataset.type = type;
+    };
 
     // 应用主题的函数 (与主程序同步)
     const applyTheme = (theme) => {
@@ -30,7 +115,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         currentTheme = theme;
     };
 
-    // 从主进程加载配置
+    // 从主进程加载 VCP 配置
     async function loadConfig() {
         try {
             const settings = await api.loadSettings();
@@ -48,6 +133,136 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
+    async function loadTranslatorSettings() {
+        try {
+            if (typeof api?.loadTranslatorSettings !== 'function') {
+                console.warn('loadTranslatorSettings API not found, using defaults.');
+                translatorSettings = cloneDefaultSettings();
+                return;
+            }
+
+            const result = await api.loadTranslatorSettings();
+            if (result?.success) {
+                translatorSettings = normalizeTranslatorSettings(result.settings);
+            } else {
+                console.warn('Failed to load translator settings, using defaults:', result?.error);
+                translatorSettings = cloneDefaultSettings();
+            }
+        } catch (error) {
+            console.error('Error loading translator settings:', error);
+            translatorSettings = cloneDefaultSettings();
+        } finally {
+            refreshModelSelectLabels();
+        }
+    }
+
+    async function saveTranslatorSettingsFromForm() {
+        const nextSettings = normalizeTranslatorSettings(readSettingsForm());
+        setSettingsStatus('保存中...', 'pending');
+        saveSettingsBtn.disabled = true;
+
+        try {
+            if (typeof api?.saveTranslatorSettings !== 'function') {
+                throw new Error('当前预加载 API 未暴露保存翻译设置接口。');
+            }
+
+            const result = await api.saveTranslatorSettings(nextSettings);
+            if (!result?.success) {
+                throw new Error(result?.error || '保存失败。');
+            }
+
+            translatorSettings = normalizeTranslatorSettings(result.settings || nextSettings);
+            refreshModelSelectLabels();
+            fillSettingsForm();
+            setSettingsStatus('已保存到 AppData/translatorsetting.json', 'success');
+            setTimeout(closeSettingsModal, 500);
+        } catch (error) {
+            console.error('Error saving translator settings:', error);
+            setSettingsStatus(`保存失败: ${error.message}`, 'error');
+        } finally {
+            saveSettingsBtn.disabled = false;
+        }
+    }
+
+    function extractStreamDelta(payload) {
+        return payload?.choices?.[0]?.delta?.content
+            ?? payload?.choices?.[0]?.message?.content
+            ?? payload?.choices?.[0]?.text
+            ?? '';
+    }
+
+    async function readStreamingResponse(response, signal) {
+        if (!response.body) {
+            throw new Error('当前环境不支持读取流式响应。');
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder('utf-8');
+        let buffer = '';
+        let fullTranslation = '';
+
+        translatedTextarea.value = '';
+
+        while (true) {
+            if (signal.aborted) {
+                throw new DOMException('Aborted', 'AbortError');
+            }
+
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split(/\r?\n/);
+            buffer = lines.pop() || '';
+
+            for (const line of lines) {
+                const trimmed = line.trim();
+                if (!trimmed) continue;
+
+                const dataText = trimmed.startsWith('data:')
+                    ? trimmed.slice(5).trim()
+                    : trimmed;
+
+                if (!dataText || dataText === '[DONE]') continue;
+
+                try {
+                    const payload = JSON.parse(dataText);
+                    const delta = extractStreamDelta(payload);
+                    if (delta) {
+                        fullTranslation += delta;
+                        translatedTextarea.value = fullTranslation;
+                        translatedTextarea.scrollTop = translatedTextarea.scrollHeight;
+                    }
+                } catch (parseError) {
+                    console.warn('Unable to parse streaming chunk:', dataText, parseError);
+                }
+            }
+        }
+
+        if (buffer.trim()) {
+            const dataText = buffer.trim().startsWith('data:')
+                ? buffer.trim().slice(5).trim()
+                : buffer.trim();
+
+            if (dataText && dataText !== '[DONE]') {
+                try {
+                    const payload = JSON.parse(dataText);
+                    const delta = extractStreamDelta(payload);
+                    if (delta) {
+                        fullTranslation += delta;
+                        translatedTextarea.value = fullTranslation;
+                    }
+                } catch (parseError) {
+                    console.warn('Unable to parse final streaming chunk:', dataText, parseError);
+                }
+            }
+        }
+
+        if (!fullTranslation) {
+            throw new Error('API 流式响应中没有有效的翻译内容。');
+        }
+    }
+
     // --- 直接调用 VCP API 进行翻译 ---
     async function performDirectTranslation(messages, modelConfig) {
         if (abortController) {
@@ -56,8 +271,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         abortController = new AbortController();
         const signal = abortController.signal;
 
-        let fullTranslation = '';
-        translatedTextarea.value = '翻译中...';
+        translatedTextarea.value = modelConfig.stream ? '正在连接流式翻译...' : '翻译中...';
         translatedTextarea.classList.add('streaming');
 
         try {
@@ -72,7 +286,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     model: modelConfig.model,
                     temperature: modelConfig.temperature,
                     max_tokens: 50000,
-                    stream: false // Use non-streaming request
+                    stream: modelConfig.stream
                 }),
                 signal: signal
             });
@@ -80,6 +294,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (!response.ok) {
                 const errorText = await response.text();
                 throw new Error(`服务器错误: ${response.status} ${response.statusText} - ${errorText}`);
+            }
+
+            if (modelConfig.stream) {
+                await readStreamingResponse(response, signal);
+                return;
             }
 
             const result = await response.json();
@@ -139,15 +358,32 @@ document.addEventListener('DOMContentLoaded', async () => {
         systemPrompt += ` 仅返回翻译结果，不要包含任何解释或额外信息。`;
 
         const messages = [{ role: 'system', content: systemPrompt }, { role: 'user', content: sourceText }];
-        const selectedModel = modelSelect.value;
-        const modelConfig = { model: selectedModel, temperature: 0.7 };
+        const modelConfig = getSelectedModelConfig();
 
         performDirectTranslation(messages, modelConfig);
+    });
+
+    // --- Settings Modal Listeners ---
+    settingsTranslatorBtn.addEventListener('click', openSettingsModal);
+    closeSettingsModalBtn.addEventListener('click', closeSettingsModal);
+    settingsModalBackdrop.addEventListener('click', closeSettingsModal);
+    saveSettingsBtn.addEventListener('click', saveTranslatorSettingsFromForm);
+    resetSettingsBtn.addEventListener('click', () => {
+        translatorSettings = cloneDefaultSettings();
+        fillSettingsForm();
+        setSettingsStatus('已恢复默认，点击保存后生效。', 'pending');
+    });
+
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && !settingsModal.classList.contains('hidden')) {
+            closeSettingsModal();
+        }
     });
 
     // --- Initialization and Theme Handling ---
     async function initialize() {
         await loadConfig(); // Load VCP settings first
+        await loadTranslatorSettings();
 
         // Then initialize theme
         try {

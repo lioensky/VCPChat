@@ -14,7 +14,84 @@ const themeHandlers = require('./themeHandlers');
  */
 function initialize(paths) {
     const { SETTINGS_FILE, USER_AVATAR_FILE, AGENT_DIR, settingsManager, agentConfigManager } = paths;
-    const WEBINDEX_MODEL_FILE = path.join(path.dirname(SETTINGS_FILE), 'webindexmodel.json');
+    const APP_DATA_DIR = path.dirname(SETTINGS_FILE);
+    const WEBINDEX_MODEL_FILE = path.join(APP_DATA_DIR, 'webindexmodel.json');
+    const TRANSLATOR_SETTING_FILE = path.join(APP_DATA_DIR, 'translatorsetting.json');
+
+    // Translator Settings Management
+    ipcMain.handle('load-translator-settings', async () => {
+        const defaultTranslatorSettings = {
+            models: {
+                fast: 'gemini-3.1-flash-lite-preview',
+                balanced: 'gemini-3-flash-preview',
+                quality: 'gemini-3.1-pro'
+            },
+            stream: false
+        };
+
+        try {
+            if (!await fs.pathExists(TRANSLATOR_SETTING_FILE)) {
+                return {
+                    success: true,
+                    exists: false,
+                    path: TRANSLATOR_SETTING_FILE,
+                    settings: defaultTranslatorSettings
+                };
+            }
+
+            const savedSettings = await fs.readJson(TRANSLATOR_SETTING_FILE);
+            const mergedSettings = {
+                ...defaultTranslatorSettings,
+                ...savedSettings,
+                models: {
+                    ...defaultTranslatorSettings.models,
+                    ...(savedSettings?.models || {})
+                },
+                stream: Boolean(savedSettings?.stream)
+            };
+
+            return {
+                success: true,
+                exists: true,
+                path: TRANSLATOR_SETTING_FILE,
+                settings: mergedSettings
+            };
+        } catch (error) {
+            console.error('读取 translatorsetting.json 失败:', error);
+            return {
+                success: false,
+                error: error.message,
+                path: TRANSLATOR_SETTING_FILE,
+                settings: defaultTranslatorSettings
+            };
+        }
+    });
+
+    ipcMain.handle('save-translator-settings', async (event, settings) => {
+        try {
+            const normalizedSettings = {
+                models: {
+                    fast: String(settings?.models?.fast || 'gemini-3.1-flash-lite-preview').trim(),
+                    balanced: String(settings?.models?.balanced || 'gemini-3-flash-preview').trim(),
+                    quality: String(settings?.models?.quality || 'gemini-3.1-pro').trim()
+                },
+                stream: Boolean(settings?.stream),
+                updatedAt: new Date().toISOString()
+            };
+
+            await fs.ensureDir(APP_DATA_DIR);
+            await fs.writeJson(TRANSLATOR_SETTING_FILE, normalizedSettings, { spaces: 2 });
+
+            return {
+                success: true,
+                path: TRANSLATOR_SETTING_FILE,
+                settings: normalizedSettings
+            };
+        } catch (error) {
+            console.error('保存 translatorsetting.json 失败:', error);
+            return { success: false, error: error.message, path: TRANSLATOR_SETTING_FILE };
+        }
+    });
 
     // Settings Management
     ipcMain.handle('load-settings', async () => {

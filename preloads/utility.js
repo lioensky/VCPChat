@@ -102,6 +102,8 @@ function createCatalog(ops) {
     return {
         // Shared shell/config/theme helpers
         loadSettings: query(() => ops.invoke('load-settings')),
+        loadTranslatorSettings: query(() => ops.invoke('load-translator-settings')),
+        saveTranslatorSettings: query((settings) => ops.invoke('save-translator-settings', settings)),
         saveSettings: query((settings) => ops.invoke('save-settings', settings)),
         saveUserAvatar: query((avatarData) => ops.invoke('save-user-avatar', avatarData)),
         saveAvatarColor: query((data) => ops.invoke('save-avatar-color', data)),
@@ -427,6 +429,8 @@ function createCatalog(ops) {
 
 const ALLOWED_KEYS = [
     "loadSettings",
+    "loadTranslatorSettings",
+    "saveTranslatorSettings",
     "saveSettings",
     "saveUserAvatar",
     "saveAvatarColor",
