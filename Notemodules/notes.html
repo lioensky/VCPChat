@@ -74,6 +74,13 @@
             <div class="note-body">
                 <!-- Editor Area -->
                 <div class="editor-container">
+                    <div id="editorFindBar" class="editor-find-bar" aria-label="编辑区搜索" hidden>
+                        <input type="text" id="editorFindInput" placeholder="搜索当前笔记..." aria-label="搜索当前笔记">
+                        <span id="editorFindStatus" class="editor-find-status">0/0</span>
+                        <button id="editorFindPrev" type="button" class="editor-find-button" title="上一个匹配">↑</button>
+                        <button id="editorFindNext" type="button" class="editor-find-button" title="下一个匹配">↓</button>
+                        <button id="editorFindClose" type="button" class="editor-find-button" title="关闭搜索">×</button>
+                    </div>
                     <textarea id="noteContent" placeholder="开始写笔记..." aria-label="笔记内容"></textarea>
                     <div class="content-bubble editor-bubble">编辑区</div>
                 </div>
@@ -98,6 +105,17 @@
             <li id="context-rename">重命名</li>
             <li id="context-delete">删除</li>
             <li id="context-copy-note">复制笔记</li>
+        </ul>
+    </div>
+
+    <!-- Editor Context Menu HTML -->
+    <div id="editorContextMenu" class="custom-context-menu editor-context-menu">
+        <ul>
+            <li id="editor-context-undo">撤回</li>
+            <li id="editor-context-cut">剪切</li>
+            <li id="editor-context-copy">复制</li>
+            <li id="editor-context-paste">粘贴</li>
+            <li id="editor-context-select-all">全选</li>
         </ul>
     </div>
 <!-- Confirmation Modal -->

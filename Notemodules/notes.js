@@ -22,6 +22,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     const modalMessage = document.getElementById('modalMessage');
     const modalConfirmBtn = document.getElementById('modalConfirmBtn');
     const modalCancelBtn = document.getElementById('modalCancelBtn');
+    const editorFindBar = document.getElementById('editorFindBar');
+    const editorFindInput = document.getElementById('editorFindInput');
+    const editorFindStatus = document.getElementById('editorFindStatus');
+    const editorFindPrev = document.getElementById('editorFindPrev');
+    const editorFindNext = document.getElementById('editorFindNext');
+    const editorFindClose = document.getElementById('editorFindClose');
+    const editorContextMenu = document.getElementById('editorContextMenu');
+    const editorContextUndo = document.getElementById('editor-context-undo');
+    const editorContextCut = document.getElementById('editor-context-cut');
+    const editorContextCopy = document.getElementById('editor-context-copy');
+    const editorContextPaste = document.getElementById('editor-context-paste');
+    const editorContextSelectAll = document.getElementById('editor-context-select-all');
 
     // --- Custom Title Bar Elements ---
     const previewToggleBtn = document.getElementById('preview-toggle-btn');
@@ -717,6 +729,232 @@ document.addEventListener('DOMContentLoaded', async () => {
     const debouncedSaveNote = debounce(() => saveCurrentNote(true), 3000);
     const debouncedRender = debounce((content) => renderMarkdown(content), 300);
 
+    // --- Editor Search & Context Menu Logic ---
+    let editorSearchMatches = [];
+    let editorSearchIndex = -1;
+
+    function isEditorFocused() {
+        return document.activeElement === noteContentInput;
+    }
+
+    function updateEditorFindStatus() {
+        const total = editorSearchMatches.length;
+        const current = total > 0 ? editorSearchIndex + 1 : 0;
+        editorFindStatus.textContent = `${current}/${total}`;
+        editorFindPrev.disabled = total === 0;
+        editorFindNext.disabled = total === 0;
+    }
+
+    function collectEditorSearchMatches(query) {
+        editorSearchMatches = [];
+        editorSearchIndex = -1;
+
+        if (!query) {
+            updateEditorFindStatus();
+            return;
+        }
+
+        const content = noteContentInput.value;
+        const lowerContent = content.toLowerCase();
+        const lowerQuery = query.toLowerCase();
+        let fromIndex = 0;
+
+        while (fromIndex <= lowerContent.length) {
+            const matchIndex = lowerContent.indexOf(lowerQuery, fromIndex);
+            if (matchIndex === -1) break;
+
+            editorSearchMatches.push(matchIndex);
+            fromIndex = matchIndex + Math.max(lowerQuery.length, 1);
+        }
+
+        updateEditorFindStatus();
+    }
+
+    function selectEditorSearchMatch(index, options = {}) {
+        const { focusEditor = true } = options;
+
+        if (editorSearchMatches.length === 0) {
+            updateEditorFindStatus();
+            return;
+        }
+
+        const query = editorFindInput.value;
+        editorSearchIndex = (index + editorSearchMatches.length) % editorSearchMatches.length;
+        const matchStart = editorSearchMatches[editorSearchIndex];
+        const matchEnd = matchStart + query.length;
+
+        const lineHeight = parseFloat(getComputedStyle(noteContentInput).lineHeight) || 22;
+        const textBeforeMatch = noteContentInput.value.slice(0, matchStart);
+        const lineIndex = textBeforeMatch.split('\n').length - 1;
+        const targetScrollTop = Math.max(0, (lineIndex * lineHeight) - (noteContentInput.clientHeight / 2));
+        noteContentInput.scrollTop = targetScrollTop;
+
+        if (focusEditor) {
+            noteContentInput.focus();
+            noteContentInput.setSelectionRange(matchStart, matchEnd);
+        }
+
+        updateEditorFindStatus();
+    }
+
+    function findEditorMatch(direction = 1) {
+        const query = editorFindInput.value;
+        collectEditorSearchMatches(query);
+
+        if (editorSearchMatches.length === 0) return;
+
+        const selectionStart = noteContentInput.selectionStart;
+        if (direction >= 0) {
+            const nextIndex = editorSearchMatches.findIndex(matchIndex => matchIndex >= selectionStart + (editorSearchIndex >= 0 ? 1 : 0));
+            selectEditorSearchMatch(nextIndex === -1 ? 0 : nextIndex);
+        } else {
+            let previousIndex = editorSearchMatches.length - 1;
+            for (let i = editorSearchMatches.length - 1; i >= 0; i--) {
+                if (editorSearchMatches[i] < selectionStart) {
+                    previousIndex = i;
+                    break;
+                }
+            }
+            selectEditorSearchMatch(previousIndex);
+        }
+    }
+
+    function openEditorFindBar() {
+        editorFindBar.hidden = false;
+        const selectedText = noteContentInput.value.slice(noteContentInput.selectionStart, noteContentInput.selectionEnd);
+        if (selectedText && !selectedText.includes('\n')) {
+            editorFindInput.value = selectedText;
+        }
+        editorFindInput.focus();
+        editorFindInput.select();
+        collectEditorSearchMatches(editorFindInput.value);
+        if (editorFindInput.value) findEditorMatch(1);
+    }
+
+    function closeEditorFindBar() {
+        editorFindBar.hidden = true;
+        editorSearchMatches = [];
+        editorSearchIndex = -1;
+        noteContentInput.focus();
+    }
+
+    function runEditorCommand(command) {
+        noteContentInput.focus();
+        document.execCommand(command);
+        if (command === 'cut' || command === 'paste' || command === 'undo') {
+            noteContentInput.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+    }
+
+    async function pasteTextIntoEditor() {
+        noteContentInput.focus();
+
+        try {
+            if (navigator.clipboard?.readText) {
+                const text = await navigator.clipboard.readText();
+                const { selectionStart, selectionEnd, value } = noteContentInput;
+                noteContentInput.value = `${value.slice(0, selectionStart)}${text}${value.slice(selectionEnd)}`;
+                const caret = selectionStart + text.length;
+                noteContentInput.setSelectionRange(caret, caret);
+                noteContentInput.dispatchEvent(new Event('input', { bubbles: true }));
+                return;
+            }
+        } catch (error) {
+            console.warn('读取剪贴板失败，回退到浏览器粘贴命令:', error);
+        }
+
+        runEditorCommand('paste');
+    }
+
+    function hideEditorContextMenu() {
+        editorContextMenu.style.display = 'none';
+    }
+
+    function updateEditorContextMenuState() {
+        const hasSelection = noteContentInput.selectionStart !== noteContentInput.selectionEnd;
+        editorContextCut.classList.toggle('disabled', !hasSelection);
+        editorContextCopy.classList.toggle('disabled', !hasSelection);
+    }
+
+    function showEditorContextMenu(e) {
+        e.preventDefault();
+        e.stopPropagation();
+
+        customContextMenu.style.display = 'none';
+        updateEditorContextMenuState();
+
+        editorContextMenu.style.left = `${e.clientX}px`;
+        editorContextMenu.style.top = `${e.clientY}px`;
+        editorContextMenu.style.display = 'block';
+    }
+
+    editorFindInput.addEventListener('input', () => {
+        collectEditorSearchMatches(editorFindInput.value);
+        if (editorSearchMatches.length > 0) {
+            selectEditorSearchMatch(0, { focusEditor: false });
+            editorFindInput.focus();
+        }
+    });
+
+    editorFindInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            findEditorMatch(e.shiftKey ? -1 : 1);
+        } else if (e.key === 'Escape') {
+            e.preventDefault();
+            closeEditorFindBar();
+        }
+    });
+
+    editorFindPrev.addEventListener('click', () => findEditorMatch(-1));
+    editorFindNext.addEventListener('click', () => findEditorMatch(1));
+    editorFindClose.addEventListener('click', closeEditorFindBar);
+
+    noteContentInput.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
+            e.preventDefault();
+            openEditorFindBar();
+        } else if (e.key === 'Escape' && !editorFindBar.hidden) {
+            e.preventDefault();
+            closeEditorFindBar();
+        }
+    });
+
+    noteContentInput.addEventListener('contextmenu', showEditorContextMenu);
+
+    editorContextUndo.addEventListener('click', () => {
+        runEditorCommand('undo');
+        hideEditorContextMenu();
+    });
+
+    editorContextCut.addEventListener('click', () => {
+        if (!editorContextCut.classList.contains('disabled')) runEditorCommand('cut');
+        hideEditorContextMenu();
+    });
+
+    editorContextCopy.addEventListener('click', () => {
+        if (!editorContextCopy.classList.contains('disabled')) runEditorCommand('copy');
+        hideEditorContextMenu();
+    });
+
+    editorContextPaste.addEventListener('click', async () => {
+        await pasteTextIntoEditor();
+        hideEditorContextMenu();
+    });
+
+    editorContextSelectAll.addEventListener('click', () => {
+        noteContentInput.focus();
+        noteContentInput.select();
+        hideEditorContextMenu();
+    });
+
+    document.addEventListener('keydown', (e) => {
+        if (isEditorFocused() && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
+            e.preventDefault();
+            openEditorFindBar();
+        }
+    }, true);
+
     noteTitleInput.addEventListener('input', debouncedSaveNote);
     noteContentInput.addEventListener('input', (e) => {
         debouncedRender(e.target.value);
@@ -1297,11 +1535,17 @@ function handleListDragEnd(e) {
         if (!customContextMenu.contains(e.target)) {
             customContextMenu.style.display = 'none';
         }
+        if (!editorContextMenu.contains(e.target)) {
+            hideEditorContextMenu();
+        }
     }, true);
 
     document.addEventListener('contextmenu', (e) => {
         if (!e.target.closest('#noteList [data-id]') && !customContextMenu.contains(e.target)) {
             customContextMenu.style.display = 'none';
+        }
+        if (!e.target.closest('#noteContent') && !editorContextMenu.contains(e.target)) {
+            hideEditorContextMenu();
         }
     }, true);
 

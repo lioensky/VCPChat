@@ -425,6 +425,65 @@ body.preview-collapsed .preview-container > * {
     border: none;
 }
 
+.editor-find-bar {
+    position: absolute;
+    top: 8px;
+    left: auto;
+    right: 18px;
+    width: min(520px, calc(100% - 36px));
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background-color: var(--secondary-bg);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
+    z-index: 5;
+}
+
+.editor-find-bar[hidden] {
+    display: none;
+}
+
+#editorFindInput {
+    flex: 1;
+    min-width: 80px;
+    padding: 6px 8px;
+}
+
+.editor-find-status {
+    min-width: 44px;
+    color: var(--secondary-text);
+    font-size: 0.85em;
+    text-align: center;
+    white-space: nowrap;
+}
+
+.editor-find-button {
+    width: 28px;
+    height: 28px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background-color: var(--button-bg);
+    color: var(--accent-bg);
+    cursor: pointer;
+    line-height: 1;
+}
+
+.editor-find-button:hover {
+    background-color: var(--button-hover-bg);
+}
+
+.editor-find-button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.editor-context-menu {
+    min-width: 128px;
+}
+
 #noteContent {
     resize: none; /* Disable manual resize, rely on flex */
     color: var(--primary-text);
