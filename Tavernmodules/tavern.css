@@ -250,16 +250,23 @@
 .tavern-manager-list-item {
     padding: 8px 10px;
     border-radius: 8px;
-    cursor: pointer;
+    cursor: grab;
     margin: 2px 0;
     border: 1px solid transparent;
     display: flex;
     align-items: center;
     gap: 8px;
+    user-select: none;
+    -webkit-user-select: none;
+    transition: background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .tavern-manager-list-item:hover {
     background: rgba(255,255,255,0.04);
+}
+
+.tavern-manager-list-item:active {
+    cursor: grabbing;
 }
 
 .tavern-manager-list-item.selected {
@@ -461,4 +468,44 @@
     color: var(--secondary-text, rgba(255,255,255,0.55));
     margin-top: 2px;
     line-height: 1.4;
+}
+
+/* ===== 拖拽排序样式 ===== */
+.tavern-drag-handle {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--secondary-text, rgba(255,255,255,0.35));
+    cursor: grab;
+    padding: 4px;
+    border-radius: 4px;
+    transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.tavern-drag-handle:hover {
+    color: var(--primary-text, #fff);
+    background: rgba(255,255,255,0.08);
+}
+
+.tavern-drag-handle:active {
+    cursor: grabbing;
+}
+
+/* SortableJS 样式 */
+.tavern-sortable-ghost {
+    opacity: 0.4;
+    background: rgba(74, 144, 226, 0.1) !important;
+    border: 1px dashed rgba(74, 144, 226, 0.5) !important;
+}
+
+.tavern-sortable-chosen {
+    background: rgba(255, 255, 255, 0.06);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.tavern-sortable-drag {
+    opacity: 0.9;
+    background: var(--secondary-bg, #2a2d3a) !important;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
 }

@@ -306,6 +306,10 @@
         },
 
         closeManagerModal() {
+            if (this.sortableInstance) {
+                this.sortableInstance.destroy();
+                this.sortableInstance = null;
+            }
             if (this.modalEl) {
                 this.modalEl.remove();
                 this.modalEl = null;
@@ -315,6 +319,13 @@
         _renderManagerList() {
             if (!this.modalEl) return;
             const list = this.modalEl.querySelector('[data-role="list"]');
+            
+            // 销毁旧的 Sortable 实例以防内存泄漏和事件重复绑定
+            if (this.sortableInstance) {
+                this.sortableInstance.destroy();
+                this.sortableInstance = null;
+            }
+
             const rules = this.store.rules || [];
             list.innerHTML = '';
             if (rules.length === 0) {
@@ -324,6 +335,7 @@
             rules.forEach(rule => {
                 const item = document.createElement('div');
                 item.className = 'tavern-manager-list-item';
+                item.setAttribute('data-id', rule.id);
                 if (rule.id === this.selectedRuleId) item.classList.add('selected');
                 if (rule.enabled === false) item.classList.add('disabled');
                 const typeTagClass = rule.type === 'system_suffix' ? 'tag-system'
@@ -331,14 +343,75 @@
                 item.innerHTML = `
                     <span class="tavern-rule-tag ${typeTagClass}" style="flex-shrink:0;">${TYPE_LABELS[rule.type] || rule.type}</span>
                     <span class="item-name">${escapeHtml(rule.name || '未命名规则')}</span>
+                    <div class="tavern-drag-handle" title="长按整行或拖拽手柄排序">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="9" cy="12" r="1"></circle>
+                            <circle cx="9" cy="5" r="1"></circle>
+                            <circle cx="9" cy="19" r="1"></circle>
+                            <circle cx="15" cy="12" r="1"></circle>
+                            <circle cx="15" cy="5" r="1"></circle>
+                            <circle cx="15" cy="19" r="1"></circle>
+                        </svg>
+                    </div>
                 `;
-                item.addEventListener('click', () => {
+                item.addEventListener('click', (e) => {
+                    // 如果点击的是拖拽手柄，不触发选中
+                    if (e.target.closest('.tavern-drag-handle')) return;
                     this.selectedRuleId = rule.id;
                     this._renderManagerList();
                     this._renderManagerEditPanel();
                 });
                 list.appendChild(item);
             });
+
+            // 初始化 Sortable
+            if (window.Sortable) {
+                this.sortableInstance = window.Sortable.create(list, {
+                    delay: 300, // 长按 300ms 触发拖拽
+                    delayOnTouchOnly: false, // 桌面端也支持长按
+                    touchStartThreshold: 5,
+                    animation: 150,
+                    ghostClass: 'tavern-sortable-ghost',
+                    chosenClass: 'tavern-sortable-chosen',
+                    dragClass: 'tavern-sortable-drag',
+                    fallbackTolerance: 3,
+                    onEnd: async () => {
+                        const items = list.querySelectorAll('.tavern-manager-list-item');
+                        const newOrderIds = Array.from(items).map(el => el.getAttribute('data-id'));
+                        
+                        const ruleMap = new Map(this.store.rules.map(r => [r.id, r]));
+                        const sortedRules = [];
+                        newOrderIds.forEach(id => {
+                            if (ruleMap.has(id)) {
+                                sortedRules.push(ruleMap.get(id));
+                            }
+                        });
+                        
+                        this.store.rules.forEach(r => {
+                            if (!newOrderIds.includes(r.id)) {
+                                sortedRules.push(r);
+                            }
+                        });
+                        
+                        this.store.rules = sortedRules;
+                        
+                        const result = await this.saveStore();
+                        if (result && result.success) {
+                            if (window.uiHelperFunctions?.showToastNotification) {
+                                window.uiHelperFunctions.showToastNotification('顺序已更新并保存', 'success');
+                            }
+                            this._renderManagerList();
+                        } else {
+                            if (window.uiHelperFunctions?.showToastNotification) {
+                                window.uiHelperFunctions.showToastNotification(`保存顺序失败: ${result?.error || '未知错误'}`, 'error');
+                            }
+                            this._renderManagerList();
+                        }
+                    }
+                });
+            } else {
+                console.warn('[TavernManager] Sortable.js is not loaded.');
+            }
         },
 
         _renderManagerEditPanel() {
