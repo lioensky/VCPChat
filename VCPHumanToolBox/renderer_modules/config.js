@@ -1,4 +1,4 @@
-// renderer_modules/config.js
+﻿// renderer_modules/config.js
 // VCPHumanToolBox工具定义
 // 最后更新: 2026-04-21by CodeCC &赵枫
 // 备份: config.js.bak.20260421
@@ -808,16 +808,66 @@ export const tools = {
             }
         }
     },
-    'AgentTopicCreator': {
-        displayName: '话题发起人',
-        description: '发起一个全新的聊天话题。',
+    'TopicSponsor': {
+        displayName: '话题发起人 (TopicSponsor)',
+        description: '发起、查询和管理聊天话题。[前端分布式插件: TopicSponsor]',
         commands: {
             'CreateTopic': {
-                description: '创建新话题',
+                description: '创建新话题并发起对话',
                 params: [
                     { name: 'maid', type: 'text', required: true, placeholder: '你的名字' },
-                    { name: 'topic_name', type: 'text', required: true },
-                    { name: 'initial_message', type: 'textarea', required: true }
+                    { name: 'topic_name', type: 'text', required: true, placeholder: '话题名称' },
+                    { name: 'initial_message', type: 'textarea', required: true, placeholder: '第一句话' }
+                ]
+            },
+            'ReadUnlockedTopics': {
+                description: '读取未锁定话题及消息历史',
+                params: [
+                    { name: 'maid', type: 'text', required: true, placeholder: '你的名字' },
+                    { name: 'include_read', type: 'select', options: ['false','true'], description: '是否包含已读' }
+                ]
+            },
+            'CheckNewTopics': {
+                description: '检查最近几天的新话题',
+                params: [
+                    { name: 'maid', type: 'text', required: true, placeholder: '你的名字' },
+                    { name: 'days', type: 'number', required: false, placeholder: '3' }
+                ]
+            },
+            'CheckUnreadMessages': {
+                description: '检查未读消息',
+                params: [
+                    { name: 'maid', type: 'text', required: true, placeholder: '你的名字' }
+                ]
+            },
+            'ReplyToTopic': {
+                description: '在话题中回复消息',
+                params: [
+                    { name: 'maid', type: 'text', required: true, placeholder: '你的名字' },
+                    { name: 'topic_id', type: 'text', required: true, placeholder: 'topic_xxx' },
+                    { name: 'message', type: 'textarea', required: true },
+                    { name: 'sender_name', type: 'text', required: true, placeholder: '发送者名' }
+                ]
+            },
+            'CheckTopicOwnership': {
+                description: '验证话题所有权',
+                params: [
+                    { name: 'maid', type: 'text', required: true, placeholder: '你的名字' },
+                    { name: 'topic_id', type: 'text', required: true, placeholder: 'topic_xxx' },
+                    { name: 'caller_name', type: 'text', required: true, placeholder: '调用者名' }
+                ]
+            },
+            'ListUnlockedTopics': {
+                description: '列出所有未锁定话题',
+                params: [
+                    { name: 'maid', type: 'text', required: true, placeholder: '你的名字' }
+                ]
+            },
+            'ReadTopicContent': {
+                description: '读取话题完整内容',
+                params: [
+                    { name: 'maid', type: 'text', required: true, placeholder: '你的名字' },
+                    { name: 'topic_id', type: 'text', required: true, placeholder: 'topic_xxx' }
                 ]
             }
         }

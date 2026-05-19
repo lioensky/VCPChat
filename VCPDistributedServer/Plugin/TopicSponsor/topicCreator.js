@@ -1,4 +1,4 @@
-const fs = require('fs').promises;
+﻿const fs = require('fs').promises;
 const path = require('path');
 const dotenv = require('dotenv');
 
@@ -54,7 +54,7 @@ async function main() {
 
     } catch (error) {
         // 失败时，将JSON错误信息输出到 stderr，并以非零状态码退出
-        console.error(JSON.stringify({ status: "error", error: `[AgentTopicCreator] ${error.message}` }));
+        console.error(JSON.stringify({ status: "error", error: `[TopicSponsor/AgentTopicCreator] ${error.message}` }));
         process.exit(1);
     }
 }
@@ -242,7 +242,7 @@ function parseToolArgs(input) {
     try {
         args = JSON.parse(input);
     } catch (e) {
-        console.error(JSON.stringify({ status: "error", error: `[AgentTopicCreator] 无效的输入格式，无法解析JSON: ${input}` }));
+        console.error(JSON.stringify({ status: "error", error: `[TopicSponsor/AgentTopicCreator] 无效的输入格式，无法解析JSON: ${input}` }));
         process.exit(1);
     }
     return args;
@@ -565,7 +565,7 @@ async function checkTopicOwnership(vchatPath, agentInfo, topicId, callerName) {
             const historyPath = path.join(vchatPath, 'UserData', agentInfo.uuid, 'topics', topicId, 'history.json');
             const history = JSON.parse(await fs.readFile(historyPath, 'utf-8'));
             if (history.length > 0 && history[0]._metadata) {
-                creatorName = history[0]._metadata.topicCreator || history[0].name || 'unknown';
+                creatorName = history[0]._metadata.topicSponsor || history[0]._metadata.topicCreator || history[0].name || 'unknown';
                 isOwner = creatorName === callerName;
             }
         } catch (e) {

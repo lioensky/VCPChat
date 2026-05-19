@@ -1209,7 +1209,7 @@ async function applyDiff(parameters) {
 
     const editResult = await editFile(filePath, newContent, encoding);
     if (editResult.success) {
-      editResult.data.message = '文件编辑已经提交等待用户确认';
+      editResult.data.message = '文件编辑成功';
       // Since editFile now returns the validation, we just pass it along.
       // The validation was already run inside editFile.
     }
