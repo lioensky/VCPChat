@@ -1,4 +1,4 @@
-// VCPHumanToolBox/renderer.js
+﻿// VCPHumanToolBox/renderer.js
 // Enhanced by CodeCC &赵枫 - 2026-04-21
 // 8features: search+filter, hide maid, param folding, timer, retry, copy, form cache, history
 import { tools } from './renderer_modules/config.js';
@@ -35,7 +35,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         '代码与仓库': ['GitSearch','DeepWikiVCP'],
         '学术研究': ['PubMedSearch','PaperReader'],
         '记忆与思考': ['DeepMemo','LightMemo','ThoughtClusterManager',
-            'TopicMemo','AgentTopicCreator'],
+            'TopicMemo','TopicSponsor'],
         '通讯与社区': ['AgentAssistant','AgentDream','AgentMessage','VCPForum'],
         '占卜与趣味': ['TarotDivination'],
         '工具与计算': ['SciCalculator','MusicController','VCPAlarm','TableLampRemote'],
