@@ -17,6 +17,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     const customContextMenu = document.getElementById('customContextMenu');
     const resizer = document.getElementById('resizer');
     const sidebar = document.querySelector('.sidebar');
+    const noteBody = document.querySelector('.note-body');
+    const editorContainer = document.querySelector('.editor-container');
+    const previewContainer = document.querySelector('.preview-container');
+    const editorPreviewResizer = document.getElementById('editorPreviewResizer');
     const confirmationModal = document.getElementById('confirmationModal');
     const modalTitle = document.getElementById('modalTitle');
     const modalMessage = document.getElementById('modalMessage');
@@ -221,6 +225,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // --- Theme Management ---
+    let currentMermaidTheme = null;
     function applyTheme(theme) {
         const currentTheme = theme || 'dark'; // Fallback to dark if theme is null/undefined
         const highlightThemeStyle = document.getElementById('highlight-theme-style');
@@ -231,6 +236,28 @@ document.addEventListener('DOMContentLoaded', async () => {
             highlightThemeStyle.href = currentTheme === 'light'
                 ? "../vendor/atom-one-light.min.css"
                 : "../vendor/atom-one-dark.min.css";
+        }
+
+        // Sync mermaid theme so subsequent diagrams match the app theme.
+        const desiredMermaidTheme = currentTheme === 'light' ? 'default' : 'dark';
+        if (window.mermaid && typeof window.mermaid.initialize === 'function'
+            && desiredMermaidTheme !== currentMermaidTheme) {
+            try {
+                window.mermaid.initialize({
+                    startOnLoad: false,
+                    theme: desiredMermaidTheme,
+                    securityLevel: 'loose'
+                });
+                const previousTheme = currentMermaidTheme;
+                currentMermaidTheme = desiredMermaidTheme;
+                // Re-render the active note so the new mermaid theme takes effect.
+                if (previousTheme !== null && activeNoteId) {
+                    const note = findItemById(getCombinedTree(), activeNoteId);
+                    if (note) renderMarkdown(note.content);
+                }
+            } catch (e) {
+                console.warn('[Notes] Failed to re-initialize mermaid theme:', e);
+            }
         }
     }
     
@@ -317,7 +344,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         processed = ensureSpecialBlockFenced(processed, '<<<[TOOL_REQUEST]>>>', '<<<[END_TOOL_REQUEST]>>>');
         processed = ensureSpecialBlockFenced(processed, '<<<DailyNoteStart>>>', '<<<DailyNoteEnd>>>');
         processed = ensureHtmlFenced(processed);
-        processed = processed.replace(/^(\s*```)(?![\r\n])/gm, '$1\n');
+        // Do not split fenced code info strings such as ```mermaid / ```js.
+        // Splitting them into "```\nmermaid" makes marked lose the language hint.
         processed = processed.replace(/~(?![\s~])/g, '~ ');
         processed = processed.replace(/^(\s*)(```.*)/gm, '$2');
         processed = processed.replace(/(<img[^>]+>)\s*(```)/g, '$1\n\n<!-- VCP-Renderer-Separator -->\n\n$2');
@@ -360,13 +388,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         const cleanHtmlBody = DOMPurify.sanitize(htmlWithoutStyles, {
             // We don't need to allow 'style' tags here anymore as they are handled separately.
             ADD_TAGS: ['img', 'div'],
-            ADD_ATTR: ['style'], // Still allow inline styles on elements like <div style="...">.
+            ADD_ATTR: ['style', 'class'], // Keep inline styles and semantic classes such as mermaid.
             ALLOW_UNKNOWN_PROTOCOLS: true,
             FORCE_BODY: true
         });
 
         // Re-combine the sanitized body with the original, un-sanitized style blocks.
         previewContentDiv.innerHTML = styleBlocks.join('\n') + cleanHtmlBody;
+
+        // --- Extract Mermaid blocks BEFORE hljs runs (hljs would inject spans and break parsing) ---
+        const mermaidNodes = collectMermaidNodes(previewContentDiv);
 
         // Post-rendering enhancements
         if (window.renderMathInElement) {
@@ -382,11 +413,107 @@ document.addEventListener('DOMContentLoaded', async () => {
         addCopyButtonsToCodeBlocks();
         makeImagesClickable();
 
+        // Render mermaid diagrams (async). Capture the current note id so a quick switch
+        // between notes won't paint stale diagrams into the new note.
+        if (mermaidNodes.length > 0) {
+            const renderTokenId = activeNoteId;
+            renderMermaidNodes(mermaidNodes, renderTokenId);
+        }
+
         // --- Pretext Integration ---
         // 为笔记预览生成 Pretext 高度缓存 (使用当前预览容器宽度)
         if (window.pretextBridge && window.pretextBridge.isReady() && activeNoteId) {
             const previewWidth = previewContentDiv.offsetWidth || 500;
             window.pretextBridge.estimateHeight('note-' + activeNoteId, markdown, 'note', previewWidth);
+        }
+    }
+
+    // --- Mermaid helpers ---
+    function escapeHtmlForMermaid(text) {
+        if (typeof text !== 'string') return '';
+        return text
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
+    // Mermaid diagram-type keyword patterns. If a fenced block starts with one of these
+    // (and has no other obvious language), we treat it as mermaid even when the language
+    // tag is missing or marked didn't attach a `language-*` class.
+    const MERMAID_CONTENT_PATTERN = /^\s*(?:graph|flowchart|sequenceDiagram|classDiagram|stateDiagram(?:-v2)?|erDiagram|journey|gantt|pie|gitGraph|mindmap|timeline|requirementDiagram|quadrantChart|C4Context|C4Container|C4Component|C4Dynamic|C4Deployment|xychart-beta|sankey-beta|block-beta)\b/;
+    const MERMAID_LANGUAGES = new Set(['mermaid', 'graph', 'flowchart']);
+
+    // Find code blocks rendered by marked and replace mermaid ones with a <div class="mermaid">
+    // node that mermaid.run() can take over. Works for both:
+    //   <pre><code class="language-mermaid">...</code></pre>
+    //   <pre><code>graph TD ...</code></pre>   (no language tag, detected by content)
+    function collectMermaidNodes(container) {
+        const nodes = Array.from(container.querySelectorAll('.mermaid'));
+        nodes.push(...extractMermaidBlocks(container));
+        return [...new Set(nodes)];
+    }
+
+    function extractMermaidBlocks(container) {
+        const nodes = [];
+        const codeBlocks = container.querySelectorAll('pre code');
+        codeBlocks.forEach((codeBlock) => {
+            // textContent decodes HTML entities so '&gt;' becomes '>', which mermaid needs.
+            const code = (codeBlock.textContent || '').trim();
+            if (!code) return;
+
+            // Look at language hints in a few common forms.
+            const langClass = Array.from(codeBlock.classList)
+                .find(c => c.startsWith('language-') || c.startsWith('lang-'));
+            const language = langClass
+                ? langClass.replace(/^(?:language-|lang-)/, '').toLowerCase()
+                : '';
+
+            const matchByLanguage = MERMAID_LANGUAGES.has(language);
+            // Only fall back to content sniffing when there's NO language tag, to avoid
+            // hijacking unrelated code blocks (e.g. a "graph" variable in a JS snippet).
+            const matchByContent = !language && MERMAID_CONTENT_PATTERN.test(code);
+
+            if (!matchByLanguage && !matchByContent) return;
+
+            const preElement = codeBlock.parentElement;
+            if (!preElement || !preElement.parentNode) return;
+
+            const mermaidContainer = document.createElement('div');
+            mermaidContainer.className = 'mermaid';
+            mermaidContainer.textContent = code;
+            preElement.parentNode.replaceChild(mermaidContainer, preElement);
+            nodes.push(mermaidContainer);
+        });
+        return nodes;
+    }
+
+    async function renderMermaidNodes(nodes, renderTokenId) {
+        if (!window.mermaid || nodes.length === 0) return;
+        try {
+            nodes.forEach(node => node.removeAttribute('data-processed'));
+            if (typeof window.mermaid.run === 'function') {
+                await window.mermaid.run({ nodes });
+            } else if (typeof window.mermaid.init === 'function') {
+                window.mermaid.init(undefined, nodes);
+            }
+        } catch (error) {
+            console.error('[Notes] Mermaid render error:', error);
+            nodes.forEach(el => {
+                if (!el.isConnected) return;
+                const originalCode = el.textContent || '';
+                el.innerHTML = `<div class="mermaid-error">Mermaid 渲染错误: ${escapeHtmlForMermaid(error.message || String(error))}</div><pre>${escapeHtmlForMermaid(originalCode)}</pre>`;
+            });
+        }
+
+        // If the user switched notes while mermaid was rendering, drop the stale output.
+        if (renderTokenId !== activeNoteId) {
+            nodes.forEach(el => {
+                if (el.isConnected && el.parentNode === previewContentDiv.parentNode) {
+                    // No-op; the next renderMarkdown will overwrite previewContentDiv.innerHTML.
+                }
+            });
         }
     }
 
@@ -1714,6 +1841,70 @@ function handleListDragEnd(e) {
         resizer.addEventListener('mousedown', mouseDownHandler);
     }
 
+    // --- Editor / Preview Split Resizer Logic ---
+    function initEditorPreviewResizer() {
+        if (!noteBody || !editorContainer || !previewContainer || !editorPreviewResizer) return;
+
+        const minPercent = 20;
+        const maxPercent = 80;
+        const storageKey = 'notesEditorPreviewSplitPercent';
+
+        const clampPercent = (value) => Math.min(maxPercent, Math.max(minPercent, value));
+
+        const notifyLayoutChanged = () => {
+            if (window.pretextBridge && window.pretextBridge.isReady()) {
+                window.pretextBridge.recalculateAll(window.innerWidth);
+            }
+        };
+
+        const applySplit = (percent) => {
+            const safePercent = clampPercent(Number(percent) || 50);
+            const editorBasis = `calc(${safePercent}% - 14px)`;
+            const previewBasis = `calc(${100 - safePercent}% - 14px)`;
+
+            editorContainer.style.flex = `0 0 ${editorBasis}`;
+            previewContainer.style.flex = `0 0 ${previewBasis}`;
+            editorPreviewResizer.setAttribute('aria-valuenow', String(Math.round(safePercent)));
+            editorPreviewResizer.setAttribute('aria-valuemin', String(minPercent));
+            editorPreviewResizer.setAttribute('aria-valuemax', String(maxPercent));
+
+            requestAnimationFrame(notifyLayoutChanged);
+        };
+
+        const savedPercent = parseFloat(localStorage.getItem(storageKey));
+        applySplit(Number.isFinite(savedPercent) ? savedPercent : 50);
+
+        const mouseMoveHandler = (e) => {
+            const rect = noteBody.getBoundingClientRect();
+            if (rect.width <= 0) return;
+
+            const percent = clampPercent(((e.clientX - rect.left) / rect.width) * 100);
+            applySplit(percent);
+        };
+
+        const mouseUpHandler = (e) => {
+            noteBody.classList.remove('is-resizing');
+            document.removeEventListener('mousemove', mouseMoveHandler);
+            document.removeEventListener('mouseup', mouseUpHandler);
+
+            const rect = noteBody.getBoundingClientRect();
+            if (rect.width > 0) {
+                const percent = clampPercent(((e.clientX - rect.left) / rect.width) * 100);
+                localStorage.setItem(storageKey, String(Math.round(percent * 10) / 10));
+                applySplit(percent);
+            }
+        };
+
+        editorPreviewResizer.addEventListener('mousedown', (e) => {
+            if (document.body.classList.contains('preview-collapsed')) return;
+
+            e.preventDefault();
+            noteBody.classList.add('is-resizing');
+            document.addEventListener('mousemove', mouseMoveHandler);
+            document.addEventListener('mouseup', mouseUpHandler);
+        });
+    }
+
     // --- Initialization ---
     async function initializeApp() {
         // Initialize theme first to prevent flash of unstyled content
@@ -1732,6 +1923,7 @@ function handleListDragEnd(e) {
         }
 
         initResizer();
+        initEditorPreviewResizer();
         searchInput.addEventListener('input', debounce(renderTree, 300));
         
         // 监听全局布局变化

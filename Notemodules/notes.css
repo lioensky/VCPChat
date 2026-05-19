@@ -365,13 +365,24 @@ textarea:focus {
     display: flex; /* Use flex to arrange editor and preview side-by-side or stacked */
     overflow: hidden; /* Important: Prevents this container from scrolling */
     padding: 12px;
-    gap: 12px;
+    gap: 0;
+}
+
+.note-body.is-resizing,
+.note-body.is-resizing * {
+    cursor: col-resize !important;
+    user-select: none;
+}
+
+.note-body.is-resizing #previewContent,
+.note-body.is-resizing #noteContent {
+    pointer-events: none;
 }
 
 /* Containers for editor and preview areas */
 .editor-container,
 .preview-container {
-    flex: 1 1 0; /* Each takes half the space */
+    flex: 0 0 50%; /* Split ratio is controlled by JS and persisted in localStorage */
     min-width: 0;
     display: flex;
     flex-direction: column; /* Stack content and bubble vertically */
@@ -381,7 +392,6 @@ textarea:focus {
     border: 1px solid var(--border-color);
     border-radius: 6px;
     transition: flex-basis 0.32s cubic-bezier(0.22, 1, 0.36, 1),
-                flex-grow 0.32s cubic-bezier(0.22, 1, 0.36, 1),
                 opacity 0.22s ease,
                 transform 0.32s cubic-bezier(0.22, 1, 0.36, 1),
                 border-width 0.22s ease,
@@ -389,13 +399,53 @@ textarea:focus {
                 padding 0.32s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
+.editor-preview-resizer {
+    flex: 0 0 12px;
+    align-self: stretch;
+    cursor: col-resize;
+    position: relative;
+    z-index: 3;
+    margin: 0 8px;
+    border-radius: 999px;
+    transition: background-color 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+}
+
+.editor-preview-resizer::before {
+    content: "";
+    position: absolute;
+    top: 12px;
+    bottom: 12px;
+    left: 50%;
+    width: 4px;
+    transform: translateX(-50%);
+    border-radius: 999px;
+    background-color: var(--border-color);
+}
+
+.editor-preview-resizer::after {
+    content: "⋮";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: var(--secondary-text);
+    font-size: 18px;
+    line-height: 1;
+    opacity: 0.75;
+}
+
+.editor-preview-resizer:hover::before,
+.note-body.is-resizing .editor-preview-resizer::before {
+    background-color: var(--highlight-text);
+    box-shadow: 0 0 10px rgba(52, 152, 219, 0.35);
+}
+
 body.preview-collapsed .note-body {
     gap: 0;
 }
 
 body.preview-collapsed .editor-container {
-    flex-grow: 1;
-    flex-basis: 100%;
+    flex: 1 1 100%;
 }
 
 body.preview-collapsed .preview-container {
@@ -404,6 +454,14 @@ body.preview-collapsed .preview-container {
     opacity: 0;
     transform: translateX(16px) scaleX(0.98);
     border-width: 0;
+    pointer-events: none;
+}
+
+body.preview-collapsed .editor-preview-resizer {
+    flex-basis: 0;
+    width: 0;
+    margin: 0;
+    opacity: 0;
     pointer-events: none;
 }
 
@@ -537,6 +595,55 @@ body.preview-collapsed .preview-container > * {
     margin-top: 0;
     margin-bottom: 1em;
     white-space: pre-line; /* 修复换行问题 */
+}
+
+.markdown-preview table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1.2em 0;
+    overflow: hidden;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background-color: rgba(255, 255, 255, 0.03);
+    display: table;
+}
+
+.markdown-preview thead {
+    background-color: var(--tertiary-bg);
+}
+
+.markdown-preview th,
+.markdown-preview td {
+    border: 1px solid var(--border-color);
+    padding: 8px 10px;
+    text-align: left;
+    vertical-align: top;
+}
+
+.markdown-preview th {
+    color: var(--primary-text);
+    font-weight: 700;
+}
+
+.markdown-preview tbody tr:nth-child(even) {
+    background-color: rgba(255, 255, 255, 0.035);
+}
+
+.markdown-preview tbody tr:hover {
+    background-color: var(--accent-bg);
+}
+
+body.light-theme .markdown-preview table {
+    background-color: rgba(255, 250, 240, 0.85);
+    border-color: rgba(0, 0, 0, 0.12);
+}
+
+body.light-theme .markdown-preview thead {
+    background-color: rgba(0, 0, 0, 0.05);
+}
+
+body.light-theme .markdown-preview tbody tr:nth-child(even) {
+    background-color: rgba(0, 0, 0, 0.035);
 }
 
 .markdown-preview ul, .markdown-preview ol {
@@ -709,6 +816,39 @@ body.preview-collapsed .preview-container > * {
 
 ::-webkit-scrollbar-thumb:hover {
     background: var(--scrollbar-thumb-hover);
+}
+
+/* --- Mermaid diagram rendering --- */
+.markdown-preview .mermaid {
+    background-color: var(--tertiary-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 1em;
+    margin: 1em 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    overflow-x: auto;
+}
+
+.markdown-preview .mermaid svg {
+    max-width: 100%;
+    height: auto;
+}
+
+.markdown-preview .mermaid-error {
+    background-color: rgba(244, 67, 54, 0.12);
+    color: var(--danger-color, #f44336);
+    border: 1px solid var(--danger-color, #f44336);
+    border-radius: 6px;
+    padding: 10px 12px;
+    margin-bottom: 8px;
+    font-size: 0.9em;
+}
+
+body.light-theme .markdown-preview .mermaid {
+    background-color: rgba(255, 250, 240, 0.85);
+    border-color: rgba(0, 0, 0, 0.1);
 }
 
 /* 针对只包含一个 .katex-display 元素的 p 标签 (KaTeX 显示模式公式的容器) */

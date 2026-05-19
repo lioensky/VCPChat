@@ -14,6 +14,8 @@
     <script src="../vendor/highlight.min.js"></script>
     <!-- DOMPurify for HTML sanitization -->
     <script src="../vendor/purify.min.js"></script>
+    <!-- Mermaid for diagram rendering -->
+    <script src="../vendor/mermaid.min.js"></script>
     <!-- KaTeX for LaTeX rendering -->
     <link rel="stylesheet" href="../vendor/katex.min.css">
     <script defer src="../vendor/katex.min.js" crossorigin="anonymous"></script>
@@ -84,6 +86,7 @@
                     <textarea id="noteContent" placeholder="开始写笔记..." aria-label="笔记内容"></textarea>
                     <div class="content-bubble editor-bubble">编辑区</div>
                 </div>
+                <div id="editorPreviewResizer" class="editor-preview-resizer" role="separator" aria-orientation="vertical" aria-label="调整编辑区和预览区宽度" title="拖动调整编辑区/预览区比例"></div>
                 <!-- Preview Area -->
                 <div class="preview-container">
                     <div id="previewContent" class="markdown-preview" aria-live="polite">
