@@ -7,7 +7,7 @@
   "author": "VCPToolBox",
   "license": "MIT",
   "entryPoint": {
-    "command": "node topicCreator.js",
+    "command": "node topicsponsor.js",
     "timeout": 15000
   },
   "communication": {
