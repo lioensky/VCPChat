@@ -9,6 +9,13 @@ window.topicListManager = (() => {
     let uiHelper;
     let mainRendererFunctions;
     let wasSelectionListenerActive = false; // To store the state of the selection listener before dragging
+    let topicListRenderGeneration = 0;
+    let topicListScrollCleanup = null;
+    let topicCountObserver = null;
+
+    const TOPIC_INITIAL_RENDER_COUNT = 40;
+    const TOPIC_PROGRESSIVE_BATCH_SIZE = 30;
+    const TOPIC_LOAD_MORE_THRESHOLD_PX = 320;
 
     /**
      * Initializes the TopicListManager module.
@@ -98,11 +105,284 @@ window.topicListManager = (() => {
         return 0; // 不显示
     }
 
+    function cleanupProgressiveTopicRendering() {
+        topicListRenderGeneration++;
+        if (typeof topicListScrollCleanup === 'function') {
+            topicListScrollCleanup();
+            topicListScrollCleanup = null;
+        }
+        if (topicCountObserver) {
+            topicCountObserver.disconnect();
+            topicCountObserver = null;
+        }
+        const topicListUl = document.getElementById('topicList');
+        if (topicListUl?.sortableInstance) {
+            topicListUl.sortableInstance.destroy();
+            topicListUl.sortableInstance = null;
+        }
+    }
+
+    function getTopicScrollContainer(topicListUl) {
+        return topicListUl?.closest('.sidebar-list-scroll') || topicListContainer;
+    }
+
+    function ensureTopicCountObserver() {
+        if (topicCountObserver) return topicCountObserver;
+
+        topicCountObserver = new IntersectionObserver((entries) => {
+            entries.forEach((entry) => {
+                if (!entry.isIntersecting) return;
+
+                const li = entry.target;
+                topicCountObserver.unobserve(li);
+                loadTopicMessageCount(li);
+            });
+        }, {
+            root: getTopicScrollContainer(document.getElementById('topicList')),
+            rootMargin: '240px 0px',
+            threshold: 0.01
+        });
+
+        return topicCountObserver;
+    }
+
+    function loadTopicMessageCount(li) {
+        if (!li?.isConnected || li.dataset.countLoaded === 'true' || li.dataset.countLoading === 'true') return;
+
+        const itemId = li.dataset.itemId;
+        const itemType = li.dataset.itemType;
+        const topicId = li.dataset.topicId;
+        const topic = li.__topicData;
+        const messageCountSpan = li.querySelector('.message-count');
+
+        if (!itemId || !itemType || !topicId || !topic || !messageCountSpan) return;
+
+        li.dataset.countLoading = 'true';
+
+        let historyPromise;
+        if (itemType === 'agent') {
+            historyPromise = electronAPI.getChatHistory(itemId, topicId);
+        } else if (itemType === 'group') {
+            historyPromise = electronAPI.getGroupChatHistory(itemId, topicId);
+        }
+
+        if (!historyPromise) {
+            messageCountSpan.textContent = 'N/A';
+            li.dataset.countLoaded = 'true';
+            li.dataset.countLoading = 'false';
+            return;
+        }
+
+        historyPromise.then(historyResult => {
+            if (!li.isConnected) return;
+
+            messageCountSpan.classList.remove('has-unread', 'unread-marker-only');
+
+            if (historyResult && !historyResult.error && Array.isArray(historyResult)) {
+                const unreadCount = calculateTopicUnreadCount(topic, historyResult);
+                if (unreadCount > 0) {
+                    messageCountSpan.textContent = `${unreadCount}`;
+                    messageCountSpan.classList.add('has-unread');
+                } else if (unreadCount === -1) {
+                    messageCountSpan.textContent = `${historyResult.length}`;
+                    messageCountSpan.classList.add('unread-marker-only');
+                } else {
+                    messageCountSpan.textContent = `${historyResult.length}`;
+                }
+            } else {
+                messageCountSpan.textContent = 'N/A';
+            }
+            li.dataset.countLoaded = 'true';
+        }).catch(() => {
+            if (li.isConnected) {
+                messageCountSpan.textContent = 'ERR';
+            }
+        }).finally(() => {
+            if (li.isConnected) {
+                li.dataset.countLoading = 'false';
+            }
+        });
+    }
+
+    function createTopicListItem(topic, currentSelectedItem, currentTopicId, itemConfigFull) {
+        const li = document.createElement('li');
+        li.classList.add('topic-item');
+        li.dataset.itemId = currentSelectedItem.id;
+        li.dataset.itemType = currentSelectedItem.type;
+        li.dataset.topicId = topic.id;
+        li.__topicData = topic;
+
+        const isCurrentActiveTopic = topic.id === currentTopicId;
+        li.classList.toggle('active', isCurrentActiveTopic);
+        li.classList.toggle('active-topic-glowing', isCurrentActiveTopic);
+
+        const avatarImg = document.createElement('img');
+        avatarImg.classList.add('avatar');
+        avatarImg.loading = 'lazy';
+        avatarImg.decoding = 'async';
+        avatarImg.src = currentSelectedItem.avatarUrl ? currentSelectedItem.avatarUrl : (currentSelectedItem.type === 'group' ? 'assets/default_group_avatar.png' : 'assets/default_avatar.png');
+
+        const displayTopicTitle = normalizeTopicTitle(topic.name || `话题 ${topic.id}`);
+        avatarImg.alt = `${currentSelectedItem.name} - ${displayTopicTitle}`;
+        avatarImg.onerror = () => { avatarImg.src = (currentSelectedItem.type === 'group' ? 'assets/default_group_avatar.png' : 'assets/default_avatar.png'); };
+
+        const topicTitleDisplay = document.createElement('span');
+        topicTitleDisplay.classList.add('topic-title-display');
+        topicTitleDisplay.textContent = displayTopicTitle;
+
+        const messageCountSpan = document.createElement('span');
+        messageCountSpan.classList.add('message-count');
+        messageCountSpan.textContent = '...';
+
+        li.appendChild(avatarImg);
+
+        if (topic.locked === false) {
+            const unlockedIndicator = document.createElement('span');
+            unlockedIndicator.classList.add('unlocked-indicator');
+            unlockedIndicator.textContent = 'unlocked';
+            unlockedIndicator.title = 'AI可以查看和回复此话题';
+            li.appendChild(unlockedIndicator);
+        }
+
+        li.appendChild(topicTitleDisplay);
+        li.appendChild(messageCountSpan);
+
+        const observer = ensureTopicCountObserver();
+        observer.observe(li);
+
+        li.addEventListener('click', async () => {
+            if (currentTopicIdRef.get() === topic.id) {
+                return;
+            }
+
+            if (window.__vcpRendererReady === false) {
+                window.__vcpPendingTopicSelection = {
+                    itemId: currentSelectedItem.id,
+                    itemType: currentSelectedItem.type,
+                    topicId: topic.id,
+                };
+                if (uiHelper && uiHelper.showToastNotification) {
+                    uiHelper.showToastNotification('正在初始化界面，稍后自动打开该话题', 'info');
+                }
+                return;
+            }
+
+            try {
+                await Promise.resolve(mainRendererFunctions.selectTopic(topic.id));
+            } catch (error) {
+                console.error('[TopicListManager] Failed to select topic:', error);
+                if (uiHelper && uiHelper.showToastNotification) {
+                    uiHelper.showToastNotification(`打开话题失败: ${error.message}`, 'error');
+                }
+            }
+        });
+
+        li.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            showTopicContextMenu(e, li, itemConfigFull, topic, currentSelectedItem.type);
+        });
+
+        return li;
+    }
+
+    function renderTopicListProgressively(topicListUl, topicsToProcess, currentSelectedItem, currentTopicId, itemConfigFull, searchTerm) {
+        const renderGeneration = topicListRenderGeneration;
+        const scrollContainer = getTopicScrollContainer(topicListUl);
+        const totalCount = topicsToProcess.length;
+        const initialCount = searchTerm
+            ? Math.min(Math.max(TOPIC_INITIAL_RENDER_COUNT, TOPIC_PROGRESSIVE_BATCH_SIZE), totalCount)
+            : Math.min(TOPIC_INITIAL_RENDER_COUNT, totalCount);
+
+        let currentIndex = 0;
+        let isRendering = false;
+        let allRendered = false;
+
+        const statusLi = document.createElement('li');
+        statusLi.className = 'topic-list-progressive-status';
+        statusLi.textContent = '';
+        statusLi.style.justifyContent = 'center';
+        statusLi.style.opacity = '0.75';
+
+        const finalizeIfDone = () => {
+            if (!allRendered || renderGeneration !== topicListRenderGeneration) return;
+
+            statusLi.remove();
+            if (typeof topicListScrollCleanup === 'function') {
+                topicListScrollCleanup();
+                topicListScrollCleanup = null;
+            }
+
+            if (currentSelectedItem.id && topicsToProcess.length > 0 && typeof Sortable !== 'undefined' && !searchTerm) {
+                initializeTopicSortable(currentSelectedItem.id, currentSelectedItem.type);
+            }
+        };
+
+        const renderNextBatch = (batchSize = TOPIC_PROGRESSIVE_BATCH_SIZE) => {
+            if (isRendering || allRendered || renderGeneration !== topicListRenderGeneration) return;
+            isRendering = true;
+
+            requestAnimationFrame(() => {
+                if (renderGeneration !== topicListRenderGeneration) {
+                    isRendering = false;
+                    return;
+                }
+
+                const fragment = document.createDocumentFragment();
+                const end = Math.min(currentIndex + batchSize, totalCount);
+
+                for (; currentIndex < end; currentIndex++) {
+                    fragment.appendChild(createTopicListItem(
+                        topicsToProcess[currentIndex],
+                        currentSelectedItem,
+                        currentTopicId,
+                        itemConfigFull
+                    ));
+                }
+
+                if (statusLi.parentNode === topicListUl) {
+                    topicListUl.insertBefore(fragment, statusLi);
+                } else {
+                    topicListUl.appendChild(fragment);
+                }
+
+                allRendered = currentIndex >= totalCount;
+                isRendering = false;
+
+                if (!allRendered) {
+                    statusLi.textContent = `继续向下滚动加载更多话题（${currentIndex}/${totalCount}）`;
+                    if (!statusLi.parentNode) topicListUl.appendChild(statusLi);
+                    if (scrollContainer.scrollHeight <= scrollContainer.clientHeight + TOPIC_LOAD_MORE_THRESHOLD_PX) {
+                        renderNextBatch();
+                    }
+                } else {
+                    finalizeIfDone();
+                }
+            });
+        };
+
+        const onScroll = () => {
+            if (allRendered || isRendering || renderGeneration !== topicListRenderGeneration) return;
+
+            const distanceToBottom = scrollContainer.scrollHeight - scrollContainer.scrollTop - scrollContainer.clientHeight;
+            if (distanceToBottom <= TOPIC_LOAD_MORE_THRESHOLD_PX) {
+                renderNextBatch();
+            }
+        };
+
+        scrollContainer.addEventListener('scroll', onScroll, { passive: true });
+        topicListScrollCleanup = () => scrollContainer.removeEventListener('scroll', onScroll);
+
+        topicListUl.innerHTML = '';
+        renderNextBatch(initialCount);
+    }
+
     async function loadTopicList() {
         if (!topicListContainer) {
             console.error("Topic list container (tabContentTopics) not found.");
             return;
         }
+
+        cleanupProgressiveTopicRendering();
 
         let topicListUl = topicListContainer.querySelector('.topic-list');
         if (topicListUl) {
@@ -197,140 +477,8 @@ window.topicListManager = (() => {
             if (topicsToProcess.length === 0) {
                 topicListUl.innerHTML = `<li><p>${itemNameForLoading} 还没有任何话题${searchTerm ? '匹配当前搜索' : ''}。您可以点击上方的“新建${currentSelectedItem.type === 'group' ? '群聊话题' : '聊天话题'}”按钮创建一个。</p></li>`;
             } else {
-                topicListUl.innerHTML = '';
                 const currentTopicId = currentTopicIdRef.get();
-
-                // --- 优化：分批渲染话题列表 ---
-                const BATCH_SIZE = 20;
-                let currentIndex = 0;
-
-                const renderBatch = () => {
-                    const fragment = document.createDocumentFragment();
-                    const end = Math.min(currentIndex + BATCH_SIZE, topicsToProcess.length);
-
-                    for (; currentIndex < end; currentIndex++) {
-                        const topic = topicsToProcess[currentIndex];
-                        const li = document.createElement('li');
-                        li.classList.add('topic-item');
-                        li.dataset.itemId = currentSelectedItem.id;
-                        li.dataset.itemType = currentSelectedItem.type;
-                        li.dataset.topicId = topic.id;
-                        const isCurrentActiveTopic = topic.id === currentTopicId;
-                        li.classList.toggle('active', isCurrentActiveTopic);
-                        li.classList.toggle('active-topic-glowing', isCurrentActiveTopic);
-
-                        const avatarImg = document.createElement('img');
-                        avatarImg.classList.add('avatar');
-                        // 优化：延迟加载头像，仅在需要时添加时间戳
-                        avatarImg.src = currentSelectedItem.avatarUrl ? currentSelectedItem.avatarUrl : (currentSelectedItem.type === 'group' ? 'assets/default_group_avatar.png' : 'assets/default_avatar.png');
-                        const displayTopicTitle = normalizeTopicTitle(topic.name || `话题 ${topic.id}`);
-                        avatarImg.alt = `${currentSelectedItem.name} - ${displayTopicTitle}`;
-                        avatarImg.onerror = () => { avatarImg.src = (currentSelectedItem.type === 'group' ? 'assets/default_group_avatar.png' : 'assets/default_avatar.png'); };
-
-                        const topicTitleDisplay = document.createElement('span');
-                        topicTitleDisplay.classList.add('topic-title-display');
-                        topicTitleDisplay.textContent = displayTopicTitle;
-
-                        const messageCountSpan = document.createElement('span');
-                        messageCountSpan.classList.add('message-count');
-                        messageCountSpan.textContent = '...';
-
-                        li.appendChild(avatarImg);
-
-                        if (topic.locked === false) {
-                            const unlockedIndicator = document.createElement('span');
-                            unlockedIndicator.classList.add('unlocked-indicator');
-                            unlockedIndicator.textContent = 'unlocked';
-                            unlockedIndicator.title = 'AI可以查看和回复此话题';
-                            li.appendChild(unlockedIndicator);
-                        }
-
-                        li.appendChild(topicTitleDisplay);
-                        li.appendChild(messageCountSpan);
-
-                        // 优化：延迟加载计数逻辑，避免瞬间爆发大量 IPC 请求
-                        setTimeout(() => {
-                            if (!li.isConnected) return; // 如果节点已从 DOM 移除，则跳过
-
-                            let historyPromise;
-                            if (currentSelectedItem.type === 'agent') {
-                                historyPromise = electronAPI.getChatHistory(currentSelectedItem.id, topic.id);
-                            } else if (currentSelectedItem.type === 'group') {
-                                historyPromise = electronAPI.getGroupChatHistory(currentSelectedItem.id, topic.id);
-                            }
-
-                            if (historyPromise) {
-                                historyPromise.then(historyResult => {
-                                    if (historyResult && !historyResult.error && Array.isArray(historyResult)) {
-                                        const unreadCount = calculateTopicUnreadCount(topic, historyResult);
-                                        if (unreadCount > 0) {
-                                            messageCountSpan.textContent = `${unreadCount}`;
-                                            messageCountSpan.classList.add('has-unread');
-                                        } else if (unreadCount === -1) {
-                                            messageCountSpan.textContent = `${historyResult.length}`;
-                                            messageCountSpan.classList.add('unread-marker-only');
-                                        } else {
-                                            messageCountSpan.textContent = `${historyResult.length}`;
-                                        }
-                                    } else {
-                                        messageCountSpan.textContent = 'N/A';
-                                    }
-                                }).catch(() => messageCountSpan.textContent = 'ERR');
-                            }
-                        }, 100 + (currentIndex * 10)); // 阶梯式延迟请求
-
-                        li.addEventListener('click', async () => {
-                            if (currentTopicIdRef.get() === topic.id) {
-                                return;
-                            }
-
-                            if (window.__vcpRendererReady === false) {
-                                window.__vcpPendingTopicSelection = {
-                                    itemId: currentSelectedItem.id,
-                                    itemType: currentSelectedItem.type,
-                                    topicId: topic.id,
-                                };
-                                if (uiHelper && uiHelper.showToastNotification) {
-                                    uiHelper.showToastNotification('正在初始化界面，稍后自动打开该话题', 'info');
-                                }
-                                return;
-                            }
-
-                            try {
-                                await Promise.resolve(mainRendererFunctions.selectTopic(topic.id));
-                            } catch (error) {
-                                console.error('[TopicListManager] Failed to select topic:', error);
-                                if (uiHelper && uiHelper.showToastNotification) {
-                                    uiHelper.showToastNotification(`打开话题失败: ${error.message}`, 'error');
-                                }
-                            }
-                        });
-
-                        li.addEventListener('contextmenu', (e) => {
-                            e.preventDefault();
-                            showTopicContextMenu(e, li, itemConfigFull, topic, currentSelectedItem.type);
-                        });
-                        fragment.appendChild(li);
-                    }
-
-                    topicListUl.appendChild(fragment);
-
-                    if (currentIndex < topicsToProcess.length) {
-                        // 使用 requestAnimationFrame 确保在下一帧继续渲染，保持 UI 响应
-                        requestAnimationFrame(renderBatch);
-                    } else {
-                        // 渲染完成后初始化排序
-                        if (currentSelectedItem.id && topicsToProcess.length > 0 && typeof Sortable !== 'undefined') {
-                            initializeTopicSortable(currentSelectedItem.id, currentSelectedItem.type);
-                        }
-                    }
-                };
-
-                // 开始第一批渲染
-                renderBatch();
-            }
-            if (currentSelectedItem.id && topicsToProcess && topicsToProcess.length > 0 && typeof Sortable !== 'undefined') {
-                initializeTopicSortable(currentSelectedItem.id, currentSelectedItem.type);
+                renderTopicListProgressively(topicListUl, topicsToProcess, currentSelectedItem, currentTopicId, itemConfigFull, searchTerm);
             }
         }
     }
@@ -343,6 +491,9 @@ window.topicListManager = (() => {
     }
 
     function setupTopicSearchListener(inputElement) {
+        if (inputElement.dataset.topicSearchBound === 'true') return;
+        inputElement.dataset.topicSearchBound = 'true';
+
         inputElement.addEventListener('input', filterTopicList);
         inputElement.addEventListener('keydown', (event) => {
             if (event.key === 'Enter') {
