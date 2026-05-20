@@ -32,15 +32,9 @@ function escapeHtml(text) {
  * @returns {string} 处理后的文本
  */
 function processStartEndMarkers(text) {
-    if (typeof text !== 'string' || (!text.includes('「始」') && !text.includes('「始ESCAPE」'))) {
+    if (typeof text !== 'string' || (!text.includes('始') && !text.includes('{') && !text.includes('「'))) {
         return text;
     }
-
-    const startMarkers = ['「始ESCAPE」', '「始」'];
-    const endMarkerMap = new Map([
-        ['「始ESCAPE」', '「末ESCAPE」'],
-        ['「始」', '「末」']
-    ]);
 
     const isLikelyLiteralMention = (source, markerIndex, marker) => {
         const prevChar = markerIndex > 0 ? source[markerIndex - 1] : '';
@@ -58,51 +52,103 @@ function processStartEndMarkers(text) {
         return false;
     };
 
-    let result = '';
-    let cursor = 0;
+    // 1. 识别并保护 ESCAPE 区域
+    const escapeStartRegex = /([「{]始[Ee][Ss][Cc][Aa][Pp][Ee][」}])/gi;
+    const escapeEndRegex = /([「{]末[Ee][Ss][Cc][Aa][Pp][Ee][」}])/gi;
+    
+    const escapeBlocks = [];
+    let processedText = text;
+    let searchCursor = 0;
 
-    while (cursor < text.length) {
-        let nextStartIndex = -1;
-        let matchedStartMarker = null;
+    while (true) {
+        escapeStartRegex.lastIndex = searchCursor;
+        const startMatch = escapeStartRegex.exec(processedText);
+        if (!startMatch) break;
 
-        for (const marker of startMarkers) {
-            let searchFrom = cursor;
-            while (true) {
-                const index = text.indexOf(marker, searchFrom);
-                if (index === -1) break;
-                if (!isLikelyLiteralMention(text, index, marker)) {
-                    if (nextStartIndex === -1 || index < nextStartIndex) {
-                        nextStartIndex = index;
-                        matchedStartMarker = marker;
-                    }
-                    break;
-                }
-                searchFrom = index + marker.length;
-            }
+        const startIdx = startMatch.index;
+        const startMarker = startMatch[0];
+
+        if (isLikelyLiteralMention(processedText, startIdx, startMarker)) {
+            searchCursor = startIdx + startMarker.length;
+            continue;
         }
 
-        if (nextStartIndex === -1 || !matchedStartMarker) {
-            result += text.slice(cursor);
-            break;
+        const contentStart = startIdx + startMarker.length;
+        escapeEndRegex.lastIndex = contentStart;
+        const endMatch = escapeEndRegex.exec(processedText);
+
+        let endIdx;
+        let endMarker = '';
+        if (!endMatch) {
+            // 未闭合的 ESCAPE 区域（流式传输场景）
+            endIdx = processedText.length;
+        } else {
+            endIdx = endMatch.index;
+            endMarker = endMatch[0];
         }
 
-        result += text.slice(cursor, nextStartIndex);
+        const rawContent = processedText.slice(contentStart, endIdx);
+        const placeholder = `___VCP_ESCAPE_BLOCK_PLACEHOLDER_${escapeBlocks.length}___`;
+        
+        escapeBlocks.push({
+            placeholder,
+            startMarker,
+            endMarker,
+            rawContent
+        });
 
-        const endMarker = endMarkerMap.get(matchedStartMarker);
-        const contentStart = nextStartIndex + matchedStartMarker.length;
-        const endIndex = text.indexOf(endMarker, contentStart);
-
-        if (endIndex === -1) {
-            result += matchedStartMarker + escapeHtml(text.slice(contentStart));
-            break;
-        }
-
-        const content = text.slice(contentStart, endIndex);
-        result += matchedStartMarker + escapeHtml(content) + endMarker;
-        cursor = endIndex + endMarker.length;
+        // 用占位符替换整个 ESCAPE 区域
+        processedText = processedText.slice(0, startIdx) + placeholder + processedText.slice(endIdx + endMarker.length);
+        searchCursor = startIdx + placeholder.length;
     }
 
-    return result;
+    // 2. 处理普通的「始」「末」区域
+    const normalStartRegex = /([「{]始[」}])/g;
+    const normalEndRegex = /([「{]末[」}])/g;
+    let normalCursor = 0;
+
+    while (normalCursor < processedText.length) {
+        normalStartRegex.lastIndex = normalCursor;
+        const startMatch = normalStartRegex.exec(processedText);
+        if (!startMatch) break;
+
+        const startIdx = startMatch.index;
+        const startMarker = startMatch[0];
+
+        if (isLikelyLiteralMention(processedText, startIdx, startMarker)) {
+            normalCursor = startIdx + startMarker.length;
+            continue;
+        }
+
+        const contentStart = startIdx + startMarker.length;
+        normalEndRegex.lastIndex = contentStart;
+        const endMatch = normalEndRegex.exec(processedText);
+
+        if (!endMatch) {
+            // 未闭合的普通区域
+            const content = processedText.slice(contentStart);
+            processedText = processedText.slice(0, startIdx) + startMarker + escapeHtml(content);
+            break;
+        }
+
+        const endIdx = endMatch.index;
+        const endMarker = endMatch[0];
+        const content = processedText.slice(contentStart, endIdx);
+
+        const processedContent = startMarker + escapeHtml(content) + endMarker;
+        processedText = processedText.slice(0, startIdx) + processedContent + processedText.slice(endIdx + endMarker.length);
+        normalCursor = startIdx + processedContent.length;
+    }
+
+    // 3. 恢复并转义 ESCAPE 区域
+    for (let i = 0; i < escapeBlocks.length; i++) {
+        const block = escapeBlocks[i];
+        // ESCAPE 区域内部的内容直接进行 HTML 转义
+        const escapedContent = block.startMarker + escapeHtml(block.rawContent) + block.endMarker;
+        processedText = processedText.split(block.placeholder).join(escapedContent);
+    }
+
+    return processedText;
 }
 
 /**
@@ -242,8 +288,8 @@ function deIndentToolRequestBlocks(text) {
  * @returns {string|null} The extracted tool name or null.
  */
 function extractVcpToolName(toolContent) {
-    const match = toolContent.match(/tool_name:\s*「始」([^「」]+)「末」/);
-    return match ? match[1] : null;
+    const match = toolContent.match(/tool_name:\s*(?:[「{]始(?:[Ee][Ss][Cc][Aa][Pp][Ee])?[」}])\s*([^「」{}]+?)\s*(?:[「{]末(?:[Ee][Ss][Cc][Aa][Pp][Ee])?[」}])/i);
+    return match ? match[1].trim() : null;
 }
 
 /**
@@ -501,8 +547,9 @@ function setupHtmlPreview(preElement, htmlContent) {
         return;
     }
     
-    // 🟢 额外检查：内容是否包含「始」「末」标记
-    if (htmlContent.includes('「始」') || htmlContent.includes('「末」')) {
+    // 🟢 额外检查：内容是否包含「始」「末」标记及其变体
+    const hasToolMarkers = /[「{][始末](?:[Ee][Ss][Cc][Aa][Pp][Ee])?[」}]/i.test(htmlContent);
+    if (hasToolMarkers) {
         console.log('[ContentProcessor] Skipping HTML preview: contains tool markers');
         preElement.dataset.vcpHtmlPreview = "blocked";
         return;

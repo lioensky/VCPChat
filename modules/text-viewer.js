@@ -156,6 +156,43 @@ document.addEventListener('DOMContentLoaded', async () => {
         const desktopPushRegex = /(?<!`)<<<\[DESKTOP_PUSH\]>>>([\s\S]*?)<<<\[DESKTOP_PUSH_END\]>>>(?!`)/gs;
         const desktopPushPartialRegex = /(?<!`)<<<\[DESKTOP_PUSH\]>>>([\s\S]*)$/s;
 
+        const createVcpEndMarkerRegex = (isEscape) => {
+            return isEscape
+                ? /[「{]末[Ee][Ss][Cc][Aa][Pp][Ee][」}]/gi
+                : /[「{]末[」}]/g;
+        };
+
+        const extractMarkedField = (source, labelRegex) => {
+            if (!source || typeof source !== 'string') return null;
+
+            labelRegex.lastIndex = 0;
+            const labelMatch = labelRegex.exec(source);
+            if (!labelMatch) return null;
+
+            const startRegex = /[「{]始(?:[Ee][Ss][Cc][Aa][Pp][Ee])?[」}]/gi;
+            startRegex.lastIndex = labelMatch.index + labelMatch[0].length;
+            const startMatch = startRegex.exec(source);
+            if (!startMatch) return null;
+
+            // 字段名和起始标记之间只允许空白，避免误吞到后续字段
+            if (source.slice(labelMatch.index + labelMatch[0].length, startMatch.index).trim() !== '') {
+                return null;
+            }
+
+            const startMarker = startMatch[0];
+            const isEscape = /escape/i.test(startMarker);
+            const contentStart = startMatch.index + startMarker.length;
+            const endRegex = createVcpEndMarkerRegex(isEscape);
+            endRegex.lastIndex = contentStart;
+            const endMatch = endRegex.exec(source);
+
+            if (!endMatch) {
+                return source.slice(contentStart).trim();
+            }
+
+            return source.slice(contentStart, endMatch.index).trim();
+        };
+
         let processed = text;
 
         // 🟢 处理桌面推送块：将推送的HTML内容渲染为代码块展示
@@ -237,10 +274,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // Process Tool Requests - Viewer Mode (Full Details)
         processed = processed.replace(toolRegex, (match, content) => {
-            const toolNameRegex = /<tool_name>([\s\S]*?)<\/tool_name>|tool_name:\s*([^\n\r]*)/;
-            const toolNameMatch = content.match(toolNameRegex);
-            let toolName = (toolNameMatch && (toolNameMatch[1] || toolNameMatch[2])) ? (toolNameMatch[1] || toolNameMatch[2]).trim() : 'Tool Call';
-            toolName = toolName.replace(/「始」|「末」|,/g, '').trim();
+            const xmlToolNameMatch = content.match(/<tool_name>([\s\S]*?)<\/tool_name>/i);
+            const markedToolName = extractMarkedField(content, /tool_name:\s*/i);
+            let toolName = (xmlToolNameMatch?.[1] || markedToolName || 'Tool Call').trim();
+            toolName = toolName.replace(/[「{](?:始|末)(?:[Ee][Ss][Cc][Aa][Pp][Ee])?[」}]/gi, '').replace(/,$/, '').trim();
 
             let finalContent = escapeHtml(content.trim());
             if (toolName) {
@@ -297,6 +334,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     function ensureHtmlFenced(text) {
         const doctypeTag = '<!DOCTYPE html>';
+        const htmlCloseTag = '</html>';
         const lowerText = text.toLowerCase();
         
         // Quick exit if no doctype is present.
@@ -310,6 +348,37 @@ document.addEventListener('DOMContentLoaded', async () => {
             return text;
         }
 
+        // 保护 VCP 参数区域，尤其是 ESCAPE 内部可能包含完整 HTML 文档
+        const protectedRanges = [];
+        const startRegex = /[「{]始(?:[Ee][Ss][Cc][Aa][Pp][Ee])?[」}]/gi;
+        let searchStart = 0;
+        while (true) {
+            startRegex.lastIndex = searchStart;
+            const startMatch = startRegex.exec(text);
+            if (!startMatch) break;
+
+            const startPos = startMatch.index;
+            const startMarker = startMatch[0];
+            const isEscape = /escape/i.test(startMarker);
+            const endRegex = isEscape
+                ? /[「{]末[Ee][Ss][Cc][Aa][Pp][Ee][」}]/gi
+                : /[「{]末[」}]/g;
+
+            const contentStart = startPos + startMarker.length;
+            endRegex.lastIndex = contentStart;
+            const endMatch = endRegex.exec(text);
+
+            if (!endMatch) {
+                protectedRanges.push({ start: startPos, end: text.length });
+                break;
+            }
+
+            protectedRanges.push({ start: startPos, end: endMatch.index + endMatch[0].length });
+            searchStart = endMatch.index + endMatch[0].length;
+        }
+
+        const isProtected = (index) => protectedRanges.some(range => index >= range.start && index < range.end);
+
         let result = '';
         let lastIndex = 0;
         while (true) {
@@ -322,13 +391,19 @@ document.addEventListener('DOMContentLoaded', async () => {
                 break;
             }
 
-            const endIndex = lowerText.indexOf('</html>', startIndex + doctypeTag.length);
+            const endIndex = lowerText.indexOf(htmlCloseTag, startIndex + doctypeTag.length);
             if (endIndex === -1) {
                 result += text.substring(startIndex);
                 break;
             }
 
-            const block = text.substring(startIndex, endIndex + '</html>'.length);
+            const block = text.substring(startIndex, endIndex + htmlCloseTag.length);
+
+            if (isProtected(startIndex)) {
+                result += block;
+                lastIndex = endIndex + htmlCloseTag.length;
+                continue;
+            }
             
             const fencesInResult = (result.match(/```/g) || []).length;
 
@@ -338,7 +413,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 result += block;
             }
 
-            lastIndex = endIndex + '</html>'.length;
+            lastIndex = endIndex + htmlCloseTag.length;
         }
         return result;
     }
@@ -359,11 +434,29 @@ document.addEventListener('DOMContentLoaded', async () => {
             return placeholder;
         });
 
-        // Step 3: Process and scope CSS from the main content (outside code blocks).
+        // Step 3: CSS 提取前保护 TOOL_REQUEST 与 VCP 参数区域，避免参数内 <style> 被误注入。
+        const styleProtectMap = new Map();
+        let styleProtectId = 0;
+        const protectForStyle = (match) => {
+            const placeholder = `__VCP_VIEWER_STYLE_PROTECT_${styleProtectId}__`;
+            styleProtectMap.set(placeholder, match);
+            styleProtectId++;
+            return placeholder;
+        };
+
+        processed = processed.replace(/(?<!`)<<<\[TOOL_REQUEST\]>>>([\s\S]*?)<<<\[END_TOOL_REQUEST\]>>>(?!`)/gs, protectForStyle);
+        processed = processed.replace(/(?:[「{]始[Ee][Ss][Cc][Aa][Pp][Ee][」}])[\s\S]*?(?:(?:[「{]末[Ee][Ss][Cc][Aa][Pp][Ee][」}])|$)/gi, protectForStyle);
+        processed = processed.replace(/(?:[「{]始[」}])[\s\S]*?(?:(?:[「{]末[」}])|$)/g, protectForStyle);
+
+        // Step 4: Process and scope CSS from the main content (outside code blocks/tool params).
         const { processedContent: contentWithoutStyles } = processAndInjectScopedCss(processed, scopeId);
         processed = contentWithoutStyles;
 
-        // Step 4: Run other pre-processing on the text (which still has placeholders).
+        for (const [placeholder, block] of styleProtectMap.entries()) {
+            processed = processed.split(placeholder).join(block);
+        }
+
+        // Step 5: Run other pre-processing on the text (which still has placeholders).
         processed = deIndentHtml(processed);
         processed = transformSpecialBlocksForViewer(processed);
         
@@ -373,7 +466,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         processed = processed.replace(/^(\s*)(```.*)/gm, '$2'); // removeIndentationFromCodeBlockMarkers
         processed = processed.replace(/(<img[^>]+>)\s*(```)/g, '$1\n\n<!-- VCP-Renderer-Separator -->\n\n$2'); // ensureSeparatorBetweenImgAndCode
 
-        // Step 5: Restore the protected code blocks.
+        // Step 6: Restore the protected code blocks.
         if (codeBlockMap.size > 0) {
             for (const [placeholder, block] of codeBlockMap.entries()) {
                 processed = processed.replace(placeholder, block);

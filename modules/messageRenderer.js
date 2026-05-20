@@ -387,28 +387,56 @@ function transformSpecialBlocks(text, codeBlockMap) {
     // 工具结果块在 contentPipeline 中被提取为占位符，贯穿 Markdown 解析后
     // 由 restoreRenderedToolResults() 独立渲染并恢复，彻底避免内部语法干扰
 
+    const createVcpEndMarkerRegex = (isEscape) => {
+        return isEscape
+            ? /[「{]末[Ee][Ss][Cc][Aa][Pp][Ee][」}]/gi
+            : /[「{]末[」}]/g;
+    };
+
+    const extractMarkedField = (source, labelRegex) => {
+        if (!source || typeof source !== 'string') return null;
+
+        const labelMatch = labelRegex.exec(source);
+        if (!labelMatch) return null;
+
+        const startRegex = /[「{]始(?:[Ee][Ss][Cc][Aa][Pp][Ee])?[」}]/gi;
+        startRegex.lastIndex = labelMatch.index + labelMatch[0].length;
+        const startMatch = startRegex.exec(source);
+        if (!startMatch) return null;
+
+        // 字段名和起始标记之间只允许空白，避免误吞到后续字段
+        if (source.slice(labelMatch.index + labelMatch[0].length, startMatch.index).trim() !== '') {
+            return null;
+        }
+
+        const startMarker = startMatch[0];
+        const isEscape = /escape/i.test(startMarker);
+        const contentStart = startMatch.index + startMarker.length;
+        const endRegex = createVcpEndMarkerRegex(isEscape);
+        endRegex.lastIndex = contentStart;
+        const endMatch = endRegex.exec(source);
+
+        if (!endMatch) {
+            return source.slice(contentStart).trim();
+        }
+
+        return source.slice(contentStart, endMatch.index).trim();
+    };
+
     // Process Tool Requests
     processed = processed.replace(TOOL_REGEX, (match, content) => {
+        const detectedToolName = extractMarkedField(content, /tool_name:\s*/i);
+        const detectedCommand = extractMarkedField(content, /command:\s*/i);
+
         // Check if this is a DailyNote tool call with the 'create' command
-        const isDailyNoteCreate = /tool_name:\s*(?:「始ESCAPE」\s*DailyNote\s*「末ESCAPE」|「始」\s*DailyNote\s*「末」)/.test(content) &&
-            /command:\s*(?:「始ESCAPE」\s*create\s*「末ESCAPE」|「始」\s*create\s*「末」)/.test(content);
+        const isDailyNoteCreate = detectedToolName === 'DailyNote' && detectedCommand === 'create';
 
         if (isDailyNoteCreate) {
             // --- It's a DailyNote Tool, render it as a diary bubble ---
-            const maidRegex = /(?:maid|maidName):\s*(?:「始ESCAPE」([\s\S]*?)「末ESCAPE」|「始」([^「」]*)「末」)/;
-            const dateRegex = /Date:\s*(?:「始ESCAPE」([\s\S]*?)「末ESCAPE」|「始」([^「」]*)「末」)/;
-            const contentRegex = /Content:\s*(?:「始ESCAPE」([\s\S]*?)「末ESCAPE」|「始」([\s\S]*?)「末」)/;
-            const tagRegex = /Tag:\s*(?:「始ESCAPE」([\s\S]*?)「末ESCAPE」|「始」([\s\S]*?)「末」)/;
-
-            const maidMatch = content.match(maidRegex);
-            const dateMatch = content.match(dateRegex);
-            const contentMatch = content.match(contentRegex);
-            const tagMatch = content.match(tagRegex);
-
-            const maid = maidMatch ? (maidMatch[1] || maidMatch[2] || '').trim() : '';
-            const date = dateMatch ? (dateMatch[1] || dateMatch[2] || '').trim() : '';
-            const diaryContent = contentMatch ? (contentMatch[1] || contentMatch[2] || '').trim() : '[日记内容解析失败]';
-            const diaryTag = tagMatch ? (tagMatch[1] || tagMatch[2] || '').trim() : '';
+            const maid = extractMarkedField(content, /(?:maid|maidName):\s*/i) || '';
+            const date = extractMarkedField(content, /Date:\s*/i) || '';
+            const diaryContent = extractMarkedField(content, /Content:\s*/i) || '[日记内容解析失败]';
+            const diaryTag = extractMarkedField(content, /Tag:\s*/i) || '';
 
             let html = `<div class="maid-diary-bubble">`;
             html += `<div class="diary-header">`;
@@ -446,18 +474,15 @@ function transformSpecialBlocks(text, codeBlockMap) {
             return html;
         } else {
             // --- It's a regular tool call, render it normally ---
-            const toolNameRegex = /<tool_name>([\s\S]*?)<\/tool_name>|tool_name:\s*(?:「始ESCAPE」([\s\S]*?)「末ESCAPE」|「始」([^「」]*)「末」)/;
-            const toolNameMatch = content.match(toolNameRegex);
+            const xmlToolNameMatch = content.match(/<tool_name>([\s\S]*?)<\/tool_name>/i);
 
             let toolName = 'Processing...';
-            if (toolNameMatch) {
-                let extractedName = (toolNameMatch[1] || toolNameMatch[2] || toolNameMatch[3] || '').trim();
-                if (extractedName) {
-                    extractedName = extractedName.replace(/「始ESCAPE」|「末ESCAPE」|「始」|「末」/g, '').replace(/,$/, '').trim();
-                }
-                if (extractedName) {
-                    toolName = extractedName;
-                }
+            let extractedName = (xmlToolNameMatch?.[1] || detectedToolName || '').trim();
+            if (extractedName) {
+                extractedName = extractedName.replace(/[「{](?:始|末)(?:[Ee][Ss][Cc][Aa][Pp][Ee])?[」}]/gi, '').replace(/,$/, '').trim();
+            }
+            if (extractedName) {
+                toolName = extractedName;
             }
 
             const escapedFullContent = escapeHtml(restoreBlocks(content));
@@ -674,37 +699,42 @@ function ensureHtmlFenced(text) {
         return text;
     }
 
-    // 🟢 构建「始」「末」与「始ESCAPE」「末ESCAPE」保护区域
+    // 🟢 构建「始」「末」与「始ESCAPE」「末ESCAPE」及其变体保护区域
     const protectedRanges = [];
-    const markerPairs = [
-        { start: '「始ESCAPE」', end: '「末ESCAPE」' },
-        { start: '「始」', end: '「末」' }
-    ];
+    const startRegex = /([「{]始(?:[Ee][Ss][Cc][Aa][Pp][Ee])?[」}])/gi;
     let searchStart = 0;
 
     while (true) {
-        let matchedPair = null;
-        let startPos = -1;
+        startRegex.lastIndex = searchStart;
+        const startMatch = startRegex.exec(text);
+        if (!startMatch) break;
 
-        for (const pair of markerPairs) {
-            const index = text.indexOf(pair.start, searchStart);
-            if (index !== -1 && (startPos === -1 || index < startPos)) {
-                startPos = index;
-                matchedPair = pair;
-            }
+        const startPos = startMatch.index;
+        const startMarker = startMatch[0];
+
+        const isEscape = /escape/i.test(startMarker);
+        let endRegex;
+        if (isEscape) {
+            endRegex = /[「{]末[Ee][Ss][Cc][Aa][Pp][Ee][」}]/gi;
+        } else {
+            endRegex = /[「{]末[」}]/g;
         }
 
-        if (startPos === -1 || !matchedPair) break;
+        const contentStart = startPos + startMarker.length;
+        endRegex.lastIndex = contentStart;
+        const endMatch = endRegex.exec(text);
 
-        const endPos = text.indexOf(matchedPair.end, startPos + matchedPair.start.length);
-        if (endPos === -1) {
+        if (!endMatch) {
             // 未闭合的开始标记，保护到文本末尾（流式传输场景）
             protectedRanges.push({ start: startPos, end: text.length });
             break;
         }
 
-        protectedRanges.push({ start: startPos, end: endPos + matchedPair.end.length });
-        searchStart = endPos + matchedPair.end.length;
+        const endPos = endMatch.index;
+        const endMarker = endMatch[0];
+
+        protectedRanges.push({ start: startPos, end: endPos + endMarker.length });
+        searchStart = endPos + endMarker.length;
     }
 
     // 🟢 检查位置是否在保护区域内
@@ -1737,9 +1767,15 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true,
                 return placeholder;
             });
             
-            // 🔴 保护「始」「末」与「始ESCAPE」「末ESCAPE」标记区域
+            // 🔴 保护「始」「末」与「始ESCAPE」「末ESCAPE」标记区域及其变体
             // 这些标记内的内容是工具参数，可能包含任意HTML（含<style>），不应被提取
-            textWithProtectedBlocks = textWithProtectedBlocks.replace(/「始ESCAPE」[\s\S]*?(「末ESCAPE」|$)|「始」[\s\S]*?(「末」|$)/g, (match) => {
+            // 注意：ESCAPE 必须优先按「末ESCAPE」闭合，不能被内部普通「末」打断
+            textWithProtectedBlocks = textWithProtectedBlocks.replace(/(?:[「{]始[Ee][Ss][Cc][Aa][Pp][Ee][」}])[\s\S]*?(?:(?:[「{]末[Ee][Ss][Cc][Aa][Pp][Ee][」}])|$)/gi, (match) => {
+                const placeholder = `__VCP_STYLE_PROTECT_${protectedBlocks.length}__`;
+                protectedBlocks.push(match);
+                return placeholder;
+            });
+            textWithProtectedBlocks = textWithProtectedBlocks.replace(/(?:[「{]始[」}])[\s\S]*?(?:(?:[「{]末[」}])|$)/g, (match) => {
                 const placeholder = `__VCP_STYLE_PROTECT_${protectedBlocks.length}__`;
                 protectedBlocks.push(match);
                 return placeholder;
