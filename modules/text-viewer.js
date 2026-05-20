@@ -147,20 +147,100 @@ document.addEventListener('DOMContentLoaded', async () => {
             .replace(/'/g, '&#039;');
     }
 
+    // --- 工具请求块扫描器（共享给 transformSpecialBlocksForViewer 和 preprocessFullContent） ---
+    const TOOL_START_MARKER = '<<<[TOOL_REQUEST]>>>';
+    const TOOL_END_MARKER = '<<<[END_TOOL_REQUEST]>>>';
+
+    const createVcpEndMarkerRegex = (isEscape) => {
+        return isEscape
+            ? /[「{]末[Ee][Ss][Cc][Aa][Pp][Ee][」}]/gi
+            : /[「{]末[」}]/g;
+    };
+
+    const isBacktickWrappedMarker = (source, index, marker) => {
+        return source[index - 1] === '`' || source[index + marker.length] === '`';
+    };
+
+    const findMarkedFieldEnd = (source, contentStart, isEscape) => {
+        const endRegex = createVcpEndMarkerRegex(isEscape);
+        endRegex.lastIndex = contentStart;
+        const endMatch = endRegex.exec(source);
+        return endMatch ? endMatch.index + endMatch[0].length : source.length;
+    };
+
+    /**
+     * 在工具请求体内寻找真正的 END_TOOL_REQUEST 标记，跳过 ESCAPE 字段内部的伪标记
+     */
+    const findToolRequestEnd = (source, contentStart) => {
+        const markerRegex = /<<<\[END_TOOL_REQUEST\]>>>|[「{]始(?:[Ee][Ss][Cc][Aa][Pp][Ee])?[」}]/gi;
+        markerRegex.lastIndex = contentStart;
+
+        while (true) {
+            const markerMatch = markerRegex.exec(source);
+            if (!markerMatch) return -1;
+
+            const marker = markerMatch[0];
+            if (marker === TOOL_END_MARKER) {
+                if (isBacktickWrappedMarker(source, markerMatch.index, marker)) {
+                    markerRegex.lastIndex = markerMatch.index + marker.length;
+                    continue;
+                }
+                return markerMatch.index + marker.length;
+            }
+
+            const isEscape = /escape/i.test(marker);
+            markerRegex.lastIndex = findMarkedFieldEnd(source, markerMatch.index + marker.length, isEscape);
+        }
+    };
+
+    /**
+     * 用扫描器替换所有工具请求块。比纯正则更稳健，尤其在 ESCAPE 字段内嵌
+     * `<<<[END_TOOL_REQUEST]>>>` 字面量时不会提前闭合。
+     */
+    const replaceToolRequestBlocks = (source, replacer) => {
+        if (typeof source !== 'string' || !source.includes(TOOL_START_MARKER)) {
+            return source;
+        }
+
+        let result = '';
+        let cursor = 0;
+
+        while (cursor < source.length) {
+            const startIndex = source.indexOf(TOOL_START_MARKER, cursor);
+            if (startIndex === -1) {
+                result += source.slice(cursor);
+                break;
+            }
+
+            if (isBacktickWrappedMarker(source, startIndex, TOOL_START_MARKER)) {
+                result += source.slice(cursor, startIndex + TOOL_START_MARKER.length);
+                cursor = startIndex + TOOL_START_MARKER.length;
+                continue;
+            }
+
+            const contentStart = startIndex + TOOL_START_MARKER.length;
+            const endIndex = findToolRequestEnd(source, contentStart);
+            if (endIndex === -1) {
+                result += source.slice(cursor);
+                break;
+            }
+
+            const fullMatch = source.slice(startIndex, endIndex);
+            const content = source.slice(contentStart, endIndex - TOOL_END_MARKER.length);
+            result += source.slice(cursor, startIndex);
+            result += replacer(fullMatch, content);
+            cursor = endIndex;
+        }
+
+        return result;
+    };
+
     function transformSpecialBlocksForViewer(text) {
-        // 🟢 加固：排除被反引号包裹的占位符
-        const toolRegex = /(?<!`)<<<\[TOOL_REQUEST\]>>>(.*?)<<<\[END_TOOL_REQUEST\]>>>(?!`)/gs;
         const noteRegex = /<<<DailyNoteStart>>>(.*?)<<<DailyNoteEnd>>>/gs;
         const toolResultRegex = /\[\[VCP调用结果信息汇总:(.*?)\]\]/gs;
-        // 🟢 新增：桌面推送块正则（排除反引号包裹）
+        // 🟢 桌面推送块正则（排除反引号包裹）
         const desktopPushRegex = /(?<!`)<<<\[DESKTOP_PUSH\]>>>([\s\S]*?)<<<\[DESKTOP_PUSH_END\]>>>(?!`)/gs;
         const desktopPushPartialRegex = /(?<!`)<<<\[DESKTOP_PUSH\]>>>([\s\S]*)$/s;
-
-        const createVcpEndMarkerRegex = (isEscape) => {
-            return isEscape
-                ? /[「{]末[Ee][Ss][Cc][Aa][Pp][Ee][」}]/gi
-                : /[「{]末[」}]/g;
-        };
 
         const extractMarkedField = (source, labelRegex) => {
             if (!source || typeof source !== 'string') return null;
@@ -269,11 +349,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             html += `</div>`;
 
-            return html;
+            return `\n\n${html}\n\n`;
         });
 
         // Process Tool Requests - Viewer Mode (Full Details)
-        processed = processed.replace(toolRegex, (match, content) => {
+        processed = replaceToolRequestBlocks(processed, (match, content) => {
             const xmlToolNameMatch = content.match(/<tool_name>([\s\S]*?)<\/tool_name>/i);
             const markedToolName = extractMarkedField(content, /tool_name:\s*/i);
             let toolName = (xmlToolNameMatch?.[1] || markedToolName || 'Tool Call').trim();
@@ -287,10 +367,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                 );
             }
             
-            return `<div class="vcp-tool-use-bubble">` +
+            return `\n\n<div class="vcp-tool-use-bubble">` +
                    `<span class="vcp-tool-label">VCP-ToolUse:</span> ` +
                    finalContent +
-                   `</div>`;
+                   `</div>\n\n`;
         });
 
         // Process Daily Notes - Viewer Mode (Styled)
@@ -326,7 +406,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             html += `<div class="diary-content">${escapeHtml(diaryContent)}</div>`;
             html += `</div>`;
 
-            return html;
+            return `\n\n${html}\n\n`;
         });
 
         return processed;
@@ -444,7 +524,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             return placeholder;
         };
 
-        processed = processed.replace(/(?<!`)<<<\[TOOL_REQUEST\]>>>([\s\S]*?)<<<\[END_TOOL_REQUEST\]>>>(?!`)/gs, protectForStyle);
+        // 🔴 关键修复：使用 ESCAPE 感知的扫描器保护工具请求块，避免参数内的
+        // 字面量 `<<<[END_TOOL_REQUEST]>>>` 导致工具块提前闭合，从而把后续
+        // 整个文档错误地吞并到一个 HTML block 中。
+        processed = replaceToolRequestBlocks(processed, protectForStyle);
         processed = processed.replace(/(?:[「{]始[Ee][Ss][Cc][Aa][Pp][Ee][」}])[\s\S]*?(?:(?:[「{]末[Ee][Ss][Cc][Aa][Pp][Ee][」}])|$)/gi, protectForStyle);
         processed = processed.replace(/(?:[「{]始[」}])[\s\S]*?(?:(?:[「{]末[」}])|$)/g, protectForStyle);
 
