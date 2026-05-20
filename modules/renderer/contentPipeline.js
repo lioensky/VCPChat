@@ -51,6 +51,8 @@ function createContentPipeline(deps = {}) {
         ensureHtmlFenced = (text) => text,
         transformMermaidPlaceholders = (text) => text,
         getToolResultRegex = null,
+        getToolRequestRegex = null,
+        replaceToolRequestBlocks = null,
         getCodeFenceRegex = null,
         getDesktopPushRegex = null,
         getDesktopPushPartialRegex = null,
@@ -66,8 +68,10 @@ function createContentPipeline(deps = {}) {
             },
             state: {
                 toolResultMap: null,
+                toolRequestMap: null,
                 codeBlockMap: null,
                 toolResultPlaceholderId: 0,
+                toolRequestPlaceholderId: 0,
                 codeBlockPlaceholderId: 0
             }
         };
@@ -101,6 +105,39 @@ function createContentPipeline(deps = {}) {
         });
         toolResultRegex.lastIndex = 0;
         return result;
+    }
+
+    function protectToolRequests(text, ctx) {
+        const toolRequestRegex = typeof getToolRequestRegex === 'function' ? getToolRequestRegex() : null;
+        if (!toolRequestRegex && typeof replaceToolRequestBlocks !== 'function') return text;
+
+        const hasToolRequests = text.includes('<<<[TOOL_REQUEST]>>>');
+        if (!hasToolRequests) return text;
+
+        ctx.state.toolRequestMap = new Map();
+
+        const protectMatch = (match) => {
+            // 工具请求块必须在通用「始/末」转义前整体保护。
+            // 否则 ESCAPE 参数内的 Markdown / HTML / 普通标记会被提前转义，
+            // transformSpecialBlocks 后只能得到一个退化的工具调用气泡。
+            const placeholder = `<!--VCP_TOOL_REQUEST_${ctx.state.toolRequestPlaceholderId}-->`;
+            ctx.state.toolRequestMap.set(placeholder, match);
+            ctx.state.toolRequestPlaceholderId += 1;
+            return placeholder;
+        };
+
+        if (typeof replaceToolRequestBlocks === 'function') {
+            return replaceToolRequestBlocks(text, protectMatch);
+        }
+
+        toolRequestRegex.lastIndex = 0;
+        const result = text.replace(toolRequestRegex, protectMatch);
+        toolRequestRegex.lastIndex = 0;
+        return result;
+    }
+
+    function restoreToolRequests(text, ctx) {
+        return createMapPlaceholderReplacer(ctx.state.toolRequestMap)(text);
     }
 
     function protectCodeBlocks(text, ctx) {
@@ -168,32 +205,38 @@ function createContentPipeline(deps = {}) {
         step(ctx, 'normalize-emoticon-urls', (text) => fixEmoticonUrlsInMarkdown(text));
 
         // 顺序协议：
-        // 🔴 关键修复：工具结果必须在「始」/「末」标记转义之前被保护
-        // 否则 processStartEndMarkers 会错误地转义工具结果内部的标记，
-        // 导致后续 transformSpecialBlocks 处理时产生双重转义和内容泄漏
+        // 🔴 关键修复：工具结果与工具请求都必须在「始」/「末」标记转义之前被保护
+        // 否则 processStartEndMarkers 会错误地转义工具块内部的标记，
+        // 导致后续 transformSpecialBlocks 处理时产生双重转义、内容泄漏或工具气泡退化。
         // 1. 最先做工具结果保护（它们可能包含任意内容，包括代码块、标记等）
         step(ctx, 'protect-tool-results', protectToolResults);
 
-        // 2. 然后安全地处理标记转义（此时只处理工具结果外部的标记）
+        // 2. 再保护工具请求：工具请求稍后需要恢复给 transformSpecialBlocks 做结构化渲染
+        step(ctx, 'protect-tool-requests', protectToolRequests);
+
+        // 3. 然后安全地处理标记转义（此时只处理工具块外部的标记）
         step(ctx, 'escape-start-end-markers', (text) => processStartEndMarkers(text));
         step(ctx, 'transform-mermaid-placeholders', (text) => transformMermaidPlaceholders(text));
 
-        // 3. 保护代码块
+        // 4. 保护代码块
         step(ctx, 'protect-code-blocks', protectCodeBlocks);
 
-        // 4. 再做会改变行首语义/结构边界的修正
+        // 5. 再做会改变行首语义/结构边界的修正
         step(ctx, 'deindent-misinterpreted-code-blocks', (text) => deIndentMisinterpretedCodeBlocks(text));
         step(ctx, 'deindent-html', (text) => deIndentHtml(text));
         step(ctx, 'deindent-tool-request-blocks', (text) => deIndentToolRequestBlocks(text));
 
-        // 5. 再做结构转换
+        // 6. 再做结构转换
         step(ctx, 'transform-desktop-push', transformDesktopPush);
 
-        // 6. 🟢 架构级修复：不再恢复工具结果
+        // 7. 🟢 架构级修复：不再恢复工具结果
         // 工具结果占位符将贯穿 Markdown 解析，在 parse() 之后才由调用方替换为渲染好的 HTML
         // 这彻底避免了工具结果内部的 Markdown 语法（表格、代码围栏等）干扰外部解析
 
-        // 7. 特殊块转换（此时工具结果仍为占位符，transformSpecialBlocks 中的 TOOL_RESULT_REGEX 不会匹配到任何内容）
+        // 8. 恢复工具请求，再交给特殊块转换；工具结果仍保持占位符
+        step(ctx, 'restore-tool-requests', restoreToolRequests);
+
+        // 9. 特殊块转换（此时工具结果仍为占位符，transformSpecialBlocks 中的 TOOL_RESULT_REGEX 不会匹配到任何内容）
         step(ctx, 'transform-special-blocks', (text) => transformSpecialBlocks(text, ctx.state.codeBlockMap));
         step(ctx, 'ensure-html-fenced', (text) => ensureHtmlFenced(text));
         step(ctx, 'apply-common-content-processors', (text) => applyContentProcessors(text));

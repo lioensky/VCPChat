@@ -171,6 +171,8 @@ function restoreLatexBlocks(html, map) {
 
 // --- Pre-compiled Regular Expressions for Performance ---
 const TOOL_REGEX = /(?<!`)<<<\[TOOL_REQUEST\]>>>(.*?)<<<\[END_TOOL_REQUEST\]>>>(?!`)/gs;
+const TOOL_START_MARKER = '<<<[TOOL_REQUEST]>>>';
+const TOOL_END_MARKER = '<<<[END_TOOL_REQUEST]>>>';
 const NOTE_REGEX = /<<<DailyNoteStart>>>(.*?)<<<DailyNoteEnd>>>/gs;
 const TOOL_RESULT_REGEX = /\[\[VCP调用结果信息汇总:(.*?)VCP调用结果结束\]\]/gs;
 const BUTTON_CLICK_REGEX = /\[\[点击按钮:(.*?)\]\]/gs;
@@ -186,6 +188,79 @@ const ROLE_DIVIDER_REGEX = /<<<\[(END_)?ROLE_DIVIDE_(SYSTEM|ASSISTANT|USER)\]>>>
 const DESKTOP_PUSH_REGEX = /(?<!`)<<<\[DESKTOP_PUSH\]>>>([\s\S]*?)<<<\[DESKTOP_PUSH_END\]>>>(?!`)/gs;
 const DESKTOP_PUSH_PARTIAL_REGEX = /(?<!`)<<<\[DESKTOP_PUSH\]>>>([\s\S]*)$/s; // 流式传输中未闭合的情况
 
+
+function isBacktickWrappedMarker(text, index, marker) {
+    return text[index - 1] === '`' || text[index + marker.length] === '`';
+}
+
+function findMarkedFieldEnd(text, contentStart, isEscape) {
+    const endRegex = isEscape
+        ? /[「{]末[Ee][Ss][Cc][Aa][Pp][Ee][」}]/gi
+        : /[「{]末[」}]/g;
+    endRegex.lastIndex = contentStart;
+    const endMatch = endRegex.exec(text);
+    return endMatch ? endMatch.index + endMatch[0].length : text.length;
+}
+
+function findToolRequestEnd(text, contentStart) {
+    const markerRegex = /<<<\[END_TOOL_REQUEST\]>>>|[「{]始(?:[Ee][Ss][Cc][Aa][Pp][Ee])?[」}]/gi;
+    markerRegex.lastIndex = contentStart;
+
+    while (true) {
+        const match = markerRegex.exec(text);
+        if (!match) return -1;
+
+        const marker = match[0];
+        if (marker === TOOL_END_MARKER) {
+            if (isBacktickWrappedMarker(text, match.index, marker)) {
+                markerRegex.lastIndex = match.index + marker.length;
+                continue;
+            }
+            return match.index + marker.length;
+        }
+
+        const isEscape = /escape/i.test(marker);
+        markerRegex.lastIndex = findMarkedFieldEnd(text, match.index + marker.length, isEscape);
+    }
+}
+
+function replaceToolRequestBlocks(text, replacer) {
+    if (typeof text !== 'string' || !text.includes(TOOL_START_MARKER)) {
+        return text;
+    }
+
+    let result = '';
+    let cursor = 0;
+
+    while (cursor < text.length) {
+        const startIndex = text.indexOf(TOOL_START_MARKER, cursor);
+        if (startIndex === -1) {
+            result += text.slice(cursor);
+            break;
+        }
+
+        if (isBacktickWrappedMarker(text, startIndex, TOOL_START_MARKER)) {
+            result += text.slice(cursor, startIndex + TOOL_START_MARKER.length);
+            cursor = startIndex + TOOL_START_MARKER.length;
+            continue;
+        }
+
+        const contentStart = startIndex + TOOL_START_MARKER.length;
+        const endIndex = findToolRequestEnd(text, contentStart);
+        if (endIndex === -1) {
+            result += text.slice(cursor);
+            break;
+        }
+
+        const fullMatch = text.slice(startIndex, endIndex);
+        const content = text.slice(contentStart, endIndex - TOOL_END_MARKER.length);
+        result += text.slice(cursor, startIndex);
+        result += replacer(fullMatch, content);
+        cursor = endIndex;
+    }
+
+    return result;
+}
 
 // --- Enhanced Rendering Styles (from UserScript) ---
 function injectEnhancedStyles() {
@@ -424,7 +499,7 @@ function transformSpecialBlocks(text, codeBlockMap) {
     };
 
     // Process Tool Requests
-    processed = processed.replace(TOOL_REGEX, (match, content) => {
+    processed = replaceToolRequestBlocks(processed, (match, content) => {
         const detectedToolName = extractMarkedField(content, /tool_name:\s*/i);
         const detectedCommand = extractMarkedField(content, /command:\s*/i);
 
@@ -471,7 +546,7 @@ function transformSpecialBlocks(text, codeBlockMap) {
             html += `<div class="diary-content">${processedDiaryContent}</div>`;
             html += `</div>`;
 
-            return html;
+            return `\n\n${html}\n\n`;
         } else {
             // --- It's a regular tool call, render it normally ---
             const xmlToolNameMatch = content.match(/<tool_name>([\s\S]*?)<\/tool_name>/i);
@@ -486,13 +561,13 @@ function transformSpecialBlocks(text, codeBlockMap) {
             }
 
             const escapedFullContent = escapeHtml(restoreBlocks(content));
-            return `<div class="vcp-tool-use-bubble">` +
+            return `\n\n<div class="vcp-tool-use-bubble">` +
                 `<div class="vcp-tool-summary">` +
                 `<span class="vcp-tool-label">VCP-ToolUse:</span> ` +
                 `<span class="vcp-tool-name-highlight">${escapeHtml(toolName)}</span>` +
                 `</div>` +
                 `<div class="vcp-tool-details"><pre>${escapedFullContent}</pre></div>` +
-                `</div>`;
+                `</div>\n\n`;
         }
     });
 
@@ -540,7 +615,7 @@ function transformSpecialBlocks(text, codeBlockMap) {
         html += `<div class="diary-content">${processedDiaryContent}</div>`;
         html += `</div>`;
 
-        return html;
+        return `\n\n${html}\n\n`;
     });
 
     // Process VCP Thought Chains
@@ -573,7 +648,7 @@ function transformSpecialBlocks(text, codeBlockMap) {
         html += `</div>`; // End of vcp-thought-chain-collapsible-content
         html += `</div>`; // End of vcp-thought-chain-bubble
 
-        return html;
+        return `\n\n${html}\n\n`;
     };
 
     processed = processed.replace(THOUGHT_CHAIN_REGEX, (match, theme, rawContent) => {
@@ -600,7 +675,7 @@ function transformSpecialBlocks(text, codeBlockMap) {
 
         const actionText = isEndMarker ? '结束' : '起始';
 
-        return `<div class="vcp-role-divider role-${roleLower} type-${isEndMarker ? 'end' : 'start'}"><span class="divider-text">角色分界: ${label} [${actionText}]</span></div>`;
+        return `\n\n<div class="vcp-role-divider role-${roleLower} type-${isEndMarker ? 'end' : 'start'}"><span class="divider-text">角色分界: ${label} [${actionText}]</span></div>\n\n`;
     });
 
     return processed;
@@ -1013,7 +1088,7 @@ function restoreRenderedToolResults(html, toolResultMap) {
 
     let result = html;
     for (const [placeholder, rawMatch] of toolResultMap.entries()) {
-        const renderedHtml = renderToolResultBlock(rawMatch);
+        const renderedHtml = `\n\n${renderToolResultBlock(rawMatch)}\n\n`;
         // 占位符可能被 marked 包裹在 <p> 标签中
         result = result.split(`<p>${placeholder}</p>`).join(renderedHtml);
         result = result.split(placeholder).join(renderedHtml);
@@ -1220,6 +1295,8 @@ function initializeMessageRenderer(refs) {
             return transformed;
         },
         getToolResultRegex: () => TOOL_RESULT_REGEX,
+        getToolRequestRegex: () => TOOL_REGEX,
+        replaceToolRequestBlocks,
         getCodeFenceRegex: () => CODE_FENCE_REGEX,
         getDesktopPushRegex: () => DESKTOP_PUSH_REGEX,
         getDesktopPushPartialRegex: () => DESKTOP_PUSH_PARTIAL_REGEX,
@@ -1760,8 +1837,8 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true,
             
             // 🔴 保护工具请求块（<<<[TOOL_REQUEST]>>>...<<<[END_TOOL_REQUEST]>>>）
             // 工具请求参数中可能包含完整的HTML文档（如壁纸HTML），其中的 <style> 不应被注入
-            // 使用与 TOOL_REGEX 相同的加固版正则（排除反引号包裹）
-            textWithProtectedBlocks = textWithProtectedBlocks.replace(TOOL_REGEX, (match) => {
+            // 使用 ESCAPE 感知的扫描器，避免参数内容里的 END 标记导致工具块提前闭合
+            textWithProtectedBlocks = replaceToolRequestBlocks(textWithProtectedBlocks, (match) => {
                 const placeholder = `__VCP_STYLE_PROTECT_${protectedBlocks.length}__`;
                 protectedBlocks.push(match);
                 return placeholder;
