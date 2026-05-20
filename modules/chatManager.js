@@ -245,7 +245,7 @@ window.chatManager = (() => {
             console.log('[ChatManager] Blocked agent switch due to active Flowlock');
             return;
         }
-        
+
         // Stop any previous watcher when switching items
         if (electronAPI.watcherStop) {
             await electronAPI.watcherStop();
@@ -927,6 +927,21 @@ window.chatManager = (() => {
             itemListManager.loadItems();
         }
 
+        if (
+            currentSelectedItem?.type === 'agent' &&
+            (currentSelectedItem?.config?.bridgeProjectionOnly === true || currentSelectedItem?.config?.callableAsLocalAgent === false)
+        ) {
+            messageInput.value = '';
+            attachedFilesRef.set([]);
+            if(mainRendererFunctions.updateAttachmentPreview) mainRendererFunctions.updateAttachmentPreview();
+            uiHelper.autoResizeTextarea(messageInput);
+            if (uiHelper && uiHelper.showToastNotification) {
+                uiHelper.showToastNotification(`${currentSelectedItem.name || currentSelectedItem.id} 的消息已写入桥接投影历史，等待 CodexBridge 读取。`, 'info');
+            }
+            console.log(`[ChatManager] Stored bridge projection direct-chat message without local VCP call: ${currentSelectedItem.id}/${currentTopicId}`);
+            return;
+        }
+
         messageInput.value = '';
         attachedFilesRef.set([]);
         if(mainRendererFunctions.updateAttachmentPreview) mainRendererFunctions.updateAttachmentPreview();
@@ -946,7 +961,6 @@ window.chatManager = (() => {
             timestamp: Date.now(),
             id: thinkingMessageId,
             isThinking: true,
-            avatarUrl: currentSelectedItem.avatarUrl,
             avatarColor: (currentSelectedItem.config || currentSelectedItem)?.avatarCalculatedColor
         };
 
@@ -1209,6 +1223,7 @@ window.chatManager = (() => {
                 agentId: currentSelectedItem.id,
                 agentName: currentSelectedItem.name || currentSelectedItem.id, // 修复：为单聊上下文添加 agentName，并使用 ID 作为回退
                 topicId: currentTopicId,
+                avatarColor: (currentSelectedItem.config || currentSelectedItem)?.avatarCalculatedColor,
                 isGroupMessage: false
             };
 
@@ -1250,8 +1265,7 @@ window.chatManager = (() => {
                     const assistantMessage = {
                         role: 'assistant',
                         name: responseContext?.agentName || responseContext?.agentId || 'AI', // 修复：使用 context 中的 agentName 或 agentId 作为回退
-                        avatarUrl: currentSelectedItem.avatarUrl, // This might be incorrect if user switched, but it's a minor UI detail for background saves.
-                        avatarColor: (currentSelectedItem.config || currentSelectedItem)?.avatarCalculatedColor,
+                        avatarColor: responseContext?.avatarColor || (currentSelectedItem.config || currentSelectedItem)?.avatarCalculatedColor,
                         content: assistantMessageContent,
                         timestamp: Date.now(),
                         id: `msg_${Date.now()}_assistant_${Math.random().toString(36).substring(2, 9)}`

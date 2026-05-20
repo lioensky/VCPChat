@@ -18,7 +18,7 @@ window.GroupRenderer = (() => {
     let groupSettingsContainer;
     let groupSettingsForm;
     let groupNameInput, groupAvatarInput, groupAvatarPreview;
-    let groupMembersListDiv, addRemoveMembersBtn;
+    let groupMembersListDiv, externalParticipantsListDiv, addRemoveMembersBtn;
     let groupChatModeSelect;
     let memberTagsContainer, memberTagsInputsDiv;
     let tagMatchModeSelect;
@@ -124,6 +124,7 @@ window.GroupRenderer = (() => {
         groupAvatarInput = document.getElementById('groupAvatarInput');
         groupAvatarPreview = document.getElementById('groupAvatarPreview');
         groupMembersListDiv = document.getElementById('groupMembersList');
+        externalParticipantsListDiv = document.getElementById('externalParticipantsList');
         groupChatModeSelect = document.getElementById('groupChatMode');
         // 新增：获取统一模型UI元素的引用
         groupUseUnifiedModel = document.getElementById('groupUseUnifiedModel');
@@ -205,12 +206,15 @@ window.GroupRenderer = (() => {
         const memberCount = groupMembersListDiv
             ? groupMembersListDiv.querySelectorAll('input[type="checkbox"]:checked').length
             : 0;
+        const externalCount = externalParticipantsListDiv
+            ? externalParticipantsListDiv.querySelectorAll('.external-participant-item').length
+            : 0;
 
         return {
             kind: 'identity',
             text: name,
             avatarSrc,
-            meta: memberCount > 0 ? `${memberCount} 名成员` : '暂无成员'
+            meta: `${memberCount} 名本地成员 / ${externalCount} 名外部参与者`
         };
     }
 
@@ -708,6 +712,7 @@ window.GroupRenderer = (() => {
                 memberDiv.appendChild(label);
                 groupMembersListDiv.appendChild(memberDiv);
             });
+            renderExternalParticipants(groupConfig);
             updateMemberTagsInputs(groupConfig); // Initial population of tag inputs
             updateGroupSectionSummary('identity');
             updateGroupSectionSummary('mode');
@@ -715,6 +720,42 @@ window.GroupRenderer = (() => {
             groupMembersListDiv.innerHTML = `加载Agent列表时出错: ${error.message}`;
             console.error("Error populating group members settings:", error);
         }
+    }
+
+    function renderExternalParticipants(groupConfig) {
+        if (!externalParticipantsListDiv) return;
+        const participants = Array.isArray(groupConfig.externalParticipants) ? groupConfig.externalParticipants : [];
+        externalParticipantsListDiv.innerHTML = '';
+        if (participants.length === 0) {
+            externalParticipantsListDiv.textContent = '暂无外部桥接参与者';
+            return;
+        }
+        participants.forEach((participant) => {
+            const item = document.createElement('div');
+            item.className = 'external-participant-item';
+            item.dataset.actorId = participant.actor_id || '';
+
+            const badge = document.createElement('span');
+            badge.className = 'external-participant-badge';
+            badge.textContent = participant.actor_type === 'external_codex' ? 'Codex' : '外部';
+
+            const body = document.createElement('div');
+            body.className = 'external-participant-body';
+
+            const name = document.createElement('div');
+            name.className = 'external-participant-name';
+            name.textContent = participant.actor_name_cn || participant.actor_id || '外部参与者';
+
+            const role = document.createElement('div');
+            role.className = 'external-participant-role';
+            role.textContent = participant.role_cn || '通过 VCPBridge 同步发言';
+
+            body.appendChild(name);
+            body.appendChild(role);
+            item.appendChild(badge);
+            item.appendChild(body);
+            externalParticipantsListDiv.appendChild(item);
+        });
     }
 
     function updateMemberTagsInputs(groupConfig) {
@@ -771,8 +812,9 @@ window.GroupRenderer = (() => {
         // 保留所有成员的 tag 数据（包括当前未勾选的成员），防止踢出后再加回时 tag 丢失
         // 先获取服务端已有的完整 memberTags 作为基础
         let existingMemberTags = {};
+        let existingConfig = null;
         try {
-            const existingConfig = await electronAPI.getAgentGroupConfig(groupId);
+            existingConfig = await electronAPI.getAgentGroupConfig(groupId);
             if (existingConfig && existingConfig.memberTags) {
                 existingMemberTags = { ...existingConfig.memberTags };
             }
@@ -791,6 +833,11 @@ window.GroupRenderer = (() => {
         const newConfig = {
             name: groupNameInput.value.trim(),
             members: selectedMemberIds,
+            externalParticipants: existingConfig?.externalParticipants || currentSelectedItemRef.get()?.config?.externalParticipants || [],
+            bridgeSession: existingConfig?.bridgeSession || currentSelectedItemRef.get()?.config?.bridgeSession || {},
+            externalMentionSuppressLocalAuto: existingConfig?.externalMentionSuppressLocalAuto === true || currentSelectedItemRef.get()?.config?.externalMentionSuppressLocalAuto === true,
+            disableFallbackAutoSpeak: existingConfig?.disableFallbackAutoSpeak === true,
+            disableProbabilisticAutoSpeak: existingConfig?.disableProbabilisticAutoSpeak === true,
             mode: groupChatModeSelect.value,
             tagMatchMode: tagMatchModeSelect ? tagMatchModeSelect.value : 'strict',
             // 新增：读取统一模型设置
@@ -1186,7 +1233,11 @@ window.GroupRenderer = (() => {
 
     // --- Group Chat Message Handling ---
     async function handleSendGroupMessage() {
-        const content = mainRendererElements.messageInput.value.trim();
+        const messageInput = mainRendererElements.messageInput;
+        const content = messageInput.value.trim();
+        const mentionMetadata = Array.isArray(messageInput.__mentionMetadata)
+            ? messageInput.__mentionMetadata.map(mention => ({ ...mention }))
+            : [];
         const attachedFiles = mainRendererFunctions.getAttachedFiles(); // Get from renderer.js
 
         if (!content && attachedFiles.length === 0) return;
@@ -1257,11 +1308,13 @@ window.GroupRenderer = (() => {
             role: 'user',
             name: currentGlobalSettings.userName || '用户',
             content: {
-                text: content
+                text: content,
+                mentions: mentionMetadata
             },
             timestamp: Date.now(),
             id: `msg_${Date.now()}_user_${Math.random().toString(36).substring(2, 9)}`,
-            attachments: uiAttachments
+            attachments: uiAttachments,
+            mentions: mentionMetadata
         };
 
         messageRenderer.renderMessage(userMessageForUI); // Render user's own message in UI
@@ -1277,12 +1330,14 @@ window.GroupRenderer = (() => {
             role: 'user',
             name: userMessageForUI.name,
             content: { // This 'content' object is what groupchat.js's handleGroupChatMessage expects for the current turn
-                text: combinedTextContent // Combined text for AI for this turn
+                text: combinedTextContent, // Combined text for AI for this turn
+                mentions: mentionMetadata
             },
             originalUserText: content, // Pass the original user input separately for history saving
             timestamp: userMessageForUI.timestamp,
             id: userMessageForUI.id,
-            attachments: uiAttachments // Pass full attachment info for backend processing (includes _fileManagerData)
+            attachments: uiAttachments, // Pass full attachment info for backend processing (includes _fileManagerData)
+            mentions: mentionMetadata
         };
 
         try {
@@ -1367,7 +1422,8 @@ window.GroupRenderer = (() => {
         }
         container.innerHTML = ''; // Clear previous buttons
 
-        if (!membersConfigs || membersConfigs.length === 0 || !groupConfig || groupConfig.mode !== 'invite_only') {
+        const externalParticipants = Array.isArray(groupConfig?.externalParticipants) ? groupConfig.externalParticipants : [];
+        if ((!membersConfigs || membersConfigs.length === 0) && externalParticipants.length === 0 || !groupConfig || groupConfig.mode !== 'invite_only') {
             container.style.display = 'none';
             return;
         }
@@ -1375,12 +1431,40 @@ window.GroupRenderer = (() => {
         container.style.display = 'grid'; // Using grid for layout as suggested
         // Example: container.style.gridTemplateColumns = 'repeat(3, 1fr)'; // Set by CSS later
 
+        for (const participant of externalParticipants) {
+            const chip = document.createElement('button');
+            chip.className = 'invite-agent-button external-participant-button';
+            chip.disabled = true;
+            chip.title = `${participant.actor_name_cn || participant.actor_id} 是外部桥接参与者，通过 VCPBridge 发言，不是 VCP 本地 Agent。`;
+
+            const badge = document.createElement('span');
+            badge.className = 'external-participant-mini-badge';
+            badge.textContent = participant.actor_type === 'external_codex' ? 'C' : '人';
+
+            const nameSpan = document.createElement('span');
+            nameSpan.textContent = participant.actor_name_cn || participant.actor_id || '外部参与者';
+
+            chip.appendChild(badge);
+            chip.appendChild(nameSpan);
+            container.appendChild(chip);
+        }
+
         for (const memberConfig of membersConfigs) {
             if (!memberConfig || memberConfig.error) continue; // Skip invalid members
 
             const button = document.createElement('button');
             button.className = 'invite-agent-button';
             button.title = `邀请 ${memberConfig.name} 发言`;
+            const isBridgeProjection = memberConfig.bridgeProjectionOnly === true || memberConfig.callableAsLocalAgent === false;
+            const isCodexRelay = memberConfig.codexRelayAgent === true || memberConfig.id === 'Codex_Projection';
+            if (isBridgeProjection && !isCodexRelay) {
+                button.classList.add('external-participant-button');
+                button.disabled = true;
+                button.title = `${memberConfig.name} 是桥接投影身份，只负责接收、展示和转接消息；真实回复来自 Codex 原生线程。`;
+            } else if (isCodexRelay) {
+                button.classList.add('external-participant-button');
+                button.title = `${memberConfig.name} 是 CodexBridge 转发 Agent；点击会创建 Codex 回复请求，不调用 VCP 本地模型。`;
+            }
 
             const avatarImg = document.createElement('img');
             avatarImg.src = memberConfig.avatarUrl || 'assets/default_avatar.png';
@@ -1398,9 +1482,11 @@ window.GroupRenderer = (() => {
             button.appendChild(avatarImg);
             button.appendChild(nameSpan);
 
-            button.addEventListener('click', () => {
-                handleInviteAgentButtonClick(groupId, topicId, memberConfig.id, memberConfig.name);
-            });
+            if (!isBridgeProjection || isCodexRelay) {
+                button.addEventListener('click', () => {
+                    handleInviteAgentButtonClick(groupId, topicId, memberConfig.id, memberConfig.name);
+                });
+            }
             container.appendChild(button);
         }
     }

@@ -3,6 +3,7 @@
  */
 
 import { handleSaveGlobalSettings } from './global-settings-manager.js';
+import { setupMentionAutocomplete } from './renderer/mentionAutocomplete.js';
 
 // This function will be called from renderer.js to attach all event listeners.
 // It receives a 'deps' object containing all necessary references to elements, state, and functions.
@@ -216,7 +217,6 @@ export function setupEventListeners(deps) {
             timestamp: Date.now(),
             id: thinkingMessageId,
             isThinking: true,
-            avatarUrl: currentSelectedItem.avatarUrl,
             avatarColor: (currentSelectedItem.config || currentSelectedItem)?.avatarCalculatedColor
         };
 
@@ -330,7 +330,6 @@ export function setupEventListeners(deps) {
                     const assistantMessage = {
                         role: 'assistant',
                         name: context.agentName || context.agentId || 'AI',
-                        avatarUrl: currentSelectedItem.avatarUrl,
                         avatarColor: (currentSelectedItem.config || currentSelectedItem)?.avatarCalculatedColor,
                         content: assistantMessageContent,
                         timestamp: Date.now(),
@@ -413,6 +412,8 @@ export function setupEventListeners(deps) {
     } else {
         console.error('[Renderer] chatMessagesDiv not found during setupEventListeners.');
     }
+
+    setupMentionAutocomplete({ messageInput, refs, chatAPI, uiHelperFunctions });
 
     sendMessageBtn.addEventListener('click', async () => {
         if (typeof window.handleSendButtonAction === 'function' && sendMessageBtn?.dataset.mode === 'interrupt') {

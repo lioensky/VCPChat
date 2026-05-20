@@ -15,7 +15,12 @@ import { avatarColorCache, getDominantAvatarColor } from './renderer/colorUtils.
 import { initializeImageHandler, setContentAndProcessImages } from './renderer/imageHandler.js';
 import { processAnimationsInContent, cleanupAnimationsInContent } from './renderer/animation.js';
 import * as visibilityOptimizer from './renderer/visibilityOptimizer.js';
-import { createMessageSkeleton, formatMessageTimestamp } from './renderer/domBuilder.js';
+import {
+    createMessageSkeleton,
+    formatMessageTimestamp,
+    resolveMessageAvatarUrl,
+    isAgentSideMessage
+} from './renderer/domBuilder.js';
 import * as streamManager from './renderer/streamManager.js';
 import * as emoticonUrlFixer from './renderer/emoticonUrlFixer.js';
 import { createContentPipeline, PIPELINE_MODES } from './renderer/contentPipeline.js';
@@ -1638,22 +1643,27 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true,
     let useThemeColors = false; // 是否使用主题颜色
 
     if (message.role === 'user') {
-        avatarColorToUse = globalSettings.userAvatarCalculatedColor;
-        avatarUrlToUse = globalSettings.userAvatarUrl;
+        const isExternalGroupParticipant = isAgentSideMessage(message);
+        avatarColorToUse = isExternalGroupParticipant
+            ? (message.avatarColor || null)
+            : globalSettings.userAvatarCalculatedColor;
+        avatarUrlToUse = isExternalGroupParticipant
+            ? resolveMessageAvatarUrl(message)
+            : globalSettings.userAvatarUrl;
         // 检查用户是否启用了"会话中使用主题颜色"
-        useThemeColors = globalSettings.userUseThemeColorsInChat || false;
+        useThemeColors = isExternalGroupParticipant ? true : (globalSettings.userUseThemeColorsInChat || false);
 
-        if (!useThemeColors) {
+        if (!useThemeColors && !isExternalGroupParticipant) {
             // 用户消息：获取自定义颜色（仅在未启用主题颜色时应用）
             customBorderColor = globalSettings.userAvatarBorderColor;
             customNameColor = globalSettings.userNameTextColor;
         }
         // 用户消息：头像颜色也应用到名称
-        shouldApplyColorToName = true;
+        shouldApplyColorToName = !isExternalGroupParticipant;
     } else if (message.role === 'assistant') {
         if (message.isGroupMessage) {
             avatarColorToUse = message.avatarColor;
-            avatarUrlToUse = message.avatarUrl;
+            avatarUrlToUse = resolveMessageAvatarUrl(message);
             // 群组消息中的Agent，获取其自定义颜色
             if (message.agentId) {
                 const agentConfig = currentSelectedItem?.config?.agents?.find(a => a.id === message.agentId);

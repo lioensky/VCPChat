@@ -1,0 +1,29 @@
+{
+  "enabled": true,
+  "hardwareBaseline": "rtx3060_6gb_or_12gb",
+  "l2": {
+    "enabled": false,
+    "provider": "openai-compatible",
+    "endpoint": "http://127.0.0.1:1234/v1/chat/completions",
+    "model": "Qwen/Qwen3-1.7B",
+    "timeoutMs": 1200,
+    "minConfidence": 0.75
+  },
+  "modelTiers": {
+    "default": {
+      "model": "Qwen/Qwen3-1.7B",
+      "deployment": "local_quantized_q4_or_q5",
+      "baseline": "RTX 3060 class"
+    },
+    "low_resource": {
+      "model": "Qwen/Qwen3-0.6B",
+      "deployment": "local_quantized",
+      "baseline": "emergency fallback only"
+    },
+    "high_quality": {
+      "model": "Qwen/Qwen3-4B",
+      "deployment": "local_quantized",
+      "baseline": "higher-end local override only"
+    }
+  }
+}

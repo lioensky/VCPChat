@@ -53,8 +53,11 @@ async function getAgentConfigById(agentId) {
         const avatarPathJpg = path.join(agentDir, 'avatar.jpg');
         const avatarPathJpeg = path.join(agentDir, 'avatar.jpeg');
         const avatarPathGif = path.join(agentDir, 'avatar.gif');
+        const canonicalAvatarPath = AVATAR_IMAGE_DIR ? path.join(AVATAR_IMAGE_DIR, `${agentId}.png`) : '';
         config.avatarUrl = null;
-        if (await fs.pathExists(avatarPathPng)) {
+        if (canonicalAvatarPath && await fs.pathExists(canonicalAvatarPath)) {
+            config.avatarUrl = `file://${canonicalAvatarPath}?t=${Date.now()}`;
+        } else if (await fs.pathExists(avatarPathPng)) {
             config.avatarUrl = `file://${avatarPathPng}?t=${Date.now()}`;
         } else if (await fs.pathExists(avatarPathJpg)) {
             config.avatarUrl = `file://${avatarPathJpg}?t=${Date.now()}`;
@@ -178,12 +181,17 @@ function initialize(context) {
                     };
                 }
 
-                // Avatar detection (Parallelize if many, but 4-5 is fine)
-                for (const ext of avatarExtensions) {
-                    const avatarPath = path.join(agentPath, `avatar${ext}`);
-                    if (await fs.pathExists(avatarPath)) {
-                        agentData.avatarUrl = `file://${avatarPath}`;
-                        break;
+                const canonicalAvatarPath = AVATAR_IMAGE_DIR ? path.join(AVATAR_IMAGE_DIR, `${folderName}.png`) : '';
+                if (canonicalAvatarPath && await fs.pathExists(canonicalAvatarPath)) {
+                    agentData.avatarUrl = `file://${canonicalAvatarPath}?t=${Date.now()}`;
+                } else {
+                    // Avatar detection (Parallelize if many, but 4-5 is fine)
+                    for (const ext of avatarExtensions) {
+                        const avatarPath = path.join(agentPath, `avatar${ext}`);
+                        if (await fs.pathExists(avatarPath)) {
+                            agentData.avatarUrl = `file://${avatarPath}?t=${Date.now()}`;
+                            break;
+                        }
                     }
                 }
 
@@ -406,8 +414,10 @@ function initialize(context) {
                 }
 
                 // 4b. 写入集中式目录的新头像
-                const centralizedNewAvatarPath = path.join(AVATAR_IMAGE_DIR, `${agentName}${ext}`);
+                const centralizedNewAvatarPath = path.join(AVATAR_IMAGE_DIR, `${agentId}.png`);
                 await fs.writeFile(centralizedNewAvatarPath, nodeBuffer);
+                const compatibilityAvatarPath = path.join(AVATAR_IMAGE_DIR, `${agentName}${ext}`);
+                await fs.writeFile(compatibilityAvatarPath, nodeBuffer);
             }
 
             invalidateCaches();
@@ -499,6 +509,10 @@ function initialize(context) {
             await fs.ensureDir(USER_DATA_DIR);
             const nodeBuffer = Buffer.from(avatarData.buffer);
             await fs.writeFile(USER_AVATAR_FILE, nodeBuffer);
+            if (AVATAR_IMAGE_DIR) {
+                await fs.ensureDir(AVATAR_IMAGE_DIR);
+                await fs.writeFile(path.join(AVATAR_IMAGE_DIR, 'user_default.png'), nodeBuffer);
+            }
             return { success: true, avatarUrl: `file://${USER_AVATAR_FILE}?t=${Date.now()}`, needsColorExtraction: true };
         } catch (error) {
             console.error(`保存用户头像失败:`, error);
@@ -540,11 +554,17 @@ async function getAgentsInternal({ AGENT_DIR }) {
                     const avatarPathJpg = path.join(agentDir, 'avatar.jpg');
                     const avatarPathJpeg = path.join(agentDir, 'avatar.jpeg');
                     const avatarPathGif = path.join(agentDir, 'avatar.gif');
+                    const canonicalAvatarPath = AVATAR_IMAGE_DIR ? path.join(AVATAR_IMAGE_DIR, `${agentId}.png`) : '';
                     let avatarUrl = null;
-                    if (await fs.pathExists(avatarPathPng)) avatarUrl = `file://${avatarPathPng}`;
-                    else if (await fs.pathExists(avatarPathJpg)) avatarUrl = `file://${avatarPathJpg}`;
-                    else if (await fs.pathExists(avatarPathJpeg)) avatarUrl = `file://${avatarPathJpeg}`;
-                    else if (await fs.pathExists(avatarPathGif)) avatarUrl = `file://${avatarPathGif}`;
+                    if (canonicalAvatarPath && await fs.pathExists(canonicalAvatarPath)) avatarUrl = `file://${canonicalAvatarPath}?t=${Date.now()}`;
+                    else if (await fs.pathExists(avatarPathPng)) avatarUrl = `file://${avatarPathPng}?t=${Date.now()}`;
+                    else if (await fs.pathExists(avatarPathJpg)) avatarUrl = `file://${avatarPathJpg}?t=${Date.now()}`;
+                    else if (await fs.pathExists(avatarPathJpeg)) avatarUrl = `file://${avatarPathJpeg}?t=${Date.now()}`;
+                    else if (await fs.pathExists(avatarPathGif)) avatarUrl = `file://${avatarPathGif}?t=${Date.now()}`;
+
+                    if (config.hiddenInAgentList === true) {
+                        return null;
+                    }
 
                     return { ...config, id: agentId, type: 'agent', avatarUrl };
                 } catch (e) {
@@ -563,7 +583,9 @@ async function getAgentsInternal({ AGENT_DIR }) {
 
 async function getGroupsInternal({ USER_DATA_DIR }) {
     // Correcting path calculation based on user feedback (assuming path.dirname(USER_DATA_DIR) already points to the AppData root)
-    const groupsDir = path.join(path.dirname(USER_DATA_DIR), 'AgentGroups');
+    const appDataRoot = path.dirname(USER_DATA_DIR);
+    const groupsDir = path.join(appDataRoot, 'AgentGroups');
+    const avatarImageDir = path.join(appDataRoot, 'avatarimage');
     try {
         if (!await fs.pathExists(groupsDir)) {
             return [];
@@ -579,11 +601,13 @@ async function getGroupsInternal({ USER_DATA_DIR }) {
                     const avatarPathJpg = path.join(groupDir, 'avatar.jpg');
                     const avatarPathJpeg = path.join(groupDir, 'avatar.jpeg');
                     const avatarPathGif = path.join(groupDir, 'avatar.gif');
+                    const canonicalAvatarPath = path.join(avatarImageDir, `group_${groupId}.png`);
                     let avatarUrl = null;
-                    if (await fs.pathExists(avatarPathPng)) avatarUrl = `file://${avatarPathPng}`;
-                    else if (await fs.pathExists(avatarPathJpg)) avatarUrl = `file://${avatarPathJpg}`;
-                    else if (await fs.pathExists(avatarPathJpeg)) avatarUrl = `file://${avatarPathJpeg}`;
-                    else if (await fs.pathExists(avatarPathGif)) avatarUrl = `file://${avatarPathGif}`;
+                    if (await fs.pathExists(canonicalAvatarPath)) avatarUrl = `file://${canonicalAvatarPath}?t=${Date.now()}`;
+                    else if (await fs.pathExists(avatarPathPng)) avatarUrl = `file://${avatarPathPng}?t=${Date.now()}`;
+                    else if (await fs.pathExists(avatarPathJpg)) avatarUrl = `file://${avatarPathJpg}?t=${Date.now()}`;
+                    else if (await fs.pathExists(avatarPathJpeg)) avatarUrl = `file://${avatarPathJpeg}?t=${Date.now()}`;
+                    else if (await fs.pathExists(avatarPathGif)) avatarUrl = `file://${avatarPathGif}?t=${Date.now()}`;
 
                     return { ...config, id: groupId, type: 'group', avatarUrl };
                 } catch (e) {

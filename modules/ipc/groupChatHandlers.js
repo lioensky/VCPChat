@@ -3,6 +3,7 @@ const { ipcMain } = require('electron');
 const path = require('path');
 const fs = require('fs-extra');
 const groupChat = require('../../Groupmodules/groupchat');
+const { startCodexBridgeHttpServer } = require('./codexBridgeHttpServer');
 
 /**
  * Initializes group chat related IPC handlers.
@@ -18,6 +19,13 @@ let ipcHandlersRegistered = false;
 
 function initialize(mainWindow, context) {
     const { AGENT_DIR, USER_DATA_DIR, getSelectionListenerStatus, stopSelectionListener, startSelectionListener, fileWatcher } = context;
+    const APP_DATA_ROOT = path.dirname(USER_DATA_DIR);
+
+    const canonicalAgentAvatarPath = (agentId) => {
+        if (agentId === 'VCP_Assistant') return path.join(APP_DATA_ROOT, 'avatarimage', 'VCP_Assistant.png');
+        if (agentId === 'Codex_Projection') return path.join(APP_DATA_ROOT, 'avatarimage', 'Codex_Projection.png');
+        return '';
+    };
 
     if (ipcHandlersRegistered) {
         return;
@@ -30,12 +38,15 @@ function initialize(mainWindow, context) {
         if (await fs.pathExists(configPath)) {
             const config = await fs.readJson(configPath);
             // Construct avatarUrl by checking for file existence, which is more robust
+            const canonicalAvatar = canonicalAgentAvatarPath(agentId);
             const avatarPathPng = path.join(agentDir, 'avatar.png');
             const avatarPathJpg = path.join(agentDir, 'avatar.jpg');
             const avatarPathJpeg = path.join(agentDir, 'avatar.jpeg');
             const avatarPathGif = path.join(agentDir, 'avatar.gif');
             config.avatarUrl = null;
-            if (await fs.pathExists(avatarPathPng)) {
+            if (canonicalAvatar && await fs.pathExists(canonicalAvatar)) {
+                config.avatarUrl = `file://${canonicalAvatar}?t=${Date.now()}`;
+            } else if (await fs.pathExists(avatarPathPng)) {
                 config.avatarUrl = `file://${avatarPathPng}?t=${Date.now()}`;
             } else if (await fs.pathExists(avatarPathJpg)) {
                 config.avatarUrl = `file://${avatarPathJpg}?t=${Date.now()}`;
@@ -49,6 +60,8 @@ function initialize(mainWindow, context) {
         }
         return { error: `Agent config for ${agentId} not found.` };
     };
+
+    startCodexBridgeHttpServer(mainWindow, getAgentConfigById, USER_DATA_DIR);
 
     // --- Group Chat IPC Handlers ---
     ipcMain.handle('create-agent-group', async (event, groupName, initialConfig) => {

@@ -200,6 +200,17 @@ body.light-theme #moon-icon {
 .message-item.assistant .sender-name {
     color: var(--dynamic-avatar-color, var(--highlight-text)); /* Use dynamic color with fallback */
 }
+
+.message-item.codex-projection-message .chat-avatar {
+    border-color: #e27d36 !important;
+    box-shadow: 0 0 0 1px rgba(226, 125, 54, 0.28);
+}
+
+.message-item.codex-projection-message .sender-name {
+    color: #e27d36 !important;
+    text-shadow: 0 0 6px rgba(226, 125, 54, 0.28);
+}
+
 .message-item.user .sender-name {
     color: var(--secondary-text);
     /* opacity: 0.9; */ /* Remove opacity to make it more solid and highlighted */
@@ -803,6 +814,136 @@ body.light-theme .message-item.system.welcome-bubble {
 #messageInput:focus {
     outline: none;
     box-shadow: none;
+}
+
+#messageInput.mention-source-input {
+    display: none !important;
+}
+
+.mention-rich-input {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    min-height: 24px;
+    max-height: 180px;
+    padding: 0 0 0 6px;
+    border: none;
+    border-radius: 0;
+    background-color: transparent;
+    color: var(--primary-text);
+    font-family: var(--vcp-chat-font-family, inherit);
+    font-size: 1em;
+    line-height: 1.4;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    outline: none;
+    transform: translateY(1px);
+}
+
+.mention-rich-input:empty::before {
+    content: attr(data-placeholder);
+    color: var(--secondary-text);
+    opacity: 0.62;
+    pointer-events: none;
+}
+
+.mention-rich-input.disabled {
+    opacity: 0.62;
+    cursor: not-allowed;
+}
+
+.mention-token {
+    color: #4aa3ff;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.mention-suggestion-popup {
+    position: absolute;
+    left: 16px;
+    bottom: calc(100% + 8px);
+    width: min(320px, calc(100vw - 48px));
+    max-height: 288px;
+    overflow-y: auto;
+    padding: 6px;
+    border: 1px solid color-mix(in srgb, var(--border-color) 58%, transparent);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--secondary-bg) 94%, rgba(20, 20, 24, 0.16));
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.28);
+    z-index: 20;
+}
+
+.mention-suggestion-popup[hidden] {
+    display: none;
+}
+
+.mention-suggestion-item {
+    width: 100%;
+    min-height: 42px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 8px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--primary-text);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.mention-suggestion-item:hover,
+.mention-suggestion-item.active {
+    background: color-mix(in srgb, var(--button-bg) 18%, transparent);
+}
+
+.mention-suggestion-avatar {
+    width: 28px;
+    height: 28px;
+    flex: 0 0 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--button-bg) 24%, transparent);
+    color: var(--highlight-text);
+    font-size: 13px;
+    font-weight: 700;
+    overflow: hidden;
+}
+
+.mention-suggestion-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.mention-suggestion-text {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+
+.mention-suggestion-name {
+    overflow: hidden;
+    color: var(--primary-text);
+    font-size: 14px;
+    line-height: 1.2;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.mention-suggestion-role {
+    overflow: hidden;
+    color: var(--secondary-text);
+    font-size: 12px;
+    line-height: 1.2;
+    opacity: 0.76;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 /* Markdown specific styling for chat messages */

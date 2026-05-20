@@ -45,6 +45,12 @@ window.GroupSettingsMarkup = (() => {
                                 <label class="group-settings-field-label" for="groupMembersList">群组成员</label>
                                 <div id="groupMembersList" class="group-members-list-container"></div>
                             </div>
+
+                            <div class="group-settings-field-shell">
+                                <label class="group-settings-field-label" for="externalParticipantsList">外部桥接参与者</label>
+                                <div id="externalParticipantsList" class="external-participants-list-container"></div>
+                                <div class="group-settings-helper-text">外部参与者可在共同聊天框中发言，但不会被 VCPChat 当作本地模型 Agent 调用。</div>
+                            </div>
                         </div>
                     </div>
                 </div>

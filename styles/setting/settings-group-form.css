@@ -170,6 +170,59 @@ body.light-theme #groupSettingsForm .form-actions #deleteGroupBtn:hover {
     object-fit: cover;
 }
 
+.external-participants-list-container {
+    display: grid;
+    gap: 8px;
+}
+
+.external-participant-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background-color: var(--input-bg);
+}
+
+.external-participant-badge,
+.external-participant-mini-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    font-size: 11px;
+    font-weight: 700;
+    background: #2f6f9f;
+    color: #fff;
+    flex: 0 0 auto;
+}
+
+.external-participant-body {
+    min-width: 0;
+}
+
+.external-participant-name {
+    font-weight: 600;
+}
+
+.external-participant-role {
+    font-size: 12px;
+    opacity: 0.75;
+    margin-top: 2px;
+}
+
+.external-participant-button {
+    opacity: 0.78;
+    cursor: default;
+}
+
+.external-participant-button:disabled {
+    pointer-events: auto;
+}
+
 
 #memberTagsInputs {
     display: flex;

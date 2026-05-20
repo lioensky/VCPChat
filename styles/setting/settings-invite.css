@@ -50,6 +50,31 @@ body.light-theme .invite-agent-buttons-container {
     /* 轻微上浮效果 */
 }
 
+.invite-agent-button.external-participant-button,
+.invite-agent-button.external-participant-button:hover {
+    background-color: var(--input-bg);
+    border-color: var(--border-color);
+    color: var(--primary-text);
+    transform: none;
+    cursor: default;
+    opacity: 0.78;
+}
+
+.external-participant-mini-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    margin-right: 7px;
+    font-size: 11px;
+    font-weight: 700;
+    background: #2f6f9f;
+    color: #fff;
+    flex-shrink: 0;
+}
+
 .invite-agent-button img {
     width: 20px;
     /* 小头像 */

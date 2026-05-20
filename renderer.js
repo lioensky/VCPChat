@@ -78,6 +78,59 @@ const attachFileBtn = document.getElementById('attachFileBtn');
 const emoticonTriggerBtn = document.getElementById('emoticonTriggerBtn');
 const quickNewTopicBtn = document.getElementById('quickNewTopicBtn');
 const attachmentPreviewArea = document.getElementById('attachmentPreviewArea');
+
+function removeCodexTransientStatus(messageId) {
+    const existing = chatMessagesDiv?.querySelector(`.message-item.codex-transient-status[data-message-id="${messageId}"]`);
+    if (existing) {
+        existing.remove();
+    }
+}
+
+function escapeHtmlForCodexStatus(value) {
+    return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function renderCodexTransientStatus(messageId, context, content, timestamp) {
+    if (!chatMessagesDiv || !window.domBuilder?.createMessageSkeleton) {
+        return;
+    }
+
+    let messageItem = chatMessagesDiv.querySelector(`.message-item.codex-transient-status[data-message-id="${messageId}"]`);
+    if (!messageItem) {
+        const message = {
+            role: 'assistant',
+            name: context?.agentName || 'AI设计师 Codex',
+            agentId: context?.agentId || 'Codex_Projection',
+            avatarUrl: context?.avatarUrl,
+            avatarColor: context?.avatarColor,
+            content: content || '思考中',
+            timestamp: timestamp || Date.now(),
+            id: messageId,
+            isThinking: true,
+            isGroupMessage: true
+        };
+        const skeleton = window.domBuilder.createMessageSkeleton(message, globalSettings, currentSelectedItem);
+        messageItem = skeleton.messageItem;
+        messageItem.classList.add('thinking', 'streaming', 'codex-transient-status');
+        messageItem.dataset.transient = 'true';
+        skeleton.contentDiv.innerHTML = `<span class="thinking-indicator">${escapeHtmlForCodexStatus(message.content)}<span class="thinking-indicator-dots">...</span></span>`;
+        chatMessagesDiv.appendChild(messageItem);
+    } else {
+        const contentDiv = messageItem.querySelector('.md-content');
+        if (contentDiv) {
+            contentDiv.innerHTML = `<span class="thinking-indicator">${escapeHtmlForCodexStatus(content || '思考中')}<span class="thinking-indicator-dots">...</span></span>`;
+        }
+    }
+
+    if (window.uiHelperFunctions?.scrollToBottom) {
+        window.uiHelperFunctions.scrollToBottom();
+    }
+}
 const chatInputCard = document.querySelector('.chat-input-card');
 
 const globalSettingsBtn = document.getElementById('globalSettingsBtn');
@@ -520,7 +573,7 @@ import { setupEventListeners } from './modules/event-listeners.js';
             return;
         }
 
-        const { type, messageId, context, chunk, error, finish_reason, fullResponse } = eventData;
+        const { type, messageId, context, chunk, error, finish_reason, fullResponse, message, status, content, timestamp } = eventData;
 
         if (!messageId) {
             console.error("onVCPStreamEvent: Received event without a messageId. Cannot process.", eventData);
@@ -544,6 +597,22 @@ import { setupEventListeners } from './modules/event-listeners.js';
         // Data model updates should ALWAYS happen, regardless of the current view.
         // UI updates (creating new DOM elements) should only happen if the view is relevant.
         switch (type) {
+            case 'codex_thinking_status':
+                if (isRelevantToCurrentView) {
+                    if (status === 'stop') {
+                        removeCodexTransientStatus(messageId);
+                    } else {
+                        renderCodexTransientStatus(messageId, context, content, timestamp);
+                    }
+                }
+                break;
+
+            case 'external_user_message':
+                if (isRelevantToCurrentView && message) {
+                    window.messageRenderer.renderMessage(message);
+                }
+                break;
+
             case 'data':
                 window.messageRenderer.appendStreamChunk(messageId, chunk, context);
                 break;

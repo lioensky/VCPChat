@@ -21,6 +21,16 @@ rust_audio_engine/.cargo/
 
 # Reports and logs
 **/reports/
+logs/
+codex-run-logs/
+*.log
+*.jsonl
+loudness_cache.db
+CodexSpace/
+VCPBridge/
+
+# Local-only semantic router overrides. Do not upload high-end/private model settings.
+Groupmodules/groupSemanticRouter.local.json
 
 # 临时忽略的文件（本地修改，不提交）
 .npmrc

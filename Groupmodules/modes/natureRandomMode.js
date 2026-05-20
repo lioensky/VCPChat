@@ -23,6 +23,10 @@ class NatureRandomMode extends BaseChatMode {
         const userMessageText = (userMessageEntry.content && typeof userMessageEntry.content === 'string')
                                 ? userMessageEntry.content.toLowerCase()
                                 : "";
+        const hasStructuredMentionField = Array.isArray(userMessageEntry.mentions);
+        const textForLocalAutoMatch = hasStructuredMentionField
+            ? userMessageText.replace(/@[^\s,，。！？!?\n]+/g, ' ')
+            : userMessageText;
 
         // 修复2：排除最后一项（当前用户消息），contextText 只代表纯历史上下文。
         // 当前用户消息通过 userMessageText 独立检测，避免与历史上下文混淆，
@@ -41,22 +45,35 @@ class NatureRandomMode extends BaseChatMode {
         const tagMatchMode = groupConfig.tagMatchMode || 'strict';
 
         // 优先级1: @角色名 (直接在最新消息中匹配) — 两种模式相同
-        this._matchDirectMentions(activeMembersConfigs, userMessageText, speakers, spokenThisTurn);
+        if (!hasStructuredMentionField) {
+            this._matchDirectMentions(activeMembersConfigs, userMessageText, speakers, spokenThisTurn);
+        }
 
         // 优先级2: Tag 匹配 — 行为因模式而异
-        this._matchTags(activeMembersConfigs, userMessageText, contextText, recentHistory, history, groupConfig, tagMatchMode, speakers, spokenThisTurn);
+        this._matchTags(activeMembersConfigs, textForLocalAutoMatch, contextText, recentHistory, history, groupConfig, tagMatchMode, speakers, spokenThisTurn);
 
         // 优先级3: @所有人 (在最新消息中匹配) — 两种模式相同
-        this._matchMentionAll(activeMembersConfigs, userMessageText, speakers, spokenThisTurn);
+        if (!hasStructuredMentionField) {
+            this._matchMentionAll(activeMembersConfigs, userMessageText, speakers, spokenThisTurn);
+        }
 
-        // 优先级4: 概率发言（对于未被上述规则触发的）
-        this._probabilisticSpeakers(activeMembersConfigs, contextText, groupConfig, tagMatchMode, speakers, spokenThisTurn);
+        const externalMentionSuppressesLocalAuto =
+            groupConfig.externalMentionSuppressLocalAuto === true &&
+            this._mentionsExternalParticipant(groupConfig, userMessageText) &&
+            speakers.length === 0;
 
-        // 优先级5: 保底发言（如果以上都没有触发任何 Agent）
-        this._fallbackSpeaker(activeMembersConfigs, contextText, groupConfig, speakers, spokenThisTurn);
+        if (externalMentionSuppressesLocalAuto) {
+            console.log('[NatureRandom] External participant mentioned; local random/fallback speakers suppressed.');
+        } else {
+            // 优先级4: 概率发言（对于未被上述规则触发的）
+            this._probabilisticSpeakers(activeMembersConfigs, contextText, groupConfig, tagMatchMode, speakers, spokenThisTurn);
+
+            // 优先级5: 保底发言（如果以上都没有触发任何 Agent）
+            this._fallbackSpeaker(activeMembersConfigs, contextText, groupConfig, speakers, spokenThisTurn);
+        }
 
         // 排序优化：Tag 在用户最新发言中命中的角色排在最前
-        this._sortByRelevance(speakers, userMessageText, contextText, groupConfig);
+        this._sortByRelevance(speakers, textForLocalAutoMatch, contextText, groupConfig);
 
         console.log(`[NatureRandom] Mode: ${tagMatchMode}. Speakers: ${speakers.map(s => s.name).join(', ')}`);
         return speakers;
@@ -188,10 +205,27 @@ class NatureRandomMode extends BaseChatMode {
     }
 
     /**
+     * 检查当前消息是否明确点名外部桥接参与者。
+     * 这类参与者不属于 VCP 本地 Agent，不能由本地 Agent 随机代答。
+     */
+    _mentionsExternalParticipant(groupConfig, userMessageText) {
+        const participants = Array.isArray(groupConfig.externalParticipants) ? groupConfig.externalParticipants : [];
+        return participants.some(participant => {
+            if (participant.actor_type !== 'external_codex') return false;
+            return /(^|[\s,，。！？!?\n])@(codex|ai设计师\s*codex|设计师\s*codex)(?=$|[\s,，。！？!?\n])/i.test(userMessageText)
+                || /(^|\n)\s*(codex|ai设计师\s*codex|设计师\s*codex)\s*(你|请|帮|回答|在不在|说|来)/i.test(userMessageText);
+        });
+    }
+
+    /**
      * 优先级4: 概率发言
      * 修复1：natural 模式禁用 contextText 提升
      */
     _probabilisticSpeakers(activeMembersConfigs, contextText, groupConfig, tagMatchMode, speakers, spokenThisTurn) {
+        if (groupConfig.disableProbabilisticAutoSpeak === true) {
+            console.log('[NatureRandom] Probabilistic speaker disabled by group config.');
+            return;
+        }
         const nonTriggeredMembers = activeMembersConfigs.filter(member => !spokenThisTurn.has(member.id));
         const baseRandomSpeakProbability = 0.15;
 
@@ -224,6 +258,10 @@ class NatureRandomMode extends BaseChatMode {
      * 修复3：speakers.length === 0 时 spokenThisTurn 必然为空
      */
     _fallbackSpeaker(activeMembersConfigs, contextText, groupConfig, speakers, spokenThisTurn) {
+        if (groupConfig.disableFallbackAutoSpeak === true) {
+            console.log('[NatureRandom] Fallback speaker disabled by group config.');
+            return;
+        }
         if (speakers.length === 0 && activeMembersConfigs.length > 0) {
             const relevantMembers = activeMembersConfigs.filter(m => {
                 const tagsString = groupConfig.memberTags ? groupConfig.memberTags[m.id] : '';

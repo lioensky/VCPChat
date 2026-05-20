@@ -127,6 +127,13 @@ function isThinkingPlaceholderText(text) {
     return normalized === '思考中...' || normalized === '思考中' || normalized === 'Thinking...' || normalized === 'thinking...';
 }
 
+function stripSpeakerSourceLeak(text) {
+    if (typeof text !== 'string') return text;
+    return text
+        .replace(/^\s*\[(?:内部)?发言来源=[^\]]+\]:\s*/u, '')
+        .replace(/^\s*\[[^\]]+的发言\]:\s*/u, '');
+}
+
 /**
  * 🟢 生成当前视图的唯一签名
  */
@@ -1244,12 +1251,12 @@ export async function finalizeStreamedMessage(messageId, finishReason, context, 
     const streamedTextIsUsable = accumulatedText.trim() !== "" && !isThinkingPlaceholderText(accumulatedText);
     const payloadResponseIsUsable = payloadFullResponse.trim() !== "" && !isThinkingPlaceholderText(payloadFullResponse);
 
-    let finalFullText = accumulatedText;
+    let finalFullText = stripSpeakerSourceLeak(accumulatedText);
     
     // --- Consistency Logic: Choose the most complete text available ---
     // If the main process payload has more content (as in error recovery) or is explicitly marked as recovery, prefer it.
     if (payloadResponseIsUsable && (payloadFullResponse.length > accumulatedText.length || payloadFullResponse.includes('[!WARNING]'))) {
-        finalFullText = payloadFullResponse;
+        finalFullText = stripSpeakerSourceLeak(payloadFullResponse);
     }
 
     if (!finalFullText || isThinkingPlaceholderText(finalFullText)) {
