@@ -135,10 +135,20 @@ function protectLatexBlocks(text) {
     });
 
     // 4. 保护 $...$ (inline math) - 不跨行，避免误匹配价格等
-    // 使用更严格的匹配：$ 后面不能是空格，$ 前面不能是空格，不跨行
+    // 注意：Markdown 表格里常见 "$/M Token）| 输出价格（$" 这类跨单元格误匹配，
+    // 会把表头列数从 4 列破坏成 3 列，导致 marked 无法识别表格。
     processed = processed.replace(/\$([^\$\n]+?)\$/g, (match, content) => {
+        const trimmedContent = content.trim();
+
         // 跳过看起来像价格的情况（如 $100）
-        if (/^\d/.test(content.trim())) return match;
+        if (/^\d/.test(trimmedContent)) return match;
+
+        // 跳过价格单位写法（如 $/M Token、$/1M tokens）
+        if (trimmedContent.startsWith('/')) return match;
+
+        // 跳过跨 Markdown 表格单元格的误匹配
+        if (content.includes('|')) return match;
+
         const placeholder = `%%LATEX_BLOCK_${id}%%`;
         map.set(placeholder, match);
         id++;
