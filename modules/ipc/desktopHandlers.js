@@ -390,6 +390,18 @@ function registerManagedWindows() {
         readyTimeoutMs: 10000,
     });
 
+    windowService.register(WINDOW_APP_IDS.NOTE_MINI, {
+        owner: 'notesHandlers',
+        getWindow: () => {
+            const notesHandlers = require('./notesHandlers');
+            return notesHandlers.getNoteMiniWindow();
+        },
+        open: async () => {
+            const notesHandlers = require('./notesHandlers');
+            return notesHandlers.createOrFocusNoteMiniWindow();
+        },
+    });
+
     windowService.register(WINDOW_APP_IDS.MEMO, {
         owner: 'desktopHandlers',
         getWindow: () => vchatMemoWindow || findWindowByUrl('memo.html'),
@@ -569,6 +581,8 @@ function resolveAppActionToAppId(appAction) {
             return WINDOW_APP_IDS.MAIN;
         case 'open-notes-window':
             return WINDOW_APP_IDS.NOTES;
+        case 'open-note-mini-window':
+            return WINDOW_APP_IDS.NOTE_MINI;
         case 'open-memo-window':
             return WINDOW_APP_IDS.MEMO;
         case 'open-forum-window':

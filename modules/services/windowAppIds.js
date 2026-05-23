@@ -2,6 +2,7 @@ module.exports = Object.freeze({
     MAIN: 'main-shell',
     DESKTOP: 'desktop-platform',
     NOTES: 'notes',
+    NOTE_MINI: 'note-mini',
     MEMO: 'memo',
     FORUM: 'forum',
     LOG: 'log',
