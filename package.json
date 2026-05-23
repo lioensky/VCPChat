@@ -21,7 +21,7 @@
   "license": "MIT",
   "devDependencies": {
     "@electron/rebuild": "^4.0.3",
-    "electron": "^37.2.6",
+    "electron": "^42.2.0",
     "electron-builder": "^26.0.12",
     "node-addon-api": "^8.3.1",
     "node-gyp": "^11.4.2"
@@ -40,7 +40,7 @@
     "diff-match-patch": "^1.0.5",
     "dotenv": "^17.2.3",
     "eslint": "^9.39.1",
-    "exceljs": "^4.4.0",
+    "exceljs": "^3.4.0",
     "express": "^5.1.0",
     "flexsearch": "^0.8.212",
     "fs-extra": "^11.3.2",
