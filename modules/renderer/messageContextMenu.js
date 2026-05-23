@@ -11,6 +11,9 @@ let contextMenuDependencies = {};
 function initializeContextMenu(refs, dependencies) {
     mainRefs = refs;
     contextMenuDependencies = dependencies;
+
+    // 防止重复初始化时叠加全局点击监听，造成右键菜单关闭逻辑重复触发
+    document.removeEventListener('click', closeContextMenuOnClickOutside, true);
     document.addEventListener('click', closeContextMenuOnClickOutside, true);
 }
 

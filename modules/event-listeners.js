@@ -4,9 +4,16 @@
 
 import { handleSaveGlobalSettings } from './global-settings-manager.js';
 
+let eventListenersBound = false;
+
 // This function will be called from renderer.js to attach all event listeners.
 // It receives a 'deps' object containing all necessary references to elements, state, and functions.
 export function setupEventListeners(deps) {
+    if (eventListenersBound) {
+        console.warn('[EventListeners] setupEventListeners already initialized, skipping duplicate binding.');
+        return;
+    }
+    eventListenersBound = true;
     const chatAPI = window.chatAPI || window.electronAPI;
     const {
         // DOM Elements from a future dom-elements.js or passed directly
@@ -1025,25 +1032,26 @@ export function setupEventListeners(deps) {
         menu.style.top = `${event.clientY}px`;
         menu.style.left = `${event.clientX}px`;
 
+        // 点击外部关闭菜单
+        const closeMenu = (e) => {
+            if (!e || !menu.contains(e.target)) {
+                menu.remove();
+                document.removeEventListener('click', closeMenu, true);
+            }
+        };
+
         // 新建无锁话题选项
         const createUnlockedOption = document.createElement('div');
         createUnlockedOption.classList.add('context-menu-item');
         createUnlockedOption.innerHTML = `<i class="fas fa-unlock"></i> 新建无锁话题`;
         createUnlockedOption.onclick = async () => {
-            menu.remove();
+            closeMenu();
             await createNewTopicWithLockStatus(currentSelectedItem, false);
         };
         menu.appendChild(createUnlockedOption);
 
         document.body.appendChild(menu);
 
-        // 点击外部关闭菜单
-        const closeMenu = (e) => {
-            if (!menu.contains(e.target)) {
-                menu.remove();
-                document.removeEventListener('click', closeMenu, true);
-            }
-        };
         setTimeout(() => {
             document.addEventListener('click', closeMenu, true);
         }, 0);

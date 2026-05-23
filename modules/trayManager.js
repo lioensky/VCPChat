@@ -14,6 +14,7 @@ const trayManager = (function () {
 
     // 常用应用 ID 列表（默认 4 个）
     let pinnedAppIds = ['vchat-app-translator', 'vchat-app-notes', 'vchat-app-music', 'vchat-app-canvas'];
+    let outsideClickListenerBound = false;
 
     // VChat 系统应用注册表 (从 vchatApps.js 复制的核心定义)
     const VCHAT_APPS = [
@@ -183,14 +184,21 @@ const trayManager = (function () {
         if (isActive) {
             drawer.classList.add('active');
             btn.classList.add('active');
-            // 添加一次性点击监听用于关闭
-            setTimeout(() => {
-                document.addEventListener('click', closeOnOutsideClick);
-            }, 0);
+
+            // 防止重复打开时叠加全局点击监听
+            if (!outsideClickListenerBound) {
+                outsideClickListenerBound = true;
+                setTimeout(() => {
+                    document.addEventListener('click', closeOnOutsideClick, true);
+                }, 0);
+            }
         } else {
             drawer.classList.remove('active');
             btn.classList.remove('active');
-            document.removeEventListener('click', closeOnOutsideClick);
+            if (outsideClickListenerBound) {
+                document.removeEventListener('click', closeOnOutsideClick, true);
+                outsideClickListenerBound = false;
+            }
         }
     }
 

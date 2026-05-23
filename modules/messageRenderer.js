@@ -1248,6 +1248,11 @@ function removeMessageById(messageId, saveHistory = false) {
 function clearChat() {
     invalidateRenderSession();
 
+    // 只清理当前视图的 DOM/渲染相关内容，不触碰底层异步流状态
+    // 这样可避免切换话题时误伤同窗口内其他 agent 的后台流式聊天
+    toolResultFullContentMap.clear();
+    toolResultContentIdCounter = 0;
+
     if (mainRendererReferences.chatMessagesDiv) {
         // --- NEW: Cleanup all messages before clearing the container ---
         const allMessages = mainRendererReferences.chatMessagesDiv.querySelectorAll('.message-item');

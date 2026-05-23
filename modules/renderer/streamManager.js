@@ -30,12 +30,14 @@ const CODE_FENCE = '```';
 // --- DOM Cache ---
 const messageDomCache = new Map(); // messageId -> { messageItem, contentDiv }
 
-// --- Performance Caches & Throttling ---
 const scrollThrottleTimers = new Map(); // messageId -> timerId
 const SCROLL_THROTTLE_MS = 100; // 100ms 节流
 const viewContextCache = new Map(); // messageId -> boolean (是否为当前视图)
 let currentViewSignature = null; // 当前视图的签名
 let globalRenderLoopRunning = false;
+
+// 记录延迟清理定时器，方便切换话题时统一清除
+const delayedCleanupTimers = new Map(); // messageId -> timerId
 
 // --- 新增：预缓冲系统 ---
 const preBufferedChunks = new Map(); // messageId -> array of chunks waiting for initialization
@@ -1349,20 +1351,70 @@ export async function finalizeStreamedMessage(messageId, finishReason, context, 
     }
     
     // Cleanup
-    streamingChunkQueues.delete(messageId);
-    accumulatedStreamText.delete(messageId);
-    streamSegmentStates.delete(messageId);
-    cleanupDesktopPushState(messageId);
+        streamingChunkQueues.delete(messageId);
+        accumulatedStreamText.delete(messageId);
+        streamSegmentStates.delete(messageId);
+        cleanupDesktopPushState(messageId);
+        
+        // Delayed cleanup
+        const existingCleanupTimer = delayedCleanupTimers.get(messageId);
+        if (existingCleanupTimer) {
+            clearTimeout(existingCleanupTimer);
+        }
+        const cleanupTimerId = setTimeout(() => {
+            messageDomCache.delete(messageId);
+            messageInitializationStatus.delete(messageId);
+            preBufferedChunks.delete(messageId);
+            messageContextMap.delete(messageId);
+            viewContextCache.delete(messageId);
+            delayedCleanupTimers.delete(messageId);
+        }, 5000);
+        delayedCleanupTimers.set(messageId, cleanupTimerId);
+    }
     
-    // Delayed cleanup
-    setTimeout(() => {
-        messageDomCache.delete(messageId);
-        messageInitializationStatus.delete(messageId);
-        preBufferedChunks.delete(messageId);
-        messageContextMap.delete(messageId);
-        viewContextCache.delete(messageId);
-    }, 5000);
-}
+    export function cleanupTransientState() {
+        // 清理所有流式消息相关状态
+        for (const timerId of scrollThrottleTimers.values()) {
+            clearTimeout(timerId);
+        }
+        scrollThrottleTimers.clear();
+    
+        for (const state of desktopPushStates.values()) {
+            if (state?.pushTimer) {
+                clearInterval(state.pushTimer);
+            }
+        }
+        desktopPushStates.clear();
+    
+        for (const timerId of delayedCleanupTimers.values()) {
+            clearTimeout(timerId);
+        }
+        delayedCleanupTimers.clear();
+    
+        for (const timerId of historySaveQueue.values()) {
+            if (timerId?.timerId) {
+                clearTimeout(timerId.timerId);
+            }
+        }
+        historySaveQueue.clear();
+    
+        streamingChunkQueues.clear();
+        streamingTimers.clear();
+        accumulatedStreamText.clear();
+        streamSegmentStates.clear();
+        elementContentLengthCache.clear();
+        messageDomCache.clear();
+        preBufferedChunks.clear();
+        messageInitializationStatus.clear();
+        messageContextMap.clear();
+        viewContextCache.clear();
+    
+        activeStreamingMessageId = null;
+        currentViewSignature = null;
+        globalRenderLoopRunning = false;
+    
+        console.debug('[StreamManager] Transient state cleared');
+    }
 
 // Expose to global scope for classic scripts
 window.streamManager = {
@@ -1370,6 +1422,7 @@ window.streamManager = {
     startStreamingMessage,
     appendStreamChunk,
     finalizeStreamedMessage,
+    cleanupTransientState,
     getActiveStreamingMessageId: () => activeStreamingMessageId,
     getActiveStreamingContext: () => {
         if (!activeStreamingMessageId) return null;
