@@ -454,7 +454,9 @@ function initialize(context) {
             if (agentConfigManager) {
                 await agentConfigManager.writeAgentConfig(agentId, configToSave);
             } else {
-                await fs.writeJson(path.join(agentDir, 'config.json'), configToSave, { spaces: 2 });
+                console.error(`AgentConfigManager not available, cannot safely create config for agent ${agentId}`);
+                await fs.remove(agentDir).catch(() => {});
+                return { error: 'AgentConfigManager 未初始化，无法安全创建 Agent 配置。' };
             }
 
             if (configToSave.topics && configToSave.topics.length > 0) {

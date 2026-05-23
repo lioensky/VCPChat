@@ -6,6 +6,7 @@ const fs = require('fs-extra');
 const windowService = require('../services/windowService');
 const WINDOW_APP_IDS = require('../services/windowAppIds');
 const { PRELOAD_ROLES, resolveProjectPreload } = require('../services/preloadPaths');
+const NetworkNotesCacheStore = require('../services/networkNotesCacheStore');
 
 let notesWindow = null;
 let noteMiniWindow = null;
@@ -14,6 +15,8 @@ let APP_DATA_ROOT_IN_PROJECT;
 let NOTES_DIR;
 let SETTINGS_FILE;
 let NETWORK_NOTES_CACHE_FILE;
+let NETWORK_NOTES_CACHE_DB_FILE;
+let networkNotesCacheStore = null;
 let networkNotesTreeCache = null; // In-memory cache
 let localNotesWatcher = null;
 let localNotesWatchRefreshTimer = null;
@@ -68,6 +71,26 @@ async function generateUniquePath(basePath) {
 
 function itemIdFromPath(itemPath, isDirectory) {
     return `${isDirectory ? 'folder' : 'note'}-${Buffer.from(itemPath).toString('hex')}`;
+}
+
+function isMusicDiaryDirectoryName(name) {
+    return typeof name === 'string' && name.trim().toLowerCase() === 'musicdiary';
+}
+
+function filterMusicDiaryNodes(tree) {
+    if (!Array.isArray(tree)) return [];
+    return tree.reduce((acc, item) => {
+        if (item && item.type === 'folder' && isMusicDiaryDirectoryName(item.name)) {
+            return acc;
+        }
+
+        const nextItem = item && item.type === 'folder' && Array.isArray(item.children)
+            ? { ...item, children: filterMusicDiaryNodes(item.children) }
+            : item;
+
+        acc.push(nextItem);
+        return acc;
+    }, []);
 }
 
 async function readOrderIds(orderFilePath) {
@@ -227,8 +250,15 @@ async function getCompleteDisplayOrderIds(dirPath) {
     return [...orderedExistingIds, ...unorderedIds];
 }
 
-// Helper function to recursively read the directory structure
-async function readDirectoryStructure(dirPath) {
+/**
+ * Helper function to recursively read the directory structure.
+ * MusicDiary directories are skipped when scanning network trees.
+ * @param {string} dirPath
+ * @param {object} [options]
+ * @param {boolean} [options.skipMusicDiaryDirs=false]
+ */
+async function readDirectoryStructure(dirPath, options = {}) {
+    const { skipMusicDiaryDirs = false } = options;
     const items = [];
     const files = await fs.readdir(dirPath, { withFileTypes: true });
     const orderFilePath = path.join(dirPath, '.folder-order.json');
@@ -238,13 +268,17 @@ async function readDirectoryStructure(dirPath) {
         const fullPath = path.join(dirPath, file.name);
         if (file.name.startsWith('.') || file.name.endsWith('.json')) continue; // Skip order and hidden files
 
+        if (skipMusicDiaryDirs && file.isDirectory() && isMusicDiaryDirectoryName(file.name)) {
+            continue;
+        }
+
         if (file.isDirectory()) {
             items.push({
                 id: itemIdFromPath(fullPath, true),
                 type: 'folder',
                 name: file.name,
                 path: fullPath,
-                children: await readDirectoryStructure(fullPath)
+                children: await readDirectoryStructure(fullPath, options)
             });
         } else if (file.isFile() && (file.name.endsWith('.txt') || file.name.endsWith('.md'))) {
             try {
@@ -262,6 +296,8 @@ async function readDirectoryStructure(dirPath) {
                 const parts = header ? header.split('-') : [];
                 const potentialTimestamp = parts.length > 0 ? parseInt(parts[parts.length - 1], 10) : NaN;
 
+                const stat = await fs.stat(fullPath);
+
                 // A header is valid if it has >= 3 parts & the last part is a number (our timestamp).
                 if (parts.length >= 3 && !isNaN(potentialTimestamp) && potentialTimestamp > 0) {
                     // It's a valid header. Use its metadata and strip it from the content.
@@ -276,7 +312,7 @@ async function readDirectoryStructure(dirPath) {
                     // It's not a valid header. Use the full content and file mtime.
                     noteContent = content;
                     username = 'unknown';
-                    timestamp = (await fs.stat(fullPath)).mtime.getTime();
+                    timestamp = stat.mtime.getTime();
                 }
 
                 items.push({
@@ -287,7 +323,9 @@ async function readDirectoryStructure(dirPath) {
                     timestamp,
                     content: noteContent,
                     fileName: file.name,
-                    path: fullPath
+                    path: fullPath,
+                    mtimeMs: stat.mtime.getTime(),
+                    size: stat.size
                 });
             } catch (readError) {
                 console.error(`Error reading note file ${file.name}:`, readError);
@@ -317,7 +355,10 @@ async function readDirectoryStructure(dirPath) {
     return items;
 }
 
-// Centralized function to scan network notes, update cache, and notify renderer
+/**
+ * Centralized function to scan network notes, update cache, and notify renderer.
+ * MusicDiary directories are excluded from network indexing on all platforms.
+ */
 async function scanAndCacheNetworkNotes() {
     return new Promise(async (resolve, reject) => {
         try {
@@ -329,11 +370,11 @@ async function scanAndCacheNetworkNotes() {
 
                 if (networkPaths.length === 0) {
                     networkNotesTreeCache = [];
-                    await fs.remove(NETWORK_NOTES_CACHE_FILE);
+                    await networkNotesCacheStore.clear();
                     if (notesWindow && !notesWindow.isDestroyed()) {
                         notesWindow.webContents.send('network-notes-scanned', []);
                     }
-                    resolve([]); // Resolve with empty array
+                    resolve([]);
                     return;
                 }
 
@@ -341,7 +382,7 @@ async function scanAndCacheNetworkNotes() {
                 for (const networkPath of networkPaths) {
                     if (networkPath && (await fs.pathExists(networkPath))) {
                         console.log(`[scanAndCacheNetworkNotes] Starting async scan of: ${networkPath}`);
-                        const networkNotes = await readDirectoryStructure(networkPath);
+                        const networkNotes = await readDirectoryStructure(networkPath, { skipMusicDiaryDirs: true });
                         const rootName = path.basename(networkPath) || networkPath;
                         const networkTree = {
                             id: `folder-network-root-${Buffer.from(networkPath).toString('hex')}`,
@@ -358,26 +399,23 @@ async function scanAndCacheNetworkNotes() {
                     }
                 }
 
-                networkNotesTreeCache = allNetworkTrees;
-                if (allNetworkTrees.length > 0) {
-                    await fs.writeJson(NETWORK_NOTES_CACHE_FILE, allNetworkTrees);
-                } else {
-                    await fs.remove(NETWORK_NOTES_CACHE_FILE);
-                }
+                const sanitizedNetworkTrees = filterMusicDiaryNodes(allNetworkTrees);
+                networkNotesTreeCache = sanitizedNetworkTrees;
+                await networkNotesCacheStore.writeAllTrees(sanitizedNetworkTrees);
 
                 if (notesWindow && !notesWindow.isDestroyed()) {
-                    notesWindow.webContents.send('network-notes-scanned', allNetworkTrees);
+                    notesWindow.webContents.send('network-notes-scanned', sanitizedNetworkTrees);
                 }
-                resolve(allNetworkTrees); // Resolve promise with the result
+                resolve(sanitizedNetworkTrees);
             } else {
-                resolve([]); // Resolve if no settings file exists
+                resolve([]);
             }
         } catch (e) {
             console.error('Error during async network notes scan:', e);
             if (notesWindow && !notesWindow.isDestroyed()) {
                 notesWindow.webContents.send('network-notes-scan-error', { error: e.message });
             }
-            reject(e); // Reject promise on error
+            reject(e);
         }
     });
 }
@@ -500,6 +538,12 @@ function initialize(options) {
     NOTES_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'Notemodules');
     SETTINGS_FILE = options.SETTINGS_FILE;
     NETWORK_NOTES_CACHE_FILE = path.join(APP_DATA_ROOT_IN_PROJECT, 'network-notes-cache.json');
+    NETWORK_NOTES_CACHE_DB_FILE = path.join(APP_DATA_ROOT_IN_PROJECT, 'network-notes-cache.sqlite');
+    networkNotesCacheStore = new NetworkNotesCacheStore({
+        dbPath: NETWORK_NOTES_CACHE_DB_FILE,
+        legacyJsonPath: NETWORK_NOTES_CACHE_FILE
+    });
+    networkNotesCacheStore.initialize();
 
     fs.ensureDirSync(NOTES_DIR); // Ensure the Notes directory exists
 
@@ -522,8 +566,15 @@ function initialize(options) {
 
     // IPC handler to get the cached network notes tree for faster startup
     ipcMain.handle('get-cached-network-notes', async () => {
-        // Now returns an array of trees or an empty array
-        return await fs.pathExists(NETWORK_NOTES_CACHE_FILE) ? await fs.readJson(NETWORK_NOTES_CACHE_FILE) : [];
+        try {
+            const cached = networkNotesCacheStore.readAllTrees();
+            const sanitized = filterMusicDiaryNodes(cached);
+            networkNotesTreeCache = sanitized;
+            return sanitized;
+        } catch (error) {
+            console.error('Failed to read cached network notes:', error);
+            return [];
+        }
     });
 
     // IPC handler to write a note file
@@ -945,26 +996,30 @@ function initialize(options) {
         const NOTES_MODULE_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'Notemodules');  
     
         // 递归搜索函数  
-        async function searchInDirectory(directory) {  
-            try {  
-                const files = await fs.readdir(directory, { withFileTypes: true });  
-                for (const file of files) {  
-                    const fullPath = path.join(directory, file.name);  
-                    if (file.isDirectory()) {  
-                        await searchInDirectory(fullPath);  
-                    } else if (file.isFile() && (file.name.endsWith('.md') || file.name.endsWith('.txt'))) {  
-                        if (file.name.toLowerCase().includes(lowerCaseQuery)) {  
-                            results.push({  
-                                name: file.name,  
-                                path: fullPath,  
-                            });  
-                        }  
-                    }  
-                }  
-            } catch (error) {  
-                console.error(`Error searching for notes in directory ${directory}:`, error);  
-            }  
-        }  
+        async function searchInDirectory(directory, options = {}) {
+            const { skipMusicDiaryDirs = false } = options;
+            try {
+                const files = await fs.readdir(directory, { withFileTypes: true });
+                for (const file of files) {
+                    const fullPath = path.join(directory, file.name);
+                    if (skipMusicDiaryDirs && file.isDirectory() && isMusicDiaryDirectoryName(file.name)) {
+                        continue;
+                    }
+                    if (file.isDirectory()) {
+                        await searchInDirectory(fullPath, options);
+                    } else if (file.isFile() && (file.name.endsWith('.md') || file.name.endsWith('.txt'))) {
+                        if (file.name.toLowerCase().includes(lowerCaseQuery)) {
+                            results.push({
+                                name: file.name,
+                                path: fullPath,
+                            });
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error(`Error searching for notes in directory ${directory}:`, error);
+            }
+        }
     
         // 性能优化：优先从缓存中搜索网络笔记  
         async function searchInNetworkCache() {  
@@ -991,31 +1046,31 @@ function initialize(options) {
             }  
         }  
     
-        // 1. 搜索本地笔记  
-        await searchInDirectory(NOTES_MODULE_DIR);  
-    
-        // 2. 优先从缓存搜索网络笔记（性能优化）  
-        await searchInNetworkCache();  
-    
-        // 3. 如果缓存不存在，则实时扫描网络路径（降级方案）  
-        if (!networkNotesTreeCache || networkNotesTreeCache.length === 0) {  
-            try {  
-                if (await fs.pathExists(SETTINGS_FILE)) {  
-                    const settings = await fs.readJson(SETTINGS_FILE);  
-                    const networkPaths = Array.isArray(settings.networkNotesPaths)   
-                        ? settings.networkNotesPaths   
-                        : (settings.networkNotesPath ? [settings.networkNotesPath] : []);  
+        // 1. 搜索本地笔记
+        await searchInDirectory(NOTES_MODULE_DIR);
+        
+        // 2. 优先从缓存搜索网络笔记（性能优化）
+        await searchInNetworkCache();
+        
+        // 3. 如果缓存不存在，则实时扫描网络路径（降级方案）
+        if (!networkNotesTreeCache || networkNotesTreeCache.length === 0) {
+            try {
+                if (await fs.pathExists(SETTINGS_FILE)) {
+                    const settings = await fs.readJson(SETTINGS_FILE);
+                    const networkPaths = Array.isArray(settings.networkNotesPaths)
+                        ? settings.networkNotesPaths
+                        : (settings.networkNotesPath ? [settings.networkNotesPath] : []);
                     
-                    for (const networkPath of networkPaths) {  
-                        if (networkPath && await fs.pathExists(networkPath)) {  
-                            await searchInDirectory(networkPath);  
-                        }  
-                    }  
-                }  
-            } catch (error) {  
-                console.error('Error searching network notes:', error);  
-            }  
-        }  
+                    for (const networkPath of networkPaths) {
+                        if (networkPath && await fs.pathExists(networkPath)) {
+                            await searchInDirectory(networkPath, { skipMusicDiaryDirs: true });
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('Error searching network notes:', error);
+            }
+        }
     
         return results;  
     });

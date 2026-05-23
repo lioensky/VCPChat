@@ -30,6 +30,7 @@
     "@3d-dice/dice-box": "^1.1.4",
     "animejs": "^4.0.2",
     "axios": "^1.10.0",
+    "better-sqlite3": "^12.9.0",
     "cheerio": "^1.1.2",
     "child_process": "^1.0.2",
     "chokidar": "^4.0.3",
