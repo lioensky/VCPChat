@@ -83,7 +83,7 @@ class NetworkNotesCacheStore {
         if (roots.length === 0) return [];
 
         const getNodes = this.db.prepare(`
-            SELECT id, parent_id, type, name, title, username, timestamp, content, file_name, path, sort_order
+            SELECT id, parent_id, type, name, title, username, timestamp, content, file_name, path, sort_order, mtime_ms, size
             FROM network_note_nodes
             WHERE root_path = ?
             ORDER BY parent_id, sort_order
@@ -120,7 +120,9 @@ class NetworkNotesCacheStore {
                         timestamp: row.timestamp,
                         content: row.content || '',
                         fileName: row.file_name,
-                        path: row.path
+                        path: row.path,
+                        mtimeMs: row.mtime_ms,
+                        size: row.size
                     };
 
                 nodeMap.set(node.id, node);
@@ -144,6 +146,44 @@ class NetworkNotesCacheStore {
 
             return rootNode;
         });
+    }
+
+    getNodeSnapshotByPath(rootPath) {
+        const snapshot = new Map();
+
+        if (!this.initialize()) {
+            return snapshot;
+        }
+
+        const rows = this.db.prepare(`
+            SELECT id, type, name, title, username, timestamp, content, file_name, path, mtime_ms, size
+            FROM network_note_nodes
+            WHERE root_path = ?
+        `).all(rootPath);
+
+        for (const row of rows) {
+            snapshot.set(row.path, row.type === 'folder'
+                ? {
+                    id: row.id,
+                    type: 'folder',
+                    name: row.name,
+                    path: row.path
+                }
+                : {
+                    id: row.id,
+                    type: 'note',
+                    title: row.title,
+                    username: row.username,
+                    timestamp: row.timestamp,
+                    content: row.content || '',
+                    fileName: row.file_name,
+                    path: row.path,
+                    mtimeMs: row.mtime_ms,
+                    size: row.size
+                });
+        }
+
+        return snapshot;
     }
 
     writeAllTrees(trees) {

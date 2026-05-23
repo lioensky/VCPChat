@@ -258,7 +258,7 @@ async function getCompleteDisplayOrderIds(dirPath) {
  * @param {boolean} [options.skipMusicDiaryDirs=false]
  */
 async function readDirectoryStructure(dirPath, options = {}) {
-    const { skipMusicDiaryDirs = false } = options;
+    const { skipMusicDiaryDirs = false, cachedSnapshot = null } = options;
     const items = [];
     const files = await fs.readdir(dirPath, { withFileTypes: true });
     const orderFilePath = path.join(dirPath, '.folder-order.json');
@@ -282,6 +282,17 @@ async function readDirectoryStructure(dirPath, options = {}) {
             });
         } else if (file.isFile() && (file.name.endsWith('.txt') || file.name.endsWith('.md'))) {
             try {
+                const stat = await fs.stat(fullPath);
+                const mtimeMs = stat.mtime.getTime();
+                const cachedNote = cachedSnapshot?.get(fullPath);
+                if (cachedNote
+                    && cachedNote.type === 'note'
+                    && cachedNote.mtimeMs === mtimeMs
+                    && cachedNote.size === stat.size) {
+                    items.push({ ...cachedNote });
+                    continue;
+                }
+
                 const content = await fs.readFile(fullPath, 'utf8');
                 const lines = content.split('\n');
                 const id = itemIdFromPath(fullPath, false);
@@ -295,8 +306,6 @@ async function readDirectoryStructure(dirPath, options = {}) {
                 const header = lines[0];
                 const parts = header ? header.split('-') : [];
                 const potentialTimestamp = parts.length > 0 ? parseInt(parts[parts.length - 1], 10) : NaN;
-
-                const stat = await fs.stat(fullPath);
 
                 // A header is valid if it has >= 3 parts & the last part is a number (our timestamp).
                 if (parts.length >= 3 && !isNaN(potentialTimestamp) && potentialTimestamp > 0) {
@@ -312,7 +321,7 @@ async function readDirectoryStructure(dirPath, options = {}) {
                     // It's not a valid header. Use the full content and file mtime.
                     noteContent = content;
                     username = 'unknown';
-                    timestamp = stat.mtime.getTime();
+                    timestamp = mtimeMs;
                 }
 
                 items.push({
@@ -324,7 +333,7 @@ async function readDirectoryStructure(dirPath, options = {}) {
                     content: noteContent,
                     fileName: file.name,
                     path: fullPath,
-                    mtimeMs: stat.mtime.getTime(),
+                    mtimeMs,
                     size: stat.size
                 });
             } catch (readError) {
@@ -382,7 +391,8 @@ async function scanAndCacheNetworkNotes() {
                 for (const networkPath of networkPaths) {
                     if (networkPath && (await fs.pathExists(networkPath))) {
                         console.log(`[scanAndCacheNetworkNotes] Starting async scan of: ${networkPath}`);
-                        const networkNotes = await readDirectoryStructure(networkPath, { skipMusicDiaryDirs: true });
+                        const cachedSnapshot = networkNotesCacheStore.getNodeSnapshotByPath(networkPath);
+                        const networkNotes = await readDirectoryStructure(networkPath, { skipMusicDiaryDirs: true, cachedSnapshot });
                         const rootName = path.basename(networkPath) || networkPath;
                         const networkTree = {
                             id: `folder-network-root-${Buffer.from(networkPath).toString('hex')}`,
