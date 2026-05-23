@@ -11,6 +11,7 @@ const { PRELOAD_ROLES, resolveAppPreload } = require('../services/preloadPaths')
 let ipcHandlersRegistered = false;
 let forumWindowInstance = null;
 let memoWindowInstance = null;
+let logWindowInstance = null;
 let taskWindowInstance = null;
 
 function initialize(mainWindow, openChildWindows) {
@@ -248,6 +249,61 @@ function initialize(mainWindow, openChildWindows) {
                 openChildWindows.splice(index, 1);
             }
         memoWindowInstance = null;
+        });
+    });
+
+    ipcMain.on('open-log-window', (event) => {
+        if (logWindowInstance && !logWindowInstance.isDestroyed()) {
+            if (!logWindowInstance.isVisible()) {
+                logWindowInstance.show();
+            }
+            logWindowInstance.focus();
+            return;
+        }
+
+        const logWindow = new BrowserWindow({
+            width: 450,
+            height: 820,
+            minWidth: 450,
+            minHeight: 560,
+            title: 'VCP日志中心',
+            modal: false,
+            frame: false,
+            ...(process.platform === 'darwin' ? {} : { titleBarStyle: 'hidden' }),
+            webPreferences: {
+                preload: resolveAppPreload(app.getAppPath(), PRELOAD_ROLES.UTILITY),
+                contextIsolation: true,
+                nodeIntegration: false,
+            },
+            icon: path.join(__dirname, '../../assets/icon.png'),
+            show: false,
+        });
+
+        logWindowInstance = logWindow;
+        logWindow.setMenu(null);
+
+        const url = `file://${path.join(__dirname, '../../Logmodules/log.html')}`;
+        logWindow.loadURL(url);
+
+        logWindow.once('ready-to-show', () => {
+            logWindow.show();
+        });
+
+        openChildWindows.push(logWindow);
+
+        logWindow.on('close', (event) => {
+            if (process.platform === 'darwin') {
+                event.preventDefault();
+                logWindow.hide();
+            }
+        });
+
+        logWindow.on('closed', () => {
+            const index = openChildWindows.indexOf(logWindow);
+            if (index > -1) {
+                openChildWindows.splice(index, 1);
+            }
+            logWindowInstance = null;
         });
     });
 

@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src *;">
+    <title>VCP日志中心</title>
+    <link rel="stylesheet" href="../styles/themes.css">
+    <link rel="stylesheet" href="log.css">
+</head>
+<body>
+    <nav id="top-nav-bar" class="glass log-titlebar">
+        <div class="nav-left">
+            <div class="nav-title">VCP日志中心</div>
+            <span id="log-status" class="log-status">初始化中...</span>
+        </div>
+        <div class="nav-right">
+            <button id="refresh-log-btn" class="nav-icon-btn" title="刷新日志">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+            </button>
+            <button id="clear-log-btn" class="nav-icon-btn danger-btn" title="清空后端日志">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"></path><path d="M8 6V4h8v2"></path><path d="M19 6l-1 14H6L5 6"></path></svg>
+            </button>
+            <div class="window-divider"></div>
+            <button id="minimize-log-btn" class="nav-icon-btn" title="最小化">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            </button>
+            <button id="maximize-log-btn" class="nav-icon-btn" title="最大化">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"></rect></svg>
+            </button>
+            <button id="close-log-btn" class="nav-icon-btn" title="关闭">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </button>
+        </div>
+    </nav>
+
+    <main class="log-app">
+        <section class="control-panel glass">
+            <div class="control-row">
+                <label class="control-field">
+                    <span>默认行数</span>
+                    <input id="line-limit-input" type="number" min="50" max="20000" step="50" value="500" class="glass-input compact-input">
+                </label>
+                <label class="control-field grow">
+                    <span>筛选文本</span>
+                    <input id="log-filter-input" type="search" class="glass-input compact-input" placeholder="无视大小写匹配当前日志...">
+                </label>
+                <button id="order-toggle-btn" class="glass-btn">倒序显示</button>
+                <button id="copy-visible-btn" class="glass-btn primary">复制可见</button>
+            </div>
+
+            <div class="preset-row">
+                <span class="preset-label">预筛选</span>
+                <button class="preset-chip" data-filter="">全部</button>
+                <button class="preset-chip" data-filter="IP">IP</button>
+                <button class="preset-chip" data-filter="TOOL">TOOL</button>
+                <button class="preset-chip" data-filter="RAG">RAG</button>
+                <button class="preset-chip" data-filter="POST">POST</button>
+                <button class="preset-chip" data-filter="PLUGIN">PLUGIN</button>
+                <button class="preset-chip" data-filter="ERROR">ERROR</button>
+                <span id="log-meta" class="log-meta">--</span>
+            </div>
+        </section>
+
+        <section class="log-shell glass">
+            <div id="log-lines" class="log-lines" aria-live="polite"></div>
+            <div id="empty-state" class="empty-state">暂无日志内容</div>
+        </section>
+
+        <div class="floating-actions">
+            <button id="scroll-top-btn" class="float-btn" title="滚动到顶部">↑</button>
+            <button id="scroll-bottom-btn" class="float-btn" title="滚动到底部">↓</button>
+        </div>
+    </main>
+
+    <div id="confirm-modal" class="confirm-modal" aria-hidden="true">
+        <div class="confirm-card glass" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+            <div class="confirm-icon">⚠️</div>
+            <h2 id="confirm-title">确认清空日志</h2>
+            <p id="confirm-message">确定要清空后端服务器日志吗？此操作不可撤销。</p>
+            <div class="confirm-actions">
+                <button id="confirm-cancel-btn" class="glass-btn">取消</button>
+                <button id="confirm-ok-btn" class="glass-btn danger-solid">清空日志</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <script src="log.js"></script>
+</body>
+</html>

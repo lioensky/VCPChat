@@ -26,6 +26,7 @@ const standaloneAppProcesses = new Map(); // appDir -> child_process
 // --- VChat 内部子窗口单例引用 ---
 let vchatForumWindow = null;
 let vchatMemoWindow = null;
+let vchatLogWindow = null;
 let vchatTranslatorWindow = null;
 let vchatMusicWindow = null;
 let vchatThemesWindow = null;
@@ -332,6 +333,7 @@ function createOrFocusChildWindow(existingWindow, options) {
         // 清理单例引用
         if (win === vchatForumWindow) vchatForumWindow = null;
         if (win === vchatMemoWindow) vchatMemoWindow = null;
+        if (win === vchatLogWindow) vchatLogWindow = null;
         if (win === vchatTranslatorWindow) vchatTranslatorWindow = null;
         if (win === vchatThemesWindow) vchatThemesWindow = null;
     });
@@ -425,6 +427,26 @@ function registerManagedWindows() {
                 htmlPath: path.join(app.getAppPath(), 'Forummodules', 'forum.html'),
             });
             return vchatForumWindow;
+        },
+    });
+
+    windowService.register(WINDOW_APP_IDS.LOG, {
+        owner: 'desktopHandlers',
+        getWindow: () => vchatLogWindow || findWindowByUrl('log.html'),
+        open: async () => {
+            const existingLog = findWindowByUrl('log.html');
+            if (existingLog) {
+                if (!existingLog.isVisible()) existingLog.show();
+                existingLog.focus();
+                vchatLogWindow = existingLog;
+                return existingLog;
+            }
+            vchatLogWindow = createOrFocusChildWindow(vchatLogWindow, {
+                width: 450, height: 820, minWidth: 450, minHeight: 560,
+                title: 'VCP日志中心',
+                htmlPath: path.join(app.getAppPath(), 'Logmodules', 'log.html'),
+            });
+            return vchatLogWindow;
         },
     });
 
@@ -551,6 +573,8 @@ function resolveAppActionToAppId(appAction) {
             return WINDOW_APP_IDS.MEMO;
         case 'open-forum-window':
             return WINDOW_APP_IDS.FORUM;
+        case 'open-log-window':
+            return WINDOW_APP_IDS.LOG;
         case 'open-rag-observer-window':
             return WINDOW_APP_IDS.RAG_OBSERVER;
         case 'open-dice-window':

@@ -4,6 +4,7 @@ module.exports = Object.freeze({
     NOTES: 'notes',
     MEMO: 'memo',
     FORUM: 'forum',
+    LOG: 'log',
     RAG_OBSERVER: 'rag-observer',
     DICE: 'dice',
     CANVAS: 'canvas',

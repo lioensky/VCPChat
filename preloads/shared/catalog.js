@@ -63,6 +63,7 @@ function createCatalog(ops) {
         openVoiceChatWindow: command((data) => ops.send('open-voice-chat-window', data)),
         openForumWindow: command(() => ops.send('open-forum-window')),
         openMemoWindow: command(() => ops.send('open-memo-window')),
+        openLogWindow: command(() => ops.send('open-log-window')),
         openMusicWindow: command(() => ops.send('open-music-window')),
         openDiceWindow: query(() => ops.invoke('open-dice-window')),
         openCanvasWindow: query(() => ops.invoke('open-canvas-window')),

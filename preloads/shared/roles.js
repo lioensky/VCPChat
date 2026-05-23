@@ -38,6 +38,7 @@ const SHARED_KEYS = [
     'openVoiceChatWindow',
     'openForumWindow',
     'openMemoWindow',
+    'openLogWindow',
     'openMusicWindow',
     'openCanvasWindow',
     'openDesktopWindow',
