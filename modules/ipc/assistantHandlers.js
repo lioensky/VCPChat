@@ -16,13 +16,14 @@ let assistantBarWindowReadyPromises = [];  // ⏱️ 等待 ready 的 resolve �
 let selectionUpdateToken = 0;
 let assistantBarHideRequestId = 0;
 let lastAssistantBarShownAt = 0;
-const ASSISTANT_BAR_HIDE_GRACE_MS = 120;
-const ASSISTANT_BAR_GLOBAL_HIDE_DELAY_MS = 40;
-const ASSISTANT_BAR_ANIMATION_MS = 90;
+const ASSISTANT_BAR_HIDE_GRACE_MS = 1500;
+const ASSISTANT_BAR_GLOBAL_HIDE_DELAY_MS = 60;
+const ASSISTANT_BAR_ANIMATION_MS = 80;
 let lastProcessedSelection = '';
 let selectionListenerActive = false;
 let mouseListener = null;
 let hideBarTimeout = null;
+let assistantBarOutsideWatcher = null;
 let SETTINGS_FILE;
 let isWindowHidingInProgress = false;
 let rustHealthMonitorTimer = null;
@@ -339,6 +340,7 @@ function processSelectedText(selectionData) {
         // 启动全局鼠标监听器作为备选方案
         // Rust 模式下虽然 sidecar 会发送空选区事件，但添加双重保障
         startGlobalMouseListener();
+        startAssistantBarOutsideClickWatcher();
     });
 }
 
@@ -811,6 +813,48 @@ function hideAssistantBarIfPointerOutside(reason = 'pointer-outside') {
     }
 }
 
+function startAssistantBarOutsideClickWatcher() {
+    if (assistantBarOutsideWatcher) {
+        return;
+    }
+
+    assistantBarOutsideWatcher = setInterval(() => {
+        if (!assistantBarWindow || assistantBarWindow.isDestroyed() || !assistantBarWindow.isVisible()) {
+            return;
+        }
+
+        const shouldHide = (Date.now() - lastAssistantBarShownAt) >= ASSISTANT_BAR_HIDE_GRACE_MS;
+        if (!shouldHide) {
+            return;
+        }
+
+        try {
+            const cursorPos = screen.getCursorScreenPoint();
+            const barBounds = assistantBarWindow.getBounds();
+            const isInBarBounds =
+                cursorPos.x >= barBounds.x &&
+                cursorPos.x <= barBounds.x + barBounds.width &&
+                cursorPos.y >= barBounds.y &&
+                cursorPos.y <= barBounds.y + barBounds.height;
+
+            if (!isInBarBounds) {
+                hideAssistantBarWithAnimation('pointer-outside-poll');
+            }
+        } catch (error) {
+            hideAssistantBarWithAnimation('pointer-outside-poll');
+        }
+    }, 60);
+}
+
+function stopAssistantBarOutsideClickWatcher() {
+    if (!assistantBarOutsideWatcher) {
+        return;
+    }
+
+    clearInterval(assistantBarOutsideWatcher);
+    assistantBarOutsideWatcher = null;
+}
+
 function prepareAssistantBarForShow() {
     if (!assistantBarWindow || assistantBarWindow.isDestroyed()) {
         return;
@@ -829,6 +873,8 @@ function prepareAssistantBarForShow() {
 }
 
 function hideAssistantBarWithAnimation(reason = 'unknown') {
+    stopAssistantBarOutsideClickWatcher();
+
     if (!assistantBarWindow || assistantBarWindow.isDestroyed() || !assistantBarWindow.isVisible()) {
         return;
     }
@@ -905,6 +951,7 @@ function hideAssistantBarAndStopListener() {
         clearTimeout(hideBarTimeout);
         hideBarTimeout = null;
     }
+    stopAssistantBarOutsideClickWatcher();
     if (assistantBarWindow && !assistantBarWindow.isDestroyed() && assistantBarWindow.isVisible()) {
         hideAssistantBarWithAnimation('hide-and-stop-listener');
     }

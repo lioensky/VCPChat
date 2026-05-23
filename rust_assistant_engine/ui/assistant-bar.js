@@ -4,6 +4,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const assistantAvatar = document.getElementById('assistantAvatar');
     const buttons = document.querySelectorAll('.assistant-button');
     let closeOnLeaveTimer = null;
+    let barShownAt = Date.now();
+    const BAR_LEAVE_GRACE_MS = 500;
+    const BAR_VISIBLE_MIN_MS = 500;
 
     // 应用主题函数
     const applyTheme = (theme) => {
@@ -17,6 +20,10 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
+    const markBarShown = () => {
+        barShownAt = Date.now();
+    };
+
     // 1. 主动从主进程获取初始数据
     const initialize = async () => {
         try {
@@ -28,6 +35,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (data && data.theme) {
                 applyTheme(data.theme);
             }
+            markBarShown();
         } catch (error) {
             console.error('Failed to get initial data for assistant bar:', error);
             // 默认使用深色主题
@@ -47,6 +55,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (data.theme) {
             applyTheme(data.theme);
         }
+        markBarShown();
     });
 
     // Listen for theme updates from the main process
@@ -65,21 +74,13 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // 当鼠标离开窗口时，快速关闭；主进程仍有短暂 grace 防止刚显示时误关
-    document.body.addEventListener('mouseleave', () => {
-        if (closeOnLeaveTimer) {
-            clearTimeout(closeOnLeaveTimer);
-        }
-        closeOnLeaveTimer = setTimeout(() => {
-            window.electronAPI.closeAssistantBar();
-            closeOnLeaveTimer = null;
-        }, 40);
-    });
-
+    // 由主进程统一判断“是否点到 bar 外”并关闭；
+    // renderer 侧不再基于 mouseleave 自动关闭，避免圈选松开鼠标后立即误关。
     document.body.addEventListener('mouseenter', () => {
         if (closeOnLeaveTimer) {
             clearTimeout(closeOnLeaveTimer);
             closeOnLeaveTimer = null;
         }
+        markBarShown();
     });
 });
