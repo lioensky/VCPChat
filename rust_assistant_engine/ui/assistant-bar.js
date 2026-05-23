@@ -65,7 +65,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // 当鼠标离开窗口时，延迟关闭，避免快速划词时的误触发闪烁
+    // 当鼠标离开窗口时，快速关闭；主进程仍有短暂 grace 防止刚显示时误关
     document.body.addEventListener('mouseleave', () => {
         if (closeOnLeaveTimer) {
             clearTimeout(closeOnLeaveTimer);
@@ -73,7 +73,7 @@ document.addEventListener('DOMContentLoaded', () => {
         closeOnLeaveTimer = setTimeout(() => {
             window.electronAPI.closeAssistantBar();
             closeOnLeaveTimer = null;
-        }, 180);
+        }, 40);
     });
 
     document.body.addEventListener('mouseenter', () => {

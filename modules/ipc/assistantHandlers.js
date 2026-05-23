@@ -16,9 +16,9 @@ let assistantBarWindowReadyPromises = [];  // ⏱️ 等待 ready 的 resolve �
 let selectionUpdateToken = 0;
 let assistantBarHideRequestId = 0;
 let lastAssistantBarShownAt = 0;
-const ASSISTANT_BAR_HIDE_GRACE_MS = 280;
-const ASSISTANT_BAR_GLOBAL_HIDE_DELAY_MS = 260;
-const ASSISTANT_BAR_ANIMATION_MS = 200;
+const ASSISTANT_BAR_HIDE_GRACE_MS = 120;
+const ASSISTANT_BAR_GLOBAL_HIDE_DELAY_MS = 40;
+const ASSISTANT_BAR_ANIMATION_MS = 90;
 let lastProcessedSelection = '';
 let selectionListenerActive = false;
 let mouseListener = null;
@@ -775,34 +775,39 @@ function startGlobalMouseListener() {
             if (isMouseDown) {
                 if (hideBarTimeout) clearTimeout(hideBarTimeout);
                 hideBarTimeout = setTimeout(() => {
-                    const shouldHide = (Date.now() - lastAssistantBarShownAt) >= ASSISTANT_BAR_HIDE_GRACE_MS;
-                    if (shouldHide && assistantBarWindow && !assistantBarWindow.isDestroyed() && assistantBarWindow.isVisible()) {
-                        // 检查鼠标点击位置是否在助手栏窗口内
-                        try {
-                            const cursorPos = screen.getCursorScreenPoint();
-                            const barBounds = assistantBarWindow.getBounds();
-                            const isInBarBounds = 
-                                cursorPos.x >= barBounds.x && 
-                                cursorPos.x <= barBounds.x + barBounds.width &&
-                                cursorPos.y >= barBounds.y && 
-                                cursorPos.y <= barBounds.y + barBounds.height;
-                            
-                            if (!isInBarBounds) {
-                                console.log('[Assistant] Hiding bar due to global mouse click outside');
-                                hideAssistantBarWithAnimation('global-mouse-down');
-                            }
-                        } catch (boundsError) {
-                            // 如果无法获取边界，直接隐藏
-                            console.log('[Assistant] Hiding bar (bounds check failed)');
-                            hideAssistantBarWithAnimation('global-mouse-down');
-                        }
-                    }
+                    hideBarTimeout = null;
+                    hideAssistantBarIfPointerOutside('global-mouse-down');
                 }, ASSISTANT_BAR_GLOBAL_HIDE_DELAY_MS);
             }
         });
         console.log('[Assistant] Global mouse listener started');
     } catch (error) {
         console.error('[Assistant] Failed to start global mouse listener:', error);
+    }
+}
+
+function hideAssistantBarIfPointerOutside(reason = 'pointer-outside') {
+    const shouldHide = (Date.now() - lastAssistantBarShownAt) >= ASSISTANT_BAR_HIDE_GRACE_MS;
+    if (!shouldHide || !assistantBarWindow || assistantBarWindow.isDestroyed() || !assistantBarWindow.isVisible()) {
+        return;
+    }
+
+    try {
+        const cursorPos = screen.getCursorScreenPoint();
+        const barBounds = assistantBarWindow.getBounds();
+        const isInBarBounds =
+            cursorPos.x >= barBounds.x &&
+            cursorPos.x <= barBounds.x + barBounds.width &&
+            cursorPos.y >= barBounds.y &&
+            cursorPos.y <= barBounds.y + barBounds.height;
+
+        if (!isInBarBounds) {
+            console.log(`[Assistant] Hiding bar due to ${reason}`);
+            hideAssistantBarWithAnimation(reason);
+        }
+    } catch (boundsError) {
+        console.log(`[Assistant] Hiding bar (${reason}, bounds check failed)`);
+        hideAssistantBarWithAnimation(reason);
     }
 }
 
@@ -816,7 +821,7 @@ function prepareAssistantBarForShow() {
         (() => {
             const bar = document.getElementById('selection-assistant-bar');
             if (!bar) return;
-            bar.style.transition = 'opacity 0.2s ease-in-out, transform 0.2s ease-in-out';
+            bar.style.transition = 'opacity 0.09s ease-in-out, transform 0.09s ease-in-out';
             bar.style.opacity = '1';
             bar.style.transform = 'none';
         })();
@@ -845,7 +850,7 @@ function hideAssistantBarWithAnimation(reason = 'unknown') {
         (() => {
             const bar = document.getElementById('selection-assistant-bar');
             if (!bar) return false;
-            bar.style.transition = 'opacity 0.2s ease-in-out, transform 0.2s ease-in-out';
+            bar.style.transition = 'opacity 0.09s ease-in-out, transform 0.09s ease-in-out';
             bar.style.opacity = '0';
             bar.style.transform = 'translateY(10px)';
             return true;
