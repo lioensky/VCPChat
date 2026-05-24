@@ -27,7 +27,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // --- 工具分类映射 ---
     const TOOL_CATEGORIES = {
-        '多媒体生成': ['ZImageGen','FluxGen','DoubaoGen','QwenImageGen',
+        '多媒体生成': ['ZImageGen','ZImageTurboGen','FluxGen','DoubaoGen','QwenImageGen',
             'GeminiImageGen','NovelAIGen','ComfyCloudGen','SunoGen',
             'WanVideoGen','GrokVideoGen','WebUIGen','ComfyUIGen','NanoBananaGen2'],
         '联网搜索': ['VSearch','TavilySearch','GoogleSearch','SerpSearch',

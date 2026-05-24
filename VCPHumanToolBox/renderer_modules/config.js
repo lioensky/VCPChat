@@ -20,6 +20,23 @@ export const tools = {
             { name: 'showbase64', type: 'checkbox', required: false, default: false }
         ]
     },
+    'ZImageTurboGen': {
+        displayName: 'Z-Image-Turbo 生图',
+        description: '使用 Gitee 提供的 Z-Image-Turbo 生成图片。支持 1k 和 2k 高清分辨率，支持中文和英文提示词。[后端插件: ZImageTurboGen]',
+        commands: {
+            'GenerateImage': {
+                description: '生成图片',
+                params: [
+                    { name: 'maid', type: 'text', required: true, placeholder: '你的名字' },
+                    { name: 'prompt', type: 'textarea', required: true, placeholder: '(必需) 用于图片生成的详细提示词，支持中文或英文。' },
+                    { name: 'size', type: 'select', required: false, options: ['1024x1024', '1024x768', '768x1024', '1024x576', '576x1024', '2048x2048', '2048x1536', '1536x2048', '2048x1152', '1152x2048', '2048x1280', '1280x2048'], default: '1024x1024', description: '图片分辨率或比例' },
+                    { name: 'negative_prompt', type: 'textarea', required: false, placeholder: '(可选) 负面提示词，描述不希望在图片中出现的内容，例如 "模糊, 低质量, 变形"。' },
+                    { name: 'num_inference_steps', type: 'number', required: false, min: 4, max: 25, default: 9, placeholder: '推理步数，范围 4-25，默认 9' },
+                    { name: 'seed', type: 'number', required: false, default: 0, placeholder: '随机种子，默认 0' }
+                ]
+            }
+        }
+    },
     'FluxGen': {
         displayName:'Flux 图片生成',
         description: '艺术风格多变，仅支持英文提示词。[后端插件: FluxGen]',
