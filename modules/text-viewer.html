@@ -767,8 +767,10 @@
             font-family: 'Segoe UI', 'Roboto', sans-serif !important;
             font-size: 0.95em !important;
             line-height: 1.6;
-            width: fit-content;
-            max-width: 95%;
+            width: 100%;
+            max-width: 100%;
+            min-width: 0;
+            box-sizing: border-box;
             transition: background 0.3s, color 0.3s, border-color 0.3s, box-shadow 0.3s;
         }
         .vcp-tool-result-bubble::before {
@@ -828,11 +830,13 @@
             display: flex;
             flex-direction: column;
             gap: 6px;
+            min-width: 0;
         }
         .vcp-tool-result-item {
             display: flex;
             flex-direction: row;
             align-items: flex-start;
+            min-width: 0;
         }
         .vcp-tool-result-item-key {
             font-weight: bold;
@@ -842,7 +846,70 @@
         }
         .vcp-tool-result-item-value {
             color: var(--tool-result-item-value-color, #263238);
+            min-width: 0;
+            max-width: 100%;
+            white-space: normal;
+            word-break: normal;
+            overflow-wrap: anywhere;
+            line-break: anywhere;
+        }
+        .vcp-tool-result-item-markdown {
+            flex-direction: column;
+        }
+        .vcp-tool-result-item-markdown .vcp-tool-result-item-key {
+            margin-right: 0;
+            margin-bottom: 4px;
+        }
+        .vcp-tool-result-item-markdown .vcp-tool-result-item-value {
+            display: block;
+            width: 100%;
+        }
+        .vcp-tool-result-markdown-content {
+            display: block;
+            width: 100%;
+            max-width: 100%;
+            min-width: 0;
+            box-sizing: border-box;
+            overflow-x: auto;
+            white-space: normal;
+            word-break: normal;
+            overflow-wrap: anywhere;
+            line-break: anywhere;
+        }
+        .vcp-tool-result-markdown-content *,
+        .vcp-tool-result-footer *,
+        .vcp-tool-result-raw-content {
+            max-width: 100%;
+            min-width: 0;
+            white-space: normal;
+            word-break: normal;
+            overflow-wrap: anywhere;
+            line-break: anywhere;
+        }
+        .vcp-tool-result-markdown-content a,
+        .vcp-tool-result-footer a,
+        .vcp-tool-result-item-value a {
             word-break: break-all;
+            overflow-wrap: anywhere;
+        }
+        .vcp-tool-result-bubble table,
+        .vcp-tool-result-markdown-content table {
+            display: block;
+            width: 100%;
+            max-width: 100%;
+            table-layout: fixed;
+            overflow-x: auto;
+            white-space: normal;
+        }
+        .vcp-tool-result-bubble th,
+        .vcp-tool-result-bubble td,
+        .vcp-tool-result-markdown-content th,
+        .vcp-tool-result-markdown-content td {
+            max-width: 28em;
+            white-space: normal;
+            word-break: normal;
+            overflow-wrap: anywhere;
+            line-break: anywhere;
         }
         .vcp-tool-result-item-value a {
             color: var(--tool-result-item-link-color, #1976d2) !important;

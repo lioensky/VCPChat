@@ -958,6 +958,8 @@ function preprocessFullContent(text, settings = {}, messageRole = 'assistant', d
 function renderToolResultBlock(fullMatch) {
     const startMarker = '[[VCP调用结果信息汇总:';
     const endMarker = 'VCP调用结果结束]]';
+    const markdownFieldKeys = new Set(['返回内容', '内容', 'Result', '返回结果', 'output']);
+    const knownFieldKeys = new Set(['工具名称', '执行状态', '命令', '参数', '返回内容', '内容', 'Result', '返回结果', 'output', '可访问URL', 'url', 'image']);
     let content = fullMatch;
     if (content.startsWith(startMarker)) {
         content = content.slice(startMarker.length);
@@ -977,14 +979,18 @@ function renderToolResultBlock(fullMatch) {
 
     lines.forEach(line => {
         const kvMatch = line.match(/^-\s*([^:]+):\s*(.*)/);
-        if (kvMatch) {
+        const matchedKey = kvMatch?.[1]?.trim();
+        const isKnownField = matchedKey && knownFieldKeys.has(matchedKey);
+        const shouldStartNewField = isKnownField && !markdownFieldKeys.has(currentKey);
+
+        if (shouldStartNewField) {
             if (currentKey) {
                 const val = currentValue.join('\n').trim();
                 if (currentKey === '工具名称') toolName = val;
                 else if (currentKey === '执行状态') status = val;
                 else details.push({ key: currentKey, value: val });
             }
-            currentKey = kvMatch[1].trim();
+            currentKey = matchedKey;
             currentValue = [kvMatch[2].trim()];
         } else if (currentKey) {
             currentValue.push(line);
@@ -1012,7 +1018,7 @@ function renderToolResultBlock(fullMatch) {
     html += `<div class="vcp-tool-result-details">`;
 
     details.forEach(({ key, value }) => {
-        const isMarkdownField = (key === '返回内容' || key === '内容' || key === 'Result' || key === '返回结果' || key === 'output');
+        const isMarkdownField = markdownFieldKeys.has(key);
         const isImageUrl = typeof value === 'string' && /^https?:\/\/[^\s]+$/i.test(value) && /\.(jpeg|jpg|png|gif|webp)([?&#]|$)/i.test(value);
         let processedValue;
 
@@ -1067,7 +1073,10 @@ function renderToolResultBlock(fullMatch) {
             }
         }
 
-        html += `<div class="vcp-tool-result-item">`;
+        const itemClass = (isMarkdownField && !isImageUrl)
+            ? 'vcp-tool-result-item vcp-tool-result-item-markdown'
+            : 'vcp-tool-result-item';
+        html += `<div class="${itemClass}">`;
         html += `<span class="vcp-tool-result-item-key">${escapeHtml(key)}:</span> `;
         const valueTag = (isMarkdownField && !isImageUrl) ? 'div' : 'span';
         html += `<${valueTag} class="vcp-tool-result-item-value">${processedValue}</${valueTag}>`;

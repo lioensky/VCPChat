@@ -828,9 +828,9 @@ body.light-theme {
     font-family: var(--vcp-tool-card-font-family, var(--vcp-chat-font-family, 'Segoe UI', 'Roboto', sans-serif)) !important;
     font-size: 0.95em !important;
     line-height: 1.6;
-    width: -moz-fit-content;
-    width: fit-content;
+    width: 100%;
     max-width: 95%;
+    box-sizing: border-box;
     transition: background 0.3s, color 0.3s, border-color 0.3s, box-shadow 0.3s;
     /* Add transition for smooth theme change */
     will-change: transform;
@@ -950,6 +950,7 @@ body.light-theme .vcp-tool-result-status:containing("SUCCESS") {
     display: flex;
     flex-direction: row;
     align-items: flex-start;
+    min-width: 0;
 }
 
 .vcp-tool-result-item-key {
@@ -961,7 +962,44 @@ body.light-theme .vcp-tool-result-status:containing("SUCCESS") {
 
 .vcp-tool-result-item-value {
     color: var(--tool-result-item-value-color);
+    min-width: 0;
+    max-width: 100%;
     word-break: break-word;
+    overflow-wrap: anywhere;
+}
+
+.message-item .md-content.contains-vcp-tool-result {
+    width: var(--chat-bubble-max-width, 82%);
+    max-width: var(--chat-bubble-max-width, 82%);
+    box-sizing: border-box;
+}
+
+.main-content.notifications-sidebar-active .message-item .md-content.contains-vcp-tool-result {
+    width: var(--chat-bubble-max-width-notifications, 90%);
+    max-width: var(--chat-bubble-max-width-notifications, 90%);
+}
+
+body.chat-wide-layout .message-item .md-content.contains-vcp-tool-result {
+    width: var(--chat-bubble-max-width-wide, 92%);
+    max-width: var(--chat-bubble-max-width-wide, 92%);
+}
+
+body.chat-wide-layout .main-content.notifications-sidebar-active .message-item .md-content.contains-vcp-tool-result {
+    width: var(--chat-bubble-max-width-wide-notifications, 96%);
+    max-width: var(--chat-bubble-max-width-wide-notifications, 96%);
+}
+
+.vcp-tool-result-item-markdown {
+    flex-direction: column;
+}
+
+.vcp-tool-result-item-markdown .vcp-tool-result-item-key {
+    margin-right: 0;
+    margin-bottom: 4px;
+}
+
+.vcp-tool-result-item-markdown .vcp-tool-result-item-value {
+    width: 100%;
 }
 
 .vcp-tool-result-bubble pre,
@@ -992,12 +1030,21 @@ body:not(.light-theme) .vcp-tool-result-raw-content {
 
 /* 🟢 工具结果 Markdown 渲染内容容器（架构级修复：独立渲染，支持表格/代码块） */
 .vcp-tool-result-markdown-content {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
     margin: 4px 0;
     padding: 4px 0;
     max-height: 500px;
+    overflow-x: auto;
     overflow-y: auto;
     scrollbar-width: thin;
-    word-break: break-word;
+    white-space: normal;
+    word-break: normal;
+    overflow-wrap: anywhere;
+    line-break: anywhere;
 }
 
 .vcp-tool-result-markdown-content pre {
@@ -1015,6 +1062,44 @@ body:not(.light-theme) .vcp-tool-result-markdown-content pre {
     background: rgba(255, 255, 255, 0.04);
 }
 
+.vcp-tool-result-markdown-content *,
+.vcp-tool-result-footer *,
+.vcp-tool-result-raw-content {
+    max-width: 100%;
+    min-width: 0;
+    white-space: normal;
+    word-break: normal;
+    overflow-wrap: anywhere;
+    line-break: anywhere;
+}
+
+.vcp-tool-result-markdown-content p,
+.vcp-tool-result-markdown-content li,
+.vcp-tool-result-markdown-content h1,
+.vcp-tool-result-markdown-content h2,
+.vcp-tool-result-markdown-content h3,
+.vcp-tool-result-markdown-content h4,
+.vcp-tool-result-markdown-content h5,
+.vcp-tool-result-markdown-content h6 {
+    white-space: normal;
+    word-break: normal;
+    overflow-wrap: anywhere;
+    line-break: anywhere;
+}
+
+.vcp-tool-result-markdown-content a,
+.vcp-tool-result-footer a,
+.vcp-tool-result-item-value a {
+    word-break: break-all;
+    overflow-wrap: anywhere;
+}
+
+.vcp-tool-result-markdown-content ul,
+.vcp-tool-result-markdown-content ol {
+    padding-left: 1.3em;
+    margin-left: 0;
+}
+
 .vcp-tool-result-markdown-content > p:first-child { margin-top: 0; }
 .vcp-tool-result-markdown-content > p:last-child { margin-bottom: 0; }
 
@@ -1030,10 +1115,15 @@ body:not(.light-theme) .vcp-tool-result-markdown-content pre {
 }
 
 .vcp-tool-result-bubble table {
+    display: block;
     margin: 0.5em 0;
     border-color: var(--tool-result-border-color);
     background-color: rgba(0, 0, 0, 0.05);
     width: 100%;
+    max-width: 100%;
+    table-layout: fixed;
+    overflow-x: auto;
+    white-space: normal;
 }
 
 body:not(.light-theme) .vcp-tool-result-bubble table {
@@ -1044,6 +1134,11 @@ body:not(.light-theme) .vcp-tool-result-bubble table {
 .vcp-tool-result-bubble td {
     border-color: var(--tool-result-border-color);
     padding: 6px 10px;
+    max-width: 28em;
+    white-space: normal;
+    word-break: normal;
+    overflow-wrap: anywhere;
+    line-break: anywhere;
 }
 
 .vcp-tool-result-bubble th {
@@ -1099,7 +1194,8 @@ body:not(.light-theme) .vcp-tool-result-bubble th {
 .vcp-tool-result-collapsible-content {
     max-height: 0;
     opacity: 0;
-    overflow-x: hidden;
+    min-width: 0;
+    overflow-x: auto;
     overflow-y: auto;
     /* Enable vertical scrolling */
     transition: max-height 0.5s ease-in-out, opacity 0.4s ease-in-out, margin-top 0.5s ease-in-out;

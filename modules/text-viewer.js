@@ -237,7 +237,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function transformSpecialBlocksForViewer(text) {
         const noteRegex = /<<<DailyNoteStart>>>(.*?)<<<DailyNoteEnd>>>/gs;
-        const toolResultRegex = /\[\[VCP调用结果信息汇总:(.*?)\]\]/gs;
+        const toolResultRegex = /\[\[VCP调用结果信息汇总:(.*?)VCP调用结果结束\]\]/gs;
         // 🟢 桌面推送块正则（排除反引号包裹）
         const desktopPushRegex = /(?<!`)<<<\[DESKTOP_PUSH\]>>>([\s\S]*?)<<<\[DESKTOP_PUSH_END\]>>>(?!`)/gs;
         const desktopPushPartialRegex = /(?<!`)<<<\[DESKTOP_PUSH\]>>>([\s\S]*)$/s;
@@ -290,29 +290,48 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Process VCP Tool Results - Viewer Mode (Full Details)
         processed = processed.replace(toolResultRegex, (match, rawContent) => {
             const content = rawContent.trim();
-            const lines = content.split('\n').filter(line => line.trim() !== '');
+            const lines = content.split('\n');
+            const markdownFieldKeys = new Set(['返回内容', '内容', 'Result', '返回结果', 'output']);
+            const knownFieldKeys = new Set(['工具名称', '执行状态', '命令', '参数', '返回内容', '内容', 'Result', '返回结果', 'output', '可访问URL', 'url', 'image']);
 
             let toolName = 'Unknown Tool';
             let status = 'Unknown Status';
             const details = [];
             let otherContent = [];
+            let currentKey = null;
+            let currentValue = [];
+
+            const flushCurrentField = () => {
+                if (!currentKey) return;
+                const value = currentValue.join('\n').trim();
+                if (currentKey === '工具名称') {
+                    toolName = value;
+                } else if (currentKey === '执行状态') {
+                    status = value;
+                } else {
+                    details.push({ key: currentKey, value });
+                }
+                currentKey = null;
+                currentValue = [];
+            };
 
             lines.forEach(line => {
-                const kvMatch = line.match(/-\s*([^:]+):\s*(.*)/);
-                if (kvMatch) {
-                    const key = kvMatch[1].trim();
-                    const value = kvMatch[2].trim();
-                    if (key === '工具名称') {
-                        toolName = value;
-                    } else if (key === '执行状态') {
-                        status = value;
-                    } else {
-                        details.push({ key, value });
-                    }
-                } else {
+                const kvMatch = line.match(/^-\s*([^:]+):\s*(.*)$/);
+                const matchedKey = kvMatch?.[1]?.trim();
+                const isKnownField = matchedKey && knownFieldKeys.has(matchedKey);
+                const shouldStartNewField = isKnownField && !markdownFieldKeys.has(currentKey);
+
+                if (shouldStartNewField) {
+                    flushCurrentField();
+                    currentKey = matchedKey;
+                    currentValue = [kvMatch[2].trim()];
+                } else if (currentKey) {
+                    currentValue.push(line);
+                } else if (line.trim() !== '') {
                     otherContent.push(line);
                 }
             });
+            flushCurrentField();
 
             let html = `<div class="vcp-tool-result-bubble">`;
             html += `<div class="vcp-tool-result-header">`;
@@ -323,22 +342,32 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             html += `<div class="vcp-tool-result-details">`;
             details.forEach(({ key, value }) => {
+                const isMarkdownField = markdownFieldKeys.has(key);
+                const isImageUrl = typeof value === 'string' && /^https?:\/\/[^\s]+$/i.test(value) && /\.(jpeg|jpg|png|gif|webp)([?&#]|$)/i.test(value);
                 const urlRegex = /(https?:\/\/[^\s]+)/g;
-                let processedValue = escapeHtml(value);
+                let processedValue;
                 
-                if ((key === '可访问URL' || key === '返回内容') && value.match(/\.(jpeg|jpg|png|gif)$/i)) {
+                if (isImageUrl && (key === '可访问URL' || key === '返回内容' || key === 'url' || key === 'image')) {
                      processedValue = `<a href="${value}" target="_blank" rel="noopener noreferrer" title="点击预览"><img src="${value}" class="vcp-tool-result-image" alt="Generated Image"></a>`;
+                } else if (isMarkdownField && window.marked) {
+                    try {
+                        processedValue = `<div class="vcp-tool-result-markdown-content">${window.marked.parse(value)}</div>`;
+                    } catch (e) {
+                        processedValue = `<pre class="vcp-tool-result-raw-content">${escapeHtml(value)}</pre>`;
+                    }
                 } else {
+                    processedValue = escapeHtml(value);
                     processedValue = processedValue.replace(urlRegex, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
                 }
-                
-                if (key === '返回内容') {
-                    processedValue = processedValue.replace(/###(.*?)###/g, '<strong>$1</strong>');
-                }
 
-                html += `<div class="vcp-tool-result-item">`;
+                const itemClass = (isMarkdownField && !isImageUrl)
+                    ? 'vcp-tool-result-item vcp-tool-result-item-markdown'
+                    : 'vcp-tool-result-item';
+                const valueTag = (isMarkdownField && !isImageUrl) ? 'div' : 'span';
+
+                html += `<div class="${itemClass}">`;
                 html += `<span class="vcp-tool-result-item-key">${escapeHtml(key)}:</span> `;
-                html += `<span class="vcp-tool-result-item-value">${processedValue}</span>`;
+                html += `<${valueTag} class="vcp-tool-result-item-value">${processedValue}</${valueTag}>`;
                 html += `</div>`;
             });
             html += `</div>`;
