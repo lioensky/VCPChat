@@ -221,6 +221,10 @@ function ensureRagOverlayWindow() {
     });
 
     ragOverlayWindow.on('closed', () => {
+        if (ragOverlayPersistTimer) {
+            clearTimeout(ragOverlayPersistTimer);
+            ragOverlayPersistTimer = null;
+        }
         ragOverlayReady = false;
         ragOverlayWindow = null;
     });
@@ -313,11 +317,16 @@ async function openRagObserverWindow() {
         }
         ragObserverWindow = null;
 
+        if (ragOverlayPersistTimer) {
+            clearTimeout(ragOverlayPersistTimer);
+            ragOverlayPersistTimer = null;
+        }
+
         if (ragOverlayWindow && !ragOverlayWindow.isDestroyed()) {
             ragOverlayWindow.close();
-            ragOverlayReady = false;
-            ragOverlayWindow = null;
         }
+        ragOverlayReady = false;
+        ragOverlayWindow = null;
     });
 }
 

@@ -923,24 +923,24 @@ async function waitForAssistantBarReady(timeoutMs = 3000) {
     
     // 创建 Promise 来等待 ready 事件
     return new Promise((resolve) => {
-        // 添加 resolve 函数到等待列表
-        assistantBarWindowReadyPromises.push(resolve);
-        
+        let settled = false;
+
+        const wrappedResolve = (result) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timeoutId);
+            assistantBarWindowReadyPromises = assistantBarWindowReadyPromises.filter(item => item !== wrappedResolve);
+            resolve(result);
+        };
+
         // 设置超时：如果超时时间内 ready 事件未触发，仍然继续（降级处理）
         const timeoutId = setTimeout(() => {
             console.warn('[Assistant] Timeout waiting for assistant bar window to be ready. Proceeding anyway.');
-            resolve(false);
+            wrappedResolve(false);
         }, timeoutMs);
-        
-        // 当 resolve 被调用时，清除超时
-        const originalResolve = resolve;
-        const wrappedResolve = (result) => {
-            clearTimeout(timeoutId);
-            originalResolve(result);
-        };
-        
-        // 替换列表中的 resolve
-        assistantBarWindowReadyPromises[assistantBarWindowReadyPromises.length - 1] = wrappedResolve;
+
+        // 添加 resolve 函数到等待列表
+        assistantBarWindowReadyPromises.push(wrappedResolve);
     });
 }
 
@@ -1068,6 +1068,19 @@ function createAssistantBarWindow() {
     });
     
     assistantBarWindow.on('closed', () => {
+        stopAssistantBarOutsideClickWatcher();
+        if (hideBarTimeout) {
+            clearTimeout(hideBarTimeout);
+            hideBarTimeout = null;
+        }
+        const pendingReadyResolvers = assistantBarWindowReadyPromises.splice(0);
+        pendingReadyResolvers.forEach(resolve => {
+            try {
+                resolve(false);
+            } catch (error) {
+                console.warn('[Assistant] Failed to resolve pending assistant bar readiness waiter:', error.message || error);
+            }
+        });
         assistantBarWindow = null;
         assistantBarWindowReady = false;  // 重置 ready 状态
     });

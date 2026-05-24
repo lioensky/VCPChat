@@ -33,6 +33,31 @@ function createOrFocusMusicWindow() {
     }
 
     musicWindowPromise = new Promise(async (resolve, reject) => {
+        let readyHandler = null;
+        let timeoutId = null;
+
+        const cleanupWindowCreationWaiters = () => {
+            if (readyHandler) {
+                ipcMain.removeListener('music-renderer-ready', readyHandler);
+                readyHandler = null;
+            }
+            if (timeoutId) {
+                clearTimeout(timeoutId);
+                timeoutId = null;
+            }
+        };
+
+        const resolveWindowCreation = (win) => {
+            cleanupWindowCreationWaiters();
+            musicWindowPromise = null;
+            resolve(win);
+        };
+
+        const rejectWindowCreation = (error) => {
+            cleanupWindowCreationWaiters();
+            musicWindowPromise = null;
+            reject(error);
+        };
         try {
             // Always wait for the engine to be ready before creating/focusing the window.
             // Thanks to pre-warming in main.js, this should be very fast.
@@ -44,8 +69,7 @@ function createOrFocusMusicWindow() {
         } catch (error) {
             console.error('[Music] Failed to ensure audio engine is ready:', error);
             dialog.showErrorBox('音乐引擎错误', '无法启动或连接后端音频引擎，请检查日志或重启应用。');
-            musicWindowPromise = null;
-            reject(error);
+            rejectWindowCreation(error);
             return;
         }
 
@@ -55,8 +79,7 @@ function createOrFocusMusicWindow() {
                 musicWindow.show();
             }
             musicWindow.focus();
-            musicWindowPromise = null;
-            resolve(musicWindow);
+            resolveWindowCreation(musicWindow);
             return;
         }
 
@@ -91,26 +114,21 @@ function createOrFocusMusicWindow() {
         });
 
         // Wait for the renderer to signal that it's ready
-        const readyHandler = (event) => {
-            if (musicWindow && event.sender === musicWindow.webContents) {
+        readyHandler = (event) => {
+            if (musicWindow && !musicWindow.isDestroyed() && event.sender === musicWindow.webContents) {
                 console.log('[Music] Received "music-renderer-ready" signal. Resolving promise.');
-                ipcMain.removeListener('music-renderer-ready', readyHandler);
-                clearTimeout(timeoutId);
                 // pendingTrackForNewWindow 由前端通过 music-get-pending-track 主动拉取
                 // 不在这里发送，避免时序问题
-                musicWindowPromise = null;
-                resolve(musicWindow);
+                resolveWindowCreation(musicWindow);
             }
         };
 
         // Add a timeout to prevent hanging forever if the renderer fails to signal
-        const timeoutId = setTimeout(() => {
+        timeoutId = setTimeout(() => {
             console.error('[Music] Timeout waiting for "music-renderer-ready" signal.');
-            ipcMain.removeListener('music-renderer-ready', readyHandler);
-            musicWindowPromise = null;
             // We resolve anyway to allow the command to proceed, or we could reject.
             // Resolving might lead to other errors, but it's better than a permanent hang.
-            resolve(musicWindow);
+            resolveWindowCreation(musicWindow);
         }, 10000); // 10 second timeout
 
         ipcMain.on('music-renderer-ready', readyHandler);
@@ -124,6 +142,7 @@ function createOrFocusMusicWindow() {
 
         musicWindow.on('closed', () => {
             console.log('[Music] Music window closed. Stopping playback.');
+            cleanupWindowCreationWaiters();
             // We don't stop the engine when the music window closes anymore,
             // as it's managed by the main app lifecycle now (pre-warmed).
             // We just stop the playback.
@@ -136,9 +155,11 @@ function createOrFocusMusicWindow() {
 
         musicWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
             console.error(`[Music] Music window failed to load: ${errorDescription} (code: ${errorCode})`);
-            reject(new Error(`Music window failed to load: ${errorDescription}`));
+            rejectWindowCreation(new Error(`Music window failed to load: ${errorDescription}`));
         });
     });
+
+    return musicWindowPromise;
 }
 
 // --- Audio Engine API Helper ---
@@ -557,6 +578,11 @@ function initialize(options) {
 
                 await fs.ensureDir(MUSIC_COVER_CACHE_DIR);
 
+                if (fileList.length === 0) {
+                    event.sender.send('music-scan-complete', { tracks: [], folderPath: folderPath });
+                    return;
+                }
+
                 const worker = new Worker(path.join(__dirname, '..', '..', 'modules', 'musicScannerWorker.js'), {
                     workerData: {
                         coverCachePath: MUSIC_COVER_CACHE_DIR
@@ -564,6 +590,24 @@ function initialize(options) {
                 });
                 const finalPlaylist = [];
                 let processedCount = 0;
+                let workerFinished = false;
+
+                const sendToRequester = (channel, payload) => {
+                    if (event.sender && !event.sender.isDestroyed()) {
+                        event.sender.send(channel, payload);
+                    }
+                };
+
+                const finishWorker = async (payload) => {
+                    if (workerFinished) return;
+                    workerFinished = true;
+                    sendToRequester('music-scan-complete', payload);
+                    try {
+                        await worker.terminate();
+                    } catch (terminateError) {
+                        console.warn('[Music] Failed to terminate scanner worker:', terminateError.message);
+                    }
+                };
 
                 worker.on('message', (result) => {
                     if (result.status === 'success') {
@@ -573,23 +617,22 @@ function initialize(options) {
                     }
 
                     processedCount++;
-                    event.sender.send('music-scan-progress', { current: processedCount, total: fileList.length });
+                    sendToRequester('music-scan-progress', { current: processedCount, total: fileList.length });
 
                     if (processedCount === fileList.length) {
-                        event.sender.send('music-scan-complete', { tracks: finalPlaylist, folderPath: folderPath });
-                        worker.terminate();
+                        void finishWorker({ tracks: finalPlaylist, folderPath: folderPath });
                     }
                 });
 
                 worker.on('error', (error) => {
                     console.error('Worker thread error:', error);
-                    event.sender.send('music-scan-complete', { tracks: finalPlaylist, folderPath: folderPath });
-                    worker.terminate();
+                    void finishWorker({ tracks: finalPlaylist, folderPath: folderPath });
                 });
 
                 worker.on('exit', (code) => {
-                    if (code !== 0) {
+                    if (code !== 0 && !workerFinished) {
                         console.error(`Worker stopped with exit code ${code}`);
+                        void finishWorker({ tracks: finalPlaylist, folderPath: folderPath });
                     }
                 });
 
