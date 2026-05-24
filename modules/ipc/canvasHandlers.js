@@ -12,6 +12,7 @@ const CANVAS_CACHE_DIR = path.join(__dirname, '..', '..', 'AppData', 'Canvas');
 let canvasWindow = null;
 let fileWatcher = null;
 const internalSaveInProgress = new Set(); // Track internal saves
+const internalSaveTimers = new Map(); // filePath -> timeout id
 let initialFilePath = null;
 let ipcHandlersRegistered = false;
 const SUPPORTED_EXTENSIONS = [
@@ -107,6 +108,7 @@ async function createCanvasWindow(eventOrFilePath = null, maybeFilePath = null) 
         openChildWindows = openChildWindows.filter(win => win !== canvasWindow);
         canvasWindow = null;
         initialFilePath = null;
+        activeCanvasPath = null;
         if (mainWindow && !mainWindow.isDestroyed()) {
             try {
                 mainWindow.webContents.send('canvas-window-closed');
@@ -118,6 +120,11 @@ async function createCanvasWindow(eventOrFilePath = null, maybeFilePath = null) 
             fileWatcher.close();
             fileWatcher = null;
         }
+        for (const timerId of internalSaveTimers.values()) {
+            clearTimeout(timerId);
+        }
+        internalSaveTimers.clear();
+        internalSaveInProgress.clear();
     });
 
     canvasWindow.on('focus', async () => {
@@ -224,6 +231,12 @@ async function handleSaveCanvasFile(event, file) {
     try {
         // Flag this path as an internal save before writing
         internalSaveInProgress.add(file.path);
+        const existingTimer = internalSaveTimers.get(file.path);
+        if (existingTimer) {
+            clearTimeout(existingTimer);
+            internalSaveTimers.delete(file.path);
+        }
+
         await fs.writeFile(file.path, file.content);
         console.log(`Internal save successful for: ${file.path}`);
     } catch (error) {
@@ -231,9 +244,11 @@ async function handleSaveCanvasFile(event, file) {
     } finally {
         // After a short delay, remove the flag.
         // This gives chokidar time to fire its event, which we will then ignore.
-        setTimeout(() => {
+        const timerId = setTimeout(() => {
             internalSaveInProgress.delete(file.path);
+            internalSaveTimers.delete(file.path);
         }, 100);
+        internalSaveTimers.set(file.path, timerId);
     }
 }
 
