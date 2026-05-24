@@ -434,10 +434,16 @@ body {
 }
 
 .scope-toggle-btn.active {
-    background: var(--accent-color);
-    color: var(--text-on-accent);
-    border-color: transparent;
-    box-shadow: 0 0 8px rgba(var(--accent-color-rgb, 74, 144, 226), 0.4);
+    background: var(--accent-bg);
+    color: var(--highlight-text);
+    border-color: var(--border-color);
+    box-shadow: 0 0 8px rgba(var(--accent-color-rgb, 74, 144, 226), 0.2);
+}
+
+body.light-theme .scope-toggle-btn.active {
+    background: var(--accent-bg);
+    color: var(--highlight-text);
+    border-color: var(--border-color);
 }
 
 .scope-toggle-btn svg {

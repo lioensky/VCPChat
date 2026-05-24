@@ -1,6 +1,6 @@
 {
   "name": "vcp-chat-desktop",
-  "version": "4.4.2",
+  "version": "1.0.0",
   "description": "一个为VCP服务器打造的AI聊天桌面客户端",
   "main": "main.js",
   "scripts": {
