@@ -356,7 +356,7 @@ export const tools = {
         params: [
             { name: 'maid', type: 'text', required: true, placeholder: '你的名字' },
             { name: 'url', type: 'text', required: true, placeholder: 'https://example.com' },
-            { name: 'mode', type: 'select', required: false, options: ['text', 'snapshot'] }
+            { name: 'mode', type: 'select', required: false, options: ['text', 'snapshot', 'jina', 'image'] }
         ]
     },
     'BilibiliFetch': {
