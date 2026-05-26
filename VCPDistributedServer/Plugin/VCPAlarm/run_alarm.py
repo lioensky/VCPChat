@@ -357,7 +357,7 @@ class AlarmWindow:
         card_canvas.create_rounded_rectangle(
             1, 1, card_width - 1, card_height - 1,
             radius=18,
-            fill=self.theme["bg"],
+            fill=self.theme["main_bg_hex"],
             outline=self.theme["accent"],
             width=1
         )
