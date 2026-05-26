@@ -651,6 +651,34 @@ window.topicListManager = (() => {
         };
         menu.appendChild(editTitleOption);
 
+        const copyTopicIdOption = document.createElement('div');
+        copyTopicIdOption.classList.add('context-menu-item');
+        copyTopicIdOption.innerHTML = `<i class="fas fa-copy"></i> 复制话题ID`;
+        copyTopicIdOption.onclick = async () => {
+            closeTopicContextMenu();
+            const topicId = String(topic.id ?? '');
+            try {
+                if (navigator.clipboard?.writeText) {
+                    await navigator.clipboard.writeText(topicId);
+                } else {
+                    const textarea = document.createElement('textarea');
+                    textarea.value = topicId;
+                    textarea.style.position = 'fixed';
+                    textarea.style.opacity = '0';
+                    document.body.appendChild(textarea);
+                    textarea.focus();
+                    textarea.select();
+                    document.execCommand('copy');
+                    textarea.remove();
+                }
+                uiHelper.showToastNotification('已复制话题ID', 'success');
+            } catch (error) {
+                console.error('[TopicListManager] Failed to copy topic ID:', error);
+                uiHelper.showToastNotification(`复制话题ID失败: ${error.message}`, 'error');
+            }
+        };
+        menu.appendChild(copyTopicIdOption);
+
         // Part C: 锁定/解锁话题选项
         const toggleLockOption = document.createElement('div');
         toggleLockOption.classList.add('context-menu-item');
