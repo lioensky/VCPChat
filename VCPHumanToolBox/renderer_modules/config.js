@@ -917,7 +917,8 @@ export const tools = {
         description: '设置一个闹钟。[前端分布式: VCPAlarm]',
         params: [
             { name: 'maid', type: 'text', required: true, placeholder: '你的名字' },
-            { name: 'time_description', type: 'text', required: true, placeholder: '1分钟后' }
+            { name: 'time_description', type: 'text', required: true, placeholder: '1分钟后' },
+            { name: 'reminder_text', type: 'textarea', required: false, placeholder: '提醒我检查烤箱里的点心' }
         ]
     },
 
