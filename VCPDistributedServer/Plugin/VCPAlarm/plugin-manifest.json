@@ -19,8 +19,8 @@
     "invocationCommands": [
       {
         "commandIdentifier": "SetAlarm",
-        "description": "调用此工具来设置一个闹钟。\n参数:\n- time_description (字符串, 必需): 对闹钟时间的描述。可以是未来的一个具体时间点（例如 '晚上10点30分', '22:30'），也可以是一个相对时间（例如 '15分钟后', '1小时后'）。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」VCPAlarm「末」,\ntime_description:「始」1分钟后「末」\n<<<[END_TOOL_REQUEST]>>>",
-        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」VCPAlarm「末」,\ntime_description:「始」5分钟后提醒我「末」\n<<<[END_TOOL_REQUEST]>>>"
+        "description": "调用此工具来设置一个闹钟。\n参数:\n- time_description (字符串, 必需): 对闹钟时间的描述。可以是未来的一个具体时间点（例如 '晚上10点30分', '22:30'），也可以是一个相对时间（例如 '15分钟后', '1小时后'）。\n- reminder_text (字符串, 可选): 闹钟弹出时展示给用户的具体提醒事项。仅在需要让弹窗明确说明提醒内容时填写；为空或省略时，弹窗保持原本的简洁样式。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」VCPAlarm「末」,\ntime_description:「始」1分钟后「末」,\nreminder_text:「始」该喝水并活动一下肩颈了「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」VCPAlarm「末」,\ntime_description:「始」5分钟后「末」,\nreminder_text:「始」提醒我检查烤箱里的点心「末」\n<<<[END_TOOL_REQUEST]>>>"
       }
     ]
   }

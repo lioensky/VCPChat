@@ -14,11 +14,13 @@ from PIL import Image, ImageTk, ImageDraw, ImageFilter
 import dateparser
 import pygame
 import math
+import textwrap
 
 class AlarmWindow:
-    def __init__(self, root, image_path, audio_path):
+    def __init__(self, root, image_path, audio_path, reminder_text=""):
         self.root = root
         self.root.title("VCP Alarm")
+        self.reminder_text = (reminder_text or "").strip()
         
         # 设置主题
         self.set_theme()
@@ -32,9 +34,9 @@ class AlarmWindow:
         self.root.config(bg=self.transparent_color)
         self.root.attributes("-transparentcolor", self.transparent_color)
         
-        # 窗口尺寸
+        # 窗口尺寸：存在提醒事项时适当增高，为正文留出展示空间
         self.window_width = 320
-        self.window_height = 480
+        self.window_height = 560 if self.reminder_text else 480
         
         # 动画变量
         self.angle = 0
@@ -314,14 +316,68 @@ class AlarmWindow:
             bg=self.theme["main_bg_hex"],
             fg=self.theme["accent"]
         )
-        message_label.pack(pady=(10, 15))
+        message_label.pack(pady=(10, 8 if self.reminder_text else 15))
         self.bind_drag_events(message_label)
-        
+
+        if self.reminder_text:
+            self.create_reminder_card()
+
         # 自定义按钮
         self.create_custom_button()
         
         # 绑定主Frame拖动
         self.bind_drag_events(self.main_frame)
+
+    def create_reminder_card(self):
+        """创建提醒事项卡片，用于优雅展示可选的预输入文本。"""
+        card_width = 260
+        card_height = 78
+        wrapped_text = textwrap.fill(self.reminder_text, width=18)
+
+        card_container = tk.Frame(
+            self.main_frame,
+            bg=self.theme["main_bg_hex"],
+            width=card_width,
+            height=card_height
+        )
+        card_container.pack(pady=(0, 14))
+        card_container.pack_propagate(False)
+        self.bind_drag_events(card_container)
+
+        card_canvas = tk.Canvas(
+            card_container,
+            width=card_width,
+            height=card_height,
+            bg=self.theme["main_bg_hex"],
+            highlightthickness=0
+        )
+        card_canvas.pack(fill="both", expand=True)
+        self.bind_drag_events(card_canvas)
+
+        card_canvas.create_rounded_rectangle(
+            1, 1, card_width - 1, card_height - 1,
+            radius=18,
+            fill=self.theme["bg"],
+            outline=self.theme["accent"],
+            width=1
+        )
+        card_canvas.create_text(
+            18, 16,
+            text="提醒事项",
+            anchor="nw",
+            font=("Microsoft YaHei UI", 9, "bold"),
+            fill=self.theme["accent"]
+        )
+        card_canvas.create_text(
+            card_width // 2,
+            49,
+            text=wrapped_text,
+            anchor="center",
+            font=("Microsoft YaHei UI", 12),
+            fill=self.theme["text"],
+            width=card_width - 34,
+            justify="center"
+        )
 
     def create_custom_button(self):
         """创建自定义样式按钮"""
@@ -512,7 +568,7 @@ def create_rounded_rectangle(self, x1, y1, x2, y2, radius=25, **kwargs):
 # 添加方法到Canvas类
 tk.Canvas.create_rounded_rectangle = create_rounded_rectangle
 
-def main(time_description, audio_path, image_path):
+def main(time_description, audio_path, image_path, reminder_text=""):
     target_dt = dateparser.parse(time_description, settings={'PREFER_DATES_FROM': 'future'})
 
     if not target_dt:
@@ -529,13 +585,14 @@ def main(time_description, audio_path, image_path):
     time.sleep(wait_seconds)
 
     root = tk.Tk()
-    app = AlarmWindow(root, image_path, audio_path)
+    app = AlarmWindow(root, image_path, audio_path, reminder_text)
     root.mainloop()
 
 if __name__ == "__main__":
-    if len(sys.argv) != 4:
-        print(f"Usage: {sys.argv[0]} <time_description> <audio_path> <image_path>", file=sys.stderr)
+    if len(sys.argv) not in (4, 5):
+        print(f"Usage: {sys.argv[0]} <time_description> <audio_path> <image_path> [reminder_text]", file=sys.stderr)
         sys.exit(1)
 
-    _, time_desc, audio, image = sys.argv
-    main(time_desc, audio, image)
+    _, time_desc, audio, image, *optional_args = sys.argv
+    reminder = optional_args[0] if optional_args else ""
+    main(time_desc, audio, image, reminder)

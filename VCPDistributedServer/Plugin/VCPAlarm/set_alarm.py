@@ -22,9 +22,15 @@ def main():
             
         input_data = json.loads(input_line)
         time_description = input_data.get("time_description")
+        reminder_text = input_data.get("reminder_text", "")
 
         if not time_description:
             raise ValueError("'time_description' parameter is required.")
+
+        if reminder_text is None:
+            reminder_text = ""
+        else:
+            reminder_text = str(reminder_text).strip()
 
         # 2. Prepare paths for the background script and its assets
         current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -44,7 +50,8 @@ def main():
             run_alarm_script_path,
             time_description,
             audio_path,
-            image_path
+            image_path,
+            reminder_text
         ]
 
         # Use DETACHED_PROCESS creation flag on Windows to ensure the new process
@@ -58,6 +65,8 @@ def main():
 
         # 4. Immediately respond with success
         success_message = f"好的，您的闹钟已经设定成功。时间：{time_description}"
+        if reminder_text:
+            success_message += f"，提醒事项：{reminder_text}"
         print_json_output(status="success", result=success_message)
         sys.stdout.flush()
 
