@@ -21,19 +21,42 @@ export const tools = {
         ]
     },
     'ZImageTurboGen': {
-        displayName: 'Z-Image-Turbo 生图',
-        description: '使用 Gitee 提供的 Z-Image-Turbo 生成图片。支持 1k 和 2k 高清分辨率，支持中文和英文提示词。[后端插件: ZImageTurboGen]',
+        displayName: 'Z-Image-Turbo 图片生成/编辑/合成',
+        description: '使用 Z-Image-Turbo 生成、编辑或合成图片。支持中文和英文提示词。[后端插件: ZImageTurboGen]',
         commands: {
-            'GenerateImage': {
+            'generate': {
                 description: '生成图片',
                 params: [
                     { name: 'maid', type: 'text', required: true, placeholder: '你的名字' },
-                    { name: 'prompt', type: 'textarea', required: true, placeholder: '(必需) 用于图片生成的详细提示词，支持中文或英文。' },
+                    { name: 'prompt', type: 'textarea', required: true, placeholder: '(必需) 用于生成、编辑或合成图片的自然语言描述，支持中文或英文。纯文本描述即可，不需要特殊格式。' },
                     { name: 'size', type: 'select', required: false, options: ['1024x1024', '1024x768', '768x1024', '1024x576', '576x1024', '2048x2048', '2048x1536', '1536x2048', '2048x1152', '1152x2048', '2048x1280', '1280x2048'], default: '1024x1024', description: '图片分辨率或比例' },
-                    { name: 'negative_prompt', type: 'textarea', required: false, placeholder: '(可选) 负面提示词，描述不希望在图片中出现的内容，例如 "模糊, 低质量, 变形"。' },
+                    { name: 'negative_prompt', type: 'textarea', required: false, placeholder: '(可选) 不希望出现的内容，例如模糊、低质量、变形、错误文字等。只有Zimage支持该功能。' },
                     { name: 'num_inference_steps', type: 'number', required: false, min: 4, max: 25, default: 9, placeholder: '推理步数，范围 4-25，默认 9' },
                     { name: 'seed', type: 'number', required: false, default: 0, placeholder: '随机种子，默认 0' }
                 ]
+            },
+            'edit': {
+                description: '编辑图片',
+                params: [
+                    { name: 'maid', type: 'text', required: true, placeholder: '你的名字' },
+                    { name: 'prompt', type: 'textarea', required: true, placeholder: '(必需) 用于生成、编辑或合成图片的自然语言描述，支持中文或英文。纯文本描述即可，不需要特殊格式。' },
+                    { name: 'image', type: 'dragdrop_image', required: true, placeholder: '(编辑/合成时必需) 单图URL/base64/data URI，或图片数组，例如["url1","url2"]。也兼容image_url、image_1、image_2、image_url_1、image_base64_1等字段。' },
+                    { name: 'negative_prompt', type: 'textarea', required: false, placeholder: '(可选) 不希望出现的内容，例如模糊、低质量、变形、错误文字等。只有Zimage支持该功能。' },
+                    { name: 'num_inference_steps', type: 'number', required: false, min: 4, max: 25, default: 9, placeholder: '推理步数，范围 4-25，默认 9' },
+                    { name: 'seed', type: 'number', required: false, default: 0, placeholder: '随机种子，默认 0' }
+                ]
+            },
+            'compose': {
+                description: '合成图片',
+                params: [
+                    { name: 'maid', type: 'text', required: true, placeholder: '你的名字' },
+                    { name: 'prompt', type: 'textarea', required: true, placeholder: '(必需) 用于生成、编辑或合成图片的自然语言描述，支持中文或英文。纯文本描述即可，不需要特殊格式。' },
+                    { name: 'image', type: 'dragdrop_image', required: true, placeholder: '(编辑/合成时必需) 单图URL/base64/data URI，或图片数组，例如["url1","url2"]。也兼容image_url、image_1、image_2、image_url_1、image_base64_1等字段。' },
+                    { name: 'negative_prompt', type: 'textarea', required: false, placeholder: '(可选) 不希望出现的内容，例如模糊、低质量、变形、错误文字等。只有Zimage支持该功能。' },
+                    { name: 'num_inference_steps', type: 'number', required: false, min: 4, max: 25, default: 9, placeholder: '推理步数，范围 4-25，默认 9' },
+                    { name: 'seed', type: 'number', required: false, default: 0, placeholder: '随机种子，默认 0' }
+                ],
+                dynamicImages: true
             }
         }
     },
