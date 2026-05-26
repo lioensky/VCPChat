@@ -143,11 +143,21 @@ function setupSidebar(app) {
     app.renderModalSongList = () => {
         const pl = app.customPlaylists.find(p => p.id === app.editingPlaylistId); if (!pl) return;
         const q = app.modalSearchQuery.toLowerCase();
+        const selectedPaths = new Set(pl.tracks);
         const filtered = q ? app.playlist.filter(t => (t.title||'').toLowerCase().includes(q)||(t.artist||'').toLowerCase().includes(q)) : app.playlist;
-        app.modalSongList.innerHTML = filtered.length === 0 ? '<div class="music-modal-empty">没有匹配的歌曲</div>' : '';
+        const sortedFiltered = filtered
+            .map((track, index) => ({ track, index }))
+            .sort((a, b) => {
+                const aSelected = selectedPaths.has(a.track.path);
+                const bSelected = selectedPaths.has(b.track.path);
+                if (aSelected !== bSelected) return aSelected ? -1 : 1;
+                return a.index - b.index;
+            })
+            .map(item => item.track);
+        app.modalSongList.innerHTML = sortedFiltered.length === 0 ? '<div class="music-modal-empty">没有匹配的歌曲</div>' : '';
         const frag = document.createDocumentFragment();
-        filtered.forEach((t, i) => {
-            const isIn = pl.tracks.includes(t.path);
+        sortedFiltered.forEach((t, i) => {
+            const isIn = selectedPaths.has(t.path);
             const div = document.createElement('div'); div.className = `music-modal-song-item${isIn ? ' in-playlist' : ''}`;
             div.dataset.path = t.path; div.dataset.index = i;
             div.innerHTML = `<div class="music-modal-song-checkbox"><svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" fill="currentColor"/></svg></div>
@@ -157,7 +167,7 @@ function setupSidebar(app) {
                     const [s, eIdx] = [Math.min(app.lastModalClickIndex, i), Math.max(app.lastModalClickIndex, i)];
                     const targetState = !pl.tracks.includes(t.path);
                     for (let j = s; j <= eIdx; j++) {
-                        const path = filtered[j].path;
+                        const path = sortedFiltered[j].path;
                         if (targetState && !pl.tracks.includes(path)) pl.tracks.push(path);
                         else if (!targetState && pl.tracks.includes(path)) pl.tracks.splice(pl.tracks.indexOf(path), 1);
                     }
