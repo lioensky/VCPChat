@@ -301,8 +301,8 @@
     border: 1px solid #eaddd0;
     /* A soft, paper-like border */
     border-radius: 8px !important;
-    padding: 12px 18px 15px 48px !important;
-    /* Adjusted padding for new icon placement */
+    padding: 12px 18px 15px 18px !important;
+    /* Compact padding; icon is now inline with the title */
     color: #5d4037 !important;
     /* A warm, dark brown for text */
     box-shadow: 0 3px 8px rgba(0, 0, 0, 0.08);
@@ -332,19 +332,9 @@
     margin-bottom: 0;
 }
 
-/* The decorative icon on the top left, changed to a quill */
+/* Decorative quill icon moved inline with the diary title */
 .maid-diary-bubble::before {
-    content: "✒️";
-    position: absolute;
-    top: 14px;
-    left: 16px;
-    font-size: 22px;
-    opacity: 0.6;
-    z-index: 2;
-    transform: rotate(-15deg);
-    /* Tilted for a more dynamic look */
-    animation: none !important;
-    /* Removing previous animation for a more static, elegant feel */
+    display: none !important;
 }
 
 /* Removing the animated border for a cleaner look */
@@ -365,11 +355,23 @@
 
 /* "Maid's Diary" title */
 .diary-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
     font-weight: bold;
     font-size: 1.1em;
     color: #6d4c41;
     /* A rich, brownish color */
     font-family: var(--vcp-diary-font-family, 'Georgia', 'Times New Roman', serif) !important;
+}
+
+.diary-title::before {
+    content: "✒️";
+    display: inline-block;
+    font-size: 1.15em;
+    line-height: 1;
+    opacity: 0.6;
+    transform: rotate(-15deg);
 }
 
 /* Date on the top right */
@@ -387,16 +389,23 @@
     color: #8d6e63;
 }
 
-.diary-maid-label {
+.diary-maid-label,
+.diary-folder-label {
     font-weight: bold;
 }
 
-.diary-maid-name {
+.diary-maid-name,
+.diary-folder-name {
     font-style: italic;
     color: #a1887f;
     background: rgba(161, 136, 127, 0.08);
     padding: 1px 5px;
     border-radius: 4px;
+}
+
+.diary-meta-separator {
+    color: #bcaaa4;
+    opacity: 0.75;
 }
 
 /* The main content of the diary entry */
@@ -442,10 +451,15 @@ body:not(.light-theme) .diary-maid-info {
     color: #b0bec5;
 }
 
-body:not(.light-theme) .diary-maid-name {
+body:not(.light-theme) .diary-maid-name,
+body:not(.light-theme) .diary-folder-name {
     color: #ffcc80;
     /* Lighter shade of the title color */
     background: rgba(255, 183, 77, 0.1);
+}
+
+body:not(.light-theme) .diary-meta-separator {
+    color: #7f7f90;
 }
 
 body:not(.light-theme) .diary-content {

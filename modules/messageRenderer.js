@@ -520,21 +520,30 @@ function transformSpecialBlocks(text, codeBlockMap) {
             // --- It's a DailyNote Tool, render it as a diary bubble ---
             const maid = extractMarkedField(content, /(?:maid|maidName):\s*/i) || '';
             const date = extractMarkedField(content, /Date:\s*/i) || '';
+            const fileName = extractMarkedField(content, /fileName:\s*/i) || '';
+            const folder = extractMarkedField(content, /folder:\s*/i) || '';
             const diaryContent = extractMarkedField(content, /Content:\s*/i) || '[日记内容解析失败]';
             const diaryTag = extractMarkedField(content, /Tag:\s*/i) || '';
 
             let html = `<div class="maid-diary-bubble">`;
             html += `<div class="diary-header">`;
-            html += `<span class="diary-title">Maid's Diary</span>`;
+            html += `<span class="diary-title">${fileName ? escapeHtml(fileName) : "Maid's Diary"}</span>`;
             if (date) {
                 html += `<span class="diary-date">${escapeHtml(date)}</span>`;
             }
             html += `</div>`;
 
-            if (maid) {
+            if (maid || folder) {
                 html += `<div class="diary-maid-info">`;
-                html += `<span class="diary-maid-label">Maid:</span> `;
-                html += `<span class="diary-maid-name">${escapeHtml(maid)}</span>`;
+                if (maid) {
+                    html += `<span class="diary-maid-label">Maid:</span> `;
+                    html += `<span class="diary-maid-name">${escapeHtml(maid)}</span>`;
+                }
+                if (folder) {
+                    if (maid) html += ` <span class="diary-meta-separator">·</span> `;
+                    html += `<span class="diary-folder-label">Folder:</span> `;
+                    html += `<span class="diary-folder-name">${escapeHtml(folder)}</span>`;
+                }
                 html += `</div>`;
             }
 
