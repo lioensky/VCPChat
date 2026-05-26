@@ -344,6 +344,55 @@ export const tools = {
             { name: 'end_date', type: 'text', required: false, placeholder: 'YYYY-MM-DD' }
         ]
     },
+    'AnySearch': {
+        displayName: '高级垂直搜索',
+        description: '高级垂直搜索插件，支持通用搜索、领域列表、批量搜索与网页正文提取。复杂垂直搜索前建议先调用 list_domains 获取 sub_domain、query_format、params_schema 和 zone 约束。[后端插件: AnySearch]',
+        commands: {
+            'search': {
+                description: '搜索',
+                params: [
+                    { name: 'maid', type: 'text', required: true, placeholder: '你的名字' },
+                    { name: 'query', type: 'textarea', required: true, placeholder: 'AI regulation 2026。垂直搜索时必须遵循 list_domains 返回的 query_format。也兼容 q、text 字段。' },
+                    { name: 'domain', type: 'text', required: false, placeholder: '垂直领域，如 finance、academic、security、code、tech、legal' },
+                    { name: 'sub_domain', type: 'text', required: false, placeholder: '子领域路由，如 finance.us_stock、academic.doi、security.cve' },
+                    { name: 'sub_domain_params', type: 'textarea', required: false, placeholder: '子领域额外参数，支持 JSON 对象或字符串' },
+                    { name: 'content_types', type: 'text', required: false, placeholder: 'web、news、code、doc、academic、data、image、video、audio；支持单值或数组' },
+                    { name: 'zone', type: 'select', required: false, options: ['', 'cn', 'intl'], description: '地域约束；当 list_domains 标记 zone=CN 时必须传 cn' },
+                    { name: 'max_results', type: 'number', required: false, min: 1, max: 100, placeholder: '结果数量，范围 1-100' },
+                    { name: 'freshness', type: 'select', required: false, options: ['', 'day', 'week', 'month', 'year'], description: '时效范围' }
+                ]
+            },
+            'list_domains': {
+                description: '列出可用垂直领域',
+                params: [
+                    { name: 'maid', type: 'text', required: true, placeholder: '你的名字' },
+                    { name: 'domain', type: 'text', required: false, placeholder: '单个垂直领域，如 finance、academic、security、code、tech、legal' },
+                    { name: 'domains', type: 'textarea', required: false, placeholder: '批量查询最多 5 个领域，支持字符串或数组；与 domain 二选一' }
+                ]
+            },
+            'batch_search': {
+                description: '批量搜索',
+                params: [
+                    { name: 'maid', type: 'text', required: true, placeholder: '你的名字' },
+                    { name: 'queries', type: 'textarea', required: true, placeholder: '1-5 个查询对象或字符串，支持 JSON 数组或逐行输入' },
+                    { name: 'domain', type: 'text', required: false, placeholder: '垂直领域，如 finance、academic、security、code、tech、legal' },
+                    { name: 'sub_domain', type: 'text', required: false, placeholder: '子领域路由，如 finance.us_stock、academic.doi、security.cve' },
+                    { name: 'sub_domain_params', type: 'textarea', required: false, placeholder: '子领域额外参数，支持 JSON 对象或字符串' },
+                    { name: 'content_types', type: 'text', required: false, placeholder: 'web、news、code、doc、academic、data、image、video、audio；支持单值或数组' },
+                    { name: 'zone', type: 'select', required: false, options: ['', 'cn', 'intl'], description: '地域约束；当 list_domains 标记 zone=CN 时必须传 cn' },
+                    { name: 'max_results', type: 'number', required: false, min: 1, max: 100, placeholder: '结果数量，范围 1-100' },
+                    { name: 'freshness', type: 'select', required: false, options: ['', 'day', 'week', 'month', 'year'], description: '时效范围' }
+                ]
+            },
+            'extract': {
+                description: '提取网页正文',
+                params: [
+                    { name: 'maid', type: 'text', required: true, placeholder: '你的名字' },
+                    { name: 'url', type: 'text', required: true, placeholder: '需要提取正文的网页 URL' }
+                ]
+            }
+        }
+    },
     'GoogleSearch': {
         displayName: 'Google 搜索',
         description: '进行一次标准的谷歌网页搜索。[后端插件: GoogleSearch]',
