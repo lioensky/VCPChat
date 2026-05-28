@@ -40,6 +40,7 @@ const forumHandlers = require('./modules/ipc/forumHandlers'); // Import forum ha
 const memoHandlers = require('./modules/ipc/memoHandlers'); // Import memo handlers
 const ragHandlers = require('./modules/ipc/ragHandlers'); // Import RAG handlers
 const translatorHandlers = require('./modules/ipc/translatorHandlers'); // Import translator handlers
+const voiceHandlers = require('./modules/ipc/voiceHandlers'); // Import voice chat handlers
 // speechRecognizer is now lazy-loaded
 const canvasHandlers = require('./modules/ipc/canvasHandlers'); // Import canvas handlers
 const desktopHandlers = require('./modules/ipc/desktopHandlers'); // Import VCPdesktop handlers
@@ -971,6 +972,7 @@ if (!gotTheLock) {
         desktopRemoteHandlers.initialize({ mainWindow });
         promptHandlers.initialize({ AGENT_DIR, APP_DATA_ROOT_IN_PROJECT });
         tavernHandlers.initialize({ APP_DATA_ROOT_IN_PROJECT });
+        voiceHandlers.initialize({ mainWindow, openChildWindows, settingsManager: appSettingsManager, projectRoot: PROJECT_ROOT });
 
         ipcMain.on('minimize-to-tray', () => {
             if (mainWindow) {
@@ -1297,76 +1299,6 @@ if (!gotTheLock) {
     });
 
 }
-// --- Voice Chat IPC Handler ---
-ipcMain.on('open-voice-chat-window', (event, { agentId }) => {
-    const voiceChatWindow = new BrowserWindow({
-        width: 500,
-        height: 700,
-        minWidth: 400,
-        minHeight: 500,
-        frame: false,
-        ...(process.platform === 'darwin' ? {} : { titleBarStyle: 'hidden' }),
-        title: '语音聊天',
-        webPreferences: {
-            preload: resolveProjectPreload(__dirname, PRELOAD_ROLES.CHAT),
-            contextIsolation: true,
-            nodeIntegration: false,
-        },
-        parent: mainWindow,
-        modal: false, // Set to false to allow interaction with main window
-        show: false,
-    });
-
-    const theme = nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
-    voiceChatWindow.webContents.once('did-finish-load', () => {
-        voiceChatWindow.webContents.send('voice-chat-data', { agentId, theme });
-    });
-    
-    voiceChatWindow.loadFile(path.join(__dirname, 'Voicechatmodules/voicechat.html'));
-
-    voiceChatWindow.once('ready-to-show', () => {
-        voiceChatWindow.show();
-    });
-
-    openChildWindows.push(voiceChatWindow);
-
-    voiceChatWindow.on('closed', () => {
-        openChildWindows = openChildWindows.filter(win => win !== voiceChatWindow);
-        // Ensure speech recognition is stopped when the window is closed
-        const speechRecognizer = require('./modules/speechRecognizer');
-        speechRecognizer.stop();
-    });
-});
-
-// --- Speech Recognition IPC Handlers ---
-ipcMain.on('start-speech-recognition', async (event) => {
-    const voiceChatWindow = openChildWindows.find(win => win.webContents === event.sender);
-    if (!voiceChatWindow) return;
-
-    let speechConfig = {};
-    try {
-        const settings = await appSettingsManager.readSettings();
-        speechConfig = {
-            browserPath: settings?.speechRecognizerBrowserPath || '',
-            recognizerPagePath: settings?.speechRecognizerPagePath || 'Voicechatmodules/recognizer.html'
-        };
-    } catch (error) {
-        console.warn('[Main] Failed to read speech recognition settings, using defaults:', error.message);
-    }
-
-    const speechRecognizer = require('./modules/speechRecognizer');
-    speechRecognizer.start((text) => {
-        if (voiceChatWindow && !voiceChatWindow.isDestroyed()) {
-            voiceChatWindow.webContents.send('speech-recognition-result', text);
-        }
-    }, speechConfig);
-});
-
-ipcMain.on('stop-speech-recognition', () => {
-    const speechRecognizer = require('./modules/speechRecognizer');
-    speechRecognizer.stop();
-});
-
 ipcMain.handle('export-topic-as-markdown', async (event, exportData) => {
     const { topicName, markdownContent } = exportData;
 
