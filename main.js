@@ -39,6 +39,7 @@ const emoticonHandlers = require('./modules/ipc/emoticonHandlers'); // Import em
 const forumHandlers = require('./modules/ipc/forumHandlers'); // Import forum handlers
 const memoHandlers = require('./modules/ipc/memoHandlers'); // Import memo handlers
 const ragHandlers = require('./modules/ipc/ragHandlers'); // Import RAG handlers
+const translatorHandlers = require('./modules/ipc/translatorHandlers'); // Import translator handlers
 // speechRecognizer is now lazy-loaded
 const canvasHandlers = require('./modules/ipc/canvasHandlers'); // Import canvas handlers
 const desktopHandlers = require('./modules/ipc/desktopHandlers'); // Import VCPdesktop handlers
@@ -144,7 +145,6 @@ let vcpLogWebSocket;
 let vcpLogReconnectInterval;
 let openChildWindows = [];
 let distributedServer = null; // To hold the distributed server instance
-let translatorWindow = null; // To hold the single instance of the translator window
 let appSettingsManager = null;
 let networkNotesTreeCache = null; // In-memory cache for the network notes
 let cachedModels = []; // Cache for models fetched from VCP server
@@ -882,100 +882,12 @@ if (!gotTheLock) {
             SETTINGS_FILE
         });
 
-        // Translator IPC Handlers
-        const TRANSLATOR_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'Translatormodules');
-        fs.ensureDirSync(TRANSLATOR_DIR); // Ensure the Translator directory exists
-
-        ipcMain.handle('open-translator-window', async (event) => {
-            if (translatorWindow && !translatorWindow.isDestroyed()) {
-                if (!translatorWindow.isVisible()) {
-                    translatorWindow.show();
-                }
-                translatorWindow.focus();
-                return;
-            }
-            translatorWindow = new BrowserWindow({
-                width: 1000,
-                height: 700,
-                minWidth: 800,
-                minHeight: 600,
-                title: '翻译',
-                frame: false, // 移除原生窗口框架
-                ...(process.platform === 'darwin' ? {} : { titleBarStyle: 'hidden' }),
-                modal: false,
-                webPreferences: {
-                    preload: resolveProjectPreload(__dirname, PRELOAD_ROLES.UTILITY),
-                    contextIsolation: true,
-                    nodeIntegration: false,
-                    devTools: true
-                },
-                icon: path.join(__dirname, 'assets', 'icon.png'),
-                show: false
-            });
-
-            let settings = {};
-            try {
-                if (await fs.pathExists(SETTINGS_FILE)) {
-                    settings = await fs.readJson(SETTINGS_FILE);
-                }
-            } catch (readError) {
-                console.error('Failed to read settings file for translator window:', readError);
-            }
-
-            const vcpServerUrl = settings.vcpServerUrl || '';
-            const vcpApiKey = settings.vcpApiKey || '';
-
-            const translatorUrl = `file://${path.join(__dirname, 'Translatormodules', 'translator.html')}?vcpServerUrl=${encodeURIComponent(vcpServerUrl)}&vcpApiKey=${encodeURIComponent(vcpApiKey)}`;
-            console.log(`[Main Process] Attempting to load URL in translator window: ${translatorUrl.substring(0, 200)}...`);
-
-            translatorWindow.webContents.on('did-start-loading', () => {
-                console.log(`[Main Process] translatorWindow webContents did-start-loading for URL: ${translatorUrl.substring(0, 200)}`);
-            });
-
-            translatorWindow.webContents.on('dom-ready', () => {
-                console.log(`[Main Process] translatorWindow webContents dom-ready for URL: ${translatorWindow.webContents.getURL()}`);
-            });
-
-            translatorWindow.webContents.on('did-finish-load', () => {
-                console.log(`[Main Process] translatorWindow webContents did-finish-load for URL: ${translatorWindow.webContents.getURL()}`);
-            });
-
-            translatorWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
-                console.error(`[Main Process] translatorWindow webContents did-fail-load: Code ${errorCode}, Desc: ${errorDescription}, URL: ${validatedURL}`);
-            });
-
-            translatorWindow.loadURL(translatorUrl)
-                .then(() => {
-                    console.log(`[Main Process] translatorWindow successfully initiated URL loading (loadURL resolved): ${translatorUrl.substring(0, 200)}`);
-                })
-                .catch((err) => {
-                    console.error(`[Main Process] translatorWindow FAILED to initiate URL loading (loadURL rejected): ${translatorUrl.substring(0, 200)}`, err);
-                });
-
-            openChildWindows.push(translatorWindow);
-            translatorWindow.setMenu(null);
-
-            translatorWindow.once('ready-to-show', () => {
-                console.log(`[Main Process] translatorWindow is ready-to-show. Window Title: "${translatorWindow.getTitle()}". Calling show().`);
-                translatorWindow.show();
-                console.log('[Main Process] translatorWindow show() called.');
-            });
-
-            translatorWindow.on('close', (event) => {
-                if (process.platform === 'darwin' && !app.isQuitting) {
-                    event.preventDefault();
-                    translatorWindow.hide();
-                }
-            });
-
-            translatorWindow.on('closed', () => {
-                console.log('[Main Process] translatorWindow has been closed.');
-                openChildWindows = openChildWindows.filter(win => win !== translatorWindow);
-                translatorWindow = null;
-                if (mainWindow && !mainWindow.isDestroyed()) {
-                    mainWindow.focus(); // 聚焦主窗口
-                }
-            });
+        translatorHandlers.initialize({
+            mainWindow,
+            openChildWindows,
+            projectRoot: PROJECT_ROOT,
+            APP_DATA_ROOT_IN_PROJECT,
+            SETTINGS_FILE
         });
 
         // open-rag-observer-window handler is registered once above and reuses openRagObserverWindow()
