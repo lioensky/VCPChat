@@ -41,7 +41,10 @@ VCPChat 的核心价值在于其极致的**抽象与集成能力**。
     *   **安装 Node.js 依赖:**
         ```bash
         npm install
+        npx electron-rebuild --only better-sqlite3
         ```
+
+        > VCPChat 与部分分布式/同步能力依赖 SQLite 原生模块。每次首次安装依赖、升级 Electron、切换 Node.js/Electron 版本，或遇到 `better-sqlite3` 提示 `NODE_MODULE_VERSION` 不匹配时，都需要执行 `npx electron-rebuild --only better-sqlite3` 重新编译原生扩展，否则可能出现数据库无法初始化、同步索引不创建等问题。
 
     *   **安装 Python 依赖** (用于音频引擎、高级插件等):
         ```bash
@@ -50,13 +53,26 @@ VCPChat 的核心价值在于其极致的**抽象与集成能力**。
 
 3.  **启动应用**
 
-    *   **常规启动:**
+    *   **开发/调试启动：**
         ```bash
         npm start
         ```
+        适合开发者在终端中直接启动，控制台会保留日志输出，便于排查依赖、插件、分布式服务器、数据库初始化等问题。
 
-    *   **静默启动 (可选):**
-        您也可以使用 `run_silent.vbs` 脚本来实现无控制台窗口的静默启动。
+    *   **批处理启动：**
+        双击 [`start.bat`](start.bat) 可启动 VCPChat。该脚本会先启动 [`NativeSplash.exe`](NativeSplash.exe)，再执行 `npm start`，因此会保留命令行窗口，适合需要观察启动日志的普通用户或调试场景。
+
+    *   **主程序静默启动：**
+        双击 [`启动Vchat.vbs`](启动Vchat.vbs) 可无控制台窗口启动 VCPChat 主程序。它会先隐藏启动 [`NativeSplash.exe`](NativeSplash.exe)，再以隐藏窗口方式执行 `npx electron .`，适合日常使用。
+
+    *   **主程序 + VCPDesktop 一键启动：**
+        双击 [`启动全部.vbs`](启动全部.vbs) 会先启动 VCPChat 主程序，等待主窗口就绪后，再通过 `npx electron . --desktop-only` 打开 VCPDesktop。适合希望开机后同时进入聊天主界面和桌面系统的用户。
+
+    *   **仅打开 VCPDesktop：**
+        双击 [`start-desktop.vbs`](start-desktop.vbs) 会执行 `npx electron . --desktop-only`。如果 VCPChat 已经在运行，它会作为第二实例请求当前主进程打开/聚焦 VCPDesktop；如果尚未运行，则会启动完整应用并自动打开桌面窗口。
+
+    *   **仅打开 RAG 观察器：**
+        双击 [`start-rag-observer.vbs`](start-rag-observer.vbs) 会执行 `npx electron . --rag-observer-only`，只启动 RAG Observer 所需窗口与托盘能力，不打开完整聊天主界面，适合单独监听信息流或后台观察。
 
 ---
 
