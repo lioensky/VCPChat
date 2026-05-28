@@ -42,6 +42,7 @@ const delayedCleanupTimers = new Map(); // messageId -> timerId
 // --- 新增：预缓冲系统 ---
 const preBufferedChunks = new Map(); // messageId -> array of chunks waiting for initialization
 const messageInitializationStatus = new Map(); // messageId -> 'pending' | 'ready' | 'finalized'
+const pendingFinalizationEvents = new Map(); // messageId -> { finishReason, context, finalPayload }
 
 // --- 新增：消息上下文映射 ---
 const messageContextMap = new Map(); // messageId -> {agentId, groupId, topicId, isGroupMessage}
@@ -793,16 +794,33 @@ export async function startStreamingMessage(message, passedMessageItem = null) {
     }
     
     // Initialization is complete, message is ready to process chunks.
-    messageInitializationStatus.set(messageId, 'ready');
+    // 如果 end/error 事件在异步初始化期间已经到达，不能把状态从 finalized 回退到 ready。
+    if (messageInitializationStatus.get(messageId) !== 'finalized') {
+        messageInitializationStatus.set(messageId, 'ready');
+    }
     
     // Process any chunks that were pre-buffered during initialization.
     const bufferedChunks = preBufferedChunks.get(messageId);
-    if (bufferedChunks && bufferedChunks.length > 0) {
+    if (bufferedChunks && bufferedChunks.length > 0 && messageInitializationStatus.get(messageId) === 'ready') {
         console.debug(`[StreamManager] Processing ${bufferedChunks.length} pre-buffered chunks for message ${messageId}`);
         for (const chunkData of bufferedChunks) {
             appendStreamChunk(messageId, chunkData.chunk, chunkData.context);
         }
         preBufferedChunks.delete(messageId);
+    }
+    
+    const deferredFinalization = pendingFinalizationEvents.get(messageId);
+    if (deferredFinalization) {
+        pendingFinalizationEvents.delete(messageId);
+        console.warn(`[StreamManager] Replaying deferred finalization for message ${messageId}.`);
+        setTimeout(() => {
+            finalizeStreamedMessage(
+                messageId,
+                deferredFinalization.finishReason,
+                deferredFinalization.context,
+                deferredFinalization.finalPayload
+            );
+        }, 0);
     }
     
     if (isForCurrentView) {
@@ -1199,6 +1217,13 @@ export function appendStreamChunk(messageId, chunkData, context) {
 }
 
 export async function finalizeStreamedMessage(messageId, finishReason, context, finalPayload = null) {
+    const initStatusAtFinalize = messageInitializationStatus.get(messageId);
+    if (!initStatusAtFinalize || initStatusAtFinalize === 'pending') {
+        console.warn(`[StreamManager] Finalization arrived before message initialization completed for ${messageId}. Deferring. status=${initStatusAtFinalize || 'missing'}`);
+        pendingFinalizationEvents.set(messageId, { finishReason, context, finalPayload });
+        return;
+    }
+
     // With the global render loop, we no longer need to manually drain the queue here or clear timers.
     // The loop will continue to process chunks until the queue is empty and the message is finalized, then clean itself up.
     if (activeStreamingMessageId === messageId) {
@@ -1406,6 +1431,7 @@ export async function finalizeStreamedMessage(messageId, finishReason, context, 
         messageDomCache.clear();
         preBufferedChunks.clear();
         messageInitializationStatus.clear();
+        pendingFinalizationEvents.clear();
         messageContextMap.clear();
         viewContextCache.clear();
     
