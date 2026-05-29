@@ -28,6 +28,7 @@
   },
   "dependencies": {
     "@3d-dice/dice-box": "^1.1.4",
+    "@chenglou/pretext": "^0.0.7",
     "animejs": "^4.0.2",
     "axios": "^1.10.0",
     "better-sqlite3": "^12.10.0",

@@ -445,12 +445,25 @@ body.preview-collapsed .note-body {
 }
 
 body.preview-collapsed .editor-container {
-    flex: 1 1 100%;
+    /*
+     * initEditorPreviewResizer() writes an inline flex value to keep the split ratio.
+     * The collapsed state must override that inline value, otherwise the editor keeps
+     * its previous split width and the hidden preview leaves an empty column.
+     */
+    flex: 1 1 100% !important;
+    width: 100%;
+    max-width: none;
 }
 
 body.preview-collapsed .preview-container {
-    flex: 0 1 0;
+    /*
+     * Also override the inline flex value written by the split resizer so the preview
+     * fully releases its layout space while collapsed.
+     */
+    flex: 0 0 0 !important;
+    width: 0;
     min-width: 0;
+    max-width: 0;
     opacity: 0;
     transform: translateX(16px) scaleX(0.98);
     border-width: 0;
@@ -458,8 +471,10 @@ body.preview-collapsed .preview-container {
 }
 
 body.preview-collapsed .editor-preview-resizer {
-    flex-basis: 0;
+    flex: 0 0 0;
     width: 0;
+    min-width: 0;
+    max-width: 0;
     margin: 0;
     opacity: 0;
     pointer-events: none;
