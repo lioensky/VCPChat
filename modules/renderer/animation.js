@@ -27,8 +27,8 @@ function replaceCdnUrls(scriptContent) {
     
     const threeJsPatterns = [
         /https?:\/\/cdnjs\.cloudflare\.com\/ajax\/libs\/three\.js\/[^'"`);\s]*/gi,
-        /https?:\/\/cdn\.jsdelivr\.net\/npm\/three[@\/][^'"`);\s]*/gi,
-        /https?:\/\/unpkg\.com\/three[@\/][^'"`);\s]*/gi,
+        /https?:\/\/cdn\.jsdelivr\.net\/npm\/three(?:@[^\/'"`);\s]+)?\/[^'"`);\s]*/gi,
+        /https?:\/\/unpkg\.com\/three(?:@[^\/'"`);\s]+)?\/[^'"`);\s]*/gi,
     ];
     
     threeJsPatterns.forEach(pattern => {
@@ -37,8 +37,8 @@ function replaceCdnUrls(scriptContent) {
     
     const animeJsPatterns = [
         /https?:\/\/cdnjs\.cloudflare\.com\/ajax\/libs\/animejs\/[^'"`);\s]*/gi,
-        /https?:\/\/cdn\.jsdelivr\.net\/npm\/animejs[@\/][^'"`);\s]*/gi,
-        /https?:\/\/unpkg\.com\/animejs[@\/][^'"`);\s]*/gi,
+        /https?:\/\/cdn\.jsdelivr\.net\/npm\/animejs(?:@[^\/'"`);\s]+)?\/[^'"`);\s]*/gi,
+        /https?:\/\/unpkg\.com\/animejs(?:@[^\/'"`);\s]+)?\/[^'"`);\s]*/gi,
     ];
     
     animeJsPatterns.forEach(pattern => {
@@ -46,8 +46,8 @@ function replaceCdnUrls(scriptContent) {
     });
     
     const genericCdnPatterns = [
-        { pattern: /https?:\/\/[^'"`);\s]*three[^'"`);\s]*\.js/gi, replacement: 'vendor/three.min.js' },
-        { pattern: /https?:\/\/[^'"`);\s]*anime[^'"`);\s]*\.js/gi, replacement: 'vendor/anime.min.js' },
+        { pattern: /https?:\/\/[^'"`);\s]*(?:three\.js|three)[^'"`);\s]*\/[^'"`);\s]*\.js(?:\?[^'"`);\s]*)?/gi, replacement: 'vendor/three.min.js' },
+        { pattern: /https?:\/\/[^'"`);\s]*(?:animejs|anime)[^'"`);\s]*\/[^'"`);\s]*\.js(?:\?[^'"`);\s]*)?/gi, replacement: 'vendor/anime.min.js' },
     ];
     
     genericCdnPatterns.forEach(({ pattern, replacement }) => {
@@ -174,7 +174,20 @@ function processScripts(containerElement) {
     const allScripts = Array.from(containerElement.querySelectorAll('script'));
     const threeScripts = allScripts.filter(s => s.src && s.src.includes('three'));
     const otherExternalScripts = allScripts.filter(s => s.src && !s.src.includes('three'));
-    const inlineScripts = allScripts.filter(s => !s.src && s.textContent.trim());
+    const inlineScripts = allScripts
+        .filter(s => !s.src && s.textContent.trim())
+        .map(s => ({
+            textContent: s.textContent,
+            previousElementSibling: s.previousElementSibling,
+            parentElement: s.parentElement,
+            parentNode: s.parentNode,
+            id: s.id || '',
+            className: s.className || '',
+            type: s.type || '',
+            dataset: { ...s.dataset },
+            getAttribute: (name) => s.getAttribute(name),
+            hasAttribute: (name) => s.hasAttribute(name),
+        }));
 
     // Clean up all script tags from the message body
     allScripts.forEach(s => { if (s.parentNode) s.parentNode.removeChild(s); });
@@ -229,9 +242,54 @@ function processScripts(containerElement) {
                     // 我们将 pausableRAF 挂载到一个临时全局变量上，以便注入脚本读取
                     const tempRafId = `_vcp_raf_${Math.random().toString(36).slice(2, 11)}`;
                     window[tempRafId] = pausableRAF;
+
+                    const tempDocId = `_vcp_doc_${Math.random().toString(36).slice(2, 11)}`;
+                    const virtualCurrentScript = {
+                        tagName: 'SCRIPT',
+                        nodeName: 'SCRIPT',
+                        nodeType: Node.ELEMENT_NODE,
+                        id: script.id,
+                        className: script.className,
+                        type: script.type,
+                        dataset: script.dataset,
+                        previousElementSibling: script.previousElementSibling,
+                        parentElement: script.parentElement,
+                        parentNode: script.parentNode,
+                        ownerDocument: document,
+                        getAttribute: script.getAttribute,
+                        hasAttribute: script.hasAttribute,
+                    };
+                    const shadowDocument = new Proxy(document, {
+                        get(target, prop) {
+                            if (prop === 'currentScript') {
+                                return virtualCurrentScript;
+                            }
+
+                            if (prop === 'getElementsByTagName') {
+                                return function(tagName) {
+                                    const elements = Array.from(target.getElementsByTagName(tagName));
+                                    if (String(tagName).toLowerCase() === 'script') {
+                                        const scripts = [...elements, virtualCurrentScript];
+                                        scripts.item = (index) => scripts[index] || null;
+                                        return scripts;
+                                    }
+                                    elements.item = (index) => elements[index] || null;
+                                    return elements;
+                                };
+                            }
+
+                            const value = target[prop];
+                            return typeof value === 'function' ? value.bind(target) : value;
+                        },
+                        set(target, prop, value) {
+                            target[prop] = value;
+                            return true;
+                        }
+                    });
+                    window[tempDocId] = shadowDocument;
                     
                     // [优化] 拦截脚本中的 requestAnimationFrame，强制指向 pausableRAF
-                    let scriptContent = script.textContent;
+                    let scriptContent = replaceCdnUrls(script.textContent);
                     
                     // 简单的正则替换，处理常见的调用方式
                     // 注意：这只是辅助手段，核心拦截靠 IIFE 作用域覆盖
@@ -239,6 +297,7 @@ function processScripts(containerElement) {
                     
                     const wrappedScript = `
 (function() {
+    const document = window['${tempDocId}'];
     const requestAnimationFrame = window['${tempRafId}'];
     // 同时也覆盖 webkitRequestAnimationFrame 等变体以防万一
     const webkitRequestAnimationFrame = requestAnimationFrame;
@@ -257,7 +316,10 @@ function processScripts(containerElement) {
                     document.head.appendChild(newScript).parentNode.removeChild(newScript);
                     
                     // 稍微延迟清理，确保脚本解析完成
-                    setTimeout(() => { delete window[tempRafId]; }, 0);
+                    setTimeout(() => {
+                        delete window[tempRafId];
+                        delete window[tempDocId];
+                    }, 0);
 
                 } catch (e) {
                     console.error('[Animation] Error executing inline script:', e);

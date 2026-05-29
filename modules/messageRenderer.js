@@ -525,7 +525,7 @@ function transformSpecialBlocks(text, codeBlockMap) {
             const diaryContent = extractMarkedField(content, /Content:\s*/i) || '[日记内容解析失败]';
             const diaryTag = extractMarkedField(content, /Tag:\s*/i) || '';
 
-            let html = `<div class="maid-diary-bubble">`;
+            let html = `<div class="maid-diary-bubble" data-vcp-block-type="maid-diary" data-vcp-preserve-children="true">`;
             html += `<div class="diary-header">`;
             html += `<span class="diary-title">${fileName ? escapeHtml(fileName) : "Maid's Diary"}</span>`;
             if (date) {
@@ -580,7 +580,7 @@ function transformSpecialBlocks(text, codeBlockMap) {
             }
 
             const escapedFullContent = escapeHtml(restoreBlocks(content));
-            return `\n\n<div class="vcp-tool-use-bubble">` +
+            return `\n\n<div class="vcp-tool-use-bubble" data-vcp-block-type="tool-use" data-vcp-preserve-children="true">` +
                 `<div class="vcp-tool-summary">` +
                 `<span class="vcp-tool-label">VCP-ToolUse:</span> ` +
                 `<span class="vcp-tool-name-highlight">${escapeHtml(toolName)}</span>` +
@@ -606,7 +606,7 @@ function transformSpecialBlocks(text, codeBlockMap) {
         // The rest of the text after "Content:", or the full text if "Content:" is not found
         const diaryContent = contentMatch ? contentMatch[1].trim() : content;
 
-        let html = `<div class="maid-diary-bubble">`;
+        let html = `<div class="maid-diary-bubble" data-vcp-block-type="maid-diary" data-vcp-preserve-children="true">`;
         html += `<div class="diary-header">`;
         html += `<span class="diary-title">Maid's Diary</span>`;
         if (date) {
@@ -643,7 +643,7 @@ function transformSpecialBlocks(text, codeBlockMap) {
         const content = rawContent.trim();
         const escapedContent = escapeHtml(restoreBlocks(content));
 
-        let html = `<div class="vcp-thought-chain-bubble collapsible">`;
+        let html = `<div class="vcp-thought-chain-bubble collapsible" data-vcp-block-type="thought-chain" data-vcp-preserve-children="true">`;
         html += `<div class="vcp-thought-chain-header">`;
         html += `<span class="vcp-thought-chain-icon">🧠</span>`;
         html += `<span class="vcp-thought-chain-label">${escapeHtml(displayTheme)}</span>`;
@@ -694,7 +694,7 @@ function transformSpecialBlocks(text, codeBlockMap) {
 
         const actionText = isEndMarker ? '结束' : '起始';
 
-        return `\n\n<div class="vcp-role-divider role-${roleLower} type-${isEndMarker ? 'end' : 'start'}"><span class="divider-text">角色分界: ${label} [${actionText}]</span></div>\n\n`;
+        return `\n\n<div class="vcp-role-divider role-${roleLower} type-${isEndMarker ? 'end' : 'start'}" data-vcp-block-type="role-divider" data-vcp-preserve-children="true"><span class="divider-text">角色分界: ${label} [${actionText}]</span></div>\n\n`;
     });
 
     return processed;
@@ -1015,7 +1015,7 @@ function renderToolResultBlock(fullMatch) {
         else details.push({ key: currentKey, value: val });
     }
 
-    let html = `<div class="vcp-tool-result-bubble collapsible">`;
+    let html = `<div class="vcp-tool-result-bubble collapsible" data-vcp-block-type="tool-result" data-vcp-preserve-children="true">`;
     html += `<div class="vcp-tool-result-header">`;
     html += `<span class="vcp-tool-result-label">VCP-ToolResult</span>`;
     html += `<span class="vcp-tool-result-name">${escapeHtml(toolName)}</span>`;
@@ -1317,12 +1317,12 @@ function initializeMessageRenderer(refs) {
                 const tempEl = document.createElement('textarea');
                 tempEl.innerHTML = code;
                 const encodedCode = encodeURIComponent(tempEl.value.trim());
-                return `<div class="mermaid-placeholder" data-mermaid-code="${encodedCode}"></div>`;
+                return `<div class="mermaid-placeholder" data-vcp-block-type="mermaid" data-vcp-preserve-children="true" data-mermaid-code="${encodedCode}"></div>`;
             });
 
             transformed = transformed.replace(MERMAID_FENCE_REGEX, (match, lang, code) => {
                 const encodedCode = encodeURIComponent(code.trim());
-                return `<div class="mermaid-placeholder" data-mermaid-code="${encodedCode}"></div>`;
+                return `<div class="mermaid-placeholder" data-vcp-block-type="mermaid" data-vcp-preserve-children="true" data-mermaid-code="${encodedCode}"></div>`;
             });
 
             return transformed;

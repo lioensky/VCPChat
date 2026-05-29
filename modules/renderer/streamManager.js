@@ -27,6 +27,97 @@ const DESKTOP_PUSH_START = '<<<[DESKTOP_PUSH]>>>';
 const DESKTOP_PUSH_END = '<<<[DESKTOP_PUSH_END]>>>';
 const CODE_FENCE = '```';
 
+const STREAM_BLOCK_TAG_REGEX = /^(P|DIV|UL|OL|LI|PRE|BLOCKQUOTE|H[1-6]|TABLE|TR|FIGURE)$/;
+const STREAM_PRESERVED_BLOCK_CLASSES = [
+    'vcp-tool-use-bubble',
+    'vcp-tool-result-bubble',
+    'maid-diary-bubble',
+    'vcp-thought-chain-bubble',
+    'vcp-role-divider',
+    'mermaid',
+    'katex',
+    'vcp-html-preview-container'
+];
+const STREAM_PRESERVED_CHILD_ATTRS = [
+    'data-vcp-preserve-children',
+    'data-vcp-rendered',
+    'data-vcp-html-preview'
+];
+
+function hasAnyClass(el, classNames) {
+    return !!el?.classList && classNames.some(className => el.classList.contains(className));
+}
+
+function hasAnyAttribute(el, attrNames) {
+    return !!el?.hasAttribute && attrNames.some(attrName => el.hasAttribute(attrName));
+}
+
+function shouldPreserveStreamElement(fromEl, toEl) {
+    if (!fromEl || fromEl.nodeType !== 1) return false;
+
+    if (hasAnyClass(fromEl, STREAM_PRESERVED_BLOCK_CLASSES)) {
+        return true;
+    }
+
+    if (hasAnyAttribute(fromEl, STREAM_PRESERVED_CHILD_ATTRS)) {
+        return true;
+    }
+
+    // 后处理后的代码高亮节点会带 hljs 类，流式下一帧不应反复重写其内部结构。
+    if (fromEl.tagName === 'CODE' && fromEl.classList.contains('hljs')) {
+        return true;
+    }
+
+    // KaTeX 通常会生成复杂嵌套 DOM，保留已处理结果，等待最终完整渲染统一刷新。
+    if (fromEl.closest?.('.katex')) {
+        return true;
+    }
+
+    return false;
+}
+
+function shouldSkipStreamChildren(fromEl, toEl) {
+    if (!fromEl || fromEl.nodeType !== 1) return false;
+
+    if (hasAnyClass(fromEl, STREAM_PRESERVED_BLOCK_CLASSES)) {
+        return true;
+    }
+
+    if (hasAnyAttribute(fromEl, STREAM_PRESERVED_CHILD_ATTRS)) {
+        return true;
+    }
+
+    if (fromEl.tagName === 'PRE' && fromEl.dataset.rawContent) {
+        return true;
+    }
+
+    return false;
+}
+
+function preserveDynamicStreamState(fromEl, toEl) {
+    if (!fromEl || !toEl || fromEl.nodeType !== 1 || toEl.nodeType !== 1) return;
+
+    if (fromEl.classList.contains('expanded')) {
+        toEl.classList.add('expanded');
+    }
+
+    if (fromEl.classList.contains('preview-mode')) {
+        toEl.classList.add('preview-mode');
+    }
+
+    if (fromEl.dataset.vcpInteractive === 'true') {
+        toEl.dataset.vcpInteractive = 'true';
+    }
+
+    if (fromEl.dataset.vcpBlockType) {
+        toEl.dataset.vcpBlockType = fromEl.dataset.vcpBlockType;
+    }
+
+    if (fromEl.dataset.vcpKey) {
+        toEl.dataset.vcpKey = fromEl.dataset.vcpKey;
+    }
+}
+
 // --- DOM Cache ---
 const messageDomCache = new Map(); // messageId -> { messageItem, contentDiv }
 
@@ -480,10 +571,26 @@ function renderStreamFrame(messageId) {
         try {
             refs.morphdom(tailRoot, `<div>${rawHtml}</div>`, {
                 childrenOnly: true,
+
+                getNodeKey: function(node) {
+                    if (!node || node.nodeType !== 1) return undefined;
+                    return node.id || node.dataset?.vcpKey || node.dataset?.vcpBlockKey || undefined;
+                },
+
+                skipFromChildren: function(fromEl, toEl) {
+                    return shouldSkipStreamChildren(fromEl, toEl);
+                },
                 
                 onBeforeElUpdated: function(fromEl, toEl) {
                 // 跳过相同节点
                 if (fromEl.isEqualNode(toEl)) {
+                    return false;
+                }
+
+                preserveDynamicStreamState(fromEl, toEl);
+
+                // 跳过已完成后处理或需要保留内部状态的复杂块，避免流式尾部 diff 反复重写子树。
+                if (shouldPreserveStreamElement(fromEl, toEl)) {
                     return false;
                 }
                 
@@ -497,7 +604,7 @@ function renderStreamFrame(messageId) {
                 }
 
                 // 🟢 检测块级元素的显著内容增长
-                if (/^(P|DIV|UL|OL|LI|PRE|BLOCKQUOTE|H[1-6]|TABLE|TR|FIGURE)$/.test(fromEl.tagName)) {
+                if (STREAM_BLOCK_TAG_REGEX.test(fromEl.tagName)) {
                     const oldLength = elementContentLengthCache.get(fromEl) || fromEl.textContent.length;
                     const newLength = toEl.textContent.length;
                     const lengthDiff = newLength - oldLength;
@@ -576,7 +683,7 @@ function renderStreamFrame(messageId) {
             
             onNodeAdded: function(node) {
                 // 增强：包含更多常见的块级元素，确保列表、表格等都能触发横向渐入
-                if (node.nodeType === 1 && /^(P|DIV|UL|OL|LI|PRE|BLOCKQUOTE|H[1-6]|TABLE|TR|FIGURE)$/.test(node.tagName)) {
+                if (node.nodeType === 1 && STREAM_BLOCK_TAG_REGEX.test(node.tagName)) {
                     // 确保新节点应用横向渐入类
                     node.classList.add('vcp-stream-element-fade-in');
                     
