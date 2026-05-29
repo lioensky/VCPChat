@@ -780,15 +780,22 @@ async function handleRegenerateResponse(originalAssistantMessage) {
                 for (const att of msg.attachments) {
                     const fileManagerData = att._fileManagerData || {};
                     // 🟢 同步：重新生成时的多级路径探测。优先使用 internalPath (物理路径)
-                    const filePathForContext = (fileManagerData && fileManagerData.internalPath) || 
-                                               att.localPath || 
-                                               att.src || 
+                    // 兼容两种附件结构：通过正常发送的附件（数据在 _fileManagerData 中）
+                    // 和通过 addAttachmentsToMessage 添加的附件（数据直接在 att 顶层）
+                    const filePathForContext = (fileManagerData && fileManagerData.internalPath) ||
+                                               att.internalPath ||
+                                               att.localPath ||
+                                               att.src ||
                                                (att.name || '未知文件');
 
-                    if (fileManagerData.imageFrames && fileManagerData.imageFrames.length > 0) {
+                    // 兼容读取：优先从 _fileManagerData 读取，回退到 att 顶层字段
+                    const effectiveImageFrames = fileManagerData.imageFrames || att.imageFrames;
+                    const effectiveExtractedText = fileManagerData.extractedText || att.extractedText;
+
+                    if (effectiveImageFrames && effectiveImageFrames.length > 0) {
                          historicalAppendedText += `\n\n[附加文件: ${filePathForContext} (扫描版PDF，已转换为图片)]`;
-                    } else if (fileManagerData.extractedText) {
-                        historicalAppendedText += `\n\n[附加文件: ${filePathForContext}]\n${fileManagerData.extractedText}\n[/附加文件结束: ${att.name || '未知文件'}]`;
+                    } else if (effectiveExtractedText) {
+                        historicalAppendedText += `\n\n[附加文件: ${filePathForContext}]\n${effectiveExtractedText}\n[/附加文件结束: ${att.name || '未知文件'}]`;
                     } else {
                         historicalAppendedText += `\n\n[附加文件: ${filePathForContext}]`;
                     }
@@ -811,17 +818,19 @@ async function handleRegenerateResponse(originalAssistantMessage) {
                 // --- IMAGE PROCESSING ---
                 const imageAttachmentsPromises = msg.attachments.map(async att => {
                     const fileManagerData = att._fileManagerData || {};
+                    // 兼容读取：优先从 _fileManagerData 读取，回退到 att 顶层字段
+                    const effectiveImageFrames = fileManagerData.imageFrames || att.imageFrames;
                     // Case 1: Scanned PDF converted to image frames
-                    if (fileManagerData.imageFrames && fileManagerData.imageFrames.length > 0) {
-                        return fileManagerData.imageFrames.map(frameData => ({
+                    if (effectiveImageFrames && effectiveImageFrames.length > 0) {
+                        return effectiveImageFrames.map(frameData => ({
                             type: 'image_url',
                             image_url: { url: `data:image/jpeg;base64,${frameData}` }
                         }));
                     }
                     // Case 2: Regular image file (including GIFs that get framed)
-                    if (att.type.startsWith('image/')) {
+                    if (att.type && att.type.startsWith('image/')) {
                         try {
-                            const result = await electronAPI.getFileAsBase64(att.src);
+                            const result = await electronAPI.getFileAsBase64(att.src || att.internalPath);
                             if (result && result.success) {
                                 return result.base64Frames.map(frameData => ({
                                     type: 'image_url',
@@ -849,10 +858,10 @@ async function handleRegenerateResponse(originalAssistantMessage) {
                 // --- AUDIO PROCESSING ---
                 const supportedAudioTypes = ['audio/wav', 'audio/mpeg', 'audio/mp3', 'audio/aiff', 'audio/aac', 'audio/ogg', 'audio/flac'];
                 const audioAttachmentsPromises = msg.attachments
-                    .filter(att => supportedAudioTypes.includes(att.type))
+                    .filter(att => att.type && supportedAudioTypes.includes(att.type))
                     .map(async att => {
                         try {
-                            const result = await electronAPI.getFileAsBase64(att.src);
+                            const result = await electronAPI.getFileAsBase64(att.src || att.internalPath);
                             if (result && result.success && result.base64Frames.length > 0) {
                                 return result.base64Frames.map(frameData => ({
                                     type: 'image_url',
@@ -875,10 +884,10 @@ async function handleRegenerateResponse(originalAssistantMessage) {
 
                 // --- VIDEO PROCESSING ---
                 const videoAttachmentsPromises = msg.attachments
-                    .filter(att => att.type.startsWith('video/'))
+                    .filter(att => att.type && att.type.startsWith('video/'))
                     .map(async att => {
                         try {
-                            const result = await electronAPI.getFileAsBase64(att.src);
+                            const result = await electronAPI.getFileAsBase64(att.src || att.internalPath);
                             if (result && result.success && result.base64Frames.length > 0) {
                                 return result.base64Frames.map(frameData => ({
                                     type: 'image_url',
