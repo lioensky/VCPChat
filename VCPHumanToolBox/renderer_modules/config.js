@@ -70,35 +70,34 @@ export const tools = {
         ]
     },
     'DoubaoGen': {
-        displayName: '豆包 AI 图片',
-        description: '集成豆包模型的图片生成与编辑功能。[后端插件: DoubaoGen]',
+        displayName: '豆包 AI 图片生成/编辑/合成',
+        description: '使用豆包模型生成、编辑或合成图片。国产强图像模型，字体/中文排版/海报类任务表现强。[后端插件: DoubaoGen]',
         commands: {
-            'DoubaoGenerateImage': {
-                description: '豆包生图',
+            'generate': {
+                description: '生成图片',
                 params: [
                     { name: 'maid', type: 'text', required: true, placeholder: '你的名字' },
-                    { name: 'prompt', type: 'textarea', required: true, placeholder: '(必需) 用于图片生成的详细提示词。' },
-                    { name: 'resolution', type: 'text', required: true, placeholder: '(必需) 图片分辨率，格式为"宽x高"。理论上支持2048以内任意分辨率组合。', default: '1024x1024' }
+                    { name: 'prompt', type: 'textarea', required: true, placeholder: '(必需) 用于生成、编辑或合成图片的自然语言描述，支持中文或英文。纯文本描述即可，不需要特殊格式。' },
+                    { name: 'size', type: 'text', required: false, placeholder: '(可选) 图片尺寸，如2K、4K、2048x2048、adaptive等，建议不低于2K', default: '2K', description: '图片分辨率或比例' }
                 ]
             },
-            'DoubaoEditImage': {
-                description: '豆包修图',
+            'edit': {
+                description: '编辑图片',
                 params: [
                     { name: 'maid', type: 'text', required: true, placeholder: '你的名字' },
-                    { name: 'prompt', type: 'textarea', required: true, placeholder: '(必需) 用于指导图片修改的详细提示词。' },
-                    { name: 'image', type: 'dragdrop_image', required: true, placeholder: '(必需) 来源图片URL或file://本地路径' },
-                    { name: 'resolution', type: 'text', required: true, placeholder: '(必需) 2K, 4K 或宽x高', default: '2K' },
+                    { name: 'prompt', type: 'textarea', required: true, placeholder: '(必需) 用于生成、编辑或合成图片的自然语言描述，支持中文或英文。纯文本描述即可，不需要特殊格式。' },
+                    { name: 'image', type: 'dragdrop_image', required: true, placeholder: '(编辑/合成时必需) 单图URL/base64/data URI，或图片数组，例如["url1","url2"]。也兼容image_url、image_1、image_2、image_url_1、image_base64_1等字段。' },
+                    { name: 'size', type: 'text', required: false, placeholder: '(可选) 图片尺寸，如2K、4K、2048x2048、adaptive等', default: '2K', description: '图片分辨率或比例' },
                     { name: 'guidance_scale', type: 'number', required: false, placeholder: '范围0-10，值越小越相似。' }
                 ]
             },
-            'DoubaoComposeImage': {
-                description: '豆包多图合成',
+            'compose': {
+                description: '合成图片',
                 params: [
                     { name: 'maid', type: 'text', required: true, placeholder: '你的名字' },
-                    { name: 'prompt', type: 'textarea', required: true, placeholder: '(必需) 用于指导图片融合或对话的详细提示词。' },
-                    { name: 'image_1', type: 'dragdrop_image', required: true, placeholder: '(必需) 第1张图片来源' },
-                    { name: 'image_2', type: 'dragdrop_image', required: false, placeholder: '(可选) 第2张图片来源' },
-                    { name: 'resolution', type: 'text', required: true, placeholder: '(必需) 宽x高 或 adaptive', default: 'adaptive' },
+                    { name: 'prompt', type: 'textarea', required: true, placeholder: '(必需) 用于生成、编辑或合成图片的自然语言描述，支持中文或英文。纯文本描述即可，不需要特殊格式。' },
+                    { name: 'image', type: 'dragdrop_image', required: true, placeholder: '(编辑/合成时必需) 单图URL/base64/data URI，或图片数组，例如["url1","url2"]。也兼容image_url、image_1、image_2、image_url_1、image_base64_1等字段。' },
+                    { name: 'size', type: 'text', required: false, placeholder: '(可选) 图片尺寸，如2K、4K、2048x2048、adaptive等', default: 'adaptive', description: '图片分辨率或比例' },
                     { name: 'guidance_scale', type: 'number', required: false, placeholder: '范围0-10，值越小越相似。' }
                 ],
                 dynamicImages: true
@@ -271,34 +270,66 @@ export const tools = {
         ]
     },
     'NanoBananaGen2': {
-        displayName: 'NanoBanana 图像编辑 (V2)',
-        description: '地球最强的图像编辑AI，支持中英文。[后端插件: NanoBananaGen2]',
+        displayName: 'NanoBanana 图片生成/编辑/合成 (V2)',
+        description: '顶级图像编辑AI，适合长描述、复杂修图、多图参考和角色一致性任务，支持中英文。[后端插件: NanoBananaGen2]',
         commands: {
             'generate': {
                 description: '生成图片',
                 params: [
                     { name: 'maid', type: 'text', required: true, placeholder: '你的名字' },
-                    { name: 'prompt', type: 'textarea', required: true, placeholder: '详细提示词' },
-                    { name: 'image_size', type: 'select', options: ['1K', '2K', '4K'], default: '2K' }
+                    { name: 'prompt', type: 'textarea', required: true, placeholder: '(必需) 用于生成、编辑或合成图片的自然语言描述，支持中文或英文。纯文本描述即可，不需要特殊格式。' },
+                    { name: 'size', type: 'select', required: false, options: ['1K', '2K', '4K'], default: '2K', description: '图片分辨率或比例' }
                 ]
             },
             'edit': {
                 description: '编辑图片',
                 params: [
                     { name: 'maid', type: 'text', required: true, placeholder: '你的名字' },
-                    { name: 'prompt', type: 'textarea', required: true, placeholder: '编辑指令' },
-                    { name: 'image_url', type: 'dragdrop_image', required: true },
-                    { name: 'image_size', type: 'select', options: ['1K', '2K', '4K'], default: '2K' }
+                    { name: 'prompt', type: 'textarea', required: true, placeholder: '(必需) 用于生成、编辑或合成图片的自然语言描述，支持中文或英文。纯文本描述即可，不需要特殊格式。' },
+                    { name: 'image', type: 'dragdrop_image', required: true, placeholder: '(编辑/合成时必需) 单图URL/base64/data URI，或图片数组，例如["url1","url2"]。也兼容image_url、image_1、image_2、image_url_1、image_base64_1等字段。' },
+                    { name: 'size', type: 'select', required: false, options: ['1K', '2K', '4K'], default: '2K', description: '图片分辨率或比例' }
                 ]
             },
             'compose': {
                 description: '合成图片',
                 params: [
                     { name: 'maid', type: 'text', required: true, placeholder: '你的名字' },
-                    { name: 'prompt', type: 'textarea', required: true, placeholder: '合成指令' },
-                    { name: 'image_url_1', type: 'dragdrop_image', required: true },
-                    { name: 'image_url_2', type: 'dragdrop_image', required: false },
-                    { name: 'image_size', type: 'select', options: ['1K', '2K', '4K'], default: '2K' }
+                    { name: 'prompt', type: 'textarea', required: true, placeholder: '(必需) 用于生成、编辑或合成图片的自然语言描述，支持中文或英文。纯文本描述即可，不需要特殊格式。' },
+                    { name: 'image', type: 'dragdrop_image', required: true, placeholder: '(编辑/合成时必需) 单图URL/base64/data URI，或图片数组，例如["url1","url2"]。也兼容image_url、image_1、image_2、image_url_1、image_base64_1等字段。' },
+                    { name: 'size', type: 'select', required: false, options: ['1K', '2K', '4K'], default: '2K', description: '图片分辨率或比例' }
+                ],
+                dynamicImages: true
+            }
+        }
+    },
+    'GPTImageGen': {
+        displayName: 'GPT 图片生成/编辑/合成',
+        description: 'OpenAI超大参数图片编辑模型，适合通用生成与编辑，但昂贵而缓慢。[后端插件: GPTImageGen]',
+        commands: {
+            'generate': {
+                description: '生成图片',
+                params: [
+                    { name: 'maid', type: 'text', required: true, placeholder: '你的名字' },
+                    { name: 'prompt', type: 'textarea', required: true, placeholder: '(必需) 用于生成、编辑或合成图片的自然语言描述，支持中文或英文。纯文本描述即可，不需要特殊格式。' },
+                    { name: 'size', type: 'select', required: false, options: ['1024x1024', '1536x1024', '1024x1536'], default: '1024x1024', description: '图片分辨率或比例' }
+                ]
+            },
+            'edit': {
+                description: '编辑图片',
+                params: [
+                    { name: 'maid', type: 'text', required: true, placeholder: '你的名字' },
+                    { name: 'prompt', type: 'textarea', required: true, placeholder: '(必需) 用于生成、编辑或合成图片的自然语言描述，支持中文或英文。纯文本描述即可，不需要特殊格式。' },
+                    { name: 'image', type: 'dragdrop_image', required: true, placeholder: '(编辑/合成时必需) 单图URL/base64/data URI，或图片数组，例如["url1","url2"]。也兼容image_url、image_1、image_2、image_url_1、image_base64_1等字段。' },
+                    { name: 'size', type: 'select', required: false, options: ['1024x1024', '1536x1024', '1024x1536'], default: '1024x1024', description: '图片分辨率或比例' }
+                ]
+            },
+            'compose': {
+                description: '合成图片',
+                params: [
+                    { name: 'maid', type: 'text', required: true, placeholder: '你的名字' },
+                    { name: 'prompt', type: 'textarea', required: true, placeholder: '(必需) 用于生成、编辑或合成图片的自然语言描述，支持中文或英文。纯文本描述即可，不需要特殊格式。' },
+                    { name: 'image', type: 'dragdrop_image', required: true, placeholder: '(编辑/合成时必需) 单图URL/base64/data URI，或图片数组，例如["url1","url2"]。也兼容image_url、image_1、image_2、image_url_1、image_base64_1等字段。' },
+                    { name: 'size', type: 'select', required: false, options: ['1024x1024', '1536x1024', '1024x1536'], default: '1024x1024', description: '图片分辨率或比例' }
                 ],
                 dynamicImages: true
             }
