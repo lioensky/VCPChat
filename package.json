@@ -21,7 +21,7 @@
   "license": "MIT",
   "devDependencies": {
     "@electron/rebuild": "^4.0.3",
-    "electron": "^37.2.6",
+    "electron": "^41.7.1",
     "electron-builder": "^26.0.12",
     "node-addon-api": "^8.3.1",
     "node-gyp": "^11.4.2"
