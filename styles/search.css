@@ -10,7 +10,7 @@
     display: flex;
     justify-content: center;
     align-items: center;
-    z-index: 1001; /* Higher than other elements */
+    z-index: 1005; /* Higher than title-bar (1001) and seam-fixer (1002) */
     backdrop-filter: blur(5px);
 }
 
