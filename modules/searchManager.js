@@ -12,6 +12,7 @@ const searchManager = {
     uiHelper: null,
     chatManager: null,
     currentSelectedItemRef: null,
+    currentTopicIdRef: null,
 
     elements: {},
     state: {
@@ -31,6 +32,7 @@ const searchManager = {
         this.uiHelper = dependencies.uiHelper;
         this.chatManager = dependencies.modules.chatManager;
         this.currentSelectedItemRef = dependencies.refs.currentSelectedItemRef;
+        this.currentTopicIdRef = dependencies.refs.currentTopicIdRef;
 
         this.setupGlobalShortcuts();
         
@@ -118,9 +120,25 @@ const searchManager = {
                 this.electronAPI.getAgentGroups()
             ]);
 
-            // 保留“所有”选项
+            // 保留当前选中值
             const currentValue = this.elements.agentSelect.value;
-            this.elements.agentSelect.innerHTML = '<option value="all">所有助手和群组</option>';
+            this.elements.agentSelect.innerHTML = '';
+
+            // 置顶"当前会话"选项
+            const currentItem = this.currentSelectedItemRef?.get();
+            const currentTopicId = this.currentTopicIdRef?.get();
+            if (currentItem && currentItem.id && currentTopicId) {
+                const currentSessionOption = document.createElement('option');
+                currentSessionOption.value = 'current-session';
+                currentSessionOption.textContent = `当前会话 (${currentItem.name || currentItem.id})`;
+                this.elements.agentSelect.appendChild(currentSessionOption);
+            }
+
+            // "所有助手和群组"选项
+            const allOption = document.createElement('option');
+            allOption.value = 'all';
+            allOption.textContent = '所有助手和群组';
+            this.elements.agentSelect.appendChild(allOption);
 
             if (agents && !agents.error) {
                 const agentGroup = document.createElement('optgroup');
@@ -235,35 +253,60 @@ const searchManager = {
             let allFoundMessages = [];
             const topicsToFetch = [];
 
-            const selectedFilter = this.elements.agentSelect.value; // "all", "agent:id", or "group:id"
-            const [filterType, filterId] = selectedFilter.split(':');
+            const selectedFilter = this.elements.agentSelect.value; // "all", "current-session", "agent:id", or "group:id"
 
-            const processItem = (item, type) => {
-                // 如果指定了过滤，且当前项目不匹配，则跳过
-                if (selectedFilter !== 'all') {
-                    if (type !== filterType || item.id !== filterId) {
-                        return;
-                    }
-                }
+            // 处理"当前会话"筛选
+            if (selectedFilter === 'current-session') {
+                const currentItem = this.currentSelectedItemRef?.get();
+                const currentTopicId = this.currentTopicIdRef?.get();
+                if (currentItem && currentItem.id && currentTopicId) {
+                    // 从当前 item 的 config 中找到当前 topic 的名称
+                    const itemConfig = currentItem.config || currentItem;
+                    const topics = itemConfig.topics || [];
+                    const currentTopic = topics.find(t => t.id === currentTopicId);
+                    const topicName = currentTopic ? currentTopic.name : '当前话题';
 
-                if (item.topics && item.topics.length > 0) {
-                    item.topics.forEach(topic => {
-                        topicsToFetch.push({
-                            context: {
-                                itemId: item.id,
-                                itemName: item.name,
-                                itemType: type,
-                                itemAvatar: item.avatarUrl,
-                                topicId: topic.id,
-                                topicName: topic.name
-                            }
-                        });
+                    topicsToFetch.push({
+                        context: {
+                            itemId: currentItem.id,
+                            itemName: currentItem.name,
+                            itemType: currentItem.type,
+                            itemAvatar: currentItem.avatarUrl,
+                            topicId: currentTopicId,
+                            topicName: topicName
+                        }
                     });
                 }
-            };
+            } else {
+                const [filterType, filterId] = selectedFilter.split(':');
 
-            agents.forEach(agent => processItem(agent, 'agent'));
-            groups.forEach(group => processItem(group, 'group'));
+                const processItem = (item, type) => {
+                    // 如果指定了过滤，且当前项目不匹配，则跳过
+                    if (selectedFilter !== 'all') {
+                        if (type !== filterType || item.id !== filterId) {
+                            return;
+                        }
+                    }
+
+                    if (item.topics && item.topics.length > 0) {
+                        item.topics.forEach(topic => {
+                            topicsToFetch.push({
+                                context: {
+                                    itemId: item.id,
+                                    itemName: item.name,
+                                    itemType: type,
+                                    itemAvatar: item.avatarUrl,
+                                    topicId: topic.id,
+                                    topicName: topic.name
+                                }
+                            });
+                        });
+                    }
+                };
+
+                agents.forEach(agent => processItem(agent, 'agent'));
+                groups.forEach(group => processItem(group, 'group'));
+            }
 
             const historyReadPromises = topicsToFetch.map(info => {
                 const { itemType, itemId, topicId } = info.context;

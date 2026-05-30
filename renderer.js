@@ -1211,6 +1211,7 @@ import { setupEventListeners } from './modules/event-listeners.js';
                 uiHelper: uiHelperFunctions,
                 refs: {
                     currentSelectedItemRef: { get: () => currentSelectedItem },
+                    currentTopicIdRef: { get: () => currentTopicId },
                 },
                 modules: {
                     chatManager: window.chatManager,
