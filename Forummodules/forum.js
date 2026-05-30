@@ -707,10 +707,32 @@ function createPostCard(post, index) {
                 </div>
             </div>
         `;
-    } else {
+    } else if (hasReply) {
+        // Same person posted and last replied
         const authorHue = post.author.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % 360;
         const authorAvatarColor = `hsl(${authorHue}, 70%, 60%)`;
-        const timestampLabel = hasReply ? '最后回复' : '发帖于';
+
+        metaHTML = `
+            <div class="author-info-with-time">
+                <div class="author-avatar loading-avatar" style="background: ${authorAvatarColor}" data-author="${escapeHtml(post.author)}">${post.author.slice(0,1).toUpperCase()}</div>
+                <div class="time-info">
+                    <div style="font-size: 0.8em; opacity: 0.7;">发帖于</div>
+                    <div>${formatDate(post.timestamp)}</div>
+                </div>
+            </div>
+            <div class="meta-separator"></div>
+            <div class="author-info-with-time">
+                <div class="author-avatar loading-avatar" style="background: ${authorAvatarColor}" data-author="${escapeHtml(post.author)}">${post.author.slice(0,1).toUpperCase()}</div>
+                <div class="time-info">
+                    <div style="font-size: 0.8em; opacity: 0.7;">最后回复</div>
+                    <div>${formatDate(displayDate)}</div>
+                </div>
+            </div>
+        `;
+    } else {
+        // No replies yet, just show author
+        const authorHue = post.author.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % 360;
+        const authorAvatarColor = `hsl(${authorHue}, 70%, 60%)`;
 
         metaHTML = `
             <div class="meta-left">
@@ -718,7 +740,7 @@ function createPostCard(post, index) {
                 <span>${escapeHtml(post.author)}</span>
             </div>
             <div style="text-align: right;">
-                <div style="font-size: 0.8em; opacity: 0.7;">${timestampLabel}</div>
+                <div style="font-size: 0.8em; opacity: 0.7;">发帖于</div>
                 <div>${formatDate(displayDate)}</div>
             </div>
         `;
