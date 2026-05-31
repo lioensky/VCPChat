@@ -96,16 +96,34 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
                         titleText += ` (${titleSuffix.trim()})`;
                     }
                     if (typeof parsedInnerContent.original_plugin_output !== 'undefined') {
-                        if (typeof parsedInnerContent.original_plugin_output === 'object' && parsedInnerContent.original_plugin_output !== null) {
-                            mainContent = JSON.stringify(parsedInnerContent.original_plugin_output, null, 2);
-                            // contentIsPreformatted is already true (from line 52) and should remain true for JSON display
+                        const pluginOutput = parsedInnerContent.original_plugin_output;
+                        if (typeof pluginOutput === 'object' && pluginOutput !== null) {
+                            // DailyNote 插件返回带有 status 和 message 字段，优先显示友好消息
+                            if (vcpData.tool_name === 'DailyNote' && pluginOutput.message) {
+                                const statusIcon = pluginOutput.status === 'success' ? '✅' : '❌';
+                                mainContent = `${statusIcon} ${pluginOutput.message}`;
+                                contentIsPreformatted = false;
+                            } else if (pluginOutput.message && typeof pluginOutput.message === 'string') {
+                                // 通用处理：如果插件输出包含 message 字段，优先显示
+                                mainContent = pluginOutput.message;
+                                contentIsPreformatted = false;
+                            } else {
+                                mainContent = JSON.stringify(pluginOutput, null, 2);
+                                // contentIsPreformatted is already true (from line 52) and should remain true for JSON display
+                            }
                         } else {
-                            mainContent = String(parsedInnerContent.original_plugin_output);
+                            mainContent = String(pluginOutput);
                             contentIsPreformatted = false; // If it's not an object, treat as plain text
                         }
-                    } else if (vcpData.tool_name === 'DailyNote' && vcpData.status === 'success') {
-                        // For DailyNote, if there's no original_plugin_output but we parsed the metadata, show a friendly message
-                        mainContent = '✅ 日记内容已成功记录到本地知识库。';
+                    } else if (vcpData.tool_name === 'DailyNote') {
+                        // DailyNote 新格式：content 直接包含 message/folder/fileName/MaidName/timestamp
+                        // 也兼容旧格式（无 message 字段时显示默认文本）
+                        const statusIcon = vcpData.status === 'success' ? '✅' : '❌';
+                        if (parsedInnerContent.message) {
+                            mainContent = `${statusIcon} ${parsedInnerContent.message}`;
+                        } else {
+                            mainContent = `${statusIcon} 日记内容已成功记录到本地知识库。`;
+                        }
                         contentIsPreformatted = false;
                     }
                 } catch (e) {
