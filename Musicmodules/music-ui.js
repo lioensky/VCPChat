@@ -117,7 +117,7 @@ class WebNowPlayingAdapter {
         const t = this.app.playlist[this.app.currentTrackIndex];
         const data = {
             player: 'VCP Music Player', state: !t ? 0 : (this.app.isPlaying ? 1 : 2),
-            title: t ? app.stripAudioExtension(t.title) || '' : 'No Track Loaded', artist: t ? t.artist || '' : '',
+            title: t ? this.app.stripAudioExtension(t.title) || '' : 'No Track Loaded', artist: t ? t.artist || '' : '',
             album: t ? t.album || '' : '', cover: t && t.albumArt ? 'file://' + t.albumArt.replace(/\\/g, '/') : '',
             duration: this.app.lastKnownDuration || 0, position: this.app.lastKnownCurrentTime || 0,
             volume: Math.round(parseFloat(this.app.volumeSlider.value) * 100),
