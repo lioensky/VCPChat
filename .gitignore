@@ -37,3 +37,9 @@ vendor/LibreHardwareMonitor/*
 
 # 忽略 WebIndexTTS2 生成输出目录
 /WebIndexTTS2/tmp-output/
+
+# rust_audio_engine 运行时缓存（响度分析等）
+loudness_cache.db
+loudness_cache.db-journal
+loudness_cache.db-wal
+loudness_cache.db-shm
