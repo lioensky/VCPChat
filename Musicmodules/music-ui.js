@@ -46,7 +46,7 @@ function setupUI(app) {
         const t = app.playlist[app.currentTrackIndex];
         const art = t.albumArt ? `file://${t.albumArt.replace(/\\/g, '/')}` : '';
         navigator.mediaSession.metadata = new MediaMetadata({
-            title: t.title || '未知标题', artist: t.artist || '未知艺术家',
+            title: app.stripAudioExtension(t.title) || '未知标题', artist: t.artist || '未知艺术家',
             album: t.album || 'VCP Music Player', artwork: art ? [{ src: art }] : []
         });
         navigator.mediaSession.playbackState = app.isPlaying ? 'playing' : 'paused';
@@ -61,7 +61,7 @@ function setupUI(app) {
         app.playlistEl.innerHTML = '';
         const frag = document.createDocumentFragment();
         songs.forEach(t => {
-            const li = document.createElement('li'); li.textContent = t.title || '未知标题';
+            const li = document.createElement('li'); li.textContent = app.stripAudioExtension(t.title) || '未知标题';
             const origIdx = app.playlist.indexOf(t); li.dataset.index = origIdx;
             if (origIdx === app.currentTrackIndex) li.classList.add('active');
             frag.appendChild(li);
@@ -117,7 +117,7 @@ class WebNowPlayingAdapter {
         const t = this.app.playlist[this.app.currentTrackIndex];
         const data = {
             player: 'VCP Music Player', state: !t ? 0 : (this.app.isPlaying ? 1 : 2),
-            title: t ? t.title || '' : 'No Track Loaded', artist: t ? t.artist || '' : '',
+            title: t ? app.stripAudioExtension(t.title) || '' : 'No Track Loaded', artist: t ? t.artist || '' : '',
             album: t ? t.album || '' : '', cover: t && t.albumArt ? 'file://' + t.albumArt.replace(/\\/g, '/') : '',
             duration: this.app.lastKnownDuration || 0, position: this.app.lastKnownCurrentTime || 0,
             volume: Math.round(parseFloat(this.app.volumeSlider.value) * 100),

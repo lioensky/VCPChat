@@ -3,6 +3,13 @@
 
 function setupUtils(app) {
     const api = app.api || window.utilityAPI || window.electronAPI;
+
+    // 去除标题尾部的音频文件扩展名（如 .mp3, .flac, .wav 等）
+    app.stripAudioExtension = (title) => {
+        if (!title) return title;
+        return title.replace(/\.(mp3|flac|wav|m4a|ogg|aac|wma|ape|dsf|dff|alac|aiff|opus|wv)$/i, '');
+    };
+
     app.formatTime = (seconds) => {
         const minutes = Math.floor(seconds / 60);
         const secs = Math.floor(seconds % 60);

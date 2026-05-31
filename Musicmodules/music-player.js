@@ -25,7 +25,7 @@ function setupPlayer(app) {
         app.pendingTrackPath = track.path;
         app.isTrackLoading = true;
 
-        app.trackTitle.textContent = track.title || '未知标题';
+        app.trackTitle.textContent = app.stripAudioExtension(track.title) || '未知标题';
         app.trackArtist.textContent = track.artist || '未知艺术家';
         app.trackBitrate.textContent = track.bitrate ? `${Math.round(track.bitrate / 1000)} kbps` : '';
 
@@ -254,7 +254,7 @@ function setupPlayer(app) {
             const track = app.playlist[index];
             app.pendingTrackPath = track.path;
             app.isTrackLoading = false; // gapless 切歌后后端已经加载好了，重置加载标志
-            app.trackTitle.textContent = track.title || '未知标题';
+            app.trackTitle.textContent = app.stripAudioExtension(track.title) || '未知标题';
             app.trackArtist.textContent = track.artist || '未知艺术家';
             app.trackBitrate.textContent = track.bitrate ? `${Math.round(track.bitrate / 1000)} kbps` : '';
             
@@ -301,7 +301,7 @@ function setupPlayer(app) {
                     const track = app.playlist[fuzzyIndex];
                     app.pendingTrackPath = track.path;
                     app.isTrackLoading = false;
-                    app.trackTitle.textContent = track.title || '未知标题';
+                    app.trackTitle.textContent = app.stripAudioExtension(track.title) || '未知标题';
                     app.trackArtist.textContent = track.artist || '未知艺术家';
                     app.trackBitrate.textContent = track.bitrate ? `${Math.round(track.bitrate / 1000)} kbps` : '';
                     

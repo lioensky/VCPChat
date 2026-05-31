@@ -161,7 +161,7 @@ function setupSidebar(app) {
             const div = document.createElement('div'); div.className = `music-modal-song-item${isIn ? ' in-playlist' : ''}`;
             div.dataset.path = t.path; div.dataset.index = i;
             div.innerHTML = `<div class="music-modal-song-checkbox"><svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" fill="currentColor"/></svg></div>
-                             <div class="music-modal-song-info"><div class="music-modal-song-title">${t.title||'未知标题'}</div><div class="music-modal-song-artist">${t.artist||'未知艺术家'}</div></div>`;
+                             <div class="music-modal-song-info"><div class="music-modal-song-title">${app.stripAudioExtension(t.title)||'未知标题'}</div><div class="music-modal-song-artist">${t.artist||'未知艺术家'}</div></div>`;
             div.addEventListener('click', (e) => {
                 if (e.shiftKey && app.lastModalClickIndex !== -1) {
                     const [s, eIdx] = [Math.min(app.lastModalClickIndex, i), Math.max(app.lastModalClickIndex, i)];

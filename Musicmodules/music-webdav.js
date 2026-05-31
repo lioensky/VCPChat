@@ -139,7 +139,7 @@ function setupWebDav(app) {
             trackMeta: { title: track.title, artist: track.artist, album: track.album },
         });
         app.currentTrackIndex = idx;
-        app.trackTitle.textContent = track.title;
+        app.trackTitle.textContent = app.stripAudioExtension(track.title) || track.title;
         app.trackArtist.textContent = track.artist || '未知艺术家';
         app.trackBitrate.textContent = '';
         app.renderPlaylist(app.currentFilteredTracks);
