@@ -226,6 +226,47 @@ body {
     overflow: hidden;
 }
 
+.memo-card h3.structured {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 8px;
+    line-height: 1.35;
+    -webkit-line-clamp: unset;
+    -webkit-box-orient: unset;
+}
+
+.memo-format-tag {
+    flex: 0 0 auto;
+    padding: 2px 7px;
+    border-radius: 999px;
+    background: rgba(var(--accent-color-rgb, 74, 144, 226), 0.16);
+    border: 1px solid rgba(var(--accent-color-rgb, 74, 144, 226), 0.32);
+    color: var(--accent-color);
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    line-height: 1.35;
+}
+
+.memo-readable-title {
+    flex: 1 1 140px;
+    min-width: 0;
+    color: var(--accent-color);
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.memo-readable-time {
+    flex: 0 0 auto;
+    color: var(--text-secondary);
+    opacity: 0.75;
+    font-size: 0.72rem;
+    font-weight: 500;
+}
+
 .memo-card .preview {
     font-size: 0.9rem;
     color: var(--text-secondary);

@@ -735,9 +735,20 @@ function renderMemos(memos) {
         card.dataset.memoId = memoId;
         card.dataset.pretextWidth = String(Math.max(estimatedCardWidth, 240));
 
+        const titleParts = parseStructuredMemoName(memo.name);
+        const titleHtml = titleParts
+            ? `
+                <h3 class="memo-title structured" title="${escapeHtml(memo.name)}">
+                    <span class="memo-format-tag">${escapeHtml(titleParts.format)}</span>
+                    <span class="memo-readable-title">${escapeHtml(titleParts.title)}</span>
+                    <span class="memo-readable-time">${escapeHtml(titleParts.readableTime)}</span>
+                </h3>
+            `
+            : `<h3 title="${escapeHtml(memo.name)}">${escapeHtml(memo.name)}</h3>`;
+
         card.innerHTML = `
             <div>
-                <h3>${escapeHtml(memo.name)}</h3>
+                ${titleHtml}
                 <p class="preview">${escapeHtml(previewText)}</p>
             </div>
             <div class="meta">
@@ -1452,6 +1463,53 @@ function customAlert(message, title = '提示') {
 }
 
 // ========== 工具函数 ==========
+function parseStructuredMemoName(fileName) {
+    if (typeof fileName !== 'string') return null;
+
+    const extMatch = fileName.match(/\.([^.]+)$/);
+    const formatFromExt = extMatch?.[1] || '';
+    const withoutExt = fileName.replace(/\.[^.]+$/, '');
+
+    // 支持：2026-06-01-06_21_33-六一晨间的温柔拥抱.txt
+    // 也兼容：2026-06-01-06_21_33-标题-md.txt 这类带额外格式尾缀的旧命名
+    const match = withoutExt.match(/^(\d{4})[-_](\d{2})[-_](\d{2})[-_](\d{2})[-_](\d{2})[-_](\d{2})[-_]+(.+)$/);
+    if (!match) return null;
+
+    const [, year, month, day, hour, minute, second, rawRest] = match;
+    const date = new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second));
+    if (
+        Number.isNaN(date.getTime()) ||
+        date.getFullYear() !== Number(year) ||
+        date.getMonth() !== Number(month) - 1 ||
+        date.getDate() !== Number(day) ||
+        date.getHours() !== Number(hour) ||
+        date.getMinutes() !== Number(minute) ||
+        date.getSeconds() !== Number(second)
+    ) {
+        return null;
+    }
+
+    let rawTitle = rawRest;
+    let format = formatFromExt;
+
+    const titleTailMatch = rawRest.match(/^(.+)[-_]([A-Za-z0-9]{2,8})$/);
+    if (titleTailMatch && !formatFromExt) {
+        rawTitle = titleTailMatch[1];
+        format = titleTailMatch[2];
+    }
+
+    if (!format) return null;
+
+    const title = rawTitle.replace(/[-_]+/g, ' ').trim();
+    if (!title) return null;
+
+    return {
+        format: format.toUpperCase(),
+        title,
+        readableTime: `${year}-${month}-${day} ${hour}:${minute}`
+    };
+}
+
 function escapeHtml(str) {
     if (typeof str !== 'string') return str;
     return str
