@@ -314,6 +314,7 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: 16px;
 }
 
 .editor-title-input {
@@ -324,12 +325,55 @@ body {
     font-weight: bold;
     flex: 1;
     outline: none;
+    min-width: 0;
+}
+
+.editor-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.editor-toggle-preview-btn {
+    position: relative;
+}
+
+.editor-toggle-preview-btn .toggle-preview-icon {
+    transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.editor-toggle-preview-btn .expand-icon {
+    display: none;
+}
+
+.editor-container.preview-collapsed .editor-toggle-preview-btn .collapse-icon {
+    display: none;
+}
+
+.editor-container.preview-collapsed .editor-toggle-preview-btn .expand-icon {
+    display: block;
 }
 
 .editor-body {
     flex: 1;
     display: flex;
     overflow: hidden;
+}
+
+.editor-container.preview-collapsed .editor-textarea {
+    border-right: none;
+}
+
+.editor-container.preview-collapsed .editor-preview {
+    flex: 0 0 0;
+    width: 0;
+    min-width: 0;
+    padding-left: 0;
+    padding-right: 0;
+    border-left: 0;
+    opacity: 0;
+    pointer-events: none;
 }
 
 .editor-textarea {
@@ -352,6 +396,7 @@ body {
     overflow-y: auto;
     color: var(--text-primary);
     line-height: 1.7;
+    transition: flex-basis 0.25s ease, width 0.25s ease, padding 0.25s ease, opacity 0.18s ease;
 }
 
 .editor-footer {

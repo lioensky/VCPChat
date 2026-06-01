@@ -31,6 +31,7 @@ const contextMenuEl = document.getElementById('context-menu');
 
 // 编辑器相关
 const editorOverlay = document.getElementById('editor-overlay');
+const editorContainer = document.querySelector('.editor-container');
 const editorTitleInput = document.getElementById('editor-title');
 const editorTextarea = document.getElementById('editor-textarea');
 const editorPreview = document.getElementById('editor-preview');
@@ -365,6 +366,11 @@ function setupEventListeners() {
     // 编辑器控制
     document.getElementById('close-editor-btn').onclick = () => {
         editorOverlay.classList.remove('active');
+    };
+
+    document.getElementById('toggle-preview-btn').onclick = () => {
+        const isCollapsed = editorContainer.classList.toggle('preview-collapsed');
+        updateEditorPreviewToggle(isCollapsed);
     };
 
     editorTextarea.oninput = () => {
@@ -876,6 +882,15 @@ async function openMemo(memo) {
         alert('读取日记失败: ' + error.message);
         editorOverlay.classList.remove('active');
     }
+}
+
+function updateEditorPreviewToggle(isCollapsed = editorContainer.classList.contains('preview-collapsed')) {
+    const togglePreviewBtn = document.getElementById('toggle-preview-btn');
+    if (!togglePreviewBtn) return;
+
+    togglePreviewBtn.title = isCollapsed ? '展开渲染区' : '收纳渲染区';
+    togglePreviewBtn.setAttribute('aria-label', togglePreviewBtn.title);
+    togglePreviewBtn.setAttribute('aria-expanded', String(!isCollapsed));
 }
 
 function renderPreview(content) {
