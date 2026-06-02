@@ -4,15 +4,16 @@
 
 ## 📖 简介
 
-PTYShellExecutor 是一个为 VCPChat 设计的本地 Shell 执行插件。它使用 node-pty 创建持久化的 PTY（伪终端）会话，支持 bash/fish/zsh 等主流 Shell，能够保持环境变量和会话状态。
+PTYShellExecutor 是一个为 VCPChat 设计的本地 Shell 执行插件。同步执行使用独立的 POSIX Shell 子进程，stdin 固定隔离，适合短命令和 ssh/docker 等非交互命令；异步模式用于后台托管长任务；GUI 终端镜像 agent 命令与原始输出，并保留 PTY 可视化能力。
 
 与 LinuxShellExecutor（SSH 远程执行）不同，本插件专注于**本地桌面环境**的命令执行场景。
 
 ## ✨ 特性
 
-- 🐚 **多 Shell 支持** - 自动检测并优先使用 fish > zsh > bash
-- 🔄 **持久化会话** - PTY 会话保持状态，支持环境变量继承
+- 🐚 **同步 Shell 隔离** - 同步执行固定使用 bash/sh，避免 fish 语法和 PTY 竞态
+- 🔄 **PTY 可视化** - GUI 终端保留 PTY 会话能力，工具同步回调不依赖 PTY
 - ⚡ **同步/异步双模式** - 短命令同步执行，长任务后台托管
+- 👁️ **Agent 执行轨迹** - GUI 终端显示 agent 输入命令、原始输出和退出状态
 - 🧻 **禁用分页器** - 默认禁用常见分页器（PAGER/GIT_PAGER/SYSTEMD_PAGER/MANPAGER 等），避免命令进入 less 导致超时
 - 🧹 **智能输出清理** - 自动过滤 ANSI 转义序列、Shell Integration 标记
 - 🧯 **自动降级** - 当环境禁止创建 PTY 时，自动切换为 pipe 模式执行
@@ -57,21 +58,21 @@ PTYShellExecutor 是一个为 VCPChat 设计的本地 Shell 执行插件。它�
 | action | string | 否 | 操作类型：execute(默认), async, query, cancel, list |
 | command | string | 条件 | 要执行的命令（execute/async 模式必需） |
 | taskId | string | 条件 | 异步任务 ID（query/cancel 模式必需） |
-| shell | string | 否 | 指定 Shell：fish, zsh, bash |
-| newSession | boolean | 否 | 是否强制创建新的 PTY 会话 |
+| shell | string | 否 | async 模式指定 Shell：fish, zsh, bash；execute 模式固定使用 bash/sh |
+| newSession | boolean | 否 | 已废弃：execute 模式不复用 PTY 会话 |
 | cwd | string | 否 | 工作目录（execute/async 模式可用） |
 
 ## ⚙️ 配置项
 
 编辑 config.env 文件：
 
-    # 返回模式: delta (仅增量) 或 full (完整输出)
+    # 返回模式: delta (仅增量) 或 full (完整输出；仅用于 PTY/历史兼容路径)
     SHELL_RETURN_MODE=delta
 
     # PTY 模式: auto(默认，失败自动降级), pty(强制使用), pipe(禁用 PTY)
     PTY_MODE=auto
 
-    # Shell 优先级 (逗号分隔)
+    # GUI/async Shell 优先级 (逗号分隔；execute 模式固定使用 bash/sh)
     SHELL_PRIORITY=fish,zsh,bash
 
     # 禁止执行的命令关键字 (逗号分隔)
