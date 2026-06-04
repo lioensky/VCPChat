@@ -528,9 +528,36 @@ function createTray() {
 const gotTheLock = app.requestSingleInstanceLock();
 
 if (!gotTheLock) {
+    // 排除内部静默调用（内部调用时闪屏早已关闭，无需重复创建，防止破坏冷启动状态）
+    const isInternalLaunch = process.argv.includes('--desktop-only') || process.argv.includes('--rag-observer-only');
+    
+    if (!isInternalLaunch) {
+        const readyFile = path.join(__dirname, '.vcp_ready');
+        try {
+            fs.ensureFileSync(readyFile);
+            console.log('[Main] Second instance signaled NativeSplash to close.');
+        } catch (err) {
+            // 异常安全：只读/Docker 环境下静默降级，不影响单例聚焦
+            console.warn('[Main] Failed to create .vcp_ready in second instance:', err.message);
+        }
+    }
     app.quit();
 } else {
     app.on('second-instance', async (event, commandLine, workingDirectory) => {
+        // 当第一实例被第二实例唤醒时，延迟 1.5 秒清理可能由第二实例创建的信号文件。
+        // 1.5 秒足够 Rust 闪屏端（200ms轮询）检测并退出，且能 100% 避免冷启动信号残留。
+        const readyFile = path.join(__dirname, '.vcp_ready');
+        setTimeout(() => {
+            try {
+                if (fs.existsSync(readyFile)) {
+                    fs.unlinkSync(readyFile);
+                    console.log('[Main] Cleaned up .vcp_ready signal created by second instance.');
+                }
+            } catch (err) {
+                console.warn('[Main] Failed to clean up second-instance .vcp_ready:', err.message);
+            }
+        }, 1500);
+
         const wantsRagOnly = commandLine.includes('--rag-observer-only');
         const wantsDesktop = commandLine.includes('--desktop-only');
 
