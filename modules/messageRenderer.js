@@ -508,64 +508,119 @@ function transformSpecialBlocks(text, codeBlockMap) {
         return source.slice(contentStart, endMatch.index).trim();
     };
 
+    const renderMarkdownField = (rawText) => {
+        const restoredText = restoreBlocks(rawText || '');
+        if (mainRendererReferences.markedInstance) {
+            try {
+                return mainRendererReferences.markedInstance.parse(restoredText);
+            } catch (e) {
+                return escapeHtml(restoredText);
+            }
+        }
+        return escapeHtml(restoredText);
+    };
+
+    const renderDailyNoteCreate = ({ maid, date, fileName, folder, diaryContent, diaryTag }) => {
+        let html = `<div class="maid-diary-bubble" data-vcp-block-type="maid-diary" data-vcp-preserve-children="true">`;
+        html += `<div class="diary-header">`;
+        html += `<span class="diary-title">${fileName ? escapeHtml(fileName) : "Maid's Diary"}</span>`;
+        if (date) {
+            html += `<span class="diary-date">${escapeHtml(date)}</span>`;
+        }
+        html += `</div>`;
+
+        if (maid || folder) {
+            html += `<div class="diary-maid-info">`;
+            if (maid) {
+                html += `<span class="diary-maid-label">Maid:</span> `;
+                html += `<span class="diary-maid-name">${escapeHtml(maid)}</span>`;
+            }
+            if (folder) {
+                if (maid) html += ` <span class="diary-meta-separator">·</span> `;
+                html += `<span class="diary-folder-label">Folder:</span> `;
+                html += `<span class="diary-folder-name">${escapeHtml(folder)}</span>`;
+            }
+            html += `</div>`;
+        }
+
+        let diaryBody = diaryContent || '[日记内容解析失败]';
+        if (diaryTag) {
+            diaryBody += `\n\nTag:${diaryTag}`;
+        }
+
+        html += `<div class="diary-content">${renderMarkdownField(diaryBody)}</div>`;
+        html += `</div>`;
+
+        return `\n\n${html}\n\n`;
+    };
+
+    const renderDailyNoteUpdate = ({ maid, folder, target, replace }) => {
+        const hasTarget = target && target.trim();
+        const hasReplace = replace && replace.trim();
+
+        let html = `<div class="maid-diary-update-bubble" data-vcp-block-type="maid-diary-update" data-vcp-preserve-children="true">`;
+        html += `<div class="diary-update-header">`;
+        html += `<span class="diary-update-title">DailyNote Update</span>`;
+        if (maid || folder) {
+            html += `<span class="diary-update-meta">`;
+            if (maid) html += `<span class="diary-maid-name">${escapeHtml(maid)}</span>`;
+            if (maid && folder) html += ` <span class="diary-meta-separator">·</span> `;
+            if (folder) html += `<span class="diary-folder-name">${escapeHtml(folder)}</span>`;
+            html += `</span>`;
+        }
+        html += `</div>`;
+
+        html += `<div class="diary-update-body">`;
+        html += `<div class="diary-update-side diary-update-before">`;
+        html += `<div class="diary-update-label">A</div>`;
+        html += `<div class="diary-update-content">${hasTarget ? renderMarkdownField(target) : '<em>原文解析失败</em>'}</div>`;
+        html += `</div>`;
+        html += `<div class="diary-update-arrow" aria-hidden="true">→</div>`;
+        html += `<div class="diary-update-side diary-update-after">`;
+        html += `<div class="diary-update-label">B</div>`;
+        html += `<div class="diary-update-content">${hasReplace ? renderMarkdownField(replace) : '<em>替换内容解析失败</em>'}</div>`;
+        html += `</div>`;
+        html += `</div>`;
+        html += `</div>`;
+
+        return `\n\n${html}\n\n`;
+    };
+
     // Process Tool Requests
     processed = replaceToolRequestBlocks(processed, (match, content) => {
         const detectedToolName = extractMarkedField(content, /tool_name:\s*/i);
         const detectedCommand = extractMarkedField(content, /command:\s*/i);
+        const normalizedToolName = (detectedToolName || '').trim().toLowerCase();
+        const normalizedCommand = (detectedCommand || '').trim().toLowerCase();
 
-        // Check if this is a DailyNote tool call with the 'create' command
-        const isDailyNoteCreate = detectedToolName === 'DailyNote' && detectedCommand === 'create';
+        // DailyNote 新版 Tool Request:
+        // 1) tool_name 为 DailyNote 且 command 为 update 时渲染为 A → B 替换预览；
+        // 2) 如果没有 create/update 指令，但同时存在 target 和 replace 字段，也按 update 渲染；
+        // 3) tool_name 为 DailyNote 且 command 为 create 时渲染为日记创建；
+        // 4) 如果没有 create/update 指令，但存在 content 字段，也按 create 渲染。
+        const dailyNoteContent = extractMarkedField(content, /Content:\s*/i);
+        const dailyNoteTarget = extractMarkedField(content, /target:\s*/i);
+        const dailyNoteReplace = extractMarkedField(content, /replace:\s*/i);
+        const isDailyNoteTool = normalizedToolName === 'dailynote';
+        const isDailyNoteUpdate = isDailyNoteTool && (normalizedCommand === 'update' || (!normalizedCommand && dailyNoteTarget && dailyNoteReplace));
+        const isDailyNoteCreate = isDailyNoteTool && !isDailyNoteUpdate && (normalizedCommand === 'create' || (!normalizedCommand && dailyNoteContent));
 
         if (isDailyNoteCreate) {
-            // --- It's a DailyNote Tool, render it as a diary bubble ---
-            const maid = extractMarkedField(content, /(?:maid|maidName):\s*/i) || '';
-            const date = extractMarkedField(content, /Date:\s*/i) || '';
-            const fileName = extractMarkedField(content, /fileName:\s*/i) || '';
-            const folder = extractMarkedField(content, /folder:\s*/i) || '';
-            const diaryContent = extractMarkedField(content, /Content:\s*/i) || '[日记内容解析失败]';
-            const diaryTag = extractMarkedField(content, /Tag:\s*/i) || '';
-
-            let html = `<div class="maid-diary-bubble" data-vcp-block-type="maid-diary" data-vcp-preserve-children="true">`;
-            html += `<div class="diary-header">`;
-            html += `<span class="diary-title">${fileName ? escapeHtml(fileName) : "Maid's Diary"}</span>`;
-            if (date) {
-                html += `<span class="diary-date">${escapeHtml(date)}</span>`;
-            }
-            html += `</div>`;
-
-            if (maid || folder) {
-                html += `<div class="diary-maid-info">`;
-                if (maid) {
-                    html += `<span class="diary-maid-label">Maid:</span> `;
-                    html += `<span class="diary-maid-name">${escapeHtml(maid)}</span>`;
-                }
-                if (folder) {
-                    if (maid) html += ` <span class="diary-meta-separator">·</span> `;
-                    html += `<span class="diary-folder-label">Folder:</span> `;
-                    html += `<span class="diary-folder-name">${escapeHtml(folder)}</span>`;
-                }
-                html += `</div>`;
-            }
-
-            let diaryBody = restoreBlocks(diaryContent);
-            if (diaryTag) {
-                diaryBody += `\n\nTag:${diaryTag}`;
-            }
-
-            let processedDiaryContent;
-            if (mainRendererReferences.markedInstance) {
-                try {
-                    processedDiaryContent = mainRendererReferences.markedInstance.parse(diaryBody);
-                } catch (e) {
-                    processedDiaryContent = escapeHtml(diaryBody);
-                }
-            } else {
-                processedDiaryContent = escapeHtml(diaryBody);
-            }
-            html += `<div class="diary-content">${processedDiaryContent}</div>`;
-            html += `</div>`;
-
-            return `\n\n${html}\n\n`;
+            return renderDailyNoteCreate({
+                maid: extractMarkedField(content, /(?:maid|maidName):\s*/i) || '',
+                date: extractMarkedField(content, /Date:\s*/i) || '',
+                fileName: extractMarkedField(content, /fileName:\s*/i) || '',
+                folder: extractMarkedField(content, /folder:\s*/i) || '',
+                diaryContent: dailyNoteContent || '[日记内容解析失败]',
+                diaryTag: extractMarkedField(content, /Tag:\s*/i) || ''
+            });
+        } else if (isDailyNoteUpdate) {
+            return renderDailyNoteUpdate({
+                maid: extractMarkedField(content, /(?:maid|maidName):\s*/i) || '',
+                folder: extractMarkedField(content, /folder:\s*/i) || '',
+                target: dailyNoteTarget || '',
+                replace: dailyNoteReplace || ''
+            });
         } else {
             // --- It's a regular tool call, render it normally ---
             const xmlToolNameMatch = content.match(/<tool_name>([\s\S]*?)<\/tool_name>/i);

@@ -253,7 +253,7 @@
     -webkit-background-clip: text !important;
     background-clip: text !important;
     -webkit-text-fill-color: transparent !important;
-    text-fill-color: transparent !important;
+    color: transparent !important;
     font-style: normal !important;
     font-weight: bold !important;
     padding: 1px 3px !important;
@@ -421,6 +421,155 @@
 /* Hide copy button as it's not a code block */
 .maid-diary-bubble>.code-copy {
     display: none !important;
+}
+
+/* --- Maid Diary Update Bubble --- */
+.maid-diary-update-bubble {
+    display: block !important;
+    background: #fffdf9 !important;
+    border: 1px solid #e4d7c8;
+    border-radius: 8px !important;
+    padding: 12px 14px !important;
+    color: #4e342e !important;
+    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.08);
+    margin-top: 10px !important;
+    margin-bottom: 12px !important;
+    font-family: var(--vcp-diary-font-family, 'Georgia', 'Times New Roman', serif) !important;
+    font-size: 0.95em !important;
+    line-height: 1.65;
+    box-sizing: border-box;
+}
+
+.diary-update-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    border-bottom: 1px solid #d7ccc8;
+    padding-bottom: 6px;
+    margin-bottom: 10px;
+}
+
+.diary-update-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 700;
+    color: #6d4c41;
+}
+
+.diary-update-title::before {
+    content: "✏️";
+    font-size: 1.05em;
+    opacity: 0.75;
+}
+
+.diary-update-meta {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    font-size: 0.9em;
+    color: #8d6e63;
+}
+
+.diary-update-body {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.diary-update-side {
+    min-width: 0;
+    border-radius: 7px;
+    padding: 9px 11px;
+    border: 1px solid rgba(141, 110, 99, 0.18);
+    background: rgba(161, 136, 127, 0.06);
+}
+
+.diary-update-before {
+    border-left: 3px solid #bcaaa4;
+}
+
+.diary-update-after {
+    border-left: 3px solid #81c784;
+    background: rgba(129, 199, 132, 0.08);
+}
+
+.diary-update-label {
+    display: inline-block;
+    font-weight: 700;
+    font-size: 0.82em;
+    letter-spacing: 0.08em;
+    color: #8d6e63;
+    margin-bottom: 5px;
+}
+
+.diary-update-content {
+    color: #4e342e;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+}
+
+.diary-update-content>p:first-child {
+    margin-top: 0;
+}
+
+.diary-update-content>p:last-child {
+    margin-bottom: 0;
+}
+
+.diary-update-arrow {
+    align-self: center;
+    color: #a1887f;
+    font-weight: 700;
+    opacity: 0.9;
+    transform: rotate(90deg);
+    line-height: 1;
+    margin: -1px 0;
+}
+
+body:not(.light-theme) .maid-diary-update-bubble {
+    background: #2c2a3a !important;
+    border-color: #4a485f;
+    color: #d8d2c9 !important;
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.25);
+}
+
+body:not(.light-theme) .diary-update-header {
+    border-bottom-color: #4a485f;
+}
+
+body:not(.light-theme) .diary-update-title {
+    color: #ffb74d;
+}
+
+body:not(.light-theme) .diary-update-meta {
+    color: #b0bec5;
+}
+
+body:not(.light-theme) .diary-update-side {
+    border-color: rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.04);
+}
+
+body:not(.light-theme) .diary-update-before {
+    border-left-color: #7f7f90;
+}
+
+body:not(.light-theme) .diary-update-after {
+    border-left-color: #66bb6a;
+    background: rgba(102, 187, 106, 0.08);
+}
+
+body:not(.light-theme) .diary-update-label,
+body:not(.light-theme) .diary-update-arrow {
+    color: #a0a0b0;
+}
+
+body:not(.light-theme) .diary-update-content {
+    color: #c5c8c6;
 }
 
 /* --- Maid Diary Dark Theme Overrides --- */
@@ -791,11 +940,11 @@ body.light-theme {
     color: var(--table-header-text-color);
 }
 
-/* Optional: Re-enable for alternating rows if desired for both themes */
+/* Optional: Re-enable for alternating rows if desired for both themes:
 .md-content tr:nth-child(even) td {
-    /* background-color: var(--table-row-even-bg-color); */
-    /* Commented out for now, can be enabled */
+    background-color: var(--table-row-even-bg-color);
 }
+*/
 
 .md-content tr:hover td {
     background-color: var(--table-row-hover-bg-color);
