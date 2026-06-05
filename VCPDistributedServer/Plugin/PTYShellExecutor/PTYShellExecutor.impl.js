@@ -1163,7 +1163,7 @@ function createNewPipeSession(preferredShell) {
     });
 
     ptyProcess = session;
-    sessionGeneration++;
+    const currentGeneration = ++sessionGeneration;
     childProcesses.add(session);
     activeSessionMode = 'pipe';
 
@@ -1177,13 +1177,15 @@ function createNewPipeSession(preferredShell) {
 
     session.onExit(() => {
         childProcesses.delete(session);
-        if (ptyProcess === session) {
+        if (ptyProcess === session && sessionGeneration === currentGeneration) {
             ptyProcess = null;
-        }
-        activeSessionMode = null;
-        isExecutingCommand = false;
-        if (guiWindow && !guiWindow.isDestroyed()) {
-            guiWindow.webContents.send('pty-status', { connected: false });
+            activeSessionMode = null;
+            isExecutingCommand = false;
+            if (guiWindow && !guiWindow.isDestroyed()) {
+                guiWindow.webContents.send('pty-status', { connected: false });
+            }
+        } else {
+            console.log('[PTYShellExecutor] Ignoring stale pipe exit for replaced session.');
         }
     });
 
