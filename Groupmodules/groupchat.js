@@ -553,25 +553,29 @@ ${canvasData.errors || 'No errors'}
                 textForAIContext = (typeof msg.content === 'string') ? msg.content : '';
                 if (msg.attachments && msg.attachments.length > 0) {
                     for (const att of msg.attachments) {
-                        const fileManagerData = att._fileManagerData || {};
+                        const fileManagerData = att && att._fileManagerData ? att._fileManagerData : {};
                         // 🟢 同步：多级路径探测。优先使用 internalPath (物理路径)
-                        const filePathForContext = (fileManagerData && fileManagerData.internalPath) || 
-                                                   att.localPath || 
-                                                   att.src || 
-                                                   (att.name || '未知文件');
+                        // 兼容上下文编辑/拖拽追加后附件元数据位于顶层，或 _fileManagerData 丢失的历史结构。
+                        const effectiveType = fileManagerData.type || att?.type || '';
+                        const effectiveExtractedText = fileManagerData.extractedText || att?.extractedText || '';
+                        const effectiveInternalPath = fileManagerData.internalPath || att?.internalPath;
+                        const filePathForContext = effectiveInternalPath ||
+                                                   att?.localPath ||
+                                                   att?.src ||
+                                                   (att?.name || '未知文件');
 
-                        if (fileManagerData && typeof fileManagerData.extractedText === 'string' && fileManagerData.extractedText.trim() !== '') {
-                            textForAIContext += `\n\n[附加文件: ${filePathForContext}]\n${fileManagerData.extractedText}\n[/附加文件结束: ${att.name || '未知文件'}]`;
-                        } else if (att.type && att.type.startsWith('audio/')) {
+                        if (typeof effectiveExtractedText === 'string' && effectiveExtractedText.trim() !== '') {
+                            textForAIContext += `\n\n[附加文件: ${filePathForContext}]\n${effectiveExtractedText}\n[/附加文件结束: ${att?.name || '未知文件'}]`;
+                        } else if (effectiveType.startsWith('audio/')) {
                             textForAIContext += `\n\n[附加音频: ${filePathForContext}]`;
-                        } else if (att.type && att.type.startsWith('video/')) {
+                        } else if (effectiveType.startsWith('video/')) {
                             textForAIContext += `\n\n[附加视频: ${filePathForContext}]`;
-                        } else if (att.type && att.type.startsWith('image/')) {
+                        } else if (effectiveType.startsWith('image/')) {
                              textForAIContext += `\n\n[附加图片: ${filePathForContext}]`;
-                        } else if (att.type && !att.type.startsWith('image/')) {
+                        } else if (effectiveType && !effectiveType.startsWith('image/')) {
                             textForAIContext += `\n\n[附加文件: ${filePathForContext} (无法预览文本内容)]`;
-                        } else if (!fileManagerData) {
-                            console.warn(`[GroupChat Context] Historical message attachment for "${att.name}" is missing _fileManagerData. Text content cannot be appended.`);
+                        } else if (!att?._fileManagerData) {
+                            console.warn(`[GroupChat Context] Historical message attachment for "${att?.name || '未知文件'}" is missing _fileManagerData. Text content cannot be appended.`);
                         }
                     }
                 }
@@ -584,22 +588,25 @@ ${canvasData.errors || 'No errors'}
             // msg.attachments contains _fileManagerData which has internalPath
             if (msg.attachments && msg.attachments.length > 0) {
                 for (const att of msg.attachments) {
-                    const isSupportedMediaType = att._fileManagerData.type.startsWith('image/') || att._fileManagerData.type.startsWith('audio/') || att._fileManagerData.type.startsWith('video/');
-                    if (att._fileManagerData && att._fileManagerData.type && isSupportedMediaType && att._fileManagerData.internalPath) {
+                    const fileManagerData = att && att._fileManagerData ? att._fileManagerData : {};
+                    const effectiveType = fileManagerData.type || att?.type || '';
+                    const effectiveInternalPath = fileManagerData.internalPath || att?.internalPath || att?.src || att?.localPath;
+                    const isSupportedMediaType = effectiveType.startsWith('image/') || effectiveType.startsWith('audio/') || effectiveType.startsWith('video/');
+                    if (effectiveType && isSupportedMediaType && effectiveInternalPath) {
                         try {
-                            const result = await fileManager.getFileAsBase64(att._fileManagerData.internalPath);
+                            const result = await fileManager.getFileAsBase64(effectiveInternalPath);
                             if (result && result.success && result.base64Frames && result.base64Frames.length > 0) {
                                 // 对于多帧的媒体（如GIF），我们这里只取第一帧给AI，以避免上下文过长。
                                 // 未来可以根据模型能力进行优化。
                                 vcpMessageContent.push({
                                     type: 'image_url',
-                                    image_url: { url: `data:${att._fileManagerData.type};base64,${result.base64Frames[0]}` }
+                                    image_url: { url: `data:${effectiveType};base64,${result.base64Frames[0]}` }
                                 });
                             } else {
-                                console.warn(`[GroupChat] Failed to get base64 for media ${att.name || att._fileManagerData.name}: ${result?.error}`);
+                                console.warn(`[GroupChat] Failed to get base64 for media ${att?.name || fileManagerData.name || '未知文件'}: ${result?.error}`);
                             }
                         } catch (e) {
-                            console.error(`[GroupChat] Error getting base64 for media ${att.name || att._fileManagerData.name} in context:`, e);
+                            console.error(`[GroupChat] Error getting base64 for media ${att?.name || fileManagerData.name || '未知文件'} in context:`, e);
                         }
                     }
                 }
@@ -1123,25 +1130,29 @@ ${canvasData.errors || 'No errors'}
 
         if (msg.attachments && msg.attachments.length > 0) {
             for (const att of msg.attachments) {
-                const fileManagerData = att._fileManagerData || {};
+                const fileManagerData = att && att._fileManagerData ? att._fileManagerData : {};
                 // 🟢 极其关键：直接强取物理路径，不给文件名回退的机会
-                const filePathForContext = (fileManagerData && fileManagerData.internalPath) || 
-                                           att.localPath || 
-                                           att.src || 
-                                           (att.name || '未知文件');
+                // 兼容上下文编辑/拖拽追加后附件元数据位于顶层，或 _fileManagerData 丢失的历史结构。
+                const effectiveType = fileManagerData.type || att?.type || '';
+                const effectiveExtractedText = fileManagerData.extractedText || att?.extractedText || '';
+                const effectiveInternalPath = fileManagerData.internalPath || att?.internalPath;
+                const filePathForContext = effectiveInternalPath ||
+                                           att?.localPath ||
+                                           att?.src ||
+                                           (att?.name || '未知文件');
 
-                if (fileManagerData && typeof fileManagerData.extractedText === 'string' && fileManagerData.extractedText.trim() !== '') {
-                    textForAIContext += `\n\n[附加文件: ${filePathForContext}]\n${fileManagerData.extractedText}\n[/附加文件结束: ${att.name || '未知文件'}]`;
-                } else if (att.type && att.type.startsWith('audio/')) {
+                if (typeof effectiveExtractedText === 'string' && effectiveExtractedText.trim() !== '') {
+                    textForAIContext += `\n\n[附加文件: ${filePathForContext}]\n${effectiveExtractedText}\n[/附加文件结束: ${att?.name || '未知文件'}]`;
+                } else if (effectiveType.startsWith('audio/')) {
                     textForAIContext += `\n\n[附加音频: ${filePathForContext}]`;
-                } else if (att.type && att.type.startsWith('video/')) {
+                } else if (effectiveType.startsWith('video/')) {
                     textForAIContext += `\n\n[附加视频: ${filePathForContext}]`;
-                } else if (att.type && att.type.startsWith('image/')) {
+                } else if (effectiveType.startsWith('image/')) {
                      textForAIContext += `\n\n[附加图片: ${filePathForContext}]`;
-                } else if (fileManagerData && att.type && !att.type.startsWith('image/')) {
+                } else if (effectiveType && !effectiveType.startsWith('image/')) {
                     textForAIContext += `\n\n[附加文件: ${filePathForContext} (无法预览文本内容)]`;
-                } else if (!fileManagerData) {
-                    console.warn(`[GroupChat Invite Context] Historical message attachment for "${att.name}" is missing _fileManagerData. Text content cannot be appended.`);
+                } else if (!att?._fileManagerData) {
+                    console.warn(`[GroupChat Invite Context] Historical message attachment for "${att?.name || '未知文件'}" is missing _fileManagerData. Text content cannot be appended.`);
                 }
             }
         }
@@ -1151,20 +1162,23 @@ ${canvasData.errors || 'No errors'}
 
         if (msg.attachments && msg.attachments.length > 0) {
             for (const att of msg.attachments) {
-                const isSupportedMediaType = att._fileManagerData.type.startsWith('image/') || att._fileManagerData.type.startsWith('audio/') || att._fileManagerData.type.startsWith('video/');
-                if (att._fileManagerData && att._fileManagerData.type && isSupportedMediaType && att._fileManagerData.internalPath) {
+                const fileManagerData = att && att._fileManagerData ? att._fileManagerData : {};
+                const effectiveType = fileManagerData.type || att?.type || '';
+                const effectiveInternalPath = fileManagerData.internalPath || att?.internalPath || att?.src || att?.localPath;
+                const isSupportedMediaType = effectiveType.startsWith('image/') || effectiveType.startsWith('audio/') || effectiveType.startsWith('video/');
+                if (effectiveType && isSupportedMediaType && effectiveInternalPath) {
                     try {
-                        const result = await fileManager.getFileAsBase64(att._fileManagerData.internalPath);
+                        const result = await fileManager.getFileAsBase64(effectiveInternalPath);
                         if (result && result.success && result.base64Frames && result.base64Frames.length > 0) {
                             vcpMessageContent.push({
                                 type: 'image_url',
-                                image_url: { url: `data:${att._fileManagerData.type};base64,${result.base64Frames[0]}` }
+                                image_url: { url: `data:${effectiveType};base64,${result.base64Frames[0]}` }
                             });
                         } else {
-                             console.warn(`[GroupChat Invite] Failed to get base64 for media ${att.name || att._fileManagerData.name}: ${result?.error}`);
+                             console.warn(`[GroupChat Invite] Failed to get base64 for media ${att?.name || fileManagerData.name || '未知文件'}: ${result?.error}`);
                         }
                     } catch (e) {
-                        console.error(`[GroupChat Invite] Error getting base64 for media ${att.name || att._fileManagerData.name} in context:`, e);
+                        console.error(`[GroupChat Invite] Error getting base64 for media ${att?.name || fileManagerData.name || '未知文件'} in context:`, e);
                     }
                 }
             }
