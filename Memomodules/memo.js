@@ -1019,6 +1019,7 @@ async function handleDeleteMemo() {
 async function handleCreateMemo() {
     const date = newMemoDateInput.value;
     const maid = newMemoMaidInput.value.trim();
+    const folder = document.getElementById('new-memo-folder')?.value.trim() || '';
     const fileName = newMemoFilenameInput.value.trim();
     const tags = newMemoTagsInput.value.trim();
     const content = newMemoContentInput.value.trim();
@@ -1042,6 +1043,9 @@ tool_name:「始」DailyNote「末」,
 command:「始」create「末」,
 Date:「始」${date}「末」,`;
 
+        if (folder) {
+            toolFields += `\nfolder:「始」${folder}「末」,`;
+        }
         if (fileName) {
             toolFields += `\nfileName:「始」${fileName}「末」,`;
         }
