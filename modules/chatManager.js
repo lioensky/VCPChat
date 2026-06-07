@@ -37,6 +37,20 @@ window.chatManager = (() => {
 
 
 
+    function attachTimestampMetaToVcpMessage(vcpMessage, historyMessage) {
+        if (!vcpMessage || !historyMessage || !historyMessage.id || typeof historyMessage.timestamp !== 'number') {
+            return vcpMessage;
+        }
+        return {
+            ...vcpMessage,
+            __vcpchatTimestampMeta: {
+                messageId: historyMessage.id,
+                role: historyMessage.role,
+                timestamp: historyMessage.timestamp
+            }
+        };
+    }
+
     /**
      * 应用单个正则规则到文本
      * @param {string} text - 输入文本
@@ -1221,7 +1235,10 @@ window.chatManager = (() => {
                      finalContentPartsForVCP.push({ type: 'text', text: '(用户发送了附件，但无文本或图片内容)' });
                 }
                 
-                return { role: msg.role, content: finalContentPartsForVCP.length > 0 ? finalContentPartsForVCP : msg.content };
+                return attachTimestampMetaToVcpMessage(
+                    { role: msg.role, content: finalContentPartsForVCP.length > 0 ? finalContentPartsForVCP : msg.content },
+                    msg
+                );
             }));
 
             if (agentConfig && agentConfig.systemPrompt) {

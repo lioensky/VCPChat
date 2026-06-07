@@ -1,6 +1,7 @@
 // modules/vcpClient.js - 统一的 VCP 请求处理模块
 const fs = require('fs-extra');
 const path = require('path');
+const crypto = require('crypto');
 
 // 全局的 AbortController 映射：messageId -> AbortController
 const activeRequests = new Map();
@@ -10,6 +11,73 @@ let moduleConfig = {
     APP_DATA_ROOT_IN_PROJECT: null,
     getMusicState: null
 };
+
+function stableStringify(value) {
+    if (value === null || typeof value !== 'object') {
+        return JSON.stringify(value);
+    }
+    if (Array.isArray(value)) {
+        return `[${value.map(item => stableStringify(item)).join(',')}]`;
+    }
+    return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(',')}}`;
+}
+
+function extractTextForHash(content) {
+    if (typeof content === 'string') {
+        return content;
+    }
+    if (Array.isArray(content)) {
+        return content
+            .filter(part => part && part.type === 'text' && typeof part.text === 'string')
+            .map(part => part.text)
+            .join('\n');
+    }
+    if (content && typeof content.text === 'string') {
+        return content.text;
+    }
+    return '';
+}
+
+function hashSentMessage(message) {
+    return `sha256:${crypto.createHash('sha256').update(extractTextForHash(message.content), 'utf8').digest('hex')}`;
+}
+
+function buildVcpChatExtensionsFromMessages(messages) {
+    const messageTimestampBindings = [];
+    messages.forEach((message, index) => {
+        const meta = message && message.__vcpchatTimestampMeta;
+        if (!meta || !meta.messageId || typeof meta.timestamp !== 'number') {
+            return;
+        }
+        messageTimestampBindings.push({
+            messageId: meta.messageId,
+            role: message.role || meta.role,
+            timestamp: meta.timestamp,
+            timestampIso: new Date(meta.timestamp).toISOString(),
+            source: 'client_history',
+            sentMessageHash: hashSentMessage(message),
+            sentMessageIndex: index
+        });
+    });
+
+    if (messageTimestampBindings.length === 0) {
+        return null;
+    }
+
+    return {
+        schemaVersion: 1,
+        messageMetadataMode: 'hash_only',
+        messageTimestampBindings
+    };
+}
+
+function stripInternalMessageMetadata(messages) {
+    return messages.map(message => {
+        if (!message || typeof message !== 'object') return message;
+        const { __vcpchatTimestampMeta, ...cleanMessage } = message;
+        return cleanMessage;
+    });
+}
 
 /**
  * 初始化 VCP 客户端模块
@@ -90,6 +158,8 @@ async function sendToVCP(params) {
             if (msg.name) sanitizedMsg.name = msg.name;
             if (msg.tool_calls) sanitizedMsg.tool_calls = msg.tool_calls;
             if (msg.tool_call_id) sanitizedMsg.tool_call_id = msg.tool_call_id;
+            // 内部元数据仅用于最终请求体生成 vcpchatExtensions，不会进入 messages[]。
+            if (msg.__vcpchatTimestampMeta) sanitizedMsg.__vcpchatTimestampMeta = msg.__vcpchatTimestampMeta;
             
             return sanitizedMsg;
         });
@@ -186,6 +256,9 @@ async function sendToVCP(params) {
         console.error('[VCPClient] Failed to inject bubble theme info:', e);
     }
 
+    const vcpchatExtensions = buildVcpChatExtensionsFromMessages(messages);
+    messages = stripInternalMessageMetadata(messages);
+
     // === 准备请求体 ===
     const requestBody = {
         messages: messages,
@@ -193,6 +266,9 @@ async function sendToVCP(params) {
         stream: modelConfig.stream === true,
         requestId: messageId
     };
+    if (vcpchatExtensions) {
+        requestBody.vcpchatExtensions = vcpchatExtensions;
+    }
 
     let serializedBody;
     try {

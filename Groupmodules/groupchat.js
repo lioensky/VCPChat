@@ -3,6 +3,7 @@
 const fs = require('fs-extra');
 const path = require('path');
 const { ipcMain } = require('electron');
+const crypto = require('crypto');
 const contextSanitizer = require('../modules/contextSanitizer');
 const fileManager = require('../modules/fileManager');
 const canvasHandlers = require('../modules/ipc/canvasHandlers');
@@ -30,6 +31,100 @@ const GROUP_SESSION_WATCHER_PLACEHOLDER = '{{VCPChatGroupSessionWatcher}}';
 
 
 let mainAppPaths = {}; // 将由 main.js 初始化时传入
+
+function stableStringify(value) {
+    if (value === null || typeof value !== 'object') {
+        return JSON.stringify(value);
+    }
+    if (Array.isArray(value)) {
+        return `[${value.map(item => stableStringify(item)).join(',')}]`;
+    }
+    return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(',')}}`;
+}
+
+function extractTextForHash(content) {
+    if (typeof content === 'string') {
+        return content;
+    }
+    if (Array.isArray(content)) {
+        return content
+            .filter(part => part && part.type === 'text' && typeof part.text === 'string')
+            .map(part => part.text)
+            .join('\n');
+    }
+    if (content && typeof content.text === 'string') {
+        return content.text;
+    }
+    return '';
+}
+
+function hashSentMessage(message) {
+    return `sha256:${crypto.createHash('sha256').update(extractTextForHash(message.content), 'utf8').digest('hex')}`;
+}
+
+function attachTimestampMetaToVcpMessage(vcpMessage, historyMessage) {
+    if (!vcpMessage || !historyMessage || !historyMessage.id || typeof historyMessage.timestamp !== 'number') {
+        return vcpMessage;
+    }
+    return {
+        ...vcpMessage,
+        __vcpchatTimestampMeta: {
+            messageId: historyMessage.id,
+            role: historyMessage.role,
+            timestamp: historyMessage.timestamp
+        }
+    };
+}
+
+function buildVcpChatExtensionsFromMessages(messages) {
+    const messageTimestampBindings = [];
+    messages.forEach((message, index) => {
+        const meta = message && message.__vcpchatTimestampMeta;
+        if (!meta || !meta.messageId || typeof meta.timestamp !== 'number') {
+            return;
+        }
+        messageTimestampBindings.push({
+            messageId: meta.messageId,
+            role: message.role || meta.role,
+            timestamp: meta.timestamp,
+            timestampIso: new Date(meta.timestamp).toISOString(),
+            source: 'client_history',
+            sentMessageHash: hashSentMessage(message),
+            sentMessageIndex: index
+        });
+    });
+
+    if (messageTimestampBindings.length === 0) {
+        return null;
+    }
+
+    return {
+        schemaVersion: 1,
+        messageMetadataMode: 'hash_only',
+        messageTimestampBindings
+    };
+}
+
+function stripInternalMessageMetadata(messages) {
+    return messages.map(message => {
+        if (!message || typeof message !== 'object') return message;
+        const { __vcpchatTimestampMeta, ...cleanMessage } = message;
+        return cleanMessage;
+    });
+}
+
+function buildGroupRequestBody(messagesForAI, modelConfig, messageId) {
+    const vcpchatExtensions = buildVcpChatExtensionsFromMessages(messagesForAI);
+    const requestBody = {
+        messages: stripInternalMessageMetadata(messagesForAI),
+        ...modelConfig,
+        messageId
+    };
+    if (vcpchatExtensions) {
+        requestBody.vcpchatExtensions = vcpchatExtensions;
+    }
+    return requestBody;
+}
 
 /**
  * 初始化模块所需的路径配置
@@ -612,10 +707,13 @@ ${canvasData.errors || 'No errors'}
                 }
             }
             
-            return {
-                role: msg.role,
-                content: vcpMessageContent, // This is now an array
-            };
+            return attachTimestampMetaToVcpMessage(
+                {
+                    role: msg.role,
+                    content: vcpMessageContent, // This is now an array
+                },
+                msg
+            );
         });
         
         const contextForAgent = await Promise.all(contextForAgentPromises);
@@ -775,13 +873,11 @@ ${canvasData.errors || 'No errors'}
                         'Content-Type': 'application/json',
                         'Authorization': `Bearer ${globalVcpSettings.vcpApiKey}`
                     },
-                    body: JSON.stringify({
-                        messages: messagesForAI,
+                    body: JSON.stringify(buildGroupRequestBody(messagesForAI, {
                         model: modelConfigForAgent.model,
                         temperature: modelConfigForAgent.temperature,
-                        stream: modelConfigForAgent.stream,
-                        messageId: messageIdForAgentResponse // 包含 messageId 以支持后端中断
-                    }),
+                        stream: modelConfigForAgent.stream
+                    }, messageIdForAgentResponse)),
                     signal: controller.signal
                 });
             } catch (fetchError) {
@@ -1184,10 +1280,13 @@ ${canvasData.errors || 'No errors'}
             }
         }
         
-        return {
-            role: msg.role,
-            content: vcpMessageContent,
-        };
+        return attachTimestampMetaToVcpMessage(
+            {
+                role: msg.role,
+                content: vcpMessageContent,
+            },
+            msg
+        );
     });
     
     const contextForAgent = await Promise.all(contextForAgentPromises);
@@ -1343,14 +1442,12 @@ ${canvasData.errors || 'No errors'}
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${globalVcpSettings.vcpApiKey}`
                 },
-                body: JSON.stringify({
-                    messages: messagesForAI,
+                body: JSON.stringify(buildGroupRequestBody(messagesForAI, {
                     model: modelConfigForAgent.model,
                     temperature: modelConfigForAgent.temperature,
                     stream: modelConfigForAgent.stream,
-                    max_tokens: modelConfigForAgent.max_tokens,
-                    messageId: messageIdForAgentResponse // 包含 messageId 以支持后端中断
-                }),
+                    max_tokens: modelConfigForAgent.max_tokens
+                }, messageIdForAgentResponse)),
                 signal: controller.signal
             });
         } catch (fetchError) {
