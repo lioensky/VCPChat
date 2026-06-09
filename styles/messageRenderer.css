@@ -382,6 +382,33 @@
     font-style: italic;
 }
 
+/* Valet-compatible DailyNote variant */
+.valet-diary-bubble {
+    background: #f6f9fd !important;
+    border-color: #d0dbe8;
+    color: #374151 !important;
+}
+
+.valet-diary-bubble .diary-title {
+    color: #3f5872;
+}
+
+.valet-diary-bubble .diary-title::before {
+    content: "🖋️";
+}
+
+.valet-diary-bubble .diary-date,
+.valet-diary-bubble .diary-maid-info,
+.valet-diary-bubble .diary-maid-name,
+.valet-diary-bubble .diary-folder-name {
+    color: #607d9a;
+}
+
+.valet-diary-bubble .diary-maid-name,
+.valet-diary-bubble .diary-folder-name {
+    background: rgba(96, 125, 154, 0.08);
+}
+
 /* Container for the Maid's name info */
 .diary-maid-info {
     margin-bottom: 12px;
@@ -537,6 +564,27 @@ body:not(.light-theme) .maid-diary-update-bubble {
     box-shadow: 0 3px 10px rgba(0, 0, 0, 0.25);
 }
 
+.valet-diary-update-bubble {
+    background: #f9fbff !important;
+    border-color: #d0dbe8;
+    color: #374151 !important;
+}
+
+.valet-diary-update-bubble .diary-update-title {
+    color: #3f5872;
+}
+
+.valet-diary-update-bubble .diary-update-meta,
+.valet-diary-update-bubble .diary-maid-name,
+.valet-diary-update-bubble .diary-folder-name {
+    color: #607d9a;
+}
+
+.valet-diary-update-bubble .diary-maid-name,
+.valet-diary-update-bubble .diary-folder-name {
+    background: rgba(96, 125, 154, 0.08);
+}
+
 body:not(.light-theme) .diary-update-header {
     border-bottom-color: #4a485f;
 }
@@ -605,6 +653,29 @@ body:not(.light-theme) .diary-folder-name {
     color: #ffcc80;
     /* Lighter shade of the title color */
     background: rgba(255, 183, 77, 0.1);
+}
+
+body:not(.light-theme) .valet-diary-bubble,
+body:not(.light-theme) .valet-diary-update-bubble {
+    background: #263241 !important;
+    border-color: #3e536b;
+    color: #d4dde8 !important;
+}
+
+body:not(.light-theme) .valet-diary-bubble .diary-title,
+body:not(.light-theme) .valet-diary-update-bubble .diary-update-title {
+    color: #90caf9;
+}
+
+body:not(.light-theme) .valet-diary-bubble .diary-date,
+body:not(.light-theme) .valet-diary-bubble .diary-maid-info,
+body:not(.light-theme) .valet-diary-bubble .diary-maid-name,
+body:not(.light-theme) .valet-diary-bubble .diary-folder-name,
+body:not(.light-theme) .valet-diary-update-bubble .diary-update-meta,
+body:not(.light-theme) .valet-diary-update-bubble .diary-maid-name,
+body:not(.light-theme) .valet-diary-update-bubble .diary-folder-name {
+    color: #bbdefb;
+    background: rgba(144, 202, 249, 0.1);
 }
 
 body:not(.light-theme) .diary-meta-separator {

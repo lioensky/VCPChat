@@ -520,23 +520,46 @@ function transformSpecialBlocks(text, codeBlockMap) {
         return escapeHtml(restoredText);
     };
 
-    const renderDailyNoteCreate = ({ maid, date, fileName, folder, diaryContent, diaryTag }) => {
-        let html = `<div class="maid-diary-bubble" data-vcp-block-type="maid-diary" data-vcp-preserve-children="true">`;
+    const getDailyNoteAgentInfo = (source) => {
+        const maid = extractMarkedField(source, /(?:maid|maidName):\s*/i) || '';
+        const valet = extractMarkedField(source, /(?:valet|valetName):\s*/i) || '';
+
+        if (valet) {
+            return {
+                name: valet,
+                type: 'valet',
+                gender: 'male',
+                label: 'Valet',
+                title: "Valet's Diary"
+            };
+        }
+
+        return {
+            name: maid,
+            type: 'maid',
+            gender: 'female',
+            label: 'Maid',
+            title: "Maid's Diary"
+        };
+    };
+
+    const renderDailyNoteCreate = ({ agentName, agentType = 'maid', agentGender = 'female', agentLabel = 'Maid', defaultTitle = "Maid's Diary", date, fileName, folder, diaryContent, diaryTag }) => {
+        let html = `<div class="maid-diary-bubble ${agentType}-diary-bubble" data-vcp-block-type="maid-diary" data-agent-gender="${escapeHtml(agentGender)}" data-vcp-preserve-children="true">`;
         html += `<div class="diary-header">`;
-        html += `<span class="diary-title">${fileName ? escapeHtml(fileName) : "Maid's Diary"}</span>`;
+        html += `<span class="diary-title">${fileName ? escapeHtml(fileName) : escapeHtml(defaultTitle)}</span>`;
         if (date) {
             html += `<span class="diary-date">${escapeHtml(date)}</span>`;
         }
         html += `</div>`;
 
-        if (maid || folder) {
+        if (agentName || folder) {
             html += `<div class="diary-maid-info">`;
-            if (maid) {
-                html += `<span class="diary-maid-label">Maid:</span> `;
-                html += `<span class="diary-maid-name">${escapeHtml(maid)}</span>`;
+            if (agentName) {
+                html += `<span class="diary-maid-label">${escapeHtml(agentLabel)}:</span> `;
+                html += `<span class="diary-maid-name">${escapeHtml(agentName)}</span>`;
             }
             if (folder) {
-                if (maid) html += ` <span class="diary-meta-separator">·</span> `;
+                if (agentName) html += ` <span class="diary-meta-separator">·</span> `;
                 html += `<span class="diary-folder-label">Folder:</span> `;
                 html += `<span class="diary-folder-name">${escapeHtml(folder)}</span>`;
             }
@@ -554,17 +577,17 @@ function transformSpecialBlocks(text, codeBlockMap) {
         return `\n\n${html}\n\n`;
     };
 
-    const renderDailyNoteUpdate = ({ maid, folder, target, replace }) => {
+    const renderDailyNoteUpdate = ({ agentName, agentType = 'maid', agentGender = 'female', folder, target, replace }) => {
         const hasTarget = target && target.trim();
         const hasReplace = replace && replace.trim();
 
-        let html = `<div class="maid-diary-update-bubble" data-vcp-block-type="maid-diary-update" data-vcp-preserve-children="true">`;
+        let html = `<div class="maid-diary-update-bubble ${agentType}-diary-update-bubble" data-vcp-block-type="maid-diary-update" data-agent-gender="${escapeHtml(agentGender)}" data-vcp-preserve-children="true">`;
         html += `<div class="diary-update-header">`;
         html += `<span class="diary-update-title">DailyNote Update</span>`;
-        if (maid || folder) {
+        if (agentName || folder) {
             html += `<span class="diary-update-meta">`;
-            if (maid) html += `<span class="diary-maid-name">${escapeHtml(maid)}</span>`;
-            if (maid && folder) html += ` <span class="diary-meta-separator">·</span> `;
+            if (agentName) html += `<span class="diary-maid-name">${escapeHtml(agentName)}</span>`;
+            if (agentName && folder) html += ` <span class="diary-meta-separator">·</span> `;
             if (folder) html += `<span class="diary-folder-name">${escapeHtml(folder)}</span>`;
             html += `</span>`;
         }
@@ -606,8 +629,13 @@ function transformSpecialBlocks(text, codeBlockMap) {
         const isDailyNoteCreate = isDailyNoteTool && !isDailyNoteUpdate && (normalizedCommand === 'create' || (!normalizedCommand && dailyNoteContent));
 
         if (isDailyNoteCreate) {
+            const dailyNoteAgent = getDailyNoteAgentInfo(content);
             return renderDailyNoteCreate({
-                maid: extractMarkedField(content, /(?:maid|maidName):\s*/i) || '',
+                agentName: dailyNoteAgent.name,
+                agentType: dailyNoteAgent.type,
+                agentGender: dailyNoteAgent.gender,
+                agentLabel: dailyNoteAgent.label,
+                defaultTitle: dailyNoteAgent.title,
                 date: extractMarkedField(content, /Date:\s*/i) || '',
                 fileName: extractMarkedField(content, /fileName:\s*/i) || '',
                 folder: extractMarkedField(content, /folder:\s*/i) || '',
@@ -615,8 +643,11 @@ function transformSpecialBlocks(text, codeBlockMap) {
                 diaryTag: extractMarkedField(content, /Tag:\s*/i) || ''
             });
         } else if (isDailyNoteUpdate) {
+            const dailyNoteAgent = getDailyNoteAgentInfo(content);
             return renderDailyNoteUpdate({
-                maid: extractMarkedField(content, /(?:maid|maidName):\s*/i) || '',
+                agentName: dailyNoteAgent.name,
+                agentType: dailyNoteAgent.type,
+                agentGender: dailyNoteAgent.gender,
                 folder: extractMarkedField(content, /folder:\s*/i) || '',
                 target: dailyNoteTarget || '',
                 replace: dailyNoteReplace || ''
