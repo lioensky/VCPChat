@@ -233,8 +233,15 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
     }
     // --- End Content Parsing ---
 
+    const isToolApprovalRequest = logData && logData.type === 'tool_approval_request';
+
     // Function to populate a notification element (either toast or list item)
     const populateNotificationElement = (element, isToast) => {
+        if (isToolApprovalRequest) {
+            element.dataset.protectedNotification = 'tool-approval';
+            element.classList.add('notification-protected', 'notification-tool-approval');
+        }
+
         const strongTitle = document.createElement('strong');
         strongTitle.textContent = titleText;
         element.appendChild(strongTitle);
@@ -258,7 +265,7 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
         element.appendChild(contentDiv);
 
         // Special handling for approval requests - Moved here to be before timestamp
-        if (logData && logData.type === 'tool_approval_request') {
+        if (isToolApprovalRequest) {
             const approvalActions = document.createElement('div');
             approvalActions.classList.add('notification-actions');
 
@@ -299,22 +306,18 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
         element.appendChild(timestampSpan);
 
         if (isToast) {
-            // const closeButton = document.createElement('button'); // Removed close button
-            // closeButton.classList.add('toast-close-btn');
-            // closeButton.innerHTML = '&times;';
-            // closeButton.title = '关闭通知';
-            // closeButton.onclick = (e) => {
-            //     e.stopPropagation();
-            //     closeToastNotification(element);
-            // };
-            // element.appendChild(closeButton);
-            element.onclick = () => {
-                // 清除自动消失的timeout（如果有的话）
-                if (element.dataset.autoDismissTimeout) {
-                    clearTimeout(parseInt(element.dataset.autoDismissTimeout));
-                }
-                closeToastNotification(element);
-            }; // Click on bubble itself still closes it
+            if (isToolApprovalRequest) {
+                // 审核请求防误触：悬浮通知本体点击不关闭，必须点“允许/拒绝”。
+                element.onclick = null;
+            } else {
+                element.onclick = () => {
+                    // 清除自动消失的timeout（如果有的话）
+                    if (element.dataset.autoDismissTimeout) {
+                        clearTimeout(parseInt(element.dataset.autoDismissTimeout));
+                    }
+                    closeToastNotification(element);
+                }; // Click on bubble itself still closes it
+            }
         } else { // For persistent list item
             const copyButton = document.createElement('button');
             copyButton.className = 'notification-copy-btn';
@@ -399,28 +402,6 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
         toastBubble.dataset.createdAt = Date.now().toString();
         populateNotificationElement(toastBubble, true);
 
-        // For approval requests, add a manual close button and disable auto-dismiss/click-to-close
-        if (logData && logData.type === 'tool_approval_request') {
-            const closeBtn = document.createElement('button');
-            closeBtn.innerHTML = '&times;';
-            closeBtn.classList.add('toast-manual-close');
-            closeBtn.style.position = 'absolute';
-            closeBtn.style.right = '5px';
-            closeBtn.style.top = '2px';
-            closeBtn.style.background = 'none';
-            closeBtn.style.border = 'none';
-            closeBtn.style.cursor = 'pointer';
-            closeBtn.style.fontSize = '16px';
-            closeBtn.onclick = (e) => {
-                e.stopPropagation();
-                closeToastNotification(toastBubble);
-            };
-            toastBubble.appendChild(closeBtn);
-            
-            // Override the default onclick provided by populateNotificationElement (which is applied when isToast=true)
-            toastBubble.onclick = null; 
-        }
-
         toastContainer.prepend(toastBubble);
         setTimeout(() => toastBubble.classList.add('visible'), 50);
         
@@ -428,7 +409,7 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
         let autoDismissDelay = 7000; // 默认7秒
 
         // 审核类通知永不自动消失
-        if (logData && logData.type === 'tool_approval_request') {
+        if (isToolApprovalRequest) {
             autoDismissDelay = Infinity;
         } else if (typeof window.checkMessageFilter === 'function') {
             const filterResult = window.checkMessageFilter(titleText);
@@ -497,6 +478,8 @@ function initializeFocusCleanup() {
             // 清理超时的通知元素（显示超过10秒的）
             const allToasts = toastContainer.querySelectorAll('.floating-toast-notification');
             allToasts.forEach(toast => {
+                if (toast.dataset.protectedNotification === 'tool-approval') return;
+
                 // 检查元素创建时间，如果没有时间戳则设置一个
                 if (!toast.dataset.createdAt) {
                     toast.dataset.createdAt = Date.now().toString();
@@ -520,6 +503,8 @@ function initializeFocusCleanup() {
         if (toastContainer) {
             const allToasts = toastContainer.querySelectorAll('.floating-toast-notification');
             allToasts.forEach(toast => {
+                if (toast.dataset.protectedNotification === 'tool-approval') return;
+
                 if (toast.dataset.createdAt) {
                     const createdAt = parseInt(toast.dataset.createdAt);
                     const now = Date.now();

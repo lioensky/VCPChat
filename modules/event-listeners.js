@@ -1106,7 +1106,13 @@ export function setupEventListeners(deps) {
     }
 
     clearNotificationsBtn.addEventListener('click', () => {
-        document.getElementById('notificationsList').innerHTML = '';
+        const notificationsList = document.getElementById('notificationsList');
+        if (!notificationsList) return;
+
+        notificationsList.querySelectorAll('.notification-item').forEach(item => {
+            if (item.dataset.protectedNotification === 'tool-approval') return;
+            item.remove();
+        });
     });
 
     if (openForumBtn) {
