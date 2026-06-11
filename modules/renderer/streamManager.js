@@ -33,6 +33,21 @@ const THINK_END_REGEX = /<\/think(?:ing)?>/ig;
 const DAILY_NOTE_START = '<<<DailyNoteStart>>>';
 const DAILY_NOTE_END = '<<<DailyNoteEnd>>>';
 const STREAM_PARAGRAPH_SAFETY_BLOCKS = 1;
+const HTML_ISLAND_MAX_STACK_DEPTH = 128;
+const HTML_ISLAND_MAX_CHARS = 256 * 1024;
+const HTML_RAWTEXT_TAGS = new Set(['script', 'style']);
+const HTML_VOID_TAGS = new Set([
+    'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input',
+    'link', 'meta', 'param', 'source', 'track', 'wbr'
+]);
+const HTML_ISLAND_STACK_TAGS = new Set([
+    'a', 'article', 'aside', 'b', 'blockquote', 'button', 'canvas', 'code',
+    'defs', 'div', 'em', 'figcaption', 'figure', 'filter', 'footer', 'form',
+    'g', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'header', 'i', 'label', 'li',
+    'lineargradient', 'main', 'nav', 'ol', 'p', 'path', 'pre', 'radialgradient',
+    'section', 'select', 'span', 'strong', 'svg', 'table', 'tbody', 'td',
+    'textarea', 'th', 'thead', 'tr', 'ul', ...HTML_RAWTEXT_TAGS
+]);
 
 const STREAM_BLOCK_TAG_REGEX = /^(P|DIV|UL|OL|LI|PRE|BLOCKQUOTE|H[1-6]|TABLE|TR|FIGURE)$/;
 const STREAM_PRESERVED_BLOCK_CLASSES = [
@@ -460,32 +475,251 @@ function findParagraphStableCutoff(text, floorOffset) {
     return boundaries[boundaries.length - 1 - STREAM_PARAGRAPH_SAFETY_BLOCKS];
 }
 
+function findHtmlTagEnd(text, tagStart) {
+    let quote = null;
+
+    for (let i = tagStart + 1; i < text.length; i++) {
+        const char = text[i];
+
+        if (quote) {
+            if (char === quote) {
+                quote = null;
+            }
+            continue;
+        }
+
+        if (char === '"' || char === "'") {
+            quote = char;
+            continue;
+        }
+
+        if (char === '>') {
+            return i;
+        }
+    }
+
+    return -1;
+}
+
+function parseHtmlTagToken(text, tagStart) {
+    if (startsWithAt(text, tagStart, '<!--')) {
+        return { type: 'comment' };
+    }
+
+    const tagEnd = findHtmlTagEnd(text, tagStart);
+    if (tagEnd === -1) {
+        return { type: 'incomplete' };
+    }
+
+    const raw = text.slice(tagStart + 1, tagEnd);
+    const trimmed = raw.trim();
+
+    if (!trimmed) {
+        return { type: 'unknown', tagEnd };
+    }
+
+    if (trimmed[0] === '!' || trimmed[0] === '?') {
+        return { type: 'declaration', tagEnd };
+    }
+
+    const isClosing = trimmed[0] === '/';
+    const nameSource = isClosing ? trimmed.slice(1).trimStart() : trimmed;
+    const nameMatch = nameSource.match(/^([a-zA-Z][a-zA-Z0-9:-]*)/);
+    if (!nameMatch) {
+        return { type: 'unknown', tagEnd };
+    }
+
+    const name = nameMatch[1].toLowerCase();
+    return {
+        type: 'tag',
+        tagEnd,
+        name,
+        isClosing,
+        isSelfClosing: /\/\s*$/.test(trimmed)
+    };
+}
+
+function popHtmlIslandStack(stack, tagName) {
+    const topIndex = stack.lastIndexOf(tagName);
+    if (topIndex === -1) {
+        return false;
+    }
+
+    stack.splice(topIndex);
+    return true;
+}
+
+function isBareDivIslandLineStart(text, tagStart) {
+    const lineStart = tagStart === 0 ? 0 : text.lastIndexOf('\n', tagStart - 1) + 1;
+    const prefix = text.slice(lineStart, tagStart);
+
+    // 只把“新行上暴露的裸 <div>”视为动画岛入口。
+    // 行内代码 `... <div> ...`、普通 Markdown 文本中的 <div> 提及、反引号包裹的 `<div>` 都不会触发。
+    return prefix.trim() === '';
+}
+
+function scanBareDivIslandEnd(text, startIndex) {
+    const stack = [];
+    let index = startIndex;
+    const lowerText = text.toLowerCase();
+
+    while (index < text.length) {
+        if (index - startIndex > HTML_ISLAND_MAX_CHARS) {
+            return { end: -1, blocked: true, abandoned: true };
+        }
+
+        const tagStart = text.indexOf('<', index);
+        if (tagStart === -1) {
+            return { end: -1, blocked: true };
+        }
+
+        if (tagStart - startIndex > HTML_ISLAND_MAX_CHARS) {
+            return { end: -1, blocked: true, abandoned: true };
+        }
+
+        if (startsWithAt(text, tagStart, '<!--')) {
+            const commentEnd = text.indexOf('-->', tagStart + 4);
+            if (commentEnd === -1) {
+                return { end: -1, blocked: true };
+            }
+            index = commentEnd + 3;
+            continue;
+        }
+
+        const token = parseHtmlTagToken(text, tagStart);
+        if (token.type === 'incomplete') {
+            return { end: -1, blocked: true };
+        }
+
+        if (token.type !== 'tag') {
+            index = (token.tagEnd ?? tagStart) + 1;
+            continue;
+        }
+
+        const { name, tagEnd, isClosing, isSelfClosing } = token;
+
+        if (isClosing) {
+            popHtmlIslandStack(stack, name);
+            index = tagEnd + 1;
+
+            if (stack.length === 0) {
+                return { end: index, blocked: false };
+            }
+
+            continue;
+        }
+
+        const shouldPush = !isSelfClosing && !HTML_VOID_TAGS.has(name) && HTML_ISLAND_STACK_TAGS.has(name);
+        if (!shouldPush) {
+            index = tagEnd + 1;
+            continue;
+        }
+
+        stack.push(name);
+        if (stack.length > HTML_ISLAND_MAX_STACK_DEPTH) {
+            return { end: -1, blocked: true, abandoned: true };
+        }
+
+        index = tagEnd + 1;
+
+        if (HTML_RAWTEXT_TAGS.has(name)) {
+            const rawTextCloseStart = lowerText.indexOf(`</${name}`, index);
+            if (rawTextCloseStart === -1) {
+                return { end: -1, blocked: true };
+            }
+
+            const rawTextCloseToken = parseHtmlTagToken(text, rawTextCloseStart);
+            if (rawTextCloseToken.type === 'incomplete') {
+                return { end: -1, blocked: true };
+            }
+
+            if (rawTextCloseToken.type === 'tag' && rawTextCloseToken.isClosing && rawTextCloseToken.name === name) {
+                popHtmlIslandStack(stack, name);
+                index = rawTextCloseToken.tagEnd + 1;
+
+                if (stack.length === 0) {
+                    return { end: index, blocked: false };
+                }
+            } else {
+                index = rawTextCloseStart + 2;
+            }
+        }
+    }
+
+    return { end: -1, blocked: true };
+}
+
+function findBareDivIslandStableCutoff(text, startOffset = 0) {
+    if (typeof text !== 'string') {
+        return { cutoff: startOffset, blocked: false };
+    }
+
+    let index = Math.max(0, startOffset);
+    let cutoff = startOffset;
+
+    while (index < text.length) {
+        const tagStart = text.indexOf('<', index);
+        if (tagStart === -1) {
+            break;
+        }
+
+        if (startsWithAt(text, tagStart, '<!--')) {
+            const commentEnd = text.indexOf('-->', tagStart + 4);
+            if (commentEnd === -1) {
+                return { cutoff, blocked: true };
+            }
+            index = commentEnd + 3;
+            continue;
+        }
+
+        const token = parseHtmlTagToken(text, tagStart);
+        if (token.type === 'incomplete') {
+            return { cutoff, blocked: true };
+        }
+
+        if (token.type !== 'tag') {
+            index = (token.tagEnd ?? tagStart) + 1;
+            continue;
+        }
+
+        if (!token.isClosing && token.name === 'div' && !token.isSelfClosing && isBareDivIslandLineStart(text, tagStart)) {
+            const island = scanBareDivIslandEnd(text, tagStart);
+            if (island.end > tagStart) {
+                cutoff = island.end;
+                index = island.end;
+                continue;
+            }
+
+            return {
+                cutoff,
+                blocked: true,
+                abandoned: island.abandoned === true
+            };
+        }
+
+        index = token.tagEnd + 1;
+    }
+
+    return { cutoff, blocked: false };
+}
+
 function hasLikelyUnclosedHtmlIsland(text, startOffset = 0) {
-    if (typeof text !== 'string') return false;
-
-    const slice = text.slice(Math.max(0, startOffset)).toLowerCase();
-
-    // 最小止血：完整 HTML 岛状态机后续再做；这里仅防止段落稳定区切进未闭合动画块。
-    const hasUnclosedRawText =
-        slice.lastIndexOf('<style') > slice.lastIndexOf('</style>') ||
-        slice.lastIndexOf('<script') > slice.lastIndexOf('</script>');
-
-    if (hasUnclosedRawText) return true;
-
-    const openDivCount = (slice.match(/<div\b/g) || []).length;
-    const closeDivCount = (slice.match(/<\/div\s*>/g) || []).length;
-    return openDivCount > closeDivCount;
+    return findBareDivIslandStableCutoff(text, startOffset).blocked;
 }
 
 function findExplicitStablePrefix(text, startOffset = 0) {
     let index = Math.max(0, startOffset);
     let stableCutoff = startOffset;
     let paragraphFloor = startOffset;
+    let blockedByUnclosedExplicitBlock = false;
 
     while (index < text.length) {
         if (startsWithAt(text, index, CODE_FENCE)) {
             const fenceEnd = findMatchingFenceEnd(text, index);
-            if (fenceEnd === -1) break;
+            if (fenceEnd === -1) {
+                blockedByUnclosedExplicitBlock = true;
+                break;
+            }
             stableCutoff = fenceEnd;
             paragraphFloor = fenceEnd;
             index = fenceEnd;
@@ -494,7 +728,10 @@ function findExplicitStablePrefix(text, startOffset = 0) {
 
         if (startsWithAt(text, index, TOOL_REQUEST_START)) {
             const endIndex = text.indexOf(TOOL_REQUEST_END, index + TOOL_REQUEST_START.length);
-            if (endIndex === -1) break;
+            if (endIndex === -1) {
+                blockedByUnclosedExplicitBlock = true;
+                break;
+            }
             stableCutoff = endIndex + TOOL_REQUEST_END.length;
             paragraphFloor = stableCutoff;
             index = stableCutoff;
@@ -503,7 +740,10 @@ function findExplicitStablePrefix(text, startOffset = 0) {
 
         if (startsWithAt(text, index, TOOL_RESULT_START)) {
             const endIndex = text.indexOf(TOOL_RESULT_END, index + TOOL_RESULT_START.length);
-            if (endIndex === -1) break;
+            if (endIndex === -1) {
+                blockedByUnclosedExplicitBlock = true;
+                break;
+            }
             stableCutoff = endIndex + TOOL_RESULT_END.length;
             paragraphFloor = stableCutoff;
             index = stableCutoff;
@@ -512,7 +752,10 @@ function findExplicitStablePrefix(text, startOffset = 0) {
 
         if (startsWithAt(text, index, DESKTOP_PUSH_START)) {
             const endIndex = text.indexOf(DESKTOP_PUSH_END, index + DESKTOP_PUSH_START.length);
-            if (endIndex === -1) break;
+            if (endIndex === -1) {
+                blockedByUnclosedExplicitBlock = true;
+                break;
+            }
             stableCutoff = endIndex + DESKTOP_PUSH_END.length;
             paragraphFloor = stableCutoff;
             index = stableCutoff;
@@ -521,7 +764,10 @@ function findExplicitStablePrefix(text, startOffset = 0) {
 
         if (startsWithAt(text, index, THOUGHT_CHAIN_START)) {
             const endIndex = text.indexOf(THOUGHT_CHAIN_END, index + THOUGHT_CHAIN_START.length);
-            if (endIndex === -1) break;
+            if (endIndex === -1) {
+                blockedByUnclosedExplicitBlock = true;
+                break;
+            }
             stableCutoff = endIndex + THOUGHT_CHAIN_END.length;
             paragraphFloor = stableCutoff;
             index = stableCutoff;
@@ -530,7 +776,10 @@ function findExplicitStablePrefix(text, startOffset = 0) {
 
         if (startsWithAt(text, index, DAILY_NOTE_START)) {
             const endIndex = text.indexOf(DAILY_NOTE_END, index + DAILY_NOTE_START.length);
-            if (endIndex === -1) break;
+            if (endIndex === -1) {
+                blockedByUnclosedExplicitBlock = true;
+                break;
+            }
             stableCutoff = endIndex + DAILY_NOTE_END.length;
             paragraphFloor = stableCutoff;
             index = stableCutoff;
@@ -540,7 +789,10 @@ function findExplicitStablePrefix(text, startOffset = 0) {
         const thinkStart = findConventionalThinkStart(text, index);
         if (thinkStart === index) {
             const thinkEnd = findConventionalThinkEnd(text, index);
-            if (thinkEnd === -1) break;
+            if (thinkEnd === -1) {
+                blockedByUnclosedExplicitBlock = true;
+                break;
+            }
             stableCutoff = thinkEnd;
             paragraphFloor = thinkEnd;
             index = thinkEnd;
@@ -550,7 +802,17 @@ function findExplicitStablePrefix(text, startOffset = 0) {
         index += 1;
     }
 
-    if (hasLikelyUnclosedHtmlIsland(text, paragraphFloor)) {
+    if (blockedByUnclosedExplicitBlock) {
+        return stableCutoff;
+    }
+
+    const divIslandResult = findBareDivIslandStableCutoff(text, paragraphFloor);
+    if (divIslandResult.cutoff > stableCutoff) {
+        stableCutoff = divIslandResult.cutoff;
+        paragraphFloor = divIslandResult.cutoff;
+    }
+
+    if (divIslandResult.blocked) {
         return stableCutoff;
     }
 
