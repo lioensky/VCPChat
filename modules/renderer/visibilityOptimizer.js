@@ -299,12 +299,25 @@ function activateHeavyIfNeeded(messageItem, state) {
     if (!messageItem || !state || state.isHeavyActivated) return;
     if (typeof messageItem._vcp_activateHeavy === 'function') {
         state.isHeavyActivated = true;
+        messageItem.dataset.vcpHeavyActivating = 'true';
         try {
             const result = messageItem._vcp_activateHeavy();
             if (result && typeof result.then === 'function') {
-                result.catch(error => console.error('[VisibilityOptimizer] Heavy activation failed:', error));
+                result
+                    .then(() => {
+                        delete messageItem.dataset.vcpHeavyActivating;
+                    })
+                    .catch(error => {
+                        state.isHeavyActivated = false;
+                        delete messageItem.dataset.vcpHeavyActivating;
+                        console.error('[VisibilityOptimizer] Heavy activation failed:', error);
+                    });
+            } else {
+                delete messageItem.dataset.vcpHeavyActivating;
             }
         } catch (error) {
+            state.isHeavyActivated = false;
+            delete messageItem.dataset.vcpHeavyActivating;
             console.error('[VisibilityOptimizer] Heavy activation failed:', error);
         }
     }
@@ -474,10 +487,15 @@ function applyPauseToState(messageItem, state) {
  */
 export function resumeMessageAnimations(messageItem) {
     const state = messageAnimationStates.get(messageItem);
-    if (!state || !state.isPaused) return;
+    if (!state) return;
 
     activateHeavyIfNeeded(messageItem, state);
     rememberMessageHeight(messageItem);
+
+    if (!state.isPaused) {
+        scanAnimatedElements(messageItem);
+        return;
+    }
 
     // 1. 恢复 CSS 动画：移除暂停类
     messageItem.classList.remove('vcp-paused');
@@ -822,6 +840,22 @@ export function unobserveMessage(messageItem) {
     pendingResume.delete(messageItem);
 }
 
+export function isMessageInHotZone(messageItem, margin = 200) {
+    if (!messageItem || !chatContainerRef || !messageItem.isConnected) return false;
+
+    try {
+        const containerRect = chatContainerRef.getBoundingClientRect();
+        const rect = messageItem.getBoundingClientRect();
+
+        return (
+            rect.bottom > containerRect.top - margin &&
+            rect.top < containerRect.bottom + margin
+        );
+    } catch (e) {
+        return false;
+    }
+}
+
 /**
  * 🔄 手动触发可见性检查
  */
@@ -834,10 +868,7 @@ export function recheckVisibility() {
     chatContainerRef.querySelectorAll('.message-item').forEach(item => {
         const rect = item.getBoundingClientRect();
 
-        const isVisible = (
-            rect.bottom > containerRect.top - margin &&
-            rect.top < containerRect.bottom + margin
-        );
+        const isVisible = isMessageInHotZone(item, margin);
 
         if (isVisible) {
             resumeMessageAnimations(item);

@@ -460,6 +460,23 @@ function findParagraphStableCutoff(text, floorOffset) {
     return boundaries[boundaries.length - 1 - STREAM_PARAGRAPH_SAFETY_BLOCKS];
 }
 
+function hasLikelyUnclosedHtmlIsland(text, startOffset = 0) {
+    if (typeof text !== 'string') return false;
+
+    const slice = text.slice(Math.max(0, startOffset)).toLowerCase();
+
+    // 最小止血：完整 HTML 岛状态机后续再做；这里仅防止段落稳定区切进未闭合动画块。
+    const hasUnclosedRawText =
+        slice.lastIndexOf('<style') > slice.lastIndexOf('</style>') ||
+        slice.lastIndexOf('<script') > slice.lastIndexOf('</script>');
+
+    if (hasUnclosedRawText) return true;
+
+    const openDivCount = (slice.match(/<div\b/g) || []).length;
+    const closeDivCount = (slice.match(/<\/div\s*>/g) || []).length;
+    return openDivCount > closeDivCount;
+}
+
 function findExplicitStablePrefix(text, startOffset = 0) {
     let index = Math.max(0, startOffset);
     let stableCutoff = startOffset;
@@ -531,6 +548,10 @@ function findExplicitStablePrefix(text, startOffset = 0) {
         }
 
         index += 1;
+    }
+
+    if (hasLikelyUnclosedHtmlIsland(text, paragraphFloor)) {
+        return stableCutoff;
     }
 
     const paragraphCutoff = findParagraphStableCutoff(text, paragraphFloor);
@@ -654,9 +675,23 @@ function renderStreamFrame(messageId) {
     if (nextStableCutoff > segmentState.stableCutoff) {
         const stableText = textForRendering.slice(0, nextStableCutoff);
         const stableHtml = parseFullStreamContent(stableText);
-        stableRoot.innerHTML = stableHtml;
         segmentState.stableCutoff = nextStableCutoff;
         segmentState.stableHtml = stableHtml;
+
+        if (typeof refs.renderPostProcessedHtml === 'function') {
+            const enrichResult = refs.renderPostProcessedHtml(stableRoot, stableHtml, {
+                messageId,
+                settings: refs.globalSettingsRef?.get?.(),
+                renderSessionId: null,
+                runHeavy: true,
+                includeAttachments: false
+            });
+            if (enrichResult && typeof enrichResult.catch === 'function') {
+                enrichResult.catch(error => console.error('[StreamManager] Stable enrichment failed:', error));
+            }
+        } else {
+            stableRoot.innerHTML = stableHtml;
+        }
     }
 
     const tailText = textForRendering.slice(segmentState.stableCutoff);
@@ -1550,27 +1585,38 @@ export async function finalizeStreamedMessage(messageId, finishReason, context, 
                     depth: preparedFinal.depth
                 });
                 
-                // Perform the final, high-quality render using the original global refresh method.
-                // This ensures images, KaTeX, code highlighting, etc., are all processed correctly.
-                refs.setContentAndProcessImages(contentDiv, rawHtml, messageId);
-                
-                // Step 1: Run synchronous processors (KaTeX, hljs, etc.)
-                refs.processRenderedContent(contentDiv);
+                if (typeof refs.renderPostProcessedHtml === 'function') {
+                    await refs.renderPostProcessedHtml(contentDiv, rawHtml, {
+                        messageId,
+                        message,
+                        settings: refs.globalSettingsRef?.get?.(),
+                        renderSessionId: null,
+                        runHeavy: true,
+                        includeAttachments: true
+                    });
+                } else {
+                    // Perform the final, high-quality render using the original global refresh method.
+                    // This ensures images, KaTeX, code highlighting, etc., are all processed correctly.
+                    refs.setContentAndProcessImages(contentDiv, rawHtml, messageId);
+                    
+                    // Step 1: Run synchronous processors (KaTeX, hljs, etc.)
+                    refs.processRenderedContent(contentDiv);
 
-                if (typeof refs.renderMermaidDiagrams === 'function') {
-                    await refs.renderMermaidDiagrams(contentDiv);
-                }
-
-                // Step 2: Defer TreeWalker-based highlighters to ensure DOM is stable
-                setTimeout(() => {
-                    if (contentDiv && contentDiv.isConnected) {
-                        refs.runTextHighlights(contentDiv);
+                    if (typeof refs.renderMermaidDiagrams === 'function') {
+                        await refs.renderMermaidDiagrams(contentDiv);
                     }
-                }, 0);
 
-                // Step 3: Process animations, scripts, and 3D scenes
-                if (refs.processAnimationsInContent) {
-                    refs.processAnimationsInContent(contentDiv);
+                    // Step 2: Defer TreeWalker-based highlighters to ensure DOM is stable
+                    setTimeout(() => {
+                        if (contentDiv && contentDiv.isConnected) {
+                            refs.runTextHighlights(contentDiv);
+                        }
+                    }, 0);
+
+                    // Step 3: Process animations, scripts, and 3D scenes
+                    if (refs.processAnimationsInContent) {
+                        refs.processAnimationsInContent(contentDiv);
+                    }
                 }
             }
             

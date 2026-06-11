@@ -1666,6 +1666,7 @@ function initializeMessageRenderer(refs) {
         processStartEndMarkers: contentProcessor.processStartEndMarkers, // 🟢 传递安全处理函数
         ensureSeparatorBetweenImgAndCode: contentProcessor.ensureSeparatorBetweenImgAndCode,
         processAnimationsInContent: processAnimationsInContent,
+        renderPostProcessedHtml: renderPostProcessedHtml,
         emoticonUrlFixer: emoticonUrlFixer, // 🟢 Pass emoticon fixer for live updates
         enhancedRenderDebounceTimers: enhancedRenderDebounceTimers,
         ENHANCED_RENDER_DEBOUNCE_DELAY: ENHANCED_RENDER_DEBOUNCE_DELAY,
@@ -1876,6 +1877,74 @@ async function renderAttachments(message, contentDiv) {
         });
         contentDiv.appendChild(attachmentsContainer);
     }
+}
+
+async function renderPostProcessedHtml(contentDiv, rawHtml, options = {}) {
+    if (!contentDiv) return;
+
+    const {
+        messageId = null,
+        message = null,
+        settings = mainRendererReferences.globalSettingsRef.get(),
+        renderSessionId = getActiveRenderSessionId(),
+        runHeavy = true,
+        includeAttachments = true,
+        deferHighlights = true
+    } = options;
+
+    const messageItem = contentDiv.closest?.('.message-item');
+
+    const isStillValid = () => {
+        if (renderSessionId !== null && !isRenderSessionActive(renderSessionId)) return false;
+        if (!contentDiv.isConnected) return false;
+        if (messageItem && !messageItem.isConnected) return false;
+        return true;
+    };
+
+    if (typeof rawHtml === 'string') {
+        setContentAndProcessImages(contentDiv, rawHtml, messageId);
+    }
+
+    if (!isStillValid()) return;
+
+    if (includeAttachments && message) {
+        const existingAttachments = contentDiv.querySelector('.message-attachments');
+        if (existingAttachments) existingAttachments.remove();
+        await renderAttachments(message, contentDiv);
+    }
+
+    if (!isStillValid()) return;
+
+    if (!runHeavy) {
+        if (messageItem) {
+            messageItem.dataset.vcpHeavyPending = 'true';
+        }
+        contentDiv.dataset.vcpHeavyPending = 'true';
+        return;
+    }
+
+    contentProcessor.processRenderedContent(contentDiv, settings);
+    await renderMermaidDiagrams(contentDiv);
+
+    if (!isStillValid()) return;
+
+    if (deferHighlights) {
+        setTimeout(() => {
+            if (isStillValid()) {
+                contentProcessor.highlightAllPatternsInMessage(contentDiv);
+            }
+        }, 0);
+    } else {
+        contentProcessor.highlightAllPatternsInMessage(contentDiv);
+    }
+
+    processAnimationsInContent(contentDiv);
+    if (messageItem) {
+        messageItem.dataset.vcpHeavyActivated = 'true';
+        delete messageItem.dataset.vcpHeavyPending;
+    }
+    contentDiv.dataset.vcpHeavyActivated = 'true';
+    delete contentDiv.dataset.vcpHeavyPending;
 }
 
 async function renderMessage(message, isInitialLoad = false, appendToDom = true, renderSessionId = getActiveRenderSessionId(), renderContext = {}) {
@@ -2111,36 +2180,24 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true,
 
         // Define the post-processing logic as a function.
         // This allows us to control WHEN it gets executed.
-        const runPostRenderProcessing = async () => {
+        const runPostRenderProcessing = async (postOptions = {}) => {
             if (!isRenderSessionActive(renderSessionId) || !messageItem.isConnected || !contentDiv.isConnected) {
                 return;
             }
 
-            // This function should only be called when messageItem is connected to the DOM.
+            return renderPostProcessedHtml(contentDiv, finalHtml, {
+                messageId: message.id,
+                message,
+                settings: globalSettings,
+                renderSessionId,
+                runHeavy: postOptions.runHeavy !== false,
+                includeAttachments: true
+            });
+        };
 
-            // Process images, attachments, and synchronous content first.
-            setContentAndProcessImages(contentDiv, finalHtml, message.id);
-            if (!isRenderSessionActive(renderSessionId) || !messageItem.isConnected || !contentDiv.isConnected) {
-                return;
-            }
-
-            renderAttachments(message, contentDiv);
-            contentProcessor.processRenderedContent(contentDiv, globalSettings);
-            await renderMermaidDiagrams(contentDiv); // Render mermaid diagrams
-
-            if (!isRenderSessionActive(renderSessionId) || !messageItem.isConnected || !contentDiv.isConnected) {
-                return;
-            }
-
-            // Defer TreeWalker-based highlighters with a hardcoded delay to ensure the DOM is stable.
-            setTimeout(() => {
-                if (isRenderSessionActive(renderSessionId) && contentDiv && contentDiv.isConnected) {
-                    contentProcessor.highlightAllPatternsInMessage(contentDiv);
-                }
-            }, 0);
-
-            // Finally, process any animations and execute scripts/3D scenes.
-            processAnimationsInContent(contentDiv);
+        messageItem._vcp_activateHeavy = () => {
+            if (messageItem.dataset.vcpHeavyActivated === 'true') return;
+            return runPostRenderProcessing({ runHeavy: true });
         };
 
         // If we are appending directly to the DOM, schedule the processing immediately.
@@ -2154,9 +2211,9 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true,
             // If not, attach the processing function to the element itself.
             // The caller (e.g., a batch renderer) will be responsible for executing it
             // AFTER the element has been attached to the DOM.
-            messageItem._vcp_process = () => {
+            messageItem._vcp_process = (postOptions = {}) => {
                 if (!isRenderSessionActive(renderSessionId) || !messageItem.isConnected) return;
-                return runPostRenderProcessing();
+                return runPostRenderProcessing(postOptions);
             };
             messageItem._vcp_renderSessionId = renderSessionId;
         }
@@ -2471,22 +2528,14 @@ async function renderFullMessage(messageId, fullContent, agentName, agentId) {
         depth
     });
 
-    setContentAndProcessImages(contentDiv, rawHtml, messageId);
-
-    // Apply post-processing in two steps
-    // Step 1: Synchronous processing
-    contentProcessor.processRenderedContent(contentDiv, globalSettings);
-    await renderMermaidDiagrams(contentDiv);
-
-    // Step 2: Asynchronous, deferred highlighting for DOM stability with a hardcoded delay
-    setTimeout(() => {
-        if (contentDiv && contentDiv.isConnected) {
-            contentProcessor.highlightAllPatternsInMessage(contentDiv);
-        }
-    }, 0);
-
-    // After content is rendered, run animations/scripts/3D scenes
-    processAnimationsInContent(contentDiv);
+    await renderPostProcessedHtml(contentDiv, rawHtml, {
+        messageId,
+        message: messageFromHistoryForRegex ? { ...messageFromHistoryForRegex, content: fullContent } : null,
+        settings: globalSettings,
+        renderSessionId: null,
+        runHeavy: true,
+        includeAttachments: !!messageFromHistoryForRegex
+    });
 
     mainRendererReferences.uiHelper.scrollToBottom();
 }
@@ -2547,29 +2596,14 @@ function updateMessageContent(messageId, newContent) {
 
     // --- Post-Render Processing (aligned with renderMessage logic) ---
 
-    // 1. Set content and process images
-    setContentAndProcessImages(contentDiv, rawHtml, messageId);
-
-    // 2. Re-render attachments if they exist
-    if (messageInHistory) {
-        const existingAttachments = contentDiv.querySelector('.message-attachments');
-        if (existingAttachments) existingAttachments.remove();
-        renderAttachments({ ...messageInHistory, content: newContent }, contentDiv);
-    }
-
-    // 3. Synchronous processing (KaTeX, buttons, etc.)
-    contentProcessor.processRenderedContent(contentDiv, globalSettings);
-    renderMermaidDiagrams(contentDiv); // Fire-and-forget async rendering
-
-    // 4. Asynchronous, deferred highlighting for DOM stability
-    setTimeout(() => {
-        if (contentDiv && contentDiv.isConnected) {
-            contentProcessor.highlightAllPatternsInMessage(contentDiv);
-        }
-    }, 0);
-
-    // 5. Re-run animations/scripts/3D scenes
-    processAnimationsInContent(contentDiv);
+    renderPostProcessedHtml(contentDiv, rawHtml, {
+        messageId,
+        message: messageInHistory ? { ...messageInHistory, content: newContent } : null,
+        settings: globalSettings,
+        renderSessionId: null,
+        runHeavy: true,
+        includeAttachments: !!messageInHistory
+    });
 }
 
 function prepareUserMessageText(text) {
@@ -2662,6 +2696,33 @@ async function renderHistory(history, options = {}) {
  * @param {Array<Message>} messages 要渲染的消息数组
  * @param {boolean} scrollToBottom 是否滚动到底部
  */
+function shouldRunHeavyForMessage(messageItem, renderContext = {}) {
+    if (renderContext.forceHeavy === true) return true;
+    if (renderContext.deferHeavy === true) {
+        return visibilityOptimizer.isMessageInHotZone?.(messageItem) === true;
+    }
+    return true;
+}
+
+function processDeferredMessageElement(el, renderSessionId, renderContext = {}) {
+    if (!isRenderSessionActive(renderSessionId) || !el.isConnected) {
+        if (typeof el._vcp_process === 'function') {
+            delete el._vcp_process;
+        }
+        delete el._vcp_renderSessionId;
+        return;
+    }
+
+    visibilityOptimizer.observeMessage(el);
+
+    if (typeof el._vcp_process === 'function') {
+        const runHeavy = shouldRunHeavyForMessage(el, renderContext);
+        el._vcp_process({ runHeavy });
+        delete el._vcp_process;
+    }
+    delete el._vcp_renderSessionId;
+}
+
 async function renderMessageBatch(messages, scrollToBottom = false, renderSessionId = getActiveRenderSessionId(), renderContext = {}) {
     if (!isRenderSessionActive(renderSessionId)) return;
 
@@ -2699,24 +2760,7 @@ async function renderMessageBatch(messages, scrollToBottom = false, renderSessio
             mainRendererReferences.chatMessagesDiv.appendChild(fragment);
 
             // Step 2: Now that they are in the DOM, run the deferred processing for each.
-            messageElements.forEach(el => {
-                if (!isRenderSessionActive(renderSessionId) || !el.isConnected) {
-                    if (typeof el._vcp_process === 'function') {
-                        delete el._vcp_process;
-                    }
-                    delete el._vcp_renderSessionId;
-                    return;
-                }
-
-                // 观察批量渲染的消息
-                visibilityOptimizer.observeMessage(el);
-
-                if (typeof el._vcp_process === 'function') {
-                    el._vcp_process();
-                    delete el._vcp_process; // Clean up to avoid memory leaks
-                }
-                delete el._vcp_renderSessionId;
-            });
+            messageElements.forEach(el => processDeferredMessageElement(el, renderSessionId, renderContext));
 
             if (scrollToBottom && isRenderSessionActive(renderSessionId)) {
                 mainRendererReferences.uiHelper.scrollToBottom();
@@ -2779,24 +2823,10 @@ async function renderOlderMessagesInBatches(olderMessages, batchSize, batchDelay
                     chatMessagesDiv.appendChild(batchFragment);
                 }
 
-                elementsForProcessing.forEach(el => {
-                    if (!isRenderSessionActive(renderSessionId) || !el.isConnected) {
-                        if (typeof el._vcp_process === 'function') {
-                            delete el._vcp_process;
-                        }
-                        delete el._vcp_renderSessionId;
-                        return;
-                    }
-
-                    // 观察批量渲染的历史消息
-                    visibilityOptimizer.observeMessage(el);
-
-                    if (typeof el._vcp_process === 'function') {
-                        el._vcp_process();
-                        delete el._vcp_process;
-                    }
-                    delete el._vcp_renderSessionId;
-                });
+                elementsForProcessing.forEach(el => processDeferredMessageElement(el, renderSessionId, {
+                    ...renderContext,
+                    deferHeavy: true
+                }));
 
                 resolve();
             };
@@ -2855,24 +2885,7 @@ async function renderHistoryLegacy(history, renderSessionId = getActiveRenderSes
             mainRendererReferences.chatMessagesDiv.appendChild(fragment);
 
             // Step 2: Run the deferred processing for each element now that it's attached.
-            allMessageElements.forEach(el => {
-                if (!isRenderSessionActive(renderSessionId) || !el.isConnected) {
-                    if (typeof el._vcp_process === 'function') {
-                        delete el._vcp_process;
-                    }
-                    delete el._vcp_renderSessionId;
-                    return;
-                }
-
-                // 观察历史消息
-                visibilityOptimizer.observeMessage(el);
-
-                if (typeof el._vcp_process === 'function') {
-                    el._vcp_process();
-                    delete el._vcp_process; // Clean up
-                }
-                delete el._vcp_renderSessionId;
-            });
+            allMessageElements.forEach(el => processDeferredMessageElement(el, renderSessionId, renderContext));
 
             if (isRenderSessionActive(renderSessionId)) {
                 mainRendererReferences.uiHelper.scrollToBottom();
