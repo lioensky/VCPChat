@@ -81,7 +81,7 @@ function protectLatexBlocks(text) {
         if (/^\d/.test(trimmedContent)) return false;
         if (trimmedContent.startsWith('/')) return false;
         if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(trimmedContent)) return false;
-        if (trimmedContent.startsWith('{') || trimmedContent.endsWith('}')) return false;
+        if (trimmedContent.startsWith('{') && trimmedContent.endsWith('}')) return false;
         if (trimmedContent.includes('|')) return false;
 
         // 只放行带有明确数学信号的单美元公式。
@@ -167,9 +167,15 @@ function protectLatexBlocks(text) {
     // 4. 保护安全的 $...$ (inline math)。
     // 为避免 KaTeX auto-render 的单美元误触发，这里把安全单美元公式转换为 \( ... \) 形式交给后处理渲染。
     // 例如 $O(L^2) \to O(1)$ 会渲染；$10、$PATH、${value}、表格跨列 $...|...$ 不会触发。
-    processed = processed.replace(/(^|[^\w\\$])\$([^\$\n]{1,240}?)\$(?![\w])/g, (match, prefix, content) => {
+    processed = processed.replace(/(^|[^\w\\$])\$([^\$\n]{1,1200}?)\$(?![\w])/g, (match, prefix, content) => {
         if (!looksLikeSafeSingleDollarMath(content)) return match;
         return `${prefix}${createLatexPlaceholder(`\\(${content.trim()}\\)`)}`;
+    });
+
+    // 如果安全单美元公式原本是缩进独立行，Markdown 会把它当作缩进代码块。
+    // 这里仅对“整行只有 LaTeX 占位符”的行去缩进，不影响列表项、引用块或普通缩进文本。
+    processed = processed.replace(/(^|\n)[ \t]{4,}(%%LATEX_BLOCK_\d+%%)(?=[ \t]*(?:\n|$))/g, (match, linePrefix, placeholder) => {
+        return `${linePrefix}${placeholder}`;
     });
 
     // 🟢 恢复代码围栏（占位符 → 原始代码块）
