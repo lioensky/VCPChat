@@ -438,6 +438,37 @@ function findMatchingFenceEnd(text, startIndex) {
     return -1;
 }
 
+function isLineOnlyToken(text, tokenStart, tokenLength) {
+    const lineStart = tokenStart === 0 ? 0 : text.lastIndexOf('\n', tokenStart - 1) + 1;
+    const lineEndIndex = text.indexOf('\n', tokenStart + tokenLength);
+    const lineEnd = lineEndIndex === -1 ? text.length : lineEndIndex;
+    const before = text.slice(lineStart, tokenStart);
+    const after = text.slice(tokenStart + tokenLength, lineEnd);
+
+    return before.trim() === '' && after.trim() === '';
+}
+
+function findDisplayMathBlockEnd(text, startIndex, delimiter) {
+    if (!isLineOnlyToken(text, startIndex, delimiter.length)) {
+        return -1;
+    }
+
+    let searchIndex = startIndex + delimiter.length;
+    while (searchIndex < text.length) {
+        const closeIndex = text.indexOf(delimiter, searchIndex);
+        if (closeIndex === -1) return -1;
+
+        if (isLineOnlyToken(text, closeIndex, delimiter.length)) {
+            const lineEnd = text.indexOf('\n', closeIndex + delimiter.length);
+            return lineEnd === -1 ? text.length : lineEnd + 1;
+        }
+
+        searchIndex = closeIndex + delimiter.length;
+    }
+
+    return -1;
+}
+
 function findConventionalThinkEnd(text, startIndex) {
     THINK_END_REGEX.lastIndex = startIndex;
     const match = THINK_END_REGEX.exec(text);
@@ -723,6 +754,30 @@ function findExplicitStablePrefix(text, startOffset = 0) {
             stableCutoff = fenceEnd;
             paragraphFloor = fenceEnd;
             index = fenceEnd;
+            continue;
+        }
+
+        if (startsWithAt(text, index, '$$') && isLineOnlyToken(text, index, 2)) {
+            const mathEnd = findDisplayMathBlockEnd(text, index, '$$');
+            if (mathEnd === -1) {
+                blockedByUnclosedExplicitBlock = true;
+                break;
+            }
+            stableCutoff = mathEnd;
+            paragraphFloor = mathEnd;
+            index = mathEnd;
+            continue;
+        }
+
+        if (startsWithAt(text, index, '\\[') && isLineOnlyToken(text, index, 2)) {
+            const mathEnd = findDisplayMathBlockEnd(text, index, '\\]');
+            if (mathEnd === -1) {
+                blockedByUnclosedExplicitBlock = true;
+                break;
+            }
+            stableCutoff = mathEnd;
+            paragraphFloor = mathEnd;
+            index = mathEnd;
             continue;
         }
 

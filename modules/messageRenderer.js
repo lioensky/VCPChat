@@ -123,23 +123,24 @@ function protectLatexBlocks(text) {
 
     let processed = resultLines.join('\n');
 
-    // 保护顺序很重要：先保护 display math ($$...$$)，再保护 inline math ($...$)
-    // 同时保护 \[...\] 和 \(...\)
+    // 保护顺序很重要：先保护 display math ($$...$$)，再保护 inline math。
+    // 块级 $$ 只接受“独占一行”的定界符，避免把 `$10`、`$$` 字符串或表格内容误贪成跨段公式。
+    // 同时保护 \[...\] 和 \(...\)。
 
-    // 1. 保护 $$...$$ (display math) - 支持多行
-    processed = processed.replace(/\$\$([\s\S]*?)\$\$/g, (match) => {
+    // 1. 保护 $$...$$ (display math) - 支持多行，定界符必须独占一行
+    processed = processed.replace(/(^|\n)([ \t]*)\$\$[ \t]*\n([\s\S]*?)\n[ \t]*\$\$[ \t]*(?=\n|$)/g, (match, linePrefix) => {
         const placeholder = `%%LATEX_BLOCK_${id}%%`;
-        map.set(placeholder, match);
+        map.set(placeholder, match.slice(linePrefix.length));
         id++;
-        return placeholder;
+        return `${linePrefix}${placeholder}`;
     });
 
     // 2. 保护 \[...\] (display math) - 支持多行
-    processed = processed.replace(/\\\[([\s\S]*?)\\\]/g, (match) => {
+    processed = processed.replace(/(^|\n)([ \t]*)\\\[[ \t]*\n?([\s\S]*?)\n?[ \t]*\\\][ \t]*(?=\n|$)/g, (match, linePrefix) => {
         const placeholder = `%%LATEX_BLOCK_${id}%%`;
-        map.set(placeholder, match);
+        map.set(placeholder, match.slice(linePrefix.length));
         id++;
-        return placeholder;
+        return `${linePrefix}${placeholder}`;
     });
 
     // 3. 保护 \(...\) (inline math)
@@ -150,26 +151,9 @@ function protectLatexBlocks(text) {
         return placeholder;
     });
 
-    // 4. 保护 $...$ (inline math) - 不跨行，避免误匹配价格等
-    // 注意：Markdown 表格里常见 "$/M Token）| 输出价格（$" 这类跨单元格误匹配，
-    // 会把表头列数从 4 列破坏成 3 列，导致 marked 无法识别表格。
-    processed = processed.replace(/\$([^\$\n]+?)\$/g, (match, content) => {
-        const trimmedContent = content.trim();
-
-        // 跳过看起来像价格的情况（如 $100）
-        if (/^\d/.test(trimmedContent)) return match;
-
-        // 跳过价格单位写法（如 $/M Token、$/1M tokens）
-        if (trimmedContent.startsWith('/')) return match;
-
-        // 跳过跨 Markdown 表格单元格的误匹配
-        if (content.includes('|')) return match;
-
-        const placeholder = `%%LATEX_BLOCK_${id}%%`;
-        map.set(placeholder, match);
-        id++;
-        return placeholder;
-    });
+    // 4. 保护 $...$ (inline math) - 默认不保护单美元行内公式。
+    // VChat 的推荐行内公式定界符是 \( ... \)。单美元在聊天内容中更常表示价格、Shell 变量或模板字符串，
+    // 让 KaTeX auto-render 处理它会显著增加误触发概率。
 
     // 🟢 恢复代码围栏（占位符 → 原始代码块）
     for (const [placeholder, original] of codeFenceMap.entries()) {
