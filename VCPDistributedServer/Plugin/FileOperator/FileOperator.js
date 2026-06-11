@@ -233,13 +233,11 @@ function resolveAndNormalizePath(inputPath) {
   const trimmedParts = parts.map(part => part.trim());
   const sanitizedPath = path.join(...trimmedParts);
 
-  const resolvedInput = path.resolve(originalPath);
-  const fileOperatorRoot = path.resolve(__dirname);
-
-  // Idempotency guard: if the path is already resolved under FileOperator, keep it.
-  if (resolvedInput.toLowerCase().startsWith(fileOperatorRoot.toLowerCase())) {
-    return resolvedInput;
-  }
+  // BASE_PATH: configurable project root for bare relative paths.
+  // Falls back to two levels up from this plugin's directory.
+  const BASE_PATH = process.env.BASE_PATH
+    ? path.resolve(process.env.BASE_PATH)
+    : path.resolve(__dirname, '..', '..');
 
   // Virtual root: map "/xxx" to FileOperator/xxx on platforms where it is not absolute.
   if (originalPath.startsWith('/')) {
@@ -252,8 +250,8 @@ function resolveAndNormalizePath(inputPath) {
   const startsWithDotDot = normalized.startsWith(`..${path.sep}`);
 
   if (!startsWithDot && !startsWithDotDot) {
-    // Treat plain relative paths like "foo/bar" as project-root relative.
-    return path.resolve(__dirname, '..', '..', normalized);
+    // Treat plain relative paths like "foo/bar" as BASE_PATH relative.
+    return path.resolve(BASE_PATH, normalized);
   }
 
   // Treat explicit relative paths like "./foo" or "../foo" as FileOperator-relative.
