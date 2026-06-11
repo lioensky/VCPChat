@@ -338,6 +338,29 @@ function renderAAConfig() {
                 </div>
             </div>
             <div class="agent-description">${escapeHtml(agent.description || '无介绍...')}</div>
+            <div class="agent-quick-edit" onclick="event.stopPropagation()">
+                <div class="quick-edit-title">
+                    <span>快捷编辑</span>
+                    <small>模型与系统提示词</small>
+                </div>
+                <label class="quick-edit-field">
+                    <span>模型 ID</span>
+                    <input
+                        type="text"
+                        value="${escapeHtml(agent.modelId || '')}"
+                        placeholder="default / gpt-4o / claude-3"
+                        oninput="updateAgentQuickField(${index}, 'modelId', this.value)"
+                        onchange="syncAgentQuickSummary(${index}, this.value)"
+                    >
+                </label>
+                <label class="quick-edit-field">
+                    <span>系统提示词</span>
+                    <textarea
+                        placeholder="可为空，若需引用已注册 Agent 的 prompt 可使用 {{baseName}}"
+                        oninput="updateAgentQuickField(${index}, 'systemPrompt', this.value)"
+                    >${escapeHtml(agent.systemPrompt || '')}</textarea>
+                </label>
+            </div>
         `;
 
         card.addEventListener('click', () => openAgentModal(index));
@@ -372,6 +395,19 @@ window.deleteAgentByIndex = (index) => {
 window.updateAAGlobal = (key, val, type) => {
     if (currentAAConfig) {
         currentAAConfig[key] = type === 'number' ? Number(val) : val;
+    }
+};
+
+window.updateAgentQuickField = (index, key, val) => {
+    if (!currentAAConfig?.agents?.[index]) return;
+    currentAAConfig.agents[index][key] = val;
+};
+
+window.syncAgentQuickSummary = (index, val) => {
+    const card = agentListContainer.children[index];
+    const modelIdEl = card?.querySelector('.agent-info .model-id');
+    if (modelIdEl) {
+        modelIdEl.textContent = val || 'default';
     }
 };
 

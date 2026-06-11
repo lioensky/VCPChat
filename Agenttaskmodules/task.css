@@ -283,6 +283,74 @@ textarea.setting-input { width: 100%; min-height: 80px; resize: vertical; margin
 .agent-info .model-id { font-size: 0.85rem; color: var(--text-secondary); background: rgba(255,255,255,0.1); padding: 2px 6px; border-radius: 4px; display: inline-block; margin-top: 4px; }
 .agent-description { font-size: 0.9rem; line-height: 1.4; opacity: 0.8; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 
+.agent-quick-edit {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 2px;
+    padding: 12px;
+    border-radius: 14px;
+    border: 1px solid var(--glass-border);
+    background: rgba(0, 0, 0, 0.18);
+    cursor: default;
+}
+
+.quick-edit-title {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 10px;
+    padding-bottom: 2px;
+}
+
+.quick-edit-title span {
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    letter-spacing: 0.5px;
+}
+
+.quick-edit-title small {
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+    opacity: 0.7;
+}
+
+.quick-edit-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.quick-edit-field input,
+.quick-edit-field textarea {
+    width: 100%;
+    border: 1px solid var(--glass-border);
+    border-radius: 10px;
+    background: rgba(0, 0, 0, 0.28);
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 0.85rem;
+    line-height: 1.35;
+    padding: 8px 10px;
+}
+
+.quick-edit-field textarea {
+    min-height: 92px;
+    resize: vertical;
+}
+
+.quick-edit-field input:focus,
+.quick-edit-field textarea:focus {
+    outline: none;
+    border-color: var(--accent-color);
+    background: rgba(0, 0, 0, 0.42);
+    box-shadow: 0 0 0 3px rgba(218, 165, 32, 0.16);
+}
+
 /* Specific to Task Card */
 .task-card-header {
     display: flex;
