@@ -1340,3 +1340,138 @@ body.light-theme .message-item .md-content pre .hljs-meta {
    outline-offset: 2px;
 }
 
+
+/* --- OpenHerPersona 聊天分条（burst bubbles） --- */
+/* 外层 .md-content 退化为透明容器，每个 .burst-bubble 才是真正的气泡 */
+.message-item .md-content.burst-mode {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 7px;
+}
+
+.message-item .md-content.burst-mode .burst-bubble {
+    width: fit-content;
+    max-width: 100%;
+    padding: 9px 14px;
+    border-radius: 12px;
+    border-bottom-left-radius: 5px;
+    background-color: var(--assistant-bubble-bg);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.24);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+}
+
+body.light-theme .message-item .md-content.burst-mode .burst-bubble {
+    border: 1px solid color-mix(in srgb, var(--border-color) 34%, rgba(255, 255, 255, 0.58));
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.34), rgba(255, 255, 255, 0.14)),
+        color-mix(in srgb, var(--assistant-bubble-bg) 58%, rgba(255, 255, 255, 0.92));
+}
+
+.message-item .md-content.burst-mode .burst-bubble > :first-child { margin-top: 0; }
+.message-item .md-content.burst-mode .burst-bubble > :last-child { margin-bottom: 0; }
+
+/* 假头像行：第 2 条起的分条带上与首条同款同尺寸的头像，
+   负外边距把头像拉回真实头像列，气泡与第一条左对齐（不重复名字/时间） */
+.burst-row {
+    --burst-avatar-outdent: 49px; /* 40px头像 + 2x2px边框 + 10px列间距 - 5px wrapper负边距 */
+    display: flex;
+    align-items: flex-start;
+    gap: 5px;
+    margin-left: calc(-1 * var(--burst-avatar-outdent));
+    width: calc(100% + var(--burst-avatar-outdent));
+    min-width: 0;
+}
+
+.burst-row .burst-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex: none;
+    border: 2px solid var(--dynamic-avatar-color, var(--border-color));
+    margin-top: 0;
+    cursor: default !important;
+}
+
+.burst-row .burst-bubble,
+.burst-row .vcp-stream-tail-root {
+    min-width: 0;
+    max-width: calc(100% - var(--burst-avatar-outdent));
+}
+
+/* 分条浮现动画（气泡与假头像行通用），延迟按上一条长度估算打字时间 */
+.burst-pending {
+    opacity: 0;
+    animation: burstBubbleIn 0.24s ease-out forwards;
+}
+
+@keyframes burstBubbleIn {
+    from { opacity: 0; transform: translateY(6px) scale(0.985); }
+    to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .burst-pending { animation: none; opacity: 1; }
+}
+
+/* --- 真流式分条：stableRoot 里是封口气泡，tailRoot 是"正在打字"的活动气泡 --- */
+.message-item .md-content.burst-streaming {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 7px;
+}
+
+.message-item .md-content.burst-streaming .vcp-stream-stable-root {
+    display: contents;
+}
+
+.message-item .md-content.burst-streaming .burst-bubble,
+.message-item .md-content.burst-streaming .vcp-stream-tail-root {
+    width: fit-content;
+    max-width: 100%;
+    padding: 9px 14px;
+    border-radius: 12px;
+    border-bottom-left-radius: 5px;
+    background-color: var(--assistant-bubble-bg);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.24);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+}
+
+body.light-theme .message-item .md-content.burst-streaming .burst-bubble,
+body.light-theme .message-item .md-content.burst-streaming .vcp-stream-tail-root {
+    border: 1px solid color-mix(in srgb, var(--border-color) 34%, rgba(255, 255, 255, 0.58));
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.34), rgba(255, 255, 255, 0.14)),
+        color-mix(in srgb, var(--assistant-bubble-bg) 58%, rgba(255, 255, 255, 0.92));
+}
+
+.message-item .md-content.burst-streaming .vcp-stream-tail-root:empty {
+    display: none;
+}
+
+/* 尾部假头像行：正在打字的下一条；尾部内容为空时整行隐藏 */
+.message-item .md-content.burst-streaming .burst-tail-row:has(.vcp-stream-tail-root:empty) {
+    display: none;
+}
+
+.message-item .md-content.burst-streaming .burst-bubble > :first-child,
+.message-item .md-content.burst-streaming .vcp-stream-tail-root > :first-child { margin-top: 0; }
+.message-item .md-content.burst-streaming .burst-bubble > :last-child,
+.message-item .md-content.burst-streaming .vcp-stream-tail-root > :last-child { margin-bottom: 0; }
+

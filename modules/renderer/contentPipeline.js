@@ -22,6 +22,16 @@ function noop(value) {
     return value;
 }
 
+// OpenHerPersona 回填注释（persona_delta / persona_expression）按协议位于回复末尾。
+// 若注释体内出现 "-->"（例如模型在 reason 里写了完整分条标记），HTML 注释会被提前
+// 闭合，剩余 JSON 就会泄漏成可见文本。这里从第一个回填开标记直接剥到文末，兜底防漏。
+const PERSONA_BACKFILL_TAIL_REGEX = /<!--\s*persona_(?:delta|expression)\s*:[\s\S]*$/;
+
+function stripPersonaBackfillTail(text) {
+    if (!text || text.indexOf('persona_') === -1) return text;
+    return text.replace(PERSONA_BACKFILL_TAIL_REGEX, '').replace(/\s+$/, '');
+}
+
 function createMapPlaceholderReplacer(map) {
     if (!map || map.size === 0) {
         return noop;
@@ -202,6 +212,9 @@ function createContentPipeline(deps = {}) {
     function runFullRenderPipeline(inputText, options = {}) {
         const ctx = createContext(inputText, { ...options, mode: PIPELINE_MODES.FULL_RENDER });
 
+        if ((options.messageRole || 'assistant') === 'assistant') {
+            step(ctx, 'strip-persona-backfill-tail', (text) => stripPersonaBackfillTail(text));
+        }
         step(ctx, 'normalize-emoticon-urls', (text) => fixEmoticonUrlsInMarkdown(text));
 
         // 顺序协议：
@@ -255,6 +268,7 @@ function createContentPipeline(deps = {}) {
         const ctx = createContext(inputText, { ...options, mode: PIPELINE_MODES.STREAM_FAST });
 
         // 流式快路径只保留轻量、幂等、低风险修正
+        step(ctx, 'strip-persona-backfill-tail', (text) => stripPersonaBackfillTail(text));
         step(ctx, 'normalize-emoticon-urls', (text) => fixEmoticonUrlsInMarkdown(text));
         step(ctx, 'deindent-misinterpreted-code-blocks', (text) => deIndentMisinterpretedCodeBlocks(text));
         step(ctx, 'escape-start-end-markers', (text) => processStartEndMarkers(text));
