@@ -170,13 +170,12 @@ function protectLatexBlocks(text) {
  * @returns {string} 恢复后的 HTML
  */
 function restoreLatexBlocks(html, map) {
-    if (!map || map.size === 0) return html;
-    for (const [placeholder, original] of map.entries()) {
-        // 占位符可能被 marked 包裹在 <p> 标签中，需要处理这种情况
-        // 使用全局替换以防万一有重复
-        html = html.split(placeholder).join(original);
-    }
-    return html;
+    if (!map || map.size === 0 || typeof html !== 'string') return html;
+
+    // P1-5：单遍恢复 LaTeX 占位符，避免公式数量较多时按占位符多次全 HTML 扫描。
+    return html.replace(/%%LATEX_BLOCK_(\d+)%%/g, (placeholder) => {
+        return map.get(placeholder) ?? placeholder;
+    });
 }
 
 // --- Pre-compiled Regular Expressions for Performance ---
@@ -999,7 +998,7 @@ function deIndentHtml(text) {
  * @param {Array<Message>} history - 完整的聊天记录数组。
  * @returns {number} - 计算出的深度（0代表最新一轮）。
  */
-function calculateDepthByTurns(messageId, history) {
+function buildTurnDepthMap(history = []) {
     const turns = [];
     for (let i = history.length - 1; i >= 0; i--) {
         if (history[i].role === 'assistant') {
@@ -1015,10 +1014,21 @@ function calculateDepthByTurns(messageId, history) {
     }
     turns.reverse(); // ✅ 最后反转一次
 
-    const turnIndex = turns.findIndex(t =>
-        (t.assistant?.id === messageId) || (t.user?.id === messageId)
-    );
-    return turnIndex !== -1 ? (turns.length - 1 - turnIndex) : 0;
+    const depthMap = new Map();
+    turns.forEach((turn, turnIndex) => {
+        const depth = turns.length - 1 - turnIndex;
+        if (turn.assistant?.id) {
+            depthMap.set(turn.assistant.id, depth);
+        }
+        if (turn.user?.id) {
+            depthMap.set(turn.user.id, depth);
+        }
+    });
+    return depthMap;
+}
+
+function calculateDepthByTurns(messageId, history) {
+    return buildTurnDepthMap(history).get(messageId) ?? 0;
 }
 
 
@@ -1054,11 +1064,11 @@ function preprocessStreamTailContent(text) {
     }).text;
 }
 
-function parseFullMarkdown(text, options = {}) {
+function renderMarkdownToHtml(text, options = {}) {
     const markedInstance = mainRendererReferences.markedInstance;
     if (!markedInstance) return escapeHtml(text);
 
-    const globalSettings = mainRendererReferences.globalSettingsRef.get();
+    const globalSettings = options.settings || mainRendererReferences.globalSettingsRef.get();
     const {
         messageRole = 'assistant',
         depth = 0
@@ -1070,6 +1080,10 @@ function parseFullMarkdown(text, options = {}) {
     html = restoreLatexBlocks(html, latexMap);
     html = restoreRenderedToolResults(html, toolResultMap);
     return html;
+}
+
+function parseFullMarkdown(text, options = {}) {
+    return renderMarkdownToHtml(text, options);
 }
 
 function parseStreamTailMarkdown(text) {
@@ -1256,16 +1270,16 @@ function renderToolResultBlock(fullMatch) {
  * @returns {string} 恢复后的 HTML
  */
 function restoreRenderedToolResults(html, toolResultMap) {
-    if (!toolResultMap || toolResultMap.size === 0) return html;
+    if (!toolResultMap || toolResultMap.size === 0 || typeof html !== 'string') return html;
 
-    let result = html;
-    for (const [placeholder, rawMatch] of toolResultMap.entries()) {
-        const renderedHtml = `\n\n${renderToolResultBlock(rawMatch)}\n\n`;
-        // 占位符可能被 marked 包裹在 <p> 标签中
-        result = result.split(`<p>${placeholder}</p>`).join(renderedHtml);
-        result = result.split(placeholder).join(renderedHtml);
-    }
-    return result;
+    // P1-5：工具结果占位符使用 HTML 注释格式，单遍匹配即可恢复。
+    // 同时兼容 marked 将注释占位符包裹成 <p><!--VCP_TOOL_RESULT_n--></p> 的情况。
+    return html.replace(/<p>\s*(<!--VCP_TOOL_RESULT_(\d+)-->)\s*<\/p>|<!--VCP_TOOL_RESULT_(\d+)-->/g, (match, wrappedPlaceholder, wrappedId, bareId) => {
+        const placeholder = wrappedPlaceholder || `<!--VCP_TOOL_RESULT_${bareId}-->`;
+        const rawMatch = toolResultMap.get(placeholder);
+        if (!rawMatch) return match;
+        return `\n\n${renderToolResultBlock(rawMatch)}\n\n`;
+    });
 }
 
 /**
@@ -1864,7 +1878,7 @@ async function renderAttachments(message, contentDiv) {
     }
 }
 
-async function renderMessage(message, isInitialLoad = false, appendToDom = true, renderSessionId = getActiveRenderSessionId()) {
+async function renderMessage(message, isInitialLoad = false, appendToDom = true, renderSessionId = getActiveRenderSessionId(), renderContext = {}) {
     // console.debug('[MessageRenderer renderMessage] Received message:', JSON.parse(JSON.stringify(message)));
     const { chatMessagesDiv, electronAPI, markedInstance, uiHelper } = mainRendererReferences;
     const globalSettings = mainRendererReferences.globalSettingsRef.get();
@@ -2056,11 +2070,17 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true,
         }
 
         // --- 按“对话轮次”计算深度 ---
-        // 如果是新消息，它此时还不在 history 数组里，先临时加进去计算
-        const historyForDepthCalc = currentChatHistory.some(m => m.id === message.id)
-            ? [...currentChatHistory]
-            : [...currentChatHistory, message];
-        const depth = calculateDepthByTurns(message.id, historyForDepthCalc);
+        // 历史批量渲染时优先使用预计算 depthMap，避免每条消息重复扫描完整 history。
+        // 如果是实时新消息，它此时可能还不在 history 数组里，则保留原有临时追加兜底逻辑。
+        const precomputedDepth = renderContext.depthMap?.get?.(message.id);
+        const depth = precomputedDepth !== undefined
+            ? precomputedDepth
+            : calculateDepthByTurns(
+                message.id,
+                currentChatHistory.some(m => m.id === message.id)
+                    ? [...currentChatHistory]
+                    : [...currentChatHistory, message]
+            );
         // --- 深度计算结束 ---
 
         // --- 应用前端正则规则 ---
@@ -2072,14 +2092,11 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true,
         }
         // --- 正则规则应用结束 ---
 
-        const { text: processedContent, toolResultMap } = preprocessFullContent(textToRender, globalSettings, message.role, depth);
-        // 🟢 LaTeX 保护：在 marked 解析前保护 LaTeX 块
-        const { text: protectedContent, map: latexMap } = protectLatexBlocks(processedContent);
-        let rawHtml = markedInstance.parse(protectedContent);
-        // 🟢 LaTeX 恢复：在 marked 解析后恢复 LaTeX 块
-        rawHtml = restoreLatexBlocks(rawHtml, latexMap);
-        // 🟢 工具结果恢复：在 Markdown 解析后恢复工具结果占位符为渲染好的 HTML
-        rawHtml = restoreRenderedToolResults(rawHtml, toolResultMap);
+        let rawHtml = renderMarkdownToHtml(textToRender, {
+            settings: globalSettings,
+            messageRole: message.role,
+            depth
+        });
 
         // 修复：清理 Markdown 解析器可能生成的损坏的 SVG viewBox 属性
         // 错误 "Unexpected end of attribute" 表明 viewBox 的值不完整, 例如 "0 "
@@ -2439,19 +2456,20 @@ async function renderFullMessage(messageId, fullContent, agentName, agentId) {
     // --- 应用前端正则规则 (修复流式处理问题) ---
     const agentConfigForRegex = currentSelectedItem?.config || currentSelectedItem;
     const messageFromHistoryForRegex = currentChatHistoryArray.find(msg => msg.id === messageId);
-    if (agentConfigForRegex?.stripRegexes && Array.isArray(agentConfigForRegex.stripRegexes) && messageFromHistoryForRegex) {
-        const depth = calculateDepthByTurns(messageId, currentChatHistoryArray);
-        fullContent = applyFrontendRegexRules(fullContent, agentConfigForRegex.stripRegexes, messageFromHistoryForRegex.role, depth);
+    const messageRoleForRender = messageFromHistoryForRegex?.role || 'assistant';
+    let depth = 0;
+    if (messageFromHistoryForRegex) {
+        depth = calculateDepthByTurns(messageId, currentChatHistoryArray);
+        if (agentConfigForRegex?.stripRegexes && Array.isArray(agentConfigForRegex.stripRegexes)) {
+            fullContent = applyFrontendRegexRules(fullContent, agentConfigForRegex.stripRegexes, messageRoleForRender, depth);
+        }
     }
     // --- 正则规则应用结束 ---
-    const { text: processedFinalText, toolResultMap: toolResultMapFinal } = preprocessFullContent(fullContent, globalSettings, 'assistant');
-    // 🟢 LaTeX 保护：在 marked 解析前保护 LaTeX 块
-    const { text: protectedFinalText, map: latexMapFinal } = protectLatexBlocks(processedFinalText);
-    let rawHtml = markedInstance.parse(protectedFinalText);
-    // 🟢 LaTeX 恢复：在 marked 解析后恢复 LaTeX 块
-    rawHtml = restoreLatexBlocks(rawHtml, latexMapFinal);
-    // 🟢 工具结果恢复
-    rawHtml = restoreRenderedToolResults(rawHtml, toolResultMapFinal);
+    const rawHtml = renderMarkdownToHtml(fullContent, {
+        settings: globalSettings,
+        messageRole: messageRoleForRender,
+        depth
+    });
 
     setContentAndProcessImages(contentDiv, rawHtml, messageId);
 
@@ -2521,14 +2539,11 @@ function updateMessageContent(messageId, newContent) {
         textToRender = applyFrontendRegexRules(textToRender, agentConfigForRegex.stripRegexes, messageInHistory.role, depthForUpdate);
     }
     // --- 正则规则应用结束 ---
-    const { text: processedContent, toolResultMap: toolResultMapUpdate } = preprocessFullContent(textToRender, globalSettings, messageInHistory?.role || 'assistant', depthForUpdate);
-    // 🟢 LaTeX 保护：在 marked 解析前保护 LaTeX 块
-    const { text: protectedContentUpdate, map: latexMapUpdate } = protectLatexBlocks(processedContent);
-    let rawHtml = markedInstance.parse(protectedContentUpdate);
-    // 🟢 LaTeX 恢复：在 marked 解析后恢复 LaTeX 块
-    rawHtml = restoreLatexBlocks(rawHtml, latexMapUpdate);
-    // 🟢 工具结果恢复
-    rawHtml = restoreRenderedToolResults(rawHtml, toolResultMapUpdate);
+    const rawHtml = renderMarkdownToHtml(textToRender, {
+        settings: globalSettings,
+        messageRole: messageInHistory?.role || 'assistant',
+        depth: depthForUpdate
+    });
 
     // --- Post-Render Processing (aligned with renderMessage logic) ---
 
@@ -2610,9 +2625,13 @@ async function renderHistory(history, options = {}) {
         return Promise.resolve();
     }
 
+    const renderContext = {
+        depthMap: buildTurnDepthMap(history)
+    };
+
     // 如果消息数量很少，直接使用原来的方式渲染
     if (history.length <= initialBatch) {
-        return renderHistoryLegacy(history, renderSessionId);
+        return renderHistoryLegacy(history, renderSessionId, renderContext);
     }
 
     console.debug(`[MessageRenderer] 开始分批渲染 ${history.length} 条消息，首批 ${initialBatch} 条，后续每批 ${batchSize} 条`);
@@ -2622,13 +2641,13 @@ async function renderHistory(history, options = {}) {
     const olderMessages = history.slice(0, -initialBatch);
 
     // 第一阶段：立即渲染最新的消息
-    await renderMessageBatch(latestMessages, true, renderSessionId);
+    await renderMessageBatch(latestMessages, true, renderSessionId, renderContext);
     if (!isRenderSessionActive(renderSessionId)) return;
     console.debug(`[MessageRenderer] 首批 ${latestMessages.length} 条最新消息已渲染`);
 
     // 第二阶段：分批渲染历史消息（从旧到新）
     if (olderMessages.length > 0) {
-        await renderOlderMessagesInBatches(olderMessages, batchSize, batchDelay, renderSessionId);
+        await renderOlderMessagesInBatches(olderMessages, batchSize, batchDelay, renderSessionId, renderContext);
     }
 
     if (!isRenderSessionActive(renderSessionId)) return;
@@ -2643,7 +2662,7 @@ async function renderHistory(history, options = {}) {
  * @param {Array<Message>} messages 要渲染的消息数组
  * @param {boolean} scrollToBottom 是否滚动到底部
  */
-async function renderMessageBatch(messages, scrollToBottom = false, renderSessionId = getActiveRenderSessionId()) {
+async function renderMessageBatch(messages, scrollToBottom = false, renderSessionId = getActiveRenderSessionId(), renderContext = {}) {
     if (!isRenderSessionActive(renderSessionId)) return;
 
     const fragment = document.createDocumentFragment();
@@ -2651,7 +2670,7 @@ async function renderMessageBatch(messages, scrollToBottom = false, renderSessio
 
     // 使用 Promise.allSettled 避免单个失败影响整体
     const results = await Promise.allSettled(
-        messages.map(msg => renderMessage(msg, true, false, renderSessionId))
+        messages.map(msg => renderMessage(msg, true, false, renderSessionId, renderContext))
     );
 
     results.forEach((result, index) => {
@@ -2716,7 +2735,7 @@ async function renderMessageBatch(messages, scrollToBottom = false, renderSessio
 /**
  * 智能批量渲染：使用 requestIdleCallback 在浏览器空闲时渲染
  */
-async function renderOlderMessagesInBatches(olderMessages, batchSize, batchDelay, renderSessionId = getActiveRenderSessionId()) {
+async function renderOlderMessagesInBatches(olderMessages, batchSize, batchDelay, renderSessionId = getActiveRenderSessionId(), renderContext = {}) {
     const totalBatches = Math.ceil(olderMessages.length / batchSize);
 
     for (let i = totalBatches - 1; i >= 0; i--) {
@@ -2733,7 +2752,7 @@ async function renderOlderMessagesInBatches(olderMessages, batchSize, batchDelay
         for (const msg of batch) {
             if (!isRenderSessionActive(renderSessionId)) return;
 
-            const messageElement = await renderMessage(msg, true, false, renderSessionId);
+            const messageElement = await renderMessage(msg, true, false, renderSessionId, renderContext);
             if (messageElement) {
                 batchFragment.appendChild(messageElement);
                 elementsForProcessing.push(messageElement);
@@ -2804,7 +2823,7 @@ async function renderOlderMessagesInBatches(olderMessages, batchSize, batchDelay
  * 原始的历史渲染方法（用于少量消息的情况）
  * @param {Array<Message>} history 聊天历史
  */
-async function renderHistoryLegacy(history, renderSessionId = getActiveRenderSessionId()) {
+async function renderHistoryLegacy(history, renderSessionId = getActiveRenderSessionId(), renderContext = {}) {
     if (!isRenderSessionActive(renderSessionId)) return;
 
     const fragment = document.createDocumentFragment();
@@ -2814,7 +2833,7 @@ async function renderHistoryLegacy(history, renderSessionId = getActiveRenderSes
     for (const msg of history) {
         if (!isRenderSessionActive(renderSessionId)) return;
 
-        const messageElement = await renderMessage(msg, true, false, renderSessionId);
+        const messageElement = await renderMessage(msg, true, false, renderSessionId, renderContext);
         if (messageElement) {
             allMessageElements.push(messageElement);
         }
