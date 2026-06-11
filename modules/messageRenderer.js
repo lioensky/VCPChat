@@ -66,6 +66,28 @@ function protectLatexBlocks(text) {
     const map = new Map();
     let id = 0;
 
+    const createLatexPlaceholder = (latexSource) => {
+        const placeholder = `%%LATEX_BLOCK_${id}%%`;
+        map.set(placeholder, latexSource);
+        id++;
+        return placeholder;
+    };
+
+    const looksLikeSafeSingleDollarMath = (content) => {
+        const trimmedContent = (content || '').trim();
+        if (!trimmedContent) return false;
+
+        // 跳过价格、价格单位、Shell 变量、模板字符串与 Markdown 表格跨列误匹配。
+        if (/^\d/.test(trimmedContent)) return false;
+        if (trimmedContent.startsWith('/')) return false;
+        if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(trimmedContent)) return false;
+        if (trimmedContent.startsWith('{') || trimmedContent.endsWith('}')) return false;
+        if (trimmedContent.includes('|')) return false;
+
+        // 只放行带有明确数学信号的单美元公式。
+        return /\\|[\^_=+\-*/<>]|[A-Za-z]\s*\(|\b(?:lim|sum|int|frac|sqrt|alpha|beta|gamma|theta|lambda|mu|sigma|pi|infty)\b/i.test(trimmedContent);
+    };
+
     // 🟢 关键修复：先保护代码围栏，防止代码块内的 $ / $$ 被误匹配为 LaTeX
     // 例如 Python 代码 `b'$$' in data` 中的 $$ 会与文档后面的 $$ 数学公式匹配，
     // 导致 LaTeX 占位符跨越并吞噬中间的代码围栏标记
@@ -129,31 +151,26 @@ function protectLatexBlocks(text) {
 
     // 1. 保护 $$...$$ (display math) - 支持多行，定界符必须独占一行
     processed = processed.replace(/(^|\n)([ \t]*)\$\$[ \t]*\n([\s\S]*?)\n[ \t]*\$\$[ \t]*(?=\n|$)/g, (match, linePrefix) => {
-        const placeholder = `%%LATEX_BLOCK_${id}%%`;
-        map.set(placeholder, match.slice(linePrefix.length));
-        id++;
-        return `${linePrefix}${placeholder}`;
+        return `${linePrefix}${createLatexPlaceholder(match.slice(linePrefix.length))}`;
     });
 
     // 2. 保护 \[...\] (display math) - 支持多行
     processed = processed.replace(/(^|\n)([ \t]*)\\\[[ \t]*\n?([\s\S]*?)\n?[ \t]*\\\][ \t]*(?=\n|$)/g, (match, linePrefix) => {
-        const placeholder = `%%LATEX_BLOCK_${id}%%`;
-        map.set(placeholder, match.slice(linePrefix.length));
-        id++;
-        return `${linePrefix}${placeholder}`;
+        return `${linePrefix}${createLatexPlaceholder(match.slice(linePrefix.length))}`;
     });
 
     // 3. 保护 \(...\) (inline math)
     processed = processed.replace(/\\\(([\s\S]*?)\\\)/g, (match) => {
-        const placeholder = `%%LATEX_BLOCK_${id}%%`;
-        map.set(placeholder, match);
-        id++;
-        return placeholder;
+        return createLatexPlaceholder(match);
     });
 
-    // 4. 保护 $...$ (inline math) - 默认不保护单美元行内公式。
-    // VChat 的推荐行内公式定界符是 \( ... \)。单美元在聊天内容中更常表示价格、Shell 变量或模板字符串，
-    // 让 KaTeX auto-render 处理它会显著增加误触发概率。
+    // 4. 保护安全的 $...$ (inline math)。
+    // 为避免 KaTeX auto-render 的单美元误触发，这里把安全单美元公式转换为 \( ... \) 形式交给后处理渲染。
+    // 例如 $O(L^2) \to O(1)$ 会渲染；$10、$PATH、${value}、表格跨列 $...|...$ 不会触发。
+    processed = processed.replace(/(^|[^\w\\$])\$([^\$\n]{1,240}?)\$(?![\w])/g, (match, prefix, content) => {
+        if (!looksLikeSafeSingleDollarMath(content)) return match;
+        return `${prefix}${createLatexPlaceholder(`\\(${content.trim()}\\)`)}`;
+    });
 
     // 🟢 恢复代码围栏（占位符 → 原始代码块）
     for (const [placeholder, original] of codeFenceMap.entries()) {
