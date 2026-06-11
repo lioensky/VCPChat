@@ -22,14 +22,58 @@ function noop(value) {
     return value;
 }
 
-// OpenHerPersona 回填注释（persona_delta / persona_expression）按协议位于回复末尾。
-// 若注释体内出现 "-->"（例如模型在 reason 里写了完整分条标记），HTML 注释会被提前
-// 闭合，剩余 JSON 就会泄漏成可见文本。这里从第一个回填开标记直接剥到文末，兜底防漏。
-const PERSONA_BACKFILL_TAIL_REGEX = /<!--\s*persona_(?:delta|expression)\s*:[\s\S]*$/;
+// OpenHerPersona 回填注释（persona_delta / persona_expression）需要从渲染中剥离。
+// 不能简单"从开标记删到文末"——VCP 工具循环会把工具调用等后续内容追加在同一条
+// 消息里，贪婪剥离会把回填之后的工具调用块一并吞掉。这里用与插件服务端同款的
+// 字符串感知括号配平扫描，精确删除每个回填块（即使 reason 里出现 "-->" 也不会
+// 提前截断泄漏），并保留其后的全部内容；流式半截回填则剥到文末。
+const PERSONA_BACKFILL_OPEN_REGEX = /<!--\s*persona_(?:delta|expression)\s*:/g;
+
+function findPersonaJsonEnd(text, startIndex) {
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    for (let i = startIndex; i < text.length; i++) {
+        const ch = text[i];
+        if (inString) {
+            if (escaped) escaped = false;
+            else if (ch === '\\') escaped = true;
+            else if (ch === '"') inString = false;
+            continue;
+        }
+        if (ch === '"') inString = true;
+        else if (ch === '{') depth++;
+        else if (ch === '}') {
+            depth--;
+            if (depth === 0) return i + 1;
+        }
+    }
+    return -1;
+}
 
 function stripPersonaBackfillTail(text) {
     if (!text || text.indexOf('persona_') === -1) return text;
-    return text.replace(PERSONA_BACKFILL_TAIL_REGEX, '').replace(/\s+$/, '');
+    let result = '';
+    let cursor = 0;
+    PERSONA_BACKFILL_OPEN_REGEX.lastIndex = 0;
+    let match;
+    while ((match = PERSONA_BACKFILL_OPEN_REGEX.exec(text)) !== null) {
+        if (match.index < cursor) continue;
+        result += text.slice(cursor, match.index);
+        const jsonStart = text.indexOf('{', match.index + match[0].length);
+        if (jsonStart === -1) { cursor = text.length; break; }
+        const jsonEnd = findPersonaJsonEnd(text, jsonStart);
+        if (jsonEnd === -1) { cursor = text.length; break; }
+        let end = jsonEnd;
+        const closer = text.indexOf('-->', jsonEnd);
+        if (closer !== -1 && text.slice(jsonEnd, closer).trim() === '') {
+            end = closer + 3;
+        }
+        cursor = end;
+        PERSONA_BACKFILL_OPEN_REGEX.lastIndex = end;
+    }
+    result += text.slice(cursor);
+    return result.replace(/\s+$/, '');
 }
 
 function createMapPlaceholderReplacer(map) {
