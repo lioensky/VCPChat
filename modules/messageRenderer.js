@@ -1938,9 +1938,10 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true,
 
         if (message.role === 'user') {
             textToRender = prepareUserMessageText(textToRender);
-        } else if (message.role === 'assistant' && scopeId) {
+        } else if (message.role === 'assistant' && scopeId && textToRender.includes('<style')) {
             // --- 🟢 关键修复：先保护所有可能包含 <style> 的特殊区域，再提取样式 ---
             // 这样可以避免代码块、推送块、工具请求块、工具结果块和「始」「末」标记内的 <style> 被误当作真正的样式注入
+            // 性能快路径：绝大多数消息不含 <style>，入口已用 includes('<style') 跳过保护扫描。
             const protectedBlocks = [];
 
             // 🔴 最高优先级：保护工具结果块（[[VCP调用结果信息汇总:...VCP调用结果结束]]）

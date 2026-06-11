@@ -8,7 +8,7 @@ const streamingTimers = new Map();      // messageId -> intervalId
 const accumulatedStreamText = new Map(); // messageId -> string
 const streamSegmentStates = new Map(); // messageId -> { stableCutoff, stableHtml, lastTailText }
 let activeStreamingMessageId = null; // Track the currently active streaming message
-const elementContentLengthCache = new Map(); // 跟踪每个元素的内容长度
+const elementContentLengthCache = new WeakMap(); // 跟踪每个元素的内容长度；WeakMap 避免 morphdom 替换节点后的强引用泄漏
 
 // --- VCPdesktop 流式推送状态 ---
 const desktopPushStates = new Map(); // messageId -> { active, widgetId, buffer, tagBuffer, created, pushTimer, lastPushedLength, lastTokenTime, validated }
@@ -126,6 +126,7 @@ const SCROLL_THROTTLE_MS = 100; // 100ms 节流
 const viewContextCache = new Map(); // messageId -> boolean (是否为当前视图)
 let currentViewSignature = null; // 当前视图的签名
 let globalRenderLoopRunning = false;
+const pendingDirectRenderMessages = new Set(); // 非平滑流式：chunk 到达只置脏，由全局 rAF 合帧渲染
 
 // 记录延迟清理定时器，方便切换话题时统一清除
 const delayedCleanupTimers = new Map(); // messageId -> timerId
@@ -734,17 +735,28 @@ function throttledScrollToBottom(messageId) {
 
 function processAndRenderSmoothChunk(messageId) {
     const queue = streamingChunkQueues.get(messageId);
-    if (!queue || queue.length === 0) return;
+    let shouldRender = false;
 
-    const globalSettings = refs.globalSettingsRef.get();
-    const minChunkSize = globalSettings.minChunkBufferSize !== undefined && globalSettings.minChunkBufferSize >= 1 ? globalSettings.minChunkBufferSize : 1;
+    if (queue && queue.length > 0) {
+        const globalSettings = refs.globalSettingsRef.get();
+        const minChunkSize = globalSettings.minChunkBufferSize !== undefined && globalSettings.minChunkBufferSize >= 1 ? globalSettings.minChunkBufferSize : 1;
 
-    // Drain a small batch from the queue. The rendering uses the accumulated text,
-    // so we don't need the return value here. This just advances the stream.
-    let processedChars = 0;
-    while (queue.length > 0 && processedChars < minChunkSize) {
-        processedChars += queue.shift().length;
+        // Drain a small batch from the queue. The rendering uses the accumulated text,
+        // so we don't need the return value here. This just advances the stream.
+        let processedChars = 0;
+        while (queue.length > 0 && processedChars < minChunkSize) {
+            processedChars += queue.shift().length;
+        }
+
+        shouldRender = true;
     }
+
+    if (pendingDirectRenderMessages.has(messageId)) {
+        pendingDirectRenderMessages.delete(messageId);
+        shouldRender = true;
+    }
+
+    if (!shouldRender) return;
 
     // Render the current state of the accumulated text using our lightweight method.
     renderStreamFrame(messageId);
@@ -757,9 +769,12 @@ function processAndRenderSmoothChunk(messageId) {
 }
 
 function renderChunkDirectlyToDOM(messageId, textToAppend) {
-    // For non-smooth streaming, we just render the new frame immediately using the lightweight method.
-    // The check for whether it's in the current view is handled inside renderStreamFrame.
-    renderStreamFrame(messageId);
+    // 非平滑流式不再每个网络 chunk 立即渲染；只标记为 dirty，由全局 rAF 循环按 TARGET_FPS 合帧。
+    pendingDirectRenderMessages.add(messageId);
+    if (!streamingTimers.has(messageId)) {
+        streamingTimers.set(messageId, true);
+        startGlobalRenderLoop();
+    }
 }
 
 export async function startStreamingMessage(message, passedMessageItem = null) {
@@ -1484,6 +1499,7 @@ export async function finalizeStreamedMessage(messageId, finishReason, context, 
     
     // Cleanup
         streamingChunkQueues.delete(messageId);
+        pendingDirectRenderMessages.delete(messageId);
         accumulatedStreamText.delete(messageId);
         streamSegmentStates.delete(messageId);
         cleanupDesktopPushState(messageId);
@@ -1532,9 +1548,9 @@ export async function finalizeStreamedMessage(messageId, finishReason, context, 
     
         streamingChunkQueues.clear();
         streamingTimers.clear();
+        pendingDirectRenderMessages.clear();
         accumulatedStreamText.clear();
         streamSegmentStates.clear();
-        elementContentLengthCache.clear();
         messageDomCache.clear();
         preBufferedChunks.clear();
         messageInitializationStatus.clear();

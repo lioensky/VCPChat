@@ -117,8 +117,6 @@ body.light-theme #moon-icon {
     content-visibility: auto;
     /* 閰嶅悎 content-visibility 闃叉婊氬姩鏉℃姈鍔紝榛樿缁欎竴涓浼板€?*/
     contain-intrinsic-size: auto 100px;
-    /* 杩涗竴姝ヤ紭鍖栵細鎻愬崌涓虹嫭绔嬪眰锛岄伩鍏嶅眬閮ㄥ埛鏂板紩璧峰叏灞€閲嶇粯 */
-    will-change: transform;
 }
 
 .message-item:last-child {
