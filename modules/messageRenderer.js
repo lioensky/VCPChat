@@ -11,6 +11,22 @@ const TOOL_RESULT_TRUNCATE_LINES = 80; // 截断后只显示前80行
 const toolResultFullContentMap = new Map(); // placeholderId -> { raw: string, fieldKey: string }
 let toolResultContentIdCounter = 0;
 
+// 🟢 完整 Markdown → HTML 渲染缓存：只缓存 raw HTML 字符串，不缓存 DOM / 后处理结果 / message 对象。
+const RENDER_PIPELINE_VERSION = '2026-06-11-render-cache-v1';
+const RENDER_HTML_CACHE_MAX_BYTES = 20 * 1024 * 1024;
+const RENDER_HTML_CACHE_MAX_ENTRIES = 500;
+const RENDER_HTML_CACHE_MAX_SINGLE_BYTES = 1024 * 1024;
+const RENDER_HTML_CACHE_MIN_TEXT_LENGTH = 512;
+const RENDER_HTML_CACHE_MAX_TEXT_LENGTH = 512 * 1024;
+const renderHtmlCache = new Map();
+let renderHtmlCacheBytes = 0;
+const renderHtmlCacheStats = {
+    hits: 0,
+    misses: 0,
+    skips: 0,
+    evictions: 0
+};
+
 import { avatarColorCache, getDominantAvatarColor } from './renderer/colorUtils.js';
 import { initializeImageHandler, setContentAndProcessImages } from './renderer/imageHandler.js';
 import { processAnimationsInContent, cleanupAnimationsInContent } from './renderer/animation.js';
@@ -1064,7 +1080,109 @@ function preprocessStreamTailContent(text) {
     }).text;
 }
 
-function renderMarkdownToHtml(text, options = {}) {
+function estimateStringBytes(str) {
+    return typeof str === 'string' ? str.length * 2 : 0;
+}
+
+function hashStringFNV1a(str) {
+    let hash = 0x811c9dc5;
+    for (let i = 0; i < str.length; i++) {
+        hash ^= str.charCodeAt(i);
+        hash = Math.imul(hash, 0x01000193);
+    }
+    return (hash >>> 0).toString(16);
+}
+
+function buildRenderSettingsFingerprint(settings = {}) {
+    // 仅纳入会影响 Markdown → raw HTML 或按钮标记处理的稳定设置；后续新增渲染相关设置时可 bump RENDER_PIPELINE_VERSION。
+    return JSON.stringify({
+        enableAiMessageButtons: settings.enableAiMessageButtons !== false
+    });
+}
+
+function shouldBypassRenderHtmlCache(text, options = {}) {
+    if (typeof text !== 'string' || !text) return true;
+    if (text.length < RENDER_HTML_CACHE_MIN_TEXT_LENGTH) return true;
+    if (text.length > RENDER_HTML_CACHE_MAX_TEXT_LENGTH) return true;
+
+    // scoped CSS 有 scopeId 与 document.head 注入副作用，第一版保守跳过。
+    if ((options.messageRole || 'assistant') === 'assistant' && text.includes('<style')) return true;
+
+    return false;
+}
+
+function buildRenderHtmlCacheKey(text, options = {}) {
+    const settings = options.settings || mainRendererReferences.globalSettingsRef.get();
+    const messageRole = options.messageRole || 'assistant';
+    const depth = options.depth ?? 0;
+
+    return [
+        RENDER_PIPELINE_VERSION,
+        messageRole,
+        depth,
+        buildRenderSettingsFingerprint(settings),
+        text.length,
+        hashStringFNV1a(text)
+    ].join('|');
+}
+
+function getRenderHtmlCache(key) {
+    const entry = renderHtmlCache.get(key);
+    if (!entry) return null;
+
+    renderHtmlCache.delete(key);
+    entry.lastUsed = Date.now();
+    entry.hits += 1;
+    renderHtmlCache.set(key, entry);
+    renderHtmlCacheStats.hits += 1;
+
+    return entry.html;
+}
+
+function trimRenderHtmlCache() {
+    while (
+        renderHtmlCacheBytes > RENDER_HTML_CACHE_MAX_BYTES ||
+        renderHtmlCache.size > RENDER_HTML_CACHE_MAX_ENTRIES
+    ) {
+        const oldestKey = renderHtmlCache.keys().next().value;
+        if (oldestKey === undefined) break;
+
+        const oldest = renderHtmlCache.get(oldestKey);
+        renderHtmlCacheBytes -= oldest?.size || 0;
+        renderHtmlCache.delete(oldestKey);
+        renderHtmlCacheStats.evictions += 1;
+    }
+}
+
+function setRenderHtmlCache(key, html) {
+    const size = estimateStringBytes(html);
+    if (size <= 0 || size > RENDER_HTML_CACHE_MAX_SINGLE_BYTES) {
+        return;
+    }
+
+    if (renderHtmlCache.has(key)) {
+        const old = renderHtmlCache.get(key);
+        renderHtmlCacheBytes -= old?.size || 0;
+        renderHtmlCache.delete(key);
+    }
+
+    renderHtmlCache.set(key, {
+        html,
+        size,
+        hits: 0,
+        lastUsed: Date.now()
+    });
+    renderHtmlCacheBytes += size;
+
+    trimRenderHtmlCache();
+}
+
+function clearRenderHtmlCache() {
+    renderHtmlCache.clear();
+    renderHtmlCacheBytes = 0;
+}
+
+function renderMarkdownToHtmlUncached(text, options = {}) {
     const markedInstance = mainRendererReferences.markedInstance;
     if (!markedInstance) return escapeHtml(text);
 
@@ -1079,6 +1197,27 @@ function renderMarkdownToHtml(text, options = {}) {
     let html = markedInstance.parse(protectedText);
     html = restoreLatexBlocks(html, latexMap);
     html = restoreRenderedToolResults(html, toolResultMap);
+    return html;
+}
+
+function renderMarkdownToHtml(text, options = {}) {
+    const markedInstance = mainRendererReferences.markedInstance;
+    if (!markedInstance) return escapeHtml(text);
+
+    if (shouldBypassRenderHtmlCache(text, options)) {
+        renderHtmlCacheStats.skips += 1;
+        return renderMarkdownToHtmlUncached(text, options);
+    }
+
+    const cacheKey = buildRenderHtmlCacheKey(text, options);
+    const cachedHtml = getRenderHtmlCache(cacheKey);
+    if (cachedHtml !== null) {
+        return cachedHtml;
+    }
+
+    renderHtmlCacheStats.misses += 1;
+    const html = renderMarkdownToHtmlUncached(text, options);
+    setRenderHtmlCache(cacheKey, html);
     return html;
 }
 
@@ -1423,6 +1562,9 @@ function removeMessageById(messageId, saveHistory = false) {
 
 function clearChat() {
     invalidateRenderSession();
+
+    // 清空聊天通常意味着用户希望释放当前渲染上下文占用；HTML 字符串缓存不持有 DOM，但这里主动释放更保守。
+    clearRenderHtmlCache();
 
     // 只清理当前视图的 DOM/渲染相关内容，不触碰底层异步流状态
     // 这样可避免切换话题时误伤同窗口内其他 agent 的后台流式聊天
@@ -2915,6 +3057,12 @@ window.messageRenderer = {
     removeMessageById,
     updateMessageContent, // Expose the new function
     extractSpeakableTextFromContentElement,
+    clearRenderHtmlCache,
+    getRenderHtmlCacheStats: () => ({
+        entries: renderHtmlCache.size,
+        bytes: renderHtmlCacheBytes,
+        ...renderHtmlCacheStats
+    }),
     updateMessageUI: async (messageId, updatedMessage) => {
         const { chatMessagesDiv } = mainRendererReferences;
         const existingMessageDom = chatMessagesDiv.querySelector(`.message-item[data-message-id="${messageId}"]`);
