@@ -564,6 +564,10 @@ body.light-theme #attachFileBtn svg, body.light-theme #quickNewTopicBtn svg, bod
 #modelSelectModal, #avatarCropperModal, #forwardMessageModal, #regexRuleModal, #filterRulesModal, #filterRuleEditorModal, #createGroupModal {
     z-index: 1100; /* 确保子模态框在全局设置模态框之上 */
 }
+
+#toolAutoApprovalRuleEditorModal {
+    z-index: 1200; /* 确保默认允许工具编辑器在通知栏行为设置模态框之上 */
+}
 .modal-content h2 {
     margin-top: 0;
     color: var(--highlight-text);

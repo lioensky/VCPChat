@@ -628,7 +628,7 @@
                             <path d="M20 9a2 2 0 0 1 2 2v10.286a.71.71 0 0 1-1.212.502l-2.202-2.202A2 2 0 0 0 17.172 19H10a2 2 0 0 1-2-2v-1"></path>
                         </svg>
                     </button>
-                    <button id="doNotDisturbBtn" class="header-button" title="过滤模式（左键总开关/右键设置过滤规则）">
+                    <button id="doNotDisturbBtn" class="header-button" title="过滤模式（左键开关过滤/右键通知设置）">
                         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
                             fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
                             stroke-linejoin="round" class="lucide lucide-funnel-plus-icon lucide-funnel-plus"
@@ -1798,29 +1798,67 @@
         <div class="modal" id="filterRulesModal">
             <div class="modal-content" style="max-width: 800px; max-height: 80vh; overflow-y: auto;">
                 <span class="close-button" id="closeFilterRulesModal">×</span>
-                <h2>过滤规则设置</h2>
+                <h2>通知栏行为设置</h2>
 
-                <div class="filter-rules-header"
-                    style="margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between; gap: 15px;">
-                    <div style="display: flex; align-items: center; gap: 8px; flex: 0 1 auto;">
-                        <span style="font-weight: 500; color: var(--secondary-text); white-space: nowrap;">当前状态:</span>
-                        <span id="filterStatus"
-                            style="color: var(--text-secondary); font-size: 0.95em; white-space: nowrap;"></span>
+                <section class="notification-behavior-section">
+                    <div class="notification-behavior-section-heading">
+                        <div>
+                            <h3>通知过滤规则</h3>
+                            <p>控制悬浮通知是否显示，以及每类通知的停留时间。</p>
+                        </div>
+                        <button type="button" id="addFilterRuleBtn" class="sidebar-button small-button"
+                            style="width: 130px; flex-shrink: 0;">添加过滤规则</button>
                     </div>
-                    <button type="button" id="addFilterRuleBtn" class="sidebar-button small-button"
-                        style="width: 130px; flex-shrink: 0; margin-left: auto;">添加过滤规则</button>
-                </div>
 
-                <div id="filterRulesList" class="filter-rules-list">
-                    <!-- 过滤规则将在这里动态显示 -->
-                </div>
+                    <div class="filter-rules-header"
+                        style="margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between; gap: 15px;">
+                        <div style="display: flex; align-items: center; gap: 8px; flex: 0 1 auto;">
+                            <span style="font-weight: 500; color: var(--secondary-text); white-space: nowrap;">过滤状态:</span>
+                            <span id="filterStatus"
+                                style="color: var(--text-secondary); font-size: 0.95em; white-space: nowrap;"></span>
+                        </div>
+                    </div>
+
+                    <div id="filterRulesList" class="filter-rules-list">
+                        <!-- 过滤规则将在这里动态显示 -->
+                    </div>
+                </section>
+
+                <section class="notification-behavior-section">
+                    <div class="notification-behavior-section-heading">
+                        <div>
+                            <h3>工具调用默认允许</h3>
+                            <p>命中规则的工具审核请求会自动发送“允许”，无需手动点击通知里的允许/拒绝按钮。</p>
+                        </div>
+                        <button type="button" id="addToolAutoApprovalRuleBtn" class="sidebar-button small-button"
+                            style="width: 150px; flex-shrink: 0;">添加允许工具</button>
+                    </div>
+
+                    <div class="filter-rules-header"
+                        style="margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between; gap: 15px;">
+                        <div style="display: flex; align-items: center; gap: 8px; flex: 0 1 auto;">
+                            <span style="font-weight: 500; color: var(--secondary-text); white-space: nowrap;">默认允许状态:</span>
+                            <span id="toolAutoApprovalStatus"
+                                style="color: var(--text-secondary); font-size: 0.95em; white-space: nowrap;"></span>
+                        </div>
+                        <label for="toolAutoApprovalEnabled" class="notification-behavior-toggle">
+                            <input type="checkbox" id="toolAutoApprovalEnabled">
+                            启用工具默认允许
+                        </label>
+                    </div>
+
+                    <div id="toolAutoApprovalRulesList" class="filter-rules-list">
+                        <!-- 工具默认允许规则将在这里动态显示 -->
+                    </div>
+                </section>
 
                 <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid var(--border-color);">
                     <div style="font-size: 0.9em; color: var(--text-secondary);">
                         <p><strong>使用说明：</strong></p>
                         <p>• <strong>过滤总开关关闭：</strong>显示所有通知</p>
                         <p>• <strong>过滤总开关开启：</strong>只显示白名单规则匹配的消息，其他消息都被过滤掉</p>
-                        <p>• <strong>停留时间：</strong>可设置每条规则对应的通知显示时长，支持永久显示</p>
+                        <p>• <strong>工具默认允许：</strong>仅自动允许命中规则的审核请求，不会自动拒绝未命中的请求</p>
+                        <p>• <strong>安全提示：</strong>建议只为低风险、参数可控的工具添加默认允许规则</p>
                     </div>
                 </div>
             </div>
@@ -1895,6 +1933,58 @@
 
                     <div class="form-actions">
                         <button type="button" id="cancelFilterRuleEditor" class="button-secondary">取消</button>
+                        <button type="submit" class="button-primary">保存规则</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </template>
+
+    <template id="toolAutoApprovalRuleEditorModalTemplate">
+        <div class="modal" id="toolAutoApprovalRuleEditorModal">
+            <div class="modal-content">
+                <span class="close-button" id="closeToolAutoApprovalRuleEditorModal">×</span>
+                <h2 id="toolAutoApprovalRuleEditorTitle">添加默认允许工具</h2>
+                <form id="toolAutoApprovalRuleEditorForm">
+                    <input type="hidden" id="editingToolAutoApprovalRuleId">
+
+                    <div>
+                        <label for="toolAutoApprovalRuleName">规则名称:</label>
+                        <input type="text" id="toolAutoApprovalRuleName" name="name" placeholder="例如：允许 DailyNote" required>
+                    </div>
+
+                    <div>
+                        <label for="toolAutoApprovalPattern">工具名称匹配:</label>
+                        <input type="text" id="toolAutoApprovalPattern" name="toolPattern" placeholder="例如：DailyNote 或 FileOperator" required>
+                        <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
+                            匹配审核请求中的 toolName 字段。
+                        </small>
+                    </div>
+
+                    <div>
+                        <label for="toolAutoApprovalMatchMode">匹配方式:</label>
+                        <select id="toolAutoApprovalMatchMode" name="matchMode">
+                            <option value="contain">包含关键字</option>
+                            <option value="exact">完全匹配</option>
+                            <option value="regex">正则表达式</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label for="toolAutoApprovalDescription">说明（可选）:</label>
+                        <textarea id="toolAutoApprovalDescription" name="description" rows="2"
+                            placeholder="例如：只允许写入日记的低风险工具"></textarea>
+                    </div>
+
+                    <div class="form-fieldset">
+                        <label for="toolAutoApprovalRuleEnabled" style="display: flex; align-items: center; gap: 5px;">
+                            <input type="checkbox" id="toolAutoApprovalRuleEnabled" name="enabled" checked>
+                            启用此默认允许规则
+                        </label>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="button" id="cancelToolAutoApprovalRuleEditor" class="button-secondary">取消</button>
                         <button type="submit" class="button-primary">保存规则</button>
                     </div>
                 </form>

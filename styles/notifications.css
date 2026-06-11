@@ -698,7 +698,49 @@ body.light-theme .floating-toast-notification {
     margin-top: 8px;
 }
 
-/* Filter Rules Management Styles */
+/* Notification Behavior / Filter Rules Management Styles */
+.notification-behavior-section {
+    margin-bottom: 22px;
+    padding: 14px;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    background-color: color-mix(in srgb, var(--secondary-bg) 72%, transparent);
+}
+
+.notification-behavior-section-heading {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+    margin-bottom: 14px;
+}
+
+.notification-behavior-section-heading h3 {
+    margin: 0 0 5px 0;
+    color: var(--primary-text);
+    font-size: 1.05em;
+}
+
+.notification-behavior-section-heading p {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 0.9em;
+    line-height: 1.4;
+}
+
+.notification-behavior-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--primary-text);
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.notification-behavior-toggle input {
+    margin: 0;
+}
+
 .filter-rules-header {
     display: flex;
     justify-content: space-between;
@@ -772,9 +814,68 @@ body.light-theme .floating-toast-notification {
 }
 
 .filter-rule-actions .small-button {
-    padding: 4px 8px;
-    font-size: 0.8em;
-    min-width: auto;
+    width: auto;
+    min-width: 54px;
+    height: 28px;
+    padding: 0 10px;
+    border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--highlight-text) 42%, transparent);
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.03)),
+        color-mix(in srgb, var(--button-bg) 72%, transparent);
+    color: var(--highlight-text);
+    font-size: 0.78em;
+    font-weight: 600;
+    line-height: 1;
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.22),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.14);
+}
+
+.filter-rule-actions .small-button:hover {
+    background: var(--highlight-text);
+    border-color: var(--highlight-text);
+    color: var(--text-on-accent);
+}
+
+.filter-rule-actions .small-button.success-button {
+    border-color: color-mix(in srgb, var(--success-color, #28a745) 62%, transparent);
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.04)),
+        color-mix(in srgb, var(--success-color, #28a745) 22%, transparent);
+    color: var(--success-color, #28a745);
+}
+
+.filter-rule-actions .small-button.success-button:hover {
+    background: var(--success-color, #28a745);
+    border-color: var(--success-color, #28a745);
+    color: #ffffff;
+}
+
+.filter-rule-actions .small-button.secondary-button {
+    border-color: color-mix(in srgb, var(--secondary-text) 38%, transparent);
+    background: color-mix(in srgb, var(--tertiary-bg) 88%, transparent);
+    color: var(--secondary-text);
+}
+
+.filter-rule-actions .small-button.secondary-button:hover {
+    background: var(--secondary-text);
+    border-color: var(--secondary-text);
+    color: var(--secondary-bg);
+}
+
+.filter-rule-actions .small-button.danger-button {
+    border-color: color-mix(in srgb, var(--danger-color) 58%, transparent);
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.02)),
+        color-mix(in srgb, var(--danger-color) 18%, transparent);
+    color: var(--danger-color);
+}
+
+.filter-rule-actions .small-button.danger-button:hover {
+    background: var(--danger-color);
+    border-color: var(--danger-color);
+    color: #ffffff;
 }
 
 .filter-rule-details {
@@ -854,12 +955,37 @@ body.light-theme .floating-toast-notification {
     box-shadow: 0 0 0 2px rgba(var(--highlight-text-rgb, 0, 123, 255), 0.25);
 }
 
-#filterRuleEditorModal textarea {
+#toolAutoApprovalRuleEditorModal input[type="text"],
+#toolAutoApprovalRuleEditorModal input[type="number"],
+#toolAutoApprovalRuleEditorModal select,
+#toolAutoApprovalRuleEditorModal textarea {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background-color: var(--input-bg);
+    color: var(--primary-text);
+    font-size: 0.9em;
+    box-sizing: border-box;
+}
+
+#toolAutoApprovalRuleEditorModal input[type="text"]:focus,
+#toolAutoApprovalRuleEditorModal input[type="number"]:focus,
+#toolAutoApprovalRuleEditorModal select:focus,
+#toolAutoApprovalRuleEditorModal textarea:focus {
+    outline: none;
+    border-color: var(--highlight-text);
+    box-shadow: 0 0 0 2px rgba(var(--highlight-text-rgb, 0, 123, 255), 0.25);
+}
+
+#filterRuleEditorModal textarea,
+#toolAutoApprovalRuleEditorModal textarea {
     resize: vertical;
     min-height: 60px;
 }
 
-#filterRuleEditorModal .form-actions {
+#filterRuleEditorModal .form-actions,
+#toolAutoApprovalRuleEditorModal .form-actions {
     margin-top: 20px;
     display: flex;
     gap: 10px;

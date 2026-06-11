@@ -10,6 +10,8 @@ let globalSettings = {
     doNotDisturbLogMode: false, // 勿扰模式状态（已废弃，保留兼容性）
     filterEnabled: false, // 过滤总开关状态
     filterRules: [], // 过滤规则列表
+    toolAutoApprovalEnabled: false, // 工具调用默认允许总开关
+    toolAutoApprovalRules: [], // 工具调用默认允许规则列表
     enableRegenerateConfirmation: true, // 重新回复确认机制开关
     flowlockContinueDelay: 5, // 心流锁续写延迟（秒）
     enableThoughtChainInjection: false, // 元思考注入上下文开关

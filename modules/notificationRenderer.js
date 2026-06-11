@@ -33,6 +33,21 @@ function updateVCPLogStatus(statusUpdate, vcpLogConnectionStatusDiv) {
     vcpLogConnectionStatusDiv.className = `notifications-status status-${status || 'unknown'}`;
 }
 
+function sendToolApprovalResponse(requestId, approved) {
+    if (!requestId || !notificationRendererApi || typeof notificationRendererApi.sendVCPLogMessage !== 'function') {
+        return false;
+    }
+
+    notificationRendererApi.sendVCPLogMessage({
+        type: 'tool_approval_response',
+        data: {
+            requestId,
+            approved: approved === true
+        }
+    });
+    return true;
+}
+
 /**
  * Renders a VCPLog notification in the notifications list.
  * @param {VCPLogData|string} logData - The parsed JSON log data or a raw string message.
@@ -41,6 +56,31 @@ function updateVCPLogStatus(statusUpdate, vcpLogConnectionStatusDiv) {
  * @param {Object} themeColors - An object containing theme colors (largely unused now with CSS variables).
  */
 function renderVCPLogNotification(logData, originalRawMessage = null, notificationsListUl, themeColors = {}) {
+    if (logData && typeof logData === 'object' && logData.type === 'tool_approval_request' && logData.data && typeof logData.data === 'object') {
+        const autoApprovalResult = window.filterManager?.checkToolAutoApproval?.(logData.data);
+        if (autoApprovalResult && autoApprovalResult.action === 'approve') {
+            const sent = sendToolApprovalResponse(logData.data.requestId, true);
+            const autoApprovalLog = {
+                type: 'tool_auto_approval',
+                data: {
+                    toolName: logData.data.toolName,
+                    maid: logData.data.maid,
+                    requestId: logData.data.requestId,
+                    ruleName: autoApprovalResult.rule?.name || '未命名规则',
+                    sent,
+                    timestamp: new Date().toISOString()
+                }
+            };
+
+            if (notificationsListUl) {
+                renderVCPLogNotification(autoApprovalLog, JSON.stringify(autoApprovalLog), notificationsListUl, themeColors);
+            }
+
+            console.log('[NotificationRenderer] 工具调用已按规则自动允许:', autoApprovalLog.data);
+            return;
+        }
+    }
+
     // Suppress the generic English connection success message for VCPLog
     if (logData && typeof logData === 'object' && logData.type === 'connection_ack' && logData.message === 'WebSocket connection successful for VCPLog.') {
         return; // Do not render this notification
@@ -169,6 +209,11 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
     } else if (logData && typeof logData === 'object' && logData.type === 'connection_ack' && logData.message) {
         titleText = 'VCP 连接:';
         mainContent = String(logData.message);
+    } else if (logData && typeof logData === 'object' && logData.type === 'tool_auto_approval' && logData.data && typeof logData.data === 'object') {
+        const approvalLog = logData.data;
+        titleText = `✅ 已自动允许: ${approvalLog.toolName || '未知工具'}`;
+        mainContent = `助手: ${approvalLog.maid || '未知'}\n规则: ${approvalLog.ruleName || '未命名规则'}\n请求ID: ${approvalLog.requestId || 'N/A'}\n状态: ${approvalLog.sent ? '已发送允许响应' : '发送失败'}`;
+        contentIsPreformatted = true;
     } else if (logData && typeof logData === 'object' && logData.type && logData.message) { // Generic type + message
         titleText = `类型: ${logData.type}`;
         mainContent = String(logData.message);
@@ -222,13 +267,7 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
             allowBtn.classList.add('vcp-btn', 'vcp-btn-success');
             allowBtn.onclick = (e) => {
                 e.stopPropagation();
-                notificationRendererApi.sendVCPLogMessage({
-                    type: 'tool_approval_response',
-                    data: {
-                        requestId: logData.data.requestId,
-                        approved: true
-                    }
-                });
+                sendToolApprovalResponse(logData.data.requestId, true);
                 if (isToast) closeToastNotification(element);
                 else {
                     element.style.opacity = '0';
@@ -241,13 +280,7 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
             rejectBtn.classList.add('vcp-btn', 'vcp-btn-danger');
             rejectBtn.onclick = (e) => {
                 e.stopPropagation();
-                notificationRendererApi.sendVCPLogMessage({
-                    type: 'tool_approval_response',
-                    data: {
-                        requestId: logData.data.requestId,
-                        approved: false
-                    }
-                });
+                sendToolApprovalResponse(logData.data.requestId, false);
                 if (isToast) closeToastNotification(element);
                 else {
                     element.style.opacity = '0';

@@ -49,6 +49,16 @@ class SettingsValidator {
             hasIssues = true;
         }
         
+        if (!Array.isArray(validated.filterRules)) {
+            validated.filterRules = [];
+            hasIssues = true;
+        }
+
+        if (!Array.isArray(validated.toolAutoApprovalRules)) {
+            validated.toolAutoApprovalRules = [];
+            hasIssues = true;
+        }
+        
         return { validated, hasIssues };
     }
 }
@@ -74,6 +84,10 @@ class SettingsManager extends EventEmitter {
             vcpLogUrl: '',
             vcpLogKey: '',
             networkNotesPaths: [],
+            filterEnabled: false,
+            filterRules: [],
+            toolAutoApprovalEnabled: false,
+            toolAutoApprovalRules: [],
             enableAgentBubbleTheme: false,
             enableSmoothStreaming: false,
             enableWideChatLayout: false,
