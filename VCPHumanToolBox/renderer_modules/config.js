@@ -61,7 +61,7 @@ export const tools = {
         }
     },
     'FluxGen': {
-        displayName:'Flux 图片生成',
+        displayName: 'Flux 图片生成',
         description: '艺术风格多变，仅支持英文提示词。[后端插件: FluxGen]',
         params: [
             { name: 'maid', type: 'text', required: true, placeholder: '你的名字' },
@@ -120,7 +120,7 @@ export const tools = {
         }
     },
     'GeminiImageGen': {
-        displayName:'Gemini 图像生成',
+        displayName: 'Gemini 图像生成',
         description: '使用 Google Gemini 模型进行图像生成和编辑，支持英文提示词。[后端插件: GeminiImageGen]',
         commands: {
             'generate': {
@@ -198,7 +198,7 @@ export const tools = {
         }
     },
     'WanVideoGen': {
-        displayName:'Wan视频生成',
+        displayName: 'Wan视频生成',
         description: '基于强大的Wan系列模型生成视频。[后端插件: VideoGenerator]',
         commands: {
             'submit': {
@@ -463,7 +463,7 @@ export const tools = {
         ]
     },
     'BilibiliFetch': {
-        displayName:'B站内容获取',
+        displayName: 'B站内容获取',
         description: '获取B站视频文本、弹幕、评论及快照。[后端插件: BilibiliFetch]',
         commands: {
             'fetch': {
@@ -625,7 +625,7 @@ export const tools = {
     // 学术研究
     // ========================================
     'PubMedSearch': {
-        displayName:'PubMed 文献检索',
+        displayName: 'PubMed 文献检索',
         description: '基于NCBI E-utilities的PubMed学术文献检索，支持关键词/作者/期刊/MeSH搜索、全文获取、引用分析和引用导出。[后端插件: PubMedSearch]',
         commands: {
             'search_articles': {
@@ -879,7 +879,7 @@ export const tools = {
         displayName: '快速回忆',
         description: '主动检索日记本或知识库。[后端插件: LightMemo]',
         params: [
-            { name: 'maid', type: 'text', required: true, placeholder:'Nova' },
+            { name: 'maid', type: 'text', required: true, placeholder: 'Nova' },
             { name: 'folder', type: 'text', required: false, placeholder: '特定的索引文件夹' },
             { name: 'query', type: 'textarea', required: true, placeholder: '记忆检索内容' },
             { name: 'k', type: 'number', required: false, default: 5 },
@@ -907,6 +907,14 @@ export const tools = {
                     { name: 'clusterName', type: 'text', required: false, placeholder: '指定簇文件夹' },
                     { name: 'targetText', type: 'textarea', required: true, placeholder: '需要被替换的旧内容（至少15字）' },
                     { name: 'replacementText', type: 'textarea', required: true, placeholder: '更新后的新内容' }
+                ]
+            },
+            'ListClusters': {
+                description: '查看思维簇内容（支持按链名/簇名/全量查看）',
+                params: [
+                    { name: 'maid', type: 'text', required: true, placeholder: '你的名字' },
+                    { name: 'chainName', type: 'text', required: false, placeholder: '链名如 default, coding, disco（逗号分隔多个）' },
+                    { name: 'clusterName', type: 'text', required: false, placeholder: '簇文件夹名（逗号分隔多个）' }
                 ]
             }
         }
@@ -944,7 +952,7 @@ export const tools = {
                 description: '读取未锁定话题及消息历史',
                 params: [
                     { name: 'maid', type: 'text', required: true, placeholder: '你的名字' },
-                    { name: 'include_read', type: 'select', options: ['false','true'], description: '是否包含已读' }
+                    { name: 'include_read', type: 'select', options: ['false', 'true'], description: '是否包含已读' }
                 ]
             },
             'CheckNewTopics': {
@@ -1008,7 +1016,7 @@ export const tools = {
                 description: '控制台灯',
                 params: [
                     { name: 'maid', type: 'text', required: true, placeholder: '你的名字' },
-                    { name: 'power', type: 'select', options: ['','True', 'False'], description: '电源' },
+                    { name: 'power', type: 'select', options: ['', 'True', 'False'], description: '电源' },
                     { name: 'brightness', type: 'number', min: 1, max: 100, placeholder: '1-100', description: '亮度' },
                     { name: 'color_temperature', type: 'number', min: 2500, max: 4800, placeholder: '2500-4800', description: '色温' }
                 ]
@@ -1016,7 +1024,7 @@ export const tools = {
         }
     },
     'VCPAlarm': {
-        displayName:'Vchat闹钟',
+        displayName: 'Vchat闹钟',
         description: '设置一个闹钟。[前端分布式: VCPAlarm]',
         params: [
             { name: 'maid', type: 'text', required: true, placeholder: '你的名字' },
@@ -1057,7 +1065,7 @@ export const tools = {
         }
     },
     'PowerShellExecutor': {
-        displayName:'PowerShell (前端)',
+        displayName: 'PowerShell (前端)',
         description: '在前端执行PowerShell命令。[前端分布式: PowerShellExecutor]',
         params: [
             { name: 'maid', type: 'text', required: true, placeholder: '你的名字' },
