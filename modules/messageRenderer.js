@@ -1043,6 +1043,64 @@ function preprocessFullContent(text, settings = {}, messageRole = 'assistant', d
     return { text: result.text, toolResultMap: result.state.toolResultMap || null };
 }
 
+function preprocessStreamTailContent(text) {
+    if (!contentPipeline) {
+        console.warn('[MessageRenderer] contentPipeline not initialized for stream tail, falling back to raw text');
+        return text;
+    }
+
+    return contentPipeline.process(text, {
+        mode: PIPELINE_MODES.STREAM_FAST
+    }).text;
+}
+
+function parseFullMarkdown(text, options = {}) {
+    const markedInstance = mainRendererReferences.markedInstance;
+    if (!markedInstance) return escapeHtml(text);
+
+    const globalSettings = mainRendererReferences.globalSettingsRef.get();
+    const {
+        messageRole = 'assistant',
+        depth = 0
+    } = options;
+
+    const { text: processedText, toolResultMap } = preprocessFullContent(text, globalSettings, messageRole, depth);
+    const { text: protectedText, map: latexMap } = protectLatexBlocks(processedText);
+    let html = markedInstance.parse(protectedText);
+    html = restoreLatexBlocks(html, latexMap);
+    html = restoreRenderedToolResults(html, toolResultMap);
+    return html;
+}
+
+function parseStreamTailMarkdown(text) {
+    const markedInstance = mainRendererReferences.markedInstance;
+    if (!markedInstance) return escapeHtml(text);
+
+    const processedText = preprocessStreamTailContent(text);
+    return markedInstance.parse(processedText);
+}
+
+function prepareFinalTextForRender(messageId, rawText, role = 'assistant', historyOverride = null) {
+    let textToRender = (typeof rawText === 'string') ? rawText : (rawText?.text || "[内容格式异常]");
+    const history = Array.isArray(historyOverride) ? historyOverride : mainRendererReferences.currentChatHistoryRef.get();
+    const messageInHistory = history.find(m => m.id === messageId);
+
+    if ((messageInHistory?.role || role) === 'user') {
+        textToRender = prepareUserMessageText(textToRender);
+    }
+
+    const depth = calculateDepthByTurns(messageId, history);
+    const currentSelectedItem = mainRendererReferences.currentSelectedItemRef.get();
+    const agentConfigForRegex = currentSelectedItem?.config || currentSelectedItem;
+    const effectiveRole = messageInHistory?.role || role;
+
+    if (agentConfigForRegex?.stripRegexes && Array.isArray(agentConfigForRegex.stripRegexes)) {
+        textToRender = applyFrontendRegexRules(textToRender, agentConfigForRegex.stripRegexes, effectiveRole, depth);
+    }
+
+    return { text: textToRender, depth, role: effectiveRole };
+}
+
 /**
  * 🟢 独立渲染单个工具结果块为 HTML
  * 从 transformSpecialBlocks 中提取出来，支持工具结果内部的完整 Markdown 渲染
@@ -1540,24 +1598,6 @@ function initializeMessageRenderer(refs) {
     });
     // --- End Event Delegation ---
 
-    // Create a new marked instance wrapper specifically for the stream manager.
-    const originalMarkedParse = mainRendererReferences.markedInstance.parse.bind(mainRendererReferences.markedInstance);
-    const streamingMarkedInstance = {
-        ...mainRendererReferences.markedInstance,
-        parse: (text) => {
-            const globalSettings = mainRendererReferences.globalSettingsRef.get();
-            const { text: processedText, toolResultMap } = preprocessFullContent(text, globalSettings);
-            // 🟢 LaTeX 保护：在 marked 解析前保护 LaTeX 块
-            const { text: protectedText, map: latexMap } = protectLatexBlocks(processedText);
-            let html = originalMarkedParse(protectedText);
-            // 🟢 LaTeX 恢复：在 marked 解析后恢复 LaTeX 块
-            html = restoreLatexBlocks(html, latexMap);
-            // 🟢 工具结果恢复：在 Markdown 解析后恢复工具结果占位符为渲染好的 HTML
-            html = restoreRenderedToolResults(html, toolResultMap);
-            return html;
-        }
-    };
-
     contentProcessor.initializeContentProcessor(mainRendererReferences);
 
     const wrappedProcessRenderedContent = (contentDiv) => {
@@ -1591,7 +1631,10 @@ function initializeMessageRenderer(refs) {
         currentSelectedItemRef: mainRendererReferences.currentSelectedItemRef,
         currentTopicIdRef: mainRendererReferences.currentTopicIdRef,
         chatMessagesDiv: mainRendererReferences.chatMessagesDiv,
-        markedInstance: streamingMarkedInstance,
+        parseTail: parseStreamTailMarkdown,
+        parseFull: parseFullMarkdown,
+        prepareFinalTextForRender: prepareFinalTextForRender,
+        renderMermaidDiagrams: renderMermaidDiagrams,
         electronAPI: mainRendererReferences.electronAPI,
         uiHelper: mainRendererReferences.uiHelper,
         morphdom: window.morphdom,
@@ -2312,29 +2355,15 @@ function extractAndPushDesktopBlocks(content) {
 }
 
 async function finalizeStreamedMessage(messageId, finishReason, context, finalPayload = null) {
-    // 责任完全在 streamManager 内部，它应该使用自己拼接好的文本。
-    // 我们现在只传递必要的元数据。
+    // 完整最终渲染现在由 streamManager 单次完成：
+    // 1) prepareFinalTextForRender() 在 streamManager 内对完整文本应用前端正则与深度；
+    // 2) parseFull() 只执行一次完整管线；
+    // 3) mermaid 也只在该最终渲染路径中执行一次。
     await streamManager.finalizeStreamedMessage(messageId, finishReason, context, finalPayload);
 
-    // --- 核心修复：流式结束后，对完整内容重新应用前端正则 ---
-    // 这是为了解决流式传输导致正则表达式（如元思考链）被分割而无法匹配的问题
     const finalMessage = mainRendererReferences.currentChatHistoryRef.get().find(m => m.id === messageId);
     if (finalMessage) {
-        // 使用 updateMessageContent 来安全地重新渲染消息，这将触发我们之前添加的正则逻辑
-        updateMessageContent(messageId, finalMessage.content);
-
-        // --- VCPdesktop：从完整内容中提取桌面推送块，一次性推送到桌面画布 ---
         extractAndPushDesktopBlocks(finalMessage.content);
-    }
-    // --- 修复结束 ---
-
-    // After the stream is finalized in the DOM, find the message and render any mermaid blocks.
-    const messageItem = mainRendererReferences.chatMessagesDiv.querySelector(`.message-item[data-message-id="${messageId}"]`);
-    if (messageItem) {
-        const contentDiv = messageItem.querySelector('.md-content');
-        if (contentDiv) {
-            await renderMermaidDiagrams(contentDiv);
-        }
     }
 }
 

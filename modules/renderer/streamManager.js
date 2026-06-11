@@ -6,7 +6,7 @@ import { createContentPipeline, PIPELINE_MODES } from './contentPipeline.js';
 const streamingChunkQueues = new Map(); // messageId -> array of original chunk strings
 const streamingTimers = new Map();      // messageId -> intervalId
 const accumulatedStreamText = new Map(); // messageId -> string
-const streamSegmentStates = new Map(); // messageId -> { stableCutoff, stableHtml, lastTailText }
+const streamSegmentStates = new Map(); // messageId -> { stableCutoff, stableHtml, lastTailText, lastParagraphBoundary }
 let activeStreamingMessageId = null; // Track the currently active streaming message
 const elementContentLengthCache = new WeakMap(); // 跟踪每个元素的内容长度；WeakMap 避免 morphdom 替换节点后的强引用泄漏
 
@@ -26,6 +26,13 @@ const TOOL_RESULT_END = 'VCP调用结果结束]]';
 const DESKTOP_PUSH_START = '<<<[DESKTOP_PUSH]>>>';
 const DESKTOP_PUSH_END = '<<<[DESKTOP_PUSH_END]>>>';
 const CODE_FENCE = '```';
+const THOUGHT_CHAIN_START = '[--- VCP元思考链';
+const THOUGHT_CHAIN_END = '[--- 元思考链结束 ---]';
+const THINK_START_REGEX = /<think(?:ing)?>/ig;
+const THINK_END_REGEX = /<\/think(?:ing)?>/ig;
+const DAILY_NOTE_START = '<<<DailyNoteStart>>>';
+const DAILY_NOTE_END = '<<<DailyNoteEnd>>>';
+const STREAM_PARAGRAPH_SAFETY_BLOCKS = 1;
 
 const STREAM_BLOCK_TAG_REGEX = /^(P|DIV|UL|OL|LI|PRE|BLOCKQUOTE|H[1-6]|TABLE|TR|FIGURE)$/;
 const STREAM_PRESERVED_BLOCK_CLASSES = [
@@ -330,8 +337,8 @@ async function saveHistoryForContext(context, history) {
 }
 
 /**
- * 批量应用流式渲染所需的轻量级预处理
- * 通过统一流水线维持与完整渲染一致的顺序协议。
+ * 批量应用流式渲染所需的轻量级预处理。
+ * P0-1 后仅作为 parseTail 缺失时的兜底；正常路径由 messageRenderer 注入的 parseTail 统一处理。
  */
 function applyStreamingPreprocessors(text) {
     if (!text) return '';
@@ -340,6 +347,23 @@ function applyStreamingPreprocessors(text) {
     return contentPipeline.process(text, {
         mode: PIPELINE_MODES.STREAM_FAST
     }).text;
+}
+
+function parseStreamTail(text) {
+    if (typeof refs.parseTail === 'function') {
+        return refs.parseTail(text);
+    }
+
+    const processedText = applyStreamingPreprocessors(text);
+    return refs.markedInstance?.parse ? refs.markedInstance.parse(processedText) : processedText;
+}
+
+function parseFullStreamContent(text, options = {}) {
+    if (typeof refs.parseFull === 'function') {
+        return refs.parseFull(text, options);
+    }
+
+    return refs.markedInstance?.parse ? refs.markedInstance.parse(text) : text;
 }
 
 function ensureStreamingRoots(contentDiv) {
@@ -365,7 +389,8 @@ function getOrCreateStreamSegmentState(messageId) {
         state = {
             stableCutoff: 0,
             stableHtml: '',
-            lastTailText: ''
+            lastTailText: '',
+            lastParagraphBoundary: 0
         };
         streamSegmentStates.set(messageId, state);
     }
@@ -398,15 +423,54 @@ function findMatchingFenceEnd(text, startIndex) {
     return -1;
 }
 
+function findConventionalThinkEnd(text, startIndex) {
+    THINK_END_REGEX.lastIndex = startIndex;
+    const match = THINK_END_REGEX.exec(text);
+    THINK_END_REGEX.lastIndex = 0;
+    return match ? match.index + match[0].length : -1;
+}
+
+function findConventionalThinkStart(text, startIndex) {
+    THINK_START_REGEX.lastIndex = startIndex;
+    const match = THINK_START_REGEX.exec(text);
+    THINK_START_REGEX.lastIndex = 0;
+    return match ? match.index : -1;
+}
+
+function findParagraphStableCutoff(text, floorOffset) {
+    const boundaries = [];
+    let searchIndex = Math.max(0, floorOffset);
+
+    while (searchIndex < text.length) {
+        const boundaryIndex = text.indexOf('\n\n', searchIndex);
+        if (boundaryIndex === -1) break;
+
+        const cutoff = boundaryIndex + 2;
+        if (cutoff > floorOffset) {
+            boundaries.push(cutoff);
+        }
+
+        searchIndex = cutoff;
+    }
+
+    if (boundaries.length <= STREAM_PARAGRAPH_SAFETY_BLOCKS) {
+        return floorOffset;
+    }
+
+    return boundaries[boundaries.length - 1 - STREAM_PARAGRAPH_SAFETY_BLOCKS];
+}
+
 function findExplicitStablePrefix(text, startOffset = 0) {
     let index = Math.max(0, startOffset);
     let stableCutoff = startOffset;
+    let paragraphFloor = startOffset;
 
     while (index < text.length) {
         if (startsWithAt(text, index, CODE_FENCE)) {
             const fenceEnd = findMatchingFenceEnd(text, index);
             if (fenceEnd === -1) break;
             stableCutoff = fenceEnd;
+            paragraphFloor = fenceEnd;
             index = fenceEnd;
             continue;
         }
@@ -415,6 +479,7 @@ function findExplicitStablePrefix(text, startOffset = 0) {
             const endIndex = text.indexOf(TOOL_REQUEST_END, index + TOOL_REQUEST_START.length);
             if (endIndex === -1) break;
             stableCutoff = endIndex + TOOL_REQUEST_END.length;
+            paragraphFloor = stableCutoff;
             index = stableCutoff;
             continue;
         }
@@ -423,6 +488,7 @@ function findExplicitStablePrefix(text, startOffset = 0) {
             const endIndex = text.indexOf(TOOL_RESULT_END, index + TOOL_RESULT_START.length);
             if (endIndex === -1) break;
             stableCutoff = endIndex + TOOL_RESULT_END.length;
+            paragraphFloor = stableCutoff;
             index = stableCutoff;
             continue;
         }
@@ -431,14 +497,44 @@ function findExplicitStablePrefix(text, startOffset = 0) {
             const endIndex = text.indexOf(DESKTOP_PUSH_END, index + DESKTOP_PUSH_START.length);
             if (endIndex === -1) break;
             stableCutoff = endIndex + DESKTOP_PUSH_END.length;
+            paragraphFloor = stableCutoff;
             index = stableCutoff;
+            continue;
+        }
+
+        if (startsWithAt(text, index, THOUGHT_CHAIN_START)) {
+            const endIndex = text.indexOf(THOUGHT_CHAIN_END, index + THOUGHT_CHAIN_START.length);
+            if (endIndex === -1) break;
+            stableCutoff = endIndex + THOUGHT_CHAIN_END.length;
+            paragraphFloor = stableCutoff;
+            index = stableCutoff;
+            continue;
+        }
+
+        if (startsWithAt(text, index, DAILY_NOTE_START)) {
+            const endIndex = text.indexOf(DAILY_NOTE_END, index + DAILY_NOTE_START.length);
+            if (endIndex === -1) break;
+            stableCutoff = endIndex + DAILY_NOTE_END.length;
+            paragraphFloor = stableCutoff;
+            index = stableCutoff;
+            continue;
+        }
+
+        const thinkStart = findConventionalThinkStart(text, index);
+        if (thinkStart === index) {
+            const thinkEnd = findConventionalThinkEnd(text, index);
+            if (thinkEnd === -1) break;
+            stableCutoff = thinkEnd;
+            paragraphFloor = thinkEnd;
+            index = thinkEnd;
             continue;
         }
 
         index += 1;
     }
 
-    return stableCutoff;
+    const paragraphCutoff = findParagraphStableCutoff(text, paragraphFloor);
+    return Math.max(stableCutoff, paragraphCutoff);
 }
 
 /**
@@ -557,16 +653,14 @@ function renderStreamFrame(messageId) {
 
     if (nextStableCutoff > segmentState.stableCutoff) {
         const stableText = textForRendering.slice(0, nextStableCutoff);
-        const processedStableText = applyStreamingPreprocessors(stableText);
-        const stableHtml = refs.markedInstance.parse(processedStableText);
+        const stableHtml = parseFullStreamContent(stableText);
         stableRoot.innerHTML = stableHtml;
         segmentState.stableCutoff = nextStableCutoff;
         segmentState.stableHtml = stableHtml;
     }
 
     const tailText = textForRendering.slice(segmentState.stableCutoff);
-    const processedText = applyStreamingPreprocessors(tailText);
-    const rawHtml = refs.markedInstance.parse(processedText);
+    const rawHtml = parseStreamTail(tailText);
 
     if (refs.morphdom) {
         try {
@@ -740,11 +834,14 @@ function processAndRenderSmoothChunk(messageId) {
     if (queue && queue.length > 0) {
         const globalSettings = refs.globalSettingsRef.get();
         const minChunkSize = globalSettings.minChunkBufferSize !== undefined && globalSettings.minChunkBufferSize >= 1 ? globalSettings.minChunkBufferSize : 1;
+        const queuedChars = queue.reduce((total, chunk) => total + chunk.length, 0);
+        const isFinalized = messageIsFinalized(messageId);
+        const adaptiveTarget = Math.ceil(queuedChars / (isFinalized ? 8 : 15));
+        const drainTarget = Math.max(minChunkSize, adaptiveTarget, isFinalized ? 80 : 0);
 
-        // Drain a small batch from the queue. The rendering uses the accumulated text,
-        // so we don't need the return value here. This just advances the stream.
+        // 自适应排空：队列越深，每帧消费越多；finalize 后加速追平，避免剩余文本瞬移。
         let processedChars = 0;
-        while (queue.length > 0 && processedChars < minChunkSize) {
+        while (queue.length > 0 && processedChars < drainTarget) {
             processedChars += queue.shift().length;
         }
 
@@ -1368,7 +1465,7 @@ export async function finalizeStreamedMessage(messageId, finishReason, context, 
         return;
     }
     
-    const { chatMessagesDiv, markedInstance, uiHelper } = refs;
+    const { chatMessagesDiv, uiHelper } = refs;
     const isForCurrentView = isMessageForCurrentView(storedContext);
     
     // Get the correct history
@@ -1445,13 +1542,13 @@ export async function finalizeStreamedMessage(messageId, finishReason, context, 
             if (contentDiv) {
                 contentDiv.querySelectorAll('.vcp-stream-stable-root, .vcp-stream-tail-root').forEach((el) => el.remove());
 
-                const globalSettings = refs.globalSettingsRef.get();
-                // Use the more thorough preprocessFullContent for the final render
-                // 🟢 架构级修复：preprocessFullContent 现在返回 {text, toolResultMap}
-                // 但这里直接使用 markedInstance.parse()（即 streamingMarkedInstance wrapper），
-                // 它内部已经处理了 preprocessFullContent + LaTeX 保护 + 工具结果恢复
-                // 所以这里直接传原始文本给 wrapper，避免双重预处理
-                const rawHtml = markedInstance.parse(finalFullText);
+                const preparedFinal = typeof refs.prepareFinalTextForRender === 'function'
+                    ? refs.prepareFinalTextForRender(messageId, finalFullText, message.role || 'assistant', historyForThisMessage)
+                    : { text: finalFullText, role: message.role || 'assistant', depth: 0 };
+                const rawHtml = parseFullStreamContent(preparedFinal.text, {
+                    messageRole: preparedFinal.role,
+                    depth: preparedFinal.depth
+                });
                 
                 // Perform the final, high-quality render using the original global refresh method.
                 // This ensures images, KaTeX, code highlighting, etc., are all processed correctly.
@@ -1459,6 +1556,10 @@ export async function finalizeStreamedMessage(messageId, finishReason, context, 
                 
                 // Step 1: Run synchronous processors (KaTeX, hljs, etc.)
                 refs.processRenderedContent(contentDiv);
+
+                if (typeof refs.renderMermaidDiagrams === 'function') {
+                    await refs.renderMermaidDiagrams(contentDiv);
+                }
 
                 // Step 2: Defer TreeWalker-based highlighters to ensure DOM is stable
                 setTimeout(() => {
