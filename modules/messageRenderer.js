@@ -1527,21 +1527,50 @@ function isRenderSessionActive(sessionId) {
     return sessionId === activeRenderSessionId;
 }
 
+function escapeCssAttributeValue(value) {
+    const str = String(value);
+    if (window.CSS && typeof window.CSS.escape === 'function') {
+        return window.CSS.escape(str);
+    }
+    return str.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
+function cleanupScopedStylesForMessage(messageItem, messageId = null) {
+    if (!messageItem && !messageId) return;
+
+    const scopeId = messageItem?.id;
+    if (scopeId) {
+        document.querySelectorAll(`style[data-vcp-scope-id="${escapeCssAttributeValue(scopeId)}"]`).forEach(el => el.remove());
+    }
+
+    const chatScopeId = messageItem?.getAttribute?.('data-chat-scope') || (messageId ? `vcp-chat-${messageId}` : null);
+    if (chatScopeId) {
+        document.querySelectorAll(`style[data-chat-scope-id="${escapeCssAttributeValue(chatScopeId)}"]`).forEach(el => el.remove());
+    }
+}
+
+function cleanupMessageDomResources(messageItem, messageId = null) {
+    if (!messageItem) return;
+
+    const contentDiv = messageItem.querySelector('.md-content');
+    if (contentDiv) {
+        contentProcessor.cleanupPreviewsInContent(contentDiv);
+        cleanupAnimationsInContent(contentDiv);
+    }
+
+    cleanupScopedStylesForMessage(messageItem, messageId || messageItem.dataset?.messageId || null);
+    visibilityOptimizer.unobserveMessage(messageItem);
+}
+
 function removeMessageById(messageId, saveHistory = false) {
     const item = mainRendererReferences.chatMessagesDiv.querySelector(`.message-item[data-message-id="${messageId}"]`);
     if (item) {
         // --- NEW: Cleanup dynamic content before removing from DOM ---
-        const contentDiv = item.querySelector('.md-content');
-        if (contentDiv) {
-            contentProcessor.cleanupPreviewsInContent(contentDiv);
-            cleanupAnimationsInContent(contentDiv);
-        }
+        cleanupMessageDomResources(item, messageId);
         // [Pretext集成] 释放高度缓存，防止内存泄漏
         if (window.pretextBridge && window.pretextBridge.evict) {
             window.pretextBridge.evict(messageId);
         }
-        // 停止观察消息可见性
-        visibilityOptimizer.unobserveMessage(item);
         item.remove();
     }
 
@@ -1582,12 +1611,7 @@ function clearChat() {
         // --- NEW: Cleanup all messages before clearing the container ---
         const allMessages = mainRendererReferences.chatMessagesDiv.querySelectorAll('.message-item');
         allMessages.forEach(item => {
-            const contentDiv = item.querySelector('.md-content');
-            if (contentDiv) {
-                contentProcessor.cleanupPreviewsInContent(contentDiv);
-                cleanupAnimationsInContent(contentDiv);
-            }
-            visibilityOptimizer.unobserveMessage(item);
+            cleanupMessageDomResources(item, item.dataset?.messageId || null);
         });
 
         // 🟢 清理所有注入的 scoped CSS
@@ -2051,6 +2075,9 @@ async function renderPostProcessedHtml(contentDiv, rawHtml, options = {}) {
     };
 
     if (typeof rawHtml === 'string') {
+        // 替换 innerHTML 前必须释放旧子树上的预览 iframe、window message 监听器与动画/WebGL 资源。
+        contentProcessor.cleanupPreviewsInContent(contentDiv);
+        cleanupAnimationsInContent(contentDiv);
         setContentAndProcessImages(contentDiv, rawHtml, messageId);
     }
 
@@ -3077,6 +3104,7 @@ window.messageRenderer = {
         if (!existingMessageDom) return;
         const newMessageDom = await renderMessage(updatedMessage, true, false);
         if (newMessageDom) {
+            cleanupMessageDomResources(existingMessageDom, messageId);
             existingMessageDom.replaceWith(newMessageDom);
             // 重新观察
             visibilityOptimizer.observeMessage(newMessageDom);

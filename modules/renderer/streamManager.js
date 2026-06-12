@@ -167,6 +167,7 @@ const messageContextMap = new Map(); // messageId -> {agentId, groupId, topicId,
 // --- Local Reference Store ---
 let refs = {};
 let contentPipeline = null;
+let transientCleanupRegistered = false;
 
 // --- Pre-compiled Regular Expressions for Performance ---
 
@@ -176,6 +177,13 @@ let contentPipeline = null;
  */
 export function initStreamManager(dependencies) {
     refs = dependencies;
+
+    // App 级兜底扫帚：页面卸载时释放孤儿流的预缓冲、上下文映射、桌面推送 interval 等 transient 状态。
+    // 不挂到 clearChat，避免切换话题时误伤同窗口内其他 agent 的后台流式聊天。
+    if (!transientCleanupRegistered) {
+        window.addEventListener('beforeunload', cleanupTransientState);
+        transientCleanupRegistered = true;
+    }
 
     contentPipeline = createContentPipeline({
         fixEmoticonUrlsInMarkdown: (text) => {
@@ -1744,6 +1752,11 @@ function processDesktopPushToken(messageId, textToAppend) {
  * 清理消息的桌面推送状态
  */
 function cleanupDesktopPushState(messageId) {
+    const state = desktopPushStates.get(messageId);
+    if (state?.pushTimer) {
+        clearInterval(state.pushTimer);
+        state.pushTimer = null;
+    }
     desktopPushStates.delete(messageId);
 }
 
@@ -1997,11 +2010,6 @@ export async function finalizeStreamedMessage(messageId, finishReason, context, 
                 timestampDiv.textContent = formatMessageTimestamp(message.timestamp || Date.now());
                 nameTimeBlock.appendChild(timestampDiv);
             }
-
-            messageItem.addEventListener('contextmenu', (e) => {
-                e.preventDefault();
-                refs.showContextMenu(e, messageItem, message);
-            });
 
             uiHelper.scrollToBottom();
         }

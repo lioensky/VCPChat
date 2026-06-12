@@ -22,7 +22,9 @@ function nodesHaveContent(nodes) {
     return nodes.some((node) => {
         if (node.nodeType === Node.TEXT_NODE) return Boolean(node.textContent.trim());
         if (node.nodeType !== Node.ELEMENT_NODE) return false;
-        return Boolean(node.textContent.trim()) || Boolean(node.querySelector('img,video,audio,canvas,iframe,svg'));
+        return Boolean(node.textContent.trim())
+            || Boolean(node.matches?.('img,video,audio,canvas,iframe,svg'))
+            || Boolean(node.querySelector('img,video,audio,canvas,iframe,svg'));
     });
 }
 
