@@ -88,6 +88,71 @@ function protectLatexBlocks(text) {
         return /\\|[\^_=+\-*/<>]|[A-Za-z]\s*\(|\b(?:lim|sum|int|frac|sqrt|alpha|beta|gamma|theta|lambda|mu|sigma|pi|infty)\b/i.test(trimmedContent);
     };
 
+    const protectInlineDollarMath = (source) => {
+        let result = '';
+        let index = 0;
+
+        while (index < source.length) {
+            const openIndex = source.indexOf('$', index);
+            if (openIndex === -1) {
+                result += source.slice(index);
+                break;
+            }
+
+            result += source.slice(index, openIndex);
+
+            const previousChar = source[openIndex - 1] || '';
+            const nextOpenChar = source[openIndex + 1] || '';
+
+            // 开始符不能是转义美元、双美元、单词内部美元。
+            if (previousChar === '\\' || previousChar === '$' || nextOpenChar === '$' || /\w/.test(previousChar)) {
+                result += '$';
+                index = openIndex + 1;
+                continue;
+            }
+
+            let closeIndex = -1;
+            let cursor = openIndex + 1;
+            while (cursor < source.length) {
+                const dollarIndex = source.indexOf('$', cursor);
+                if (dollarIndex === -1) break;
+
+                if (source[dollarIndex - 1] === '\\') {
+                    cursor = dollarIndex + 1;
+                    continue;
+                }
+
+                const nextCloseChar = source[dollarIndex + 1] || '';
+                if (!/\w/.test(nextCloseChar)) {
+                    closeIndex = dollarIndex;
+                    break;
+                }
+
+                cursor = dollarIndex + 1;
+            }
+
+            if (closeIndex === -1) {
+                result += '$';
+                index = openIndex + 1;
+                continue;
+            }
+
+            const content = source.slice(openIndex + 1, closeIndex);
+            if (content.length > 1200 || content.includes('\n') || !looksLikeSafeSingleDollarMath(content)) {
+                // 不安全候选只释放开头 $，不吞掉到下一个 $ 的整段文本；
+                // 这样 "$12.5 ... $2.49 ... $\Delta...$" 不会因价格误配而跳过后续真公式。
+                result += '$';
+                index = openIndex + 1;
+                continue;
+            }
+
+            result += createLatexPlaceholder(`\\(${content.trim()}\\)`);
+            index = closeIndex + 1;
+        }
+
+        return result;
+    };
+
     // 🟢 关键修复：先保护代码围栏，防止代码块内的 $ / $$ 被误匹配为 LaTeX
     // 例如 Python 代码 `b'$$' in data` 中的 $$ 会与文档后面的 $$ 数学公式匹配，
     // 导致 LaTeX 占位符跨越并吞噬中间的代码围栏标记
@@ -149,8 +214,19 @@ function protectLatexBlocks(text) {
     // 块级 $$ 只接受“独占一行”的定界符，避免把 `$10`、`$$` 字符串或表格内容误贪成跨段公式。
     // 同时保护 \[...\] 和 \(...\)。
 
-    // 1. 保护 $$...$$ (display math) - 支持多行，定界符必须独占一行
+    // 1. 保护 $$...$$ (display math)。
+    // 支持两种常见模型输出：
+    //   A) 定界符独占行：
+    //      $$
+    //      ...
+    //      $$
+    //   B) 整个块压在同一独立行：
+    //      $$...$$
+    // 同时保持“定界符所在行必须独立”，避免把 `$10`、代码字符串或表格内容误吞成跨段公式。
     processed = processed.replace(/(^|\n)([ \t]*)\$\$[ \t]*\n([\s\S]*?)\n[ \t]*\$\$[ \t]*(?=\n|$)/g, (match, linePrefix) => {
+        return `${linePrefix}${createLatexPlaceholder(match.slice(linePrefix.length))}`;
+    });
+    processed = processed.replace(/(^|\n)([ \t]*)\$\$([^\n]*?\S[^\n]*?)\$\$[ \t]*(?=\n|$)/g, (match, linePrefix) => {
         return `${linePrefix}${createLatexPlaceholder(match.slice(linePrefix.length))}`;
     });
 
@@ -167,10 +243,8 @@ function protectLatexBlocks(text) {
     // 4. 保护安全的 $...$ (inline math)。
     // 为避免 KaTeX auto-render 的单美元误触发，这里把安全单美元公式转换为 \( ... \) 形式交给后处理渲染。
     // 例如 $O(L^2) \to O(1)$ 会渲染；$10、$PATH、${value}、表格跨列 $...|...$ 不会触发。
-    processed = processed.replace(/(^|[^\w\\$])\$([^\$\n]{1,1200}?)\$(?![\w])/g, (match, prefix, content) => {
-        if (!looksLikeSafeSingleDollarMath(content)) return match;
-        return `${prefix}${createLatexPlaceholder(`\\(${content.trim()}\\)`)}`;
-    });
+    // 行内公式内部允许出现转义美元 \$，并且不安全价格候选不会吞掉后续真实公式。
+    processed = protectInlineDollarMath(processed);
 
     // 如果安全单美元公式原本是缩进独立行，Markdown 会把它当作缩进代码块。
     // 这里仅对“整行只有 LaTeX 占位符”的行去缩进，不影响列表项、引用块或普通缩进文本。

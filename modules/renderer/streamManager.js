@@ -604,6 +604,21 @@ function isLineOnlyToken(text, tokenStart, tokenLength) {
     return before.trim() === '' && after.trim() === '';
 }
 
+function findNextLineOnlyToken(text, token, startOffset = 0) {
+    let index = Math.max(0, startOffset);
+    while (index < text.length) {
+        const tokenIndex = text.indexOf(token, index);
+        if (tokenIndex === -1) return -1;
+        if (isLineOnlyToken(text, tokenIndex, token.length)) return tokenIndex;
+        index = tokenIndex + token.length;
+    }
+    return -1;
+}
+
+function hasLineOnlyToken(text, token) {
+    return findNextLineOnlyToken(text, token, 0) !== -1;
+}
+
 function findDisplayMathBlockEnd(text, startIndex, delimiter) {
     if (!isLineOnlyToken(text, startIndex, delimiter.length)) {
         return -1;
@@ -998,9 +1013,13 @@ function findExplicitStablePrefix(text, startOffset = 0) {
         }
 
         if (startsWithAt(text, index, BURST_MARKER_TOKEN)) {
-            stableCutoff = index + BURST_MARKER_TOKEN.length;
-            paragraphFloor = stableCutoff;
-            index = stableCutoff;
+            if (isLineOnlyToken(text, index, BURST_MARKER_TOKEN.length)) {
+                // 只有独立行的 <!--brk--> 才是 OpenHerPersona 分条触发器；
+                // 行内出现的注释只按普通 Markdown/HTML 内容处理，避免误切分。
+                stableCutoff = index + BURST_MARKER_TOKEN.length;
+                paragraphFloor = stableCutoff;
+            }
+            index += BURST_MARKER_TOKEN.length;
             continue;
         }
 
@@ -1155,8 +1174,8 @@ function renderStreamFrame(messageId) {
     if (nextStableCutoff > segmentState.stableCutoff) {
         const stableText = textForRendering.slice(0, nextStableCutoff);
         const newStableText = textForRendering.slice(segmentState.stableRenderedCutoff, nextStableCutoff);
-        const hasBurstMarkerInStable = stableText.includes(BURST_MARKER_TOKEN);
-        const hasBurstMarkerInNewStable = newStableText.includes(BURST_MARKER_TOKEN);
+        const hasBurstMarkerInStable = hasLineOnlyToken(stableText, BURST_MARKER_TOKEN);
+        const hasBurstMarkerInNewStable = hasLineOnlyToken(newStableText, BURST_MARKER_TOKEN);
         segmentState.stableCutoff = nextStableCutoff;
 
         appendNewStableRange(stableBlocksRoot, segmentState, textForRendering, nextStableCutoff, {
@@ -1171,6 +1190,10 @@ function renderStreamFrame(messageId) {
         // 的假头像行，避免等到下一个 brk 才出现活动气泡。
         try {
             if (hasBurstMarkerInStable || hasBurstMarkerInNewStable) {
+                // 先进入 burst 样式上下文，再移动/包装 stable DOM。
+                // 含 KaTeX 等重后处理节点时，DOM 移动可能触发布局刷新；提前加 class 可避免中间帧气泡背景透明。
+                contentDiv.classList.add('burst-streaming');
+                if (messageItem) messageItem.dataset.burstRevealed = 'true';
                 unwrapStableBlockContainersForBurst(stableBlocksRoot, segmentState);
             }
             const bubbles = splitIntoBurstBubbles(stableBlocksRoot, 1);

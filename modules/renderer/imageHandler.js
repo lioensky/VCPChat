@@ -89,24 +89,35 @@ export function splitIntoBurstBubbles(container, minBubbles = 2) {
     }
     if (markers.length === 0) return [];
 
-    // 标记若在段落等一层容器内（如 <p>好<!--brk-->坏</p>），把容器在标记处剖开
-    // 并把标记提升到顶层；更深处（列表/引用/代码）的标记不拆，直接丢弃。
+    // 只接受由 Markdown 独立行 `<!--brk-->` 渲染出来的顶层注释节点作为分条触发器。
+    // 行内标记通常会留在 <p> / <li> 等内容容器内，一律移除，不拆父节点，避免行间误触发。
     for (const marker of markers) {
         const parent = marker.parentNode;
         if (!parent || parent === container) continue;
-        if (parent.parentNode !== container) {
-            marker.remove();
-            continue;
-        }
-        const tail = parent.cloneNode(false);
-        while (marker.nextSibling) tail.appendChild(marker.nextSibling);
-        container.insertBefore(marker, parent.nextSibling);
-        if (tail.childNodes.length > 0) container.insertBefore(tail, marker.nextSibling);
-        if (!nodesHaveContent([parent])) parent.remove();
+        marker.remove();
+    }
+
+    const topLevelNodes = Array.from(container.childNodes);
+    const existingWrappers = topLevelNodes.filter((node) => (
+        node.nodeType === Node.ELEMENT_NODE
+        && (node.classList.contains('burst-bubble') || node.classList.contains('burst-row'))
+    ));
+    const lastExistingWrapperIndex = topLevelNodes.reduce((lastIndex, node, index) => (
+        node.nodeType === Node.ELEMENT_NODE
+        && (node.classList.contains('burst-bubble') || node.classList.contains('burst-row'))
+            ? index
+            : lastIndex
+    ), -1);
+    const sourceNodes = lastExistingWrapperIndex === -1
+        ? topLevelNodes
+        : topLevelNodes.slice(lastExistingWrapperIndex + 1);
+    const hasMarkerInSourceNodes = sourceNodes.some(isBurstMarkerNode);
+    if (lastExistingWrapperIndex !== -1 && !hasMarkerInSourceNodes) {
+        return existingWrappers;
     }
 
     const groups = [[]];
-    for (const child of Array.from(container.childNodes)) {
+    for (const child of sourceNodes) {
         if (isBurstMarkerNode(child)) {
             child.remove();
             if (groups[groups.length - 1].length > 0) groups.push([]);
@@ -116,19 +127,20 @@ export function splitIntoBurstBubbles(container, minBubbles = 2) {
     }
 
     const bubbleGroups = groups.filter(nodesHaveContent);
-    if (bubbleGroups.length < minBubbles) return [];
+    const allWrappers = [...existingWrappers];
+    if (bubbleGroups.length + existingWrappers.length < minBubbles) return allWrappers.length > 0 ? allWrappers : [];
     groups
         .filter((group) => !nodesHaveContent(group))
         .forEach((group) => group.forEach((node) => node.remove()));
 
     const avatarSrc = findBurstAvatarSrc(container);
 
-    return bubbleGroups.map((nodes, index) => {
+    const newWrappers = bubbleGroups.map((nodes, index) => {
         const bubble = document.createElement('div');
         bubble.className = 'burst-bubble';
         nodes.forEach((node) => bubble.appendChild(node));
 
-        if (index === 0 || !avatarSrc) {
+        if ((existingWrappers.length === 0 && index === 0) || !avatarSrc) {
             container.appendChild(bubble);
             return bubble;
         }
@@ -144,6 +156,8 @@ export function splitIntoBurstBubbles(container, minBubbles = 2) {
         container.appendChild(row);
         return row;
     });
+
+    return [...allWrappers, ...newWrappers];
 }
 
 export function initializeImageHandler(refs) {
