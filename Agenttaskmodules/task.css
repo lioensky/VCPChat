@@ -281,7 +281,7 @@ textarea.setting-input { width: 100%; min-height: 80px; resize: vertical; margin
 }
 .agent-info h3 { margin: 0; font-size: 1.2rem; }
 .agent-info .model-id { font-size: 0.85rem; color: var(--text-secondary); background: rgba(255,255,255,0.1); padding: 2px 6px; border-radius: 4px; display: inline-block; margin-top: 4px; }
-.agent-description { font-size: 0.9rem; line-height: 1.4; opacity: 0.8; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.agent-description { font-size: 0.9rem; line-height: 1.4; opacity: 0.8; display: -webkit-box; -webkit-line-clamp: 3; line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 
 .agent-quick-edit {
     display: flex;
