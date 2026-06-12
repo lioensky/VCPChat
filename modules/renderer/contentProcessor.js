@@ -922,15 +922,19 @@ function looksLikeSafeSingleDollarMath(content) {
     const trimmedContent = (content || '').trim();
     if (!trimmedContent) return false;
 
+    const hasExplicitMathSignal = /\\|[\^_=+\-*/<>]|[A-Za-z]\s*\(|\b(?:lim|sum|int|frac|sqrt|text|mathrm|mathbf|alpha|beta|gamma|theta|lambda|mu|sigma|pi|infty)\b/i.test(trimmedContent);
+
     // 跳过价格、价格单位、Shell 变量、模板字符串与 Markdown 表格跨列误匹配。
-    if (/^\d/.test(trimmedContent)) return false;
+    // 但允许 `$20\%$`、`$2^n$`、`$1/2$` 这类以数字开头且带明确数学信号的公式；
+    // 否则 Markdown 解析后可能丢失反斜杠，导致后续 KaTeX 把相邻 `$...$` 错配成红色错误文本。
+    if (/^\d/.test(trimmedContent) && !hasExplicitMathSignal) return false;
     if (trimmedContent.startsWith('/')) return false;
     if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(trimmedContent)) return false;
     if (trimmedContent.startsWith('{') && trimmedContent.endsWith('}')) return false;
     if (trimmedContent.includes('|')) return false;
 
     // 只放行带有明确数学信号的单美元公式。
-    return /\\|[\^_=+\-*/<>]|[A-Za-z]\s*\(|\b(?:lim|sum|int|frac|sqrt|text|mathrm|mathbf|alpha|beta|gamma|theta|lambda|mu|sigma|pi|infty)\b/i.test(trimmedContent);
+    return hasExplicitMathSignal;
 }
 
 function normalizeSafeSingleDollarMathInTextNodes(root) {
