@@ -768,11 +768,49 @@ function transformSpecialBlocks(text, codeBlockMap) {
         return `\n\n${html}\n\n`;
     };
 
-    processed = processed.replace(TOOL_CALL_SUMMARY_REGEX, (match, rawContent) => {
-        return renderToolCallSummaryBlock(rawContent);
-    });
+    const transformToolCallSummariesInRoleSections = (source) => {
+        if (typeof source !== 'string' || !source.includes('[本轮工具调用摘要:]') || !source.includes('<<<[ROLE_DIVIDE_')) {
+            return source;
+        }
 
-    TOOL_CALL_SUMMARY_REGEX.lastIndex = 0;
+        let result = '';
+        let cursor = 0;
+        const roleStartRegex = /<<<\[ROLE_DIVIDE_(SYSTEM|ASSISTANT|USER)\]>>>/g;
+
+        while (cursor < source.length) {
+            roleStartRegex.lastIndex = cursor;
+            const startMatch = roleStartRegex.exec(source);
+            if (!startMatch) {
+                result += source.slice(cursor);
+                break;
+            }
+
+            result += source.slice(cursor, startMatch.index);
+
+            const role = startMatch[1];
+            const endToken = `<<<[END_ROLE_DIVIDE_${role}]>>>`;
+            const sectionContentStart = startMatch.index + startMatch[0].length;
+            const endIndex = source.indexOf(endToken, sectionContentStart);
+
+            if (endIndex === -1) {
+                result += source.slice(startMatch.index);
+                break;
+            }
+
+            const sectionContent = source.slice(sectionContentStart, endIndex);
+            const transformedSectionContent = sectionContent.replace(TOOL_CALL_SUMMARY_REGEX, (match, rawContent) => {
+                return renderToolCallSummaryBlock(rawContent);
+            });
+            TOOL_CALL_SUMMARY_REGEX.lastIndex = 0;
+
+            result += startMatch[0] + transformedSectionContent + endToken;
+            cursor = endIndex + endToken.length;
+        }
+
+        return result;
+    };
+
+    processed = transformToolCallSummariesInRoleSections(processed);
 
     // Process Tool Requests
     processed = replaceToolRequestBlocks(processed, (match, content) => {
