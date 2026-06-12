@@ -78,18 +78,20 @@ function protectLatexBlocks(text) {
         if (!trimmedContent) return false;
 
         const hasExplicitMathSignal = /\\|[\^_=+\-*/<>]|[A-Za-z]\s*\(|\b(?:lim|sum|int|frac|sqrt|alpha|beta|gamma|theta|lambda|mu|sigma|pi|infty)\b/i.test(trimmedContent);
+        const isSimpleNumericMath = /^[+-]?(?:\d+(?:[.,]\d+)*|\.\d+)(?:\s*(?:%|\\%|‰|°))?$/.test(trimmedContent);
 
         // 跳过价格、价格单位、Shell 变量、模板字符串与 Markdown 表格跨列误匹配。
-        // 但允许 `$20\%$`、`$2^n$`、`$1/2$` 这类以数字开头且带明确数学信号的公式；
+        // 但 `$1$`、`$20\%$`、`$2^n$`、`$1/2$` 这类明确闭合的行内数学应放行；
+        // 真正的价格通常是 `$123` 后接普通文本而不是闭合 `$`，不会走到这里。
         // 否则 Markdown 会先吞掉 `\%`，后续 KaTeX 可能把相邻 `$...$` 错配成红色错误文本。
-        if (/^\d/.test(trimmedContent) && !hasExplicitMathSignal) return false;
+        if (/^\d/.test(trimmedContent) && !hasExplicitMathSignal && !isSimpleNumericMath) return false;
         if (trimmedContent.startsWith('/')) return false;
         if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(trimmedContent)) return false;
         if (trimmedContent.startsWith('{') && trimmedContent.endsWith('}')) return false;
         if (trimmedContent.includes('|')) return false;
 
-        // 只放行带有明确数学信号的单美元公式。
-        return hasExplicitMathSignal;
+        // 放行带有明确数学信号的单美元公式，以及 `$1$`、`$2$` 这类明确闭合的纯数字公式。
+        return hasExplicitMathSignal || isSimpleNumericMath;
     };
 
     const protectInlineDollarMath = (source) => {
