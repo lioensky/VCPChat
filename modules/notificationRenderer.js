@@ -33,17 +33,26 @@ function updateVCPLogStatus(statusUpdate, vcpLogConnectionStatusDiv) {
     vcpLogConnectionStatusDiv.className = `notifications-status status-${status || 'unknown'}`;
 }
 
-function sendToolApprovalResponse(requestId, approved) {
+const handledToolApprovalRequestIds = new Set();
+
+function sendToolApprovalResponse(requestId, approved, reason = '') {
     if (!requestId || !notificationRendererApi || typeof notificationRendererApi.sendVCPLogMessage !== 'function') {
         return false;
     }
 
+    const responseData = {
+        requestId,
+        approved: approved === true
+    };
+
+    const trimmedReason = typeof reason === 'string' ? reason.trim() : '';
+    if (trimmedReason) {
+        responseData.reason = trimmedReason;
+    }
+
     notificationRendererApi.sendVCPLogMessage({
         type: 'tool_approval_response',
-        data: {
-            requestId,
-            approved: approved === true
-        }
+        data: responseData
     });
     return true;
 }
@@ -239,6 +248,7 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
     const populateNotificationElement = (element, isToast) => {
         if (isToolApprovalRequest) {
             element.dataset.protectedNotification = 'tool-approval';
+            element.dataset.toolApprovalRequestId = logData.data?.requestId || '';
             element.classList.add('notification-protected', 'notification-tool-approval');
         }
 
@@ -266,20 +276,45 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
 
         // Special handling for approval requests - Moved here to be before timestamp
         if (isToolApprovalRequest) {
+            const approvalReasonWrapper = document.createElement('div');
+            approvalReasonWrapper.classList.add('notification-approval-reason');
+
+            const reasonInput = document.createElement('textarea');
+            reasonInput.classList.add('notification-approval-reason-input');
+            reasonInput.placeholder = '可选：告诉 AI 为什么通过或拒绝';
+            reasonInput.maxLength = 1000;
+            reasonInput.rows = isToast ? 2 : 3;
+            reasonInput.addEventListener('click', (e) => e.stopPropagation());
+            reasonInput.addEventListener('keydown', (e) => e.stopPropagation());
+
+            const reasonHint = document.createElement('div');
+            reasonHint.classList.add('notification-approval-reason-hint');
+            reasonHint.textContent = '拒绝时建议填写可执行的修正建议，最多 1000 字。';
+
+            approvalReasonWrapper.appendChild(reasonInput);
+            approvalReasonWrapper.appendChild(reasonHint);
+            element.appendChild(approvalReasonWrapper);
+
             const approvalActions = document.createElement('div');
             approvalActions.classList.add('notification-actions');
+
+            const finishApproval = (approved) => {
+                const requestId = logData.data.requestId;
+                if (handledToolApprovalRequestIds.has(requestId)) return;
+
+                const sent = sendToolApprovalResponse(requestId, approved, reasonInput.value);
+                if (!sent) return;
+
+                handledToolApprovalRequestIds.add(requestId);
+                dismissToolApprovalNotifications(requestId);
+            };
 
             const allowBtn = document.createElement('button');
             allowBtn.textContent = '允许';
             allowBtn.classList.add('vcp-btn', 'vcp-btn-success');
             allowBtn.onclick = (e) => {
                 e.stopPropagation();
-                sendToolApprovalResponse(logData.data.requestId, true);
-                if (isToast) closeToastNotification(element);
-                else {
-                    element.style.opacity = '0';
-                    setTimeout(() => element.remove(), 500);
-                }
+                finishApproval(true);
             };
 
             const rejectBtn = document.createElement('button');
@@ -287,12 +322,7 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
             rejectBtn.classList.add('vcp-btn', 'vcp-btn-danger');
             rejectBtn.onclick = (e) => {
                 e.stopPropagation();
-                sendToolApprovalResponse(logData.data.requestId, false);
-                if (isToast) closeToastNotification(element);
-                else {
-                    element.style.opacity = '0';
-                    setTimeout(() => element.remove(), 500);
-                }
+                finishApproval(false);
             };
 
             approvalActions.appendChild(allowBtn);
@@ -381,6 +411,27 @@ function renderVCPLogNotification(logData, originalRawMessage = null, notificati
                 toastElement.parentNode.removeChild(toastElement);
             }
         }, { once: true });
+    };
+
+    const dismissToolApprovalNotifications = (requestId) => {
+        if (!requestId) return;
+
+        const escapedRequestId = CSS.escape(String(requestId));
+        const approvalElements = document.querySelectorAll(`.notification-tool-approval[data-tool-approval-request-id="${escapedRequestId}"]`);
+
+        approvalElements.forEach((approvalElement) => {
+            approvalElement.querySelectorAll('button, textarea').forEach((control) => {
+                control.disabled = true;
+            });
+
+            if (approvalElement.classList.contains('floating-toast-notification')) {
+                closeToastNotification(approvalElement);
+            } else {
+                approvalElement.style.opacity = '0';
+                approvalElement.style.transform = 'translateX(100%)';
+                setTimeout(() => approvalElement.remove(), 500);
+            }
+        });
     };
 
     // 初始化焦点清理机制

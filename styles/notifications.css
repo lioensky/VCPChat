@@ -1012,6 +1012,52 @@ body.light-theme .floating-toast-notification {
 }
 
 /* Tool Approval Notification Actions */
+.notification-approval-reason {
+    margin-top: 10px;
+    position: relative;
+    z-index: 2;
+}
+
+.notification-approval-reason-input {
+    width: 100%;
+    min-height: 58px;
+    max-height: 160px;
+    box-sizing: border-box;
+    resize: vertical;
+    padding: 8px 10px;
+    border: 1px solid color-mix(in srgb, var(--highlight-text) 32%, transparent);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--secondary-bg) 82%, transparent);
+    color: var(--primary-text);
+    font: inherit;
+    font-size: 0.85em;
+    line-height: 1.4;
+    outline: none;
+}
+
+.notification-approval-reason-input::placeholder {
+    color: var(--secondary-text);
+    opacity: 0.8;
+}
+
+.notification-approval-reason-input:focus {
+    border-color: var(--highlight-text);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--highlight-text) 24%, transparent);
+}
+
+.notification-approval-reason-input:disabled {
+    cursor: not-allowed;
+    opacity: 0.65;
+}
+
+.notification-approval-reason-hint {
+    margin-top: 4px;
+    color: var(--secondary-text);
+    font-size: 0.75em;
+    line-height: 1.35;
+    opacity: 0.86;
+}
+
 .notification-actions {
     display: flex;
     gap: 8px;
@@ -1031,9 +1077,15 @@ body.light-theme .floating-toast-notification {
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
-.vcp-btn:hover {
+.vcp-btn:hover:not(:disabled) {
     transform: translateY(-1px);
     box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+}
+
+.vcp-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.65;
+    transform: none;
 }
 
 .vcp-btn:active {
