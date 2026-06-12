@@ -1,6 +1,7 @@
 // modules/renderer/streamManager.js
 import { formatMessageTimestamp } from './domBuilder.js';
 import { createContentPipeline, PIPELINE_MODES } from './contentPipeline.js';
+import { splitIntoBurstBubbles } from './imageHandler.js';
 
 // --- Stream State ---
 const streamingChunkQueues = new Map(); // messageId -> array of original chunk strings
@@ -32,6 +33,8 @@ const THINK_START_REGEX = /<think(?:ing)?>/ig;
 const THINK_END_REGEX = /<\/think(?:ing)?>/ig;
 const DAILY_NOTE_START = '<<<DailyNoteStart>>>';
 const DAILY_NOTE_END = '<<<DailyNoteEnd>>>';
+// OpenHerPersona 聊天分条标记：完整出现即成为稳定切点，流式过程中实时分出气泡
+const BURST_MARKER_TOKEN = '<!--brk-->';
 const STREAM_PARAGRAPH_SAFETY_BLOCKS = 1;
 const HTML_ISLAND_MAX_STACK_DEPTH = 128;
 const HTML_ISLAND_MAX_CHARS = 256 * 1024;
@@ -405,11 +408,30 @@ function getOrCreateStreamSegmentState(messageId) {
             stableCutoff: 0,
             stableHtml: '',
             lastTailText: '',
-            lastParagraphBoundary: 0
+            lastParagraphBoundary: 0,
+            burstBubbleCount: 0
         };
         streamSegmentStates.set(messageId, state);
     }
     return state;
+}
+
+// 分条流式时给尾部根（"正在打字"的下一条）套上头像行，看起来像新消息正在到来。
+// 收尾阶段会整体重渲染 contentDiv，包装行随之消失。
+function ensureBurstTailRow(contentDiv, tailRoot, messageItem) {
+    if (contentDiv.querySelector('.burst-tail-row')) return;
+    const avatar = messageItem ? messageItem.querySelector('img.chat-avatar') : null;
+    const tailRow = document.createElement('div');
+    tailRow.className = 'burst-row burst-tail-row';
+    if (avatar && avatar.src) {
+        const tailAvatar = document.createElement('img');
+        tailAvatar.className = 'burst-avatar';
+        tailAvatar.src = avatar.src;
+        tailAvatar.alt = '';
+        tailRow.appendChild(tailAvatar);
+    }
+    contentDiv.appendChild(tailRow);
+    tailRow.appendChild(tailRoot);
 }
 
 function startsWithAt(text, index, token) {
@@ -841,6 +863,13 @@ function findExplicitStablePrefix(text, startOffset = 0) {
             continue;
         }
 
+        if (startsWithAt(text, index, BURST_MARKER_TOKEN)) {
+            stableCutoff = index + BURST_MARKER_TOKEN.length;
+            paragraphFloor = stableCutoff;
+            index = stableCutoff;
+            continue;
+        }
+
         const thinkStart = findConventionalThinkStart(text, index);
         if (thinkStart === index) {
             const thinkEnd = findConventionalThinkEnd(text, index);
@@ -977,8 +1006,8 @@ function renderStreamFrame(messageId) {
     // 🟢 使用缓存的 DOM 引用
     const cachedDom = getCachedMessageDom(messageId);
     if (!cachedDom) return;
-    
-    const { contentDiv } = cachedDom;
+
+    const { contentDiv, messageItem } = cachedDom;
     const { stableRoot, tailRoot } = ensureStreamingRoots(contentDiv);
     const segmentState = getOrCreateStreamSegmentState(messageId);
 
@@ -991,6 +1020,7 @@ function renderStreamFrame(messageId) {
 
     if (nextStableCutoff > segmentState.stableCutoff) {
         const stableText = textForRendering.slice(0, nextStableCutoff);
+        const hasBurstMarkerInStable = stableText.includes(BURST_MARKER_TOKEN);
         const stableHtml = parseFullStreamContent(stableText);
         segmentState.stableCutoff = nextStableCutoff;
         segmentState.stableHtml = stableHtml;
@@ -1008,6 +1038,29 @@ function renderStreamFrame(messageId) {
             }
         } else {
             stableRoot.innerHTML = stableHtml;
+        }
+
+        // OpenHerPersona 聊天分条：一旦稳定区出现 brk，立即进入 burst-streaming。
+        // 即使当前稳定区只封出 1 个完成气泡，也要马上把 tailRoot 放进“下一条正在打字”
+        // 的假头像行，避免等到下一个 brk 才出现活动气泡。
+        try {
+            const bubbles = splitIntoBurstBubbles(stableRoot, 1);
+            if (hasBurstMarkerInStable || bubbles.length > 0) {
+                contentDiv.classList.add('burst-streaming');
+                if (messageItem) messageItem.dataset.burstRevealed = 'true';
+                ensureBurstTailRow(contentDiv, tailRoot, messageItem);
+            }
+            if (bubbles.length > 0) {
+                bubbles.forEach((bubble, index) => {
+                    if (index >= segmentState.burstBubbleCount) {
+                        bubble.classList.add('burst-pending');
+                        bubble.style.animationDelay = '0ms';
+                    }
+                });
+                segmentState.burstBubbleCount = bubbles.length;
+            }
+        } catch (error) {
+            console.warn('[StreamManager] burst bubble split failed:', error);
         }
     }
 
