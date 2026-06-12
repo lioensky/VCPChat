@@ -1,7 +1,6 @@
 // modules/renderer/streamManager.js
 import { formatMessageTimestamp } from './domBuilder.js';
 import { createContentPipeline, PIPELINE_MODES } from './contentPipeline.js';
-import { splitIntoBurstBubbles } from './imageHandler.js';
 
 // --- Stream State ---
 const streamingChunkQueues = new Map(); // messageId -> array of original chunk strings
@@ -520,12 +519,31 @@ function appendNewStableRange(stableBlocksRoot, segmentState, textForRendering, 
         resetStableBlockState(segmentState);
     }
 
-    const sourceText = textForRendering.slice(segmentState.stableRenderedCutoff, nextStableCutoff);
-    if (!sourceText) return [];
+    const appendedBlocks = [];
 
-    const html = parseFullStreamContent(sourceText);
-    const blockRecord = appendStableBlockFragment(stableBlocksRoot, segmentState, sourceText, html, options);
-    return blockRecord ? [blockRecord] : [];
+    while (segmentState.stableRenderedCutoff < nextStableCutoff) {
+        const currentOffset = segmentState.stableRenderedCutoff;
+        const markerIndex = findNextLineOnlyToken(textForRendering, BURST_MARKER_TOKEN, currentOffset);
+        const effectiveMarkerIndex = markerIndex !== -1 && markerIndex < nextStableCutoff ? markerIndex : -1;
+        const sliceEnd = effectiveMarkerIndex === -1 ? nextStableCutoff : effectiveMarkerIndex;
+        const sourceText = textForRendering.slice(currentOffset, sliceEnd);
+
+        if (sourceText) {
+            const html = parseFullStreamContent(sourceText);
+            const blockRecord = appendStableBlockFragment(stableBlocksRoot, segmentState, sourceText, html, options);
+            if (blockRecord) appendedBlocks.push(blockRecord);
+        }
+
+        if (effectiveMarkerIndex === -1) {
+            break;
+        }
+
+        // 独立行 <!--brk--> 作为稳定切点和气泡边界参与源码进度，
+        // 但不渲染进 stable block，避免后续为了分条再解包/搬运已稳定 DOM。
+        segmentState.stableRenderedCutoff = effectiveMarkerIndex + BURST_MARKER_TOKEN.length;
+    }
+
+    return appendedBlocks;
 }
 
 function unwrapStableBlockContainersForBurst(stableBlocksRoot, segmentState) {
@@ -566,6 +584,59 @@ function ensureBurstTailRow(contentDiv, tailRoot, messageItem) {
     }
     contentDiv.appendChild(tailRow);
     tailRow.appendChild(tailRoot);
+}
+
+function createBurstAvatarForMessage(messageItem) {
+    const avatar = messageItem ? messageItem.querySelector('img.chat-avatar') : null;
+    if (!avatar || !avatar.src) return null;
+
+    const burstAvatar = document.createElement('img');
+    burstAvatar.className = 'burst-avatar';
+    burstAvatar.src = avatar.src;
+    burstAvatar.alt = '';
+    return burstAvatar;
+}
+
+function promoteStableBlocksToBurstBubbles(stableBlocksRoot, messageItem) {
+    if (!stableBlocksRoot) return [];
+
+    const wrappers = [];
+    const children = Array.from(stableBlocksRoot.children);
+    let existingBubbleCount = 0;
+
+    for (const child of children) {
+        if (child.classList.contains('burst-row') || child.classList.contains('burst-bubble')) {
+            existingBubbleCount += 1;
+            wrappers.push(child);
+        }
+    }
+
+    const blockEls = children.filter((child) => (
+        child.classList.contains('vcp-stream-stable-block')
+        && child.dataset.vcpBurstWrapped !== 'true'
+    ));
+
+    for (const blockEl of blockEls) {
+        blockEl.dataset.vcpBurstWrapped = 'true';
+        blockEl.classList.add('burst-bubble');
+
+        if (existingBubbleCount === 0) {
+            wrappers.push(blockEl);
+            existingBubbleCount += 1;
+            continue;
+        }
+
+        const row = document.createElement('div');
+        row.className = 'burst-row';
+        const burstAvatar = createBurstAvatarForMessage(messageItem);
+        if (burstAvatar) row.appendChild(burstAvatar);
+        stableBlocksRoot.insertBefore(row, blockEl);
+        row.appendChild(blockEl);
+        wrappers.push(row);
+        existingBubbleCount += 1;
+    }
+
+    return wrappers;
 }
 
 function startsWithAt(text, index, token) {
@@ -1165,7 +1236,16 @@ function renderStreamFrame(messageId) {
     const segmentState = getOrCreateStreamSegmentState(messageId);
 
     const textForRendering = accumulatedStreamText.get(messageId) || "";
-    const nextStableCutoff = findExplicitStablePrefix(textForRendering, segmentState.stableCutoff);
+    let nextStableCutoff = findExplicitStablePrefix(textForRendering, segmentState.stableCutoff);
+
+    // burst 流式开始后，stable 区只在下一个独立行 brk 到达时继续推进。
+    // 否则普通段落 stable 会把“正在打字的当前气泡”提前固化成新的 stable block，
+    // 再被原子提升为独立气泡，表现为“所有 stable 都自动分成气泡”。
+    if ((segmentState.burstBubbleCount > 0 || contentDiv.classList.contains('burst-streaming'))
+        && nextStableCutoff > segmentState.stableCutoff
+        && !hasLineOnlyToken(textForRendering.slice(segmentState.stableCutoff, nextStableCutoff), BURST_MARKER_TOKEN)) {
+        nextStableCutoff = segmentState.stableCutoff;
+    }
 
     // 移除思考指示器
     const streamingIndicator = contentDiv.querySelector('.streaming-indicator, .thinking-indicator');
@@ -1184,22 +1264,15 @@ function renderStreamFrame(messageId) {
         });
 
         // OpenHerPersona 聊天分条：一旦稳定区出现 brk，立即进入 burst-streaming。
-        // 追加式 stable block 默认带一层稳定块容器；分条需要按 stableBlocksRoot 的顶层内容切分，
-        // 因此首次遇到 brk 时先解包已固化 block，避免 marker 被深层容器吞掉。
-        // 即使当前稳定区只封出 1 个完成气泡，也要马上把 tailRoot 放进“下一条正在打字”
-        // 的假头像行，避免等到下一个 brk 才出现活动气泡。
+        // 流式路径不再解包已稳定 DOM，也不再对 stableBlocksRoot 做全量 split；
+        // 而是按独立行 brk 在源码层切分 stable block，并把每个 stable block 原子提升为气泡。
+        // 这样避免 stable -> burst 之间的 live DOM 拆包/重包中间态，降低透明闪烁和复杂后处理节点抖动。
         try {
+            let bubbles = [];
             if (hasBurstMarkerInStable || hasBurstMarkerInNewStable) {
-                // 先进入 burst 样式上下文，再移动/包装 stable DOM。
-                // 含 KaTeX 等重后处理节点时，DOM 移动可能触发布局刷新；提前加 class 可避免中间帧气泡背景透明。
                 contentDiv.classList.add('burst-streaming');
                 if (messageItem) messageItem.dataset.burstRevealed = 'true';
-                unwrapStableBlockContainersForBurst(stableBlocksRoot, segmentState);
-            }
-            const bubbles = splitIntoBurstBubbles(stableBlocksRoot, 1);
-            if (hasBurstMarkerInStable || hasBurstMarkerInNewStable || bubbles.length > 0) {
-                contentDiv.classList.add('burst-streaming');
-                if (messageItem) messageItem.dataset.burstRevealed = 'true';
+                bubbles = promoteStableBlocksToBurstBubbles(stableBlocksRoot, messageItem);
                 ensureBurstTailRow(contentDiv, tailRoot, messageItem);
             }
             if (bubbles.length > 0) {
