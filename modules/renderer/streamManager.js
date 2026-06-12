@@ -7,7 +7,7 @@ import { splitIntoBurstBubbles } from './imageHandler.js';
 const streamingChunkQueues = new Map(); // messageId -> array of original chunk strings
 const streamingTimers = new Map();      // messageId -> intervalId
 const accumulatedStreamText = new Map(); // messageId -> string
-const streamSegmentStates = new Map(); // messageId -> { stableCutoff, stableHtml, lastTailText, lastParagraphBoundary }
+const streamSegmentStates = new Map(); // messageId -> { stableCutoff, stableHtml, stableRenderedCutoff, stableBlocks, stableBlockSeq, lastTailText, lastParagraphBoundary }
 let activeStreamingMessageId = null; // Track the currently active streaming message
 const elementContentLengthCache = new WeakMap(); // 跟踪每个元素的内容长度；WeakMap 避免 morphdom 替换节点后的强引用泄漏
 
@@ -394,27 +394,48 @@ function parseFullStreamContent(text, options = {}) {
 
 function ensureStreamingRoots(contentDiv) {
     let stableRoot = contentDiv.querySelector('.vcp-stream-stable-root');
+    let stableBlocksRoot = contentDiv.querySelector('.vcp-stream-stable-blocks-root');
     let tailRoot = contentDiv.querySelector('.vcp-stream-tail-root');
 
     if (!stableRoot || !tailRoot) {
         contentDiv.innerHTML = '';
         stableRoot = document.createElement('div');
         stableRoot.className = 'vcp-stream-stable-root';
+        stableBlocksRoot = document.createElement('div');
+        stableBlocksRoot.className = 'vcp-stream-stable-blocks-root';
+        stableRoot.appendChild(stableBlocksRoot);
         tailRoot = document.createElement('div');
         tailRoot.className = 'vcp-stream-tail-root';
         contentDiv.appendChild(stableRoot);
         contentDiv.appendChild(tailRoot);
+    } else if (!stableBlocksRoot) {
+        // 兼容旧的 stableRoot 结构：后续追加式固化只写入 stableBlocksRoot。
+        // 如果 stableRoot 已有旧内容，先原样搬入 blocksRoot，避免切换实现时丢失已渲染 DOM。
+        stableBlocksRoot = document.createElement('div');
+        stableBlocksRoot.className = 'vcp-stream-stable-blocks-root';
+        while (stableRoot.firstChild) {
+            stableBlocksRoot.appendChild(stableRoot.firstChild);
+        }
+        stableRoot.appendChild(stableBlocksRoot);
     }
 
-    return { stableRoot, tailRoot };
+    return { stableRoot, stableBlocksRoot, tailRoot };
 }
 
 function getOrCreateStreamSegmentState(messageId) {
     let state = streamSegmentStates.get(messageId);
     if (!state) {
         state = {
+            // 已判定为稳定的源码前缀终点；tail 从这里开始渲染。
             stableCutoff: 0,
+            // 兼容旧路径/调试用：记录最近一次稳定 HTML 片段或前缀。
             stableHtml: '',
+            // 已实际追加固化到 stableBlocksRoot 的源码终点。
+            // 下一步切换为追加式固化时，只渲染 [stableRenderedCutoff, stableCutoff)。
+            stableRenderedCutoff: 0,
+            // 追加式 stable block 元数据：{ id, start, end, source, html, element }。
+            stableBlocks: [],
+            stableBlockSeq: 0,
             lastTailText: '',
             lastParagraphBoundary: 0,
             burstBubbleCount: 0
@@ -422,6 +443,111 @@ function getOrCreateStreamSegmentState(messageId) {
         streamSegmentStates.set(messageId, state);
     }
     return state;
+}
+
+function createStableBlockRecord(segmentState, start, end, source, html, element = null) {
+    const id = `stream-stable-block-${segmentState.stableBlockSeq++}`;
+    return {
+        id,
+        start,
+        end,
+        source,
+        html,
+        element
+    };
+}
+
+function resetStableBlockState(segmentState) {
+    segmentState.stableRenderedCutoff = 0;
+    segmentState.stableBlocks = [];
+    segmentState.stableBlockSeq = 0;
+    segmentState.stableHtml = '';
+}
+
+function appendStableBlockFragment(stableBlocksRoot, segmentState, sourceText, html, options = {}) {
+    if (!stableBlocksRoot || !sourceText) return null;
+
+    const {
+        messageId = null,
+        settings = null
+    } = options;
+
+    const blockEl = document.createElement('div');
+    const blockRecord = createStableBlockRecord(
+        segmentState,
+        segmentState.stableRenderedCutoff,
+        segmentState.stableRenderedCutoff + sourceText.length,
+        sourceText,
+        html,
+        blockEl
+    );
+
+    blockEl.className = 'vcp-stream-stable-block';
+    blockEl.dataset.vcpStreamStableBlock = 'true';
+    blockEl.dataset.vcpBlockKey = blockRecord.id;
+    blockEl.dataset.vcpStableStart = String(blockRecord.start);
+    blockEl.dataset.vcpStableEnd = String(blockRecord.end);
+
+    stableBlocksRoot.appendChild(blockEl);
+    segmentState.stableBlocks.push(blockRecord);
+    segmentState.stableRenderedCutoff = blockRecord.end;
+    segmentState.stableHtml += html || '';
+
+    if (typeof refs.renderPostProcessedHtml === 'function') {
+        const enrichResult = refs.renderPostProcessedHtml(blockEl, html, {
+            messageId,
+            settings,
+            renderSessionId: null,
+            runHeavy: true,
+            includeAttachments: false
+        });
+        if (enrichResult && typeof enrichResult.catch === 'function') {
+            enrichResult.catch(error => console.error('[StreamManager] Stable block enrichment failed:', error));
+        }
+    } else {
+        blockEl.innerHTML = html;
+    }
+
+    return blockRecord;
+}
+
+function appendNewStableRange(stableBlocksRoot, segmentState, textForRendering, nextStableCutoff, options = {}) {
+    if (nextStableCutoff <= segmentState.stableRenderedCutoff) return [];
+
+    // 如果外部状态异常回退，宁可重置追加缓存，也不要产生重叠 block。
+    if (segmentState.stableRenderedCutoff > nextStableCutoff) {
+        stableBlocksRoot.textContent = '';
+        resetStableBlockState(segmentState);
+    }
+
+    const sourceText = textForRendering.slice(segmentState.stableRenderedCutoff, nextStableCutoff);
+    if (!sourceText) return [];
+
+    const html = parseFullStreamContent(sourceText);
+    const blockRecord = appendStableBlockFragment(stableBlocksRoot, segmentState, sourceText, html, options);
+    return blockRecord ? [blockRecord] : [];
+}
+
+function unwrapStableBlockContainersForBurst(stableBlocksRoot, segmentState) {
+    if (!stableBlocksRoot) return;
+
+    const blockEls = Array.from(stableBlocksRoot.querySelectorAll(':scope > .vcp-stream-stable-block'));
+    if (blockEls.length === 0) return;
+
+    for (const blockEl of blockEls) {
+        const parent = blockEl.parentNode;
+        if (!parent) continue;
+
+        while (blockEl.firstChild) {
+            parent.insertBefore(blockEl.firstChild, blockEl);
+        }
+        blockEl.remove();
+    }
+
+    // burst 分条会重排 stable DOM；后续 stable block 继续追加即可，旧 block 元数据不再依赖 element 引用。
+    for (const block of segmentState.stableBlocks) {
+        block.element = null;
+    }
 }
 
 // 分条流式时给尾部根（"正在打字"的下一条）套上头像行，看起来像新消息正在到来。
@@ -1016,7 +1142,7 @@ function renderStreamFrame(messageId) {
     if (!cachedDom) return;
 
     const { contentDiv, messageItem } = cachedDom;
-    const { stableRoot, tailRoot } = ensureStreamingRoots(contentDiv);
+    const { stableRoot, stableBlocksRoot, tailRoot } = ensureStreamingRoots(contentDiv);
     const segmentState = getOrCreateStreamSegmentState(messageId);
 
     const textForRendering = accumulatedStreamText.get(messageId) || "";
@@ -1028,32 +1154,27 @@ function renderStreamFrame(messageId) {
 
     if (nextStableCutoff > segmentState.stableCutoff) {
         const stableText = textForRendering.slice(0, nextStableCutoff);
+        const newStableText = textForRendering.slice(segmentState.stableRenderedCutoff, nextStableCutoff);
         const hasBurstMarkerInStable = stableText.includes(BURST_MARKER_TOKEN);
-        const stableHtml = parseFullStreamContent(stableText);
+        const hasBurstMarkerInNewStable = newStableText.includes(BURST_MARKER_TOKEN);
         segmentState.stableCutoff = nextStableCutoff;
-        segmentState.stableHtml = stableHtml;
 
-        if (typeof refs.renderPostProcessedHtml === 'function') {
-            const enrichResult = refs.renderPostProcessedHtml(stableRoot, stableHtml, {
-                messageId,
-                settings: refs.globalSettingsRef?.get?.(),
-                renderSessionId: null,
-                runHeavy: true,
-                includeAttachments: false
-            });
-            if (enrichResult && typeof enrichResult.catch === 'function') {
-                enrichResult.catch(error => console.error('[StreamManager] Stable enrichment failed:', error));
-            }
-        } else {
-            stableRoot.innerHTML = stableHtml;
-        }
+        appendNewStableRange(stableBlocksRoot, segmentState, textForRendering, nextStableCutoff, {
+            messageId,
+            settings: refs.globalSettingsRef?.get?.()
+        });
 
         // OpenHerPersona 聊天分条：一旦稳定区出现 brk，立即进入 burst-streaming。
+        // 追加式 stable block 默认带一层稳定块容器；分条需要按 stableBlocksRoot 的顶层内容切分，
+        // 因此首次遇到 brk 时先解包已固化 block，避免 marker 被深层容器吞掉。
         // 即使当前稳定区只封出 1 个完成气泡，也要马上把 tailRoot 放进“下一条正在打字”
         // 的假头像行，避免等到下一个 brk 才出现活动气泡。
         try {
-            const bubbles = splitIntoBurstBubbles(stableRoot, 1);
-            if (hasBurstMarkerInStable || bubbles.length > 0) {
+            if (hasBurstMarkerInStable || hasBurstMarkerInNewStable) {
+                unwrapStableBlockContainersForBurst(stableBlocksRoot, segmentState);
+            }
+            const bubbles = splitIntoBurstBubbles(stableBlocksRoot, 1);
+            if (hasBurstMarkerInStable || hasBurstMarkerInNewStable || bubbles.length > 0) {
                 contentDiv.classList.add('burst-streaming');
                 if (messageItem) messageItem.dataset.burstRevealed = 'true';
                 ensureBurstTailRow(contentDiv, tailRoot, messageItem);
