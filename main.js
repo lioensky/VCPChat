@@ -1017,7 +1017,7 @@ if (!gotTheLock) {
                     const config = {
                         mainServerUrl: settings.vcpLogUrl, // Assuming the distributed server connects to the same base URL as VCPLog
                         vcpKey: settings.vcpLogKey,
-                        serverName: 'VCP-Desktop-Client-Distributed-Server',
+                        serverName: 'VCPChat-Desktop-Client-Distributed-Server',
                         debugMode: true, // Or read from settings if you add this option
                         rendererProcess: mainWindow.webContents, // Pass the renderer process object
                         handleMusicControl: musicHandlers.handleMusicControl, // Inject the music control handler
