@@ -202,7 +202,7 @@ function showContextMenu(event, messageItem, message) {
                 const contentClone = contentDiv.cloneNode(true);
                 // 移除不应参与复制的渲染辅助节点，避免把附件删除按钮的 × 一起复制进去
                 contentClone.querySelectorAll(
-                    '.vcp-tool-use-bubble, .vcp-tool-result-bubble, .message-attachments, .message-attachment-remove-btn, style, script'
+                    '.vcp-tool-use-bubble, .vcp-tool-result-bubble, .vcp-tool-call-summary-bubble, .vcp-role-divider, .vcp-thought-chain-bubble, .message-attachments, .message-attachment-remove-btn, style, script'
                 ).forEach(el => el.remove());
                 // 修复：清理多余的空行，确保最多只有一个空行
                 textToCopy = contentClone.innerText.replace(/\n{3,}/g, '\n\n').trim();

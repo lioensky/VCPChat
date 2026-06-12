@@ -467,7 +467,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 textToSpeak = window.messageRenderer.extractSpeakableTextFromContentElement(contentElement);
             } else if (contentElement) {
                 const contentClone = contentElement.cloneNode(true);
-                contentClone.querySelectorAll('.vcp-tool-use-bubble, .vcp-tool-result-bubble, .maid-diary-bubble, .vcp-role-divider, .vcp-thought-chain-bubble, style, script').forEach(el => el.remove());
+                contentClone.querySelectorAll('.vcp-tool-use-bubble, .vcp-tool-result-bubble, .vcp-tool-call-summary-bubble, .maid-diary-bubble, .vcp-role-divider, .vcp-thought-chain-bubble, style, script').forEach(el => el.remove());
                 textToSpeak = (contentClone.innerText || '').replace(/\n{3,}/g, '\n\n').trim();
             } else {
                 textToSpeak = messageElement.textContent || messageElement.innerText;

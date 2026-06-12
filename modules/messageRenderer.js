@@ -287,6 +287,7 @@ const TOOL_START_MARKER = '<<<[TOOL_REQUEST]>>>';
 const TOOL_END_MARKER = '<<<[END_TOOL_REQUEST]>>>';
 const NOTE_REGEX = /<<<DailyNoteStart>>>(.*?)<<<DailyNoteEnd>>>/gs;
 const TOOL_RESULT_REGEX = /\[\[VCP调用结果信息汇总:(.*?)VCP调用结果结束\]\]/gs;
+const TOOL_CALL_SUMMARY_REGEX = /\[本轮工具调用摘要:\]([\s\S]*?)\[本轮工具调用摘要结束\]/g;
 const BUTTON_CLICK_REGEX = /\[\[点击按钮:(.*?)\]\]/gs;
 const CANVAS_PLACEHOLDER_REGEX = /\{\{VCPChatCanvas\}\}/g;
 const STYLE_REGEX = /<style\b[^>]*>([\s\S]*?)<\/style>/gi;
@@ -711,6 +712,68 @@ function transformSpecialBlocks(text, codeBlockMap) {
         return `\n\n${html}\n\n`;
     };
 
+    // Process Tool Call Summaries
+    const renderToolCallSummaryBlock = (rawContent) => {
+        const content = restoreBlocks(rawContent || '').trim();
+        const entries = content
+            .split(/[；;。]\s*/u)
+            .map(item => item.trim())
+            .filter(Boolean);
+
+        const getStatusInfo = (entry) => {
+            if (/拒绝|被拒|denied|rejected|refused/i.test(entry)) {
+                return { key: 'rejected', label: '拒绝' };
+            }
+            if (/失败|错误|异常|error|failed/i.test(entry)) {
+                return { key: 'failure', label: '失败' };
+            }
+            if (/超时|timeout/i.test(entry)) {
+                return { key: 'timeout', label: '超时' };
+            }
+            if (/成功|完成|success|succeeded|ok/i.test(entry)) {
+                return { key: 'success', label: '成功' };
+            }
+            if (/取消|中止|cancel/i.test(entry)) {
+                return { key: 'cancelled', label: '取消' };
+            }
+            if (/跳过|skip/i.test(entry)) {
+                return { key: 'skipped', label: '跳过' };
+            }
+            return { key: 'unknown', label: '未知' };
+        };
+
+        const renderEntry = (entry) => {
+            const statusInfo = getStatusInfo(entry);
+            const toolNameMatch = entry.match(/^(.+?)\s*调用/u);
+            const toolName = (toolNameMatch?.[1] || entry.replace(/调用.*/u, '') || 'Tool').trim();
+            return `<span class="vcp-tool-call-summary-chip status-${statusInfo.key}">` +
+                `<span class="vcp-tool-call-summary-tool">${escapeHtml(toolName)}</span>` +
+                `<span class="vcp-tool-call-summary-status">${escapeHtml(statusInfo.label)}</span>` +
+                `</span>`;
+        };
+
+        let html = `<div class="vcp-tool-call-summary-bubble" data-vcp-block-type="tool-call-summary" data-vcp-preserve-children="true">`;
+        html += `<div class="vcp-tool-call-summary-header">`;
+        html += `<span class="vcp-tool-call-summary-icon">🧾</span>`;
+        html += `<span class="vcp-tool-call-summary-title">本轮工具调用摘要</span>`;
+        html += `</div>`;
+
+        if (entries.length > 0) {
+            html += `<div class="vcp-tool-call-summary-list">${entries.map(renderEntry).join('')}</div>`;
+        } else {
+            html += `<div class="vcp-tool-call-summary-raw">${escapeHtml(content || '无摘要内容')}</div>`;
+        }
+
+        html += `</div>`;
+        return `\n\n${html}\n\n`;
+    };
+
+    processed = processed.replace(TOOL_CALL_SUMMARY_REGEX, (match, rawContent) => {
+        return renderToolCallSummaryBlock(rawContent);
+    });
+
+    TOOL_CALL_SUMMARY_REGEX.lastIndex = 0;
+
     // Process Tool Requests
     processed = replaceToolRequestBlocks(processed, (match, content) => {
         const detectedToolName = extractMarkedField(content, /tool_name:\s*/i);
@@ -880,9 +943,9 @@ function transformSpecialBlocks(text, codeBlockMap) {
         else if (roleLower === 'assistant') label = 'Assistant';
         else if (roleLower === 'user') label = 'User';
 
-        const actionText = isEndMarker ? '结束' : '起始';
+        const actionText = isEndMarker ? '末' : '始';
 
-        return `\n\n<div class="vcp-role-divider role-${roleLower} type-${isEndMarker ? 'end' : 'start'}" data-vcp-block-type="role-divider" data-vcp-preserve-children="true"><span class="divider-text">角色分界: ${label} [${actionText}]</span></div>\n\n`;
+        return `\n\n<div class="vcp-role-divider role-${roleLower} type-${isEndMarker ? 'end' : 'start'}" data-vcp-block-type="role-divider" data-vcp-preserve-children="true"><span class="divider-text">${label} 分界之${actionText}</span></div>\n\n`;
     });
 
     return processed;
@@ -912,7 +975,7 @@ function extractSpeakableTextFromContentElement(contentElement) {
 
     const contentClone = contentElement.cloneNode(true);
     contentClone.querySelectorAll(
-        '.vcp-tool-use-bubble, .vcp-tool-result-bubble, .maid-diary-bubble, .vcp-role-divider, .vcp-thought-chain-bubble, style, script'
+        '.vcp-tool-use-bubble, .vcp-tool-result-bubble, .vcp-tool-call-summary-bubble, .maid-diary-bubble, .vcp-role-divider, .vcp-thought-chain-bubble, style, script'
     ).forEach(el => el.remove());
 
     return (contentClone.innerText || '')

@@ -1862,41 +1862,274 @@ body.light-theme .vcp-thought-chain-bubble {
     margin-left: 10px;
 }
 
+/* --- Tool Call Summary Bubble --- */
+.vcp-tool-call-summary-bubble {
+    display: block !important;
+    width: fit-content;
+    max-width: 95%;
+    margin: 10px 0 12px 0 !important;
+    padding: 10px 14px !important;
+    border-radius: 12px !important;
+    border: 1px solid var(--tool-summary-border-color, rgba(100, 210, 255, 0.22));
+    background: var(--tool-summary-bg, linear-gradient(145deg, rgba(40, 70, 105, 0.22), rgba(24, 42, 70, 0.30))) !important;
+    color: var(--tool-summary-text-color, var(--primary-text));
+    box-shadow: var(--tool-summary-shadow, 0 6px 18px rgba(0, 0, 0, 0.18));
+    font-family: var(--vcp-tool-card-font-family, var(--vcp-chat-font-family, 'Segoe UI', 'Roboto', sans-serif)) !important;
+    font-size: 0.92em !important;
+    line-height: 1.5;
+    box-sizing: border-box;
+    backdrop-filter: blur(6px);
+}
+
+.vcp-tool-call-summary-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    padding-bottom: 7px;
+    border-bottom: 1px solid var(--tool-summary-header-border-color, rgba(255, 255, 255, 0.10));
+}
+
+.vcp-tool-call-summary-icon {
+    font-size: 1.08em;
+    opacity: 0.9;
+}
+
+.vcp-tool-call-summary-title {
+    font-weight: 700;
+    color: var(--tool-summary-title-color, #64d2ff);
+    letter-spacing: 0.02em;
+}
+
+.vcp-tool-call-summary-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+    align-items: center;
+}
+
+.vcp-tool-call-summary-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    border-radius: 999px;
+    border: 1px solid var(--tool-summary-chip-border, rgba(255, 255, 255, 0.12));
+    background: var(--tool-summary-chip-bg, rgba(255, 255, 255, 0.06));
+    color: var(--tool-summary-chip-color, var(--primary-text));
+    font-size: 0.9em;
+    white-space: nowrap;
+    max-width: 100%;
+}
+
+.vcp-tool-call-summary-tool {
+    font-weight: 650;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 18em;
+}
+
+.vcp-tool-call-summary-status {
+    font-weight: 700;
+    font-size: 0.86em;
+    padding: 1px 5px;
+    border-radius: 999px;
+    background: var(--tool-summary-status-bg, rgba(255, 255, 255, 0.14));
+    color: var(--tool-summary-status-text, #ffffff);
+    line-height: 1.35;
+}
+
+.vcp-tool-call-summary-chip.status-success {
+    --tool-summary-chip-color: #bbf7d0;
+    --tool-summary-chip-bg: rgba(34, 197, 94, 0.20);
+    --tool-summary-chip-border: rgba(74, 222, 128, 0.45);
+    --tool-summary-status-bg: #16a34a;
+    --tool-summary-status-text: #ffffff;
+}
+
+.vcp-tool-call-summary-chip.status-timeout {
+    --tool-summary-chip-color: #fde68a;
+    --tool-summary-chip-bg: rgba(245, 158, 11, 0.20);
+    --tool-summary-chip-border: rgba(251, 191, 36, 0.48);
+    --tool-summary-status-bg: #d97706;
+    --tool-summary-status-text: #ffffff;
+}
+
+.vcp-tool-call-summary-chip.status-failure {
+    --tool-summary-chip-color: #fecdd3;
+    --tool-summary-chip-bg: rgba(244, 63, 94, 0.20);
+    --tool-summary-chip-border: rgba(251, 113, 133, 0.48);
+    --tool-summary-status-bg: #e11d48;
+    --tool-summary-status-text: #ffffff;
+}
+
+.vcp-tool-call-summary-chip.status-rejected {
+    --tool-summary-chip-color: #fed7aa;
+    --tool-summary-chip-bg: rgba(249, 115, 22, 0.20);
+    --tool-summary-chip-border: rgba(251, 146, 60, 0.48);
+    --tool-summary-status-bg: #ea580c;
+    --tool-summary-status-text: #ffffff;
+}
+
+.vcp-tool-call-summary-chip.status-cancelled,
+.vcp-tool-call-summary-chip.status-skipped {
+    --tool-summary-chip-color: #ddd6fe;
+    --tool-summary-chip-bg: rgba(139, 92, 246, 0.20);
+    --tool-summary-chip-border: rgba(167, 139, 250, 0.42);
+    --tool-summary-status-bg: #7c3aed;
+    --tool-summary-status-text: #ffffff;
+}
+
+.vcp-tool-call-summary-chip.status-unknown {
+    --tool-summary-chip-color: #e2e8f0;
+    --tool-summary-chip-bg: rgba(100, 116, 139, 0.22);
+    --tool-summary-chip-border: rgba(148, 163, 184, 0.38);
+    --tool-summary-status-bg: #64748b;
+    --tool-summary-status-text: #ffffff;
+}
+
+body.light-theme .vcp-tool-call-summary-chip.status-success {
+    --tool-summary-chip-color: #14532d;
+    --tool-summary-chip-bg: rgba(34, 197, 94, 0.14);
+    --tool-summary-chip-border: rgba(22, 163, 74, 0.35);
+    --tool-summary-status-bg: #15803d;
+}
+
+body.light-theme .vcp-tool-call-summary-chip.status-timeout {
+    --tool-summary-chip-color: #78350f;
+    --tool-summary-chip-bg: rgba(245, 158, 11, 0.16);
+    --tool-summary-chip-border: rgba(217, 119, 6, 0.36);
+    --tool-summary-status-bg: #b45309;
+}
+
+body.light-theme .vcp-tool-call-summary-chip.status-failure {
+    --tool-summary-chip-color: #881337;
+    --tool-summary-chip-bg: rgba(244, 63, 94, 0.14);
+    --tool-summary-chip-border: rgba(225, 29, 72, 0.34);
+    --tool-summary-status-bg: #be123c;
+}
+
+body.light-theme .vcp-tool-call-summary-chip.status-rejected {
+    --tool-summary-chip-color: #7c2d12;
+    --tool-summary-chip-bg: rgba(249, 115, 22, 0.15);
+    --tool-summary-chip-border: rgba(234, 88, 12, 0.36);
+    --tool-summary-status-bg: #c2410c;
+}
+
+body.light-theme .vcp-tool-call-summary-chip.status-cancelled,
+body.light-theme .vcp-tool-call-summary-chip.status-skipped {
+    --tool-summary-chip-color: #4c1d95;
+    --tool-summary-chip-bg: rgba(139, 92, 246, 0.14);
+    --tool-summary-chip-border: rgba(124, 58, 237, 0.32);
+    --tool-summary-status-bg: #6d28d9;
+}
+
+body.light-theme .vcp-tool-call-summary-chip.status-unknown {
+    --tool-summary-chip-color: #334155;
+    --tool-summary-chip-bg: rgba(100, 116, 139, 0.12);
+    --tool-summary-chip-border: rgba(71, 85, 105, 0.28);
+    --tool-summary-status-bg: #475569;
+}
+
+.vcp-tool-call-summary-raw {
+    color: var(--tool-summary-muted-color, var(--secondary-text));
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+body.light-theme .vcp-tool-call-summary-bubble {
+    --tool-summary-bg: linear-gradient(145deg, rgba(245, 249, 255, 0.96), rgba(229, 239, 250, 0.92));
+    --tool-summary-border-color: rgba(25, 118, 210, 0.18);
+    --tool-summary-header-border-color: rgba(25, 118, 210, 0.12);
+    --tool-summary-title-color: #1565c0;
+    --tool-summary-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
+    --tool-summary-text-color: #1f2937;
+}
+
 /* --- Role Divider --- */
 .vcp-role-divider {
     display: flex;
     align-items: center;
-    justify-content: center;
-    margin: 15px 0;
-    font-size: 0.85em;
-    color: var(--primary-text);
-    opacity: 0.7;
+    justify-content: flex-start;
+    gap: 10px;
+    margin: 12px 0 10px 0;
+    font-size: 0.78em;
+    color: var(--role-divider-color, var(--secondary-text, #94a3b8));
+    opacity: 0.82;
     user-select: none;
     clear: both;
+    letter-spacing: 0.03em;
 }
 
-.vcp-role-divider::before,
+.vcp-role-divider::before {
+    content: "";
+    width: 22px;
+    height: 1px;
+    flex: 0 0 22px;
+    border-radius: 999px;
+    background: currentColor;
+    opacity: 0.55;
+}
+
 .vcp-role-divider::after {
     content: "";
+    height: 1px;
     flex: 1;
-    border-bottom: 1px dashed var(--border-color, #ccc);
-    margin: 0 15px;
+    min-width: 28px;
+    max-width: 220px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, currentColor 0%, color-mix(in srgb, currentColor 28%, transparent) 45%, transparent 100%);
+    opacity: 0.35;
+}
+
+.vcp-role-divider .divider-text {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    border: 1px solid color-mix(in srgb, currentColor 24%, transparent);
+    background: color-mix(in srgb, currentColor 8%, transparent);
+    line-height: 1.45;
+    font-weight: 600;
+    white-space: nowrap;
 }
 
 .vcp-role-divider.role-system {
-    color: #e67e22;
+    --role-divider-color: #f59e0b;
 }
 
 .vcp-role-divider.role-assistant {
-    color: #3498db;
+    --role-divider-color: #38bdf8;
 }
 
 .vcp-role-divider.role-user {
-    color: #2ecc71;
+    --role-divider-color: #34d399;
 }
 
 .vcp-role-divider.type-end {
-    opacity: 0.5;
+    opacity: 0.58;
+}
+
+.vcp-role-divider.type-end::before {
+    width: 14px;
+    flex-basis: 14px;
+}
+
+.vcp-role-divider.type-end .divider-text {
+    font-weight: 500;
+}
+
+body.light-theme .vcp-role-divider.role-system {
+    --role-divider-color: #b45309;
+}
+
+body.light-theme .vcp-role-divider.role-assistant {
+    --role-divider-color: #0369a1;
+}
+
+body.light-theme .vcp-role-divider.role-user {
+    --role-divider-color: #047857;
 }
 
 /* --- VCPdesktop Push Placeholder --- */

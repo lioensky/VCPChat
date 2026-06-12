@@ -23,6 +23,9 @@ const TOOL_REQUEST_START = '<<<[TOOL_REQUEST]>>>';
 const TOOL_REQUEST_END = '<<<[END_TOOL_REQUEST]>>>';
 const TOOL_RESULT_START = '[[VCP调用结果信息汇总:';
 const TOOL_RESULT_END = 'VCP调用结果结束]]';
+const TOOL_CALL_SUMMARY_START = '[本轮工具调用摘要:]';
+const TOOL_CALL_SUMMARY_END = '[本轮工具调用摘要结束]';
+const ROLE_DIVIDER_REGEX = /<<<\[(END_)?ROLE_DIVIDE_(SYSTEM|ASSISTANT|USER)\]>>>/g;
 const DESKTOP_PUSH_START = '<<<[DESKTOP_PUSH]>>>';
 const DESKTOP_PUSH_END = '<<<[DESKTOP_PUSH_END]>>>';
 const CODE_FENCE = '```';
@@ -980,6 +983,21 @@ function hasLikelyUnclosedHtmlIsland(text, startOffset = 0) {
     return findBareDivIslandStableCutoff(text, startOffset).blocked;
 }
 
+function findRoleDividerSectionEnd(text, startIndex) {
+    ROLE_DIVIDER_REGEX.lastIndex = startIndex;
+    const startMatch = ROLE_DIVIDER_REGEX.exec(text);
+    ROLE_DIVIDER_REGEX.lastIndex = 0;
+
+    if (!startMatch || startMatch.index !== startIndex || startMatch[1]) {
+        return -1;
+    }
+
+    const role = startMatch[2];
+    const endToken = `<<<[END_ROLE_DIVIDE_${role}]>>>`;
+    const endIndex = text.indexOf(endToken, startIndex + startMatch[0].length);
+    return endIndex === -1 ? -1 : endIndex + endToken.length;
+}
+
 function findExplicitStablePrefix(text, startOffset = 0) {
     let index = Math.max(0, startOffset);
     let stableCutoff = startOffset;
@@ -1042,6 +1060,30 @@ function findExplicitStablePrefix(text, startOffset = 0) {
                 break;
             }
             stableCutoff = endIndex + TOOL_RESULT_END.length;
+            paragraphFloor = stableCutoff;
+            index = stableCutoff;
+            continue;
+        }
+
+        if (startsWithAt(text, index, TOOL_CALL_SUMMARY_START)) {
+            const endIndex = text.indexOf(TOOL_CALL_SUMMARY_END, index + TOOL_CALL_SUMMARY_START.length);
+            if (endIndex === -1) {
+                blockedByUnclosedExplicitBlock = true;
+                break;
+            }
+            stableCutoff = endIndex + TOOL_CALL_SUMMARY_END.length;
+            paragraphFloor = stableCutoff;
+            index = stableCutoff;
+            continue;
+        }
+
+        if (startsWithAt(text, index, '<<<[ROLE_DIVIDE_')) {
+            const sectionEnd = findRoleDividerSectionEnd(text, index);
+            if (sectionEnd === -1) {
+                blockedByUnclosedExplicitBlock = true;
+                break;
+            }
+            stableCutoff = sectionEnd;
             paragraphFloor = stableCutoff;
             index = stableCutoff;
             continue;
