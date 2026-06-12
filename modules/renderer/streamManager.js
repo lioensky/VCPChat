@@ -1020,6 +1020,7 @@ function renderStreamFrame(messageId) {
 
     if (nextStableCutoff > segmentState.stableCutoff) {
         const stableText = textForRendering.slice(0, nextStableCutoff);
+        const hasBurstMarkerInStable = stableText.includes(BURST_MARKER_TOKEN);
         const stableHtml = parseFullStreamContent(stableText);
         segmentState.stableCutoff = nextStableCutoff;
         segmentState.stableHtml = stableHtml;
@@ -1039,14 +1040,17 @@ function renderStreamFrame(messageId) {
             stableRoot.innerHTML = stableHtml;
         }
 
-        // OpenHerPersona 聊天分条：稳定区里完成的段落实时包成封口气泡，
-        // 尾部根继续作为"正在打字"的活动气泡（样式见 .burst-streaming）。
+        // OpenHerPersona 聊天分条：一旦稳定区出现 brk，立即进入 burst-streaming。
+        // 即使当前稳定区只封出 1 个完成气泡，也要马上把 tailRoot 放进“下一条正在打字”
+        // 的假头像行，避免等到下一个 brk 才出现活动气泡。
         try {
             const bubbles = splitIntoBurstBubbles(stableRoot, 1);
-            if (bubbles.length > 0) {
+            if (hasBurstMarkerInStable || bubbles.length > 0) {
                 contentDiv.classList.add('burst-streaming');
                 if (messageItem) messageItem.dataset.burstRevealed = 'true';
                 ensureBurstTailRow(contentDiv, tailRoot, messageItem);
+            }
+            if (bubbles.length > 0) {
                 bubbles.forEach((bubble, index) => {
                     if (index >= segmentState.burstBubbleCount) {
                         bubble.classList.add('burst-pending');

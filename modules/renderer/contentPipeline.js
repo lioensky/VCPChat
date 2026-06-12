@@ -55,25 +55,32 @@ function stripPersonaBackfillTail(text) {
     if (!text || text.indexOf('persona_') === -1) return text;
     let result = '';
     let cursor = 0;
+    let strippedAny = false;
     PERSONA_BACKFILL_OPEN_REGEX.lastIndex = 0;
     let match;
     while ((match = PERSONA_BACKFILL_OPEN_REGEX.exec(text)) !== null) {
         if (match.index < cursor) continue;
         result += text.slice(cursor, match.index);
         const jsonStart = text.indexOf('{', match.index + match[0].length);
-        if (jsonStart === -1) { cursor = text.length; break; }
+        if (jsonStart === -1) { cursor = text.length; strippedAny = true; break; }
         const jsonEnd = findPersonaJsonEnd(text, jsonStart);
-        if (jsonEnd === -1) { cursor = text.length; break; }
+        if (jsonEnd === -1) { cursor = text.length; strippedAny = true; break; }
         let end = jsonEnd;
         const closer = text.indexOf('-->', jsonEnd);
         if (closer !== -1 && text.slice(jsonEnd, closer).trim() === '') {
             end = closer + 3;
         }
         cursor = end;
+        strippedAny = true;
         PERSONA_BACKFILL_OPEN_REGEX.lastIndex = end;
     }
+
+    if (!strippedAny) {
+        return text;
+    }
+
     result += text.slice(cursor);
-    return result.replace(/\s+$/, '');
+    return result;
 }
 
 function createMapPlaceholderReplacer(map) {

@@ -2120,6 +2120,7 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true,
     }
 
     const { messageItem, contentDiv, avatarImg, senderNameDiv } = createMessageSkeleton(message, globalSettings, currentSelectedItem);
+    messageItem.dataset.vcpInitialLoad = isInitialLoad ? 'true' : 'false';
 
     // --- NEW: Scoped CSS Implementation ---
     let scopeId = null;

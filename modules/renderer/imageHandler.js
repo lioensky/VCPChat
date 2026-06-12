@@ -44,7 +44,9 @@ function applyBurstBubbles(contentDiv) {
     contentDiv.classList.add('burst-mode');
     if (messageItem) messageItem.dataset.burstRevealed = 'true';
 
+    const isInitialLoad = messageItem?.dataset?.vcpInitialLoad === 'true';
     const animate =
+        !isInitialLoad &&
         !wasStreaming &&
         !alreadyRevealed &&
         Boolean(messageItem && messageItem.parentElement && messageItem.parentElement.lastElementChild === messageItem);
