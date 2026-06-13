@@ -718,6 +718,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             app.isPlaying = state.is_playing;
+            document.body.classList.toggle('music-playing', app.isPlaying);
             app.playPauseBtn.classList.toggle('is-playing', app.isPlaying);
             if (app.isPlaying) app.startStatePolling(); else app.stopStatePolling();
         }

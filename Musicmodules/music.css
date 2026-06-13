@@ -155,17 +155,25 @@ body {
     filter: blur(120px);
     z-index: -1;
     pointer-events: none;
+    opacity: 0;
+    animation: none;
+    transition: opacity 0.4s ease;
 }
 
-.music-player-container::before {
+body.music-playing .music-player-container::before {
     animation: subtle-glow 8s ease-in-out infinite;
 }
 
-.music-player-container::after {
+body.music-playing .music-player-container::after {
     animation: ripple-glow 12s ease-in-out infinite;
     background: radial-gradient(circle, var(--music-highlight) 0%, transparent 60%);
     width: 120%;
     height: 120%;
+}
+
+body.music-playing .music-player-container::before,
+body.music-playing .music-player-container::after {
+    opacity: 1;
 }
 
 .main-content {

@@ -95,7 +95,7 @@ function setupUI(app) {
         const curArt = app.albumArt.style.backgroundImage;
         if (!curArt || curArt.includes('musicdark.jpeg') || curArt.includes('musiclight.jpeg')) {
             const url = `url('../assets/${theme === 'light' ? 'musiclight.jpeg' : 'musicdark.jpeg'}')`;
-            app.albumArt.style.backgroundImage = url; app.updateBlurredBackground(url);
+            app.albumArt.style.backgroundImage = url; app.updateBlurredBackground('none');
         }
     };
 }
