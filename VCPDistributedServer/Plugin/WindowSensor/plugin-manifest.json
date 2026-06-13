@@ -16,7 +16,10 @@
     },
     "entryPoint": {
         "type": "executable",
-        "command": "powershell.exe -ExecutionPolicy Bypass -File ./sensor.ps1"
+        "command": "node ./sensor-wrapper.js"
+    },
+    "communication": {
+        "timeout": 8000
     },
     "refreshIntervalCron": "*/3 * * * *",
     "executeOnStartup": true,
