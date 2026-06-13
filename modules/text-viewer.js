@@ -48,11 +48,26 @@ document.addEventListener('DOMContentLoaded', async () => {
      * @returns {string} The scoped selector.
      */
     function scopeSelector(selector, scopeId) {
-        if (selector.match(/^(@|from|to|\d+%|:root|html|body)/)) {
+        if (selector.match(/^(@|from|to|\d+%)/)) {
             return selector;
+        }
+        if (selector.match(/^:root$/)) {
+            return `#${scopeId}`;
+        }
+        if (selector.match(/^(html|body)$/i)) {
+            return `#${scopeId}`;
+        }
+        if (selector.match(/^(html|body)\s+/i)) {
+            return selector.replace(/^(html|body)\s+/i, `#${scopeId} `);
+        }
+        if (selector.match(/^:root\s+/)) {
+            return selector.replace(/^:root\s+/, `#${scopeId} `);
         }
         if (selector.match(/^::?[\w-]+$/)) {
             return `#${scopeId}${selector}`;
+        }
+        if (selector === '*') {
+            return `#${scopeId} *`;
         }
         return `#${scopeId} ${selector}`;
     }
@@ -140,10 +155,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     function escapeHtml(text) {
         if (typeof text !== 'string') return '';
         return text
-            .replace(/&/g, '&')
-            .replace(/</g, '<')
-            .replace(/>/g, '>')
-            .replace(/"/g, '"')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
             .replace(/'/g, '&#039;');
     }
 
@@ -238,6 +253,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     function transformSpecialBlocksForViewer(text) {
         const noteRegex = /<<<DailyNoteStart>>>(.*?)<<<DailyNoteEnd>>>/gs;
         const toolResultRegex = /\[\[VCP调用结果信息汇总:(.*?)VCP调用结果结束\]\]/gs;
+        const toolCallSummaryRegex = /\[本轮工具调用摘要:\]([\s\S]*?)\[本轮工具调用摘要结束\]/g;
+        const thoughtChainRegex = /\[--- VCP元思考链(?::\s*"([^"]*)")?\s*---\]([\s\S]*?)\[--- 元思考链结束 ---\]/gs;
+        const conventionalThoughtRegex = /<think(?:ing)?>([\s\S]*?)<\/think(?:ing)?>/gi;
+        const roleDividerRegex = /<<<\[(END_)?ROLE_DIVIDE_(SYSTEM|ASSISTANT|USER)\]>>>/g;
         // 🟢 桌面推送块正则（排除反引号包裹）
         const desktopPushRegex = /(?<!`)<<<\[DESKTOP_PUSH\]>>>([\s\S]*?)<<<\[DESKTOP_PUSH_END\]>>>(?!`)/gs;
         const desktopPushPartialRegex = /(?<!`)<<<\[DESKTOP_PUSH\]>>>([\s\S]*)$/s;
@@ -273,18 +292,197 @@ document.addEventListener('DOMContentLoaded', async () => {
             return source.slice(contentStart, endMatch.index).trim();
         };
 
+        const renderMarkdownField = (rawText) => {
+            const source = rawText || '';
+            if (window.marked) {
+                try {
+                    return window.marked.parse(source);
+                } catch (e) {
+                    return escapeHtml(source);
+                }
+            }
+            return escapeHtml(source);
+        };
+
+        const getDailyNoteAgentInfo = (source) => {
+            const maid = extractMarkedField(source, /(?:maid|maidName):\s*/i) || '';
+            const valet = extractMarkedField(source, /(?:valet|valetName):\s*/i) || '';
+
+            if (valet) {
+                return {
+                    name: valet,
+                    type: 'valet',
+                    gender: 'male',
+                    label: 'Valet',
+                    title: "Valet's Diary"
+                };
+            }
+
+            return {
+                name: maid,
+                type: 'maid',
+                gender: 'female',
+                label: 'Maid',
+                title: "Maid's Diary"
+            };
+        };
+
+        const renderDailyNoteCreate = ({ agentName, agentType = 'maid', agentGender = 'female', agentLabel = 'Maid', defaultTitle = "Maid's Diary", date, fileName, folder, diaryContent, diaryTag }) => {
+            let html = `<div class="maid-diary-bubble ${agentType}-diary-bubble" data-vcp-block-type="maid-diary" data-agent-gender="${escapeHtml(agentGender)}">`;
+            html += `<div class="diary-header">`;
+            html += `<span class="diary-title">${fileName ? escapeHtml(fileName) : escapeHtml(defaultTitle)}</span>`;
+            if (date) {
+                html += `<span class="diary-date">${escapeHtml(date)}</span>`;
+            }
+            html += `</div>`;
+
+            if (agentName || folder) {
+                html += `<div class="diary-maid-info">`;
+                if (agentName) {
+                    html += `<span class="diary-maid-label">${escapeHtml(agentLabel)}:</span> `;
+                    html += `<span class="diary-maid-name">${escapeHtml(agentName)}</span>`;
+                }
+                if (folder) {
+                    if (agentName) html += ` <span class="diary-meta-separator">·</span> `;
+                    html += `<span class="diary-folder-label">Folder:</span> `;
+                    html += `<span class="diary-folder-name">${escapeHtml(folder)}</span>`;
+                }
+                html += `</div>`;
+            }
+
+            let diaryBody = diaryContent || '[日记内容解析失败]';
+            if (diaryTag) {
+                diaryBody += `\n\nTag:${diaryTag}`;
+            }
+
+            html += `<div class="diary-content">${renderMarkdownField(diaryBody)}</div>`;
+            html += `</div>`;
+
+            return `\n\n${html}\n\n`;
+        };
+
+        const renderDailyNoteUpdate = ({ agentName, agentType = 'maid', agentGender = 'female', folder, target, replace }) => {
+            const hasTarget = target && target.trim();
+            const hasReplace = replace && replace.trim();
+
+            let html = `<div class="maid-diary-update-bubble ${agentType}-diary-update-bubble" data-vcp-block-type="maid-diary-update" data-agent-gender="${escapeHtml(agentGender)}">`;
+            html += `<div class="diary-update-header">`;
+            html += `<span class="diary-update-title">DailyNote Update</span>`;
+            if (agentName || folder) {
+                html += `<span class="diary-update-meta">`;
+                if (agentName) html += `<span class="diary-maid-name">${escapeHtml(agentName)}</span>`;
+                if (agentName && folder) html += ` <span class="diary-meta-separator">·</span> `;
+                if (folder) html += `<span class="diary-folder-name">${escapeHtml(folder)}</span>`;
+                html += `</span>`;
+            }
+            html += `</div>`;
+
+            html += `<div class="diary-update-body">`;
+            html += `<div class="diary-update-side diary-update-before">`;
+            html += `<div class="diary-update-label">A</div>`;
+            html += `<div class="diary-update-content">${hasTarget ? renderMarkdownField(target) : '<em>原文解析失败</em>'}</div>`;
+            html += `</div>`;
+            html += `<div class="diary-update-arrow" aria-hidden="true">→</div>`;
+            html += `<div class="diary-update-side diary-update-after">`;
+            html += `<div class="diary-update-label">B</div>`;
+            html += `<div class="diary-update-content">${hasReplace ? renderMarkdownField(replace) : '<em>替换内容解析失败</em>'}</div>`;
+            html += `</div>`;
+            html += `</div>`;
+            html += `</div>`;
+
+            return `\n\n${html}\n\n`;
+        };
+
+        const renderToolCallSummaryBlock = (rawContent) => {
+            const content = (rawContent || '').trim();
+            const entries = content
+                .split(/[；;。]\s*/u)
+                .map(item => item.trim())
+                .filter(Boolean);
+
+            const getStatusInfo = (entry) => {
+                if (/拒绝|被拒|denied|rejected|refused/i.test(entry)) return { key: 'rejected', label: '拒绝' };
+                if (/失败|错误|异常|error|failed/i.test(entry)) return { key: 'failure', label: '失败' };
+                if (/超时|timeout/i.test(entry)) return { key: 'timeout', label: '超时' };
+                if (/成功|完成|success|succeeded|ok/i.test(entry)) return { key: 'success', label: '成功' };
+                if (/取消|中止|cancel/i.test(entry)) return { key: 'cancelled', label: '取消' };
+                if (/跳过|skip/i.test(entry)) return { key: 'skipped', label: '跳过' };
+                return { key: 'unknown', label: '未知' };
+            };
+
+            const renderEntry = (entry) => {
+                const statusInfo = getStatusInfo(entry);
+                const toolNameMatch = entry.match(/^(.+?)\s*调用/u);
+                const toolName = (toolNameMatch?.[1] || entry.replace(/调用.*/u, '') || 'Tool').trim();
+                return `<span class="vcp-tool-call-summary-chip status-${statusInfo.key}">` +
+                    `<span class="vcp-tool-call-summary-tool">${escapeHtml(toolName)}</span>` +
+                    `<span class="vcp-tool-call-summary-status">${escapeHtml(statusInfo.label)}</span>` +
+                    `</span>`;
+            };
+
+            let html = `<div class="vcp-tool-call-summary-bubble" data-vcp-block-type="tool-call-summary">`;
+            html += `<div class="vcp-tool-call-summary-header">`;
+            html += `<span class="vcp-tool-call-summary-icon">🧾</span>`;
+            html += `<span class="vcp-tool-call-summary-title">本轮工具调用摘要</span>`;
+            html += `</div>`;
+            if (entries.length > 0) {
+                html += `<div class="vcp-tool-call-summary-list">${entries.map(renderEntry).join('')}</div>`;
+            } else {
+                html += `<div class="vcp-tool-call-summary-raw">${escapeHtml(content || '无摘要内容')}</div>`;
+            }
+            html += `</div>`;
+            return `\n\n${html}\n\n`;
+        };
+
+        const renderThoughtChain = (theme, rawContent) => {
+            const displayTheme = theme ? theme.trim() : '元思考链';
+            const content = (rawContent || '').trim();
+            const processedContent = renderMarkdownField(content);
+            return `\n\n<div class="vcp-thought-chain-bubble collapsible expanded" data-vcp-block-type="thought-chain">` +
+                `<div class="vcp-thought-chain-header">` +
+                `<span class="vcp-thought-chain-icon">🧠</span>` +
+                `<span class="vcp-thought-chain-label">${escapeHtml(displayTheme)}</span>` +
+                `<span class="vcp-result-toggle-icon"></span>` +
+                `</div>` +
+                `<div class="vcp-thought-chain-collapsible-content">` +
+                `<div class="vcp-thought-chain-body">${processedContent}</div>` +
+                `</div>` +
+                `</div>\n\n`;
+        };
+
         let processed = text;
 
-        // 🟢 处理桌面推送块：将推送的HTML内容渲染为代码块展示
+        processed = processed.replace(toolCallSummaryRegex, (match, rawContent) => renderToolCallSummaryBlock(rawContent));
+        processed = processed.replace(thoughtChainRegex, (match, theme, rawContent) => renderThoughtChain(theme, rawContent));
+        processed = processed.replace(conventionalThoughtRegex, (match, rawContent) => renderThoughtChain('思维链', rawContent));
+        processed = processed.replace(roleDividerRegex, (match, isEnd, role) => {
+            const roleLower = role.toLowerCase();
+            const label = roleLower === 'system' ? 'System' : roleLower === 'assistant' ? 'Assistant' : 'User';
+            const actionText = isEnd ? '末' : '始';
+            return `\n\n<div class="vcp-role-divider role-${roleLower} type-${isEnd ? 'end' : 'start'}" data-vcp-block-type="role-divider"><span class="divider-text">${label} 分界之${actionText}</span></div>\n\n`;
+        });
+
+        // 🟢 处理桌面推送块：阅读模式使用消息渲染器同款占位卡，而不是退化成普通代码块。
         processed = processed.replace(desktopPushRegex, (match, rawContent) => {
             const content = rawContent.trim();
-            // 将推送内容作为 HTML 代码块展示，而非直接渲染为 HTML
-            return '\n```html\n' + content + '\n```\n';
+            return `\n\n<div class="vcp-desktop-push-placeholder" data-vcp-block-type="desktop-push">` +
+                `<div class="vcp-desktop-push-header">` +
+                `<span class="vcp-desktop-push-icon">🖥️</span>` +
+                `<span class="vcp-desktop-push-label">VCP Desktop Push</span>` +
+                `</div>` +
+                `<div class="vcp-desktop-push-preview"><pre>${escapeHtml(content)}</pre></div>` +
+                `</div>\n\n`;
         });
         // 处理未闭合的桌面推送块（流式传输场景）
         processed = processed.replace(desktopPushPartialRegex, (match, rawContent) => {
             const content = rawContent.trim();
-            return '\n```html\n' + content + '\n（桌面推送内容，尚未结束...）\n```\n';
+            return `\n\n<div class="vcp-desktop-push-placeholder constructing" data-vcp-block-type="desktop-push">` +
+                `<div class="vcp-desktop-push-header">` +
+                `<span class="vcp-desktop-push-icon">🖥️</span>` +
+                `<span class="vcp-desktop-push-label">VCP Desktop Push 构建中</span>` +
+                `</div>` +
+                `<div class="vcp-desktop-push-preview"><pre>${escapeHtml(content)}</pre></div>` +
+                `</div>\n\n`;
         });
 
         // Process VCP Tool Results - Viewer Mode (Full Details)
@@ -333,13 +531,15 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
             flushCurrentField();
 
-            let html = `<div class="vcp-tool-result-bubble">`;
+            let html = `<div class="vcp-tool-result-bubble collapsible" data-vcp-block-type="tool-result">`;
             html += `<div class="vcp-tool-result-header">`;
             html += `<span class="vcp-tool-result-label">VCP-ToolResult</span>`;
             html += `<span class="vcp-tool-result-name">${escapeHtml(toolName)}</span>`;
             html += `<span class="vcp-tool-result-status">${escapeHtml(status)}</span>`;
+            html += `<span class="vcp-result-toggle-icon"></span>`;
             html += `</div>`;
 
+            html += `<div class="vcp-tool-result-collapsible-content">`;
             html += `<div class="vcp-tool-result-details">`;
             details.forEach(({ key, value }) => {
                 const isMarkdownField = markdownFieldKeys.has(key);
@@ -377,29 +577,65 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
 
             html += `</div>`;
+            html += `</div>`;
 
             return `\n\n${html}\n\n`;
         });
 
-        // Process Tool Requests - Viewer Mode (Full Details)
+        // Process Tool Requests - Viewer Mode (Full Details, always expanded)
         processed = replaceToolRequestBlocks(processed, (match, content) => {
+            const detectedToolName = extractMarkedField(content, /tool_name:\s*/i);
+            const detectedCommand = extractMarkedField(content, /command:\s*/i);
+            const normalizedToolName = (detectedToolName || '').trim().toLowerCase();
+            const normalizedCommand = (detectedCommand || '').trim().toLowerCase();
+
+            const dailyNoteContent = extractMarkedField(content, /Content:\s*/i);
+            const dailyNoteTarget = extractMarkedField(content, /target:\s*/i);
+            const dailyNoteReplace = extractMarkedField(content, /replace:\s*/i);
+            const isDailyNoteTool = normalizedToolName === 'dailynote';
+            const isDailyNoteUpdate = isDailyNoteTool && (normalizedCommand === 'update' || (!normalizedCommand && dailyNoteTarget && dailyNoteReplace));
+            const isDailyNoteCreate = isDailyNoteTool && !isDailyNoteUpdate && (normalizedCommand === 'create' || (!normalizedCommand && dailyNoteContent));
+
+            if (isDailyNoteCreate) {
+                const dailyNoteAgent = getDailyNoteAgentInfo(content);
+                return renderDailyNoteCreate({
+                    agentName: dailyNoteAgent.name,
+                    agentType: dailyNoteAgent.type,
+                    agentGender: dailyNoteAgent.gender,
+                    agentLabel: dailyNoteAgent.label,
+                    defaultTitle: dailyNoteAgent.title,
+                    date: extractMarkedField(content, /Date:\s*/i) || '',
+                    fileName: extractMarkedField(content, /fileName:\s*/i) || '',
+                    folder: extractMarkedField(content, /folder:\s*/i) || '',
+                    diaryContent: dailyNoteContent || '[日记内容解析失败]',
+                    diaryTag: extractMarkedField(content, /Tag:\s*/i) || ''
+                });
+            }
+
+            if (isDailyNoteUpdate) {
+                const dailyNoteAgent = getDailyNoteAgentInfo(content);
+                return renderDailyNoteUpdate({
+                    agentName: dailyNoteAgent.name,
+                    agentType: dailyNoteAgent.type,
+                    agentGender: dailyNoteAgent.gender,
+                    folder: extractMarkedField(content, /folder:\s*/i) || '',
+                    target: dailyNoteTarget || '',
+                    replace: dailyNoteReplace || ''
+                });
+            }
+
             const xmlToolNameMatch = content.match(/<tool_name>([\s\S]*?)<\/tool_name>/i);
-            const markedToolName = extractMarkedField(content, /tool_name:\s*/i);
-            let toolName = (xmlToolNameMatch?.[1] || markedToolName || 'Tool Call').trim();
+            let toolName = (xmlToolNameMatch?.[1] || detectedToolName || 'Tool Call').trim();
             toolName = toolName.replace(/[「{](?:始|末)(?:[Ee][Ss][Cc][Aa][Pp][Ee])?[」}]/gi, '').replace(/,$/, '').trim();
 
-            let finalContent = escapeHtml(content.trim());
-            if (toolName) {
-                 finalContent = finalContent.replace(
-                    escapeHtml(toolName),
-                    `<span class="vcp-tool-name-highlight">${escapeHtml(toolName)}</span>`
-                );
-            }
-            
-            return `\n\n<div class="vcp-tool-use-bubble">` +
-                   `<span class="vcp-tool-label">VCP-ToolUse:</span> ` +
-                   finalContent +
-                   `</div>\n\n`;
+            const escapedFullContent = escapeHtml(content.trim());
+            return `\n\n<div class="vcp-tool-use-bubble" data-vcp-block-type="tool-use">` +
+                `<div class="vcp-tool-summary">` +
+                `<span class="vcp-tool-label">VCP-ToolUse:</span> ` +
+                `<span class="vcp-tool-name-highlight">${escapeHtml(toolName)}</span>` +
+                `</div>` +
+                `<div class="vcp-tool-details"><pre>${escapedFullContent}</pre></div>` +
+                `</div>\n\n`;
         });
 
         // Process Daily Notes - Viewer Mode (Styled)
@@ -432,7 +668,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 html += `</div>`;
             }
 
-            html += `<div class="diary-content">${escapeHtml(diaryContent)}</div>`;
+            html += `<div class="diary-content">${renderMarkdownField(diaryContent)}</div>`;
             html += `</div>`;
 
             return `\n\n${html}\n\n`;
@@ -1085,7 +1321,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 originalRawContent = existingTextarea.value; // Get updated raw content
 
                 // Re-render content using the full pipeline
-                const processedContent = preprocessFullContent(originalRawContent);
+                const processedContent = preprocessFullContent(originalRawContent, scopeId);
                 const renderedHtml = window.marked.parse(processedContent);
                 contentDiv.innerHTML = renderedHtml;
                 enhanceRenderedContent(contentDiv); // This already includes syntax highlighting etc.
@@ -1315,6 +1551,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 preElement.appendChild(playButton);
 
                 playButton.addEventListener('click', (e) => {
+                    e.preventDefault();
                     e.stopPropagation();
                     const existingPreview = preElement.nextElementSibling;
                     if (existingPreview && existingPreview.classList.contains('html-preview-container')) {
@@ -1326,7 +1563,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     const previewContainer = document.createElement('div');
                     previewContainer.className = 'html-preview-container';
                     const iframe = document.createElement('iframe');
-                    iframe.sandbox = 'allow-scripts allow-same-origin allow-modals';
+                    iframe.sandbox = 'allow-scripts allow-same-origin allow-modals allow-forms allow-popups allow-downloads allow-pointer-lock';
                     const exitButton = document.createElement('button');
                     exitButton.innerHTML = codeIconSVG + ' 返回代码';
                     exitButton.className = 'exit-preview-button';
@@ -1351,6 +1588,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     }
                     // Use srcdoc for better security and reliability
                     iframe.srcdoc = finalHtml;
+                    setTimeout(() => iframe.contentWindow?.focus?.(), 80);
                 });
             } else if (isPython) {
                 const pyPlayButton = document.createElement('button');
@@ -1381,6 +1619,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 preElement.appendChild(playButton);
 
                 playButton.addEventListener('click', (e) => {
+                    e.preventDefault();
                     e.stopPropagation();
                     const existingPreview = preElement.nextElementSibling;
                     if (existingPreview && existingPreview.classList.contains('html-preview-container')) {
@@ -1392,7 +1631,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     const previewContainer = document.createElement('div');
                     previewContainer.className = 'html-preview-container';
                     const iframe = document.createElement('iframe');
-                    iframe.sandbox = 'allow-scripts allow-same-origin allow-modals';
+                    iframe.sandbox = 'allow-scripts allow-same-origin allow-modals allow-forms allow-popups allow-downloads allow-pointer-lock';
                     const exitButton = document.createElement('button');
                     exitButton.innerHTML = codeIconSVG + ' 返回代码';
                     exitButton.className = 'exit-preview-button';
@@ -1432,6 +1671,7 @@ ${codeContent}
                     `;
                     // Use srcdoc for better security and reliability
                     iframe.srcdoc = threeJsHtml;
+                    setTimeout(() => iframe.contentWindow?.focus?.(), 80);
                 });
             }
 
@@ -1505,6 +1745,33 @@ ${codeContent}
             }
         }
         
+        // --- COLLAPSIBLE SPECIAL BLOCKS ---
+        container.querySelectorAll('.vcp-tool-result-header').forEach(header => {
+            if (header.dataset.viewerToggleBound === 'true') return;
+            header.dataset.viewerToggleBound = 'true';
+            header.addEventListener('click', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                const bubble = header.closest('.vcp-tool-result-bubble.collapsible');
+                if (bubble) {
+                    bubble.classList.toggle('expanded');
+                }
+            });
+        });
+
+        container.querySelectorAll('.vcp-thought-chain-header').forEach(header => {
+            if (header.dataset.viewerToggleBound === 'true') return;
+            header.dataset.viewerToggleBound = 'true';
+            header.addEventListener('click', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                const bubble = header.closest('.vcp-thought-chain-bubble.collapsible');
+                if (bubble) {
+                    bubble.classList.toggle('expanded');
+                }
+            });
+        });
+
         // --- Call animation processor after all other enhancements ---
         processAnimationsInContent(container);
 
