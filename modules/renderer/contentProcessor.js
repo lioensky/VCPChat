@@ -1154,6 +1154,11 @@ function deIndentMisinterpretedCodeBlocks(text) {
     // 匹配可能导致Markdown解析问题的HTML标签
     const htmlTagRegex = /^\s*<\/?(div|p|img|span|a|h[1-6]|ul|ol|li|table|tr|td|th|section|article|header|footer|nav|aside|main|figure|figcaption|blockquote|pre|code|style|script|button|form|input|textarea|select|label|iframe|video|audio|canvas|svg)[\s>\/]/i;
 
+    // 匹配缩进的 HTML 注释行。流式渲染 div 动画块时，AI 常输出缩进注释作为分段标记；
+    // 4+ 空格 / tab 会触发 Markdown indented code block，导致注释短暂闪成代码块。
+    // 允许未闭合注释，覆盖 token 尚未流完的中间态；代码围栏内由 inFence 保护。
+    const indentedHtmlCommentRegex = /^(?: {4,}|\t+)<!--/;
+
     // 匹配中文字符开头，用于识别首行缩进的段落
     const chineseParagraphRegex = /^[\u4e00-\u9fa5]/;
 
@@ -1180,8 +1185,8 @@ function deIndentMisinterpretedCodeBlocks(text) {
                 return line;
             }
             
-            // 🟢 如果是HTML标签或中文段落，则移除缩进
-            if (htmlTagRegex.test(line) || chineseParagraphRegex.test(trimmedStartLine)) {
+            // 🟢 如果是HTML标签、HTML注释或中文段落，则移除会触发 Markdown 缩进代码块的缩进
+            if (htmlTagRegex.test(line) || indentedHtmlCommentRegex.test(line) || chineseParagraphRegex.test(trimmedStartLine)) {
                 return trimmedStartLine;
             }
         }
