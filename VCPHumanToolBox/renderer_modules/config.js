@@ -2,7 +2,7 @@
 // VCPHumanToolBox工具定义
 // 最后更新: 2026-04-21by CodeCC &赵枫
 // 备份: config.js.bak.20260421
-// 工具总数: 45 (原39+ 新增6)
+// 工具总数: 46 (原39+ 新增7)
 
 // --- 工具定义 ---
 export const tools = {
@@ -345,6 +345,25 @@ export const tools = {
         params: [
             { name: 'maid', type: 'text', required: true, placeholder: '你的名字' },
             { name: 'expression', type: 'textarea', required: true, placeholder: "例如: integral('x**2', 0, 1)" }
+        ]
+    },
+    'DomainSafetyChecker': {
+        displayName: '域名/URL 安全核查',
+        description: '对 URL 或域名执行低交互、静态、非侵入式安全核查，返回适合直接展示给用户的 Markdown 报告，并附完整 JSON 证据。不会执行 JavaScript、提交表单、爆破、端口扫描或绕过访问控制。[后端插件: DomainSafetyChecker]',
+        params: [
+            { name: 'target', type: 'text', required: true, placeholder: 'https://example.com/login 或 example.com', description: '要核查的 URL 或域名；也兼容 url/domain 字段。' },
+            { name: 'timeout', type: 'number', required: false, default: 12, min: 1, max: 60, placeholder: '12', description: '网络请求超时秒数；普通检查建议 8-15，网络较慢可用 20-30。' },
+            { name: 'maxBytes', type: 'number', required: false, default: 2000000, placeholder: '2000000', description: '单次 HTTP 最多读取字节数；也兼容 max_bytes。' },
+            { name: 'defaultScheme', type: 'select', required: false, options: ['https', 'http'], default: 'https', description: '裸域名输入时默认协议；也兼容 default_scheme。' },
+            { name: 'fetchScripts', type: 'checkbox', required: false, default: false, description: '是否额外下载外部 JS 做静态扫描；更全面但更慢，也兼容 fetch_scripts。' },
+            { name: 'noTls', type: 'checkbox', required: false, default: false, description: '跳过 TLS 证书检查；也兼容 no_tls。' },
+            { name: 'noHttp', type: 'checkbox', required: false, default: false, description: '跳过明文 HTTP 探测；也兼容 no_http。' },
+            { name: 'getHttp', type: 'checkbox', required: false, default: false, description: '明文 HTTP 也使用 GET；默认只用 HEAD 以降低交互，也兼容 get_http。' },
+            { name: 'whois', type: 'checkbox', required: false, default: false, description: '尝试调用系统 whois 命令；未安装时会在报告中记录不可用。' },
+            { name: 'includeJson', type: 'checkbox', required: false, default: true, description: '在 Markdown 报告末尾附加完整原始 JSON 结构化结果；建议保留，也兼容 include_json。' },
+            { name: 'proxyEnabled', type: 'checkbox', required: false, default: false, description: '仅本次调用覆盖代理启用状态；也兼容 proxy_enabled。' },
+            { name: 'proxyUrl', type: 'text', required: false, placeholder: 'http://127.0.0.1:7890', description: '仅本次调用覆盖 config.env 中的代理地址；也兼容 proxy_url。' },
+            { name: 'proxyRetryOnFailure', type: 'checkbox', required: false, default: true, description: '直连失败或遇到 403/407/408/429/5xx 时自动代理重试；也兼容 proxy_retry_on_failure。' }
         ]
     },
 
