@@ -1609,10 +1609,120 @@ body.light-theme .vcp-tool-result-truncated-notice:hover {
     /* Center the diagram */
 }
 
-.mermaid svg {
+.mermaid-viewer {
+    position: relative;
+    width: 100%;
     max-width: 100%;
-    /* Ensure SVG is responsive */
+    box-sizing: border-box;
+    border: 1px solid rgba(128, 128, 128, 0.22);
+    border-radius: 10px;
+    background:
+        radial-gradient(circle at 18px 18px, rgba(128, 128, 128, 0.12) 1px, transparent 1px),
+        color-mix(in srgb, var(--bg-color, #202124) 94%, transparent);
+    background-size: 18px 18px, auto;
+    overflow: hidden;
+}
+
+.mermaid-viewer-toolbar {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 8px;
+    background: linear-gradient(180deg, rgba(20, 20, 24, 0.72), rgba(20, 20, 24, 0.42));
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(8px);
+}
+
+.mermaid-viewer-btn {
+    min-width: 32px;
+    height: 28px;
+    padding: 0 9px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 7px;
+    background: rgba(255, 255, 255, 0.10);
+    color: #f5f7fb;
+    font-size: 12px;
+    font-weight: 650;
+    line-height: 1;
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.18s ease, border-color 0.18s ease, transform 0.12s ease;
+}
+
+.mermaid-viewer-btn:hover {
+    background: rgba(100, 210, 255, 0.22);
+    border-color: rgba(100, 210, 255, 0.5);
+    transform: translateY(-1px);
+}
+
+.mermaid-viewer-btn:active {
+    transform: translateY(0);
+}
+
+.mermaid-viewer-viewport {
+    position: relative;
+    width: 100%;
+    min-height: 220px;
+    max-height: min(68vh, 720px);
+    overflow: hidden;
+    cursor: grab;
+    touch-action: none;
+}
+
+.mermaid-viewer-viewport.dragging {
+    cursor: grabbing;
+}
+
+.mermaid-viewer-canvas {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 100%;
+    min-height: 220px;
+    padding: 24px;
+    box-sizing: border-box;
+    transform-origin: 0 0;
+    transition: transform 0.08s linear;
+    will-change: transform;
+}
+
+.mermaid-viewer-viewport.dragging .mermaid-viewer-canvas {
+    transition: none;
+}
+
+.mermaid svg,
+.mermaid-viewer-canvas svg {
+    max-width: none;
     height: auto;
+    user-select: none;
+}
+
+body.light-theme .mermaid-viewer {
+    border-color: rgba(30, 64, 100, 0.16);
+    background:
+        radial-gradient(circle at 18px 18px, rgba(30, 64, 100, 0.12) 1px, transparent 1px),
+        color-mix(in srgb, var(--bg-color, #ffffff) 96%, #eef6ff 4%);
+    background-size: 18px 18px, auto;
+}
+
+body.light-theme .mermaid-viewer-toolbar {
+    background: linear-gradient(180deg, rgba(245, 249, 255, 0.88), rgba(245, 249, 255, 0.62));
+    border-bottom-color: rgba(30, 64, 100, 0.12);
+}
+
+body.light-theme .mermaid-viewer-btn {
+    border-color: rgba(30, 64, 100, 0.18);
+    background: rgba(30, 64, 100, 0.06);
+    color: #1f2a37;
+}
+
+body.light-theme .mermaid-viewer-btn:hover {
+    background: rgba(25, 118, 210, 0.12);
+    border-color: rgba(25, 118, 210, 0.32);
 }
 
 .mermaid-error {
