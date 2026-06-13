@@ -258,6 +258,39 @@ function resolveAndNormalizePath(inputPath) {
   return path.resolve(__dirname, normalized);
 }
 
+function getParameterValue(parameters, ...candidateNames) {
+  if (!parameters || typeof parameters !== 'object') {
+    return undefined;
+  }
+
+  for (const name of candidateNames) {
+    if (Object.prototype.hasOwnProperty.call(parameters, name) && parameters[name] !== undefined) {
+      return parameters[name];
+    }
+  }
+
+  const normalizedCandidateNames = candidateNames.map(name => String(name).toLowerCase());
+  for (const [key, value] of Object.entries(parameters)) {
+    if (value !== undefined && normalizedCandidateNames.includes(key.toLowerCase())) {
+      return value;
+    }
+  }
+
+  return undefined;
+}
+
+function getPathParameter(parameters, ...legacyNames) {
+  return getParameterValue(parameters, 'path', 'filePath', 'directoryPath', 'searchPath', ...legacyNames);
+}
+
+function getSourcePathParameter(parameters) {
+  return getParameterValue(parameters, 'source', 'sourcePath');
+}
+
+function getDestinationPathParameter(parameters) {
+  return getParameterValue(parameters, 'destination', 'destinationPath');
+}
+
 // Helper function to run validation and attach results
 async function runValidationAndAttachResults(result, filePath, fileContent) {
   if (result.success && fileContent) {
@@ -1211,7 +1244,8 @@ async function updateHistory(filePath, searchString, replaceString, encoding = '
 
 async function applyDiff(parameters) {
   try {
-    const { filePath, diffContent, searchString, replaceString, encoding = 'utf8' } = parameters;
+    const filePath = getPathParameter(parameters);
+    const { diffContent, searchString, replaceString, encoding = 'utf8' } = parameters;
 
     // Read raw file content directly instead of going through readFile(),
     // because readFile() returns display-oriented multimodal content with headers.
@@ -1304,8 +1338,8 @@ async function processBatchRequest(request) {
       switch (command) {
         case 'ReadFile':
         case 'WebReadFile':
-          const filePath = parameters.filePath || parameters.url;
-          result = command === 'ReadFile' ? await readFile(filePath) : await webReadFile(filePath);
+          const filePath = getPathParameter(parameters, 'url') || getParameterValue(parameters, 'url');
+          result = command === 'ReadFile' ? await readFile(filePath, parameters.encoding) : await webReadFile(filePath);
           if (result.success) {
             // Add a text header for the file content
             aggregatedContent.push({ type: 'text', text: `--- Content of ${result.data.fileName || filePath} ---` });
@@ -1317,45 +1351,45 @@ async function processBatchRequest(request) {
           }
           break;
         case 'WriteFile':
-          result = await writeFile(parameters.filePath, parameters.content, parameters.encoding);
+          result = await writeFile(getPathParameter(parameters), parameters.content, parameters.encoding);
           break;
         case 'AppendFile':
-          result = await appendFile(parameters.filePath, parameters.content, parameters.encoding);
+          result = await appendFile(getPathParameter(parameters), parameters.content, parameters.encoding);
           break;
         case 'EditFile':
-          result = await editFile(parameters.filePath, parameters.content, parameters.encoding);
+          result = await editFile(getPathParameter(parameters), parameters.content, parameters.encoding);
           break;
         case 'ListDirectory':
-          result = await listDirectory(parameters.directoryPath, parameters.showHidden);
+          result = await listDirectory(getPathParameter(parameters), parameters.showHidden);
           if (result.success && result.data.content) {
             aggregatedContent.push({ type: 'text', text: `--- Directory listing of ${parameters.directoryPath} ---` });
             aggregatedContent.push(...result.data.content);
           }
           break;
         case 'FileInfo':
-          result = await getFileInfo(parameters.filePath);
+          result = await getFileInfo(getPathParameter(parameters));
           if (result.success && result.data.content) {
             aggregatedContent.push({ type: 'text', text: `--- File info of ${parameters.filePath} ---` });
             aggregatedContent.push(...result.data.content);
           }
           break;
         case 'CopyFile':
-          result = await copyFile(parameters.sourcePath, parameters.destinationPath);
+          result = await copyFile(getSourcePathParameter(parameters), getDestinationPathParameter(parameters));
           break;
         case 'MoveFile':
-          result = await moveFile(parameters.sourcePath, parameters.destinationPath);
+          result = await moveFile(getSourcePathParameter(parameters), getDestinationPathParameter(parameters));
           break;
         case 'RenameFile':
-          result = await renameFile(parameters.sourcePath, parameters.destinationPath);
+          result = await renameFile(getSourcePathParameter(parameters), getDestinationPathParameter(parameters));
           break;
         case 'DeleteFile':
-          result = await deleteFile(parameters.filePath);
+          result = await deleteFile(getPathParameter(parameters));
           break;
         case 'CreateDirectory':
-          result = await createDirectory(parameters.directoryPath);
+          result = await createDirectory(getPathParameter(parameters));
           break;
         case 'SearchFiles':
-          result = await searchFiles(parameters.searchPath, parameters.pattern, parameters.options);
+          result = await searchFiles(getPathParameter(parameters), parameters.pattern, parameters.options);
           if (result.success && result.data.content) {
             aggregatedContent.push({ type: 'text', text: `--- Search results for "${parameters.pattern}" in ${parameters.searchPath} ---` });
             aggregatedContent.push(...result.data.content);
@@ -1368,7 +1402,7 @@ async function processBatchRequest(request) {
           result = await createCanvas(parameters.fileName, parameters.content, parameters.encoding);
           break;
         case 'UpdateHistory':
-          result = await updateHistory(parameters.filePath, parameters.searchString, parameters.replaceString, parameters.encoding);
+          result = await updateHistory(getPathParameter(parameters), parameters.searchString, parameters.replaceString, parameters.encoding);
           break;
         case 'ApplyDiff':
           result = await applyDiff(parameters);
@@ -1446,37 +1480,37 @@ async function processRequest(request) {
     case 'ListAllowedDirectories':
       return await listAllowedDirectories();
     case 'ReadFile':
-      return await readFile(parameters.filePath, parameters.encoding);
+      return await readFile(getPathParameter(parameters), parameters.encoding);
     case 'WebReadFile':
-      return await webReadFile(parameters.url || parameters.filePath);
+      return await webReadFile(getParameterValue(parameters, 'url') || getPathParameter(parameters));
     case 'WriteFile':
-      return await writeFile(parameters.filePath, parameters.content, parameters.encoding);
+      return await writeFile(getPathParameter(parameters), parameters.content, parameters.encoding);
     case 'AppendFile':
-      return await appendFile(parameters.filePath, parameters.content, parameters.encoding);
+      return await appendFile(getPathParameter(parameters), parameters.content, parameters.encoding);
     case 'EditFile':
-      return await editFile(parameters.filePath, parameters.content, parameters.encoding);
+      return await editFile(getPathParameter(parameters), parameters.content, parameters.encoding);
     case 'ListDirectory':
-      return await listDirectory(parameters.directoryPath, parameters.showHidden);
+      return await listDirectory(getPathParameter(parameters), parameters.showHidden);
     case 'FileInfo':
-      return await getFileInfo(parameters.filePath);
+      return await getFileInfo(getPathParameter(parameters));
     case 'CopyFile':
-      return await copyFile(parameters.sourcePath, parameters.destinationPath);
+      return await copyFile(getSourcePathParameter(parameters), getDestinationPathParameter(parameters));
     case 'MoveFile':
-      return await moveFile(parameters.sourcePath, parameters.destinationPath);
+      return await moveFile(getSourcePathParameter(parameters), getDestinationPathParameter(parameters));
     case 'RenameFile':
-      return await renameFile(parameters.sourcePath, parameters.destinationPath);
+      return await renameFile(getSourcePathParameter(parameters), getDestinationPathParameter(parameters));
     case 'DeleteFile':
-      return await deleteFile(parameters.filePath);
+      return await deleteFile(getPathParameter(parameters));
     case 'CreateDirectory':
-      return await createDirectory(parameters.directoryPath);
+      return await createDirectory(getPathParameter(parameters));
     case 'SearchFiles':
-      return await searchFiles(parameters.searchPath, parameters.pattern, parameters.options);
+      return await searchFiles(getPathParameter(parameters), parameters.pattern, parameters.options);
     case 'DownloadFile':
       return await downloadFile(parameters.url, parameters.downloadDir, parameters.fileName);
     case 'CreateCanvas':
       return await createCanvas(parameters.fileName, parameters.content, parameters.encoding);
     case 'UpdateHistory':
-      return await updateHistory(parameters.filePath, parameters.searchString, parameters.replaceString, parameters.encoding);
+      return await updateHistory(getPathParameter(parameters), parameters.searchString, parameters.replaceString, parameters.encoding);
     case 'ApplyDiff':
       return await applyDiff(parameters);
     default:
