@@ -231,7 +231,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                     if (delta) {
                         fullTranslation += delta;
                         translatedTextarea.value = fullTranslation;
-                        translatedTextarea.scrollTop = translatedTextarea.scrollHeight;
                     }
                 } catch (parseError) {
                     console.warn('Unable to parse streaming chunk:', dataText, parseError);
@@ -285,7 +284,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     messages: messages,
                     model: modelConfig.model,
                     temperature: modelConfig.temperature,
-                    max_tokens: 50000,
+                    max_tokens: 60000,
                     stream: modelConfig.stream
                 }),
                 signal: signal
