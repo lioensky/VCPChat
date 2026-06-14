@@ -15,23 +15,30 @@
     <!-- Custom Title Bar -->
     <div id="custom-title-bar">
         <div class="title">VCP - 音乐播放器</div>
-        <div class="window-controls">
-            <button id="minimize-music-btn" class="window-control-btn" title="最小化">
-                <svg width="10" height="10" viewBox="0 0 10 10">
-                    <line x1="0" y1="5" x2="10" y2="5" stroke="currentColor" stroke-width="1.2"></line>
+        <div class="titlebar-actions">
+            <button id="sidebar-toggle-btn" class="window-control-btn sidebar-toggle-btn" title="收纳左侧列表" aria-label="收纳左侧列表">
+                <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+                    <path fill="none" stroke="currentColor" stroke-width="1" d="M3,1.5 L8,5 L3,8.5 Z"></path>
                 </svg>
             </button>
-            <button id="maximize-music-btn" class="window-control-btn" title="最大化">
-                <svg width="10" height="10" viewBox="0 0 10 10">
-                    <path fill="none" stroke="currentColor" stroke-width="1" d="M0.5,0.5 h9 v9 h-9 z"></path>
-                </svg>
-            </button>
-            <button id="close-music-btn" class="window-control-btn" title="关闭">
-                <svg width="10" height="10" viewBox="0 0 10 10">
-                    <path fill="currentColor" d="M0.5,0.5 9.5,9.5 M9.5,0.5 0.5,9.5" stroke="currentColor"
-                        stroke-width="1.2"></path>
-                </svg>
-            </button>
+            <div class="window-controls">
+                <button id="minimize-music-btn" class="window-control-btn" title="最小化">
+                    <svg width="10" height="10" viewBox="0 0 10 10">
+                        <line x1="0" y1="5" x2="10" y2="5" stroke="currentColor" stroke-width="1.2"></line>
+                    </svg>
+                </button>
+                <button id="maximize-music-btn" class="window-control-btn" title="最大化">
+                    <svg width="10" height="10" viewBox="0 0 10 10">
+                        <path fill="none" stroke="currentColor" stroke-width="1" d="M0.5,0.5 h9 v9 h-9 z"></path>
+                    </svg>
+                </button>
+                <button id="close-music-btn" class="window-control-btn" title="关闭">
+                    <svg width="10" height="10" viewBox="0 0 10 10">
+                        <path fill="currentColor" d="M0.5,0.5 9.5,9.5 M9.5,0.5 0.5,9.5" stroke="currentColor"
+                            stroke-width="1.2"></path>
+                    </svg>
+                </button>
+            </div>
         </div>
     </div>
     <!-- 用于显示模糊专辑封面的背景 -->

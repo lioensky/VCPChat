@@ -1407,11 +1407,21 @@ body.light-theme option {
     /* 标题文字区域不可拖动 */
 }
 
+#custom-title-bar .titlebar-actions,
 #custom-title-bar .window-controls {
     display: flex;
+    align-items: center;
     gap: 10px;
     -webkit-app-region: no-drag;
     /* 按钮区域不可拖动 */
+}
+
+#custom-title-bar .titlebar-actions {
+    margin-left: auto;
+}
+
+#custom-title-bar .window-controls {
+    padding-left: 2px;
 }
 
 .window-control-btn {
@@ -1425,12 +1435,21 @@ body.light-theme option {
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    transition: background-color 0.2s ease, color 0.2s ease;
+    transition: background-color 0.2s ease, color 0.2s ease, transform 0.2s ease;
 }
 
 .window-control-btn:hover {
     background-color: var(--hover-bg);
     color: var(--music-text);
+}
+
+.sidebar-toggle-btn svg {
+    transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+    transform-origin: center;
+}
+
+.sidebar-toggle-btn.is-collapsed svg {
+    transform: rotate(180deg);
 }
 
 #close-music-btn:hover {
@@ -1452,6 +1471,27 @@ body.light-theme option {
     flex-direction: column;
     overflow: hidden;
     padding: 15px;
+    transition: width 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+                margin-right 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+                padding 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+                border-width 0.22s ease,
+                opacity 0.22s ease,
+                transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+body.sidebar-collapsed .left-sidebar {
+    width: 0;
+    margin-right: -20px; /* 抵消 .music-player-container 的 flex gap，避免左侧出现双倍空白 */
+    padding-left: 0;
+    padding-right: 0;
+    border-width: 0;
+    opacity: 0;
+    transform: translateX(-16px) scaleX(0.98);
+    pointer-events: none;
+}
+
+body.sidebar-collapsed .left-sidebar > * {
+    visibility: hidden;
 }
 
 /* 顶部操作区 */
