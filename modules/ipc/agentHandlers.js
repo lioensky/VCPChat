@@ -2,6 +2,7 @@
 const { ipcMain } = require('electron');
 const fs = require('fs-extra');
 const path = require('path');
+const { pathToFileURL } = require('url');
 
 let AGENT_DIR_CACHE; // Cache the agent directory path
 let USER_DATA_DIR_CACHE; // Cache the user data directory path
@@ -9,11 +10,23 @@ let AVATAR_IMAGE_DIR; // Centralized avatar storage directory
 let agentConfigManagerInstance; // Cache the agentConfigManager instance
 let cachedAgents = null; // Memory cache for full agent list
 let cachedMetadata = null; // Memory cache for lightweight metadata list
+const AVATAR_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.webp'];
 
 function invalidateCaches() {
     console.log('[agentHandlers] Invalidating agent caches.');
     cachedAgents = null;
     cachedMetadata = null;
+}
+
+async function findAvatarUrl(agentDir, cacheBust = false) {
+    for (const ext of AVATAR_EXTENSIONS) {
+        const avatarPath = path.join(agentDir, `avatar${ext}`);
+        if (await fs.pathExists(avatarPath)) {
+            const url = pathToFileURL(avatarPath).toString();
+            return cacheBust ? `${url}?t=${Date.now()}` : url;
+        }
+    }
+    return null;
 }
 
 async function getAgentConfigById(agentId) {
@@ -49,20 +62,7 @@ async function getAgentConfigById(agentId) {
             }
         }
 
-        const avatarPathPng = path.join(agentDir, 'avatar.png');
-        const avatarPathJpg = path.join(agentDir, 'avatar.jpg');
-        const avatarPathJpeg = path.join(agentDir, 'avatar.jpeg');
-        const avatarPathGif = path.join(agentDir, 'avatar.gif');
-        config.avatarUrl = null;
-        if (await fs.pathExists(avatarPathPng)) {
-            config.avatarUrl = `file://${avatarPathPng}?t=${Date.now()}`;
-        } else if (await fs.pathExists(avatarPathJpg)) {
-            config.avatarUrl = `file://${avatarPathJpg}?t=${Date.now()}`;
-        } else if (await fs.pathExists(avatarPathJpeg)) {
-            config.avatarUrl = `file://${avatarPathJpeg}?t=${Date.now()}`;
-        } else if (await fs.pathExists(avatarPathGif)) {
-            config.avatarUrl = `file://${avatarPathGif}?t=${Date.now()}`;
-        }
+        config.avatarUrl = await findAvatarUrl(agentDir, true);
         config.id = agentId;
         // 注入正确的用户数据目录路径，而不是Agent定义目录
         config.agentDataPath = path.join(AGENT_DIR_CACHE.replace('Agents', 'UserData'), agentId);
@@ -126,8 +126,6 @@ function initialize(context) {
                 if (!stat.isDirectory()) return null;
 
                 const configPath = path.join(agentPath, 'config.json');
-                const avatarExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.webp'];
-                
                 let agentData = { id: folderName, name: folderName, avatarUrl: null, config: {} };
 
                 if (await fs.pathExists(configPath)) {
@@ -178,14 +176,7 @@ function initialize(context) {
                     };
                 }
 
-                // Avatar detection (Parallelize if many, but 4-5 is fine)
-                for (const ext of avatarExtensions) {
-                    const avatarPath = path.join(agentPath, `avatar${ext}`);
-                    if (await fs.pathExists(avatarPath)) {
-                        agentData.avatarUrl = `file://${avatarPath}`;
-                        break;
-                    }
-                }
+                agentData.avatarUrl = await findAvatarUrl(agentPath);
 
                 return agentData;
             }));
@@ -368,18 +359,12 @@ function initialize(context) {
                 else ext = '.png';
             }
 
-            const allowedExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.webp'];
-            if (!allowedExtensions.includes(ext)) {
+            if (!AVATAR_EXTENSIONS.includes(ext)) {
                 return { error: `保存头像失败：不支持的文件类型/扩展名 "${ext}"。` };
             }
 
             // 2. 删除 Agent 目录下的旧头像
-            const oldAvatars = [
-                path.join(agentDir, 'avatar.png'),
-                path.join(agentDir, 'avatar.jpg'),
-                path.join(agentDir, 'avatar.gif'),
-                path.join(agentDir, 'avatar.webp')
-            ];
+            const oldAvatars = AVATAR_EXTENSIONS.map(avatarExt => path.join(agentDir, `avatar${avatarExt}`));
 
             for (const oldAvatarPath of oldAvatars) {
                 if (await fs.pathExists(oldAvatarPath)) {
@@ -398,7 +383,7 @@ function initialize(context) {
                 await fs.ensureDir(AVATAR_IMAGE_DIR);
 
                 // 4a. 删除集中式目录中旧的、以 Agent 名称命名的头像文件
-                const centralizedOldAvatars = allowedExtensions.map(e => path.join(AVATAR_IMAGE_DIR, `${agentName}${e}`));
+                const centralizedOldAvatars = AVATAR_EXTENSIONS.map(e => path.join(AVATAR_IMAGE_DIR, `${agentName}${e}`));
                 for (const oldAvatarPath of centralizedOldAvatars) {
                     if (await fs.pathExists(oldAvatarPath)) {
                         await fs.remove(oldAvatarPath);
@@ -411,7 +396,7 @@ function initialize(context) {
             }
 
             invalidateCaches();
-            return { success: true, avatarUrl: `file://${newAvatarPath}?t=${Date.now()}`, needsColorExtraction: true };
+            return { success: true, avatarUrl: `${pathToFileURL(newAvatarPath).toString()}?t=${Date.now()}`, needsColorExtraction: true };
         } catch (error) {
             console.error(`保存Agent ${agentId} 头像失败:`, error);
             return { error: `保存头像失败: ${error.message}` };
@@ -538,15 +523,7 @@ async function getAgentsInternal({ AGENT_DIR }) {
             if (config) {
                 try {
                     const agentDir = path.join(AGENT_DIR, agentId);
-                    const avatarPathPng = path.join(agentDir, 'avatar.png');
-                    const avatarPathJpg = path.join(agentDir, 'avatar.jpg');
-                    const avatarPathJpeg = path.join(agentDir, 'avatar.jpeg');
-                    const avatarPathGif = path.join(agentDir, 'avatar.gif');
-                    let avatarUrl = null;
-                    if (await fs.pathExists(avatarPathPng)) avatarUrl = `file://${avatarPathPng}`;
-                    else if (await fs.pathExists(avatarPathJpg)) avatarUrl = `file://${avatarPathJpg}`;
-                    else if (await fs.pathExists(avatarPathJpeg)) avatarUrl = `file://${avatarPathJpeg}`;
-                    else if (await fs.pathExists(avatarPathGif)) avatarUrl = `file://${avatarPathGif}`;
+                    const avatarUrl = await findAvatarUrl(agentDir);
 
                     return { ...config, id: agentId, type: 'agent', avatarUrl };
                 } catch (e) {
@@ -577,15 +554,7 @@ async function getGroupsInternal({ USER_DATA_DIR }) {
                 try {
                     const config = await fs.readJson(configPath);
                     const groupDir = path.join(groupsDir, groupId);
-                    const avatarPathPng = path.join(groupDir, 'avatar.png');
-                    const avatarPathJpg = path.join(groupDir, 'avatar.jpg');
-                    const avatarPathJpeg = path.join(groupDir, 'avatar.jpeg');
-                    const avatarPathGif = path.join(groupDir, 'avatar.gif');
-                    let avatarUrl = null;
-                    if (await fs.pathExists(avatarPathPng)) avatarUrl = `file://${avatarPathPng}`;
-                    else if (await fs.pathExists(avatarPathJpg)) avatarUrl = `file://${avatarPathJpg}`;
-                    else if (await fs.pathExists(avatarPathJpeg)) avatarUrl = `file://${avatarPathJpeg}`;
-                    else if (await fs.pathExists(avatarPathGif)) avatarUrl = `file://${avatarPathGif}`;
+                    const avatarUrl = await findAvatarUrl(groupDir);
 
                     return { ...config, id: groupId, type: 'group', avatarUrl };
                 } catch (e) {
