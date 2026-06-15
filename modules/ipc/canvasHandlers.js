@@ -14,6 +14,9 @@ let fileWatcher = null;
 const internalSaveInProgress = new Set(); // Track internal saves
 const internalSaveTimers = new Map(); // filePath -> timeout id
 let initialFilePath = null;
+let activeRootDir = CANVAS_CACHE_DIR;
+let activeCanvasContext = 'canvas';
+let activeCanvasMetadata = {};
 let ipcHandlersRegistered = false;
 const SUPPORTED_EXTENSIONS = [
     '.txt', '.js', '.py', '.css', '.html', '.json', '.md', '.rs', '.ts',
@@ -21,6 +24,90 @@ const SUPPORTED_EXTENSIONS = [
     '.sh', '.yml', '.yaml', '.toml', '.xml'
 ];
  
+function normalizeCanvasOpenRequest(eventOrFilePath, maybeFilePath) {
+    if (eventOrFilePath && typeof eventOrFilePath === 'object' && 'sender' in eventOrFilePath) {
+        return normalizeCanvasOpenRequest(maybeFilePath);
+    }
+
+    if (eventOrFilePath && typeof eventOrFilePath === 'object') {
+        const rootDir = eventOrFilePath.rootDir || (
+            eventOrFilePath.filePath ? path.dirname(eventOrFilePath.filePath) : CANVAS_CACHE_DIR
+        );
+        return {
+            filePath: eventOrFilePath.filePath || null,
+            rootDir,
+            context: eventOrFilePath.context || 'canvas',
+            metadata: eventOrFilePath.metadata || {},
+        };
+    }
+
+    return {
+        filePath: eventOrFilePath || null,
+        rootDir: CANVAS_CACHE_DIR,
+        context: 'canvas',
+        metadata: {},
+    };
+}
+
+function setCanvasSession(request) {
+    activeRootDir = request.rootDir || CANVAS_CACHE_DIR;
+    activeCanvasContext = request.context || 'canvas';
+    activeCanvasMetadata = request.metadata || {};
+    if (request.filePath) {
+        initialFilePath = request.filePath;
+        activeCanvasPath = request.filePath;
+    }
+}
+
+function getSessionPayload() {
+    return {
+        context: activeCanvasContext,
+        rootDir: activeRootDir,
+        metadata: activeCanvasMetadata,
+    };
+}
+
+function notifyDesktopWidgetSourceSaved(filePath) {
+    if (activeCanvasContext !== 'desktop-widget') return;
+
+    const payload = {
+        ...activeCanvasMetadata,
+        filePath,
+        rootDir: activeRootDir,
+        context: activeCanvasContext,
+    };
+
+    const desktopHandlers = require('./desktopHandlers');
+    const desktopWindow = desktopHandlers.getDesktopWindow?.();
+    if (desktopWindow && !desktopWindow.isDestroyed()) {
+        desktopWindow.webContents.send('desktop-widget-source-saved', payload);
+    }
+}
+
+function restartFileWatcher() {
+    if (fileWatcher) {
+        fileWatcher.close();
+        fileWatcher = null;
+    }
+
+    fileWatcher = chokidar.watch(activeRootDir, {
+        persistent: true,
+        ignoreInitial: true,
+    }).on('change', (filePath) => {
+        if (internalSaveInProgress.has(filePath)) {
+            console.log(`Internal save detected for ${filePath}. Ignoring watch event.`);
+            return;
+        }
+
+        if (canvasWindow && !canvasWindow.isDestroyed()) {
+            console.log(`External file change detected: ${filePath}`);
+            getCanvasFileContent(filePath).then(fileContent => {
+                canvasWindow.webContents.send('external-file-changed', fileContent);
+            }).catch(err => console.error(`Error reading changed file ${filePath}:`, err));
+        }
+    });
+}
+
 function initialize(config) {
     mainWindow = config.mainWindow;
     openChildWindows = config.openChildWindows;
@@ -52,23 +139,20 @@ function initialize(config) {
 }
 
 async function createCanvasWindow(eventOrFilePath = null, maybeFilePath = null) {
-    const filePath = eventOrFilePath && typeof eventOrFilePath === 'object' && 'sender' in eventOrFilePath
-        ? maybeFilePath
-        : eventOrFilePath;
+    const request = normalizeCanvasOpenRequest(eventOrFilePath, maybeFilePath);
+    const filePath = request.filePath;
+    setCanvasSession(request);
     console.log('[CanvasHandlers] Received request to open canvas window.');
     if (canvasWindow && !canvasWindow.isDestroyed()) {
         if (!canvasWindow.isVisible()) {
             canvasWindow.show();
         }
         canvasWindow.focus();
+        restartFileWatcher();
         if (filePath) {
-            canvasWindow.webContents.send('load-canvas-file-by-path', filePath);
+            handleLoadCanvasFile({ sender: canvasWindow.webContents }, filePath);
         }
         return;
-    }
-
-    if (filePath) {
-        initialFilePath = filePath;
     }
 
     canvasWindow = new BrowserWindow({
@@ -109,6 +193,9 @@ async function createCanvasWindow(eventOrFilePath = null, maybeFilePath = null) 
         canvasWindow = null;
         initialFilePath = null;
         activeCanvasPath = null;
+        activeRootDir = CANVAS_CACHE_DIR;
+        activeCanvasContext = 'canvas';
+        activeCanvasMetadata = {};
         if (mainWindow && !mainWindow.isDestroyed()) {
             try {
                 mainWindow.webContents.send('canvas-window-closed');
@@ -152,27 +239,7 @@ async function createCanvasWindow(eventOrFilePath = null, maybeFilePath = null) 
         }
     });
 
-    // Start watching the directory for changes
-    // Start watching the directory for changes
-    if (!fileWatcher) {
-        fileWatcher = chokidar.watch(CANVAS_CACHE_DIR, {
-            persistent: true,
-            ignoreInitial: true,
-        }).on('change', (filePath) => {
-            if (internalSaveInProgress.has(filePath)) {
-                console.log(`Internal save detected for ${filePath}. Ignoring watch event.`);
-                return; // It's an internal save, do nothing.
-            }
-
-            if (canvasWindow && !canvasWindow.isDestroyed()) {
-                console.log(`External file change detected: ${filePath}`);
-                getCanvasFileContent(filePath).then(fileContent => {
-                    // Send a specific event for external changes
-                    canvasWindow.webContents.send('external-file-changed', fileContent);
-                }).catch(err => console.error(`Error reading changed file ${filePath}:`, err));
-            }
-        });
-    }
+    restartFileWatcher();
 }
 
 async function handleCanvasReady(event) {
@@ -189,7 +256,7 @@ async function handleCanvasReady(event) {
             current = await getCanvasFileContent(history[0].path);
             history[0].isActive = true;
         }
-        sender.send('canvas-load-data', { history, current });
+        sender.send('canvas-load-data', { history, current, session: getSessionPayload() });
     } catch (error) {
         console.error('Failed to load canvas data:', error);
     }
@@ -198,16 +265,18 @@ async function handleCanvasReady(event) {
 async function handleCreateNewCanvas(event) {
     const sender = event.sender;
     try {
-        const newFileName = `canvas_${Date.now()}.txt`;
-        const newFilePath = path.join(CANVAS_CACHE_DIR, newFileName);
-        await fs.writeFile(newFilePath, '// New Canvas');
+        const newFileName = activeCanvasContext === 'desktop-widget'
+            ? `widget_${Date.now()}.js`
+            : `canvas_${Date.now()}.txt`;
+        const newFilePath = path.join(activeRootDir, newFileName);
+        await fs.writeFile(newFilePath, activeCanvasContext === 'desktop-widget' ? '// New Widget Source File' : '// New Canvas');
         
         const history = await getCanvasHistory();
         const current = await getCanvasFileContent(newFilePath);
         history.forEach(h => h.isActive = (h.path === newFilePath));
         activeCanvasPath = newFilePath; // Set the active path
 
-        sender.send('canvas-load-data', { history, current });
+        sender.send('canvas-load-data', { history, current, session: getSessionPayload() });
     } catch (error) {
         console.error('Failed to create new canvas file:', error);
     }
@@ -221,7 +290,7 @@ async function handleLoadCanvasFile(event, filePath) {
         history.forEach(h => h.isActive = (h.path === filePath));
         activeCanvasPath = filePath; // Set the active path
 
-        sender.send('canvas-load-data', { history, current });
+        sender.send('canvas-load-data', { history, current, session: getSessionPayload() });
     } catch (error) {
         console.error(`Failed to load canvas file ${filePath}:`, error);
     }
@@ -239,6 +308,7 @@ async function handleSaveCanvasFile(event, file) {
 
         await fs.writeFile(file.path, file.content);
         console.log(`Internal save successful for: ${file.path}`);
+        notifyDesktopWidgetSourceSaved(file.path);
     } catch (error) {
         console.error(`Failed to save canvas file ${file.path}:`, error);
     } finally {
@@ -270,7 +340,7 @@ async function handleRenameCanvasFile(event, { oldPath, newTitle }) {
             const history = await getCanvasHistory();
             const current = await getCanvasFileContent(newPath);
             history.forEach(h => h.isActive = (h.path === newPath));
-            canvasWindow.webContents.send('canvas-load-data', { history, current });
+            canvasWindow.webContents.send('canvas-load-data', { history, current, session: getSessionPayload() });
         }
 
         return newPath; // Return the new path on success
@@ -296,7 +366,7 @@ async function handleCopyCanvasFile(event, filePath) {
            // Find the currently active file to keep it active
            const activeItem = history.find(h => h.isActive);
            const current = activeItem ? await getCanvasFileContent(activeItem.path) : null;
-           canvasWindow.webContents.send('canvas-load-data', { history, current });
+           canvasWindow.webContents.send('canvas-load-data', { history, current, session: getSessionPayload() });
        }
    } catch (error) {
        console.error('Failed to copy canvas file:', error);
@@ -319,7 +389,7 @@ async function handleDeleteCanvasFile(event, filePath) {
            } else {
                activeCanvasPath = null; // No files left
            }
-           canvasWindow.webContents.send('canvas-load-data', { history, current });
+           canvasWindow.webContents.send('canvas-load-data', { history, current, session: getSessionPayload() });
        }
    } catch (error) {
        console.error('Failed to delete canvas file:', error);
@@ -327,11 +397,12 @@ async function handleDeleteCanvasFile(event, filePath) {
 }
 
 async function getCanvasHistory() {
-    const files = await fs.readdir(CANVAS_CACHE_DIR);
+    await fs.ensureDir(activeRootDir);
+    const files = await fs.readdir(activeRootDir);
     const historyPromises = files
         .filter(file => SUPPORTED_EXTENSIONS.includes(path.extname(file).toLowerCase()))
         .map(async (file) => {
-            const filePath = path.join(CANVAS_CACHE_DIR, file);
+            const filePath = path.join(activeRootDir, file);
             const stats = await fs.stat(filePath);
             return {
                 path: filePath,

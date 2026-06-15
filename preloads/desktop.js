@@ -418,6 +418,8 @@ function createCatalog(ops) {
         desktopMetricsGetCapabilities: query(() => ops.invoke('desktop-metrics-get-capabilities')),
         desktopMetricsGetDetailedProcesses: query(() => ops.invoke('desktop-metrics-get-detailed-processes')),
         desktopOpenSystemTool: query((cmd) => ops.invoke('desktop-open-system-tool', cmd)),
+        desktopOpenWidgetInCanvas: query((data) => ops.invoke('desktop-open-widget-in-canvas', data)),
+        onDesktopWidgetSourceSaved: subscription(ops.subscribe('desktop-widget-source-saved', (_event, data) => data)),
     };
 }
 
@@ -471,6 +473,8 @@ const ALLOWED_KEYS = [
     "desktopMetricsGetCapabilities",
     "desktopMetricsGetDetailedProcesses",
     "desktopOpenSystemTool",
+    "desktopOpenWidgetInCanvas",
+    "onDesktopWidgetSourceSaved",
     "musicPlay",
     "musicPause",
     "getMusicState",

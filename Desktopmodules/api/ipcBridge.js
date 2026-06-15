@@ -316,6 +316,31 @@
             });
         }
 
+        if (desktopApi?.onDesktopWidgetSourceSaved) {
+            desktopApi.onDesktopWidgetSourceSaved((data) => {
+                const savedId = data?.savedId;
+                if (!savedId) return;
+
+                let refreshedCount = 0;
+                state.widgets.forEach((widgetData, widgetId) => {
+                    if (widgetData.savedId === savedId && window.VCPDesktop?.favorites?.refresh) {
+                        window.VCPDesktop.favorites.refresh(widgetId);
+                        refreshedCount += 1;
+                    }
+                });
+
+                if (window.VCPDesktop.status) {
+                    const fileName = data?.filePath ? data.filePath.split(/[\\/]/).pop() : '源码文件';
+                    const message = refreshedCount > 0
+                        ? `已保存并刷新 ${refreshedCount} 个挂件: ${fileName}`
+                        : `Widget源码已保存: ${fileName}`;
+                    window.VCPDesktop.status.update('connected', message);
+                    window.VCPDesktop.status.show();
+                    setTimeout(() => window.VCPDesktop.status.hide(), 3000);
+                }
+            });
+        }
+
         if (desktopApi?.onDesktopRemoteRequest) {
             desktopApi.onDesktopRemoteRequest((request) => {
                 handleDesktopRemoteRpcRequest(request);

@@ -45,9 +45,31 @@ document.addEventListener('DOMContentLoaded', () => {
     let allCanvasFiles = []; // Store all files for filtering
     let searchMatches = [];
     let currentMatchIndex = -1;
+    let currentSession = { context: 'canvas', rootDir: '', metadata: {} };
+
+    function applySessionUi(session) {
+        currentSession = session || { context: 'canvas', rootDir: '', metadata: {} };
+        const sidebarTitle = document.querySelector('.sidebar h3');
+        const isWidgetSource = currentSession.context === 'desktop-widget';
+
+        if (sidebarTitle) {
+            sidebarTitle.textContent = isWidgetSource ? 'Widget源码' : 'Canvas目录';
+        }
+
+        if (newCanvasBtn) {
+            newCanvasBtn.textContent = isWidgetSource ? '新建源码文件' : '新建 Canvas';
+        }
+
+        if (errorInfoSpan) {
+            errorInfoSpan.textContent = isWidgetSource
+                ? `Widget源码模式${currentSession.metadata?.savedId ? ` · ${currentSession.metadata.savedId}` : ''}`
+                : '无错误';
+        }
+    }
 
     // --- CodeMirror 5 Initialization ---
     function initializeEditor(initialData) {
+        applySessionUi(initialData?.session);
         if (editor) {
             // If editor exists, just update its content
             if (initialData.current) {

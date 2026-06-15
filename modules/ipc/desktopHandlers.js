@@ -50,6 +50,17 @@ function removeFromOpenChildWindows(win) {
     if (idx > -1) openChildWindows.splice(idx, 1);
 }
 
+function isSafeWidgetId(value) {
+    return typeof value === 'string' && /^[a-zA-Z0-9_-]+$/.test(value);
+}
+
+function isSafeWidgetFileName(value) {
+    return typeof value === 'string'
+        && value.length > 0
+        && value === path.basename(value)
+        && !value.includes('..');
+}
+
 function cleanupStandaloneAppProcesses() {
     for (const [appDir, child] of standaloneAppProcesses.entries()) {
         standaloneAppProcesses.delete(appDir);
@@ -522,7 +533,7 @@ function registerManagedWindows() {
         },
         open: async (options = {}) => {
             const canvasHandlers = require('./canvasHandlers');
-            await canvasHandlers.createCanvasWindow(options.filePath || null);
+            await canvasHandlers.createCanvasWindow(options.filePath ? options : null);
             return canvasHandlers.getCanvasWindow();
         },
         readyTimeoutMs: 10000,
@@ -804,6 +815,48 @@ function initialize(params) {
     });
 
     // --- IPC: 收藏系统 ---
+
+    ipcMain.handle('desktop-open-widget-in-canvas', async (event, data = {}) => {
+        try {
+            const { savedId, fileName = 'widget.html' } = data;
+            if (!isSafeWidgetId(savedId)) {
+                return { success: false, error: '不安全或缺失的 widget ID' };
+            }
+            if (!isSafeWidgetFileName(fileName)) {
+                return { success: false, error: `不安全的文件名: ${fileName}` };
+            }
+
+            const widgetDir = path.join(DESKTOP_WIDGETS_DIR, savedId);
+            if (!await fs.pathExists(widgetDir)) {
+                return { success: false, error: 'Widget 源码目录不存在，请先收藏该挂件' };
+            }
+
+            const filePath = path.join(widgetDir, fileName);
+            if (!await fs.pathExists(filePath)) {
+                if (fileName === 'widget.html') {
+                    await fs.writeFile(filePath, '<!-- Empty widget -->', 'utf-8');
+                } else {
+                    return { success: false, error: `文件不存在: ${fileName}` };
+                }
+            }
+
+            const canvasHandlers = require('./canvasHandlers');
+            await canvasHandlers.createCanvasWindow({
+                filePath,
+                rootDir: widgetDir,
+                context: 'desktop-widget',
+                metadata: {
+                    savedId,
+                    fileName,
+                },
+            });
+
+            return { success: true, filePath, rootDir: widgetDir };
+        } catch (err) {
+            console.error('[DesktopHandlers] Open widget in Canvas error:', err);
+            return { success: false, error: err.message };
+        }
+    });
 
     // 保存/更新收藏
     ipcMain.handle('desktop-save-widget', async (event, data) => {
