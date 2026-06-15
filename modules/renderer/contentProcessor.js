@@ -1151,8 +1151,11 @@ function deIndentMisinterpretedCodeBlocks(text) {
     // 匹配 Markdown 列表标记，例如 *, -, 1.
     const listRegex = /^\s*([-*]|\d+\.)\s+/;
     
-    // 匹配可能导致Markdown解析问题的HTML标签
-    const htmlTagRegex = /^\s*<\/?(div|p|img|span|a|h[1-6]|ul|ol|li|table|tr|td|th|section|article|header|footer|nav|aside|main|figure|figcaption|blockquote|pre|code|style|script|button|form|input|textarea|select|label|iframe|video|audio|canvas|svg)[\s>\/]/i;
+    // 匹配可能导致 Markdown 解析问题的 HTML/XML 标签行。
+    // 不再维护固定白名单：AI 常输出 SVG/MathML/自定义元素片段（如 </g>、<path>、<linearGradient>），
+    // 4+ 空格或 tab 缩进会触发 Markdown indented code block，导致这些标签被渲染成代码块。
+    // 这里只接受“行首缩进后立即是合法标签起始”的行，避免误处理普通缩进文本。
+    const htmlTagRegex = /^\s*<\/?[A-Za-z][A-Za-z0-9:-]*(?=[\s>\/])/;
 
     // 匹配缩进的 HTML 注释行。流式渲染 div 动画块时，AI 常输出缩进注释作为分段标记；
     // 4+ 空格 / tab 会触发 Markdown indented code block，导致注释短暂闪成代码块。
