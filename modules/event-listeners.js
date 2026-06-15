@@ -306,7 +306,9 @@ export function setupEventListeners(deps) {
                 agentId: currentSelectedItem.id,
                 agentName: currentSelectedItem.name || currentSelectedItem.id,
                 topicId: currentTopicId,
-                isGroupMessage: false
+                isGroupMessage: false,
+                avatarUrl: currentSelectedItem.avatarUrl,
+                avatarColor: (currentSelectedItem.config || currentSelectedItem)?.avatarCalculatedColor
             };
 
             const vcpResponse = await chatAPI.sendToVCP(

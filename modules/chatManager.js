@@ -1312,7 +1312,9 @@ window.chatManager = (() => {
                 agentId: currentSelectedItem.id,
                 agentName: currentSelectedItem.name || currentSelectedItem.id, // 修复：为单聊上下文添加 agentName，并使用 ID 作为回退
                 topicId: currentTopicId,
-                isGroupMessage: false
+                isGroupMessage: false,
+                avatarUrl: currentSelectedItem.avatarUrl,
+                avatarColor: (currentSelectedItem.config || currentSelectedItem)?.avatarCalculatedColor
             };
 
             const vcpResponse = await electronAPI.sendToVCP(

@@ -2529,8 +2529,9 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true,
             avatarColorToUse = currentSelectedItem.config?.avatarCalculatedColor
                 || currentSelectedItem.avatarCalculatedColor
                 || currentSelectedItem.config?.avatarColor
-                || currentSelectedItem.avatarColor;
-            avatarUrlToUse = currentSelectedItem.avatarUrl;
+                || currentSelectedItem.avatarColor
+                || message.avatarColor;
+            avatarUrlToUse = message.avatarUrl || currentSelectedItem.avatarUrl;
 
             // 非群组消息，获取当前Agent的设置
             const agentConfig = currentSelectedItem.config || currentSelectedItem;
