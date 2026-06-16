@@ -355,11 +355,12 @@ function prettifySinglePreElement(preElement, type, relevantContent) {
 
 const TAG_REGEX = /@([\u4e00-\u9fa5A-Za-z0-9_]+)/g;
 const ALERT_TAG_REGEX = /@!([\u4e00-\u9fa5A-Za-z0-9_]+)/g;
-const BOLD_REGEX = /\*\*([^\*]+)\*\*/g;
 const QUOTE_REGEX = /(?:"([^"]*)"|“([^”]*)”)/g; // Matches English "..." and Chinese “...”
 
 /**
- * 一次性高亮所有文本模式（标签、粗体、引号），替换旧的多次遍历方法
+ * 一次性高亮所有文本模式（标签、引号），替换旧的多次遍历方法。
+ * Markdown 加粗必须先由 marked 解析成 <strong>/<b>，这里不再二次解析 **...**，
+ * 避免后处理拆分文本节点后破坏 Markdown 粗体边界。
  * @param {HTMLElement} messageElement The message content element.
  */
 function highlightAllPatternsInMessage(messageElement) {
@@ -371,8 +372,11 @@ function highlightAllPatternsInMessage(messageElement) {
         (node) => {
             let parent = node.parentElement;
             while (parent && parent !== messageElement) {
-                if (['PRE', 'CODE', 'STYLE', 'SCRIPT', 'STRONG', 'B'].includes(parent.tagName) ||
+                // 只跳过不应改写的技术内容和已高亮节点；不要跳过 STRONG/B。
+                // 这样 Markdown 先完成加粗后，引号高亮仍可进入加粗文本内部执行。
+                if (['PRE', 'CODE', 'STYLE', 'SCRIPT'].includes(parent.tagName) ||
                     parent.classList.contains('highlighted-tag') ||
+                    parent.classList.contains('highlighted-alert-tag') ||
                     parent.classList.contains('highlighted-quote')) {
                     return NodeFilter.FILTER_REJECT;
                 }
@@ -399,9 +403,6 @@ function highlightAllPatternsInMessage(messageElement) {
             }
             while ((match = ALERT_TAG_REGEX.exec(text)) !== null) {
                 matches.push({ type: 'alert-tag', index: match.index, length: match[0].length, content: match[0] });
-            }
-            while ((match = BOLD_REGEX.exec(text)) !== null) {
-                matches.push({ type: 'bold', index: match.index, length: match[0].length, content: match[1] });
             }
             while ((match = QUOTE_REGEX.exec(text)) !== null) {
                 // 确保引号内有内容
@@ -450,7 +451,7 @@ function highlightAllPatternsInMessage(messageElement) {
             }
 
             // 创建高亮元素
-            const span = document.createElement(match.type === 'bold' ? 'strong' : 'span');
+            const span = document.createElement('span');
             if (match.type === 'tag') {
                 span.className = 'highlighted-tag';
                 span.textContent = match.content;
@@ -459,8 +460,6 @@ function highlightAllPatternsInMessage(messageElement) {
                 span.textContent = match.content;
             } else if (match.type === 'quote') {
                 span.className = 'highlighted-quote';
-                span.textContent = match.content;
-            } else { // bold
                 span.textContent = match.content;
             }
             fragment.appendChild(span);

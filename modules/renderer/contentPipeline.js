@@ -83,6 +83,51 @@ function stripPersonaBackfillTail(text) {
     return result;
 }
 
+function normalizeAdjacentBoldBoundaries(text) {
+    if (typeof text !== 'string' || !text.includes('**')) return text;
+
+    // marked/CommonMark 的 emphasis 边界算法在中文/引号无空格相邻时会把
+    // **“文字a”**文字b**""文字c""**
+    // 解析成嵌套 strong。HTML 注释是 Markdown 认可的不可见边界，
+    // 可强制结束前一个粗体并重新开始后一个粗体，不改变可见文本。
+    const separator = '<!-- -->';
+    let result = '';
+    let cursor = 0;
+    let inBold = false;
+
+    const needsSeparatorAfter = (char) => !!char && !/\s/.test(char) && char !== '<' && char !== '*';
+    const needsSeparatorBefore = (char) => !!char && !/\s/.test(char) && char !== '>' && char !== '*';
+
+    while (cursor < text.length) {
+        const markerIndex = text.indexOf('**', cursor);
+        if (markerIndex === -1) {
+            result += text.slice(cursor);
+            break;
+        }
+
+        const previousChar = markerIndex > 0 ? text[markerIndex - 1] : '';
+
+        result += text.slice(cursor, markerIndex);
+
+        if (!inBold && result && !result.endsWith(separator) && needsSeparatorBefore(previousChar)) {
+            result += separator;
+        }
+
+        result += '**';
+        cursor = markerIndex + 2;
+        inBold = !inBold;
+
+        if (!inBold) {
+            const nextChar = text[cursor] || '';
+            if (needsSeparatorAfter(nextChar)) {
+                result += separator;
+            }
+        }
+    }
+
+    return result;
+}
+
 function createMapPlaceholderReplacer(map) {
     if (!map || map.size === 0) {
         return noop;
@@ -305,7 +350,10 @@ function createContentPipeline(deps = {}) {
         step(ctx, 'ensure-html-fenced', (text) => ensureHtmlFenced(text));
         step(ctx, 'apply-common-content-processors', (text) => applyContentProcessors(text));
 
-        // 8. 最后恢复代码块
+        // 10. Markdown 解析前修复相邻粗体边界；此时代码块仍是占位符，避免污染代码内容。
+        step(ctx, 'normalize-adjacent-bold-boundaries', normalizeAdjacentBoldBoundaries);
+
+        // 11. 最后恢复代码块
         step(ctx, 'restore-code-blocks', restoreCodeBlocks);
 
         return {
@@ -324,6 +372,7 @@ function createContentPipeline(deps = {}) {
         step(ctx, 'deindent-misinterpreted-code-blocks', (text) => deIndentMisinterpretedCodeBlocks(text));
         step(ctx, 'escape-start-end-markers', (text) => processStartEndMarkers(text));
         step(ctx, 'apply-common-content-processors', (text) => applyContentProcessors(text));
+        step(ctx, 'normalize-adjacent-bold-boundaries', normalizeAdjacentBoldBoundaries);
 
         return {
             text: ctx.text,

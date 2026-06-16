@@ -162,6 +162,50 @@ document.addEventListener('DOMContentLoaded', async () => {
             .replace(/'/g, '&#039;');
     }
 
+    function normalizeAdjacentBoldBoundaries(text) {
+        if (typeof text !== 'string' || !text.includes('**')) return text;
+
+        // marked/CommonMark 在中文/引号无空格相邻时可能把
+        // **“文字a”**文字b**""文字c""**
+        // 解析成嵌套 strong。HTML 注释是不可见 Markdown 边界，可强制断开。
+        const separator = '<!-- -->';
+        let result = '';
+        let cursor = 0;
+        let inBold = false;
+
+        const needsSeparatorAfter = (char) => !!char && !/\s/.test(char) && char !== '<' && char !== '*';
+        const needsSeparatorBefore = (char) => !!char && !/\s/.test(char) && char !== '>' && char !== '*';
+
+        while (cursor < text.length) {
+            const markerIndex = text.indexOf('**', cursor);
+            if (markerIndex === -1) {
+                result += text.slice(cursor);
+                break;
+            }
+
+            const previousChar = markerIndex > 0 ? text[markerIndex - 1] : '';
+
+            result += text.slice(cursor, markerIndex);
+
+            if (!inBold && result && !result.endsWith(separator) && needsSeparatorBefore(previousChar)) {
+                result += separator;
+            }
+
+            result += '**';
+            cursor = markerIndex + 2;
+            inBold = !inBold;
+
+            if (!inBold) {
+                const nextChar = text[cursor] || '';
+                if (needsSeparatorAfter(nextChar)) {
+                    result += separator;
+                }
+            }
+        }
+
+        return result;
+    }
+
     // --- 工具请求块扫描器（共享给 transformSpecialBlocksForViewer 和 preprocessFullContent） ---
     const TOOL_START_MARKER = '<<<[TOOL_REQUEST]>>>';
     const TOOL_END_MARKER = '<<<[END_TOOL_REQUEST]>>>';
@@ -814,7 +858,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         processed = processed.replace(/^(\s*)(```.*)/gm, '$2'); // removeIndentationFromCodeBlockMarkers
         processed = processed.replace(/(<img[^>]+>)\s*(```)/g, '$1\n\n<!-- VCP-Renderer-Separator -->\n\n$2'); // ensureSeparatorBetweenImgAndCode
 
-        // Step 6: Restore the protected code blocks.
+        // Step 6: Markdown 解析前修复相邻粗体边界；此时代码块仍是占位符，避免污染代码内容。
+        processed = normalizeAdjacentBoldBoundaries(processed);
+
+        // Step 7: Restore the protected code blocks.
         if (codeBlockMap.size > 0) {
             for (const [placeholder, block] of codeBlockMap.entries()) {
                 processed = processed.replace(placeholder, block);
@@ -1206,33 +1253,67 @@ document.addEventListener('DOMContentLoaded', async () => {
         return str.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-PRZcf-nqry=><]/g, '');
     }
 
-    function removeBoldMarkersAroundQuotes(text) {
-        if (typeof text !== 'string') return text;
-        // Replace **" with " and **“ with “
-        let processedText = text.replace(/\*\*(["“])/g, '$1');
-        // Replace "** with " and ”** with ”
-        processedText = processedText.replace(/(["”])\*\*/g, '$1');
-        return processedText;
-    }
+    const QUOTE_REGEX = /(?:"([^"]*)"|“([^”]*)”)/g;
 
-    function renderQuotedText(text, currentTheme) {
-        const className = currentTheme === 'light' ? 'custom-quote-light' : 'custom-quote-dark';
-        // This regex uses alternation. It first tries to match a whole code block.
-        // If it matches, the code block is returned unmodified.
-        // Otherwise, it tries to match a quoted string and wraps it.
-        // This is much more robust than splitting the string.
-        return text.replace(/(```[\s\S]*?```)|("([^"]*?)"|“([^”]*?)”)/g, (match, codeBlock, fullQuote) => {
-            // If a code block is matched (group 1), return it as is.
-            if (codeBlock) {
-                return codeBlock;
+    function highlightQuotedTextInRenderedContent(container) {
+        if (!container) return;
+
+        const className = document.body.classList.contains('light-theme') ? 'custom-quote-light' : 'custom-quote-dark';
+        const walker = document.createTreeWalker(
+            container,
+            NodeFilter.SHOW_TEXT,
+            {
+                acceptNode: (node) => {
+                    const parent = node.parentElement;
+                    if (!parent) return NodeFilter.FILTER_REJECT;
+                    if (parent.closest('pre, code, script, style, textarea, .custom-quote-light, .custom-quote-dark')) {
+                        return NodeFilter.FILTER_REJECT;
+                    }
+                    QUOTE_REGEX.lastIndex = 0;
+                    return node.nodeValue && QUOTE_REGEX.test(node.nodeValue)
+                        ? NodeFilter.FILTER_ACCEPT
+                        : NodeFilter.FILTER_SKIP;
+                }
+            },
+            false
+        );
+
+        const nodesToProcess = [];
+        while (walker.nextNode()) {
+            nodesToProcess.push(walker.currentNode);
+        }
+
+        nodesToProcess.forEach(node => {
+            QUOTE_REGEX.lastIndex = 0;
+            const text = node.nodeValue || '';
+            const fragment = document.createDocumentFragment();
+            let lastIndex = 0;
+            let match;
+
+            while ((match = QUOTE_REGEX.exec(text)) !== null) {
+                if (!(match[1] || match[2])) continue;
+
+                if (match.index > lastIndex) {
+                    fragment.appendChild(document.createTextNode(text.slice(lastIndex, match.index)));
+                }
+
+                const span = document.createElement('span');
+                span.className = className;
+                span.textContent = match[0];
+                fragment.appendChild(span);
+                lastIndex = match.index + match[0].length;
             }
-            // If a quote is matched (group 2), wrap it in a span.
-            if (fullQuote) {
-                return `<span class="${className}">${fullQuote}</span>`;
+
+            if (lastIndex < text.length) {
+                fragment.appendChild(document.createTextNode(text.slice(lastIndex)));
             }
-            // Fallback, should not happen with this regex structure
-            return match;
+
+            if (fragment.childNodes.length > 0 && node.parentNode) {
+                node.parentNode.replaceChild(fragment, node);
+            }
         });
+
+        QUOTE_REGEX.lastIndex = 0;
     }
 
     function decodeHtmlEntities(text) {
@@ -1241,51 +1322,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         return textarea.value;
     }
 
-    function applyBoldFormatting(container) {
-        const walker = document.createTreeWalker(
-            container,
-            NodeFilter.SHOW_TEXT,
-            { acceptNode: (node) => {
-                // 拒绝在这些元素内进行加粗处理
-                if (node.parentElement.closest('pre, code, script, style, .vcp-tool-use-bubble, .vcp-tool-result-bubble, a')) {
-                    return NodeFilter.FILTER_REJECT;
-                }
-                // 只接受包含 "**" 的文本节点
-                if (/\*\*/.test(node.nodeValue)) {
-                    return NodeFilter.FILTER_ACCEPT;
-                }
-                return NodeFilter.FILTER_SKIP;
-            }},
-            false
-        );
-
-        const nodesToProcess = [];
-        // TreeWalker 会动态变化，所以先收集所有节点
-        while (walker.nextNode()) {
-            nodesToProcess.push(walker.currentNode);
-        }
-
-        nodesToProcess.forEach(node => {
-            const parent = node.parentElement;
-            if (!parent) return;
-
-            const fragment = document.createDocumentFragment();
-            // 使用正则表达式分割文本，保留分隔符
-            const parts = node.nodeValue.split(/(\*\*.*?\*\*)/g);
-
-            parts.forEach(part => {
-                if (part.startsWith('**') && part.endsWith('**')) {
-                    const strong = document.createElement('strong');
-                    strong.textContent = part.slice(2, -2);
-                    fragment.appendChild(strong);
-                } else if (part) { // 避免添加空的文本节点
-                    fragment.appendChild(document.createTextNode(part));
-                }
-            });
-            // 用新的文档片段替换旧的文本节点
-            parent.replaceChild(fragment, node);
-        });
-    }
 
     const textContent = params.get('text');
     const windowTitle = params.get('title') || '文本阅读模式';
@@ -1772,11 +1808,11 @@ ${codeContent}
             });
         });
 
+        // --- Final formatting pass for quoted text ---
+        highlightQuotedTextInRenderedContent(container);
+
         // --- Call animation processor after all other enhancements ---
         processAnimationsInContent(container);
-
-        // --- Final formatting pass for bold text ---
-        applyBoldFormatting(container);
     }
 
     /**
