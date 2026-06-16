@@ -37,6 +37,7 @@ const DAILY_NOTE_START = '<<<DailyNoteStart>>>';
 const DAILY_NOTE_END = '<<<DailyNoteEnd>>>';
 // OpenHerPersona 聊天分条标记：完整出现即成为稳定切点，流式过程中实时分出气泡
 const BURST_MARKER_TOKEN = '<!--brk-->';
+const MARKDOWN_SECTION_BREAK_TOKEN = '---';
 const STREAM_PARAGRAPH_SAFETY_BLOCKS = 1;
 const HTML_ISLAND_MAX_STACK_DEPTH = 128;
 const HTML_ISLAND_MAX_CHARS = 256 * 1024;
@@ -1133,6 +1134,17 @@ function findExplicitStablePrefix(text, startOffset = 0) {
                 paragraphFloor = stableCutoff;
             }
             index += BURST_MARKER_TOKEN.length;
+            continue;
+        }
+
+        if (startsWithAt(text, index, MARKDOWN_SECTION_BREAK_TOKEN)) {
+            if (isLineOnlyToken(text, index, MARKDOWN_SECTION_BREAK_TOKEN.length)) {
+                // 独立行 Markdown 文档分段符 --- 可作为稳定切点；
+                // 目前只处理严格的 ---，暂不扩展到 ***/___ 或带空格变体。
+                stableCutoff = index + MARKDOWN_SECTION_BREAK_TOKEN.length;
+                paragraphFloor = stableCutoff;
+            }
+            index += MARKDOWN_SECTION_BREAK_TOKEN.length;
             continue;
         }
 
