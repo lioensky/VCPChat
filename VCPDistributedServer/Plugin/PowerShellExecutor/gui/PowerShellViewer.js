@@ -32,6 +32,8 @@ term.open(terminalContainer);
 
 // --- 功能函数 ---
 
+let fitTimer = null;
+
 function fitTerminal() {
     try {
         fitAddon.fit();
@@ -44,13 +46,24 @@ function fitTerminal() {
     }
 }
 
+function scheduleFitTerminal(delay = 100) {
+    if (fitTimer) {
+        clearTimeout(fitTimer);
+    }
+
+    fitTimer = setTimeout(() => {
+        fitTimer = null;
+        fitTerminal();
+    }, delay);
+}
+
 function sendCommand() {
     const command = commandInput.value;
     if (command.trim() && window.electronAPI) {
-        term.write(command + '\r\n');
+        // 真实 PTY 会自行回显输入；前端本地 echo 会导致重复字符和 TUI 状态错位。
         window.electronAPI.send('powershell-command', command);
         commandInput.value = '';
-        commandInput.focus();
+        term.focus();
     }
 }
 
@@ -102,6 +115,15 @@ if (window.electronAPI) {
         }, 100);
     });
 
+    // --- 真实终端输入透传 ---
+    term.onData((data) => {
+        window.electronAPI.send('powershell-input', data);
+    });
+
+    terminalContainer.addEventListener('mousedown', () => {
+        term.focus();
+    });
+
     // --- 原生复制逻辑 ---
     // 监听右键点击事件，用于复制
     terminalContainer.addEventListener('contextmenu', (e) => {
@@ -132,6 +154,7 @@ if (window.electronAPI) {
 // --- 窗口与输入监听 ---
 window.addEventListener('DOMContentLoaded', () => {
     fitTerminal();
+    term.focus();
     if (window.electronAPI) {
         window.electronAPI.send('powershell-gui-ready');
     }
@@ -153,13 +176,15 @@ window.addEventListener('DOMContentLoaded', () => {
         if (window.electronAPI) window.electronAPI.closeWindow();
     });
 });
-window.addEventListener('resize', () => setTimeout(fitTerminal, 0));
-sendButton.addEventListener('click', sendCommand);
-commandInput.addEventListener('keydown', (event) => {
-    // 当用户按下 Enter 键但没有同时按下 Shift 键时，发送命令
-    if (event.key === 'Enter' && !event.shiftKey) {
-        event.preventDefault(); // 阻止默认的 Enter 行为（例如，在 textarea 中换行）
-        sendCommand();
-    }
-    // Shift+Enter 的默认行为就是在 textarea 中换行，所以我们不需要为它编写特殊逻辑
-});
+window.addEventListener('resize', () => scheduleFitTerminal(100));
+if (sendButton && commandInput) {
+    sendButton.addEventListener('click', sendCommand);
+    commandInput.addEventListener('keydown', (event) => {
+        // 当用户按下 Enter 键但没有同时按下 Shift 键时，发送命令
+        if (event.key === 'Enter' && !event.shiftKey) {
+            event.preventDefault(); // 阻止默认的 Enter 行为（例如，在 textarea 中换行）
+            sendCommand();
+        }
+        // Shift+Enter 的默认行为就是在 textarea 中换行，所以我们不需要为它编写特殊逻辑
+    });
+}

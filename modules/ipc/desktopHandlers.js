@@ -1243,6 +1243,16 @@ function initialize(params) {
                 return await launchStandaloneElectronApp('VchatManager', 'VchatManager');
             }
 
+            if (appAction === 'open-powershell-executor-terminal') {
+                const powerShellExecutor = require(path.join(PROJECT_ROOT, 'VCPDistributedServer', 'Plugin', 'PowerShellExecutor', 'PowerShellExecutor.js'));
+                if (typeof powerShellExecutor.openGuiTerminal !== 'function') {
+                    return { success: false, error: 'PowerShellExecutor GUI entry is not available.' };
+                }
+
+                powerShellExecutor.openGuiTerminal();
+                return { success: true };
+            }
+
             if (appAction && appAction.startsWith('open-system-tool:')) {
                 const cmd = appAction.substring('open-system-tool:'.length);
                 return await launchSystemTool(cmd);
