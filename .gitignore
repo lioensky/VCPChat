@@ -43,3 +43,9 @@ loudness_cache.db
 loudness_cache.db-journal
 loudness_cache.db-wal
 loudness_cache.db-shm
+
+
+# AI CLI local state/config directories
+**/.snow/
+**/.claude/
+**/.codex/
