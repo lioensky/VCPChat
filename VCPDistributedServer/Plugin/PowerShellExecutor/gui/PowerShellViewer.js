@@ -110,6 +110,18 @@ function interruptCommand() {
     }
 }
 
+function extractVisibleText() {
+    const buffer = term.buffer.active;
+    const lines = [];
+    for (let i = 0; i < buffer.length; i++) {
+        const line = buffer.getLine(i);
+        if (line) {
+            lines.push(line.translateToString(true));
+        }
+    }
+    return lines.join('\n').trim();
+}
+
 function hideContextMenu() {
     if (contextMenu) {
         contextMenu.hidden = true;
@@ -175,8 +187,14 @@ function handleContextMenuAction(action) {
 // --- IPC 与事件监听 ---
 
 if (window.electronAPI) {
+    // --- 查询可见文本 ---
+    window.electronAPI.on('query-visible-text', (event) => {
+        const text = extractVisibleText();
+        window.electronAPI.send('visible-text-response', text);
+    });
+
     // --- 数据、清屏与主题 ---
-    // 前端现在是一个纯粹的渲染器，所有状态和内容都由后端主导。
+    // 前端现在是一个纯粹的渲染器,所有状态和内容都由后端主导。
     window.electronAPI.on('powershell-data', (data) => {
         // 后端现在负责所有数据清理，前端只需直接写入即可。
         if (data) {

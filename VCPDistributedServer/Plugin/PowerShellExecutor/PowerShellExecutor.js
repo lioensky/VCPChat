@@ -159,6 +159,22 @@ ipcMain.on('powershell-input', (event, data) => {
     }
 });
 
+// --- 查询终端可见文本 ---
+ipcMain.on('query-visible-text-request', (event) => {
+    if (guiWindow && !guiWindow.isDestroyed()) {
+        guiWindow.webContents.send('query-visible-text');
+    }
+});
+
+let visibleTextResolver = null;
+
+ipcMain.on('visible-text-response', (event, text) => {
+    if (visibleTextResolver) {
+        visibleTextResolver(text);
+        visibleTextResolver = null;
+    }
+});
+
 // --- 新增：窗口控制事件监听 ---
 ipcMain.on('minimize-window', () => {
     if (guiWindow) guiWindow.minimize();
@@ -967,6 +983,24 @@ function executeSingleCommandInPty(ptyProcess, singleCommand) {
 
 async function processToolCall(args) {
     const action = typeof args.action === 'string' ? args.action.trim() : 'execute';
+
+    if (action === 'queryVisible') {
+        ensureGuiWindow();
+        
+        return new Promise((resolve, reject) => {
+            const timeout = setTimeout(() => {
+                visibleTextResolver = null;
+                reject(new Error('查询终端文本超时'));
+            }, 5000);
+
+            visibleTextResolver = (text) => {
+                clearTimeout(timeout);
+                resolve({ content: [{ type: 'text', text: `\`\`\`\n${text}\n\`\`\`` }] });
+            };
+
+            guiWindow.webContents.send('query-visible-text');
+        });
+    }
 
     if (action === 'endInteractive') {
         interactiveMode = false;
