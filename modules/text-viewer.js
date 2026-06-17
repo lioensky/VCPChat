@@ -1,4 +1,5 @@
 import * as emoticonFixer from './renderer/emoticonUrlFixer.js';
+import { domToCanvas, domToBlob } from '../vendor/modern-screenshot.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
     const viewerAPI = window.utilityAPI || window.electronAPI;
@@ -2033,54 +2034,126 @@ ${codeContent}
             contextMenu.style.display = 'none';
         });
  
-         contextMenuShareScreenshotButton.addEventListener('click', () => {
+         contextMenuShareScreenshotButton.addEventListener('click', async () => {
             contextMenu.style.display = 'none';
-            if (window.html2canvas && mainContentDiv) {
-                html2canvas(mainContentDiv, {
-                    useCORS: true, // Allow loading cross-origin images
-                    // Use the body's actual background color. This is crucial for correct rendering.
-                    backgroundColor: window.getComputedStyle(document.body).backgroundColor,
-                    onclone: (clonedDoc) => {
-                        // Re-apply the theme class to the cloned document's body so styles are correct
-                        if (document.body.classList.contains('light-theme')) {
-                            clonedDoc.body.classList.add('light-theme');
-                        }
-                        // Also explicitly set the background color on the cloned body, as it can help html2canvas
-                        // with layout calculations. A transparent background can cause rendering glitches.
-                        clonedDoc.body.style.backgroundColor = window.getComputedStyle(document.body).backgroundColor;
+            if (!mainContentDiv) {
+                alert('截图功能不可用：找不到内容容器。');
+                return;
+            }
 
-                        // --- FIX for flexbox rendering issue ---
-                        // html2canvas can struggle with text nodes that are direct children of flex containers.
-                        // We wrap them in a <span> to make them element nodes, which are handled more robustly.
-                        clonedDoc.querySelectorAll('*').forEach(el => {
-                            const style = window.getComputedStyle(el);
-                            if (style.display === 'flex') {
-                                Array.from(el.childNodes).forEach(child => {
-                                    // Node.TEXT_NODE === 3
-                                    if (child.nodeType === 3 && child.textContent.trim().length > 0) {
-                                        const span = clonedDoc.createElement('span');
-                                        span.textContent = child.textContent;
-                                        el.replaceChild(span, child);
-                                    }
-                                });
+            try {
+                console.log('[text-viewer] Screenshot start. Content size:',
+                    mainContentDiv.scrollWidth, 'x', mainContentDiv.scrollHeight);
+
+                // 使用 modern-screenshot (ESM) 取代已停止维护的 html2canvas。
+                // 该库支持 color-mix / oklch 等现代 CSS 颜色函数，且通过 SVG <foreignObject>
+                // 渲染，对 flex/text-node 等场景表现更稳定。
+                const bodyBg = window.getComputedStyle(document.body).backgroundColor;
+                const isLightTheme = document.body.classList.contains('light-theme');
+
+                // 自适应缩放：避免长 Markdown 文档生成超大 canvas（Chromium 单边上限约 16384px）。
+                // 同时为高 DPI 屏提供更清晰的输出。
+                const dpr = window.devicePixelRatio > 1 ? window.devicePixelRatio : 2;
+                const MAX_DIM = 14000; // 留点余量，避免触达 16384 上限
+                const longestSide = Math.max(mainContentDiv.scrollWidth, mainContentDiv.scrollHeight) || 1;
+                const adaptiveScale = Math.min(dpr, MAX_DIM / longestSide);
+                const finalScale = Math.max(1, adaptiveScale); // 至少 1 倍
+                console.log('[text-viewer] Screenshot scale (dpr→adaptive→final):', dpr, adaptiveScale, finalScale);
+
+                const renderOptions = {
+                    backgroundColor: bodyBg,
+                    scale: finalScale,
+                    // 在 cloned 子树根节点上同步主题类与背景，
+                    // 防止某些主题变量在脱离 body 后无法解析。
+                    onCloneNode: (clonedRoot) => {
+                        try {
+                            if (clonedRoot && clonedRoot.classList) {
+                                if (isLightTheme) {
+                                    clonedRoot.classList.add('light-theme');
+                                }
+                                clonedRoot.style.backgroundColor = bodyBg;
                             }
-                        });
+                        } catch (cloneErr) {
+                            console.warn('[text-viewer] onCloneNode adjustment failed:', cloneErr);
+                        }
                     }
-                }).then(canvas => {
-                    const imageDataUrl = canvas.toDataURL('image/png');
-                    if (viewerAPI && viewerAPI.openImageViewer) {
-                        viewerAPI.openImageViewer({
+                };
+
+                // 优先用 domToBlob 直接拿到 PNG Blob，转换为 dataURL 时通过 FileReader 逐块流式读取，
+                // 比 canvas.toDataURL 更省内存，能减少超长截图时的卡顿/失败。
+                let imageDataUrl = null;
+                try {
+                    const blob = await domToBlob(mainContentDiv, { ...renderOptions, type: 'image/png' });
+                    if (!blob) throw new Error('domToBlob returned empty.');
+                    console.log('[text-viewer] Screenshot blob size:', blob.size, 'bytes');
+                    imageDataUrl = await new Promise((resolve, reject) => {
+                        const reader = new FileReader();
+                        reader.onload = () => resolve(reader.result);
+                        reader.onerror = () => reject(reader.error || new Error('FileReader failed.'));
+                        reader.readAsDataURL(blob);
+                    });
+                } catch (blobErr) {
+                    console.warn('[text-viewer] domToBlob failed, falling back to domToCanvas:', blobErr);
+                    const canvas = await domToCanvas(mainContentDiv, renderOptions);
+                    if (!canvas || !canvas.width || !canvas.height) {
+                        throw new Error('Screenshot canvas is empty (0x0).');
+                    }
+                    console.log('[text-viewer] Screenshot canvas size:', canvas.width, 'x', canvas.height);
+                    imageDataUrl = canvas.toDataURL('image/png');
+                }
+
+                if (!imageDataUrl || imageDataUrl === 'data:,' || !imageDataUrl.startsWith('data:image/')) {
+                    throw new Error('Screenshot output is empty or invalid.');
+                }
+
+                console.log('[text-viewer] Screenshot dataURL length:', imageDataUrl.length);
+
+                if (!viewerAPI) {
+                    console.error('[text-viewer] viewerAPI is not available.');
+                    alert('截图功能不可用：viewerAPI 未注入。');
+                    return;
+                }
+
+                const imageTitle = `截图分享 - ${document.title}`;
+
+                // 优先：把 dataURL 注册到主进程，拿 token 后只用 token 打开窗口，
+                // 彻底绕开 BrowserWindow URL 长度限制（Chromium 对 file:// + query 有上限）。
+                if (typeof viewerAPI.registerImageViewerPayload === 'function') {
+                    try {
+                        const token = await viewerAPI.registerImageViewerPayload({
                             src: imageDataUrl,
-                            title: `截图分享 - ${document.title}`
+                            title: imageTitle,
+                            theme: isLightTheme ? 'light' : 'dark',
                         });
-                    } else {
-                        console.error('viewerAPI.openImageViewer is not available.');
-                        alert('截图功能不可用。');
+                        console.log('[text-viewer] Registered screenshot payload, token:', token);
+                        if (token && viewerAPI.openImageViewer) {
+                            // 主进程 open-image-viewer 在收到 dataURL 时已会自动走 token，
+                            // 但这里我们已显式注册过了，因此只把 token 当 src 传进去也能触发主进程的
+                            // 大体积分支（src.startsWith('data:') || length>1500），保持兼容。
+                            // 不过更干净的做法是直接让主进程走我们已注册的 token：
+                            // 由于 open-image-viewer 不接 token 字段，这里改回直接传 src，
+                            // 主进程会再注册一次（覆盖），多注册一次的代价仅是一段字符串拷贝。
+                        }
+                    } catch (regErr) {
+                        console.warn('[text-viewer] registerImageViewerPayload failed (non-fatal):', regErr);
                     }
-                }).catch(err => {
-                    console.error('Error generating screenshot:', err);
-                    alert('生成截图失败。');
-                });
+                }
+
+                if (typeof viewerAPI.openImageViewer === 'function') {
+                    // 主进程会自动检测 dataURL 并改走 token+payload 缓存，
+                    // 因此这里仍可以直接把 dataURL 交给它。
+                    viewerAPI.openImageViewer({
+                        src: imageDataUrl,
+                        title: imageTitle,
+                    });
+                    console.log('[text-viewer] openImageViewer dispatched.');
+                } else {
+                    console.error('[text-viewer] viewerAPI.openImageViewer is not available.');
+                    alert('截图功能不可用：openImageViewer 未注入。');
+                }
+            } catch (err) {
+                console.error('[text-viewer] Error generating screenshot:', err);
+                alert(`生成截图失败：${err && err.message ? err.message : err}`);
             }
         });
  

@@ -47,9 +47,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     const maxHistory = 50;
 
     // 缩放和拖拽变量
+    // 长截图（如阅读模式分享出来的整页 Markdown）等比缩放到视口后，
+    // 文字相当于被压缩到很小，因此需要一个比常规图片大得多的最大放大倍率。
     let currentScale = 1;
-    const minScale = 0.2;
-    const maxScale = 5;
+    const minScale = 0.05; // 极端缩小：方便看长截图全貌
+    const maxScale = 32;   // 极端放大：方便看清长截图细节文字
+    // 滚轮一格 ×1.15；按住 Shift 滚轮一格 ×1.5（快速跳跃）
+    const ZOOM_FACTOR_STEP = 1.15;
+    const ZOOM_FACTOR_FAST = 1.5;
     let isDragging = false;
     let imgInitialX = 0;
     let imgInitialY = 0;
@@ -66,8 +71,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     const params = new URLSearchParams(window.location.search);
-    const imageUrl = params.get('src');
-    const imageTitle = params.get('title') || '图片预览';
+    const tokenFromUrl = params.get('token');
+    let imageUrl = params.get('src');
+    let imageTitle = params.get('title') || '图片预览';
     const initialTheme = params.get('theme') || 'dark';
 
     applyTheme(initialTheme);
@@ -76,7 +82,31 @@ document.addEventListener('DOMContentLoaded', async () => {
         viewerAPI.onThemeUpdated(applyTheme);
     }
 
-    const decodedTitle = decodeURIComponent(imageTitle);
+    // 如果是 token 模式，先尝试从主进程一次性取走真正的 payload。
+    // 这样可以承载任意大体积的 dataURL（截图分享）而不会受 URL 长度限制。
+    if (tokenFromUrl && viewerAPI && typeof viewerAPI.consumeImageViewerPayload === 'function') {
+        try {
+            const payload = await viewerAPI.consumeImageViewerPayload(tokenFromUrl);
+            if (payload && payload.src) {
+                imageUrl = payload.src;
+                if (payload.title) imageTitle = payload.title;
+                if (payload.theme) applyTheme(payload.theme);
+                console.log('[ImageViewer] Loaded payload via token. src length:', payload.src.length);
+            } else {
+                console.error('[ImageViewer] Token payload missing or already consumed:', tokenFromUrl);
+            }
+        } catch (err) {
+            console.error('[ImageViewer] Failed to consume image payload by token:', err);
+        }
+    }
+
+    const decodedTitle = (() => {
+        try {
+            return decodeURIComponent(imageTitle);
+        } catch (_) {
+            return imageTitle;
+        }
+    })();
     document.title = decodedTitle;
     document.getElementById('image-title-text').textContent = decodedTitle;
 
@@ -339,9 +369,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     // ========== 图片加载 ==========
 
     if (imageUrl) {
-        const decodedImageUrl = decodeURIComponent(imageUrl);
-        console.log('Image Viewer: Loading image -', decodedImageUrl);
-        imgElement.src = decodedImageUrl;
+        // token 模式下 src 已经是原始 dataURL，不需要 decode；
+        // URL 模式下 src 是 encodeURIComponent 过的，需要解码。
+        let finalSrc = imageUrl;
+        if (!tokenFromUrl) {
+            try {
+                finalSrc = decodeURIComponent(imageUrl);
+            } catch (_) {
+                finalSrc = imageUrl;
+            }
+        }
+        console.log('[ImageViewer] Loading image, length:', finalSrc.length, 'via', tokenFromUrl ? 'token' : 'url');
+        imgElement.src = finalSrc;
 
         imgElement.onload = () => {
             console.log('Image Viewer: Image loaded successfully.');
@@ -375,30 +414,52 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             // ========== 缩放和拖拽功能 ==========
             
-            imgElement.addEventListener('wheel', (event) => {
-                if (event.ctrlKey && currentTool === 'select') {
-                    event.preventDefault();
+            // ---- 缩放：以鼠标位置为缩放原点（保持指向内容不偏移）----
+            // wheel 事件挂在 imageContainer 上，避免在放大后鼠标落到画布层时无响应。
+            const zoomTarget = imageContainer;
+            zoomTarget.addEventListener('wheel', (event) => {
+                if (!event.ctrlKey || currentTool !== 'select') return;
+                event.preventDefault();
 
-                    const scaleAmount = 0.1;
-                    const oldScale = currentScale;
-                    let newScale;
+                const oldScale = currentScale;
+                const factor = event.shiftKey ? ZOOM_FACTOR_FAST : ZOOM_FACTOR_STEP;
+                let newScale = event.deltaY < 0
+                    ? oldScale * factor
+                    : oldScale / factor;
+                newScale = Math.max(minScale, Math.min(maxScale, newScale));
+                if (newScale === oldScale) return;
 
-                    if (event.deltaY < 0) {
-                        newScale = Math.min(maxScale, oldScale + scaleAmount);
-                    } else {
-                        newScale = Math.max(minScale, oldScale - scaleAmount);
-                    }
+                // 计算鼠标相对于 imageContainer 中心点的偏移，使缩放围绕鼠标指向位置。
+                // imageContainer 的 transform-origin 默认为 center center。
+                const rect = zoomTarget.getBoundingClientRect();
+                const cx = rect.left + rect.width / 2;
+                const cy = rect.top + rect.height / 2;
+                const mx = event.clientX - cx;
+                const my = event.clientY - cy;
 
-                    if (newScale === oldScale) return;
+                // 根据缩放倍率变化反推平移补偿：保持鼠标位置在内容坐标系上的点不动。
+                const ratio = newScale / oldScale;
+                imgInitialX = mx - (mx - imgInitialX) * ratio;
+                imgInitialY = my - (my - imgInitialY) * ratio;
 
-                    currentScale = newScale;
-                    updateTransform();
-                }
+                currentScale = newScale;
+                updateTransform();
             }, { passive: false });
+
+            // 双击重置：缩放回 1，居中。
+            imgElement.addEventListener('dblclick', (event) => {
+                if (currentTool !== 'select') return;
+                event.preventDefault();
+                currentScale = 1;
+                imgInitialX = 0;
+                imgInitialY = 0;
+                updateTransform();
+            });
 
             let dragStartX, dragStartY;
             imgElement.addEventListener('mousedown', (event) => {
-                if (event.button === 0 && currentScale > 1 && currentTool === 'select') {
+                // 任何非 1× 状态都允许拖拽（缩小后也可能需要平移查看裁剪后的画面）。
+                if (event.button === 0 && currentScale !== 1 && currentTool === 'select') {
                     isDragging = true;
                     dragStartX = event.clientX;
                     dragStartY = event.clientY;
@@ -422,25 +483,25 @@ document.addEventListener('DOMContentLoaded', async () => {
             document.addEventListener('mouseup', (event) => {
                 if (event.button === 0 && isDragging) {
                     isDragging = false;
-                    if (currentScale > 1) {
-                        imgElement.style.cursor = 'grab';
-                    } else {
-                        imgElement.style.cursor = 'default';
-                    }
+                    imgElement.style.cursor = currentScale !== 1 ? 'grab' : 'default';
                 }
             });
 
             function updateTransform() {
-                const transform = `translate(${imgInitialX}px, ${imgInitialY}px) scale(${currentScale})`;
-                imageContainer.style.transform = transform;
-                
-                if (currentScale > 1) {
-                    imgElement.style.cursor = 'grab';
-                } else {
-                    imgElement.style.cursor = 'default';
+                // 注意：先 translate 后 scale，使 translate 的单位保持为屏幕像素，
+                // 这样我们在 wheel 处理里基于屏幕坐标做的鼠标定位补偿才是准确的。
+                imageContainer.style.transform =
+                    `translate(${imgInitialX}px, ${imgInitialY}px) scale(${currentScale})`;
+
+                if (currentScale === 1) {
+                    // 仅当缩放回到 1× 时才重置平移并切换光标，
+                    // 避免用户缩小到 <1 时图片突然跳回中心。
                     imgInitialX = 0;
                     imgInitialY = 0;
-                    imageContainer.style.transform = `scale(${currentScale})`;
+                    imageContainer.style.transform = `scale(1)`;
+                    imgElement.style.cursor = 'default';
+                } else {
+                    imgElement.style.cursor = 'grab';
                 }
             }
         };
