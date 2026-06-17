@@ -737,6 +737,86 @@ function createNewPtySession() {
     });
 }
 
+function buildHumanLaunchAnimationCommand() {
+    const script = [
+        '$esc = [char]27',
+        '# 尝试擦掉用于触发动画的短命令输入行，避免启动动画前出现杂乱命令文本。',
+        'Write-Host -NoNewline "$esc[1A$esc[2K`r"',
+        '',
+        '# 霓虹渐变色定义',
+        '$c1 = "$esc[38;2;245;194;231m" # Pink',
+        '$c2 = "$esc[38;2;203;166;247m" # Mauve',
+        '$c3 = "$esc[38;2;137;180;250m" # Blue',
+        '$c4 = "$esc[38;2;116;199;236m" # Sapphire',
+        '$c5 = "$esc[38;2;137;220;235m" # Sky',
+        '$c6 = "$esc[38;2;148;226;213m" # Teal',
+        '$reset = "$esc[0m"',
+        '$gray = "$esc[38;2;147;153;178m"',
+        '$darkGray = "$esc[38;2;88;91;112m"',
+        '$green = "$esc[38;2;166;227;161m"',
+        '$yellow = "$esc[38;2;249;226;175m"',
+        '',
+        '# 逐行打印华丽的 VCP CLI ASCII Art',
+        'Write-Host ""',
+        'Write-Host "  ${c1}██╗   ██╗  ██████╗  ██████╗      ██████╗  ██╗      ██╗${reset}"',
+        'Start-Sleep -Milliseconds 40',
+        'Write-Host "  ${c2}██║   ██║ ██╔════╝  ██╔══██╗    ██╔════╝  ██║      ██║${reset}"',
+        'Start-Sleep -Milliseconds 40',
+        'Write-Host "  ${c3}██║   ██║ ██║       ██████╔╝    ██║       ██║      ██║${reset}"',
+        'Start-Sleep -Milliseconds 40',
+        'Write-Host "  ${c4}╚██╗ ██╔╝ ██║       ██╔═══╝     ██║       ██║      ██║${reset}"',
+        'Start-Sleep -Milliseconds 40',
+        'Write-Host "  ${c5} ╚████╔╝  ╚██████╗  ██║         ╚██████╗  ███████╗ ██║${reset}"',
+        'Start-Sleep -Milliseconds 40',
+        'Write-Host "  ${c6}  ╚═══╝    ╚═════╝  ╚═╝          ╚═════╝  ╚══════╝ ╚═╝${reset}"',
+        'Start-Sleep -Milliseconds 50',
+        '',
+        '# 打印副标题和分割线',
+        'Write-Host "  ${darkGray}──────────────────────────────────────────────────────────${reset}"',
+        'Write-Host "  ${gray}Distributed PowerShell Bridge & Interactive Terminal GUI${reset}"',
+        'Write-Host "  ${darkGray}──────────────────────────────────────────────────────────${reset}"',
+        'Write-Host ""',
+        '',
+        '# 华丽的渐变色进度条加载动画',
+        '$barWidth = 30',
+        'for ($i = 0; $i -le $barWidth; $i++) {',
+        '    $percent = [math]::Round(($i / $barWidth) * 100)',
+        '    $filledCount = $i',
+        '    $emptyCount = $barWidth - $i',
+        '    ',
+        '    # 动态计算渐变色 (从 Mauve 203,166,247 渐变到 Teal 148,226,213)',
+        '    $r = [int](203 - (203 - 148) * ($i / $barWidth))',
+        '    $g = [int](166 + (226 - 166) * ($i / $barWidth))',
+        '    $b = [int](247 - (247 - 213) * ($i / $barWidth))',
+        '    $color = "$esc[38;2;${r};${g};${b}m"',
+        '    ',
+        '    $filled = "▰" * $filledCount',
+        '    $empty = "▱" * $emptyCount',
+        '    ',
+        '    Write-Host -NoNewline "$esc[2K`r  ${gray}Loading Bridge:${reset} [${color}${filled}${darkGray}${empty}${reset}] ${color}${percent}%${reset}"',
+        '    Start-Sleep -Milliseconds 35',
+        '}',
+        'Write-Host ""',
+        'Write-Host ""',
+        '',
+        '# 打印系统就绪状态和极客风系统信息',
+        'Write-Host "  ${gray}Status:${reset}    ${green}ONLINE${reset}"',
+        'Write-Host "  ${gray}Session:${reset}   ${c3}Active PowerShell Bridge${reset}"',
+        'Write-Host "  ${gray}Terminal:${reset}  ${yellow}Interactive Console Ready${reset}"',
+        'Write-Host ""',
+        'Write-Host "  ${gray}Type commands below. Press ${c3}Ctrl+C${gray} to interrupt.${reset}"',
+        'Write-Host ""',
+        'Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue',
+    ].join('\n');
+
+    const tempScriptName = `vcp-cli-launch-${crypto.randomUUID()}.ps1`;
+    const tempScriptPath = path.join(os.tmpdir(), tempScriptName);
+    fs.writeFileSync(tempScriptPath, `\ufeff${script}`, 'utf8');
+
+    const escapedTempScriptPath = tempScriptPath.replace(/'/g, "''");
+    return `& '${escapedTempScriptPath}'\r`;
+}
+
 /**
  * 打开或聚焦 PowerShellExecutor 的交互式终端 GUI。
  * 该入口供主程序托盘 / 桌面应用启动器直接调用，不需要先通过 AI 工具执行命令。
@@ -745,8 +825,17 @@ function createNewPtySession() {
 function openGuiTerminal() {
     ensureGuiWindow();
 
+    const shouldPlayHumanLaunchAnimation = !ptyProcess;
     if (!ptyProcess) {
         createNewPtySession();
+    }
+
+    if (shouldPlayHumanLaunchAnimation && ptyProcess) {
+        setTimeout(() => {
+            if (ptyProcess) {
+                ptyProcess.write(buildHumanLaunchAnimationCommand());
+            }
+        }, 650);
     }
 
     return guiWindow;
