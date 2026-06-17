@@ -984,8 +984,11 @@ function executeSingleCommandInPty(ptyProcess, singleCommand) {
 async function processToolCall(args) {
     const action = typeof args.action === 'string' ? args.action.trim() : 'execute';
 
-    if (action === 'queryVisible') {
+    if (action.startsWith('queryVisible')) {
         ensureGuiWindow();
+        
+        const match = action.match(/^queryVisible(\d+)?$/);
+        const maxLines = match && match[1] ? parseInt(match[1], 10) : null;
         
         return new Promise((resolve, reject) => {
             const timeout = setTimeout(() => {
@@ -998,7 +1001,7 @@ async function processToolCall(args) {
                 resolve({ content: [{ type: 'text', text: `\`\`\`\n${text}\n\`\`\`` }] });
             };
 
-            guiWindow.webContents.send('query-visible-text');
+            guiWindow.webContents.send('query-visible-text', { maxLines });
         });
     }
 

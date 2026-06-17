@@ -110,10 +110,13 @@ function interruptCommand() {
     }
 }
 
-function extractVisibleText() {
+function extractVisibleText(maxLines) {
     const buffer = term.buffer.active;
     const lines = [];
-    for (let i = 0; i < buffer.length; i++) {
+    const totalLines = buffer.length;
+    const startLine = maxLines ? Math.max(0, totalLines - maxLines) : 0;
+    
+    for (let i = startLine; i < totalLines; i++) {
         const line = buffer.getLine(i);
         if (line) {
             lines.push(line.translateToString(true));
@@ -188,8 +191,8 @@ function handleContextMenuAction(action) {
 
 if (window.electronAPI) {
     // --- 查询可见文本 ---
-    window.electronAPI.on('query-visible-text', (event) => {
-        const text = extractVisibleText();
+    window.electronAPI.on('query-visible-text', ({ maxLines }) => {
+        const text = extractVisibleText(maxLines);
         window.electronAPI.send('visible-text-response', text);
     });
 
