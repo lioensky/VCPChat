@@ -92,7 +92,7 @@ body, html {
     overflow: hidden; /* 确保子元素的圆角正确 */
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
     min-height: 0;
-    margin: 48px 12px 12px 12px; /* 顶部留出标题栏空间，左右和底部增加可读边距 */
+    margin: 40px 12px 12px 12px; /* 顶部紧贴标题栏（标题栏高 40px），左右和底部保留可读边距 */
 }
 
 /* --- 静态字符画样式 --- */
