@@ -127,6 +127,11 @@ ipcMain.on('copy-to-clipboard', (event, text) => {
     }
 });
 
+// 监听来自GUI的粘贴请求
+ipcMain.handle('read-from-clipboard', () => {
+    return clipboard.readText();
+});
+
 // 监听来自GUI的尺寸调整请求
 ipcMain.on('powershell-resize', (event, { cols, rows }) => {
     const normalizedCols = Number(cols);
@@ -575,12 +580,12 @@ function executeAdminCommand(command) {
 }
 
 /**
- * 在交互模式下请求用户确认并执行命令。
- * 这会打开一个非管理员权限的确认窗口。
- * @param {string} command - 需要确认和执行的命令。
- * @returns {Promise<string>} - 命令执行的结果或确认消息。
+ * 请求用户确认一个敏感命令，但不在确认脚本中执行命令。
+ * 确认通过后，命令仍回到主 PTY/xterm 会话执行，以保持 GUI 连续输出。
+ * @param {string} command - 需要展示给用户确认的命令。
+ * @returns {Promise<boolean>} - 用户是否允许执行。
  */
-function executeInteractiveCommand(command) {
+function requestInteractiveConfirmation(command) {
     return new Promise((resolve, reject) => {
         tmp.file({ postfix: '.txt' }, (err, tmpFilePath, fd, cleanupCallback) => {
             if (err) {
@@ -590,13 +595,13 @@ function executeInteractiveCommand(command) {
             const pythonConfirmScript = path.join(__dirname, 'AdminConfirm.py');
             const commandAsBase64 = Buffer.from(command).toString('base64');
 
-            // 注意：这里我们直接调用 pythonw.exe，而不是通过 Start-Process -Verb RunAs
-            // 这将以当前用户权限运行脚本，弹出一个确认框而不是UAC提权框。
+            // 普通敏感命令只需要当前权限确认，不应绕过主 PTY/xterm 执行链路。
             const child = spawn('pythonw.exe', [
                 pythonConfirmScript,
                 commandAsBase64,
                 tmpFilePath,
-                '--interactive-auth' // 传递一个额外参数，让Python脚本知道这是交互式认证
+                '--interactive-auth',
+                '--confirm-only'
             ], {
                 windowsHide: true
             });
@@ -613,25 +618,27 @@ function executeInteractiveCommand(command) {
                 reject(new Error(`无法启动交互式确认脚本: ${err.message}`));
             });
 
-            child.on('close', (code) => {
+            child.on('close', () => {
                 childProcesses.delete(child);
                 fs.readFile(tmpFilePath, 'utf-8', (readErr, data) => {
                     cleanupCallback();
 
                     if (readErr) {
                         if (stderrOutput.trim()) {
-                            return reject(new Error(`交互式脚本执行失败: ${stderrOutput.trim()}`));
+                            return reject(new Error(`交互式确认脚本失败: ${stderrOutput.trim()}`));
                         }
-                        return reject(new Error(`无法读取交互式任务的输出文件: ${readErr.message}`));
+                        return reject(new Error(`无法读取交互式确认结果文件: ${readErr.message}`));
                     }
 
                     const result = data.trim();
-                    if (result === "USER_CANCELLED") {
-                        resolve("用户取消了操作。");
-                    } else if (result.startsWith("ERROR:")) {
+                    if (result === 'CONFIRMED') {
+                        resolve(true);
+                    } else if (result === 'USER_CANCELLED') {
+                        resolve(false);
+                    } else if (result.startsWith('ERROR:')) {
                         reject(new Error(result.substring(6).trim()));
                     } else {
-                        resolve(result);
+                        reject(new Error(`未知的交互式确认结果: ${result || '<empty>'}`));
                     }
                 });
             });
@@ -944,14 +951,14 @@ async function processToolCall(args) {
         return { content: [{ type: 'text', text: `\`\`\`powershell\n${cleanOutput}\n\`\`\`` }] };
     }
 
-    // 路径 B: 交互式授权模式
+    // 路径 B: 普通敏感命令确认模式
+    // 这里只做确认；确认通过后继续走路径 C，在主 PTY/xterm 会话中执行并连续显示输出。
     if (needsInteractiveAuth) {
         const combinedCommand = commandEntries.map(e => e.value).join('; ');
-        const fullCommand = `[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; ${combinedCommand}`;
-        // 注意：此模式下，命令将在新的、非持久化的进程中执行，而不是在PTY会话中。
-        const output = await executeInteractiveCommand(fullCommand);
-        const cleanOutput = output.replace(/\r\n/g, '\n').replace(/\r/g, '');
-        return { content: [{ type: 'text', text: `\`\`\`powershell\n${cleanOutput}\n\`\`\`` }] };
+        const confirmed = await requestInteractiveConfirmation(combinedCommand);
+        if (!confirmed) {
+            return { content: [{ type: 'text', text: '用户取消了操作。' }] };
+        }
     }
 
     // 路径 C: 标准非管理员会话执行

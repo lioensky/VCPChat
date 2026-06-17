@@ -4,6 +4,7 @@
 const terminalContainer = document.getElementById('terminal-container');
 const commandInput = document.getElementById('command-input');
 const sendButton = document.getElementById('send-button');
+const contextMenu = document.getElementById('terminal-context-menu');
 
 // 创建 FitAddon 实例
 const fitAddon = new FitAddon.FitAddon();
@@ -67,6 +68,110 @@ function sendCommand() {
     }
 }
 
+function copySelection() {
+    const selection = term.getSelection();
+    if (selection && window.electronAPI) {
+        window.electronAPI.send('copy-to-clipboard', selection);
+        return true;
+    }
+    return false;
+}
+
+async function pasteFromClipboard() {
+    if (!window.electronAPI || typeof window.electronAPI.invoke !== 'function') {
+        return;
+    }
+
+    try {
+        const text = await window.electronAPI.invoke('read-from-clipboard');
+        if (text) {
+            window.electronAPI.send('powershell-input', text);
+            term.focus();
+        }
+    } catch (error) {
+        console.error('Failed to paste from clipboard:', error);
+    }
+}
+
+function clearTerminal() {
+    term.clear();
+    term.focus();
+}
+
+function selectAllTerminal() {
+    term.selectAll();
+    term.focus();
+}
+
+function interruptCommand() {
+    if (window.electronAPI) {
+        window.electronAPI.send('powershell-input', '\x03');
+        term.focus();
+    }
+}
+
+function hideContextMenu() {
+    if (contextMenu) {
+        contextMenu.hidden = true;
+    }
+}
+
+function updateContextMenuState() {
+    if (!contextMenu) {
+        return;
+    }
+
+    const copyButton = contextMenu.querySelector('[data-action="copy"]');
+    if (copyButton) {
+        copyButton.disabled = !term.hasSelection();
+    }
+}
+
+function showContextMenu(event) {
+    if (!contextMenu) {
+        return;
+    }
+
+    event.preventDefault();
+    updateContextMenuState();
+
+    contextMenu.hidden = false;
+    const menuRect = contextMenu.getBoundingClientRect();
+    const left = Math.min(event.clientX, window.innerWidth - menuRect.width - 8);
+    const top = Math.min(event.clientY, window.innerHeight - menuRect.height - 8);
+
+    contextMenu.style.left = `${Math.max(8, left)}px`;
+    contextMenu.style.top = `${Math.max(8, top)}px`;
+}
+
+function handleContextMenuAction(action) {
+    switch (action) {
+        case 'copy':
+            copySelection();
+            break;
+        case 'paste':
+            pasteFromClipboard();
+            break;
+        case 'selectAll':
+            selectAllTerminal();
+            break;
+        case 'clear':
+            clearTerminal();
+            break;
+        case 'interrupt':
+            interruptCommand();
+            break;
+        case 'refit':
+            fitTerminal();
+            term.focus();
+            break;
+        default:
+            break;
+    }
+
+    hideContextMenu();
+}
+
 // --- IPC 与事件监听 ---
 
 if (window.electronAPI) {
@@ -124,25 +229,66 @@ if (window.electronAPI) {
         term.focus();
     });
 
-    // --- 原生复制逻辑 ---
-    // 监听右键点击事件，用于复制
-    terminalContainer.addEventListener('contextmenu', (e) => {
-        e.preventDefault(); // 阻止默认的右键菜单
-        const selection = term.getSelection();
-        if (selection) {
-            window.electronAPI.send('copy-to-clipboard', selection);
+    // --- 右键菜单与快捷键 ---
+    terminalContainer.addEventListener('contextmenu', showContextMenu);
+
+    document.addEventListener('click', (event) => {
+        if (contextMenu && !contextMenu.hidden && !contextMenu.contains(event.target)) {
+            hideContextMenu();
         }
     });
 
-    // 监听键盘复制事件 (Ctrl+C)
-    term.attachCustomKeyEventHandler((arg) => {
-        if (arg.ctrlKey && arg.code === 'KeyC' && arg.type === 'keydown') {
-            const selection = term.getSelection();
-            if (selection) {
-                window.electronAPI.send('copy-to-clipboard', selection);
-                return false; // 阻止事件进一步传播，避免终端解释为中断信号
-            }
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') {
+            hideContextMenu();
         }
+    });
+
+    if (contextMenu) {
+        contextMenu.addEventListener('click', (event) => {
+            const menuItem = event.target.closest('.context-menu-item');
+            if (!menuItem || menuItem.disabled) {
+                return;
+            }
+
+            handleContextMenuAction(menuItem.dataset.action);
+        });
+    }
+
+    term.attachCustomKeyEventHandler((arg) => {
+        if (arg.type !== 'keydown') {
+            return true;
+        }
+
+        if (arg.ctrlKey && arg.shiftKey && arg.code === 'KeyC') {
+            copySelection();
+            return false;
+        }
+
+        if (arg.ctrlKey && arg.shiftKey && arg.code === 'KeyV') {
+            pasteFromClipboard();
+            return false;
+        }
+
+        if (arg.ctrlKey && arg.code === 'KeyC') {
+            if (term.hasSelection()) {
+                copySelection();
+                return false;
+            }
+
+            return true; // 无选区时保留终端原生 Ctrl+C 中断行为
+        }
+
+        if (arg.ctrlKey && arg.code === 'KeyV') {
+            pasteFromClipboard();
+            return false;
+        }
+
+        if (arg.ctrlKey && arg.code === 'KeyL') {
+            clearTerminal();
+            return false;
+        }
+
         return true;
     });
 

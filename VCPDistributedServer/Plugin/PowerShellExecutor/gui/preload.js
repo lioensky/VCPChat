@@ -1,6 +1,10 @@
 // gui/preload.js
 const { contextBridge, ipcRenderer } = require('electron');
 
+const allowedInvokeChannels = new Set([
+  'read-from-clipboard'
+]);
+
 // 在 window 对象上暴露一个名为 'electronAPI' 的安全API
 contextBridge.exposeInMainWorld('electronAPI', {
   /**
@@ -27,6 +31,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
   send: (channel, ...args) => {
     ipcRenderer.send(channel, ...args);
   },
+
+  /**
+   * 封装 ipcRenderer.invoke，用于需要返回值的安全请求。
+   * @param {string} channel - 目标IPC通道。
+   * @param  {...any} args - 要发送的数据。
+   */
+  invoke: (channel, ...args) => {
+    if (!allowedInvokeChannels.has(channel)) {
+      throw new Error(`Unsupported invoke channel: ${channel}`);
+    }
+    return ipcRenderer.invoke(channel, ...args);
+  },
+
   // --- 新增窗口控制API ---
  minimizeWindow: () => ipcRenderer.send('minimize-window'),
  maximizeWindow: () => ipcRenderer.send('maximize-window'),

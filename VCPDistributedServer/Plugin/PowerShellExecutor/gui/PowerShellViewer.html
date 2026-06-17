@@ -53,6 +53,17 @@
         <button id="send-button">执行</button>
     </div>
 
+    <!-- 终端右键菜单 -->
+    <div id="terminal-context-menu" class="terminal-context-menu" hidden>
+        <button type="button" class="context-menu-item" data-action="copy">复制</button>
+        <button type="button" class="context-menu-item" data-action="paste">粘贴</button>
+        <button type="button" class="context-menu-item" data-action="selectAll">全选</button>
+        <div class="context-menu-separator"></div>
+        <button type="button" class="context-menu-item" data-action="clear">清屏</button>
+        <button type="button" class="context-menu-item" data-action="interrupt">中断命令 Ctrl+C</button>
+        <button type="button" class="context-menu-item" data-action="refit">重新适配窗口</button>
+    </div>
+
     <!-- 引入 xterm.js 及其插件 -->
     <script src="../../../../node_modules/xterm/lib/xterm.js"></script>
     <script src="../../../../node_modules/xterm-addon-fit/lib/xterm-addon-fit.js"></script>

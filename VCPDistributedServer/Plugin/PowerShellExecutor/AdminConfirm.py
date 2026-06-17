@@ -291,6 +291,7 @@ def main():
         
         # 检查是否存在交互模式标志
         is_interactive = '--interactive-auth' in sys.argv
+        confirm_only = '--confirm-only' in sys.argv
         
         decoded_command = base64.b64decode(base64_command).decode('utf-8')
     except Exception:
@@ -308,6 +309,11 @@ def main():
             f.write("USER_CANCELLED")
         sys.exit(1)
     
+    if confirm_only:
+        with open(output_file_path, 'w', encoding='utf-8') as f:
+            f.write("CONFIRMED")
+        sys.exit(0)
+
     # If the user confirmed, execute the command and redirect all output to the file.
     try:
         # We use subprocess.run to wait for the command to complete.
