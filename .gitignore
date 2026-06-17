@@ -49,3 +49,5 @@ loudness_cache.db-shm
 **/.snow/
 **/.claude/
 **/.codex/
+
+/开发文档/
