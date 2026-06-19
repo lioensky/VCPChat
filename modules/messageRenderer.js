@@ -412,6 +412,131 @@ function escapeHtml(text) {
     return contentProcessor.escapeHtml(text);
 }
 
+const ASSISTANT_HTML_SCOPE_TRIGGER_REGEX = /<\s*(?:style|html|head|body|main|section|article|header|footer|nav|aside|div|span|table|thead|tbody|tfoot|tr|td|th|ul|ol|li|p|h[1-6]|form|button|input|textarea|select|option|label|svg|canvas|iframe|object|embed|video|audio|img|a)\b|style\s*=/i;
+const TOOL_RESULT_RAW_HTML_LINE_REGEX = /<!doctype\b|<\/?[A-Za-z][A-Za-z0-9:-]*(?=[\s>/])|<!--|<\?xml\b/i;
+const TOOL_RESULT_DANGEROUS_HTML_REGEX = /<\s*\/?\s*(?:style|script|iframe|object|embed|link|meta|base|form|input|button|textarea|select|option|svg|math|canvas|video|audio|source|track|frame|frameset|html|head|body)\b/i;
+const TOOL_RESULT_COMPLETE_HTML_REGEX = /<!doctype\s+html\b|<\s*html\b|<\s*head\b|<\s*body\b/i;
+const HTML_STYLE_TAG_REGEX = /<style\b/i;
+const FENCE_LINE_REGEX = /^\s*(`{3,}|~{3,})/;
+const FENCE_LANG_LINE_REGEX = /^\s*(`{3,}|~{3,})(.*)$/;
+const TOOL_RESULT_SAFE_MARKDOWN_OPTIONS = Object.freeze({
+    mangle: false,
+    headerIds: false
+});
+
+function containsAssistantHtmlNeedingScope(text) {
+    return typeof text === 'string' && ASSISTANT_HTML_SCOPE_TRIGGER_REGEX.test(text);
+}
+
+function containsStyleTag(text) {
+    return typeof text === 'string' && HTML_STYLE_TAG_REGEX.test(text);
+}
+
+function escapeRawHtmlOutsideCodeFences(markdownText) {
+    if (typeof markdownText !== 'string' || !TOOL_RESULT_RAW_HTML_LINE_REGEX.test(markdownText)) {
+        return markdownText;
+    }
+
+    const lines = markdownText.split('\n');
+    let inFence = false;
+    let fenceMarker = '';
+
+    return lines.map((line) => {
+        const fenceMatch = line.match(FENCE_LINE_REGEX);
+        if (fenceMatch) {
+            const marker = fenceMatch[1];
+            if (!inFence) {
+                inFence = true;
+                fenceMarker = marker[0];
+            } else if (marker[0] === fenceMarker) {
+                inFence = false;
+                fenceMarker = '';
+            }
+            return line;
+        }
+
+        if (inFence) {
+            return line;
+        }
+
+        if (!TOOL_RESULT_RAW_HTML_LINE_REGEX.test(line)) {
+            return line;
+        }
+
+        return line.replace(/&/g, '\x26amp;').replace(/</g, '\x26lt;').replace(/>/g, '\x26gt;');
+    }).join('\n');
+}
+
+function fenceCompleteHtmlToolResult(markdownText) {
+    if (typeof markdownText !== 'string' || !TOOL_RESULT_COMPLETE_HTML_REGEX.test(markdownText)) {
+        return markdownText;
+    }
+
+    const lines = markdownText.split('\n');
+    const result = [];
+    let inFence = false;
+    let fenceMarker = '';
+
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const fenceMatch = line.match(FENCE_LANG_LINE_REGEX);
+        if (fenceMatch) {
+            const marker = fenceMatch[1];
+            if (!inFence) {
+                inFence = true;
+                fenceMarker = marker[0];
+            } else if (marker[0] === fenceMarker) {
+                inFence = false;
+                fenceMarker = '';
+            }
+            result.push(line);
+            continue;
+        }
+
+        if (inFence || !TOOL_RESULT_COMPLETE_HTML_REGEX.test(line)) {
+            result.push(line);
+            continue;
+        }
+
+        const blockLines = [line];
+        let cursor = i + 1;
+        while (cursor < lines.length) {
+            blockLines.push(lines[cursor]);
+            if (/<\s*\/\s*html\s*>/i.test(lines[cursor])) {
+                break;
+            }
+            cursor++;
+        }
+
+        result.push('```html');
+        result.push(blockLines.join('\n'));
+        result.push('```');
+        i = cursor;
+    }
+
+    return result.join('\n');
+}
+
+function sealToolResultMarkdownSource(markdownText) {
+    if (typeof markdownText !== 'string') return '';
+    const fencedHtml = fenceCompleteHtmlToolResult(markdownText);
+    return escapeRawHtmlOutsideCodeFences(fencedHtml);
+}
+
+function renderSafeToolResultMarkdown(markdownText) {
+    const sealedMarkdown = sealToolResultMarkdownSource(markdownText);
+
+    if (!mainRendererReferences.markedInstance) {
+        return `<pre class="vcp-tool-result-raw-content">${escapeHtml(sealedMarkdown)}</pre>`;
+    }
+
+    try {
+        return mainRendererReferences.markedInstance.parse(sealedMarkdown, TOOL_RESULT_SAFE_MARKDOWN_OPTIONS);
+    } catch (e) {
+        return `<pre class="vcp-tool-result-raw-content">${escapeHtml(sealedMarkdown)}</pre>`;
+    }
+}
+
 /**
  * Generates a unique ID for scoping CSS.
  * @returns {string} A unique ID string (e.g., 'vcp-bubble-1a2b3c4d').
@@ -1207,6 +1332,92 @@ function processAndInjectScopedCss(content, scopeId) {
 }
 
 
+function processAssistantScopedHtmlContent(content, scopeId, messageItem = null) {
+    if (!scopeId || !containsAssistantHtmlNeedingScope(content)) {
+        return content;
+    }
+
+    if (messageItem) {
+        messageItem.dataset.vcpHtmlScopeCandidate = 'true';
+        if (!containsStyleTag(content)) {
+            messageItem.dataset.vcpInlineHtmlScoped = 'true';
+        }
+    }
+
+    // --- 🟢 关键修复：先保护所有可能包含 <style> 的特殊区域，再提取样式 ---
+    // 这样可以避免代码块、推送块、工具请求块、工具结果块和「始」「末」标记内的 <style> 被误当作真正的样式注入。
+    // 即使只是结构化 HTML / 内联 style，也会进入该路径以跳过 HTML 缓存并统一保护扫描。
+    const protectedBlocks = [];
+
+    // 🔴 最高优先级：保护工具结果块（[[VCP调用结果信息汇总:...VCP调用结果结束]]）
+    // 工具结果可能包含任意内容（大型 markdown 文件、代码、「始」「末」标记等）
+    // 必须在「始」「末」标记保护之前运行，否则结果内部的标记会被错误匹配。
+    TOOL_RESULT_REGEX.lastIndex = 0;
+    let textWithProtectedBlocks = content.replace(TOOL_RESULT_REGEX, (match) => {
+        const placeholder = `__VCP_STYLE_PROTECT_${protectedBlocks.length}__`;
+        protectedBlocks.push(match);
+        return placeholder;
+    });
+    TOOL_RESULT_REGEX.lastIndex = 0;
+
+    // 🔴 保护工具请求块（<<<[TOOL_REQUEST]>>>...<<<[END_TOOL_REQUEST]>>>）
+    // 工具请求参数中可能包含完整 HTML 文档（如壁纸 HTML），其中的 <style> 不应被注入。
+    // 使用 ESCAPE 感知的扫描器，避免参数内容里的 END 标记导致工具块提前闭合。
+    textWithProtectedBlocks = replaceToolRequestBlocks(textWithProtectedBlocks, (match) => {
+        const placeholder = `__VCP_STYLE_PROTECT_${protectedBlocks.length}__`;
+        protectedBlocks.push(match);
+        return placeholder;
+    });
+
+    // 🔴 保护「始」「末」与「始ESCAPE」「末ESCAPE」标记区域及其变体。
+    // 这些标记内的内容是工具参数，可能包含任意 HTML（含 <style>），不应被提取。
+    // 注意：ESCAPE 必须优先按「末ESCAPE」闭合，不能被内部普通「末」打断。
+    textWithProtectedBlocks = textWithProtectedBlocks.replace(/(?:[「{]始[Ee][Ss][Cc][Aa][Pp][Ee][」}])[\s\S]*?(?:(?:[「{]末[Ee][Ss][Cc][Aa][Pp][Ee][」}])|$)/gi, (match) => {
+        const placeholder = `__VCP_STYLE_PROTECT_${protectedBlocks.length}__`;
+        protectedBlocks.push(match);
+        return placeholder;
+    });
+    textWithProtectedBlocks = textWithProtectedBlocks.replace(/(?:[「{]始[」}])[\s\S]*?(?:(?:[「{]末[」}])|$)/g, (match) => {
+        const placeholder = `__VCP_STYLE_PROTECT_${protectedBlocks.length}__`;
+        protectedBlocks.push(match);
+        return placeholder;
+    });
+
+    // 保护桌面推送块（必须在代码块之前，因为推送块可能包含代码围栏）。
+    textWithProtectedBlocks = textWithProtectedBlocks.replace(DESKTOP_PUSH_REGEX, (match) => {
+        const placeholder = `__VCP_STYLE_PROTECT_${protectedBlocks.length}__`;
+        protectedBlocks.push(match);
+        return placeholder;
+    });
+    // 也保护未闭合的推送块。
+    textWithProtectedBlocks = textWithProtectedBlocks.replace(DESKTOP_PUSH_PARTIAL_REGEX, (match) => {
+        const placeholder = `__VCP_STYLE_PROTECT_${protectedBlocks.length}__`;
+        protectedBlocks.push(match);
+        return placeholder;
+    });
+
+    // 保护代码块。
+    textWithProtectedBlocks = textWithProtectedBlocks.replace(CODE_FENCE_REGEX, (match) => {
+        const placeholder = `__VCP_STYLE_PROTECT_${protectedBlocks.length}__`;
+        protectedBlocks.push(match);
+        return placeholder;
+    });
+
+    // 现在只会匹配不在保护区域内的 <style> 标签。
+    const { processedContent: contentWithoutStyles } = processAndInjectScopedCss(textWithProtectedBlocks, scopeId);
+
+    // 恢复所有被保护的块。
+    // 🟢 使用 split/join，避免代码块中的 $ 字符（如 $'、$$、$&）被 String.replace() 误解释为特殊替换模式。
+    let restoredContent = contentWithoutStyles;
+    protectedBlocks.forEach((block, i) => {
+        const placeholder = `__VCP_STYLE_PROTECT_${i}__`;
+        restoredContent = restoredContent.split(placeholder).join(block);
+    });
+
+    return restoredContent;
+}
+
+
 /**
  * Wraps raw HTML documents in markdown code fences if they aren't already.
  * An HTML document is identified by the `<!DOCTYPE html>` declaration.
@@ -1444,7 +1655,8 @@ function shouldBypassRenderHtmlCache(text, options = {}) {
     if (text.length > RENDER_HTML_CACHE_MAX_TEXT_LENGTH) return true;
 
     // scoped CSS 有 scopeId 与 document.head 注入副作用，第一版保守跳过。
-    if ((options.messageRole || 'assistant') === 'assistant' && text.includes('<style')) return true;
+    // 同时用大小写无关的 HTML/CSS 风险识别覆盖 <STYLE>、结构化 HTML 与内联 style 场景。
+    if ((options.messageRole || 'assistant') === 'assistant' && containsAssistantHtmlNeedingScope(text)) return true;
 
     return false;
 }
@@ -1696,17 +1908,11 @@ function renderToolResultBlock(fullMatch) {
                     `</div>`;
             }
 
-            let renderedMarkdown;
-            if (mainRendererReferences.markedInstance) {
-                try {
-                    renderedMarkdown = mainRendererReferences.markedInstance.parse(valueToRender);
-                } catch (e) {
-                    renderedMarkdown = `<pre class="vcp-tool-result-raw-content">${escapeHtml(valueToRender)}</pre>`;
-                }
-            } else {
-                renderedMarkdown = `<pre class="vcp-tool-result-raw-content">${escapeHtml(valueToRender)}</pre>`;
-            }
-            processedValue = `<div class="vcp-tool-result-markdown-content">${renderedMarkdown}</div>${truncationNotice}`;
+            const renderedMarkdown = renderSafeToolResultMarkdown(valueToRender);
+            const sealClass = TOOL_RESULT_DANGEROUS_HTML_REGEX.test(valueToRender)
+                ? ' vcp-tool-result-markdown-content--sealed-html'
+                : '';
+            processedValue = `<div class="vcp-tool-result-markdown-content${sealClass}">${renderedMarkdown}</div>${truncationNotice}`;
         } else {
             const urlRegex = /(https?:\/\/[^\s]+)/g;
             processedValue = escapeHtml(value);
@@ -2043,15 +2249,9 @@ function initializeMessageRenderer(refs) {
                 const markdownContainer = truncatedNotice.previousElementSibling;
                 if (markdownContainer && markdownContainer.classList.contains('vcp-tool-result-markdown-content')) {
                     // 渲染完整内容
-                    let fullHtml;
-                    if (mainRendererReferences.markedInstance) {
-                        try {
-                            fullHtml = mainRendererReferences.markedInstance.parse(fullData.raw);
-                        } catch (err) {
-                            fullHtml = `<pre class="vcp-tool-result-raw-content">${escapeHtml(fullData.raw)}</pre>`;
-                        }
-                    } else {
-                        fullHtml = `<pre class="vcp-tool-result-raw-content">${escapeHtml(fullData.raw)}</pre>`;
+                    const fullHtml = renderSafeToolResultMarkdown(fullData.raw);
+                    if (TOOL_RESULT_DANGEROUS_HTML_REGEX.test(fullData.raw)) {
+                        markdownContainer.classList.add('vcp-tool-result-markdown-content--sealed-html');
                     }
                     markdownContainer.innerHTML = fullHtml;
                     // 移除按钮
@@ -2573,78 +2773,8 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true,
 
         if (message.role === 'user') {
             textToRender = prepareUserMessageText(textToRender);
-        } else if (message.role === 'assistant' && scopeId && textToRender.includes('<style')) {
-            // --- 🟢 关键修复：先保护所有可能包含 <style> 的特殊区域，再提取样式 ---
-            // 这样可以避免代码块、推送块、工具请求块、工具结果块和「始」「末」标记内的 <style> 被误当作真正的样式注入
-            // 性能快路径：绝大多数消息不含 <style>，入口已用 includes('<style') 跳过保护扫描。
-            const protectedBlocks = [];
-
-            // 🔴 最高优先级：保护工具结果块（[[VCP调用结果信息汇总:...VCP调用结果结束]]）
-            // 工具结果可能包含任意内容（大型 markdown 文件、代码、「始」「末」标记等）
-            // 必须在「始」「末」标记保护之前运行，否则结果内部的标记会被错误匹配
-            TOOL_RESULT_REGEX.lastIndex = 0;
-            let textWithProtectedBlocks = textToRender.replace(TOOL_RESULT_REGEX, (match) => {
-                const placeholder = `__VCP_STYLE_PROTECT_${protectedBlocks.length}__`;
-                protectedBlocks.push(match);
-                return placeholder;
-            });
-            TOOL_RESULT_REGEX.lastIndex = 0;
-            
-            // 🔴 保护工具请求块（<<<[TOOL_REQUEST]>>>...<<<[END_TOOL_REQUEST]>>>）
-            // 工具请求参数中可能包含完整的HTML文档（如壁纸HTML），其中的 <style> 不应被注入
-            // 使用 ESCAPE 感知的扫描器，避免参数内容里的 END 标记导致工具块提前闭合
-            textWithProtectedBlocks = replaceToolRequestBlocks(textWithProtectedBlocks, (match) => {
-                const placeholder = `__VCP_STYLE_PROTECT_${protectedBlocks.length}__`;
-                protectedBlocks.push(match);
-                return placeholder;
-            });
-            
-            // 🔴 保护「始」「末」与「始ESCAPE」「末ESCAPE」标记区域及其变体
-            // 这些标记内的内容是工具参数，可能包含任意HTML（含<style>），不应被提取
-            // 注意：ESCAPE 必须优先按「末ESCAPE」闭合，不能被内部普通「末」打断
-            textWithProtectedBlocks = textWithProtectedBlocks.replace(/(?:[「{]始[Ee][Ss][Cc][Aa][Pp][Ee][」}])[\s\S]*?(?:(?:[「{]末[Ee][Ss][Cc][Aa][Pp][Ee][」}])|$)/gi, (match) => {
-                const placeholder = `__VCP_STYLE_PROTECT_${protectedBlocks.length}__`;
-                protectedBlocks.push(match);
-                return placeholder;
-            });
-            textWithProtectedBlocks = textWithProtectedBlocks.replace(/(?:[「{]始[」}])[\s\S]*?(?:(?:[「{]末[」}])|$)/g, (match) => {
-                const placeholder = `__VCP_STYLE_PROTECT_${protectedBlocks.length}__`;
-                protectedBlocks.push(match);
-                return placeholder;
-            });
-            
-            // 保护桌面推送块（必须在代码块之前，因为推送块可能包含代码围栏）
-            textWithProtectedBlocks = textWithProtectedBlocks.replace(DESKTOP_PUSH_REGEX, (match) => {
-                const placeholder = `__VCP_STYLE_PROTECT_${protectedBlocks.length}__`;
-                protectedBlocks.push(match);
-                return placeholder;
-            });
-            // 也保护未闭合的推送块
-            textWithProtectedBlocks = textWithProtectedBlocks.replace(DESKTOP_PUSH_PARTIAL_REGEX, (match) => {
-                const placeholder = `__VCP_STYLE_PROTECT_${protectedBlocks.length}__`;
-                protectedBlocks.push(match);
-                return placeholder;
-            });
-            
-            // 保护代码块
-            textWithProtectedBlocks = textWithProtectedBlocks.replace(CODE_FENCE_REGEX, (match) => {
-                const placeholder = `__VCP_STYLE_PROTECT_${protectedBlocks.length}__`;
-                protectedBlocks.push(match);
-                return placeholder;
-            });
-
-            // 现在只会匹配不在保护区域内的 <style> 标签
-            const { processedContent: contentWithoutStyles } = processAndInjectScopedCss(textWithProtectedBlocks, scopeId);
-
-            // 恢复所有被保护的块
-            // 🟢 关键修复：使用函数回调替换，避免代码块中的 $ 字符
-            // （如 $'、$$、$&）被 String.replace() 误解释为特殊替换模式
-            textToRender = contentWithoutStyles;
-            protectedBlocks.forEach((block, i) => {
-                const placeholder = `__VCP_STYLE_PROTECT_${i}__`;
-                textToRender = textToRender.split(placeholder).join(block);
-            });
-            // --- 修复结束 ---
+        } else if (message.role === 'assistant') {
+            textToRender = processAssistantScopedHtmlContent(textToRender, scopeId, messageItem);
         }
 
         // --- 按“对话轮次”计算深度 ---
@@ -3031,6 +3161,15 @@ async function renderFullMessage(messageId, fullContent, agentName, agentId) {
         }
     }
     // --- 正则规则应用结束 ---
+    if (messageRoleForRender === 'assistant') {
+        let scopedMessageId = messageItem.id;
+        if (!scopedMessageId) {
+            scopedMessageId = generateUniqueId();
+            messageItem.id = scopedMessageId;
+        }
+        fullContent = processAssistantScopedHtmlContent(fullContent, scopedMessageId, messageItem);
+    }
+
     const rawHtml = renderMarkdownToHtml(fullContent, {
         settings: globalSettings,
         messageRole: messageRoleForRender,
@@ -3097,6 +3236,15 @@ function updateMessageContent(messageId, newContent) {
         textToRender = applyFrontendRegexRules(textToRender, agentConfigForRegex.stripRegexes, messageInHistory.role, depthForUpdate);
     }
     // --- 正则规则应用结束 ---
+    if ((messageInHistory?.role || 'assistant') === 'assistant') {
+        let scopedMessageId = messageItem.id;
+        if (!scopedMessageId) {
+            scopedMessageId = generateUniqueId();
+            messageItem.id = scopedMessageId;
+        }
+        textToRender = processAssistantScopedHtmlContent(textToRender, scopedMessageId, messageItem);
+    }
+
     const rawHtml = renderMarkdownToHtml(textToRender, {
         settings: globalSettings,
         messageRole: messageInHistory?.role || 'assistant',
