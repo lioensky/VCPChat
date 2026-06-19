@@ -10,8 +10,8 @@ window.itemListManager = (() => {
     let uiHelper;
     let activeLoadItemsToken = 0;
 
-    const OPENHER_PERSONA_REFRESH_INTERVAL_MS = 3 * 60 * 1000;
-    const OPENHER_PERSONA_CACHE_TTL_MS = 5 * 60 * 1000;
+    const OPENHER_PERSONA_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
+    const OPENHER_PERSONA_CACHE_TTL_MS = 11 * 60 * 1000;
     const OPENHER_PERSONA_LABELS = Object.freeze({
         cognitive: {
             seek: '求知',
