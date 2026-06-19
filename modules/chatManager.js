@@ -51,6 +51,56 @@ window.chatManager = (() => {
         };
     }
 
+    function buildTurnDepthMap(history = []) {
+        const turns = [];
+        for (let i = history.length - 1; i >= 0; i--) {
+            if (history[i].role === 'assistant') {
+                const turn = { assistant: history[i], user: null };
+                if (i > 0 && history[i - 1].role === 'user') {
+                    turn.user = history[i - 1];
+                    i--;
+                }
+                turns.push(turn);
+            } else if (history[i].role === 'user') {
+                turns.push({ assistant: null, user: history[i] });
+            }
+        }
+        turns.reverse();
+
+        const depthMap = new Map();
+        turns.forEach((turn, turnIndex) => {
+            const depth = turns.length - 1 - turnIndex;
+            if (turn.assistant?.id) {
+                depthMap.set(turn.assistant.id, depth);
+            }
+            if (turn.user?.id) {
+                depthMap.set(turn.user.id, depth);
+            }
+        });
+        return depthMap;
+    }
+
+    function getCompiledRegex(rule) {
+        if (!rule?.findPattern) {
+            return null;
+        }
+
+        if (window.uiHelperFunctions?.getCompiledRegex) {
+            const compiled = window.uiHelperFunctions.getCompiledRegex(rule.findPattern);
+            return compiled?.regex || null;
+        }
+
+        if (window.uiHelperFunctions?.regexFromString) {
+            return window.uiHelperFunctions.regexFromString(rule.findPattern);
+        }
+
+        const regexMatch = rule.findPattern.match(/^\/(.+?)\/([gimuy]*)$/);
+        if (regexMatch) {
+            return new RegExp(regexMatch[1], regexMatch[2]);
+        }
+        return new RegExp(rule.findPattern, 'g');
+    }
+
     /**
      * 应用单个正则规则到文本
      * @param {string} text - 输入文本
@@ -63,24 +113,14 @@ window.chatManager = (() => {
         }
 
         try {
-            // 使用 uiHelperFunctions.regexFromString 来解析正则表达式
-            let regex = null;
-            if (window.uiHelperFunctions && window.uiHelperFunctions.regexFromString) {
-                regex = window.uiHelperFunctions.regexFromString(rule.findPattern);
-            } else {
-                // 后备方案：手动解析
-                const regexMatch = rule.findPattern.match(/^\/(.+?)\/([gimuy]*)$/);
-                if (regexMatch) {
-                    regex = new RegExp(regexMatch[1], regexMatch[2]);
-                } else {
-                    regex = new RegExp(rule.findPattern, 'g');
-                }
-            }
+            const regex = getCompiledRegex(rule);
             
             if (!regex) {
                 console.error('无法解析正则表达式', rule.findPattern);
                 return text;
             }
+
+            regex.lastIndex = 0;
             
             // 应用替换（如果没有替换内容，则默认替换为空字符串）
             return text.replace(regex, rule.replaceWith || '');
@@ -88,6 +128,28 @@ window.chatManager = (() => {
             console.error('应用正则规则时出错', rule.findPattern, error);
             return text;
         }
+    }
+
+    function getActiveRegexRules(rules, scope, role, depth = 0) {
+        if (!rules || !Array.isArray(rules)) {
+            return [];
+        }
+
+        return rules.filter(rule => {
+            if (!rule || rule.enabled === false || !rule.findPattern) return false;
+
+            const shouldApplyToScope =
+                (scope === 'context' && rule.applyToContext) ||
+                (scope === 'frontend' && rule.applyToFrontend);
+            if (!shouldApplyToScope) return false;
+
+            const shouldApplyToRole = rule.applyToRoles && rule.applyToRoles.includes(role);
+            if (!shouldApplyToRole) return false;
+
+            const minDepthOk = rule.minDepth === undefined || rule.minDepth === -1 || depth >= rule.minDepth;
+            const maxDepthOk = rule.maxDepth === undefined || rule.maxDepth === -1 || depth <= rule.maxDepth;
+            return minDepthOk && maxDepthOk;
+        });
     }
 
     /**
@@ -104,29 +166,14 @@ window.chatManager = (() => {
             return text;
         }
 
+        const activeRules = getActiveRegexRules(rules, scope, role, depth);
+        if (activeRules.length === 0) {
+            return text;
+        }
+
         let processedText = text;
         
-        rules.forEach(rule => {
-            // 检查是否应该应用此规则
-            
-            // 1. 检查作用域
-            const shouldApplyToScope =
-                (scope === 'context' && rule.applyToContext) ||
-                (scope === 'frontend' && rule.applyToFrontend);
-            
-            if (!shouldApplyToScope) return;
-            
-            // 2. 检查角色
-            const shouldApplyToRole = rule.applyToRoles && rule.applyToRoles.includes(role);
-            if (!shouldApplyToRole) return;
-            
-            // 3. 检查深度（-1 表示无限制）
-            const minDepthOk = rule.minDepth === undefined || rule.minDepth === -1 || depth >= rule.minDepth;
-            const maxDepthOk = rule.maxDepth === undefined || rule.maxDepth === -1 || depth <= rule.maxDepth;
-            
-            if (!minDepthOk || !maxDepthOk) return;
-            
-            // 应用规则
+        activeRules.forEach(rule => {
             processedText = applyRegexRule(processedText, rule);
         });
         
@@ -1033,6 +1080,13 @@ window.chatManager = (() => {
 
             // VCPChatTarven (高级回复) - 收集生效的规则
             const tavernRules = getTavernRules('agent');
+            const contextRegexRules = Array.isArray(agentConfig?.stripRegexes)
+                ? agentConfig.stripRegexes
+                : [];
+            const hasContextRegexRules = contextRegexRules.some(rule => rule?.enabled !== false && rule.applyToContext);
+            const contextDepthMap = hasContextRegexRules
+                ? buildTurnDepthMap(historySnapshotForVCP)
+                : null;
 
             const messagesForVCP = await Promise.all(historySnapshotForVCP.map(async msg => {
                 let vcpImageAttachmentsPayload = [];
@@ -1041,32 +1095,14 @@ window.chatManager = (() => {
                 let currentMessageTextContent = msg.content;
 
                 // --- 应用正则规则（后端上下文）---
-                if (agentConfig?.stripRegexes && Array.isArray(agentConfig.stripRegexes) && agentConfig.stripRegexes.length > 0) {
-                    // --- 按“对话轮次”计算深度 ---
-                    const turns = [];
-                    for (let i = historySnapshotForVCP.length - 1; i >= 0; i--) {
-                        if (historySnapshotForVCP[i].role === 'assistant') {
-                            const turn = { assistant: historySnapshotForVCP[i], user: null };
-                            if (i > 0 && historySnapshotForVCP[i - 1].role === 'user') {
-                                turn.user = historySnapshotForVCP[i - 1];
-                                i--; // 跳过用户消息，因为已经配对
-                            }
-                            turns.unshift(turn);
-                        } else if (historySnapshotForVCP[i].role === 'user') {
-                            // 处理末尾的单个用户消息
-                            turns.unshift({ assistant: null, user: historySnapshotForVCP[i] });
-                        }
-                    }
-                    
-                    // 找到当前消息所在的轮次
-                    const turnIndex = turns.findIndex(t => (t.assistant && t.assistant.id === msg.id) || (t.user && t.user.id === msg.id));
-                    const depth = turnIndex !== -1 ? (turns.length - 1 - turnIndex) : -1;
+                if (hasContextRegexRules && contextDepthMap) {
+                    const depth = contextDepthMap.get(msg.id);
 
-                    if (depth !== -1) {
+                    if (depth !== undefined) {
                         // 应用规则到消息内容
                         currentMessageTextContent = applyRegexRules(
                             currentMessageTextContent,
-                            agentConfig.stripRegexes,
+                            contextRegexRules,
                             'context',  // 这里处理的是发送给AI的上下文
                             msg.role,
                             depth

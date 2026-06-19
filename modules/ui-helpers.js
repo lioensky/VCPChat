@@ -8,6 +8,8 @@
     let croppedGroupAvatarFile = null;
 
     const uiHelperFunctions = {};
+    const REGEX_CACHE_MAX_ENTRIES = 512;
+    const regexCompileCache = new Map();
     const filePreviewIconMarkup = `
 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
     <path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"></path>
@@ -170,16 +172,11 @@
         return { kind: 'file', iconMarkup: filePreviewIconMarkup };
     };
 
-    /**
-     * 从字符串中解析正则表达式（支持 /pattern/flags 格式）
-     * @param {string} input - 正则表达式字符串，如 "/test/gi" 或普通字符串 "test"
-     * @returns {RegExp|null} - 返回RegExp对象，如果解析失败则返回null
-     */
-    uiHelperFunctions.regexFromString = function(input) {
+    function parseRegexParts(input) {
         if (!input || typeof input !== 'string') {
             return null;
         }
-        
+
         // 终极修复：废除使用正则表达式解析正则表达式的脆弱方法。
         // 改为使用明确的、手动字符串分割，这能从根本上避免转义地狱。
         if (input.length < 2 || !input.startsWith('/') || input.lastIndexOf('/') === 0) {
@@ -187,18 +184,75 @@
             return null;
         }
 
-        try {
-            const lastSlashIndex = input.lastIndexOf('/');
-            const pattern = input.substring(1, lastSlashIndex);
-            const flags = input.substring(lastSlashIndex + 1);
-            
-            // 这是最稳定、最可靠的创建方式
-            return new RegExp(pattern, flags);
-            
-        } catch (e) {
-            console.error(`[regexFromString] 解析正则表达式 "${input}" 失败:`, e);
+        const lastSlashIndex = input.lastIndexOf('/');
+        return {
+            pattern: input.substring(1, lastSlashIndex),
+            flags: input.substring(lastSlashIndex + 1)
+        };
+    }
+
+    function touchRegexCacheEntry(cacheKey, entry) {
+        regexCompileCache.delete(cacheKey);
+        regexCompileCache.set(cacheKey, entry);
+        return entry;
+    }
+
+    function trimRegexCompileCache() {
+        while (regexCompileCache.size > REGEX_CACHE_MAX_ENTRIES) {
+            const oldestKey = regexCompileCache.keys().next().value;
+            if (oldestKey === undefined) break;
+            regexCompileCache.delete(oldestKey);
+        }
+    }
+
+    /**
+     * 从字符串中解析正则表达式（支持 /pattern/flags 格式）
+     * @param {string} input - 正则表达式字符串，如 "/test/gi" 或普通字符串 "test"
+     * @returns {RegExp|null} - 返回RegExp对象，如果解析失败则返回null
+     */
+    uiHelperFunctions.regexFromString = function(input) {
+        const compiled = uiHelperFunctions.getCompiledRegex(input);
+        return compiled ? compiled.regex : null;
+    };
+
+    /**
+     * 带缓存地编译正则表达式，避免历史载入/上下文组装时重复 new RegExp。
+     * @param {string} input - 正则表达式字符串，如 "/test/gi"
+     * @returns {{regex: RegExp, error: null}|{regex: null, error: Error}|null}
+     */
+    uiHelperFunctions.getCompiledRegex = function(input) {
+        const parts = parseRegexParts(input);
+        if (!parts) {
             return null;
         }
+
+        const cacheKey = `${parts.pattern}/${parts.flags}`;
+        const cached = regexCompileCache.get(cacheKey);
+        if (cached) {
+            return touchRegexCacheEntry(cacheKey, cached);
+        }
+
+        let entry;
+        try {
+            entry = {
+                regex: new RegExp(parts.pattern, parts.flags),
+                error: null
+            };
+        } catch (e) {
+            console.error(`[regexFromString] 解析正则表达式 "${input}" 失败:`, e);
+            entry = {
+                regex: null,
+                error: e
+            };
+        }
+
+        regexCompileCache.set(cacheKey, entry);
+        trimRegexCompileCache();
+        return entry;
+    };
+
+    uiHelperFunctions.clearRegexCompileCache = function() {
+        regexCompileCache.clear();
     };
 
     /**

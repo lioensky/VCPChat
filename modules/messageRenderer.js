@@ -748,6 +748,27 @@ function enhanceMermaidDiagram(mermaidElement) {
     requestAnimationFrame(fitToWidth);
 }
 
+function getCompiledRegex(rule) {
+    if (!rule?.findPattern) {
+        return null;
+    }
+
+    if (window.uiHelperFunctions?.getCompiledRegex) {
+        const compiled = window.uiHelperFunctions.getCompiledRegex(rule.findPattern);
+        return compiled?.regex || null;
+    }
+
+    if (window.uiHelperFunctions?.regexFromString) {
+        return window.uiHelperFunctions.regexFromString(rule.findPattern);
+    }
+
+    const regexMatch = rule.findPattern.match(/^\/(.+?)\/([gimuy]*)$/);
+    if (regexMatch) {
+        return new RegExp(regexMatch[1], regexMatch[2]);
+    }
+    return new RegExp(rule.findPattern, 'g');
+}
+
 /**
  * 应用单个正则规则到文本
  * @param {string} text - 输入文本
@@ -760,24 +781,14 @@ function applyRegexRule(text, rule) {
     }
 
     try {
-        // 使用 uiHelperFunctions.regexFromString 来解析正则表达式
-        let regex = null;
-        if (window.uiHelperFunctions && window.uiHelperFunctions.regexFromString) {
-            regex = window.uiHelperFunctions.regexFromString(rule.findPattern);
-        } else {
-            // 后备方案：手动解析
-            const regexMatch = rule.findPattern.match(/^\/(.+?)\/([gimuy]*)$/);
-            if (regexMatch) {
-                regex = new RegExp(regexMatch[1], regexMatch[2]);
-            } else {
-                regex = new RegExp(rule.findPattern, 'g');
-            }
-        }
+        const regex = getCompiledRegex(rule);
 
         if (!regex) {
             console.error('无法解析正则表达式:', rule.findPattern);
             return text;
         }
+
+        regex.lastIndex = 0;
 
         // 应用替换（如果没有替换内容，则默认替换为空字符串）
         return text.replace(regex, rule.replaceWith || '');
@@ -785,6 +796,23 @@ function applyRegexRule(text, rule) {
         console.error('应用正则规则时出错:', rule.findPattern, error);
         return text;
     }
+}
+
+function getActiveFrontendRegexRules(rules, role, depth) {
+    if (!rules || !Array.isArray(rules)) {
+        return [];
+    }
+
+    return rules.filter(rule => {
+        if (!rule || rule.enabled === false || !rule.findPattern || !rule.applyToFrontend) return false;
+
+        const shouldApplyToRole = rule.applyToRoles && rule.applyToRoles.includes(role);
+        if (!shouldApplyToRole) return false;
+
+        const minDepthOk = rule.minDepth === undefined || rule.minDepth === -1 || depth >= rule.minDepth;
+        const maxDepthOk = rule.maxDepth === undefined || rule.maxDepth === -1 || depth <= rule.maxDepth;
+        return minDepthOk && maxDepthOk;
+    });
 }
 
 /**
@@ -800,25 +828,14 @@ function applyFrontendRegexRules(text, rules, role, depth) {
         return text;
     }
 
+    const activeRules = getActiveFrontendRegexRules(rules, role, depth);
+    if (activeRules.length === 0) {
+        return text;
+    }
+
     let processedText = text;
 
-    rules.forEach(rule => {
-        // 检查是否应该应用此规则
-
-        // 1. 检查是否应用于前端
-        if (!rule.applyToFrontend) return;
-
-        // 2. 检查角色
-        const shouldApplyToRole = rule.applyToRoles && rule.applyToRoles.includes(role);
-        if (!shouldApplyToRole) return;
-
-        // 3. 检查深度（-1 表示无限制）
-        const minDepthOk = rule.minDepth === undefined || rule.minDepth === -1 || depth >= rule.minDepth;
-        const maxDepthOk = rule.maxDepth === undefined || rule.maxDepth === -1 || depth <= rule.maxDepth;
-
-        if (!minDepthOk || !maxDepthOk) return;
-
-        // 应用规则
+    activeRules.forEach(rule => {
         processedText = applyRegexRule(processedText, rule);
     });
 
