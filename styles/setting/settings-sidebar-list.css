@@ -391,6 +391,151 @@ body.light-theme .settings-header-bar .global-settings-btn:hover {
     pointer-events: none;
 }
 
+
+.sidebar .agent-list li.has-agent-emotion {
+    --agent-emotion-color: var(--highlight-text);
+}
+
+.sidebar .agent-list li.has-agent-emotion .agent-name {
+    transition: text-shadow 0.22s ease;
+}
+
+.sidebar .agent-list li.has-agent-emotion:hover .agent-name {
+    color: transparent !important;
+    text-shadow: none;
+}
+
+.sidebar .agent-list li.has-agent-emotion:hover .agent-name::after {
+    content: attr(data-emotion-text);
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--highlight-text);
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    text-shadow: 0 0 10px color-mix(in srgb, var(--agent-emotion-color) 42%, transparent);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.sidebar .agent-list .agent-emotion-card {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    opacity: 0;
+    transform: scale(0.995);
+    border-radius: inherit;
+    overflow: hidden;
+    background:
+        radial-gradient(circle at 18% 50%, color-mix(in srgb, var(--agent-emotion-color) 24%, transparent), transparent 34%),
+        linear-gradient(120deg, color-mix(in srgb, var(--agent-emotion-color) 18%, transparent), rgba(255, 255, 255, 0.055));
+    box-shadow:
+        0 9px 24px color-mix(in srgb, var(--agent-emotion-color) 14%, transparent),
+        inset 0 0 0 1px color-mix(in srgb, var(--agent-emotion-color) 24%, rgba(255, 255, 255, 0.08));
+    transition: opacity 0.24s ease, transform 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.sidebar .agent-list li.has-agent-emotion:hover .agent-emotion-card {
+    opacity: 1;
+    transform: scale(1);
+}
+
+.agent-emotion-card::before {
+    content: "";
+    position: absolute;
+    inset: -45%;
+    background:
+        linear-gradient(90deg, transparent, color-mix(in srgb, var(--agent-emotion-color) 28%, transparent), transparent);
+    opacity: 0.58;
+    transform: translateX(-42%) rotate(12deg);
+    animation: agentEmotionSweep 2.6s ease-in-out infinite;
+}
+
+.agent-emotion-title,
+.agent-emotion-metrics {
+    display: none;
+}
+
+.agent-emotion-barrage-layer {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    overflow: hidden;
+}
+
+.agent-emotion-barrage {
+    position: absolute;
+    left: -42%;
+    top: calc(12% + var(--emotion-track, 0) * 15%);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    max-width: 72%;
+    padding: 2px 7px;
+    border-radius: 999px;
+    white-space: nowrap;
+    line-height: 1;
+    animation-name: agentEmotionBarrage;
+    animation-timing-function: linear;
+    animation-iteration-count: infinite;
+    animation-delay: calc(var(--emotion-index) * -0.72s);
+}
+
+.agent-emotion-barrage-primary {
+    font-size: 13px;
+    font-weight: 800;
+    color: #fff;
+    background: color-mix(in srgb, var(--agent-emotion-color) 62%, rgba(0, 0, 0, 0.12));
+    box-shadow: 0 0 12px color-mix(in srgb, var(--agent-emotion-color) 42%, transparent);
+    opacity: 0.46;
+    animation-duration: 3.8s;
+}
+
+.agent-emotion-barrage-secondary {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--primary-text);
+    opacity: 0.36;
+    background: rgba(255, 255, 255, 0.09);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    animation-duration: 5.6s;
+}
+
+body:not(.light-theme) .sidebar .agent-list .agent-emotion-card {
+    background:
+        radial-gradient(circle at 16% 50%, color-mix(in srgb, var(--agent-emotion-color) 20%, transparent), transparent 38%),
+        linear-gradient(120deg, color-mix(in srgb, var(--agent-emotion-color) 16%, transparent), rgba(18, 20, 28, 0.18));
+}
+
+@keyframes agentEmotionBarrage {
+    0% {
+        transform: translateX(0) translateY(0) scale(0.96);
+        opacity: 0;
+    }
+    12% {
+        opacity: 1;
+    }
+    88% {
+        opacity: 1;
+    }
+    100% {
+        transform: translateX(340%) translateY(-4px) scale(1.02);
+        opacity: 0;
+    }
+}
+
+@keyframes agentEmotionSweep {
+    0%, 100% {
+        transform: translateX(-45%) rotate(12deg);
+    }
+    50% {
+        transform: translateX(45%) rotate(12deg);
+    }
+}
 .sidebar .topic-list .topic-item .message-count {
     position: relative;
     isolation: isolate;

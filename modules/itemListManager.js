@@ -10,6 +10,53 @@ window.itemListManager = (() => {
     let uiHelper;
     let activeLoadItemsToken = 0;
 
+    const OPENHER_PERSONA_REFRESH_INTERVAL_MS = 3 * 60 * 1000;
+    const OPENHER_PERSONA_CACHE_TTL_MS = 5 * 60 * 1000;
+    const OPENHER_PERSONA_LABELS = Object.freeze({
+        cognitive: {
+            seek: '求知',
+            discern: '分辨',
+            reject: '拒绝',
+            observe: '观测',
+            infer: '推演',
+            remember: '记忆'
+        },
+        drive: {
+            curiosity: '好奇',
+            fear: '恐惧',
+            libido: '性欲',
+            pleasure: '享乐',
+            attachment: '依恋',
+            control: '控制'
+        },
+        affective: {
+            positive: '正性',
+            negative: '负性',
+            arousal: '唤醒'
+        },
+        subAxis: {
+            loss_control: '失序',
+            exposure: '暴露',
+            novelty: '新奇',
+            intimacy: '亲近',
+            challenge: '挑战',
+            comfort: '舒适',
+            conflict: '冲突',
+            ambiguity: '暧昧',
+            safety: '安全',
+            dominance: '支配',
+            submission: '顺从'
+        }
+    });
+
+    let personaStatusCache = {
+        agents: [],
+        fetchedAt: 0,
+        pending: null,
+        unavailable: false
+    };
+    let personaAutoRefreshTimer = null;
+
     /**
      * Initializes the ItemListManager module.
      * @param {object} config - The configuration object.
@@ -51,6 +98,7 @@ window.itemListManager = (() => {
         mainRendererFunctions = config.mainRendererFunctions;
         uiHelper = config.uiHelper; // Store uiHelper
 
+        ensureOpenHerPersonaAutoRefresh();
         console.log('[ItemListManager] Initialized successfully.');
     }
 
@@ -134,6 +182,292 @@ window.itemListManager = (() => {
     // To hold the loaded items in memory for quick access
     let loadedItemsCache = [];
 
+    function escapeHtml(str) {
+        return (str || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
+    function normalizePersonaMatchText(value) {
+        return String(value || '')
+            .toLowerCase()
+            .replace(/\s+/g, '')
+            .replace(/[^\p{L}\p{N}_-]/gu, '');
+    }
+
+    function stripVcpChatEndpoint(url) {
+        const base = String(url || '').trim().replace(/\/v1\/chat\/completions\/?$/, '');
+        return base ? `${base.replace(/\/+$/, '')}/` : '';
+    }
+
+    function resolveAxisLabel(groupName, key) {
+        const group = OPENHER_PERSONA_LABELS[groupName] || {};
+        return group[key] || key;
+    }
+
+    function toPercent(value) {
+        const num = Number(value) || 0;
+        return Math.round(Math.max(0, Math.min(1, num)) * 100);
+    }
+
+    function getMoodColor(mood = {}) {
+        const positive = Number(mood.positive) || 0;
+        const negative = Number(mood.negative) || 0;
+        const arousal = Number(mood.arousal) || 0;
+        const hue = Math.round(210 + (positive - negative) * 95 + arousal * 24);
+        const saturation = Math.round(58 + arousal * 28);
+        const lightness = Math.round(48 + positive * 12 - negative * 7);
+        return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+    }
+
+    function axisItems(axisState, groupName) {
+        if (!axisState || typeof axisState !== 'object') return [];
+        return Object.entries(axisState)
+            .map(([key, value]) => ({
+                key,
+                label: resolveAxisLabel(groupName, key),
+                value: Number(value?.value ?? value?.activation ?? 0) || 0,
+                subAxes: value?.subAxes || {}
+            }))
+            .sort((a, b) => b.value - a.value);
+    }
+
+    function residualItems(state) {
+        const groups = [
+            ...axisItems(state?.drive, 'drive'),
+            ...axisItems(state?.cognitive, 'cognitive'),
+            ...axisItems(state?.affective, 'affective')
+        ];
+
+        return groups
+            .flatMap(axis => Object.entries(axis.subAxes || {}).map(([subAxis, score]) => ({
+                axis: axis.key,
+                axisLabel: axis.label,
+                subAxis,
+                subAxisLabel: OPENHER_PERSONA_LABELS.subAxis[subAxis] || subAxis,
+                weight: Number(score?.weight) || 0,
+                similarity: Number(score?.similarity) || 0
+            })))
+            .sort((a, b) => b.weight - a.weight)
+            .slice(0, 5);
+    }
+
+    function createPersonaViewModel(rawAgent) {
+        const summary = rawAgent?.summary || {};
+        const state = rawAgent?.status?.state || rawAgent?.state || {};
+        const mood = state.mood || {};
+        const topCognitive = axisItems(state.cognitive, 'cognitive').slice(0, 2);
+        const topDrive = axisItems(state.drive, 'drive').slice(0, 2);
+        const residuals = residualItems(state);
+
+        return {
+            agentKey: summary.agentKey || state.agentKey || '',
+            agentLabel: state.agentLabel || summary.agentLabel || summary.agentKey || 'Agent',
+            moodLabel: mood.label || '暂无观测',
+            modeLabel: rawAgent?.status?.mode || '纯异步观察',
+            positive: Number(mood.positive) || 0,
+            negative: Number(mood.negative) || 0,
+            arousal: Number(mood.arousal) || 0,
+            color: getMoodColor(mood),
+            topCognitive,
+            topDrive,
+            residuals,
+            observationCount: Number(summary.observationCount) || 0,
+            updatedAt: summary.updatedAt || state.updatedAt || null,
+            lastObservedAt: summary.lastObservedAt || state.lastObservedAt || state.lastObservation?.at || null
+        };
+    }
+
+    function findPersonaForItem(item) {
+        if (!item || item.type !== 'agent') {
+            return null;
+        }
+
+        let matchedAgent = null;
+
+        if (Array.isArray(personaStatusCache.agents) && personaStatusCache.agents.length > 0) {
+            const itemKeys = [
+                item.id,
+                item.name,
+                item.config?.name,
+                item.config?.agentKey,
+                item.config?.agentLabel
+            ].map(normalizePersonaMatchText).filter(Boolean);
+
+            if (itemKeys.length > 0) {
+                let bestScore = 0;
+
+                personaStatusCache.agents.forEach(rawAgent => {
+                    const summary = rawAgent?.summary || {};
+                    const state = rawAgent?.status?.state || rawAgent?.state || {};
+                    const personaKeys = [
+                        summary.agentKey,
+                        summary.agentLabel,
+                        state.agentKey,
+                        state.agentLabel
+                    ].map(normalizePersonaMatchText).filter(Boolean);
+
+                    let score = 0;
+                    itemKeys.forEach(itemKey => {
+                        personaKeys.forEach(personaKey => {
+                            if (!itemKey || !personaKey) return;
+                            if (itemKey === personaKey) score = Math.max(score, 100);
+                            else if (itemKey.includes(personaKey) || personaKey.includes(itemKey)) {
+                                score = Math.max(score, Math.min(itemKey.length, personaKey.length));
+                            }
+                        });
+                    });
+
+                    if (score > bestScore) {
+                        bestScore = score;
+                        matchedAgent = rawAgent;
+                    }
+                });
+            }
+        }
+
+        return matchedAgent ? createPersonaViewModel(matchedAgent) : null;
+    }
+
+    async function fetchOpenHerPersonaStatus({ force = false } = {}) {
+        const now = Date.now();
+        if (!force && personaStatusCache.agents.length && now - personaStatusCache.fetchedAt < OPENHER_PERSONA_CACHE_TTL_MS) {
+            return personaStatusCache.agents;
+        }
+
+        if (personaStatusCache.pending) {
+            return personaStatusCache.pending;
+        }
+
+        personaStatusCache.pending = (async () => {
+            try {
+                const settings = await electronAPI.loadSettings();
+                const baseUrl = stripVcpChatEndpoint(settings?.vcpServerUrl);
+                if (!baseUrl) throw new Error('VCP Server URL not configured');
+
+                let username = settings?.adminUsername || '';
+                let password = settings?.adminPassword || '';
+                if ((!username || !password) && typeof electronAPI.loadForumConfig === 'function') {
+                    const forumConfig = await electronAPI.loadForumConfig();
+                    username = username || forumConfig?.username || '';
+                    password = password || forumConfig?.password || '';
+                }
+
+                if (!username || !password) {
+                    throw new Error('Admin credentials not configured');
+                }
+
+                const response = await fetch(`${baseUrl}admin_api/openher-persona/status`, {
+                    headers: {
+                        Authorization: `Basic ${btoa(`${username}:${password}`)}`,
+                        Accept: 'application/json'
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error(`OpenHerPersona status ${response.status}`);
+                }
+
+                const data = await response.json();
+                personaStatusCache.agents = Array.isArray(data?.agents) ? data.agents : [];
+                personaStatusCache.fetchedAt = Date.now();
+                personaStatusCache.unavailable = false;
+                updateVisiblePersonaCards();
+                return personaStatusCache.agents;
+            } catch (error) {
+                personaStatusCache.unavailable = true;
+                console.debug('[ItemListManager] OpenHerPersona status unavailable:', error?.message || error);
+                return personaStatusCache.agents;
+            } finally {
+                personaStatusCache.pending = null;
+            }
+        })();
+
+        return personaStatusCache.pending;
+    }
+
+    function ensureOpenHerPersonaAutoRefresh() {
+        if (personaAutoRefreshTimer) return;
+        fetchOpenHerPersonaStatus({ force: false });
+        personaAutoRefreshTimer = setInterval(() => {
+            fetchOpenHerPersonaStatus({ force: true });
+        }, OPENHER_PERSONA_REFRESH_INTERVAL_MS);
+    }
+
+    function updateVisiblePersonaCards() {
+        if (!itemListUl) return;
+        itemListUl.querySelectorAll('li[data-item-type="agent"]').forEach(li => {
+            const item = findItemById(li.dataset.itemId, li.dataset.itemType);
+            hydratePersonaElement(li, item);
+        });
+    }
+
+    function buildPersonaCard(persona) {
+        const cognitive = persona.topCognitive.map(item => item.label);
+        const drive = persona.topDrive.map(item => item.label);
+        const headlineWords = [...cognitive, ...drive].slice(0, 4);
+        const residuals = persona.residuals.slice(0, 4);
+
+        const card = document.createElement('div');
+        card.className = 'agent-emotion-card';
+        card.style.setProperty('--agent-emotion-color', persona.color);
+        card.setAttribute('aria-hidden', 'true');
+
+        const chips = headlineWords.map((label, index) => (
+            `<span class="agent-emotion-barrage agent-emotion-barrage-primary" style="--emotion-index:${index};--emotion-track:${index % 5};">${label}</span>`
+        )).join('');
+
+        const residualHtml = residuals.map((item, index) => {
+            const absoluteIndex = index + headlineWords.length;
+            return `<span class="agent-emotion-barrage agent-emotion-barrage-secondary" style="--emotion-index:${absoluteIndex};--emotion-track:${absoluteIndex % 5};">${item.axisLabel}/${item.subAxisLabel}</span>`;
+        }).join('');
+
+        card.innerHTML = `
+            <div class="agent-emotion-title">
+                <span class="agent-emotion-agent">${escapeHtml(persona.agentLabel)}</span>
+                <span class="agent-emotion-mood">「${escapeHtml(persona.moodLabel)}」</span>
+            </div>
+            <div class="agent-emotion-metrics">
+                <span>正性 ${toPercent(persona.positive)}%</span>
+                <span>负性 ${toPercent(persona.negative)}%</span>
+                <span>唤醒 ${toPercent(persona.arousal)}%</span>
+            </div>
+            <div class="agent-emotion-barrage-layer">${chips}${residualHtml}</div>
+        `;
+
+        return card;
+    }
+
+    function hydratePersonaElement(li, item) {
+        if (!li || !item || item.type !== 'agent') return;
+
+        const existing = li.querySelector('.agent-emotion-card');
+        const persona = findPersonaForItem(item);
+
+        if (!persona) {
+            li.classList.toggle('has-agent-emotion', false);
+            li.classList.toggle('agent-emotion-unavailable', personaStatusCache.unavailable);
+            if (existing) existing.remove();
+            return;
+        }
+
+        li.classList.add('has-agent-emotion');
+        li.classList.remove('agent-emotion-unavailable');
+        li.style.setProperty('--agent-emotion-color', persona.color);
+
+        const nameSpan = li.querySelector('.agent-name');
+        if (nameSpan) {
+            nameSpan.dataset.defaultName = nameSpan.dataset.defaultName || nameSpan.textContent;
+            nameSpan.dataset.emotionText = `${persona.agentLabel}正在「${persona.moodLabel}」`;
+        }
+
+        if (existing) existing.remove();
+        li.appendChild(buildPersonaCard(persona));
+    }
+
     function createItemElement(item) {
         const li = document.createElement('li');
         li.dataset.itemId = item.id;
@@ -194,6 +528,7 @@ window.itemListManager = (() => {
 
         li.appendChild(avatarWrapper);
         li.appendChild(nameSpan);
+        hydratePersonaElement(li, item);
 
         // 为每个项目添加独立的状态管理
         li._lastClickTime = 0;
@@ -359,6 +694,7 @@ window.itemListManager = (() => {
             renderItems([], '<li>没有找到Agent或群组。请创建一个。</li>');
         }
 
+        fetchOpenHerPersonaStatus({ force: false }).then(() => updateVisiblePersonaCards());
         // Asynchronously fetch and update unread counts to avoid blocking initial render
         refreshUnreadCounts();
     }
