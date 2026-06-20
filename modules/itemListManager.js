@@ -255,6 +255,28 @@ window.itemListManager = (() => {
             .slice(0, 5);
     }
 
+    function getConciseMoodLabel(persona) {
+        const candidates = [
+            persona?.primaryArchetype,
+            persona?.moodLabel,
+            persona?.shortLabel
+        ].filter(Boolean);
+
+        for (const label of candidates) {
+            const text = String(label).trim();
+            if (!text || text === '暂无观测') continue;
+            const firstSegment = text.split(/[\/·,，。|｜]/)[0].trim();
+            if (firstSegment && firstSegment.length <= 6) {
+                return firstSegment.slice(0, 4);
+            }
+            if (firstSegment) {
+                return firstSegment.slice(0, 4);
+            }
+        }
+
+        return '观测中';
+    }
+
     function createPersonaViewModel(rawAgent) {
         const summary = rawAgent?.summary || {};
         const state = rawAgent?.status?.state || rawAgent?.state || {};
@@ -599,9 +621,8 @@ window.itemListManager = (() => {
         const nameSpan = li.querySelector('.agent-name');
         if (nameSpan) {
             nameSpan.dataset.defaultName = nameSpan.dataset.defaultName || nameSpan.textContent;
-            // 优先使用新版情绪算法的 shortLabel，让悬浮心境摘要更具表现力
-            const emotionDesc = persona.shortLabel ? `「${persona.shortLabel}」` : `${persona.agentLabel}正在「${persona.moodLabel}」`;
-            nameSpan.dataset.emotionText = emotionDesc;
+            // 主显示保持轻量：仍使用“xx正在 + 4字心境”，详细复合表达交给弹幕层展示
+            nameSpan.dataset.emotionText = `${persona.agentLabel}正在｢${getConciseMoodLabel(persona)}｣`;
         }
 
         bindPersonaHoverHandlers(li);
