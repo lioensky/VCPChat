@@ -1818,12 +1818,27 @@ body:not(.light-theme) .mermaid-error {
     /* 🟢 添加最小高度过渡，防止高度塌陷导致的滚动跳动 */
 }
 
-.vcp-html-preview-toggle {
+.vcp-codeblock-actions {
     position: absolute;
     top: 8px;
     right: 8px;
     z-index: 10;
-    padding: 4px 12px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    max-width: calc(100% - 16px);
+    pointer-events: none;
+}
+
+.vcp-codeblock-actions > button {
+    pointer-events: auto;
+}
+
+.vcp-html-preview-toggle,
+.vcp-code-copy-button {
+    padding: 4px 10px;
+    min-height: 28px;
     background: rgba(0, 0, 0, 0.5);
     backdrop-filter: blur(4px);
     color: white;
@@ -1832,19 +1847,88 @@ body:not(.light-theme) .mermaid-error {
     cursor: pointer;
     font-size: 12px;
     font-weight: 500;
-    display: flex;
+    display: inline-flex;
     align-items: center;
+    justify-content: center;
     gap: 4px;
-    transition: all 0.2s ease;
+    line-height: 1;
+    transition: background 0.2s ease, border-color 0.2s ease, opacity 0.2s ease, transform 0.2s ease;
+    user-select: none;
 }
 
-.vcp-html-preview-toggle:hover {
+.vcp-html-preview-toggle:hover,
+.vcp-code-copy-button:hover {
     background: rgba(0, 0, 0, 0.7);
-    transform: scale(1.05);
+    transform: translateY(-1px);
 }
 
-.vcp-html-preview-toggle span {
+.vcp-html-preview-toggle:disabled,
+.vcp-code-copy-button:disabled {
+    cursor: default;
+    opacity: 0.82;
+    transform: none;
+}
+
+.vcp-code-copy-button.copied {
+    background: rgba(34, 197, 94, 0.78);
+    border-color: rgba(134, 239, 172, 0.55);
+}
+
+.vcp-code-copy-button.failed {
+    background: rgba(239, 68, 68, 0.78);
+    border-color: rgba(252, 165, 165, 0.55);
+}
+
+.vcp-html-preview-toggle span,
+.vcp-code-copy-button span {
     pointer-events: none;
+}
+
+.md-content pre.vcp-codeblock-with-copy {
+    position: relative;
+}
+
+.md-content pre.vcp-codeblock-with-copy .vcp-code-copy-button {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    z-index: 4;
+    opacity: 0;
+}
+
+.md-content pre.vcp-codeblock-with-copy:hover .vcp-code-copy-button,
+.md-content pre.vcp-codeblock-with-copy:focus-within .vcp-code-copy-button,
+.md-content pre.vcp-codeblock-with-copy .vcp-code-copy-button:disabled {
+    opacity: 1;
+}
+
+.vcp-code-copy-icon {
+    font-size: 12px;
+}
+
+body.light-theme .vcp-html-preview-toggle,
+body.light-theme .vcp-code-copy-button {
+    background: rgba(255, 255, 255, 0.78);
+    color: #1f2a37;
+    border-color: rgba(30, 64, 100, 0.18);
+}
+
+body.light-theme .vcp-html-preview-toggle:hover,
+body.light-theme .vcp-code-copy-button:hover {
+    background: rgba(255, 255, 255, 0.94);
+    border-color: rgba(25, 118, 210, 0.32);
+}
+
+body.light-theme .vcp-code-copy-button.copied {
+    background: rgba(34, 197, 94, 0.18);
+    color: #14532d;
+    border-color: rgba(22, 163, 74, 0.35);
+}
+
+body.light-theme .vcp-code-copy-button.failed {
+    background: rgba(244, 63, 94, 0.16);
+    color: #881337;
+    border-color: rgba(225, 29, 72, 0.34);
 }
 
 .vcp-html-preview-frame {

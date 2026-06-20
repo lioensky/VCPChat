@@ -476,6 +476,115 @@ function highlightAllPatternsInMessage(messageElement) {
     }
 }
 
+function countCodeBlockLines(text) {
+    if (typeof text !== 'string') return 0;
+    const normalized = text.replace(/\r\n?/g, '\n').replace(/\n$/, '');
+    if (!normalized) return 0;
+    return normalized.split('\n').length;
+}
+
+async function writeTextToClipboard(text) {
+    if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        return;
+    }
+
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.setAttribute('readonly', '');
+    textarea.style.position = 'fixed';
+    textarea.style.left = '-9999px';
+    textarea.style.top = '-9999px';
+    document.body.appendChild(textarea);
+    textarea.select();
+
+    try {
+        document.execCommand('copy');
+    } finally {
+        textarea.remove();
+    }
+}
+
+function setupSingleCodeCopyButton(preElement, rawText) {
+    if (!preElement || !preElement.parentElement || preElement.dataset.vcpCodeCopy === 'true') return;
+    if (preElement.dataset.vcpPrettified === "true" ||
+        preElement.dataset.maidDiaryPrettified === "true" ||
+        preElement.dataset.vcpHtmlPreview === "blocked") {
+        return;
+    }
+
+    const isInsideVcpBubble = preElement.closest('.vcp-tool-use-bubble, .vcp-tool-result-bubble, .maid-diary-bubble');
+    if (isInsideVcpBubble) return;
+
+    const codeText = typeof rawText === 'string'
+        ? rawText
+        : (preElement.getAttribute('data-raw-content') || preElement.textContent || '');
+    if (countCodeBlockLines(codeText) <= 4) return;
+
+    const copyButton = document.createElement('button');
+    copyButton.type = 'button';
+    copyButton.className = 'vcp-code-copy-button';
+    copyButton.dataset.vcpInteractive = 'true';
+    copyButton.title = '复制代码';
+    copyButton.setAttribute('aria-label', '复制代码');
+    copyButton.innerHTML = '<span class="vcp-code-copy-icon">📋</span><span class="vcp-code-copy-text">复制</span>';
+
+    copyButton.addEventListener('click', async (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation();
+
+        const originalHtml = copyButton.innerHTML;
+        copyButton.disabled = true;
+
+        try {
+            await writeTextToClipboard(codeText);
+            copyButton.classList.add('copied');
+            copyButton.innerHTML = '<span class="vcp-code-copy-icon">✅</span><span class="vcp-code-copy-text">已复制</span>';
+        } catch (error) {
+            console.error('[ContentProcessor] Copy code failed:', error);
+            copyButton.classList.add('failed');
+            copyButton.innerHTML = '<span class="vcp-code-copy-icon">⚠️</span><span class="vcp-code-copy-text">失败</span>';
+        }
+
+        setTimeout(() => {
+            if (!copyButton.isConnected) return;
+            copyButton.disabled = false;
+            copyButton.classList.remove('copied', 'failed');
+            copyButton.innerHTML = originalHtml;
+        }, 1400);
+    });
+
+    const previewContainer = preElement.closest('.vcp-html-preview-container');
+    if (previewContainer) {
+        let actions = previewContainer.querySelector(':scope > .vcp-codeblock-actions');
+        if (!actions) {
+            actions = document.createElement('div');
+            actions.className = 'vcp-codeblock-actions';
+            previewContainer.appendChild(actions);
+        }
+        actions.insertBefore(copyButton, actions.firstChild);
+        previewContainer.classList.add('has-code-copy');
+    } else {
+        preElement.classList.add('vcp-codeblock-with-copy');
+        preElement.appendChild(copyButton);
+    }
+
+    preElement.dataset.vcpCodeCopy = 'true';
+}
+
+function setupCodeCopyButtons(contentDiv) {
+    if (!contentDiv) return;
+
+    contentDiv.querySelectorAll('pre').forEach(preElement => {
+        if (!preElement || !preElement.parentElement) return;
+        const codeElement = preElement.querySelector('code');
+        const blockText = preElement.getAttribute('data-raw-content') ||
+            (codeElement ? (codeElement.textContent || '') : (preElement.textContent || ''));
+        setupSingleCodeCopyButton(preElement, blockText);
+    });
+}
+
 /**
  * Processes all relevant <pre> blocks within a message's contentDiv AFTER marked.parse().
  * @param {HTMLElement} contentDiv - The div containing the parsed Markdown.
@@ -562,6 +671,10 @@ function setupHtmlPreview(preElement, htmlContent) {
     preElement.parentNode.insertBefore(container, preElement);
     container.appendChild(preElement);
 
+    const actions = document.createElement('div');
+    actions.className = 'vcp-codeblock-actions';
+    container.appendChild(actions);
+
     // Create the toggle button
     const actionBtn = document.createElement('button');
     actionBtn.className = 'vcp-html-preview-toggle';
@@ -569,7 +682,7 @@ function setupHtmlPreview(preElement, htmlContent) {
     actionBtn.title = '在气泡内预览 HTML';
     actionBtn.dataset.vcpInteractive = 'true';
     actionBtn.type = 'button';
-    container.appendChild(actionBtn);
+    actions.appendChild(actionBtn);
 
     let previewFrame = null;
     let messageHandler = null;
@@ -1000,6 +1113,9 @@ function processRenderedContent(contentDiv, settings = {}) {
 
     // Special block formatting (VCP/Diary)
     processAllPreBlocksInContentDiv(contentDiv);
+
+    // 为超过 4 行的普通代码块添加复制按钮；HTML 预览块会与播放/返回按钮共用右上角工具栏
+    setupCodeCopyButtons(contentDiv);
 
     // Process interactive buttons, passing settings
     processInteractiveButtons(contentDiv, settings);
