@@ -8,9 +8,11 @@ const fsSync = require('fs');
 const dotenv = require('dotenv');
 const os = require('os');
 const mime = require('mime-types');
+const chokidar = require('chokidar');
  // const { ipcMain } = require('electron'); // This was incorrect. ipcMain should be injected.
  const pluginManager = require('./Plugin.js');
 const GENERATED_LISTS_CONFIG_PATH = path.join(__dirname, '..', 'AppData', 'generated_lists', 'config.env');
+const MUSIC_PLAYLIST_FILE_PATH = path.join(__dirname, '..', 'AppData', 'songlist.json');
 
 // DEBUG_MODE is now passed in config
 // const DEBUG_MODE = (process.env.DebugMode || "False").toLowerCase() === "true";
@@ -65,6 +67,9 @@ class DistributedServer {
         this.stopPromise = null;
         this.initialConnection = true; // Flag to handle one-time actions on first connect
         this.staticPlaceholderUpdateInterval = null; // 新增：静态占位符更新定时器
+        this.musicPlaylistWatcher = null;
+        this.musicPlaylistUpdateTimeout = null;
+        this.lastMusicPlaylistSignature = null;
     }
 
     async bindHttpServer(preferredPort) {
@@ -146,6 +151,9 @@ class DistributedServer {
                 this.sendMessage(payload);
                 res.status(200).json({ status: 'success', message: 'Callback forwarded to main server.' });
             });
+
+            // 由分布式服务器自身监听本地音乐列表，无需 IPC。
+            this.setupMusicPlaylistWatcher();
 
             // 在 HTTP 服务器启动后，再连接到主服务器
             this.connect();
@@ -250,6 +258,7 @@ class DistributedServer {
             this.reconnectInterval = 5000;
             this.registerTools();
             await this.reportIPAddress();
+            await this.pushMusicPlaylistUpdate('websocket_open');
             
             // 新增：设置静态占位符定期推送
             this.setupStaticPlaceholderUpdates();
@@ -415,6 +424,136 @@ class DistributedServer {
             for (const [key, value] of placeholderValues) {
                 console.log(`  - ${key}: ${value.substring(0, 100)}${value.length > 100 ? '...' : ''}`);
             }
+        }
+    }
+
+    setupMusicPlaylistWatcher() {
+        if (this.musicPlaylistWatcher) {
+            return;
+        }
+
+        this.musicPlaylistWatcher = chokidar.watch(MUSIC_PLAYLIST_FILE_PATH, {
+            persistent: true,
+            ignoreInitial: false,
+            awaitWriteFinish: {
+                stabilityThreshold: 500,
+                pollInterval: 100
+            }
+        });
+
+        const schedulePush = (reason) => {
+            if (this.musicPlaylistUpdateTimeout) {
+                clearTimeout(this.musicPlaylistUpdateTimeout);
+            }
+            this.musicPlaylistUpdateTimeout = setTimeout(() => {
+                this.musicPlaylistUpdateTimeout = null;
+                this.pushMusicPlaylistUpdate(reason).catch(error => {
+                    console.error(`[${this.serverName}] Failed to push music playlist update:`, error.message);
+                });
+            }, 500);
+        };
+
+        this.musicPlaylistWatcher
+            .on('add', () => schedulePush('file_added'))
+            .on('change', () => schedulePush('file_changed'))
+            .on('unlink', () => schedulePush('file_removed'))
+            .on('error', error => {
+                console.error(`[${this.serverName}] Music playlist watcher error:`, error.message);
+            });
+
+        console.log(`[${this.serverName}] Watching local music playlist: ${MUSIC_PLAYLIST_FILE_PATH}`);
+    }
+
+    async readMusicPlaylistSnapshot() {
+        if (!fsSync.existsSync(MUSIC_PLAYLIST_FILE_PATH)) {
+            return {
+                exists: false,
+                tracks: [],
+                count: 0,
+                updatedAt: new Date().toISOString()
+            };
+        }
+
+        const rawContent = await fs.readFile(MUSIC_PLAYLIST_FILE_PATH, 'utf8');
+        const parsed = JSON.parse(rawContent);
+        if (!Array.isArray(parsed)) {
+            throw new Error('songlist.json root value must be an array.');
+        }
+
+        const tracks = parsed
+            .filter(track => track && typeof track === 'object')
+            .map(track => ({
+                path: typeof track.path === 'string' ? track.path : '',
+                title: typeof track.title === 'string' ? track.title : '',
+                artist: typeof track.artist === 'string' ? track.artist : '',
+                album: typeof track.album === 'string' ? track.album : '',
+                albumArt: typeof track.albumArt === 'string' ? track.albumArt : null,
+                bitrate: typeof track.bitrate === 'number' ? track.bitrate : null,
+                isRemote: track.isRemote === true,
+                serverId: typeof track.serverId === 'string' ? track.serverId : undefined
+            }));
+
+        return {
+            exists: true,
+            tracks,
+            count: tracks.length,
+            updatedAt: new Date().toISOString()
+        };
+    }
+
+    async pushMusicPlaylistUpdate(reason = 'manual') {
+        let snapshot;
+        try {
+            snapshot = await this.readMusicPlaylistSnapshot();
+        } catch (error) {
+            console.error(`[${this.serverName}] Failed to read local music playlist:`, error.message);
+            snapshot = {
+                exists: fsSync.existsSync(MUSIC_PLAYLIST_FILE_PATH),
+                tracks: [],
+                count: 0,
+                updatedAt: new Date().toISOString(),
+                error: error.message
+            };
+        }
+
+        const signature = JSON.stringify({
+            exists: snapshot.exists,
+            count: snapshot.count,
+            tracks: snapshot.tracks,
+            error: snapshot.error || null
+        });
+
+        if (signature === this.lastMusicPlaylistSignature && reason !== 'websocket_open') {
+            if (this.debugMode) console.log(`[${this.serverName}] Music playlist unchanged, skip update.`);
+            return;
+        }
+        this.lastMusicPlaylistSignature = signature;
+
+        const payload = {
+            type: 'music_playlist_update',
+            data: {
+                serverName: this.serverName,
+                reason,
+                playlistPath: MUSIC_PLAYLIST_FILE_PATH,
+                ...snapshot
+            }
+        };
+
+        this.sendMessage(payload);
+        console.log(`[${this.serverName}] Reported local music playlist to main server. Count: ${snapshot.count}, Reason: ${reason}`);
+    }
+
+    async closeMusicPlaylistWatcher() {
+        if (this.musicPlaylistUpdateTimeout) {
+            clearTimeout(this.musicPlaylistUpdateTimeout);
+            this.musicPlaylistUpdateTimeout = null;
+        }
+
+        if (this.musicPlaylistWatcher) {
+            const watcher = this.musicPlaylistWatcher;
+            this.musicPlaylistWatcher = null;
+            await watcher.close();
+            if (this.debugMode) console.log(`[${this.serverName}] Music playlist watcher closed.`);
         }
     }
 
@@ -689,6 +828,7 @@ class DistributedServer {
         
         // 新增：清理静态占位符更新定时器
         this.clearStaticPlaceholderUpdates();
+        await this.closeMusicPlaylistWatcher();
         
         if (this.reconnectTimeoutId) {
             clearTimeout(this.reconnectTimeoutId);
