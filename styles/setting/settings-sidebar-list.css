@@ -426,8 +426,8 @@ body.light-theme .settings-header-bar .global-settings-btn:hover {
     inset: 0;
     z-index: 0;
     pointer-events: none;
-    opacity: 0;
-    transform: scale(0.995);
+    opacity: 1;
+    transform: scale(1);
     border-radius: inherit;
     overflow: hidden;
     background:
@@ -436,12 +436,7 @@ body.light-theme .settings-header-bar .global-settings-btn:hover {
     box-shadow:
         0 9px 24px color-mix(in srgb, var(--agent-emotion-color) 14%, transparent),
         inset 0 0 0 1px color-mix(in srgb, var(--agent-emotion-color) 24%, rgba(255, 255, 255, 0.08));
-    transition: opacity 0.24s ease, transform 0.24s cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.sidebar .agent-list li.has-agent-emotion:hover .agent-emotion-card {
-    opacity: 1;
-    transform: scale(1);
+    transition: opacity 0.18s ease, transform 0.18s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .agent-emotion-card::before {
@@ -453,6 +448,7 @@ body.light-theme .settings-header-bar .global-settings-btn:hover {
     opacity: 0.58;
     transform: translateX(-42%) rotate(12deg);
     animation: agentEmotionSweep 2.6s ease-in-out infinite;
+    animation-play-state: paused;
 }
 
 .agent-emotion-title,
@@ -483,6 +479,7 @@ body.light-theme .settings-header-bar .global-settings-btn:hover {
     animation-timing-function: linear;
     animation-iteration-count: infinite;
     animation-delay: calc(var(--emotion-index) * -0.72s);
+    animation-play-state: paused;
 }
 
 .agent-emotion-barrage-primary {
@@ -503,6 +500,11 @@ body.light-theme .settings-header-bar .global-settings-btn:hover {
     background: rgba(255, 255, 255, 0.09);
     border: 1px solid rgba(255, 255, 255, 0.08);
     animation-duration: 5.6s;
+}
+
+.sidebar .agent-list li.has-agent-emotion:hover .agent-emotion-card::before,
+.sidebar .agent-list li.has-agent-emotion:hover .agent-emotion-barrage {
+    animation-play-state: running;
 }
 
 body:not(.light-theme) .sidebar .agent-list .agent-emotion-card {

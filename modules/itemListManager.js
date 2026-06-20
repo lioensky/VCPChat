@@ -417,12 +417,12 @@ window.itemListManager = (() => {
         card.setAttribute('aria-hidden', 'true');
 
         const chips = headlineWords.map((label, index) => (
-            `<span class="agent-emotion-barrage agent-emotion-barrage-primary" style="--emotion-index:${index};--emotion-track:${index % 5};">${label}</span>`
+            `<span class="agent-emotion-barrage agent-emotion-barrage-primary" style="--emotion-index:${index};--emotion-track:${index % 5};">${escapeHtml(label)}</span>`
         )).join('');
 
         const residualHtml = residuals.map((item, index) => {
             const absoluteIndex = index + headlineWords.length;
-            return `<span class="agent-emotion-barrage agent-emotion-barrage-secondary" style="--emotion-index:${absoluteIndex};--emotion-track:${absoluteIndex % 5};">${item.axisLabel}/${item.subAxisLabel}</span>`;
+            return `<span class="agent-emotion-barrage agent-emotion-barrage-secondary" style="--emotion-index:${absoluteIndex};--emotion-track:${absoluteIndex % 5};">${escapeHtml(`${item.axisLabel}/${item.subAxisLabel}`)}</span>`;
         }).join('');
 
         card.innerHTML = `
@@ -441,19 +441,76 @@ window.itemListManager = (() => {
         return card;
     }
 
+    function removePersonaCard(li) {
+        if (!li) return;
+        const existing = li.querySelector('.agent-emotion-card');
+        if (existing) existing.remove();
+    }
+
+    function getPersonaRenderKey(persona) {
+        if (!persona) return '';
+        return [
+            persona.agentKey,
+            persona.agentLabel,
+            persona.moodLabel,
+            persona.modeLabel,
+            persona.positive,
+            persona.negative,
+            persona.arousal,
+            persona.color,
+            persona.updatedAt,
+            persona.lastObservedAt,
+            persona.observationCount,
+            persona.topCognitive.map(item => `${item.key}:${item.value}`).join('|'),
+            persona.topDrive.map(item => `${item.key}:${item.value}`).join('|'),
+            persona.residuals.map(item => `${item.axis}:${item.subAxis}:${item.weight}:${item.similarity}`).join('|')
+        ].join('::');
+    }
+
+    function showPersonaCard(li) {
+        if (!li || !li._personaViewModel) return;
+        const existing = li.querySelector('.agent-emotion-card');
+        if (existing && existing.dataset.renderKey === li._personaRenderKey) return;
+
+        removePersonaCard(li);
+        const card = buildPersonaCard(li._personaViewModel);
+        card.dataset.renderKey = li._personaRenderKey || '';
+        li.appendChild(card);
+    }
+
+    function bindPersonaHoverHandlers(li) {
+        if (!li || li._personaHoverHandlersBound) return;
+        li._personaHoverHandlersBound = true;
+
+        li.addEventListener('mouseenter', () => {
+            if (!li.classList.contains('has-agent-emotion')) return;
+            showPersonaCard(li);
+        });
+
+        li.addEventListener('mouseleave', () => {
+            removePersonaCard(li);
+        });
+    }
+
     function hydratePersonaElement(li, item) {
         if (!li || !item || item.type !== 'agent') return;
 
-        const existing = li.querySelector('.agent-emotion-card');
         const persona = findPersonaForItem(item);
 
         if (!persona) {
             li.classList.toggle('has-agent-emotion', false);
             li.classList.toggle('agent-emotion-unavailable', personaStatusCache.unavailable);
-            if (existing) existing.remove();
+            li._personaViewModel = null;
+            li._personaRenderKey = '';
+            delete li.dataset.personaRenderKey;
+            removePersonaCard(li);
             return;
         }
 
+        const renderKey = getPersonaRenderKey(persona);
+        li._personaViewModel = persona;
+        li._personaRenderKey = renderKey;
+        li.dataset.personaRenderKey = renderKey;
         li.classList.add('has-agent-emotion');
         li.classList.remove('agent-emotion-unavailable');
         li.style.setProperty('--agent-emotion-color', persona.color);
@@ -464,8 +521,14 @@ window.itemListManager = (() => {
             nameSpan.dataset.emotionText = `${persona.agentLabel}正在「${persona.moodLabel}」`;
         }
 
-        if (existing) existing.remove();
-        li.appendChild(buildPersonaCard(persona));
+        bindPersonaHoverHandlers(li);
+
+        if (!li.matches(':hover')) {
+            removePersonaCard(li);
+            return;
+        }
+
+        showPersonaCard(li);
     }
 
     function createItemElement(item) {
@@ -694,7 +757,7 @@ window.itemListManager = (() => {
             renderItems([], '<li>没有找到Agent或群组。请创建一个。</li>');
         }
 
-        fetchOpenHerPersonaStatus({ force: false }).then(() => updateVisiblePersonaCards());
+        fetchOpenHerPersonaStatus({ force: false });
         // Asynchronously fetch and update unread counts to avoid blocking initial render
         refreshUnreadCounts();
     }
