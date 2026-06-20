@@ -397,7 +397,27 @@ body.light-theme .settings-header-bar .global-settings-btn:hover {
 }
 
 .sidebar .agent-list li.has-agent-emotion .agent-name {
-    transition: text-shadow 0.22s ease;
+    position: relative;
+    transition: color 0.22s ease, text-shadow 0.22s ease;
+}
+
+.sidebar .agent-list li.has-agent-emotion .agent-name::after {
+    content: attr(data-emotion-text);
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 50%;
+    transform: translateY(-46%);
+    color: var(--highlight-text);
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    text-shadow: 0 0 10px color-mix(in srgb, var(--agent-emotion-color) 42%, transparent);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.22s ease, transform 0.22s ease;
 }
 
 .sidebar .agent-list li.has-agent-emotion:hover .agent-name {
@@ -406,19 +426,8 @@ body.light-theme .settings-header-bar .global-settings-btn:hover {
 }
 
 .sidebar .agent-list li.has-agent-emotion:hover .agent-name::after {
-    content: attr(data-emotion-text);
-    position: absolute;
-    left: 0;
-    right: 0;
-    top: 50%;
+    opacity: 1;
     transform: translateY(-50%);
-    color: var(--highlight-text);
-    font-weight: 600;
-    letter-spacing: 0.01em;
-    text-shadow: 0 0 10px color-mix(in srgb, var(--agent-emotion-color) 42%, transparent);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
 }
 
 .sidebar .agent-list .agent-emotion-card {
