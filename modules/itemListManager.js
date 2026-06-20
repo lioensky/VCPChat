@@ -259,14 +259,46 @@ window.itemListManager = (() => {
         const summary = rawAgent?.summary || {};
         const state = rawAgent?.status?.state || rawAgent?.state || {};
         const mood = state.mood || {};
+        const expression = mood.expression || {};
+        const archetypes = mood.archetypes || {};
+
         const topCognitive = axisItems(state.cognitive, 'cognitive').slice(0, 2);
         const topDrive = axisItems(state.drive, 'drive').slice(0, 2);
         const residuals = residualItems(state);
+
+        // 提取新版情绪算法暴露的复合心境字段
+        const shortLabel = expression.shortLabel || mood.label || '暂无观测';
+        const sentence = expression.sentence || '';
+        const primaryArchetype = archetypes.primary?.label || '';
+        const topArchetypes = Array.isArray(archetypes.candidates) ? archetypes.candidates : [];
+        const genderLabel = expression.gender?.label || '';
+        const driveLabel = expression.drive?.label || '';
+
+        let counterPressureLabel = '';
+        if (expression.drive?.counterPressure) {
+            const cp = expression.drive.counterPressure;
+            if (cp.label && cp.pressure !== undefined) {
+                counterPressureLabel = `${cp.label}受压${Math.round(cp.pressure * 100)}%`;
+            }
+        } else if (state.coupling?.lastCounterbalance) {
+            const lcb = state.coupling.lastCounterbalance;
+            if (lcb.axis && lcb.pressure !== undefined) {
+                const axisLabel = OPENHER_PERSONA_LABELS.drive[lcb.axis] || lcb.axis;
+                counterPressureLabel = `${axisLabel}受压${Math.round(lcb.pressure * 100)}%`;
+            }
+        }
 
         return {
             agentKey: summary.agentKey || state.agentKey || '',
             agentLabel: state.agentLabel || summary.agentLabel || summary.agentKey || 'Agent',
             moodLabel: mood.label || '暂无观测',
+            shortLabel,
+            sentence,
+            primaryArchetype,
+            topArchetypes,
+            genderLabel,
+            driveLabel,
+            counterPressureLabel,
             modeLabel: rawAgent?.status?.mode || '纯异步观察',
             positive: Number(mood.positive) || 0,
             negative: Number(mood.negative) || 0,
@@ -406,23 +438,66 @@ window.itemListManager = (() => {
     }
 
     function buildPersonaCard(persona) {
+        // 组装主弹幕词汇 (Primary Barrage) - 优先使用新版情绪算法的高级表达
+        const primaryWords = [];
+        if (persona.primaryArchetype) primaryWords.push(persona.primaryArchetype);
+        if (persona.driveLabel) primaryWords.push(persona.driveLabel);
+        if (persona.genderLabel) primaryWords.push(persona.genderLabel);
+        if (persona.counterPressureLabel) primaryWords.push(persona.counterPressureLabel);
+
+        // 补充候选原型
+        if (Array.isArray(persona.topArchetypes)) {
+            persona.topArchetypes.forEach(arch => {
+                const label = typeof arch === 'string' ? arch : arch?.label;
+                if (label && label !== persona.primaryArchetype && !primaryWords.includes(label)) {
+                    primaryWords.push(label);
+                }
+            });
+        }
+
+        // 如果主弹幕词汇不够，用旧版的认知和驱力轴补充
+        if (primaryWords.length < 4) {
+            const cognitive = persona.topCognitive.map(item => item.label);
+            const drive = persona.topDrive.map(item => item.label);
+            const backupWords = [...cognitive, ...drive];
+            for (const word of backupWords) {
+                if (!primaryWords.includes(word)) {
+                    primaryWords.push(word);
+                }
+                if (primaryWords.length >= 4) break;
+            }
+        }
+
+        // 组装次弹幕词汇 (Secondary Barrage) - 使用二级残差和轴体
+        const secondaryWords = [];
+        persona.residuals.forEach(item => {
+            secondaryWords.push(`${item.axisLabel}/${item.subAxisLabel}`);
+        });
+
+        // 补充轴体标签到次弹幕
         const cognitive = persona.topCognitive.map(item => item.label);
         const drive = persona.topDrive.map(item => item.label);
-        const headlineWords = [...cognitive, ...drive].slice(0, 4);
-        const residuals = persona.residuals.slice(0, 4);
+        [...cognitive, ...drive].forEach(word => {
+            if (!primaryWords.includes(word) && !secondaryWords.includes(word)) {
+                secondaryWords.push(word);
+            }
+        });
+
+        const finalPrimary = primaryWords.slice(0, 5);
+        const finalSecondary = secondaryWords.slice(0, 5);
 
         const card = document.createElement('div');
         card.className = 'agent-emotion-card';
         card.style.setProperty('--agent-emotion-color', persona.color);
         card.setAttribute('aria-hidden', 'true');
 
-        const chips = headlineWords.map((label, index) => (
+        const chips = finalPrimary.map((label, index) => (
             `<span class="agent-emotion-barrage agent-emotion-barrage-primary" style="--emotion-index:${index};--emotion-track:${index % 5};">${escapeHtml(label)}</span>`
         )).join('');
 
-        const residualHtml = residuals.map((item, index) => {
-            const absoluteIndex = index + headlineWords.length;
-            return `<span class="agent-emotion-barrage agent-emotion-barrage-secondary" style="--emotion-index:${absoluteIndex};--emotion-track:${absoluteIndex % 5};">${escapeHtml(`${item.axisLabel}/${item.subAxisLabel}`)}</span>`;
+        const residualHtml = finalSecondary.map((label, index) => {
+            const absoluteIndex = index + finalPrimary.length;
+            return `<span class="agent-emotion-barrage agent-emotion-barrage-secondary" style="--emotion-index:${absoluteIndex};--emotion-track:${absoluteIndex % 5};">${escapeHtml(label)}</span>`;
         }).join('');
 
         card.innerHTML = `
@@ -453,6 +528,12 @@ window.itemListManager = (() => {
             persona.agentKey,
             persona.agentLabel,
             persona.moodLabel,
+            persona.shortLabel,
+            persona.sentence,
+            persona.primaryArchetype,
+            persona.genderLabel,
+            persona.driveLabel,
+            persona.counterPressureLabel,
             persona.modeLabel,
             persona.positive,
             persona.negative,
@@ -518,7 +599,9 @@ window.itemListManager = (() => {
         const nameSpan = li.querySelector('.agent-name');
         if (nameSpan) {
             nameSpan.dataset.defaultName = nameSpan.dataset.defaultName || nameSpan.textContent;
-            nameSpan.dataset.emotionText = `${persona.agentLabel}正在「${persona.moodLabel}」`;
+            // 优先使用新版情绪算法的 shortLabel，让悬浮心境摘要更具表现力
+            const emotionDesc = persona.shortLabel ? `「${persona.shortLabel}」` : `${persona.agentLabel}正在「${persona.moodLabel}」`;
+            nameSpan.dataset.emotionText = emotionDesc;
         }
 
         bindPersonaHoverHandlers(li);
