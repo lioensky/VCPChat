@@ -217,9 +217,9 @@ window.itemListManager = (() => {
         const positive = Number(mood.positive) || 0;
         const negative = Number(mood.negative) || 0;
         const arousal = Number(mood.arousal) || 0;
-        const hue = Math.round(210 + (positive - negative) * 95 + arousal * 24);
-        const saturation = Math.round(58 + arousal * 28);
-        const lightness = Math.round(48 + positive * 12 - negative * 7);
+        const hue = Math.round(210 + (positive - negative) * 125 + arousal * 30);
+        const saturation = Math.round(62 + arousal * 34);
+        const lightness = Math.round(48 + positive * 14 - negative * 9);
         return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
     }
 

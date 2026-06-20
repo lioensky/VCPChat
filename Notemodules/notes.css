@@ -392,11 +392,14 @@ textarea:focus {
     border: 1px solid var(--border-color);
     border-radius: 6px;
     transition: flex-basis 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+                width 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+                max-width 0.32s cubic-bezier(0.22, 1, 0.36, 1),
                 opacity 0.22s ease,
                 transform 0.32s cubic-bezier(0.22, 1, 0.36, 1),
                 border-width 0.22s ease,
                 margin 0.32s cubic-bezier(0.22, 1, 0.36, 1),
-                padding 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+                padding 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+                visibility 0s linear;
 }
 
 .editor-preview-resizer {
@@ -407,7 +410,14 @@ textarea:focus {
     z-index: 3;
     margin: 0 8px;
     border-radius: 999px;
-    transition: background-color 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+    transition: flex-basis 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+                width 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+                min-width 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+                max-width 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+                margin 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+                opacity 0.2s ease,
+                background-color 0.2s ease,
+                box-shadow 0.2s ease;
 }
 
 .editor-preview-resizer::before {
@@ -461,17 +471,29 @@ body.preview-collapsed .preview-container {
      * fully releases its layout space while collapsed.
      */
     flex: 0 0 0 !important;
+    flex-basis: 0 !important;
     width: 0;
     min-width: 0;
     max-width: 0;
     opacity: 0;
     transform: translateX(16px) scaleX(0.98);
     border-width: 0;
+    visibility: hidden;
     pointer-events: none;
+    transition: flex-basis 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+                width 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+                max-width 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+                opacity 0.22s ease,
+                transform 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+                border-width 0.22s ease,
+                margin 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+                padding 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+                visibility 0s linear 0.32s;
 }
 
 body.preview-collapsed .editor-preview-resizer {
     flex: 0 0 0;
+    flex-basis: 0;
     width: 0;
     min-width: 0;
     max-width: 0;
@@ -482,6 +504,7 @@ body.preview-collapsed .editor-preview-resizer {
 
 body.preview-collapsed .preview-container > * {
     visibility: hidden;
+    transition: visibility 0s linear 0.32s;
 }
 
 #noteContent,
