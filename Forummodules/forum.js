@@ -968,6 +968,134 @@ function deIndentHtml(text) {
     }).join('\n');
 }
 
+function findUnescapedDelimiter(text, delimiter, startIndex) {
+    let index = startIndex;
+    while (index < text.length) {
+        const found = text.indexOf(delimiter, index);
+        if (found === -1) return -1;
+
+        let backslashCount = 0;
+        for (let i = found - 1; i >= 0 && text[i] === '\\'; i--) {
+            backslashCount++;
+        }
+
+        if (backslashCount % 2 === 0) {
+            return found;
+        }
+
+        index = found + delimiter.length;
+    }
+
+    return -1;
+}
+
+function protectMathExpressions(markdown) {
+    const mathMap = new Map();
+    let mathId = 0;
+    let output = '';
+    let i = 0;
+    let inFence = false;
+    let atLineStart = true;
+
+    const protect = (mathText) => {
+        const placeholder = `@@FORUMMATH${mathId}@@`;
+        mathMap.set(placeholder, mathText);
+        mathId++;
+        return placeholder;
+    };
+
+    while (i < markdown.length) {
+        if (atLineStart) {
+            const lineEnd = markdown.indexOf('\n', i);
+            const currentLine = markdown.slice(i, lineEnd === -1 ? markdown.length : lineEnd);
+            if (currentLine.trimStart().startsWith('```')) {
+                inFence = !inFence;
+                output += currentLine;
+                if (lineEnd === -1) break;
+                output += '\n';
+                i = lineEnd + 1;
+                atLineStart = true;
+                continue;
+            }
+        }
+
+        if (!inFence) {
+            const startsDisplayDollar = markdown.startsWith('$$', i);
+            const startsBracketDisplay = markdown.startsWith('\\[', i);
+            const startsParenInline = markdown.startsWith('\\(', i);
+            const startsInlineDollar = markdown[i] === '$' && markdown[i + 1] !== '$' && !/\s/.test(markdown[i + 1] || '');
+
+            if (startsDisplayDollar) {
+                const end = findUnescapedDelimiter(markdown, '$$', i + 2);
+                if (end !== -1) {
+                    output += protect(markdown.slice(i, end + 2));
+                    i = end + 2;
+                    atLineStart = false;
+                    continue;
+                }
+            }
+
+            if (startsBracketDisplay) {
+                const end = findUnescapedDelimiter(markdown, '\\]', i + 2);
+                if (end !== -1) {
+                    output += protect(markdown.slice(i, end + 2));
+                    i = end + 2;
+                    atLineStart = false;
+                    continue;
+                }
+            }
+
+            if (startsParenInline) {
+                const end = findUnescapedDelimiter(markdown, '\\)', i + 2);
+                if (end !== -1) {
+                    output += protect(markdown.slice(i, end + 2));
+                    i = end + 2;
+                    atLineStart = false;
+                    continue;
+                }
+            }
+
+            if (startsInlineDollar) {
+                const end = findUnescapedDelimiter(markdown, '$', i + 1);
+                if (end !== -1 && !/\s/.test(markdown[end - 1] || '')) {
+                    output += protect(markdown.slice(i, end + 1));
+                    i = end + 1;
+                    atLineStart = false;
+                    continue;
+                }
+            }
+        }
+
+        const char = markdown[i];
+        output += char;
+        atLineStart = char === '\n';
+        i++;
+    }
+
+    return { markdown: output, mathMap };
+}
+
+function restoreProtectedMath(html, mathMap) {
+    if (!mathMap || mathMap.size === 0) return html;
+
+    let restored = html;
+    for (const [placeholder, mathText] of mathMap.entries()) {
+        restored = restored.replaceAll(placeholder, escapeHtml(mathText));
+    }
+    return restored;
+}
+
+function renderMarkdownWithProtectedMath(markdown) {
+    if (!window.marked) {
+        return `<pre>${escapeHtml(markdown)}</pre>`;
+    }
+
+    const protectedMath = protectMathExpressions(markdown);
+    const enhanced = enhanceMarkdown(protectedMath.markdown);
+    const html = marked.parse(enhanced);
+    return restoreProtectedMath(html, protectedMath.mathMap);
+}
+
 function enhanceMarkdown(markdown) {
     // Step 1: Fix local file path images
     markdown = markdown.replace(/(!\[[^\]]*?\]\()(file:\/\/.*?)(\))/g, (match, prefix, url, suffix) => {
@@ -1155,7 +1283,7 @@ function renderFullContent(container, markdown, uid) {
     const postContentMd = mainMd.replace(/^(.|\n)*?---\n?/, '');
     // --- END NEW ---
 
-    previewEl.innerHTML = window.marked ? marked.parse(enhanceMarkdown(postContentMd)) : `<pre>${escapeHtml(postContentMd)}</pre>`;
+    previewEl.innerHTML = renderMarkdownWithProtectedMath(postContentMd);
     previewEl.dataset.rawContent = postContentMd; // Store raw content for editing
 
     requestDeferredWork(() => {
@@ -1163,6 +1291,7 @@ function renderFullContent(container, markdown, uid) {
 
         if (window.renderMathInElement) {
             renderMathInElement(previewEl, {
+                throwOnError: false,
                 delimiters: [
                     {left: "$$", right: "$$", display: true},
                     {left: "$", right: "$", display: false},
@@ -1241,7 +1370,7 @@ function renderFullContent(container, markdown, uid) {
                         <button class="edit-btn" data-uid="${uid}" data-floor="${floor}">编辑</button>
                     </div>
                 </div>
-                <div class="reply-content">${window.marked ? marked.parse(enhanceMarkdown(replyMd.trim())) : `<pre>${escapeHtml(replyMd.trim())}</pre>`}</div>
+                <div class="reply-content">${renderMarkdownWithProtectedMath(replyMd.trim())}</div>
             `;
             replyItem.querySelector('.reply-content').dataset.rawContent = replyRawContent; // Store raw content
             replyList.appendChild(replyItem);
@@ -1262,6 +1391,7 @@ function renderFullContent(container, markdown, uid) {
 
                     if (window.renderMathInElement) {
                         renderMathInElement(replyContentEl, {
+                            throwOnError: false,
                             delimiters: [
                                 {left: "$$", right: "$$", display: true},
                                 {left: "$", right: "$", display: false},
