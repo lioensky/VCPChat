@@ -603,15 +603,50 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     // ========== OCR 功能 ==========
+    let tesseractLoadPromise = null;
+
+    function loadTesseractIfNeeded() {
+        if (window.Tesseract) {
+            return Promise.resolve(window.Tesseract);
+        }
+
+        if (tesseractLoadPromise) {
+            return tesseractLoadPromise;
+        }
+
+        tesseractLoadPromise = new Promise((resolve, reject) => {
+            const script = document.createElement('script');
+            script.src = '../vendor/tesseract.min.js';
+            script.async = true;
+            script.onload = () => {
+                if (window.Tesseract) {
+                    resolve(window.Tesseract);
+                } else {
+                    reject(new Error('本地 OCR 脚本已加载，但 Tesseract 对象不存在。'));
+                }
+            };
+            script.onerror = () => {
+                tesseractLoadPromise = null;
+                reject(new Error('无法加载本地 OCR 脚本: ../vendor/tesseract.min.js'));
+            };
+            document.head.appendChild(script);
+        });
+
+        return tesseractLoadPromise;
+    }
+
     ocrButton.addEventListener('click', async () => {
         if (!imgElement.src) return;
 
         const originalHtml = ocrButton.innerHTML;
-        ocrButton.innerHTML = '识别中...';
+        ocrButton.innerHTML = '加载 OCR...';
         ocrButton.disabled = true;
 
         try {
-            const { data: { text } } = await Tesseract.recognize(
+            const TesseractAPI = await loadTesseractIfNeeded();
+            ocrButton.innerHTML = '识别中...';
+
+            const { data: { text } } = await TesseractAPI.recognize(
                 imgElement.src,
                 'chi_sim+eng', // 识别简体中文和英文
                 {
