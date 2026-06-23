@@ -102,41 +102,17 @@ body {
 
 @keyframes ambient-wave-ripple {
     0% {
-        transform: rotate(var(--wave-rotate, 0deg)) scale(0.44);
+        transform: rotate(var(--wave-rotate, 0deg)) scale(0.82);
         opacity: 0;
     }
 
-    12% {
-        opacity: var(--wave-peak-opacity, 0.6);
-    }
-
-    58% {
-        opacity: calc(var(--wave-peak-opacity, 0.6) * 0.38);
+    16% {
+        opacity: var(--wave-peak-opacity, 0.46);
     }
 
     100% {
-        transform: rotate(calc(var(--wave-rotate, 0deg) + var(--wave-spin, 22deg))) scale(var(--wave-expand, 2.12));
+        transform: rotate(calc(var(--wave-rotate, 0deg) + var(--wave-spin, 16deg))) scale(var(--wave-expand, 1.72));
         opacity: 0;
-    }
-}
-
-@keyframes ambient-wave-ring-spin {
-    from {
-        transform: rotate(0deg);
-    }
-
-    to {
-        transform: rotate(360deg);
-    }
-}
-
-@keyframes ambient-wave-ring-counter-spin {
-    from {
-        transform: rotate(360deg);
-    }
-
-    to {
-        transform: rotate(0deg);
     }
 }
 
@@ -164,11 +140,8 @@ body {
     height: min(116vmax, 1220px);
     pointer-events: none;
     opacity: 0;
-    transform: translate(-50%, -50%) scale(0.7);
+    transform: translate(-50%, -50%);
     transform-origin: center;
-    filter:
-        drop-shadow(0 0 18px color-mix(in srgb, var(--music-highlight) 40%, transparent))
-        drop-shadow(0 0 54px color-mix(in srgb, var(--music-highlight) 20%, transparent));
     transition: opacity 0.7s ease;
 }
 
@@ -180,51 +153,52 @@ body {
 
 .ambient-wave-layer {
     transform-origin: 100px 100px;
-    opacity: 0;
     transform-box: fill-box;
+    opacity: 0;
     animation-play-state: paused;
+    will-change: transform, opacity;
 }
 
 .ambient-wave-layer-1 {
-    --wave-rotate: -18deg;
-    --wave-spin: 26deg;
-    --wave-expand: 1.92;
-    --wave-peak-opacity: 0.62;
+    --wave-rotate: -12deg;
+    --wave-spin: 14deg;
+    --wave-expand: 1.58;
+    --wave-peak-opacity: 0.46;
 }
 
 .ambient-wave-layer-2 {
-    --wave-rotate: 21deg;
-    --wave-spin: -34deg;
-    --wave-expand: 2.22;
-    --wave-peak-opacity: 0.48;
+    --wave-rotate: 18deg;
+    --wave-spin: -18deg;
+    --wave-expand: 1.72;
+    --wave-peak-opacity: 0.36;
 }
 
 .ambient-wave-layer-3 {
-    --wave-rotate: 7deg;
-    --wave-spin: 42deg;
-    --wave-expand: 2.55;
-    --wave-peak-opacity: 0.36;
+    --wave-rotate: 5deg;
+    --wave-spin: 10deg;
+    --wave-expand: 1.9;
+    --wave-peak-opacity: 0.26;
 }
 
 .ambient-wave-path {
     fill: none;
-    stroke: url(#ambient-wave-grad-b);
-    stroke-width: 1.28;
+    stroke: color-mix(in srgb, var(--music-highlight) 54%, transparent);
+    stroke-width: 1.2;
     stroke-linecap: round;
     stroke-linejoin: round;
     vector-effect: non-scaling-stroke;
-    filter: url(#ambient-wave-glow);
+    filter: none;
 }
 
 .ambient-wave-path-strong {
-    stroke: url(#ambient-wave-grad-a);
-    stroke-width: 1.72;
+    stroke: color-mix(in srgb, var(--music-highlight) 68%, transparent);
+    stroke-width: 1.55;
 }
 
 .ambient-wave-path-dashed {
-    stroke-dasharray: 3.5 6;
+    stroke-dasharray: none;
     stroke-width: 1;
-    opacity: 0.9;
+    opacity: 0.72;
 }
 
 .music-player-container > *:not(.ambient-wave-rings) {
@@ -238,39 +212,24 @@ body.music-playing .ambient-wave-rings {
 
 body.music-playing .ambient-wave-layer {
     animation-name: ambient-wave-ripple;
-    animation-timing-function: cubic-bezier(0.12, 0.74, 0.2, 1);
+    animation-timing-function: linear;
     animation-iteration-count: infinite;
     animation-play-state: running;
 }
 
 body.music-playing .ambient-wave-layer-1 {
-    animation-duration: 5.8s;
+    animation-duration: 8s;
     animation-delay: 0s;
 }
 
 body.music-playing .ambient-wave-layer-2 {
-    animation-duration: 7.6s;
-    animation-delay: 0.95s;
+    animation-duration: 10.5s;
+    animation-delay: 1.1s;
 }
 
 body.music-playing .ambient-wave-layer-3 {
-    animation-duration: 10.2s;
-    animation-delay: 1.9s;
-}
-
-body.music-playing .ambient-wave-layer-1 .ambient-wave-path {
-    animation: ambient-wave-ring-spin 13.5s linear infinite;
-    transform-origin: 100px 100px;
-}
-
-body.music-playing .ambient-wave-layer-2 .ambient-wave-path {
-    animation: ambient-wave-ring-counter-spin 19s linear infinite;
-    transform-origin: 100px 100px;
-}
-
-body.music-playing .ambient-wave-layer-3 .ambient-wave-path {
-    animation: ambient-wave-ring-spin 28s linear infinite;
-    transform-origin: 100px 100px;
+    animation-duration: 13s;
+    animation-delay: 2.3s;
 }
 
 .main-content {
