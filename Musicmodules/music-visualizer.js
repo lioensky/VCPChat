@@ -227,20 +227,34 @@ function setupVisualizer(app) {
                 app.animateLyrics();
             }
 
-            // --- Bass Animation Logic ---
+            // --- Cover Pulse Animation Logic ---
             if (app.isPlaying && app.currentVisualizerData.length > 0 && app.albumArtWrapper) {
-                const bassBinCount = Math.floor(app.currentVisualizerData.length * 0.05);
-                let bassEnergy = 0;
-                for (let i = 0; i < bassBinCount; i++) {
-                    bassEnergy += app.currentVisualizerData[i];
-                }
-                bassEnergy /= bassBinCount;
+                const startBin = Math.max(0, Math.floor(app.currentVisualizerData.length * app.COVER_MID_START_RATIO));
+                const endBin = Math.min(
+                    app.currentVisualizerData.length,
+                    Math.max(startBin + 1, Math.floor(app.currentVisualizerData.length * app.COVER_MID_END_RATIO))
+                );
+                let midEnergy = 0;
 
-                if (bassEnergy > app.BASS_THRESHOLD && app.bassScale < app.BASS_BOOST) {
-                    app.bassScale = app.BASS_BOOST;
-                } else {
-                    app.bassScale = Math.max(1.0, app.bassScale * app.BASS_DECAY);
+                for (let i = startBin; i < endBin; i++) {
+                    midEnergy += app.currentVisualizerData[i] || 0;
                 }
+
+                midEnergy /= (endBin - startBin);
+
+                const floor = app.COVER_PULSE_FLOOR ?? 0.22;
+                const compressedEnergy = Math.max(0, midEnergy - floor) / Math.max(0.001, 1 - floor);
+                const shapedEnergy = Math.min(1, Math.pow(compressedEnergy, 0.65));
+
+                if (app.coverPulseEnergy === undefined) app.coverPulseEnergy = 0;
+                app.coverPulseEnergy += (shapedEnergy - app.coverPulseEnergy) * app.COVER_PULSE_SMOOTHING;
+
+                app.bassScale = 1 + Math.min(app.coverPulseEnergy, 1) * app.COVER_PULSE_INTENSITY;
+                app.albumArtWrapper.style.transform = `scale(${app.bassScale})`;
+            } else if (app.albumArtWrapper && app.bassScale !== 1.0) {
+                app.coverPulseEnergy = 0;
+                app.bassScale += (1.0 - app.bassScale) * 0.18;
+                if (Math.abs(app.bassScale - 1.0) < 0.001) app.bassScale = 1.0;
                 app.albumArtWrapper.style.transform = `scale(${app.bassScale})`;
             }
 

@@ -158,9 +158,12 @@ document.addEventListener('DOMContentLoaded', () => {
         visualizerColor: { r: 0, g: 195, b: 255 },
         particles: [],
         PARTICLE_COUNT: 45,
-        BASS_THRESHOLD: 0.35,
-        BASS_BOOST: 1.04,
-        BASS_DECAY: 0.98,
+        COVER_MID_START_RATIO: 0.12,
+        COVER_MID_END_RATIO: 0.42,
+        COVER_PULSE_FLOOR: 0.22,
+        COVER_PULSE_INTENSITY: 0.13,
+        COVER_PULSE_SMOOTHING: 0.45,
+        coverPulseEnergy: 0,
         bassScale: 1.0,
 
         // --- Lyrics State ---

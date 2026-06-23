@@ -53,7 +53,7 @@ body {
     left: -20px;
     right: -20px;
     bottom: -20px;
-    z-index: -1;
+    z-index: -2;
     overflow: hidden;
 }
 
@@ -100,39 +100,52 @@ body {
 }
 
 
-@keyframes subtle-glow {
-
-    0%,
-    100% {
-        transform: translate(-50%, -50%) scale(1);
-        opacity: 0.15;
+@keyframes ambient-wave-ripple {
+    0% {
+        transform: rotate(var(--wave-rotate, 0deg)) scale(0.44);
+        opacity: 0;
     }
 
-    50% {
-        transform: translate(-50%, -50%) scale(1.6);
-        opacity: 0.35;
+    12% {
+        opacity: var(--wave-peak-opacity, 0.6);
+    }
+
+    58% {
+        opacity: calc(var(--wave-peak-opacity, 0.6) * 0.38);
+    }
+
+    100% {
+        transform: rotate(calc(var(--wave-rotate, 0deg) + var(--wave-spin, 22deg))) scale(var(--wave-expand, 2.12));
+        opacity: 0;
     }
 }
 
-@keyframes ripple-glow {
-
-    0%,
-    100% {
-        transform: translate(-50%, -50%) scale(1.4);
-        opacity: 0.05;
+@keyframes ambient-wave-ring-spin {
+    from {
+        transform: rotate(0deg);
     }
 
-    50% {
-        transform: translate(-50%, -50%) scale(0.9);
-        opacity: 0.25;
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@keyframes ambient-wave-ring-counter-spin {
+    from {
+        transform: rotate(360deg);
+    }
+
+    to {
+        transform: rotate(0deg);
     }
 }
 
 .music-player-container {
     position: relative;
-    /* 为伪元素提供定位上下文 */
-    z-index: 0;
-    /* 创建堆叠上下文 */
+    /* 为主界面提供定位上下文，并让背景涟漪处在面板后方 */
+    z-index: 1;
+    isolation: isolate;
+    /* 创建独立堆叠上下文，避免背景声纹削弱玻璃面板的 backdrop-filter */
     display: flex;
     height: 100vh;
     padding: 20px;
@@ -142,38 +155,122 @@ body {
     /* 确保伪元素不会溢出 */
 }
 
-.music-player-container::before,
-.music-player-container::after {
-    content: '';
+.ambient-wave-rings {
     position: absolute;
     top: 50%;
     left: 50%;
-    width: 100%;
-    height: 100%;
-    transform: translate(-50%, -50%);
-    background: radial-gradient(circle, var(--music-highlight) 0%, transparent 70%);
-    filter: blur(120px);
     z-index: -1;
+    width: min(116vmax, 1220px);
+    height: min(116vmax, 1220px);
     pointer-events: none;
     opacity: 0;
-    animation: none;
-    transition: opacity 0.4s ease;
+    transform: translate(-50%, -50%) scale(0.7);
+    transform-origin: center;
+    filter:
+        drop-shadow(0 0 18px color-mix(in srgb, var(--music-highlight) 40%, transparent))
+        drop-shadow(0 0 54px color-mix(in srgb, var(--music-highlight) 20%, transparent));
+    transition: opacity 0.7s ease;
 }
 
-body.music-playing .music-player-container::before {
-    animation: subtle-glow 8s ease-in-out infinite;
+.ambient-wave-svg {
+    width: 100%;
+    height: 100%;
+    overflow: visible;
 }
 
-body.music-playing .music-player-container::after {
-    animation: ripple-glow 12s ease-in-out infinite;
-    background: radial-gradient(circle, var(--music-highlight) 0%, transparent 60%);
-    width: 120%;
-    height: 120%;
+.ambient-wave-layer {
+    transform-origin: 100px 100px;
+    opacity: 0;
+    transform-box: fill-box;
+    animation-play-state: paused;
 }
 
-body.music-playing .music-player-container::before,
-body.music-playing .music-player-container::after {
+.ambient-wave-layer-1 {
+    --wave-rotate: -18deg;
+    --wave-spin: 26deg;
+    --wave-expand: 1.92;
+    --wave-peak-opacity: 0.62;
+}
+
+.ambient-wave-layer-2 {
+    --wave-rotate: 21deg;
+    --wave-spin: -34deg;
+    --wave-expand: 2.22;
+    --wave-peak-opacity: 0.48;
+}
+
+.ambient-wave-layer-3 {
+    --wave-rotate: 7deg;
+    --wave-spin: 42deg;
+    --wave-expand: 2.55;
+    --wave-peak-opacity: 0.36;
+}
+
+.ambient-wave-path {
+    fill: none;
+    stroke: url(#ambient-wave-grad-b);
+    stroke-width: 1.28;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    vector-effect: non-scaling-stroke;
+    filter: url(#ambient-wave-glow);
+}
+
+.ambient-wave-path-strong {
+    stroke: url(#ambient-wave-grad-a);
+    stroke-width: 1.72;
+}
+
+.ambient-wave-path-dashed {
+    stroke-dasharray: 3.5 6;
+    stroke-width: 1;
+    opacity: 0.9;
+}
+
+.music-player-container > *:not(.ambient-wave-rings) {
+    position: relative;
+    z-index: 1;
+}
+
+body.music-playing .ambient-wave-rings {
     opacity: 1;
+}
+
+body.music-playing .ambient-wave-layer {
+    animation-name: ambient-wave-ripple;
+    animation-timing-function: cubic-bezier(0.12, 0.74, 0.2, 1);
+    animation-iteration-count: infinite;
+    animation-play-state: running;
+}
+
+body.music-playing .ambient-wave-layer-1 {
+    animation-duration: 5.8s;
+    animation-delay: 0s;
+}
+
+body.music-playing .ambient-wave-layer-2 {
+    animation-duration: 7.6s;
+    animation-delay: 0.95s;
+}
+
+body.music-playing .ambient-wave-layer-3 {
+    animation-duration: 10.2s;
+    animation-delay: 1.9s;
+}
+
+body.music-playing .ambient-wave-layer-1 .ambient-wave-path {
+    animation: ambient-wave-ring-spin 13.5s linear infinite;
+    transform-origin: 100px 100px;
+}
+
+body.music-playing .ambient-wave-layer-2 .ambient-wave-path {
+    animation: ambient-wave-ring-counter-spin 19s linear infinite;
+    transform-origin: 100px 100px;
+}
+
+body.music-playing .ambient-wave-layer-3 .ambient-wave-path {
+    animation: ambient-wave-ring-spin 28s linear infinite;
+    transform-origin: 100px 100px;
 }
 
 .main-content {
