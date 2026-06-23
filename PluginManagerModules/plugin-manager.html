@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src * data: file:; connect-src *;">
+    <title>VCP 插件管理器</title>
+    <link rel="stylesheet" href="../styles/themes.css">
+    <link rel="stylesheet" href="plugin-manager.css">
+</head>
+<body>
+    <nav id="top-nav-bar" class="glass">
+        <div class="nav-left">
+            <div class="nav-title">VCP Plugin Manager</div>
+        </div>
+        <div class="nav-right">
+            <button id="refresh-btn" class="nav-icon-btn" title="刷新插件">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
+            </button>
+            <div class="nav-divider"></div>
+            <button id="minimize-btn" class="nav-icon-btn" title="最小化">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            </button>
+            <button id="maximize-btn" class="nav-icon-btn" title="最大化">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect></svg>
+            </button>
+            <button id="close-btn" class="nav-icon-btn close-nav-btn" title="关闭">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </button>
+        </div>
+    </nav>
+
+    <main class="app-container">
+        <section class="hero-card glass">
+            <div class="hero-copy">
+                <div class="eyebrow">Distributed Runtime</div>
+                <h1>插件管理器</h1>
+                <p>扫描、分类、启停并编辑 VCP 分布式插件。支持管理 <code>plugin-manifest.json</code> / <code>plugin-manifest.json.block</code> 与 <code>config.env</code>。</p>
+            </div>
+            <div class="server-switch-card">
+                <label class="switch-container">
+                    <input type="checkbox" id="distributed-server-toggle">
+                    <span class="switch-slider"></span>
+                    <span class="switch-text">
+                        <strong>分布式服务器</strong>
+                        <small id="distributed-server-status">读取中...</small>
+                    </span>
+                </label>
+                <button id="save-server-toggle-btn" class="glass-btn success">保存开关</button>
+            </div>
+        </section>
+
+        <section class="toolbar glass">
+            <div class="search-box">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>
+                <input id="plugin-search-input" type="search" placeholder="搜索插件、命令、描述或配置项...">
+            </div>
+            <select id="plugin-type-filter" class="filter-select">
+                <option value="all">全部类型</option>
+                <option value="static">static</option>
+                <option value="messagePreprocessor">messagePreprocessor</option>
+                <option value="synchronous">synchronous</option>
+                <option value="asynchronous">asynchronous</option>
+                <option value="service">service</option>
+                <option value="hybridservice">hybridservice</option>
+                <option value="unknown">unknown</option>
+            </select>
+            <select id="plugin-state-filter" class="filter-select">
+                <option value="all">全部状态</option>
+                <option value="enabled">已启用</option>
+                <option value="disabled">已禁用</option>
+                <option value="invalid">异常</option>
+            </select>
+        </section>
+
+        <section id="summary-dashboard" class="summary-dashboard glass">
+            <div class="empty-state">正在读取插件目录...</div>
+        </section>
+
+        <section id="plugin-groups" class="plugin-groups">
+            <div class="empty-state glass">正在扫描 VCPDistributedServer/Plugin ...</div>
+        </section>
+    </main>
+
+    <div id="plugin-modal" class="modal-overlay">
+        <div class="modal-content glass plugin-modal-content">
+            <div class="modal-header">
+                <div>
+                    <h3 id="plugin-modal-title">编辑插件</h3>
+                    <p id="plugin-modal-subtitle" class="modal-subtitle"></p>
+                </div>
+                <button class="modal-close-btn">&times;</button>
+            </div>
+            <div class="modal-tabs">
+                <button class="modal-tab active" data-target="manifest-panel">Manifest</button>
+                <button class="modal-tab" data-target="commands-panel">Invocation Commands</button>
+                <button class="modal-tab" data-target="env-panel">config.env</button>
+            </div>
+            <div class="modal-body">
+                <section id="manifest-panel" class="modal-panel active">
+                    <div class="panel-note">直接编辑完整 Manifest JSON。保存前会进行 JSON 语法校验。</div>
+                    <textarea id="manifest-editor" class="code-editor" spellcheck="false"></textarea>
+                </section>
+                <section id="commands-panel" class="modal-panel">
+                    <div class="panel-note">这里专门管理 <code>capabilities.invocationCommands[].description</code> 字段；修改会同步回 Manifest JSON。</div>
+                    <div id="commands-editor-list" class="commands-editor-list"></div>
+                </section>
+                <section id="env-panel" class="modal-panel">
+                    <div class="panel-note">编辑插件目录下的 <code>config.env</code>。若文件不存在，保存时将自动创建。</div>
+                    <textarea id="env-editor" class="code-editor env-editor" spellcheck="false"></textarea>
+                </section>
+            </div>
+            <div class="modal-footer">
+                <div class="modal-left-actions">
+                    <button id="toggle-plugin-btn" class="glass-btn warning">切换启用状态</button>
+                    <button id="open-plugin-folder-btn" class="glass-btn">打开目录</button>
+                </div>
+                <div class="modal-right-actions">
+                    <button id="save-env-btn" class="glass-btn primary">保存 config.env</button>
+                    <button id="save-manifest-btn" class="glass-btn success">保存 Manifest</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast-container"></div>
+
+    <script src="plugin-manager.js"></script>
+</body>
+</html>

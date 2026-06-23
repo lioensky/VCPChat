@@ -32,6 +32,7 @@ let vchatTranslatorWindow = null;
 let vchatMusicWindow = null;
 let vchatThemesWindow = null;
 let vchatTaskWindow = null;
+let vchatPluginManagerWindow = null;
 
 // --- 收藏系统路径 - 使用项目根目录的 AppData ---
 const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
@@ -52,6 +53,84 @@ function removeFromOpenChildWindows(win) {
 
 function isSafeWidgetId(value) {
     return typeof value === 'string' && /^[a-zA-Z0-9_-]+$/.test(value);
+}
+
+function isSafePluginFolderName(value) {
+    return typeof value === 'string'
+        && value.length > 0
+        && value === path.basename(value)
+        && !value.includes('..')
+        && !/[\\/]/.test(value);
+}
+
+function getPluginManagerPluginDir(folderName) {
+    if (!isSafePluginFolderName(folderName)) {
+        throw new Error('不安全或缺失的插件目录名');
+    }
+    const pluginDir = path.join(PROJECT_ROOT, 'VCPDistributedServer', 'Plugin', folderName);
+    const normalizedRoot = path.join(PROJECT_ROOT, 'VCPDistributedServer', 'Plugin');
+    const relative = path.relative(normalizedRoot, pluginDir);
+    if (relative.startsWith('..') || path.isAbsolute(relative)) {
+        throw new Error('插件目录越界');
+    }
+    return pluginDir;
+}
+
+function findExistingManifestPath(pluginDir) {
+    const enabledPath = path.join(pluginDir, 'plugin-manifest.json');
+    const disabledPath = path.join(pluginDir, 'plugin-manifest.json.block');
+    if (fs.pathExistsSync(enabledPath)) return { path: enabledPath, enabled: true, fileName: 'plugin-manifest.json' };
+    if (fs.pathExistsSync(disabledPath)) return { path: disabledPath, enabled: false, fileName: 'plugin-manifest.json.block' };
+    return { path: enabledPath, enabled: true, fileName: 'plugin-manifest.json' };
+}
+
+async function readVcpPluginEntry(entry, pluginsRoot) {
+    const pluginDir = path.join(pluginsRoot, entry.name);
+    const enabledManifestPath = path.join(pluginDir, 'plugin-manifest.json');
+    const disabledManifestPath = path.join(pluginDir, 'plugin-manifest.json.block');
+    const envPath = path.join(pluginDir, 'config.env');
+
+    const enabledExists = await fs.pathExists(enabledManifestPath);
+    const disabledExists = await fs.pathExists(disabledManifestPath);
+    if (!enabledExists && !disabledExists) return null;
+
+    const manifestPath = enabledExists ? enabledManifestPath : disabledManifestPath;
+    const enabled = enabledExists;
+    const envExists = await fs.pathExists(envPath);
+
+    let manifest = {};
+    let parseError = null;
+    let rawManifest = '';
+
+    try {
+        rawManifest = await fs.readFile(manifestPath, 'utf-8');
+        manifest = JSON.parse(rawManifest);
+    } catch (error) {
+        parseError = error.message;
+        manifest = {};
+    }
+
+    let configEnvContent = '';
+    if (envExists) {
+        try {
+            configEnvContent = await fs.readFile(envPath, 'utf-8');
+        } catch (error) {
+            configEnvContent = '';
+        }
+    }
+
+    return {
+        folderName: entry.name,
+        relativePath: path.relative(PROJECT_ROOT, pluginDir).replace(/\\/g, '/'),
+        enabled,
+        manifestFileName: path.basename(manifestPath),
+        hasConfigEnv: envExists,
+        configEnvContent,
+        manifest,
+        rawManifest,
+        parseError,
+        pluginType: manifest.pluginType || 'unknown'
+    };
 }
 
 function isSafeWidgetFileName(value) {
@@ -372,6 +451,7 @@ function createOrFocusChildWindow(existingWindow, options) {
         if (win === vchatTranslatorWindow) vchatTranslatorWindow = null;
         if (win === vchatThemesWindow) vchatThemesWindow = null;
         if (win === vchatTaskWindow) vchatTaskWindow = null;
+        if (win === vchatPluginManagerWindow) vchatPluginManagerWindow = null;
     });
 
     console.log(`[DesktopHandlers] Created child window: ${options.title}`);
@@ -609,6 +689,26 @@ function registerManagedWindows() {
             return vchatTaskWindow;
         },
     });
+
+    windowService.register(WINDOW_APP_IDS.PLUGIN_MANAGER, {
+        owner: 'desktopHandlers',
+        getWindow: () => vchatPluginManagerWindow || findWindowByUrl('plugin-manager.html'),
+        open: async () => {
+            const existingPluginManager = findWindowByUrl('plugin-manager.html');
+            if (existingPluginManager) {
+                if (!existingPluginManager.isVisible()) existingPluginManager.show();
+                existingPluginManager.focus();
+                vchatPluginManagerWindow = existingPluginManager;
+                return existingPluginManager;
+            }
+            vchatPluginManagerWindow = createOrFocusChildWindow(vchatPluginManagerWindow, {
+                width: 1240, height: 820, minWidth: 900, minHeight: 620,
+                title: 'VCP 插件管理器',
+                htmlPath: path.join(app.getAppPath(), 'PluginManagerModules', 'plugin-manager.html'),
+            });
+            return vchatPluginManagerWindow;
+        },
+    });
 }
 
 function resolveAppActionToAppId(appAction) {
@@ -639,6 +739,8 @@ function resolveAppActionToAppId(appAction) {
             return WINDOW_APP_IDS.THEMES;
         case 'open-task-window':
             return WINDOW_APP_IDS.TASK;
+        case 'open-plugin-manager-window':
+            return WINDOW_APP_IDS.PLUGIN_MANAGER;
         case 'open-desktop-window':
             return WINDOW_APP_IDS.DESKTOP;
         default:
@@ -1983,6 +2085,118 @@ function initialize(params) {
             return { success: true, thumbnail: dataUrl };
         } catch (err) {
             console.error('[DesktopHandlers] Read wallpaper thumbnail error:', err);
+            return { success: false, error: err.message };
+        }
+    });
+
+    // ============================================================
+    // --- IPC: VCP 插件管理器 ---
+    // ============================================================
+
+    ipcMain.handle('plugin-manager-list-plugins', async () => {
+        try {
+            const pluginsRoot = path.join(PROJECT_ROOT, 'VCPDistributedServer', 'Plugin');
+            await fs.ensureDir(pluginsRoot);
+            const entries = await fs.readdir(pluginsRoot, { withFileTypes: true });
+            const plugins = [];
+
+            for (const entry of entries) {
+                if (!entry.isDirectory()) continue;
+                const plugin = await readVcpPluginEntry(entry, pluginsRoot);
+                if (plugin) plugins.push(plugin);
+            }
+
+            plugins.sort((a, b) => {
+                const aName = a.manifest?.displayName || a.manifest?.name || a.folderName;
+                const bName = b.manifest?.displayName || b.manifest?.name || b.folderName;
+                return aName.localeCompare(bName, 'zh-CN');
+            });
+
+            return { success: true, plugins, pluginsRoot };
+        } catch (err) {
+            console.error('[PluginManager] List plugins error:', err);
+            return { success: false, error: err.message, plugins: [] };
+        }
+    });
+
+    ipcMain.handle('plugin-manager-save-manifest', async (event, data = {}) => {
+        try {
+            const pluginDir = getPluginManagerPluginDir(data.folderName);
+            await fs.ensureDir(pluginDir);
+            const manifestInfo = findExistingManifestPath(pluginDir);
+            const manifestPath = manifestInfo.path;
+
+            if (!data.manifest || typeof data.manifest !== 'object' || Array.isArray(data.manifest)) {
+                return { success: false, error: 'Manifest 必须是 JSON 对象' };
+            }
+
+            const serialized = `${JSON.stringify(data.manifest, null, 2)}\n`;
+            JSON.parse(serialized);
+            await fs.writeFile(manifestPath, serialized, 'utf-8');
+
+            return { success: true, path: manifestPath };
+        } catch (err) {
+            console.error('[PluginManager] Save manifest error:', err);
+            return { success: false, error: err.message };
+        }
+    });
+
+    ipcMain.handle('plugin-manager-save-config-env', async (event, data = {}) => {
+        try {
+            const pluginDir = getPluginManagerPluginDir(data.folderName);
+            await fs.ensureDir(pluginDir);
+            const envPath = path.join(pluginDir, 'config.env');
+            await fs.writeFile(envPath, String(data.content ?? ''), 'utf-8');
+            return { success: true, path: envPath };
+        } catch (err) {
+            console.error('[PluginManager] Save config.env error:', err);
+            return { success: false, error: err.message };
+        }
+    });
+
+    ipcMain.handle('plugin-manager-set-plugin-enabled', async (event, data = {}) => {
+        try {
+            const pluginDir = getPluginManagerPluginDir(data.folderName);
+            const enabledPath = path.join(pluginDir, 'plugin-manifest.json');
+            const disabledPath = path.join(pluginDir, 'plugin-manifest.json.block');
+            const targetEnabled = Boolean(data.enabled);
+
+            if (targetEnabled) {
+                if (await fs.pathExists(enabledPath)) {
+                    return { success: true, enabled: true };
+                }
+                if (!await fs.pathExists(disabledPath)) {
+                    return { success: false, error: '找不到 plugin-manifest.json.block' };
+                }
+                await fs.move(disabledPath, enabledPath, { overwrite: false });
+                return { success: true, enabled: true };
+            }
+
+            if (await fs.pathExists(disabledPath)) {
+                return { success: true, enabled: false };
+            }
+            if (!await fs.pathExists(enabledPath)) {
+                return { success: false, error: '找不到 plugin-manifest.json' };
+            }
+            await fs.move(enabledPath, disabledPath, { overwrite: false });
+            return { success: true, enabled: false };
+        } catch (err) {
+            console.error('[PluginManager] Toggle plugin enabled error:', err);
+            return { success: false, error: err.message };
+        }
+    });
+
+    ipcMain.handle('plugin-manager-open-plugin-folder', async (event, data = {}) => {
+        try {
+            const pluginDir = getPluginManagerPluginDir(data.folderName);
+            if (!await fs.pathExists(pluginDir)) {
+                return { success: false, error: '插件目录不存在' };
+            }
+            const errorMsg = await shell.openPath(pluginDir);
+            if (errorMsg) return { success: false, error: errorMsg };
+            return { success: true };
+        } catch (err) {
+            console.error('[PluginManager] Open plugin folder error:', err);
             return { success: false, error: err.message };
         }
     });

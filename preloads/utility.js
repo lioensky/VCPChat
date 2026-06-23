@@ -430,6 +430,11 @@ function createCatalog(ops) {
         desktopOpenSystemTool: query((cmd) => ops.invoke('desktop-open-system-tool', cmd)),
         desktopOpenWidgetInCanvas: query((data) => ops.invoke('desktop-open-widget-in-canvas', data)),
         onDesktopWidgetSourceSaved: subscription(ops.subscribe('desktop-widget-source-saved', (_event, data) => data)),
+        pluginManagerListPlugins: query(() => ops.invoke('plugin-manager-list-plugins')),
+        pluginManagerSaveManifest: query((data) => ops.invoke('plugin-manager-save-manifest', data)),
+        pluginManagerSaveConfigEnv: query((data) => ops.invoke('plugin-manager-save-config-env', data)),
+        pluginManagerSetPluginEnabled: query((data) => ops.invoke('plugin-manager-set-plugin-enabled', data)),
+        pluginManagerOpenPluginFolder: query((data) => ops.invoke('plugin-manager-open-plugin-folder', data)),
     };
 }
 
@@ -608,7 +613,12 @@ const ALLOWED_KEYS = [
     "onDesktopWidgetSourceSaved",
     "toggleSelectionListener",
     "getSelectionListenerStatus",
-    "getEmoticonLibrary"
+    "getEmoticonLibrary",
+    "pluginManagerListPlugins",
+    "pluginManagerSaveManifest",
+    "pluginManagerSaveConfigEnv",
+    "pluginManagerSetPluginEnabled",
+    "pluginManagerOpenPluginFolder"
 ];
 
 const ops = createOps();

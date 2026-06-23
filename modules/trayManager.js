@@ -33,6 +33,7 @@ const trayManager = (function () {
         { id: 'vchat-app-toolbox', name: '工具', icon: 'toolbox', action: 'launch-human-toolbox' },
         { id: 'vchat-app-dbmanager', name: '数据', icon: 'database', action: 'launch-vchat-manager' },
         { id: 'vchat-app-task', name: '任务', icon: 'task', action: 'open-task-window' },
+        { id: 'vchat-app-plugin-manager', name: '插件', icon: 'plugin', action: 'open-plugin-manager-window' },
         { id: 'vchat-app-terminal', name: '终端', icon: 'terminal', action: 'open-powershell-executor-terminal' },
         { id: 'vchat-app-desktop', name: '桌面', icon: 'desktop', action: 'open-desktop-window' }
     ];
@@ -55,7 +56,8 @@ const trayManager = (function () {
         database: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-database"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/></svg>`,
         task: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-clipboard-list"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4"/><path d="M12 16h4"/><path d="M8 11h.01"/><path d="M8 16h.01"/></svg>`,
         desktop: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-monitor"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>`,
-        terminal: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-terminal-square"><path d="m7 11 2-2-2-2"/><path d="M11 13h4"/><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/></svg>`
+        terminal: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-terminal-square"><path d="m7 11 2-2-2-2"/><path d="M11 13h4"/><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/></svg>`,
+        plugin: `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-puzzle"><path d="M15.39 4.39a1.5 1.5 0 1 0-2.78 1.12A2 2 0 0 1 10.76 8H5a1 1 0 0 0-1 1v5.76a2 2 0 0 0 2.49 1.85 1.5 1.5 0 1 1 1.12 2.78A2 2 0 0 0 9.24 22H15a1 1 0 0 0 1-1v-5.76a2 2 0 0 1 2.49-1.85 1.5 1.5 0 1 0 1.12-2.78A2 2 0 0 1 22 9.24V5a1 1 0 0 0-1-1h-4.24a2 2 0 0 1-1.37.39Z"/></svg>`
     };
 
     /**
