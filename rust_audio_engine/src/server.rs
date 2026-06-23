@@ -259,11 +259,6 @@ pub struct ConfigureNormalizationRequest {
 }
 
 #[derive(Deserialize)]
-pub struct PreloadGainRequest {
-    tracks: Vec<String>,  // List of file paths to preload
-}
-
-#[derive(Deserialize)]
 pub struct ScanBackgroundRequest {
     path: String,
     store: Option<bool>,  // Whether to store in database (default: true)

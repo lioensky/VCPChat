@@ -18,18 +18,6 @@ const CACHE_MAGIC: &[u8; 4] = b"VCP1";
 const CACHE_VERSION: u32 = 1;
 const CACHE_HEADER_SIZE: usize = 32;
 
-/// Cache file header for validation
-#[repr(C)]
-struct CacheHeader {
-    magic: [u8; 4],
-    version: u32,
-    sample_rate: u32,
-    channels: u32,
-    frame_count: u64,
-    checksum: u32,
-    _reserved: u32,
-}
-
 /// Calculate CRC32 checksum for cache validation
 fn calculate_checksum(data: &[f64]) -> u32 {
     let mut hasher = crc32fast::Hasher::new();

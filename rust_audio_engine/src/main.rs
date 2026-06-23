@@ -12,7 +12,6 @@ mod player;
 mod processor;
 mod server;
 mod config;
-mod pipeline;
 mod webdav;
 mod settings;
 #[cfg(windows)]

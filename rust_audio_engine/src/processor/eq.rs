@@ -67,7 +67,6 @@ pub struct Equalizer {
     smooth_counter: Vec<u32>,            // samples remaining in crossfade per band
     channels: usize,
     enabled: bool,
-    sample_rate: f64,
 }
 
 const EQ_SMOOTH_SAMPLES: u32 = 1024; // ~23ms @ 44100Hz
@@ -94,7 +93,6 @@ impl Equalizer {
             smooth_counter: vec![0u32; 10],
             channels,
             enabled: false,
-            sample_rate,
         }
     }
 

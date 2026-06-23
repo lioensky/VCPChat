@@ -13,7 +13,10 @@ use cpal::{Stream, StreamConfig};
 use assert_no_alloc::assert_no_alloc;
 
 use super::callback::{audio_callback_lockfree, LockfreeDspContext};
-use super::state::{AudioCommand, PlayerState, SharedState};
+use super::state::{
+    AudioCommand, PlayerState, SharedState,
+    EVENT_LOAD_COMPLETE, EVENT_LOAD_ERROR,
+};
 use crate::config::PhaseResponse;
 use crate::processor::{
     AtomicCrossfeedParams, AtomicDynamicLoudnessParams, AtomicDynamicLoudnessTelemetry,
@@ -679,10 +682,19 @@ pub fn audio_thread_main(
                 }
 
                 log::debug!("DSP context updated for {} Hz sample rate", sr_u32);
+
+                // Clear is_loading AFTER file_path and all state has been updated.
+                // This prevents the race condition where the frontend sees
+                // is_loading=false but file_path is still the old value.
+                shared_state.is_loading.store(false, Ordering::Release);
+                shared_state.event_flags.fetch_or(EVENT_LOAD_COMPLETE, Ordering::Release);
             }
             Ok(AudioCommand::LoadError(e)) => {
                 log::error!("Async load failed: {}", e);
+                *shared_state.load_error.write() = Some(e);
+                shared_state.is_loading.store(false, Ordering::Release);
                 shared_state.state.store(PlayerState::Stopped);
+                shared_state.event_flags.fetch_or(EVENT_LOAD_ERROR, Ordering::Release);
             }
             Ok(AudioCommand::Shutdown) | Err(_) => break,
         }

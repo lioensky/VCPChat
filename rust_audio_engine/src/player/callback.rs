@@ -98,11 +98,6 @@ pub struct LockfreeDspContext {
     pub noise_shaper_params: Arc<AtomicNoiseShaperParams>,
     pub dynamic_loudness_params: Arc<AtomicDynamicLoudnessParams>,
 
-    /// Sample rate
-    sample_rate: f64,
-    /// Channel count
-    channels: usize,
-
     /// Merged convolver — updated via ArcSwap (wait-free pointer swap from main thread,
     /// wait-free load from audio thread). No Mutex needed.
     pub merged_convolver: Arc<ArcSwapOption<FFTConvolver>>,
@@ -162,8 +157,6 @@ impl LockfreeDspContext {
             volume_params,
             noise_shaper_params,
             dynamic_loudness_params,
-            sample_rate,
-            channels,
             merged_convolver: Arc::new(ArcSwapOption::empty()),
             external_ir_kernel: parking_lot::Mutex::new(None),
             fir_ir_kernel: parking_lot::Mutex::new(None),

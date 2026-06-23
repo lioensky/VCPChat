@@ -872,6 +872,9 @@ pub struct DynamicLoudnessParamsSnapshot {
     pub enabled: bool,
     pub volume: f64,
     pub strength: f64,
+    pub reference_volume_db: f64,
+    pub transition_db: f64,
+    pub pre_gain_db: f64,
 }
 
 impl Default for DynamicLoudnessParamsSnapshot {
@@ -880,6 +883,9 @@ impl Default for DynamicLoudnessParamsSnapshot {
             enabled: true,
             volume: 1.0,
             strength: 1.0,
+            reference_volume_db: -15.0,
+            transition_db: 25.0,
+            pre_gain_db: -3.0,
         }
     }
 }
@@ -889,6 +895,9 @@ pub struct AtomicDynamicLoudnessParams {
     pub enabled: AtomicBool,
     pub volume: AtomicF64,
     pub strength: AtomicF64,
+    pub reference_volume_db: AtomicF64,
+    pub transition_db: AtomicF64,
+    pub pre_gain_db: AtomicF64,
     dirty: AtomicBool,
 }
 
@@ -898,6 +907,9 @@ impl AtomicDynamicLoudnessParams {
             enabled: AtomicBool::new(true),
             volume: AtomicF64::new(1.0),
             strength: AtomicF64::new(1.0),
+            reference_volume_db: AtomicF64::new(-15.0),
+            transition_db: AtomicF64::new(25.0),
+            pre_gain_db: AtomicF64::new(-3.0),
             dirty: AtomicBool::new(false),
         }
     }
@@ -914,12 +926,25 @@ impl AtomicDynamicLoudnessParams {
         self.dirty.store(true, Ordering::Release);
     }
 
-    /// Alias for set_volume - for API compatibility
+    /// Set reference volume in dB (0.0 to -30.0)
     #[inline]
     pub fn set_ref_volume_db(&self, db: f64) {
-        // Convert dB to linear (0dB = 1.0, -20dB = 0.1, etc.)
-        let linear = 10f64.powf(db / 20.0);
-        self.set_volume(linear);
+        self.reference_volume_db.store(db.clamp(-30.0, 0.0), Ordering::Release);
+        self.dirty.store(true, Ordering::Release);
+    }
+
+    /// Set transition range in dB
+    #[inline]
+    pub fn set_transition_db(&self, db: f64) {
+        self.transition_db.store(db.clamp(10.0, 40.0), Ordering::Release);
+        self.dirty.store(true, Ordering::Release);
+    }
+
+    /// Set pre-gain in dB
+    #[inline]
+    pub fn set_pre_gain_db(&self, db: f64) {
+        self.pre_gain_db.store(db.clamp(-6.0, 0.0), Ordering::Release);
+        self.dirty.store(true, Ordering::Release);
     }
 
     /// Set strength (0.0 - 1.0)
@@ -935,6 +960,9 @@ impl AtomicDynamicLoudnessParams {
             enabled: self.enabled.load(Ordering::Acquire),
             volume: self.volume.load(Ordering::Acquire),
             strength: self.strength.load(Ordering::Acquire),
+            reference_volume_db: self.reference_volume_db.load(Ordering::Acquire),
+            transition_db: self.transition_db.load(Ordering::Acquire),
+            pre_gain_db: self.pre_gain_db.load(Ordering::Acquire),
         }
     }
 

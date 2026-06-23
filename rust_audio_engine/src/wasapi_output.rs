@@ -100,11 +100,6 @@ pub mod wasapi_exclusive {
             })
         }
         
-        /// Get shared state reference
-        pub fn shared_state(&self) -> Arc<WasapiSharedState> {
-            Arc::clone(&self.shared_state)
-        }
-        
         /// Start playback
         pub fn play(&self) -> Result<(), String> {
             self.cmd_tx.send(WasapiCommand::Play)

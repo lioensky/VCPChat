@@ -136,11 +136,6 @@ impl SettingsManager {
         Ok(())
     }
     
-    /// Get current settings
-    pub fn get(&self) -> &PersistentSettings {
-        &self.settings
-    }
-    
     /// Update settings and save to file
     pub fn update(&mut self, update: PersistentSettingsUpdate) -> Result<(), String> {
         if let Some(volume) = update.volume {
