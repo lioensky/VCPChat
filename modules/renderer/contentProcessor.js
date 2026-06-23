@@ -170,13 +170,12 @@ function ensureNewlineAfterCodeBlock(text) {
  */
 function ensureSpaceAfterTilde(text) {
     if (typeof text !== 'string') return text;
-    // Replace a tilde `~` with `~ ` to prevent it from being interpreted as a strikethrough marker.
-    // This should not affect tildes in URLs (e.g., `.../~user/`) or code (e.g., `var_~a`).
-    // The regex matches a tilde if it's:
-    // 1. At the start of the string (`^`).
-    // 2. Preceded by a character that is NOT a word character (`\w`), path separator (`/`, `\`), or equals sign (`=`).
-    // It also ensures it's not already followed by a space or another tilde `(?![\s~])`.
-    return text.replace(/(^|[^\w/\\=])~(?![\s~])/g, '$1~ ');
+    // Replace a single tilde `~` with `~ ` to prevent it from being interpreted as a strikethrough marker.
+    // This should not affect tildes in URLs (e.g., `.../~user/`), home paths (`~/file`), or common code operators (`~=`, `~=`).
+    // The previous rule excluded tildes preceded by ASCII word chars, so the closing marker in `~text~`
+    // remained untouched (`~ text~`) and marked could still treat the pair as strikethrough in the main chat.
+    // Keep only the URL/path/operator exclusions and protect both the opening and closing single tilde.
+    return text.replace(/(^|[^/\\=~])~(?![\s~=/])/g, '$1~ ');
 }
 
 /**
@@ -1237,7 +1236,7 @@ function applyContentProcessors(text) {
         // ensureNewlineAfterCodeBlock
         .replace(/^(\s*```)(?![\r\n])/gm, '$1\n')
         // ensureSpaceAfterTilde
-        .replace(/(^|[^\w/\\=])~(?![\s~])/g, '$1~ ')
+        .replace(/(^|[^/\\=~])~(?![\s~=/])/g, '$1~ ')
         // removeSpeakerTags - Simplified regex to remove all occurrences at the start
         .replace(/^(\[(?:(?!\]:\s).)*的发言\]:\s*)+/g, '')
         // ensureSeparatorBetweenImgAndCode
