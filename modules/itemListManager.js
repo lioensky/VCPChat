@@ -332,14 +332,8 @@ window.itemListManager = (() => {
             });
         }
 
-        String(expression.shortLabel || '')
-            .split(/[\/·,，。|｜]/)
-            .map(part => part.trim())
-            .filter(Boolean)
-            .forEach((label, index) => {
-                addEmotionDistributionCandidate(weightedMap, label, Math.max(0.15, 0.35 - index * 0.08), 0);
-            });
-
+        // expression.shortLabel 是复合表达，可能包含驱动层/性别轴体（如“好奇上扬”“混合态”），
+        // 悬停随机标签只使用 mood.archetypes 与 mood.label 里的情绪原型，避免性别极向混入。
         const totalWeight = Array.from(weightedMap.values()).reduce((sum, value) => sum + value, 0);
         if (totalWeight <= 0) return [];
 
