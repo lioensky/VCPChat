@@ -15,7 +15,7 @@ echo [VCP] Deploy target: "%TARGET_EXE%"
 
 if not exist "%ENGINE_DIR%\Cargo.toml" (
     echo [VCP][ERROR] Cargo.toml not found: "%ENGINE_DIR%\Cargo.toml"
-    exit /b 1
+    goto :fail
 )
 
 set "PATH=%PKGCONF_DIR%;%PATH%"
@@ -29,28 +29,43 @@ popd
 
 if not "%BUILD_EXIT%"=="0" (
     echo [VCP][ERROR] cargo build --release failed with code %BUILD_EXIT%.
-    exit /b %BUILD_EXIT%
+    set "EXIT_CODE=%BUILD_EXIT%"
+    goto :fail_with_code
 )
 
 if not exist "%SOURCE_EXE%" (
     echo [VCP][ERROR] Built executable not found: "%SOURCE_EXE%"
-    exit /b 1
+    goto :fail
 )
 
 if not exist "%DEPLOY_DIR%" (
     mkdir "%DEPLOY_DIR%"
     if errorlevel 1 (
         echo [VCP][ERROR] Failed to create deploy dir: "%DEPLOY_DIR%"
-        exit /b 1
+        goto :fail
     )
 )
 
 copy /Y "%SOURCE_EXE%" "%TARGET_EXE%"
 if errorlevel 1 (
-    echo [VCP][ERROR] Failed to copy executable. If VCP is running, close it and retry.
-    exit /b 1
+    echo [VCP][ERROR] Failed to copy executable.
+    echo [VCP][ERROR] If VCP or audio_server.exe is running, close it and retry.
+    goto :fail
 )
 
+echo.
 echo [VCP] Done. Deployed audio engine to:
 echo [VCP] "%TARGET_EXE%"
+echo.
+pause
 exit /b 0
+
+:fail
+set "EXIT_CODE=1"
+
+:fail_with_code
+echo.
+echo [VCP] Build/deploy failed. Exit code: %EXIT_CODE%
+echo.
+pause
+exit /b %EXIT_CODE%
