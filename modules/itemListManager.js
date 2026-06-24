@@ -255,7 +255,16 @@ window.itemListManager = (() => {
             .slice(0, 5);
     }
 
+    function normalizeEmotionLabel(label) {
+        const text = String(label || '').trim();
+        if (!text || text === '暂无观测') return '';
+        return text.split(/[\/·,，。|｜]/)[0].trim();
+    }
+
     function getConciseMoodLabel(persona) {
+        const picked = pickPersonaEmotionLabel(persona);
+        if (picked) return picked.slice(0, 4);
+
         const candidates = [
             persona?.primaryArchetype,
             persona?.moodLabel,
@@ -263,18 +272,111 @@ window.itemListManager = (() => {
         ].filter(Boolean);
 
         for (const label of candidates) {
-            const text = String(label).trim();
-            if (!text || text === '暂无观测') continue;
-            const firstSegment = text.split(/[\/·,，。|｜]/)[0].trim();
-            if (firstSegment && firstSegment.length <= 6) {
-                return firstSegment.slice(0, 4);
-            }
+            const firstSegment = normalizeEmotionLabel(label);
             if (firstSegment) {
                 return firstSegment.slice(0, 4);
             }
         }
 
         return '观测中';
+    }
+
+    function addEmotionDistributionCandidate(map, label, score, confidence = 0) {
+        const normalizedLabel = normalizeEmotionLabel(label);
+        const numericScore = Number(score);
+        if (!normalizedLabel || !Number.isFinite(numericScore) || numericScore <= 0) return;
+
+        const numericConfidence = Number(confidence);
+        const confidenceBoost = Number.isFinite(numericConfidence) && numericConfidence > 0
+            ? 1 + Math.min(numericConfidence, 1) * 0.35
+            : 1;
+        map.set(normalizedLabel, (map.get(normalizedLabel) || 0) + numericScore * confidenceBoost);
+    }
+
+    function buildEmotionDistribution(mood = {}, expression = {}) {
+        const archetypes = mood.archetypes || {};
+        const weightedMap = new Map();
+
+        addEmotionDistributionCandidate(
+            weightedMap,
+            archetypes.primary?.label || mood.label,
+            archetypes.primary?.score ?? mood.archetypeScore ?? 1,
+            archetypes.primary?.confidence
+        );
+        addEmotionDistributionCandidate(
+            weightedMap,
+            archetypes.secondary?.label,
+            archetypes.secondary?.score,
+            archetypes.secondary?.confidence
+        );
+
+        if (Array.isArray(archetypes.candidates)) {
+            archetypes.candidates.forEach(candidate => {
+                addEmotionDistributionCandidate(
+                    weightedMap,
+                    candidate?.label,
+                    candidate?.score ?? candidate?.weight ?? candidate?.activation,
+                    candidate?.confidence
+                );
+            });
+        }
+
+        if (Array.isArray(archetypes.families)) {
+            archetypes.families.forEach(family => {
+                addEmotionDistributionCandidate(
+                    weightedMap,
+                    family?.primary?.label,
+                    family?.primary?.score ?? family?.activation ?? family?.gate,
+                    family?.confidence
+                );
+            });
+        }
+
+        String(expression.shortLabel || '')
+            .split(/[\/·,，。|｜]/)
+            .map(part => part.trim())
+            .filter(Boolean)
+            .forEach((label, index) => {
+                addEmotionDistributionCandidate(weightedMap, label, Math.max(0.15, 0.35 - index * 0.08), 0);
+            });
+
+        const totalWeight = Array.from(weightedMap.values()).reduce((sum, value) => sum + value, 0);
+        if (totalWeight <= 0) return [];
+
+        return Array.from(weightedMap.entries())
+            .map(([label, weight]) => ({
+                label,
+                weight,
+                probability: weight / totalWeight
+            }))
+            .sort((a, b) => b.probability - a.probability);
+    }
+
+    function pickPersonaEmotionLabel(persona) {
+        const distribution = Array.isArray(persona?.emotionDistribution) ? persona.emotionDistribution : [];
+        if (!distribution.length) return '';
+
+        const totalWeight = distribution.reduce((sum, item) => sum + (Number(item.weight) || 0), 0);
+        if (totalWeight <= 0) return distribution[0]?.label || '';
+
+        let cursor = Math.random() * totalWeight;
+        for (const item of distribution) {
+            cursor -= Number(item.weight) || 0;
+            if (cursor <= 0) {
+                return item.label || '';
+            }
+        }
+
+        return distribution[distribution.length - 1]?.label || '';
+    }
+
+    function setPersonaEmotionText(li, persona) {
+        if (!li || !persona) return;
+        const nameSpan = li.querySelector('.agent-name');
+        if (!nameSpan) return;
+
+        nameSpan.dataset.defaultName = nameSpan.dataset.defaultName || nameSpan.textContent;
+        nameSpan.dataset.emotionText = `${persona.agentLabel}正在｢${getConciseMoodLabel(persona)}｣`;
     }
 
     function createPersonaViewModel(rawAgent) {
@@ -293,6 +395,7 @@ window.itemListManager = (() => {
         const sentence = expression.sentence || '';
         const primaryArchetype = archetypes.primary?.label || '';
         const topArchetypes = Array.isArray(archetypes.candidates) ? archetypes.candidates : [];
+        const emotionDistribution = buildEmotionDistribution(mood, expression);
         const genderLabel = expression.gender?.label || '';
         const driveLabel = expression.drive?.label || '';
 
@@ -318,6 +421,7 @@ window.itemListManager = (() => {
             sentence,
             primaryArchetype,
             topArchetypes,
+            emotionDistribution,
             genderLabel,
             driveLabel,
             counterPressureLabel,
@@ -553,6 +657,7 @@ window.itemListManager = (() => {
             persona.shortLabel,
             persona.sentence,
             persona.primaryArchetype,
+            persona.emotionDistribution.map(item => `${item.label}:${item.weight}:${item.probability}`).join('|'),
             persona.genderLabel,
             persona.driveLabel,
             persona.counterPressureLabel,
@@ -587,6 +692,7 @@ window.itemListManager = (() => {
 
         li.addEventListener('mouseenter', () => {
             if (!li.classList.contains('has-agent-emotion')) return;
+            setPersonaEmotionText(li, li._personaViewModel);
             showPersonaCard(li);
         });
 
@@ -618,12 +724,8 @@ window.itemListManager = (() => {
         li.classList.remove('agent-emotion-unavailable');
         li.style.setProperty('--agent-emotion-color', persona.color);
 
-        const nameSpan = li.querySelector('.agent-name');
-        if (nameSpan) {
-            nameSpan.dataset.defaultName = nameSpan.dataset.defaultName || nameSpan.textContent;
-            // 主显示保持轻量：仍使用“xx正在 + 4字心境”，详细复合表达交给弹幕层展示
-            nameSpan.dataset.emotionText = `${persona.agentLabel}正在｢${getConciseMoodLabel(persona)}｣`;
-        }
+        // 主显示保持轻量：仍使用“xx正在 + 4字心境”，但每次悬停会按情绪分布概率重新抽取标签
+        setPersonaEmotionText(li, persona);
 
         bindPersonaHoverHandlers(li);
 
