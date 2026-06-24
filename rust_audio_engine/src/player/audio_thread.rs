@@ -535,7 +535,18 @@ pub fn audio_thread_main(
                 *shared_state.noise_shaper_curve.write() = curve;
                 log::info!("Noise shaper curve set to {:?} (lock-free path)", curve);
             }
-            Ok(AudioCommand::LoadComplete(result)) => {
+            Ok(AudioCommand::LoadComplete { generation, result }) => {
+                let current_generation = shared_state.load_generation.load(Ordering::Acquire);
+                if generation != current_generation {
+                    log::info!(
+                        "Ignoring stale async load complete: generation={} current={} path={}",
+                        generation,
+                        current_generation,
+                        result.file_path
+                    );
+                    continue;
+                }
+
                 log::info!(
                     "Async load complete: {} frames @ {} Hz",
                     result.total_frames,
@@ -689,9 +700,20 @@ pub fn audio_thread_main(
                 shared_state.is_loading.store(false, Ordering::Release);
                 shared_state.event_flags.fetch_or(EVENT_LOAD_COMPLETE, Ordering::Release);
             }
-            Ok(AudioCommand::LoadError(e)) => {
-                log::error!("Async load failed: {}", e);
-                *shared_state.load_error.write() = Some(e);
+            Ok(AudioCommand::LoadError { generation, error }) => {
+                let current_generation = shared_state.load_generation.load(Ordering::Acquire);
+                if generation != current_generation {
+                    log::info!(
+                        "Ignoring stale async load error: generation={} current={} error={}",
+                        generation,
+                        current_generation,
+                        error
+                    );
+                    continue;
+                }
+
+                log::error!("Async load failed: {}", error);
+                *shared_state.load_error.write() = Some(error);
                 shared_state.is_loading.store(false, Ordering::Release);
                 shared_state.state.store(PlayerState::Stopped);
                 shared_state.event_flags.fetch_or(EVENT_LOAD_ERROR, Ordering::Release);

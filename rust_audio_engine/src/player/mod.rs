@@ -275,7 +275,10 @@ impl AudioPlayer {
         self.stop();
         GaplessManager::cancel_preload(&self.shared_state);
 
-        // Set loading state
+        // Set loading state and publish a new load generation.
+        // Slow decode/resample threads from older track changes must not be
+        // allowed to overwrite the current track after a newer request starts.
+        let load_generation = self.shared_state.load_generation.fetch_add(1, Ordering::AcqRel) + 1;
         self.shared_state.is_loading.store(true, Ordering::Release);
         self.shared_state.load_progress.store(0, Ordering::Relaxed);
         *self.shared_state.load_error.write() = None;
@@ -306,13 +309,17 @@ impl AudioPlayer {
                     // Clearing it here would create a race condition where
                     // the frontend sees is_loading=false but file_path is
                     // still the old value, causing waitForTrackReady to time out.
-                    let _ = cmd_tx.send(AudioCommand::LoadComplete(load_result));
+                    let _ = cmd_tx.send(AudioCommand::LoadComplete {
+                        generation: load_generation,
+                        result: load_result,
+                    });
                 }
                 Err(e) => {
                     log::error!("Async load failed: {}", e);
-                    *shared_state.load_error.write() = Some(e.clone());
-                    shared_state.is_loading.store(false, Ordering::Release);
-                    let _ = cmd_tx.send(AudioCommand::LoadError(e));
+                    let _ = cmd_tx.send(AudioCommand::LoadError {
+                        generation: load_generation,
+                        error: e,
+                    });
                 }
             }
         });
@@ -502,7 +509,7 @@ impl AudioPlayer {
 
     /// Check if a file is currently being loaded
     pub fn is_loading(&self) -> bool {
-        self.shared_state.is_loading.load(Ordering::Relaxed)
+        self.shared_state.is_loading.load(Ordering::Acquire)
     }
 
     /// Get loading progress (0-100)

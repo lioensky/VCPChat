@@ -195,8 +195,8 @@ pub enum AudioCommand {
     SetFirConvolver { ir_data: Vec<f64>, channels: usize },
     ClearFirConvolver,
     SetNoiseShaperCurve { curve: NoiseShaperCurve },
-    LoadComplete(LoadResult),
-    LoadError(String),
+    LoadComplete { generation: u64, result: LoadResult },
+    LoadError { generation: u64, error: String },
 }
 
 /// State of the audio player
@@ -304,6 +304,9 @@ pub struct SharedState {
 
     // Async loading state
     pub is_loading: AtomicBool,
+    /// Monotonically increasing async load request id.
+    /// Stale decode threads must not publish LoadComplete/LoadError for older ids.
+    pub load_generation: AtomicU64,
     pub load_progress: AtomicU64,  // Percentage (0-100)
     pub load_error: RwLock<Option<String>>,
 
@@ -355,6 +358,7 @@ impl SharedState {
             gapless_swap_pending: AtomicBool::new(false),
 
             is_loading: AtomicBool::new(false),
+            load_generation: AtomicU64::new(0),
             load_progress: AtomicU64::new(0),
             load_error: RwLock::new(None),
 

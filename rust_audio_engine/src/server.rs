@@ -551,7 +551,7 @@ fn get_player_state(player: &AudioPlayer) -> StateResponse {
     StateResponse {
         is_playing: state == PlayerState::Playing,
         is_paused: state == PlayerState::Paused,
-        is_loading: shared.is_loading.load(std::sync::atomic::Ordering::Relaxed),
+        is_loading: shared.is_loading.load(std::sync::atomic::Ordering::Acquire),
         duration: shared.duration_secs(),
         current_time: shared.current_time_secs(),
         file_path,
