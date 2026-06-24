@@ -904,6 +904,7 @@ export const tools = {
             { name: 'k', type: 'number', required: false, default: 5 },
             { name: 'rerank', type: 'text', required: false, placeholder: 'true / false / 0.6(RRF融合)' },
             { name: 'tag_boost', type: 'text', required: false, placeholder: '0.6或 0.6+ (浪潮V8)' },
+            { name: 'use_bm25', type: 'checkbox', required: false, default: true },
             { name: 'search_all_knowledge_bases', type: 'checkbox', required: false, default: true }
         ]
     },
