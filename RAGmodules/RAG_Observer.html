@@ -2242,19 +2242,30 @@
               : data.bm25Mode
               ? String(data.bm25Mode)
               : "未知模式";
-          const bm25Tokens = Array.isArray(data.bm25QueryTokens)
-            ? data.bm25QueryTokens.map((token) => String(token)).filter(Boolean)
+          const rawBM25Tokens = Array.isArray(data.bm25QueryTokens)
+            ? data.bm25QueryTokens.map((token) => String(token).trim()).filter(Boolean)
             : [];
+          const seenBM25TokenKeys = new Set();
+          const bm25Tokens = [];
+          rawBM25Tokens.forEach((token) => {
+            const normalizedKey = token.toLowerCase();
+            if (!normalizedKey || seenBM25TokenKeys.has(normalizedKey)) return;
+            seenBM25TokenKeys.add(normalizedKey);
+            bm25Tokens.push(token);
+          });
+
           const resultTextForBM25 = (data.results || [])
             .map((result) => `${result?.text || ""} ${result?.source || ""}`)
             .join("\n")
             .toLowerCase();
           const matchedBM25Tokens = [];
+          const matchedBM25TokenKeys = new Set();
           const otherBM25Tokens = [];
           bm25Tokens.forEach((token) => {
             const normalizedToken = token.toLowerCase();
             if (normalizedToken && resultTextForBM25.includes(normalizedToken)) {
               matchedBM25Tokens.push(token);
+              matchedBM25TokenKeys.add(normalizedToken);
             } else {
               otherBM25Tokens.push(token);
             }
@@ -2269,7 +2280,7 @@
             orderedBM25Tokens.length > bm25PreviewLimit;
           const bm25TokenHTML = orderedBM25Tokens
             .map((token, index) => {
-              const isMatched = matchedBM25Tokens.includes(token);
+              const isMatched = matchedBM25TokenKeys.has(token.toLowerCase());
               const extraClass =
                 shouldCollapseBM25Tokens && index >= bm25PreviewLimit
                   ? " bm25-token-extra"
@@ -2295,7 +2306,9 @@
                                 String(data.bm25MatchedCount ?? 0)
                               )}</span>
                               <span class="bm25-token-pill">Tokens: ${escapeHTML(
-                                String(orderedBM25Tokens.length)
+                                rawBM25Tokens.length === orderedBM25Tokens.length
+                                  ? String(orderedBM25Tokens.length)
+                                  : `${orderedBM25Tokens.length}/${rawBM25Tokens.length}`
                               )}</span>
                               <span class="bm25-token-list${
                                 shouldCollapseBM25Tokens ? " is-collapsed" : ""
