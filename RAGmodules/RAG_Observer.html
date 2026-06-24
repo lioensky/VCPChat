@@ -686,6 +686,67 @@
         color: rgba(255, 255, 255, 0.9);
       }
 
+      /* --- BM25 Retrieval Details --- */
+      .bm25-details-container {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-bottom: 12px;
+        padding: 10px;
+        background: rgba(52, 152, 219, 0.06);
+        border-radius: 10px;
+        border: 1px dashed rgba(52, 152, 219, 0.28);
+      }
+
+      .bm25-token-list {
+        display: contents;
+      }
+
+      .bm25-token-list.is-collapsed .bm25-token-extra {
+        display: none;
+      }
+
+      .bm25-token-pill {
+        font-size: 0.75rem;
+        padding: 4px 9px;
+        background: rgba(52, 152, 219, 0.16);
+        color: #cfe9ff;
+        border-radius: 8px;
+        border: 1px solid rgba(52, 152, 219, 0.34);
+        font-family: "JetBrains Mono", monospace;
+      }
+
+      .bm25-token-pill.is-matched {
+        color: #fff;
+        background: rgba(46, 204, 113, 0.2);
+        border-color: rgba(46, 204, 113, 0.55);
+      }
+
+      .bm25-token-toggle {
+        font-size: 0.75rem;
+        padding: 4px 9px;
+        background: rgba(255, 255, 255, 0.07);
+        color: rgba(255, 255, 255, 0.78);
+        border-radius: 8px;
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        cursor: pointer;
+        transition: all 0.2s ease;
+        font-family: "JetBrains Mono", monospace;
+      }
+
+      .bm25-token-toggle:hover {
+        background: rgba(52, 152, 219, 0.22);
+        color: #fff;
+        border-color: rgba(52, 152, 219, 0.55);
+      }
+
+      .bm25-score-row {
+        display: inline-flex;
+        gap: 6px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+
       /* --- Core Tag Highlighting --- */
       .core-tags-container {
         display: flex;
@@ -1354,6 +1415,13 @@
       function escapeHTML(str) {
         if (typeof str !== "string") return "";
         return str.replace(_escapeRe, (ch) => _escapeMap[ch]);
+      }
+
+      function encodeURIComponentForInlineAttribute(str) {
+        return encodeURIComponent(String(str || "")).replace(
+          /[!'()*]/g,
+          (ch) => `%${ch.charCodeAt(0).toString(16).toUpperCase()}`
+        );
       }
 
       // 性能优化：预编译所有正则表达式（避免每次调用都重新创建）
@@ -2058,12 +2126,27 @@
         }
       }
 
+      function toggleBM25Tokens(button) {
+        const container = button
+          ?.closest(".bm25-details-container")
+          ?.querySelector(".bm25-token-list");
+        if (!container) return;
+
+        const isCollapsed = container.classList.toggle("is-collapsed");
+        const extraCount = Number(button.getAttribute("data-extra-count") || 0);
+        button.textContent = isCollapsed
+          ? `展开 ${extraCount} 个`
+          : "收起 BM25 词";
+        button.setAttribute("aria-expanded", String(!isCollapsed));
+      }
+
       // --- Block Generators ---
 
       // Helper to create generic toggle-able text
       // 性能优化：长文本延迟渲染markdown，只在展开时才解析
       function createContentHTML(text) {
-        if (!text) return "";
+        if (text === undefined || text === null) return "";
+        text = String(text);
         const isLong = text.length > 150;
 
         if (!isLong) {
@@ -2072,7 +2155,7 @@
         }
 
         // 长文本：snippet用纯文本，full-text标记为lazy，展开时才渲染markdown
-        const encodedText = encodeURIComponent(text);
+        const encodedText = encodeURIComponentForInlineAttribute(text);
 
         return `
                       <div class="content-wrapper">
@@ -2139,9 +2222,85 @@
                               ${data.coreTags
                                 .map(
                                   (tag) =>
-                                    `<span class="core-tag-pill">${tag}</span>`
+                                    `<span class="core-tag-pill">${escapeHTML(
+                                      String(tag)
+                                    )}</span>`
                                 )
                                 .join("")}
+                          </div>
+                      `;
+        }
+
+        // BM25 Details
+        let bm25DetailsHTML = "";
+        if (data.useBM25) {
+          const bm25ModeLabel =
+            data.bm25Mode === "tag"
+              ? "标签模式"
+              : data.bm25Mode === "text"
+              ? "全文模式"
+              : data.bm25Mode
+              ? String(data.bm25Mode)
+              : "未知模式";
+          const bm25Tokens = Array.isArray(data.bm25QueryTokens)
+            ? data.bm25QueryTokens.map((token) => String(token)).filter(Boolean)
+            : [];
+          const resultTextForBM25 = (data.results || [])
+            .map((result) => `${result?.text || ""} ${result?.source || ""}`)
+            .join("\n")
+            .toLowerCase();
+          const matchedBM25Tokens = [];
+          const otherBM25Tokens = [];
+          bm25Tokens.forEach((token) => {
+            const normalizedToken = token.toLowerCase();
+            if (normalizedToken && resultTextForBM25.includes(normalizedToken)) {
+              matchedBM25Tokens.push(token);
+            } else {
+              otherBM25Tokens.push(token);
+            }
+          });
+
+          const orderedBM25Tokens = [...matchedBM25Tokens, ...otherBM25Tokens];
+          const bm25PreviewLimit = Math.max(
+            8,
+            Math.min(16, matchedBM25Tokens.length || 8)
+          );
+          const shouldCollapseBM25Tokens =
+            orderedBM25Tokens.length > bm25PreviewLimit;
+          const bm25TokenHTML = orderedBM25Tokens
+            .map((token, index) => {
+              const isMatched = matchedBM25Tokens.includes(token);
+              const extraClass =
+                shouldCollapseBM25Tokens && index >= bm25PreviewLimit
+                  ? " bm25-token-extra"
+                  : "";
+              return `<span class="bm25-token-pill${
+                isMatched ? " is-matched" : ""
+              }${extraClass}">${escapeHTML(String(token))}</span>`;
+            })
+            .join("");
+          const bm25ExtraCount = Math.max(
+            0,
+            orderedBM25Tokens.length - bm25PreviewLimit
+          );
+          const bm25TokenToggleHTML = shouldCollapseBM25Tokens
+            ? `<button class="bm25-token-toggle" type="button" aria-expanded="false" data-extra-count="${bm25ExtraCount}" onclick="toggleBM25Tokens(this)">展开 ${bm25ExtraCount} 个</button>`
+            : "";
+          bm25DetailsHTML = `
+                          <div class="bm25-details-container" title="BM25 查询词与命中统计">
+                              <span class="bm25-token-pill" style="color:#fff; background:rgba(52,152,219,0.28); border-color:rgba(52,152,219,0.65);">BM25: ${escapeHTML(
+                                bm25ModeLabel
+                              )}</span>
+                              <span class="bm25-token-pill">Matched: ${escapeHTML(
+                                String(data.bm25MatchedCount ?? 0)
+                              )}</span>
+                              <span class="bm25-token-pill">Tokens: ${escapeHTML(
+                                String(orderedBM25Tokens.length)
+                              )}</span>
+                              <span class="bm25-token-list${
+                                shouldCollapseBM25Tokens ? " is-collapsed" : ""
+                              }">${bm25TokenHTML}</span>
+                              ${bm25TokenToggleHTML}
                           </div>
                       `;
         }
@@ -2157,17 +2316,30 @@
                       </button>
                       <h3>
                           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
-                          ${data.dbName}
+                          ${escapeHTML(String(data.dbName || "Unknown"))}
                       </h3>
                       <div class="meta-info">
-                          <span class="meta-pill">K: ${data.k}</span>
-                          <span class="meta-pill">Time: ${data.useTime}</span>
-                          <span class="meta-pill">ReRank: ${
-                            data.useRerank
-                          }</span>
+                          <span class="meta-pill">K: ${escapeHTML(
+                            String(data.k ?? "N/A")
+                          )}</span>
+                          <span class="meta-pill">Time: ${escapeHTML(
+                            String(!!data.useTime)
+                          )}</span>
+                          <span class="meta-pill">ReRank: ${escapeHTML(
+                            String(!!data.useRerank)
+                          )}</span>
+                          ${
+                            data.useBM25
+                              ? `<span class="meta-pill" style="color:#8fd3ff; border-color:#3498db;">BM25: ${escapeHTML(
+                                  String(data.bm25Mode || "on")
+                                )}</span>`
+                              : ""
+                          }
                           ${
                             data.useTagMemo
-                              ? `<span class="meta-pill" style="color:#ffc107; border-color:#ffc107;">TagBoost: ${data.tagWeight}</span>`
+                              ? `<span class="meta-pill" style="color:#ffc107; border-color:#ffc107;">TagBoost: ${escapeHTML(
+                                  String(data.tagWeight)
+                                )}</span>`
                               : ""
                           }
                           ${
@@ -2178,17 +2350,20 @@
                           ${
                             data.geoAlpha !== undefined &&
                             data.geoAlpha !== null
-                              ? `<span class="meta-pill" style="color:#1abc9c; border-color:#1abc9c;">geoAlpha: ${data.geoAlpha}</span>`
+                              ? `<span class="meta-pill" style="color:#1abc9c; border-color:#1abc9c;">geoAlpha: ${escapeHTML(
+                                  String(data.geoAlpha)
+                                )}</span>`
                               : ""
                           }
                       </div>
+                      ${bm25DetailsHTML}
                       ${coreTagsHTML}
                       ${createContentHTML(data.query)}
                   `;
 
         // Results
         let resultsHTML = "";
-        data.results.forEach((r) => {
+        (data.results || []).forEach((r) => {
           // BUG FIX: Check if r.score is a valid number before calling toFixed().
           // Time-based results from the backend don't have a score, which was causing a rendering crash.
           const hasScore = typeof r.score === "number";
@@ -2202,6 +2377,30 @@
             : "score-med";
           const isBoosted =
             data.useTagMemo && r.originalScore && r.originalScore !== r.score;
+
+          let bm25ScoresHTML = "";
+          if (data.useBM25 || r.source === "bm25" || r.source === "bm25_tag") {
+            const bm25ScoreParts = [];
+            if (typeof r.bm25Score === "number") {
+              bm25ScoreParts.push(
+                `<span class="meta-pill">BM25: ${r.bm25Score.toFixed(
+                  4
+                )}</span>`
+              );
+            }
+            if (typeof r.normalizedBM25Score === "number") {
+              bm25ScoreParts.push(
+                `<span class="meta-pill">Norm: ${r.normalizedBM25Score.toFixed(
+                  4
+                )}</span>`
+              );
+            }
+            if (bm25ScoreParts.length > 0) {
+              bm25ScoresHTML = `<div class="bm25-score-row" style="margin-bottom:6px;">${bm25ScoreParts.join(
+                ""
+              )}</div>`;
+            }
+          }
 
           let tagsHTML = "";
           // 时间召回的结果（source === 'time'）不显示标签区域
@@ -2234,9 +2433,11 @@
             const renderedTags = sortedTags
               .map((tag) => {
                 if (resultMatchedTags.has(tag)) {
-                  return `<span class="tag-match-highlight">${tag}</span>`;
+                  return `<span class="tag-match-highlight">${escapeHTML(
+                    String(tag)
+                  )}</span>`;
                 }
-                return tag;
+                return escapeHTML(String(tag));
               })
               .join(", ");
 
@@ -2256,10 +2457,11 @@
                                   }">
                                       ${scoreDisplay} ${isBoosted ? "⚡" : ""}
                                   </span>
-                                  <span style="font-size:0.75em; opacity:0.6;">${
-                                    r.source || "Unknown"
-                                  }</span>
+                                  <span style="font-size:0.75em; opacity:0.6;">${escapeHTML(
+                                    String(r.source || "Unknown")
+                                  )}</span>
                               </div>
+                              ${bm25ScoresHTML}
                               ${createContentHTML(r.text)}
                               ${tagsHTML}
                           </div>
