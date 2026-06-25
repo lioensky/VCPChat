@@ -1,8 +1,6 @@
 ﻿// renderer_modules/config.js
 // VCPHumanToolBox工具定义
-// 最后更新: 2026-04-21by CodeCC &赵枫
-// 备份: config.js.bak.20260421
-// 工具总数: 46 (原39+ 新增7)
+// author:lionsky & infinite-vector
 
 // --- 工具定义 ---
 export const tools = {
