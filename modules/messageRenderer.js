@@ -368,7 +368,7 @@ function replaceToolRequestBlocks(text, replacer) {
         const fullMatch = text.slice(startIndex, endIndex);
         const content = text.slice(contentStart, endIndex - TOOL_END_MARKER.length);
         result += text.slice(cursor, startIndex);
-        result += replacer(fullMatch, content);
+        result += replacer(fullMatch, content, startIndex, endIndex);
         cursor = endIndex;
     }
 
@@ -1386,19 +1386,9 @@ function processAssistantScopedHtmlContent(content, scopeId, messageItem = null)
         return placeholder;
     });
 
-    // 🔴 保护「始」「末」与「始ESCAPE」「末ESCAPE」标记区域及其变体。
-    // 这些标记内的内容是工具参数，可能包含任意 HTML（含 <style>），不应被提取。
-    // 注意：ESCAPE 必须优先按「末ESCAPE」闭合，不能被内部普通「末」打断。
-    textWithProtectedBlocks = textWithProtectedBlocks.replace(/(?:[「{]始[Ee][Ss][Cc][Aa][Pp][Ee][」}])[\s\S]*?(?:(?:[「{]末[Ee][Ss][Cc][Aa][Pp][Ee][」}])|$)/gi, (match) => {
-        const placeholder = `__VCP_STYLE_PROTECT_${protectedBlocks.length}__`;
-        protectedBlocks.push(match);
-        return placeholder;
-    });
-    textWithProtectedBlocks = textWithProtectedBlocks.replace(/(?:[「{]始[」}])[\s\S]*?(?:(?:[「{]末[」}])|$)/g, (match) => {
-        const placeholder = `__VCP_STYLE_PROTECT_${protectedBlocks.length}__`;
-        protectedBlocks.push(match);
-        return placeholder;
-    });
+    // 「始」「末」与「始ESCAPE」「末ESCAPE」只在工具请求围栏内部作为字段边界语法。
+    // 工具请求块已在上一步整体保护；这里不再扫描工具围栏外的裸始末标记，
+    // 避免普通聊天提及这些标记时误保护大段正文或影响 <style> 提取边界。
 
     // 保护桌面推送块（必须在代码块之前，因为推送块可能包含代码围栏）。
     textWithProtectedBlocks = textWithProtectedBlocks.replace(DESKTOP_PUSH_REGEX, (match) => {
@@ -1460,43 +1450,13 @@ function ensureHtmlFenced(text) {
         return text;
     }
 
-    // 🟢 构建「始」「末」与「始ESCAPE」「末ESCAPE」及其变体保护区域
+    // 🟢 只保护工具请求围栏区域内的 HTML。
+    // 「始」「末」标记不再作为全局保护区入口，避免普通正文提及该语法时导致 HTML fenced 边界误判。
     const protectedRanges = [];
-    const startRegex = /([「{]始(?:[Ee][Ss][Cc][Aa][Pp][Ee])?[」}])/gi;
-    let searchStart = 0;
-
-    while (true) {
-        startRegex.lastIndex = searchStart;
-        const startMatch = startRegex.exec(text);
-        if (!startMatch) break;
-
-        const startPos = startMatch.index;
-        const startMarker = startMatch[0];
-
-        const isEscape = /escape/i.test(startMarker);
-        let endRegex;
-        if (isEscape) {
-            endRegex = /[「{]末[Ee][Ss][Cc][Aa][Pp][Ee][」}]/gi;
-        } else {
-            endRegex = /[「{]末[」}]/g;
-        }
-
-        const contentStart = startPos + startMarker.length;
-        endRegex.lastIndex = contentStart;
-        const endMatch = endRegex.exec(text);
-
-        if (!endMatch) {
-            // 未闭合的开始标记，保护到文本末尾（流式传输场景）
-            protectedRanges.push({ start: startPos, end: text.length });
-            break;
-        }
-
-        const endPos = endMatch.index;
-        const endMarker = endMatch[0];
-
-        protectedRanges.push({ start: startPos, end: endPos + endMarker.length });
-        searchStart = endPos + endMarker.length;
-    }
+    replaceToolRequestBlocks(text, (match, content, startIndex, endIndex) => {
+        protectedRanges.push({ start: startIndex, end: endIndex });
+        return match;
+    });
 
     // 🟢 检查位置是否在保护区域内
     const isProtected = (index) => {
@@ -1522,7 +1482,7 @@ function ensureHtmlFenced(text) {
 
         const block = text.substring(startIndex, endIndex + htmlCloseTag.length);
 
-        // 🔴 核心修复：如果在「始」「末」保护区内，直接添加不封装
+        // 🔴 核心修复：如果在工具请求保护区内，直接添加不封装
         if (isProtected(startIndex)) {
             result += block;
             lastIndex = endIndex + htmlCloseTag.length;

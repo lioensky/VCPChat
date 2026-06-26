@@ -223,11 +223,10 @@ function createContentPipeline(deps = {}) {
         ctx.state.toolRequestMap = new Map();
 
         const protectMatch = (match) => {
-            // 工具请求块必须在通用「始/末」转义前整体保护。
-            // 否则 ESCAPE 参数内的 Markdown / HTML / 普通标记会被提前转义，
-            // transformSpecialBlocks 后只能得到一个退化的工具调用气泡。
+            // 「始/末」标记是 Tool Request 字段语法的一部分，只应在工具请求围栏内部生效。
+            // 因此在保护工具请求时局部处理字段内容，后续全局流水线不再扫描裸「始/末」。
             const placeholder = `<!--VCP_TOOL_REQUEST_${ctx.state.toolRequestPlaceholderId}-->`;
-            ctx.state.toolRequestMap.set(placeholder, match);
+            ctx.state.toolRequestMap.set(placeholder, processStartEndMarkers(match));
             ctx.state.toolRequestPlaceholderId += 1;
             return placeholder;
         };
@@ -314,17 +313,14 @@ function createContentPipeline(deps = {}) {
         step(ctx, 'normalize-emoticon-urls', (text) => fixEmoticonUrlsInMarkdown(text));
 
         // 顺序协议：
-        // 🔴 关键修复：工具结果与工具请求都必须在「始」/「末」标记转义之前被保护
-        // 否则 processStartEndMarkers 会错误地转义工具块内部的标记，
-        // 导致后续 transformSpecialBlocks 处理时产生双重转义、内容泄漏或工具气泡退化。
         // 1. 最先做工具结果保护（它们可能包含任意内容，包括代码块、标记等）
         step(ctx, 'protect-tool-results', protectToolResults);
 
-        // 2. 再保护工具请求：工具请求稍后需要恢复给 transformSpecialBlocks 做结构化渲染
+        // 2. 再保护工具请求，并在 protectToolRequests 内部局部处理「始/末」字段标记。
+        // 「始/末」不再作为全局正文语法，避免普通聊天提及这些标记时触发额外转义或渲染扰动。
         step(ctx, 'protect-tool-requests', protectToolRequests);
 
-        // 3. 然后安全地处理标记转义（此时只处理工具块外部的标记）
-        step(ctx, 'escape-start-end-markers', (text) => processStartEndMarkers(text));
+        // 3. 工具请求之外不再扫描裸「始/末」标记。
         step(ctx, 'transform-mermaid-placeholders', (text) => transformMermaidPlaceholders(text));
 
         // 4. 保护代码块
@@ -366,11 +362,12 @@ function createContentPipeline(deps = {}) {
     function runStreamFastPipeline(inputText, options = {}) {
         const ctx = createContext(inputText, { ...options, mode: PIPELINE_MODES.STREAM_FAST });
 
-        // 流式快路径只保留轻量、幂等、低风险修正
+        // 流式快路径只保留轻量、幂等、低风险修正。
+        // 注意：「始/末」仅属于工具请求围栏内部字段语法；流式尾部不做全局扫描，
+        // 防止普通正文提及该语法时被提前转义或造成排版抖动。
         step(ctx, 'strip-persona-backfill-tail', (text) => stripPersonaBackfillTail(text));
         step(ctx, 'normalize-emoticon-urls', (text) => fixEmoticonUrlsInMarkdown(text));
         step(ctx, 'deindent-misinterpreted-code-blocks', (text) => deIndentMisinterpretedCodeBlocks(text));
-        step(ctx, 'escape-start-end-markers', (text) => processStartEndMarkers(text));
         step(ctx, 'apply-common-content-processors', (text) => applyContentProcessors(text));
         step(ctx, 'normalize-adjacent-bold-boundaries', normalizeAdjacentBoldBoundaries);
 
