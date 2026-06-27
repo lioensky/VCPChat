@@ -4,8 +4,12 @@
 import { tools } from './renderer_modules/config.js';
 import * as canvasHandler from './renderer_modules/ui/canvas-handler.js';
 import * as dynamicImageHandler from './renderer_modules/ui/dynamic-image-handler.js';
+import { ToolManager, ToolManagerUI } from './renderer_modules/tool-manager.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
+    // --- 全局工具集合（合并 config.js + user tools）---
+    let allTools = { ...tools }; // 初始为config.js的工具
+
     // --- 元素获取 ---
     const toolGrid = document.getElementById('tool-grid');
     const toolDetailView = document.getElementById('tool-detail-view');
@@ -101,6 +105,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
 
+        // 加载用户工具并合并到allTools
+        const userTools = settings.vcpht_userTools || {};
+        allTools = { ...tools, ...userTools }; // user优先覆盖config
+
         initializeUI();
     }
 
@@ -167,7 +175,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             background: rgba(255,152,0,0.15); color: var(--highlight-text);
             white-space: nowrap; font-weight: 600;
         `;
-        const totalTools = Object.keys(tools).length;
+        const totalTools = Object.keys(allTools).length;
         countBadge.textContent = `共${totalTools} 个`;
 
         searchBar.appendChild(searchInput);
@@ -176,8 +184,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         toolGrid.appendChild(searchBar);
 
         // 生成工具卡片
-        for (const toolName in tools) {
-            const tool = tools[toolName];
+        for (const toolName in allTools) {
+            const tool = allTools[toolName];
             const category = getCategoryForTool(toolName);
             const isFav = favorites.includes(toolName);
 
@@ -291,7 +299,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         currentToolName = toolName;
 
-        const tool = tools[toolName];
+        const tool = allTools[toolName];
         toolTitle.textContent = tool.displayName;
         toolDescription.textContent = tool.description;
         
@@ -341,7 +349,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function buildToolForm(toolName) {
-        const tool = tools[toolName];
+        const tool = allTools[toolName];
         toolForm.innerHTML = '';
         const paramsContainer = document.createElement('div');
         paramsContainer.id = 'params-container';
@@ -1421,6 +1429,48 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (workflowBtn) {
             workflowBtn.addEventListener('click', openWorkflowEditor);
         }
+
+        // Tab切换逻辑
+        const toolTabBtn = document.getElementById('tool-tab-btn');
+        const manageTabBtn = document.getElementById('manage-tab-btn');
+        const toolGridEl = document.getElementById('tool-grid');
+        const managePanelEl = document.getElementById('manage-panel');
+
+        if (toolTabBtn && manageTabBtn && toolGridEl && managePanelEl) {
+            toolTabBtn.addEventListener('click', () => {
+                toolTabBtn.classList.add('tab-btn-active');
+                manageTabBtn.classList.remove('tab-btn-active');
+                toolGridEl.style.display = 'grid';
+                managePanelEl.style.display = 'none';
+                toolDetailView.style.display = 'none'; // 隐藏工具详情
+            });
+
+            manageTabBtn.addEventListener('click', async () => {
+                manageTabBtn.classList.add('tab-btn-active');
+                toolTabBtn.classList.remove('tab-btn-active');
+                toolGridEl.style.display = 'none';
+                managePanelEl.style.display = 'block';
+                toolDetailView.style.display = 'none';
+
+                // 初始化管理面板（首次点击时）
+                if (!window.toolManagerUIInitialized) {
+                    await window.toolManagerUI.init('manage-panel');
+                    window.toolManagerUIInitialized = true;
+                }
+            });
+        }
+
+        // 初始化工具管理器（但不立即渲染UI）
+        window.toolManager = new ToolManager();
+        window.toolManagerUI = new ToolManagerUI(window.toolManager);
+        window.toolManagerUIInitialized = false;
+
+        // 暴露刷新工具网格的函数供tool-manager调用
+        window.refreshToolGrid = async () => {
+            await initializeApp(); // 重新加载settings并合并allTools
+            renderToolGrid(); // 重新渲染工具网格
+        };
+
         renderToolGrid();
         loadAndProcessWallpaper();
         setupImageViewer();

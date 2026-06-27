@@ -23,6 +23,8 @@
             <h1>工具箱</h1>
             <p>一个为人类设计的直观工具调用界面。</p>
             <div class="header-actions">
+                <button id="tool-tab-btn" class="tab-btn tab-btn-active">工具</button>
+                <button id="manage-tab-btn" class="tab-btn">管理</button>
                 <button id="workflow-btn" class="workflow-btn">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
                         <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
@@ -34,6 +36,7 @@
 
         <main id="main-content">
             <div id="tool-grid" class="tool-grid"></div>
+            <div id="manage-panel" class="manage-panel" style="display: none;"></div>
 
             <div id="tool-detail-view" class="tool-detail-view" style="display: none;">
                 <button id="back-to-grid-btn" class="back-btn">&larr; 返回工具列表</button>
