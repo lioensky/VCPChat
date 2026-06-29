@@ -488,9 +488,12 @@ function initialize(params) {
 
     ipcMain.on('rag-overlay-approval-action', (event, payload = {}) => {
         if (ragObserverWindow && !ragObserverWindow.isDestroyed()) {
+            const reasonRaw = typeof payload.reason === 'string' ? payload.reason : '';
+            const reason = reasonRaw.trim().slice(0, 1000);
             ragObserverWindow.webContents.send('rag-overlay-approval-action', {
                 requestId: payload.requestId,
-                approved: !!payload.approved
+                approved: !!payload.approved,
+                reason
             });
         }
     });

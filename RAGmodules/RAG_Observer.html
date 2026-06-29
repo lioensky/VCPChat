@@ -490,6 +490,50 @@
         margin-top: 12px;
       }
 
+      .tool-approval-reason {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        margin-top: 10px;
+      }
+
+      .tool-approval-reason-input {
+        width: 100%;
+        box-sizing: border-box;
+        resize: vertical;
+        min-height: 56px;
+        max-height: 160px;
+        padding: 8px 10px;
+        border-radius: 8px;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        background: rgba(255, 255, 255, 0.06);
+        color: var(--primary-text);
+        font: inherit;
+        font-size: 0.85rem;
+        line-height: 1.4;
+        outline: none;
+      }
+
+      .tool-approval-reason-input::placeholder {
+        color: rgba(255, 255, 255, 0.4);
+      }
+
+      .tool-approval-reason-input:focus {
+        border-color: rgba(255, 159, 67, 0.7);
+        box-shadow: 0 0 0 2px rgba(255, 159, 67, 0.18);
+      }
+
+      .tool-approval-reason-input:disabled {
+        opacity: 0.55;
+        cursor: not-allowed;
+      }
+
+      .tool-approval-reason-hint {
+        font-size: 0.72rem;
+        color: rgba(255, 255, 255, 0.5);
+        line-height: 1.35;
+      }
+
       .approval-btn {
         border: 1px solid rgba(255, 255, 255, 0.2);
         color: #fff;
@@ -1790,6 +1834,99 @@
         }, delay);
       }
 
+      // 从 vcp_log 的 content 中尽量提取友好可读消息（参考主程序 notificationRenderer.js 的逻辑）
+      function extractFriendlyVcpLogContent(vcpData) {
+        if (!vcpData || typeof vcpData !== "object") {
+          return { title: "", content: "", level: "info" };
+        }
+
+        const toolName = vcpData.tool_name || "";
+        const statusRaw = String(vcpData.status || "").toLowerCase();
+        const level =
+          statusRaw === "error" || statusRaw === "failed"
+            ? "error"
+            : statusRaw === "success" || statusRaw === "ok"
+            ? "success"
+            : "info";
+
+        let title = toolName
+          ? `${toolName} ${vcpData.status || ""}`.trim()
+          : "VCP 日志";
+        let content = "";
+
+        if (typeof vcpData.content === "undefined") {
+          return { title, content: "(无内容)", level };
+        }
+
+        const rawContentString = String(vcpData.content);
+        content = rawContentString;
+
+        // 错误情况下尝试提取 plugin_error / error / message
+        if (statusRaw === "error" && rawContentString.includes("{")) {
+          const jsonStart = rawContentString.indexOf("{");
+          const prefix = rawContentString.substring(0, jsonStart);
+          const jsonPart = rawContentString.substring(jsonStart);
+          try {
+            const parsed = JSON.parse(jsonPart);
+            const displayError =
+              parsed.plugin_error || parsed.error || parsed.message;
+            if (displayError) {
+              content =
+                prefix.trim() +
+                (prefix.trim().endsWith(":") ? " " : ": ") +
+                displayError;
+              return { title, content, level };
+            }
+          } catch (e) {
+            // ignore
+          }
+        }
+
+        // 尝试解析为 JSON，提取友好字段
+        try {
+          const parsedInner = JSON.parse(rawContentString);
+          let titleSuffix = "";
+          if (parsedInner.MaidName) titleSuffix += ` by ${parsedInner.MaidName}`;
+          if (
+            parsedInner.timestamp &&
+            typeof parsedInner.timestamp === "string" &&
+            parsedInner.timestamp.length >= 16
+          ) {
+            titleSuffix += `${parsedInner.MaidName ? " " : ""}@ ${parsedInner.timestamp.substring(11, 16)}`;
+          }
+          if (titleSuffix) title += ` (${titleSuffix.trim()})`;
+
+          if (typeof parsedInner.original_plugin_output !== "undefined") {
+            const pluginOutput = parsedInner.original_plugin_output;
+            if (typeof pluginOutput === "object" && pluginOutput !== null) {
+              if (toolName === "DailyNote" && pluginOutput.message) {
+                const statusIcon =
+                  pluginOutput.status === "success" ? "✅" : "❌";
+                content = `${statusIcon} ${pluginOutput.message}`;
+              } else if (
+                pluginOutput.message &&
+                typeof pluginOutput.message === "string"
+              ) {
+                content = pluginOutput.message;
+              } else {
+                content = JSON.stringify(pluginOutput, null, 2);
+              }
+            } else {
+              content = String(pluginOutput);
+            }
+          } else if (toolName === "DailyNote") {
+            const statusIcon = vcpData.status === "success" ? "✅" : "❌";
+            content = parsedInner.message
+              ? `${statusIcon} ${parsedInner.message}`
+              : `${statusIcon} 日记内容已成功记录到本地知识库。`;
+          }
+        } catch (e) {
+          // 非 JSON 内容，保持原样
+        }
+
+        return { title, content, level };
+      }
+
       function buildOverlayPayload(data) {
         const now = new Date().toLocaleTimeString();
         const type = data?.type || "unknown";
@@ -1817,16 +1954,27 @@
         } else if (type === "tool_approval_response") {
           const resp = data?.data || {};
           title = "工具审核结果";
+          const reasonHint = typeof resp.reason === "string" && resp.reason.trim()
+            ? `\n理由: ${resp.reason.trim()}`
+            : "";
           content = `${resp.approved ? "已允许" : "已拒绝"} ${
             resp.requestId ? `(ID: ${resp.requestId})` : ""
-          }`.trim();
+          }`.trim() + reasonHint;
           level = resp.approved ? "success" : "error";
+        } else if (type === "tool_auto_approval" && data?.data) {
+          const auto = data.data || {};
+          title = `✅ 已自动允许: ${auto.toolName || "未知工具"}`;
+          content = `助手: ${auto.maid || "未知"}\n规则: ${
+            auto.ruleName || "未命名规则"
+          }\n请求ID: ${auto.requestId || "N/A"}\n状态: ${
+            auto.sent ? "已发送允许响应" : "发送失败"
+          }`;
+          level = auto.sent ? "success" : "warning";
         } else if (type === "vcp_log" && data?.data) {
-          title = "VCP 日志";
-          content =
-            typeof data.data.content === "string"
-              ? data.data.content
-              : JSON.stringify(data.data, null, 2);
+          const friendly = extractFriendlyVcpLogContent(data.data);
+          title = friendly.title || "VCP 日志";
+          content = friendly.content;
+          level = friendly.level || "info";
         } else if (
           type === "notification" ||
           type === "error" ||
@@ -2754,6 +2902,7 @@
           "video_generation_status",
           "tool_approval_request",
           "tool_approval_response",
+          "tool_auto_approval",
           "connection_ack",
           "notification",
         ]);
@@ -2776,18 +2925,31 @@
           typeof data.data === "object"
         ) {
           const payload = data.data;
-          const title = payload.tool_name
-            ? `${payload.tool_name} ${payload.status || ""}`.trim()
-            : "VCP 日志通知";
-          const source = payload.source || "VCPLog";
-          const status = payload.status || "info";
-          const content =
-            typeof payload.content === "undefined"
-              ? JSON.stringify(payload, null, 2)
-              : typeof payload.content === "string"
-              ? payload.content
-              : JSON.stringify(payload.content, null, 2);
-          return { title, source, status, content };
+          const friendly = extractFriendlyVcpLogContent(payload);
+          return {
+            title: friendly.title || "VCP 日志通知",
+            source: payload.source || "VCPLog",
+            status: payload.status || "info",
+            content: friendly.content || "",
+          };
+        }
+
+        if (
+          data.type === "tool_auto_approval" &&
+          data.data &&
+          typeof data.data === "object"
+        ) {
+          const auto = data.data;
+          return {
+            title: `✅ 已自动允许: ${auto.toolName || "未知工具"}`,
+            source: "FilterManager",
+            status: auto.sent ? "success" : "warning",
+            content:
+              `助手: ${auto.maid || "未知"}\n` +
+              `规则: ${auto.ruleName || "未命名规则"}\n` +
+              `请求ID: ${auto.requestId || "N/A"}\n` +
+              `状态: ${auto.sent ? "已发送允许响应" : "发送失败"}`,
+          };
         }
 
         if (
@@ -2884,18 +3046,26 @@
         prependCard(block);
       }
 
-      function submitToolApproval(requestId, approved, btnElement = null) {
+      function submitToolApproval(requestId, approved, btnElement = null, reason = "") {
         if (!requestId) {
           console.error("[RAG Observer] 工具审核缺少 requestId，无法提交。");
           return false;
         }
 
+        const trimmedReason =
+          typeof reason === "string" ? reason.trim().slice(0, 1000) : "";
+
+        const responseData = {
+          requestId,
+          approved: !!approved,
+        };
+        if (trimmedReason) {
+          responseData.reason = trimmedReason;
+        }
+
         const payload = {
           type: "tool_approval_response",
-          data: {
-            requestId,
-            approved: !!approved,
-          },
+          data: responseData,
         };
 
         let sendOk = false;
@@ -2952,7 +3122,10 @@
         btnElement
       ) {
         const requestId = decodeURIComponent(encodedRequestId || "");
-        submitToolApproval(requestId, approved, btnElement);
+        const card = btnElement?.closest(".card-base");
+        const reasonInput = card?.querySelector(".tool-approval-reason-input");
+        const reason = reasonInput?.value || "";
+        submitToolApproval(requestId, approved, btnElement, reason);
       }
 
       // 9. TOOL APPROVAL REQUEST BLOCK
@@ -3287,7 +3460,8 @@
             submitToolApproval(
               String(payload.requestId),
               !!payload.approved,
-              null
+              null,
+              typeof payload.reason === "string" ? payload.reason : ""
             );
           });
         }
