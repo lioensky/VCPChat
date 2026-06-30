@@ -253,8 +253,98 @@ header p {
     border-radius: 8px;
     border: 1px solid var(--border-color);
     min-height: 100px;
-    white-space: pre-wrap;
+    white-space: normal;
     word-wrap: break-word;
+    overflow-x: auto;
+}
+
+.result-container .markdown-result {
+    line-height: 1.65;
+}
+
+.result-container .markdown-result > :first-child {
+    margin-top: 0;
+}
+
+.result-container .markdown-result > :last-child {
+    margin-bottom: 0;
+}
+
+.result-container .markdown-result table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 14px 0;
+    overflow: hidden;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.025);
+    font-size: 14px;
+}
+
+.result-container .markdown-result thead {
+    background: rgba(255, 152, 0, 0.14);
+    color: var(--highlight-text);
+}
+
+.result-container .markdown-result th,
+.result-container .markdown-result td {
+    border: 1px solid var(--border-color);
+    padding: 9px 12px;
+    text-align: left;
+    vertical-align: top;
+}
+
+.result-container .markdown-result th {
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.result-container .markdown-result tbody tr:nth-child(even) {
+    background: rgba(255, 255, 255, 0.035);
+}
+
+.result-container .markdown-result tbody tr:hover {
+    background: rgba(255, 152, 0, 0.08);
+}
+
+.result-container .markdown-result code {
+    padding: 2px 5px;
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.22);
+    color: var(--highlight-text);
+    font-family: 'Cascadia Code', 'Consolas', monospace;
+    font-size: 0.92em;
+}
+
+.result-container .markdown-result pre {
+    padding: 12px 14px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    background: rgba(0, 0, 0, 0.24);
+    overflow-x: auto;
+}
+
+.result-container .markdown-result pre code {
+    padding: 0;
+    background: transparent;
+    color: inherit;
+}
+
+.result-container .markdown-result blockquote {
+    margin: 12px 0;
+    padding: 8px 14px;
+    border-left: 4px solid var(--highlight-text);
+    background: rgba(255, 152, 0, 0.08);
+    color: var(--secondary-text);
+}
+
+.result-container .markdown-result a {
+    color: var(--link-color, #60a5fa);
+    text-decoration: none;
+}
+
+.result-container .markdown-result a:hover {
+    text-decoration: underline;
 }
 
 .result-container img,

@@ -893,18 +893,34 @@ export const tools = {
         ]
     },
     'LightMemo': {
-        displayName: '快速回忆',
-        description: '主动检索日记本或知识库。[后端插件: LightMemo]',
-        params: [
-            { name: 'maid', type: 'text', required: true, placeholder: 'Nova' },
-            { name: 'folder', type: 'text', required: false, placeholder: '特定的索引文件夹' },
-            { name: 'query', type: 'textarea', required: true, placeholder: '记忆检索内容' },
-            { name: 'k', type: 'number', required: false, default: 5 },
-            { name: 'rerank', type: 'text', required: false, placeholder: 'true / false / 0.6(RRF融合)' },
-            { name: 'tag_boost', type: 'text', required: false, placeholder: '0.6或 0.6+ (浪潮V8)' },
-            { name: 'use_bm25', type: 'text', required: false, default: 'true', placeholder: 'true / false' },
-            { name: 'search_all_knowledge_bases', type: 'checkbox', required: false, default: true }
-        ]
+        displayName: '快速回忆 / 语义测绘',
+        description: '主动检索日记本或知识库；支持 map_distance 独立指令，对起点与多个目标输出纯KNN、浪潮TagMemo、测地线v8与Tag能量场距离/相似度。[后端插件: LightMemo]',
+        commands: {
+            'query': {
+                description: '快速回忆 — 主动检索日记本或知识库',
+                params: [
+                    { name: 'maid', type: 'text', required: true, placeholder: 'Nova' },
+                    { name: 'folder', type: 'text', required: false, placeholder: '特定的索引文件夹' },
+                    { name: 'query', type: 'textarea', required: true, placeholder: '记忆检索内容' },
+                    { name: 'k', type: 'number', required: false, default: 5 },
+                    { name: 'rerank', type: 'text', required: false, placeholder: 'true / false / 0.6(RRF融合)' },
+                    { name: 'tag_boost', type: 'text', required: false, placeholder: '0.6或 0.6+ (浪潮V8)' },
+                    { name: 'use_bm25', type: 'text', required: false, default: 'true', placeholder: 'true / false' },
+                    { name: 'search_all_knowledge_bases', type: 'checkbox', required: false, default: true }
+                ]
+            },
+            'map_distance': {
+                description: '语义测绘 — 比较起点A与一个或多个目标的纯KNN、浪潮TagMemo、测地线v8与Tag能量场距离/相似度。command 固定 map_distance，也兼容 MapDistance、mapping、tagmemo_map、wave_map、测绘。',
+                params: [
+                    { name: 'start', type: 'textarea', required: true, placeholder: '起点A文本；也兼容 origin / a / start_query / query' },
+                    { name: 'targets', type: 'textarea', required: true, placeholder: '一个或多个目标文本；字符串支持英文逗号、中文逗号、顿号、| 或 ｜ 分隔；也可传JSON数组字符串。也兼容 target / b / goal / goals' },
+                    { name: 'tag_boost', type: 'text', required: false, default: '0.6', placeholder: '默认0.6；用于两端TagMemo增强的浪潮权重；传0关闭浪潮增强；测绘模式不需要加+号' },
+                    { name: 'alpha', type: 'number', required: false, placeholder: '测地线v8加权距离中的Tag能量场权重；也兼容 geo_alpha；未提供读取 geodesicRerank.alpha，否则默认0.35' },
+                    { name: 'core_tags', type: 'textarea', required: false, placeholder: '核心标签列表；支持字符串数组或分隔字符串，例如：TagMemo, RAG, 测地线' },
+                    { name: 'core_boost_factor', type: 'number', required: false, default: 1.33, placeholder: '核心标签额外加权因子，默认1.33' }
+                ]
+            }
+        }
     },
     'ThoughtClusterManager': {
         displayName: '思维簇管理器',

@@ -1081,6 +1081,27 @@ document.addEventListener('DOMContentLoaded', async () => {
         saveSettings().catch(e => console.warn('History save failed:', e));
     }
 
+    function renderMarkdownBlock(markdownText, className = 'markdown-result') {
+        const div = document.createElement('div');
+        div.className = className;
+        const text = String(markdownText ?? '');
+        if (window.marked) {
+            const parser = typeof window.marked.parse === 'function'
+                ? window.marked.parse.bind(window.marked)
+                : (window.marked.marked && typeof window.marked.marked === 'function' ? window.marked.marked.bind(window.marked) : null);
+            if (parser) {
+                div.innerHTML = parser(text);
+                return div;
+            }
+        }
+        div.textContent = text;
+        return div;
+    }
+
+    function appendMarkdownToResult(markdownText, className) {
+        resultContainer.appendChild(renderMarkdownBlock(markdownText, className));
+    }
+
     function renderResult(data, toolName, duration = '') {
         resultContainer.innerHTML = '';
 
@@ -1146,9 +1167,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         } else if (content && Array.isArray(content.content)) {
             content.content.forEach(item => {
                 if (item.type === 'text') {
-                    const pre = document.createElement('pre');
-                    pre.textContent = item.text;
-                    resultContainer.appendChild(pre);
+                    appendMarkdownToResult(item.text, 'markdown-result tool-text-result');
                 } else if (item.type === 'image_url' && item.image_url && item.image_url.url) {
                     const imgElement = document.createElement('img');
                     imgElement.src = item.image_url.url;
@@ -1160,13 +1179,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             imgElement.src = content;
             resultContainer.appendChild(imgElement);
         } else if (typeof content === 'string') {
-            const div = document.createElement('div');
-            if (window.marked && typeof window.marked.parse === 'function') {
-                div.innerHTML = window.marked.parse(content);
-            } else {
-                div.textContent = content;
-            }
-            resultContainer.appendChild(div);
+            appendMarkdownToResult(content);
         } else if (toolName === 'TavilySearch' && content && (content.results || content.images)) {
             const searchResultsWrapper = document.createElement('div');
             searchResultsWrapper.className = 'tavily-search-results';
@@ -1203,13 +1216,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     const url = document.createElement('p');
                     url.className = 'tavily-result-url';
                     url.textContent = result.url;
-                    const snippet = document.createElement('div');
-                    snippet.className = 'tavily-result-snippet';
-                    if (window.marked && typeof window.marked.parse === 'function') {
-                        snippet.innerHTML = window.marked.parse(result.content);
-                    } else {
-                        snippet.textContent = result.content;
-                    }
+                    const snippet = renderMarkdownBlock(result.content, 'tavily-result-snippet markdown-result');
                     resultItem.appendChild(title);
                     resultItem.appendChild(url);
                     resultItem.appendChild(snippet);
@@ -1228,11 +1235,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 imgElement.src = imageUrl;
                 resultContainer.appendChild(imgElement);
             } else if (typeof textResult === 'string') {
-                if (window.marked && typeof window.marked.parse === 'function') {
-                    resultContainer.innerHTML += window.marked.parse(textResult);
-                } else {
-                    resultContainer.textContent = textResult;
-                }
+                appendMarkdownToResult(textResult);
             } else {
                 const pre = document.createElement('pre');
                 pre.textContent = JSON.stringify(content, null, 2);
