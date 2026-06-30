@@ -1178,19 +1178,7 @@ search_all_knowledge_bases:「始」true「末」
         // 竞态检查：解析完成后再次确认
         if (myAbortController !== searchAbortController) return;
 
-        let output = '';
-        if (data.original_plugin_output) {
-            output = data.original_plugin_output;
-        } else if (data.status === 'success' && data.content) {
-            try {
-                const content = JSON.parse(data.content);
-                output = content.original_plugin_output || data.content;
-            } catch (e) {
-                output = data.content;
-            }
-        } else if (typeof data === 'string') {
-            output = data;
-        }
+        const output = extractLightMemoOutput(data);
 
         if (output) {
             processSemanticSearchResults(output, query);
@@ -1204,6 +1192,60 @@ search_all_knowledge_bases:「始」true「末」
         console.error('[Memo] Semantic search error:', err);
         memoGridEl.innerHTML = `<div style="padding: 20px; color: var(--danger-color);">语义搜索失败: ${err.message}</div>`;
     }
+}
+
+function extractLightMemoOutput(payload) {
+    if (!payload) return '';
+    if (typeof payload === 'string') return payload;
+
+    if (typeof payload.original_plugin_output !== 'undefined') {
+        return normalizeLightMemoContent(payload.original_plugin_output);
+    }
+
+    if (payload.result) {
+        const resultOutput = extractLightMemoOutput(payload.result);
+        if (resultOutput) return resultOutput;
+    }
+
+    if (typeof payload.content !== 'undefined') {
+        return normalizeLightMemoContent(payload.content);
+    }
+
+    if (typeof payload.text === 'string') {
+        return payload.text;
+    }
+
+    return '';
+}
+
+function normalizeLightMemoContent(content) {
+    if (content == null) return '';
+    if (typeof content === 'string') {
+        try {
+            const parsedContent = JSON.parse(content);
+            const nestedOutput = extractLightMemoOutput(parsedContent);
+            return nestedOutput || content;
+        } catch (e) {
+            return content;
+        }
+    }
+
+    if (Array.isArray(content)) {
+        return content
+            .map(item => {
+                if (typeof item === 'string') return item;
+                if (item && typeof item.text === 'string') return item.text;
+                return extractLightMemoOutput(item);
+            })
+            .filter(Boolean)
+            .join('\n');
+    }
+
+    if (typeof content === 'object') {
+        return extractLightMemoOutput(content);
+    }
+
+    return String(content);
 }
 
 function processSemanticSearchResults(output, query) {
