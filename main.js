@@ -1232,7 +1232,8 @@ if (!gotTheLock) {
             return;
         }
 
-        const fullWsUrl = `${wsUrl}/VCPlog/VCP_Key=${wsKey}`;
+        const vcpLogDeviceName = 'VCPChat-Desktop';
+        const fullWsUrl = `${wsUrl}/VCPlog/VCP_Key=${wsKey}?deviceName=${encodeURIComponent(vcpLogDeviceName)}`;
 
         if (vcpLogWebSocket && (vcpLogWebSocket.readyState === WebSocket.OPEN || vcpLogWebSocket.readyState === WebSocket.CONNECTING)) {
             console.log('VCPLog WebSocket 已连接或正在连接。');
