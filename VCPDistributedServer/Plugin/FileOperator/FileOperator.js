@@ -164,6 +164,83 @@ function formatFileSize(bytes) {
   return Math.round((bytes / Math.pow(1024, i)) * 100) / 100 + ' ' + sizes[i];
 }
 
+function parseLineRange(linesSpec, totalLines) {
+  if (linesSpec === undefined || linesSpec === null || linesSpec === '') {
+    return null;
+  }
+
+  const requested = String(linesSpec).trim();
+  if (!requested) {
+    return null;
+  }
+
+  let start;
+  let end;
+  let match;
+
+  if ((match = requested.match(/^head:(\d+)$/i))) {
+    const count = parseInt(match[1], 10);
+    start = 1;
+    end = count;
+  } else if ((match = requested.match(/^tail:(\d+)$/i))) {
+    const count = parseInt(match[1], 10);
+    start = Math.max(totalLines - count + 1, 1);
+    end = totalLines;
+  } else if ((match = requested.match(/^(\d+)\s*[-:]\s*(\d+)$/))) {
+    start = parseInt(match[1], 10);
+    end = parseInt(match[2], 10);
+  } else if ((match = requested.match(/^(\d+)$/))) {
+    start = parseInt(match[1], 10);
+    end = start;
+  } else {
+    throw new Error(`Invalid lines range: "${requested}". Supported formats: head:N, tail:N, M-N, M:N, N.`);
+  }
+
+  if (!Number.isInteger(start) || !Number.isInteger(end) || start < 1 || end < 1) {
+    throw new Error(`Invalid lines range: "${requested}". Line numbers must be positive integers.`);
+  }
+
+  if (start > end) {
+    throw new Error(`Invalid lines range: "${requested}". Start line must be less than or equal to end line.`);
+  }
+
+  const actualStart = totalLines === 0 ? 0 : Math.min(start, totalLines);
+  const actualEnd = totalLines === 0 ? 0 : Math.min(end, totalLines);
+  const selectedCount = actualStart === 0 || actualEnd < actualStart ? 0 : actualEnd - actualStart + 1;
+
+  return {
+    requested,
+    start,
+    end,
+    actualStart,
+    actualEnd,
+    totalLines,
+    selectedCount
+  };
+}
+
+function applyLineRangeToContent(content, linesSpec) {
+  const normalizedContent = String(content).replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  const allLines = normalizedContent.split('\n');
+  const range = parseLineRange(linesSpec, allLines.length);
+
+  if (!range) {
+    return {
+      content,
+      lines: null
+    };
+  }
+
+  const selectedLines = range.selectedCount > 0
+    ? allLines.slice(range.actualStart - 1, range.actualEnd)
+    : [];
+
+  return {
+    content: selectedLines.join('\n'),
+    lines: range
+  };
+}
+
 function getUniqueFilePath(filePath) {
   if (!fsSync.existsSync(filePath)) {
     return { newPath: filePath, renamed: false };
@@ -309,7 +386,7 @@ async function runValidationAndAttachResults(result, filePath, fileContent) {
 }
 
 // File operation functions
-async function webReadFile(fileUrl) {
+async function webReadFile(fileUrl, lines) {
   try {
     const fileDir = path.join(__dirname, '..', '..', '..', 'AppData', 'file');
     await fs.mkdir(fileDir, { recursive: true }); // Ensure directory exists
@@ -335,8 +412,8 @@ async function webReadFile(fileUrl) {
       writer.on('error', reject);
     });
 
-    debugLog('File downloaded successfully. Reading local file.', { localFilePath });
-    const result = await readFile(localFilePath);
+    debugLog('File downloaded successfully. Reading local file.', { localFilePath, lines });
+    const result = await readFile(localFilePath, 'utf8', lines);
 
     if (result.success) {
       result.data.localPath = localFilePath;
@@ -358,9 +435,9 @@ async function webReadFile(fileUrl) {
   }
 }
 
-async function readFile(filePath, encoding = 'utf8') {
+async function readFile(filePath, encoding = 'utf8', lines) {
   try {
-    debugLog('Reading file', { filePath, encoding });
+    debugLog('Reading file', { filePath, encoding, lines });
 
     if (!isPathAllowed(filePath, 'ReadFile')) {
       throw new Error(`Access denied: Path '${filePath}' is not in allowed directories`);
@@ -436,7 +513,26 @@ async function readFile(filePath, encoding = 'utf8') {
       fileName: path.basename(filePath)
     };
 
-    const headerText = `已读取文件 '${returnData.fileName}' (${returnData.sizeFormatted})。`;
+    let headerText = `已读取文件 '${returnData.fileName}' (${returnData.sizeFormatted})。`;
+
+    if (lines !== undefined && lines !== null && lines !== '') {
+      const isDataContent = typeof content === 'string' && content.startsWith('data:');
+      if (isDataContent) {
+        returnData.lines = {
+          requested: String(lines),
+          skipped: true,
+          reason: 'lines is only supported for text content; data: content such as images, audio, and video is returned unchanged.'
+        };
+        headerText += ` 已请求行范围 '${lines}'，但该文件为 data: 内容，已跳过行切片。`;
+      } else {
+        const lineResult = applyLineRangeToContent(content, lines);
+        content = lineResult.content;
+        returnData.lines = lineResult.lines;
+        if (lineResult.lines) {
+          headerText += ` 行范围: 请求 ${lineResult.lines.requested}，实际 ${lineResult.lines.actualStart}-${lineResult.lines.actualEnd}/${lineResult.lines.totalLines}，选中 ${lineResult.lines.selectedCount} 行。`;
+        }
+      }
+    }
 
     if (isExtracted && content.startsWith('data:image')) {
       returnData.content = [
@@ -1339,7 +1435,7 @@ async function processBatchRequest(request) {
         case 'ReadFile':
         case 'WebReadFile':
           const filePath = getPathParameter(parameters, 'url') || getParameterValue(parameters, 'url');
-          result = command === 'ReadFile' ? await readFile(filePath, parameters.encoding) : await webReadFile(filePath);
+          result = command === 'ReadFile' ? await readFile(filePath, parameters.encoding, parameters.lines) : await webReadFile(filePath, parameters.lines);
           if (result.success) {
             // Add a text header for the file content
             aggregatedContent.push({ type: 'text', text: `--- Content of ${result.data.fileName || filePath} ---` });
@@ -1480,9 +1576,9 @@ async function processRequest(request) {
     case 'ListAllowedDirectories':
       return await listAllowedDirectories();
     case 'ReadFile':
-      return await readFile(getPathParameter(parameters), parameters.encoding);
+      return await readFile(getPathParameter(parameters), parameters.encoding, parameters.lines);
     case 'WebReadFile':
-      return await webReadFile(getParameterValue(parameters, 'url') || getPathParameter(parameters));
+      return await webReadFile(getParameterValue(parameters, 'url') || getPathParameter(parameters), parameters.lines);
     case 'WriteFile':
       return await writeFile(getPathParameter(parameters), parameters.content, parameters.encoding);
     case 'AppendFile':
