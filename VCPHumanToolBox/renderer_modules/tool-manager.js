@@ -115,11 +115,10 @@ export class ToolManager {
         const params = [];
         if (!description) return params;
 
-        // 找参数区域起始位置
-        const paramSection = description.match(/(?:参数[说明]*[:：]|Parameters[:：]|参数\s*\(|参数说明\s*\()([\s\S]+?)(?=调用格式|示例|Example|$)/i);
-        if (!paramSection) return params;
+        // 找参数区域起始位置 (v0.5: paramSection失败时fallback全文)
+        const paramSection = description.match(/(?:参数[说明]*[:：]|Parameters[:：]|参数\s*\(|参数说明\s*\()([\s\S]+?)(?=调用格式|调用[格示]例|重要提示|注意[:：]|返回[:：]|成功时|失败时|示例|Example|<<<\[TOOL_REQUEST\]|$)/i);
 
-        const text = paramSection[1];
+        const text = paramSection ? paramSection[1].slice(0, 3000) : description.slice(0, 3000);
 
         // 格式A/C：- 参数名 (类型, 必填): 描述  或  - 参数名/别名: 描述
         const lineRegex = /^[-*]\s*`?([^`:\n(]+(?:\/[^`:\n(]+)*)`?\s*(?:\(([^)]+)\))?\s*[:：]\s*(.+)/gm;
@@ -132,7 +131,7 @@ export class ToolManager {
             const primaryName = names[0];
 
             // 跳过固定参数
-            if (['tool_name', 'command', 'maid'].includes(primaryName)) continue;
+            if (['tool_name', 'command', 'maid'].includes(primaryName.toLowerCase())) continue;
 
             const required = /必需|required|必填/i.test(desc + (typeHint || ''));
             const type = this.inferTypeFromHint(typeHint || '', desc);
@@ -148,12 +147,38 @@ export class ToolManager {
             });
         }
 
+        // 🔧 v0.5新增：格式A2 - 冒号后接括号变体
+        // 适配 ChromeBridge/TicktickManager/ObsidianBridge 等：- `param`: (可选) 描述
+        if (foundParams.length === 0) {
+            const a2Regex = /^[-*]\s*`?(\w[\w-]*)`?\s*[:：]\s*(?:\(([^)]*)\)\s*)?[,，]?\s*(.+)/gm;
+            while ((match = a2Regex.exec(text)) !== null) {
+                const [, nameRaw, hint, desc] = match;
+                if (['tool_name', 'command', 'maid'].includes(nameRaw.trim().toLowerCase())) continue;
+                // 跳过 "固定为" 描述（这是command值说明，不是参数）
+                if (/固定为|fixed as/i.test(desc)) continue;
+
+                const required = /必需|required|必填|必填/i.test((hint || '') + desc);
+                const type = this.inferTypeFromHint(hint || '', desc);
+                const options = this.extractOptions(desc);
+
+                foundParams.push({
+                    name: nameRaw.trim(),
+                    type: options.length > 0 ? 'select' : type,
+                    required,
+                    placeholder: desc.replace(/必需|可选|必填|字符串|整数|数字/gi, '').trim().slice(0, 60),
+                    description: desc.trim().slice(0, 100),
+                    options: options.length > 0 ? options : undefined
+                });
+            }
+        }
+
+
         // 格式B：数字列表 N. `param`: 描述
         if (foundParams.length === 0) {
             const numberedRegex = /^\d+\.\s+`?([^`:\n(]+)`?\s*[:：]\s*[「「]?始[」」]?[^」」]*[「「]?末[」」]?\s*(?:\(([^)]+)\))?\s*(.+)/gm;
             while ((match = numberedRegex.exec(text)) !== null) {
                 const [, nameRaw, typeHint, desc] = match;
-                if (['tool_name', 'command', 'maid'].includes(nameRaw.trim())) continue;
+                if (['tool_name', 'command', 'maid'].includes(nameRaw.trim().toLowerCase())) continue;
 
                 const required = /必需|required|必填/i.test((typeHint || '') + desc);
                 foundParams.push({
@@ -171,7 +196,7 @@ export class ToolManager {
             const vcpFormatRegex = /(\w+)[:：]\s*[「「]始[」」]\s*\(([^)]+)\)\s*([^「」]+)[「「]末[」」]/g;
             while ((match = vcpFormatRegex.exec(description)) !== null) {
                 const [, nameRaw, hint, desc] = match;
-                if (['tool_name', 'command', 'maid'].includes(nameRaw.trim())) continue;
+                if (['tool_name', 'command', 'maid'].includes(nameRaw.trim().toLowerCase())) continue;
 
                 const required = /必需|required|必填/i.test(hint);
                 const type = this.inferTypeFromHint(hint, desc);
@@ -200,7 +225,7 @@ export class ToolManager {
                 let embedMatch;
                 while ((embedMatch = embeddedParamRegex.exec(blockText)) !== null) {
                     const [, nameRaw, hint, desc] = embedMatch;
-                    if (['tool_name', 'command', 'maid'].includes(nameRaw.trim())) continue;
+                    if (['tool_name', 'command', 'maid'].includes(nameRaw.trim().toLowerCase())) continue;
 
                     const required = /必需|required|必填/i.test(hint);
                     const type = this.inferTypeFromHint(hint, desc);
@@ -218,8 +243,84 @@ export class ToolManager {
             }
         }
 
-        // 始终注入maid参数到第一位
-        if (!foundParams.find(p => p.name === 'maid')) {
+        // 🔧 v0.5增强：格式G - 行内极简格式（支持逗号分隔多参数）
+        // 适配 XiaohongshuFetch/GitOperator/VCPForumOnline 等
+        // 格式："参数: url (字符串, 必需) - 描述" 或 "参数: profile (可选), target (可选, 对比目标)"
+        if (foundParams.length === 0) {
+            // 先尝试单参数格式
+            const inlineParamRegex = /参数[:：]\s*(\w+)\s*\(([^)]+)\)\s*[-:：]\s*(.+)/g;
+            let inlineMatch;
+            while ((inlineMatch = inlineParamRegex.exec(description)) !== null) {
+                const [, nameRaw, hint, desc] = inlineMatch;
+                if (['tool_name', 'command', 'maid'].includes(nameRaw.trim().toLowerCase())) continue;
+
+                const required = /必需|required|必填/i.test(hint);
+                const type = this.inferTypeFromHint(hint, desc);
+
+                foundParams.push({
+                    name: nameRaw.trim(),
+                    type,
+                    required,
+                    placeholder: desc.replace(/必需|可选|必填|字符串/gi, '').trim().slice(0, 60),
+                    description: desc.trim().slice(0, 100)
+                });
+            }
+
+            // 逗号分隔多参数格式: "参数: param1 (可选), param2 (必需, 描述), ..."
+            if (foundParams.length === 0) {
+                const inlineHeader = description.match(/(?:参数|可选参数|必需参数)[:：]\s*(.+)/);
+                if (inlineHeader) {
+                    const paramList = inlineHeader[1];
+                    const multiParamRegex = /(\w+)\s*\(([^)]+)\)/g;
+                    let mp;
+                    while ((mp = multiParamRegex.exec(paramList)) !== null) {
+                        const [, nameRaw, hint] = mp;
+                        if (['tool_name', 'command', 'maid'].includes(nameRaw.trim().toLowerCase())) continue;
+
+                        const required = /必需|required|必填/i.test(hint);
+                        const type = this.inferTypeFromHint(hint, '');
+
+                        foundParams.push({
+                            name: nameRaw.trim(),
+                            type,
+                            required,
+                            placeholder: hint.replace(/必需|可选|必填|字符串|数字/gi, '').trim().slice(0, 60),
+                            description: hint.trim().slice(0, 100)
+                        });
+                    }
+                }
+            }
+        }
+
+        // 🔧 v0.5新增：格式H - 英文 Required/Optional fields 格式
+        // 适配 PaperReader/OpenHerPersona 等英文描述插件
+        // 格式："Required fields: `filePath`. Optional: `paperId`, `goal`."
+        if (foundParams.length === 0) {
+            const enFieldRegex = /(?:Required|Optional)\s*(?:fields?|params?|:)?\s*[:：]?\s*([^.\n]+)/gi;
+            let enMatch;
+            while ((enMatch = enFieldRegex.exec(description)) !== null) {
+                const segment = enMatch[1];
+                const isRequired = /^Required/i.test(enMatch[0]);
+                // 提取反引号包裹的参数名
+                const backtickParams = [...segment.matchAll(/`([^`]+)`/g)];
+                for (const bp of backtickParams) {
+                    const name = bp[1].trim();
+                    if (['command', 'tool_name', 'maid'].includes(name.toLowerCase())) continue;
+                    if (foundParams.find(p => p.name === name)) continue; // 去重
+
+                    foundParams.push({
+                        name,
+                        type: 'text',
+                        required: isRequired,
+                        placeholder: isRequired ? '(required)' : '(optional)',
+                        description: `${isRequired ? 'Required' : 'Optional'} field`
+                    });
+                }
+            }
+        }
+
+        // 始终注入maid参数到第一位 (v0.4: case-insensitive防重复)
+        if (!foundParams.find(p => p.name.toLowerCase() === 'maid')) {
             foundParams.unshift({ name: 'maid', type: 'text', required: true, placeholder: '你的名字' });
         }
 
@@ -505,7 +606,7 @@ export class ToolManagerUI {
         if (oldSearchInput) {
             oldSearchInput.replaceWith(oldSearchInput.cloneNode(true)); // 克隆新元素，清除所有旧事件
         }
-        
+
         // 全局搜索
         const searchInput = document.getElementById('tm-global-search');
         if (searchInput) {
