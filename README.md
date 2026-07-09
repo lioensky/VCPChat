@@ -36,12 +36,12 @@ VCPChat 的核心价值在于其极致的**抽象与集成能力**。
 
 2.  **安装依赖**
 
-    本项目需要 Node.js 和 Python 环境。
+    本项目需要 Node.js 和 Python 环境。(Error invoking remote method 'get-agents': Error: No handler registered for 'get-agents'报错通常由Npx依赖安装失败造成)
 
     *   **安装 Node.js 依赖:**
         ```bash
         npm install
-        npx electron-rebuild --only better-sqlite3
+        npx electron-rebuild --only better-sqlite3   
         ```
 
         > VCPChat 与部分分布式/同步能力依赖 SQLite 原生模块。每次首次安装依赖、升级 Electron、切换 Node.js/Electron 版本，或遇到 `better-sqlite3` 提示 `NODE_MODULE_VERSION` 不匹配时，都需要执行 `npx electron-rebuild --only better-sqlite3` 重新编译原生扩展，否则可能出现数据库无法初始化、同步索引不创建等问题。
