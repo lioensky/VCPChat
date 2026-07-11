@@ -46,17 +46,58 @@ const uiManager = (() => {
      * Initializes the resizable sidebars.
      */
     function initializeResizers() {
-        let isResizingLeft = false;
-        let isResizingRight = false;
-        let startX = 0;
+        let resizeState = null;
+        let pendingWidth = null;
+        let resizeFrame = 0;
+
+        const getWidthConstraints = (element, fallbackMin) => {
+            const computed = getComputedStyle(element);
+            return {
+                min: parseFloat(computed.minWidth) || fallbackMin,
+                max: parseFloat(computed.maxWidth) || 600
+            };
+        };
+
+        const flushResizeWidth = () => {
+            resizeFrame = 0;
+            if (!resizeState || pendingWidth === null) return;
+            resizeState.element.style.width = `${pendingWidth}px`;
+
+            if (document.body.classList.contains('vcp-layout-overlay-sidebars')) {
+                const variableName = resizeState.side === 'left'
+                    ? '--vcp-overlay-left-width'
+                    : '--vcp-overlay-right-width';
+                document.documentElement.style.setProperty(variableName, `${pendingWidth}px`);
+            }
+        };
+
+        const scheduleResizeWidth = (width) => {
+            pendingWidth = width;
+            if (!resizeFrame) {
+                resizeFrame = requestAnimationFrame(flushResizeWidth);
+            }
+        };
+
+        const beginResize = (side, element, clientX, fallbackMin) => {
+            const constraints = getWidthConstraints(element, fallbackMin);
+            resizeState = {
+                side,
+                element,
+                startX: clientX,
+                startWidth: element.getBoundingClientRect().width,
+                minWidth: constraints.min,
+                maxWidth: constraints.max
+            };
+            pendingWidth = resizeState.startWidth;
+            document.body.style.cursor = 'col-resize';
+            document.body.style.userSelect = 'none';
+            document.body.classList.add('vcp-sidebar-resizing');
+            element.style.transition = 'none';
+        };
 
         if (resizerLeft && leftSidebar) {
             resizerLeft.addEventListener('mousedown', (e) => {
-                isResizingLeft = true;
-                startX = e.clientX;
-                document.body.style.cursor = 'col-resize';
-                document.body.style.userSelect = 'none';
-                if (leftSidebar) leftSidebar.style.transition = 'none';
+                beginResize('left', leftSidebar, e.clientX, 180);
             });
         }
 
@@ -65,74 +106,61 @@ const uiManager = (() => {
                 if (!rightNotificationsSidebar.classList.contains('active')) {
                     electronAPI.sendToggleNotificationsSidebar();
                     requestAnimationFrame(() => {
-                        isResizingRight = true;
-                        startX = e.clientX;
-                        document.body.style.cursor = 'col-resize';
-                        document.body.style.userSelect = 'none';
-                        rightNotificationsSidebar.style.transition = 'none';
+                        beginResize('right', rightNotificationsSidebar, e.clientX, 220);
                     });
                 } else {
-                    isResizingRight = true;
-                    startX = e.clientX;
-                    document.body.style.cursor = 'col-resize';
-                    document.body.style.userSelect = 'none';
-                    rightNotificationsSidebar.style.transition = 'none';
+                    beginResize('right', rightNotificationsSidebar, e.clientX, 220);
                 }
             });
         }
 
         document.addEventListener('mousemove', (e) => {
-            if (isResizingLeft && leftSidebar) {
-                const deltaX = e.clientX - startX;
-                const currentWidth = leftSidebar.offsetWidth;
-                let newWidth = currentWidth + deltaX;
-                newWidth = Math.max(parseInt(getComputedStyle(leftSidebar).minWidth, 10) || 180, Math.min(newWidth, parseInt(getComputedStyle(leftSidebar).maxWidth, 10) || 600));
-                leftSidebar.style.width = `${newWidth}px`;
-                startX = e.clientX;
-            }
-            if (isResizingRight && rightNotificationsSidebar && rightNotificationsSidebar.classList.contains('active')) {
-                const deltaX = e.clientX - startX;
-                const currentWidth = rightNotificationsSidebar.offsetWidth;
-                let newWidth = currentWidth - deltaX;
-                newWidth = Math.max(parseInt(getComputedStyle(rightNotificationsSidebar).minWidth, 10) || 220, Math.min(newWidth, parseInt(getComputedStyle(rightNotificationsSidebar).maxWidth, 10) || 600));
-                rightNotificationsSidebar.style.width = `${newWidth}px`;
-                startX = e.clientX;
-            }
+            if (!resizeState) return;
+
+            const deltaX = e.clientX - resizeState.startX;
+            const rawWidth = resizeState.side === 'left'
+                ? resizeState.startWidth + deltaX
+                : resizeState.startWidth - deltaX;
+            const nextWidth = Math.max(
+                resizeState.minWidth,
+                Math.min(rawWidth, resizeState.maxWidth)
+            );
+            scheduleResizeWidth(nextWidth);
         });
 
         document.addEventListener('mouseup', async () => {
-            let settingsChanged = false;
-            const currentSettings = globalSettingsRef.get();
+            if (!resizeState) return;
 
-            if (isResizingLeft && leftSidebar) {
-                leftSidebar.style.transition = '';
-                const newSidebarWidth = leftSidebar.offsetWidth;
-                if (currentSettings.sidebarWidth !== newSidebarWidth) {
-                    currentSettings.sidebarWidth = newSidebarWidth;
-                    settingsChanged = true;
-                }
+            if (resizeFrame) {
+                cancelAnimationFrame(resizeFrame);
+                resizeFrame = 0;
             }
-            if (isResizingRight && rightNotificationsSidebar && rightNotificationsSidebar.classList.contains('active')) {
-                rightNotificationsSidebar.style.transition = '';
-                const newNotificationsWidth = rightNotificationsSidebar.offsetWidth;
-                if (currentSettings.notificationsSidebarWidth !== newNotificationsWidth) {
-                    currentSettings.notificationsSidebarWidth = newNotificationsWidth;
-                    settingsChanged = true;
-                }
-            }
+            flushResizeWidth();
 
-            isResizingLeft = false;
-            isResizingRight = false;
+            const completedResize = resizeState;
+            const completedWidth = pendingWidth;
+            resizeState = null;
+            pendingWidth = null;
+
+            completedResize.element.style.transition = '';
             document.body.style.cursor = '';
             document.body.style.userSelect = '';
+            document.body.classList.remove('vcp-sidebar-resizing');
 
-            if (settingsChanged) {
-                try {
-                    await electronAPI.saveSettings(currentSettings);
-                    console.log('Sidebar widths saved to settings.');
-                } catch (error) {
-                    console.error('Failed to save sidebar widths:', error);
-                }
+            const currentSettings = globalSettingsRef.get();
+            const settingKey = completedResize.side === 'left'
+                ? 'sidebarWidth'
+                : 'notificationsSidebarWidth';
+            const roundedWidth = Math.round(completedWidth);
+
+            if (currentSettings[settingKey] === roundedWidth) return;
+            currentSettings[settingKey] = roundedWidth;
+
+            try {
+                await electronAPI.saveSettings(currentSettings);
+                console.log('Sidebar width saved to settings.');
+            } catch (error) {
+                console.error('Failed to save sidebar width:', error);
             }
         });
     }

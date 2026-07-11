@@ -1472,16 +1472,61 @@ export function setupEventListeners(deps) {
     }
 
     if (seamFixer && notificationsSidebar) {
-        const setSeamFixerWidth = () => {
-            const sidebarWidth = notificationsSidebar.getBoundingClientRect().width;
-            const offset = sidebarWidth > 0 ? 3 : 0;
-            seamFixer.style.right = `${sidebarWidth + offset}px`;
+        let seamFrame = 0;
+        let pendingSidebarWidth = 0;
+
+        const scheduleSeamFixerWidth = (width) => {
+            pendingSidebarWidth = width;
+            if (seamFrame) return;
+
+            seamFrame = requestAnimationFrame(() => {
+                seamFrame = 0;
+                const offset = pendingSidebarWidth > 0 ? 3 : 0;
+                seamFixer.style.right = `${pendingSidebarWidth + offset}px`;
+            });
         };
-        const resizeObserver = new ResizeObserver(setSeamFixerWidth);
+
+        const resizeObserver = new ResizeObserver((entries) => {
+            const entry = entries[entries.length - 1];
+            scheduleSeamFixerWidth(entry?.contentRect?.width || 0);
+        });
         resizeObserver.observe(notificationsSidebar);
-        const mutationObserver = new MutationObserver(setSeamFixerWidth);
-        mutationObserver.observe(notificationsSidebar, { attributes: true, attributeFilter: ['class', 'style'] });
-        setSeamFixerWidth();
     }
+
+    const setLayoutExperimentMode = (mode = 'baseline') => {
+        const normalizedMode = mode === 'overlay' ? 'overlay' : 'baseline';
+
+        if (normalizedMode === 'overlay') {
+            const settings = refs.globalSettings.get();
+            const leftWidth = parseFloat(leftSidebar?.style.width)
+                || settings.sidebarWidth
+                || 260;
+            const rightWidth = parseFloat(notificationsSidebar?.style.width)
+                || settings.notificationsSidebarWidth
+                || 310;
+            document.documentElement.style.setProperty('--vcp-overlay-left-width', `${leftWidth}px`);
+            document.documentElement.style.setProperty('--vcp-overlay-right-width', `${rightWidth}px`);
+        }
+
+        document.body.classList.toggle('vcp-layout-overlay-sidebars', normalizedMode === 'overlay');
+        document.body.dataset.vcpLayoutExperiment = normalizedMode;
+        console.info(`[LayoutExperiment] mode=${normalizedMode}`);
+        return getLayoutExperimentState();
+    };
+
+    const getLayoutExperimentState = () => ({
+        mode: document.body.classList.contains('vcp-layout-overlay-sidebars') ? 'overlay' : 'baseline',
+        leftSidebarActive: leftSidebar?.classList.contains('active') === true,
+        notificationsSidebarActive: notificationsSidebar?.classList.contains('active') === true
+    });
+
+    window.vcpLayoutExperiment = Object.freeze({
+        useBaseline: () => setLayoutExperimentMode('baseline'),
+        useOverlay: () => setLayoutExperimentMode('overlay'),
+        setMode: setLayoutExperimentMode,
+        getState: getLayoutExperimentState
+    });
+    document.body.dataset.vcpLayoutExperiment = 'baseline';
+    console.info('[LayoutExperiment] Ready: vcpLayoutExperiment.useBaseline() / useOverlay()');
 }
 

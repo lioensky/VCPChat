@@ -8,6 +8,7 @@
     let croppedGroupAvatarFile = null;
 
     const uiHelperFunctions = {};
+    const textareaResizeStates = new WeakMap();
     const REGEX_CACHE_MAX_ENTRIES = 512;
     const regexCompileCache = new Map();
     const filePreviewIconMarkup = `
@@ -259,23 +260,19 @@
      * Scrolls the chat messages div to the bottom.
      */
     uiHelperFunctions.scrollToBottom = function() {
-        const chatMessagesDiv = document.getElementById('chatMessages');
         const parentContainer = document.querySelector('.chat-messages-container');
-        if (!chatMessagesDiv || !parentContainer) return;
+        if (!parentContainer) return;
 
-        // 🟢 核心修复：使用真正的滚动容器（parentContainer）进行判断
-        // 之前的逻辑错误地使用了 chatMessagesDiv，而它通常没有滚动条，导致判断永远为 true
-        const scrollThreshold = 50; // 像素容差
-        const isScrolledToBottom = parentContainer.scrollHeight - parentContainer.clientHeight <= parentContainer.scrollTop + scrollThreshold;
+        const scrollThreshold = 50;
+        const isNearBottom = () => (
+            parentContainer.scrollHeight - parentContainer.clientHeight
+            <= parentContainer.scrollTop + scrollThreshold
+        );
 
-        // 只有当用户已经位于底部时，才执行自动滚动。
-        if (isScrolledToBottom) {
-            // 使用 requestAnimationFrame 来确保滚动操作在下一次浏览器重绘前执行。
+        if (isNearBottom()) {
             requestAnimationFrame(() => {
-                if (document.body.contains(parentContainer)) {
+                if (parentContainer.isConnected && isNearBottom()) {
                     parentContainer.scrollTop = parentContainer.scrollHeight;
-                    // 同时同步内部 div 的位置（如果它也有滚动条的话）
-                    chatMessagesDiv.scrollTop = chatMessagesDiv.scrollHeight;
                 }
             });
         }
@@ -283,12 +280,40 @@
 
     /**
      * Automatically resizes a textarea to fit its content.
+     * Repeated calls in the same frame are coalesced to avoid write-read-write layout thrashing.
      * @param {HTMLTextAreaElement} textarea The textarea element.
      */
     uiHelperFunctions.autoResizeTextarea = function(textarea) {
         if (!textarea) return;
-        textarea.style.height = 'auto';
-        textarea.style.height = textarea.scrollHeight + 'px';
+
+        let state = textareaResizeStates.get(textarea);
+        if (!state) {
+            state = { frameId: 0, lastHeight: null };
+            textareaResizeStates.set(textarea, state);
+        }
+        if (state.frameId) return;
+
+        state.frameId = requestAnimationFrame(() => {
+            state.frameId = 0;
+            if (!textarea.isConnected) return;
+
+            textarea.style.height = 'auto';
+            const computed = getComputedStyle(textarea);
+            const maxHeight = parseFloat(computed.maxHeight);
+            const minHeight = parseFloat(computed.minHeight) || 0;
+            const measuredHeight = textarea.scrollHeight;
+            const nextHeight = Math.max(
+                minHeight,
+                Number.isFinite(maxHeight) ? Math.min(measuredHeight, maxHeight) : measuredHeight
+            );
+
+            if (state.lastHeight !== nextHeight) {
+                textarea.style.height = `${nextHeight}px`;
+                state.lastHeight = nextHeight;
+            } else {
+                textarea.style.height = `${state.lastHeight}px`;
+            }
+        });
     };
 
     /**

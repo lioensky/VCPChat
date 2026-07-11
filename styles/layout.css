@@ -267,6 +267,99 @@ body.light-theme .notifications-sidebar {
     pointer-events: none;
 }
 
+/*
+ * Main-window layout A/B experiment.
+ * Enabled at runtime with vcpLayoutExperiment.useOverlay().
+ * Sidebars leave the flex flow, so opening/closing them no longer continuously
+ * changes the chat viewport width.
+ */
+body.vcp-layout-overlay-sidebars .container {
+    position: relative;
+}
+
+body.vcp-layout-overlay-sidebars .main-content {
+    flex: 1 1 100%;
+    min-width: 0;
+    width: 100%;
+}
+
+body.vcp-layout-overlay-sidebars .sidebar,
+body.vcp-layout-overlay-sidebars .notifications-sidebar {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    z-index: 300;
+    opacity: 1;
+    will-change: transform;
+    transition: transform 0.3s ease, opacity 0.2s ease;
+}
+
+body.vcp-layout-overlay-sidebars .sidebar {
+    left: 0;
+    width: var(--vcp-overlay-left-width, 260px) !important;
+    min-width: 180px !important;
+    transform: translateX(0);
+}
+
+body.vcp-layout-overlay-sidebars .sidebar:not(.active) {
+    width: var(--vcp-overlay-left-width, 260px) !important;
+    min-width: 180px !important;
+    padding-left: 8px !important;
+    padding-right: 3px !important;
+    transform: translateX(calc(-100% - 3px));
+    pointer-events: none;
+}
+
+body.vcp-layout-overlay-sidebars .notifications-sidebar {
+    right: 0;
+    width: var(--vcp-overlay-right-width, 310px) !important;
+    min-width: 220px !important;
+    transform: translateX(0);
+}
+
+body.vcp-layout-overlay-sidebars .notifications-sidebar:not(.active) {
+    width: var(--vcp-overlay-right-width, 310px) !important;
+    min-width: 220px !important;
+    transform: translateX(calc(100% + 3px));
+    pointer-events: none;
+}
+
+body.vcp-layout-overlay-sidebars #resizerLeft,
+body.vcp-layout-overlay-sidebars #resizerRight {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    z-index: 301;
+    width: 3px !important;
+    min-width: 3px !important;
+}
+
+body.vcp-layout-overlay-sidebars #resizerLeft {
+    left: var(--vcp-overlay-left-width, 260px);
+    transition: transform 0.3s ease;
+}
+
+body.vcp-layout-overlay-sidebars #resizerRight {
+    right: var(--vcp-overlay-right-width, 310px);
+    transition: transform 0.3s ease;
+}
+
+body.vcp-layout-overlay-sidebars .sidebar:not(.active) + #resizerLeft {
+    transform: translateX(calc(-1 * var(--vcp-overlay-left-width, 260px) - 3px));
+    pointer-events: none;
+}
+
+body.vcp-layout-overlay-sidebars .container:has(.notifications-sidebar:not(.active)) #resizerRight {
+    transform: translateX(calc(var(--vcp-overlay-right-width, 310px) + 3px));
+    pointer-events: none;
+}
+
+body.vcp-layout-overlay-sidebars.vcp-sidebar-resizing .sidebar,
+body.vcp-layout-overlay-sidebars.vcp-sidebar-resizing .notifications-sidebar {
+    transition: none;
+    will-change: auto;
+}
+
 /* --- User Emoticon Panel --- */
 .emoticon-panel {
     display: none;
