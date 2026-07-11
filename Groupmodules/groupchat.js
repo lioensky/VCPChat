@@ -947,7 +947,7 @@ ${canvasData.errors || 'No errors'}
                             const { done, value } = await reader.read();
                             if (done) {
                                 console.log(`[GroupChat] VCP stream ended for ${agentName} (msgId: ${messageIdForAgentResponse})`);
-                                const finalAiResponseEntry = { role: 'assistant', name: agentName, agentId: agentId, content: accumulatedResponse, timestamp: Date.now(), id: messageIdForAgentResponse, isGroupMessage: true, groupId, topicId, avatarUrl: agentConfig.avatarUrl, avatarColor: agentConfig.avatarCalculatedColor };
+                                const finalAiResponseEntry = { role: 'assistant', name: agentName, agentId: agentId, model: modelConfigForAgent.model, modelSource: modelResolution.usingUnifiedModel ? 'group_unified' : 'agent', content: accumulatedResponse, timestamp: Date.now(), id: messageIdForAgentResponse, isGroupMessage: true, groupId, topicId, avatarUrl: agentConfig.avatarUrl, avatarColor: agentConfig.avatarCalculatedColor };
                                 groupHistory.push(finalAiResponseEntry);
                                 await fs.writeJson(groupHistoryPath, groupHistory, { spaces: 2 });
                                 if (typeof sendStreamChunkToRenderer === 'function') {
@@ -962,7 +962,7 @@ ${canvasData.errors || 'No errors'}
                                     const jsonData = line.substring(5).trim();
                                     if (jsonData === '[DONE]') {
                                         console.log(`[GroupChat] VCP stream explicit [DONE] for ${agentName} (msgId: ${messageIdForAgentResponse})`);
-                                        const doneAiResponseEntry = { role: 'assistant', name: agentName, agentId: agentId, content: accumulatedResponse, timestamp: Date.now(), id: messageIdForAgentResponse, isGroupMessage: true, groupId, topicId, avatarUrl: agentConfig.avatarUrl, avatarColor: agentConfig.avatarCalculatedColor };
+                                        const doneAiResponseEntry = { role: 'assistant', name: agentName, agentId: agentId, model: modelConfigForAgent.model, modelSource: modelResolution.usingUnifiedModel ? 'group_unified' : 'agent', content: accumulatedResponse, timestamp: Date.now(), id: messageIdForAgentResponse, isGroupMessage: true, groupId, topicId, avatarUrl: agentConfig.avatarUrl, avatarColor: agentConfig.avatarCalculatedColor };
                                         groupHistory.push(doneAiResponseEntry);
                                         await fs.writeJson(groupHistoryPath, groupHistory, { spaces: 2 });
                                         if (typeof sendStreamChunkToRenderer === 'function') {
@@ -1030,7 +1030,7 @@ ${canvasData.errors || 'No errors'}
                         if (streamError.name === 'AbortError') {
                             console.log(`[GroupChat] VCP stream for ${agentName} (msgId: ${messageIdForAgentResponse}) was aborted by user.`);
                             // Even though it was aborted, we save the content received so far.
-                            const finalAiResponseEntry = { role: 'assistant', name: agentName, agentId: agentId, content: accumulatedResponse, timestamp: Date.now(), id: messageIdForAgentResponse, isGroupMessage: true, groupId, topicId, avatarUrl: agentConfig.avatarUrl, avatarColor: agentConfig.avatarCalculatedColor, interrupted: true };
+                            const finalAiResponseEntry = { role: 'assistant', name: agentName, agentId: agentId, model: modelConfigForAgent.model, modelSource: modelResolution.usingUnifiedModel ? 'group_unified' : 'agent', content: accumulatedResponse, timestamp: Date.now(), id: messageIdForAgentResponse, isGroupMessage: true, groupId, topicId, avatarUrl: agentConfig.avatarUrl, avatarColor: agentConfig.avatarCalculatedColor, interrupted: true };
                             groupHistory.push(finalAiResponseEntry);
                             await fs.writeJson(groupHistoryPath, groupHistory, { spaces: 2 });
                             if (typeof sendStreamChunkToRenderer === 'function') {
@@ -1059,7 +1059,7 @@ ${canvasData.errors || 'No errors'}
                 const vcpResponseJson = await response.json();
                 const aiResponseContent = vcpResponseJson.choices && vcpResponseJson.choices.length > 0 ? vcpResponseJson.choices[0].message.content : "[AI failed to generate a valid response]";
                 
-                const aiResponseEntry = { role: 'assistant', name: agentName, agentId: agentId, content: aiResponseContent, timestamp: Date.now(), id: messageIdForAgentResponse, isGroupMessage: true, groupId, topicId, avatarUrl: agentConfig.avatarUrl, avatarColor: agentConfig.avatarCalculatedColor };
+                const aiResponseEntry = { role: 'assistant', name: agentName, agentId: agentId, model: modelConfigForAgent.model, modelSource: modelResolution.usingUnifiedModel ? 'group_unified' : 'agent', content: aiResponseContent, timestamp: Date.now(), id: messageIdForAgentResponse, isGroupMessage: true, groupId, topicId, avatarUrl: agentConfig.avatarUrl, avatarColor: agentConfig.avatarCalculatedColor };
                 groupHistory.push(aiResponseEntry);
                 await fs.writeJson(groupHistoryPath, groupHistory, { spaces: 2 });
 
@@ -1508,7 +1508,7 @@ ${canvasData.errors || 'No errors'}
                     while (true) {
                         const { done, value } = await reader.read();
                         if (done) {
-                            const finalAiResponseEntry = { role: 'assistant', name: agentName, agentId: invitedAgentId, content: accumulatedResponse, timestamp: Date.now(), id: messageIdForAgentResponse, isGroupMessage: true, groupId, topicId, avatarUrl: agentConfig.avatarUrl, avatarColor: agentConfig.avatarCalculatedColor };
+                            const finalAiResponseEntry = { role: 'assistant', name: agentName, agentId: invitedAgentId, model: modelConfigForAgent.model, modelSource: modelResolution.usingUnifiedModel ? 'group_unified' : 'agent', content: accumulatedResponse, timestamp: Date.now(), id: messageIdForAgentResponse, isGroupMessage: true, groupId, topicId, avatarUrl: agentConfig.avatarUrl, avatarColor: agentConfig.avatarCalculatedColor };
                             groupHistory.push(finalAiResponseEntry);
                             await fs.writeJson(groupHistoryPath, groupHistory, { spaces: 2 });
                             if (typeof sendStreamChunkToRenderer === 'function') {
@@ -1522,7 +1522,7 @@ ${canvasData.errors || 'No errors'}
                             if (line.startsWith('data: ')) {
                                 const jsonData = line.substring(5).trim();
                                 if (jsonData === '[DONE]') {
-                                    const doneAiResponseEntry = { role: 'assistant', name: agentName, agentId: invitedAgentId, content: accumulatedResponse, timestamp: Date.now(), id: messageIdForAgentResponse, isGroupMessage: true, groupId, topicId, avatarUrl: agentConfig.avatarUrl, avatarColor: agentConfig.avatarCalculatedColor };
+                                    const doneAiResponseEntry = { role: 'assistant', name: agentName, agentId: invitedAgentId, model: modelConfigForAgent.model, modelSource: modelResolution.usingUnifiedModel ? 'group_unified' : 'agent', content: accumulatedResponse, timestamp: Date.now(), id: messageIdForAgentResponse, isGroupMessage: true, groupId, topicId, avatarUrl: agentConfig.avatarUrl, avatarColor: agentConfig.avatarCalculatedColor };
                                     groupHistory.push(doneAiResponseEntry);
                                     await fs.writeJson(groupHistoryPath, groupHistory, { spaces: 2 });
                                     if (typeof sendStreamChunkToRenderer === 'function') {
@@ -1591,7 +1591,7 @@ ${canvasData.errors || 'No errors'}
                     if (streamError.name === 'AbortError') {
                         console.log(`[GroupChat Invite] VCP stream for ${agentName} (msgId: ${messageIdForAgentResponse}) was aborted by user.`);
                         // Save the content received so far upon abortion.
-                        const finalAiResponseEntry = { role: 'assistant', name: agentName, agentId: invitedAgentId, content: accumulatedResponse, timestamp: Date.now(), id: messageIdForAgentResponse, isGroupMessage: true, groupId, topicId, avatarUrl: agentConfig.avatarUrl, avatarColor: agentConfig.avatarCalculatedColor, interrupted: true };
+                        const finalAiResponseEntry = { role: 'assistant', name: agentName, agentId: invitedAgentId, model: modelConfigForAgent.model, modelSource: modelResolution.usingUnifiedModel ? 'group_unified' : 'agent', content: accumulatedResponse, timestamp: Date.now(), id: messageIdForAgentResponse, isGroupMessage: true, groupId, topicId, avatarUrl: agentConfig.avatarUrl, avatarColor: agentConfig.avatarCalculatedColor, interrupted: true };
                         groupHistory.push(finalAiResponseEntry);
                         await fs.writeJson(groupHistoryPath, groupHistory, { spaces: 2 });
                         if (typeof sendStreamChunkToRenderer === 'function') {
@@ -1618,7 +1618,7 @@ ${canvasData.errors || 'No errors'}
             const vcpResponseJson = await response.json();
             const aiResponseContent = vcpResponseJson.choices && vcpResponseJson.choices.length > 0 ? vcpResponseJson.choices[0].message.content : "[AI failed to generate a valid response (invite)]";
             
-            const aiResponseEntry = { role: 'assistant', name: agentName, agentId: invitedAgentId, content: aiResponseContent, timestamp: Date.now(), id: messageIdForAgentResponse, isGroupMessage: true, groupId, topicId, avatarUrl: agentConfig.avatarUrl, avatarColor: agentConfig.avatarCalculatedColor };
+            const aiResponseEntry = { role: 'assistant', name: agentName, agentId: invitedAgentId, model: modelConfigForAgent.model, modelSource: modelResolution.usingUnifiedModel ? 'group_unified' : 'agent', content: aiResponseContent, timestamp: Date.now(), id: messageIdForAgentResponse, isGroupMessage: true, groupId, topicId, avatarUrl: agentConfig.avatarUrl, avatarColor: agentConfig.avatarCalculatedColor };
             groupHistory.push(aiResponseEntry);
             await fs.writeJson(groupHistoryPath, groupHistory, { spaces: 2 });
  
