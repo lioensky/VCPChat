@@ -252,6 +252,15 @@ function messageIsFinalized(messageId) {
     return initStatus === 'finalized';
 }
 
+/**
+ * 判断请求是否仍处于等待首块或流式处理中。
+ * 该 Map 是跨 Agent/话题异步请求的运行态真源，不能只依赖单一的 activeStreamingMessageId。
+ */
+export function isMessageActive(messageId) {
+    const initStatus = messageInitializationStatus.get(messageId);
+    return initStatus === 'pending' || initStatus === 'ready';
+}
+
 function isThinkingPlaceholderText(text) {
     if (typeof text !== 'string') return false;
     const normalized = text.trim();
@@ -2368,6 +2377,7 @@ window.streamManager = {
     appendStreamChunk,
     finalizeStreamedMessage,
     cleanupTransientState,
+    isMessageActive,
     getActiveStreamingMessageId: () => activeStreamingMessageId,
     getActiveStreamingContext: () => {
         if (!activeStreamingMessageId) return null;

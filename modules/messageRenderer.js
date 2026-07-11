@@ -2729,10 +2729,21 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true,
         visibilityOptimizer.observeMessage(messageItem);
     }
 
-    if (message.isThinking) {
+    const isActiveStreamRequest = message.role === 'assistant'
+        && typeof streamManager.isMessageActive === 'function'
+        && streamManager.isMessageActive(message.id);
+    const messageTextIsEmpty = message.content === null
+        || message.content === undefined
+        || (typeof message.content === 'string' && message.content.trim() === '');
+
+    if (message.isThinking || (isActiveStreamRequest && messageTextIsEmpty)) {
         contentDiv.innerHTML = `<span class="thinking-indicator">${message.content || '思考中'}<span class="thinking-indicator-dots">...</span></span>`;
-        messageItem.classList.add('thinking');
+        messageItem.classList.add(message.isThinking ? 'thinking' : 'streaming');
     } else {
+        // 切回仍在后台运行且已经产生内容的会话时，恢复可中止的流式状态。
+        if (isActiveStreamRequest) {
+            messageItem.classList.add('streaming');
+        }
         let textToRender = "";
         if (typeof message.content === 'string') {
             textToRender = message.content;
@@ -2999,9 +3010,9 @@ async function renderMessage(message, isInitialLoad = false, appendToDom = true,
          }
      }
      */
-    if (isInitialLoad && message.isThinking) {
-        // This case should ideally not happen if thinking messages aren't persisted.
-        // If it does, remove the transient thinking message.
+    if (isInitialLoad && message.isThinking && !isActiveStreamRequest) {
+        // 仅清理没有对应活动请求的陈旧思考占位。
+        // 活动异步请求可能在用户切换 Agent/话题后重新加载，不能在这里误删。
         const currentChatHistoryArray = mainRendererReferences.currentChatHistoryRef.get();
         const thinkingMsgIndex = currentChatHistoryArray.findIndex(m => m.id === message.id && m.isThinking);
         if (thinkingMsgIndex > -1) {
