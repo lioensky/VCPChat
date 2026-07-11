@@ -439,6 +439,68 @@
                 }
             });
 
+            // === Phase 3a: Loop 子图循环节点对 + 变量聚合器 ===
+
+            this.registerNodeType('loopStart', {
+                category: 'auxiliary',
+                inputs: ['input'],
+                outputs: ['loopBody'],
+                configSchema: {
+                    loopType: {
+                        type: 'enum',
+                        options: ['forEach', 'times', 'while'],
+                        default: 'forEach',
+                        label: '循环类型 (Loop Type)',
+                        description: '循环模式：forEach=遍历数组每个元素，times=指定次数，while=条件循环'
+                    },
+                    maxIterations: {
+                        type: 'number',
+                        default: 100,
+                        min: 1,
+                        max: 10000,
+                        label: '最大迭代次数 (Max Iterations)',
+                        description: '防死循环的硬上限'
+                    },
+                    condition: {
+                        type: 'string',
+                        default: '',
+                        label: '终止条件 (While Condition)',
+                        description: 'while模式的终止条件表达式，如: result.score >= 0.8',
+                        placeholder: '例如: result.length > 0'
+                    },
+                    iterationDelayMs: {
+                        type: 'number',
+                        default: 0,
+                        min: 0,
+                        label: '迭代间延迟ms (Iteration Delay)',
+                        description: '每次迭代之间的等待毫秒数，防API频率限制'
+                    }
+                }
+            });
+
+            this.registerNodeType('loopEnd', {
+                category: 'auxiliary',
+                inputs: ['loopBody'],
+                outputs: ['output'],
+                configSchema: {}
+            });
+
+            this.registerNodeType('variableAggregator', {
+                category: 'auxiliary',
+                inputs: ['input1', 'input2', 'input3'],
+                outputs: ['aggregated'],
+                configSchema: {
+                    strategy: {
+                        type: 'enum',
+                        options: ['firstNonNull', 'merge', 'array'],
+                        default: 'firstNonNull',
+                        label: '聚合策略 (Aggregation Strategy)',
+                        description: 'firstNonNull=取第一个非空值，merge=合并对象，array=收集为数组'
+                    }
+                }
+            });
+
+
             // 延时等待节点
             this.registerNodeType('delay', {
                 category: 'auxiliary',

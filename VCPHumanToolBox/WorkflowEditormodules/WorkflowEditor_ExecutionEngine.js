@@ -280,9 +280,12 @@
                     if (!graphNode) return false;
 
                     // 检查是否有上游节点失败
-                    const hasFailedUpstream = graphNode.inputs.some(
-                        input => failedNodes.has(input.sourceNodeId) || skippedNodes.has(input.sourceNodeId)
-                    );
+                    const hasFailedUpstream = graphNode.inputs.some(input => {
+                        const sourceId = input.sourceNodeId;
+                        // 已被循环引擎执行的节点不算失败
+                        if (this.executedNodes.has(sourceId)) return false;
+                        return failedNodes.has(sourceId) || skippedNodes.has(sourceId);
+                    });
                     if (hasFailedUpstream) {
                         const errorPolicy = graphNode.node.config?.errorPolicy || 'stop';
                         if (errorPolicy === 'stop') {
@@ -300,40 +303,79 @@
                     console.log(`[ExecutionEngine] 第 ${layerIndex} 层无可执行节点，跳过`); continue;
                 }
 
-                // 同层并行执行（Promise.allSettled 不会因单个失败中断）
-                const layerPromises = executableNodes.map(async (nodeId) => {
-                    const graphNode = executionGraph.get(nodeId);
+                // Phase 3b: 同层并行执行 + maxConcurrency 限流
+                const maxConcurrency = this.stateManager?.getWorkflowConfig?.()?.maxConcurrency || 0;
+                const effectiveMax = maxConcurrency > 0 ? maxConcurrency : executableNodes.length; // 0=不限
 
-                    // 检查必需输入是否就绪
-                    if (!this.areRequiredInputsReady(nodeId, graphNode.node)) {
-                        console.log(`[ExecutionEngine] 节点 ${nodeId} 必需输入未就绪，标记跳过`);
-                        skippedNodes.add(nodeId);
-                        this.updateNodeStatus(nodeId, 'skipped');
-                        return { nodeId, status: 'skipped' };
+                const layerResults = [];
+
+                for (let chunkStart = 0; chunkStart < executableNodes.length; chunkStart += effectiveMax) {
+                    const chunk = executableNodes.slice(chunkStart, chunkStart + effectiveMax);
+                    if (maxConcurrency > 0) {
+                        console.log(`[ExecutionEngine] 限流分批 ${Math.floor(chunkStart / effectiveMax) + 1}: ${chunk.length} 个节点 (max=${maxConcurrency})`);
                     }
 
-                    try {
-                        this.executingNodes.add(nodeId);
-                        await this.executeNode(graphNode.node);
-                        this.propagateOutputData(nodeId, graphNode);
-                        this.executedNodes.add(nodeId); return { nodeId, status: 'success' };
-                    } catch (error) {
-                        console.error(`[ExecutionEngine] 节点 ${nodeId} 执行失败:`, error);
-                        failedNodes.add(nodeId);
+                    const chunkPromises = chunk.map(async (nodeId) => {
+                        const graphNode = executionGraph.get(nodeId);
 
-                        const errorPolicy = graphNode.node.config?.errorPolicy || 'stop';
-                        if (errorPolicy === 'stop') {
-                            throw error; // 向上抛出，中断整个工作流
+                        // 检查必需输入是否就绪
+                        if (!this.areRequiredInputsReady(nodeId, graphNode.node)) {
+                            console.log(`[ExecutionEngine] 节点 ${nodeId} 必需输入未就绪，标记跳过`);
+                            skippedNodes.add(nodeId);
+                            this.updateNodeStatus(nodeId, 'skipped');
+                            return { nodeId, status: 'skipped' };
                         }
-                        // errorPolicy === 'continue': 记录错误但不中断
-                        return { nodeId, status: 'error', error: error.message };
-                    } finally {
-                        this.executingNodes.delete(nodeId);
-                    }
-                });
 
-                // 等待本层所有节点完成
-                const layerResults = await Promise.allSettled(layerPromises);
+                        try {
+                            this.executingNodes.add(nodeId);
+
+                            // === Loop 子图检测 ===
+                            if (graphNode.node.pluginId === 'loopStart') {
+                                console.log(`[ExecutionEngine] 检测到 LoopStart 节点 ${nodeId}，启动循环子图执行`);
+                                const loopResult = await this.executeLoopFromStart(nodeId, executionGraph);
+                                this.nodeResults.set(nodeId, loopResult);
+                                this.propagateOutputData(nodeId, graphNode);
+                                this.executedNodes.add(nodeId);
+                                return { nodeId, status: 'success' };
+                            }
+
+                            // === 跳过循环体内节点（已被 LoopStart 接管） ===
+                            if (this._isInsideLoopBody(nodeId, executionGraph)) {
+                                console.log(`[ExecutionEngine] 节点 ${nodeId} 属于循环体内部，跳过（由 LoopStart 接管）`);
+                                skippedNodes.add(nodeId);
+                                return { nodeId, status: 'skipped' };
+                            }
+
+                            await this.executeNodeWithPolicy(graphNode.node, executionGraph);
+                            this.propagateOutputData(nodeId, graphNode);
+                            this.executedNodes.add(nodeId);
+                            return { nodeId, status: 'success' };
+                        }
+                        catch (error) {
+                            console.error(`[ExecutionEngine] 节点 ${nodeId} 执行失败:`, error);
+                            failedNodes.add(nodeId);
+
+                            const errorPolicy = graphNode.node.config?.errorPolicy;
+                            const policyType = (typeof errorPolicy === 'object') ? errorPolicy.type : (errorPolicy || 'stop');
+                            if (policyType === 'stop') {
+                                throw error;
+                            }
+                            return { nodeId, status: 'error', error: error.message };
+                        } finally {
+                            this.executingNodes.delete(nodeId);
+                        }
+                    });
+
+                    const chunkResults = await Promise.allSettled(chunkPromises);
+                    layerResults.push(...chunkResults);
+
+                    // 检查是否有 stop 策略的节点抛出了错误
+                    for (const result of chunkResults) {
+                        if (result.status === 'rejected') {
+                            throw result.reason;
+                        }
+                    }
+                }
 
                 // 检查是否有stop 策略的节点抛出了错误
                 for (const result of layerResults) {
@@ -507,6 +549,12 @@
                     return this.executeUrlExtractorNode(node, inputData);
                 case 'imageUpload': // 图片上传节点类型
                     return this.executeImageUploadNode(node, inputData);
+                case 'loopStart':
+                    return this.executeLoopStartNode(node, inputData);
+                case 'loopEnd':
+                    return this.executeLoopEndNode(node, inputData);
+                case 'variableAggregator':
+                    return this.executeVariableAggregatorNode(node, inputData);
                 case 'aiCompose': // AI拼接器节点类型
                     return this.executeAiComposeNode(node, inputData);
                 default:
@@ -817,6 +865,9 @@
                     console.log(`[ExecutionEngine] 插件数据:`, result.data);
                 }
             }
+
+            // 统一插件返回格式为三层结构
+            result = this.normalizePluginResult(result);
 
             console.log(`[ExecutionEngine] 节点 ${node.id} 执行完成，返回结果:`, result);
             return result;
@@ -1784,27 +1835,28 @@
                 console.log(`[ExecutionEngine] 处理输出连接 ${index + 1}:`, output);
 
                 const targetInputData = this.nodeInputData.get(output.targetNodeId) || {};
-                console.log(`[ExecutionEngine] 目标节点 ${output.targetNodeId} 当前输入数据:`, targetInputData);
+                const targetParam = output.connection?.targetParam || output.targetPort || 'input';
+                console.log(`[ExecutionEngine] 目标节点 ${output.targetNodeId} 当前输入数据:`, targetInputData, `targetParam: ${targetParam}`);
 
-                // 统一的数据传播逻辑
-                if (sourceNode.category === 'auxiliary') {
-                    // 辅助节点：已经按照自定义输出名格式化了数据，直接展开到顶层
-                    console.log(`[ExecutionEngine] 辅助节点数据传播 - 展开到顶层`);
-                    if (result && typeof result === 'object') {
-                        Object.assign(targetInputData, result);
-                        console.log(`[ExecutionEngine] 辅助节点数据已展开:`, Object.keys(result));
+                // Phase 3b: 统一的数据传播逻辑 + targetParam key 重映射
+                if (result && typeof result === 'object') {
+                    // 展开所有 key 到顶层（保持向后兼容）
+                    Object.assign(targetInputData, result);
+                    console.log(`[ExecutionEngine] 数据已展开:`, Object.keys(result));
+
+                    // 关键修复：确保 targetParam 对应的 key 有值
+                    // 如果展开后 targetParam 仍为 null/undefined，尝试从 result 中取最合适的值
+                    if (targetInputData[targetParam] === undefined || targetInputData[targetParam] === null) {
+                        const fallbackValue = result.output ?? result.result ?? result.text ?? result[Object.keys(result)[0]];
+                        if (fallbackValue !== undefined && fallbackValue !== null) {
+                            targetInputData[targetParam] = fallbackValue;
+                            console.log(`[ExecutionEngine] targetParam 重映射: ${targetParam} = `, fallbackValue);
+                        }
                     }
                 } else {
-                    // 插件节点：没有自定义输出名，直接展开完整结果到顶层
-                    console.log(`[ExecutionEngine] 插件节点数据传播 - 展开完整结果到顶层`);
-                    if (result && typeof result === 'object') {
-                        Object.assign(targetInputData, result);
-                        console.log(`[ExecutionEngine] 插件节点数据已展开:`, Object.keys(result));
-                    } else {
-                        // 如果结果不是对象，使用默认键名 'result'
-                        targetInputData.result = result;
-                        console.log(`[ExecutionEngine] 插件节点非对象结果，使用默认键名 'result':`, result);
-                    }
+                    // 非对象结果：直接赋给 targetParam
+                    targetInputData[targetParam] = result;
+                    console.log(`[ExecutionEngine] 非对象结果，赋给 ${targetParam}:`, result);
                 }
 
                 this.nodeInputData.set(output.targetNodeId, targetInputData);
@@ -1816,6 +1868,7 @@
                     console.log(`[ExecutionEngine] 节点 ${output.targetNodeId} 现在可以执行了`);
                 }
             });
+
         }
 
         // 更新节点状态
@@ -1974,7 +2027,746 @@
 
             console.warn(`[ExecutionEngine] 无法解析变量路径: ${path}`);
             return undefined;
+
         }
+        // ========================================
+        // Phase 3a: Loop 子图循环执行系统
+        // ========================================
+
+        // 统一插件返回格式为三层结构 {structured, text, raw}
+        normalizePluginResult(rawResult) {
+            // content 数组格式（新插件标准：AnySearch/DoubaoGen/GPTImageGen）
+            if (rawResult?.result?.content && Array.isArray(rawResult.result.content)) {
+                const textParts = rawResult.result.content
+                    .filter(c => c.type === 'text')
+                    .map(c => c.text);
+                return {
+                    structured: rawResult.result.content,
+                    text: textParts.join('\n'),
+                    raw: rawResult
+                };
+            }
+            // original_plugin_output 包装（旧插件经 Plugin.js:1142 包装）
+            if (rawResult?.original_plugin_output) {
+                const text = typeof rawResult.original_plugin_output === 'string'
+                    ? rawResult.original_plugin_output
+                    : JSON.stringify(rawResult.original_plugin_output);
+                return { structured: [{ type: 'text', text }], text, raw: rawResult };
+            }
+            // result 字段是字符串（中间态插件）
+            if (rawResult?.result && typeof rawResult.result === 'string') {
+                return { structured: [{ type: 'text', text: rawResult.result }], text: rawResult.result, raw: rawResult };
+            }
+            // 纯字符串
+            if (typeof rawResult === 'string') {
+                return { structured: [{ type: 'text', text: rawResult }], text: rawResult, raw: rawResult };
+            }
+            // 对象兜底（保持原有展开行为不破坏下游）
+            return rawResult;
+        }
+
+        // LoopStart 节点执行入口
+        async executeLoopStartNode(node, inputData) {
+            // LoopStart 本身不做实质执行——真正的循环由 executeLoopFromStart 驱动
+            // 这个方法只在循环体内部子图执行时被调用（注入循环变量）
+            console.log(`[ExecutionEngine] LoopStart 节点 ${node.id} 被直接执行（子图内部注入模式）`);
+            const loopContext = inputData.__loop || {};
+            return {
+                item: loopContext.item,
+                index: loopContext.index,
+                total: loopContext.total,
+                accumulator: loopContext.accumulator,
+                output: loopContext.item // 向下游传播当前迭代项
+            };
+        }
+
+        // LoopEnd 节点执行入口
+        async executeLoopEndNode(node, inputData) {
+            console.log(`[ExecutionEngine] LoopEnd 节点 ${node.id} 执行，收集迭代结果`);
+            // LoopEnd 收集循环体的最终输出
+            // 优先取 input 字段，否则取第一个非空字段
+            let output = inputData.input;
+            if (output === undefined || output === null) {
+                const keys = Object.keys(inputData).filter(k => k !== '__loop');
+                if (keys.length > 0) {
+                    output = inputData[keys[0]];
+                }
+            }
+            return { output, loopEndResult: output };
+        }
+
+        // Variable Aggregator 节点执行
+        async executeVariableAggregatorNode(node, inputData) {
+            console.log(`[ExecutionEngine] 执行变量聚合器节点: ${node.id}`);
+            const config = node.config || {};
+            const strategy = config.strategy || 'firstNonNull';
+            const mappings = config.mappings || [];
+
+            let result = {};
+
+            switch (strategy) {
+                case 'firstNonNull': {
+                    // 取所有输入中第一个非 null/undefined 的值
+                    const keys = Object.keys(inputData);
+                    for (const key of keys) {
+                        if (inputData[key] !== null && inputData[key] !== undefined) {
+                            result = inputData[key];
+                            break;
+                        }
+                    }
+                    break;
+                }
+                case 'merge': {
+                    // 合并所有输入对象
+                    for (const value of Object.values(inputData)) {
+                        if (value && typeof value === 'object') {
+                            Object.assign(result, value);
+                        } else if (value !== null && value !== undefined) {
+                            result.value = value;
+                        }
+                    }
+                    break;
+                }
+                case 'array': {
+                    // 将所有非空输入收集为数组
+                    result = Object.values(inputData).filter(v => v !== null && v !== undefined);
+                    break;
+                }
+            }
+
+            // 应用映射表
+            if (mappings.length > 0 && typeof result === 'object' && !Array.isArray(result)) {
+                const mapped = {};
+                for (const { inputKey, outputKey } of mappings) {
+                    if (result[inputKey] !== undefined) {
+                        mapped[outputKey] = result[inputKey];
+                    }
+                }
+                result = mapped;
+            }
+
+            return { aggregated: result, output: result };
+        }
+
+        // 从 LoopStart 启动循环子图执行
+        async executeLoopFromStart(loopStartId, executionGraph) {
+            const loopStartGraphNode = executionGraph.get(loopStartId);
+            const loopStartNode = loopStartGraphNode.node;
+            const config = loopStartNode.config || {};
+            const loopType = config.loopType || 'forEach';
+            const maxIterations = config.maxIterations || 100;
+            const iterationDelayMs = config.iterationDelayMs || 0;
+
+            console.log(`[ExecutionEngine] === 循环子图执行开始 === 类型: ${loopType}, 最大迭代: ${maxIterations}`);
+
+            // 1. 识别循环体
+            const loopBody = this.identifyLoopBody(loopStartId, executionGraph);
+            if (!loopBody) {
+                throw new Error(`LoopStart 节点 ${loopStartId} 找不到配对的 LoopEnd`);
+            }
+
+            console.log(`[ExecutionEngine] 循环体: LoopEnd=${loopBody.loopEndId}, 中间节点=${loopBody.bodyNodeIds.length}个`);
+
+            // 2. 获取 LoopStart 的输入数据
+            const loopInputData = this.nodeInputData.get(loopStartId) || {};
+            let inputValue = loopInputData.input;
+            if (inputValue === undefined) {
+                // 取第一个非空输入
+                const keys = Object.keys(loopInputData);
+                if (keys.length > 0) inputValue = loopInputData[keys[0]];
+            }
+            // 尝试将字符串解析为数组（contentInput 输出的是 JSON 字符串）
+            if (typeof inputValue === 'string') {
+                try {
+                    const parsed = JSON.parse(inputValue);
+                    if (Array.isArray(parsed)) {
+                        inputValue = parsed;
+                    }
+                } catch (e) {
+                    // 不是 JSON，保持原样
+                }
+            }
+
+            // 3. 确定迭代列表
+            let iterations = [];
+            switch (loopType) {
+                case 'forEach': {
+                    if (Array.isArray(inputValue)) {
+                        iterations = inputValue;
+                    } else if (inputValue !== undefined && inputValue !== null) {
+                        iterations = [inputValue];
+                    }
+                    break;
+                }
+                case 'times': {
+                    const count = Math.min(parseInt(inputValue) || 1, maxIterations);
+                    iterations = Array.from({ length: count }, (_, i) => i + 1);
+                    break;
+                }
+                case 'while': {
+                    // while 模式在迭代中动态判断，先创建一个初始空列表
+                    iterations = null; // 标记为动态模式
+                    break;
+                }
+            }
+
+            // 4. 执行循环
+            const results = [];
+            let accumulator = null;
+            const iterCount = iterations ? Math.min(iterations.length, maxIterations) : maxIterations;
+
+            for (let i = 0; i < iterCount; i++) {
+                const item = iterations ? iterations[i] : i + 1;
+
+                console.log(`[ExecutionEngine] --- 迭代 ${i + 1}/${iterations ? iterations.length : '?'} ---`);
+
+                // 构建循环变量
+                const loopVars = {
+                    item: item,
+                    index: i,
+                    total: iterations ? iterations.length : maxIterations,
+                    accumulator: accumulator
+                };
+
+                // 执行子图
+                const iterResult = await this.executeSubgraph(
+                    loopBody.bodyNodeIds,
+                    loopBody.loopEndId,
+                    loopStartId,
+                    loopVars,
+                    loopInputData,
+                    executionGraph
+                );
+
+                results.push(iterResult);
+                accumulator = iterResult;
+
+                // while 模式终止检查
+                if (loopType === 'while') {
+                    const condition = config.condition || '';
+                    if (condition) {
+                        try {
+                            const shouldContinue = new Function('result', 'index', 'accumulator', `return ${condition}`)(iterResult, i, accumulator);
+                            if (!shouldContinue) {
+                                console.log(`[ExecutionEngine] while 循环条件不满足，终止于迭代 ${i + 1}`);
+                                break;
+                            }
+                        } catch (e) {
+                            console.warn(`[ExecutionEngine] while 条件评估失败: ${e.message}，终止循环`);
+                            break;
+                        }
+                    } else {
+                        // 无条件的 while = 执行 maxIterations 次
+                    }
+                }
+
+                // 迭代间延迟
+                if (iterationDelayMs > 0 && i < iterCount - 1) {
+                    await new Promise(resolve => setTimeout(resolve, iterationDelayMs));
+                }
+            }
+
+            console.log(`[ExecutionEngine] === 循环子图执行完成 === 共 ${results.length} 次迭代`);
+
+            // 5. 标记循环体所有节点为已执行（防止主图重复执行）
+            for (const bodyNodeId of loopBody.bodyNodeIds) {
+                this.executedNodes.add(bodyNodeId);
+            }
+            this.executedNodes.add(loopBody.loopEndId);
+            // Phase 3b 修复：让主图 areRequiredInputsReady 不再误判 loopEnd
+            const loopEndInputData = this.nodeInputData.get(loopBody.loopEndId) || {};
+            loopEndInputData.loopBody = 'completed_by_loop_engine';
+            this.nodeInputData.set(loopBody.loopEndId, loopEndInputData);
+
+            // 6. 将 LoopEnd 的汇总结果设置到 LoopEnd 节点的 nodeResults 中
+            const loopEndResult = {
+                output: results,
+                items: results,
+                count: results.length,
+                lastAccumulator: accumulator
+            };
+            this.nodeResults.set(loopBody.loopEndId, loopEndResult);
+
+            // 传播 LoopEnd 的输出到其下游
+            const loopEndGraphNode = executionGraph.get(loopBody.loopEndId);
+            if (loopEndGraphNode) {
+                this.propagateOutputData(loopBody.loopEndId, loopEndGraphNode);
+            }
+
+            // 返回给 LoopStart 节点的结果（用于 LoopStart 自身的 propagate）
+            return loopEndResult;
+        }
+
+        // 识别循环体：从 LoopStart 向下 BFS 直到 LoopEnd
+        identifyLoopBody(loopStartId, executionGraph) {
+            const loopStartGraphNode = executionGraph.get(loopStartId);
+            if (!loopStartGraphNode) return null;
+
+            const visited = new Set();
+            const bodyNodeIds = [];
+            let loopEndId = null;
+            const queue = [];
+
+            // 从 LoopStart 的直接下游开始 BFS
+            for (const output of loopStartGraphNode.outputs) {
+                queue.push(output.targetNodeId);
+            }
+
+            while (queue.length > 0) {
+                const nodeId = queue.shift();
+                if (visited.has(nodeId)) continue;
+                visited.add(nodeId);
+
+                const graphNode = executionGraph.get(nodeId);
+                if (!graphNode) continue;
+
+                // 找到 LoopEnd
+                if (graphNode.node.pluginId === 'loopEnd') {
+                    loopEndId = nodeId;
+                    continue; // LoopEnd 不继续往下探索
+                }
+
+                bodyNodeIds.push(nodeId);
+
+                // 继续向下游探索
+                for (const output of graphNode.outputs) {
+                    if (!visited.has(output.targetNodeId)) {
+                        queue.push(output.targetNodeId);
+                    }
+                }
+            }
+
+            if (!loopEndId) {
+                console.error(`[ExecutionEngine] LoopStart ${loopStartId} 找不到配对的 LoopEnd`);
+                return null;
+            }
+
+            return { loopEndId, bodyNodeIds };
+        }
+
+        // 判断节点是否在某个循环体内部
+        _isInsideLoopBody(nodeId, executionGraph) {
+            // 向上游回溯，看是否能触达一个 loopStart
+            const visited = new Set();
+            const queue = [];
+
+            const graphNode = executionGraph.get(nodeId);
+            if (!graphNode) return false;
+
+            // 自身是 loopStart 或 loopEnd 不算"内部"
+            if (graphNode.node.pluginId === 'loopStart' || graphNode.node.pluginId === 'loopEnd') {
+                return false;
+            }
+
+            for (const input of graphNode.inputs) {
+                queue.push(input.sourceNodeId);
+            }
+
+            while (queue.length > 0) {
+                const id = queue.shift();
+                if (visited.has(id)) continue;
+                visited.add(id);
+
+                const gn = executionGraph.get(id);
+                if (!gn) continue;
+
+                if (gn.node.pluginId === 'loopStart') {
+                    return true; // 上游有 LoopStart → 该节点在循环体内
+                }
+
+                // 继续向上游回溯（但不超过 loopEnd——避免跨循环判断）
+                if (gn.node.pluginId === 'loopEnd') continue;
+
+                for (const input of gn.inputs) {
+                    if (!visited.has(input.sourceNodeId)) {
+                        queue.push(input.sourceNodeId);
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        // 执行子图（循环体内部的一次完整迭代）
+        async executeSubgraph(bodyNodeIds, loopEndId, loopStartId, loopVars, parentInputData, executionGraph) {
+            console.log(`[ExecutionEngine] 执行子图迭代: item=${JSON.stringify(loopVars.item)}, index=${loopVars.index}`);
+
+            // 1. 为子图节点创建隔离的 inputData 上下文
+            const subgraphInputData = new Map();
+
+            // LoopStart 的输出 = 当前迭代变量
+            const loopStartOutput = {
+                item: loopVars.item,
+                index: loopVars.index,
+                total: loopVars.total,
+                accumulator: loopVars.accumulator,
+                output: loopVars.item,
+                __loop: loopVars
+            };
+
+            // 初始化 LoopStart 直接下游节点的输入
+            const loopStartGraphNode = executionGraph.get(loopStartId);
+            for (const output of loopStartGraphNode.outputs) {
+                const targetId = output.targetNodeId;
+                if (bodyNodeIds.includes(targetId) || targetId === loopEndId) {
+                    const existingInput = subgraphInputData.get(targetId) || {};
+                    Object.assign(existingInput, loopStartOutput);
+                    subgraphInputData.set(targetId, existingInput);
+                }
+            }
+
+            // 2. 对子图进行简单拓扑排序（BFS 层级）
+            const subgraphOrder = this._topologicalSortSubgraph(bodyNodeIds, loopEndId, loopStartId, executionGraph);
+
+            // 3. 子图节点结果存储
+            const subResults = new Map();
+            subResults.set(loopStartId, loopStartOutput);
+
+            // 4. 按顺序执行子图节点
+            for (const nodeId of subgraphOrder) {
+                const graphNode = executionGraph.get(nodeId);
+                if (!graphNode) continue;
+
+                // 收集输入：从子图结果中获取上游输出
+                let nodeInput = subgraphInputData.get(nodeId) || {};
+
+                // 从已执行的子图上游节点收集数据
+                for (const input of graphNode.inputs) {
+                    const sourceResult = subResults.get(input.sourceNodeId);
+                    if (sourceResult) {
+                        if (typeof sourceResult === 'object' && sourceResult !== null) {
+                            Object.assign(nodeInput, sourceResult);
+                        } else {
+                            nodeInput.input = sourceResult;
+                        }
+                    }
+                }
+
+                // 注入 __loop 变量
+                nodeInput.__loop = loopVars;
+
+                // 暂存到全局 nodeInputData（executeNode 会读取）
+                const originalInputData = this.nodeInputData.get(nodeId);
+                this.nodeInputData.set(nodeId, nodeInput);
+
+                try {
+                    // 执行节点
+                    await this.executeNode(graphNode.node);
+                    const result = this.nodeResults.get(nodeId);
+                    subResults.set(nodeId, result);
+
+                    // 传播到子图内的下游
+                    for (const output of graphNode.outputs) {
+                        if (bodyNodeIds.includes(output.targetNodeId) || output.targetNodeId === loopEndId) {
+                            const targetInput = subgraphInputData.get(output.targetNodeId) || {};
+                            if (result && typeof result === 'object') {
+                                Object.assign(targetInput, result);
+                            }
+                            subgraphInputData.set(output.targetNodeId, targetInput);
+                        }
+                    }
+                } finally {
+                    // 恢复原始 inputData（防止子图污染主图）
+                    if (originalInputData !== undefined) {
+                        this.nodeInputData.set(nodeId, originalInputData);
+                    }
+                }
+            }
+
+            // 5. 执行 LoopEnd 收集结果
+            let loopEndInput = subgraphInputData.get(loopEndId) || {};
+            const loopEndGraphNode = executionGraph.get(loopEndId);
+            for (const input of loopEndGraphNode.inputs) {
+                const sourceResult = subResults.get(input.sourceNodeId);
+                if (sourceResult) {
+                    if (typeof sourceResult === 'object' && sourceResult !== null) {
+                        Object.assign(loopEndInput, sourceResult);
+                    }
+                }
+            }
+            loopEndInput.__loop = loopVars;
+
+            // LoopEnd 提取最终输出
+            let iterOutput = loopEndInput.output || loopEndInput.result;
+            if (iterOutput === undefined) {
+                const keys = Object.keys(loopEndInput).filter(k => k !== '__loop');
+                if (keys.length > 0) iterOutput = loopEndInput[keys[0]];
+            }
+
+            console.log(`[ExecutionEngine] 子图迭代完成，输出:`, iterOutput);
+            return iterOutput;
+        }
+
+        // 子图拓扑排序（简化版——只处理 bodyNodes + loopEnd）
+        _topologicalSortSubgraph(bodyNodeIds, loopEndId, loopStartId, executionGraph) {
+            const allIds = [...bodyNodeIds]; // 不包含 loopEnd（它在最后单独处理）
+            const inDegree = new Map();
+            const adjList = new Map();
+
+            // 初始化
+            for (const id of allIds) {
+                inDegree.set(id, 0);
+                adjList.set(id, []);
+            }
+
+            // 构建子图邻接表
+            for (const id of allIds) {
+                const graphNode = executionGraph.get(id);
+                if (!graphNode) continue;
+                for (const input of graphNode.inputs) {
+                    if (input.sourceNodeId === loopStartId || allIds.includes(input.sourceNodeId)) {
+                        if (input.sourceNodeId !== loopStartId) {
+                            // 来自子图内部的上游
+                            inDegree.set(id, (inDegree.get(id) || 0) + 1);
+                            const adj = adjList.get(input.sourceNodeId) || [];
+                            adj.push(id);
+                            adjList.set(input.sourceNodeId, adj);
+                        }
+                        // 来自 LoopStart 的入度不计（它是子图入口）
+                    }
+                }
+            }
+
+            // Kahn 算法
+            const queue = [];
+            for (const [id, deg] of inDegree) {
+                if (deg === 0) queue.push(id);
+            }
+
+            const sorted = [];
+            while (queue.length > 0) {
+                const id = queue.shift();
+                sorted.push(id);
+                const neighbors = adjList.get(id) || [];
+                for (const neighbor of neighbors) {
+                    inDegree.set(neighbor, inDegree.get(neighbor) - 1);
+                    if (inDegree.get(neighbor) === 0) {
+                        queue.push(neighbor);
+                    }
+                }
+            }
+
+            // 如果有节点未被排序（子图内有环——不应该发生），附加到末尾
+            for (const id of allIds) {
+                if (!sorted.includes(id)) {
+                    console.warn(`[ExecutionEngine] 子图节点 ${id} 未被拓扑排序覆盖，强制追加`);
+                    sorted.push(id);
+                }
+            }
+
+            return sorted;
+        }
+
+        // ========================================
+        // Phase 3b: 错误策略 - retry + fallback + maxConcurrency
+        // ========================================
+
+        // 包装 executeNode，施加节点级错误策略（retry / fallback）
+        // 只对主图节点生效——循环子图内部走 executeNode 直连（保持简洁）
+        async executeNodeWithPolicy(node, executionGraph) {
+            const policy = node.config?.errorPolicy;
+
+            // 无策略 / 字符串策略（旧的 'stop'|'continue'） → 直接执行不包装
+            if (!policy || typeof policy !== 'object') {
+                return await this.executeNode(node);
+            }
+
+            const policyType = policy.type || 'stop';
+
+            // stop/continue 不需要 retry 包装——它们在 executeNodeChain 的 catch 里处理
+            if (policyType === 'stop' || policyType === 'continue') {
+                return await this.executeNode(node);
+            }
+
+            // === retry / fallback 策略 ===
+            const maxRetries = Math.min(policy.maxRetries || 3, 10); // 硬上限 10 次防滥用
+            const backoffMs = policy.backoffMs || 1000;
+            const maxBackoffMs = policy.maxBackoffMs || 30000;
+            const backoffMultiplier = policy.backoffMultiplier || 2;
+
+            let lastError;
+
+            for (let attempt = 0; attempt <= maxRetries; attempt++) {
+                try {
+                    const result = await this.executeNode(node);
+                    if (attempt > 0) {
+                        console.log(`[ExecutionEngine] 节点 ${node.id} 第 ${attempt + 1} 次尝试成功（共尝试 ${attempt + 1}/${maxRetries + 1} 次）`);
+                    }
+                    return result;
+                } catch (error) {
+                    lastError = error;
+                    console.warn(`[ExecutionEngine] 节点 ${node.id} 第 ${attempt + 1}/${maxRetries + 1} 次执行失败: ${error.message}`);
+
+                    if (attempt < maxRetries) {
+                        // 指数退避
+                        const delay = Math.min(
+                            backoffMs * Math.pow(backoffMultiplier, attempt),
+                            maxBackoffMs
+                        );
+                        console.log(`[ExecutionEngine] 等待 ${delay}ms 后重试（退避: ${backoffMs}×${backoffMultiplier}^${attempt}）`);
+                        this.updateNodeStatus(node.id, 'retrying');
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                    }
+                }
+            }
+
+            // retry 全部耗尽——检查 fallback
+            console.error(`[ExecutionEngine] 节点 ${node.id} 全部 ${maxRetries + 1} 次尝试均失败`);
+
+            if (policyType === 'fallback' && policy.fallbackNodeId) {
+                console.log(`[ExecutionEngine] 启动 fallback 分支: ${policy.fallbackNodeId}`);
+                return await this.executeFallbackBranch(policy.fallbackNodeId, node, lastError, executionGraph);
+            }
+
+            // onExhausted 降级策略
+            const onExhausted = policy.onExhausted || 'stop';
+            if (onExhausted === 'continue') {
+                console.warn(`[ExecutionEngine] 节点 ${node.id} 策略降级为 continue（不中断工作流）`);
+                // 写入错误占位结果——让下游能感知到上游失败但不崩
+                this.nodeResults.set(node.id, {
+                    __status: 'error',
+                    __error: lastError.message,
+                    __retryExhausted: true,
+                    text: `[ERROR after ${maxRetries + 1} attempts] ${lastError.message}`
+                });
+                this.updateNodeStatus(node.id, 'error');
+                return; // 不抛出——工作流继续
+            }
+
+            // 默认 stop：抛出错误中断整个工作流
+            throw lastError;
+        }
+
+        // Fallback 分支执行
+        // fallback 节点必须已经存在于执行图中（画布上画了但平时不走的备用路径）
+        async executeFallbackBranch(fallbackNodeId, originalNode, originalError, executionGraph, depth = 0) {
+            // 链深度保护——防止 fallback 节点又 fallback 到其他节点无限递归
+            if (depth >= 3) {
+                console.error(`[ExecutionEngine] Fallback 链深度超过 3 层，强制中止`);
+                throw new Error(`Fallback chain depth exceeded (max 3). Original error: ${originalError.message}`);
+            }
+
+            const fallbackGraphNode = executionGraph.get(fallbackNodeId);
+            if (!fallbackGraphNode) {
+                console.error(`[ExecutionEngine] Fallback 节点 ${fallbackNodeId} 不在执行图中`);
+                throw new Error(`Fallback node ${fallbackNodeId} not found in execution graph. Original error: ${originalError.message}`);
+            }
+            
+            // 在确认 fallbackGraphNode 非空之后再读它的属性
+            const fallbackPolicy = fallbackGraphNode.node.config?.errorPolicy;
+
+            console.log(`[ExecutionEngine] 执行 Fallback 分支 [深度=${depth}]: ${fallbackNodeId} (${fallbackGraphNode.node.name})`);
+
+            // 注入错误上下文——让 fallback 节点知道"为什么被调用"
+            const fallbackInput = this.nodeInputData.get(fallbackNodeId) || {};
+            fallbackInput.__originalError = {
+                nodeId: originalNode.id,
+                nodeName: originalNode.name,
+                error: originalError.message,
+                timestamp: new Date().toISOString()
+            };
+            // 同时继承原节点的输入——fallback 节点可能需要相同的数据来"换一种方式处理"
+            const originalInput = this.nodeInputData.get(originalNode.id) || {};
+            Object.assign(fallbackInput, originalInput);
+            delete fallbackInput.__originalError; // 先删再加，保证在最外层
+            fallbackInput.__originalError = {
+                nodeId: originalNode.id,
+                nodeName: originalNode.name,
+                error: originalError.message,
+                timestamp: new Date().toISOString()
+            };
+            this.nodeInputData.set(fallbackNodeId, fallbackInput);
+
+            try {
+                if (fallbackPolicy && typeof fallbackPolicy === 'object' && (fallbackPolicy.type === 'retry' || fallbackPolicy.type === 'fallback')) {
+                    await this.executeNodeWithPolicy(fallbackGraphNode.node, executionGraph);
+                } else {
+                    await this.executeNode(fallbackGraphNode.node);
+                }
+
+                const result = this.nodeResults.get(fallbackNodeId);
+
+                // 关键：fallback 结果回写到原始节点——下游透明消费，不知道走了备用分支
+                this.nodeResults.set(originalNode.id, result);
+                this.updateNodeStatus(originalNode.id, 'success');
+                this.executedNodes.add(fallbackNodeId);
+
+                console.log(`[ExecutionEngine] Fallback 成功，结果回写给原始节点 ${originalNode.id}`);
+                return result;
+
+            } catch (fallbackError) {
+                console.error(`[ExecutionEngine] Fallback 分支执行失败:`, fallbackError.message);
+
+                // fallback 的 fallback？检查它自己有没有 fallback 配置
+                const fallbackFallbackId = fallbackPolicy?.fallbackNodeId;
+                if (fallbackFallbackId && fallbackFallbackId !== fallbackNodeId) {
+                    return await this.executeFallbackBranch(fallbackFallbackId, originalNode, fallbackError, executionGraph, depth + 1);
+                }
+
+                // 没有更多备用分支——检查 onExhausted
+                const onExhausted = (fallbackPolicy?.onExhausted) || (originalNode.config?.errorPolicy?.onExhausted) || 'stop';
+                if (onExhausted === 'continue') {
+                    console.warn(`[ExecutionEngine] Fallback 也失败，策略降级为 continue`);
+                    this.nodeResults.set(originalNode.id, {
+                        __status: 'error',
+                        __error: fallbackError.message,
+                        __fallbackFailed: true,
+                        text: `[FALLBACK FAILED] ${fallbackError.message}`
+                    });
+                    this.updateNodeStatus(originalNode.id, 'error');
+                    return;
+                }
+
+                throw fallbackError;
+            }
+        }
+
+
+        // executeFromJson 地基函数（Phase 4 WorkflowRunner 预留）
+        async executeFromJson(workflowJson, inputOverrides = {}) {
+
+            console.log('[ExecutionEngine] executeFromJson 被调用（地基函数）');
+
+            // 反序列化节点和连接
+            const nodes = workflowJson.nodes || [];
+            const connections = workflowJson.connections || [];
+
+            // 应用输入覆盖到 contentInput 节点
+            if (inputOverrides && Object.keys(inputOverrides).length > 0) {
+                for (const node of nodes) {
+                    if (node.pluginId === 'contentInput' && inputOverrides[node.id]) {
+                        node.config = node.config || {};
+                        node.config.content = inputOverrides[node.id];
+                    }
+                }
+            }
+
+            // 构建执行图
+            const executionGraph = this.buildExecutionGraph(nodes, connections);
+            const startNodes = this.findStartNodes(nodes, connections);
+
+            if (startNodes.length === 0) {
+                throw new Error('executeFromJson: 未找到起始节点');
+            }
+
+            // 初始化
+            this.nodeResults.clear();
+            this.nodeInputData.clear();
+            this.executedNodes.clear();
+            this.executingNodes.clear();
+            this.initializeNodeInputData(nodes);
+
+            // 执行
+            await this.executeNodeChain(startNodes[0], executionGraph);
+
+            // 收集结果
+            return {
+                success: true,
+                results: Object.fromEntries(this.nodeResults),
+                executedCount: this.executedNodes.size
+            };
+        }
+
     }
 
     // 导出为全局单例
