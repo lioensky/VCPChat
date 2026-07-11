@@ -198,3 +198,97 @@
         opacity: 0.7;
     }
 }
+
+/* --- 多 Agent 侧栏状态环 --- */
+#agentList li[data-item-type="agent"] .avatar-wrapper {
+    position: relative;
+    isolation: isolate;
+}
+
+#agentList li[data-item-type="agent"] .avatar-wrapper.flowlock-active-ring::before {
+    content: '';
+    position: absolute;
+    inset: -4px;
+    z-index: -1;
+    border-radius: 50%;
+    padding: 2px;
+    background: conic-gradient(
+        from var(--flowlock-ring-angle, 0deg),
+        transparent 0deg,
+        color-mix(in srgb, var(--accent-color, #8b5cf6) 45%, transparent) 70deg,
+        var(--accent-color, #8b5cf6) 145deg,
+        color-mix(in srgb, var(--accent-color, #8b5cf6) 45%, transparent) 220deg,
+        transparent 300deg
+    );
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+    animation: flowlock-sidebar-ring-rotate 3s linear infinite;
+    filter: drop-shadow(0 0 4px color-mix(in srgb, var(--accent-color, #8b5cf6) 70%, transparent));
+}
+
+#agentList li[data-item-type="agent"] .avatar-wrapper.flowlock-active-ring::after {
+    content: '▶';
+    position: absolute;
+    right: -5px;
+    bottom: -3px;
+    z-index: 3;
+    display: grid;
+    place-items: center;
+    width: 15px;
+    height: 15px;
+    border-radius: 50%;
+    border: 1px solid color-mix(in srgb, var(--accent-color, #8b5cf6) 75%, white);
+    background: var(--secondary-bg, #24242c);
+    color: var(--accent-color, #8b5cf6);
+    box-shadow: 0 0 6px color-mix(in srgb, var(--accent-color, #8b5cf6) 65%, transparent);
+    font-size: 7px;
+    line-height: 1;
+    pointer-events: none;
+}
+
+#agentList li[data-item-type="agent"] .avatar-wrapper.flowlock-heartbeat-ring::before {
+    animation:
+        flowlock-sidebar-ring-rotate 0.8s linear infinite,
+        flowlock-sidebar-ring-heartbeat 0.8s ease-in-out !important;
+}
+
+@keyframes flowlock-sidebar-ring-rotate {
+    from {
+        --flowlock-ring-angle: 0deg;
+        transform: rotate(0deg);
+    }
+    to {
+        --flowlock-ring-angle: 360deg;
+        transform: rotate(360deg);
+    }
+}
+
+@keyframes flowlock-sidebar-ring-heartbeat {
+    0%, 100% {
+        inset: -4px;
+        opacity: 0.7;
+        filter: drop-shadow(0 0 4px color-mix(in srgb, var(--accent-color, #8b5cf6) 70%, transparent));
+    }
+    35% {
+        inset: -7px;
+        opacity: 1;
+        filter: drop-shadow(0 0 10px var(--accent-color, #8b5cf6));
+    }
+    65% {
+        inset: -3px;
+        opacity: 0.9;
+    }
+}
+
+body.light-theme #agentList li[data-item-type="agent"] .avatar-wrapper.flowlock-active-ring::after {
+    background: var(--secondary-bg, #ffffff);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #agentList li[data-item-type="agent"] .avatar-wrapper.flowlock-active-ring::before,
+    #agentList li[data-item-type="agent"] .avatar-wrapper.flowlock-heartbeat-ring::before {
+        animation: none !important;
+    }
+}

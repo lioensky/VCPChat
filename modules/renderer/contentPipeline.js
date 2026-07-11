@@ -156,6 +156,7 @@ function createContentPipeline(deps = {}) {
         transformSpecialBlocks = (text) => text,
         ensureHtmlFenced = (text) => text,
         transformMermaidPlaceholders = (text) => text,
+        transformFlowlockBlocks = (text) => text,
         getToolResultRegex = null,
         getToolRequestRegex = null,
         replaceToolRequestBlocks = null,
@@ -326,15 +327,22 @@ function createContentPipeline(deps = {}) {
         // 4. 保护代码块
         step(ctx, 'protect-code-blocks', protectCodeBlocks);
 
-        // 5. 再做会改变行首语义/结构边界的修正
+        // 5. 在工具结果、工具请求、代码围栏仍为占位符时转换 Flowlock 控制块。
+        // Flowlock 协议解析器还会自行排除思维链、桌面推送和行内代码，
+        // 因此工具内容中的同名标记不会被误识别或渲染。
+        if ((options.messageRole || 'assistant') === 'assistant') {
+            step(ctx, 'transform-flowlock-blocks', (text) => transformFlowlockBlocks(text, ctx));
+        }
+
+        // 6. 再做会改变行首语义/结构边界的修正
         step(ctx, 'deindent-misinterpreted-code-blocks', (text) => deIndentMisinterpretedCodeBlocks(text));
         step(ctx, 'deindent-html', (text) => deIndentHtml(text));
         step(ctx, 'deindent-tool-request-blocks', (text) => deIndentToolRequestBlocks(text));
 
-        // 6. 再做结构转换
+        // 7. 再做结构转换
         step(ctx, 'transform-desktop-push', transformDesktopPush);
 
-        // 7. 🟢 架构级修复：不再恢复工具结果
+        // 8. 🟢 架构级修复：不再恢复工具结果
         // 工具结果占位符将贯穿 Markdown 解析，在 parse() 之后才由调用方替换为渲染好的 HTML
         // 这彻底避免了工具结果内部的 Markdown 语法（表格、代码围栏等）干扰外部解析
 

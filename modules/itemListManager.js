@@ -791,6 +791,12 @@ window.itemListManager = (() => {
 
         li.appendChild(avatarWrapper);
         li.appendChild(nameSpan);
+
+        // Agent 列表可能被未读数或配置刷新重建；从 Flowlock 状态机恢复持久指示器。
+        if (item.type === 'agent' && window.flowlockManager?.isAgentLocked?.(item.id)) {
+            avatarWrapper.classList.add('flowlock-active-ring');
+        }
+
         hydratePersonaElement(li, item);
 
         // 为每个项目添加独立的状态管理

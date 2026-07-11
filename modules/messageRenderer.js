@@ -1305,7 +1305,7 @@ function extractSpeakableTextFromContentElement(contentElement) {
 
     const contentClone = contentElement.cloneNode(true);
     contentClone.querySelectorAll(
-        '.vcp-tool-use-bubble, .vcp-tool-result-bubble, .vcp-tool-call-summary-bubble, .maid-diary-bubble, .vcp-role-divider, .vcp-thought-chain-bubble, style, script'
+        '.vcp-tool-use-bubble, .vcp-tool-result-bubble, .vcp-tool-call-summary-bubble, .vcp-flowlock-bubble, .maid-diary-bubble, .vcp-role-divider, .vcp-thought-chain-bubble, style, script'
     ).forEach(el => el.remove());
 
     return (contentClone.innerText || '')
@@ -2157,6 +2157,12 @@ function initializeMessageRenderer(refs) {
         applyContentProcessors: contentProcessor.applyContentProcessors,
         transformSpecialBlocks,
         ensureHtmlFenced,
+        transformFlowlockBlocks: (text) => {
+            if (!window.flowlockProtocol || typeof window.flowlockProtocol.transformForRender !== 'function') {
+                return text;
+            }
+            return window.flowlockProtocol.transformForRender(text);
+        },
         transformMermaidPlaceholders: (text) => {
             let transformed = text.replace(MERMAID_CODE_REGEX, (match, lang, code) => {
                 const tempEl = document.createElement('textarea');
@@ -3060,12 +3066,20 @@ async function finalizeStreamedMessage(messageId, finishReason, context, finalPa
     // 1) prepareFinalTextForRender() 在 streamManager 内对完整文本应用前端正则与深度；
     // 2) parseFull() 只执行一次完整管线；
     // 3) mermaid 也只在该最终渲染路径中执行一次。
-    await streamManager.finalizeStreamedMessage(messageId, finishReason, context, finalPayload);
+    // 必须透传最终落盘结果，Flowlock 等消息级状态机需要解析完整原始文本。
+    const finalizedMessage = await streamManager.finalizeStreamedMessage(
+        messageId,
+        finishReason,
+        context,
+        finalPayload
+    );
 
     const finalMessage = mainRendererReferences.currentChatHistoryRef.get().find(m => m.id === messageId);
     if (finalMessage) {
         extractAndPushDesktopBlocks(finalMessage.content);
     }
+
+    return finalizedMessage;
 }
 
 

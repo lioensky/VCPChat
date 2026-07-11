@@ -102,64 +102,8 @@ function showContextMenu(event, messageItem, message) {
                             contextMenuDependencies.finalizeStreamedMessage(activeMessageId, 'cancelled_by_user');
                         }
                         
-                        // --- Flowlock: 中止失败后恢复心流锁自动续写 ---
-                        if (window.flowlockManager) {
-                            const flowlockState = window.flowlockManager.getState();
-                            console.log('[Flowlock] Interrupt failed, checking if flowlock should recover. State:', flowlockState);
-                            
-                            // 重置processing状态
-                            if (window.flowlockManager.isProcessing) {
-                                console.log('[Flowlock] Resetting isProcessing state after interrupt failure');
-                                window.flowlockManager.isProcessing = false;
-                            }
-                            
-                            // 如果心流锁激活，触发下一次续写
-                            if (flowlockState.isActive) {
-                                console.log('[Flowlock] Flowlock active after interrupt failure, will trigger next continue writing');
-                                
-                                setTimeout(() => {
-                                    if (window.flowlockManager && window.flowlockManager.getState().isActive) {
-                                        console.log('[Flowlock] Triggering continue writing after interrupt failure recovery...');
-                                        
-                                        // 触发心跳动画
-                                        const chatNameElement = document.getElementById('currentChatAgentName');
-                                        if (chatNameElement) {
-                                            chatNameElement.classList.add('flowlock-heartbeat');
-                                            setTimeout(() => {
-                                                chatNameElement.classList.remove('flowlock-heartbeat');
-                                            }, 800);
-                                        }
-                                        
-                                        // 获取输入框内容作为提示词
-                                        const messageInput = document.getElementById('messageInput');
-                                        const customPrompt = messageInput ? messageInput.value.trim() : '';
-                                        console.log('[Flowlock] Using custom prompt from input:', customPrompt || '(empty, will use default)');
-                                        
-                                        // 触发续写
-                                        if (window.handleContinueWriting) {
-                                            window.flowlockManager.isProcessing = true;
-                                            window.handleContinueWriting(customPrompt).then(() => {
-                                                console.log('[Flowlock] Continue writing completed after interrupt failure recovery');
-                                                window.flowlockManager.isProcessing = false;
-                                                window.flowlockManager.retryCount = 0;
-                                            }).catch((error) => {
-                                                console.error('[Flowlock] Continue writing failed after interrupt failure recovery:', error);
-                                                window.flowlockManager.isProcessing = false;
-                                                window.flowlockManager.retryCount++;
-                                                
-                                                if (window.flowlockManager.retryCount >= window.flowlockManager.maxRetries) {
-                                                    console.error('[Flowlock] Max retries reached, stopping flowlock');
-                                                    if (window.uiHelperFunctions && window.uiHelperFunctions.showToastNotification) {
-                                                        window.uiHelperFunctions.showToastNotification('心流锁续写失败次数过多，已自动停止', 'error');
-                                                    }
-                                                    window.flowlockManager.stop();
-                                                }
-                                            });
-                                        }
-                                    }
-                                }, 5000);
-                            }
-                        }
+                        // Flowlock 不在此处直接恢复。中止/错误后的重试由对应 Agent Session
+                        // 基于 messageId/context 的最终事件统一调度，避免读取其他 Agent 的输入框。
                     }
                 } else {
                     console.error("[ContextMenu] Interrupt handler not available. Manually cancelling.");
@@ -202,7 +146,7 @@ function showContextMenu(event, messageItem, message) {
                 const contentClone = contentDiv.cloneNode(true);
                 // 移除不应参与复制的渲染辅助节点，避免把附件删除按钮的 × 一起复制进去
                 contentClone.querySelectorAll(
-                    '.vcp-tool-use-bubble, .vcp-tool-result-bubble, .vcp-tool-call-summary-bubble, .vcp-role-divider, .vcp-thought-chain-bubble, .message-attachments, .message-attachment-remove-btn, style, script'
+                    '.vcp-tool-use-bubble, .vcp-tool-result-bubble, .vcp-tool-call-summary-bubble, .vcp-flowlock-bubble, .vcp-role-divider, .vcp-thought-chain-bubble, .message-attachments, .message-attachment-remove-btn, style, script'
                 ).forEach(el => el.remove());
                 // 修复：清理多余的空行，确保最多只有一个空行
                 textToCopy = contentClone.innerText.replace(/\n{3,}/g, '\n\n').trim();

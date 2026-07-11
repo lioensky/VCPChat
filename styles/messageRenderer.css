@@ -2437,3 +2437,160 @@ body.light-theme .vcp-thought-chain-body hr {
         transparent 100%
     );
 }
+
+/* --- Flowlock Status Bubble --- */
+.vcp-flowlock-bubble {
+    display: inline-flex !important;
+    align-items: center;
+    gap: 8px;
+    width: fit-content;
+    max-width: 90%;
+    margin: 8px 0 !important;
+    padding: 8px 14px !important;
+    border-radius: 10px !important;
+    border: 1px solid rgba(168, 85, 247, 0.25);
+    background: linear-gradient(145deg, rgba(168, 85, 247, 0.08), rgba(59, 130, 246, 0.06)) !important;
+    color: var(--primary-text);
+    font-family: var(--vcp-tool-card-font-family, var(--vcp-chat-font-family, 'Segoe UI', 'Roboto', sans-serif)) !important;
+    font-size: 0.88em !important;
+    line-height: 1.5;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+    backdrop-filter: blur(4px);
+    transition: all 0.3s ease;
+    user-select: none;
+}
+
+.vcp-flowlock-bubble .vcp-flowlock-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    font-size: 0.9em;
+    font-weight: 700;
+    flex-shrink: 0;
+    line-height: 1;
+}
+
+.vcp-flowlock-bubble .vcp-flowlock-copy {
+    display: inline-flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+}
+
+.vcp-flowlock-bubble .vcp-flowlock-title {
+    font-weight: 600;
+    font-size: 0.95em;
+    white-space: nowrap;
+}
+
+.vcp-flowlock-bubble .vcp-flowlock-detail {
+    font-size: 0.85em;
+    opacity: 0.72;
+    white-space: normal;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+}
+
+/* State: Start */
+.vcp-flowlock-bubble.state-start {
+    border-color: rgba(34, 197, 94, 0.3);
+    background: linear-gradient(145deg, rgba(34, 197, 94, 0.08), rgba(22, 163, 74, 0.06)) !important;
+}
+
+.vcp-flowlock-bubble.state-start .vcp-flowlock-icon {
+    background: rgba(34, 197, 94, 0.18);
+    color: #22c55e;
+}
+
+/* State: Stop */
+.vcp-flowlock-bubble.state-stop {
+    border-color: rgba(148, 163, 184, 0.3);
+    background: linear-gradient(145deg, rgba(148, 163, 184, 0.08), rgba(100, 116, 139, 0.06)) !important;
+}
+
+.vcp-flowlock-bubble.state-stop .vcp-flowlock-icon {
+    background: rgba(148, 163, 184, 0.18);
+    color: #94a3b8;
+}
+
+/* State: Complete */
+.vcp-flowlock-bubble.state-complete {
+    border-color: rgba(59, 130, 246, 0.3);
+    background: linear-gradient(145deg, rgba(59, 130, 246, 0.08), rgba(37, 99, 235, 0.06)) !important;
+}
+
+.vcp-flowlock-bubble.state-complete .vcp-flowlock-icon {
+    background: rgba(59, 130, 246, 0.18);
+    color: #3b82f6;
+}
+
+/* State: Fail */
+.vcp-flowlock-bubble.state-fail {
+    border-color: rgba(239, 68, 68, 0.3);
+    background: linear-gradient(145deg, rgba(239, 68, 68, 0.08), rgba(220, 38, 38, 0.06)) !important;
+}
+
+.vcp-flowlock-bubble.state-fail .vcp-flowlock-icon {
+    background: rgba(239, 68, 68, 0.18);
+    color: #ef4444;
+}
+
+/* State: Heartbeat */
+.vcp-flowlock-bubble.state-heartbeat {
+    border-color: rgba(168, 85, 247, 0.3);
+    background: linear-gradient(145deg, rgba(168, 85, 247, 0.08), rgba(147, 51, 234, 0.06)) !important;
+}
+
+.vcp-flowlock-bubble.state-heartbeat .vcp-flowlock-icon {
+    background: rgba(168, 85, 247, 0.18);
+    color: #a855f7;
+    animation: vcp-flowlock-heartbeat-pulse 2s ease-in-out infinite;
+}
+
+@keyframes vcp-flowlock-heartbeat-pulse {
+    0%, 100% { opacity: 0.7; transform: scale(1); }
+    50% { opacity: 1; transform: scale(1.1); }
+}
+
+/* State: Prompt */
+.vcp-flowlock-bubble.state-prompt {
+    border-color: rgba(245, 158, 11, 0.3);
+    background: linear-gradient(145deg, rgba(245, 158, 11, 0.08), rgba(217, 119, 6, 0.06)) !important;
+}
+
+.vcp-flowlock-bubble.state-prompt .vcp-flowlock-icon {
+    background: rgba(245, 158, 11, 0.18);
+    color: #f59e0b;
+}
+
+/* Light theme overrides */
+body.light-theme .vcp-flowlock-bubble {
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
+}
+
+body.light-theme .vcp-flowlock-bubble.state-start .vcp-flowlock-icon {
+    color: #15803d;
+}
+
+body.light-theme .vcp-flowlock-bubble.state-stop .vcp-flowlock-icon {
+    color: #475569;
+}
+
+body.light-theme .vcp-flowlock-bubble.state-complete .vcp-flowlock-icon {
+    color: #1d4ed8;
+}
+
+body.light-theme .vcp-flowlock-bubble.state-fail .vcp-flowlock-icon {
+    color: #dc2626;
+}
+
+body.light-theme .vcp-flowlock-bubble.state-heartbeat .vcp-flowlock-icon {
+    color: #7e22ce;
+}
+
+body.light-theme .vcp-flowlock-bubble.state-prompt .vcp-flowlock-icon {
+    color: #b45309;
+}

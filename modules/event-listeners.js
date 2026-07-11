@@ -453,13 +453,13 @@ export function setupEventListeners(deps) {
             e.preventDefault();
             e.stopPropagation();
 
-            // 检查心流锁是否激活
-            if (window.flowlockManager && window.flowlockManager.getState().isActive) {
-                uiHelperFunctions.showToastNotification('心流锁已启用，无法手动续写', 'warning');
+            const currentSelectedItem = refs.currentSelectedItem.get();
+
+            // 只限制当前 Agent；其他 Agent 的后台心流不影响本界面手动续写。
+            if (window.flowlockManager?.isAgentLocked?.(currentSelectedItem?.id)) {
+                uiHelperFunctions.showToastNotification('当前 Agent 已启用心流锁，无法手动续写', 'warning');
                 return;
             }
-
-            const currentSelectedItem = refs.currentSelectedItem.get();
             const currentTopicId = refs.currentTopicId.get();
             if (!currentSelectedItem.id || !currentTopicId) {
                 uiHelperFunctions.showToastNotification('请先选择一个项目和话题', 'warning');
@@ -1409,9 +1409,9 @@ export function setupEventListeners(deps) {
         if ((e.ctrlKey || e.metaKey) && e.key === 'd') {
             e.preventDefault();
 
-            // 检查心流锁是否激活
-            if (window.flowlockManager && window.flowlockManager.getState().isActive) {
-                uiHelperFunctions.showToastNotification('心流锁已启用，无法手动续写', 'warning');
+            // 只限制当前 Agent；其他 Agent 的后台心流不影响本界面手动续写。
+            if (window.flowlockManager?.isAgentLocked?.(refs.currentSelectedItem.get()?.id)) {
+                uiHelperFunctions.showToastNotification('当前 Agent 已启用心流锁，无法手动续写', 'warning');
                 return;
             }
 

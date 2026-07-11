@@ -550,96 +550,36 @@ import { setupEventListeners } from './modules/event-listeners.js';
                 window.messageRenderer.appendStreamChunk(messageId, chunk, context);
                 break;
 
-            case 'end':
-                window.messageRenderer.finalizeStreamedMessage(
+            case 'end': {
+                const finalizedMessage = await window.messageRenderer.finalizeStreamedMessage(
                     messageId,
                     finish_reason || 'completed',
                     context,
                     { fullResponse, error }
                 );
-                if (context && !context.isGroupMessage) {
-                    // This can run in the background
+
+                const finalizedContext = finalizedMessage?.context || context;
+                const finalizedContent = finalizedMessage?.content || fullResponse || '';
+
+                if (finalizedContext && !finalizedContext.isGroupMessage && isRelevantToCurrentView) {
                     await window.chatManager.attemptTopicSummarizationIfNeeded();
                 }
-                
-                // --- Flowlock: 检查是否需要自动触发续写 ---
-                if (window.flowlockManager) {
-                    const flowlockState = window.flowlockManager.getState();
-                    console.log('[Flowlock] End event received. State:', flowlockState, 'isRelevantToCurrentView:', isRelevantToCurrentView);
-                    
-                    if (flowlockState.isActive && !flowlockState.isProcessing && isRelevantToCurrentView) {
-                        console.log('[Flowlock] ✓ All conditions met, triggering continue writing...');
-                        
-                        // 使用全局设置中的延迟
-                        const delaySeconds = globalSettings.flowlockContinueDelay !== undefined ? globalSettings.flowlockContinueDelay : 5;
-                        const delayMilliseconds = delaySeconds * 1000;
-                        console.log(`[Flowlock] Using delay of ${delaySeconds}s (${delayMilliseconds}ms)`);
 
-                        // 延迟指定时间确保消息完全渲染，然后直接调用续写函数
-                        setTimeout(() => {
-                            if (window.flowlockManager && window.flowlockManager.getState().isActive) {
-                                console.log('[Flowlock] Calling handleContinueWriting now...');
-                                
-                                // 触发心跳动画
-                                const chatNameElement = document.getElementById('currentChatAgentName');
-                                if (chatNameElement) {
-                                    chatNameElement.classList.add('flowlock-heartbeat');
-                                    // 动画结束后移除类
-                                    setTimeout(() => {
-                                        chatNameElement.classList.remove('flowlock-heartbeat');
-                                    }, 800);
-                                }
-                                
-                                // 获取输入框内容作为提示词
-                                const messageInput = document.getElementById('messageInput');
-                                const customPrompt = messageInput ? messageInput.value.trim() : '';
-                                console.log('[Flowlock] Using custom prompt from input:', customPrompt || '(empty, will use default)');
-                                
-                                // 直接调用续写函数，使用输入框内容或空字符串（将使用默认提示词）
-                                if (window.handleContinueWriting) {
-                                    window.flowlockManager.isProcessing = true;
-                                    window.handleContinueWriting(customPrompt).then(() => {
-                                        console.log('[Flowlock] Continue writing completed');
-                                        window.flowlockManager.isProcessing = false;
-                                        window.flowlockManager.retryCount = 0; // 重置重试计数
-                                    }).catch((error) => {
-                                        console.error('[Flowlock] Continue writing failed:', error);
-                                        window.flowlockManager.isProcessing = false;
-                                        window.flowlockManager.retryCount++;
-                                        
-                                        if (window.flowlockManager.retryCount >= window.flowlockManager.maxRetries) {
-                                            console.error('[Flowlock] Max retries reached, stopping flowlock');
-                                            if (window.uiHelperFunctions && window.uiHelperFunctions.showToastNotification) {
-                                                window.uiHelperFunctions.showToastNotification('心流锁续写失败次数过多，已自动停止', 'error');
-                                            }
-                                            window.flowlockManager.stop();
-                                        } else {
-                                            console.log(`[Flowlock] Retry ${window.flowlockManager.retryCount}/${window.flowlockManager.maxRetries}`);
-                                            if (window.uiHelperFunctions && window.uiHelperFunctions.showToastNotification) {
-                                                window.uiHelperFunctions.showToastNotification(`心流锁续写失败，正在重试 (${window.flowlockManager.retryCount}/${window.flowlockManager.maxRetries})`, 'warning');
-                                            }
-                                        }
-                                    });
-                                } else {
-                                    console.error('[Flowlock] handleContinueWriting function not found!');
-                                }
-                            } else {
-                                console.log('[Flowlock] Flowlock was stopped before timeout, skipping continue writing');
-                            }
-                        }, delayMilliseconds);
-                    } else {
-                        console.log('[Flowlock] Conditions not met:', {
-                            isActive: flowlockState.isActive,
-                            isProcessing: flowlockState.isProcessing,
-                            isRelevantToCurrentView: isRelevantToCurrentView
-                        });
-                    }
-                }
+                // Flowlock 以消息身份为依据运行，与当前可见 Agent/Topic 完全解耦。
+                // 使用 streamManager 实际落盘的完整文本，避免 end 事件未携带 fullResponse 时漏掉控制标记。
+                await window.flowlockManager?.handleFinalizedMessage({
+                    type: 'end',
+                    messageId,
+                    context: finalizedContext,
+                    content: finalizedContent,
+                    finishReason: finalizedMessage?.finishReason || finish_reason || 'completed'
+                });
                 break;
+            }
 
             case 'error':
                 console.error('VCP Stream Error on ID', messageId, ':', error, 'Context:', context);
-                
+
                 // --- Recovery Logic: Use accumulated text from main if fullResponse is missing ---
                 let finalContent = fullResponse || eventData.accumulatedResponse || "";
                 if (finalContent && finalContent.trim() !== "") {
@@ -647,76 +587,24 @@ import { setupEventListeners } from './modules/event-listeners.js';
                     finalContent += "\n\n> [!WARNING]\n> **流式响应中断**: " + (error || "未知连接错误") + "。已保存已接收的部分内容。";
                 }
 
-                window.messageRenderer.finalizeStreamedMessage(
-                    messageId,
-                    'error',
-                    context,
-                    { fullResponse: finalContent, error }
-                );
-                
-                // --- Flowlock: 处理错误情况，重置状态并可能触发下一次续写 ---
-                if (window.flowlockManager) {
-                    const flowlockState = window.flowlockManager.getState();
-                    console.log('[Flowlock] Error event received. State:', flowlockState, 'isRelevantToCurrentView:', isRelevantToCurrentView);
-                    
-                    // 重置processing状态
-                    if (window.flowlockManager.isProcessing) {
-                        console.log('[Flowlock] Resetting isProcessing state due to error');
-                        window.flowlockManager.isProcessing = false;
-                    }
-                    
-                    // 如果心流锁仍然激活且相关，触发下一次续写（即使出错也继续）
-                    if (flowlockState.isActive && isRelevantToCurrentView) {
-                        console.log('[Flowlock] Flowlock still active after error, will trigger next continue writing');
-                        
-                        const errorDelaySeconds = globalSettings.flowlockContinueDelay !== undefined ? globalSettings.flowlockContinueDelay : 5;
-                        const errorDelayMilliseconds = errorDelaySeconds * 1000;
-                        console.log(`[Flowlock] Using error recovery delay of ${errorDelaySeconds}s (${errorDelayMilliseconds}ms)`);
+                {
+                    const finalizedMessage = await window.messageRenderer.finalizeStreamedMessage(
+                        messageId,
+                        'error',
+                        context,
+                        { fullResponse: finalContent, error }
+                    );
 
-                        setTimeout(() => {
-                            if (window.flowlockManager && window.flowlockManager.getState().isActive) {
-                                console.log('[Flowlock] Triggering continue writing after error...');
-                                
-                                // 触发心跳动画
-                                const chatNameElement = document.getElementById('currentChatAgentName');
-                                if (chatNameElement) {
-                                    chatNameElement.classList.add('flowlock-heartbeat');
-                                    setTimeout(() => {
-                                        chatNameElement.classList.remove('flowlock-heartbeat');
-                                    }, 800);
-                                }
-                                
-                                // 获取输入框内容作为提示词
-                                const messageInput = document.getElementById('messageInput');
-                                const customPrompt = messageInput ? messageInput.value.trim() : '';
-                                console.log('[Flowlock] Using custom prompt from input:', customPrompt || '(empty, will use default)');
-                                
-                                // 触发续写
-                                if (window.handleContinueWriting) {
-                                    window.flowlockManager.isProcessing = true;
-                                    window.handleContinueWriting(customPrompt).then(() => {
-                                        console.log('[Flowlock] Continue writing completed after error recovery');
-                                        window.flowlockManager.isProcessing = false;
-                                        window.flowlockManager.retryCount = 0;
-                                    }).catch((error) => {
-                                        console.error('[Flowlock] Continue writing failed after error recovery:', error);
-                                        window.flowlockManager.isProcessing = false;
-                                        window.flowlockManager.retryCount++;
-                                        
-                                        if (window.flowlockManager.retryCount >= window.flowlockManager.maxRetries) {
-                                            console.error('[Flowlock] Max retries reached, stopping flowlock');
-                                            if (window.uiHelperFunctions && window.uiHelperFunctions.showToastNotification) {
-                                                window.uiHelperFunctions.showToastNotification('心流锁续写失败次数过多，已自动停止', 'error');
-                                            }
-                                            window.flowlockManager.stop();
-                                        }
-                                    });
-                                }
-                            }
-                        }, errorDelayMilliseconds);
-                    }
+                    await window.flowlockManager?.handleFinalizedMessage({
+                        type: 'error',
+                        messageId,
+                        context: finalizedMessage?.context || context,
+                        content: finalizedMessage?.content || finalContent,
+                        finishReason: 'error',
+                        error
+                    });
                 }
-                
+
                 if (isRelevantToCurrentView) {
                     const errorMsgItem = document.querySelector(`.message-item[data-message-id="${messageId}"] .md-content`);
                     if (errorMsgItem) {
@@ -1317,40 +1205,33 @@ import { setupEventListeners } from './modules/event-listeners.js';
             }
             
             const { command, agentId, topicId, prompt, promptSource } = commandData;
+            const targetAgentId = agentId || currentSelectedItem?.id;
             
             try {
                 switch (command) {
                     case 'start':
-                        // Start flowlock for the specified agent and topic
-                        if (agentId && topicId) {
-                            await window.flowlockManager.start(agentId, topicId, false);
-                            console.log(`[Renderer] Flowlock started for agent: ${agentId}, topic: ${topicId}`);
+                        // 兼容入口：内部 Session Map 仍是唯一运行状态源。
+                        if (targetAgentId && topicId) {
+                            await window.flowlockManager.start(targetAgentId, topicId, { startImmediately: false });
+                            console.log(`[Renderer] Flowlock started for agent: ${targetAgentId}, topic: ${topicId}`);
                         } else {
                             console.error('[Renderer] Missing agentId or topicId for start command');
                         }
                         break;
                         
                     case 'stop':
-                        // Stop flowlock
-                        await window.flowlockManager.stop();
-                        console.log('[Renderer] Flowlock stopped');
+                        if (targetAgentId) {
+                            await window.flowlockManager.stop(targetAgentId);
+                            console.log(`[Renderer] Flowlock stopped for agent: ${targetAgentId}`);
+                        }
                         break;
                         
                     case 'promptee':
-                        // Set custom prompt and append to input
-                        if (prompt) {
-                            const messageInput = document.getElementById('messageInput');
-                            if (messageInput) {
-                                const currentValue = messageInput.value;
-                                messageInput.value = currentValue + (currentValue ? ' ' : '') + prompt;
-                                console.log(`[Renderer] Prompt appended to input: "${prompt}"`);
-                                // Auto-resize textarea after content change
-                                if (window.uiHelperFunctions && window.uiHelperFunctions.autoResizeTextarea) {
-                                    window.uiHelperFunctions.autoResizeTextarea(messageInput);
-                                }
-                            }
+                        if (targetAgentId && prompt) {
+                            window.flowlockManager.setCustomPrompt(targetAgentId, prompt);
+                            console.log(`[Renderer] Flowlock next prompt set for agent: ${targetAgentId}`);
                         } else {
-                            console.error('[Renderer] Missing prompt for promptee command');
+                            console.error('[Renderer] Missing target agent or prompt for promptee command');
                         }
                         break;
                         
@@ -1464,19 +1345,23 @@ import { setupEventListeners } from './modules/event-listeners.js';
                         break;
                         
                     case 'status':
-                        // Get current flowlock status and return it
                         {
                             if (window.flowlockManager) {
-                                const state = window.flowlockManager.getState();
-                                console.log(`[Renderer] Retrieved flowlock status:`, state);
+                                const state = targetAgentId
+                                    ? window.flowlockManager.getSession(targetAgentId)
+                                    : null;
+                                const activeAgents = window.flowlockManager.getActiveAgents();
+                                console.log('[Renderer] Retrieved flowlock status:', { state, activeAgents });
                                 respondToFlowlockRequest(commandData, {
                                     command: 'status',
                                     success: true,
                                     status: {
-                                        isActive: state.isActive,
-                                        isProcessing: state.isProcessing,
-                                        agentId: state.agentId,
-                                        topicId: state.topicId
+                                        isActive: state?.status === 'active',
+                                        isProcessing: !!state?.activeMessageId,
+                                        agentId: state?.agentId || targetAgentId || null,
+                                        topicId: state?.topicId || null,
+                                        session: state,
+                                        activeAgents
                                     }
                                 });
                             } else {
