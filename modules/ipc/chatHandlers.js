@@ -85,6 +85,36 @@ function stripInternalMessageMetadata(messages) {
  * @param {function} context.startSelectionListener - Function to start the selection listener.
  */
 let ipcHandlersRegistered = false;
+const flowlockClaimLocks = new Map();
+
+async function withFlowlockClaimLock(agentId, task) {
+    const previous = flowlockClaimLocks.get(agentId) || Promise.resolve();
+    let release;
+    const current = new Promise(resolve => { release = resolve; });
+    flowlockClaimLocks.set(agentId, previous.then(() => current));
+
+    await previous;
+    try {
+        return await task();
+    } finally {
+        release();
+        if (flowlockClaimLocks.get(agentId) === current) {
+            flowlockClaimLocks.delete(agentId);
+        }
+    }
+}
+
+function sanitizeFlowlockRequest(request) {
+    if (!request || typeof request !== 'object') return null;
+    return {
+        requestId: request.requestId,
+        requestedByAgentId: request.requestedByAgentId,
+        createdAt: request.createdAt,
+        heartbeatSeconds: Math.max(1, Math.min(86400, Number.parseInt(request.heartbeatSeconds, 10) || 5)),
+        prompt: typeof request.prompt === 'string' ? request.prompt : '',
+        status: request.status
+    };
+}
 
 function initialize(mainWindow, context) {
     const { AGENT_DIR, USER_DATA_DIR, APP_DATA_ROOT_IN_PROJECT, NOTES_AGENT_ID, getMusicState, fileWatcher, agentConfigManager } = context;
@@ -97,6 +127,176 @@ function initialize(mainWindow, context) {
     if (ipcHandlersRegistered) {
         return;
     }
+
+    ipcMain.handle('claim-pending-flowlock-topic', async (event, agentId, constraints = {}) => {
+        if (!agentId) {
+            return { success: false, code: 'INVALID_AGENT', error: '缺少 agentId。' };
+        }
+
+        return withFlowlockClaimLock(agentId, async () => {
+            try {
+                if (!agentConfigManager) {
+                    return { success: false, code: 'MANAGER_UNAVAILABLE', error: 'AgentConfigManager 未初始化。' };
+                }
+
+                const config = await agentConfigManager.readAgentConfig(agentId);
+                const topics = Array.isArray(config.topics) ? config.topics : [];
+                const requestId = typeof constraints.requestId === 'string' ? constraints.requestId : null;
+                const createdAfter = Number.isFinite(constraints.createdAfter) ? constraints.createdAfter : null;
+                const candidates = [];
+
+                for (const topic of topics) {
+                    const request = sanitizeFlowlockRequest(topic.flowlockRequest);
+                    if (!request || request.status !== 'pending') continue;
+                    if (request.requestedByAgentId !== agentId) continue;
+                    if (requestId && request.requestId !== requestId) continue;
+                    if (createdAfter !== null && request.createdAt < createdAfter) continue;
+
+                    const historyPath = path.join(USER_DATA_DIR, agentId, 'topics', topic.id, 'history.json');
+                    if (!await fs.pathExists(historyPath)) {
+                        await agentConfigManager.updateAgentConfig(agentId, existing => ({
+                            ...existing,
+                            topics: (existing.topics || []).map(item => item.id === topic.id
+                                ? {
+                                    ...item,
+                                    flowlockRequest: {
+                                        ...item.flowlockRequest,
+                                        status: 'rejected',
+                                        rejectedAt: Date.now(),
+                                        rejectionReason: 'topic_history_missing'
+                                    }
+                                }
+                                : item)
+                        }));
+                        continue;
+                    }
+                    candidates.push({ topic, request });
+                }
+
+                if (candidates.length === 0) {
+                    return { success: false, code: 'NOT_FOUND', error: '没有符合约束的 pending Flowlock 请求。' };
+                }
+                if (candidates.length > 1) {
+                    return {
+                        success: false,
+                        code: 'CONFLICT',
+                        error: '存在多个 pending Flowlock 请求，拒绝隐式选择。',
+                        conflicts: candidates.map(({ topic, request }) => ({
+                            topicId: topic.id,
+                            requestId: request.requestId,
+                            createdAt: request.createdAt
+                        }))
+                    };
+                }
+
+                const [{ topic, request }] = candidates;
+                let claimed = false;
+                await agentConfigManager.updateAgentConfig(agentId, existing => ({
+                    ...existing,
+                    topics: (existing.topics || []).map(item => {
+                        if (item.id !== topic.id) return item;
+                        const current = item.flowlockRequest;
+                        if (!current || current.requestId !== request.requestId || current.status !== 'pending') {
+                            return item;
+                        }
+                        claimed = true;
+                        return {
+                            ...item,
+                            flowlockRequest: {
+                                ...current,
+                                status: 'consumed',
+                                consumedAt: Date.now()
+                            }
+                        };
+                    })
+                }));
+
+                if (!claimed) {
+                    return { success: false, code: 'ALREADY_CLAIMED', error: '请求已被消费或状态已变化。' };
+                }
+
+                return {
+                    success: true,
+                    claim: {
+                        agentId,
+                        topicId: topic.id,
+                        topicName: topic.name,
+                        requestId: request.requestId,
+                        heartbeatSeconds: request.heartbeatSeconds,
+                        prompt: request.prompt,
+                        createdAt: request.createdAt
+                    }
+                };
+            } catch (error) {
+                console.error(`[Flowlock Claim] Failed for agent ${agentId}:`, error);
+                return { success: false, code: 'CLAIM_FAILED', error: error.message };
+            }
+        });
+    });
+
+    ipcMain.handle('restore-flowlock-claim', async (event, agentId, requestId, reason = 'session_creation_failed') => {
+        if (!agentId || !requestId || !agentConfigManager) {
+            return { success: false, error: '缺少恢复认领所需参数。' };
+        }
+
+        return withFlowlockClaimLock(agentId, async () => {
+            let restored = false;
+            await agentConfigManager.updateAgentConfig(agentId, existing => ({
+                ...existing,
+                topics: (existing.topics || []).map(topic => {
+                    const request = topic.flowlockRequest;
+                    if (!request || request.requestId !== requestId || request.status !== 'consumed') {
+                        return topic;
+                    }
+                    restored = true;
+                    return {
+                        ...topic,
+                        flowlockRequest: {
+                            ...request,
+                            status: 'pending',
+                            consumedAt: undefined,
+                            lastRestoreAt: Date.now(),
+                            lastRestoreReason: reason
+                        }
+                    };
+                })
+            }));
+            return restored
+                ? { success: true }
+                : { success: false, error: '未找到可恢复的 consumed 请求。' };
+        });
+    });
+
+    ipcMain.handle('list-pending-flowlock-topics', async () => {
+        const result = [];
+        try {
+            const agentIds = await fs.readdir(AGENT_DIR);
+            for (const agentId of agentIds) {
+                try {
+                    const config = agentConfigManager
+                        ? await agentConfigManager.readAgentConfig(agentId)
+                        : await fs.readJson(path.join(AGENT_DIR, agentId, 'config.json'));
+                    for (const topic of (config.topics || [])) {
+                        const request = sanitizeFlowlockRequest(topic.flowlockRequest);
+                        if (request?.status === 'pending' && request.requestedByAgentId === agentId) {
+                            result.push({
+                                agentId,
+                                topicId: topic.id,
+                                topicName: topic.name,
+                                requestId: request.requestId,
+                                createdAt: request.createdAt
+                            });
+                        }
+                    }
+                } catch (error) {
+                    console.warn(`[Flowlock Recovery] Skipping invalid agent ${agentId}:`, error.message);
+                }
+            }
+            return { success: true, requests: result };
+        } catch (error) {
+            return { success: false, error: error.message, requests: [] };
+        }
+    });
 
     ipcMain.handle('save-topic-order', async (event, agentId, orderedTopicIds) => {
         if (!agentId || !Array.isArray(orderedTopicIds)) {
@@ -658,7 +858,7 @@ function initialize(mainWindow, context) {
                 if (msg.tool_call_id) sanitizedMsg.tool_call_id = msg.tool_call_id;
                 // 内部元数据仅用于最终请求体生成 vcpchatExtensions，不会进入 messages[]。
                 if (msg.__vcpchatTimestampMeta) sanitizedMsg.__vcpchatTimestampMeta = msg.__vcpchatTimestampMeta;
-                
+
                 return sanitizedMsg;
             });
         } catch (validationError) {

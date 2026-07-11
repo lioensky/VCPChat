@@ -28,7 +28,26 @@ function initializeFlowlock() {
         continueWritingForContext: continueWritingForContext
     });
 
+    // 页面重载后只恢复明确且唯一的 pending 请求；冲突请求保持 pending 供人工处理。
+    Promise.resolve(window.flowlockManager.recoverPendingRequests?.()).catch((error) => {
+        console.error('[Flowlock Integration] Failed to recover pending requests:', error);
+    });
+
     console.log('[Flowlock Integration] Flowlock module initialized successfully (multi-session).');
+}
+
+const FLOWLOCK_SYSTEM_PROMPT_PREFIX = '[系统提示:]';
+
+/**
+ * 规范化心跳提示词。若内容已经以 [系统提示:] 开头则保持不变，
+ * 否则补充前缀，避免后端将 Flowlock 心跳识别为普通 user 发言。
+ */
+function normalizeFlowlockHeartbeatPrompt(prompt) {
+    const normalized = typeof prompt === 'string' ? prompt.trim() : '';
+    if (/^\[系统提示:\]/.test(normalized)) {
+        return normalized;
+    }
+    return `${FLOWLOCK_SYSTEM_PROMPT_PREFIX}${normalized ? ` ${normalized}` : ''}`;
 }
 
 /**
@@ -79,6 +98,9 @@ async function continueWritingForContext(params) {
         }
     }
 
+    // 所有 Flowlock 心跳消息必须使用系统提示标记；已有前缀时不重复添加。
+    temporaryPrompt = normalizeFlowlockHeartbeatPrompt(temporaryPrompt);
+
     // 构建 VCP 消息
     const messagesForVCP = await Promise.all(historyForVCP.map(async msg => {
         let currentMessageTextContent = '';
@@ -97,10 +119,8 @@ async function continueWritingForContext(params) {
         return { role: msg.role, content: currentMessageTextContent };
     }));
 
-    // 添加临时用户消息（如果有提示词）
-    if (temporaryPrompt && temporaryPrompt.trim()) {
-        messagesForVCP.push({ role: 'user', content: temporaryPrompt });
-    }
+    // 心跳仍使用 user role 进入现有续写链路，但内容前缀使后端可可靠识别其系统来源。
+    messagesForVCP.push({ role: 'user', content: temporaryPrompt });
 
     // 注入系统提示词
     if (agentConfig && agentConfig.systemPrompt) {

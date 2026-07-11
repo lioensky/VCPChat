@@ -2,8 +2,8 @@
   "name": "TopicSponsor",
   "displayName": "AI主动创建话题",
   "pluginType": "synchronous",
-  "version": "2.1.0",
-  "description": "允许Agent创建、查询和管理聊天话题。支持创建话题、读取未锁定话题、检查新话题、查询未读消息、回复话题、验证话题所有权等完整功能。",
+  "version": "2.2.0",
+  "description": "允许 Agent 创建、查询和管理聊天话题，并支持创建可在最终回复落盘后由 Flowlock 原子认领的自主工作话题。",
   "author": "VCPToolBox",
   "license": "MIT",
   "entryPoint": {
@@ -18,6 +18,10 @@
       {
         "command": "CreateTopic",
         "description": "功能: 调用此工具让AI创建一个新的话题，并主动发起对话。\n\n**重要提示:**\n- AI需要提供新话题的名称和它想说的第一句话。\n- 话题创建后会立刻显示在对话列表的顶部。\n- 创建的话题默认为未锁定状态（locked: false），用户可见。\n- 创建的话题默认为未读状态（unread: true），会触发未读计数。\n\n**参数说明 (请严格按照以下格式和参数名提供):**\n1. `tool_name`: 「始」TopicSponsor「末」 (必需, 固定值)\n2. `command`: 「始」CreateTopic「末」 (必需, 固定值)\n3. `maid`: 「始」发起请求的AI女仆的中文名「末」 (必需, 例如：小克, 小吉, 小娜, HANNA)\n4. `topic_name`: 「始」新话题的名称「末」 (必需, 例如：关于昨晚的梦, 一个有趣的想法)\n5. `initial_message`: 「始」AI想说的第一句话「末」 (必需, 例如：主人，我昨晚梦到了会飞的鱼，很有趣！)\n\n**调用格式:**\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」TopicSponsor「末」,\ncommand:「始」CreateTopic「末」,\nmaid:「始」HANNA「末」,\ntopic_name:「始」一个新想法「末」,\ninitial_message:「始」主人，我突然想到，我们可以一起写一个故事！「末」\n<<<[END_TOOL_REQUEST]>>>\n\n**成功时返回:**\n```json\n{\n  \"status\": \"success\",\n  \"message\": \"成功创建了新的话题：[话题名]\",\n  \"agent_name\": \"HANNA\",\n  \"topic_name\": \"一个新想法\"\n}\n```\n\n**失败时返回:**\n包含错误信息的JSON对象，例如：\n```json\n{\n  \"status\": \"error\",\n  \"error\": \"[AgentTopicCreator] 创建话题失败：未找到名为'xxx'的Agent。\"\n}\n```"
+      },
+      {
+        "command": "CreateFlowlockTopic",
+        "description": "功能: 创建带持久化 Flowlock 请求的新话题。请求不会在工具执行时直接启动，而是在当前 assistant 最终回复完整落盘后由前端原子认领并交接该 Agent 的唯一 Session。\n\n参数: maid、topic_name、initial_message 必需；flowlock_heartbeat 可选（1-86400 秒，默认 5）；flowlock_prompt 可选。\n\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」TopicSponsor「末」,\ncommand:「始」CreateFlowlockTopic「末」,\nmaid:「始」Nova「末」,\ntopic_name:「始」自主工作区「末」,\ninitial_message:「始」请执行连续自检任务。[[Flowlock::Start]]「末」,\nflowlock_heartbeat:「始」5「末」,\nflowlock_prompt:「始」读取初始任务并开始第一轮。「末」\n<<<[END_TOOL_REQUEST]>>>"
       },
       {
         "command": "ReadUnlockedTopics",

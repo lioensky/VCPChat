@@ -1,5 +1,5 @@
 # TopicSponsor 完全指南
-## AI主动创建话题 · 前端分布式插件 · v2.1.0
+## AI主动创建话题 · 前端分布式插件 · v2.2.0
 
 > **一句话定义**：TopicSponsor 是 VCP 生态中赋予 Agent "主动发起对话"能力的核心插件。它打破了传统 AI 只能被动回应的范式，让 Agent 能够像人类一样主动创建话题、管理对话、回复消息。
 
@@ -12,7 +12,7 @@
 1. [插件概述](#1-插件概述)
 2. [命名考古：VCP七大传说之一](#2-命名考古vcp七大传说之一)
 3. [架构说明](#3-架构说明)
-4. [完整命令参考（8个命令）](#4-完整命令参考)
+4. [完整命令参考（9个命令）](#4-完整命令参考)
 5. [使用场景分类](#5-使用场景分类)
 6. [完整调用示例](#6-完整调用示例)
 7. [踩坑指南](#7-踩坑指南)
@@ -217,7 +217,58 @@ Agent调用 TopicSponsor
 
 ---
 
-### 4.2 ReadUnlockedTopics — 读取未锁定话题
+### 4.2 CreateFlowlockTopic — 创建自主工作话题
+
+**功能**：创建带持久化 `flowlockRequest` 的新话题。插件只负责创建话题和请求，不会在工具执行期间直接启动 Flowlock；当前 assistant 最终回复完整落盘后，前端才会原子认领请求并迁移该 Agent 的唯一 Session。
+
+| 参数 | 类型 | 必需 | 说明 |
+|------|------|------|------|
+| maid | string | 是 | Agent 的显示名 |
+| topic_name | string | 是 | 自主工作话题名称 |
+| initial_message | string | 是 | 写入新话题的初始任务 |
+| flowlock_heartbeat | integer | 否 | 第一跳延迟，范围 1–86400 秒，默认 5 |
+| flowlock_prompt | string | 否 | 新话题第一跳使用的提示词 |
+
+Topic 与运行时锁保持分离：
+
+- `topic.locked` 仍为 `false`。
+- `topic.unread` 为 `true`。
+- `flowlockRequest.status` 初始为 `pending`。
+- `requestId` 使用安全 UUID。
+- Topic ID 使用时间戳加安全 UUID 后缀，避免同毫秒并发冲突。
+- 创建该类话题时不修改 `current_topic_id`，避免工具循环尚未结束就切换当前话题。
+
+**调用示例**：
+
+```text
+<<<[TOOL_REQUEST]>>>
+tool_name:「始」TopicSponsor「末」,
+command:「始」CreateFlowlockTopic「末」,
+maid:「始」Nova「末」,
+topic_name:「始」自主测试工作区「末」,
+initial_message:「始」请在这个话题中执行连续自检任务。[[Flowlock::Start]]「末」,
+flowlock_heartbeat:「始」5「末」,
+flowlock_prompt:「始」读取本话题的初始任务，开始第一轮自主执行。「末」
+<<<[END_TOOL_REQUEST]>>>
+```
+
+**成功返回**：
+
+```json
+{
+  "status": "success",
+  "result": {
+    "topic_id": "topic_1716000000000_uuid",
+    "request_id": "安全 UUID",
+    "flowlock_status": "pending",
+    "heartbeat_seconds": 5
+  }
+}
+```
+
+---
+
+### 4.3 ReadUnlockedTopics — 读取未锁定话题
 
 **功能**：读取指定 Agent 所有未锁定的话题及其完整消息历史。
 
@@ -230,7 +281,7 @@ Agent调用 TopicSponsor
 
 ---
 
-### 4.3 CheckNewTopics — 检查新增话题
+### 4.4 CheckNewTopics — 检查新增话题
 
 **功能**：查询指定 Agent 最近 N 天是否有新增的未锁定话题。
 
@@ -243,7 +294,7 @@ Agent调用 TopicSponsor
 
 ---
 
-### 4.4 CheckUnreadMessages — 检查未读消息
+### 4.5 CheckUnreadMessages — 检查未读消息
 
 **功能**：查询指定 Agent 是否有被标记为未读的话题。
 
@@ -255,7 +306,7 @@ Agent调用 TopicSponsor
 
 ---
 
-### 4.5 ReplyToTopic — 回复话题
+### 4.6 ReplyToTopic — 回复话题
 
 **功能**：在指定 Agent 的话题中添加回复消息。只能回复未锁定或标记为未读的话题。
 
@@ -270,7 +321,7 @@ Agent调用 TopicSponsor
 
 ---
 
-### 4.6 CheckTopicOwnership — 验证话题所有权
+### 4.7 CheckTopicOwnership — 验证话题所有权
 
 **功能**：检查话题是否为指定调用者创建的，用于多 Agent 协作场景下的权限控制。
 
@@ -284,7 +335,7 @@ Agent调用 TopicSponsor
 
 ---
 
-### 4.7 ListUnlockedTopics — 列出未锁定话题
+### 4.8 ListUnlockedTopics — 列出未锁定话题
 
 **功能**：列出指定 Agent 所有处于 unlocked 状态的话题的基本信息（不含完整消息历史）。
 
@@ -296,7 +347,7 @@ Agent调用 TopicSponsor
 
 ---
 
-### 4.8 ReadTopicContent — 读取话题完整内容
+### 4.9 ReadTopicContent — 读取话题完整内容
 
 **功能**：读取指定话题 ID 的完整会话内容，包括所有消息历史。
 
@@ -556,6 +607,15 @@ CreateTopic 在修改 config.json 之前会自动创建 `config.topic.backup.jso
 ---
 
 ## 10. 变更日志
+
+### v2.2.0
+
+- 新增 `CreateFlowlockTopic`。
+- 持久化 `flowlockRequest`，支持 pending、consumed、rejected 状态。
+- 请求身份和 Topic 并发消歧使用安全 UUID。
+- Flowlock 请求不在工具执行期间启动，遵守最终消息完整落盘边界。
+- 普通 `CreateTopic` 保持原行为；Flowlock 话题创建时不抢占 `current_topic_id`。
+- 已通过单元测试与完整工作流测试。
 
 ### 2026-05-19 (by infinite-vector)
 

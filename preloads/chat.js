@@ -260,6 +260,9 @@ function createCatalog(ops) {
         onFlowlockCommand: subscription(ops.subscribe('flowlock-command', (_event, data) => data)),
         onFlowlockRequest: subscription(ops.subscribe('flowlock:request', (_event, data) => data)),
         sendFlowlockRpcResponse: command((data) => ops.send('flowlock:response', data)),
+        claimPendingFlowlockTopic: query((agentId, constraints = {}) => ops.invoke('claim-pending-flowlock-topic', agentId, constraints)),
+        restoreFlowlockClaim: query((agentId, requestId, reason) => ops.invoke('restore-flowlock-claim', agentId, requestId, reason)),
+        listPendingFlowlockTopics: query(() => ops.invoke('list-pending-flowlock-topics')),
 
         // Utility APIs
         readNotesTree: query(() => ops.invoke('read-notes-tree')),
@@ -574,6 +577,9 @@ const ALLOWED_KEYS = [
     "onFlowlockCommand",
     "onFlowlockRequest",
     "sendFlowlockRpcResponse",
+    "claimPendingFlowlockTopic",
+    "restoreFlowlockClaim",
+    "listPendingFlowlockTopics",
     "desktopPush",
     "onDesktopPush",
     "onDesktopStatus",

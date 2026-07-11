@@ -13,6 +13,7 @@ class FlowlockManager {
         this.uiHelper = null;
         this.globalSettingsRef = null;
         this.continueWritingForContext = null;
+        this.claimedRequestIds = new Set();
     }
 
     /**
@@ -92,8 +93,9 @@ class FlowlockManager {
 
         console.log(`[Flowlock] Started for agent: ${agentId}, topic: ${topicId}`);
 
-        // 更新侧栏状态动画
+        // 更新侧栏与当前聊天标题状态动画
         this.updateSidebarIndicator(agentId, true);
+        this.updateCurrentHeaderIndicator(agentId, true);
 
         // 显示通知
         if (this.uiHelper?.showToastNotification) {
@@ -134,8 +136,9 @@ class FlowlockManager {
 
         console.log(`[Flowlock] Stopped for agent: ${agentId}`);
 
-        // 更新侧栏状态动画
+        // 更新侧栏与当前聊天标题状态动画
         this.updateSidebarIndicator(agentId, false);
+        this.updateCurrentHeaderIndicator(agentId, false);
 
         // 显示通知
         if (this.uiHelper?.showToastNotification) {
@@ -157,6 +160,124 @@ class FlowlockManager {
     }
 
     /**
+     * 在最终回复边界认领 TopicSponsor 创建的请求，并原子交接唯一 Session。
+     * 主进程是请求状态真源；前端只消费主进程返回的可信 claim。
+     */
+    async claimAndHandoffPendingTopic(agentId, constraints = {}) {
+        if (!agentId || !this.electronAPI?.claimPendingFlowlockTopic) {
+            return { success: false, code: 'UNAVAILABLE' };
+        }
+
+        const result = await this.electronAPI.claimPendingFlowlockTopic(agentId, constraints);
+        if (!result?.success) {
+            if (result?.code === 'CONFLICT') {
+                console.error(`[Flowlock] Multiple pending requests for ${agentId}; handoff rejected.`, result.conflicts);
+                this.uiHelper?.showToastNotification?.(
+                    `Agent "${agentId}" 存在多个待认领 Flowlock 话题，已拒绝自动交接`,
+                    'warning'
+                );
+            }
+            return result || { success: false, code: 'CLAIM_FAILED' };
+        }
+
+        const claim = result.claim;
+        if (!claim?.requestId || this.claimedRequestIds.has(claim.requestId)) {
+            return { success: false, code: 'DUPLICATE_CLAIM' };
+        }
+        this.claimedRequestIds.add(claim.requestId);
+
+        try {
+            await this.handoffToClaim(claim);
+            return { success: true, claim };
+        } catch (error) {
+            this.claimedRequestIds.delete(claim.requestId);
+            console.error(`[Flowlock] Failed to create session for claimed request ${claim.requestId}:`, error);
+            await this.electronAPI.restoreFlowlockClaim?.(
+                agentId,
+                claim.requestId,
+                `session_creation_failed:${error.message}`
+            );
+            return { success: false, code: 'HANDOFF_FAILED', error: error.message };
+        }
+    }
+
+    async handoffToClaim(claim) {
+        const { agentId, topicId, heartbeatSeconds, prompt, requestId } = claim;
+        if (!agentId || !topicId) {
+            throw new Error('认领结果缺少 agentId 或 topicId');
+        }
+
+        const existing = this.sessions.get(agentId);
+        if (!existing) {
+            const started = await this.start(agentId, topicId, {
+                startImmediately: false,
+                delaySeconds: heartbeatSeconds,
+                prompt
+            });
+            if (!started?.success) throw new Error(started?.message || 'Session 创建失败');
+            const created = this.sessions.get(agentId);
+            created.claimRequestId = requestId;
+            created.nextPrompt = prompt || null;
+            created.nextDelaySeconds = heartbeatSeconds;
+            this.scheduleNextRound(agentId, heartbeatSeconds * 1000);
+            return;
+        }
+
+        // 最终消息已经落盘后才调用本方法，因此可以安全结束本轮并迁移。
+        if (existing.pendingTimer) {
+            clearTimeout(existing.pendingTimer);
+            existing.pendingTimer = null;
+        }
+        existing.generation++;
+        existing.topicId = topicId;
+        existing.status = 'active';
+        existing.activeMessageId = null;
+        existing.round = 0;
+        existing.retryCount = 0;
+        existing.lastError = null;
+        existing.completionReason = null;
+        existing.claimRequestId = requestId;
+        existing.defaultDelaySeconds = heartbeatSeconds;
+        existing.nextDelaySeconds = heartbeatSeconds;
+        existing.defaultPrompt = prompt || null;
+        existing.nextPrompt = prompt || null;
+        existing.nextHeartbeatAt = null;
+        this.updateSidebarIndicator(agentId, true);
+        this.updateCurrentHeaderIndicator(agentId, true);
+        this.scheduleNextRound(agentId, heartbeatSeconds * 1000);
+
+        console.log(`[Flowlock] Agent ${agentId} handed off to topic ${topicId}, request ${requestId}.`);
+        this.uiHelper?.showToastNotification?.(
+            `Agent "${agentId}" 心流锁已交接到新话题`,
+            'success'
+        );
+    }
+
+    /**
+     * 页面重载后显式恢复 pending 请求。每个 Agent 仍由主进程执行唯一候选校验。
+     */
+    async recoverPendingRequests() {
+        if (!this.electronAPI?.listPendingFlowlockTopics) return;
+        const result = await this.electronAPI.listPendingFlowlockTopics();
+        if (!result?.success || !Array.isArray(result.requests)) return;
+
+        const byAgent = new Map();
+        for (const request of result.requests) {
+            const list = byAgent.get(request.agentId) || [];
+            list.push(request);
+            byAgent.set(request.agentId, list);
+        }
+
+        for (const [agentId, requests] of byAgent) {
+            if (requests.length !== 1) {
+                console.warn(`[Flowlock] Recovery conflict for ${agentId}: ${requests.length} pending requests.`);
+                continue;
+            }
+            await this.claimAndHandoffPendingTopic(agentId, { requestId: requests[0].requestId });
+        }
+    }
+
+    /**
      * 处理消息完成事件 - 核心入口
      * 由 renderer.js 的流结束事件调用
      * @param {Object} event - { type, messageId, context, content, finishReason, error }
@@ -166,6 +287,15 @@ class FlowlockManager {
 
         if (!context || !context.agentId || !context.topicId || context.isGroupMessage) {
             return;
+        }
+
+        // TopicSponsor 请求只能在当前 assistant 最终回复完整落盘后认领。
+        // 错误完成不消费请求，保留为 pending 供后续明确恢复。
+        if (type !== 'error' && finishReason !== 'error') {
+            const handoff = await this.claimAndHandoffPendingTopic(context.agentId);
+            if (handoff?.success) {
+                return;
+            }
         }
 
         const protocol = type !== 'error' && typeof content === 'string'
@@ -346,8 +476,9 @@ class FlowlockManager {
 
         console.log(`[Flowlock] Agent ${agentId} triggering round ${session.round}, messageId: ${messageId}`);
 
-        // 更新侧栏心跳动画
+        // 更新侧栏与当前聊天标题心跳动画
         this.triggerSidebarHeartbeat(agentId);
+        this.triggerCurrentHeaderHeartbeat(agentId);
 
         try {
             await this.continueWritingForContext({
@@ -452,6 +583,7 @@ class FlowlockManager {
         if (!session) return null;
         return {
             agentId: session.agentId,
+            claimRequestId: session.claimRequestId || null,
             topicId: session.topicId,
             status: session.status,
             round: session.round,
@@ -496,6 +628,57 @@ class FlowlockManager {
             maxRetries: 3,
             round: 0
         };
+    }
+
+    /**
+     * 同步当前可见聊天标题的 Flowlock 状态。
+     * 切换 Agent 后也可无参数调用，以当前可见 Agent 的真实 Session 为准。
+     */
+    syncCurrentHeaderIndicator() {
+        const currentItem = window.currentSelectedItem;
+        const header = document.getElementById('currentChatAgentName');
+        if (!header) return;
+
+        const shouldActivate = currentItem?.type === 'agent'
+            && this.isAgentLocked(currentItem.id);
+        header.classList.toggle('flowlock-active', shouldActivate);
+
+        if (!shouldActivate) {
+            header.classList.remove('flowlock-heartbeat');
+            header.style.removeProperty('--flowlock-rotate-direction');
+            header.style.removeProperty('--flowlock-heartbeat-rotate');
+        }
+    }
+
+    updateCurrentHeaderIndicator(agentId, active) {
+        const currentItem = window.currentSelectedItem;
+        if (currentItem?.type !== 'agent' || currentItem.id !== agentId) return;
+
+        const header = document.getElementById('currentChatAgentName');
+        if (!header) return;
+
+        header.classList.toggle('flowlock-active', active);
+        header.style.setProperty('--flowlock-rotate-direction', Math.random() < 0.5 ? '-1' : '1');
+
+        if (!active) {
+            header.classList.remove('flowlock-heartbeat');
+            header.style.removeProperty('--flowlock-heartbeat-rotate');
+        }
+    }
+
+    triggerCurrentHeaderHeartbeat(agentId) {
+        const currentItem = window.currentSelectedItem;
+        if (currentItem?.type !== 'agent' || currentItem.id !== agentId) return;
+
+        const header = document.getElementById('currentChatAgentName');
+        if (!header) return;
+
+        header.style.setProperty('--flowlock-heartbeat-rotate', Math.random() < 0.5 ? '-1' : '1');
+        // 重置类以保证连续两次心跳均可重新触发动画。
+        header.classList.remove('flowlock-heartbeat');
+        void header.offsetWidth;
+        header.classList.add('flowlock-heartbeat');
+        setTimeout(() => header.classList.remove('flowlock-heartbeat'), 800);
     }
 
     /**
@@ -545,12 +728,16 @@ class FlowlockManager {
      * 清理所有状态（页面卸载时调用）
      */
     cleanup() {
+        const header = document.getElementById('currentChatAgentName');
+        header?.classList.remove('flowlock-active', 'flowlock-heartbeat');
+
         for (const [, session] of this.sessions) {
             if (session.pendingTimer) {
                 clearTimeout(session.pendingTimer);
             }
         }
         this.sessions.clear();
+        this.claimedRequestIds.clear();
     }
 }
 
