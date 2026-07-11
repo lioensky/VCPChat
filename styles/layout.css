@@ -278,9 +278,25 @@ body.vcp-layout-overlay-sidebars .container {
 }
 
 body.vcp-layout-overlay-sidebars .main-content {
-    flex: 1 1 100%;
+    flex: 1 1 auto;
     min-width: 0;
-    width: 100%;
+    width: auto;
+    margin-left: 0;
+    margin-right: 0;
+    transition: none;
+}
+
+/*
+ * Reserve the visible sidebar footprint in one geometry commit. The sidebars
+ * still animate on their own transform layers, while chat content never sits
+ * underneath them and does not follow the animation frame by frame.
+ */
+body.vcp-layout-overlay-sidebars .container:has(> .sidebar.active) > .main-content {
+    margin-left: calc(var(--vcp-overlay-left-width, 260px) + 3px);
+}
+
+body.vcp-layout-overlay-sidebars .container:has(> .notifications-sidebar.active) > .main-content {
+    margin-right: calc(var(--vcp-overlay-right-width, 310px) + 3px);
 }
 
 body.vcp-layout-overlay-sidebars .sidebar,
