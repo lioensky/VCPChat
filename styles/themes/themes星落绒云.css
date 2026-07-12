@@ -1,0 +1,203 @@
+/*
+ * Theme Name: 星落绒云
+ * Dark: 流星暮野
+ * Light: 月下绒云
+ * Built for VChat from the two supplied wallpapers.
+ */
+
+/* =================================================================
+ * Dark mode — 流星暮野
+ * 深靛夜空承接界面主体，晚霞粉只用于提示与交互焦点。
+ * ================================================================= */
+:root {
+    color-scheme: dark;
+
+    --chat-wallpaper-dark: url('../assets/wallpaper/starfall-twilight.jpg');
+
+    --primary-bg: #0b1534;
+    --secondary-bg: #121f43;
+    --tertiary-bg: #07102a;
+    --accent-bg: #273862;
+    --border-color: #7184c8;
+    --input-bg: #111d3d;
+
+    --panel-bg-dark: rgba(10, 19, 48, 0.76);
+    --panel-bg: var(--panel-bg-dark);
+
+    --primary-text: #f5f3ff;
+    --secondary-text: #bdc5e1;
+    --highlight-text: #ffc0d1;
+    --text-on-accent: #21182f;
+    --placeholder-text: #7884aa;
+    --quoted-text: #ffd2a8;
+    --user-text: #fff7fb;
+    --agent-text: #f2f4ff;
+
+    --user-bubble-bg: rgba(217, 125, 161, 0.22);
+    --assistant-bubble-bg: rgba(45, 68, 126, 0.38);
+
+    --button-bg: #f2a0ba;
+    --button-hover-bg: #ffc0d1;
+    --danger-color: #ff8796;
+    --danger-hover-bg: #ff667a;
+    --success-color: #75d8c4;
+
+    --notification-bg: #111d3d;
+    --notification-header-bg: #0b1534;
+    --notification-border: #f2a0ba;
+    --tool-bubble-bg: rgba(117, 216, 196, 0.11);
+    --tool-bubble-border: #75d8c4;
+
+    --scrollbar-track: rgba(7, 16, 42, 0.42);
+    --scrollbar-thumb: rgba(164, 178, 224, 0.48);
+    --scrollbar-thumb-hover: rgba(242, 160, 186, 0.72);
+
+    --shimmer-color-transparent: rgba(224, 229, 255, 0.08);
+    --shimmer-color-highlight: rgba(255, 192, 209, 0.38);
+
+    --panel-text-shadow: 0 1px 3px rgba(2, 5, 20, 0.72);
+}
+
+body {
+    background-image: var(--chat-wallpaper-dark);
+    background-position: center 46%;
+    background-size: cover;
+    background-repeat: no-repeat;
+    background-attachment: fixed;
+}
+
+/* =================================================================
+ * Light mode — 月下绒云
+ * 以云白作为阅读面，星星金和草地绿作为轻量点缀。
+ * ================================================================= */
+body.light-theme {
+    color-scheme: light;
+
+    --chat-wallpaper-light: url('../assets/wallpaper/cloud-puppy-night.jpg');
+    background-image: var(--chat-wallpaper-light);
+    background-position: center 58%;
+
+    --primary-bg: #f5f8fd;
+    --secondary-bg: #fbfdff;
+    --tertiary-bg: #e8eef8;
+    --accent-bg: #e2e9f5;
+    --border-color: #b9c8df;
+    --input-bg: #f8fbff;
+
+    --panel-bg-light: rgba(248, 251, 255, 0.84);
+    --panel-bg: var(--panel-bg-light);
+
+    --primary-text: #1d3152;
+    --secondary-text: #596b87;
+    --highlight-text: #af7510;
+    --text-on-accent: #172945;
+    --placeholder-text: #8796ad;
+    --quoted-text: #2f6f87;
+    --user-text: #243553;
+    --agent-text: #1d3152;
+
+    --user-bubble-bg: rgba(229, 178, 65, 0.28);
+    --assistant-bubble-bg: rgba(214, 226, 244, 0.72);
+
+    --button-bg: #e3b143;
+    --button-hover-bg: #f0c45c;
+    --danger-color: #d95c68;
+    --danger-hover-bg: #c94656;
+    --success-color: #2f8a6b;
+
+    --notification-bg: #edf3fb;
+    --notification-header-bg: #fbfdff;
+    --notification-border: #d3a232;
+    --tool-bubble-bg: rgba(47, 138, 107, 0.10);
+    --tool-bubble-border: #2f8a6b;
+
+    --scrollbar-track: rgba(220, 229, 241, 0.54);
+    --scrollbar-thumb: rgba(83, 105, 139, 0.36);
+    --scrollbar-thumb-hover: rgba(211, 162, 50, 0.64);
+
+    --shimmer-color-transparent: rgba(29, 49, 82, 0.04);
+    --shimmer-color-highlight: rgba(227, 177, 67, 0.20);
+
+    --panel-text-shadow: 0 1px 0 rgba(255, 255, 255, 0.65);
+}
+
+/* =================================================================
+ * Surface tuning
+ * 只强化 VChat 实际使用的面板、消息和输入区，不改变布局尺寸。
+ * ================================================================= */
+.title-bar,
+.sidebar,
+.notifications-sidebar,
+.resizer {
+    backdrop-filter: blur(18px) saturate(118%);
+    -webkit-backdrop-filter: blur(18px) saturate(118%);
+}
+
+.message-item .md-content {
+    border: 1px solid rgba(184, 198, 244, 0.17);
+    backdrop-filter: blur(14px) saturate(116%);
+    -webkit-backdrop-filter: blur(14px) saturate(116%);
+    box-shadow:
+        0 10px 28px rgba(2, 7, 27, 0.24),
+        inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.message-item.user .md-content {
+    border-color: rgba(255, 192, 209, 0.28);
+}
+
+.message-item.assistant .md-content {
+    border-color: rgba(161, 180, 239, 0.22);
+}
+
+.chat-input-card {
+    backdrop-filter: blur(16px) saturate(118%);
+    -webkit-backdrop-filter: blur(16px) saturate(118%);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.09),
+        0 10px 30px rgba(2, 7, 27, 0.18);
+}
+
+.chat-input-card:focus-within {
+    border-color: color-mix(in srgb, var(--button-bg) 72%, var(--border-color));
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.12),
+        0 0 0 2px color-mix(in srgb, var(--button-bg) 18%, transparent),
+        0 12px 32px rgba(2, 7, 27, 0.20);
+}
+
+.tool-bubble,
+.vcp-tool-request-bubble {
+    backdrop-filter: blur(12px) saturate(112%);
+    -webkit-backdrop-filter: blur(12px) saturate(112%);
+    border-color: var(--tool-bubble-border);
+    background-color: var(--tool-bubble-bg);
+}
+
+body.light-theme .message-item .md-content {
+    border-color: rgba(140, 160, 191, 0.24);
+    box-shadow:
+        0 8px 24px rgba(36, 59, 91, 0.11),
+        inset 0 1px 0 rgba(255, 255, 255, 0.74);
+}
+
+body.light-theme .message-item.user .md-content {
+    border-color: rgba(194, 142, 28, 0.28);
+}
+
+body.light-theme .message-item.assistant .md-content {
+    border-color: rgba(116, 143, 181, 0.24);
+}
+
+body.light-theme .chat-input-card {
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.82),
+        0 9px 26px rgba(36, 59, 91, 0.12);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .message-item .md-content,
+    .chat-input-card {
+        transition: none;
+    }
+}

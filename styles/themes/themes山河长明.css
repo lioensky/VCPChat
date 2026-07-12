@@ -1,0 +1,203 @@
+/*
+ * Theme Name: 山河长明
+ * Dark: 破云金晖
+ * Light: 丹阙霞光
+ * Built for VChat from the two supplied wallpapers.
+ */
+
+/* =================================================================
+ * Dark mode — 破云金晖
+ * 石墨蓝与山林墨绿构成安静底色，暖金只落在关键交互上。
+ * ================================================================= */
+:root {
+    color-scheme: dark;
+
+    --chat-wallpaper-dark: url('../assets/wallpaper/mountain-sunrays-monument.jpg');
+
+    --primary-bg: #10171d;
+    --secondary-bg: #172128;
+    --tertiary-bg: #0a1015;
+    --accent-bg: #303d42;
+    --border-color: #83745d;
+    --input-bg: #151e24;
+
+    --panel-bg-dark: rgba(13, 20, 26, 0.78);
+    --panel-bg: var(--panel-bg-dark);
+
+    --primary-text: #f1eee7;
+    --secondary-text: #b8b8af;
+    --highlight-text: #e7c58e;
+    --text-on-accent: #211a12;
+    --placeholder-text: #737b79;
+    --quoted-text: #f0d8ae;
+    --user-text: #fff8eb;
+    --agent-text: #f1eee7;
+
+    --user-bubble-bg: rgba(194, 145, 76, 0.22);
+    --assistant-bubble-bg: rgba(42, 55, 61, 0.48);
+
+    --button-bg: #d0a05e;
+    --button-hover-bg: #e5bd7f;
+    --danger-color: #d87570;
+    --danger-hover-bg: #bd5954;
+    --success-color: #73a486;
+
+    --notification-bg: #172128;
+    --notification-header-bg: #10171d;
+    --notification-border: #d0a05e;
+    --tool-bubble-bg: rgba(115, 164, 134, 0.11);
+    --tool-bubble-border: #83b594;
+
+    --scrollbar-track: rgba(7, 11, 14, 0.44);
+    --scrollbar-thumb: rgba(143, 137, 121, 0.46);
+    --scrollbar-thumb-hover: rgba(208, 160, 94, 0.70);
+
+    --shimmer-color-transparent: rgba(241, 238, 231, 0.07);
+    --shimmer-color-highlight: rgba(231, 197, 142, 0.34);
+
+    --panel-text-shadow: 0 1px 3px rgba(0, 0, 0, 0.78);
+}
+
+body {
+    background-image: var(--chat-wallpaper-dark);
+    background-position: center 45%;
+    background-size: cover;
+    background-repeat: no-repeat;
+    background-attachment: fixed;
+}
+
+/* =================================================================
+ * Light mode — 丹阙霞光
+ * 云绢白承载阅读，霞红与灯火金负责层级和操作反馈。
+ * ================================================================= */
+body.light-theme {
+    color-scheme: light;
+
+    --chat-wallpaper-light: url('../assets/wallpaper/capital-sunset.jpg');
+    background-image: var(--chat-wallpaper-light);
+    background-position: center 52%;
+
+    --primary-bg: #faf6f3;
+    --secondary-bg: #fffaf7;
+    --tertiary-bg: #eee7e5;
+    --accent-bg: #f1ded8;
+    --border-color: #d5b2a8;
+    --input-bg: #fffaf7;
+
+    --panel-bg-light: rgba(255, 250, 247, 0.84);
+    --panel-bg: var(--panel-bg-light);
+
+    --primary-text: #3b2d31;
+    --secondary-text: #705d62;
+    --highlight-text: #a83f38;
+    --text-on-accent: #fffaf4;
+    --placeholder-text: #9c8b8e;
+    --quoted-text: #9b5a35;
+    --user-text: #452e31;
+    --agent-text: #3b2d31;
+
+    --user-bubble-bg: rgba(190, 72, 60, 0.20);
+    --assistant-bubble-bg: rgba(230, 217, 215, 0.74);
+
+    --button-bg: #b94e42;
+    --button-hover-bg: #cf6557;
+    --danger-color: #c64242;
+    --danger-hover-bg: #aa3030;
+    --success-color: #517d61;
+
+    --notification-bg: #f4eae6;
+    --notification-header-bg: #fffaf7;
+    --notification-border: #b94e42;
+    --tool-bubble-bg: rgba(81, 125, 97, 0.10);
+    --tool-bubble-border: #517d61;
+
+    --scrollbar-track: rgba(224, 207, 202, 0.52);
+    --scrollbar-thumb: rgba(132, 94, 91, 0.36);
+    --scrollbar-thumb-hover: rgba(185, 78, 66, 0.64);
+
+    --shimmer-color-transparent: rgba(59, 45, 49, 0.04);
+    --shimmer-color-highlight: rgba(185, 78, 66, 0.18);
+
+    --panel-text-shadow: 0 1px 0 rgba(255, 255, 255, 0.62);
+}
+
+/* =================================================================
+ * Surface tuning
+ * 偏“石与绢”的克制质感：边缘清晰，玻璃感不过度泛白。
+ * ================================================================= */
+.title-bar,
+.sidebar,
+.notifications-sidebar,
+.resizer {
+    backdrop-filter: blur(16px) saturate(108%);
+    -webkit-backdrop-filter: blur(16px) saturate(108%);
+}
+
+.message-item .md-content {
+    border: 1px solid rgba(206, 190, 161, 0.18);
+    backdrop-filter: blur(12px) saturate(106%);
+    -webkit-backdrop-filter: blur(12px) saturate(106%);
+    box-shadow:
+        0 11px 30px rgba(0, 0, 0, 0.25),
+        inset 0 1px 0 rgba(255, 248, 232, 0.07);
+}
+
+.message-item.user .md-content {
+    border-color: rgba(231, 197, 142, 0.29);
+}
+
+.message-item.assistant .md-content {
+    border-color: rgba(160, 157, 144, 0.20);
+}
+
+.chat-input-card {
+    backdrop-filter: blur(15px) saturate(108%);
+    -webkit-backdrop-filter: blur(15px) saturate(108%);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 248, 232, 0.08),
+        0 11px 31px rgba(0, 0, 0, 0.20);
+}
+
+.chat-input-card:focus-within {
+    border-color: color-mix(in srgb, var(--button-bg) 76%, var(--border-color));
+    box-shadow:
+        inset 0 1px 0 rgba(255, 248, 232, 0.11),
+        0 0 0 2px color-mix(in srgb, var(--button-bg) 17%, transparent),
+        0 13px 34px rgba(0, 0, 0, 0.22);
+}
+
+.tool-bubble,
+.vcp-tool-request-bubble {
+    backdrop-filter: blur(11px) saturate(106%);
+    -webkit-backdrop-filter: blur(11px) saturate(106%);
+    border-color: var(--tool-bubble-border);
+    background-color: var(--tool-bubble-bg);
+}
+
+body.light-theme .message-item .md-content {
+    border-color: rgba(137, 104, 99, 0.20);
+    box-shadow:
+        0 8px 24px rgba(91, 54, 51, 0.11),
+        inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+
+body.light-theme .message-item.user .md-content {
+    border-color: rgba(169, 58, 49, 0.24);
+}
+
+body.light-theme .message-item.assistant .md-content {
+    border-color: rgba(130, 103, 102, 0.20);
+}
+
+body.light-theme .chat-input-card {
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.80),
+        0 9px 26px rgba(91, 54, 51, 0.12);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .message-item .md-content,
+    .chat-input-card {
+        transition: none;
+    }
+}
