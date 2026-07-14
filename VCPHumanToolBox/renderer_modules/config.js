@@ -893,8 +893,8 @@ export const tools = {
         ]
     },
     'LightMemo': {
-        displayName: '快速回忆 / 语义测绘 / 双轨测试',
-        description: '主动检索日记本或知识库；支持语义距离测绘，以及 TagMemoAB 工业引擎核心测试，对比 V8.3 与 V9 的排序核和端到端寻址结果。[后端插件: LightMemo]',
+        displayName: '快速回忆 / 语义测绘 / V9.1 对照测试',
+        description: '主动检索日记本或知识库；支持语义距离测绘，以及 TagMemo V9.1 单轨记忆寻址对照测试，比较原始 KNN、请求开始时捕获的不可变 V9.1 ArtifactBundle 与可选独立 Rerank。[后端插件: LightMemo]',
         commands: {
             'query': {
                 description: '快速回忆 — 主动检索日记本或知识库',
@@ -904,7 +904,7 @@ export const tools = {
                     { name: 'query', type: 'textarea', required: true, placeholder: '记忆检索内容' },
                     { name: 'k', type: 'number', required: false, default: 5 },
                     { name: 'rerank', type: 'text', required: false, placeholder: 'true / false / rrf0.7（RRF融合）' },
-                    { name: 'tag_boost', type: 'text', required: false, placeholder: '0.6或 0.6+ (浪潮V8)' },
+                    { name: 'tag_boost', type: 'text', required: false, placeholder: '0.6 或 0.6+（TagMemo增强）' },
                     { name: 'use_bm25', type: 'text', required: false, default: 'true', placeholder: 'true / false' },
                     { name: 'aimemo', type: 'checkbox', required: false, default: false, description: 'AI 总结：调用 LLM 对通用检索结果进行归纳总结' },
                     { name: 'search_all_knowledge_bases', type: 'checkbox', required: false, default: true }
@@ -922,19 +922,19 @@ export const tools = {
                 ]
             },
             'tagmemo_ab': {
-                description: 'TagMemoAB 工业核心测试 — 对比 V8.3 与 V9；模式 A 使用固定对称候选超集测核，模式 B 比较端到端独立寻址结果。',
+                description: 'TagMemo V9.1 单轨记忆寻址对照测试 — 保留 tagmemo_ab 命令名以兼容既有调用；固定比较原始 KNN 与请求开始时捕获的不可变 V9.1 ArtifactBundle，并可加入独立 Rerank 横向基线。',
                 params: [
-                    { name: 'ab_mode', type: 'radio', required: false, advanced: false, options: ['A', 'B'], optionLabels: { A: 'A — 固定候选超集测核', B: 'B — 端到端独立寻址' }, default: 'A', description: '测试模式' },
-                    { name: 'query', type: 'textarea', required: true, placeholder: '输入用于比较 V8.3 与 V9 的测试查询文本' },
+                    { name: 'ab_mode', type: 'radio', required: false, advanced: false, options: ['A', 'B'], optionLabels: { A: 'A — 固定对称候选超集对照', B: 'B — 端到端 Top-K 对照' }, default: 'A', description: '测试模式' },
+                    { name: 'query', type: 'textarea', required: true, placeholder: '输入用于比较原始 KNN 与 TagMemo V9.1 的记忆寻址查询' },
                     { name: 'folder', type: 'text', required: false, advanced: false, placeholder: '日记/知识库文件夹，例如：VCP开发', description: '作用域：文件夹（folder、maid 或全库三选一）' },
                     { name: 'maid', type: 'text', required: false, advanced: false, placeholder: '按署名限定作用域', description: '作用域：署名（folder、maid 或全库三选一）' },
                     { name: 'search_all_knowledge_bases', type: 'checkbox', required: false, advanced: false, default: false, description: '全库测试（成本较高；启用后可不填 folder/maid）' },
-                    { name: 'k', type: 'number', required: false, default: 5, min: 1, step: 1, description: '最终展示或每版本返回数量' },
-                    { name: 'top_l', type: 'number', required: false, default: 20, min: 1, step: 1, placeholder: '至少为 k；推荐 30 或 40', description: '每条召回路径进入对称超集的数量（仅模式 A）', dependsOn: { field: 'ab_mode', value: 'A' } },
-                    { name: 'tag_boost', type: 'number', required: false, default: 0.6, min: 0, max: 1, step: 0.05, description: 'V8.3/V9 共用 TagMemo 增强强度（0–1）' },
-                    { name: 'potential_field', type: 'checkbox', required: false, default: true, description: '两个版本各自执行 Potential Field 重排' },
-                    { name: 'BM25', type: 'checkbox', required: false, default: true, description: '将 BM25 Top-L 纳入对称候选超集（仅模式 A）', dependsOn: { field: 'ab_mode', value: 'A' } },
-                    { name: 'compare_rerank', type: 'checkbox', required: false, default: false, description: '启用横评重排基准（compare_rerank）' },
+                    { name: 'k', type: 'number', required: false, default: 5, min: 1, step: 1, description: '模式 B 每条路径的 Top-K 数量，也是模式 A 表格的基础展示量' },
+                    { name: 'top_l', type: 'number', required: false, default: 20, min: 1, step: 1, placeholder: '默认 max(20, k×4)；推荐 30 或 40', description: 'KNN、V9.1 与可选 BM25 各自进入固定对称超集的候选数（仅模式 A）', dependsOn: { field: 'ab_mode', value: 'A' } },
+                    { name: 'tag_boost', type: 'number', required: false, default: 0.6, min: 0, max: 1, step: 0.05, description: 'V9.1 TagMemo 增强强度（0–1）' },
+                    { name: 'potential_field', type: 'checkbox', required: false, default: true, description: '在 V9.1 查询级能量场上执行 Potential Field 重排' },
+                    { name: 'BM25', type: 'checkbox', required: false, default: true, description: '将 BM25 Top-L 纳入固定对称候选超集（仅模式 A）', dependsOn: { field: 'ab_mode', value: 'A' } },
+                    { name: 'compare_rerank', type: 'checkbox', required: false, default: false, description: '增加独立 Rerank 横向基线；需预先配置 RerankUrl、RerankApi 和 RerankModel' },
                     { name: 'core_tags', type: 'textarea', required: false, placeholder: '核心标签；支持 JSON 数组或逗号、空格等分隔字符串', description: '核心标签' },
                     { name: 'core_boost_factor', type: 'number', required: false, default: 1.33, min: 0, step: 0.01, description: '核心标签额外增益' }
                 ]
