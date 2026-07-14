@@ -6,6 +6,7 @@ class PromptManager {
     this.currentMode = "original"; // 'original' | 'modular' | 'preset'
     this.agentId = null;
     this.config = null;
+    this.contextVersion = 0;
 
     // 模块实例
     this.originalModule = null;
@@ -55,20 +56,26 @@ class PromptManager {
    * @param {Object} config 
    */
   async updateAgentContext(agentId, config) {
+    const contextVersion = ++this.contextVersion;
     this.agentId = agentId;
     this.config = config;
     this.currentMode = config.promptMode || "original";
 
     // 加载自定义模式名称 (这步可以异步)
     await this.loadCustomModeNames();
+    if (contextVersion !== this.contextVersion || this.agentId !== agentId) return false;
 
-    // 更新各个子模块的上下文
+    // 更新各个子模块的上下文。调用方会串行执行上下文切换；版本检查仍用于
+    // 防止模式切换等并发操作在异步边界后继续刷新错误 Agent 的 UI。
     if (this.originalModule) this.originalModule.updateContext(agentId, config);
     if (this.modularModule) await this.modularModule.updateContext(agentId, config);
+    if (contextVersion !== this.contextVersion || this.agentId !== agentId) return false;
     if (this.presetModule) await this.presetModule.updateContext(agentId, config);
+    if (contextVersion !== this.contextVersion || this.agentId !== agentId) return false;
 
     // 重新渲染主框架
     this.render();
+    return true;
   }
 
   /**
@@ -335,39 +342,39 @@ class PromptManager {
    * @param {string} mode - 目标模式
    */
   async switchMode(mode) {
-    if (this.currentMode === mode) return;
+    if (this.currentMode === mode || !this.agentId) return;
 
-    // 【防竞态】在切换开始时锁定agentId，防止异步操作期间用户切换Agent导致写入错误目标
+    // 在任何 await 之前冻结操作上下文。不能在异步恢复后再从共享实例/DOM读取身份。
     const lockedAgentId = this.agentId;
-
-    // 1. 获取最新提示词内容
+    const lockedContextVersion = this.contextVersion;
+    const sourceMode = this.currentMode;
     const systemPrompt = await this.getCurrentSystemPrompt();
 
-    // 2. 更新模式
-    this.currentMode = mode;
+    if (
+      this.agentId !== lockedAgentId ||
+      this.contextVersion !== lockedContextVersion ||
+      this.currentMode !== sourceMode
+    ) {
+      console.debug(`[PromptManager] Ignoring stale mode switch for agent ${lockedAgentId}.`);
+      return;
+    }
 
-    // 3. 执行合并保存：一次性更新模式和系统提示词，避免多次磁盘操作
-    // 注意：这里我们主动更新 agentConfig 里的 promptMode 和 systemPrompt 两个关键字段
+    // 一次性只更新模式和该操作所捕获的提示词。子模块数据由各子模块自己的、
+    // 已绑定 Agent ID 的保存负责；禁止再从共享设置表单进行整份配置补保存。
     await this.electronAPI.updateAgentConfig(lockedAgentId, {
       promptMode: mode,
       systemPrompt: systemPrompt,
     });
 
-    // 4. 更新UI
+    // 写入可安全完成到原 Agent，但若用户已经切换上下文，不得改动新 Agent 的 UI。
+    if (this.agentId !== lockedAgentId || this.contextVersion !== lockedContextVersion) {
+      console.debug(`[PromptManager] Mode saved for ${lockedAgentId}; skipped stale UI update.`);
+      return;
+    }
+
+    this.currentMode = mode;
     this.updateModeButtons();
     this.renderCurrentMode();
-
-    // 5. 偶尔可能需要触发全面保存（例如子模块有自己的特殊配置项需要同步）
-    // 但我们在上面已经更新了最关键的 mode+prompt，这里可以异步进行或由子模块自行负责
-    if (
-      window.settingsManager &&
-      typeof window.settingsManager.triggerAgentSave === "function"
-    ) {
-      // 注意：这里不再 await，减少阻塞感，因为关键数据已经通过 updateAgentConfig 落地了
-      window.settingsManager.triggerAgentSave(lockedAgentId).catch((err) => {
-        console.error("[PromptManager] Trigger full save failed:", err);
-      });
-    }
   }
 
   /**
@@ -465,6 +472,14 @@ class PromptManager {
     if (["original", "modular", "preset"].includes(mode)) {
       await this.switchMode(mode);
     }
+  }
+
+  /**
+   * 外部接口：获取当前绑定的 Agent。
+   * @returns {string|null}
+   */
+  getAgentId() {
+    return this.agentId;
   }
 
   /**

@@ -68,6 +68,8 @@ const settingsManager = (() => {
     const sectionControllers = new Map();
     let lastPersistedCollapseStateSignature = '';
     let scheduleStickyButtonsRefresh = () => { };
+    let agentSettingsPopulateToken = 0;
+    let agentSettingsPopulateQueue = Promise.resolve();
     const initializedCollapseStateAgents = new Set();
     const promptModeFallbackLabels = {
         original: '文本',
@@ -122,39 +124,60 @@ const settingsManager = (() => {
      * @param {string} agentId - The ID of the agent.
      * @param {object} agentConfig - The configuration object for the agent.
      */
-    async function populateAgentSettingsForm(agentId, agentConfig) {
-        if (groupSettingsContainer) groupSettingsContainer.style.display = 'none';
-        if (agentSettingsContainer) agentSettingsContainer.style.display = '';
+    function populateAgentSettingsForm(agentId, agentConfig) {
+        const populateToken = ++agentSettingsPopulateToken;
 
-        if (!agentConfig || agentConfig.error) {
-            uiHelper.showToastNotification(`加载Agent配置失败: ${agentConfig?.error || '未知错误'}`, 'error');
-            if (agentSettingsContainer) agentSettingsContainer.style.display = 'none';
-            selectItemPromptForSettings.textContent = `加载 ${agentId} 配置失败。`;
-            selectItemPromptForSettings.style.display = 'block';
-            return;
-        }
-
-        editingAgentIdInput.value = agentId;
-        agentNameInput.value = agentConfig.name || agentId;
-
-        // Initialize PromptManager (Singleton Pattern)
-        const systemPromptContainer = document.getElementById('systemPromptContainer');
-        if (systemPromptContainer && window.PromptManager) {
-            if (!promptManager) {
-                promptManager = new window.PromptManager();
-                await promptManager.init({
-                    containerElement: systemPromptContainer,
-                    electronAPI: electronAPI
-                });
-            } else {
-                // Save current state before switching context
-                await promptManager.saveCurrentModeData();
+        // 所有 Agent 共用同一套表单和 PromptManager。串行切换上下文，并让较新的请求淘汰
+        // 尚未开始写 DOM 的旧请求，避免异步初始化/保存交错后把 A 的内容显示或保存到 B。
+        const populateTask = async () => {
+            if (populateToken !== agentSettingsPopulateToken) {
+                console.debug(`[SettingsManager] Skipping stale settings population for agent ${agentId}.`);
+                return { stale: true };
             }
 
-            await promptManager.updateAgentContext(agentId, agentConfig);
-        }
+            if (groupSettingsContainer) groupSettingsContainer.style.display = 'none';
+            if (agentSettingsContainer) agentSettingsContainer.style.display = '';
 
-        agentModelInput.value = agentConfig.model || '';
+            if (!agentConfig || agentConfig.error) {
+                uiHelper.showToastNotification(`加载Agent配置失败: ${agentConfig?.error || '未知错误'}`, 'error');
+                if (agentSettingsContainer) agentSettingsContainer.style.display = 'none';
+                selectItemPromptForSettings.textContent = `加载 ${agentId} 配置失败。`;
+                selectItemPromptForSettings.style.display = 'block';
+                return;
+            }
+
+            // Initialize PromptManager (Singleton Pattern)
+            const systemPromptContainer = document.getElementById('systemPromptContainer');
+            if (systemPromptContainer && window.PromptManager) {
+                if (!promptManager) {
+                    promptManager = new window.PromptManager();
+                    await promptManager.init({
+                        containerElement: systemPromptContainer,
+                        electronAPI: electronAPI
+                    });
+                } else if (promptManager.getAgentId?.()) {
+                    // 保存的目标由 PromptManager 自身上下文决定，而不是可变的表单 ID。
+                    await promptManager.saveCurrentModeData();
+                }
+
+                if (populateToken !== agentSettingsPopulateToken) {
+                    console.debug(`[SettingsManager] Aborting stale prompt context switch for agent ${agentId}.`);
+                    return { stale: true };
+                }
+
+                await promptManager.updateAgentContext(agentId, agentConfig);
+            }
+
+            if (populateToken !== agentSettingsPopulateToken) {
+                console.debug(`[SettingsManager] Aborting stale settings render for agent ${agentId}.`);
+                return { stale: true };
+            }
+
+            // 只有提示词上下文已成功切到目标 Agent 后，才发布表单所代表的 Agent ID。
+            editingAgentIdInput.value = agentId;
+            agentNameInput.value = agentConfig.name || agentId;
+
+            agentModelInput.value = agentConfig.model || '';
         agentTemperatureInput.value = agentConfig.temperature !== undefined ? agentConfig.temperature : 0.7;
         agentContextTokenLimitInput.value = agentConfig.contextTokenLimit !== undefined ? agentConfig.contextTokenLimit : 4000;
         agentMaxOutputTokensInput.value = agentConfig.maxOutputTokens !== undefined ? agentConfig.maxOutputTokens : 1000;
@@ -234,10 +257,20 @@ const settingsManager = (() => {
         currentAgentRegexes = JSON.parse(JSON.stringify(agentConfig.stripRegexes || [])); // Deep copy
         renderRegexList();
 
-        // Restore collapse states after dynamic content is ready
-        restoreCollapseStates(agentConfig);
-        updateAllSectionSummaries();
-        scheduleStickyButtonsRefresh();
+            // Restore collapse states after dynamic content is ready
+            restoreCollapseStates(agentConfig);
+            updateAllSectionSummaries();
+            scheduleStickyButtonsRefresh();
+        };
+
+        const queuedTask = agentSettingsPopulateQueue
+            .catch(error => {
+                console.error('[SettingsManager] Previous settings population failed:', error);
+            })
+            .then(populateTask);
+
+        agentSettingsPopulateQueue = queuedTask;
+        return queuedTask;
     }
 
     /**
@@ -252,12 +285,26 @@ const settingsManager = (() => {
             uiHelper.showToastNotification("保存失败：未指定 Agent ID", 'error');
             return;
         }
+        if (promptManager?.getAgentId?.() && promptManager.getAgentId() !== agentId) {
+            console.warn(`[SettingsManager] Blocked save for ${agentId}: PromptManager is bound to ${promptManager.getAgentId()}.`);
+            uiHelper.showToastNotification('Agent 正在切换，请稍后再保存。', 'warning');
+            return;
+        }
 
         // Get system prompt from PromptManager
         let systemPromptData = {};
         if (promptManager) {
             await promptManager.saveCurrentModeData();
+            if (editingAgentIdInput.value !== agentId || promptManager.getAgentId?.() !== agentId) {
+                console.debug(`[SettingsManager] Aborting stale save after prompt persistence for ${agentId}.`);
+                return;
+            }
+
             const currentPrompt = await promptManager.getCurrentSystemPrompt();
+            if (editingAgentIdInput.value !== agentId || promptManager.getAgentId?.() !== agentId) {
+                console.debug(`[SettingsManager] Aborting stale save after prompt read for ${agentId}.`);
+                return;
+            }
             systemPromptData.systemPrompt = currentPrompt; // Keep for compatibility
         }
 
@@ -902,15 +949,29 @@ const settingsManager = (() => {
             await handleOpenModelSelect(targetInputElement);
         },
         triggerAgentSave: async (overrideAgentId) => {
-            // 触发Agent设置保存（不含头像）
-            // 支持传入锁定的agentId，防止异步操作期间DOM状态变化导致写入错误Agent
-            const agentId = overrideAgentId || editingAgentIdInput.value;
+            // 触发Agent设置保存（不含头像）。override 只能用于验证当前上下文，
+            // 不能把当前共享 DOM 的内容强行写入一个已切走的 Agent。
+            const formAgentId = editingAgentIdInput.value;
+            const agentId = overrideAgentId || formAgentId;
             if (!agentId) return;
+            if (agentId !== formAgentId || (promptManager?.getAgentId?.() && promptManager.getAgentId() !== agentId)) {
+                console.debug(`[SettingsManager] Skipping stale triggerAgentSave for ${agentId}; current form is ${formAgentId || 'none'}.`);
+                return { success: false, stale: true };
+            }
 
             let systemPromptData = {};
             if (promptManager) {
                 await promptManager.saveCurrentModeData();
+                if (editingAgentIdInput.value !== agentId || promptManager.getAgentId?.() !== agentId) {
+                    console.debug(`[SettingsManager] Aborting stale triggerAgentSave after prompt persistence for ${agentId}.`);
+                    return { success: false, stale: true };
+                }
+
                 const currentPrompt = await promptManager.getCurrentSystemPrompt();
+                if (editingAgentIdInput.value !== agentId || promptManager.getAgentId?.() !== agentId) {
+                    console.debug(`[SettingsManager] Aborting stale triggerAgentSave after prompt read for ${agentId}.`);
+                    return { success: false, stale: true };
+                }
                 systemPromptData.systemPrompt = currentPrompt;
             }
 

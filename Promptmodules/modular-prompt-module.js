@@ -1275,27 +1275,27 @@ class ModularPromptModule {
      * [修改后] 保存数据（分流保存私有和全局数据）
      */
     async save() {
-        // 1. [新增] 提取全局仓库数据并独立保存
-        const globalBlocksToSave = this.hiddenBlocks['global'] || [];
+        // 在第一个 await 前冻结目标和数据。否则保存全局仓库期间切换 Agent 后，
+        // this.agentId/this.blocks 可能已经指向新 Agent，造成跨 Agent 覆盖。
+        const targetAgentId = this.agentId;
+        if (!targetAgentId) return;
+
+        const globalBlocksToSave = structuredClone(this.hiddenBlocks['global'] || []);
+        const privateDataToSave = {
+            blocks: structuredClone(this.blocks),
+            hiddenBlocks: structuredClone(this.hiddenBlocks),
+            warehouseOrder: [...this.warehouseOrder],
+            viewMode: this.viewMode
+        };
+        delete privateDataToSave.hiddenBlocks['global'];
+
         try {
             await this.electronAPI.saveGlobalWarehouse(globalBlocksToSave);
         } catch (error) {
             console.error('Error saving global warehouse:', error);
         }
 
-        // 2. [修改] 准备要保存到Agent配置的私有数据
-        const privateDataToSave = {
-            blocks: this.blocks,
-            hiddenBlocks: { ...this.hiddenBlocks }, // 创建一个副本进行操作
-            warehouseOrder: this.warehouseOrder,
-            viewMode: this.viewMode // 保存预览模式状态
-        };
-
-        // 3. [新增] 从私有数据副本中移除全局仓库，避免冗余存储
-        delete privateDataToSave.hiddenBlocks['global'];
-
-        // 4. 保存私有数据到Agent配置文件（逻辑不变）
-        await this.electronAPI.updateAgentConfig(this.agentId, {
+        await this.electronAPI.updateAgentConfig(targetAgentId, {
             advancedSystemPrompt: privateDataToSave
         });
     }
