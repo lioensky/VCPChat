@@ -933,6 +933,7 @@ export const tools = {
                     { name: 'tag_boost', type: 'number', required: false, default: 0.6, min: 0, max: 1, step: 0.05, description: 'V8.3/V9 共用 TagMemo 增强强度（0–1）' },
                     { name: 'potential_field', type: 'checkbox', required: false, default: true, description: '两个版本各自执行 Potential Field 重排' },
                     { name: 'BM25', type: 'checkbox', required: false, default: true, description: '将 BM25 Top-L 纳入对称候选超集（仅模式 A）', dependsOn: { field: 'ab_mode', value: 'A' } },
+                    { name: 'compare_rerank', type: 'checkbox', required: false, default: false, description: '启用横评重排基准（compare_rerank）' },
                     { name: 'core_tags', type: 'textarea', required: false, placeholder: '核心标签；支持 JSON 数组或逗号、空格等分隔字符串', description: '核心标签' },
                     { name: 'core_boost_factor', type: 'number', required: false, default: 1.33, min: 0, step: 0.01, description: '核心标签额外增益' }
                 ]
