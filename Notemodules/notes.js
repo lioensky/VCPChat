@@ -324,6 +324,93 @@ document.addEventListener('DOMContentLoaded', async () => {
         return result;
     }
 
+    function extractLatexDisplayBlocks(text) {
+        if (typeof text !== 'string') return { markdown: text, blocks: [] };
+
+        const lines = text.split('\n');
+        const output = [];
+        const blocks = [];
+        let inFence = false;
+        let fenceMarker = null;
+        let mathLines = null;
+        let escapedTransport = false;
+
+        for (const line of lines) {
+            const trimmed = line.trim();
+            const fenceMatch = trimmed.match(/^(`{3,}|~{3,})/);
+
+            if (!mathLines && fenceMatch) {
+                const marker = fenceMatch[1][0];
+                if (!inFence) {
+                    inFence = true;
+                    fenceMarker = marker;
+                } else if (marker === fenceMarker) {
+                    inFence = false;
+                    fenceMarker = null;
+                }
+                output.push(line);
+                continue;
+            }
+
+            // Accept both normal LaTeX delimiters (\[...\]) and text that arrived
+            // with JSON-style doubled slashes (\\[...\\]).
+            if (!inFence && !mathLines && /^(?:\\|\\\\)\[$/.test(trimmed)) {
+                mathLines = [];
+                escapedTransport = trimmed.startsWith('\\\\');
+                continue;
+            }
+
+            if (mathLines) {
+                if (/^(?:\\|\\\\)\]$/.test(trimmed)) {
+                    let expression = mathLines.join('\n');
+                    if (escapedTransport) expression = expression.replace(/\\\\/g, '\\');
+
+                    const id = blocks.length;
+                    blocks.push(expression);
+                    output.push('');
+                    output.push(`<div class="vcp-math-placeholder" data-vcp-math-id="${id}"></div>`);
+                    output.push('');
+                    mathLines = null;
+                    escapedTransport = false;
+                } else {
+                    mathLines.push(line);
+                }
+                continue;
+            }
+
+            output.push(line);
+        }
+
+        // Preserve unmatched opening delimiters as source text instead of losing content.
+        if (mathLines) {
+            output.push(escapedTransport ? '\\\\[' : '\\[');
+            output.push(...mathLines);
+        }
+
+        return { markdown: output.join('\n'), blocks };
+    }
+
+    function renderExtractedLatexBlocks(container, blocks) {
+        if (!window.katex || typeof window.katex.render !== 'function') return;
+
+        container.querySelectorAll('.vcp-math-placeholder[data-vcp-math-id]').forEach(node => {
+            const id = Number(node.dataset.vcpMathId);
+            const expression = blocks[id];
+            if (typeof expression !== 'string') return;
+
+            try {
+                window.katex.render(expression, node, {
+                    displayMode: true,
+                    throwOnError: false
+                });
+                node.classList.add('vcp-math-display');
+            } catch (error) {
+                console.warn('[Notes] KaTeX display render error:', error);
+                node.textContent = `\\[\n${expression}\n\\]`;
+            }
+        });
+    }
+
     function preprocessFullContent(text) {
         if (typeof text !== 'string') return text;
 
@@ -367,8 +454,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
 
+        // Protect \[...\] display math before marked consumes Markdown escapes.
+        const extractedMath = extractLatexDisplayBlocks(markdown);
+
         // Use the full pre-processing pipeline
-        const processedMarkdown = preprocessFullContent(markdown);
+        const processedMarkdown = preprocessFullContent(extractedMath.markdown);
 
         // Sanitize local image paths (this part is specific to notes.js)
         const sanitizedMarkdown = processedMarkdown.replace(/!\[(.*?)\]\(file:\/\/([^)]+)\)/g, (match, alt, url) => {
@@ -388,13 +478,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         const cleanHtmlBody = DOMPurify.sanitize(htmlWithoutStyles, {
             // We don't need to allow 'style' tags here anymore as they are handled separately.
             ADD_TAGS: ['img', 'div'],
-            ADD_ATTR: ['style', 'class'], // Keep inline styles and semantic classes such as mermaid.
+            ADD_ATTR: ['style', 'class', 'data-vcp-math-id'], // Keep semantic classes and math placeholders.
             ALLOW_UNKNOWN_PROTOCOLS: true,
             FORCE_BODY: true
         });
 
         // Re-combine the sanitized body with the original, un-sanitized style blocks.
         previewContentDiv.innerHTML = styleBlocks.join('\n') + cleanHtmlBody;
+
+        // Render protected \[...\] blocks directly, bypassing marked's escape handling.
+        renderExtractedLatexBlocks(previewContentDiv, extractedMath.blocks);
 
         // --- Extract Mermaid blocks BEFORE hljs runs (hljs would inject spans and break parsing) ---
         const mermaidNodes = collectMermaidNodes(previewContentDiv);
@@ -404,6 +497,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             renderMathInElement(previewContentDiv, {
                 delimiters: [
                     { left: "$$", right: "$$", display: true },
+                    { left: "\\[", right: "\\]", display: true },
+                    { left: "\\(", right: "\\)", display: false },
                     { left: "$", right: "$", display: false },
                 ],
                 throwOnError: false
