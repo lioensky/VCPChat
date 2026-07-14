@@ -346,6 +346,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (state[el.name] !== undefined) el.value = state[el.name];
             }
         });
+
+        // 缓存值恢复后重新计算 dependsOn，避免界面仍停留在默认模式的显隐状态。
+        toolForm.querySelectorAll('input[type="radio"]:checked').forEach(el => {
+            el.dispatchEvent(new Event('change', { bubbles: true }));
+        });
     }
 
     function buildToolForm(toolName) {
@@ -374,7 +379,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             commandSelect.addEventListener('change', (e) => {
                 renderFormParams(tool.commands[e.target.value].params, paramsContainer, toolName, e.target.value);
-            });renderFormParams(tool.commands[commandSelect.value].params, paramsContainer, toolName, commandSelect.value);} else {
+                setupCommandSpecificForm(toolName, e.target.value);
+            });
+            renderFormParams(tool.commands[commandSelect.value].params, paramsContainer, toolName, commandSelect.value);
+            setupCommandSpecificForm(toolName, commandSelect.value);
+        } else {
             toolForm.appendChild(paramsContainer);renderFormParams(tool.params, paramsContainer, toolName);
         }
 
@@ -462,17 +471,38 @@ document.addEventListener('DOMContentLoaded', async () => {
         setTimeout(() => restoreFormState(toolName), 0);
     }
 
+    function setupCommandSpecificForm(toolName, commandName) {
+        if (toolName !== 'LightMemo' || commandName !== 'tagmemo_ab') return;
+
+        const kInput = toolForm.querySelector('[name="k"]');
+        const topLInput = toolForm.querySelector('[name="top_l"]');
+        if (!kInput || !topLInput) return;
+
+        let topLManuallyEdited = false;
+        const updateTopLDefault = () => {
+            if (topLManuallyEdited) return;
+            const k = Math.max(1, Number.parseInt(kInput.value, 10) || 5);
+            topLInput.value = String(Math.max(20, k * 4));
+        };
+
+        topLInput.addEventListener('input', () => {
+            topLManuallyEdited = true;
+        });
+        kInput.addEventListener('input', updateTopLDefault);
+        updateTopLDefault();
+    }
+
     function renderFormParams(params, container, toolName = '', commandName = '') {
         container.innerHTML = '';
         const dependencyListeners = [];
 
         const isNanoBananaCompose = toolName === 'NanoBananaGen' && commandName === 'compose';
 
-        // 分离必填和可选参数
+        // 分离主表单与高级选项。advanced:false 可让条件必需或高频参数常驻主表单。
         const requiredParams = [];
         const optionalParams = [];
         params.forEach(param => {
-            if (param.required) {
+            if (param.required || param.advanced === false) {
                 requiredParams.push(param);
             } else {
                 optionalParams.push(param);
@@ -550,7 +580,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 radioInput.value = opt;
                 if (opt === param.default) radioInput.checked = true;
                 radioLabel.appendChild(radioInput);
-                radioLabel.append(` ${opt}`);
+                radioLabel.append(` ${param.optionLabels?.[opt] || opt}`);
                 input.appendChild(radioLabel);
 
                 radioInput.addEventListener('change', () => {
@@ -625,11 +655,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (param.dependsOn) {
             const dependencyCheck = () => {
                 const dependencyField = toolForm.querySelector(`[name="${param.dependsOn.field}"]:checked`) || toolForm.querySelector(`[name="${param.dependsOn.field}"]`);
-                if (dependencyField && dependencyField.value === param.dependsOn.value) {
-                    paramGroup.style.display = '';
-                } else {
-                    paramGroup.style.display = 'none';
-                }
+                const isVisible = Boolean(dependencyField && dependencyField.value === param.dependsOn.value);
+                paramGroup.style.display = isVisible ? '' : 'none';
+
+                // 不成功能的模式专属字段不应进入 FormData，也不参与浏览器必填校验。
+                paramGroup.querySelectorAll('input, textarea, select').forEach(control => {
+                    control.disabled = !isVisible;
+                });
             };
             dependencyListeners.push(dependencyCheck);}
 
@@ -1020,8 +1052,24 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         }
 
-        // maid 兜底：用户未填写时使用默认值
-        if (!args.maid) args.maid = USER_NAME;
+        if (
+            toolName === 'LightMemo'
+            && args.command === 'tagmemo_ab'
+            && !String(args.maid || '').trim()
+            && !String(args.folder || '').trim()
+            && args.search_all_knowledge_bases !== true
+        ) {
+            renderResult({
+                status: 'error',
+                error: 'TagMemoAB 必须选择作用域：填写 folder、填写 maid，或启用全库测试。'
+            }, toolName);
+            return;
+        }
+
+        // maid 兜底：其他工具未填写时使用默认值。TagMemoAB 保留显式作用域语义。
+        if (!args.maid && !(toolName === 'LightMemo' && args.command === 'tagmemo_ab')) {
+            args.maid = USER_NAME;
+        }
         // 计时器
         const startTime = Date.now();
         let timerInterval;
@@ -1044,18 +1092,23 @@ document.addEventListener('DOMContentLoaded', async () => {
             clearInterval(timerInterval);
             const duration = ((Date.now() - startTime) / 1000).toFixed(1);
 
-            // 记录执行历史
+            const pluginError = result.success && result.data && result.data.plugin_error;
+            const executionSucceeded = result.success && !pluginError;
+
+            // plugin_error 是插件业务失败，不可作为空结果或成功调用记录。
             executionHistory.unshift({
                 toolName: finalToolName,
                 displayName: tools[finalToolName]?.displayName || finalToolName,
                 command: args.command || '',
                 time: new Date().toLocaleTimeString(),
-                success: result.success,
+                success: executionSucceeded,
                 duration: duration
             });
             if (executionHistory.length > 15) executionHistory.pop();
 
-            if (result.success) {
+            if (pluginError) {
+                renderResult({ status: 'error', error: pluginError }, toolName, duration);
+            } else if (result.success) {
                 renderResult(result.data, toolName, duration);
             } else {
                 renderResult({ status: 'error', error: result.error }, toolName, duration);
@@ -1111,15 +1164,15 @@ document.addEventListener('DOMContentLoaded', async () => {
             durationTag.style.cssText = `
                 display: inline-block; padding: 4px 10px; border-radius: 12px;
                 font-size: 11px; margin-bottom: 10px;
-                background: ${data.status === 'error' || data.error ? 'rgba(239,68,68,0.15)' : 'rgba(16,185,129,0.15)'};
-                color: ${data.status === 'error' || data.error ? 'var(--danger-color)' : 'var(--success-color)'};`;
-            durationTag.textContent = `${data.status === 'error' || data.error ? '❌' : '✅'} 耗时 ${duration}s`;
+                background: ${data.status === 'error' || data.error || data.plugin_error ? 'rgba(239,68,68,0.15)' : 'rgba(16,185,129,0.15)'};
+                color: ${data.status === 'error' || data.error || data.plugin_error ? 'var(--danger-color)' : 'var(--success-color)'};`;
+            durationTag.textContent = `${data.status === 'error' || data.error || data.plugin_error ? '❌' : '✅'} 耗时 ${duration}s`;
             resultContainer.appendChild(durationTag);
         }
         
         // 错误处理
-        if (data.status === 'error' || data.error) {
-            const errorMessage = data.error || data.message || '未知错误';
+        if (data.status === 'error' || data.error || data.plugin_error) {
+            const errorMessage = data.plugin_error || data.error || data.message || '未知错误';
             const pre = document.createElement('pre');
             pre.className = 'error';
             pre.textContent = typeof errorMessage === 'object' ? JSON.stringify(errorMessage, null, 2) : errorMessage;
