@@ -32,14 +32,26 @@
     <div class="title-bar">
         <div class="title-bar-text"><img src="assets/icon.png" alt="Logo" class="title-bar-logo"> VCPChat</div>
         <div class="title-bar-controls">
-            <button id="themes-btn" class="title-bar-button" title="主题商店"
-                onclick="(window.chatAPI || window.electronAPI)?.openThemesWindow?.()">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"
-                    style="width: 12px; height: 12px;">
-                    <path
-                        d="M15.825.12a.5.5 0 0 1 .132.584c-1.53 3.43-4.743 8.17-7.095 10.64a6.067 6.067 0 0 1-2.373 1.534c-.018.227-.06.538-.16.868-.201.659-.667 1.479-1.708 1.74a8.118 8.118 0 0 1-3.078.132 3.659 3.659 0 0 1-.562-.135 1.382 1.382 0 0 1-.466-.247.714.714 0 0 1-.204-.288.622.622 0 0 1 .004-.443c.095-.245.316-.38.461-.452.394-.197.625-.453.867-.826.095-.144.184-.297.287-.472l.117-.198c.151-.255.326-.5.527-.734.206-.236.438-.46.693-.659.26-.2.548-.37.848-.487.306-.12.624-.19.958-.21a3.36 3.36 0 0 1 .82.025c.28.04.554.12.81.24.26.12.5.28.7.49.2.21.36.46.48.74.12.28.2.6.22.94.02.34-.02.69-.1.99-.08.3-.2.59-.35.86-.15.27-.35.52-.58.75-.23.23-.5.43-.78.58-.28.15-.59.26-.92.32-.33.06-.67.06-1.01-.02a4.007 4.007 0 0 1-1.12-.328.5.5 0 0 1-.28-.88c.24-.17.54-.38.87-.58.33-.19.68-.42 1.05-.68.37-.26.76-.55 1.18-.86.42-.3.87-.62 1.34-.94.47-.32.96-.64 1.48-.96.52-.32 1.05-.63 1.6-.92.55-.29 1.1-.56 1.65-.8.55-.24 1.1-.47 1.6-.68.5-.2.95-.38 1.36-.51a.5.5 0 0 1 .585.132z" />
-                </svg>
-            </button>
+            <div class="title-bar-view-switcher">
+                <button id="themes-btn" class="title-bar-button" title="主题商店"
+                    aria-haspopup="true" aria-controls="chat-presentation-quick-switcher"
+                    onclick="(window.chatAPI || window.electronAPI)?.openThemesWindow?.()">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"
+                        style="width: 12px; height: 12px;">
+                        <path
+                            d="M15.825.12a.5.5 0 0 1 .132.584c-1.53 3.43-4.743 8.17-7.095 10.64a6.067 6.067 0 0 1-2.373 1.534c-.018.227-.06.538-.16.868-.201.659-.667 1.479-1.708 1.74a8.118 8.118 0 0 1-3.078.132 3.659 3.659 0 0 1-.562-.135 1.382 1.382 0 0 1-.466-.247.714.714 0 0 1-.204-.288.622.622 0 0 1 .004-.443c.095-.245.316-.38.461-.452.394-.197.625-.453.867-.826.095-.144.184-.297.287-.472l.117-.198c.151-.255.326-.5.527-.734.206-.236.438-.46.693-.659.26-.2.548-.37.848-.487.306-.12.624-.19.958-.21a3.36 3.36 0 0 1 .82.025c.28.04.554.12.81.24.26.12.5.28.7.49.2.21.36.46.48.74.12.28.2.6.22.94.02.34-.02.69-.1.99-.08.3-.2.59-.35.86-.15.27-.35.52-.58.75-.23.23-.5.43-.78.58-.28.15-.59.26-.92.32-.33.06-.67.06-1.01-.02a4.007 4.007 0 0 1-1.12-.328.5.5 0 0 1-.28-.88c.24-.17.54-.38.87-.58.33-.19.68-.42 1.05-.68.37-.26.76-.55 1.18-.86.42-.3.87-.62 1.34-.94.47-.32.96-.64 1.48-.96.52-.32 1.05-.63 1.6-.92.55-.29 1.1-.56 1.65-.8.55-.24 1.1-.47 1.6-.68.5-.2.95-.38 1.36-.51a.5.5 0 0 1 .585.132z" />
+                    </svg>
+                </button>
+                <div id="chat-presentation-quick-switcher" class="chat-presentation-quick-switcher"
+                    role="radiogroup" aria-label="聊天显示模式">
+                    <button type="button" class="chat-presentation-quick-option"
+                        data-presentation-mode="bubble" role="radio" aria-checked="false">气泡</button>
+                    <button type="button" class="chat-presentation-quick-option"
+                        data-presentation-mode="panel" role="radio" aria-checked="false">统一</button>
+                    <button type="button" class="chat-presentation-quick-option"
+                        data-presentation-mode="immersive" role="radio" aria-checked="false">刊物</button>
+                </div>
+            </div>
             <button id="minimize-to-tray-btn" class="title-bar-button" title="最小化到托盘">
                 <svg viewBox="0 0 10 10">
                     <polygon points="5,8 0,2 10,2"></polygon>

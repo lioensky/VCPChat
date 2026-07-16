@@ -942,6 +942,7 @@ import { setupEventListeners } from './modules/event-listeners.js';
     }
 
     try {
+        setupChatPresentationQuickSwitcher();
         await loadAndApplyGlobalSettings();
         await window.itemListManager.loadItems(); // Load both agents and groups
 
@@ -1686,6 +1687,13 @@ function syncChatPresentationModeControls(mode = globalSettings.chatPresentation
     );
     if (modeControl) modeControl.checked = true;
 
+    document.querySelectorAll('.chat-presentation-quick-option').forEach((option) => {
+        const isActive = option.dataset.presentationMode === normalizedMode;
+        option.classList.toggle('active', isActive);
+        option.setAttribute('aria-checked', String(isActive));
+        option.tabIndex = isActive ? 0 : -1;
+    });
+
     const bubbleOnlySettings = document.getElementById('userChatBubbleSettings');
     if (bubbleOnlySettings) {
         bubbleOnlySettings.hidden = normalizedMode !== 'bubble';
@@ -1695,6 +1703,50 @@ function syncChatPresentationModeControls(mode = globalSettings.chatPresentation
     if (bubbleWidthSettings) {
         bubbleWidthSettings.hidden = normalizedMode !== 'bubble';
     }
+}
+
+function setupChatPresentationQuickSwitcher() {
+    const switcher = document.getElementById('chat-presentation-quick-switcher');
+    const options = Array.from(switcher?.querySelectorAll('.chat-presentation-quick-option') || []);
+    if (!switcher || !options.length || switcher.dataset.bound === 'true') return;
+
+    const selectMode = async (option) => {
+        const mode = option?.dataset.presentationMode;
+        if (!mode) return;
+        await applyChatPresentationMode(mode, {
+            persist: true,
+            preserveScroll: true,
+            notify: false,
+            source: 'title-bar-quick-switcher'
+        });
+    };
+
+    options.forEach((option) => {
+        option.addEventListener('click', () => selectMode(option));
+        option.addEventListener('keydown', (event) => {
+            if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+            event.preventDefault();
+
+            const currentIndex = Math.max(0, options.indexOf(option));
+            let nextIndex = currentIndex;
+            if (event.key === 'ArrowLeft') nextIndex = (currentIndex - 1 + options.length) % options.length;
+            if (event.key === 'ArrowRight') nextIndex = (currentIndex + 1) % options.length;
+            if (event.key === 'Home') nextIndex = 0;
+            if (event.key === 'End') nextIndex = options.length - 1;
+
+            options[nextIndex].focus();
+            selectMode(options[nextIndex]);
+        });
+    });
+
+    switcher.addEventListener('keydown', (event) => {
+        if (event.key !== 'Escape') return;
+        event.preventDefault();
+        document.getElementById('themes-btn')?.focus();
+    });
+
+    switcher.dataset.bound = 'true';
+    syncChatPresentationModeControls(globalSettings.chatPresentationMode);
 }
 
 async function applyChatPresentationMode(mode, options = {}) {

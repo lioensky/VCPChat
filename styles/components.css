@@ -33,6 +33,116 @@
     color: white;
 }
 
+/* 主题商店入口下方的聊天显示模式快捷选择器 */
+.title-bar-view-switcher {
+    position: relative;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    -webkit-app-region: no-drag;
+}
+
+.chat-presentation-quick-switcher {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 50%;
+    width: max-content;
+    padding: 4px;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    border: 1px solid color-mix(in srgb, var(--border-color) 68%, transparent);
+    border-radius: 12px;
+    background:
+        linear-gradient(145deg, rgba(255, 255, 255, 0.12), transparent 46%),
+        color-mix(in srgb, var(--secondary-bg) 93%, var(--panel-bg-dark));
+    color: var(--primary-text);
+    backdrop-filter: blur(18px) saturate(140%);
+    -webkit-backdrop-filter: blur(18px) saturate(140%);
+    box-shadow:
+        0 10px 28px rgba(0, 0, 0, 0.3),
+        inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transform: translate(-50%, -5px) scale(0.97);
+    transform-origin: center top;
+    transition:
+        opacity 0.14s ease,
+        visibility 0.14s ease,
+        transform 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+    z-index: 1004;
+}
+
+/* 透明悬停桥：保证鼠标从主题按钮移向浮层时不会意外收起。 */
+.chat-presentation-quick-switcher::before {
+    content: "";
+    position: absolute;
+    left: 50%;
+    bottom: 100%;
+    width: 42px;
+    height: 8px;
+    transform: translateX(-50%);
+}
+
+.title-bar-view-switcher:hover .chat-presentation-quick-switcher,
+.title-bar-view-switcher:focus-within .chat-presentation-quick-switcher {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transform: translate(-50%, 0) scale(1);
+}
+
+.chat-presentation-quick-option {
+    min-width: 46px;
+    height: 27px;
+    padding: 0 10px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--secondary-text);
+    font: inherit;
+    font-size: 12px;
+    line-height: 1;
+    white-space: nowrap;
+    cursor: pointer;
+    transition:
+        background-color 0.15s ease,
+        color 0.15s ease,
+        box-shadow 0.15s ease;
+}
+
+.chat-presentation-quick-option:hover {
+    background: color-mix(in srgb, var(--accent-bg) 78%, transparent);
+    color: var(--primary-text);
+}
+
+.chat-presentation-quick-option.active {
+    background: color-mix(in srgb, var(--highlight-text) 18%, var(--accent-bg));
+    color: var(--highlight-text);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--highlight-text) 34%, transparent);
+    font-weight: 600;
+}
+
+.chat-presentation-quick-option:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--highlight-text) 66%, transparent);
+    outline-offset: 1px;
+}
+body.light-theme .chat-presentation-quick-switcher {
+    background:
+        linear-gradient(145deg, rgba(255, 255, 255, 0.76), transparent 46%),
+        color-mix(in srgb, var(--secondary-bg) 95%, var(--panel-bg-light));
+    box-shadow:
+        0 10px 26px rgba(45, 55, 75, 0.18),
+        inset 0 1px 0 rgba(255, 255, 255, 0.65);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .chat-presentation-quick-switcher {
+        transition: none;
+    }
+}
+
 .sidebar-button {
     background-color: var(--button-bg);
     color: var(--secondary-text);
@@ -782,24 +892,21 @@ body.light-theme .context-menu {
     font-size: 0.9em;
 }
 
-/* 主菜单统一使用左对齐布局；子菜单保留稍宽的呼吸空间。 */
-#chatContextMenu > .context-menu-item,
-#chatContextMenu > .context-menu-submenu-wrapper > .context-menu-submenu-trigger {
+/* 消息右键菜单按内容收缩，避免移除全局模式入口后残留过宽的右侧空白。 */
+#chatContextMenu {
+    width: max-content;
+    min-width: 108px;
+    max-width: min(260px, calc(100vw - 12px));
+}
+
+/* 消息右键菜单只保留针对当前消息的操作，维持紧凑左对齐布局。 */
+#chatContextMenu > .context-menu-item {
     display: flex;
     align-items: center;
     justify-content: flex-start;
     gap: 4px;
     padding-inline: 6px;
     text-align: left;
-}
-
-/* 第一项带有右侧展开箭头，视觉上再向左靠一点。 */
-#chatContextMenu > .context-menu-submenu-wrapper > .context-menu-submenu-trigger {
-    padding-left: 3px;
-}
-
-#chatContextMenu .context-menu-submenu > .context-menu-item {
-    padding-inline: 10px;
 }
 
 #chatContextMenu .context-menu-item > i:first-child {
@@ -846,68 +953,6 @@ body.light-theme .context-menu {
 
 .context-menu-item-speak:hover {
     color: #F0B840 !important; /* A slightly lighter gold for hover */
-}
-
-/* Message context-menu submenu */
-.context-menu-submenu-wrapper {
-    position: relative;
-}
-
-.context-menu-submenu-trigger {
-    display: flex;
-    align-items: center;
-}
-.context-menu-submenu-trigger > span:nth-child(2) {
-    flex: 0 1 auto;
-    min-width: 0;
-    white-space: nowrap;
-}
-
-.context-menu-submenu-arrow {
-    flex: 0 0 auto;
-    margin-left: -3px;
-    font-size: 1.08em;
-    line-height: 1;
-    opacity: 0.72;
-    transform: translateY(-1px);
-}
-
-.context-menu-submenu {
-    position: absolute !important;
-    top: -6px !important;
-    right: auto !important;
-    bottom: auto !important;
-    left: calc(100% + 6px) !important;
-    width: max-content;
-    min-width: 116px;
-    display: none;
-    visibility: hidden;
-    z-index: 1002;
-}
-
-.context-menu-submenu-wrapper.submenu-open > .context-menu-submenu {
-    display: block;
-    visibility: visible;
-}
-
-.context-menu-submenu-wrapper.submenu-open-left > .context-menu-submenu {
-    right: calc(100% + 6px) !important;
-    left: auto !important;
-}
-
-.context-menu-presentation-option {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    white-space: nowrap;
-}
-
-.context-menu-check {
-    width: 16px;
-    flex: 0 0 16px;
-    text-align: center;
-    color: var(--highlight-text);
-    font-weight: 700;
 }
 
 .context-menu-item:focus-visible {
