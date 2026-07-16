@@ -699,6 +699,8 @@ window.itemListManager = (() => {
         if (!li || !item || item.type !== 'agent') return;
 
         const persona = findPersonaForItem(item);
+        const avatarWrapper = li.querySelector('.avatar-wrapper');
+        let avatarEmotionRing = avatarWrapper?.querySelector('.agent-emotion-avatar-ring');
 
         if (!persona) {
             li.classList.toggle('has-agent-emotion', false);
@@ -706,8 +708,16 @@ window.itemListManager = (() => {
             li._personaViewModel = null;
             li._personaRenderKey = '';
             delete li.dataset.personaRenderKey;
+            avatarEmotionRing?.remove();
             removePersonaCard(li);
             return;
+        }
+
+        if (avatarWrapper && !avatarEmotionRing) {
+            avatarEmotionRing = document.createElement('span');
+            avatarEmotionRing.className = 'agent-emotion-avatar-ring';
+            avatarEmotionRing.setAttribute('aria-hidden', 'true');
+            avatarWrapper.insertBefore(avatarEmotionRing, avatarWrapper.firstChild);
         }
 
         const renderKey = getPersonaRenderKey(persona);
@@ -843,12 +853,29 @@ window.itemListManager = (() => {
             li._lastClickTime = currentTime;
         });
 
-        // 防止中键点击的默认行为
-        li.addEventListener('contextmenu', (e) => {
-            // 不阻止右键菜单，但记录中键状态
-            if (e.button === 1) {
-                console.log('[ItemListManager] 中键contextmenu事件');
+        // 窄侧栏中右键头像：选择该助手/群组并直接打开其话题浮层。
+        li.addEventListener('contextmenu', async (e) => {
+            if (!li.closest('.sidebar.avatar-only')) return;
+
+            e.preventDefault();
+            e.stopPropagation();
+
+            if (mainRendererFunctions && typeof mainRendererFunctions.selectItem === 'function') {
+                await mainRendererFunctions.selectItem(
+                    item.id,
+                    item.type,
+                    item.name,
+                    item.avatarUrl,
+                    item.config || item
+                );
             }
+
+            document.dispatchEvent(new CustomEvent('compact-sidebar-open-topics', {
+                detail: {
+                    itemId: item.id,
+                    itemType: item.type
+                }
+            }));
         });
 
         return li;

@@ -1266,15 +1266,82 @@ export function setupEventListeners(deps) {
     if (toggleAssistantBtn) {
         let longPressTimer;
         let wasLongPress = false;
+        let rightLongPressTimer = null;
+        let wasRightLongPress = false;
+
+        const saveSidebarState = () => {
+            if (!chatAPI?.saveSettings) return;
+
+            chatAPI.saveSettings(refs.globalSettings.get()).then(result => {
+                if (!result.success) {
+                    console.error('保存侧边栏状态失败:', result.error);
+                }
+            }).catch(error => {
+                console.error('保存侧边栏状态时出错:', error);
+            });
+        };
+
+        const syncSidebarVisibility = (isActive) => {
+            const mainContent = document.querySelector('.main-content');
+            mainContent?.classList.toggle('sidebar-active', isActive);
+            toggleSidebarBtn?.classList.toggle('active', isActive);
+        };
+
+        const setAvatarOnlyMode = (enabled) => {
+            if (!leftSidebar) return false;
+
+            const agentsTabIsActive = document.getElementById('tabContentAgents')?.classList.contains('active');
+            if (enabled && !agentsTabIsActive) return false;
+
+            leftSidebar.classList.toggle('avatar-only', enabled);
+            if (enabled) {
+                leftSidebar.classList.add('active');
+                syncSidebarVisibility(true);
+            }
+
+            const globalSettings = refs.globalSettings.get();
+            globalSettings.sidebarAvatarOnly = enabled;
+            if (enabled) globalSettings.sidebarActive = true;
+            saveSidebarState();
+            return true;
+        };
+
         toggleAssistantBtn.addEventListener('mousedown', (e) => {
-            if (e.button !== 0) return; // Only left click
-            wasLongPress = false;
-            longPressTimer = setTimeout(() => {
-                console.log('[Assistant] Long press detected on toggle button');
-                chatAPI.assistantAction('open');
-                wasLongPress = true;
-                longPressTimer = null;
-            }, 600);
+            if (e.button === 0) {
+                wasLongPress = false;
+                longPressTimer = setTimeout(() => {
+                    console.log('[Assistant] Long press detected on toggle button');
+                    chatAPI.assistantAction('open');
+                    wasLongPress = true;
+                    longPressTimer = null;
+                }, 600);
+                return;
+            }
+
+            if (e.button === 2) {
+                wasRightLongPress = false;
+                rightLongPressTimer = setTimeout(() => {
+                    rightLongPressTimer = null;
+                    if (!leftSidebar) return;
+
+                    wasRightLongPress = true;
+                    leftSidebar.classList.remove('avatar-only', 'compact-topics-open');
+                    document.getElementById('tabContentTopics')?.classList.remove('compact-drawer-open');
+
+                    const isActive = leftSidebar.classList.toggle('active');
+                    syncSidebarVisibility(isActive);
+
+                    const globalSettings = refs.globalSettings.get();
+                    globalSettings.sidebarActive = isActive;
+                    globalSettings.sidebarAvatarOnly = false;
+                    saveSidebarState();
+
+                    uiHelperFunctions.showToastNotification(
+                        `侧栏已${isActive ? '显示' : '隐藏'}`,
+                        'info'
+                    );
+                }, 600);
+            }
         });
 
         const clearLongPress = () => {
@@ -1284,8 +1351,21 @@ export function setupEventListeners(deps) {
             }
         };
 
-        toggleAssistantBtn.addEventListener('mouseup', clearLongPress);
-        toggleAssistantBtn.addEventListener('mouseleave', clearLongPress);
+        const clearRightLongPress = () => {
+            if (rightLongPressTimer) {
+                clearTimeout(rightLongPressTimer);
+                rightLongPressTimer = null;
+            }
+        };
+
+        toggleAssistantBtn.addEventListener('mouseup', (e) => {
+            if (e.button === 0) clearLongPress();
+            if (e.button === 2) clearRightLongPress();
+        });
+        toggleAssistantBtn.addEventListener('mouseleave', () => {
+            clearLongPress();
+            clearRightLongPress();
+        });
 
         toggleAssistantBtn.addEventListener('click', async () => {
             if (wasLongPress) {
@@ -1311,37 +1391,25 @@ export function setupEventListeners(deps) {
             }
         });
 
-        // 右键点击 - 切换侧边栏显示/隐藏
+        // 短按右键在助手页切换完整/头像窄栏；长按右键切换侧栏显示/隐藏。
         toggleAssistantBtn.addEventListener('contextmenu', (e) => {
-            e.preventDefault(); // 阻止默认的右键菜单
-            if (leftSidebar) {
-                const isActive = leftSidebar.classList.toggle('active');
-                const mainContent = document.querySelector('.main-content');
-                if (mainContent) {
-                    mainContent.classList.toggle('sidebar-active', isActive);
-                }
-                // 更新按钮状态
-                if (toggleSidebarBtn) {
-                    toggleSidebarBtn.classList.toggle('active', isActive);
-                }
+            e.preventDefault();
+            clearRightLongPress();
 
-                // 保存侧边栏状态到设置
-                const globalSettings = refs.globalSettings.get();
-                globalSettings.sidebarActive = isActive;
+            if (wasRightLongPress) {
+                wasRightLongPress = false;
+                return;
+            }
 
-                // 异步保存设置
-                if (chatAPI?.saveSettings) {
-                    chatAPI.saveSettings(globalSettings).then(result => {
-                        if (!result.success) {
-                            console.error('保存侧边栏状态失败:', result.error);
-                        }
-                    }).catch(error => {
-                        console.error('保存侧边栏状态时出错:', error);
-                    });
-                }
+            const agentsTabIsActive = document.getElementById('tabContentAgents')?.classList.contains('active');
+            if (!leftSidebar || !agentsTabIsActive) return;
 
-                // 显示操作提示
-                // uiHelperFunctions.showToastNotification(`侧边栏已${isActive ? '显示' : '隐藏'}`, 'info');
+            const enableAvatarOnly = !leftSidebar.classList.contains('avatar-only');
+            if (setAvatarOnlyMode(enableAvatarOnly)) {
+                uiHelperFunctions.showToastNotification(
+                    enableAvatarOnly ? '侧栏已切换为仅头像模式' : '侧栏已恢复完整模式',
+                    'info'
+                );
             }
         });
     }

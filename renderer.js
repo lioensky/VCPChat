@@ -1551,6 +1551,13 @@ async function loadAndApplyGlobalSettings() {
         if (globalSettings.sidebarWidth && leftSidebar) {
             leftSidebar.style.width = `${globalSettings.sidebarWidth}px`;
         }
+        if (leftSidebar) {
+            const sidebarIsActive = globalSettings.sidebarActive !== false;
+            const avatarOnly = sidebarIsActive && globalSettings.sidebarAvatarOnly === true;
+            leftSidebar.classList.toggle('active', sidebarIsActive);
+            leftSidebar.classList.toggle('avatar-only', avatarOnly);
+            document.querySelector('.main-content')?.classList.toggle('sidebar-active', sidebarIsActive);
+        }
         if (globalSettings.notificationsSidebarWidth && rightNotificationsSidebar) {
             if (rightNotificationsSidebar.classList.contains('active')) {
                 rightNotificationsSidebar.style.width = `${globalSettings.notificationsSidebarWidth}px`;

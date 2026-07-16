@@ -121,6 +121,345 @@ body.light-theme .sidebar {
     overflow-y: hidden;
 }
 
+/* --- Compact avatar sidebar and hover navigation drawer --- */
+.sidebar-compact-navigation {
+    display: none;
+}
+
+.sidebar.avatar-only {
+    position: relative;
+    width: 64px !important;
+    min-width: 64px !important;
+    max-width: 64px !important;
+    padding: 8px 3px 12px;
+    overflow: visible;
+    z-index: 160;
+}
+
+.sidebar.avatar-only .sidebar-tabs,
+.sidebar.avatar-only #tabContentAgents .agents-header,
+.sidebar.avatar-only #tabContentAgents .sidebar-actions {
+    display: none !important;
+}
+
+.sidebar.avatar-only #tabContentAgents {
+    display: flex;
+    width: 100%;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.sidebar.avatar-only #tabContentAgents .sidebar-list-scroll {
+    width: 100%;
+    padding: 5px 0 4px;
+    overflow-x: hidden;
+    scrollbar-width: none;
+}
+
+.sidebar.avatar-only #tabContentAgents .sidebar-list-scroll::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+}
+
+.sidebar.avatar-only #agentList {
+    width: 100%;
+    padding: 0;
+}
+
+.sidebar.avatar-only #agentList > li {
+    width: 54px;
+    min-width: 54px;
+    height: 54px;
+    min-height: 54px;
+    margin: 0 auto 8px;
+    padding: 0;
+    justify-content: center;
+    overflow: visible;
+}
+
+.sidebar.avatar-only #agentList .avatar-wrapper {
+    margin: 0;
+    isolation: isolate;
+}
+
+.sidebar.avatar-only #agentList img.avatar {
+    z-index: 2;
+    margin-right: 0;
+}
+
+.agent-emotion-avatar-ring {
+    display: none;
+}
+
+.sidebar.avatar-only #agentList li.has-agent-emotion .agent-emotion-avatar-ring {
+    position: absolute;
+    inset: -2px;
+    z-index: 1;
+    display: block;
+    padding: 1.5px;
+    border-radius: 50%;
+    pointer-events: none;
+    background: conic-gradient(
+        from 0deg,
+        transparent 0deg 238deg,
+        color-mix(in srgb, var(--agent-emotion-color) 24%, transparent) 262deg,
+        color-mix(in srgb, var(--agent-emotion-color) 76%, white 8%) 310deg,
+        rgba(255, 255, 255, 0.9) 338deg,
+        transparent 360deg
+    );
+    -webkit-mask:
+        linear-gradient(#fff 0 0) content-box,
+        linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    opacity: 0;
+    filter: drop-shadow(0 0 3px color-mix(in srgb, var(--agent-emotion-color) 48%, transparent));
+    animation: compactAgentEmotionOrbit 4.2s linear infinite paused;
+    transition: opacity 0.2s ease;
+}
+
+.sidebar.avatar-only #agentList li.has-agent-emotion:hover .agent-emotion-avatar-ring {
+    opacity: 0.72;
+    animation-play-state: running;
+}
+
+.sidebar.avatar-only #agentList .avatar-wrapper.flowlock-active-ring::before {
+    z-index: 0;
+}
+
+.sidebar.avatar-only #agentList .avatar-wrapper.flowlock-active-ring::after {
+    z-index: 6;
+}
+
+.sidebar.avatar-only #agentList .unread-badge {
+    z-index: 10;
+}
+
+.sidebar.avatar-only #agentList .agent-name,
+.sidebar.avatar-only #agentList .agent-emotion-card {
+    display: none !important;
+}
+
+.sidebar.avatar-only + #resizerLeft {
+    width: 1px;
+    min-width: 1px;
+    pointer-events: none;
+    cursor: default;
+}
+
+.sidebar.avatar-only .sidebar-compact-navigation {
+    position: relative;
+    display: flex;
+    justify-content: center;
+    flex: 0 0 42px;
+    width: 100%;
+    z-index: 220;
+}
+
+.sidebar-compact-trigger {
+    position: relative;
+    width: 38px;
+    height: 38px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid color-mix(in srgb, var(--border-color) 60%, transparent);
+    border-radius: 13px;
+    background: color-mix(in srgb, var(--panel-bg-dark) 78%, transparent);
+    color: var(--highlight-text);
+    backdrop-filter: blur(12px) saturate(125%);
+    -webkit-backdrop-filter: blur(12px) saturate(125%);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    cursor: pointer;
+    transition: background-color 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
+}
+
+body.light-theme .sidebar-compact-trigger {
+    background: color-mix(in srgb, var(--panel-bg-light) 82%, transparent);
+}
+
+.sidebar-compact-trigger:hover,
+.sidebar-compact-navigation.menu-open .sidebar-compact-trigger {
+    background: color-mix(in srgb, var(--highlight-text) 14%, var(--panel-bg-dark));
+    border-color: color-mix(in srgb, var(--highlight-text) 48%, transparent);
+}
+
+.sidebar-compact-trigger:focus-visible,
+.sidebar-compact-menu-item:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--highlight-text) 58%, transparent);
+    outline-offset: 2px;
+}
+
+.sidebar-compact-menu {
+    position: absolute;
+    top: 0;
+    left: calc(100% + 7px);
+    width: 142px;
+    padding: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    border: 1px solid color-mix(in srgb, var(--border-color) 72%, transparent);
+    border-radius: 14px;
+    background:
+        linear-gradient(145deg, rgba(255, 255, 255, 0.1), transparent 42%),
+        color-mix(in srgb, var(--panel-bg-dark) 88%, transparent);
+    backdrop-filter: blur(18px) saturate(135%);
+    -webkit-backdrop-filter: blur(18px) saturate(135%);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.24);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transform: translateX(-8px) scale(0.97);
+    transform-origin: left top;
+    transition:
+        opacity 0.16s ease,
+        visibility 0.16s ease,
+        transform 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+body.light-theme .sidebar-compact-menu {
+    background:
+        linear-gradient(145deg, rgba(255, 255, 255, 0.56), transparent 42%),
+        color-mix(in srgb, var(--panel-bg-light) 90%, transparent);
+    box-shadow: 0 12px 28px rgba(45, 55, 75, 0.16);
+}
+
+.sidebar-compact-navigation.menu-open .sidebar-compact-menu {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transform: translateX(0) scale(1);
+}
+
+.sidebar-compact-menu-item {
+    width: 100%;
+    height: 36px;
+    padding: 0 10px;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
+    color: var(--secondary-text);
+    font: inherit;
+    font-size: 14px;
+    text-align: left;
+    cursor: pointer;
+    transition: background-color 0.16s ease, color 0.16s ease;
+}
+
+.sidebar-compact-menu-item:hover {
+    background: color-mix(in srgb, var(--accent-bg) 72%, transparent);
+    color: var(--primary-text);
+}
+
+.sidebar-compact-menu-item.active {
+    background: color-mix(in srgb, var(--highlight-text) 16%, transparent);
+    color: var(--highlight-text);
+    font-weight: 600;
+}
+
+.sidebar-compact-menu-icon {
+    width: 20px;
+    height: 20px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 20px;
+}
+
+.sidebar.avatar-only #tabContentTopics.compact-drawer-open {
+    position: absolute;
+    top: 12px;
+    bottom: 12px;
+    left: calc(100% + 8px);
+    width: min(320px, calc(100vw - 96px));
+    min-width: 250px;
+    max-height: none;
+    padding: 14px 10px 12px;
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+    overflow: hidden;
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transform: translateX(0);
+    border: 1px solid color-mix(in srgb, var(--border-color) 72%, transparent);
+    border-radius: 16px;
+    background-color: color-mix(in srgb, var(--secondary-bg) 94%, transparent);
+    background-image:
+        linear-gradient(145deg, rgba(255, 255, 255, 0.12), transparent 38%),
+        linear-gradient(
+            180deg,
+            color-mix(in srgb, var(--panel-bg-dark) 76%, var(--secondary-bg) 24%),
+            color-mix(in srgb, var(--secondary-bg) 98%, transparent)
+        );
+    backdrop-filter: blur(28px) saturate(145%);
+    -webkit-backdrop-filter: blur(28px) saturate(145%);
+    box-shadow:
+        0 18px 42px rgba(0, 0, 0, 0.36),
+        inset 0 1px 0 rgba(255, 255, 255, 0.12);
+    z-index: 210;
+    animation: compactTopicDrawerIn 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+body.light-theme .sidebar.avatar-only #tabContentTopics.compact-drawer-open {
+    background-color: color-mix(in srgb, var(--secondary-bg) 94%, transparent);
+    background-image:
+        linear-gradient(145deg, rgba(255, 255, 255, 0.72), transparent 38%),
+        linear-gradient(
+            180deg,
+            color-mix(in srgb, var(--panel-bg-light) 78%, transparent),
+            color-mix(in srgb, var(--secondary-bg) 97%, transparent)
+        );
+    box-shadow:
+        0 18px 38px rgba(45, 55, 75, 0.22),
+        inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+.sidebar.avatar-only #tabContentTopics.compact-drawer-open .topics-header-container {
+    margin-top: 10px;
+}
+
+.sidebar.avatar-only #tabContentTopics.compact-drawer-open .sidebar-list-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+@keyframes compactTopicDrawerIn {
+    from {
+        opacity: 0;
+        transform: translateX(-10px) scale(0.985);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0) scale(1);
+    }
+}
+
+@keyframes compactAgentEmotionOrbit {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sidebar.avatar-only #agentList li.has-agent-emotion .agent-emotion-avatar-ring {
+        animation: none;
+    }
+
+    .sidebar.avatar-only #agentList li.has-agent-emotion:hover .agent-emotion-avatar-ring {
+        opacity: 0.55;
+    }
+}
+
 /* --- Main Content (Chat Area) --- */
 .main-content {
     flex-grow: 1;
