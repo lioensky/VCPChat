@@ -62,13 +62,6 @@ const uiManager = (() => {
             resizeFrame = 0;
             if (!resizeState || pendingWidth === null) return;
             resizeState.element.style.width = `${pendingWidth}px`;
-
-            if (document.body.classList.contains('vcp-layout-overlay-sidebars')) {
-                const variableName = resizeState.side === 'left'
-                    ? '--vcp-overlay-left-width'
-                    : '--vcp-overlay-right-width';
-                document.documentElement.style.setProperty(variableName, `${pendingWidth}px`);
-            }
         };
 
         const scheduleResizeWidth = (width) => {

@@ -285,16 +285,6 @@ body.chat-wide-layout .main-content.notifications-sidebar-active .message-item .
     max-width: var(--chat-bubble-max-width-wide-notifications, 96%);
 }
 
-/* Overlay A/B mode keeps the chat viewport stable; notification state must not
-   trigger a second max-width animation across every message. */
-body.vcp-layout-overlay-sidebars .main-content.notifications-sidebar-active .message-item .md-content {
-    max-width: var(--chat-bubble-max-width, 82%);
-}
-
-body.vcp-layout-overlay-sidebars.chat-wide-layout .main-content.notifications-sidebar-active .message-item .md-content {
-    max-width: var(--chat-bubble-max-width-wide, 92%);
-}
-
 body.light-theme .message-item .md-content {
     border: 1px solid color-mix(in srgb, var(--border-color) 34%, rgba(255, 255, 255, 0.58));
     background:
@@ -352,14 +342,6 @@ body.chat-wide-layout .message-item.user.user-bubble-ui-disabled .md-content {
 
 body.chat-wide-layout .main-content.notifications-sidebar-active .message-item.user.user-bubble-ui-disabled .md-content {
     max-width: var(--chat-bubble-max-width-wide-notifications, 96%);
-}
-
-body.vcp-layout-overlay-sidebars .main-content.notifications-sidebar-active .message-item.user.user-bubble-ui-disabled .md-content {
-    max-width: var(--chat-bubble-max-width, 82%);
-}
-
-body.vcp-layout-overlay-sidebars.chat-wide-layout .main-content.notifications-sidebar-active .message-item.user.user-bubble-ui-disabled .md-content {
-    max-width: var(--chat-bubble-max-width-wide, 92%);
 }
 
 body.light-theme .message-item.user.user-bubble-ui-disabled .md-content {
