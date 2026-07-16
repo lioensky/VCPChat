@@ -35,8 +35,6 @@ const THINK_START_REGEX = /<think(?:ing)?>/ig;
 const THINK_END_REGEX = /<\/think(?:ing)?>/ig;
 const DAILY_NOTE_START = '<<<DailyNoteStart>>>';
 const DAILY_NOTE_END = '<<<DailyNoteEnd>>>';
-// OpenHerPersona 聊天分条标记：完整出现即成为稳定切点，流式过程中实时分出气泡
-const BURST_MARKER_TOKEN = '<!--brk-->';
 const MARKDOWN_SECTION_BREAK_TOKEN = '---';
 const STREAM_PARAGRAPH_SAFETY_BLOCKS = 1;
 const HTML_ISLAND_MAX_STACK_DEPTH = 128;
@@ -450,8 +448,7 @@ function getOrCreateStreamSegmentState(messageId) {
             stableBlocks: [],
             stableBlockSeq: 0,
             lastTailText: '',
-            lastParagraphBoundary: 0,
-            burstBubbleCount: 0
+            lastParagraphBoundary: 0
         };
         streamSegmentStates.set(messageId, state);
     }
@@ -533,124 +530,12 @@ function appendNewStableRange(stableBlocksRoot, segmentState, textForRendering, 
         resetStableBlockState(segmentState);
     }
 
-    const appendedBlocks = [];
+    const sourceText = textForRendering.slice(segmentState.stableRenderedCutoff, nextStableCutoff);
+    if (!sourceText) return [];
 
-    while (segmentState.stableRenderedCutoff < nextStableCutoff) {
-        const currentOffset = segmentState.stableRenderedCutoff;
-        const markerIndex = findNextLineOnlyToken(textForRendering, BURST_MARKER_TOKEN, currentOffset);
-        const effectiveMarkerIndex = markerIndex !== -1 && markerIndex < nextStableCutoff ? markerIndex : -1;
-        const sliceEnd = effectiveMarkerIndex === -1 ? nextStableCutoff : effectiveMarkerIndex;
-        const sourceText = textForRendering.slice(currentOffset, sliceEnd);
-
-        if (sourceText) {
-            const html = parseFullStreamContent(sourceText);
-            const blockRecord = appendStableBlockFragment(stableBlocksRoot, segmentState, sourceText, html, options);
-            if (blockRecord) appendedBlocks.push(blockRecord);
-        }
-
-        if (effectiveMarkerIndex === -1) {
-            break;
-        }
-
-        // 独立行 <!--brk--> 作为稳定切点和气泡边界参与源码进度，
-        // 但不渲染进 stable block，避免后续为了分条再解包/搬运已稳定 DOM。
-        segmentState.stableRenderedCutoff = effectiveMarkerIndex + BURST_MARKER_TOKEN.length;
-    }
-
-    return appendedBlocks;
-}
-
-function unwrapStableBlockContainersForBurst(stableBlocksRoot, segmentState) {
-    if (!stableBlocksRoot) return;
-
-    const blockEls = Array.from(stableBlocksRoot.querySelectorAll(':scope > .vcp-stream-stable-block'));
-    if (blockEls.length === 0) return;
-
-    for (const blockEl of blockEls) {
-        const parent = blockEl.parentNode;
-        if (!parent) continue;
-
-        while (blockEl.firstChild) {
-            parent.insertBefore(blockEl.firstChild, blockEl);
-        }
-        blockEl.remove();
-    }
-
-    // burst 分条会重排 stable DOM；后续 stable block 继续追加即可，旧 block 元数据不再依赖 element 引用。
-    for (const block of segmentState.stableBlocks) {
-        block.element = null;
-    }
-}
-
-// 分条流式时给尾部根（"正在打字"的下一条）套上头像行，看起来像新消息正在到来。
-// 收尾阶段会整体重渲染 contentDiv，包装行随之消失。
-function ensureBurstTailRow(contentDiv, tailRoot, messageItem) {
-    if (contentDiv.querySelector('.burst-tail-row')) return;
-    const avatar = messageItem ? messageItem.querySelector('img.chat-avatar') : null;
-    const tailRow = document.createElement('div');
-    tailRow.className = 'burst-row burst-tail-row';
-    if (avatar && avatar.src) {
-        const tailAvatar = document.createElement('img');
-        tailAvatar.className = 'burst-avatar';
-        tailAvatar.src = avatar.src;
-        tailAvatar.alt = '';
-        tailRow.appendChild(tailAvatar);
-    }
-    contentDiv.appendChild(tailRow);
-    tailRow.appendChild(tailRoot);
-}
-
-function createBurstAvatarForMessage(messageItem) {
-    const avatar = messageItem ? messageItem.querySelector('img.chat-avatar') : null;
-    if (!avatar || !avatar.src) return null;
-
-    const burstAvatar = document.createElement('img');
-    burstAvatar.className = 'burst-avatar';
-    burstAvatar.src = avatar.src;
-    burstAvatar.alt = '';
-    return burstAvatar;
-}
-
-function promoteStableBlocksToBurstBubbles(stableBlocksRoot, messageItem) {
-    if (!stableBlocksRoot) return [];
-
-    const wrappers = [];
-    const children = Array.from(stableBlocksRoot.children);
-    let existingBubbleCount = 0;
-
-    for (const child of children) {
-        if (child.classList.contains('burst-row') || child.classList.contains('burst-bubble')) {
-            existingBubbleCount += 1;
-            wrappers.push(child);
-        }
-    }
-
-    const blockEls = children.filter((child) => (
-        child.classList.contains('vcp-stream-stable-block')
-        && child.dataset.vcpBurstWrapped !== 'true'
-    ));
-
-    for (const blockEl of blockEls) {
-        blockEl.dataset.vcpBurstWrapped = 'true';
-        blockEl.classList.add('burst-bubble');
-
-        if (existingBubbleCount === 0) {
-            wrappers.push(blockEl);
-            existingBubbleCount += 1;
-            continue;
-        }
-
-        const row = document.createElement('div');
-        row.className = 'burst-row';
-        const burstAvatar = createBurstAvatarForMessage(messageItem);
-        if (burstAvatar) row.appendChild(burstAvatar);
-        stableBlocksRoot.insertBefore(row, blockEl);
-        row.appendChild(blockEl);
-        wrappers.push(row);
-        existingBubbleCount += 1;
-    }
-
-    return wrappers;
+    const html = parseFullStreamContent(sourceText);
+    const blockRecord = appendStableBlockFragment(stableBlocksRoot, segmentState, sourceText, html, options);
+    return blockRecord ? [blockRecord] : [];
 }
 
 function startsWithAt(text, index, token) {
@@ -687,21 +572,6 @@ function isLineOnlyToken(text, tokenStart, tokenLength) {
     const after = text.slice(tokenStart + tokenLength, lineEnd);
 
     return before.trim() === '' && after.trim() === '';
-}
-
-function findNextLineOnlyToken(text, token, startOffset = 0) {
-    let index = Math.max(0, startOffset);
-    while (index < text.length) {
-        const tokenIndex = text.indexOf(token, index);
-        if (tokenIndex === -1) return -1;
-        if (isLineOnlyToken(text, tokenIndex, token.length)) return tokenIndex;
-        index = tokenIndex + token.length;
-    }
-    return -1;
-}
-
-function hasLineOnlyToken(text, token) {
-    return findNextLineOnlyToken(text, token, 0) !== -1;
 }
 
 function findDisplayMathBlockEnd(text, startIndex, delimiter) {
@@ -1136,17 +1006,6 @@ function findExplicitStablePrefix(text, startOffset = 0) {
             continue;
         }
 
-        if (startsWithAt(text, index, BURST_MARKER_TOKEN)) {
-            if (isLineOnlyToken(text, index, BURST_MARKER_TOKEN.length)) {
-                // 只有独立行的 <!--brk--> 才是 OpenHerPersona 分条触发器；
-                // 行内出现的注释只按普通 Markdown/HTML 内容处理，避免误切分。
-                stableCutoff = index + BURST_MARKER_TOKEN.length;
-                paragraphFloor = stableCutoff;
-            }
-            index += BURST_MARKER_TOKEN.length;
-            continue;
-        }
-
         if (startsWithAt(text, index, MARKDOWN_SECTION_BREAK_TOKEN)) {
             if (isLineOnlyToken(text, index, MARKDOWN_SECTION_BREAK_TOKEN.length)) {
                 // 独立行 Markdown 文档分段符 --- 可作为稳定切点；
@@ -1300,57 +1159,19 @@ function renderStreamFrame(messageId) {
     const segmentState = getOrCreateStreamSegmentState(messageId);
 
     const textForRendering = accumulatedStreamText.get(messageId) || "";
-    let nextStableCutoff = findExplicitStablePrefix(textForRendering, segmentState.stableCutoff);
-
-    // burst 流式开始后，stable 区只在下一个独立行 brk 到达时继续推进。
-    // 否则普通段落 stable 会把“正在打字的当前气泡”提前固化成新的 stable block，
-    // 再被原子提升为独立气泡，表现为“所有 stable 都自动分成气泡”。
-    if ((segmentState.burstBubbleCount > 0 || contentDiv.classList.contains('burst-streaming'))
-        && nextStableCutoff > segmentState.stableCutoff
-        && !hasLineOnlyToken(textForRendering.slice(segmentState.stableCutoff, nextStableCutoff), BURST_MARKER_TOKEN)) {
-        nextStableCutoff = segmentState.stableCutoff;
-    }
+    const nextStableCutoff = findExplicitStablePrefix(textForRendering, segmentState.stableCutoff);
 
     // 移除思考指示器
     const streamingIndicator = contentDiv.querySelector('.streaming-indicator, .thinking-indicator');
     if (streamingIndicator) streamingIndicator.remove();
 
     if (nextStableCutoff > segmentState.stableCutoff) {
-        const stableText = textForRendering.slice(0, nextStableCutoff);
-        const newStableText = textForRendering.slice(segmentState.stableRenderedCutoff, nextStableCutoff);
-        const hasBurstMarkerInStable = hasLineOnlyToken(stableText, BURST_MARKER_TOKEN);
-        const hasBurstMarkerInNewStable = hasLineOnlyToken(newStableText, BURST_MARKER_TOKEN);
         segmentState.stableCutoff = nextStableCutoff;
 
         appendNewStableRange(stableBlocksRoot, segmentState, textForRendering, nextStableCutoff, {
             messageId,
             settings: refs.globalSettingsRef?.get?.()
         });
-
-        // OpenHerPersona 聊天分条：一旦稳定区出现 brk，立即进入 burst-streaming。
-        // 流式路径不再解包已稳定 DOM，也不再对 stableBlocksRoot 做全量 split；
-        // 而是按独立行 brk 在源码层切分 stable block，并把每个 stable block 原子提升为气泡。
-        // 这样避免 stable -> burst 之间的 live DOM 拆包/重包中间态，降低透明闪烁和复杂后处理节点抖动。
-        try {
-            let bubbles = [];
-            if (hasBurstMarkerInStable || hasBurstMarkerInNewStable) {
-                contentDiv.classList.add('burst-streaming');
-                if (messageItem) messageItem.dataset.burstRevealed = 'true';
-                bubbles = promoteStableBlocksToBurstBubbles(stableBlocksRoot, messageItem);
-                ensureBurstTailRow(contentDiv, tailRoot, messageItem);
-            }
-            if (bubbles.length > 0) {
-                bubbles.forEach((bubble, index) => {
-                    if (index >= segmentState.burstBubbleCount) {
-                        bubble.classList.add('burst-pending');
-                        bubble.style.animationDelay = '0ms';
-                    }
-                });
-                segmentState.burstBubbleCount = bubbles.length;
-            }
-        } catch (error) {
-            console.warn('[StreamManager] burst bubble split failed:', error);
-        }
     }
 
     const tailText = textForRendering.slice(segmentState.stableCutoff);
