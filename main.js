@@ -306,7 +306,7 @@ async function performQuitCleanup() {
 
 
 // --- Main Window Creation ---
-function createWindow() {
+function createWindow({ deferLoad = false } = {}) {
     mainWindow = new BrowserWindow({
         width: 1300,
         height: 800,
@@ -325,7 +325,9 @@ function createWindow() {
         show: false, // Don't show until ready
     });
 
-    mainWindow.loadFile('main.html');
+    if (!deferLoad) {
+        loadMainWindow();
+    }
 
     // 拦截主窗口内的直接导航（防止在应用内打开外部网页）
     mainWindow.webContents.on('will-navigate', (event, url) => {
@@ -372,21 +374,6 @@ function createWindow() {
         }
     });
 
-    mainWindow.once('ready-to-show', () => {
-        // Signal the native splash screen to close by creating the ready file.
-        const readyFile = path.join(__dirname, '.vcp_ready');
-        fs.ensureFileSync(readyFile);
-
-        // Clean up the file after a few seconds to prevent it from lingering.
-        setTimeout(() => {
-            if (fs.existsSync(readyFile)) {
-                fs.unlinkSync(readyFile);
-            }
-        }, 3000); // 3-second delay
-
-        mainWindow.show();
-    });
-
     mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
         console.error('[Main] Main window did-fail-load', errorCode, errorDescription, validatedURL);
     });
@@ -413,6 +400,23 @@ function createWindow() {
     });
 
     // Listen for theme changes and notify all relevant windows
+}
+
+function loadMainWindow() {
+    mainWindow.webContents.once('did-finish-load', () => {
+        const readyFile = path.join(__dirname, '.vcp_ready');
+        fs.ensureFileSync(readyFile);
+
+        setTimeout(() => {
+            if (fs.existsSync(readyFile)) {
+                fs.unlinkSync(readyFile);
+            }
+        }, 3000);
+
+        mainWindow.show();
+    });
+
+    return mainWindow.loadFile('main.html');
 }
 
 function createTray() {
@@ -699,8 +703,8 @@ if (!gotTheLock) {
             }
         }
 
-        // Create the main window first to give immediate feedback to the user.
-        createWindow();
+        // Create the native window first, but load the renderer only after IPC registration.
+        createWindow({ deferLoad: true });
         createTray();
         // --- Application Menu ---
         const isMac = process.platform === 'darwin';
@@ -1081,6 +1085,8 @@ if (!gotTheLock) {
         ipcMain.handle('get-platform', () => {
             return process.platform;
         });
+
+        loadMainWindow();
 
         // --- 自动打开桌面窗口 ---
         // 当使用 --desktop-only 参数启动时，在所有 IPC 初始化完成后自动打开桌面窗口
