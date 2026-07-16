@@ -296,7 +296,7 @@
 
 /* Main container for the diary entry */
 .maid-diary-bubble {
-    background: #fdfaf6 !important;
+    background: rgba(253, 250, 246, 0.5) !important;
     /* A very light, warm parchment color */
     border: 1px solid #eaddd0;
     /* A soft, paper-like border */
@@ -384,7 +384,7 @@
 
 /* Valet-compatible DailyNote variant */
 .valet-diary-bubble {
-    background: #f6f9fd !important;
+    background: rgba(246, 249, 253, 0.5) !important;
     border-color: #d0dbe8;
     color: #374151 !important;
 }
@@ -453,7 +453,7 @@
 /* --- Maid Diary Update Bubble --- */
 .maid-diary-update-bubble {
     display: block !important;
-    background: #fffdf9 !important;
+    background: rgba(255, 253, 249, 0.5) !important;
     border: 1px solid #e4d7c8;
     border-radius: 8px !important;
     padding: 12px 14px !important;
@@ -558,14 +558,14 @@
 }
 
 body:not(.light-theme) .maid-diary-update-bubble {
-    background: #2c2a3a !important;
+    background: rgba(44, 42, 58, 0.5) !important;
     border-color: #4a485f;
     color: #d8d2c9 !important;
     box-shadow: 0 3px 10px rgba(0, 0, 0, 0.25);
 }
 
 .valet-diary-update-bubble {
-    background: #f9fbff !important;
+    background: rgba(249, 251, 255, 0.5) !important;
     border-color: #d0dbe8;
     color: #374151 !important;
 }
@@ -622,7 +622,7 @@ body:not(.light-theme) .diary-update-content {
 
 /* --- Maid Diary Dark Theme Overrides --- */
 body:not(.light-theme) .maid-diary-bubble {
-    background: #2c2a3a !important;
+    background: rgba(44, 42, 58, 0.5) !important;
     /* A deep, slightly magical purple-gray */
     border-color: #4a485f;
     color: #d8d2c9 !important;
@@ -657,7 +657,7 @@ body:not(.light-theme) .diary-folder-name {
 
 body:not(.light-theme) .valet-diary-bubble,
 body:not(.light-theme) .valet-diary-update-bubble {
-    background: #263241 !important;
+    background: rgba(38, 50, 65, 0.5) !important;
     border-color: #3e536b;
     color: #d4dde8 !important;
 }
@@ -942,7 +942,7 @@ body:not(.light-theme) {
     --table-row-hover-bg-color: rgba(var(--rgb-secondary-bg-dark, 40, 40, 44), 0.4);
 
     /* NEW: Tool Result Bubble Dark Theme - Modern Deep Dark */
-    --tool-result-bg: linear-gradient(145deg, #1c1c1e, #2c2c2e);
+    --tool-result-bg: linear-gradient(145deg, rgba(28, 28, 30, 0.5), rgba(44, 44, 46, 0.5));
     --tool-result-border-color: rgba(255, 255, 255, 0.08);
     --tool-result-text-color: #f2f2f7;
     --tool-result-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
@@ -970,7 +970,7 @@ body.light-theme {
     --table-row-hover-bg-color: rgba(var(--rgb-secondary-bg-light, 255, 255, 255), 0.8);
 
     /* NEW: Tool Result Bubble Light Theme */
-    --tool-result-bg: linear-gradient(145deg, #f4f6f8, #e8eaf0);
+    --tool-result-bg: linear-gradient(145deg, rgba(244, 246, 248, 0.5), rgba(232, 234, 240, 0.5));
     --tool-result-border-color: rgba(0, 0, 0, 0.1);
     --tool-result-text-color: #333;
     --tool-result-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
