@@ -41,6 +41,146 @@ function closeContextMenuOnClickOutside(event) {
     }
 }
 
+function focusRelativeMenuItem(items, currentItem, offset) {
+    if (!items.length) return;
+    const currentIndex = Math.max(0, items.indexOf(currentItem));
+    items[(currentIndex + offset + items.length) % items.length].focus();
+}
+
+function createChatPresentationSubmenu(pointerOrigin = null) {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'context-menu-submenu-wrapper';
+
+    const trigger = document.createElement('div');
+    trigger.className = 'context-menu-item context-menu-submenu-trigger';
+    trigger.tabIndex = 0;
+    trigger.setAttribute('role', 'menuitem');
+    trigger.setAttribute('aria-haspopup', 'menu');
+    trigger.setAttribute('aria-expanded', 'false');
+    trigger.innerHTML = '<i class="fas fa-columns"></i><span>聊天显示模式（全局）</span><span class="context-menu-submenu-arrow" aria-hidden="true">›</span>';
+
+    const submenu = document.createElement('div');
+    submenu.className = 'context-menu context-menu-submenu';
+    submenu.setAttribute('role', 'menu');
+    submenu.setAttribute('aria-label', '聊天显示模式');
+
+    const currentMode = window.normalizeChatPresentationMode?.(
+        mainRefs.globalSettingsRef?.get?.()?.chatPresentationMode
+    ) || 'bubble';
+    const modes = [
+        { value: 'bubble', label: '气泡模式' },
+        { value: 'panel', label: '统一模式' },
+        { value: 'immersive', label: '刊物模式' }
+    ];
+
+    let hoverActivationArmed = false;
+
+    const openSubmenu = () => {
+        wrapper.classList.add('submenu-open');
+        trigger.setAttribute('aria-expanded', 'true');
+        requestAnimationFrame(() => {
+            const rect = submenu.getBoundingClientRect();
+            wrapper.classList.toggle('submenu-open-left', rect.right > window.innerWidth - 6);
+            const adjustedRect = submenu.getBoundingClientRect();
+            if (adjustedRect.bottom > window.innerHeight - 6) {
+                submenu.style.transform = `translateY(-${adjustedRect.bottom - window.innerHeight + 8}px)`;
+            }
+        });
+    };
+    const closeSubmenu = () => {
+        wrapper.classList.remove('submenu-open', 'submenu-open-left');
+        trigger.setAttribute('aria-expanded', 'false');
+        submenu.style.transform = '';
+    };
+
+    modes.forEach(({ value, label }) => {
+        const option = document.createElement('div');
+        option.className = 'context-menu-item context-menu-presentation-option';
+        option.tabIndex = -1;
+        option.setAttribute('role', 'menuitemradio');
+        option.setAttribute('aria-checked', String(value === currentMode));
+        option.dataset.presentationMode = value;
+
+        const check = document.createElement('span');
+        check.className = 'context-menu-check';
+        check.textContent = value === currentMode ? '✓' : '';
+        const text = document.createElement('span');
+        text.textContent = label;
+        option.append(check, text);
+
+        option.addEventListener('click', async (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            closeContextMenu();
+            await window.setChatPresentationMode?.(value, {
+                persist: true,
+                preserveScroll: true,
+                notify: true,
+                source: 'context-menu'
+            });
+        });
+        option.addEventListener('keydown', (event) => {
+            const items = Array.from(submenu.querySelectorAll('.context-menu-presentation-option'));
+            if (event.key === 'ArrowDown') {
+                event.preventDefault();
+                focusRelativeMenuItem(items, option, 1);
+            } else if (event.key === 'ArrowUp') {
+                event.preventDefault();
+                focusRelativeMenuItem(items, option, -1);
+            } else if (event.key === 'ArrowLeft' || event.key === 'Escape') {
+                event.preventDefault();
+                closeSubmenu();
+                trigger.focus();
+            } else if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                option.click();
+            }
+        });
+        submenu.appendChild(option);
+    });
+
+    wrapper.addEventListener('mouseenter', () => {
+        if (hoverActivationArmed) openSubmenu();
+    });
+    wrapper.addEventListener('pointermove', (event) => {
+        const movedFromOrigin = !pointerOrigin
+            || Math.hypot(event.clientX - pointerOrigin.x, event.clientY - pointerOrigin.y) >= 8;
+        if (!movedFromOrigin) return;
+        hoverActivationArmed = true;
+        openSubmenu();
+    });
+    wrapper.addEventListener('mouseleave', () => {
+        hoverActivationArmed = true;
+        closeSubmenu();
+    });
+    wrapper.addEventListener('focusin', (event) => {
+        if (event.target !== trigger || event.relatedTarget) {
+            openSubmenu();
+        }
+    });
+    wrapper.addEventListener('focusout', (event) => {
+        if (!wrapper.contains(event.relatedTarget)) closeSubmenu();
+    });
+    trigger.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (wrapper.classList.contains('submenu-open')) closeSubmenu();
+        else openSubmenu();
+    });
+    trigger.addEventListener('keydown', (event) => {
+        if (event.key === 'ArrowRight' || event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            openSubmenu();
+            submenu.querySelector('.context-menu-presentation-option')?.focus();
+        } else if (event.key === 'Escape') {
+            closeContextMenu();
+        }
+    });
+
+    wrapper.append(trigger, submenu);
+    return wrapper;
+}
+
 function showContextMenu(event, messageItem, message) {
     closeContextMenu();
     closeTopicContextMenu();
@@ -56,6 +196,11 @@ function showContextMenu(event, messageItem, message) {
 
     const isThinkingOrStreaming = message.isThinking || messageItem.classList.contains('streaming');
     const isError = message.finishReason === 'error';
+
+    menu.appendChild(createChatPresentationSubmenu({
+        x: event.clientX,
+        y: event.clientY
+    }));
 
     if (isThinkingOrStreaming) {
         const interruptOption = document.createElement('div');

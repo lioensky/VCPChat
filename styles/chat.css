@@ -1340,4 +1340,358 @@ body.light-theme .message-item .md-content pre .hljs-meta {
    outline-offset: 2px;
 }
 
+/* --- Chat presentation modes --- */
+body {
+    --chat-presentation-edge-gap: clamp(6px, 1.1vw, 14px);
+    --chat-immersive-column-width: 880px;
+}
 
+/* Panel and immersive use a full-chat-area frosted surface.
+ * Edge gaps constrain message content only, never the background surface. */
+body.chat-presentation-panel .chat-messages-container,
+body.chat-presentation-immersive .chat-messages-container {
+    background:
+        linear-gradient(180deg,
+            color-mix(in srgb, var(--panel-bg-dark) 82%, rgba(255, 255, 255, 0.06)),
+            color-mix(in srgb, var(--panel-bg-dark) 70%, transparent));
+    backdrop-filter: blur(16px) saturate(112%);
+    -webkit-backdrop-filter: blur(16px) saturate(112%);
+}
+
+body.light-theme.chat-presentation-panel .chat-messages-container,
+body.light-theme.chat-presentation-immersive .chat-messages-container {
+    background:
+        linear-gradient(180deg,
+            color-mix(in srgb, var(--panel-bg-light) 86%, rgba(255, 255, 255, 0.54)),
+            color-mix(in srgb, var(--panel-bg-light) 74%, rgba(255, 255, 255, 0.18)));
+}
+
+body.chat-presentation-panel .chat-messages,
+body.chat-presentation-immersive .chat-messages {
+    width: auto;
+    margin: 0 var(--chat-presentation-edge-gap);
+    box-sizing: border-box;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+}
+
+body.chat-presentation-panel .chat-messages {
+    padding: 8px clamp(10px, 1.5vw, 18px);
+}
+
+body.chat-presentation-panel .message-item,
+body.chat-presentation-immersive .message-item {
+    width: 100%;
+    max-width: 100%;
+    flex-direction: row;
+    justify-content: flex-start;
+}
+
+body.chat-presentation-panel .message-item {
+    gap: 14px;
+    margin: 0;
+    padding: 18px 0;
+    border-bottom: 0;
+}
+
+body.chat-presentation-panel .message-item ~ .message-item {
+    border-top: 2px solid rgba(255, 255, 255, 0.28);
+    box-shadow: inset 0 1px 0 rgba(0, 0, 0, 0.18);
+}
+
+body.light-theme.chat-presentation-panel .message-item ~ .message-item {
+    border-top-color: rgba(35, 42, 52, 0.24);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.58);
+}
+
+body.chat-presentation-panel .message-item .details-and-bubble-wrapper,
+body.chat-presentation-panel .message-item.user .details-and-bubble-wrapper,
+body.chat-presentation-panel .message-item.assistant .details-and-bubble-wrapper {
+    width: 100%;
+    max-width: none;
+    align-items: stretch;
+    margin: 0;
+    gap: 8px;
+}
+
+body.chat-presentation-panel .message-item .name-time-block,
+body.chat-presentation-panel .message-item.user .name-time-block,
+body.chat-presentation-panel .message-item.assistant .name-time-block {
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: flex-start;
+    gap: 1px;
+    text-align: left;
+}
+
+body.chat-presentation-panel .message-item .sender-name,
+body.chat-presentation-panel .message-item .message-timestamp {
+    order: initial;
+}
+
+body.chat-presentation-panel .message-item .md-content,
+body.chat-presentation-panel .message-item.user .md-content,
+body.chat-presentation-panel .message-item.assistant .md-content,
+body.chat-presentation-panel .message-item.user.user-bubble-ui-disabled .md-content,
+body.chat-presentation-panel .main-content.notifications-sidebar-active .message-item .md-content,
+body.chat-presentation-panel.chat-wide-layout .message-item .md-content {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    padding: 0;
+    border: 0 !important;
+    border-radius: 0;
+    background: transparent !important;
+    box-shadow: none !important;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    color: var(--agent-text);
+}
+
+body.chat-presentation-panel .message-item.user.user-bubble-meta-hidden .chat-avatar,
+body.chat-presentation-panel .message-item.user.user-bubble-meta-hidden .name-time-block {
+    display: initial;
+}
+
+body.chat-presentation-panel .message-item.user.user-bubble-meta-hidden .chat-avatar {
+    display: block;
+}
+
+body.chat-presentation-panel .message-item.system.system-message-layout {
+    width: min(100%, 720px);
+    margin: 12px auto;
+    padding: 9px 14px;
+    border: 1px solid color-mix(in srgb, var(--border-color) 22%, transparent);
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--accent-bg) 72%, transparent);
+}
+
+/* Immersive: a centered reading column over the same full-area frosted surface. */
+body.chat-presentation-immersive .chat-messages {
+    padding: clamp(20px, 3vw, 36px) 12px;
+}
+
+body.chat-presentation-immersive .message-item {
+    margin: 0 auto clamp(30px, 4vw, 44px);
+    padding: 0 0 clamp(20px, 2.4vw, 28px);
+    gap: 0;
+}
+
+body.chat-presentation-immersive .message-item ~ .message-item .details-and-bubble-wrapper {
+    padding-top: clamp(20px, 2.4vw, 28px);
+    border-top: 2px solid rgba(255, 255, 255, 0.26);
+    box-shadow: inset 0 1px 0 rgba(0, 0, 0, 0.16);
+}
+
+body.light-theme.chat-presentation-immersive .message-item ~ .message-item .details-and-bubble-wrapper {
+    border-top-color: rgba(35, 42, 52, 0.22);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.56);
+}
+
+body.chat-presentation-immersive .message-item:last-child {
+    margin-bottom: 0;
+    padding-bottom: 0;
+}
+
+body.chat-presentation-immersive .message-item .chat-avatar {
+    display: none !important;
+}
+
+body.chat-presentation-immersive .message-item .details-and-bubble-wrapper,
+body.chat-presentation-immersive .message-item.user .details-and-bubble-wrapper,
+body.chat-presentation-immersive .message-item.assistant .details-and-bubble-wrapper {
+    width: min(100%, var(--chat-immersive-column-width));
+    max-width: var(--chat-immersive-column-width);
+    margin: 0 auto;
+    align-items: stretch;
+    gap: 12px;
+}
+
+body.chat-presentation-immersive .message-item .name-time-block,
+body.chat-presentation-immersive .message-item.user .name-time-block,
+body.chat-presentation-immersive .message-item.assistant .name-time-block {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: flex-start;
+    gap: 2px;
+    text-align: left;
+}
+
+body.chat-presentation-immersive .message-item .sender-name {
+    order: initial;
+    font-size: 1.12em;
+    letter-spacing: 0.015em;
+}
+
+body.chat-presentation-immersive .message-item .message-timestamp {
+    order: initial;
+    font-size: 0.76em;
+    opacity: 0.62;
+}
+
+body.chat-presentation-immersive .message-item .md-content,
+body.chat-presentation-immersive .message-item.user .md-content,
+body.chat-presentation-immersive .message-item.assistant .md-content,
+body.chat-presentation-immersive .message-item.user.user-bubble-ui-disabled .md-content,
+body.chat-presentation-immersive .main-content.notifications-sidebar-active .message-item .md-content,
+body.chat-presentation-immersive.chat-wide-layout .message-item .md-content {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    padding: 0;
+    border: 0 !important;
+    border-radius: 0;
+    background: transparent !important;
+    box-shadow: none !important;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    color: var(--agent-text);
+    line-height: 1.78;
+}
+
+body.chat-presentation-immersive .message-item .md-content p {
+    margin-bottom: 0.85em;
+}
+
+body.chat-presentation-immersive .message-item.user .sender-name {
+    color: color-mix(in srgb, var(--highlight-text) 76%, var(--secondary-text));
+}
+
+body.chat-presentation-immersive .message-item.system.system-message-layout {
+    width: min(calc(100% - 24px), 680px);
+    margin: 10px auto 28px;
+    padding: 8px 14px;
+    background: color-mix(in srgb, var(--accent-bg) 52%, transparent);
+}
+
+/* Mode shells are flat; internal structured content retains its own surfaces. */
+body.chat-presentation-panel .message-item .md-content > pre,
+body.chat-presentation-panel .message-item .md-content .vcp-tool-use-bubble,
+body.chat-presentation-panel .message-item .md-content .vcp-tool-result-bubble,
+body.chat-presentation-panel .message-item .md-content .maid-diary-bubble,
+body.chat-presentation-panel .message-item .md-content .vcp-thought-chain-bubble,
+body.chat-presentation-panel .message-item .md-content .vcp-flowlock-bubble,
+body.chat-presentation-panel .message-item .md-content .mermaid-viewer,
+body.chat-presentation-panel .message-item .md-content .vcp-html-preview-container,
+body.chat-presentation-immersive .message-item .md-content > pre,
+body.chat-presentation-immersive .message-item .md-content .vcp-tool-use-bubble,
+body.chat-presentation-immersive .message-item .md-content .vcp-tool-result-bubble,
+body.chat-presentation-immersive .message-item .md-content .maid-diary-bubble,
+body.chat-presentation-immersive .message-item .md-content .vcp-thought-chain-bubble,
+body.chat-presentation-immersive .message-item .md-content .vcp-flowlock-bubble,
+body.chat-presentation-immersive .message-item .md-content .mermaid-viewer,
+body.chat-presentation-immersive .message-item .md-content .vcp-html-preview-container {
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+@media (max-width: 768px) {
+    body {
+        --chat-presentation-edge-gap: 4px;
+        --chat-immersive-column-width: 100%;
+    }
+
+    body.chat-presentation-panel .chat-messages {
+        padding: 6px 9px;
+    }
+
+    body.chat-presentation-panel .message-item {
+        gap: 10px;
+        padding: 15px 0;
+    }
+
+    body.chat-presentation-panel .chat-avatar {
+        width: 34px;
+        height: 34px;
+    }
+
+    body.chat-presentation-immersive .chat-messages {
+        padding: 18px 4px;
+    }
+body.chat-presentation-immersive .message-item {
+    margin-bottom: 30px;
+}
+}
+
+/* The initial welcome bubble is a compact standalone notice, not a message row.
+* Restore its intrinsic width and centering after the mode-wide message rules. */
+body.chat-presentation-panel .message-item.system.welcome-bubble,
+body.chat-presentation-immersive .message-item.system.welcome-bubble {
+width: fit-content;
+max-width: min(500px, calc(100% - 24px));
+margin: 30px auto;
+padding: 8px 20px;
+box-sizing: border-box;
+display: block;
+text-align: center;
+}
+
+
+
+/* Panel / immersive input composer: full-width, flat and continuous with the chat surface. */
+body.chat-presentation-panel .chat-input-area,
+body.chat-presentation-immersive .chat-input-area {
+    padding: 0;
+    background:
+        linear-gradient(
+            180deg,
+            color-mix(in srgb, var(--panel-bg-dark) 72%, transparent),
+            color-mix(in srgb, var(--panel-bg-dark) 84%, rgba(255, 255, 255, 0.04))
+        );
+    backdrop-filter: blur(16px) saturate(112%);
+    -webkit-backdrop-filter: blur(16px) saturate(112%);
+}
+
+body.light-theme.chat-presentation-panel .chat-input-area,
+body.light-theme.chat-presentation-immersive .chat-input-area {
+    background:
+        linear-gradient(
+            180deg,
+            color-mix(in srgb, var(--panel-bg-light) 74%, rgba(255, 255, 255, 0.18)),
+            color-mix(in srgb, var(--panel-bg-light) 88%, rgba(255, 255, 255, 0.5))
+        );
+}
+
+body.chat-presentation-panel .chat-input-card,
+body.chat-presentation-immersive .chat-input-card {
+    width: 100%;
+    padding: 13px clamp(12px, 1.8vw, 22px) 10px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    transition: background-color 0.2s ease;
+}
+
+body.chat-presentation-panel .chat-input-card:hover:not(:focus-within):not(.drag-over),
+body.chat-presentation-immersive .chat-input-card:hover:not(:focus-within):not(.drag-over) {
+    border: 0;
+    background: color-mix(in srgb, var(--accent-bg) 12%, transparent);
+    box-shadow: none;
+}
+
+body.chat-presentation-panel .chat-input-card:focus-within,
+body.chat-presentation-immersive .chat-input-card:focus-within {
+    border: 0;
+    background: color-mix(in srgb, var(--accent-bg) 18%, transparent);
+    box-shadow: none;
+}
+
+body.chat-presentation-panel .chat-input-card.drag-over,
+body.chat-presentation-immersive .chat-input-card.drag-over {
+    border: 0;
+    background: color-mix(in srgb, var(--button-bg) 14%, transparent);
+    box-shadow: inset 0 3px 0 color-mix(in srgb, var(--button-bg) 68%, transparent);
+}
+
+@media (max-width: 768px) {
+    body.chat-presentation-panel .chat-input-card,
+    body.chat-presentation-immersive .chat-input-card {
+        padding: 11px 10px 8px;
+    }
+}

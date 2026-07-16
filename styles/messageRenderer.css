@@ -1223,6 +1223,16 @@ body.chat-wide-layout .main-content.notifications-sidebar-active .message-item .
     max-width: var(--chat-bubble-max-width-wide-notifications, 96%);
 }
 
+body.chat-presentation-panel .message-item .md-content.contains-vcp-tool-result,
+body.chat-presentation-panel .main-content.notifications-sidebar-active .message-item .md-content.contains-vcp-tool-result,
+body.chat-presentation-panel.chat-wide-layout .message-item .md-content.contains-vcp-tool-result,
+body.chat-presentation-immersive .message-item .md-content.contains-vcp-tool-result,
+body.chat-presentation-immersive .main-content.notifications-sidebar-active .message-item .md-content.contains-vcp-tool-result,
+body.chat-presentation-immersive.chat-wide-layout .message-item .md-content.contains-vcp-tool-result {
+    width: 100%;
+    max-width: 100%;
+}
+
 .vcp-tool-result-item-markdown {
     flex-direction: column;
 }

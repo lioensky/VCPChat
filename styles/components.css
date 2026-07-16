@@ -781,6 +781,44 @@ body.light-theme .context-menu {
     cursor: pointer;
     font-size: 0.9em;
 }
+
+/* 主菜单统一使用左对齐布局；子菜单保留稍宽的呼吸空间。 */
+#chatContextMenu > .context-menu-item,
+#chatContextMenu > .context-menu-submenu-wrapper > .context-menu-submenu-trigger {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 4px;
+    padding-inline: 6px;
+    text-align: left;
+}
+
+/* 第一项带有右侧展开箭头，视觉上再向左靠一点。 */
+#chatContextMenu > .context-menu-submenu-wrapper > .context-menu-submenu-trigger {
+    padding-left: 3px;
+}
+
+#chatContextMenu .context-menu-submenu > .context-menu-item {
+    padding-inline: 10px;
+}
+
+#chatContextMenu .context-menu-item > i:first-child {
+    display: inline-flex;
+    width: 13px;
+    margin-right: 0;
+    flex: 0 0 13px;
+    align-items: center;
+    justify-content: center;
+}
+
+.context-menu-item > i:first-child {
+    display: inline-flex;
+    width: 18px;
+    margin-right: 6px;
+    align-items: center;
+    justify-content: center;
+}
+
 .context-menu-item:hover {
     background-color: var(--accent-bg);
     color: var(--highlight-text);
@@ -808,6 +846,74 @@ body.light-theme .context-menu {
 
 .context-menu-item-speak:hover {
     color: #F0B840 !important; /* A slightly lighter gold for hover */
+}
+
+/* Message context-menu submenu */
+.context-menu-submenu-wrapper {
+    position: relative;
+}
+
+.context-menu-submenu-trigger {
+    display: flex;
+    align-items: center;
+}
+.context-menu-submenu-trigger > span:nth-child(2) {
+    flex: 0 1 auto;
+    min-width: 0;
+    white-space: nowrap;
+}
+
+.context-menu-submenu-arrow {
+    flex: 0 0 auto;
+    margin-left: -3px;
+    font-size: 1.08em;
+    line-height: 1;
+    opacity: 0.72;
+    transform: translateY(-1px);
+}
+
+.context-menu-submenu {
+    position: absolute !important;
+    top: -6px !important;
+    right: auto !important;
+    bottom: auto !important;
+    left: calc(100% + 6px) !important;
+    width: max-content;
+    min-width: 116px;
+    display: none;
+    visibility: hidden;
+    z-index: 1002;
+}
+
+.context-menu-submenu-wrapper.submenu-open > .context-menu-submenu {
+    display: block;
+    visibility: visible;
+}
+
+.context-menu-submenu-wrapper.submenu-open-left > .context-menu-submenu {
+    right: calc(100% + 6px) !important;
+    left: auto !important;
+}
+
+.context-menu-presentation-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    white-space: nowrap;
+}
+
+.context-menu-check {
+    width: 16px;
+    flex: 0 0 16px;
+    text-align: center;
+    color: var(--highlight-text);
+    font-weight: 700;
+}
+
+.context-menu-item:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--highlight-text) 58%, transparent);
+    outline-offset: -2px;
+    background-color: var(--accent-bg);
 }
 
 

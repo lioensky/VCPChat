@@ -25,6 +25,10 @@ if (typeof prepare !== 'function' || typeof layout !== 'function') {
     /** @type {Map<string, string>} messageId → 上次 prepare 的原始文本 */
     const textSnapshot = new Map();
 
+    let currentPresentationMode = 'bubble';
+    const PRESENTATION_MODES = new Set(['bubble', 'panel', 'immersive']);
+    const IMMERSIVE_MAX_WIDTH = 880;
+
     // ─── 字体常量（VChat 实际使用的字体） ───
 
     const FONTS = {
@@ -71,10 +75,12 @@ if (typeof prepare !== 'function' || typeof layout !== 'function') {
 
         const fullWidthTypes = ['viewer', 'widget', 'memo', 'rag', 'note'];
         if (fullWidthTypes.includes(type)) {
-            // 这些模式通常占满或按比例占满可用宽度
             maxWidth = containerWidth;
+        } else if (currentPresentationMode === 'panel') {
+            maxWidth = containerWidth;
+        } else if (currentPresentationMode === 'immersive') {
+            maxWidth = Math.min(containerWidth, IMMERSIVE_MAX_WIDTH);
         } else {
-            // 聊天气泡模式（body/code/system）占 80% 宽度
             maxWidth = Math.floor(containerWidth * 0.8);
         }
 
@@ -153,6 +159,17 @@ if (typeof prepare !== 'function' || typeof layout !== 'function') {
         textSnapshot.clear();
     }
 
+    function clearHeightCache() {
+        heightCache.clear();
+    }
+
+    function setPresentationMode(mode) {
+        const normalizedMode = PRESENTATION_MODES.has(mode) ? mode : 'bubble';
+        if (normalizedMode === currentPresentationMode) return;
+        currentPresentationMode = normalizedMode;
+        clearHeightCache();
+    }
+
     function setChatFonts(bodyFontFamily, codeFontFamily) {
         const resolvedBody = bodyFontFamily && String(bodyFontFamily).trim()
             ? String(bodyFontFamily).trim()
@@ -175,6 +192,9 @@ if (typeof prepare !== 'function' || typeof layout !== 'function') {
         recalculateAll: recalculateAll,
         evict: evict,
         clearAll: clearAll,
+        clearHeightCache: clearHeightCache,
+        setPresentationMode: setPresentationMode,
+        getPresentationMode: function() { return currentPresentationMode; },
         setChatFonts: setChatFonts,
         isReady: function() { return true; },
         getContentWidth: getContentWidth,

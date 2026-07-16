@@ -632,3 +632,68 @@ body.light-theme .global-settings-footer button[type="submit"]:hover {
     position: relative;
     top: -6.8px;
 }
+
+
+/* Chat presentation mode selector */
+.chat-presentation-mode-options {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.chat-presentation-mode-option {
+    display: flex;
+    align-items: flex-start;
+    gap: 9px;
+    min-width: 0;
+    margin: 0;
+    padding: 12px;
+    box-sizing: border-box;
+    border: 1px solid color-mix(in srgb, var(--border-color) 42%, transparent);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--input-bg) 64%, transparent);
+    cursor: pointer;
+    transition: border-color 0.2s ease, background-color 0.2s ease, transform 0.2s ease;
+}
+
+.chat-presentation-mode-option:hover {
+    border-color: color-mix(in srgb, var(--highlight-text) 45%, var(--border-color));
+    background: color-mix(in srgb, var(--accent-bg) 54%, transparent);
+    transform: translateY(-1px);
+}
+
+.chat-presentation-mode-option:has(input:checked) {
+    border-color: color-mix(in srgb, var(--highlight-text) 72%, var(--border-color));
+    background: color-mix(in srgb, var(--accent-bg) 76%, transparent);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--highlight-text) 16%, transparent);
+}
+
+.chat-presentation-mode-option input {
+    margin: 3px 0 0;
+    flex: 0 0 auto;
+}
+
+.chat-presentation-mode-option > span {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.chat-presentation-mode-option strong {
+    color: var(--primary-text);
+    font-size: 0.94em;
+    line-height: 1.25;
+}
+
+.chat-presentation-mode-option small {
+    color: var(--secondary-text);
+    font-size: 0.8em;
+    line-height: 1.45;
+}
+
+@media (max-width: 760px) {
+    .chat-presentation-mode-options {
+        grid-template-columns: 1fr;
+    }
+}

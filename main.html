@@ -1040,11 +1040,40 @@
                                 </div>
                                 <div class="settings-subsection settings-subsection-new">
                                     <div class="settings-subsection-heading">
-                                        <div class="settings-subsection-title">聊天布局与用户气泡</div>
-                                        <p class="settings-subsection-description">这里集中调整用户消息样式，以及宽屏模式下的自定义气泡宽度。</p>
+                                        <div class="settings-subsection-title">消息呈现与内容宽度</div>
+                                        <p class="settings-subsection-description">切换消息外壳的视觉方式；统一磨砂和沉浸文本模式按聊天区域两侧边距自适应。</p>
                                     </div>
+                                    <fieldset class="form-group chat-presentation-mode-selector" style="margin: 0 0 18px; padding: 0; border: 0;">
+                                        <legend style="display: block; margin-bottom: 8px;">消息呈现模式</legend>
+                                        <div class="chat-presentation-mode-options">
+                                            <label for="chatPresentationModeBubble" class="chat-presentation-mode-option">
+                                                <input type="radio" id="chatPresentationModeBubble" name="chatPresentationMode"
+                                                    value="bubble" checked>
+                                                <span>
+                                                    <strong>气泡模式</strong>
+                                                    <small>保留当前左右气泡、头像及元信息布局。</small>
+                                                </span>
+                                            </label>
+                                            <label for="chatPresentationModePanel" class="chat-presentation-mode-option">
+                                                <input type="radio" id="chatPresentationModePanel" name="chatPresentationMode"
+                                                    value="panel">
+                                                <span>
+                                                    <strong>统一磨砂模式</strong>
+                                                    <small>消息共用一块全宽磨砂面板，以分割线区分。</small>
+                                                </span>
+                                            </label>
+                                            <label for="chatPresentationModeImmersive" class="chat-presentation-mode-option">
+                                                <input type="radio" id="chatPresentationModeImmersive" name="chatPresentationMode"
+                                                    value="immersive">
+                                                <span>
+                                                    <strong>沉浸文本模式</strong>
+                                                    <small>隐藏头像并使用居中的长文阅读栏。</small>
+                                                </span>
+                                            </label>
+                                        </div>
+                                    </fieldset>
                                     <div class="form-group" style="margin-bottom: 15px;">
-                                        <label style="display: block; margin-bottom: 8px;">聊天布局模式</label>
+                                        <label style="display: block; margin-bottom: 8px;">内容宽度</label>
                                         <div class="form-group-inline" style="gap: 18px; align-items: center; flex-wrap: wrap;">
                                             <label for="chatLayoutModeNormal"
                                                 style="display: inline-flex; align-items: center; gap: 6px; margin: 0;">
@@ -1056,14 +1085,14 @@
                                                 style="display: inline-flex; align-items: center; gap: 6px; margin: 0;">
                                                 <input type="radio" id="chatLayoutModeWide" name="chatLayoutMode"
                                                     value="wide">
-                                                <span>宽屏模式（自定义模式）</span>
+                                                <span>宽屏模式</span>
                                             </label>
                                         </div>
                                         <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
-                                            选择宽屏模式（自定义模式）后，可单独调整这一模式下的聊天气泡宽度。
+                                            气泡模式下控制气泡宽度；其他模式的外层宽度由聊天区域两侧边距自动决定。
                                         </small>
                                     </div>
-                                    <div class="settings-dependent-panel">
+                                    <div id="userChatBubbleSettings" class="settings-dependent-panel">
                                         <div class="form-group-inline"
                                             style="justify-content: space-between; align-items: center; margin-bottom: 15px;">
                                             <div>
@@ -1119,7 +1148,7 @@
                                                     </div>
                                                 </div>
                                                 <small style="color: var(--text-secondary); margin-top: 5px; display: block;">
-                                                    可设置范围为 50% - 98%。默认模式沿用系统默认宽度，这里只调整宽屏模式（自定义模式）。
+                                                    可设置范围为 50% - 98%。标准模式沿用系统默认宽度，这里只调整气泡模式的宽屏布局。
                                                 </small>
                                             </div>
                                         </div>

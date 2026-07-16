@@ -3554,6 +3554,21 @@ async function renderHistoryLegacy(history, renderSessionId = getActiveRenderSes
     });
 }
 
+function refreshLayoutDependentState() {
+    const chatMessagesDiv = mainRendererReferences.chatMessagesDiv;
+    if (!chatMessagesDiv) return;
+
+    chatMessagesDiv.querySelectorAll('.message-item').forEach((messageItem) => {
+        delete messageItem.dataset.vcpMeasuredHeight;
+        messageItem.style.containIntrinsicSize = 'auto 100px';
+    });
+
+    requestAnimationFrame(() => {
+        if (!chatMessagesDiv.isConnected) return;
+        visibilityOptimizer.recheckVisibility();
+    });
+}
+
 window.messageRenderer = {
     initializeMessageRenderer,
     setCurrentSelectedItem, // Keep for renderer.js to call
@@ -3573,6 +3588,7 @@ window.messageRenderer = {
     clearChat,
     removeMessageById,
     updateMessageContent, // Expose the new function
+    refreshLayoutDependentState,
     extractSpeakableTextFromContentElement,
     clearRenderHtmlCache,
     getRenderHtmlCacheStats: () => ({

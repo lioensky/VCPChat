@@ -67,6 +67,10 @@ export async function handleSaveGlobalSettings(e, deps) {
         chatToolFontPreset: document.getElementById('chatToolFontPreset')?.value || currentSettings.chatToolFontPreset || 'system',
         chatToolFontCustom: document.getElementById('chatToolFontCustom')?.value.trim() || '',
         enableWideChatLayout: document.getElementById('chatLayoutModeWide')?.checked || false,
+        chatPresentationMode: window.normalizeChatPresentationMode?.(
+            document.querySelector('input[name="chatPresentationMode"]:checked')?.value
+                || currentSettings.chatPresentationMode
+        ) || 'bubble',
         enableUserChatBubbleUi: document.getElementById('enableUserChatBubbleUi')?.checked !== false,
         showUserMetaInChatBubbleUi: document.getElementById('showUserMetaInChatBubbleUi')?.checked !== false,
         chatBubbleMaxWidthDefault: clampBubbleWidthPercent(currentSettings.chatBubbleMaxWidthDefault, 82),
@@ -223,6 +227,13 @@ export async function handleSaveGlobalSettings(e, deps) {
         Object.assign(refs.globalSettings.get(), newSettings);
         if (typeof window.applyChatBubbleLayoutSettings === 'function') {
             window.applyChatBubbleLayoutSettings(refs.globalSettings.get());
+        }
+        if (typeof window.applyChatPresentationMode === 'function') {
+            await window.applyChatPresentationMode(newSettings.chatPresentationMode, {
+                persist: false,
+                preserveScroll: true,
+                source: 'global-settings'
+            });
         }
         uiHelperFunctions.showToastNotification('全局设置已保存！部分设置（如通知URL/Key）可能需要重新连接生效。');
         uiHelperFunctions.closeModal('globalSettingsModal');
