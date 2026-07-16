@@ -1691,3 +1691,43 @@ body.chat-presentation-immersive .chat-input-card.drag-over {
         padding: 11px 10px 8px;
     }
 }
+
+/* Panel / immersive message editor: keep the editor wide and actions below it.
+ * These rules intentionally follow the presentation-mode layout so editing
+ * cannot be forced back into the mode-wide horizontal message row. */
+body.chat-presentation-panel .message-item.message-item-editing,
+body.chat-presentation-immersive .message-item.message-item-editing {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    box-sizing: border-box;
+}
+
+body.chat-presentation-panel .message-item.message-item-editing {
+    width: 100%;
+}
+
+body.chat-presentation-immersive .message-item.message-item-editing {
+    width: min(100%, var(--chat-immersive-column-width));
+    max-width: var(--chat-immersive-column-width);
+    margin-right: auto;
+    margin-left: auto;
+}
+
+body.chat-presentation-panel .message-item.message-item-editing .message-edit-textarea,
+body.chat-presentation-immersive .message-item.message-item-editing .message-edit-textarea {
+    width: 100%;
+    min-width: 0;
+    min-height: 120px;
+    margin: 0;
+    resize: vertical;
+    flex: 1 1 auto;
+}
+
+body.chat-presentation-panel .message-item.message-item-editing .message-edit-controls,
+body.chat-presentation-immersive .message-item.message-item-editing .message-edit-controls {
+    width: 100%;
+    margin-top: 0;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+}
