@@ -483,7 +483,7 @@ body.light-theme .message-item.system.welcome-bubble {
     margin-top: 8px;
 }
 .message-item .md-content pre {
-    background-color: rgba(42, 45, 53, 0.85); /* Slightly transparent, bluish-dark background */
+    background-color: rgba(42, 45, 53, 0.5); /* 50% transparent, bluish-dark background */
     padding: 10px;
     border-radius: 6px;
     white-space: pre-wrap;
@@ -500,6 +500,69 @@ body.light-theme .message-item.system.welcome-bubble {
     background: none;
     color: #abb2bf; /* Ensure code text is visible (soft white) */
     font-family: var(--vcp-chat-code-font-family, 'Consolas', 'Monaco', 'Courier New', monospace);
+}
+
+/* 流式未闭合代码块：每完成一行，彩色光带从左向右扫过文字。 */
+@keyframes vcp-stream-code-line-sweep {
+    0% {
+        background-position: 115% 50%;
+    }
+
+    70% {
+        background-position: -15% 50%;
+    }
+
+    100% {
+        background-position: -55% 50%;
+    }
+}
+
+.message-item.streaming .md-content pre.vcp-stream-code-block {
+    overflow-x: auto;
+}
+
+.message-item.streaming .md-content code.vcp-stream-code-lines {
+    display: block;
+    white-space: pre-wrap;
+}
+
+.message-item.streaming .md-content .vcp-stream-code-line {
+    display: block;
+    width: fit-content;
+    max-width: 100%;
+    min-width: 1px;
+    min-height: 1.5em;
+    white-space: pre-wrap;
+    color: #abb2bf;
+}
+
+.message-item.streaming .md-content .vcp-stream-code-line--sweeping,
+.message-item.streaming .md-content .vcp-stream-code-line--sweeping * {
+    color: transparent !important;
+    -webkit-text-fill-color: transparent !important;
+}
+
+.message-item.streaming .md-content .vcp-stream-code-line--new {
+    background-image: linear-gradient(
+        90deg,
+        #abb2bf 0%,
+        #abb2bf 28%,
+        #61dafb 39%,
+        #c678dd 47%,
+        #ff79c6 54%,
+        #e5c07b 62%,
+        #98c379 68%,
+        #abb2bf 76%,
+        #abb2bf 100%
+    );
+    background-size: 260% 100%;
+    background-repeat: no-repeat;
+    background-position: 115% 50%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+    animation: vcp-stream-code-line-sweep 1.1s ease-out var(--vcp-stream-code-line-delay, 0ms) both;
 }
 
 /* Dark Theme Syntax Highlighting Overrides (inspired by Atom One Dark / Dracula) */
@@ -1126,7 +1189,7 @@ body.light-theme .suggestion-item {
 }
 /* --- Light Theme Code Block Styles --- */
 body.light-theme .message-item .md-content pre {
-    background-color: rgba(255, 250, 240, 0.85); /* 绫崇櫧纾ㄧ爞鑳屾櫙 */
+    background-color: rgba(255, 250, 240, 0.5); /* 50% transparent warm background */
     color: #333333; /* 娣辩伆鑹插熀纭€鏂囧瓧 */
     border-color: rgba(0, 0, 0, 0.1);
 }
@@ -1135,6 +1198,25 @@ body.light-theme .message-item .md-content pre {
 /* Default code color */
 body.light-theme .message-item .md-content pre code {
     color: #333333;
+}
+
+body.light-theme .message-item.streaming .md-content .vcp-stream-code-line {
+    color: #333333;
+}
+
+body.light-theme .message-item.streaming .md-content .vcp-stream-code-line--new {
+    background-image: linear-gradient(
+        90deg,
+        #333333 0%,
+        #333333 28%,
+        #0077b6 39%,
+        #6f42c1 47%,
+        #d63384 54%,
+        #b26a00 62%,
+        #238636 68%,
+        #333333 76%,
+        #333333 100%
+    );
 }
 
 /* Keywords (e.g., def, if, return) */
@@ -1178,6 +1260,19 @@ body.light-theme .message-item .md-content pre .hljs-params {
 body.light-theme .message-item .md-content pre .hljs-meta {
     color: #e36209; /* Dark Orange */
 }
+@media (prefers-reduced-motion: reduce) {
+    .message-item.streaming .md-content .vcp-stream-code-line--new {
+        animation: none;
+        background: none;
+        color: #abb2bf;
+        -webkit-text-fill-color: currentColor;
+    }
+
+    body.light-theme .message-item.streaming .md-content .vcp-stream-code-line--new {
+        color: #333333;
+    }
+}
+
 /*
  * Final, more robust fix for centering images.
  * Only turn the paragraph into a flex container WHEN it contains images only.

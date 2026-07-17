@@ -1752,12 +1752,92 @@ function parseFullMarkdown(text, options = {}) {
     return renderMarkdownToHtml(text, options);
 }
 
+/**
+ * 查找流式文本中最后一个尚未闭合的代码围栏。
+ * 返回围栏前正文、语言名和原始代码，使流式渲染不再依赖 marked 对残缺围栏的容错行为。
+ */
+function findUnclosedStreamCodeFence(text) {
+    if (typeof text !== 'string' || (!text.includes('```') && !text.includes('~~~'))) {
+        return null;
+    }
+
+    const normalizedText = text.replace(/\r\n?/g, '\n');
+    const lines = normalizedText.split('\n');
+    let activeFence = null;
+    let offset = 0;
+
+    for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+        const line = lines[lineIndex];
+        const match = line.match(/^[ \t]{0,3}(`{3,}|~{3,})(.*)$/);
+
+        if (match) {
+            const marker = match[1];
+            const markerChar = marker[0];
+            const trailingText = match[2] || '';
+
+            if (!activeFence) {
+                const infoString = trailingText.trim();
+                const language = (infoString.split(/\s+/)[0] || '')
+                    .replace(/[^\w#+.-]/g, '');
+
+                activeFence = {
+                    char: markerChar,
+                    length: marker.length,
+                    startOffset: offset,
+                    contentOffset: offset + line.length + (lineIndex < lines.length - 1 ? 1 : 0),
+                    language
+                };
+            } else if (
+                markerChar === activeFence.char &&
+                marker.length >= activeFence.length &&
+                trailingText.trim() === ''
+            ) {
+                activeFence = null;
+            }
+        }
+
+        offset += line.length;
+        if (lineIndex < lines.length - 1) offset += 1;
+    }
+
+    if (!activeFence) return null;
+
+    return {
+        prefix: normalizedText.slice(0, activeFence.startOffset),
+        code: normalizedText.slice(activeFence.contentOffset),
+        language: activeFence.language
+    };
+}
+
 function parseStreamTailMarkdown(text) {
     const markedInstance = mainRendererReferences.markedInstance;
     if (!markedInstance) return escapeHtml(text);
 
     const processedText = preprocessStreamTailContent(text);
-    return markedInstance.parse(processedText);
+    const unclosedFence = findUnclosedStreamCodeFence(processedText);
+
+    if (!unclosedFence) {
+        return markedInstance.parse(processedText);
+    }
+
+    const prefixHtml = unclosedFence.prefix
+        ? markedInstance.parse(unclosedFence.prefix)
+        : '';
+    const languageClass = unclosedFence.language
+        ? ` language-${escapeHtml(unclosedFence.language)}`
+        : '';
+    const codeLines = unclosedFence.code.replace(/\r\n?/g, '\n').split('\n');
+    const completedLineCount = Math.max(0, codeLines.length - 1);
+    const lineHtml = codeLines.map((lineText, lineIndex) => {
+        const escapedLine = lineText ? escapeHtml(lineText) : '&#8203;';
+        const completedAttribute = lineIndex < completedLineCount
+            ? ' data-vcp-stream-code-completed="true"'
+            : '';
+        return `<span class="vcp-stream-code-line" data-vcp-key="stream-code-line-${lineIndex}" data-vcp-stream-code-line="${lineIndex}"${completedAttribute}>${escapedLine}</span>`;
+    }).join('');
+
+    // 流式解析阶段直接输出稳定的逐行 DOM，避免每帧在 streamManager 中重建全部代码行。
+    return `${prefixHtml}<pre class="vcp-stream-code-block"><code class="vcp-stream-code-lines${languageClass}">${lineHtml}</code></pre>`;
 }
 
 function prepareFinalTextForRender(messageId, rawText, role = 'assistant', historyOverride = null) {
