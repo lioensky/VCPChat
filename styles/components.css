@@ -904,10 +904,11 @@ body.light-theme .context-menu {
     max-width: min(260px, calc(100vw - 12px));
 }
 
-/* 消息右键菜单只保留针对当前消息的操作，维持紧凑左对齐布局。 */
+/* 消息菜单图标较密集，左侧略多留白以维持视觉平衡。 */
 #chatContextMenu > .context-menu-item {
     gap: 5px;
-    padding-inline: 9px;
+    padding-left: 12px;
+    padding-right: 9px;
 }
 
 .context-menu-item > i:first-child {
