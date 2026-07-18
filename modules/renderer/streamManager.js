@@ -33,8 +33,10 @@ const DESKTOP_PUSH_END = '<<<[DESKTOP_PUSH_END]>>>';
 const CODE_FENCE = '```';
 const THOUGHT_CHAIN_START = '[--- VCP元思考链';
 const THOUGHT_CHAIN_END = '[--- 元思考链结束 ---]';
-const THINK_START_REGEX = /<think(?:ing)?>/ig;
-const THINK_END_REGEX = /<\/think(?:ing)?>/ig;
+const THOUGHT_CHAIN_START_LINE_REGEX = /^[ \t]*\[--- VCP元思考链(?::\s*"[^"]*")?\s*---\][ \t]*(?:\r?\n|$)/gm;
+const THOUGHT_CHAIN_END_LINE_REGEX = /^[ \t]*\[--- 元思考链结束 ---\][ \t]*(?:\r?\n|$)/gm;
+const THINK_START_REGEX = /^[ \t]*<think(?:ing)?>[ \t]*(?:\r?\n|$)/gim;
+const THINK_END_REGEX = /^[ \t]*<\/think(?:ing)?>[ \t]*(?:\r?\n|$)/gim;
 const DAILY_NOTE_START = '<<<DailyNoteStart>>>';
 const DAILY_NOTE_END = '<<<DailyNoteEnd>>>';
 const MARKDOWN_SECTION_BREAK_TOKEN = '---';
@@ -615,18 +617,34 @@ function findDisplayMathBlockEnd(text, startIndex, delimiter) {
     return -1;
 }
 
-function findConventionalThinkEnd(text, startIndex) {
-    THINK_END_REGEX.lastIndex = startIndex;
-    const match = THINK_END_REGEX.exec(text);
-    THINK_END_REGEX.lastIndex = 0;
+function findLineDelimitedBlockEnd(text, startIndex, endRegex) {
+    endRegex.lastIndex = startIndex;
+    const match = endRegex.exec(text);
+    endRegex.lastIndex = 0;
     return match ? match.index + match[0].length : -1;
 }
 
-function findConventionalThinkStart(text, startIndex) {
-    THINK_START_REGEX.lastIndex = startIndex;
-    const match = THINK_START_REGEX.exec(text);
-    THINK_START_REGEX.lastIndex = 0;
+function findLineDelimitedBlockStart(text, startIndex, startRegex) {
+    startRegex.lastIndex = startIndex;
+    const match = startRegex.exec(text);
+    startRegex.lastIndex = 0;
     return match ? match.index : -1;
+}
+
+function findConventionalThinkEnd(text, startIndex) {
+    return findLineDelimitedBlockEnd(text, startIndex, THINK_END_REGEX);
+}
+
+function findConventionalThinkStart(text, startIndex) {
+    return findLineDelimitedBlockStart(text, startIndex, THINK_START_REGEX);
+}
+
+function findThoughtChainEnd(text, startIndex) {
+    return findLineDelimitedBlockEnd(text, startIndex, THOUGHT_CHAIN_END_LINE_REGEX);
+}
+
+function findThoughtChainStart(text, startIndex) {
+    return findLineDelimitedBlockStart(text, startIndex, THOUGHT_CHAIN_START_LINE_REGEX);
 }
 
 function findParagraphStableCutoff(text, floorOffset) {
@@ -1002,15 +1020,16 @@ function findExplicitStablePrefix(text, startOffset = 0) {
             continue;
         }
 
-        if (startsWithAt(text, index, THOUGHT_CHAIN_START)) {
-            const endIndex = text.indexOf(THOUGHT_CHAIN_END, index + THOUGHT_CHAIN_START.length);
-            if (endIndex === -1) {
+        const thoughtChainStart = findThoughtChainStart(text, index);
+        if (thoughtChainStart === index) {
+            const thoughtChainEnd = findThoughtChainEnd(text, index);
+            if (thoughtChainEnd === -1) {
                 blockedByUnclosedExplicitBlock = true;
                 break;
             }
-            stableCutoff = endIndex + THOUGHT_CHAIN_END.length;
-            paragraphFloor = stableCutoff;
-            index = stableCutoff;
+            stableCutoff = thoughtChainEnd;
+            paragraphFloor = thoughtChainEnd;
+            index = thoughtChainEnd;
             continue;
         }
 

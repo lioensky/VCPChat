@@ -127,11 +127,26 @@
     }
 
     function maskConventionalThoughts(text, chars) {
-        const regex = /<think(?:ing)?>[\s\S]*?(?:<\/think(?:ing)?>|$)/gi;
-        let match;
-        while ((match = regex.exec(text)) !== null) {
-            maskRange(chars, match.index, match.index + match[0].length);
+        // 仅将独占行的 <think>/<thinking> 视为协议入口；
+        // 闭合标签同样必须独占一行，避免正文中的标签示例遮蔽后续 Flowlock 指令。
+        const startRegex = /^[ \t]*<think(?:ing)?>[ \t]*(?:\r?\n|$)/gim;
+        const endRegex = /^[ \t]*<\/think(?:ing)?>[ \t]*(?:\r?\n|$)/gim;
+        let startMatch;
+
+        while ((startMatch = startRegex.exec(text)) !== null) {
+            endRegex.lastIndex = startMatch.index + startMatch[0].length;
+            const endMatch = endRegex.exec(text);
+            const end = endMatch
+                ? endMatch.index + endMatch[0].length
+                : text.length;
+
+            maskRange(chars, startMatch.index, end);
+            startRegex.lastIndex = Math.max(end, startMatch.index + startMatch[0].length);
+            endRegex.lastIndex = 0;
         }
+
+        startRegex.lastIndex = 0;
+        endRegex.lastIndex = 0;
     }
 
     function maskToolCallSummaries(text, chars) {
