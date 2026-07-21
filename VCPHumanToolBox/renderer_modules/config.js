@@ -893,8 +893,8 @@ export const tools = {
         ]
     },
     'LightMemo': {
-        displayName: '快速回忆 / 语义测绘 / V9.1 对照测试',
-        description: '主动检索日记本或知识库；支持语义距离测绘，以及 TagMemo V9.1 单轨记忆寻址对照测试，比较原始 KNN、请求开始时捕获的不可变 V9.1 ArtifactBundle 与可选独立 Rerank。[后端插件: LightMemo]',
+        displayName: '快速回忆 / 语义测绘 / TagMemo 实验',
+        description: '主动检索日记本或知识库；支持语义距离测绘、TagMemo V9.1 单轨记忆寻址对照测试，以及 TagMemo V10 Alpha 统一认知几何实验。[后端插件: LightMemo]',
         commands: {
             'query': {
                 description: '快速回忆 — 主动检索日记本或知识库',
@@ -922,7 +922,7 @@ export const tools = {
                 ]
             },
             'tagmemo_ab': {
-                description: 'TagMemo V9.1 单轨记忆寻址对照测试 — 保留 tagmemo_ab 命令名以兼容既有调用；固定比较原始 KNN 与请求开始时捕获的不可变 V9.1 ArtifactBundle，并可加入独立 Rerank 横向基线。',
+                description: 'TagMemo V9.1 单轨记忆寻址对照测试 — 保留 tagmemo_ab 命令名以兼容既有调用，但不再加载 V8.3 资产；固定比较原始 KNN、请求开始时捕获的不可变 V9.1 ArtifactBundle，以及可选的独立 Rerank。',
                 params: [
                     { name: 'ab_mode', type: 'radio', required: false, advanced: false, options: ['A', 'B'], optionLabels: { A: 'A — 固定对称候选超集对照', B: 'B — 端到端 Top-K 对照' }, default: 'A', description: '测试模式' },
                     { name: 'query', type: 'textarea', required: true, placeholder: '输入用于比较原始 KNN 与 TagMemo V9.1 的记忆寻址查询' },
@@ -930,13 +930,28 @@ export const tools = {
                     { name: 'maid', type: 'text', required: false, advanced: false, placeholder: '按署名限定作用域', description: '作用域：署名（folder、maid 或全库三选一）' },
                     { name: 'search_all_knowledge_bases', type: 'checkbox', required: false, advanced: false, default: false, description: '全库测试（成本较高；启用后可不填 folder/maid）' },
                     { name: 'k', type: 'number', required: false, default: 5, min: 1, step: 1, description: '模式 B 每条路径的 Top-K 数量，也是模式 A 表格的基础展示量' },
-                    { name: 'top_l', type: 'number', required: false, default: 20, min: 1, step: 1, placeholder: '默认 max(20, k×4)；推荐 30 或 40', description: 'KNN、V9.1 与可选 BM25 各自进入固定对称超集的候选数（仅模式 A）', dependsOn: { field: 'ab_mode', value: 'A' } },
+                    { name: 'top_l', type: 'number', required: false, min: 1, step: 1, placeholder: '留空时使用 max(20, k×4)；推荐 30 或 40', description: 'KNN、V9.1 与可选 BM25 各自进入固定对称超集的候选数（仅模式 A）', dependsOn: { field: 'ab_mode', value: 'A' } },
                     { name: 'tag_boost', type: 'number', required: false, default: 0.6, min: 0, max: 1, step: 0.05, description: 'V9.1 TagMemo 增强强度（0–1）' },
                     { name: 'potential_field', type: 'checkbox', required: false, default: true, description: '在 V9.1 查询级能量场上执行 Potential Field 重排' },
                     { name: 'BM25', type: 'checkbox', required: false, default: true, description: '将 BM25 Top-L 纳入固定对称候选超集（仅模式 A）', dependsOn: { field: 'ab_mode', value: 'A' } },
                     { name: 'compare_rerank', type: 'checkbox', required: false, default: false, description: '增加独立 Rerank 横向基线；需预先配置 RerankUrl、RerankApi 和 RerankModel' },
                     { name: 'core_tags', type: 'textarea', required: false, placeholder: '核心标签；支持 JSON 数组或逗号、空格等分隔字符串', description: '核心标签' },
                     { name: 'core_boost_factor', type: 'number', required: false, default: 1.33, min: 0, step: 0.01, description: '核心标签额外增益' }
+                ]
+            },
+            'tagmemo_v10': {
+                description: 'TagMemo V10 Alpha 统一认知几何实验 — 不替换 V9.2 生产搜索；在同一不可变 V10 Artifact 与同一对称候选超集上运行 Local/Transfer 双尺度场、统一路径几何及 Pure/Gated/Observed 三臂，返回可供服务器批量脚本解析的 JSON 文本。',
+                params: [
+                    { name: 'query', type: 'textarea', required: true, placeholder: '输入 TagMemo V10 Alpha 实验查询文本' },
+                    { name: 'folder', type: 'text', required: false, advanced: false, placeholder: '日记/知识库文件夹，例如：VCP开发', description: '作用域：文件夹（权限实验建议明确指定 folder 或 maid）' },
+                    { name: 'maid', type: 'text', required: false, advanced: false, placeholder: '按署名限定作用域', description: '作用域：署名（folder、maid 或全库三选一）' },
+                    { name: 'search_all_knowledge_bases', type: 'checkbox', required: false, advanced: false, default: false, description: '全库实验（成本较高；权限实验不建议启用）' },
+                    { name: 'k', type: 'number', required: false, default: 5, min: 1, step: 1, description: '每个实验臂返回的 Top-K 数量' },
+                    { name: 'source_k', type: 'number', required: false, default: 16, min: 1, step: 1, description: '原始查询向量注入 V10 源场时读取的 Tag 数量' },
+                    { name: 'experiment_arm', type: 'select', required: false, options: ['all', 'pure', 'gated', 'observed'], optionLabels: { all: 'All — 三臂共享实验上下文', pure: 'Pure — 不读取观测', gated: 'Gated — 门控实验臂', observed: 'Observed — 完整观测实验臂' }, default: 'all', description: '实验臂；all 共享同一 Artifact、Query State、双尺度场、候选超集与曲线' },
+                    { name: 'disabled_observables', type: 'textarea', required: false, placeholder: '例如：closure，或 direct, structural, thematic, closure', description: 'D/S/T/C 消融列表；支持 JSON 数组或分隔字符串。Observed 中被禁用项的边际贡献严格为 0' },
+                    { name: 'BM25', type: 'checkbox', required: false, default: true, description: '让 BM25 候选进入 V10 对称候选超集' },
+                    { name: 'force_artifact_rebuild', type: 'checkbox', required: false, default: false, description: '强制重新编译并发布 V10 内存 Artifact；正式跑批建议仅第一条预热请求启用，后续固定 artifactSig' }
                 ]
             }
         }
