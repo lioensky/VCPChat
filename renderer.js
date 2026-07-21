@@ -223,23 +223,26 @@ async function interruptActiveResponseFromSendButton() {
         result = await interruptHandler.interrupt(activeMessage.id);
     }
 
+    if (result.success) {
+        // 与消息右键菜单保持一致：中止成功后等待主进程发送最终的 end/error 事件。
+        // 不在此处提前 finalize，否则仍在 IPC 队列中的最后几个 chunk 会因消息已 finalized
+        // 而被 appendStreamChunk 丢弃，导致已经输出到界面上的半截内容无法完整落盘。
+        uiHelperFunctions?.showToastNotification?.('已发送中止信号。', 'success');
+        return true;
+    }
+
+    // 只有后端中止请求失败时才本地兜底收尾，避免消息永久停留在流式状态。
     if (window.messageRenderer && typeof window.messageRenderer.finalizeStreamedMessage === 'function') {
         await window.messageRenderer.finalizeStreamedMessage(
             activeMessage.id,
             'cancelled_by_user',
             messageContext,
-            { error: '用户已中止回复。' }
+            { error: result.error || '无法发送中止请求，已在本地停止流式消息。' }
         );
     }
 
     updateSendButtonState();
-
-    if (result.success) {
-        uiHelperFunctions?.showToastNotification?.('已发送中止信号。', 'success');
-        return true;
-    }
-
-    uiHelperFunctions?.showToastNotification?.(`中止失败：${result.error || '未知错误'}`, 'error');
+    uiHelperFunctions?.showToastNotification?.(`中止失败：${result.error || '未知错误'}，已在本地停止。`, 'error');
     return true;
 }
 
