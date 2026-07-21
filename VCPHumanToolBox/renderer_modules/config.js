@@ -949,7 +949,7 @@ export const tools = {
                     { name: 'k', type: 'number', required: false, default: 5, min: 1, step: 1, description: '每个实验臂返回的 Top-K 数量' },
                     { name: 'source_k', type: 'number', required: false, default: 16, min: 1, step: 1, description: '原始查询向量注入 V10 源场时读取的 Tag 数量' },
                     { name: 'experiment_arm', type: 'select', required: false, options: ['all', 'pure', 'gated', 'observed'], optionLabels: { all: 'All — 三臂共享实验上下文', pure: 'Pure — 不读取观测', gated: 'Gated — 门控实验臂', observed: 'Observed — 完整观测实验臂' }, default: 'all', description: '实验臂；all 共享同一 Artifact、Query State、双尺度场、候选超集与曲线' },
-                    { name: 'disabled_observables', type: 'textarea', required: false, placeholder: '例如：closure，或 direct, structural, thematic, closure', description: 'D/S/T/C 消融列表；支持 JSON 数组或分隔字符串。Observed 中被禁用项的边际贡献严格为 0' },
+                    { name: 'disabled_observables', type: 'checkbox_group', required: false, options: ['direct', 'structural', 'thematic', 'closure'], optionLabels: { direct: 'D — Direct（直接观测）', structural: 'S — Structural（结构观测）', thematic: 'T — Thematic（主题观测）', closure: 'C — Closure（闭包观测）' }, default: [], description: 'D/S/T/C 消融列表（勾选要禁用的观测）；Observed 中被禁用项的边际贡献严格为 0' },
                     { name: 'BM25', type: 'checkbox', required: false, default: true, description: '让 BM25 候选进入 V10 对称候选超集' },
                     { name: 'force_artifact_rebuild', type: 'checkbox', required: false, default: false, description: '强制重新编译并发布 V10 内存 Artifact；正式跑批建议仅第一条预热请求启用，后续固定 artifactSig' }
                 ]

@@ -625,6 +625,32 @@ document.addEventListener('DOMContentLoaded', async () => {
                     }
                 });
             }
+        } else if (param.type === 'checkbox_group') {
+            input = document.createElement('div');
+            input.className = 'checkbox-group checkbox-options-group';
+            input.style.cssText = 'display:flex; flex-wrap:wrap; gap:8px 16px; padding:8px 0;';
+            const defaultValues = Array.isArray(param.default) ? param.default : [];
+
+            param.options.forEach(opt => {
+                const checkboxLabel = document.createElement('label');
+                checkboxLabel.className = 'checkbox-label';
+                checkboxLabel.style.cssText = 'display:flex; align-items:center; gap:6px; cursor:pointer; margin:0;';
+
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.name = `${param.name}__${opt}`;
+                checkbox.value = opt;
+                checkbox.dataset.checkboxGroup = param.name;
+                checkbox.checked = defaultValues.includes(opt);
+                checkbox.defaultChecked = checkbox.checked;
+
+                const checkboxText = document.createElement('span');
+                checkboxText.textContent = param.optionLabels?.[opt] || opt;
+
+                checkboxLabel.appendChild(checkbox);
+                checkboxLabel.appendChild(checkboxText);
+                input.appendChild(checkboxLabel);
+            });
         } else {
             input = document.createElement('input');
             input.type = param.type || 'text';
@@ -643,7 +669,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (param.name === 'maid' && !input.value) input.value = USER_NAME;
             }
             if (param.required) input.required = true;
-        } else {
+        } else if (param.type !== 'checkbox_group') {
             const hiddenInput = document.createElement('input');
             hiddenInput.type = 'hidden';
             hiddenInput.name = param.name;
@@ -1043,9 +1069,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         const args = {};
         let finalToolName = toolName;
 
+        toolForm.querySelectorAll('input[type="checkbox"][data-checkbox-group]:checked').forEach(input => {
+            const groupName = input.dataset.checkboxGroup;
+            if (!args[groupName]) args[groupName] = [];
+            args[groupName].push(input.value);
+        });
+
         for (let [key, value] of formData.entries()) {
             const inputElement = toolForm.querySelector(`[name="${key}"]`);
-            if (inputElement && inputElement.type === 'checkbox') {
+            if (inputElement?.dataset.checkboxGroup) {
+                continue;
+            } else if (inputElement && inputElement.type === 'checkbox') {
                 args[key] = inputElement.checked;
             } else if (value) {
                 args[key] = value;
