@@ -893,87 +893,44 @@ export const tools = {
         ]
     },
     'LightMemo': {
-        displayName: '快速回忆 / 语义测绘 / TagMemo 实验',
-        description: '主动检索日记本或知识库；支持语义距离测绘、TagMemo V9.1 对照、TagMemo V10 Alpha 统一认知几何实验，以及 KNN/V9 Production/V10 三臂的具名 A/B 评审。[后端插件: LightMemo]',
+        displayName: '快速回忆 / 生产构型 A/B 对比',
+        description: '检索日记或 TDB 冷知识库，并支持 KNN、TagMemo V9 与 RiverMemo Topology V3 生产构型 A/B 对比。[后端插件: LightMemo]',
         commands: {
             'query': {
-                description: '快速回忆 — 主动检索日记本或知识库',
+                description: '快速回忆 — 检索日记或 TDB 冷知识库',
                 params: [
-                    { name: 'maid', type: 'text', required: true, placeholder: 'Nova' },
-                    { name: 'folder', type: 'text', required: false, placeholder: '特定的索引文件夹' },
-                    { name: 'query', type: 'textarea', required: true, placeholder: '记忆检索内容' },
-                    { name: 'enginemode', type: 'select', required: false, options: ['rivermemo', 'tagmemo', 'knn'], optionLabels: { rivermemo: 'RiverMemo — 固定 Topology V3 生产管线（默认）', tagmemo: 'TagMemo — V9.1 向量增强', knn: 'KNN — 纯向量 / BM25 混合检索' }, default: 'rivermemo', description: '回忆引擎；仅用于快速回忆查询' },
-                    { name: 'k', type: 'number', required: false, default: 5 },
-                    { name: 'rerank', type: 'text', required: false, placeholder: 'true / false / rrf0.7（RRF融合）' },
-                    { name: 'tag_boost', type: 'text', required: false, placeholder: '0.6 或 0.6+（TagMemo增强）' },
-                    { name: 'use_bm25', type: 'text', required: false, default: 'true', placeholder: 'true / false' },
-                    { name: 'aimemo', type: 'checkbox', required: false, default: false, description: 'AI 总结：调用 LLM 对通用检索结果进行归纳总结' },
-                    { name: 'search_all_knowledge_bases', type: 'checkbox', required: false, default: true }
-                ]
-            },
-            'map_distance': {
-                description: '语义测绘 — 比较起点A与一个或多个目标的纯KNN、浪潮TagMemo、测地线v8与Tag能量场距离/相似度。command 固定 map_distance，也兼容 MapDistance、mapping、tagmemo_map、wave_map、测绘。',
-                params: [
-                    { name: 'start', type: 'textarea', required: true, placeholder: '起点A文本；也兼容 origin / a / start_query / query' },
-                    { name: 'targets', type: 'textarea', required: true, placeholder: '一个或多个目标文本；字符串支持英文逗号、中文逗号、顿号、| 或 ｜ 分隔；也可传JSON数组字符串。也兼容 target / b / goal / goals' },
-                    { name: 'tag_boost', type: 'text', required: false, default: '0.6', placeholder: '默认0.6；用于两端TagMemo增强的浪潮权重；传0关闭浪潮增强；测绘模式不需要加+号' },
-                    { name: 'alpha', type: 'number', required: false, placeholder: '测地线v8加权距离中的Tag能量场权重；也兼容 geo_alpha；未提供读取 geodesicRerank.alpha，否则默认0.35' },
-                    { name: 'core_tags', type: 'textarea', required: false, placeholder: '核心标签列表；支持字符串数组或分隔字符串，例如：TagMemo, RAG, 测地线' },
-                    { name: 'core_boost_factor', type: 'number', required: false, default: 1.33, placeholder: '核心标签额外加权因子，默认1.33' }
+                    { name: 'query', type: 'textarea', required: true, placeholder: '检索内容；可嵌入 [日期~日期]、[音乐检索] 或 [知识库:库名] 语法' },
+                    { name: 'enginemode', type: 'select', required: false, options: ['rivermemo', 'tagmemo', 'knn'], optionLabels: { rivermemo: 'RiverMemo — 固定 Topology V3 生产管线（默认）', tagmemo: 'TagMemo — V9.1 向量增强', knn: 'KNN — 纯向量 / BM25 混合检索' }, default: 'rivermemo', description: '普通回忆内核；冷知识库检索时忽略' },
+                    { name: 'maid', type: 'text', required: false, placeholder: '署名，或使用 [文件夹1,文件夹2]署名 限定作用域', description: '非全库日记检索的署名及作用域；可与 folder 合并目标文件夹' },
+                    { name: 'folder', type: 'text', required: false, placeholder: '一个或多个日记文件夹，以逗号、中文逗号或 | 分隔' },
+                    { name: 'knowledge_base', type: 'text', required: false, placeholder: '一个或多个 TDB 冷知识库名称，以逗号分隔', description: '显式检索 knowledge/ 下的冷知识库；也可在 query 中使用 [知识库] 语法' },
+                    { name: 'k', type: 'number', required: false, default: 5, min: 1, step: 1, description: '返回结果数量' },
+                    { name: 'rerank', type: 'text', required: false, default: 'false', placeholder: 'false / true / rrf / rrf0.7 / 0.7', description: 'Rerank 精排或 RRF 融合；数字表示 Reranker 权重' },
+                    { name: 'BM25', type: 'checkbox', required: false, default: true, description: '启用日记检索的 BM25 初筛与混合打分；冷知识库检索时忽略' },
+                    { name: 'search_all_knowledge_bases', type: 'checkbox', required: false, default: false, description: '搜索所有未屏蔽的日记本；关闭时按 maid/folder 定位' },
+                    { name: 'tag_boost', type: 'text', required: false, default: '0.5', placeholder: '0.5 或 0.6+', description: 'RiverMemo：V9 降噪源强度；TagMemo：V9.1 增强，+ 后缀开启势能场；KNN 与冷知识库忽略' },
+                    { name: 'core_tags', type: 'textarea', required: false, placeholder: 'JSON 字符串数组，例如 ["TagMemo","RAG"]', description: 'TagMemo 优先聚焦的核心标签' },
+                    { name: 'core_boost_factor', type: 'number', required: false, default: 1.33, min: 0, step: 0.01, description: '核心标签额外加权因子' },
+                    { name: 'aimemo', type: 'text', required: false, default: 'false', placeholder: 'false / true / aimemo+ / 预设名', description: '对最终候选执行 AI 总结；非布尔字符串可作为 MoreAIMemoPresets 预设名' },
+                    { name: 'aimemo_preset', type: 'text', required: false, placeholder: 'RAGDiaryPlugin AIMemo 预设名', description: '显式指定预设并自动开启 AIMemo，优先于 aimemo 中的预设名' }
                 ]
             },
             'tagmemo_ab': {
-                description: 'TagMemo V9.1 单轨记忆寻址对照测试 — 保留 tagmemo_ab 命令名以兼容既有调用，但不再加载 V8.3 资产；固定比较原始 KNN、请求开始时捕获的不可变 V9.1 ArtifactBundle，以及可选的独立 Rerank。',
+                description: '生产构型 A/B 对比 — 在同一 SQL 权限作用域、查询向量和候选事实域中固定比较原始 KNN、标准 TagMemo V9、Rust/Rayon RiverMemo Topology V3，并默认增加独立 Rerank。输出包含重合率和统一排名表的紧凑 Markdown；不运行任何 V10 实验构型。',
                 params: [
-                    { name: 'ab_mode', type: 'radio', required: false, advanced: false, options: ['A', 'B'], optionLabels: { A: 'A — 固定对称候选超集对照', B: 'B — 端到端 Top-K 对照' }, default: 'A', description: '测试模式' },
-                    { name: 'query', type: 'textarea', required: true, placeholder: '输入用于比较原始 KNN 与 TagMemo V9.1 的记忆寻址查询' },
-                    { name: 'folder', type: 'text', required: false, advanced: false, placeholder: '日记/知识库文件夹，例如：VCP开发', description: '作用域：文件夹（folder、maid 或全库三选一）' },
-                    { name: 'maid', type: 'text', required: false, advanced: false, placeholder: '按署名限定作用域', description: '作用域：署名（folder、maid 或全库三选一）' },
-                    { name: 'search_all_knowledge_bases', type: 'checkbox', required: false, advanced: false, default: false, description: '全库测试（成本较高；启用后可不填 folder/maid）' },
-                    { name: 'k', type: 'number', required: false, default: 5, min: 1, step: 1, description: '模式 B 每条路径的 Top-K 数量，也是模式 A 表格的基础展示量' },
-                    { name: 'top_l', type: 'number', required: false, min: 1, step: 1, placeholder: '留空时使用 max(20, k×4)；推荐 30 或 40', description: 'KNN、V9.1 与可选 BM25 各自进入固定对称超集的候选数（仅模式 A）', dependsOn: { field: 'ab_mode', value: 'A' } },
-                    { name: 'tag_boost', type: 'number', required: false, default: 0.6, min: 0, max: 1, step: 0.05, description: 'V9.1 TagMemo 增强强度（0–1）' },
-                    { name: 'potential_field', type: 'checkbox', required: false, default: true, description: '在 V9.1 查询级能量场上执行 Potential Field 重排' },
-                    { name: 'BM25', type: 'checkbox', required: false, default: true, description: '将 BM25 Top-L 纳入固定对称候选超集（仅模式 A）', dependsOn: { field: 'ab_mode', value: 'A' } },
-                    { name: 'compare_rerank', type: 'checkbox', required: false, default: false, description: '增加独立 Rerank 横向基线；需预先配置 RerankUrl、RerankApi 和 RerankModel' },
-                    { name: 'core_tags', type: 'textarea', required: false, placeholder: '核心标签；支持 JSON 数组或逗号、空格等分隔字符串', description: '核心标签' },
-                    { name: 'core_boost_factor', type: 'number', required: false, default: 1.33, min: 0, step: 0.01, description: '核心标签额外增益' }
+                    { name: 'query', type: 'textarea', required: true, placeholder: '输入生产构型对比查询，例如：TagMemo 如何恢复连续记忆中的逻辑链' },
+                    { name: 'folder', type: 'text', required: false, advanced: false, placeholder: '日记文件夹，例如：VCP开发', description: '作用域：必须提供 folder/maid，或显式开启全库搜索；可与 maid 同时使用' },
+                    { name: 'maid', type: 'text', required: false, advanced: false, placeholder: '按署名限定作用域', description: '作用域：必须提供 maid/folder，或显式开启全库搜索；可与 folder 同时使用' },
+                    { name: 'search_all_knowledge_bases', type: 'checkbox', required: false, advanced: false, default: false, description: '显式开启全库对比；启用后可不填 folder/maid' },
+                    { name: 'k', type: 'number', required: false, default: 5, min: 1, step: 1, description: '每条轨道展示的 Top-K 数量' },
+                    { name: 'candidate_k', type: 'number', required: false, min: 1, step: 1, placeholder: '留空使用 max(30, k×5)', description: 'TagMemo V9、Rust V3 与 Rerank 共用的对称候选窗口；后端也兼容 candidateK' },
+                    { name: 'tag_boost', type: 'number', required: false, default: 0.6, min: 0, max: 1, step: 0.05, description: 'V9 增强及 Rust V3 共享 V9 观测源的强度' },
+                    { name: 'core_tags', type: 'textarea', required: false, placeholder: 'JSON 数组或逗号、空格分隔的核心 Tag', description: '核心 Tag' },
+                    { name: 'core_boost_factor', type: 'number', required: false, default: 1.33, min: 0, step: 0.01, description: '核心 Tag 额外增强系数' },
+                    { name: 'BM25', type: 'checkbox', required: false, default: true, description: '向 Rust V3 候选超集提供 BM25 来源；后端也兼容 bm25/use_bm25' },
+                    { name: 'compare_rerank', type: 'checkbox', required: false, default: true, description: '增加独立 Rerank 轨道；未配置服务时报告会明确标记不可用' }
                 ]
             },
-            'tagmemo_v10': {
-                description: 'TagMemo V10 Alpha 统一认知几何实验 — 不替换 V9.2 生产搜索；在同一不可变 V10 Artifact 与同一对称候选超集上运行 Local/Transfer 双尺度场、统一路径几何及 Pure/Gated/Observed 三臂，返回可供服务器批量脚本解析的 JSON 文本。',
-                params: [
-                    { name: 'query', type: 'textarea', required: true, placeholder: '输入 TagMemo V10 Alpha 实验查询文本' },
-                    { name: 'folder', type: 'text', required: false, advanced: false, placeholder: '日记/知识库文件夹，例如：VCP开发', description: '作用域：文件夹（权限实验建议明确指定 folder 或 maid）' },
-                    { name: 'maid', type: 'text', required: false, advanced: false, placeholder: '按署名限定作用域', description: '作用域：署名（folder、maid 或全库三选一）' },
-                    { name: 'search_all_knowledge_bases', type: 'checkbox', required: false, advanced: false, default: false, description: '全库实验（成本较高；权限实验不建议启用）' },
-                    { name: 'k', type: 'number', required: false, default: 5, min: 1, step: 1, description: '每个实验臂返回的 Top-K 数量' },
-                    { name: 'source_k', type: 'number', required: false, default: 16, min: 1, step: 1, description: '原始查询向量注入 V10 源场时读取的 Tag 数量' },
-                    { name: 'experiment_arm', type: 'select', required: false, options: ['all', 'pure', 'gated', 'observed'], optionLabels: { all: 'All — 三臂共享实验上下文', pure: 'Pure — 不读取观测', gated: 'Gated — 门控实验臂', observed: 'Observed — 完整观测实验臂' }, default: 'all', description: '实验臂；all 共享同一 Artifact、Query State、双尺度场、候选超集与曲线' },
-                    { name: 'disabled_observables', type: 'checkbox_group', required: false, options: ['direct', 'structural', 'thematic', 'closure'], optionLabels: { direct: 'D — Direct（直接观测）', structural: 'S — Structural（结构观测）', thematic: 'T — Thematic（主题观测）', closure: 'C — Closure（闭包观测）' }, default: [], description: 'D/S/T/C 消融列表（勾选要禁用的观测）；Observed 中被禁用项的边际贡献严格为 0' },
-                    { name: 'BM25', type: 'checkbox', required: false, default: true, description: '让 BM25 候选进入 V10 对称候选超集' },
-                    { name: 'force_artifact_rebuild', type: 'checkbox', required: false, default: false, description: '强制重新编译并发布 V10 内存 Artifact；正式跑批建议仅第一条预热请求启用，后续固定 artifactSig' }
-                ]
-            },
-            'tagmemo_v10_ab': {
-                description: 'TagMemo 统一寻址具名 A/B 评审 — 固定运行 KNN、当前 V9 Production、V10 Unified-Pure、Unified-Gated、Unified-Observed，并可选加入独立 Rerank；输出适合人类或隔离 AI 评分员直接阅读和裁决的具名 Markdown 文档，不返回 JSON。默认在统一排名总表后截断，可开启完整详情继续输出候选正文、诊断、计时和评审区。',
-                params: [
-                    { name: 'query', type: 'textarea', required: true, placeholder: '输入统一 A/B 评审查询，例如：TagMemo 统一认知几何如何改善前因恢复与跨主体迁移' },
-                    { name: 'folder', type: 'text', required: false, advanced: false, placeholder: '日记/知识库文件夹，例如：VCP开发', description: '作用域：文件夹（必须提供 folder/maid，或显式开启全库搜索；可与 maid 同时使用）' },
-                    { name: 'maid', type: 'text', required: false, advanced: false, placeholder: '按署名限定作用域，例如：小克', description: '作用域：署名（必须提供 maid/folder，或显式开启全库搜索；可与 folder 同时使用）' },
-                    { name: 'search_all_knowledge_bases', type: 'checkbox', required: false, advanced: false, default: false, description: '显式开启全库评审（成本较高；启用后可不填 folder/maid）' },
-                    { name: 'k', type: 'number', required: false, advanced: false, default: 5, min: 1, step: 1, description: '每条具名轨道展示的 Top-K 数量' },
-                    { name: 'source_k', type: 'number', required: false, default: 16, min: 1, step: 1, description: 'V10 查询源场注入的 Tag 数量；后端也兼容 sourceK' },
-                    { name: 'tag_boost', type: 'number', required: false, default: 0.6, min: 0, max: 1, step: 0.05, description: 'V9 Production 增强强度；始终使用请求开始时捕获的不可变生产 Artifact，并在能量场可用时执行生产测地重排' },
-                    { name: 'core_tags', type: 'textarea', required: false, placeholder: '支持 JSON 数组或逗号、空格等分隔字符串', description: 'V9 Production 核心 Tag' },
-                    { name: 'core_boost_factor', type: 'number', required: false, default: 1.33, min: 0, step: 0.01, description: 'V9 Production 核心 Tag 额外增益' },
-                    { name: 'disabled_observables', type: 'checkbox_group', required: false, options: ['direct', 'structural', 'thematic', 'closure'], optionLabels: { direct: 'D — Direct（直接观测）', structural: 'S — Structural（结构观测）', thematic: 'T — Thematic（主题观测）', closure: 'C — Closure（闭包观测）' }, default: [], description: 'V10 D/S/T/C 消融列表（勾选要禁用的观测）；后端也兼容 disabledObservables' },
-                    { name: 'BM25', type: 'checkbox', required: false, advanced: false, default: true, description: '让 BM25 来源进入 V10 对称候选超集；后端也兼容 bm25/use_bm25' },
-                    { name: 'compare_rerank', type: 'checkbox', required: false, advanced: false, default: false, description: '增加具名 Rerank 轨道；未配置 Rerank 服务时 Markdown 将标记为降级输出' },
-                    { name: 'include_details', type: 'checkbox', required: false, advanced: false, default: false, description: '输出完整候选正文、深度诊断、性能计时和评审区；关闭时在统一排名总表后截断以降低 Token 成本' },
-                    { name: 'force_artifact_rebuild', type: 'checkbox', required: false, default: false, description: '强制重建 V10 Artifact；正式批量评审建议仅第一条预热请求启用' }
-                ]
-            }
         }
     },
     'ThoughtClusterManager': {
