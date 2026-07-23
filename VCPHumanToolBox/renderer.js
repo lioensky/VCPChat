@@ -1086,22 +1086,34 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         }
 
+        const lightMemoExplicitScopeCommands = new Set([
+            'tagmemo_ab',
+            'tagmemo_v10',
+            'tagmemo_v10_ab'
+        ]);
+        const requiresExplicitScope = toolName === 'LightMemo'
+            && lightMemoExplicitScopeCommands.has(args.command);
+
         if (
-            toolName === 'LightMemo'
-            && args.command === 'tagmemo_ab'
+            requiresExplicitScope
             && !String(args.maid || '').trim()
             && !String(args.folder || '').trim()
             && args.search_all_knowledge_bases !== true
         ) {
+            const commandLabels = {
+                tagmemo_ab: 'TagMemo V9.1 对照测试',
+                tagmemo_v10: 'TagMemo V10 Alpha 实验',
+                tagmemo_v10_ab: 'TagMemo 统一寻址具名 A/B 评审'
+            };
             renderResult({
                 status: 'error',
-                error: 'TagMemoAB 必须选择作用域：填写 folder、填写 maid，或启用全库测试。'
+                error: `${commandLabels[args.command]}必须选择作用域：填写 folder、填写 maid，或启用全库搜索。`
             }, toolName);
             return;
         }
 
-        // maid 兜底：其他工具未填写时使用默认值。TagMemoAB 保留显式作用域语义。
-        if (!args.maid && !(toolName === 'LightMemo' && args.command === 'tagmemo_ab')) {
+        // maid 兜底：普通工具未填写时使用默认值；TagMemo 实验命令保留显式作用域语义。
+        if (!args.maid && !requiresExplicitScope) {
             args.maid = USER_NAME;
         }
         // 计时器

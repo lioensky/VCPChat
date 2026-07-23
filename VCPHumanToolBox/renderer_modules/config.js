@@ -894,7 +894,7 @@ export const tools = {
     },
     'LightMemo': {
         displayName: '快速回忆 / 语义测绘 / TagMemo 实验',
-        description: '主动检索日记本或知识库；支持语义距离测绘、TagMemo V9.1 单轨记忆寻址对照测试，以及 TagMemo V10 Alpha 统一认知几何实验。[后端插件: LightMemo]',
+        description: '主动检索日记本或知识库；支持语义距离测绘、TagMemo V9.1 对照、TagMemo V10 Alpha 统一认知几何实验，以及 KNN/V9 Production/V10 三臂的具名 A/B 评审。[后端插件: LightMemo]',
         commands: {
             'query': {
                 description: '快速回忆 — 主动检索日记本或知识库',
@@ -902,6 +902,7 @@ export const tools = {
                     { name: 'maid', type: 'text', required: true, placeholder: 'Nova' },
                     { name: 'folder', type: 'text', required: false, placeholder: '特定的索引文件夹' },
                     { name: 'query', type: 'textarea', required: true, placeholder: '记忆检索内容' },
+                    { name: 'enginemode', type: 'select', required: false, options: ['rivermemo', 'tagmemo', 'knn'], optionLabels: { rivermemo: 'RiverMemo — 固定 Topology V3 生产管线（默认）', tagmemo: 'TagMemo — V9.1 向量增强', knn: 'KNN — 纯向量 / BM25 混合检索' }, default: 'rivermemo', description: '回忆引擎；仅用于快速回忆查询' },
                     { name: 'k', type: 'number', required: false, default: 5 },
                     { name: 'rerank', type: 'text', required: false, placeholder: 'true / false / rrf0.7（RRF融合）' },
                     { name: 'tag_boost', type: 'text', required: false, placeholder: '0.6 或 0.6+（TagMemo增强）' },
@@ -952,6 +953,24 @@ export const tools = {
                     { name: 'disabled_observables', type: 'checkbox_group', required: false, options: ['direct', 'structural', 'thematic', 'closure'], optionLabels: { direct: 'D — Direct（直接观测）', structural: 'S — Structural（结构观测）', thematic: 'T — Thematic（主题观测）', closure: 'C — Closure（闭包观测）' }, default: [], description: 'D/S/T/C 消融列表（勾选要禁用的观测）；Observed 中被禁用项的边际贡献严格为 0' },
                     { name: 'BM25', type: 'checkbox', required: false, default: true, description: '让 BM25 候选进入 V10 对称候选超集' },
                     { name: 'force_artifact_rebuild', type: 'checkbox', required: false, default: false, description: '强制重新编译并发布 V10 内存 Artifact；正式跑批建议仅第一条预热请求启用，后续固定 artifactSig' }
+                ]
+            },
+            'tagmemo_v10_ab': {
+                description: 'TagMemo 统一寻址具名 A/B 评审 — 固定运行 KNN、当前 V9 Production、V10 Unified-Pure、Unified-Gated、Unified-Observed，并可选加入独立 Rerank；输出适合人类或隔离 AI 评分员直接阅读和裁决的具名 Markdown 文档。',
+                params: [
+                    { name: 'query', type: 'textarea', required: true, placeholder: '输入统一 A/B 评审查询，例如：TagMemo 统一认知几何如何改善前因恢复与跨主体迁移' },
+                    { name: 'folder', type: 'text', required: false, advanced: false, placeholder: '日记/知识库文件夹，例如：VCP开发', description: '作用域：文件夹（folder、maid 或全库三选一）' },
+                    { name: 'maid', type: 'text', required: false, advanced: false, placeholder: '按署名限定作用域，例如：小克', description: '作用域：署名（可与 folder 同时使用）' },
+                    { name: 'search_all_knowledge_bases', type: 'checkbox', required: false, advanced: false, default: false, description: '全库评审（成本较高；启用后可不填 folder/maid）' },
+                    { name: 'k', type: 'number', required: false, advanced: false, default: 5, min: 1, step: 1, description: '每条具名轨道展示的 Top-K 数量' },
+                    { name: 'source_k', type: 'number', required: false, default: 16, min: 1, step: 1, description: 'V10 查询源场注入的 Tag 数量' },
+                    { name: 'tag_boost', type: 'number', required: false, default: 0.6, min: 0, max: 1, step: 0.05, description: 'V9 Production 增强强度；使用请求开始时捕获的不可变生产 Artifact' },
+                    { name: 'core_tags', type: 'textarea', required: false, placeholder: '支持 JSON 数组或逗号、空格等分隔字符串', description: 'V9 Production 核心 Tag' },
+                    { name: 'core_boost_factor', type: 'number', required: false, default: 1.33, min: 0, step: 0.01, description: 'V9 Production 核心 Tag 额外增益' },
+                    { name: 'disabled_observables', type: 'checkbox_group', required: false, options: ['direct', 'structural', 'thematic', 'closure'], optionLabels: { direct: 'D — Direct（直接观测）', structural: 'S — Structural（结构观测）', thematic: 'T — Thematic（主题观测）', closure: 'C — Closure（闭包观测）' }, default: [], description: 'V10 D/S/T/C 消融列表（勾选要禁用的观测）' },
+                    { name: 'BM25', type: 'checkbox', required: false, advanced: false, default: true, description: '让 BM25 来源进入 V10 对称候选超集' },
+                    { name: 'compare_rerank', type: 'checkbox', required: false, advanced: false, default: false, description: '增加具名 Rerank 轨道；未配置 Rerank 服务时 Markdown 将标记为降级输出' },
+                    { name: 'force_artifact_rebuild', type: 'checkbox', required: false, default: false, description: '强制重建 V10 Artifact；正式批量评审建议仅第一条预热请求启用' }
                 ]
             }
         }
