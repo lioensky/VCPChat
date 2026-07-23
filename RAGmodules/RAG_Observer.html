@@ -791,6 +791,153 @@
         align-items: center;
       }
 
+      /* --- RiverMemo V10 Topology Metrics --- */
+      .rivermemo-panel {
+        position: relative;
+        margin-bottom: 12px;
+        padding: 12px;
+        overflow: hidden;
+        border: 1px solid rgba(26, 188, 156, 0.34);
+        border-radius: 12px;
+        background:
+          linear-gradient(135deg, rgba(26, 188, 156, 0.12), rgba(52, 152, 219, 0.06)),
+          rgba(0, 0, 0, 0.12);
+      }
+
+      .rivermemo-panel::after {
+        content: "";
+        position: absolute;
+        top: 0;
+        right: 0;
+        width: 34%;
+        height: 2px;
+        background: linear-gradient(90deg, transparent, rgba(80, 227, 194, 0.9));
+      }
+
+      .rivermemo-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        margin-bottom: 10px;
+      }
+
+      .rivermemo-title {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        color: #8ff5dc;
+        font-size: 0.82rem;
+        font-weight: 700;
+        letter-spacing: 0.35px;
+      }
+
+      .rivermemo-regime {
+        padding: 2px 8px;
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        border-radius: 999px;
+        font-family: "JetBrains Mono", monospace;
+        font-size: 0.7rem;
+        text-transform: uppercase;
+      }
+
+      .rivermemo-regime.regime-sparse {
+        color: #ffd180;
+        border-color: rgba(255, 152, 0, 0.45);
+        background: rgba(255, 152, 0, 0.12);
+      }
+
+      .rivermemo-regime.regime-dense {
+        color: #9be7a5;
+        border-color: rgba(76, 175, 80, 0.45);
+        background: rgba(76, 175, 80, 0.12);
+      }
+
+      .rivermemo-regime.regime-balanced,
+      .rivermemo-regime.regime-unknown {
+        color: #9dd8ff;
+        border-color: rgba(52, 152, 219, 0.45);
+        background: rgba(52, 152, 219, 0.12);
+      }
+
+      .rivermemo-metrics {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 8px;
+      }
+
+      .rivermemo-metric {
+        min-width: 0;
+        padding: 8px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 8px;
+        background: rgba(0, 0, 0, 0.16);
+      }
+
+      .rivermemo-metric-label {
+        margin-bottom: 4px;
+        overflow: hidden;
+        color: rgba(255, 255, 255, 0.48);
+        font-size: 0.66rem;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .rivermemo-metric-value {
+        overflow: hidden;
+        color: #f4fffc;
+        font-family: "JetBrains Mono", monospace;
+        font-size: 0.84rem;
+        font-weight: 700;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .rivermemo-funnel {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-top: 9px;
+        color: rgba(255, 255, 255, 0.62);
+        font-family: "JetBrains Mono", monospace;
+        font-size: 0.72rem;
+      }
+
+      .rivermemo-funnel-node {
+        flex: 1;
+        min-width: 0;
+        padding: 5px 7px;
+        border-radius: 6px;
+        background: rgba(255, 255, 255, 0.055);
+        text-align: center;
+      }
+
+      .rivermemo-funnel-arrow {
+        flex: 0 0 auto;
+        color: rgba(80, 227, 194, 0.72);
+      }
+
+      .rivermemo-identifiers {
+        display: flex;
+        gap: 8px;
+        margin-top: 8px;
+        color: rgba(255, 255, 255, 0.34);
+        font-family: "JetBrains Mono", monospace;
+        font-size: 0.62rem;
+      }
+
+      .rivermemo-identifiers span {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      @media (max-width: 620px) {
+        .rivermemo-metrics {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+
       /* --- Core Tag Highlighting --- */
       .core-tags-container {
         display: flex;
@@ -2323,6 +2470,93 @@
                   `;
       }
 
+      function formatRiverMemoNumber(value, digits = 0) {
+        const numeric = Number(value);
+        if (!Number.isFinite(numeric)) return "N/A";
+        return digits > 0 ? numeric.toFixed(digits) : numeric.toLocaleString();
+      }
+
+      function createRiverMemoHTML(data) {
+        if (!data?.useRiverMemo || !data.riverMemo || typeof data.riverMemo !== "object") {
+          return "";
+        }
+
+        const memo = data.riverMemo;
+        const omega = Number(memo.omega);
+        const omegaDisplay = Number.isFinite(omega) ? omega.toFixed(4) : "N/A";
+        const omegaPercent = Number.isFinite(omega)
+          ? `${Math.max(0, Math.min(100, omega * 100)).toFixed(1)}%`
+          : "N/A";
+        const offered = Number(memo.offeredCandidates);
+        const ranked = Number(memo.rankedCandidates);
+        const returned = Number(memo.returnedCandidates);
+        const rankRate =
+          Number.isFinite(offered) && offered > 0 && Number.isFinite(ranked)
+            ? `${((ranked / offered) * 100).toFixed(1)}%`
+            : "N/A";
+        const returnRate =
+          Number.isFinite(ranked) && ranked > 0 && Number.isFinite(returned)
+            ? `${((returned / ranked) * 100).toFixed(1)}%`
+            : "N/A";
+        const rawRegime = String(memo.regime || "unknown").toLowerCase();
+        const regimeClass = ["sparse", "dense", "balanced"].includes(rawRegime)
+          ? rawRegime
+          : "unknown";
+        const regimeLabels = {
+          sparse: "稀疏地形",
+          dense: "致密地形",
+          balanced: "均衡地形",
+          unknown: "未知地形",
+        };
+        const artifactSig = String(memo.artifactSig || "");
+        const queryId = String(memo.queryId || "");
+
+        return `
+          <div class="rivermemo-panel" title="RiverMemo 动态置信度与候选河网统计">
+            <div class="rivermemo-header">
+              <div class="rivermemo-title">
+                <span>≋</span>
+                <span>RiverMemo · Ω 动态置信度场</span>
+              </div>
+              <span class="rivermemo-regime regime-${regimeClass}">${regimeLabels[regimeClass]}</span>
+            </div>
+            <div class="rivermemo-metrics">
+              <div class="rivermemo-metric">
+                <div class="rivermemo-metric-label">Ω 可观测性</div>
+                <div class="rivermemo-metric-value">${escapeHTML(omegaDisplay)}</div>
+              </div>
+              <div class="rivermemo-metric">
+                <div class="rivermemo-metric-label">三维置信度</div>
+                <div class="rivermemo-metric-value">${escapeHTML(omegaPercent)}</div>
+              </div>
+              <div class="rivermemo-metric">
+                <div class="rivermemo-metric-label">排序保留率</div>
+                <div class="rivermemo-metric-value">${escapeHTML(rankRate)}</div>
+              </div>
+              <div class="rivermemo-metric">
+                <div class="rivermemo-metric-label">最终收束率</div>
+                <div class="rivermemo-metric-value">${escapeHTML(returnRate)}</div>
+              </div>
+            </div>
+            <div class="rivermemo-funnel" title="候选供给 → 拓扑排序 → 最终返回">
+              <span class="rivermemo-funnel-node">供给 ${escapeHTML(formatRiverMemoNumber(offered))}</span>
+              <span class="rivermemo-funnel-arrow">→</span>
+              <span class="rivermemo-funnel-node">排序 ${escapeHTML(formatRiverMemoNumber(ranked))}</span>
+              <span class="rivermemo-funnel-arrow">→</span>
+              <span class="rivermemo-funnel-node">返回 ${escapeHTML(formatRiverMemoNumber(returned))}</span>
+            </div>
+            ${
+              artifactSig || queryId
+                ? `<div class="rivermemo-identifiers">
+                    ${artifactSig ? `<span title="${escapeHTML(artifactSig)}">SIG ${escapeHTML(artifactSig.slice(0, 12))}…</span>` : ""}
+                    ${queryId ? `<span title="${escapeHTML(queryId)}">QID ${escapeHTML(queryId)}</span>` : ""}
+                  </div>`
+                : ""
+            }
+          </div>
+        `;
+      }
+
       // 1. RAG BLOCK
       function displayRagInfo(data) {
         // 审批类消息（请求/响应）不受 notificationsEnabled 开关影响，
@@ -2466,6 +2700,8 @@
                       `;
         }
 
+        const riverMemoHTML = createRiverMemoHTML(data);
+
         // Header
         // 用于复制原始数据：存入 Map，按 ID 索引，避免内联字符串转义问题
         const rawDataId = "raw_" + ++_rawDataIdCounter;
@@ -2486,9 +2722,25 @@
                           <span class="meta-pill">Time: ${escapeHTML(
                             String(!!data.useTime)
                           )}</span>
+                          <span class="meta-pill">Group: ${escapeHTML(
+                            String(!!data.useGroup)
+                          )}</span>
+                          <span class="meta-pill">VirtualIndex: ${escapeHTML(
+                            String(!!data.virtualIndex)
+                          )}</span>
                           <span class="meta-pill">ReRank: ${escapeHTML(
                             String(!!data.useRerank)
                           )}</span>
+                          ${
+                            data.useRiverMemo
+                              ? `<span class="meta-pill" style="color:#8ff5dc; border-color:rgba(26,188,156,0.65);">RiverMemo: ON</span>`
+                              : ""
+                          }
+                          ${
+                            data.fromCache
+                              ? `<span class="meta-pill" style="color:#b8c7ff; border-color:rgba(155,89,182,0.6);">Cache Hit</span>`
+                              : ""
+                          }
                           ${
                             data.useBM25
                               ? `<span class="meta-pill" style="color:#8fd3ff; border-color:#3498db;">BM25: ${escapeHTML(
@@ -2517,6 +2769,7 @@
                               : ""
                           }
                       </div>
+                      ${riverMemoHTML}
                       ${bm25DetailsHTML}
                       ${coreTagsHTML}
                       ${createContentHTML(data.query)}
