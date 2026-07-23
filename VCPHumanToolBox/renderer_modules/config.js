@@ -956,20 +956,21 @@ export const tools = {
                 ]
             },
             'tagmemo_v10_ab': {
-                description: 'TagMemo 统一寻址具名 A/B 评审 — 固定运行 KNN、当前 V9 Production、V10 Unified-Pure、Unified-Gated、Unified-Observed，并可选加入独立 Rerank；输出适合人类或隔离 AI 评分员直接阅读和裁决的具名 Markdown 文档。',
+                description: 'TagMemo 统一寻址具名 A/B 评审 — 固定运行 KNN、当前 V9 Production、V10 Unified-Pure、Unified-Gated、Unified-Observed，并可选加入独立 Rerank；输出适合人类或隔离 AI 评分员直接阅读和裁决的具名 Markdown 文档，不返回 JSON。默认在统一排名总表后截断，可开启完整详情继续输出候选正文、诊断、计时和评审区。',
                 params: [
                     { name: 'query', type: 'textarea', required: true, placeholder: '输入统一 A/B 评审查询，例如：TagMemo 统一认知几何如何改善前因恢复与跨主体迁移' },
-                    { name: 'folder', type: 'text', required: false, advanced: false, placeholder: '日记/知识库文件夹，例如：VCP开发', description: '作用域：文件夹（folder、maid 或全库三选一）' },
-                    { name: 'maid', type: 'text', required: false, advanced: false, placeholder: '按署名限定作用域，例如：小克', description: '作用域：署名（可与 folder 同时使用）' },
-                    { name: 'search_all_knowledge_bases', type: 'checkbox', required: false, advanced: false, default: false, description: '全库评审（成本较高；启用后可不填 folder/maid）' },
+                    { name: 'folder', type: 'text', required: false, advanced: false, placeholder: '日记/知识库文件夹，例如：VCP开发', description: '作用域：文件夹（必须提供 folder/maid，或显式开启全库搜索；可与 maid 同时使用）' },
+                    { name: 'maid', type: 'text', required: false, advanced: false, placeholder: '按署名限定作用域，例如：小克', description: '作用域：署名（必须提供 maid/folder，或显式开启全库搜索；可与 folder 同时使用）' },
+                    { name: 'search_all_knowledge_bases', type: 'checkbox', required: false, advanced: false, default: false, description: '显式开启全库评审（成本较高；启用后可不填 folder/maid）' },
                     { name: 'k', type: 'number', required: false, advanced: false, default: 5, min: 1, step: 1, description: '每条具名轨道展示的 Top-K 数量' },
-                    { name: 'source_k', type: 'number', required: false, default: 16, min: 1, step: 1, description: 'V10 查询源场注入的 Tag 数量' },
-                    { name: 'tag_boost', type: 'number', required: false, default: 0.6, min: 0, max: 1, step: 0.05, description: 'V9 Production 增强强度；使用请求开始时捕获的不可变生产 Artifact' },
+                    { name: 'source_k', type: 'number', required: false, default: 16, min: 1, step: 1, description: 'V10 查询源场注入的 Tag 数量；后端也兼容 sourceK' },
+                    { name: 'tag_boost', type: 'number', required: false, default: 0.6, min: 0, max: 1, step: 0.05, description: 'V9 Production 增强强度；始终使用请求开始时捕获的不可变生产 Artifact，并在能量场可用时执行生产测地重排' },
                     { name: 'core_tags', type: 'textarea', required: false, placeholder: '支持 JSON 数组或逗号、空格等分隔字符串', description: 'V9 Production 核心 Tag' },
                     { name: 'core_boost_factor', type: 'number', required: false, default: 1.33, min: 0, step: 0.01, description: 'V9 Production 核心 Tag 额外增益' },
-                    { name: 'disabled_observables', type: 'checkbox_group', required: false, options: ['direct', 'structural', 'thematic', 'closure'], optionLabels: { direct: 'D — Direct（直接观测）', structural: 'S — Structural（结构观测）', thematic: 'T — Thematic（主题观测）', closure: 'C — Closure（闭包观测）' }, default: [], description: 'V10 D/S/T/C 消融列表（勾选要禁用的观测）' },
-                    { name: 'BM25', type: 'checkbox', required: false, advanced: false, default: true, description: '让 BM25 来源进入 V10 对称候选超集' },
+                    { name: 'disabled_observables', type: 'checkbox_group', required: false, options: ['direct', 'structural', 'thematic', 'closure'], optionLabels: { direct: 'D — Direct（直接观测）', structural: 'S — Structural（结构观测）', thematic: 'T — Thematic（主题观测）', closure: 'C — Closure（闭包观测）' }, default: [], description: 'V10 D/S/T/C 消融列表（勾选要禁用的观测）；后端也兼容 disabledObservables' },
+                    { name: 'BM25', type: 'checkbox', required: false, advanced: false, default: true, description: '让 BM25 来源进入 V10 对称候选超集；后端也兼容 bm25/use_bm25' },
                     { name: 'compare_rerank', type: 'checkbox', required: false, advanced: false, default: false, description: '增加具名 Rerank 轨道；未配置 Rerank 服务时 Markdown 将标记为降级输出' },
+                    { name: 'include_details', type: 'checkbox', required: false, advanced: false, default: false, description: '输出完整候选正文、深度诊断、性能计时和评审区；关闭时在统一排名总表后截断以降低 Token 成本' },
                     { name: 'force_artifact_rebuild', type: 'checkbox', required: false, default: false, description: '强制重建 V10 Artifact；正式批量评审建议仅第一条预热请求启用' }
                 ]
             }
