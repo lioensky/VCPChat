@@ -1035,18 +1035,19 @@ function looksLikeSafeSingleDollarMath(content) {
 
     const hasExplicitMathSignal = /\\|[\^_=+\-*/<>]|[A-Za-z]\s*\(|\b(?:lim|sum|int|frac|sqrt|text|mathrm|mathbf|alpha|beta|gamma|theta|lambda|mu|sigma|pi|infty)\b/i.test(trimmedContent);
     const isSimpleNumericMath = /^[+-]?(?:\d+(?:[.,]\d+)*|\.\d+)(?:\s*(?:%|\\%|‰|°))?$/.test(trimmedContent);
+    const isSimpleIdentifierMath = /^[A-Za-z_][A-Za-z0-9_]*$/.test(trimmedContent);
 
-    // 跳过价格、价格单位、Shell 变量、模板字符串与 Markdown 表格跨列误匹配。
-    // 但 `$1$`、`$20\%$`、`$2^n$`、`$1/2$` 这类明确闭合的行内数学应放行。
+    // 数字开头的候选仍需严格检查，避免把价格与价格单位误当作公式。
     // 此函数只处理单个 DOM 文本节点，不会跨 HTML 元素配对美元符号。
     if (/^\d/.test(trimmedContent) && !hasExplicitMathSignal && !isSimpleNumericMath) return false;
+
+    // 路径、模板表达式与 Markdown 表格跨列候选继续排除。
+    // 闭合的 `$x$`、`$n$`、`$abc$` 是标准行内数学；不闭合的 `$PATH` 不会匹配。
     if (trimmedContent.startsWith('/')) return false;
-    if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(trimmedContent)) return false;
     if (trimmedContent.startsWith('{') && trimmedContent.endsWith('}')) return false;
     if (trimmedContent.includes('|')) return false;
 
-    // 放行带有明确数学信号的单美元公式，以及 `$1$`、`$2$` 这类明确闭合的纯数字公式。
-    return hasExplicitMathSignal || isSimpleNumericMath;
+    return hasExplicitMathSignal || isSimpleNumericMath || isSimpleIdentifierMath;
 }
 
 function normalizeSafeSingleDollarMathInTextNodes(root) {
