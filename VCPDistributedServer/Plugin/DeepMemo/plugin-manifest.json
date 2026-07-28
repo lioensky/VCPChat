@@ -1,16 +1,26 @@
 {
   "name": "DeepMemo",
   "displayName": "深度回忆插件",
-  "version": "1.0.0",
-  "description": "根据关键词从Vchat聊天记录中检索相关上下文，实现AI的深度回忆功能。",
-  "pluginType": "synchronous",
+  "version": "2.0.0",
+  "description": "通过 VCP-CDS 中央聊天数据服务检索历史上下文的常驻薄适配器。",
+  "pluginType": "hybridservice",
   "communication": {
-    "protocol": "stdio",
-    "timeout": 180000
+    "protocol": "direct",
+    "timeout": 30000
   },
   "entryPoint": {
-    "type": "executable",
-    "command": "deepmemo_rust.exe"
+    "type": "nodejs",
+    "script": "DeepMemoService.js"
+  },
+  "configSchema": {
+    "DeepMemoBackend": "string",
+    "DeepMemoLegacyFallback": "boolean",
+    "DeepMemoExcludeCurrentTopic": "boolean",
+    "DeepMemoCandidateLimit": "integer",
+    "DeepMemoResultLimit": "integer",
+    "DeepMemoTimeoutMs": "integer",
+    "MaxMemoTokens": "integer",
+    "QueryPreset": "string"
   },
   "capabilities": {
     "invocationCommands": [

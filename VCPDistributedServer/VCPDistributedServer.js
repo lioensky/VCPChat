@@ -55,6 +55,7 @@ class DistributedServer {
         this.handleCanvasControl = config.handleCanvasControl; // Inject the canvas control handler
         this.handleFlowlockControl = config.handleFlowlockControl; // Inject the flowlock control handler
         this.handleDesktopRemoteControl = config.handleDesktopRemoteControl; // Inject the desktop remote control handler
+        this.chatDataService = config.chatDataService || null; // Shared VCP-CDS facade owned by Electron.
         this.ws = null;
         this.app = express(); // 创建 Express 应用
         this.server = http.createServer(this.app); // 创建 HTTP 服务器
@@ -124,8 +125,10 @@ class DistributedServer {
         pluginManager.setProjectBasePath(basePath);
         await pluginManager.loadPlugins();
 
-        // 初始化服务类插件
-        await pluginManager.initializeServices(this.app, null, basePath);
+        // 初始化服务类插件，并将主进程持有的共享服务依赖注入 direct 模块。
+        await pluginManager.initializeServices(this.app, null, basePath, {
+            chatDataService: this.chatDataService
+        });
         this.registerDiagnosticRoutes();
 
         const address = await this.bindHttpServer(this.port);
@@ -586,7 +589,7 @@ class DistributedServer {
     }
 
     async handleToolExecutionRequest(data) {
-        const { requestId, toolName, toolArgs } = data;
+        const { requestId, toolName, toolArgs, _vcpContext } = data;
         if (!requestId || !toolName) {
             console.error(`[${this.serverName}] Invalid tool execution request received.`);
             return;
@@ -639,7 +642,13 @@ class DistributedServer {
             }
             // --- 结束：处理内部文件请求 ---
 
-            const result = await pluginManager.processToolCall(toolName, toolArgs);
+            // _vcpContext 来自受信任的 execute_tool 传输层，与模型生成的 toolArgs 隔离。
+            const result = await pluginManager.processToolCall(toolName, toolArgs, {
+                requestId,
+                vcpContext: _vcpContext && typeof _vcpContext === 'object'
+                    ? { ..._vcpContext, requestId }
+                    : { requestId }
+            });
             let finalResult;
 
             // --- Special Handling for MusicController ---
@@ -728,8 +737,12 @@ class DistributedServer {
 
             } else {
                 // --- Default Handling for all other plugins ---
-                if (typeof result === 'object' && result !== null) {
-                    // Result is already an object from a direct call (e.g., hybrid service)
+                const plugin = pluginManager.getPlugin(toolName);
+                const isDirectPlugin = plugin?.pluginType === 'hybridservice'
+                    && plugin?.communication?.protocol === 'direct';
+                if (isDirectPlugin || (typeof result === 'object' && result !== null)) {
+                    // direct 插件的字符串也必须原样返回；回忆正文可能包含 JSON 花括号，
+                    // 不能误走旧 stdio 插件的 JSON 提取逻辑。
                     finalResult = result;
                 } else {
                     // Result is a string from stdio, needs parsing

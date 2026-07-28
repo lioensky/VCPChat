@@ -35,7 +35,7 @@ function hashSentMessage(message) {
     return `sha256:${crypto.createHash('sha256').update(extractTextForHash(message.content), 'utf8').digest('hex')}`;
 }
 
-function buildVcpChatExtensionsFromMessages(messages) {
+function buildVcpChatExtensionsFromMessages(messages, context = null, requestId = null) {
     const messageTimestampBindings = [];
     messages.forEach((message, index) => {
         const meta = message && message.__vcpchatTimestampMeta;
@@ -53,14 +53,33 @@ function buildVcpChatExtensionsFromMessages(messages) {
         });
     });
 
-    if (messageTimestampBindings.length === 0) {
+    const requestContext = buildRequestContext(context, requestId);
+    if (messageTimestampBindings.length === 0 && !requestContext) {
         return null;
     }
 
     return {
         schemaVersion: 1,
         messageMetadataMode: 'hash_only',
-        messageTimestampBindings
+        ...(messageTimestampBindings.length > 0 ? { messageTimestampBindings } : {}),
+        ...(requestContext ? { requestContext } : {})
+    };
+}
+
+function buildRequestContext(context, requestId) {
+    if (!context || typeof context !== 'object') return null;
+    const agentId = typeof context.agentId === 'string' ? context.agentId.trim() : '';
+    const agentName = typeof context.agentName === 'string' ? context.agentName.trim() : '';
+    const topicId = typeof context.topicId === 'string' ? context.topicId.trim() : '';
+    if (!agentId && !topicId) return null;
+
+    return {
+        requestId: typeof requestId === 'string' ? requestId : undefined,
+        agentId: agentId || undefined,
+        agentName: agentName || undefined,
+        topicId: topicId || undefined,
+        ownerType: context.isGroupMessage === true ? 'group' : 'agent',
+        isGroupMessage: context.isGroupMessage === true
     };
 }
 
@@ -1022,7 +1041,7 @@ function initialize(mainWindow, context) {
             console.log('模型配置:', modelConfig);
             if (context) console.log('上下文:', context);
 
-            const vcpchatExtensions = buildVcpChatExtensionsFromMessages(messages);
+            const vcpchatExtensions = buildVcpChatExtensionsFromMessages(messages, context, messageId);
             messages = stripInternalMessageMetadata(messages);
 
             // 🔧 在发送前验证请求体

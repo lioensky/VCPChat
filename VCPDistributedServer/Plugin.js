@@ -175,7 +175,7 @@ class PluginManager {
         return this.serviceModules.get(name)?.module;
     }
 
-    async processToolCall(toolName, toolArgs) {
+    async processToolCall(toolName, toolArgs, executionContext = {}) {
         const plugin = this.plugins.get(toolName);
         if (!plugin) {
             throw new Error(`[DistPluginManager] Plugin "${toolName}" not found for tool call.`);
@@ -186,8 +186,8 @@ class PluginManager {
             if (this.debugMode) console.log(`[DistPluginManager] Processing direct tool call for hybrid service: ${toolName}`);
             const serviceModule = this.getServiceModule(toolName);
             if (serviceModule && typeof serviceModule.processToolCall === 'function') {
-                // 直接调用模块的 processToolCall 方法
-                return serviceModule.processToolCall(toolArgs);
+                // 工具参数与服务端注入的可信上下文分离，避免模型伪造内部字段。
+                return serviceModule.processToolCall(toolArgs, executionContext);
             } else {
                 throw new Error(`[DistPluginManager] Hybrid service plugin "${toolName}" does not have a processToolCall function.`);
             }
@@ -302,8 +302,8 @@ class PluginManager {
             pluginProcess.stdin.end();
         });
     }
-    // 新增：初始化服务类插件的方法
-    async initializeServices(app, adminApiRouter, projectBasePath) {
+    // 初始化 service / hybridservice direct 模块并注入共享运行时依赖。
+    async initializeServices(app, adminApiRouter, projectBasePath, services = {}) {
         if (!app) {
             console.error('[DistPluginManager] Cannot initialize services without Express app instance.');
             return;
@@ -312,11 +312,20 @@ class PluginManager {
         for (const [name, serviceData] of this.serviceModules) {
             try {
                 const pluginConfig = this._getPluginConfig(serviceData.manifest);
-                if (this.debugMode) console.log(`[DistPluginManager] Registering routes for service plugin: ${name}.`);
-                
+                if (serviceData.module && typeof serviceData.module.initialize === 'function') {
+                    await serviceData.module.initialize({
+                        app,
+                        adminApiRouter,
+                        projectBasePath,
+                        config: pluginConfig,
+                        services,
+                        logger: console
+                    });
+                }
+
                 if (serviceData.module && typeof serviceData.module.registerRoutes === 'function') {
-                    // 分布式服务器只传递核心参数
-                    serviceData.module.registerRoutes(app, pluginConfig, projectBasePath);
+                    if (this.debugMode) console.log(`[DistPluginManager] Registering routes for service plugin: ${name}.`);
+                    serviceData.module.registerRoutes(app, pluginConfig, projectBasePath, services);
                 }
             } catch (e) {
                 console.error(`[DistPluginManager] Error initializing service plugin ${name}:`, e);
