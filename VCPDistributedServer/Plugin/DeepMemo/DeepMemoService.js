@@ -2,6 +2,8 @@
 
 const path = require('path');
 const { spawn } = require('child_process');
+const cheerio = require('cheerio');
+const TurndownService = require('turndown');
 
 const DEFAULTS = Object.freeze({
     backend: 'central',
@@ -64,7 +66,7 @@ async function processToolCall(rawArgs = {}, executionContext = {}) {
         }
 
         const formatted = typeof response.formattedResult === 'string'
-            ? response.formattedResult.trim()
+            ? cleanMemoryOutput(response.formattedResult)
             : '';
         return formatted || `[DeepMemo] 未找到与关键词“${args.keyword}”相关的回忆。`;
     } catch (error) {
@@ -268,6 +270,114 @@ function executeLegacy(args) {
     });
 }
 
+function cleanMemoryOutput(content) {
+    if (typeof content !== 'string' || !content.trim()) return '';
+
+    // Parse even fragmentary HTML. Cheerio repairs malformed markup and decodes
+    // entities, while explicit removal prevents CSS/JS/accessibility-only text
+    // from leaking into the model context.
+    const $ = cheerio.load(content, {
+        decodeEntities: true,
+        xmlMode: false,
+        scriptingEnabled: false
+    }, false);
+
+    $('style, script, noscript, template, svg, canvas, iframe, object, embed, head, meta, link')
+        .remove();
+    $('[hidden], [aria-hidden="true"]').remove();
+    $('[style]').each((_, element) => {
+        const style = String($(element).attr('style') || '');
+        if (/(?:^|;)\s*(?:display\s*:\s*none|visibility\s*:\s*hidden)(?:\s*!important)?\s*(?:;|$)/i.test(style)) {
+            $(element).remove();
+        } else {
+            $(element).removeAttr('style');
+        }
+    });
+    $('*').removeAttr('class').removeAttr('id').removeAttr('onclick');
+
+    const turndown = new TurndownService({
+        headingStyle: 'atx',
+        bulletListMarker: '-',
+        codeBlockStyle: 'fenced',
+        emDelimiter: '*',
+        strongDelimiter: '**'
+    });
+    turndown.remove(['img', 'audio', 'video', 'source']);
+    turndown.addRule('safeLinks', {
+        filter: 'a',
+        replacement(innerContent, node) {
+            const label = innerContent.trim();
+            const href = node.getAttribute('href') || '';
+            if (!label) return '';
+            return /^(?:https?:|mailto:)/i.test(href)
+                ? `[${label}](${href})`
+                : label;
+        }
+    });
+
+    let markdown = turndown.turndown($.html() || '');
+    markdown = stripLeakedCss(markdown);
+
+    return markdown
+        .replace(/\u00a0/g, ' ')
+        .replace(/[ \t]+\n/g, '\n')
+        .replace(/\n[ \t]+/g, '\n')
+        .replace(/[ \t]{2,}/g, ' ')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+}
+
+function stripLeakedCss(content) {
+    // Handles CSS accidentally persisted as visible text by older renderers.
+    // The balanced scanner is deliberately limited to @keyframes blocks; it
+    // avoids broad "{...}" regexes that could destroy normal chat/code.
+    let output = content
+        .replace(/<!--[\s\S]*?-->/g, '')
+        .replace(/@(?:charset|import|namespace)\b[^;\n]*;?/gi, '');
+
+    const keyframes = /@(?:-\w+-)?keyframes\b/ig;
+    let match;
+    while ((match = keyframes.exec(output)) !== null) {
+        const open = output.indexOf('{', match.index + match[0].length);
+        if (open === -1) {
+            output = output.slice(0, match.index);
+            break;
+        }
+
+        let depth = 0;
+        let quote = null;
+        let escaped = false;
+        let end = output.length;
+        for (let index = open; index < output.length; index++) {
+            const character = output[index];
+            if (escaped) {
+                escaped = false;
+                continue;
+            }
+            if (character === '\\') {
+                escaped = true;
+                continue;
+            }
+            if (quote) {
+                if (character === quote) quote = null;
+                continue;
+            }
+            if (character === '"' || character === '\'') {
+                quote = character;
+                continue;
+            }
+            if (character === '{') depth++;
+            if (character === '}' && --depth === 0) {
+                end = index + 1;
+                break;
+            }
+        }
+        output = output.slice(0, match.index) + output.slice(end);
+        keyframes.lastIndex = match.index;
+    }
+    return output;
+}
+
 function firstNonEmptyString(...values) {
     for (const value of values) {
         if (typeof value === 'string' && value.trim()) return value.trim();
@@ -304,9 +414,11 @@ module.exports = {
     processToolCall,
     _test: {
         buildCentralRequest,
+        cleanMemoryOutput,
         combineQuery,
         normalizeArgs,
         normalizeConfig,
-        resetForTests
+        resetForTests,
+        stripLeakedCss
     }
 };

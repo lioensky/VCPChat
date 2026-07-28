@@ -106,14 +106,14 @@ async fn run() -> Result<()> {
     );
 
     let reconciler = Reconciler::new(config.clone(), database.clone());
-    let reconcile_stats = reconciler.reconcile().await?;
-    tracing::info!(?reconcile_stats, "startup reconcile completed");
 
+    // Opening the durable mirror is part of readiness; scanning every owner and
+    // history file is not. The watcher recovery worker performs the initial
+    // metadata-based reconcile after the HTTP service has become available.
     let search = if config.tantivy_enabled {
         match SearchIndex::open(&config.index_dir, database.clone()) {
             Ok(index) => {
-                let repaired = index.reconcile_revisions()?;
-                tracing::info!(repaired_topics = repaired, "search index is ready");
+                tracing::info!("search index opened");
                 Some(index)
             }
             Err(error) => {
@@ -134,8 +134,7 @@ async fn run() -> Result<()> {
                     "isolated unusable search index and rebuilding"
                 );
                 let index = SearchIndex::open(&config.index_dir, database.clone())?;
-                let rebuilt = index.reconcile_revisions()?;
-                tracing::info!(rebuilt_topics = rebuilt, "search index rebuilt");
+                tracing::info!("replacement search index opened; rebuild queued");
                 Some(index)
             }
         }
@@ -144,11 +143,13 @@ async fn run() -> Result<()> {
     };
 
     let cancellation = CancellationToken::new();
+    let reconcile_lock = Arc::new(Mutex::new(()));
     let watcher_runtime = if config.notify_enabled {
         Some(WatcherRuntime::start(
             reconciler.clone(),
             search.clone(),
             cancellation.clone(),
+            reconcile_lock.clone(),
         )?)
     } else {
         None
@@ -166,7 +167,7 @@ async fn run() -> Result<()> {
         identity: IdentityResolver::new(database.clone()),
         cancellation: cancellation.clone(),
         watcher_metrics,
-        reconcile_lock: Arc::new(Mutex::new(())),
+        reconcile_lock,
         pending_index: Arc::new(AtomicU64::new(0)),
     };
 
@@ -210,6 +211,47 @@ async fn run() -> Result<()> {
         protocol_version = PROTOCOL_VERSION,
         "VCP-CDS is ready"
     );
+
+    // Run consistency work only after publishing readiness. The persisted
+    // source metadata makes this a cheap stat-based pass for unchanged files;
+    // file reads, JSON parsing, hashing and Tantivy updates are limited to
+    // sources whose mtime or size changed. This task also runs when filesystem
+    // notifications are disabled.
+    let startup_reconciler = reconciler.clone();
+    let startup_search = state.search.clone();
+    let startup_reconcile_lock = state.reconcile_lock.clone();
+    let startup_watcher_metrics = state.watcher_metrics.clone();
+    tokio::spawn(async move {
+        // Give the HTTP server its first poll before beginning blocking
+        // filesystem/SQLite work, so the health probe following the handshake
+        // cannot race with background reconciliation.
+        tokio::task::yield_now().await;
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        let _guard = startup_reconcile_lock.lock().await;
+        match startup_reconciler.reconcile().await {
+            Ok(stats) => {
+                tracing::info!(?stats, "background startup reconcile completed");
+                if let Some(index) = startup_search {
+                    if let Err(error) = index.reconcile_revisions() {
+                        tracing::error!(error = ?error, "background startup index reconcile failed");
+                        if let Some(metrics) = startup_watcher_metrics {
+                            metrics
+                                .reconcile_required
+                                .store(true, std::sync::atomic::Ordering::Release);
+                        }
+                    }
+                }
+            }
+            Err(error) => {
+                tracing::error!(error = ?error, "background startup reconcile failed");
+                if let Some(metrics) = startup_watcher_metrics {
+                    metrics
+                        .reconcile_required
+                        .store(true, std::sync::atomic::Ordering::Release);
+                }
+            }
+        }
+    });
 
     let signal_cancellation = cancellation.clone();
     tokio::spawn(async move {

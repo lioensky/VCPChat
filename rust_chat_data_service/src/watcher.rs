@@ -12,7 +12,7 @@ use anyhow::{Context, Result};
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use parking_lot::Mutex;
 use tokio::{
-    sync::mpsc,
+    sync::{mpsc, Mutex as AsyncMutex},
     task::JoinHandle,
     time::{interval, MissedTickBehavior},
 };
@@ -59,6 +59,7 @@ impl WatcherRuntime {
         reconciler: Reconciler,
         search: Option<SearchIndex>,
         cancellation: CancellationToken,
+        reconcile_lock: Arc<AsyncMutex<()>>,
     ) -> Result<Self> {
         let config = reconciler.config().clone();
         let metrics = Arc::new(WatcherMetrics::default());
@@ -122,6 +123,7 @@ impl WatcherRuntime {
             search.clone(),
             metrics.clone(),
             cancellation.clone(),
+            reconcile_lock.clone(),
         ));
 
         let recovery_task = tokio::spawn(run_overflow_recovery(
@@ -129,6 +131,7 @@ impl WatcherRuntime {
             search,
             metrics.clone(),
             cancellation,
+            reconcile_lock,
         ));
 
         Ok(Self {
@@ -220,6 +223,7 @@ async fn run_ingest_worker(
     search: Option<SearchIndex>,
     metrics: Arc<WatcherMetrics>,
     cancellation: CancellationToken,
+    reconcile_lock: Arc<AsyncMutex<()>>,
 ) {
     loop {
         tokio::select! {
@@ -239,6 +243,9 @@ async fn run_ingest_worker(
                     continue;
                 }
 
+                // Keep direct notification ingestion from interleaving with a
+                // startup, recovery, or API-triggered consistency pass.
+                let _guard = reconcile_lock.lock().await;
                 match reconciler.ingest_path(&path, "notify").await {
                     Ok(Some(commit)) => {
                         if commit.changed {
@@ -267,6 +274,7 @@ async fn run_overflow_recovery(
     search: Option<SearchIndex>,
     metrics: Arc<WatcherMetrics>,
     cancellation: CancellationToken,
+    reconcile_lock: Arc<AsyncMutex<()>>,
 ) {
     let mut ticker = interval(Duration::from_secs(2));
     ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
@@ -279,6 +287,11 @@ async fn run_overflow_recovery(
                     continue;
                 }
 
+                // Serialize recovery with startup and API-triggered reconciles.
+                // Filesystem events may arrive while the background startup pass
+                // is running; they remain represented by reconcile_required and
+                // are processed after that pass releases this lock.
+                let _guard = reconcile_lock.lock().await;
                 match reconciler.reconcile().await {
                     Ok(stats) => {
                         tracing::info!(?stats, "watcher recovery reconcile completed");

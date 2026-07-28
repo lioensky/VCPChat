@@ -654,8 +654,9 @@ if (!gotTheLock) {
         appSettingsManager = new AppSettingsManager(SETTINGS_FILE);
         const agentConfigManager = new AgentConfigManager(AGENT_DIR);
 
-        // Phase 1: VCP-CDS runs only as an optional shadow mirror. Failure must
-        // never block the existing history.json chat path.
+        // Phase 1: VCP-CDS runs only as an optional shadow mirror. Start it in
+        // the background so database reconciliation can never delay the window
+        // or the existing history.json chat path.
         try {
             const cdsSettings = await appSettingsManager.readSettings();
             if (cdsSettings.ChatDataServiceEnabled !== false) {
@@ -666,7 +667,7 @@ if (!gotTheLock) {
                     tantivyEnabled: cdsSettings.ChatDataServiceTantivyEnabled !== false,
                     logger: console
                 });
-                await chatDataService.startShadowMode();
+                void chatDataService.startShadowMode();
             }
         } catch (error) {
             chatDataService = null;

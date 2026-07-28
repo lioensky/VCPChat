@@ -184,3 +184,71 @@ test('数值参数被限制在 CDS 支持范围内', () => {
     assert.equal(args.resultLimit, 100);
     assert.equal(args.maxChars, 1);
 });
+
+test('中央搜索输出会清除样式脚本并转换为稳定 Markdown', () => {
+    const dirty = [
+        '<style>@keyframes pulse { 0% { opacity: 0 } 100% { opacity: 1 } } .card { color:red }</style>',
+        '<script>alert("不应泄漏")</script>',
+        '<div class="card" style="color:red">',
+        '<h2>键盘回忆</h2>',
+        '<p><strong>莱恩</strong>：VGN&nbsp;键盘</p>',
+        '<ul><li>磁悬浮</li><li>星闪</li></ul>',
+        '<a href="javascript:alert(1)">危险链接</a>',
+        '<a href="https://example.com/vgn">资料</a>',
+        '</div>'
+    ].join('');
+
+    const cleaned = deepMemo._test.cleanMemoryOutput(dirty);
+
+    assert.match(cleaned, /^## 键盘回忆/m);
+    assert.match(cleaned, /\*\*莱恩\*\*：VGN 键盘/);
+    assert.match(cleaned, /- 磁悬浮/);
+    assert.match(cleaned, /- 星闪/);
+    assert.match(cleaned, /危险链接/);
+    assert.doesNotMatch(cleaned, /javascript:/i);
+    assert.match(cleaned, /\[资料\]\(https:\/\/example\.com\/vgn\)/);
+    assert.doesNotMatch(cleaned, /keyframes|opacity|color:red|不应泄漏/i);
+});
+
+test('中央搜索输出会移除隐藏节点、媒体和畸形 HTML 噪声', () => {
+    const dirty = [
+        '<div>可见文本',
+        '<span hidden>hidden 泄漏</span>',
+        '<span aria-hidden="true">aria 泄漏</span>',
+        '<span style="DISPLAY: none !important">display 泄漏</span>',
+        '<span style="visibility:hidden">visibility 泄漏</span>',
+        '<img src="x" alt="图片泄漏">',
+        '<template>template 泄漏</template>',
+        '<p>未闭合段落'
+    ].join('');
+
+    const cleaned = deepMemo._test.cleanMemoryOutput(dirty);
+
+    assert.match(cleaned, /可见文本/);
+    assert.match(cleaned, /未闭合段落/);
+    assert.doesNotMatch(cleaned, /泄漏/);
+});
+
+test('泄漏到可见文本中的嵌套 keyframes 会被平衡清除', () => {
+    const dirty = [
+        '[回忆片段1]:',
+        '@-webkit-keyframes glow {',
+        '  0% { transform: scale(1); }',
+        '  50% { content: "}"; transform: scale(1.2); }',
+        '  100% { transform: scale(1); }',
+        '}',
+        '莱恩: VGN 键盘'
+    ].join('\n');
+
+    const cleaned = deepMemo._test.cleanMemoryOutput(dirty);
+
+    assert.match(cleaned, /\[回忆片段1\]:/);
+    assert.match(cleaned, /莱恩: VGN 键盘/);
+    assert.doesNotMatch(cleaned, /keyframes|transform|scale|content/);
+});
+
+test('纯文本回忆不会被 HTML 清理流程破坏', () => {
+    const plain = '[回忆片段1]:\n莱恩: VGN 键盘\n小克: 已经召回。';
+
+    assert.equal(deepMemo._test.cleanMemoryOutput(plain), plain);
+});
