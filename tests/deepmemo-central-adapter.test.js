@@ -2,8 +2,10 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const axios = require('axios');
 
 const deepMemo = require('../VCPDistributedServer/Plugin/DeepMemo/DeepMemoService');
+const originalAxiosPost = axios.post;
 
 function createFacade(searchImpl) {
     return {
@@ -17,7 +19,25 @@ function createFacade(searchImpl) {
 
 test.beforeEach(() => {
     deepMemo._test.resetForTests();
+    axios.post = originalAxiosPost;
 });
+
+test.afterEach(() => {
+    axios.post = originalAxiosPost;
+});
+
+function memoryWindow(index, content = `第${index}条回忆`) {
+    return {
+        topicId: `topic_${index}`,
+        topicName: `主题${index}`,
+        messages: [{
+            role: index % 2 === 0 ? 'assistant' : 'user',
+            speakerName: index % 2 === 0 ? '小克' : '莱恩',
+            contentText: content,
+            contentRaw: `<p>${content}</p>`
+        }]
+    };
+}
 
 test('旧参数被规范化并通过 maid 调用中央搜索', async () => {
     let capturedRequest;
@@ -251,4 +271,197 @@ test('纯文本回忆不会被 HTML 清理流程破坏', () => {
     const plain = '[回忆片段1]:\n莱恩: VGN 键盘\n小克: 已经召回。';
 
     assert.equal(deepMemo._test.cleanMemoryOutput(plain), plain);
+});
+
+test('Rerank 配置限制为每批最多 25 文档和 64000 token', () => {
+    const config = deepMemo._test.normalizeConfig({
+        RerankSearch: 'True',
+        RerankUrl: 'http://localhost:8000/',
+        RerankMaxDocumentsPerBatch: 99,
+        RerankMaxTokensPerBatch: 999999
+    });
+    const batches = deepMemo._test.createRerankBatches(
+        Array.from({ length: 26 }, (_, index) => memoryWindow(index)),
+        '查询',
+        config
+    );
+
+    assert.equal(config.rerankSearch, true);
+    assert.equal(config.rerankMaxDocumentsPerBatch, 25);
+    assert.equal(config.rerankMaxTokensPerBatch, 64000);
+    assert.deepEqual(batches.map(batch => batch.length), [25, 1]);
+});
+
+test('启用 Rerank 时请求三倍 CDS 窗口并按跨批分数全局排序', async () => {
+    let capturedRequest;
+    const rerankRequests = [];
+    const windows = [
+        memoryWindow(0, '低相关'),
+        memoryWindow(1, '最高相关'),
+        memoryWindow(2, '中相关')
+    ];
+    axios.post = async (url, data, options) => {
+        rerankRequests.push({ url, data, options });
+        return {
+            data: {
+                results: data.documents.map((_, index) => ({
+                    index,
+                    relevance_score: [0.1, 0.9, 0.5][index]
+                }))
+            }
+        };
+    };
+    deepMemo.initialize({
+        services: {
+            chatDataService: createFacade(async request => {
+                capturedRequest = request;
+                return {
+                    windows,
+                    formattedResult: '不应直接使用 CDS 扩大后的格式化结果'
+                };
+            })
+        },
+        config: {
+            DeepMemoResultLimit: 1,
+            MaxMemoTokens: 1000,
+            RerankSearch: true,
+            RerankUrl: 'http://localhost:8000/',
+            RerankApi: 'secret',
+            RerankModel: 'test-reranker',
+            RerankCandidateMultiplier: 3,
+            RerankMaxDocumentsPerBatch: 25,
+            RerankMaxTokensPerBatch: 60000
+        }
+    });
+
+    const result = await deepMemo.processToolCall({
+        maid: '小克',
+        keyword: '相关回忆'
+    });
+
+    assert.equal(capturedRequest.resultLimit, 3);
+    assert.equal(capturedRequest.maxChars, 3000);
+    assert.equal(rerankRequests.length, 1);
+    assert.equal(rerankRequests[0].url, 'http://localhost:8000/v1/rerank');
+    assert.equal(rerankRequests[0].data.top_n, 3);
+    assert.equal(rerankRequests[0].data.documents.length, 3);
+    assert.equal(rerankRequests[0].options.headers.Authorization, 'Bearer secret');
+    assert.match(result, /最高相关/);
+    assert.doesNotMatch(result, /低相关|中相关|不应直接使用/);
+});
+
+test('调用参数 rerank=true 可在全局默认关闭时请求精排', async () => {
+    let capturedRequest;
+    let rerankCalls = 0;
+    axios.post = async (_url, data) => {
+        rerankCalls++;
+        return {
+            data: {
+                results: data.documents.map((_, index) => ({
+                    index,
+                    relevance_score: index
+                }))
+            }
+        };
+    };
+    deepMemo.initialize({
+        services: {
+            chatDataService: createFacade(async request => {
+                capturedRequest = request;
+                return {
+                    windows: [memoryWindow(0), memoryWindow(1), memoryWindow(2)],
+                    formattedResult: '不应使用'
+                };
+            })
+        },
+        config: {
+            DeepMemoResultLimit: 1,
+            RerankSearch: false,
+            RerankUrl: 'http://localhost:8000'
+        }
+    });
+
+    const result = await deepMemo.processToolCall({
+        maid: '小克',
+        keyword: '显式启用',
+        rerank: 'true'
+    });
+
+    assert.equal(capturedRequest.resultLimit, 3);
+    assert.equal(rerankCalls, 1);
+    assert.match(result, /第2条回忆/);
+});
+
+test('调用参数 rerank=false 可在全局默认开启时强制跳过精排', async () => {
+    let capturedRequest;
+    let rerankCalls = 0;
+    axios.post = async () => {
+        rerankCalls++;
+        throw new Error('不应调用 Rerank');
+    };
+    deepMemo.initialize({
+        services: {
+            chatDataService: createFacade(async request => {
+                capturedRequest = request;
+                return {
+                    windows: [memoryWindow(0)],
+                    formattedResult: '[回忆片段1]:\nCDS 原始排名'
+                };
+            })
+        },
+        config: {
+            DeepMemoResultLimit: 1,
+            RerankSearch: true,
+            RerankUrl: 'http://localhost:8000'
+        }
+    });
+
+    const result = await deepMemo.processToolCall({
+        maid: '小克',
+        keyword: '显式禁用',
+        rerank: false
+    });
+
+    assert.equal(capturedRequest.resultLimit, 1);
+    assert.equal(rerankCalls, 0);
+    assert.equal(result, '[回忆片段1]:\nCDS 原始排名');
+});
+
+test('任一 Rerank 批次失败时按最终限制回退 CDS 原始排名', async () => {
+    const warnings = [];
+    axios.post = async () => {
+        throw new Error('rerank unavailable');
+    };
+    deepMemo.initialize({
+        services: {
+            chatDataService: createFacade(async () => ({
+                windows: [
+                    memoryWindow(0, 'CDS 第一名'),
+                    memoryWindow(1, 'CDS 第二名'),
+                    memoryWindow(2, 'CDS 第三名')
+                ],
+                formattedResult: '不应泄漏三倍候选'
+            }))
+        },
+        config: {
+            DeepMemoResultLimit: 1,
+            MaxMemoTokens: 1000,
+            RerankSearch: true,
+            RerankUrl: 'http://localhost:8000'
+        },
+        logger: {
+            warn(message) {
+                warnings.push(message);
+            }
+        }
+    });
+
+    const result = await deepMemo.processToolCall({
+        maid: '小克',
+        keyword: '回退测试'
+    });
+
+    assert.match(result, /CDS 第一名/);
+    assert.doesNotMatch(result, /CDS 第二名|CDS 第三名|不应泄漏/);
+    assert.ok(warnings.some(message => message.includes('Rerank failed')));
 });

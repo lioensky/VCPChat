@@ -2,6 +2,7 @@
 
 const path = require('path');
 const { spawn } = require('child_process');
+const axios = require('axios');
 const cheerio = require('cheerio');
 const TurndownService = require('turndown');
 
@@ -13,7 +14,15 @@ const DEFAULTS = Object.freeze({
     candidateLimit: 50,
     resultLimit: 8,
     timeoutMs: 30_000,
-    queryPreset: ''
+    queryPreset: '',
+    rerankSearch: false,
+    rerankUrl: '',
+    rerankApi: '',
+    rerankModel: '',
+    rerankCandidateMultiplier: 3,
+    rerankMaxDocumentsPerBatch: 25,
+    rerankMaxTokensPerBatch: 60_000,
+    rerankTimeoutMs: 30_000
 });
 
 let runtime = {
@@ -42,7 +51,21 @@ async function processToolCall(rawArgs = {}, executionContext = {}) {
         throw new Error('[DeepMemo] 请求中缺少 keyword 参数。');
     }
 
+    const finalResultLimit = args.resultLimit || runtime.config.resultLimit;
+    const finalMaxChars = args.maxChars || runtime.config.maxMemoChars;
+    const rerankRequested = args.rerank ?? runtime.config.rerankSearch;
+    const rerankEnabled = rerankRequested && Boolean(runtime.config.rerankUrl);
     const request = buildCentralRequest(args, executionContext, query, runtime.config);
+    if (rerankEnabled) {
+        request.resultLimit = Math.min(
+            100,
+            finalResultLimit * runtime.config.rerankCandidateMultiplier
+        );
+        request.maxChars = Math.min(
+            1_000_000,
+            finalMaxChars * runtime.config.rerankCandidateMultiplier
+        );
+    }
 
     if (runtime.config.backend === 'legacy') {
         return executeLegacy(legacyArgs);
@@ -63,6 +86,34 @@ async function processToolCall(rawArgs = {}, executionContext = {}) {
             const error = new Error('VCP-CDS returned an invalid memory search response.');
             error.code = 'INVALID_RESPONSE';
             throw error;
+        }
+
+        if (rerankEnabled && response.windows.length > 0) {
+            try {
+                const reranked = await rerankWindows(
+                    response.windows,
+                    query,
+                    runtime.config
+                );
+                const selected = selectWindowsWithinBudget(
+                    reranked,
+                    finalResultLimit,
+                    finalMaxChars
+                );
+                const formatted = formatMemoryWindows(selected);
+                if (formatted) return formatted;
+            } catch (error) {
+                runtime.logger.warn?.(
+                    `[DeepMemo] Rerank failed; using CDS ranking: ${error.message}`
+                );
+                const fallbackWindows = selectWindowsWithinBudget(
+                    response.windows,
+                    finalResultLimit,
+                    finalMaxChars
+                );
+                const fallbackFormatted = formatMemoryWindows(fallbackWindows);
+                if (fallbackFormatted) return fallbackFormatted;
+            }
         }
 
         const formatted = typeof response.formattedResult === 'string'
@@ -112,7 +163,8 @@ function normalizeArgs(rawArgs) {
         ),
         candidateLimit: clampInteger(rawArgs.candidateLimit, null, 1, 500),
         resultLimit: clampInteger(rawArgs.resultLimit ?? rawArgs.limit, null, 1, 100),
-        maxChars: clampInteger(rawArgs.maxChars, null, 1, 1_000_000)
+        maxChars: clampInteger(rawArgs.maxChars, null, 1, 1_000_000),
+        rerank: toOptionalBoolean(rawArgs.rerank)
     };
 }
 
@@ -197,7 +249,35 @@ function normalizeConfig(config) {
             100,
             120_000
         ),
-        queryPreset: firstNonEmptyString(config.QueryPreset)
+        queryPreset: firstNonEmptyString(config.QueryPreset),
+        rerankSearch: toBoolean(config.RerankSearch, DEFAULTS.rerankSearch),
+        rerankUrl: firstNonEmptyString(config.RerankUrl),
+        rerankApi: firstNonEmptyString(config.RerankApi),
+        rerankModel: firstNonEmptyString(config.RerankModel),
+        rerankCandidateMultiplier: clampInteger(
+            config.RerankCandidateMultiplier,
+            DEFAULTS.rerankCandidateMultiplier,
+            1,
+            10
+        ),
+        rerankMaxDocumentsPerBatch: clampInteger(
+            config.RerankMaxDocumentsPerBatch,
+            DEFAULTS.rerankMaxDocumentsPerBatch,
+            1,
+            25
+        ),
+        rerankMaxTokensPerBatch: clampInteger(
+            config.RerankMaxTokensPerBatch,
+            DEFAULTS.rerankMaxTokensPerBatch,
+            1_000,
+            64_000
+        ),
+        rerankTimeoutMs: clampInteger(
+            config.RerankTimeoutMs,
+            DEFAULTS.rerankTimeoutMs,
+            100,
+            120_000
+        )
     };
 }
 
@@ -206,6 +286,153 @@ function combineQuery(keyword, preset) {
         .map(value => typeof value === 'string' ? value.trim() : '')
         .filter(Boolean)
         .join(',');
+}
+
+function formatWindowDocument(window) {
+    const topic = firstNonEmptyString(window?.topicName);
+    const messages = Array.isArray(window?.messages)
+        ? window.messages
+            .map(message => {
+                const content = firstNonEmptyString(message?.contentText);
+                if (!content) return '';
+                const name = firstNonEmptyString(message?.speakerName)
+                    || (message?.role === 'user' ? '用户' : 'Assistant');
+                return `${name}: ${content}`;
+            })
+            .filter(Boolean)
+        : [];
+    return [topic ? `主题: ${topic}` : '', ...messages].filter(Boolean).join('\n');
+}
+
+function formatMemoryWindows(windows) {
+    if (!Array.isArray(windows)) return '';
+    return windows
+        .map((window, index) => {
+            const document = formatWindowDocument(window);
+            return document ? `[回忆片段${index + 1}]:\n${document}` : '';
+        })
+        .filter(Boolean)
+        .join('\n\n');
+}
+
+function estimateTokens(content) {
+    // One Unicode code point per token is deliberately conservative for CJK.
+    return Array.from(String(content || '')).length;
+}
+
+function truncateToTokenBudget(content, budget) {
+    const characters = Array.from(String(content || ''));
+    return characters.length <= budget
+        ? characters.join('')
+        : characters.slice(0, Math.max(0, budget)).join('');
+}
+
+function createRerankBatches(windows, query, config) {
+    const maxDocuments = config.rerankMaxDocumentsPerBatch;
+    const maxTokens = config.rerankMaxTokensPerBatch;
+    const baseTokens = estimateTokens(query) + 256;
+    const documents = windows
+        .map((window, originalIndex) => ({
+            originalIndex,
+            document: formatWindowDocument(window)
+        }))
+        .filter(item => item.document);
+
+    const batches = [];
+    let batch = [];
+    let batchTokens = baseTokens;
+    for (const item of documents) {
+        const documentBudget = Math.max(1, maxTokens - baseTokens - 32);
+        const document = truncateToTokenBudget(item.document, documentBudget);
+        const documentTokens = estimateTokens(document) + 32;
+        if (
+            batch.length > 0
+            && (batch.length >= maxDocuments || batchTokens + documentTokens > maxTokens)
+        ) {
+            batches.push(batch);
+            batch = [];
+            batchTokens = baseTokens;
+        }
+        batch.push({ ...item, document });
+        batchTokens += documentTokens;
+    }
+    if (batch.length > 0) batches.push(batch);
+    return batches;
+}
+
+async function rerankWindows(windows, query, config) {
+    const endpoint = `${config.rerankUrl.replace(/\/+$/, '')}/v1/rerank`;
+    const batches = createRerankBatches(windows, query, config);
+    const responses = await Promise.all(batches.map(async batch => {
+        const response = await axios.post(endpoint, {
+            model: config.rerankModel,
+            query,
+            documents: batch.map(item => item.document),
+            top_n: batch.length
+        }, {
+            headers: {
+                'Content-Type': 'application/json',
+                ...(config.rerankApi
+                    ? { Authorization: `Bearer ${config.rerankApi}` }
+                    : {})
+            },
+            timeout: config.rerankTimeoutMs
+        });
+        if (!response?.data || !Array.isArray(response.data.results)) {
+            throw new Error('Rerank API returned an invalid response.');
+        }
+        return response.data.results.map(result => {
+            const localIndex = Number.parseInt(result.index, 10);
+            const score = Number(result.relevance_score);
+            if (
+                !Number.isInteger(localIndex)
+                || localIndex < 0
+                || localIndex >= batch.length
+                || !Number.isFinite(score)
+            ) {
+                throw new Error('Rerank API returned an invalid result item.');
+            }
+            return {
+                originalIndex: batch[localIndex].originalIndex,
+                score
+            };
+        });
+    }));
+
+    const scores = new Map();
+    for (const result of responses.flat()) {
+        const previous = scores.get(result.originalIndex);
+        if (previous === undefined || result.score > previous) {
+            scores.set(result.originalIndex, result.score);
+        }
+    }
+    if (scores.size !== windows.length) {
+        throw new Error('Rerank API did not score every candidate window.');
+    }
+
+    return windows
+        .map((window, originalIndex) => ({
+            window,
+            originalIndex,
+            score: scores.get(originalIndex)
+        }))
+        .sort((left, right) => (
+            right.score - left.score || left.originalIndex - right.originalIndex
+        ))
+        .map(item => item.window);
+}
+
+function selectWindowsWithinBudget(windows, resultLimit, maxChars) {
+    const selected = [];
+    let totalChars = 0;
+    for (const window of windows) {
+        if (selected.length >= resultLimit) break;
+        const chars = estimateTokens(formatWindowDocument(window));
+        if (selected.length > 0 && totalChars + chars > maxChars) break;
+        selected.push(window);
+        totalChars += chars;
+    }
+    return selected;
 }
 
 function executeLegacy(args) {
@@ -273,6 +500,16 @@ function executeLegacy(args) {
 function cleanMemoryOutput(content) {
     if (typeof content !== 'string' || !content.trim()) return '';
 
+    if (!/<[a-z][\s\S]*?>/i.test(content)) {
+        return stripLeakedCss(content)
+            .replace(/\u00a0/g, ' ')
+            .replace(/[ \t]+\n/g, '\n')
+            .replace(/\n[ \t]+/g, '\n')
+            .replace(/[ \t]{2,}/g, ' ')
+            .replace(/\n{3,}/g, '\n\n')
+            .trim();
+    }
+
     // Parse even fragmentary HTML. Cheerio repairs malformed markup and decodes
     // entities, while explicit removal prevents CSS/JS/accessibility-only text
     // from leaking into the model context.
@@ -282,7 +519,7 @@ function cleanMemoryOutput(content) {
         scriptingEnabled: false
     }, false);
 
-    $('style, script, noscript, template, svg, canvas, iframe, object, embed, head, meta, link')
+    $('style, script, noscript, template, svg, canvas, iframe, object, embed, head, meta, link, img, audio, video, source')
         .remove();
     $('[hidden], [aria-hidden="true"]').remove();
     $('[style]').each((_, element) => {
@@ -392,13 +629,17 @@ function clampInteger(value, fallback, minimum, maximum) {
     return Math.min(maximum, Math.max(minimum, parsed));
 }
 
-function toBoolean(value, fallback) {
+function toOptionalBoolean(value) {
     if (typeof value === 'boolean') return value;
-    if (typeof value !== 'string') return fallback;
+    if (typeof value !== 'string') return null;
     const normalized = value.trim().toLowerCase();
     if (normalized === 'true') return true;
     if (normalized === 'false') return false;
-    return fallback;
+    return null;
+}
+
+function toBoolean(value, fallback) {
+    return toOptionalBoolean(value) ?? fallback;
 }
 
 function resetForTests() {
@@ -416,9 +657,15 @@ module.exports = {
         buildCentralRequest,
         cleanMemoryOutput,
         combineQuery,
+        createRerankBatches,
+        estimateTokens,
+        formatMemoryWindows,
+        formatWindowDocument,
         normalizeArgs,
         normalizeConfig,
+        rerankWindows,
         resetForTests,
+        selectWindowsWithinBudget,
         stripLeakedCss
     }
 };

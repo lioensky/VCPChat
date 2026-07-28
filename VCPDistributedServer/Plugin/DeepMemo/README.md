@@ -7,7 +7,7 @@ DeepMemo 2.0 已迁移为 `hybridservice/direct` 薄适配器。
 - Electron 主进程负责启动并持有 VCP-CDS Rust 常驻服务。
 - VCPDistributedServer 与 Electron 位于同一 Node.js 主进程中，复用同一个 VCP-CDS facade。
 - `DeepMemoService.js` 在插件发现阶段加载一次，常驻于 VCPDistributedServer 进程内。
-- 每次 DeepMemo 工具调用只执行一次内存函数调用和一次本地 VCP-CDS HTTP 请求。
+- 每次 DeepMemo 工具调用执行一次内存函数调用和一次本地 VCP-CDS HTTP 请求；启用 Rerank 时还会并发调用配置的精排 API。
 - DeepMemo 不再扫描 Agent、Topic 或 `history.json`。
 - DeepMemo 不再创建临时 Tantivy/FlexSearch 索引。
 - DeepMemo 不再初始化独立 Jieba 实例。
@@ -38,9 +38,16 @@ DeepMemo 2.0 已迁移为 `hybridservice/direct` 薄适配器。
 {
   "maid": "小克",
   "keyword": "深度回忆,系统设计",
-  "window_size": 6
+  "window_size": 6,
+  "rerank": true
 }
 ```
+
+`rerank` 是可选的三态调用参数：
+
+- `rerank: true`：本次请求启用精排，但服务端仍必须配置有效的 `RerankUrl`。
+- `rerank: false`：本次请求强制跳过精排。
+- 省略 `rerank`：遵循环境变量 `RerankSearch`。
 
 兼容别名：
 
@@ -84,13 +91,30 @@ DeepMemoResultLimit=8
 DeepMemoTimeoutMs=30000
 MaxMemoTokens=60000
 QueryPreset=
+
+RerankSearch=False
+RerankUrl=
+RerankApi=
+RerankModel=
+RerankCandidateMultiplier=3
+RerankMaxDocumentsPerBatch=25
+RerankMaxTokensPerBatch=60000
+RerankTimeoutMs=30000
 ```
 
 - `DeepMemoBackend=central`：使用中央搜索，默认值。
 - `DeepMemoBackend=legacy`：强制执行旧 EXE，仅用于回滚。
 - `DeepMemoLegacyFallback=True`：中央搜索失败后尝试旧 EXE。
 - `DeepMemoExcludeCurrentTopic=True`：有可信 Topic 上下文时排除当前 Topic。
-- `MaxMemoTokens`：历史名称保留，实际按最大字符数传给 VCP-CDS。
+- `MaxMemoTokens`：历史名称保留，实际表示最终输出最大字符数。
+- `RerankSearch=True`：由常驻 DeepMemo JS 适配器调用 Rerank API，作为省略工具参数时的默认策略。
+- 工具参数 `rerank=true|false`：覆盖本次调用的默认策略；显式 `false` 强制跳过，显式 `true` 请求启用。
+- `RerankCandidateMultiplier=3`：向 VCP-CDS 请求最终数量三倍的候选窗口。
+- `RerankMaxDocumentsPerBatch=25`：单批最多文档数，最大值也是 25。
+- `RerankMaxTokensPerBatch=60000`：按 Unicode 字符一字符一 token 保守估算；最大允许 64000，默认预留到 60000。
+- `RerankTimeoutMs=30000`：每个并发批次的请求超时。
+
+Rerank 文档直接使用 VCP-CDS 已清理的 `contentText`，不传原始 HTML。所有候选只评分一次；各批次的 `relevance_score` 合并后执行全局排序，不使用旧版递归淘汰。任意批次失败、响应缺项或返回非法分数时，整次精排回退到 VCP-CDS/Tantivy 原排名，并继续遵守最终结果数量和字符预算。
 
 旧 EXE 暂时保留在插件目录中，但默认配置不会启动它。
 
