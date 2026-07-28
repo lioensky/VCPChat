@@ -11,6 +11,9 @@ class ChatDataServiceFacade {
     constructor(options) {
         this.lifecycle = new ChatDataServiceLifecycle(options);
         this.logger = options?.logger || console;
+        // 消费者迁移开关随 Electron 持有的共享 facade 注入插件，
+        // 不把 CDS 临时令牌或端口写入全局环境变量。
+        this.mobileSyncUseCentralIndex = options?.mobileSyncUseCentralIndex === true;
     }
 
     async startShadowMode() {

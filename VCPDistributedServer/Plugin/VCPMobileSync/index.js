@@ -29,6 +29,7 @@ const {
 } = require("./sync/manifest");
 const { handleSyncTopicHashBatch, handleSyncMessageDiffBatch } = require("./sync/diff");
 const { ingestHistoryToDb } = require("./sync/message");
+const { createCentralSyncAdapter } = require("./sync/central");
 const { isWriteLocked, sanitizeId, deleteEntity, deleteMessage } = require("./sync/entity");
 const { getLogger, resetLogger } = require("./core/logger");
 const {
@@ -50,21 +51,39 @@ try {
 /**
  * 注册插件
  */
-async function registerRoutes(app, pluginConfig, projectBasePath) {
+async function registerRoutes(app, pluginConfig, projectBasePath, services = {}) {
   const syncToken = pluginConfig.MobileSyncToken;
   // 最终修正：AppData 位于 projectBasePath (VCPDistributedServer) 的上一级目录
   const appDataPath = path.resolve(projectBasePath, "..", "AppData");
   const wsPort = parseInt(pluginConfig.MobileSyncPort) || 5975;
+  const centralRequested =
+    pluginConfig.MobileSyncUseCentralIndex === true ||
+    services.chatDataService?.mobileSyncUseCentralIndex === true;
+  const useCentralIndex = centralRequested && services.chatDataService?.client;
+  if (centralRequested && !useCentralIndex) {
+    throw new Error(
+      "MobileSyncUseCentralIndex is enabled but VCP-CDS is unavailable; disable the flag to roll back",
+    );
+  }
+  const centralSync = useCentralIndex
+    ? createCentralSyncAdapter(services.chatDataService)
+    : null;
 
   const logger = resetLogger();
   logger.startSession("system");
 
-  // 初始化数据库
-  const dbPath = path.join(__dirname, "sync_state.db");
-  initDb(dbPath);
-
-  // 执行初次索引扫描（必须先完成才能开放端口）
-  await reconcileLocalFiles(appDataPath);
+  // 中央模式不再打开持久化 sync_state.db。保留一个仅服务于附件、头像和
+  // 配置 DTO 文件定位的进程内目录；消息索引、墓碑与历史指纹绝不写入其中。
+  if (centralSync) {
+    initDb(":memory:");
+    await centralSync.reconcile();
+    await reconcileCompatibilityAssets(appDataPath);
+    centralSync.logEnabled();
+  } else {
+    const dbPath = path.join(__dirname, "sync_state.db");
+    initDb(dbPath);
+    await reconcileLocalFiles(appDataPath);
+  }
 
   // 启动 WebSocket（仅在索引完成后开放，防止手机端提前连接）
   startWsServer({
@@ -76,27 +95,38 @@ async function registerRoutes(app, pluginConfig, projectBasePath) {
       switch (payload.type) {
         case "SYNC_MANIFEST": {
           logger.logOperation("websocket", "message", payload.type, "info", `dataType=${payload.dataType}`);
-          return handleSyncManifest(payload);
+          return centralSync
+            ? centralSync.handleSyncManifest(payload)
+            : handleSyncManifest(payload);
         }
         case "GET_MESSAGE_MANIFEST": {
           logger.logOperation("websocket", "message", payload.type, "info", `topicId=${payload.topicId}`);
-          return handleMessageManifest(payload);
+          return centralSync
+            ? centralSync.handleMessageManifest(payload)
+            : handleMessageManifest(payload);
         }
         case "SYNC_TOPIC_HASH_BATCH": {
           const topicCount = Object.keys(payload.hashes || {}).length;
           logger.logOperation("websocket", "message", payload.type, "info", `topics=${topicCount}`);
-          return handleSyncTopicHashBatch(payload);
+          return centralSync
+            ? centralSync.handleTopicHashBatch(payload)
+            : handleSyncTopicHashBatch(payload);
         }
         case "SYNC_TOPIC_HASH_BATCH_V2": {
           const topicCount = Object.keys(payload.hashes || {}).length;
           logger.logOperation("websocket", "message", payload.type, "info", `topics=${topicCount}`);
+          if (centralSync) {
+            return centralSync.handleTopicHashBatch(payload);
+          }
           const { handleSyncTopicHashBatchV2 } = require("./sync/diff");
           return handleSyncTopicHashBatchV2(payload);
         }
         case "SYNC_MESSAGE_DIFF_BATCH": {
           const topicCount = Object.keys(payload.topics || {}).length;
           logger.logOperation("websocket", "message", payload.type, "info", `topics=${topicCount}`);
-          return handleSyncMessageDiffBatch(payload);
+          return centralSync
+            ? centralSync.handleMessageDiffBatch(payload)
+            : handleSyncMessageDiffBatch(payload);
         }
         case "PHASE_START": {
           const phase = payload.phase || "owner_metadata";
@@ -115,8 +145,12 @@ async function registerRoutes(app, pluginConfig, projectBasePath) {
           const { id, dataType, hash, ts } = payload;
           logger.logOperation("websocket", "entity_update", id, "info", `type=${dataType}`);
 
-          const { upsertEntityIndex } = require("./core/db");
-          upsertEntityIndex(id, dataType, null, hash, ts);
+          // 旧通知只携带派生哈希，无法更新 CDS 完整数据；中央模式等待
+          // 随后的实体 HTTP 上传或消息 Push，不再双写私有数据库。
+          if (!centralSync) {
+            const { upsertEntityIndex } = require("./core/db");
+            upsertEntityIndex(id, dataType, null, hash, ts);
+          }
 
           return { type: "SYNC_ACK", id };
         }
@@ -133,6 +167,22 @@ async function registerRoutes(app, pluginConfig, projectBasePath) {
           if (!safeId || !dataType) {
             logger.logOperation("websocket", "delete_notify", id || "unknown", "warn", "missing id or dataType");
             return { type: "SYNC_ACK", id: safeId };
+          }
+
+          if (centralSync) {
+            logger.logOperation(
+              "websocket",
+              "delete_notify",
+              safeId,
+              "warn",
+              "central mode requires contextual HTTP delete or deletedMessageIds push",
+            );
+            return {
+              type: "SYNC_ACK",
+              id: safeId,
+              deferred: true,
+              reason: "OWNER_CONTEXT_REQUIRED",
+            };
           }
 
           if (dataType === "message") {
@@ -160,24 +210,83 @@ async function registerRoutes(app, pluginConfig, projectBasePath) {
     },
   });
 
-  // 注册 HTTP 路由（仅在索引完成后开放）
-  registerHttpRoutes(app, { syncToken, appDataPath });
+  // HTTP/NDJSON 传输层保持兼容，消息数据面由所选后端提供。
+  registerHttpRoutes(app, { syncToken, appDataPath, centralSync });
 
-  // 启动文件监听
-  if (chokidar) {
+  // 中央模式由 CDS 的 notify/reconcile 独占历史监听和消息墓碑持久化。
+  if (!centralSync && chokidar) {
     startFileWatcher(appDataPath);
   }
 
-  // 定期清理过期删除记录 (每小时执行一次)
-  setInterval(
-    () => {
-      cleanupOldDeletedRecords();
-    },
-    60 * 60 * 1000,
-  );
+  if (!centralSync) {
+    setInterval(
+      () => {
+        cleanupOldDeletedRecords();
+      },
+      60 * 60 * 1000,
+    );
+    cleanupOldDeletedRecords();
+  }
+}
 
-  // 启动时也执行一次清理
-  cleanupOldDeletedRecords();
+/**
+ * 中央模式兼容目录：只定位配置 DTO、头像和附件二进制。
+ * history.json、message_index、消息墓碑和聚合历史哈希全部由 CDS 负责。
+ */
+async function reconcileCompatibilityAssets(appDataPath) {
+  const db = getDb();
+  if (!db) return;
+
+  const logger = getLogger();
+  const userDataDir = path.join(appDataPath, "UserData");
+  const attachmentsDir = path.join(userDataDir, "attachments");
+  const now = Date.now();
+
+  try {
+    const files = await fs.readdir(attachmentsDir);
+    for (const file of files) {
+      const filePath = path.join(attachmentsDir, file);
+      const stats = await fs.stat(filePath);
+      if (!stats.isFile()) continue;
+      let hash = file.split(".")[0];
+      if (!/^[a-f0-9]{64}$/i.test(hash)) {
+        hash = computeBinaryHash(await fs.readFile(filePath));
+      }
+      upsertAttachmentIndex(hash, filePath, now);
+    }
+  } catch (error) {
+    if (error.code !== "ENOENT") {
+      logger.logOperation("central", "attachment_catalog", "batch", "error", error.message);
+    }
+  }
+
+  try {
+    const avatar = path.join(userDataDir, "user_avatar.png");
+    upsertAvatarIndex(
+      "user_avatar",
+      "user",
+      avatar,
+      computeBinaryHash(await fs.readFile(avatar)),
+      now,
+    );
+  } catch {}
+
+  await scanEntities(
+    path.join(appDataPath, "Agents"),
+    "agent",
+    db,
+    now,
+    appDataPath,
+    logger,
+  );
+  await scanEntities(
+    path.join(appDataPath, "AgentGroups"),
+    "group",
+    db,
+    now,
+    appDataPath,
+    logger,
+  );
 }
 
 /**

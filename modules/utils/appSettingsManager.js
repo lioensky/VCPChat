@@ -7,7 +7,7 @@ class SettingsValidator {
     static validate(settings, defaultSettings) {
         const validated = { ...settings };
         let hasIssues = false;
-        
+
         // 检查必要字段
         for (const [key, defaultValue] of Object.entries(defaultSettings)) {
             if (!(key in validated)) {
@@ -15,7 +15,7 @@ class SettingsValidator {
                 hasIssues = true;
                 console.log(`Added missing field: ${key}`);
             }
-            
+
             // 类型检查 - 允许新添加的字段从 undefined 变为 null
             if (typeof validated[key] !== typeof defaultValue && defaultValue !== null) {
                 validated[key] = defaultValue;
@@ -26,13 +26,13 @@ class SettingsValidator {
                 validated[key] = null;
             }
         }
-        
+
         // 数值范围检查
         if (validated.sidebarWidth < 100 || validated.sidebarWidth > 800) {
             validated.sidebarWidth = 260;
             hasIssues = true;
         }
-        
+
         const allowedChatPresentationModes = new Set(['bubble', 'panel', 'immersive']);
         if (!allowedChatPresentationModes.has(validated.chatPresentationMode)) {
             validated.chatPresentationMode = 'bubble';
@@ -55,7 +55,7 @@ class SettingsValidator {
             validated.agentOrder = [];
             hasIssues = true;
         }
-        
+
         if (!Array.isArray(validated.filterRules)) {
             validated.filterRules = [];
             hasIssues = true;
@@ -65,7 +65,7 @@ class SettingsValidator {
             validated.toolAutoApprovalRules = [];
             hasIssues = true;
         }
-        
+
         return { validated, hasIssues };
     }
 }
@@ -79,7 +79,7 @@ class SettingsManager extends EventEmitter {
         this.cache = null;
         this.cacheTimestamp = 0;
         this.lockFile = settingsPath + '.lock';
-        
+
         // 默认设置模板
         this.defaultSettings = {
             sidebarWidth: 260,
@@ -134,7 +134,7 @@ class SettingsManager extends EventEmitter {
             ChatDataServiceShadowMode: true,
             ChatDataServiceNotifyEnabled: true,
             ChatDataServiceTantivyEnabled: true,
-            MobileSyncUseCentralIndex: false,
+            MobileSyncUseCentralIndex: true,
             DeepMemoUseCentralSearch: false,
             DeepMemoLegacyFallback: true,
             agentMusicControl: false,
@@ -183,26 +183,26 @@ class SettingsManager extends EventEmitter {
 
             const content = await fs.readFile(this.settingsPath, 'utf8');
             const settings = JSON.parse(content);
-            
+
             // 更新缓存
             this.cache = settings;
             this.cacheTimestamp = stats ? stats.mtimeMs : Date.now();
-            
+
             return { ...settings };
         } catch (error) {
             if (error.code === 'ENOENT') {
                 return { ...this.defaultSettings };
             }
-            
+
             console.error('Error reading settings, attempting recovery:', error);
-            
+
             // 尝试从备份恢复
             const backupPath = this.settingsPath + '.backup';
             if (await fs.pathExists(backupPath)) {
                 try {
                     const backupContent = await fs.readFile(backupPath, 'utf8');
                     const backupSettings = JSON.parse(backupContent);
-                    
+
                     // 验证备份数据是否有效且包含用户自定义数据（例如 Agent 列表顺序或非默认用户名）
                     const isNonDefault = backupSettings && (
                         (Array.isArray(backupSettings.combinedItemOrder) && backupSettings.combinedItemOrder.length > 0) ||
@@ -220,7 +220,7 @@ class SettingsManager extends EventEmitter {
                     console.error('Backup also corrupted:', backupError);
                 }
             }
-            
+
             // 如果主文件损坏且没有有效的备份，抛出错误以防止覆盖
             throw new Error(`Settings file corrupted and no valid backup found: ${error.message}`);
         }
@@ -229,41 +229,41 @@ class SettingsManager extends EventEmitter {
     async writeSettings(settings) {
         const tempFile = this.settingsPath + '.tmp';
         const backupFile = this.settingsPath + '.backup';
-        
+
         try {
             // 验证设置
             const { validated } = SettingsValidator.validate(settings, this.defaultSettings);
-            
+
             // 写入临时文件
             await fs.writeJson(tempFile, validated, { spaces: 2 });
-            
+
             // 验证临时文件
             const verifyContent = await fs.readFile(tempFile, 'utf8');
             JSON.parse(verifyContent);
-            
+
             // 创建备份（如果原文件存在）
             if (await fs.pathExists(this.settingsPath)) {
                 await fs.copy(this.settingsPath, backupFile, { overwrite: true });
             }
-            
+
             // 原子性替换
             await fs.move(tempFile, this.settingsPath, { overwrite: true });
-            
+
             // 更新缓存 - 确保原子性
             const newTimestamp = Date.now();
             this.cache = { ...validated };
             this.cacheTimestamp = newTimestamp;
-            
+
             // 触发更新事件
             this.emit('settings-updated', validated);
-            
+
             return true;
         } catch (error) {
             console.error('Error writing settings:', error);
-            
+
             // 清理临时文件
             await fs.remove(tempFile).catch(() => {});
-            
+
             throw error;
         }
     }
@@ -285,7 +285,7 @@ class SettingsManager extends EventEmitter {
 
         try {
             await this.acquireLock();
-            
+
             const currentSettings = await this.readSettings();
             let newSettings;
             if (typeof updater === 'function') {
@@ -294,16 +294,16 @@ class SettingsManager extends EventEmitter {
                 // 确保在合并时，不会丢失 defaultSettings 中定义的字段
                 newSettings = { ...this.defaultSettings, ...currentSettings, ...updater };
             }
-            
+
             await this.writeSettings(newSettings);
-            
+
             resolve({ success: true, settings: newSettings });
         } catch (error) {
             reject(error);
         } finally {
             await this.releaseLock();
             this.processing = false;
-            
+
             // 继续处理队列
             if (this.queue.length > 0) {
                 setImmediate(() => this.processQueue());
@@ -318,7 +318,7 @@ class SettingsManager extends EventEmitter {
                 try {
                     const lockContent = await fs.readFile(this.lockFile, 'utf8');
                     const [pid, timestamp] = lockContent.split('-');
-                    
+
                     // 如果锁文件超过10秒，认为是过期的
                     if (Date.now() - parseInt(timestamp) > 10000) {
                         console.log('Removing stale lock file');
@@ -339,10 +339,10 @@ class SettingsManager extends EventEmitter {
                     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
                     const backupDir = path.join(userDataDir, 'backups');
                     await fs.ensureDir(backupDir);
-                    
+
                     const backupPath = path.join(backupDir, `settings-${timestamp}.json`);
                     await fs.copy(this.settingsPath, backupPath);
-                    
+
                     // 只保留最近7天的备份
                     const files = await fs.readdir(backupDir);
                     const backupFiles = files.filter(f => f.startsWith('settings-'));

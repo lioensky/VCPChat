@@ -170,6 +170,44 @@ class ChatDataServiceClient {
         return this.request('POST', '/v1/search/memories', request, options);
     }
 
+    syncManifest(request, options) {
+        return this.request('POST', '/v1/sync/manifest', request, options);
+    }
+
+    syncMessageManifest(request, options) {
+        return this.request('POST', '/v1/sync/message-manifest', request, options);
+    }
+
+    syncTopicDiff(request, options) {
+        return this.request('POST', '/v1/sync/topic-diff', request, options);
+    }
+
+    syncMessageDiff(request, options) {
+        return this.request('POST', '/v1/sync/message-diff', request, options);
+    }
+
+    syncMessagesPull(request, options) {
+        return this.request('POST', '/v1/sync/messages/pull', request, {
+            timeoutMs: 120_000,
+            ...options
+        });
+    }
+
+    syncMessagesPush(request, options) {
+        return this.request('POST', '/v1/sync/messages/push', request, {
+            timeoutMs: 120_000,
+            ...options
+        });
+    }
+
+    changes(after = 0, limit = 200, options) {
+        const query = new URLSearchParams({
+            after: String(after),
+            limit: String(limit)
+        });
+        return this.request('GET', `/v1/changes?${query}`, undefined, options);
+    }
+
     flush(options) {
         return this.request('POST', '/v1/flush', {}, options);
     }

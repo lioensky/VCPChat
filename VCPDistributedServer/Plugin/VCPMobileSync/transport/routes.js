@@ -34,7 +34,7 @@ const { getLogger } = require("../core/logger");
  * @param {string} params.syncToken - 同步令牌
  * @param {string} params.appDataPath - AppData 路径
  */
-function registerRoutes(app, { syncToken, appDataPath }) {
+function registerRoutes(app, { syncToken, appDataPath, centralSync = null }) {
   const router = express.Router();
   const logger = getLogger();
 
@@ -152,7 +152,11 @@ function registerRoutes(app, { syncToken, appDataPath }) {
     }
 
     try {
-      await downloadMessagesStreamRaw(requests, appDataPath, res);
+      if (centralSync) {
+        await centralSync.downloadMessagesStreamRaw(requests, res);
+      } else {
+        await downloadMessagesStreamRaw(requests, appDataPath, res);
+      }
     } catch (e) {
       if (!res.headersSent) {
         res.status(500).json({ error: e.message });
@@ -169,7 +173,11 @@ function registerRoutes(app, { syncToken, appDataPath }) {
     "/upload-messages-batch",
     async (req, res) => {
       try {
-        await uploadMessagesBatchRaw(req, appDataPath, res);
+        if (centralSync) {
+          await centralSync.uploadMessagesBatchRaw(req, res);
+        } else {
+          await uploadMessagesBatchRaw(req, appDataPath, res);
+        }
       } catch (e) {
         if (!res.headersSent) {
           res.status(500).json({ error: e.message });
@@ -278,17 +286,49 @@ function registerRoutes(app, { syncToken, appDataPath }) {
     }
   });
 
-  // 10. 删除消息
+  // 10. 删除消息。中央模式通过 Push 的 deletedMessageIds 原子投影，
+  // 避免旧私有墓碑与 CDS 墓碑发生双写。
   router.post("/delete-message", express.json(), async (req, res) => {
-    const { msgId, deletedAt, topicId } = req.body;
+    const { msgId, deletedAt, topicId, ownerType, ownerId } = req.body;
 
     if (!msgId || !deletedAt) {
       return res.status(400).json({ error: "Missing required fields" });
     }
 
     try {
+      if (centralSync) {
+        if (!topicId || !ownerType || !ownerId) {
+          return res.status(400).json({
+            error: "Central delete requires topicId, ownerType and ownerId",
+          });
+        }
+        const result = await centralSync.requireClient().syncMessagesPush({
+          topics: [{
+            topicId,
+            ownerType,
+            ownerId,
+            messages: [],
+            deletedMessageIds: [msgId],
+          }],
+        });
+        return res.json(result.results?.[0] || { success: false });
+      }
       const result = await deleteMessage({ msgId, deletedAt, topicId });
       res.json(result);
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Change Feed 为移动端断线续传与删除事件提供中央游标。
+  router.get("/changes", async (req, res) => {
+    if (!centralSync) {
+      return res.status(404).json({ error: "Central sync is disabled" });
+    }
+    try {
+      const after = Number.parseInt(req.query.after || "0", 10) || 0;
+      const limit = Number.parseInt(req.query.limit || "200", 10) || 200;
+      res.json(await centralSync.changes(after, limit));
     } catch (e) {
       res.status(500).json({ error: e.message });
     }

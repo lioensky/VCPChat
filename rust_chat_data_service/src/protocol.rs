@@ -8,7 +8,7 @@ use std::{
 
 use axum::{
     body::Body,
-    extract::{Request, State},
+    extract::{Query, Request, State},
     http::{header::AUTHORIZATION, StatusCode},
     middleware::{self, Next},
     response::Response,
@@ -30,6 +30,12 @@ use crate::{
     ingest::{ReconcileStats, Reconciler},
     search::{MemorySearchRequest, MessageSearchRequest, SearchIndex},
     storage::now_ms,
+    sync::{
+        self, ChangeFeedResponse, ManifestRequest, ManifestResponse, MessageDiffRequest,
+        MessageDiffResponse, MessageManifestResponse, MessagesPullFrame, MessagesPullRequest,
+        MessagesPushRequest, MessagesPushResponse, TopicHashDiffRequest, TopicHashDiffResponse,
+        TopicSelector,
+    },
     watcher::WatcherMetrics,
 };
 
@@ -183,6 +189,19 @@ struct OperationResponse {
     affected: usize,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ChangesQuery {
+    #[serde(default)]
+    after: i64,
+    #[serde(default = "default_change_limit")]
+    limit: usize,
+}
+
+fn default_change_limit() -> usize {
+    200
+}
+
 pub fn router(state: AppState) -> Router {
     let protected = Router::new()
         .route("/v1/status", get(status))
@@ -191,6 +210,13 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/ingest/history-path", post(ingest_history_path))
         .route("/v1/search/messages", post(search_messages))
         .route("/v1/search/memories", post(search_memories))
+        .route("/v1/sync/manifest", post(sync_manifest))
+        .route("/v1/sync/message-manifest", post(sync_message_manifest))
+        .route("/v1/sync/topic-diff", post(sync_topic_diff))
+        .route("/v1/sync/message-diff", post(sync_message_diff))
+        .route("/v1/sync/messages/pull", post(sync_messages_pull))
+        .route("/v1/sync/messages/push", post(sync_messages_push))
+        .route("/v1/changes", get(change_feed))
         .route("/v1/flush", post(flush))
         .route("/v1/shutdown", post(shutdown))
         .route_layer(middleware::from_fn_with_state(state.clone(), authenticate));
@@ -404,6 +430,78 @@ async fn search_memories(
         windows,
         formatted_result,
     }))
+}
+
+async fn sync_manifest(
+    State(state): State<AppState>,
+    Json(request): Json<ManifestRequest>,
+) -> ServiceResult<Json<ManifestResponse>> {
+    sync::manifest(state.reconciler.database(), request)
+        .map(Json)
+        .map_err(ServiceError::internal)
+}
+
+async fn sync_message_manifest(
+    State(state): State<AppState>,
+    Json(request): Json<TopicSelector>,
+) -> ServiceResult<Json<MessageManifestResponse>> {
+    sync::message_manifest(state.reconciler.database(), &request)
+        .map(Json)
+        .map_err(ServiceError::internal)
+}
+
+async fn sync_topic_diff(
+    State(state): State<AppState>,
+    Json(request): Json<TopicHashDiffRequest>,
+) -> ServiceResult<Json<TopicHashDiffResponse>> {
+    sync::topic_hash_diff(state.reconciler.database(), request)
+        .map(Json)
+        .map_err(ServiceError::internal)
+}
+
+async fn sync_message_diff(
+    State(state): State<AppState>,
+    Json(request): Json<MessageDiffRequest>,
+) -> ServiceResult<Json<MessageDiffResponse>> {
+    sync::message_diff(state.reconciler.database(), request)
+        .map(Json)
+        .map_err(ServiceError::internal)
+}
+
+async fn sync_messages_pull(
+    State(state): State<AppState>,
+    Json(request): Json<MessagesPullRequest>,
+) -> ServiceResult<Json<Vec<MessagesPullFrame>>> {
+    sync::pull_messages(state.reconciler.database(), request)
+        .map(Json)
+        .map_err(ServiceError::internal)
+}
+
+async fn sync_messages_push(
+    State(state): State<AppState>,
+    Json(request): Json<MessagesPushRequest>,
+) -> ServiceResult<Json<MessagesPushResponse>> {
+    let response = sync::push_messages(&state.reconciler, request).await;
+    if let Some(search) = &state.search {
+        for result in &response.results {
+            if result.success && result.changed {
+                search
+                    .reconcile_revisions()
+                    .map_err(ServiceError::internal)?;
+                break;
+            }
+        }
+    }
+    Ok(Json(response))
+}
+
+async fn change_feed(
+    State(state): State<AppState>,
+    Query(query): Query<ChangesQuery>,
+) -> ServiceResult<Json<ChangeFeedResponse>> {
+    sync::changes(state.reconciler.database(), query.after, query.limit)
+        .map(Json)
+        .map_err(ServiceError::internal)
 }
 
 async fn rebuild_search(

@@ -181,7 +181,7 @@ pub struct DatabaseStats {
 
 #[derive(Clone)]
 pub struct Database {
-    connection: Arc<Mutex<Connection>>,
+    pub(crate) connection: Arc<Mutex<Connection>>,
     path: PathBuf,
 }
 

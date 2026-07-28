@@ -545,7 +545,7 @@ const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
     // 排除内部静默调用（内部调用时闪屏早已关闭，无需重复创建，防止破坏冷启动状态）
     const isInternalLaunch = process.argv.includes('--desktop-only') || process.argv.includes('--rag-observer-only');
-    
+
     if (!isInternalLaunch) {
         const readyFile = path.join(__dirname, '.vcp_ready');
         try {
@@ -665,9 +665,16 @@ if (!gotTheLock) {
                     enabled: true,
                     notifyEnabled: cdsSettings.ChatDataServiceNotifyEnabled !== false,
                     tantivyEnabled: cdsSettings.ChatDataServiceTantivyEnabled !== false,
+                    mobileSyncUseCentralIndex: cdsSettings.MobileSyncUseCentralIndex === true,
                     logger: console
                 });
-                void chatDataService.startShadowMode();
+                // 同步消费者依赖 CDS 在分布式插件初始化前 READY；中央迁移启用时
+                // 等待握手，旁路模式仍保持后台启动、不阻塞窗口。
+                if (cdsSettings.MobileSyncUseCentralIndex === true) {
+                    await chatDataService.startShadowMode();
+                } else {
+                    void chatDataService.startShadowMode();
+                }
             }
         } catch (error) {
             chatDataService = null;
@@ -958,7 +965,7 @@ if (!gotTheLock) {
         windowHandlers.initialize(mainWindow, openChildWindows);
         forumHandlers.initialize({ USER_DATA_DIR }); // Initialize forum handlers
         memoHandlers.initialize({ USER_DATA_DIR }); // Initialize memo handlers
-        
+
         // ⚠️ agentHandlers 必须在 assistantHandlers 之前初始化
         // 因为 assistantHandlers 依赖 getAgentConfigById 函数，该函数需要 AGENT_DIR_CACHE 已被初始化
         agentHandlers.initialize({
@@ -972,7 +979,7 @@ if (!gotTheLock) {
             settingsManager: appSettingsManager,
             agentConfigManager
         });
-        
+
         await assistantHandlers.initialize({ SETTINGS_FILE });
         fileDialogHandlers.initialize(mainWindow, {
             getSelectionListenerStatus: assistantHandlers.getSelectionListenerStatus,

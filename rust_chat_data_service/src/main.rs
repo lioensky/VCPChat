@@ -6,6 +6,7 @@ mod ingest;
 mod protocol;
 mod search;
 mod storage;
+mod sync;
 mod watcher;
 
 use std::{

@@ -13,6 +13,7 @@
   },
   "configSchema": {
     "MobileSyncToken": "string",
-    "MobileSyncPort": "integer"
+    "MobileSyncPort": "integer",
+    "MobileSyncUseCentralIndex": "boolean"
   }
 }

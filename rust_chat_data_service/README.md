@@ -1,16 +1,19 @@
 # VCP Chat Data Service（VCP-CDS）
 
-VCP-CDS 是 VCPChat 第一阶段的中央聊天数据旁路服务。
+VCP-CDS 是 VCPChat 的中央聊天数据服务。第一阶段建立旁路镜像，
+第二阶段已承接 DeepMemo 搜索与 VCPMobileSync 消息同步数据面。
 
-## 第一阶段边界
+## 当前边界
 
-- `history.json` 仍是兼容真源。
-- SQLite 是完整查询镜像。
+- `history.json` 仍是桌面聊天兼容真源。
+- SQLite 是完整查询镜像，也是移动消息同步的中央索引。
 - Tantivy 是可删除、可重建的搜索派生物。
-- VCP-CDS 不接管现有聊天写入。
-- VCPMobileSync 继续使用现有数据库和协议。
-- DeepMemo 继续使用旧可执行文件；中央搜索仅作为内部能力就绪。
-- VCP-CDS 启动或运行失败不得阻断现有聊天功能。
+- DeepMemo 通过中央搜索接口工作。
+- `MobileSyncUseCentralIndex=True` 时，VCPMobileSync 的 Manifest、Topic/Message Diff、
+  Message Pull/Push、消息 Tombstone 与 Change Feed 由 VCP-CDS 提供。
+- 中央同步模式不打开或写入旧 `VCPMobileSync/sync_state.db`，也不启动其历史扫描和 watcher。
+- 关闭 `MobileSyncUseCentralIndex` 可恢复旧同步索引链路；旧数据库文件不会自动删除。
+- 普通桌面聊天保存仍先写 `history.json`，由直接通知或 `notify` 摄取。
 
 ## 构建与部署
 
@@ -156,7 +159,7 @@ ChatDataServiceEnabled=True
 ChatDataServiceShadowMode=True
 ChatDataServiceNotifyEnabled=True
 ChatDataServiceTantivyEnabled=True
-MobileSyncUseCentralIndex=False
+MobileSyncUseCentralIndex=True
 DeepMemoUseCentralSearch=False
 DeepMemoLegacyFallback=True
 ```
@@ -186,14 +189,34 @@ GET /v1/health
 
 ```text
 GET  /v1/status
+GET  /v1/changes?after=<sequence>&limit=<limit>
 POST /v1/reconcile
 POST /v1/rebuild-search-index
 POST /v1/ingest/history-path
 POST /v1/search/messages
 POST /v1/search/memories
+POST /v1/sync/manifest
+POST /v1/sync/message-manifest
+POST /v1/sync/topic-diff
+POST /v1/sync/message-diff
+POST /v1/sync/messages/pull
+POST /v1/sync/messages/push
 POST /v1/flush
 POST /v1/shutdown
 ```
+
+同步 Push 接受 Topic 批次。每个 Topic 可携带新增/修改消息和
+`deletedMessageIds`；CDS 合并后原子投影 `history.json`，在同一摄取事务中更新
+SQLite 消息、Tombstone 与 `change_log`，随后补齐 Tantivy revision。
+
+VCPMobileSync 保留手机鉴权、WebSocket、HTTP/NDJSON 和 DTO 编排。中央模式下：
+
+1. 启动时等待 CDS READY 并执行一次 reconcile。
+2. 不初始化旧 `sync_state.db`。
+3. 不扫描历史文件。
+4. 不启动旧 chokidar watcher。
+5. 消息下载与上传通过中央客户端转发。
+6. `/api/mobile-sync/changes` 暴露带游标的 Change Feed。
 
 ## 测试
 
@@ -209,6 +232,9 @@ cargo test
 - 群聊发言 Agent 身份保留。
 - `Nova` 对 `vcp小助手Nova` 的唯一包含匹配。
 - 多个包含候选的歧义拒绝。
+- 移动消息指纹与旧 `content + attachment hashes` 合约一致。
+- 中央同步聚合哈希顺序无关。
+- VCPMobileSync 中央适配器 Manifest 字段兼容和 Change Feed 游标转发。
 
 Node 静态检查：
 
@@ -217,6 +243,8 @@ node --check rust_chat_data_service/build-runtime.js
 node --check modules/services/chatDataService/client.js
 node --check modules/services/chatDataService/lifecycle.js
 node --check modules/services/chatDataService/index.js
+node --check VCPDistributedServer/Plugin/VCPMobileSync/sync/central.js
+node --test tests/mobile-sync-central-adapter.test.js
 ```
 
 ## 恢复
