@@ -47,6 +47,7 @@ const desktopHandlers = require('./modules/ipc/desktopHandlers'); // Import VCPd
 const desktopRemoteHandlers = require('./modules/ipc/desktopRemoteHandlers'); // Import desktop remote control handlers
 const tavernHandlers = require('./modules/ipc/tavernHandlers'); // Import VCPChatTarven (advanced reply) handlers
 const { PRELOAD_ROLES, resolveProjectPreload } = require('./modules/services/preloadPaths');
+const { ChatDataServiceFacade } = require('./modules/services/chatDataService');
 // chokidar is now lazy-loaded
 
 // --- File Watcher ---
@@ -146,6 +147,7 @@ let vcpLogWebSocket;
 let vcpLogReconnectInterval;
 let openChildWindows = [];
 let distributedServer = null; // To hold the distributed server instance
+let chatDataService = null; // Optional VCP-CDS shadow service.
 let appSettingsManager = null;
 let networkNotesTreeCache = null; // In-memory cache for the network notes
 let cachedModels = []; // Cache for models fetched from VCP server
@@ -295,6 +297,15 @@ async function performQuitCleanup() {
                 await distributedServer.stop();
             } finally {
                 distributedServer = null;
+            }
+        }
+
+        if (chatDataService) {
+            console.log('[Main] Stopping VCP-CDS...');
+            try {
+                await chatDataService.stop();
+            } finally {
+                chatDataService = null;
             }
         }
 
@@ -642,6 +653,25 @@ if (!gotTheLock) {
         const AgentConfigManager = require('./modules/utils/agentConfigManager');
         appSettingsManager = new AppSettingsManager(SETTINGS_FILE);
         const agentConfigManager = new AgentConfigManager(AGENT_DIR);
+
+        // Phase 1: VCP-CDS runs only as an optional shadow mirror. Failure must
+        // never block the existing history.json chat path.
+        try {
+            const cdsSettings = await appSettingsManager.readSettings();
+            if (cdsSettings.ChatDataServiceEnabled !== false) {
+                chatDataService = new ChatDataServiceFacade({
+                    appDataPath: APP_DATA_ROOT_IN_PROJECT,
+                    enabled: true,
+                    notifyEnabled: cdsSettings.ChatDataServiceNotifyEnabled !== false,
+                    tantivyEnabled: cdsSettings.ChatDataServiceTantivyEnabled !== false,
+                    logger: console
+                });
+                await chatDataService.startShadowMode();
+            }
+        } catch (error) {
+            chatDataService = null;
+            console.error('[Main] VCP-CDS shadow initialization failed; continuing without it:', error);
+        }
 
         appSettingsManager.startCleanupTimer();
         appSettingsManager.startAutoBackup(USER_DATA_DIR); // Start auto backup
@@ -992,6 +1022,24 @@ if (!gotTheLock) {
             }
             return { success: false, error: 'File watcher not initialized.' };
         });
+        ipcMain.handle('chat-data-service-status', async () => {
+            if (!chatDataService) {
+                return { status: 'disabled', searchAvailable: false, degraded: true };
+            }
+            return chatDataService.status();
+        });
+
+        ipcMain.handle('chat-data-service-reconcile', async () => {
+            if (!chatDataService?.client) {
+                return { success: false, error: 'VCP-CDS is unavailable.' };
+            }
+            try {
+                return await chatDataService.client.reconcile();
+            } catch (error) {
+                return { success: false, error: error.message, code: error.code };
+            }
+        });
+
         sovitsHandlers.initialize(mainWindow, appSettingsManager); // Initialize SovitsTTS handlers
         musicHandlers.initialize({ mainWindow, openChildWindows, APP_DATA_ROOT_IN_PROJECT, startAudioEngine, stopAudioEngine });
         diceHandlers.initialize({ projectRoot: PROJECT_ROOT });

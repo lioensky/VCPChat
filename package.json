@@ -7,8 +7,9 @@
     "start": "electron .",
     "start:desktop": "electron . --desktop-only",
     "start:rag-observer": "electron . --rag-observer-only",
-    "pack": "electron-builder --dir",
-    "dist": "electron-builder"
+    "build": "node rust_chat_data_service/build-runtime.js",
+    "pack": "npm run build && electron-builder --dir",
+    "dist": "npm run build && electron-builder"
   },
   "keywords": [
     "VCP",
@@ -81,6 +82,9 @@
   "build": {
     "appId": "com.vcp.chatdesktop",
     "productName": "VCP聊天客户端",
+    "asarUnpack": [
+      "modules/services/chatDataService/bin/**/*"
+    ],
     "files": [
       "main.js",
       "preload.js",

@@ -130,6 +130,13 @@ class SettingsManager extends EventEmitter {
                 providerKey: ''
             },
             enableDistributedServer: true,
+            ChatDataServiceEnabled: true,
+            ChatDataServiceShadowMode: true,
+            ChatDataServiceNotifyEnabled: true,
+            ChatDataServiceTantivyEnabled: true,
+            MobileSyncUseCentralIndex: false,
+            DeepMemoUseCentralSearch: false,
+            DeepMemoLegacyFallback: true,
             agentMusicControl: false,
             enableDistributedServerLogs: false,
             enableVcpToolInjection: false,
