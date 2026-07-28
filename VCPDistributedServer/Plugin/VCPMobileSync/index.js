@@ -59,7 +59,21 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
   const centralRequested =
     pluginConfig.MobileSyncUseCentralIndex === true ||
     services.chatDataService?.mobileSyncUseCentralIndex === true;
-  const useCentralIndex = centralRequested && services.chatDataService?.client;
+
+  // 中央模式存在两个配置入口：Electron 全局 settings.json 与插件 config.env。
+  // 若只有插件配置启用，主进程会把 CDS 当作普通 shadow service 后台启动，
+  // 此时插件初始化可能早于 READY。由真正请求中央数据面的插件显式等待 Facade，
+  // 避免因 client 暂时为空而永久漏注册 HTTP Router 与 WebSocket 端口。
+  if (
+    centralRequested &&
+    !services.chatDataService?.client &&
+    typeof services.chatDataService?.startShadowMode === "function"
+  ) {
+    await services.chatDataService.startShadowMode();
+  }
+
+  const useCentralIndex =
+    centralRequested && services.chatDataService?.client;
   if (centralRequested && !useCentralIndex) {
     throw new Error(
       "MobileSyncUseCentralIndex is enabled but VCP-CDS is unavailable; disable the flag to roll back",
@@ -95,9 +109,15 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
       switch (payload.type) {
         case "SYNC_MANIFEST": {
           logger.logOperation("websocket", "message", payload.type, "info", `dataType=${payload.dataType}`);
-          return centralSync
-            ? centralSync.handleSyncManifest(payload)
-            : handleSyncManifest(payload);
+
+          // VCP-CDS 只持有 Agent、Group、Topic 与 Message 的中央索引。
+          // Avatar 仍由本插件的兼容资产目录（内存 avatar_index + 物理文件）
+          // 负责。不能把 avatar Manifest 转给 CDS，否则 CDS 会把本地清单
+          // 视为空集，生成错误的全量 PUSH，并破坏 Owner Metadata 阶段。
+          if (centralSync && payload.dataType !== "avatar") {
+            return centralSync.handleSyncManifest(payload);
+          }
+          return handleSyncManifest(payload);
         }
         case "GET_MESSAGE_MANIFEST": {
           logger.logOperation("websocket", "message", payload.type, "info", `topicId=${payload.topicId}`);

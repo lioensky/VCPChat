@@ -22,8 +22,33 @@ class CentralSyncAdapter {
     return client;
   }
 
-  async reconcile() {
-    return this.requireClient().reconcile();
+  async reconcile({ maxAttempts = 30, retryDelayMs = 500 } = {}) {
+    const client = this.requireClient();
+
+    // VCP-CDS 在发布 READY 后会启动一次后台 reconcile。MobileSync 紧接着
+    // 初始化时可能与该任务争用 reconcile_lock，并收到可重试的 SERVICE_BUSY
+    // (HTTP 429)。不能让这个瞬时状态阻止整个 HTTP/WS 同步路由注册。
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      try {
+        return await client.reconcile();
+      } catch (error) {
+        const isBusy =
+          error?.code === "SERVICE_BUSY" ||
+          (error?.status === 429 && error?.retryable === true);
+        if (!isBusy || attempt === maxAttempts) {
+          throw error;
+        }
+
+        getLogger().logInfo(
+          "central",
+          `VCP-CDS reconcile 正忙，等待后重试 (${attempt}/${maxAttempts})`,
+          "warn",
+        );
+        await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+      }
+    }
+
+    throw new Error("VCP-CDS reconcile retry loop exhausted");
   }
 
   async handleSyncManifest(payload) {

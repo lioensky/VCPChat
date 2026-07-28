@@ -280,24 +280,19 @@ pub fn manifest(database: &Database, request: ManifestRequest) -> Result<Manifes
     )?;
     let mut local_by_key = HashMap::new();
     for item in local {
-        local_by_key.insert(manifest_key(&item.id, item.owner_type, item.owner_id.as_deref()), item);
+        local_by_key.insert(
+            manifest_key(&item.id, item.owner_type, item.owner_id.as_deref()),
+            item,
+        );
     }
 
     let mut actions = Vec::new();
     let mut processed = HashSet::new();
     for remote in &request.data {
-        let key = manifest_key(
-            &remote.id,
-            remote.owner_type,
-            remote.owner_id.as_deref(),
-        );
-        let local = local_by_key.get(&key).or_else(|| {
-            let matches = local_by_key
-                .values()
-                .filter(|item| item.id == remote.id)
-                .collect::<Vec<_>>();
-            (matches.len() == 1).then_some(matches[0])
-        });
+        let key = manifest_key(&remote.id, remote.owner_type, remote.owner_id.as_deref());
+        let local = local_by_key
+            .get(&key)
+            .or_else(|| unique_manifest_item_by_id(&local_by_key, &remote.id));
         processed.insert(local.map_or(key, |item| {
             manifest_key(&item.id, item.owner_type, item.owner_id.as_deref())
         }));
@@ -338,8 +333,7 @@ pub fn manifest(database: &Database, request: ManifestRequest) -> Result<Manifes
                 owner_id: local.owner_id.clone(),
                 mismatched_content: content_changed,
             });
-        } else if content_changed
-            && (request.data_type == "agent" || request.data_type == "group")
+        } else if content_changed && (request.data_type == "agent" || request.data_type == "group")
         {
             actions.push(ManifestAction {
                 id: local.id.clone(),
@@ -426,7 +420,10 @@ pub fn topic_hash_diff(
                 string_field(object, "contentHash"),
             )
         } else {
-            (String::new(), value.as_str().unwrap_or_default().to_string())
+            (
+                String::new(),
+                value.as_str().unwrap_or_default().to_string(),
+            )
         };
         states.push(TopicHashState {
             topic_id,
@@ -507,8 +504,9 @@ pub fn message_diff(
             .iter()
             .filter_map(|(id, hash)| {
                 let remote = state.messages.get(id);
-                (remote.is_none() || remote.is_some_and(|value| value != hash && value != "DELETED"))
-                    .then_some(id.clone())
+                (remote.is_none()
+                    || remote.is_some_and(|value| value != hash && value != "DELETED"))
+                .then_some(id.clone())
             })
             .collect();
         let to_push = state
@@ -551,7 +549,10 @@ pub fn pull_messages(
             .filter_map(|result| {
                 let raw = result.ok()?;
                 let mut message = serde_json::from_str::<Value>(&raw).ok()?;
-                let id = message.get("id").and_then(Value::as_str).unwrap_or_default();
+                let id = message
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
                 if !wanted.is_empty() && !wanted.contains(id) {
                     return None;
                 }
@@ -788,15 +789,16 @@ fn topic_manifests(
 
 fn topic_manifest(database: &Database, key: &TopicKey) -> Result<ManifestItem> {
     let connection = database.connection.lock();
-    let (metadata_json, updated_at, deleted_at): (String, i64, Option<i64>) = connection.query_row(
-        "SELECT metadata_json, updated_at, deleted_at FROM topics
+    let (metadata_json, updated_at, deleted_at): (String, i64, Option<i64>) = connection
+        .query_row(
+            "SELECT metadata_json, updated_at, deleted_at FROM topics
          WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3",
-        params![key.owner_type.as_str(), key.owner_id, key.topic_id],
-        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-    )?;
+            params![key.owner_type.as_str(), key.owner_id, key.topic_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )?;
     drop(connection);
-    let metadata = serde_json::from_str::<Value>(&metadata_json)
-        .context("topic metadata is invalid")?;
+    let metadata =
+        serde_json::from_str::<Value>(&metadata_json).context("topic metadata is invalid")?;
     let config_hash = mobile_topic_config_hash(key, &metadata);
     let content_hash = topic_content_hash(database, key)?;
     Ok(ManifestItem {
@@ -811,7 +813,11 @@ fn topic_manifest(database: &Database, key: &TopicKey) -> Result<ManifestItem> {
     })
 }
 
-fn owner_content_hash(database: &Database, owner_type: OwnerType, owner_id: &str) -> Result<String> {
+fn owner_content_hash(
+    database: &Database,
+    owner_type: OwnerType,
+    owner_id: &str,
+) -> Result<String> {
     let connection = database.connection.lock();
     let mut statement = connection.prepare(
         "SELECT topic_id FROM topics
@@ -858,7 +864,8 @@ fn topic_content_hash(database: &Database, key: &TopicKey) -> Result<String> {
 
 fn resolve_topic(database: &Database, selector: &TopicSelector) -> Result<TopicKey> {
     let connection = database.connection.lock();
-    if let (Some(owner_type), Some(owner_id)) = (selector.owner_type, selector.owner_id.as_deref()) {
+    if let (Some(owner_type), Some(owner_id)) = (selector.owner_type, selector.owner_id.as_deref())
+    {
         let exists = connection
             .query_row(
                 "SELECT 1 FROM topics
@@ -969,7 +976,10 @@ fn mobile_message_hash(message: &Map<String, Value>) -> String {
     attachment_hashes.sort();
 
     let canonical = if attachment_hashes.is_empty() {
-        format!(r#"{{"content":{}}}"#, serde_json::to_string(content).unwrap_or_default())
+        format!(
+            r#"{{"content":{}}}"#,
+            serde_json::to_string(content).unwrap_or_default()
+        )
     } else {
         format!(
             r#"{{"attachmentHashes":{},"content":{}}}"#,
@@ -988,8 +998,18 @@ fn mobile_owner_config_hash(owner_type: OwnerType, path: &Path) -> Result<String
 
     match owner_type {
         OwnerType::Agent => {
-            insert_defaulted(&mut dto, object, "name", Value::String("Unnamed Agent".into()));
-            insert_defaulted(&mut dto, object, "systemPrompt", Value::String(String::new()));
+            insert_defaulted(
+                &mut dto,
+                object,
+                "name",
+                Value::String("Unnamed Agent".into()),
+            );
+            insert_defaulted(
+                &mut dto,
+                object,
+                "systemPrompt",
+                Value::String(String::new()),
+            );
             insert_defaulted(
                 &mut dto,
                 object,
@@ -1019,16 +1039,21 @@ fn mobile_owner_config_hash(owner_type: OwnerType, path: &Path) -> Result<String
             insert_defaulted(&mut dto, object, "streamOutput", Value::Bool(true));
         }
         OwnerType::Group => {
-            insert_defaulted(&mut dto, object, "name", Value::String("Unnamed Group".into()));
-            insert_defaulted(&mut dto, object, "members", Value::Array(Vec::new()));
             insert_defaulted(
                 &mut dto,
                 object,
-                "mode",
-                Value::String("sequential".into()),
+                "name",
+                Value::String("Unnamed Group".into()),
             );
+            insert_defaulted(&mut dto, object, "members", Value::Array(Vec::new()));
+            insert_defaulted(&mut dto, object, "mode", Value::String("sequential".into()));
             insert_defaulted(&mut dto, object, "memberTags", Value::Object(Map::new()));
-            insert_defaulted(&mut dto, object, "groupPrompt", Value::String(String::new()));
+            insert_defaulted(
+                &mut dto,
+                object,
+                "groupPrompt",
+                Value::String(String::new()),
+            );
             insert_defaulted(
                 &mut dto,
                 object,
@@ -1036,7 +1061,12 @@ fn mobile_owner_config_hash(owner_type: OwnerType, path: &Path) -> Result<String
                 Value::String("现在轮到你{{VCPChatAgentName}}发言了。系统已经为大家添加[xxx的发言：]这样的标记头，以用于区分不同发言来自谁。大家不用自己再输出自己的发言标记头，也不需要讨论发言标记系统，正常聊天即可。".into()),
             );
             insert_defaulted(&mut dto, object, "useUnifiedModel", Value::Bool(false));
-            insert_defaulted(&mut dto, object, "unifiedModel", Value::String(String::new()));
+            insert_defaulted(
+                &mut dto,
+                object,
+                "unifiedModel",
+                Value::String(String::new()),
+            );
             insert_defaulted(
                 &mut dto,
                 object,
@@ -1079,7 +1109,12 @@ fn mobile_topic_config_hash(key: &TopicKey, metadata: &Value) -> String {
     hash_stable_object(&dto)
 }
 
-fn insert_defaulted(target: &mut Map<String, Value>, source: &Map<String, Value>, key: &str, default: Value) {
+fn insert_defaulted(
+    target: &mut Map<String, Value>,
+    source: &Map<String, Value>,
+    key: &str,
+    default: Value,
+) {
     let value = source
         .get(key)
         .filter(|value| !value.is_null())
@@ -1160,6 +1195,22 @@ fn aggregate_hash(mut hashes: Vec<String>) -> String {
     hex::encode(digest.finalize())
 }
 
+fn unique_manifest_item_by_id<'a>(
+    local_by_key: &'a HashMap<String, ManifestItem>,
+    id: &str,
+) -> Option<&'a ManifestItem> {
+    let mut matches = local_by_key.values().filter(|item| item.id == id);
+    let first = matches.next();
+
+    // 仅在 Topic ID 跨 Owner 唯一时允许旧协议省略 Owner 上下文。
+    // 不使用 bool::then_some(matches[0])：then_some 会立即求值参数，
+    // 即使集合为空也会访问下标 0 并导致 Tokio worker panic。
+    match (first, matches.next()) {
+        (Some(item), None) => Some(item),
+        _ => None,
+    }
+}
+
 fn manifest_key(id: &str, owner_type: Option<OwnerType>, owner_id: Option<&str>) -> String {
     format!(
         "{}:{}:{}",
@@ -1199,8 +1250,57 @@ const fn is_false(value: &bool) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{aggregate_hash, mobile_message_hash};
+    use std::collections::HashMap;
+
+    use super::{aggregate_hash, mobile_message_hash, unique_manifest_item_by_id, ManifestItem};
+    use crate::domain::OwnerType;
     use serde_json::json;
+
+    fn manifest_item(id: &str, owner_type: OwnerType, owner_id: &str) -> ManifestItem {
+        ManifestItem {
+            id: id.to_string(),
+            hash: String::new(),
+            config_hash: String::new(),
+            content_hash: String::new(),
+            ts: 0,
+            deleted_at: None,
+            owner_type: Some(owner_type),
+            owner_id: Some(owner_id.to_string()),
+        }
+    }
+
+    #[test]
+    fn legacy_manifest_lookup_handles_zero_matches_without_panicking() {
+        let items = HashMap::new();
+        assert!(unique_manifest_item_by_id(&items, "missing-topic").is_none());
+    }
+
+    #[test]
+    fn legacy_manifest_lookup_accepts_one_ownerless_match() {
+        let mut items = HashMap::new();
+        items.insert(
+            "agent:agent-1:topic-1".to_string(),
+            manifest_item("topic-1", OwnerType::Agent, "agent-1"),
+        );
+
+        let found = unique_manifest_item_by_id(&items, "topic-1").expect("unique topic");
+        assert_eq!(found.owner_id.as_deref(), Some("agent-1"));
+    }
+
+    #[test]
+    fn legacy_manifest_lookup_rejects_ambiguous_cross_owner_topic_id() {
+        let mut items = HashMap::new();
+        items.insert(
+            "agent:agent-1:shared-topic".to_string(),
+            manifest_item("shared-topic", OwnerType::Agent, "agent-1"),
+        );
+        items.insert(
+            "group:group-1:shared-topic".to_string(),
+            manifest_item("shared-topic", OwnerType::Group, "group-1"),
+        );
+
+        assert!(unique_manifest_item_by_id(&items, "shared-topic").is_none());
+    }
 
     #[test]
     fn mobile_fingerprint_matches_content_only_contract() {

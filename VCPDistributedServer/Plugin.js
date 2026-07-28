@@ -325,7 +325,10 @@ class PluginManager {
 
                 if (serviceData.module && typeof serviceData.module.registerRoutes === 'function') {
                     if (this.debugMode) console.log(`[DistPluginManager] Registering routes for service plugin: ${name}.`);
-                    serviceData.module.registerRoutes(app, pluginConfig, projectBasePath, services);
+                    // 服务插件允许在路由开放前执行异步准备（例如 VCPMobileSync
+                    // 等待 VCP-CDS reconcile）。必须等待其完成，否则 HTTP 服务可能
+                    // 已开始监听，但插件路由尚未挂载，客户端会在启动窗口收到 404。
+                    await serviceData.module.registerRoutes(app, pluginConfig, projectBasePath, services);
                 }
             } catch (e) {
                 console.error(`[DistPluginManager] Error initializing service plugin ${name}:`, e);

@@ -103,6 +103,33 @@ test("中央适配器保留 Change Feed 游标", async () => {
   assert.equal(result.nextSequence, 42);
 });
 
+test("中央适配器在启动 reconcile 遇到 SERVICE_BUSY 时退避重试", async () => {
+  let attempts = 0;
+  const adapter = createCentralSyncAdapter({
+    client: createClient({
+      reconcile: async () => {
+        attempts += 1;
+        if (attempts === 1) {
+          const error = new Error("service is busy");
+          error.code = "SERVICE_BUSY";
+          error.status = 429;
+          error.retryable = true;
+          throw error;
+        }
+        return { stats: {} };
+      },
+    }),
+  });
+
+  const result = await adapter.reconcile({
+    maxAttempts: 2,
+    retryDelayMs: 0,
+  });
+
+  assert.deepEqual(result, { stats: {} });
+  assert.equal(attempts, 2);
+});
+
 test("CDS 不可用时中央适配器显式失败而非静默写旧库", async () => {
   const adapter = createCentralSyncAdapter(null);
 
