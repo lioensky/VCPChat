@@ -902,6 +902,19 @@ function hasLikelyUnclosedHtmlIsland(text, startOffset = 0) {
     return findBareDivIslandStableCutoff(text, startOffset).blocked;
 }
 
+function findToolRequestBlockEnd(text, startIndex) {
+    const contentStart = startIndex + TOOL_REQUEST_START.length;
+
+    // 与完整渲染共享 ESCAPE 感知扫描器：工具参数中的「始ESCAPE」...「末ESCAPE」
+    // 可能包含结束标记文本，不能用简单 indexOf 提前截断请求。
+    if (typeof refs.findToolRequestEnd === 'function') {
+        return refs.findToolRequestEnd(text, contentStart);
+    }
+
+    const endIndex = text.indexOf(TOOL_REQUEST_END, contentStart);
+    return endIndex === -1 ? -1 : endIndex + TOOL_REQUEST_END.length;
+}
+
 function findRoleDividerSectionEnd(text, startIndex) {
     ROLE_DIVIDER_REGEX.lastIndex = startIndex;
     const startMatch = ROLE_DIVIDER_REGEX.exec(text);
@@ -961,12 +974,12 @@ function findExplicitStablePrefix(text, startOffset = 0) {
         }
 
         if (startsWithAt(text, index, TOOL_REQUEST_START)) {
-            const endIndex = text.indexOf(TOOL_REQUEST_END, index + TOOL_REQUEST_START.length);
-            if (endIndex === -1) {
+            const requestEnd = findToolRequestBlockEnd(text, index);
+            if (requestEnd === -1) {
                 blockedByUnclosedExplicitBlock = true;
                 break;
             }
-            stableCutoff = endIndex + TOOL_REQUEST_END.length;
+            stableCutoff = requestEnd;
             paragraphFloor = stableCutoff;
             index = stableCutoff;
             continue;

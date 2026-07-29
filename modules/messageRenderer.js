@@ -1832,11 +1832,52 @@ function findUnclosedStreamCodeFence(text) {
     };
 }
 
+function findUnclosedStreamToolRequest(text) {
+    if (typeof text !== 'string' || !text.includes(TOOL_START_MARKER)) {
+        return null;
+    }
+
+    let cursor = 0;
+    while (cursor < text.length) {
+        const startIndex = text.indexOf(TOOL_START_MARKER, cursor);
+        if (startIndex === -1) return null;
+
+        if (isBacktickWrappedMarker(text, startIndex, TOOL_START_MARKER)) {
+            cursor = startIndex + TOOL_START_MARKER.length;
+            continue;
+        }
+
+        const contentStart = startIndex + TOOL_START_MARKER.length;
+        const endIndex = findToolRequestEnd(text, contentStart);
+        if (endIndex === -1) {
+            return {
+                prefix: text.slice(0, startIndex),
+                request: text.slice(startIndex)
+            };
+        }
+
+        cursor = endIndex;
+    }
+
+    return null;
+}
+
 function parseStreamTailMarkdown(text) {
     const markedInstance = mainRendererReferences.markedInstance;
     if (!markedInstance) return escapeHtml(text);
 
     const processedText = preprocessStreamTailContent(text);
+
+    // 工具请求尚未闭合时，完整管线还不能把它转换为安全的工具气泡。
+    // 这里必须先把整个请求尾部作为纯文本封印，禁止参数中的 HTML 在任一流式帧成为真实 DOM。
+    const unclosedToolRequest = findUnclosedStreamToolRequest(processedText);
+    if (unclosedToolRequest) {
+        const prefixHtml = unclosedToolRequest.prefix
+            ? markedInstance.parse(unclosedToolRequest.prefix)
+            : '';
+        return `${prefixHtml}<pre class="vcp-stream-tool-request-sealed">${escapeHtml(unclosedToolRequest.request)}</pre>`;
+    }
+
     const unclosedFence = findUnclosedStreamCodeFence(processedText);
 
     if (!unclosedFence) {
@@ -2448,6 +2489,7 @@ function initializeMessageRenderer(refs) {
         processRenderedContent: wrappedProcessRenderedContent,
         runTextHighlights: contentProcessor.highlightAllPatternsInMessage,
         preprocessFullContent: preprocessFullContent,
+        findToolRequestEnd: (text, startIndex) => findToolRequestEnd(text, startIndex),
         removeSpeakerTags: contentProcessor.removeSpeakerTags,
         ensureNewlineAfterCodeBlock: contentProcessor.ensureNewlineAfterCodeBlock,
         ensureSpaceAfterTilde: contentProcessor.ensureSpaceAfterTilde,
