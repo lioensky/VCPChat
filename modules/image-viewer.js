@@ -75,6 +75,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     let imageUrl = params.get('src');
     let imageTitle = params.get('title') || '图片预览';
     const initialTheme = params.get('theme') || 'dark';
+    let resolvedImageSrc = '';
+    let originalImageBlobPromise = null;
 
     applyTheme(initialTheme);
 
@@ -111,6 +113,54 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('image-title-text').textContent = decodedTitle;
 
     // ========== 工具函数 ==========
+
+    function getImageMimeType(src) {
+        const dataUrlMatch = /^data:([^;,]+)/i.exec(src || '');
+        if (dataUrlMatch) return dataUrlMatch[1].toLowerCase();
+
+        const cleanUrl = (src || '').split(/[?#]/, 1)[0];
+        if (/\.gif$/i.test(cleanUrl) || /\.gif$/i.test(decodedTitle)) return 'image/gif';
+        return '';
+    }
+
+    function isUneditedGif() {
+        return getImageMimeType(resolvedImageSrc) === 'image/gif' && historyStep <= 0;
+    }
+
+    async function getOriginalImageBlob() {
+        if (!resolvedImageSrc) throw new Error('原始图片地址不存在');
+
+        if (!originalImageBlobPromise) {
+            originalImageBlobPromise = fetch(resolvedImageSrc)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`读取原始图片失败: HTTP ${response.status}`);
+                    }
+                    return response.blob();
+                })
+                .then(blob => {
+                    // 某些服务没有返回正确的 Content-Type，以源数据识别结果为准。
+                    const mimeType = getImageMimeType(resolvedImageSrc) || blob.type;
+                    return mimeType && blob.type !== mimeType
+                        ? new Blob([blob], { type: mimeType })
+                        : blob;
+                })
+                .catch(error => {
+                    originalImageBlobPromise = null;
+                    throw error;
+                });
+        }
+
+        return originalImageBlobPromise;
+    }
+
+    function getGifDownloadName() {
+        let fileName = decodedTitle || 'image.gif';
+        if (!/\.gif$/i.test(fileName)) {
+            fileName = fileName.replace(/\.[a-z0-9]+$/i, '') + '.gif';
+        }
+        return fileName;
+    }
 
     // 保存当前画布状态到历史记录
     function saveToHistory() {
@@ -379,6 +429,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 finalSrc = imageUrl;
             }
         }
+        resolvedImageSrc = finalSrc;
         console.log('[ImageViewer] Loading image, length:', finalSrc.length, 'via', tokenFromUrl ? 'token' : 'url');
         imgElement.src = finalSrc;
 
@@ -551,27 +602,42 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
 
-    // 复制功能（合并编辑后的图）
+    // 复制功能：未编辑的 GIF 保留原始动画；其他图片合并编辑层后复制为 PNG。
     copyButton.addEventListener('click', async () => {
         if (!imgElement.src) return;
 
         const originalText = copyButton.innerHTML;
         try {
-            // 创建合成画布
-            const mergedCanvas = document.createElement('canvas');
-            mergedCanvas.width = imgElement.naturalWidth;
-            mergedCanvas.height = imgElement.naturalHeight;
-            const mergedCtx = mergedCanvas.getContext('2d');
-            
-            // 绘制原图和编辑层
-            mergedCtx.drawImage(imgElement, 0, 0);
-            mergedCtx.drawImage(canvas, 0, 0);
-            
-            // 转换为 blob 并复制
-            const blob = await new Promise(resolve => mergedCanvas.toBlob(resolve, 'image/png'));
-            const item = new ClipboardItem({ 'image/png': blob });
-            await navigator.clipboard.write([item]);
-            
+            let blob;
+            let mimeType;
+
+            if (isUneditedGif()) {
+                blob = await getOriginalImageBlob();
+                mimeType = 'image/gif';
+
+                if (viewerAPI && typeof viewerAPI.copyGifToClipboard === 'function') {
+                    const gifBytes = new Uint8Array(await blob.arrayBuffer());
+                    await viewerAPI.copyGifToClipboard(gifBytes);
+                } else {
+                    const item = new ClipboardItem({ [mimeType]: blob });
+                    await navigator.clipboard.write([item]);
+                }
+            } else {
+                const mergedCanvas = document.createElement('canvas');
+                mergedCanvas.width = imgElement.naturalWidth;
+                mergedCanvas.height = imgElement.naturalHeight;
+                const mergedCtx = mergedCanvas.getContext('2d');
+
+                mergedCtx.drawImage(imgElement, 0, 0);
+                mergedCtx.drawImage(canvas, 0, 0);
+
+                blob = await new Promise(resolve => mergedCanvas.toBlob(resolve, 'image/png'));
+                mimeType = 'image/png';
+
+                const item = new ClipboardItem({ [mimeType]: blob });
+                await navigator.clipboard.write([item]);
+            }
+
             copyButton.innerHTML = '<svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:currentColor;"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"></path></svg> 已复制';
             setTimeout(() => copyButton.innerHTML = originalText, 2000);
         } catch (err) {
@@ -581,24 +647,37 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
 
-    // 下载功能
-    downloadButton.addEventListener('click', () => {
+    // 下载功能：未编辑的 GIF 直接下载原文件，避免画布截取后只剩静态首帧。
+    downloadButton.addEventListener('click', async () => {
         if (!imgElement.src) return;
 
-        // 创建合成画布
+        const link = document.createElement('a');
+
+        if (isUneditedGif()) {
+            try {
+                const blob = await getOriginalImageBlob();
+                const objectUrl = URL.createObjectURL(blob);
+                link.href = objectUrl;
+                link.download = getGifDownloadName();
+                link.click();
+                setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+                return;
+            } catch (err) {
+                console.error('GIF download failed:', err);
+                return;
+            }
+        }
+
         const mergedCanvas = document.createElement('canvas');
         mergedCanvas.width = imgElement.naturalWidth;
         mergedCanvas.height = imgElement.naturalHeight;
         const mergedCtx = mergedCanvas.getContext('2d');
 
-        // 绘制原图和编辑层
         mergedCtx.drawImage(imgElement, 0, 0);
         mergedCtx.drawImage(canvas, 0, 0);
 
-        // 创建下载链接并点击
-        const link = document.createElement('a');
         link.href = mergedCanvas.toDataURL('image/png');
-        link.download = decodeURIComponent(imageTitle) || 'image.png';
+        link.download = decodedTitle || 'image.png';
         link.click();
     });
 

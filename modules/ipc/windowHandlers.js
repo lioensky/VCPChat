@@ -1,5 +1,5 @@
 // modules/ipc/windowHandlers.js
-const { ipcMain, app, BrowserWindow } = require('electron');
+const { ipcMain, app, BrowserWindow, clipboard } = require('electron');
 const crypto = require('crypto');
 const path = require('path');
 const { PRELOAD_ROLES, resolveAppPreload } = require('../services/preloadPaths');
@@ -150,6 +150,30 @@ function initialize(mainWindow, openChildWindows) {
             title: payload.title,
             theme: payload.theme,
         };
+    });
+
+    /**
+     * Chromium 的 Async Clipboard API 在部分版本中不接受 image/gif。
+     * 将原始 GIF 字节交给 Electron 主进程写入原生剪贴板格式，保留全部动画帧。
+     */
+    ipcMain.handle('image-viewer:copy-gif', (event, gifBytes) => {
+        const buffer = Buffer.from(gifBytes || []);
+        const isGif = buffer.length >= 6
+            && (buffer.subarray(0, 6).toString('ascii') === 'GIF87a'
+                || buffer.subarray(0, 6).toString('ascii') === 'GIF89a');
+
+        if (!isGif) {
+            throw new Error('拒绝写入剪贴板：数据不是有效的 GIF。');
+        }
+
+        const MAX_GIF_CLIPBOARD_BYTES = 100 * 1024 * 1024;
+        if (buffer.length > MAX_GIF_CLIPBOARD_BYTES) {
+            throw new Error('GIF 超过 100 MB，无法复制到剪贴板。');
+        }
+
+        const format = process.platform === 'darwin' ? 'public.gif' : 'image/gif';
+        clipboard.writeBuffer(format, buffer);
+        return { success: true, format, size: buffer.length };
     });
 
     ipcMain.on('open-image-viewer', (event, payload = {}) => {

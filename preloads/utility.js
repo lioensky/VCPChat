@@ -140,6 +140,7 @@ function createCatalog(ops) {
         // 大体积图片 payload 通过主进程内存缓存中转，避免把 dataURL 塞进 BrowserWindow URL query。
         registerImageViewerPayload: query((payload) => ops.invoke('image-viewer:register-payload', payload)),
         consumeImageViewerPayload: query((token) => ops.invoke('image-viewer:consume-payload', token)),
+        copyGifToClipboard: query((gifBytes) => ops.invoke('image-viewer:copy-gif', gifBytes)),
         openImageInNewWindow: command((imageUrl, imageTitle) => ops.send('open-image-in-new-window', imageUrl, imageTitle)),
         openTextInNewWindow: query((textContent, windowTitle, theme) => ops.invoke('display-text-content-in-viewer', textContent, windowTitle, theme)),
         sendOpenExternalLink: command((url) => ops.send('open-external-link', url)),
@@ -462,6 +463,7 @@ const ALLOWED_KEYS = [
     "openImageViewer",
     "registerImageViewerPayload",
     "consumeImageViewerPayload",
+    "copyGifToClipboard",
     "openImageInNewWindow",
     "openTextInNewWindow",
     "sendOpenExternalLink",
