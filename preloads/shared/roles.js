@@ -83,6 +83,7 @@ const CHAT_KEYS = [
     'getOriginalMessageContent',
     'handleFilePaste',
     'selectFilesToSend',
+    'openPythonAttachmentInTextEditor',
     'getFileAsBase64',
     'getTextContent',
     'handleTextPasteAsFile',

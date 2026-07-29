@@ -47,6 +47,7 @@ function createCatalog(ops) {
         openImageInNewWindow: command((imageUrl, imageTitle) => ops.send('open-image-in-new-window', imageUrl, imageTitle)),
         openTextInNewWindow: query((textContent, windowTitle, theme) => ops.invoke('display-text-content-in-viewer', textContent, windowTitle, theme)),
         sendOpenExternalLink: command((url) => ops.send('open-external-link', url)),
+        openPythonAttachmentInTextEditor: query((fileUrl) => ops.invoke('open-python-attachment-in-text-editor', fileUrl)),
         onThemeUpdated: subscription(ops.subscribe('theme-updated', (_event, theme) => theme)),
         getCurrentTheme: query(() => ops.invoke('get-current-theme')),
         setTheme: command((theme) => ops.send('set-theme', theme)),

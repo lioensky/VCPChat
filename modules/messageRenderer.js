@@ -2902,14 +2902,43 @@ async function renderAttachments(message, contentDiv) {
                 attachmentElement = document.createElement('a');
                 attachmentElement.href = att.src;
                 const fileVisual = getAttachmentFileVisualDescriptor(att.name, att.type);
+                const isPythonAttachment = /\.py$/i.test((att.name || '').trim())
+                    || (() => {
+                        try {
+                            return /\.py$/i.test(decodeURIComponent(new URL(att.src).pathname));
+                        } catch (error) {
+                            return false;
+                        }
+                    })();
                 attachmentElement.classList.add('message-attachment-file', `message-attachment-file--${fileVisual.kind}`);
-                attachmentElement.title = `点击打开文件: ${att.name}`;
-                attachmentElement.onclick = (e) => {
+                attachmentElement.title = isPythonAttachment
+                    ? `使用记事本打开（不会执行）: ${att.name}`
+                    : `点击打开文件: ${att.name}`;
+                attachmentElement.onclick = async (e) => {
                     e.preventDefault();
-                    if (electronAPI.sendOpenExternalLink && att.src.startsWith('file://')) {
-                        electronAPI.sendOpenExternalLink(att.src);
-                    } else {
+                    // 阻止聊天区的全局链接委托再次按系统文件关联打开同一个附件。
+                    // 对 .py 而言，二次打开可能直接触发 Python 解释器执行。
+                    e.stopPropagation();
+
+                    if (!att.src.startsWith('file://')) {
                         console.warn("Cannot open local file attachment", att.src);
+                        return;
+                    }
+
+                    if (isPythonAttachment) {
+                        try {
+                            const result = await electronAPI.openPythonAttachmentInTextEditor?.(att.src);
+                            if (!result?.success) {
+                                const errorMessage = result?.error || '安全文本编辑器接口不可用';
+                                console.error('[MessageRenderer] Failed to open Python attachment safely:', errorMessage);
+                                window.uiHelperFunctions?.showToastNotification?.(`无法用记事本打开 Python 附件: ${errorMessage}`, 'error');
+                            }
+                        } catch (error) {
+                            console.error('[MessageRenderer] Failed to open Python attachment safely:', error);
+                            window.uiHelperFunctions?.showToastNotification?.(`无法用记事本打开 Python 附件: ${error.message}`, 'error');
+                        }
+                    } else if (electronAPI.sendOpenExternalLink) {
+                        electronAPI.sendOpenExternalLink(att.src);
                     }
                 };
                 const iconSpan = document.createElement('span');
