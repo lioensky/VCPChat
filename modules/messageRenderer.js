@@ -2618,6 +2618,236 @@ function setUserAvatarColor(color) { // For the user's global avatar
     const globalSettings = mainRendererReferences.globalSettingsRef.get();
     mainRendererReferences.globalSettingsRef.set({ ...globalSettings, userAvatarCalculatedColor: color });
 }
+function formatAudioTime(seconds) {
+    if (!Number.isFinite(seconds) || seconds < 0) return '0:00';
+
+    const totalSeconds = Math.floor(seconds);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const remainingSeconds = totalSeconds % 60;
+
+    return hours > 0
+        ? `${hours}:${String(minutes).padStart(2, '0')}:${String(remainingSeconds).padStart(2, '0')}`
+        : `${minutes}:${String(remainingSeconds).padStart(2, '0')}`;
+}
+
+function getAudioDisplayName(audio) {
+    if (audio.dataset.audioTitle) return audio.dataset.audioTitle;
+
+    const source = audio.currentSrc || audio.getAttribute('src') || audio.querySelector('source')?.src || '';
+    if (!source) return '音频';
+
+    try {
+        const url = new URL(source, window.location.href);
+        const fileName = decodeURIComponent(url.pathname.split('/').filter(Boolean).pop() || '');
+        return fileName || '音频';
+    } catch (error) {
+        return source.split(/[\\/]/).pop()?.split('?')[0] || '音频';
+    }
+}
+
+function createAudioControlButton(className, label, iconMarkup) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = `vcp-audio-button ${className}`;
+    button.setAttribute('aria-label', label);
+    button.title = label;
+    button.innerHTML = iconMarkup;
+    return button;
+}
+
+function enhanceAudioPlayers(container) {
+    if (!container) return;
+
+    const playIcon = `
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M8 5.7v12.6a1 1 0 0 0 1.53.85l9.2-6.3a1 1 0 0 0 0-1.7l-9.2-6.3A1 1 0 0 0 8 5.7Z"></path>
+        </svg>`;
+    const pauseIcon = `
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M7 5.5A1.5 1.5 0 0 1 8.5 4h1A1.5 1.5 0 0 1 11 5.5v13A1.5 1.5 0 0 1 9.5 20h-1A1.5 1.5 0 0 1 7 18.5v-13Zm6 0A1.5 1.5 0 0 1 14.5 4h1A1.5 1.5 0 0 1 17 5.5v13a1.5 1.5 0 0 1-1.5 1.5h-1a1.5 1.5 0 0 1-1.5-1.5v-13Z"></path>
+        </svg>`;
+    const volumeIcon = `
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 9.5v5A1.5 1.5 0 0 0 5.5 16H8l4.2 3.15A.5.5 0 0 0 13 18.75V5.25a.5.5 0 0 0-.8-.4L8 8H5.5A1.5 1.5 0 0 0 4 9.5Zm12.2-.7a1 1 0 0 1 1.4 0 4.5 4.5 0 0 1 0 6.4 1 1 0 1 1-1.4-1.4 2.5 2.5 0 0 0 0-3.6 1 1 0 0 1 0-1.4Zm2.65-2.65a1 1 0 0 1 1.4 0 8.25 8.25 0 0 1 0 11.7 1 1 0 0 1-1.4-1.4 6.25 6.25 0 0 0 0-8.9 1 1 0 0 1 0-1.4Z"></path>
+        </svg>`;
+    const mutedIcon = `
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 9.5v5A1.5 1.5 0 0 0 5.5 16H8l4.2 3.15a.5.5 0 0 0 .8-.4V5.25a.5.5 0 0 0-.8-.4L8 8H5.5A1.5 1.5 0 0 0 4 9.5Zm12.3.1a1 1 0 0 1 1.4 0l1.3 1.3 1.3-1.3a1 1 0 1 1 1.4 1.4l-1.3 1.3 1.3 1.3a1 1 0 0 1-1.4 1.4L19 13.7 17.7 15a1 1 0 0 1-1.4-1.4l1.3-1.3-1.3-1.3a1 1 0 0 1 0-1.4Z"></path>
+        </svg>`;
+    const downloadIcon = `
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 3a1 1 0 0 1 1 1v8.6l2.3-2.3a1 1 0 1 1 1.4 1.4l-4 4a1 1 0 0 1-1.4 0l-4-4a1 1 0 0 1 1.4-1.4l2.3 2.3V4a1 1 0 0 1 1-1ZM5 18a1 1 0 0 1 1 1v1h12v-1a1 1 0 1 1 2 0v1.5A1.5 1.5 0 0 1 18.5 22h-13A1.5 1.5 0 0 1 4 20.5V19a1 1 0 0 1 1-1Z"></path>
+        </svg>`;
+
+    container.querySelectorAll('audio[controls]:not([data-vcp-audio-enhanced])').forEach((audio) => {
+        audio.dataset.vcpAudioEnhanced = 'true';
+        audio.classList.add('vcp-audio-native');
+
+        const player = document.createElement('div');
+        player.className = 'vcp-audio-player';
+        player.setAttribute('role', 'group');
+        player.setAttribute('aria-label', `音频播放器：${getAudioDisplayName(audio)}`);
+
+        const playButton = createAudioControlButton('vcp-audio-play', '播放', playIcon);
+        const content = document.createElement('div');
+        content.className = 'vcp-audio-content';
+
+        const header = document.createElement('div');
+        header.className = 'vcp-audio-header';
+        const title = document.createElement('span');
+        title.className = 'vcp-audio-title';
+        title.textContent = getAudioDisplayName(audio);
+        title.title = title.textContent;
+        const time = document.createElement('span');
+        time.className = 'vcp-audio-time';
+        time.textContent = '0:00 / 0:00';
+        header.append(title, time);
+
+        const progress = document.createElement('input');
+        progress.type = 'range';
+        progress.className = 'vcp-audio-range vcp-audio-progress';
+        progress.min = '0';
+        progress.max = '100';
+        progress.step = 'any';
+        progress.value = '0';
+        progress.setAttribute('aria-label', '播放进度');
+
+        const actions = document.createElement('div');
+        actions.className = 'vcp-audio-actions';
+        const muteButton = createAudioControlButton('vcp-audio-mute', '静音', volumeIcon);
+        const volume = document.createElement('input');
+        volume.type = 'range';
+        volume.className = 'vcp-audio-range vcp-audio-volume';
+        volume.min = '0';
+        volume.max = '1';
+        volume.step = '0.05';
+        volume.value = String(audio.volume);
+        volume.setAttribute('aria-label', '音量');
+
+        const download = document.createElement('a');
+        download.className = 'vcp-audio-button vcp-audio-download';
+        download.href = audio.currentSrc || audio.getAttribute('src') || audio.querySelector('source')?.src || '#';
+        download.download = title.textContent;
+        download.target = '_blank';
+        download.rel = 'noopener noreferrer';
+        download.setAttribute('aria-label', '下载音频');
+        download.title = '下载音频';
+        download.innerHTML = downloadIcon;
+
+        actions.append(muteButton, volume, download);
+        content.append(header, progress, actions);
+
+        const parent = audio.parentNode;
+        parent.insertBefore(player, audio);
+        player.append(audio, playButton, content);
+        audio.controls = false;
+        audio.preload = audio.preload || 'metadata';
+
+        const setRangeFill = (range, value) => {
+            range.style.setProperty('--vcp-range-value', `${Math.max(0, Math.min(100, value))}%`);
+        };
+        const updateProgress = () => {
+            const duration = Number.isFinite(audio.duration) ? audio.duration : 0;
+            const ratio = duration > 0 ? (audio.currentTime / duration) * 100 : 0;
+            progress.value = String(ratio);
+            progress.setAttribute('aria-valuetext', `${formatAudioTime(audio.currentTime)} / ${formatAudioTime(duration)}`);
+            time.textContent = `${formatAudioTime(audio.currentTime)} / ${formatAudioTime(duration)}`;
+            setRangeFill(progress, ratio);
+        };
+
+        let progressAnimationFrame = null;
+        const stopSmoothProgress = () => {
+            if (progressAnimationFrame !== null) {
+                cancelAnimationFrame(progressAnimationFrame);
+                progressAnimationFrame = null;
+            }
+        };
+        const animateSmoothProgress = () => {
+            updateProgress();
+            if (!audio.paused && !audio.ended && player.isConnected) {
+                progressAnimationFrame = requestAnimationFrame(animateSmoothProgress);
+            } else {
+                progressAnimationFrame = null;
+            }
+        };
+        const startSmoothProgress = () => {
+            if (progressAnimationFrame === null) {
+                progressAnimationFrame = requestAnimationFrame(animateSmoothProgress);
+            }
+        };
+
+        const updateVolume = () => {
+            const effectiveVolume = audio.muted ? 0 : audio.volume;
+            volume.value = String(effectiveVolume);
+            setRangeFill(volume, effectiveVolume * 100);
+            muteButton.innerHTML = effectiveVolume === 0 ? mutedIcon : volumeIcon;
+            muteButton.setAttribute('aria-label', effectiveVolume === 0 ? '取消静音' : '静音');
+            muteButton.title = effectiveVolume === 0 ? '取消静音' : '静音';
+        };
+        const updatePlaybackState = () => {
+            const isPlaying = !audio.paused && !audio.ended;
+            player.classList.toggle('is-playing', isPlaying);
+            playButton.innerHTML = isPlaying ? pauseIcon : playIcon;
+            playButton.setAttribute('aria-label', isPlaying ? '暂停' : '播放');
+            playButton.title = isPlaying ? '暂停' : '播放';
+
+            if (isPlaying) {
+                startSmoothProgress();
+            } else {
+                stopSmoothProgress();
+                updateProgress();
+            }
+        };
+
+        playButton.addEventListener('click', () => {
+            if (audio.paused || audio.ended) {
+                document.querySelectorAll('audio.vcp-audio-native').forEach((otherAudio) => {
+                    if (otherAudio !== audio && !otherAudio.paused) otherAudio.pause();
+                });
+                audio.play().catch(() => player.classList.add('has-error'));
+            } else {
+                audio.pause();
+            }
+        });
+        progress.addEventListener('input', () => {
+            if (Number.isFinite(audio.duration) && audio.duration > 0) {
+                audio.currentTime = (Number(progress.value) / 100) * audio.duration;
+            }
+        });
+        muteButton.addEventListener('click', () => {
+            audio.muted = !audio.muted;
+            if (!audio.muted && audio.volume === 0) audio.volume = 0.7;
+            updateVolume();
+        });
+        volume.addEventListener('input', () => {
+            audio.volume = Number(volume.value);
+            audio.muted = audio.volume === 0;
+            updateVolume();
+        });
+
+        audio.addEventListener('loadedmetadata', updateProgress);
+        audio.addEventListener('durationchange', updateProgress);
+        audio.addEventListener('timeupdate', updateProgress);
+        audio.addEventListener('play', updatePlaybackState);
+        audio.addEventListener('pause', updatePlaybackState);
+        audio.addEventListener('ended', updatePlaybackState);
+        audio.addEventListener('volumechange', updateVolume);
+        audio.addEventListener('waiting', () => player.classList.add('is-buffering'));
+        audio.addEventListener('playing', () => player.classList.remove('is-buffering', 'has-error'));
+        audio.addEventListener('canplay', () => player.classList.remove('is-buffering'));
+        audio.addEventListener('error', () => {
+            player.classList.remove('is-buffering');
+            player.classList.add('has-error');
+            title.textContent = '音频加载失败';
+        });
+
+        updateProgress();
+        updateVolume();
+        updatePlaybackState();
+    });
+}
+
 function getAttachmentFileVisualDescriptor(name = '', type = '') {
     const resolver = window.uiHelperFunctions?.resolveAttachmentFileVisual;
     if (typeof resolver === 'function') {
@@ -2662,6 +2892,7 @@ async function renderAttachments(message, contentDiv) {
                 attachmentElement = document.createElement('audio');
                 attachmentElement.src = att.src;
                 attachmentElement.controls = true;
+                attachmentElement.dataset.audioTitle = att.name || '音频附件';
             } else if (att.type.startsWith('video/')) {
                 attachmentElement = document.createElement('video');
                 attachmentElement.src = att.src;
@@ -2749,6 +2980,10 @@ async function renderPostProcessedHtml(contentDiv, rawHtml, options = {}) {
     }
 
     if (!isStillValid()) return;
+
+    // 原生 audio 负责媒体播放，自定义控件层负责一致的主题与交互。
+    // 放在附件渲染之后，可同时覆盖 Markdown HTML 音频和消息附件音频。
+    enhanceAudioPlayers(contentDiv);
 
     if (!runHeavy) {
         if (messageItem) {
