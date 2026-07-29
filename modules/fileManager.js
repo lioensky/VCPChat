@@ -3,6 +3,7 @@ const fs = require('fs-extra');
 const path = require('path');
 const os = require('os');
 const crypto = require('crypto'); // 引入 crypto 模块
+const iconv = require('iconv-lite');
 // const { exec } = require('child_process'); // For potential future use with textract or other CLI tools
 
 // Base directory for all user-specific data, including attachments.
@@ -172,6 +173,53 @@ async function getFileAsBase64(internalPath) {
     }
 }
 
+function decodeTextBuffer(buffer) {
+    if (!buffer || buffer.length === 0) {
+        return '';
+    }
+
+    // Honor explicit Unicode byte-order marks first.
+    if (buffer.length >= 3 && buffer[0] === 0xEF && buffer[1] === 0xBB && buffer[2] === 0xBF) {
+        return buffer.subarray(3).toString('utf8');
+    }
+    if (buffer.length >= 2 && buffer[0] === 0xFF && buffer[1] === 0xFE) {
+        return iconv.decode(buffer.subarray(2), 'utf16-le');
+    }
+    if (buffer.length >= 2 && buffer[0] === 0xFE && buffer[1] === 0xFF) {
+        return iconv.decode(buffer.subarray(2), 'utf16-be');
+    }
+
+    // Detect common BOM-less UTF-16 files by their alternating NUL bytes.
+    const sampleLength = Math.min(buffer.length, 4096);
+    let evenNulls = 0;
+    let oddNulls = 0;
+    for (let i = 0; i < sampleLength; i++) {
+        if (buffer[i] === 0) {
+            if (i % 2 === 0) {
+                evenNulls++;
+            } else {
+                oddNulls++;
+            }
+        }
+    }
+    const pairCount = Math.floor(sampleLength / 2);
+    if (pairCount > 0 && oddNulls / pairCount > 0.3 && evenNulls / pairCount < 0.05) {
+        return iconv.decode(buffer, 'utf16-le');
+    }
+    if (pairCount > 0 && evenNulls / pairCount > 0.3 && oddNulls / pairCount < 0.05) {
+        return iconv.decode(buffer, 'utf16-be');
+    }
+
+    // Do not guess from character appearance: valid UTF-8 is unambiguous.
+    try {
+        return new TextDecoder('utf-8', { fatal: true }).decode(buffer);
+    } catch (error) {
+        // Windows Chinese "ANSI" normally means GBK/CP936. GB18030 is its
+        // backward-compatible superset and also covers newer Chinese text.
+        return iconv.decode(buffer, 'gb18030');
+    }
+}
+
 async function getTextContent(internalFilePath, fileType) {
     let effectiveFileType = fileType;
     const cleanPath = internalFilePath.startsWith('file://') ? internalFilePath.substring(7) : internalFilePath;
@@ -200,7 +248,8 @@ async function getTextContent(internalFilePath, fileType) {
     // Process based on effective file type
     if (effectiveFileType && effectiveFileType.startsWith('text/')) {
         try {
-            const text = await fs.readFile(cleanPath, 'utf-8');
+            const fileBuffer = await fs.readFile(cleanPath);
+            const text = decodeTextBuffer(fileBuffer);
             return { text };
         } catch (error) {
             console.error(`[FileManager] Error reading text content for ${cleanPath}:`, error);
