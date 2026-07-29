@@ -81,7 +81,6 @@ body {
     flex: 1; /* Each button takes a third of the space */
     padding: 3px 10px; /* Reduced padding for a more compact look */
     font-size: 0.9em; /* Slightly smaller font size */
-    color: var(--secondary-text);
 }
 
 /* Common input styling */
@@ -109,8 +108,8 @@ textarea:focus {
 .button {
     padding: 10px 15px;
     background-color: var(--button-bg);
-    color: var(--primary-text);
-    border: 1px solid var(--border-color);
+    color: var(--text-on-accent);
+    border: 1px solid var(--button-bg);
     border-radius: 6px;
     cursor: pointer;
     font-size: 1em;
@@ -123,21 +122,26 @@ textarea:focus {
 
 .button:hover {
     background-color: var(--button-hover-bg);
+    border-color: var(--button-hover-bg);
+    color: var(--text-on-accent);
 }
 
 .button:active {
-    background-color: var(--accent-bg);
+    background-color: var(--button-hover-bg);
+    border-color: var(--button-hover-bg);
+    color: var(--text-on-accent);
+    filter: brightness(0.92);
 }
 
 .button-primary {
     background-color: var(--button-bg);
-    border-color: var(--border-color);
-    color: var(--secondary-text);
+    border-color: var(--button-bg);
+    color: var(--text-on-accent);
 }
 
 .button-primary:hover {
     background-color: var(--button-hover-bg);
-    border-color: var(--border-color);
+    border-color: var(--button-hover-bg);
 }
 
 .button-danger {
@@ -559,16 +563,18 @@ body.preview-collapsed .preview-container > * {
 .editor-find-button {
     width: 28px;
     height: 28px;
-    border: 1px solid var(--border-color);
+    border: 1px solid var(--button-bg);
     border-radius: 6px;
     background-color: var(--button-bg);
-    color: var(--accent-bg);
+    color: var(--text-on-accent);
     cursor: pointer;
     line-height: 1;
 }
 
 .editor-find-button:hover {
     background-color: var(--button-hover-bg);
+    border-color: var(--button-hover-bg);
+    color: var(--text-on-accent);
 }
 
 .editor-find-button:disabled {
@@ -737,8 +743,8 @@ body.light-theme .markdown-preview tbody tr:nth-child(even) {
     right: 8px;
     padding: 6px;
     background-color: var(--button-bg);
-    color: var(--primary-text);
-    border: 1px solid var(--border-color);
+    color: var(--text-on-accent);
+    border: 1px solid var(--button-bg);
     border-radius: 4px;
     cursor: pointer;
     opacity: 0; /* Hidden by default, shown on pre:hover */
@@ -755,6 +761,8 @@ body.light-theme .markdown-preview tbody tr:nth-child(even) {
 
 .markdown-preview pre .copy-button:hover {
     background-color: var(--button-hover-bg);
+    border-color: var(--button-hover-bg);
+    color: var(--text-on-accent);
 }
 
 .markdown-preview pre .copy-button svg {
@@ -764,7 +772,10 @@ body.light-theme .markdown-preview tbody tr:nth-child(even) {
 }
 
 .markdown-preview pre .copy-button:active {
-    background-color: var(--accent-bg);
+    background-color: var(--button-hover-bg);
+    border-color: var(--button-hover-bg);
+    color: var(--text-on-accent);
+    filter: brightness(0.92);
 }
 
 /* Scrollbar styling (optional, for a more consistent look) */
@@ -916,6 +927,8 @@ body.light-theme .markdown-preview .mermaid {
 .button-autosave-feedback {
     transition: background-color 0.3s ease-in-out;
     background-color: var(--success-color) !important;
+    border-color: var(--success-color) !important;
+    color: var(--text-on-accent) !important;
 }
 
 /* Light theme specific adjustments for better contrast */
@@ -1118,8 +1131,8 @@ body.light-theme .markdown-preview pre .hljs-meta {
 }
 
 #close-notes-btn:hover {
-    background-color: #e81123;
-    color: white;
+    background-color: var(--danger-color);
+    color: var(--text-on-accent);
 }
 
 /* 调整主容器，为标题栏留出空间 */
