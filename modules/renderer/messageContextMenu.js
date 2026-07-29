@@ -737,18 +737,38 @@ async function handleRegenerateResponse(originalAssistantMessage) {
                 let historicalAppendedText = "";
                 for (const att of msg.attachments) {
                     const fileManagerData = att._fileManagerData || {};
-                    // 🟢 同步：重新生成时的多级路径探测。优先使用 internalPath (物理路径)
-                    // 兼容两种附件结构：通过正常发送的附件（数据在 _fileManagerData 中）
-                    // 和通过 addAttachmentsToMessage 添加的附件（数据直接在 att 顶层）
-                    const filePathForContext = (fileManagerData && fileManagerData.internalPath) ||
-                                               att.internalPath ||
-                                               att.localPath ||
-                                               att.src ||
-                                               (att.name || '未知文件');
-
-                    // 兼容读取：优先从 _fileManagerData 读取，回退到 att 顶层字段
+                    // 兼容两种附件结构：正常发送的附件数据位于 _fileManagerData，
+                    // 后续添加到消息的附件数据则可能直接位于 att 顶层。
+                    const attachmentSourcePath = fileManagerData.internalPath ||
+                                                 att.internalPath ||
+                                                 att.localPath ||
+                                                 att.src;
+                    const filePathForContext = attachmentSourcePath || att.name || '未知文件';
+                    const effectiveType = fileManagerData.type || att.type || '';
                     const effectiveImageFrames = fileManagerData.imageFrames || att.imageFrames;
-                    const effectiveExtractedText = fileManagerData.extractedText || att.extractedText;
+                    let effectiveExtractedText = fileManagerData.extractedText || att.extractedText;
+
+                    // 历史记录可能缓存了旧版固定按 UTF-8 解码后产生的乱码。
+                    // 重新回复时从原始附件重新提取，确保使用当前的编码检测逻辑。
+                    if (!effectiveImageFrames &&
+                        attachmentSourcePath &&
+                        electronAPI &&
+                        typeof electronAPI.getTextContent === 'function') {
+                        try {
+                            const refreshedContent = await electronAPI.getTextContent(
+                                attachmentSourcePath,
+                                effectiveType
+                            );
+                            if (refreshedContent && typeof refreshedContent.text === 'string') {
+                                effectiveExtractedText = refreshedContent.text;
+                            }
+                        } catch (extractionError) {
+                            console.warn(
+                                `[ContextMenu] Failed to refresh attachment text for ${att.name || attachmentSourcePath}; using cached text:`,
+                                extractionError
+                            );
+                        }
+                    }
 
                     if (effectiveImageFrames && effectiveImageFrames.length > 0) {
                          historicalAppendedText += `\n\n[附加文件: ${filePathForContext} (扫描版PDF，已转换为图片)]`;
