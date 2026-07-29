@@ -27,12 +27,18 @@ body {
 /* --- Sidebar --- */
 .sidebar {
     width: var(--sidebar-width);
-    background: rgba(0, 0, 0, 0.2);
-    backdrop-filter: blur(10px);
+    background-color: var(--panel-bg-dark);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
     border-right: 1px solid var(--glass-border);
     display: flex;
     flex-direction: column;
     transition: all 0.3s ease;
+    text-shadow: var(--panel-text-shadow);
+}
+
+body.light-theme .sidebar {
+    background-color: var(--panel-bg-light);
 }
 
 .sidebar-header {
@@ -55,7 +61,7 @@ body {
 .folder-search-input {
     width: 100%;
     padding: 8px 12px;
-    background: rgba(255, 255, 255, 0.05);
+    background: var(--input-bg);
     border: 1px solid var(--glass-border);
     border-radius: 8px;
     color: var(--text-primary);
@@ -66,9 +72,9 @@ body {
 }
 
 .folder-search-input:focus {
-    border-color: var(--accent-color);
-    background: rgba(255, 255, 255, 0.08);
-    box-shadow: 0 0 8px rgba(var(--accent-color-rgb, 74, 144, 226), 0.2);
+    border-color: var(--highlight-text);
+    background: color-mix(in srgb, var(--input-bg) 82%, var(--accent-bg) 18%);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--highlight-text) 20%, transparent);
 }
 
 .folder-search-input::placeholder {
@@ -129,14 +135,19 @@ body {
 }
 
 .folder-item {
-    padding: 12px 15px;
-    border-radius: 10px;
-    margin-bottom: 5px;
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    min-height: 46px;
+    padding: 10px 15px;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    margin-bottom: 6px;
     cursor: pointer;
     display: flex;
     align-items: center;
     gap: 10px;
-    transition: all 0.2s ease;
+    transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, color 0.2s ease;
     color: var(--text-secondary);
 }
 
@@ -152,14 +163,52 @@ body {
 }
 
 .folder-item:hover {
-    background: rgba(255, 255, 255, 0.05);
+    border-color: color-mix(in srgb, var(--border-color) 54%, transparent);
+    background: color-mix(in srgb, var(--accent-bg) 58%, transparent);
     color: var(--text-primary);
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.22),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.16);
 }
 
 .folder-item.active {
-    background: var(--accent-color);
-    color: var(--secondary-text);
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--user-bubble-bg) 82%, rgba(255, 255, 255, 0.4)),
+        color-mix(in srgb, var(--user-bubble-bg) 70%, rgba(255, 255, 255, 0.22))
+    );
+    border-color: color-mix(in srgb, var(--highlight-text) 18%, var(--border-color));
+    color: var(--text-primary);
+    font-weight: 500;
+    box-shadow:
+        inset 2px -2px 1px -1px rgba(255, 255, 255, 0.72),
+        inset -2px 2px 1px -1px rgba(255, 255, 255, 0.62),
+        inset 0 0 1px rgba(0, 0, 0, 0.08);
+}
+
+.folder-item.active svg {
+    color: var(--highlight-text);
+}
+
+body:not(.light-theme) .folder-item:hover {
+    border-color: rgba(255, 255, 255, 0.08);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.045));
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.14),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.1);
+}
+
+body:not(.light-theme) .folder-item.active {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--user-bubble-bg) 52%, rgba(255, 255, 255, 0.06)),
+        color-mix(in srgb, var(--user-bubble-bg) 40%, rgba(255, 255, 255, 0.03))
+    );
+    border-color: rgba(255, 255, 255, 0.08);
+    box-shadow:
+        inset 1px -1px 1px -1px rgba(255, 255, 255, 0.16),
+        inset -1px 1px 1px -1px rgba(255, 255, 255, 0.12),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.04);
 }
 
 .folder-item svg {
@@ -486,7 +535,7 @@ body {
 
 .glass-btn.primary {
     background: var(--accent-color);
-    color: var(--secondary-text);
+    color: var(--text-on-accent);
     border: none;
 }
 
@@ -673,7 +722,7 @@ body.light-theme .scope-toggle-btn.active {
 
 .batch-item-remove:hover {
     background: var(--danger-color);
-    color: white;
+    color: var(--text-on-accent);
 }
 
 /* --- Association Feature Styles --- */
@@ -694,7 +743,7 @@ body.light-theme .scope-toggle-btn.active {
 
 .association-btn:hover {
     background: var(--accent-color);
-    color: white;
+    color: var(--text-on-accent);
     box-shadow: 0 0 10px var(--accent-color);
 }
 
@@ -757,7 +806,7 @@ body.light-theme .scope-toggle-btn.active {
 .folder-tag.active {
     background: var(--accent-color);
     border-color: var(--accent-color);
-    color: white;
+    color: var(--text-on-accent);
     box-shadow: 0 4px 10px rgba(var(--accent-color-rgb), 0.3);
 }
 

@@ -275,17 +275,20 @@ body:not(.light-theme) .notes-section > button {
     color: var(--accent-bg) !important;
 }
 
-.notes-section > button:hover {
+.notes-section > button:hover,
+.app-tray-pinned-apps > button:hover {
     background-color: var(--button-hover-bg);
     border-color: var(--button-hover-bg);
     color: var(--primary-text);
 }
 
-body:not(.light-theme) .notes-section > button:hover {
+body:not(.light-theme) .notes-section > button:hover,
+body:not(.light-theme) .app-tray-pinned-apps > button:hover {
     color: var(--text-on-accent);
 }
 
-.notes-section > button svg {
+.notes-section > button svg,
+.app-tray-pinned-apps > button svg {
     stroke: currentColor;
     width: 18px;
     height: 18px;
@@ -298,15 +301,22 @@ body:not(.light-theme) .notes-section > button:hover {
     text-overflow: ellipsis;
 }
 
-body.light-theme .notes-section > button {
+/*
+ * 固定应用按钮由 trayManager 动态插入到 .app-tray-pinned-apps 中，
+ * 并不是 .notes-section 的直接子元素；必须与“更多”按钮共同声明，
+ * 才能在浅色主题下继承同一套 currentColor。
+ */
+body.light-theme .notes-section > button,
+body.light-theme .app-tray-pinned-apps > button {
     background-color: var(--highlight-text);
-    color: #ffffff;
+    color: #ffffff !important;
     border: 1px solid var(--highlight-text);
 }
 
-body.light-theme .notes-section > button:hover {
+body.light-theme .notes-section > button:hover,
+body.light-theme .app-tray-pinned-apps > button:hover {
     background-color: var(--button-hover-bg);
-    color: #ffffff;
+    color: #ffffff !important;
     border-color: var(--button-hover-bg);
 }
 
