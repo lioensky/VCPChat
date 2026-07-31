@@ -391,9 +391,10 @@ async def upload_file(file: UploadFile = File(...)):
     #使用pathlib保存文件
     file_path = ""
     try:
+        safe_filename = Path(file.filename).name
         Path(ref_audio_path).mkdir(parents=True, exist_ok=True)
-        Path(f"{ref_audio_path}/{file.filename}").write_bytes(file.file.read())
-        file_path = f"{ref_audio_path}/{file.filename}"
+        Path(f"{ref_audio_path}/{safe_filename}").write_bytes(file.file.read())
+        file_path = f"{ref_audio_path}/{safe_filename}"
         msg = "上传成功"
     except Exception as e:
         print(e)
