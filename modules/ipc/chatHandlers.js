@@ -91,6 +91,31 @@ function stripInternalMessageMetadata(messages) {
     });
 }
 
+function omitUnsetOptionalModelParams(modelConfig = {}) {
+    const normalizedConfig = { ...modelConfig };
+    const optionalParamKeys = [
+        'temperature',
+        'contextTokenLimit',
+        'max_tokens',
+        'top_p',
+        'top_k'
+    ];
+
+    optionalParamKeys.forEach(key => {
+        const value = normalizedConfig[key];
+        if (
+            value === null ||
+            value === undefined ||
+            value === '' ||
+            (typeof value === 'number' && !Number.isFinite(value))
+        ) {
+            delete normalizedConfig[key];
+        }
+    });
+
+    return normalizedConfig;
+}
+
 /**
  * Initializes chat and topic related IPC handlers.
  * @param {BrowserWindow} mainWindow The main window instance.
@@ -1035,6 +1060,8 @@ function initialize(mainWindow, context) {
                 // 出错时继续使用原始消息，不影响正常流程
             }
             // --- End of Context Sanitizer Integration ---
+
+            modelConfig = omitUnsetOptionalModelParams(modelConfig);
 
             console.log(`发送到VCP服务器: ${finalVcpUrl} for messageId: ${messageId}`);
             console.log('VCP API Key:', vcpApiKey ? '已设置' : '未设置');

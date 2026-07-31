@@ -98,6 +98,31 @@ function stripInternalMessageMetadata(messages) {
     });
 }
 
+function omitUnsetOptionalModelParams(modelConfig = {}) {
+    const normalizedConfig = { ...modelConfig };
+    const optionalParamKeys = [
+        'temperature',
+        'contextTokenLimit',
+        'max_tokens',
+        'top_p',
+        'top_k'
+    ];
+
+    optionalParamKeys.forEach(key => {
+        const value = normalizedConfig[key];
+        if (
+            value === null ||
+            value === undefined ||
+            value === '' ||
+            (typeof value === 'number' && !Number.isFinite(value))
+        ) {
+            delete normalizedConfig[key];
+        }
+    });
+
+    return normalizedConfig;
+}
+
 /**
  * 初始化 VCP 客户端模块
  * @param {object} config - 配置对象
@@ -129,13 +154,15 @@ async function sendToVCP(params) {
         vcpUrl,
         vcpApiKey,
         messages: originalMessages,
-        modelConfig,
+        modelConfig: rawModelConfig,
         messageId,
         context = null,
         webContents = null,
         streamChannel = 'vcp-stream-event',
         onStreamEnd = null
     } = params;
+
+    const modelConfig = omitUnsetOptionalModelParams(rawModelConfig);
 
     console.log(`[VCPClient] sendToVCP called for messageId: ${messageId}, context:`, context);
 

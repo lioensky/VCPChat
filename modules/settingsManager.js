@@ -178,11 +178,11 @@ const settingsManager = (() => {
             agentNameInput.value = agentConfig.name || agentId;
 
             agentModelInput.value = agentConfig.model || '';
-        agentTemperatureInput.value = agentConfig.temperature !== undefined ? agentConfig.temperature : 0.7;
-        agentContextTokenLimitInput.value = agentConfig.contextTokenLimit !== undefined ? agentConfig.contextTokenLimit : 4000;
-        agentMaxOutputTokensInput.value = agentConfig.maxOutputTokens !== undefined ? agentConfig.maxOutputTokens : 1000;
-        agentTopPInput.value = agentConfig.top_p !== undefined ? agentConfig.top_p : '';
-        agentTopKInput.value = agentConfig.top_k !== undefined ? agentConfig.top_k : '';
+        agentTemperatureInput.value = agentConfig.temperature === null ? '' : (agentConfig.temperature !== undefined ? agentConfig.temperature : 0.7);
+        agentContextTokenLimitInput.value = agentConfig.contextTokenLimit === null ? '' : (agentConfig.contextTokenLimit !== undefined ? agentConfig.contextTokenLimit : 4000);
+        agentMaxOutputTokensInput.value = agentConfig.maxOutputTokens === null ? '' : (agentConfig.maxOutputTokens !== undefined ? agentConfig.maxOutputTokens : 1000);
+        agentTopPInput.value = agentConfig.top_p === null ? '' : (agentConfig.top_p !== undefined ? agentConfig.top_p : '');
+        agentTopKInput.value = agentConfig.top_k === null ? '' : (agentConfig.top_k !== undefined ? agentConfig.top_k : '');
 
         const streamOutput = agentConfig.streamOutput !== undefined ? agentConfig.streamOutput : true;
         document.getElementById('agentStreamOutputTrue').checked = streamOutput === true || String(streamOutput) === 'true';
@@ -273,6 +273,14 @@ const settingsManager = (() => {
         return queuedTask;
     }
 
+    function parseOptionalNumberInput(input, parser) {
+        const rawValue = input?.value?.trim() ?? '';
+        if (rawValue === '') return null;
+
+        const parsedValue = parser(rawValue);
+        return Number.isFinite(parsedValue) ? parsedValue : null;
+    }
+
     /**
      * Handles the submission of the agent settings form, saving the changes.
      * @param {Event} event - The form submission event.
@@ -312,11 +320,11 @@ const settingsManager = (() => {
             name: agentNameInput.value.trim(),
             ...systemPromptData,
             model: agentModelInput.value.trim() || 'gemini-pro',
-            temperature: parseFloat(agentTemperatureInput.value),
-            contextTokenLimit: parseInt(agentContextTokenLimitInput.value),
-            maxOutputTokens: parseInt(agentMaxOutputTokensInput.value),
-            top_p: parseFloat(agentTopPInput.value) || undefined,
-            top_k: parseInt(agentTopKInput.value) || undefined,
+            temperature: parseOptionalNumberInput(agentTemperatureInput, Number.parseFloat),
+            contextTokenLimit: parseOptionalNumberInput(agentContextTokenLimitInput, value => Number.parseInt(value, 10)),
+            maxOutputTokens: parseOptionalNumberInput(agentMaxOutputTokensInput, value => Number.parseInt(value, 10)),
+            top_p: parseOptionalNumberInput(agentTopPInput, Number.parseFloat),
+            top_k: parseOptionalNumberInput(agentTopKInput, value => Number.parseInt(value, 10)),
             streamOutput: document.getElementById('agentStreamOutputTrue').checked,
             ttsVoicePrimary: agentTtsVoicePrimarySelect.value,
             ttsRegexPrimary: agentTtsRegexPrimaryInput.value.trim(),
@@ -979,11 +987,11 @@ const settingsManager = (() => {
                 name: agentNameInput.value.trim(),
                 ...systemPromptData,
                 model: agentModelInput.value.trim() || 'gemini-pro',
-                temperature: parseFloat(agentTemperatureInput.value),
-                contextTokenLimit: parseInt(agentContextTokenLimitInput.value),
-                maxOutputTokens: parseInt(agentMaxOutputTokensInput.value),
-                top_p: parseFloat(agentTopPInput.value) || undefined,
-                top_k: parseInt(agentTopKInput.value) || undefined,
+                temperature: parseOptionalNumberInput(agentTemperatureInput, Number.parseFloat),
+                contextTokenLimit: parseOptionalNumberInput(agentContextTokenLimitInput, value => Number.parseInt(value, 10)),
+                maxOutputTokens: parseOptionalNumberInput(agentMaxOutputTokensInput, value => Number.parseInt(value, 10)),
+                top_p: parseOptionalNumberInput(agentTopPInput, Number.parseFloat),
+                top_k: parseOptionalNumberInput(agentTopKInput, value => Number.parseInt(value, 10)),
                 streamOutput: document.getElementById('agentStreamOutputTrue').checked,
                 ttsVoicePrimary: agentTtsVoicePrimarySelect.value,
                 ttsRegexPrimary: agentTtsRegexPrimaryInput.value.trim(),
@@ -1875,9 +1883,9 @@ function setupParamsCollapsible() {
     }
 
     function buildParamsSummary() {
-        const temperature = agentTemperatureInput?.value || '0.7';
-        const contextLimit = agentContextTokenLimitInput?.value || '4000';
-        const maxOutput = agentMaxOutputTokensInput?.value || '1000';
+        const temperature = agentTemperatureInput?.value || '未设置';
+        const contextLimit = agentContextTokenLimitInput?.value || '未设置';
+        const maxOutput = agentMaxOutputTokensInput?.value || '未设置';
         const topP = agentTopPInput?.value || '未设置';
         const topK = agentTopKInput?.value || '未设置';
         const streamOutput = document.getElementById('agentStreamOutputTrue')?.checked ? '流式' : '非流式';
