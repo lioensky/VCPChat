@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "id": "example-mobile",
+  "name": "Bing 移动版",
+  "description": "一期测试应用：以 Android 手机请求与固定手机视口加载 Bing，并验证独立 Cookie 与注入修正。",
+  "startUrl": "https://www.bing.com/",
+  "enabled": true,
+  "exposeInAppDrawer": true,
+  "exposeManagerInAppDrawer": true,
+  "icon": "",
+  "emoji": "🕸️",
+  "window": {
+    "width": 430,
+    "height": 800,
+    "minWidth": 340,
+    "minHeight": 520,
+    "maxWidth": null,
+    "maxHeight": null,
+    "resizable": true
+  },
+  "viewport": {
+    "width": 390,
+    "height": 720,
+    "autoResize": false
+  },
+  "request": {
+    "profile": "mobile",
+    "userAgent": "",
+    "headers": {
+      "X-VCP-Loom": "example-mobile"
+    }
+  },
+  "navigation": {
+    "allowPopups": false,
+    "openExternalOriginsInBrowser": false
+  },
+  "injection": {
+    "css": "inject.css",
+    "js": "inject.js"
+  }
+}

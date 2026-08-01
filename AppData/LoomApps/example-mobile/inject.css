@@ -1,0 +1,31 @@
+/*
+ * VCP Loom · Bing 手机版测试注入样式
+ * 保留 Bing 原生移动布局，仅修正容易遮挡独立应用视口的推广与浮层。
+ */
+
+html,
+body {
+    min-width: 0 !important;
+    overscroll-behavior: contain;
+}
+
+body {
+    overflow-x: hidden !important;
+}
+
+/* 移动 App 推广、反馈按钮及可能覆盖搜索结果的固定浮层 */
+#bnp_container,
+.bnp_container,
+#fbpgbt,
+.feedback-binded,
+a[href*="bingapp"],
+a[href*="Microsoft.Bing"] {
+    display: none !important;
+}
+
+/* 避免搜索框和结果内容超出固定手机视口 */
+#sb_form,
+#b_content,
+main {
+    max-width: 100vw !important;
+}

@@ -497,6 +497,23 @@ import { setupEventListeners } from './modules/event-listeners.js';
         console.error('[RENDERER_INIT] inputEnhancer module not found!');
     }
 
+    if (chatAPI?.onLoomShareTextToInput) {
+        chatAPI.onLoomShareTextToInput((sharedText) => {
+            if (!messageInput || typeof sharedText !== 'string' || !sharedText) return;
+            const start = Number.isInteger(messageInput.selectionStart)
+                ? messageInput.selectionStart
+                : messageInput.value.length;
+            const end = Number.isInteger(messageInput.selectionEnd)
+                ? messageInput.selectionEnd
+                : start;
+            const separator = start > 0 && !messageInput.value.slice(0, start).endsWith('\n') ? '\n\n' : '';
+            const insertion = `${separator}${sharedText}`;
+            messageInput.setRangeText(insertion, start, end, 'end');
+            messageInput.dispatchEvent(new Event('input', { bubbles: true }));
+            messageInput.focus();
+            uiHelperFunctions?.showToastNotification?.('Loom 页面文本已加入输入框。', 'success');
+        });
+    }
 
     chatAPI.onVCPLogStatus((statusUpdate) => {
         if (window.notificationRenderer) {

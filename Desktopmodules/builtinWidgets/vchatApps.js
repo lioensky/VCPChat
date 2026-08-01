@@ -129,6 +129,13 @@
             <circle cx="34" cy="26" r="3" fill="currentColor" opacity="0.3"/>
             <circle cx="24" cy="34" r="3" fill="currentColor" opacity="0.45"/>
         </svg>`,
+        loom: `<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="24" cy="24" r="18" fill="currentColor" opacity="0.08"/>
+            <circle cx="24" cy="24" r="18" stroke="currentColor" stroke-width="2.2" fill="none"/>
+            <circle cx="24" cy="24" r="4" fill="currentColor" opacity="0.7"/>
+            <path d="M24 6v14M24 28v14M6 24h14M28 24h14M11.3 11.3l9.9 9.9M26.8 26.8l9.9 9.9M36.7 11.3l-9.9 9.9M21.2 26.8l-9.9 9.9" stroke="currentColor" stroke-width="1.7" opacity="0.7"/>
+            <circle cx="24" cy="24" r="11" stroke="currentColor" stroke-width="1.4" stroke-dasharray="3 2" fill="none" opacity="0.45"/>
+        </svg>`,
         // 独立 Electron App 图标
         toolbox: `<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
             <circle cx="24" cy="24" r="18" fill="currentColor" opacity="0.08"/>
@@ -307,6 +314,16 @@
             appAction: 'open-themes-window',
         },
         {
+            id: 'vchat-app-loom-manager',
+            name: 'VCP Loom',
+            icon: null,
+            animatedIcon: null,
+            svgIcon: SVG_ICONS.loom,
+            emoji: '🕸️',
+            description: '管理网页持久化 LoomAPP',
+            appAction: 'open-loom-manager',
+        },
+        {
             id: 'vchat-app-toolbox',
             name: '工具',
             icon: `${ICON_BASE}/工具箱.png`,
@@ -408,8 +425,18 @@
         }
 
         try {
-            if (desktopApi?.desktopLaunchVchatApp) {
-                const result = await desktopApi.desktopLaunchVchatApp(appDef.appAction);
+            let result;
+            if (appDef.appAction === 'open-loom-manager' && desktopApi?.loomOpenManager) {
+                result = await desktopApi.loomOpenManager();
+            } else if (appDef.appAction?.startsWith('open-loom-app:') && desktopApi?.loomOpenApp) {
+                result = await desktopApi.loomOpenApp(appDef.appAction.substring('open-loom-app:'.length));
+            } else if (desktopApi?.desktopLaunchVchatApp) {
+                result = await desktopApi.desktopLaunchVchatApp(appDef.appAction);
+            } else {
+                throw new Error('启动接口不可用');
+            }
+
+            if (result) {
                 if (result?.success) {
                     console.log(`[VChatApps] Successfully launched: ${appDef.name}`);
                     if (window.VCPDesktop.status) {
@@ -422,12 +449,6 @@
                         window.VCPDesktop.status.update('waiting', `启动失败: ${result?.error || '未知错误'}`);
                         setTimeout(() => window.VCPDesktop.status.hide(), 3000);
                     }
-                }
-            } else {
-                console.warn('[VChatApps] desktopLaunchVchatApp API not available');
-                if (window.VCPDesktop.status) {
-                    window.VCPDesktop.status.update('waiting', '启动接口不可用');
-                    setTimeout(() => window.VCPDesktop.status.hide(), 3000);
                 }
             }
         } catch (err) {
@@ -516,6 +537,84 @@
     }
 
     /**
+     * 从主进程动态同步允许暴露的 LoomAPP。
+     * Loom 项仍使用 vchat-app 类型，以复用 Dock、抽屉和桌面快捷方式基建。
+     */
+    async function syncLoomApps(knownApps = null) {
+        if (!desktopApi?.loomListApps && !Array.isArray(knownApps)) return;
+
+        try {
+            let loomApps = knownApps;
+            if (!Array.isArray(loomApps)) {
+                const result = await desktopApi.loomListApps();
+                if (!result?.success) throw new Error(result?.error || '无法读取 Loom 注册表');
+                loomApps = result.data || [];
+            }
+
+            const exposed = loomApps.filter(app => app.enabled !== false && app.exposeInAppDrawer !== false);
+            const exposedIds = new Set(exposed.map(app => `vchat-loom-${app.id}`));
+            let changed = false;
+
+            // 删除已取消暴露或已删除的动态 Loom 项。
+            for (let index = state.dock.items.length - 1; index >= 0; index--) {
+                const item = state.dock.items[index];
+                if (item.loomAppId && !exposedIds.has(item.id)) {
+                    state.dock.items.splice(index, 1);
+                    changed = true;
+                }
+            }
+
+            for (const appDef of exposed) {
+                const id = `vchat-loom-${appDef.id}`;
+                const next = {
+                    id,
+                    name: appDef.name,
+                    icon: appDef.icon || null,
+                    animatedIcon: null,
+                    svgIcon: appDef.icon ? null : SVG_ICONS.loom,
+                    emoji: appDef.emoji || '🕸️',
+                    description: appDef.description || `打开 LoomAPP：${appDef.name}`,
+                    appAction: `open-loom-app:${appDef.id}`,
+                    loomAppId: appDef.id,
+                    type: 'vchat-app',
+                };
+                const existing = state.dock.items.find(item => item.id === id);
+                if (!existing) {
+                    state.dock.items.push(next);
+                    changed = true;
+                    continue;
+                }
+
+                const visible = existing.visible;
+                const customIcon = typeof existing.icon === 'string' && existing.icon.startsWith('data:')
+                    ? existing.icon
+                    : null;
+                const before = JSON.stringify(existing);
+                Object.assign(existing, next);
+                if (customIcon) existing.icon = customIcon;
+                if (visible !== undefined) existing.visible = visible;
+                if (JSON.stringify(existing) !== before) changed = true;
+            }
+
+            if (changed) {
+                window.VCPDesktop.dock?.render?.();
+                await window.VCPDesktop.dock?.saveDockConfig?.();
+            }
+        } catch (error) {
+            console.warn('[VChatApps] Failed to sync Loom apps:', error);
+        }
+    }
+
+    function initLoomRegistrySync() {
+        void syncLoomApps();
+        if (desktopApi?.onLoomRegistryChanged) {
+            desktopApi.onLoomRegistryChanged((apps) => {
+                void syncLoomApps(apps);
+            });
+        }
+    }
+
+    /**
      * 获取 VChat 应用定义列表（供外部模块使用）
      */
     function getVchatApps() {
@@ -537,6 +636,8 @@
         list: getVchatApps,
         launch: launchVchatApp,
         inject: injectVchatAppsToDock,
+        syncLoomApps,
+        initLoomRegistrySync,
         findByAction: findAppByAction,
         VCHAT_APPS,
         SYSTEM_TOOLS,

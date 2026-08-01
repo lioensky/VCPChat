@@ -46,6 +46,7 @@ const canvasHandlers = require('./modules/ipc/canvasHandlers'); // Import canvas
 const desktopHandlers = require('./modules/ipc/desktopHandlers'); // Import VCPdesktop handlers
 const desktopRemoteHandlers = require('./modules/ipc/desktopRemoteHandlers'); // Import desktop remote control handlers
 const tavernHandlers = require('./modules/ipc/tavernHandlers'); // Import VCPChatTarven (advanced reply) handlers
+const loomManagerModule = require('./modules/loom/VCPLoomManager');
 const { PRELOAD_ROLES, resolveProjectPreload } = require('./modules/services/preloadPaths');
 const { ChatDataServiceFacade } = require('./modules/services/chatDataService');
 // chokidar is now lazy-loaded
@@ -149,6 +150,7 @@ let openChildWindows = [];
 let distributedServer = null; // To hold the distributed server instance
 let chatDataService = null; // Optional VCP-CDS shadow service.
 let appSettingsManager = null;
+let loomManager = null;
 let networkNotesTreeCache = null; // In-memory cache for the network notes
 let cachedModels = []; // Cache for models fetched from VCP server
 const NOTES_MODULE_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'Notemodules');
@@ -306,6 +308,15 @@ async function performQuitCleanup() {
                 await chatDataService.stop();
             } finally {
                 chatDataService = null;
+            }
+        }
+
+        if (loomManager) {
+            console.log('[Main] Stopping VCP Loom...');
+            try {
+                await loomManager.shutdown();
+            } finally {
+                loomManager = null;
             }
         }
 
@@ -613,14 +624,20 @@ if (!gotTheLock) {
 
 
     app.whenReady().then(async () => { // Make the function async
-        // 全局处理所有窗口的新窗口打开请求，确保外部链接在系统浏览器中打开
+        // 全局处理普通 VChat 窗口的新窗口请求。VCP Loom 的远程 WebContentsView
+        // 会由 VCPLoomManager 设置自己的隔离导航策略，因此不在这里提前覆盖。
         app.on('web-contents-created', (event, contents) => {
-            contents.setWindowOpenHandler(({ url }) => {
-                if (url.startsWith('http:') || url.startsWith('https:')) {
-                    shell.openExternal(url);
-                    return { action: 'deny' };
-                }
-                return { action: 'allow' };
+            setImmediate(() => {
+                // WebContentsView 不由 BrowserWindow.fromWebContents() 解析，
+                // 因此可与普通 VChat 壳窗口可靠区分。
+                if (contents.isDestroyed() || !BrowserWindow.fromWebContents(contents)) return;
+                contents.setWindowOpenHandler(({ url }) => {
+                    if (url.startsWith('http:') || url.startsWith('https:')) {
+                        shell.openExternal(url);
+                        return { action: 'deny' };
+                    }
+                    return { action: 'allow' };
+                });
             });
         });
 
@@ -1056,6 +1073,12 @@ if (!gotTheLock) {
         emoticonHandlers.setupEmoticonHandlers();
         canvasHandlers.initialize({ mainWindow, openChildWindows, CANVAS_CACHE_DIR });
         desktopHandlers.initialize({ mainWindow, openChildWindows, settingsManager: appSettingsManager });
+        loomManager = await loomManagerModule.initialize({
+            projectRoot: PROJECT_ROOT,
+            appDataRoot: APP_DATA_ROOT_IN_PROJECT,
+            mainWindow,
+            openChildWindows
+        });
         desktopRemoteHandlers.initialize({ mainWindow });
         promptHandlers.initialize({ AGENT_DIR, APP_DATA_ROOT_IN_PROJECT });
         tavernHandlers.initialize({ APP_DATA_ROOT_IN_PROJECT });

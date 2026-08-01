@@ -83,6 +83,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // 给 Dock 配置加载留出时间后再注入
         setTimeout(() => {
             D.vchatApps.inject();
+            D.vchatApps.initLoomRegistrySync?.();
         }, 500);
     }
 
