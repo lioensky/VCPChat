@@ -5,26 +5,35 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'self' data: file:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: file: https:;">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>VCP Loom Manager</title>
+    <link rel="stylesheet" href="../styles/themes.css">
     <style>
         :root {
-            color-scheme: dark;
-            --bg: #0c0f15;
-            --panel: rgba(23, 28, 39, .94);
-            --panel-2: #121722;
-            --line: rgba(255, 255, 255, .09);
-            --text: #e8edf7;
-            --muted: #929caf;
-            --accent: #9c7cff;
-            --accent-2: #5dd6c0;
-            --danger: #ff7185;
-            --shadow: 0 18px 60px rgba(0, 0, 0, .35);
+            --bg: var(--primary-bg, #171a1d);
+            --panel: var(--panel-bg-dark, rgba(32, 37, 42, .94));
+            --panel-2: var(--secondary-bg, #20252a);
+            --line: color-mix(in srgb, var(--border-color, #3b4449) 72%, transparent);
+            --text: var(--primary-text, #f2f0e9);
+            --muted: var(--secondary-text, #a7afb1);
+            --accent: var(--highlight-text, #f2a900);
+            --accent-2: var(--success-color, #76bfae);
+            --danger: var(--danger-color, #e06c5f);
+            --shadow: 0 18px 60px color-mix(in srgb, var(--primary-bg, #171a1d) 62%, transparent);
+            --loom-panel: color-mix(in srgb, var(--panel-bg, var(--panel)) 94%, transparent);
+            --loom-bar: color-mix(in srgb, var(--secondary-bg, #20252a) 88%, transparent);
+            --loom-sidebar: color-mix(in srgb, var(--primary-bg, #171a1d) 82%, transparent);
+            --loom-control: color-mix(in srgb, var(--secondary-bg, #20252a) 72%, transparent);
+            --loom-hover: color-mix(in srgb, var(--accent) 11%, transparent);
+        }
+        body.light-theme {
+            --panel: var(--panel-bg-light, rgba(252, 250, 244, .94));
+            --shadow: 0 18px 60px rgba(27, 33, 31, .12);
         }
         * { box-sizing: border-box; }
         html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
         body {
             background:
-                radial-gradient(circle at 15% 10%, rgba(127, 91, 255, .16), transparent 30%),
-                radial-gradient(circle at 85% 80%, rgba(93, 214, 192, .09), transparent 28%),
+                radial-gradient(circle at 15% 10%, color-mix(in srgb, var(--accent) 15%, transparent), transparent 30%),
+                radial-gradient(circle at 85% 80%, color-mix(in srgb, var(--accent-2) 9%, transparent), transparent 28%),
                 var(--bg);
             color: var(--text);
             font: 13px/1.45 "Segoe UI", "Microsoft YaHei UI", sans-serif;
@@ -36,59 +45,67 @@
             display: flex;
             align-items: center;
             border-bottom: 1px solid var(--line);
-            background: rgba(10, 13, 19, .8);
+            background: var(--loom-bar);
+            backdrop-filter: blur(14px) saturate(112%);
+            -webkit-backdrop-filter: blur(14px) saturate(112%);
             -webkit-app-region: drag;
             user-select: none;
         }
         .brand { padding: 0 16px; display: flex; align-items: center; gap: 10px; font-weight: 650; letter-spacing: .3px; }
         .brand-mark {
             width: 25px; height: 25px; border-radius: 8px; display: grid; place-items: center;
-            background: linear-gradient(135deg, var(--accent), #5b9cff);
-            box-shadow: 0 0 24px rgba(156, 124, 255, .35);
+            background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 58%, var(--accent-2)));
+            color: var(--text-on-accent, #171a1d);
+            box-shadow: 0 0 24px color-mix(in srgb, var(--accent) 35%, transparent);
         }
         .brand small { color: var(--muted); font-weight: 400; margin-left: 4px; }
         .window-controls { margin-left: auto; height: 100%; display: flex; -webkit-app-region: no-drag; }
         .window-controls button {
             width: 48px; border: 0; background: transparent; cursor: pointer; font-size: 16px;
         }
-        .window-controls button:hover { background: rgba(255,255,255,.08); }
-        .window-controls .close:hover { background: #c42b3a; }
+        .window-controls button:hover { background: var(--loom-hover); }
+        .window-controls .close:hover { background: var(--danger); color: var(--text-on-accent, white); }
         .layout { height: calc(100% - 44px); display: grid; grid-template-columns: 300px minmax(0, 1fr); }
         .sidebar {
-            min-width: 0; border-right: 1px solid var(--line); background: rgba(13, 17, 24, .72);
-            display: flex; flex-direction: column;
+            min-width: 0; border-right: 1px solid var(--line); background: var(--loom-sidebar);
+            display: flex; flex-direction: column; backdrop-filter: blur(14px) saturate(112%);
+            -webkit-backdrop-filter: blur(14px) saturate(112%);
         }
         .side-actions { padding: 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; border-bottom: 1px solid var(--line); }
         .btn {
-            border: 1px solid var(--line); border-radius: 9px; padding: 8px 11px; background: rgba(255,255,255,.045);
+            border: 1px solid var(--line); border-radius: 9px; padding: 8px 11px; background: var(--loom-control);
             cursor: pointer; transition: .15s ease; white-space: nowrap;
         }
-        .btn:hover { border-color: rgba(156,124,255,.65); background: rgba(156,124,255,.12); }
-        .btn.primary { background: linear-gradient(135deg, #795be8, #557fdc); border-color: transparent; font-weight: 600; }
-        .btn.danger { color: #ff9aaa; }
+        .btn:hover { border-color: color-mix(in srgb, var(--accent) 65%, transparent); background: var(--loom-hover); }
+        .btn.primary { background: var(--button-bg, var(--accent)); color: var(--text-on-accent, #171a1d); border-color: transparent; font-weight: 600; }
+        .btn.primary:hover { background: var(--button-hover-bg, var(--accent)); }
+        .btn.danger { color: var(--danger); }
+        .btn:disabled { opacity: .48; cursor: default; }
         .search { margin: 12px 14px 7px; width: calc(100% - 28px); }
         input, textarea, select {
-            color: var(--text); background: #0d121b; border: 1px solid var(--line); border-radius: 8px;
+            color: var(--text); background: var(--input-bg, var(--loom-control)); border: 1px solid var(--line); border-radius: 8px;
             outline: none; padding: 8px 10px;
         }
-        input:focus, textarea:focus, select:focus { border-color: rgba(156,124,255,.75); box-shadow: 0 0 0 3px rgba(156,124,255,.1); }
+        input::placeholder, textarea::placeholder { color: var(--placeholder-text, var(--muted)); }
+        input:focus, textarea:focus, select:focus { border-color: color-mix(in srgb, var(--accent) 75%, transparent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent); }
         .app-list { overflow: auto; padding: 6px 9px 14px; }
         .app-card {
             width: 100%; border: 1px solid transparent; border-radius: 11px; background: transparent; padding: 10px;
             display: grid; grid-template-columns: 38px 1fr auto; gap: 10px; align-items: center; text-align: left; cursor: pointer;
         }
-        .app-card:hover { background: rgba(255,255,255,.04); }
-        .app-card.active { background: rgba(156,124,255,.12); border-color: rgba(156,124,255,.35); }
-        .app-icon { width: 38px; height: 38px; border-radius: 10px; display: grid; place-items: center; object-fit: cover; background: rgba(255,255,255,.06); font-size: 21px; }
+        .app-card:hover { background: var(--loom-hover); }
+        .app-card.active { background: color-mix(in srgb, var(--accent) 13%, transparent); border-color: color-mix(in srgb, var(--accent) 38%, transparent); }
+        .app-icon { width: 38px; height: 38px; border-radius: 10px; display: grid; place-items: center; object-fit: cover; background: var(--loom-control); font-size: 21px; }
         .app-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .app-id { color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #586071; }
-        .status-dot.running { background: var(--accent-2); box-shadow: 0 0 10px rgba(93,214,192,.7); }
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); opacity: .55; }
+        .status-dot.running { background: var(--accent-2); box-shadow: 0 0 10px color-mix(in srgb, var(--accent-2) 70%, transparent); opacity: 1; }
         .empty { color: var(--muted); text-align: center; padding: 40px 20px; }
         .editor { min-width: 0; display: flex; flex-direction: column; }
         .editor-head {
             height: 59px; padding: 10px 17px; border-bottom: 1px solid var(--line);
-            display: flex; align-items: center; gap: 8px; background: rgba(18,23,34,.58);
+            display: flex; align-items: center; gap: 8px; background: var(--loom-bar);
+            backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
         }
         .editor-title { min-width: 0; margin-right: auto; }
         .editor-title strong { display: block; font-size: 15px; }
@@ -97,34 +114,34 @@
         .placeholder {
             height: 100%; display: grid; place-items: center; color: var(--muted); text-align: center;
         }
-        .placeholder-mark { font-size: 55px; filter: drop-shadow(0 8px 22px rgba(156,124,255,.3)); }
+        .placeholder-mark { font-size: 55px; filter: drop-shadow(0 8px 22px color-mix(in srgb, var(--accent) 30%, transparent)); }
         .form { display: none; max-width: 1100px; margin: 0 auto; }
         .form.visible { display: block; }
         .section {
-            background: var(--panel); border: 1px solid var(--line); border-radius: 13px; margin-bottom: 13px;
+            background: var(--loom-panel); border: 1px solid var(--line); border-radius: 13px; margin-bottom: 13px;
             box-shadow: var(--shadow); overflow: hidden;
         }
-        .section-title { padding: 11px 14px; border-bottom: 1px solid var(--line); font-weight: 650; color: #d7cfff; }
+        .section-title { padding: 11px 14px; border-bottom: 1px solid var(--line); font-weight: 650; color: var(--accent); }
         .section-body { padding: 14px; display: grid; grid-template-columns: repeat(12, 1fr); gap: 12px; }
         .field { grid-column: span 6; min-width: 0; }
         .field.full { grid-column: 1 / -1; }
         .field.third { grid-column: span 4; }
         .field.quarter { grid-column: span 3; }
-        .field label { display: block; margin-bottom: 5px; color: #b8c0d0; font-size: 12px; }
+        .field label { display: block; margin-bottom: 5px; color: var(--muted); font-size: 12px; }
         .field input, .field select, .field textarea { width: 100%; }
         .field textarea { min-height: 94px; resize: vertical; font-family: Consolas, monospace; font-size: 12px; }
         .field textarea.code { min-height: 250px; tab-size: 4; }
         .check-row { display: flex; flex-wrap: wrap; gap: 18px; grid-column: 1 / -1; }
-        .check { display: flex; gap: 7px; align-items: center; color: #c4cad7; }
+        .check { display: flex; gap: 7px; align-items: center; color: var(--text); }
         .check input { width: 15px; height: 15px; accent-color: var(--accent); }
         .hint { color: var(--muted); font-size: 11px; margin-top: 5px; }
         .toast {
             position: fixed; right: 18px; bottom: 18px; max-width: 430px; padding: 11px 14px; border-radius: 10px;
-            background: #202838; border: 1px solid var(--line); box-shadow: var(--shadow);
+            background: var(--notification-bg, var(--panel)); border: 1px solid var(--line); box-shadow: var(--shadow);
             opacity: 0; transform: translateY(8px); pointer-events: none; transition: .2s ease; z-index: 20;
         }
         .toast.show { opacity: 1; transform: translateY(0); }
-        .toast.error { border-color: rgba(255,113,133,.5); color: #ffb2bd; }
+        .toast.error { border-color: color-mix(in srgb, var(--danger) 55%, transparent); color: var(--danger); }
         @media (max-width: 900px) {
             .layout { grid-template-columns: 240px minmax(0, 1fr); }
             .field, .field.third, .field.quarter { grid-column: 1 / -1; }
@@ -174,7 +191,7 @@
                     <div class="section">
                         <div class="section-title">应用身份</div>
                         <div class="section-body">
-                            <div class="field third"><label for="appId">应用 ID</label><input id="appId" required pattern="[a-z0-9][a-z0-9_-]{1,63}" placeholder="example-mobile"></div>
+                            <div class="field third"><label for="appId">应用 ID</label><input id="appId" required pattern="[a-z0-9][a-z0-9_\-]{1,63}" placeholder="example-mobile"></div>
                             <div class="field third"><label for="appName">显示名称</label><input id="appName" required placeholder="示例移动应用"></div>
                             <div class="field third"><label for="emoji">Emoji 图标</label><input id="emoji" value="🕸️" maxlength="8"></div>
                             <div class="field full"><label for="description">描述</label><input id="description" placeholder="此 LoomAPP 的用途"></div>
@@ -251,6 +268,19 @@
         let originalId = null;
         let isNew = false;
         let toastTimer = null;
+
+        function applyTheme(theme) {
+            document.body.classList.toggle('light-theme', theme === 'light');
+        }
+
+        async function initializeTheme() {
+            try {
+                if (api?.getCurrentTheme) applyTheme(await api.getCurrentTheme());
+            } catch (error) {
+                console.warn('[Loom Manager] 无法读取当前主题：', error);
+            }
+            api?.onThemeUpdated?.(applyTheme);
+        }
 
         function unwrap(result) {
             if (!result || result.success !== true) throw new Error(result?.error || '操作失败');
@@ -543,6 +573,7 @@
             renderList();
         });
 
+        initializeTheme();
         loadApps().catch((error) => showToast(error.message, true));
     </script>
 </body>

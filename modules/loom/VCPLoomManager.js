@@ -24,7 +24,7 @@ const MAX_SHARE_TEXT = 100000;
 
 const USER_AGENTS = Object.freeze({
     desktop: '',
-    mobile: 'Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36',
+    mobile: 'Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Mobile Safari/537.36',
     iphone: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1',
 });
 
@@ -202,6 +202,7 @@ class VCPLoomManager {
         this.managerUiPath = path.join(this.projectRoot, 'Loommodules', 'manager.html');
         this.shellUiPath = path.join(this.projectRoot, 'Loommodules', 'shell.html');
         this.preloadPath = path.join(this.projectRoot, 'preloads', 'loom.js');
+        this.pagePreloadPath = path.join(this.projectRoot, 'preloads', 'loom-page.js');
         this.mainWindow = options.mainWindow || null;
         this.openChildWindows = options.openChildWindows || [];
         this.managerWindow = null;
@@ -376,10 +377,29 @@ class VCPLoomManager {
         return USER_AGENTS[manifest.request.profile] || '';
     }
 
+    configureRequestProfile(instance) {
+        const contents = instance.view.webContents;
+        const userAgent = this.resolveUserAgent(instance.manifest);
+
+        if (userAgent && !contents.isDestroyed()) {
+            contents.setUserAgent(userAgent);
+        }
+    }
+
     configureSession(manifest) {
         const partition = this.partitionName(manifest.id);
         const persistentSession = session.fromPartition(partition, { cache: true });
-        const configKey = `${partition}:${JSON.stringify(manifest.request.headers)}`;
+        const userAgent = this.resolveUserAgent(manifest);
+
+        // 由 Chromium 会话原生设置 User-Agent。不要通过 webRequest 强制伪造
+        // Sec-CH-UA-*；这些受保护头由 Chromium 根据实际网络栈生成，人为覆盖
+        // 可能令站点的 HTML、脚本和缓存命中不同客户端变体。
+        if (userAgent) {
+            persistentSession.setUserAgent(userAgent, 'zh-CN,zh;q=0.9,en;q=0.8');
+        }
+
+        const requestHeaders = { ...manifest.request.headers };
+        const configKey = `${partition}:request-profile-v3:${manifest.request.profile}:${JSON.stringify(requestHeaders)}`;
 
         if (!this.requestConfiguredPartitions.has(configKey)) {
             for (const key of this.requestConfiguredPartitions) {
@@ -389,7 +409,7 @@ class VCPLoomManager {
                 callback({
                     requestHeaders: {
                         ...details.requestHeaders,
-                        ...manifest.request.headers,
+                        ...requestHeaders,
                     },
                 });
             });
@@ -435,6 +455,10 @@ class VCPLoomManager {
         const view = new WebContentsView({
             webPreferences: {
                 session: persistentSession,
+                preload: this.pagePreloadPath,
+                additionalArguments: [
+                    `--loom-page-profile=${encodeURIComponent(manifest.request.profile)}`,
+                ],
                 contextIsolation: true,
                 nodeIntegration: false,
                 sandbox: true,
@@ -467,9 +491,12 @@ class VCPLoomManager {
         const shellUrl = `file:///${this.shellUiPath.replace(/\\/g, '/')}?appId=${encodeURIComponent(manifest.id)}`;
         await win.loadURL(shellUrl);
 
+        // 首次导航前设置真实 WebContentsView 尺寸与请求配置。
+        // 不启用任何 Chromium 设备仿真层；部分 Electron + WebContentsView
+        // 组合会因此触发原生层崩溃。
+        this.updateViewBounds(instance);
+        this.configureRequestProfile(instance);
         const userAgent = this.resolveUserAgent(manifest);
-        if (userAgent) view.webContents.setUserAgent(userAgent);
-
         await view.webContents.loadURL(manifest.startUrl, userAgent ? { userAgent } : undefined);
         this.updateViewBounds(instance);
 
@@ -610,8 +637,8 @@ class VCPLoomManager {
             name: instance.manifest.name,
             url: contents.isDestroyed() ? '' : contents.getURL(),
             loading: instance.loading,
-            canGoBack: !contents.isDestroyed() && contents.canGoBack(),
-            canGoForward: !contents.isDestroyed() && contents.canGoForward(),
+            canGoBack: !contents.isDestroyed() && contents.navigationHistory.canGoBack(),
+            canGoForward: !contents.isDestroyed() && contents.navigationHistory.canGoForward(),
             error: instance.lastError,
         };
     }
@@ -635,8 +662,8 @@ class VCPLoomManager {
     async navigate(instance, action) {
         const contents = instance.view.webContents;
         if (contents.isDestroyed()) return;
-        if (action === 'back' && contents.canGoBack()) contents.goBack();
-        if (action === 'forward' && contents.canGoForward()) contents.goForward();
+        if (action === 'back' && contents.navigationHistory.canGoBack()) contents.navigationHistory.goBack();
+        if (action === 'forward' && contents.navigationHistory.canGoForward()) contents.navigationHistory.goForward();
         if (action === 'reload') contents.reload();
         if (action === 'home') await contents.loadURL(instance.manifest.startUrl);
     }

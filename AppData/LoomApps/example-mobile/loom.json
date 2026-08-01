@@ -26,9 +26,7 @@
   "request": {
     "profile": "mobile",
     "userAgent": "",
-    "headers": {
-      "X-VCP-Loom": "example-mobile"
-    }
+    "headers": {}
   },
   "navigation": {
     "allowPopups": false,

@@ -1,17 +1,7 @@
 /*
  * VCP Loom · Bing 手机版测试注入样式
- * 保留 Bing 原生移动布局，仅修正容易遮挡独立应用视口的推广与浮层。
+ * 尊重 Bing 自身的响应式布局，仅修正遮挡视口的推广浮层与滚动条外观。
  */
-
-html,
-body {
-    min-width: 0 !important;
-    overscroll-behavior: contain;
-}
-
-body {
-    overflow-x: hidden !important;
-}
 
 /* 移动 App 推广、反馈按钮及可能覆盖搜索结果的固定浮层 */
 #bnp_container,
@@ -23,9 +13,34 @@ a[href*="Microsoft.Bing"] {
     display: none !important;
 }
 
-/* 避免搜索框和结果内容超出固定手机视口 */
-#sb_form,
-#b_content,
-main {
-    max-width: 100vw !important;
+/* Chromium 细滚动条；不修改页面容器宽度、定位或 overflow 行为。 */
+html {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(112, 120, 132, 0.55) transparent;
+}
+
+::-webkit-scrollbar {
+    width: 7px;
+    height: 7px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    min-height: 36px;
+    border: 2px solid transparent;
+    border-radius: 999px;
+    background: rgba(112, 120, 132, 0.55);
+    background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(86, 96, 110, 0.78);
+    background-clip: padding-box;
+}
+
+::-webkit-scrollbar-corner {
+    background: transparent;
 }

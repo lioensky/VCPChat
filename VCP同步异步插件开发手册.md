@@ -186,7 +186,252 @@ VCP (Virtual Cherry-Var Protocol) 同步插件是一种外部可执行程序或�
     ```
     前端或其他服务可以解析这个结构，将文本和图片分别渲染出来。
 
-### 3.3 处理多个指令
+### 3.3 AI 友好型返回格式：用 content 数组规避转义地狱（推荐）
+
+> **设计理念**：把插件的 `result` 字段构造成一个**模拟 OpenAI user message content 数组**的结构，让 AI 像"接收一段用户输入"那样自然消化插件输出，而不是面对一坨被反复转义的 JSON 字符串。
+
+#### 3.3.1 为什么需要这种格式
+
+传统的纯字符串 `result` 在以下场景会出现严重问题：
+
+1.  **转义噩梦**：当返回内容包含 Markdown、URL、代码块、引号、换行时，序列化为 JSON 字符串后会产生 `\\n`、`\\"`、`\\\\` 等多重转义，AI 在阅读时容易把这些字符当作字面量处理，导致渲染异常或链接断裂。
+2.  **多模态混排困难**：纯文本无法承载图片、音频等二进制资源，强行 base64 内联到字符串中既破坏可读性又污染上下文。
+3.  **来源边界模糊**：纯字符串返回会被 AI 当作"工具的旁白"，与用户消息边界混淆；而 content 数组结构天然带有"这是一段独立的多模态内容"的语义提示。
+
+#### 3.3.2 核心结构（OpenAI 风格 content 数组）
+
+将 `result` 设计为一个对象，其 `content` 字段是一个数组，每个元素都是一个带 `type` 字段的对象，**完全模仿 OpenAI Vision API 中 user message 的 content 数组格式**：
+
+```javascript
+{
+    "status": "success",
+    "result": {
+        "content": [
+            { "type": "text", "text": "这里是给 AI 看的纯文本说明，可以包含 Markdown、URL、换行，无需任何转义。" },
+            { "type": "image_url", "image_url": { "url": "data:image/png;base64,iVBORw0KGgo..." } },
+            { "type": "text", "text": "这里可以继续追加文本片段，与图片混排。" }
+        ]
+    }
+}
+```
+
+**关键支持的 type 类型**：
+
+| type | 字段结构 | 用途 |
+|------|---------|------|
+| `text` | `{ type: 'text', text: '...' }` | 文本片段，支持 Markdown/URL/换行原文 |
+| `image_url` | `{ type: 'image_url', image_url: { url: '...' } }` | 图片，支持 https URL 或 `data:image/...;base64,...` Data URI |
+
+#### 3.3.3 核心技巧：用 `type: 'text'` 包裹文本"冒充" user content
+
+**这是该格式最精妙的地方**：即使你只想返回纯文本，也可以把文本切成若干个 `{ type: 'text', text: '...' }` 元素塞进 `content` 数组。这样做的收益：
+
+*   **绕过 JSON 字符串的多层转义**：文本内容作为 JSON 对象的字段值存在，主服务在解析时会自动还原所有转义字符，AI 拿到的是干净的原文。
+*   **让 AI 把它当成"用户输入"读**：因为结构与 OpenAI user content 数组完全一致，AI 模型对此结构有天然的"内容感知"，不容易把工具返回当作"系统旁白"草草略过。
+*   **天然支持后续扩展**：如果未来要插入图片或其它多模态资源，直接在数组里追加元素即可，无需改造调用方。
+
+**对比示例**：
+
+❌ **传统做法（容易出问题）**：
+```javascript
+const longMarkdown = `## 检索报告\n\n详见 [链接](https://example.com/path?a=1&b="2")\n\n\`\`\`json\n{"key": "value"}\n\`\`\``;
+console.log(JSON.stringify({ status: "success", result: longMarkdown }));
+// 实际输出：{"status":"success","result":"## 检索报告\\n\\n详见 [链接](https://example.com/path?a=1&b=\\"2\\")\\n\\n```json\\n{\\"key\\": \\"value\\"}\\n```"}
+// AI 读到的是带 \\n、\\" 的转义字符串，渲染体验差
+```
+
+✅ **推荐做法（AI 友好）**：
+```javascript
+const longMarkdown = `## 检索报告\n\n详见 [链接](https://example.com/path?a=1&b="2")\n\n\`\`\`json\n{"key": "value"}\n\`\`\``;
+console.log(JSON.stringify({
+    status: "success",
+    result: {
+        content: [
+            { type: 'text', text: longMarkdown }
+        ]
+    }
+}));
+// AI 拿到的 text 字段会被正确解析为原文 Markdown，链接、代码块、引号都完好
+```
+
+#### 3.3.4 实战示例 1：纯文本检索结果（VSearch 风格）
+
+参考 [`Plugin/VSearch/VSearch.js`](Plugin/VSearch/VSearch.js)，搜索类插件返回的报告往往包含大量 URL、Markdown 标题、引用源，使用 content 数组可避免长文本被转义破坏：
+
+```javascript
+// VSearch.js 中的真实实现：先抽出工厂函数，再统一应用到所有搜索模式
+const buildAiFriendlyResult = (reportText) => ({
+    content: [
+        { type: 'text', text: reportText }
+    ]
+});
+
+const finalReport = `## VSearch 检索报告 [模式: Grounding]\n\n**研究主题**: ${SearchTopic}\n\n${allResults.join('')}`;
+
+sendResponse({
+    status: "success",
+    result: buildAiFriendlyResult(finalReport)
+});
+```
+
+> 提示：VSearch 的 4 个搜索模式（Grok / Tavily / KimiSearch / Grounding）都已统一改造为 content 数组格式，复杂 Markdown 报告中的 URL、引用源、代码块均能完好送达 AI。
+
+#### 3.3.5 实战示例 2：文本 + 图片混排（DoubaoGen 风格）
+
+参考 [`Plugin/DMXDoubaoGen/DoubaoGen.js`](Plugin/DMXDoubaoGen/DoubaoGen.js:466) 的实现，图像生成插件用 content 数组同时返回文本说明 + 图片 base64：
+
+```javascript
+// 来自 DoubaoGen.js 的真实实现
+const content = [
+    {
+        type: 'text',
+        text: `图片已成功生成！\n- 提示词: ${args.prompt}\n- 分辨率: ${size}\n- Seed: ${finalSeed}\n- 可访问URL: ${accessibleImageUrl}\n请将生成好的图片转发给用户哦。`
+    }
+];
+
+// 可选：根据参数决定是否内联 base64 图片（节省 token）
+if (showBase64) {
+    content.push({
+        type: 'image_url',
+        image_url: {
+            url: `data:${imageMimeType};base64,${base64Image}`
+        }
+    });
+}
+
+const result = {
+    content: content,
+    details: { /* 额外的结构化元数据，可选 */
+        fileName: generatedFileName,
+        prompt: args.prompt,
+        resolution: size,
+        seed: finalSeed,
+        imageUrl: accessibleImageUrl
+    }
+};
+
+console.log(JSON.stringify({ status: "success", result: result }));
+```
+
+**值得借鉴的设计点**：
+
+1.  **`text` 段写得像"自然语言交付"**：包含具体参数、URL、给 AI 的行动建议（"请将生成好的图片转发给用户哦"），让模型自然衔接到下一句回复。
+2.  **`image_url` 段可选**：通过 `showbase64` 开关让用户决定是否内联 base64（base64 图片会消耗大量 token，默认关闭可降低成本）。
+3.  **`details` 旁路字段**：在 `content` 之外另设 `details` 对象，承载结构化元数据（文件名、seed、URL），供前端或日志系统使用，不污染 AI 的视觉上下文。
+
+#### 3.3.6 重要概念：将生成内容转化为内网 URL（imageUrl / fileUrl）
+
+当插件生成了图片、PDF、Markdown、音频、视频或其他文件时，**不要只返回本地磁盘路径**，也不要默认把大文件全部塞进 Base64。推荐做法是：
+
+1.  将生成结果保存到 VCP 的公开资源目录：
+    *   图片类资源保存到 `PROJECT_BASE_PATH/image/<插件子目录>/...`
+    *   普通文件类资源保存到 `PROJECT_BASE_PATH/file/<插件子目录>/...`
+2.  通过 [`ImageFileServer`](Plugin/ImageFileServer/image-file-server.js:433) 暴露的安全路由，把本地文件路径转换为带访问密钥的内网 URL：
+    *   图片 URL：`{VarHttpUrl}:{SERVER_PORT}/pw={IMAGESERVER_IMAGE_KEY}/images/<相对路径>`
+    *   文件 URL：`{VarHttpUrl}:{SERVER_PORT}/pw={IMAGESERVER_FILE_KEY}/files/<相对路径>`
+3.  在 `result.content` 的 `text` 段里明确给出可访问 URL，并在 `details` 中额外保留 `imageUrl` / `fileUrl`、`serverPath`、`fileName` 等结构化字段。
+
+> 这里的"内网 URL"是指由 VCP 自身的 Image/File Server 提供的受控访问地址，不是外部 API 临时 URL，也不是 `file://` 本地路径。这样前端、OpenWebUI 脚本、其他 Agent 或后续工具都能稳定访问生成内容。
+
+**ImageFileServer 路由规则**
+
+[`Plugin/ImageFileServer/image-file-server.js`](Plugin/ImageFileServer/image-file-server.js:473) 会将以下目录暴露为带密钥访问的静态资源服务：
+
+| 资源类型 | 本地根目录 | URL 路径 | 鉴权环境变量 | 插件侧注入变量 |
+|----------|------------|----------|--------------|----------------|
+| 图片 | `PROJECT_BASE_PATH/image` | `/pw=<Image_Key>/images/...` | `Image_Key` | `IMAGESERVER_IMAGE_KEY` |
+| 文件 | `PROJECT_BASE_PATH/file` | `/pw=<File_Key>/files/...` | `File_Key` | `IMAGESERVER_FILE_KEY` |
+
+插件通常不直接读取 `Image_Key` / `File_Key`，而是读取由 [`Plugin.js`](Plugin.js:1221) 注入到插件进程环境变量中的 `IMAGESERVER_IMAGE_KEY` / `IMAGESERVER_FILE_KEY`。主机、端口和项目根目录则来自 `VarHttpUrl`、`SERVER_PORT`、`PROJECT_BASE_PATH`。
+
+**图像生成插件示例（imageUrl）**
+
+参考 [`Plugin/DMXDoubaoGen/DoubaoGen.js`](Plugin/DMXDoubaoGen/DoubaoGen.js:434) 的核心流程：先把外部 API 返回的图片下载或解码为 Buffer，写入 `image/doubaogen`，再拼出可访问的 `imageUrl`。
+
+```javascript
+const generatedFileName = `${uuidv4()}.${imageExtension}`;
+const imageDir = path.join(PROJECT_BASE_PATH, 'image', 'doubaogen');
+const localImagePath = path.join(imageDir, generatedFileName);
+
+await fs.mkdir(imageDir, { recursive: true });
+await fs.writeFile(localImagePath, imageBuffer);
+
+const relativePathForUrl = path.join('doubaogen', generatedFileName).replace(/\\/g, '/');
+const imageUrl = `${VAR_HTTP_URL}:${SERVER_PORT}/pw=${IMAGESERVER_IMAGE_KEY}/images/${relativePathForUrl}`;
+
+const result = {
+    content: [
+        {
+            type: 'text',
+            text: `图片已成功生成！\n- 可访问URL: ${imageUrl}\n请将生成好的图片转发给用户哦。`
+        }
+    ],
+    details: {
+        serverPath: `image/doubaogen/${generatedFileName}`,
+        fileName: generatedFileName,
+        imageUrl
+    }
+};
+
+console.log(JSON.stringify({ status: 'success', result }));
+```
+
+**普通文件生成插件示例（fileUrl）**
+
+如果插件生成的是 PDF、Markdown、CSV、视频等普通文件，应写入 `PROJECT_BASE_PATH/file/<插件子目录>`，并使用 `/files/` 路由和 `IMAGESERVER_FILE_KEY`：
+
+```javascript
+const generatedFileName = `${crypto.randomUUID()}.pdf`;
+const fileDir = path.join(PROJECT_BASE_PATH, 'file', 'reporter');
+const localFilePath = path.join(fileDir, generatedFileName);
+
+await fs.mkdir(fileDir, { recursive: true });
+await fs.writeFile(localFilePath, pdfBuffer);
+
+const relativePathForUrl = path.join('reporter', generatedFileName).replace(/\\/g, '/');
+const fileUrl = `${VAR_HTTP_URL}:${SERVER_PORT}/pw=${IMAGESERVER_FILE_KEY}/files/${relativePathForUrl}`;
+
+const result = {
+    content: [
+        {
+            type: 'text',
+            text: `报告已生成：${fileUrl}`
+        }
+    ],
+    details: {
+        serverPath: `file/reporter/${generatedFileName}`,
+        fileName: generatedFileName,
+        fileUrl
+    }
+};
+```
+
+**从内容中的 `file://` 转换为 URL**
+
+有些插件不是自己生成二进制文件，而是接收或生成 Markdown 内容，其中包含本地 `file://` 链接。这种情况下可参考 [`DailyNote`](Plugin/DailyNote/dailynote.js:327) 的做法：
+
+*   `![alt](file://...)`：读取本地图片，复制到 `PROJECT_BASE_PATH/image/dailynote`，替换为 `![alt](http://.../images/dailynote/...)`。
+*   `[text](file://...)`：读取本地普通文件，复制到 `PROJECT_BASE_PATH/file/dailynote`，替换为 `[text](http://.../files/dailynote/...)`。
+
+这种转换让最终保存的 Markdown / 日记内容不再依赖本机绝对路径，而是通过 VCP 内网 URL 可被前端或其他客户端访问。
+
+**实践建议**
+
+*   **生成物优先返回 URL，Base64 只作为可选项**：图片可像 [`DoubaoGen.js`](Plugin/DMXDoubaoGen/DoubaoGen.js:473) 一样通过 `showbase64` 参数控制是否额外返回 Data URI。
+*   **URL 放在 `content.text`，元数据放在 `details`**：AI 能直接看到链接，程序也能稳定读取 `details.imageUrl` / `details.fileUrl`。
+*   **按资源类型选择目录和路由**：图片走 `image/...` + `/images/...`；普通文件走 `file/...` + `/files/...`。
+*   **不要暴露裸本地路径给用户**：`H:\...`、`/home/...`、`file://...` 对远端客户端通常不可访问，也可能泄露服务器目录结构。
+*   **注意文件类型白名单**：[`ImageFileServer`](Plugin/ImageFileServer/image-file-server.js:12) 对图片和普通文件都有扩展名白名单；新增文件类型时要确认服务端允许访问。
+*   **注意访问密钥**：URL 中的 `/pw=...` 是访问控制的一部分，日志和公开回复中应按业务场景谨慎暴露。
+
+#### 3.3.7 实施建议
+
+*   **新插件优先采用 content 数组格式**，即使只返回纯文本。
+*   **存量插件**：当返回内容超过约 500 字符、包含 Markdown/URL/代码块、或涉及多模态时，建议改造为 content 数组格式。
+*   **保持向后兼容**：`result` 字段同时支持字符串和对象两种形态，主服务会自动识别并适配下游消费者，**无需担心改造破坏现有调用链**。
+*   **不要过度切片**：单个 `text` 段可以包含很长的 Markdown，没必要为每段话都拆一个数组元素，按"语义边界 + 模态切换"自然分段即可。
+
+### 3.4 处理多个指令
 
 对于像 [`FileOperator`](Plugin/FileOperator) 这样的多功能插件，你需要在代码中实现一个分发逻辑。
 
@@ -309,218 +554,81 @@ timely_contact:「始」(可选) 设置一个未来时间点定时调用工具�
     ```
 通过在插件内部增加这种兼容性处理，可以大大提高AI调用插件的成功率和用户体验。
 
-### 4.4 超栈追踪：处理分布式文件 URL
+### 4.4 分布式文件 URL：插件无需关心跨节点取文件
 
-在 VCP 的分布式服务器网络中，一个常见的挑战是：一个服务器上的插件（例如，主服务器上的 `GeminiImageGen`）可能需要访问另一个分布式节点（例如，某个客户端PC）上的本地文件。直接访问 `file:///C:/Users/User/Desktop/image.png` 这样的路径是行不通的。
+在当前版本中，分布式文件处理已经由插件管理器透明接管。插件收到参数前，主服务会预先扫描本地插件调用参数中的 `file://` URL，并通过 [`FileFetcherServer.resolveFileUrl()`](FileFetcherServer.js:1) 自动把远程文件拉取并转换为可用的数据形式。对应逻辑位于 [`PluginManager.processToolCall()`](Plugin.js:909)。
 
-“超栈追踪” (Hyper-Stack-Trace) 是 VCP 设计的一套机制，用于优雅地解决这个问题。它允许插件像处理本地文件一样处理来自远程节点的 `file://` URL，而将复杂的网络获取过程交由主服务和 `FileFetcherServer` 自动完成。
+因此，插件开发者不再需要实现旧版“超栈追踪”协议，也不需要：
 
-**核心思想**: 当插件尝试读取一个本地不存在的 `file://` 路径时，它不会立即失败，而是向主服务抛出一个“需要帮助”的特定错误。主服务捕获此错误后，会追溯请求的来源 IP，通过 WebSocket 网络向源头服务器请求该文件，获取文件数据后再返回给插件继续执行。
+*   捕获 `ENOENT` 后返回 `FILE_NOT_FOUND_LOCALLY`。
+*   让插件主动请求 `FileFetcherServer`。
+*   为 `internal_request_file` 编写额外响应逻辑。
+*   针对多个 `file://` URL 自行编排跨节点拉取流程。
 
-**交互流程**:
+**插件侧只需要做两件事：**
 
-1.  **插件尝试读取**: `GeminiImageGen` 插件收到一个参数 `image_url: "file:///..."`。它尝试通过 `fs.readFile` 读取该路径。
-2.  **文件未找到 (ENOENT)**: 文件在当前服务器上不存在，`fs.readFile` 抛出 `ENOENT` 错误。
-3.  **抛出特定错误**: 插件 `catch` 到这个错误，并向 `stdout` 打印一个特殊结构的 JSON 错误：
-    ```json
-    {
-      "status": "error",
-      "code": "FILE_NOT_FOUND_LOCALLY",
-      "error": "本地文件未找到，需要远程获取。",
-      "fileUrl": "file:///..."
-    }
-    ```
-4.  **主服务拦截**: 主服务 (`server.js`) 接收到这个结果，识别出 `code: "FILE_NOT_FOUND_LOCALLY"`。它不会将这个错误直接返回给 AI，而是将请求转交给 `FileFetcherServer`。
-5.  **文件抓取**: [`FileFetcherServer.js`](FileFetcherServer.js) 启动。
-    *   它根据发起请求的 IP 地址，在 WebSocket 连接池中找到对应的源头服务器。
-    *   它向源头服务器发送一个内部工具调用 `internal_request_file`，请求路径为 `filePath`。
-6.  **源服务器响应**: 源头服务器上的 `FileOperator` 插件（或其内部等效实现）接收到请求，读取本地文件，并将其内容以 **Base64** 编码后返回。
-    ```json
-    {
-      "status": "success",
-      "fileData": "iVBORw0KGgoAAAANSUhEUg...", // Base64 编码的文件内容
-      "mimeType": "image/png"
-    }
-    ```
-7.  **数据返回与重试**: `FileFetcherServer` 接收到 Base64 数据，解码成 `Buffer`，并将其注入回 `GeminiImageGen` 插件的上下文中。主服务随后会使用获取到的文件数据 **重新调用** `GeminiImageGen` 插件。这一次，插件可以直接使用传入的 `image_base64` 数据，而无需再读取文件。
+1.  **按普通入参处理文件字段**：如果你的插件声明接收 `image_url`、`file_url`、`audio_url` 等字段，直接读取最终收到的参数即可。远程 `file://` 的解析与替换已经在插件执行前完成。
+2.  **正确处理 Base64 / Data URI**：如果参数中包含 `data:image/...;base64,...`、`data:audio/...;base64,...` 或纯 Base64 字符串，插件需要自行识别、提取 MIME 类型与纯 Base64 数据，并按业务需求解码或上传。
 
-**对插件开发者的要求**:
+> 注意：分布式工具本身（即 `plugin.isDistributed` 的云端/远端插件）不会由主服务器预拉取其 `file://` 参数，而是透传给分布式端处理；这里的“透明预处理”主要面向由当前主服务直接执行的本地插件。
 
-当你的插件需要处理可能来自远程节点的 `file://` URL 时，你 **必须** 遵循以下规范：
+#### 4.4.1 推荐实践：兼容 Data URI 与纯 Base64
 
-*   **捕获文件未找到错误**: 在文件读取操作外层包裹 `try...catch`。
-*   **返回特定错误结构**: 当捕获到 `ENOENT` 错误时，必须 `console.log` 一个包含 `status: "error"`, `code: "FILE_NOT_FOUND_LOCALLY"`, 和 `fileUrl` 字段的 JSON 字符串到 `stdout`。
+很多上游链路为了保留 MIME 类型，会把图片、音频或文件内容包装为 Data URI：
 
-**实现范例 (`GeminiImageGen.mjs`)**:
+```text
+data:image/png;base64,iVBORw0KGgoAAAANSUhEUg...
+```
 
-[`Plugin/GeminiImageGen/GeminiImageGen.mjs`](Plugin/GeminiImageGen/GeminiImageGen.mjs:64) 中的 `getImageDataFromUrl` 函数是该模式的最佳实践：
+但也有场景只传递纯 Base64：
+
+```text
+iVBORw0KGgoAAAANSUhEUg...
+```
+
+插件应同时兼容这两种格式。下面是一个通用 Node.js 解析示例：
 
 ```javascript
-// Plugin/GeminiImageGen/GeminiImageGen.mjs
-async function getImageDataFromUrl(url) {
-    // ... (处理 http 和 data URI)
-
-    if (url.startsWith('file://')) {
-        const { fileURLToPath } = await import('url');
-        const { default: mime } = await import('mime-types');
-        const filePath = fileURLToPath(url);
-
-        try {
-            // 1. 尝试直接读取
-            const buffer = await fs.readFile(filePath);
-            return { buffer, mimeType: mime.lookup(filePath) };
-        } catch (e) {
-            if (e.code === 'ENOENT') {
-                // 2. 本地未找到，抛出结构化错误
-                const structuredError = new Error("本地文件未找到，需要远程获取。");
-                structuredError.code = 'FILE_NOT_FOUND_LOCALLY';
-                structuredError.fileUrl = url;
-                throw structuredError; // 抛出给主 try...catch 块处理
-            } else {
-                // 其他错误（如权限问题）正常抛出
-                throw new Error(`读取本地文件时发生意外错误: ${e.message}`);
-            }
-        }
+function parseBase64Payload(input, fallbackMimeType = 'application/octet-stream') {
+    if (typeof input !== 'string' || !input.trim()) {
+        throw new Error('Base64 输入不能为空。');
     }
-    // ...
-}
 
-// 在主函数中
-async function main() {
-    try {
-        // ...
-    } catch (e) {
-        // 3. 捕获结构化错误并打印到 stdout
-        if (e.code === 'FILE_NOT_FOUND_LOCALLY') {
-            console.log(JSON.stringify({
-                status: "error",
-                code: e.code,
-                error: e.message,
-                fileUrl: e.fileUrl
-            }));
-        } else {
-            // ... 处理其他错误
-        }
-        process.exit(1);
+    const trimmed = input.trim();
+    const dataUriMatch = trimmed.match(/^data:([^;,]+);base64,(.*)$/s);
+
+    if (dataUriMatch) {
+        return {
+            mimeType: dataUriMatch[1],
+            base64: dataUriMatch[2],
+            buffer: Buffer.from(dataUriMatch[2], 'base64')
+        };
     }
+
+    return {
+        mimeType: fallbackMimeType,
+        base64: trimmed,
+        buffer: Buffer.from(trimmed, 'base64')
+    };
 }
 ```
 
-*   **作为被请求方**: 如果你的插件（例如一个增强版的 `FileOperator`）需要响应 `internal_request_file` 这种内部请求，你 **必须** 将文件内容以 **Base64** 字符串的形式放在 `fileData` 字段中返回。这是为了确保二进制数据能被安全地通过 JSON 和 WebSocket 传输。
-
-通过遵循这一规范，你的插件将能无缝融入 VCP 的分布式文件处理生态，极大地增强其功能和适用范围。
-
-#### 4.4.1 重要实践：正确处理重试时的 `image_base64` 参数
-
-在“超栈追踪”的第7步，当主服务用获取到的文件数据重新调用你的插件时，它会填充 `image_base64` 参数。开发者必须清楚：
-
-> **此时的 `image_base64` 参数是一个完整的 Data URI 字符串，而不是纯净的 Base64 编码！**
-
-格式如下： `data:image/png;base64,iVBORw0KGgoAAAANSUhEUg...`
-
-**错误的做法 (导致文件损坏):**
-直接将这个完整的 Data URI 传递给 Base64 解码函数。
-```javascript
-// 错误示例！这会导致解码失败，生成损坏的文件
-const imageBuffer = Buffer.from(args.image_base64, 'base64');
-```
-`Buffer.from` 会尝试将 `data:image/png;base64,` 这部分前缀也当作 Base64 字符来解码，这必然会失败并产生无效的二进制数据。
-
-**正确的做法 (健壮的插件实现):**
-你的插件必须能够解析 Data URI，从中提取出纯净的 Base64 部分，然后再进行解码。
+使用时只需要对最终收到的参数做解析：
 
 ```javascript
-// 正确示例: 从 Data URI 中提取纯净的 Base64
-let pureBase64 = args.image_base64;
+const imageInput = args.image_base64 || args.image_url || args.file_base64;
+const imageData = parseBase64Payload(imageInput, 'image/png');
 
-// 使用正则表达式检查并提取
-const dataUriMatch = args.image_base64.match(/^data:image\/\w+;base64,(.*)$/);
-if (dataUriMatch) {
-    pureBase64 = dataUriMatch[1];
-}
-
-// 现在可以安全地解码了
-const imageBuffer = Buffer.from(pureBase64, 'base64');
-// ... 后续可以将 imageBuffer 写入文件或直接上传
+// imageData.buffer 可直接写入文件或上传到外部 API
+// imageData.mimeType 可用于构造请求头或多模态消息
 ```
-通过在插件内部增加这一层处理，可以确保你的插件能够正确、健壮地处理来自任何节点的图片数据，避免难以追踪的“文件损坏”问题。
 
-#### 4.4.2 进阶实践：处理多个分布式文件 URL
+#### 4.4.2 插件开发建议
 
-当插件需要一次性处理多个文件输入时（例如，图像合成工具需要 `image_url_1` 和 `image_url_2`），“超栈追踪”机制需要被更精确地实现。如果插件只是简单地报告“文件未找到”，主服务将无法知道应该去获取哪一个 URL 对应的文件。
-
-**核心规范**:
-
-当你的插件在处理多个 `file://` URL 的过程中，如果某个文件在本地未找到，那么在抛出 `FILE_NOT_FOUND_LOCALLY` 这个特定错误时，**必须额外附加一个 `failedParameter` 字段**。
-
-这个字段的值必须是导致失败的那个参数的**确切名称**。
-
-**交互流程**:
-
-1.  **AI 调用**: AI 请求一个图像合成插件，提供了 `image_url_1: "file://..."` 和 `image_url_2: "file://..."`。
-2.  **插件处理**: 插件按顺序处理输入。它尝试读取 `image_url_1`，但文件在本地不存在。
-3.  **抛出精确错误**: 插件捕获到 `ENOENT` 错误。此时，它 **必须** 构造并打印如下结构的 JSON 到 `stdout`：
-    ```json
-    {
-      "status": "error",
-      "code": "FILE_NOT_FOUND_LOCALLY",
-      "error": "多图片处理中第 1 张图片本地未找到，需要远程获取。",
-      "fileUrl": "file://...",
-      "failedParameter": "image_url_1"
-    }
-    ```
-    注意 `failedParameter` 字段，它精确地指明了问题来源。
-4.  **主服务精准重试**: 主服务 (`Plugin.js`) 接收到这个错误后，会读取 `failedParameter` 的值 (`"image_url_1"`)。
-    *   它会调用 `FileFetcherServer` 去获取 `image_url_1` 的内容。
-    *   获取成功后，它会构建一个新的参数对象，其中**移除了 `image_url_1`**，并**添加了 `image_base64_1`**（值为获取到的 Data URI）。
-    *   **重要的是**，`image_url_2` 和其他参数保持不变。
-    *   主服务使用这个**部分更新**后的参数对象，重新调用该插件。
-5.  **循环处理**: 插件再次被调用。这一次，它可以成功处理 `image_base64_1`。当它接着处理 `image_url_2` 时，如果 `image_url_2` 也不存在，整个流程会为 `image_url_2` 再重复一遍（抛出带 `failedParameter: "image_url_2"` 的错误，然后主服务获取并替换为 `image_base64_2`）。
-6.  **最终成功**: 经过数次这样的“获取-重试”循环，所有 `file://` URL 都会被替换为 `image_base64_N` 数据，最终插件得以成功执行。
-
-**实现范例 (`NanoBananaGenOR.mjs`)**:
-
-[`Plugin/NanoBananaGenOR/NanoBananaGenOR.mjs`](Plugin/NanoBananaGenOR/NanoBananaGenOR.mjs) 是处理多个 `file://` URL 的最佳实践。
-
-*   在其 `composeImage` 函数中，它循环处理每个 `image_url_N`。
-    ```javascript
-    // Plugin/NanoBananaGenOR/NanoBananaGenOR.mjs -> composeImage()
-    try {
-        const { buffer, mimeType } = await getImageDataFromUrl(imageUrl);
-        // ...
-    } catch (e) {
-        if (e.code === 'FILE_NOT_FOUND_LOCALLY') {
-            const enhancedError = new Error(`多图片合成中第 ${i} 张图片 (参数: ${urlKey}) 本地未找到...`);
-            enhancedError.code = 'FILE_NOT_FOUND_LOCALLY';
-            enhancedError.fileUrl = e.fileUrl;
-            enhancedError.failedParameter = urlKey; // 关键：报告正确的失败参数
-            throw enhancedError;
-        }
-        // ...
-    }
-    ```
-*   在其主函数 `main()` 的 `catch` 块中，它确保将这个 `failedParameter` 字段写入最终的 JSON 输出。
-    ```javascript
-    // Plugin/NanoBananaGenOR/NanoBananaGenOR.mjs -> main()
-    } catch (e) {
-        if (e.code === 'FILE_NOT_FOUND_LOCALLY') {
-            const errorPayload = {
-                status: "error",
-                code: e.code,
-                error: e.message,
-                fileUrl: e.fileUrl
-            };
-            // 关键修复：将 failedParameter 传递给主控
-            if (e.failedParameter) {
-                errorPayload.failedParameter = e.failedParameter;
-            }
-            console.log(JSON.stringify(errorPayload));
-        }
-        // ...
-    }
-    ```
-
-通过遵循这一规范，你的多文件输入插件才能正确地与 VCP 的分布式文件系统协作，实现强大而可靠的功能。
+*   **不要再实现旧版 `FILE_NOT_FOUND_LOCALLY` 流程**：这会让插件行为与当前插件管理器的透明预处理重复，甚至造成错误处理路径混乱。
+*   **不要假设收到的一定是本地路径**：你的插件可能收到普通 URL、Data URI、纯 Base64 或经过服务端转换后的可访问地址，应按插件自身能力声明并做清晰校验。
+*   **在 `description` 中明确入参格式**：如果插件支持 Base64，请写清楚是否支持 Data URI、纯 Base64、URL，以及推荐优先级。
+*   **大文件谨慎内联**：Base64 会显著放大体积并消耗上下文/token；如已有可访问 URL，优先返回 URL，把 Base64 作为必要时的兼容选项。
 
 ### 4.5 VCP Auth 验证码机制：管理员权限指令
 

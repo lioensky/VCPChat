@@ -34,6 +34,9 @@ const loomAPI = Object.freeze({
     shellReady: () => invoke('loom:shell-ready'),
     shellAction: (action) => invoke('loom:shell-action', action),
 
+    getCurrentTheme: () => invoke('get-current-theme'),
+    onThemeUpdated: (callback) => subscribe('theme-updated', callback),
+
     minimizeWindow: () => ipcRenderer.send('minimize-window'),
     maximizeWindow: () => ipcRenderer.send('maximize-window'),
     closeWindow: () => ipcRenderer.send('close-window'),
