@@ -749,12 +749,27 @@ class VCPLoomManager {
         });
 
         contents.on('render-process-gone', (_event, details) => {
+            if (instance.closing) return;
             instance.lastError = `页面进程异常退出：${details.reason}`;
             this.sendToShell(instance, 'loom:shell-state', this.buildShellState(instance));
         });
 
+        win.once('close', () => {
+            instance.closing = true;
+            if (!contents.isDestroyed()) {
+                // WebContentsView 不会随 BrowserWindow 自动销毁。必须在父窗口的
+                // 原生对象释放前先脱离视图树并关闭，否则 closed 阶段操作它会触发
+                // “Object has been destroyed”。
+                try {
+                    win.contentView.removeChildView(view);
+                } catch (error) {
+                    console.warn(`[VCPLoomManager] Failed to detach view for ${instance.appId}: ${error.message}`);
+                }
+                contents.close({ waitForBeforeUnload: false });
+            }
+        });
+
         win.on('closed', () => {
-            if (!contents.isDestroyed()) contents.close();
             this.instances.delete(instance.appId);
             this.untrackChildWindow(win);
             this.broadcastRegistryChanged();
