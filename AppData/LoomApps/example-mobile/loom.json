@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "id": "example-mobile",
-  "name": "Bing 移动版",
-  "description": "一期测试应用：以 Android 手机请求与固定手机视口加载 Bing，并验证独立 Cookie 与注入修正。",
+  "name": "Bing 搜索",
+  "description": "使用 VCP 轻量移动首页进行搜索，提交后进入 Bing 原生搜索结果页。",
   "startUrl": "https://www.bing.com/",
   "enabled": true,
   "exposeInAppDrawer": true,
