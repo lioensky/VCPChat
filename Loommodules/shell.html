@@ -26,12 +26,12 @@
             backdrop-filter: blur(14px) saturate(112%); -webkit-backdrop-filter: blur(14px) saturate(112%);
             user-select: none; -webkit-app-region: drag;
         }
-        button { -webkit-app-region: no-drag; }
+        button, input { -webkit-app-region: no-drag; }
         .mark {
             width: 25px; height: 25px; border-radius: 8px; display: grid; place-items: center; margin-right: 3px;
             background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 58%, var(--success-color, #76bfae)));
             color: var(--text-on-accent, #171a1d); box-shadow: 0 0 18px color-mix(in srgb, var(--accent) 30%, transparent);
-            font-size: 13px;
+            font-size: 13px; line-height: 1; padding-bottom: 1px;
         }
         .nav { display: flex; gap: 2px; -webkit-app-region: no-drag; }
         .tool {
@@ -41,8 +41,18 @@
         .tool:hover:not(:disabled) { background: var(--control-hover); color: var(--accent); }
         .tool:disabled { opacity: .3; cursor: default; }
         .identity { min-width: 0; flex: 1; display: flex; align-items: center; gap: 8px; padding-left: 5px; }
-        .name { font-size: 12px; font-weight: 650; white-space: nowrap; max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
-        .url { color: var(--muted); font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: .85; }
+        .name { flex: 0 1 auto; font-size: 12px; font-weight: 650; white-space: nowrap; max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
+        .url {
+            min-width: 80px; flex: 1; height: 27px; padding: 0 8px; border: 1px solid transparent; border-radius: 7px;
+            outline: none; background: transparent; color: var(--muted); font: 10px/1 "Segoe UI", "Microsoft YaHei UI", sans-serif;
+            opacity: .85; transition: .15s ease;
+        }
+        .url:hover { border-color: var(--line); background: color-mix(in srgb, var(--primary-bg, #171a1d) 32%, transparent); opacity: 1; }
+        .url:focus {
+            border-color: color-mix(in srgb, var(--accent) 58%, transparent);
+            background: color-mix(in srgb, var(--primary-bg, #171a1d) 55%, transparent);
+            box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 10%, transparent); color: var(--text); opacity: 1;
+        }
         .loading { display: none; width: 13px; height: 13px; border: 2px solid color-mix(in srgb, var(--muted) 28%, transparent); border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; }
         .loading.show { display: block; }
         @keyframes spin { to { transform: rotate(360deg); } }
@@ -84,7 +94,7 @@
         <div class="identity">
             <span class="loading" id="loading"></span>
             <span class="name" id="name">VCP Loom</span>
-            <span class="url" id="url"></span>
+            <input class="url" id="url" type="text" inputmode="url" autocomplete="off" spellcheck="false" aria-label="网址" placeholder="输入网址并按 Enter">
         </div>
         <button class="tool" id="external" title="在系统浏览器中打开">↗</button>
         <button class="tool share" id="share" title="将当前页面已渲染文本分享到 VChat 输入框"><span>◇</span><span>分享文本</span></button>
@@ -102,6 +112,7 @@
         const api = window.loomAPI;
         const $ = (id) => document.getElementById(id);
         let toastTimer = null;
+        let currentUrl = '';
 
         function applyTheme(theme) {
             document.body.classList.toggle('light-theme', theme === 'light');
@@ -123,8 +134,9 @@
 
         function applyState(state = {}) {
             $('name').textContent = state.name || 'VCP Loom';
-            $('url').textContent = state.url || '';
-            $('url').title = state.url || '';
+            currentUrl = state.url || currentUrl;
+            if (document.activeElement !== $('url')) $('url').value = currentUrl;
+            $('url').title = currentUrl;
             $('loading').classList.toggle('show', state.loading === true);
             $('back').disabled = !state.canGoBack;
             $('forward').disabled = !state.canGoForward;
@@ -141,9 +153,9 @@
             toastTimer = setTimeout(() => $('toast').classList.remove('show'), 2400);
         }
 
-        async function action(name) {
+        async function action(name, payload) {
             try {
-                const state = unwrap(await api.shellAction(name));
+                const state = unwrap(await api.shellAction(name, payload));
                 if (state?.appId) applyState(state);
                 return state;
             } catch (error) {
@@ -152,6 +164,23 @@
             }
         }
 
+        $('url').addEventListener('focus', (event) => event.currentTarget.select());
+        $('url').addEventListener('keydown', async (event) => {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                const value = event.currentTarget.value.trim();
+                if (!value) return;
+                event.currentTarget.blur();
+                await action('navigate', value);
+            } else if (event.key === 'Escape') {
+                event.preventDefault();
+                event.currentTarget.value = currentUrl;
+                event.currentTarget.blur();
+            }
+        });
+        $('url').addEventListener('blur', (event) => {
+            if (!event.currentTarget.value.trim()) event.currentTarget.value = currentUrl;
+        });
         $('back').addEventListener('click', () => action('back'));
         $('forward').addEventListener('click', () => action('forward'));
         $('home').addEventListener('click', () => action('home'));

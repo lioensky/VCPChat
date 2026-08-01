@@ -36,7 +36,7 @@ const loomAPI = Object.freeze({
     openAppFolder: (appId) => invoke('loom:open-app-folder', appId),
 
     shellReady: () => invoke('loom:shell-ready'),
-    shellAction: (action) => invoke('loom:shell-action', action),
+    shellAction: (action, payload) => invoke('loom:shell-action', action, payload),
 
     getCurrentTheme: () => invoke('get-current-theme'),
     onThemeUpdated: (callback) => subscribe('theme-updated', callback),

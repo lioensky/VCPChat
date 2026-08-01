@@ -846,6 +846,33 @@ class VCPLoomManager {
         if (action === 'home') await contents.loadURL(instance.manifest.startUrl);
     }
 
+    normalizeNavigationUrl(value) {
+        const input = String(value || '').trim();
+        if (!input) throw new Error('请输入网址。');
+
+        const candidate = /^[a-z][a-z\d+.-]*:/i.test(input) ? input : `https://${input}`;
+        let url;
+        try {
+            url = new URL(candidate);
+        } catch {
+            throw new Error('网址格式无效。');
+        }
+        if (!['http:', 'https:'].includes(url.protocol)) {
+            throw new Error('仅允许访问 HTTP 或 HTTPS 网址。');
+        }
+        return url.toString();
+    }
+
+    async navigateToUrl(instance, value) {
+        const contents = instance.view.webContents;
+        if (contents.isDestroyed()) throw new Error('LoomAPP 页面进程不可用。');
+        const url = this.normalizeNavigationUrl(value);
+        instance.lastError = null;
+        const userAgent = this.resolveUserAgent(instance.manifest);
+        await contents.loadURL(url, userAgent ? { userAgent } : undefined);
+        return this.buildShellState(instance);
+    }
+
     async shareVisibleText(instance) {
         const contents = instance.view.webContents;
         const result = await contents.executeJavaScript(`(() => ({
@@ -1110,11 +1137,13 @@ class VCPLoomManager {
             if (!instance) throw new Error('无法识别 Loom 壳窗口。');
             return this.buildShellState(instance);
         });
-        handle('loom:shell-action', async (event, action) => {
+        handle('loom:shell-action', async (event, action, payload) => {
             const instance = this.getInstanceBySender(event.sender);
             if (!instance) throw new Error('无法识别 Loom 壳窗口。');
             if (['back', 'forward', 'reload', 'home'].includes(action)) {
                 await this.navigate(instance, action);
+            } else if (action === 'navigate') {
+                return this.navigateToUrl(instance, payload);
             } else if (action === 'share-text') {
                 return this.shareVisibleText(instance);
             } else if (action === 'open-external') {
