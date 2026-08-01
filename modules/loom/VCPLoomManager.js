@@ -21,6 +21,8 @@ const TITLE_BAR_HEIGHT = 44;
 const SAFE_APP_ID = /^[a-z0-9][a-z0-9_-]{1,63}$/;
 const MAX_INJECT_BYTES = 2 * 1024 * 1024;
 const MAX_SHARE_TEXT = 100000;
+const MAX_RUNTIME_SOURCE = 4 * 1024 * 1024;
+const MAX_RENDERED_TEXT = 500000;
 
 const USER_AGENTS = Object.freeze({
     desktop: '',
@@ -318,6 +320,163 @@ class VCPLoomManager {
         };
     }
 
+    listOpenApps() {
+        return Array.from(this.instances.values())
+            .filter((instance) => !instance.window.isDestroyed() && !instance.view.webContents.isDestroyed())
+            .map((instance) => ({
+                ...this.buildRuntimeState(instance),
+                manifest: clone(instance.manifest),
+            }))
+            .sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
+    }
+
+    getRunningInstance(appId) {
+        const id = this.assertAppId(appId);
+        const instance = this.instances.get(id);
+        if (
+            !instance
+            || instance.window.isDestroyed()
+            || instance.view.webContents.isDestroyed()
+        ) {
+            throw new Error(`LoomAPP "${id}" 当前未打开。`);
+        }
+        return instance;
+    }
+
+    buildRuntimeState(instance) {
+        const contents = instance.view.webContents;
+        const successfulRender = instance.lastSuccessfulRender;
+        return {
+            appId: instance.appId,
+            name: instance.manifest.name,
+            running: true,
+            url: contents.isDestroyed() ? '' : contents.getURL(),
+            loading: instance.loading,
+            error: instance.lastError,
+            pageTitle: successfulRender?.title || '',
+            lastSuccessfulRenderAt: successfulRender?.capturedAt || null,
+        };
+    }
+
+    truncateRuntimeContent(value, maxBytes) {
+        const text = String(value ?? '');
+        const byteLength = Buffer.byteLength(text, 'utf8');
+        if (byteLength <= maxBytes) {
+            return { content: text, byteLength, truncated: false };
+        }
+
+        let low = 0;
+        let high = text.length;
+        while (low < high) {
+            const middle = Math.ceil((low + high) / 2);
+            if (Buffer.byteLength(text.slice(0, middle), 'utf8') <= maxBytes) {
+                low = middle;
+            } else {
+                high = middle - 1;
+            }
+        }
+        return {
+            content: text.slice(0, low),
+            byteLength,
+            truncated: true,
+        };
+    }
+
+    async captureRenderedSnapshot(instance) {
+        const contents = instance.view.webContents;
+        if (contents.isDestroyed()) throw new Error('LoomAPP 页面进程不可用。');
+
+        const snapshot = await contents.executeJavaScript(`(() => ({
+            title: document.title || '',
+            url: location.href,
+            text: (document.body && document.body.innerText ? document.body.innerText : '').trim()
+        }))()`, true);
+        const limited = this.truncateRuntimeContent(snapshot.text, MAX_RENDERED_TEXT);
+        instance.lastSuccessfulRender = {
+            title: String(snapshot.title || ''),
+            url: String(snapshot.url || contents.getURL()),
+            text: limited.content,
+            originalByteLength: limited.byteLength,
+            truncated: limited.truncated,
+            capturedAt: new Date().toISOString(),
+        };
+        return clone(instance.lastSuccessfulRender);
+    }
+
+    async readRuntimeSource(appId) {
+        const instance = this.getRunningInstance(appId);
+        const contents = instance.view.webContents;
+        const result = await contents.executeJavaScript(`(() => ({
+            title: document.title || '',
+            url: location.href,
+            html: document.documentElement ? document.documentElement.outerHTML : ''
+        }))()`, true);
+        const limited = this.truncateRuntimeContent(result.html, MAX_RUNTIME_SOURCE);
+        return {
+            appId: instance.appId,
+            title: String(result.title || ''),
+            url: String(result.url || contents.getURL()),
+            source: limited.content,
+            originalByteLength: limited.byteLength,
+            truncated: limited.truncated,
+            capturedAt: new Date().toISOString(),
+        };
+    }
+
+    async readRenderedText(appId, options = {}) {
+        const instance = this.getRunningInstance(appId);
+        const refresh = options.refresh !== false;
+        if (refresh || !instance.lastSuccessfulRender) {
+            await this.captureRenderedSnapshot(instance);
+        }
+        if (!instance.lastSuccessfulRender) {
+            throw new Error(`LoomAPP "${instance.appId}" 尚无成功渲染的文本快照。`);
+        }
+        return {
+            appId: instance.appId,
+            ...clone(instance.lastSuccessfulRender),
+        };
+    }
+
+    async editAppSources(appId, payload = {}) {
+        const id = this.assertAppId(appId);
+        const current = await this.readSources(id);
+        const suppliedManifest = isPlainObject(payload.manifest)
+            ? payload.manifest
+            : {};
+        const manifest = {
+            ...current.manifest,
+            ...suppliedManifest,
+            id,
+            window: {
+                ...current.manifest.window,
+                ...(isPlainObject(suppliedManifest.window) ? suppliedManifest.window : {}),
+            },
+            viewport: {
+                ...current.manifest.viewport,
+                ...(isPlainObject(suppliedManifest.viewport) ? suppliedManifest.viewport : {}),
+            },
+            request: {
+                ...current.manifest.request,
+                ...(isPlainObject(suppliedManifest.request) ? suppliedManifest.request : {}),
+            },
+            navigation: {
+                ...current.manifest.navigation,
+                ...(isPlainObject(suppliedManifest.navigation) ? suppliedManifest.navigation : {}),
+            },
+            injection: {
+                ...current.manifest.injection,
+                ...(isPlainObject(suppliedManifest.injection) ? suppliedManifest.injection : {}),
+            },
+        };
+        return this.saveApp({
+            originalId: id,
+            manifest,
+            css: payload.css === undefined ? current.css : payload.css,
+            js: payload.js === undefined ? current.js : payload.js,
+        });
+    }
+
     async saveApp(payload = {}) {
         const previousId = payload.originalId ? this.assertAppId(payload.originalId) : null;
         const manifest = normalizeManifest(payload.manifest || payload, previousId || null);
@@ -334,11 +493,24 @@ class VCPLoomManager {
 
         this.manifests.set(manifest.id, manifest);
         const instance = this.instances.get(manifest.id);
-        if (instance) {
+        if (instance && !instance.window.isDestroyed()) {
             instance.manifest = manifest;
             instance.window.setTitle(`VCP Loom · ${manifest.name}`);
+            instance.window.setResizable(manifest.window.resizable);
+            instance.window.setMinimumSize(manifest.window.minWidth, manifest.window.minHeight);
+            instance.window.setMaximumSize(
+                manifest.window.maxWidth || 100000,
+                manifest.window.maxHeight || 100000
+            );
+            this.updateViewBounds(instance);
+            this.configureRequestProfile(instance);
             this.sendToShell(instance, 'loom:shell-state', this.buildShellState(instance));
             await this.applyInjections(instance);
+            try {
+                await this.captureRenderedSnapshot(instance);
+            } catch (error) {
+                console.warn(`[VCPLoomManager] Failed to refresh rendered snapshot for ${instance.appId}: ${error.message}`);
+            }
         }
 
         this.broadcastRegistryChanged();
@@ -475,6 +647,7 @@ class VCPLoomManager {
             cssKey: null,
             loading: true,
             lastError: null,
+            lastSuccessfulRender: null,
         };
 
         this.instances.set(manifest.id, instance);
@@ -529,6 +702,11 @@ class VCPLoomManager {
         contents.on('did-finish-load', async () => {
             instance.lastError = null;
             await this.applyInjections(instance);
+            try {
+                await this.captureRenderedSnapshot(instance);
+            } catch (error) {
+                console.warn(`[VCPLoomManager] Failed to capture rendered snapshot for ${instance.appId}: ${error.message}`);
+            }
             this.sendToShell(instance, 'loom:shell-state', this.buildShellState(instance));
         });
 
@@ -905,9 +1083,13 @@ class VCPLoomManager {
         };
 
         handle('loom:list-apps', () => this.listApps());
+        handle('loom:list-open-apps', () => this.listOpenApps());
         handle('loom:get-app', (_event, appId) => this.readSources(appId));
+        handle('loom:get-runtime-source', (_event, appId) => this.readRuntimeSource(appId));
+        handle('loom:get-rendered-text', (_event, appId, options) => this.readRenderedText(appId, options));
         handle('loom:create-app', (_event, payload) => this.createApp(payload));
         handle('loom:save-app', (_event, payload) => this.saveApp(payload));
+        handle('loom:edit-app-sources', (_event, appId, payload) => this.editAppSources(appId, payload));
         handle('loom:delete-app', (_event, appId) => this.deleteApp(appId));
         handle('loom:set-enabled', (_event, appId, enabled) => this.setEnabled(appId, enabled));
         handle('loom:open-app', (_event, appId) => this.openApp(appId));

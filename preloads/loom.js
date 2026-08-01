@@ -17,9 +17,13 @@ function subscribe(channel, callback) {
 
 const loomAPI = Object.freeze({
     listApps: () => invoke('loom:list-apps'),
+    listOpenApps: () => invoke('loom:list-open-apps'),
     getApp: (appId) => invoke('loom:get-app', appId),
+    getRuntimeSource: (appId) => invoke('loom:get-runtime-source', appId),
+    getRenderedText: (appId, options) => invoke('loom:get-rendered-text', appId, options),
     createApp: (payload) => invoke('loom:create-app', payload),
     saveApp: (payload) => invoke('loom:save-app', payload),
+    editAppSources: (appId, payload) => invoke('loom:edit-app-sources', appId, payload),
     deleteApp: (appId) => invoke('loom:delete-app', appId),
     setEnabled: (appId, enabled) => invoke('loom:set-enabled', appId, enabled),
     openApp: (appId) => invoke('loom:open-app', appId),

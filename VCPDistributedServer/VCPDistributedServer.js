@@ -56,6 +56,7 @@ class DistributedServer {
         this.handleFlowlockControl = config.handleFlowlockControl; // Inject the flowlock control handler
         this.handleDesktopRemoteControl = config.handleDesktopRemoteControl; // Inject the desktop remote control handler
         this.chatDataService = config.chatDataService || null; // Shared VCP-CDS facade owned by Electron.
+        this.loomManager = config.loomManager || null; // Shared VCP Loom manager owned by Electron.
         this.ws = null;
         this.app = express(); // 创建 Express 应用
         this.server = http.createServer(this.app); // 创建 HTTP 服务器
@@ -127,7 +128,8 @@ class DistributedServer {
 
         // 初始化服务类插件，并将主进程持有的共享服务依赖注入 direct 模块。
         await pluginManager.initializeServices(this.app, null, basePath, {
-            chatDataService: this.chatDataService
+            chatDataService: this.chatDataService,
+            loomManager: this.loomManager
         });
         this.registerDiagnosticRoutes();
 

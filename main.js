@@ -1108,7 +1108,8 @@ if (!gotTheLock) {
                         handleCanvasControl: desktopRemoteHandlers.handleCanvasControl, // Inject the canvas control handler
                         handleFlowlockControl: desktopRemoteHandlers.handleFlowlockControl, // Inject the flowlock control handler
                         handleDesktopRemoteControl: desktopRemoteHandlers.handleDesktopRemoteControl, // Inject the desktop remote control handler
-                        chatDataService // Share the Electron-owned VCP-CDS facade with direct plugins.
+                        chatDataService, // Share the Electron-owned VCP-CDS facade with direct plugins.
+                        loomManager // Share the Electron-owned VCP Loom manager with direct plugins.
                     };
                     distributedServer = new DistributedServer(config);
                     await distributedServer.initialize();
