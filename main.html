@@ -8,7 +8,7 @@
                    script-src 'self' 'unsafe-inline';
                    style-src 'self' 'unsafe-inline' https:;
                    img-src * data: file: blob:;
-                   media-src * data: file:;
+                   media-src * data: file: blob:;
                    font-src *;
                    connect-src * ws: wss:;">
     <title>VCPChat</title>
@@ -2126,6 +2126,7 @@
     <script src="Flowlockmodules/flowlock.js"></script>
     <script src="Flowlockmodules/flowlock-integration.js"></script>
     <script type="module" src="renderer.js" defer></script>
+    <script src="VCPDistributedServer/frontend-plugin-loader.js" defer></script>
 
     <!-- User Emoticon Panel -->
     <div id="emoticonPanel" class="emoticon-panel"></div>

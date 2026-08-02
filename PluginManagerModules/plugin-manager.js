@@ -1,7 +1,8 @@
 const api = window.utilityAPI || window.electronAPI;
 
-const PLUGIN_TYPES = ['static', 'messagePreprocessor', 'synchronous', 'asynchronous', 'service', 'hybridservice'];
+const PLUGIN_TYPES = ['renderer', 'static', 'messagePreprocessor', 'synchronous', 'asynchronous', 'service', 'hybridservice'];
 const TYPE_LABELS = {
+    renderer: 'Renderer 渲染层插件',
     static: 'Static 自动注入',
     messagePreprocessor: 'Message Preprocessor 请求预处理',
     synchronous: 'Synchronous 同步工具',
