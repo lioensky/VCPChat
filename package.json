@@ -65,7 +65,7 @@
     "pdf-poppler": "^0.2.1",
     "portfinder": "^1.0.37",
     "puppeteer": "^24.15.0",
-    "sharp": "^0.34.2",
+    "sharp": "^0.35.3",
     "stylelint": "^16.25.0",
     "tesseract.js": "^6.0.1",
     "three": "^0.178.0",
