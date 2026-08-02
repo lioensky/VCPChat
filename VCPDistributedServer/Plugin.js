@@ -114,6 +114,10 @@ class PluginManager {
                     try {
                         const manifestContent = await fs.readFile(manifestPath, 'utf-8');
                         const manifest = JSON.parse(manifestContent);
+                        if (manifest.pluginType === 'renderer' && manifest.name && manifest.frontend?.script) {
+                            if (this.debugMode) console.log(`[DistPluginManager] Renderer plugin '${manifest.name}' is managed by VChat. Skipping backend registration.`);
+                            continue;
+                        }
                         if (!manifest.name || !manifest.pluginType || !manifest.entryPoint) {
                             if (this.debugMode) console.warn(`[DistPluginManager] Invalid manifest in ${folder.name}. Skipping.`);
                             continue;

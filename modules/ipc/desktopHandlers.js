@@ -6,6 +6,7 @@
 
 const { BrowserWindow, ipcMain, app, screen, shell, dialog, nativeTheme } = require('electron');
 const path = require('path');
+const { pathToFileURL } = require('url');
 const fs = require('fs-extra');
 const desktopMetrics = require('./desktopMetrics');
 const windowService = require('../services/windowService');
@@ -82,6 +83,40 @@ function findExistingManifestPath(pluginDir) {
     if (fs.pathExistsSync(enabledPath)) return { path: enabledPath, enabled: true, fileName: 'plugin-manifest.json' };
     if (fs.pathExistsSync(disabledPath)) return { path: disabledPath, enabled: false, fileName: 'plugin-manifest.json.block' };
     return { path: enabledPath, enabled: true, fileName: 'plugin-manifest.json' };
+}
+
+function resolveFrontendPluginResource(pluginDir, folderName, fileName) {
+    if (typeof fileName !== 'string' || fileName !== path.basename(fileName) || !fileName) return null;
+    const fullPath = path.join(pluginDir, fileName);
+    const relative = path.relative(pluginDir, fullPath);
+    if (relative.startsWith('..') || path.isAbsolute(relative) || !fs.pathExistsSync(fullPath)) return null;
+    return `VCPDistributedServer/Plugin/${folderName}/${fileName}`;
+}
+
+async function listEnabledFrontendPlugins() {
+    const pluginsRoot = path.join(PROJECT_ROOT, 'VCPDistributedServer', 'Plugin');
+    await fs.ensureDir(pluginsRoot);
+    const entries = await fs.readdir(pluginsRoot, { withFileTypes: true });
+    const plugins = [];
+
+    for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        const manifestPath = path.join(pluginsRoot, entry.name, 'plugin-manifest.json');
+        if (!await fs.pathExists(manifestPath)) continue;
+        try {
+            const manifest = await fs.readJson(manifestPath);
+            if (!manifest.frontend || typeof manifest.frontend !== 'object') continue;
+            const pluginDir = path.join(pluginsRoot, entry.name);
+            const style = resolveFrontendPluginResource(pluginDir, entry.name, manifest.frontend.style);
+            const script = resolveFrontendPluginResource(pluginDir, entry.name, manifest.frontend.script);
+            if (!script) continue;
+            plugins.push({ id: manifest.name || entry.name, style, script });
+        } catch (error) {
+            console.warn(`[PluginManager] 跳过无效前端插件 ${entry.name}:`, error.message);
+        }
+    }
+
+    return plugins;
 }
 
 async function readVcpPluginEntry(entry, pluginsRoot) {
@@ -2089,9 +2124,49 @@ function initialize(params) {
         }
     });
 
+    ipcMain.handle('vchat-wallpaper-select-directory', async (event, savedDirectoryPath = '') => {
+        try {
+            let directoryPath = typeof savedDirectoryPath === 'string' ? savedDirectoryPath.trim() : '';
+            if (!directoryPath) {
+                const result = await dialog.showOpenDialog(mainWindow, {
+                    title: '选择 VChat 动态壁纸文件夹',
+                    buttonLabel: '选择文件夹',
+                    properties: ['openDirectory']
+                });
+                if (result.canceled || !result.filePaths?.length) return { success: false, canceled: true };
+                [directoryPath] = result.filePaths;
+            }
+
+            const stat = await fs.stat(directoryPath);
+            if (!stat.isDirectory()) return { success: false, error: '所选路径不是文件夹' };
+            const supportedExtensions = new Set(['.mp4', '.webm', '.mov', '.mkv', '.avi']);
+            const entries = await fs.readdir(directoryPath, { withFileTypes: true });
+            const files = entries
+                .filter((entry) => entry.isFile() && supportedExtensions.has(path.extname(entry.name).toLowerCase()))
+                .map((entry) => ({
+                    name: entry.name,
+                    url: pathToFileURL(path.join(directoryPath, entry.name)).toString()
+                }))
+                .sort((a, b) => a.name.localeCompare(b.name, 'zh-CN', { numeric: true }));
+            return { success: true, directoryPath, files };
+        } catch (error) {
+            console.error('[DynamicWallpaper] Select or scan directory error:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
     // ============================================================
     // --- IPC: VCP 插件管理器 ---
     // ============================================================
+
+    ipcMain.handle('list-enabled-frontend-plugins', async () => {
+        try {
+            return { success: true, plugins: await listEnabledFrontendPlugins() };
+        } catch (error) {
+            console.error('[PluginManager] List frontend plugins error:', error);
+            return { success: false, error: error.message, plugins: [] };
+        }
+    });
 
     ipcMain.handle('plugin-manager-list-plugins', async () => {
         try {
