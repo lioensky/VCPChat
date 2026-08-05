@@ -560,6 +560,51 @@ function appendNewStableRange(stableBlocksRoot, segmentState, textForRendering, 
     return blockRecord ? [blockRecord] : [];
 }
 
+/**
+ * 切换 Agent/话题会重建消息 DOM，但 streamSegmentStates 会继续保留后台流的稳定区状态。
+ * 此时不能重新解析稳定源码，也不能把 stableRenderedCutoff 误当作“新 DOM 已经渲染”；
+ * 直接从每个 block 缓存的 raw HTML 恢复即可，Markdown/AST 解析次数保持不变。
+ */
+function restoreStableBlocksForRecreatedDom(stableBlocksRoot, segmentState, options = {}) {
+    if (!stableBlocksRoot || segmentState.stableBlocks.length === 0) return false;
+
+    const recordsAreMountedHere = segmentState.stableBlocks.every((record) => {
+        return record.element?.isConnected && record.element.parentNode === stableBlocksRoot;
+    });
+    if (recordsAreMountedHere) return false;
+
+    // 当前 root 属于新视图。先一次性清空，避免历史批量渲染与首个流式帧交错时留下半恢复结构。
+    stableBlocksRoot.replaceChildren();
+
+    for (const record of segmentState.stableBlocks) {
+        const blockEl = document.createElement('div');
+        blockEl.className = 'vcp-stream-stable-block';
+        blockEl.dataset.vcpStreamStableBlock = 'true';
+        blockEl.dataset.vcpBlockKey = record.id;
+        blockEl.dataset.vcpStableStart = String(record.start);
+        blockEl.dataset.vcpStableEnd = String(record.end);
+        stableBlocksRoot.appendChild(blockEl);
+        record.element = blockEl;
+
+        if (typeof refs.renderPostProcessedHtml === 'function') {
+            const enrichResult = refs.renderPostProcessedHtml(blockEl, record.html, {
+                messageId: options.messageId || null,
+                settings: options.settings || null,
+                renderSessionId: null,
+                runHeavy: true,
+                includeAttachments: false
+            });
+            if (enrichResult && typeof enrichResult.catch === 'function') {
+                enrichResult.catch(error => console.error('[StreamManager] Restored stable block enrichment failed:', error));
+            }
+        } else {
+            blockEl.innerHTML = record.html;
+        }
+    }
+
+    return true;
+}
+
 function startsWithAt(text, index, token) {
     return text.startsWith(token, index);
 }
@@ -1333,6 +1378,14 @@ function renderStreamFrame(messageId) {
     const { contentDiv, messageItem } = cachedDom;
     const { stableRoot, stableBlocksRoot, tailRoot } = ensureStreamingRoots(contentDiv);
     const segmentState = getOrCreateStreamSegmentState(messageId);
+    const streamRenderOptions = {
+        messageId,
+        settings: refs.globalSettingsRef?.get?.()
+    };
+
+    // 切回仍在流式输出的会话时，消息 DOM 已重建而稳定区状态仍在。
+    // 在计算/追加新稳定范围前恢复旧 blocks，避免只看得到新的 tail。
+    restoreStableBlocksForRecreatedDom(stableBlocksRoot, segmentState, streamRenderOptions);
 
     const textForRendering = accumulatedStreamText.get(messageId) || "";
     const nextStableCutoff = findExplicitStablePrefix(textForRendering, segmentState.stableCutoff);
@@ -1343,11 +1396,13 @@ function renderStreamFrame(messageId) {
 
     if (nextStableCutoff > segmentState.stableCutoff) {
         segmentState.stableCutoff = nextStableCutoff;
-
-        appendNewStableRange(stableBlocksRoot, segmentState, textForRendering, nextStableCutoff, {
-            messageId,
-            settings: refs.globalSettingsRef?.get?.()
-        });
+        appendNewStableRange(
+            stableBlocksRoot,
+            segmentState,
+            textForRendering,
+            nextStableCutoff,
+            streamRenderOptions
+        );
     }
 
     const tailText = textForRendering.slice(segmentState.stableCutoff);
