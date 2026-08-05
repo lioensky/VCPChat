@@ -319,7 +319,7 @@ const MERMAID_CODE_REGEX = /<code.*?>\s*(flowchart|graph|mermaid)\s+([\s\S]*?)<\
 const MERMAID_FENCE_REGEX = /```(mermaid|flowchart|graph)[^\S\n]*\n([\s\S]*?)```/g;
 const CODE_FENCE_REGEX = /```[^\n]*([\s\S]*?)```/g;
 const THOUGHT_CHAIN_REGEX = /^[ \t]*\[--- VCP元思考链(?::\s*"([^"]*)")?\s*---\][ \t]*\r?\n([\s\S]*?)^[ \t]*\[--- 元思考链结束 ---\][ \t]*(?:\r?\n|$)/gm;
-const CONVENTIONAL_THOUGHT_REGEX = /^[ \t]*<think(?:ing)?>[ \t]*\r?\n([\s\S]*?)^[ \t]*<\/think(?:ing)?>[ \t]*(?:\r?\n|$)/gim;
+const CONVENTIONAL_THOUGHT_REGEX = /^[ \t]*<(think(?:ing)?)>[ \t]*(?:\r?\n)?([\s\S]*?)<\/\1>[ \t]*(?:\r?\n|$)/gim;
 const ROLE_DIVIDER_REGEX = /<<<\[(END_)?ROLE_DIVIDE_(SYSTEM|ASSISTANT|USER)\]>>>/g;
 const DESKTOP_PUSH_REGEX = /(?<!`)<<<\[DESKTOP_PUSH\]>>>([\s\S]*?)<<<\[DESKTOP_PUSH_END\]>>>(?!`)/gs;
 const DESKTOP_PUSH_PARTIAL_REGEX = /(?<!`)<<<\[DESKTOP_PUSH\]>>>([\s\S]*)$/s; // 流式传输中未闭合的情况
@@ -1278,8 +1278,9 @@ function transformSpecialBlocks(text, codeBlockMap) {
         return renderThoughtChain(theme, rawContent);
     });
 
-    // Process Conventional Thought Chains (<think>...</think>)
-    processed = processed.replace(CONVENTIONAL_THOUGHT_REGEX, (match, rawContent) => {
+    // Process Conventional Thought Chains (<think>...</think> / <thinking>...</thinking>)
+    // 同时兼容单行与多行格式；正则反向引用确保开始、结束标签一致。
+    processed = processed.replace(CONVENTIONAL_THOUGHT_REGEX, (match, tagName, rawContent) => {
         return renderThoughtChain("思维链", rawContent);
     });
 
