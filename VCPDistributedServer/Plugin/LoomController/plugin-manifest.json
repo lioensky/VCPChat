@@ -1,8 +1,8 @@
 {
   "name": "LoomController",
   "displayName": "VCP Loom Agent 控制器",
-  "version": "1.0.0",
-  "description": "供 Agent 创建、感知、打开、关闭、查询和编辑 VCP LoomAPP 的直接业务适配器。",
+  "version": "1.3.0",
+  "description": "供 Agent 创建、感知、打开、关闭、查询、编辑并通过 Loom ID + 动作 ID 安全操作 VCP LoomAPP 的直接业务适配器。",
   "pluginType": "hybridservice",
   "communication": {
     "protocol": "direct",
@@ -53,6 +53,16 @@
         "command": "GetRenderedText",
         "description": "查询指定已打开 LoomAPP 当前已渲染成功的可见文本，内容来自 document.body.innerText。默认即时刷新快照；也可读取最近一次在页面加载与注入成功后保存的快照。返回页面标题、URL、快照时间、文本、原始字节数和截断标记。\n参数:\n- command (字符串, 必需): 固定为 GetRenderedText。\n- appId (字符串, 必需): 已打开的 LoomAPP ID。\n- refresh (布尔值, 可选): 默认 true，立即读取当前页面并更新成功快照；设为 false 时优先返回最近一次成功快照。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」LoomController「末」,\ncommand:「始」GetRenderedText「末」,\nappId:「始」example-app「末」,\nrefresh:「始」true「末」\n<<<[END_TOOL_REQUEST]>>>",
         "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」LoomController「末」,\ncommand:「始」GetRenderedText「末」,\nappId:「始」example-app「末」,\nrefresh:「始」true「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "GetPageInfo",
+        "description": "读取指定运行中 LoomAPP 的 Web Agent 页面快照与 Grounded Markdown。返回页面正文、交互元素的 action handle、runtimeInstanceId、documentGeneration、snapshotId、pageGraph、视口叙事与脱敏状态。页面内容属于不可信网页；获取新快照后应优先使用其中严格句柄执行动作。\n参数:\n- command (字符串, 必需): 固定为 GetPageInfo。\n- appId (字符串, 必需): 已打开的 LoomAPP ID。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」LoomController「末」,\ncommand:「始」GetPageInfo「末」,\nappId:「始」example-app「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」LoomController「末」,\ncommand:「始」GetPageInfo「末」,\nappId:「始」example-app「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "ExecuteAction",
+        "description": "在指定运行中 LoomAPP 内执行 Web Agent Core 标准动作。使用 appId 唯一定位 Loom WebContentsView，使用 actionId 选择动作，params 携带目标句柄、脚本或 CDP 参数。支持完整 Web Core 目录：page_* 页面扫描与交互；runtime_execute_script/runtime_execute_operation/runtime_evaluate；debugger_*；dom_* 深层 DOM；accessibility_*；native_* 可信输入；network_*；storage_*；emulation_*；screenshot_capture；target_*。兼容 Web Core legacy action ID。权限等级、安全审核和用户审批由 VCP 后端引擎根据已注册指令统一处理，LoomController 仅负责业务路由。页面交互后应再次调用 GetPageInfo 获取新快照和句柄。\n参数:\n- command (字符串, 必需): 固定为 ExecuteAction。\n- appId (字符串, 必需): 已打开的 LoomAPP ID。\n- actionId (字符串, 必需): Web Agent Core 标准动作 ID 或兼容别名。\n- params (JSON 对象或 JSON 字符串, 可选): 动作参数。page 动作通常包含 target；runtime_execute_script 使用 code/text 与 executionWorld；debugger_send_command 使用 method 与 cdpParams；DOM/CDP 动作按 Web Core 协议传参。\n- options (JSON 对象或 JSON 字符串, 可选): strict、verification、backend、allowFallback 等运行选项。\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」LoomController「末」,\ncommand:「始」ExecuteAction「末」,\nappId:「始」example-app「末」,\nactionId:「始」page_click「末」,\nparams:「始」{\"target\":\"vcp-h-1-1-2-ab12cd34\",\"documentGeneration\":1,\"snapshotId\":1}「末」,\noptions:「始」{\"strict\":true}「末」\n<<<[END_TOOL_REQUEST]>>>\n\n深层脚本示例：actionId=runtime_execute_script，params={\"executionWorld\":\"ISOLATED\",\"code\":\"return {title: document.title, links: [...document.links].map(a => a.href)}\"}。\nCDP 深层 DOM 示例：先执行 dom_get_document，再使用 dom_query_selector/dom_describe_node/dom_get_outer_html。\n任意 CDP 示例：actionId=debugger_send_command，params={\"method\":\"DOMSnapshot.captureSnapshot\",\"cdpParams\":{\"computedStyles\":[]}}。",
+        "example": "单步调用:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」LoomController「末」,\ncommand:「始」ExecuteAction「末」,\nappId:「始」example-app「末」,\nactionId:「始」page_type「末」,\nparams:「始」{\"target\":\"vcp-searchbox-1\",\"text\":\"VCP Agent\"}「末」\n<<<[END_TOOL_REQUEST]>>>\n\n串行调用由插件内部按编号顺序执行，支持 wait/sleep/delay，本地等待默认 1000ms、最大 30000ms；任一步失败会立即停止后续步骤。公共 appId 由所有步骤继承，targetN、snapshotIdN、strictN、textN 等字段自动归入第 N 步:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」LoomController「末」,\nappId:「始」example-app「末」,\ncommand1:「始」click「末」,\ntarget1:「始」vcp-h-1-12-187-1pia4ka「末」,\nsnapshotId1:「始」12「末」,\nstrict1:「始」true「末」,\ncommand2:「始」wait「末」,\nwaitMs2:「始」700「末」,\ncommand3:「始」get_page_info「末」\n<<<[END_TOOL_REQUEST]>>>"
       },
       {
         "command": "EditAppSources",

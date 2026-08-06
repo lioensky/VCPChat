@@ -11,6 +11,10 @@ const {
 } = require('electron');
 const path = require('path');
 const fs = require('fs-extra');
+const webAgentCore = require('./webcore');
+const {
+    createElectronWebAgentAdapter,
+} = require('./webcore/electron-adapter');
 
 const MANIFEST_FILE = 'loom.json';
 const INJECT_CSS_FILE = 'inject.css';
@@ -23,6 +27,25 @@ const MAX_INJECT_BYTES = 2 * 1024 * 1024;
 const MAX_SHARE_TEXT = 100000;
 const MAX_RUNTIME_SOURCE = 4 * 1024 * 1024;
 const MAX_RENDERED_TEXT = 500000;
+const WEB_AGENT_WORLD_ID = 999;
+const LOOM_PAGE_ACTIONS = Object.freeze(new Set([
+    'page_get_info',
+    'page_query_html',
+    'page_query_scripts',
+    'page_code_search',
+    'page_wait_for',
+    'page_click',
+    'page_type',
+    'page_set_value',
+    'page_send_keys',
+    'page_select_option',
+    'page_check',
+    'page_hover',
+    'page_scroll',
+]));
+const LOOM_ACTIONS = Object.freeze(new Set(
+    webAgentCore.getCapabilityCatalog().map((definition) => definition.command)
+));
 
 const USER_AGENTS = Object.freeze({
     desktop: '',
@@ -205,6 +228,8 @@ class VCPLoomManager {
         this.shellUiPath = path.join(this.projectRoot, 'Loommodules', 'shell.html');
         this.preloadPath = path.join(this.projectRoot, 'preloads', 'loom.js');
         this.pagePreloadPath = path.join(this.projectRoot, 'preloads', 'loom-page.js');
+        this.webCoreRoot = path.join(__dirname, 'webcore');
+        this.webAgentSourceCache = null;
         this.mainWindow = options.mainWindow || null;
         this.openChildWindows = options.openChildWindows || [];
         this.managerWindow = null;
@@ -438,6 +463,163 @@ class VCPLoomManager {
         };
     }
 
+    async getWebAgentSources() {
+        if (this.webAgentSourceCache) return this.webAgentSourceCache;
+        const files = [
+            'web-agent-protocol.js',
+            'web-agent-page-core.js',
+            'web-agent-page-runtime-core.js',
+        ];
+        this.webAgentSourceCache = await Promise.all(files.map(async (fileName) => ({
+            code: await fs.readFile(path.join(this.webCoreRoot, fileName), 'utf8'),
+            url: `vcp-loom-webcore://${fileName}`,
+        })));
+        return this.webAgentSourceCache;
+    }
+
+    async initializeWebAgentRuntime(instance) {
+        const contents = instance?.view?.webContents;
+        if (!contents || contents.isDestroyed()) {
+            throw new Error('LoomAPP 页面进程不可用。');
+        }
+
+        const sources = await this.getWebAgentSources();
+        await contents.executeJavaScriptInIsolatedWorld(WEB_AGENT_WORLD_ID, [
+            ...sources,
+            {
+                code: `(() => {
+                    const core = globalThis.VCPWebAgentPageRuntimeCore;
+                    if (!core || typeof core.createWebAgentPageRuntime !== 'function') {
+                        throw new Error('VCP Web Agent Page Runtime Core 加载失败');
+                    }
+                    globalThis.__vcpLoomWebAgentRuntime = core.createWebAgentPageRuntime(
+                        { window, document, Node },
+                        {
+                            runtimeInstanceId: ${JSON.stringify(`loom-${instance.appId}-${Date.now()}`)},
+                            redactSensitiveDom: true
+                        }
+                    );
+                    return globalThis.__vcpLoomWebAgentRuntime.getIdentity();
+                })()`,
+                url: 'vcp-loom-webcore://bootstrap.js',
+            },
+        ], true);
+        instance.webAgentReady = true;
+        const identity = await contents.executeJavaScriptInIsolatedWorld(
+            WEB_AGENT_WORLD_ID,
+            [{
+                code: 'globalThis.__vcpLoomWebAgentRuntime.getIdentity()',
+                url: 'vcp-loom-webcore://identity.js',
+            }],
+            true
+        );
+        instance.webAgentAdapter?.updateDocumentState(identity);
+    }
+
+    async ensureWebAgentRuntime(instance) {
+        if (!instance.webAgentReady) {
+            await this.initializeWebAgentRuntime(instance);
+        }
+        return instance;
+    }
+
+    async getWebAgentPageInfo(appId) {
+        const instance = await this.ensureWebAgentRuntime(this.getRunningInstance(appId));
+        const result = await instance.view.webContents.executeJavaScriptInIsolatedWorld(
+            WEB_AGENT_WORLD_ID,
+            [{
+                code: `(() => {
+                    const runtime = globalThis.__vcpLoomWebAgentRuntime;
+                    if (!runtime) throw new Error('Loom Web Agent Runtime 尚未初始化');
+                    return runtime.snapshot();
+                })()`,
+                url: 'vcp-loom-webcore://snapshot.js',
+            }],
+            true
+        );
+        return {
+            appId: instance.appId,
+            actionCatalog: webAgentCore.getCapabilityCatalog(),
+            ...result,
+        };
+    }
+
+    normalizeLoomActionId(actionId) {
+        const input = String(actionId || '').trim();
+        const resolved = webAgentCore.protocol.resolveCommand(input);
+        if (!resolved.definition || !LOOM_ACTIONS.has(resolved.canonical)) {
+            throw new Error(`不支持的 Loom Web Agent 动作：${input || '(empty)'}`);
+        }
+        return resolved.canonical;
+    }
+
+    async executeIsolatedPageOperation(instance, action, params = {}, request = {}) {
+        await this.ensureWebAgentRuntime(instance);
+        const serializedAction = JSON.stringify(action);
+        const serializedParams = JSON.stringify(params);
+        const serializedOptions = JSON.stringify({
+            ...(request.options || {}),
+            targetContext: request.targetContext || {},
+        });
+        return instance.view.webContents.executeJavaScriptInIsolatedWorld(
+            WEB_AGENT_WORLD_ID,
+            [{
+                code: `(async () => {
+                    const runtime = globalThis.__vcpLoomWebAgentRuntime;
+                    if (!runtime) throw new Error('Loom Web Agent Runtime 尚未初始化');
+                    return runtime.execute(
+                        ${serializedAction},
+                        ${serializedParams},
+                        ${serializedOptions}
+                    );
+                })()`,
+                url: `vcp-loom-webcore://action/${encodeURIComponent(action)}.js`,
+            }],
+            true
+        );
+    }
+
+    async executeWebAgentAction(appId, actionId, params = {}, options = {}) {
+        const instance = this.getRunningInstance(appId);
+        const action = this.normalizeLoomActionId(actionId);
+        if (!isPlainObject(params)) throw new Error('Loom Web Agent 动作 params 必须是对象。');
+        if (!isPlainObject(options)) throw new Error('Loom Web Agent 动作 options 必须是对象。');
+
+        if (!instance.webAgentRuntime) {
+            throw new Error('Loom Web Agent 后端运行时尚未初始化。');
+        }
+        const response = await instance.webAgentRuntime.execute({
+            command: action,
+            targetContext: {
+                adapter: 'electron-loom',
+                targetId: instance.view.webContents.id,
+                appId: instance.appId,
+                ...(isPlainObject(params.targetContext) ? params.targetContext : {}),
+            },
+            params,
+            options,
+            metadata: {
+                source: 'LoomController',
+                loomAppId: instance.appId,
+            },
+        });
+
+        if (response?.status === webAgentCore.protocol.Status.ERROR) {
+            const error = new Error(response.error || response.message || `Loom 动作 ${action} 执行失败。`);
+            error.code = response.code || 'LOOM_ACTION_FAILED';
+            error.details = response.details || null;
+            throw error;
+        }
+
+        return {
+            appId: instance.appId,
+            actionId: action,
+            definition: webAgentCore.protocol.resolveCommand(action).definition,
+            executedAt: new Date().toISOString(),
+            response,
+        };
+    }
+
     async editAppSources(appId, payload = {}) {
         const id = this.assertAppId(appId);
         const current = await this.readSources(id);
@@ -648,7 +830,23 @@ class VCPLoomManager {
             loading: true,
             lastError: null,
             lastSuccessfulRender: null,
+            webAgentReady: false,
+            webAgentAdapter: null,
+            webAgentRuntime: null,
         };
+        instance.webAgentAdapter = createElectronWebAgentAdapter(view.webContents, {
+            appId: manifest.id,
+            worldId: WEB_AGENT_WORLD_ID,
+            executePageOperation: (action, params, request) =>
+                this.executeIsolatedPageOperation(instance, action, params, request),
+        });
+        instance.webAgentRuntime = webAgentCore.createRuntime(instance.webAgentAdapter, {
+            audit: (entry) => {
+                if (entry.phase === 'error') {
+                    console.warn(`[VCPLoomManager] Web Agent ${instance.appId} ${entry.command || 'unknown'} failed.`);
+                }
+            },
+        });
 
         this.instances.set(manifest.id, instance);
         win.contentView.addChildView(view);
@@ -691,6 +889,8 @@ class VCPLoomManager {
 
         contents.on('did-start-loading', () => {
             instance.loading = true;
+            instance.webAgentReady = false;
+            instance.webAgentAdapter?.invalidateDocument();
             this.sendToShell(instance, 'loom:shell-state', this.buildShellState(instance));
         });
 
@@ -702,6 +902,12 @@ class VCPLoomManager {
         contents.on('did-finish-load', async () => {
             instance.lastError = null;
             await this.applyInjections(instance);
+            try {
+                await this.initializeWebAgentRuntime(instance);
+            } catch (error) {
+                instance.webAgentReady = false;
+                console.warn(`[VCPLoomManager] Failed to initialize Web Agent Runtime for ${instance.appId}: ${error.message}`);
+            }
             try {
                 await this.captureRenderedSnapshot(instance);
             } catch (error) {
@@ -756,6 +962,9 @@ class VCPLoomManager {
 
         win.once('close', () => {
             instance.closing = true;
+            void instance.webAgentAdapter?.dispose().catch((error) => {
+                console.warn(`[VCPLoomManager] Failed to dispose Web Agent Adapter for ${instance.appId}: ${error.message}`);
+            });
             if (!contents.isDestroyed()) {
                 // WebContentsView 不会随 BrowserWindow 自动销毁。必须在父窗口的
                 // 原生对象释放前先脱离视图树并关闭，否则 closed 阶段操作它会触发
@@ -1129,6 +1338,9 @@ class VCPLoomManager {
         handle('loom:get-app', (_event, appId) => this.readSources(appId));
         handle('loom:get-runtime-source', (_event, appId) => this.readRuntimeSource(appId));
         handle('loom:get-rendered-text', (_event, appId, options) => this.readRenderedText(appId, options));
+        handle('loom:get-web-agent-page-info', (_event, appId) => this.getWebAgentPageInfo(appId));
+        handle('loom:execute-web-agent-action', (_event, appId, actionId, params, options) =>
+            this.executeWebAgentAction(appId, actionId, params, options));
         handle('loom:create-app', (_event, payload) => this.createApp(payload));
         handle('loom:save-app', (_event, payload) => this.saveApp(payload));
         handle('loom:edit-app-sources', (_event, appId, payload) => this.editAppSources(appId, payload));
@@ -1191,4 +1403,6 @@ module.exports = {
     getManager,
     DEFAULT_MANIFEST,
     USER_AGENTS,
+    LOOM_PAGE_ACTIONS,
+    LOOM_ACTIONS,
 };

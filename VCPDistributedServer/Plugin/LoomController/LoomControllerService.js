@@ -40,6 +40,12 @@ function requireAppId(args) {
     return appId;
 }
 
+function requireActionId(args) {
+    const actionId = firstNonEmptyString(args.actionId, args.action_id, args.webAction);
+    if (!actionId) throw new Error('[LoomController] 缺少必需参数 actionId。');
+    return actionId;
+}
+
 function parseObject(value, fieldName, fallback = {}) {
     if (value === undefined || value === null || value === '') return fallback;
     if (typeof value === 'object' && !Array.isArray(value)) return value;
@@ -56,6 +62,184 @@ function parseObject(value, fieldName, fallback = {}) {
     } catch (error) {
         throw new Error(`[LoomController] ${fieldName} 不是有效的 JSON 对象：${error.message}`);
     }
+}
+
+function parseWaitMs(args = {}) {
+    let value = args.waitMs ?? args.durationMs;
+    if (value === undefined && args.seconds !== undefined) {
+        value = Number(args.seconds) * 1000;
+    }
+    const parsed = value === undefined || value === ''
+        ? 1000
+        : Number(value);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+        throw new Error('[LoomController] wait 时长必须是非负数。');
+    }
+    return Math.min(Math.round(parsed), 30000);
+}
+
+function delay(waitMs) {
+    return new Promise((resolve) => setTimeout(resolve, waitMs));
+}
+
+function getSerialCommandEntries(args) {
+    return Object.entries(args)
+        .map(([key, value]) => {
+            const match = key.match(/^command(\d+)$/i);
+            return match
+                ? { index: Number(match[1]), command: String(value || '').trim() }
+                : null;
+        })
+        .filter((entry) => entry && entry.index > 0 && entry.command)
+        .sort((a, b) => a.index - b.index);
+}
+
+function extractSerialStepArgs(rawArgs, index) {
+    const suffix = String(index);
+    const step = {};
+    for (const [key, value] of Object.entries(rawArgs)) {
+        const match = key.match(/^(.+?)(\d+)$/);
+        if (!match || Number(match[2]) !== index || match[1].toLowerCase() === 'command') continue;
+        step[match[1]] = value;
+    }
+
+    // 公共 appId 由所有步骤继承；编号 appIdN 优先。
+    step.appId = firstNonEmptyString(
+        step.appId,
+        step.app_id,
+        rawArgs.appId,
+        rawArgs.app_id,
+        rawArgs.id
+    );
+    return step;
+}
+
+function buildSerialActionArgs(command, stepArgs) {
+    const explicit = command.toLowerCase() === 'executeaction';
+    const actionId = explicit
+        ? requireActionId(stepArgs)
+        : command;
+    const params = parseObject(stepArgs.params ?? stepArgs.actionParams, 'params');
+    const options = parseObject(stepArgs.options ?? stepArgs.actionOptions, 'options');
+    const reserved = new Set([
+        'appId', 'app_id', 'id',
+        'actionId', 'action_id', 'webAction',
+        'params', 'actionParams', 'options', 'actionOptions',
+        'waitMs', 'durationMs', 'seconds',
+    ]);
+    const optionNames = new Set([
+        'strict', 'verification', 'backend', 'actionBackend', 'allowFallback',
+    ]);
+
+    for (const [key, value] of Object.entries(stepArgs)) {
+        if (reserved.has(key)) continue;
+        if (optionNames.has(key)) {
+            const optionKey = key === 'actionBackend' ? 'backend' : key;
+            options[optionKey] = ['strict', 'allowFallback'].includes(optionKey)
+                ? optionalBoolean(value, optionKey === 'allowFallback')
+                : value;
+        } else {
+            params[key] = value;
+        }
+    }
+
+    return {
+        appId: requireAppId(stepArgs),
+        actionId,
+        params,
+        options,
+    };
+}
+
+function summarizeSerialStep(index, command, result) {
+    if (result.type === 'wait') {
+        return `- 步骤 ${index} · ${command}：已等待 ${result.waitMs} ms`;
+    }
+    const details = result.output?.details || {};
+    const response = details.response || {};
+    return [
+        `- 步骤 ${index} · ${command}：成功`,
+        details.actionId ? `  - Action ID：${details.actionId}` : '',
+        response.code ? `  - 结果码：${response.code}` : '',
+    ].filter(Boolean).join('\n');
+}
+
+async function processSerialToolCall(rawArgs) {
+    const entries = getSerialCommandEntries(rawArgs);
+    if (!entries.length) {
+        throw new Error('[LoomController] 串行请求未包含有效的 command1、command2 等字段。');
+    }
+
+    const steps = [];
+    for (const entry of entries) {
+        const stepArgs = extractSerialStepArgs(rawArgs, entry.index);
+        const normalized = entry.command.toLowerCase();
+        try {
+            if (['wait', 'sleep', 'delay'].includes(normalized)) {
+                const waitMs = parseWaitMs(stepArgs);
+                await delay(waitMs);
+                steps.push({
+                    index: entry.index,
+                    command: entry.command,
+                    type: 'wait',
+                    waitMs,
+                });
+                continue;
+            }
+
+            let output;
+            if (['getpageinfo', 'get_page_info', 'page_get_info'].includes(normalized)) {
+                output = await getPageInfo(stepArgs);
+            } else {
+                output = await executeAction(buildSerialActionArgs(entry.command, stepArgs));
+            }
+            steps.push({
+                index: entry.index,
+                command: entry.command,
+                type: 'command',
+                output,
+            });
+        } catch (error) {
+            error.message = `[LoomController] 串行步骤 ${entry.index} (${entry.command}) 失败，后续步骤已停止：${error.message}`;
+            error.serialSteps = steps;
+            throw error;
+        }
+    }
+
+    const lastPageInfoStep = [...steps].reverse().find((step) =>
+        step.output?.details?.command === 'GetPageInfo'
+        || step.output?.details?.actionId === 'page_get_info'
+    );
+    const content = [{
+        type: 'text',
+        text: [
+            '# LoomAPP 串行指令执行完成',
+            '',
+            ...steps.map((step) => summarizeSerialStep(step.index, step.command, step)),
+        ].join('\n'),
+    }];
+    if (lastPageInfoStep?.output?.content?.[0]?.text) {
+        content.push({
+            type: 'text',
+            text: lastPageInfoStep.output.content[0].text,
+        });
+    }
+
+    return {
+        content,
+        details: {
+            command: 'SerialExecute',
+            count: steps.length,
+            appId: firstNonEmptyString(rawArgs.appId, rawArgs.app_id, rawArgs.id),
+            steps: steps.map((step) => ({
+                index: step.index,
+                command: step.command,
+                type: step.type,
+                waitMs: step.waitMs,
+                details: step.output?.details || null,
+            })),
+        },
+    };
 }
 
 function optionalBoolean(value, fallback) {
@@ -218,6 +402,56 @@ async function getRenderedText(args) {
     });
 }
 
+async function getPageInfo(args) {
+    const appId = requireAppId(args);
+    const pageInfo = await requireManager().getWebAgentPageInfo(appId);
+    return textResult(pageInfo.markdown || [
+        `# LoomAPP 页面状态：${pageInfo.title || appId}`,
+        '',
+        `- App ID：${appId}`,
+        `- URL：${pageInfo.url || ''}`,
+        `- 可操作元素：${pageInfo.elementCount || 0}`,
+        `- Snapshot：${pageInfo.snapshotId || 0}`,
+    ].join('\n'), {
+        command: 'GetPageInfo',
+        appId,
+        pageInfo,
+    });
+}
+
+async function executeAction(args) {
+    const appId = requireAppId(args);
+    const actionId = requireActionId(args);
+    const params = parseObject(args.params ?? args.actionParams, 'params');
+    const options = parseObject(args.options ?? args.actionOptions, 'options');
+    const execution = await requireManager().executeWebAgentAction(
+        appId,
+        actionId,
+        params,
+        options
+    );
+    const response = execution.response || {};
+    const text = [
+        `# LoomAPP 页面动作已执行`,
+        '',
+        `- App ID：${appId}`,
+        `- Action ID：${execution.actionId}`,
+        `- 状态：${response.status || 'success'}`,
+        `- 结果码：${response.code || 'COMMAND_COMPLETED'}`,
+        `- 消息：${response.message || '动作执行完成'}`,
+        `- 执行时间：${execution.executedAt}`,
+        '',
+        '## 结构化结果',
+        '```json',
+        jsonText(response.result ?? response),
+        '```',
+    ].join('\n');
+    return textResult(text, {
+        command: 'ExecuteAction',
+        ...execution,
+    });
+}
+
 async function editAppSources(args) {
     const appId = requireAppId(args);
     const hasManifest = args.manifest !== undefined || args.config !== undefined;
@@ -261,6 +495,10 @@ async function processToolCall(rawArgs = {}) {
         throw new Error('[LoomController] 无效的工具参数。');
     }
 
+    if (getSerialCommandEntries(rawArgs).length) {
+        return processSerialToolCall(rawArgs);
+    }
+
     const command = normalizeCommand(rawArgs);
     switch (command) {
         case 'listapps':
@@ -279,11 +517,15 @@ async function processToolCall(rawArgs = {}) {
             return getRuntimeSource(rawArgs);
         case 'getrenderedtext':
             return getRenderedText(rawArgs);
+        case 'getpageinfo':
+            return getPageInfo(rawArgs);
+        case 'executeaction':
+            return executeAction(rawArgs);
         case 'editappsources':
             return editAppSources(rawArgs);
         default:
             throw new Error(
-                '[LoomController] 不支持的 command。可用值：ListApps、ListOpenApps、CreateApp、OpenApp、CloseApp、GetAppSources、GetRuntimeSource、GetRenderedText、EditAppSources。'
+                '[LoomController] 不支持的 command。可用值：ListApps、ListOpenApps、CreateApp、OpenApp、CloseApp、GetAppSources、GetRuntimeSource、GetRenderedText、GetPageInfo、ExecuteAction、EditAppSources。'
             );
     }
 }
@@ -300,7 +542,12 @@ module.exports = {
     processToolCall,
     _test: {
         normalizeCommand,
+        requireActionId,
         parseObject,
+        parseWaitMs,
+        getSerialCommandEntries,
+        extractSerialStepArgs,
+        buildSerialActionArgs,
         resetForTests,
     },
 };
