@@ -174,9 +174,11 @@ function createContentPipeline(deps = {}) {
                 stepsApplied: []
             },
             state: {
+                thoughtChainMap: null,
                 toolResultMap: null,
                 toolRequestMap: null,
                 codeBlockMap: null,
+                thoughtChainPlaceholderId: 0,
                 toolResultPlaceholderId: 0,
                 toolRequestPlaceholderId: 0,
                 codeBlockPlaceholderId: 0
@@ -188,6 +190,104 @@ function createContentPipeline(deps = {}) {
         ctx.text = handler(ctx.text, ctx) ?? ctx.text;
         ctx.meta.stepsApplied.push(name);
         return ctx;
+    }
+
+    function protectThoughtChains(text, ctx) {
+        if (
+            typeof text !== 'string' ||
+            (!text.includes('[--- VCP元思考链') && !/<think(?:ing)?>/i.test(text))
+        ) {
+            return text;
+        }
+
+        ctx.state.thoughtChainMap = new Map();
+
+        // 使用围栏感知的逐行扫描器，避免把 Markdown 代码块中用于说明协议的
+        // <think> 或 VCP 元思考链示例误识别为真实思维链。
+        const lineRegex = /.*(?:\r\n|\n|\r|$)/g;
+        const ranges = [];
+        let activeFence = null;
+        let activeThought = null;
+        let lineMatch;
+
+        while ((lineMatch = lineRegex.exec(text)) !== null) {
+            const line = lineMatch[0];
+            if (line === '' && lineMatch.index === text.length) break;
+
+            const lineWithoutEnding = line.replace(/\r\n|\n|\r$/, '');
+            const fenceMatch = lineWithoutEnding.match(/^[ \t]{0,3}(`{3,}|~{3,})(.*)$/);
+
+            if (fenceMatch) {
+                const marker = fenceMatch[1];
+                const trailingText = fenceMatch[2] || '';
+
+                if (!activeFence) {
+                    activeFence = {
+                        char: marker[0],
+                        length: marker.length
+                    };
+                } else if (
+                    marker[0] === activeFence.char &&
+                    marker.length >= activeFence.length &&
+                    trailingText.trim() === ''
+                ) {
+                    activeFence = null;
+                }
+
+                continue;
+            }
+
+            if (activeFence) continue;
+
+            if (!activeThought) {
+                const customStart = lineWithoutEnding.match(
+                    /^[ \t]*\[--- VCP元思考链(?::\s*"[^"]*")?\s*---\][ \t]*$/
+                );
+                const conventionalStart = lineWithoutEnding.match(
+                    /^[ \t]*<(think(?:ing)?)>[ \t]*$/i
+                );
+
+                if (customStart) {
+                    activeThought = {
+                        start: lineMatch.index,
+                        type: 'custom'
+                    };
+                } else if (conventionalStart) {
+                    activeThought = {
+                        start: lineMatch.index,
+                        type: conventionalStart[1].toLowerCase()
+                    };
+                }
+                continue;
+            }
+
+            const isEnd = activeThought.type === 'custom'
+                ? /^[ \t]*\[--- 元思考链结束 ---\][ \t]*$/.test(lineWithoutEnding)
+                : new RegExp(`^[ \\t]*<\\/${activeThought.type}>[ \\t]*$`, 'i').test(lineWithoutEnding);
+
+            if (isEnd) {
+                ranges.push({
+                    start: activeThought.start,
+                    end: lineMatch.index + line.length
+                });
+                activeThought = null;
+            }
+        }
+
+        if (ranges.length === 0) return text;
+
+        // 从后向前替换以保持前面范围的字符串偏移稳定。
+        let result = text;
+        for (let i = ranges.length - 1; i >= 0; i--) {
+            const range = ranges[i];
+            const original = text.slice(range.start, range.end);
+            const placeholder = `<!--VCP_THOUGHT_CHAIN_${ctx.state.thoughtChainPlaceholderId}-->`;
+            ctx.state.thoughtChainMap.set(placeholder, original);
+            ctx.state.thoughtChainPlaceholderId += 1;
+            result = result.slice(0, range.start) + placeholder + result.slice(range.end);
+        }
+
+        return result;
     }
 
     function protectToolResults(text, ctx) {
@@ -314,10 +414,14 @@ function createContentPipeline(deps = {}) {
         step(ctx, 'normalize-emoticon-urls', (text) => fixEmoticonUrlsInMarkdown(text));
 
         // 顺序协议：
-        // 1. 最先做工具结果保护（它们可能包含任意内容，包括代码块、标记等）
+        // 1. 最先隔离完整思维链。其内部只允许专用渲染器处理 Markdown 与 LaTeX，
+        // 禁止工具、Mermaid、Flowlock、桌面推送等外层特殊协议介入。
+        step(ctx, 'protect-thought-chains', protectThoughtChains);
+
+        // 2. 再做工具结果保护（它们可能包含任意内容，包括代码块、标记等）
         step(ctx, 'protect-tool-results', protectToolResults);
 
-        // 2. 再保护工具请求，并在 protectToolRequests 内部局部处理「始/末」字段标记。
+        // 3. 再保护工具请求，并在 protectToolRequests 内部局部处理「始/末」字段标记。
         // 「始/末」不再作为全局正文语法，避免普通聊天提及这些标记时触发额外转义或渲染扰动。
         step(ctx, 'protect-tool-requests', protectToolRequests);
 
@@ -346,11 +450,16 @@ function createContentPipeline(deps = {}) {
         // 工具结果占位符将贯穿 Markdown 解析，在 parse() 之后才由调用方替换为渲染好的 HTML
         // 这彻底避免了工具结果内部的 Markdown 语法（表格、代码围栏等）干扰外部解析
 
-        // 8. 恢复工具请求，再交给特殊块转换；工具结果仍保持占位符
+        // 8. 只恢复工具请求。思维链继续保持占位符，直到 transformSpecialBlocks
+        // 已完成工具、日记、角色分隔等全部外层协议转换后才由专用渲染器恢复。
         step(ctx, 'restore-tool-requests', restoreToolRequests);
 
-        // 9. 特殊块转换（此时工具结果仍为占位符，transformSpecialBlocks 中的 TOOL_RESULT_REGEX 不会匹配到任何内容）
-        step(ctx, 'transform-special-blocks', (text) => transformSpecialBlocks(text, ctx.state.codeBlockMap));
+        // 9. 特殊块转换（工具结果与思维链仍为占位符）。
+        step(ctx, 'transform-special-blocks', (text) => transformSpecialBlocks(
+            text,
+            ctx.state.codeBlockMap,
+            ctx.state.thoughtChainMap
+        ));
         step(ctx, 'ensure-html-fenced', (text) => ensureHtmlFenced(text));
         step(ctx, 'apply-common-content-processors', (text) => applyContentProcessors(text));
 
