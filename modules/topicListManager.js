@@ -44,29 +44,64 @@ window.topicListManager = (() => {
         console.log('[TopicListManager] Initialized successfully.');
     }
 
-    /**
-     * Part C: 智能计数逻辑辅助函数（前端复制）
-     * 判断是否应该激活计数
-     * @param {Array} history - 消息历史
-     * @returns {boolean}
-     */
-    function shouldActivateCount(history) {
-        if (!history || history.length === 0) return false;
+    function hasUserParticipation(history) {
+        return Array.isArray(history) && history.some(message =>
+            message &&
+            message.role === 'user' &&
+            message.isThinking !== true
+        );
+    }
 
-        // 过滤掉系统消息
-        const nonSystemMessages = history.filter(msg => msg.role !== 'system');
+    function hasValidPersistentUnreadMarker(topic, history) {
+        if (topic?.unread !== true) return false;
+        if (topic.unreadSource === 'manual') return true;
 
-        // 必须有且只有一条消息，且该消息是 AI 回复
-        return nonSystemMessages.length === 1 && nonSystemMessages[0].role === 'assistant';
+        // Agent/TopicSponsor 产生的旧未读标记在用户参与后即失效。
+        return !hasUserParticipation(history);
+    }
+
+    async function clearStalePersistentUnreadMarker(topic, itemId, history) {
+        if (
+            topic?.unread !== true ||
+            topic.unreadSource === 'manual' ||
+            !hasUserParticipation(history)
+        ) {
+            return;
+        }
+
+        topic.unread = false;
+        delete topic.unreadSource;
+
+        try {
+            const result = await electronAPI.setTopicUnread(itemId, topic.id, false);
+            if (!result?.success) {
+                console.warn(`[TopicListManager] 清理话题 ${topic.id} 的残留未读标记失败:`, result?.error);
+            }
+        } catch (error) {
+            console.warn(`[TopicListManager] 清理话题 ${topic.id} 的残留未读标记失败:`, error);
+        }
     }
 
     /**
-     * Part C: 计算未读消息数量
+     * 统计完全由 Agent 主动发起、尚无用户参与的话题消息数。
+     * 系统消息和思考占位不参与判断；历史中只要出现过用户消息就返回 0。
      * @param {Array} history - 消息历史
      * @returns {number}
      */
     function countUnreadMessages(history) {
-        return shouldActivateCount(history) ? 1 : 0;
+        if (!Array.isArray(history) || history.length === 0) return 0;
+
+        const effectiveMessages = history.filter(message =>
+            message &&
+            message.role !== 'system' &&
+            message.isThinking !== true
+        );
+
+        if (effectiveMessages.some(message => message.role === 'user')) {
+            return 0;
+        }
+
+        return effectiveMessages.filter(message => message.role === 'assistant').length;
     }
 
     function normalizeTopicTitle(topicTitle) {
@@ -85,20 +120,95 @@ window.topicListManager = (() => {
     }
 
     /**
+     * 解析话题搜索约定词。
+     * 仅当完整输入为“未读话题”或“unread topic”时启用未读置顶。
+     * @param {string} rawValue - 搜索框原始值
+     * @returns {{ rawTerm: string, queryTerm: string, prioritizeUnread: boolean }}
+     */
+    function parseTopicSearchQuery(rawValue) {
+        const rawTerm = String(rawValue || '').trim().toLowerCase();
+        const prioritizeUnread = rawTerm === '未读话题' || rawTerm === 'unread topic';
+
+        return {
+            rawTerm,
+            queryTerm: prioritizeUnread ? '' : rawTerm,
+            prioritizeUnread
+        };
+    }
+
+    /**
+     * 读取各话题历史，并将未读话题稳定地移到顶部。
+     * 未读组与已读组内部均保留用户自定义顺序。
+     */
+    async function prioritizeUnreadTopics(topics, currentSelectedItem) {
+        const topicsWithUnreadState = await Promise.all(topics.map(async topic => {
+            let history = [];
+            try {
+                history = currentSelectedItem.type === 'group'
+                    ? await electronAPI.getGroupChatHistory(currentSelectedItem.id, topic.id)
+                    : await electronAPI.getChatHistory(currentSelectedItem.id, topic.id);
+            } catch (error) {
+                console.warn(`[TopicListManager] 读取话题 ${topic.id} 的未读状态失败:`, error);
+            }
+
+            const calculatedUnreadCount = Array.isArray(history)
+                ? countUnreadMessages(history)
+                : 0;
+            const hasPersistentUnread = hasValidPersistentUnreadMarker(topic, history);
+
+            await clearStalePersistentUnreadMarker(topic, currentSelectedItem.id, history);
+
+            return {
+                topic,
+                isUnread: calculatedUnreadCount > 0 || hasPersistentUnread,
+                calculatedUnreadCount
+            };
+        }));
+
+        const unreadTopics = [];
+        const readTopics = [];
+        topicsWithUnreadState.forEach(({ topic, isUnread, calculatedUnreadCount }) => {
+            topic.__calculatedUnreadCount = calculatedUnreadCount;
+            (isUnread ? unreadTopics : readTopics).push(topic);
+        });
+
+        return unreadTopics.concat(readTopics);
+    }
+
+    function ensureTopicUnreadIndicator(li, unreadCount = -1) {
+        if (!li) return;
+
+        let indicator = li.querySelector('.topic-unread-indicator');
+        if (!indicator) {
+            indicator = document.createElement('span');
+            indicator.className = 'topic-unread-indicator';
+            const messageCountSpan = li.querySelector('.message-count');
+            li.insertBefore(indicator, messageCountSpan || null);
+        }
+
+        indicator.textContent = unreadCount > 0 ? `未读 ${unreadCount}` : '未读';
+        indicator.title = unreadCount > 0 ? `${unreadCount} 条未读消息` : '未读话题';
+        li.classList.add('has-unread-topic');
+    }
+
+    function removeTopicUnreadIndicator(li) {
+        if (!li) return;
+        li.querySelector('.topic-unread-indicator')?.remove();
+        li.classList.remove('has-unread-topic');
+    }
+
+    /**
      * Part C: 计算单个话题的未读消息数
      * @param {Object} topic - 话题对象
      * @param {Array} history - 话题历史消息
      * @returns {number} - 未读消息数，-1 表示仅显示小点
      */
     function calculateTopicUnreadCount(topic, history) {
-        // 优先检查自动计数条件（AI回复了但用户没回）
-        if (shouldActivateCount(history)) {
-            const count = countUnreadMessages(history);
-            if (count > 0) return count;
-        }
+        const count = countUnreadMessages(history);
+        if (count > 0) return count;
 
-        // 如果不满足自动计数条件，但被手动标记为未读，则显示小点
-        if (topic.unread === true) {
+        // 没有自动计数时，仅保留仍有效的持久化未读标记。
+        if (hasValidPersistentUnreadMarker(topic, history)) {
             return -1; // 仅显示小点，不显示数字
         }
 
@@ -173,21 +283,25 @@ window.topicListManager = (() => {
             return;
         }
 
-        historyPromise.then(historyResult => {
+        historyPromise.then(async historyResult => {
             if (!li.isConnected) return;
 
             messageCountSpan.classList.remove('has-unread', 'unread-marker-only');
 
             if (historyResult && !historyResult.error && Array.isArray(historyResult)) {
+                await clearStalePersistentUnreadMarker(topic, itemId, historyResult);
                 const unreadCount = calculateTopicUnreadCount(topic, historyResult);
                 if (unreadCount > 0) {
-                    messageCountSpan.textContent = `${unreadCount}`;
+                    messageCountSpan.textContent = `${historyResult.length}`;
                     messageCountSpan.classList.add('has-unread');
+                    ensureTopicUnreadIndicator(li, unreadCount);
                 } else if (unreadCount === -1) {
                     messageCountSpan.textContent = `${historyResult.length}`;
                     messageCountSpan.classList.add('unread-marker-only');
+                    ensureTopicUnreadIndicator(li);
                 } else {
                     messageCountSpan.textContent = `${historyResult.length}`;
+                    removeTopicUnreadIndicator(li);
                 }
             } else {
                 messageCountSpan.textContent = 'N/A';
@@ -213,8 +327,10 @@ window.topicListManager = (() => {
         li.__topicData = topic;
 
         const isCurrentActiveTopic = topic.id === currentTopicId;
+        const isPersistentlyUnread = topic.unread === true || topic.__calculatedUnreadCount > 0;
         li.classList.toggle('active', isCurrentActiveTopic);
         li.classList.toggle('active-topic-glowing', isCurrentActiveTopic);
+        li.classList.toggle('has-unread-topic', isPersistentlyUnread);
 
         const avatarImg = document.createElement('img');
         avatarImg.classList.add('avatar');
@@ -245,6 +361,9 @@ window.topicListManager = (() => {
         }
 
         li.appendChild(topicTitleDisplay);
+        if (isPersistentlyUnread) {
+            ensureTopicUnreadIndicator(li, topic.__calculatedUnreadCount);
+        }
         li.appendChild(messageCountSpan);
 
         const observer = ensureTopicCountObserver();
@@ -391,7 +510,7 @@ window.topicListManager = (() => {
             const topicsHeader = topicListContainer.querySelector('.topics-header') || document.createElement('div');
             if (!topicsHeader.classList.contains('topics-header')) {
                 topicsHeader.className = 'topics-header';
-                topicsHeader.innerHTML = `<h2>话题列表</h2><div class="topic-search-container"><input type="text" id="topicSearchInput" placeholder="搜索话题..." class="topic-search-input"></div>`;
+                topicsHeader.innerHTML = `<h2>话题列表</h2><div class="topic-search-container"><input type="text" id="topicSearchInput" placeholder="搜索话题；输入“未读话题”置顶" title="输入“未读话题”或“unread topic”将未读话题置顶" aria-label="搜索话题；输入未读话题将未读话题置顶" class="topic-search-input"></div>`;
                 topicListContainer.prepend(topicsHeader);
                 const newTopicSearchInput = topicsHeader.querySelector('#topicSearchInput');
                 if (newTopicSearchInput) setupTopicSearchListener(newTopicSearchInput);
@@ -411,7 +530,9 @@ window.topicListManager = (() => {
 
         const itemNameForLoading = currentSelectedItem.name || '当前项目';
         const searchInput = document.getElementById('topicSearchInput');
-        const searchTerm = searchInput ? searchInput.value.toLowerCase().trim() : '';
+        const searchQuery = parseTopicSearchQuery(searchInput ? searchInput.value : '');
+        const searchTerm = searchQuery.rawTerm;
+        const contentQueryTerm = searchQuery.queryTerm;
 
         let itemConfigFull;
 
@@ -442,23 +563,23 @@ window.topicListManager = (() => {
 
             // topicsToProcess.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 
-            if (searchTerm) {
+            if (contentQueryTerm) {
                 let frontendFilteredTopics = topicsToProcess.filter(topic => {
                     const normalizedTopicTitle = normalizeTopicTitle(topic.name || '');
-                    const nameMatch = normalizedTopicTitle.toLowerCase().includes(searchTerm);
+                    const nameMatch = normalizedTopicTitle.toLowerCase().includes(contentQueryTerm);
                     let dateMatch = false;
                     if (topic.createdAt) {
                         const date = new Date(topic.createdAt);
                         const fullDateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
                         const shortDateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-                        dateMatch = fullDateStr.toLowerCase().includes(searchTerm) || shortDateStr.toLowerCase().includes(searchTerm);
+                        dateMatch = fullDateStr.toLowerCase().includes(contentQueryTerm) || shortDateStr.toLowerCase().includes(contentQueryTerm);
                     }
                     return nameMatch || dateMatch;
                 });
 
                 let contentMatchedTopicIds = [];
                 try {
-                    const contentSearchResult = await electronAPI.searchTopicsByContent(currentSelectedItem.id, currentSelectedItem.type, searchTerm);
+                    const contentSearchResult = await electronAPI.searchTopicsByContent(currentSelectedItem.id, currentSelectedItem.type, contentQueryTerm);
                     if (contentSearchResult && contentSearchResult.success && Array.isArray(contentSearchResult.matchedTopicIds)) {
                         contentMatchedTopicIds = contentSearchResult.matchedTopicIds;
                     } else if (contentSearchResult && !contentSearchResult.success) {
@@ -472,6 +593,10 @@ window.topicListManager = (() => {
                 contentMatchedTopicIds.forEach(id => finalFilteredTopicIds.add(id));
 
                 topicsToProcess = topicsToProcess.filter(topic => finalFilteredTopicIds.has(topic.id));
+            }
+
+            if (searchQuery.prioritizeUnread) {
+                topicsToProcess = await prioritizeUnreadTopics(topicsToProcess, currentSelectedItem);
             }
 
             if (topicsToProcess.length === 0) {
@@ -716,6 +841,11 @@ window.topicListManager = (() => {
                 const result = await electronAPI.setTopicUnread(itemFullConfig.id, topic.id, !isUnread);
                 if (result.success) {
                     topic.unread = result.unread;
+                    if (result.unreadSource) {
+                        topic.unreadSource = result.unreadSource;
+                    } else {
+                        delete topic.unreadSource;
+                    }
                     uiHelper.showToastNotification(
                         topic.unread ? '已标记为未读' : '已标记为已读',
                         'success'

@@ -1037,7 +1037,22 @@ window.chatManager = (() => {
         // Save history with the user message before adding the thinking message or making API calls
         await electronAPI.saveChatHistory(currentSelectedItem.id, currentTopicId, currentChatHistory);
 
-        // After saving history (which marks the topic as read), refresh the unread counts.
+        // 用户已参与该话题：同步清除 TopicSponsor/手动设置的持久化未读标记。
+        // 之前这里只刷新徽章，并未真正修改 topic.unread，导致无数字“未读”长期残留。
+        try {
+            const readResult = await electronAPI.setTopicUnread(
+                currentSelectedItem.id,
+                currentTopicId,
+                false
+            );
+            if (!readResult?.success) {
+                console.warn('[ChatManager] Failed to mark topic as read:', readResult?.error);
+            }
+        } catch (error) {
+            console.warn('[ChatManager] Failed to clear persistent topic unread state:', error);
+        }
+
+        // After saving history and clearing the persistent marker, refresh the unread counts.
         if (itemListManager && typeof itemListManager.refreshUnreadCounts === 'function') {
             itemListManager.refreshUnreadCounts();
         } else if (itemListManager) {

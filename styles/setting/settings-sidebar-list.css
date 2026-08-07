@@ -325,6 +325,33 @@ body.light-theme .settings-header-bar .global-settings-btn:hover {
     min-width: 0;
 }
 
+.sidebar .topic-list .topic-item.has-unread-topic .topic-title-display {
+    font-weight: 600;
+}
+
+.sidebar .topic-list .topic-unread-indicator {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    margin-left: 6px;
+    padding: 2px 6px;
+    border: 1px solid color-mix(in srgb, #ff6b6b 46%, transparent);
+    border-radius: 999px;
+    background: color-mix(in srgb, #ff6b6b 16%, transparent);
+    color: color-mix(in srgb, #ff6b6b 82%, var(--primary-text) 18%);
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1.2;
+    white-space: nowrap;
+}
+
+body:not(.light-theme) .sidebar .topic-list .topic-unread-indicator {
+    border-color: color-mix(in srgb, #ff7b7b 52%, transparent);
+    background: color-mix(in srgb, #ff6b6b 18%, transparent);
+    color: #ff9a9a;
+}
+
 .agents-title-pseudo-item .avatar {
     width: 42px;
     height: 42px;
@@ -547,6 +574,10 @@ body:not(.light-theme) .sidebar .agent-list .agent-emotion-card {
         transform: translateX(45%) rotate(12deg);
     }
 }
+.sidebar .topic-list .topic-item.has-unread-topic .message-count {
+    margin-left: 5px;
+}
+
 .sidebar .topic-list .topic-item .message-count {
     position: relative;
     isolation: isolate;

@@ -1317,52 +1317,56 @@ function initialize(mainWindow, context) {
     });
 
     /**
-     * Part C: 智能计数逻辑辅助函数
-     * 判断是否应该激活计数
-     * 规则：上下文（排除系统消息）有且只有一个 AI 的回复，且没有用户回复
-     * @param {Array} history - 消息历史
-     * @returns {boolean}
-     */
-    function shouldActivateCount(history) {
-        if (!history || history.length === 0) return false;
-
-        // 过滤掉系统消息
-        const nonSystemMessages = history.filter(msg => msg.role !== 'system');
-
-        // 必须有且只有一条消息，且该消息是 AI 回复
-        return nonSystemMessages.length === 1 && nonSystemMessages[0].role === 'assistant';
-    }
-
-    /**
-     * Part C: 计算未读消息数量
+     * 统计完全由 Agent 主动发起、尚无用户参与的话题消息数。
+     * 系统消息和思考占位不参与判断；历史中只要出现过用户消息就返回 0。
      * @param {Array} history - 消息历史
      * @returns {number}
      */
     function countUnreadMessages(history) {
-        return shouldActivateCount(history) ? 1 : 0;
+        if (!Array.isArray(history) || history.length === 0) return 0;
+
+        const effectiveMessages = history.filter(message =>
+            message &&
+            message.role !== 'system' &&
+            message.isThinking !== true
+        );
+
+        if (effectiveMessages.some(message => message.role === 'user')) {
+            return 0;
+        }
+
+        return effectiveMessages.filter(message => message.role === 'assistant').length;
     }
 
     /**
-     * Part C: 计算单个话题的未读消息数
-     * @param {Object} topic - 话题对象
-     * @param {Array} history - 话题历史消息
-     * @returns {number} - 未读消息数，-1 表示仅显示小点
-     */
-    function calculateTopicUnreadCount(topic, history) {
-        // 优先检查自动计数条件（AI回复了但用户没回）
-        if (shouldActivateCount(history)) {
-            const count = countUnreadMessages(history);
-            if (count > 0) return count;
-        }
-
-        // 如果不满足自动计数条件，但被手动标记为未读，则显示小点
-        if (topic.unread === true) {
-            return -1; // 仅显示小点，不显示数字
-        }
-
-        return 0; // 不显示
-    }
-
+     function hasUserParticipation(history) {
+         return Array.isArray(history) && history.some(message =>
+             message &&
+             message.role === 'user' &&
+             message.isThinking !== true
+         );
+     }
+ 
+     /**
+      * Part C: 计算单个话题的未读消息数
+      * @param {Object} topic - 话题对象
+      * @param {Array} history - 话题历史消息
+      * @returns {number} - 未读消息数，-1 表示仅显示小点
+      */
+     function calculateTopicUnreadCount(topic, history) {
+         const count = countUnreadMessages(history);
+         if (count > 0) return count;
+ 
+         // 明确的手动未读始终保留；Agent/TopicSponsor 旧标记在用户参与后失效。
+         if (
+             topic.unread === true &&
+             (topic.unreadSource === 'manual' || !hasUserParticipation(history))
+         ) {
+             return -1; // 仅显示小点，不显示数字
+         }
+ 
+         return 0; // 不显示
+     }
     ipcMain.handle('get-unread-topic-counts', async () => {
         const counts = {};
         try {
@@ -1497,6 +1501,12 @@ function initialize(mainWindow, context) {
             }
 
             topic.unread = unread;
+            if (unread) {
+                // 该 IPC 入口用于用户右键手动标记；Agent 自动未读由创建方直接写入配置。
+                topic.unreadSource = 'manual';
+            } else {
+                delete topic.unreadSource;
+            }
 
             if (agentConfigManager) {
                 await agentConfigManager.updateAgentConfig(agentId, existingConfig => ({
@@ -1507,7 +1517,11 @@ function initialize(mainWindow, context) {
                 await fs.writeJson(agentConfigPath, config, { spaces: 2 });
             }
 
-            return { success: true, unread: topic.unread };
+            return {
+                success: true,
+                unread: topic.unread,
+                unreadSource: topic.unreadSource || null
+            };
         } catch (error) {
             console.error('[setTopicUnread] Error:', error);
             return { success: false, error: error.message };
