@@ -1150,64 +1150,40 @@ class VCPLoomManager {
 
     requestDeviceFromShell(instance, protocolId) {
         const protocol = String(protocolId || '').toLowerCase();
+        if (!instance.deviceRequestStates) instance.deviceRequestStates = new Map();
+        const requestState = {
+            id: `${protocol}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+            committed: false,
+        };
+        instance.deviceRequestStates.set(protocol, requestState);
+
         const scripts = {
             hid: `(async () => {
                 if (!navigator.hid) throw new Error('当前页面不支持 WebHID');
                 const selected = Array.from(await navigator.hid.requestDevice({ filters: [] }));
-                const keys = selected.map((device) =>
-                    [device.vendorId, device.productId, device.productName || ''].join(':')
-                );
-                for (let attempt = 0; attempt < 30; attempt += 1) {
-                    const granted = Array.from(await navigator.hid.getDevices());
-                    const confirmed = keys.every((key) => granted.some((device) =>
-                        [device.vendorId, device.productId, device.productName || ''].join(':') === key
-                    ));
-                    if (selected.length > 0 && confirmed) {
-                        return {
-                            confirmed: true,
-                            count: granted.length,
-                            name: selected.map((device) => device.productName || 'HID 设备').join('、')
-                        };
-                    }
-                    await new Promise((resolve) => setTimeout(resolve, 100));
-                }
-                return { confirmed: false, count: (await navigator.hid.getDevices()).length };
+                return {
+                    confirmed: selected.length > 0,
+                    count: selected.length,
+                    name: selected.map((device) => device.productName || 'HID 设备').join('、')
+                };
             })()`,
             usb: `(async () => {
                 if (!navigator.usb) throw new Error('当前页面不支持 WebUSB');
                 const selected = await navigator.usb.requestDevice({ filters: [] });
-                const key = [selected.vendorId, selected.productId, selected.productName || ''].join(':');
-                for (let attempt = 0; attempt < 30; attempt += 1) {
-                    const granted = Array.from(await navigator.usb.getDevices());
-                    if (granted.some((device) =>
-                        [device.vendorId, device.productId, device.productName || ''].join(':') === key
-                    )) {
-                        return {
-                            confirmed: true,
-                            count: granted.length,
-                            name: selected.productName || 'USB 设备'
-                        };
-                    }
-                    await new Promise((resolve) => setTimeout(resolve, 100));
-                }
-                return { confirmed: false, count: (await navigator.usb.getDevices()).length };
+                return {
+                    confirmed: Boolean(selected),
+                    count: selected ? 1 : 0,
+                    name: selected?.productName || 'USB 设备'
+                };
             })()`,
             serial: `(async () => {
                 if (!navigator.serial) throw new Error('当前页面不支持 WebSerial');
                 const selected = await navigator.serial.requestPort({ filters: [] });
-                const selectedInfo = selected.getInfo();
-                const key = [selectedInfo.usbVendorId || 0, selectedInfo.usbProductId || 0].join(':');
-                for (let attempt = 0; attempt < 30; attempt += 1) {
-                    const granted = Array.from(await navigator.serial.getPorts());
-                    if (granted.some((port) => {
-                        const info = port.getInfo();
-                        return [info.usbVendorId || 0, info.usbProductId || 0].join(':') === key;
-                    })) {
-                        return { confirmed: true, count: granted.length, name: '串口设备' };
-                    }
-                    await new Promise((resolve) => setTimeout(resolve, 100));
-                }
-                return { confirmed: false, count: (await navigator.serial.getPorts()).length };
+                return {
+                    confirmed: Boolean(selected),
+                    count: selected ? 1 : 0,
+                    name: '串口设备'
+                };
             })()`,
             // WebBluetooth 没有 getDevices()，网站应直接消费 requestDevice()
             // 返回值；不能通过一次盲目刷新来“确认”授权。
@@ -1225,6 +1201,12 @@ class VCPLoomManager {
         if (contents.isDestroyed()) throw new Error('LoomAPP 页面进程不可用。');
         const requestPromise = contents.executeJavaScript(scripts[protocol], true);
         void requestPromise.then((result) => {
+            if (
+                instance.deviceRequestStates?.get(protocol) !== requestState
+                || requestState.committed
+            ) {
+                return;
+            }
             if (!result?.confirmed) {
                 this.sendToShell(instance, 'loom:device-candidates', {
                     protocol,
@@ -1246,6 +1228,15 @@ class VCPLoomManager {
             // 重建或刷新控制应用；再次 reload 会销毁新页面刚打开的 HID/USB/
             // Serial 句柄，导致首条 sendReport()/transferOut() 通讯失败。
         }).catch((error) => {
+            // 厂商常在选择完成后立即刷新同 URL 的控制应用。此时旧页面中的
+            // executeJavaScript 会因上下文销毁而拒绝，但主进程授权其实已经
+            // 持久化并提交，不能让旧异步结果覆盖“已授权”状态。
+            if (
+                instance.deviceRequestStates?.get(protocol) !== requestState
+                || requestState.committed
+            ) {
+                return;
+            }
             this.sendToShell(instance, 'loom:device-candidates', {
                 protocol,
                 devices: [],
@@ -1282,6 +1273,18 @@ class VCPLoomManager {
                 throw new Error(`设备授权持久化失败：${error.message}`);
             }
         }
+        const requestState = instance.deviceRequestStates?.get(protocol);
+        if (requestState) requestState.committed = true;
+
+        // 这里才是权威成功点：授权记录已落盘，且即将向 Chromium 提交选择。
+        // 提前通知菜单，避免厂商随即刷新页面导致旧 executeJavaScript 误报。
+        this.sendToShell(instance, 'loom:device-candidates', {
+            protocol,
+            devices: [],
+            connected: true,
+            count: 1,
+            name,
+        });
         pending.finish(deviceId);
         return { connected: true, protocol, deviceId, name };
     }
@@ -1402,6 +1405,7 @@ class VCPLoomManager {
             deviceMenuOpen: false,
             devicePermissionGrants,
             pendingDeviceSelections: new Map(),
+            deviceRequestStates: new Map(),
             devicePermissionCleanup: null,
         };
         this.configureDevicePermissionBroker(instance);
