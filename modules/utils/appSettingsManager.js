@@ -40,6 +40,50 @@ class SettingsValidator {
             console.log('Fixed invalid chatPresentationMode');
         }
 
+        const appearanceDefaults = defaultSettings.appearanceProfile;
+        const appearanceOptions = {
+            density: new Set(['compact', 'comfortable', 'relaxed']),
+            radius: new Set(['square', 'small', 'medium', 'round']),
+            typography: new Set(['system', 'humanist', 'serif']),
+            fontScale: new Set(['small', 'normal', 'large']),
+            contentWidth: new Set(['full', 'centered']),
+            surface: new Set(['solid', 'translucent', 'custom']),
+            surfaceEffect: new Set(['vibrancy', 'mica', 'acrylic', 'liquid']),
+            shellRadius: new Set(['tuned', 'follow', 'square', 'small', 'medium', 'round']),
+            composerRadius: new Set(['tuned', 'follow', 'square', 'small', 'medium', 'round']),
+            sidebarRadius: new Set(['tuned', 'follow', 'square', 'small', 'medium', 'round']),
+            cardRadius: new Set(['tuned', 'follow', 'square', 'small', 'medium', 'round'])
+        };
+        const appearanceRanges = {
+            surfaceOpacity: { min: 20, max: 100 },
+            surfaceBlur: { min: 0, max: 40 },
+            surfaceSaturation: { min: 50, max: 180 },
+            surfaceBrightness: { min: 80, max: 120 },
+            surfaceBorder: { min: 0, max: 100 },
+            surfaceShadow: { min: 0, max: 100 },
+            surfaceSheen: { min: 0, max: 100 }
+        };
+        if (!validated.appearanceProfile || typeof validated.appearanceProfile !== 'object' || Array.isArray(validated.appearanceProfile)) {
+            validated.appearanceProfile = { ...appearanceDefaults };
+            hasIssues = true;
+        } else {
+            const normalizedAppearance = {};
+            for (const [key, allowed] of Object.entries(appearanceOptions)) {
+                const value = validated.appearanceProfile[key];
+                normalizedAppearance[key] = allowed.has(value) ? value : appearanceDefaults[key];
+                if (normalizedAppearance[key] !== value) hasIssues = true;
+            }
+            for (const [key, range] of Object.entries(appearanceRanges)) {
+                const parsed = Number(validated.appearanceProfile[key]);
+                const fallback = appearanceDefaults[key];
+                normalizedAppearance[key] = Number.isFinite(parsed)
+                    ? Math.min(range.max, Math.max(range.min, Math.round(parsed)))
+                    : fallback;
+                if (normalizedAppearance[key] !== validated.appearanceProfile[key]) hasIssues = true;
+            }
+            validated.appearanceProfile = normalizedAppearance;
+        }
+
         // 数组检查
         if (!Array.isArray(validated.networkNotesPaths)) {
             validated.networkNotesPaths = [];
@@ -97,6 +141,27 @@ class SettingsManager extends EventEmitter {
             toolAutoApprovalRules: [],
             enableAgentBubbleTheme: false,
             enableSmoothStreaming: false,
+            uiMode: 'classic',
+            appearanceProfile: {
+                density: 'comfortable',
+                radius: 'small',
+                typography: 'system',
+                fontScale: 'normal',
+                contentWidth: 'full',
+                surface: 'translucent',
+                surfaceEffect: 'vibrancy',
+                surfaceOpacity: 68,
+                surfaceBlur: 24,
+                surfaceSaturation: 145,
+                surfaceBrightness: 103,
+                surfaceBorder: 32,
+                surfaceShadow: 18,
+                surfaceSheen: 18,
+                shellRadius: 'tuned',
+                composerRadius: 'tuned',
+                sidebarRadius: 'tuned',
+                cardRadius: 'tuned'
+            },
             enableWideChatLayout: false,
             chatPresentationMode: 'bubble',
             chatBubbleMaxWidthDefault: 82,
