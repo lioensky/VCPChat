@@ -1,5 +1,29 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
+function installEmbeddedSurfaceContract() {
+    const query = new URLSearchParams(globalThis.location?.search || '');
+    if (query.get('vcpEmbedded') !== '1') return;
+    document.documentElement.dataset.vcpEmbeddedApp = 'true';
+    const mount = () => {
+        document.body?.setAttribute('data-vcp-embedded-app', 'true');
+        if (document.getElementById('vcpEmbeddedSurfaceStyle')) return;
+        const style = document.createElement('style');
+        style.id = 'vcpEmbeddedSurfaceStyle';
+        style.textContent = `
+            html[data-vcp-embedded-app="true"] :is(
+                #minimize-btn, #maximize-btn, #close-btn,
+                #minimize-theme-btn, #maximize-theme-btn, #close-theme-btn,
+                #minimize-translator-btn, #maximize-translator-btn, #close-translator-btn
+            ) { display: none; }
+        `;
+        (document.head || document.documentElement).append(style);
+    };
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount, { once: true });
+    else mount();
+}
+
+installEmbeddedSurfaceContract();
+
 function command(value) {
     return { kind: 'command', value };
 }
