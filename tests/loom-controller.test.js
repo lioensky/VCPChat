@@ -90,6 +90,30 @@ function createFakeManager() {
         },
         async executeWebAgentAction(appId, actionId, params, options) {
             calls.push(['executeWebAgentAction', appId, actionId, params, options]);
+            if (actionId === 'page_get_image') {
+                return {
+                    appId,
+                    actionId,
+                    executedAt: '2026-08-06T00:00:00.000Z',
+                    response: {
+                        status: 'success',
+                        code: 'COMMAND_COMPLETED',
+                        result: {
+                            code: 'PAGE_IMAGE_CAPTURED',
+                            result: {
+                                imageId: params.imageId,
+                                resolvedImageId: 'vcp-img-1-1-1-abcd1234',
+                                kind: 'content-image',
+                                caption: '测试正文图片',
+                                format: params.format || 'jpeg',
+                                outputSize: { width: 800, height: 450 },
+                                byteLength: 12,
+                                dataUrl: 'data:image/jpeg;base64,dGVzdC1pbWFnZQ==',
+                            },
+                        },
+                    },
+                };
+            }
             return {
                 appId,
                 actionId: actionId.startsWith('page_') ? actionId : `page_${actionId}`,
@@ -197,6 +221,34 @@ async function run() {
         call[0] === 'getWebAgentPageInfo' && call[1] === 'test-app'
     ));
 
+    const pageImage = await loomController.processToolCall({
+        command: 'GetPageImage',
+        appId: 'test-app',
+        imageId: 'IMG1',
+        format: 'jpeg',
+        quality: '85',
+        maxWidth: '1600',
+        snapshotId: '1',
+        documentGeneration: '1',
+        runtimeInstanceId: 'loom-test-runtime',
+        strict: 'true',
+    });
+    assert.strictEqual(pageImage.content.length, 2);
+    assert.strictEqual(pageImage.content[0].type, 'text');
+    assert(pageImage.content[0].text.includes('测试正文图片'));
+    assert.strictEqual(pageImage.content[1].type, 'image_url');
+    assert(pageImage.content[1].image_url.url.startsWith('data:image/jpeg;base64,'));
+    assert.strictEqual(pageImage.details.appId, 'test-app');
+    assert.strictEqual(pageImage.details.image.dataUrl, undefined);
+    const imageCall = manager.calls.find((call) =>
+        call[0] === 'executeWebAgentAction' && call[2] === 'page_get_image'
+    );
+    assert.strictEqual(imageCall[1], 'test-app');
+    assert.strictEqual(imageCall[3].imageId, 'IMG1');
+    assert.strictEqual(imageCall[3].snapshotId, '1');
+    assert.strictEqual(imageCall[3].quality, '85');
+    assert.deepStrictEqual(imageCall[4], { strict: true });
+
     const action = await loomController.processToolCall({
         command: 'ExecuteAction',
         app_id: 'test-app',
@@ -207,7 +259,9 @@ async function run() {
     assertContentResult(action);
     assert.strictEqual(action.details.actionId, 'page_type');
     assert.strictEqual(action.details.response.result.verified, true);
-    const actionCall = manager.calls.find((call) => call[0] === 'executeWebAgentAction');
+    const actionCall = manager.calls.find((call) =>
+        call[0] === 'executeWebAgentAction' && call[2] === 'type'
+    );
     assert.strictEqual(actionCall[1], 'test-app');
     assert.strictEqual(actionCall[2], 'type');
     assert.strictEqual(actionCall[3].target, 'vcp-searchbox-1');
@@ -287,6 +341,13 @@ async function run() {
     await assert.rejects(
         () => loomController.processToolCall({ command: 'Unknown' }),
         /不支持的 command/
+    );
+    await assert.rejects(
+        () => loomController.processToolCall({
+            command: 'GetPageImage',
+            appId: 'test-app',
+        }),
+        /缺少必需参数 imageId/
     );
     await assert.rejects(
         () => loomController.processToolCall({

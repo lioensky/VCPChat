@@ -31,6 +31,7 @@ const MAX_RENDERED_TEXT = 500000;
 const WEB_AGENT_WORLD_ID = 999;
 const LOOM_PAGE_ACTIONS = Object.freeze(new Set([
     'page_get_info',
+    'page_get_image',
     'page_query_html',
     'page_query_scripts',
     'page_code_search',

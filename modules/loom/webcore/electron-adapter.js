@@ -128,9 +128,95 @@ class ElectronWebAgentAdapter extends contract.WebAgentAdapter {
             }
             : null;
         if (identity) this.updateDocumentState(identity);
+        if (operation === 'page_get_image') {
+            return this.captureResolvedPageImage(response, payload);
+        }
         return {
             ...response,
             backendUsed: response?.backendUsed || 'electron-isolated-world',
+        };
+    }
+
+    async captureResolvedPageImage(response, options = {}) {
+        const resolved = response?.result || {};
+        const rect = resolved.viewportRect || {};
+        const rawX = Math.round(Number(rect.x));
+        const rawY = Math.round(Number(rect.y));
+        const rawWidth = Math.round(Number(rect.width));
+        const rawHeight = Math.round(Number(rect.height));
+        if (
+            !Number.isFinite(rawX) ||
+            !Number.isFinite(rawY) ||
+            !Number.isFinite(rawWidth) ||
+            !Number.isFinite(rawHeight) ||
+            rawWidth <= 0 ||
+            rawHeight <= 0
+        ) {
+            throw new protocol.WebAgentError(
+                protocol.ErrorCode.ADAPTER_EXECUTION_ERROR,
+                '页面图片没有可截取的有效视口区域',
+                { viewportRect: rect }
+            );
+        }
+
+        const [viewportWidth, viewportHeight] = this.webContents.getSize();
+        const x = Math.max(0, rawX);
+        const y = Math.max(0, rawY);
+        const right = Math.min(viewportWidth, rawX + rawWidth);
+        const bottom = Math.min(viewportHeight, rawY + rawHeight);
+        const width = Math.round(right - x);
+        const height = Math.round(bottom - y);
+        if (width <= 0 || height <= 0) {
+            throw new protocol.WebAgentError(
+                protocol.ErrorCode.ADAPTER_EXECUTION_ERROR,
+                '页面图片滚动后仍位于 Loom 可视区域之外',
+                { viewportRect: rect, viewportSize: { width: viewportWidth, height: viewportHeight } }
+            );
+        }
+
+        const requestedFormat = String(
+            options.imageFormat || options.format || 'jpeg'
+        ).toLowerCase();
+        const format = requestedFormat === 'png' ? 'png' : 'jpeg';
+        const quality = Math.min(Math.max(Number(options.quality) || 85, 1), 100);
+        const maxWidth = Math.round(
+            Math.min(Math.max(Number(options.maxWidth) || 1600, 64), 4096)
+        );
+        let image = await this.webContents.capturePage({ x, y, width, height });
+        const capturedSize = image.getSize();
+        if (!capturedSize.width || !capturedSize.height) {
+            throw new protocol.WebAgentError(
+                protocol.ErrorCode.ADAPTER_EXECUTION_ERROR,
+                '页面图片截图结果为空',
+                { viewportRect: rect }
+            );
+        }
+        if (capturedSize.width > maxWidth) {
+            image = image.resize({
+                width: maxWidth,
+                quality: 'best',
+            });
+        }
+
+        const outputSize = image.getSize();
+        const buffer = format === 'png' ? image.toPNG() : image.toJPEG(quality);
+        return {
+            ...response,
+            code: 'PAGE_IMAGE_CAPTURED',
+            message: `Loom 页面图片 ${resolved.imageId || resolved.resolvedImageId || ''} 获取成功 (${format})`,
+            result: {
+                ...resolved,
+                dataUrl: `data:image/${format};base64,${buffer.toString('base64')}`,
+                mimeType: `image/${format}`,
+                format,
+                quality: format === 'jpeg' ? quality : null,
+                maxWidth,
+                capturedSize,
+                outputSize,
+                byteLength: buffer.length,
+                capturedAt: new Date().toISOString(),
+            },
+            backendUsed: 'electron-capture-page',
         };
     }
 

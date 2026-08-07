@@ -46,6 +46,12 @@ function requireActionId(args) {
     return actionId;
 }
 
+function requireImageId(args) {
+    const imageId = firstNonEmptyString(args.imageId, args.image_id, args.target);
+    if (!imageId) throw new Error('[LoomController] 缺少必需参数 imageId。');
+    return imageId;
+}
+
 function parseObject(value, fieldName, fallback = {}) {
     if (value === undefined || value === null || value === '') return fallback;
     if (typeof value === 'object' && !Array.isArray(value)) return value;
@@ -419,6 +425,72 @@ async function getPageInfo(args) {
     });
 }
 
+async function getPageImage(args) {
+    const appId = requireAppId(args);
+    const imageId = requireImageId(args);
+    const params = {
+        imageId,
+    };
+    for (const field of [
+        'format',
+        'imageFormat',
+        'quality',
+        'maxWidth',
+        'snapshotId',
+        'documentGeneration',
+        'runtimeInstanceId',
+    ]) {
+        if (args[field] !== undefined && args[field] !== null && args[field] !== '') {
+            params[field] = args[field];
+        }
+    }
+
+    const strict = optionalBoolean(args.strict, false);
+    if (args.strict !== undefined) params.strict = strict;
+    const execution = await requireManager().executeWebAgentAction(
+        appId,
+        'page_get_image',
+        params,
+        { strict }
+    );
+    const routed = execution.response?.result || {};
+    const image = routed.result || routed;
+    const dataUrl = firstNonEmptyString(image.dataUrl, image.url);
+    if (!dataUrl.startsWith('data:image/')) {
+        throw new Error('[LoomController] 页面图片动作未返回有效的 data:image Data URL。');
+    }
+
+    const summary = [
+        '# LoomAPP 页面图片已获取',
+        '',
+        `- App ID：${appId}`,
+        `- 图片 ID：${image.imageId || imageId}`,
+        image.resolvedImageId ? `- 严格图片 ID：${image.resolvedImageId}` : '',
+        image.kind ? `- 类型：${image.kind}` : '',
+        image.caption ? `- 说明：${image.caption}` : (image.alt ? `- 说明：${image.alt}` : ''),
+        image.outputSize
+            ? `- 输出尺寸：${image.outputSize.width}×${image.outputSize.height}`
+            : '',
+        image.format ? `- 格式：${image.format}` : '',
+        image.byteLength ? `- 字节数：${image.byteLength}` : '',
+    ].filter(Boolean).join('\n');
+    const { dataUrl: _dataUrl, url: _url, ...imageMetadata } = image;
+    return {
+        content: [
+            { type: 'text', text: summary },
+            { type: 'image_url', image_url: { url: dataUrl } },
+        ],
+        details: {
+            command: 'GetPageImage',
+            appId,
+            actionId: execution.actionId,
+            executedAt: execution.executedAt,
+            responseCode: execution.response?.code,
+            image: imageMetadata,
+        },
+    };
+}
+
 async function executeAction(args) {
     const appId = requireAppId(args);
     const actionId = requireActionId(args);
@@ -519,13 +591,17 @@ async function processToolCall(rawArgs = {}) {
             return getRenderedText(rawArgs);
         case 'getpageinfo':
             return getPageInfo(rawArgs);
+        case 'getpageimage':
+        case 'get_page_image':
+        case 'page_get_image':
+            return getPageImage(rawArgs);
         case 'executeaction':
             return executeAction(rawArgs);
         case 'editappsources':
             return editAppSources(rawArgs);
         default:
             throw new Error(
-                '[LoomController] 不支持的 command。可用值：ListApps、ListOpenApps、CreateApp、OpenApp、CloseApp、GetAppSources、GetRuntimeSource、GetRenderedText、GetPageInfo、ExecuteAction、EditAppSources。'
+                '[LoomController] 不支持的 command。可用值：ListApps、ListOpenApps、CreateApp、OpenApp、CloseApp、GetAppSources、GetRuntimeSource、GetRenderedText、GetPageInfo、GetPageImage、ExecuteAction、EditAppSources。'
             );
     }
 }
@@ -543,6 +619,7 @@ module.exports = {
     _test: {
         normalizeCommand,
         requireActionId,
+        requireImageId,
         parseObject,
         parseWaitMs,
         getSerialCommandEntries,
