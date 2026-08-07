@@ -19,6 +19,7 @@ const {
 const MANIFEST_FILE = 'loom.json';
 const INJECT_CSS_FILE = 'inject.css';
 const INJECT_JS_FILE = 'inject.js';
+const DEVICE_PERMISSIONS_FILE = 'device-permissions.json';
 const PACKAGE_FORMAT = 'vcp-loom-package';
 const PACKAGE_VERSION = 1;
 const TITLE_BAR_HEIGHT = 44;
@@ -226,6 +227,7 @@ class VCPLoomManager {
         this.appsRoot = path.join(this.appDataRoot, 'LoomApps');
         this.managerUiPath = path.join(this.projectRoot, 'Loommodules', 'manager.html');
         this.shellUiPath = path.join(this.projectRoot, 'Loommodules', 'shell.html');
+        this.deviceMenuUiPath = path.join(this.projectRoot, 'Loommodules', 'device-menu.html');
         this.preloadPath = path.join(this.projectRoot, 'preloads', 'loom.js');
         this.pagePreloadPath = path.join(this.projectRoot, 'preloads', 'loom-page.js');
         this.webCoreRoot = path.join(__dirname, 'webcore');
@@ -238,16 +240,28 @@ class VCPLoomManager {
         this.requestConfiguredPartitions = new Set();
         this.ipcRegistered = false;
         this.initialized = false;
+        this.initializationPromise = null;
     }
 
     async initialize() {
         if (this.initialized) return this;
-        await fs.ensureDir(this.appsRoot);
-        await this.reloadRegistry();
-        this.registerIpc();
-        this.initialized = true;
-        console.log(`[VCPLoomManager] Initialized with ${this.manifests.size} app(s).`);
-        return this;
+        if (this.initializationPromise) return this.initializationPromise;
+
+        this.initializationPromise = (async () => {
+            await fs.ensureDir(this.appsRoot);
+            await this.reloadRegistry();
+            this.registerIpc();
+            this.initialized = true;
+            console.log(`[VCPLoomManager] Initialized with ${this.manifests.size} app(s).`);
+            return this;
+        })();
+
+        try {
+            return await this.initializationPromise;
+        } catch (error) {
+            this.initializationPromise = null;
+            throw error;
+        }
     }
 
     assertAppId(appId) {
@@ -477,13 +491,41 @@ class VCPLoomManager {
         return this.webAgentSourceCache;
     }
 
-    async initializeWebAgentRuntime(instance) {
+    async waitForDocumentReady(instance, generation) {
+        const contents = instance?.view?.webContents;
+        if (!contents || contents.isDestroyed()) {
+            throw new Error('LoomAPP 页面进程不可用。');
+        }
+        if (!contents.isLoadingMainFrame?.() && !instance.loading) return;
+
+        await Promise.race([
+            instance.documentReadyPromise,
+            new Promise((_, reject) => setTimeout(
+                () => reject(new Error('等待 LoomAPP 文档加载完成超时。')),
+                30000
+            )),
+        ]);
+        if (generation !== instance.documentGeneration) {
+            const error = new Error('页面已导航，放弃旧文档的 Web Agent 初始化。');
+            error.code = 'LOOM_DOCUMENT_CHANGED';
+            throw error;
+        }
+    }
+
+    async initializeWebAgentRuntime(instance, generation = instance.documentGeneration) {
         const contents = instance?.view?.webContents;
         if (!contents || contents.isDestroyed()) {
             throw new Error('LoomAPP 页面进程不可用。');
         }
 
+        await this.waitForDocumentReady(instance, generation);
         const sources = await this.getWebAgentSources();
+        if (generation !== instance.documentGeneration) {
+            const error = new Error('页面已导航，放弃旧文档的 Web Agent 初始化。');
+            error.code = 'LOOM_DOCUMENT_CHANGED';
+            throw error;
+        }
+
         await contents.executeJavaScriptInIsolatedWorld(WEB_AGENT_WORLD_ID, [
             ...sources,
             {
@@ -495,7 +537,7 @@ class VCPLoomManager {
                     globalThis.__vcpLoomWebAgentRuntime = core.createWebAgentPageRuntime(
                         { window, document, Node },
                         {
-                            runtimeInstanceId: ${JSON.stringify(`loom-${instance.appId}-${Date.now()}`)},
+                            runtimeInstanceId: ${JSON.stringify(`loom-${instance.appId}-${generation}-${Date.now()}`)},
                             redactSensitiveDom: true
                         }
                     );
@@ -504,7 +546,12 @@ class VCPLoomManager {
                 url: 'vcp-loom-webcore://bootstrap.js',
             },
         ], true);
-        instance.webAgentReady = true;
+        if (generation !== instance.documentGeneration) {
+            const error = new Error('页面已导航，Web Agent 初始化结果已过期。');
+            error.code = 'LOOM_DOCUMENT_CHANGED';
+            throw error;
+        }
+
         const identity = await contents.executeJavaScriptInIsolatedWorld(
             WEB_AGENT_WORLD_ID,
             [{
@@ -513,12 +560,31 @@ class VCPLoomManager {
             }],
             true
         );
+        if (generation !== instance.documentGeneration) {
+            const error = new Error('页面已导航，Web Agent 身份信息已过期。');
+            error.code = 'LOOM_DOCUMENT_CHANGED';
+            throw error;
+        }
+        instance.webAgentReady = true;
         instance.webAgentAdapter?.updateDocumentState(identity);
     }
 
     async ensureWebAgentRuntime(instance) {
-        if (!instance.webAgentReady) {
-            await this.initializeWebAgentRuntime(instance);
+        if (instance.webAgentReady) return instance;
+        if (instance.webAgentInitializationPromise) {
+            await instance.webAgentInitializationPromise;
+            return instance;
+        }
+
+        const generation = instance.documentGeneration;
+        const initialization = this.initializeWebAgentRuntime(instance, generation);
+        instance.webAgentInitializationPromise = initialization;
+        try {
+            await initialization;
+        } finally {
+            if (instance.webAgentInitializationPromise === initialization) {
+                instance.webAgentInitializationPromise = null;
+            }
         }
         return instance;
     }
@@ -740,6 +806,486 @@ class VCPLoomManager {
         }
     }
 
+    isAllowedHardwareOrigin(instance, rawOrigin) {
+        try {
+            const origin = new URL(String(rawOrigin || '')).origin;
+            const currentUrl = instance.view.webContents.getURL();
+            const allowed = new Set([new URL(instance.manifest.startUrl).origin]);
+            if (currentUrl) allowed.add(new URL(currentUrl).origin);
+            return allowed.has(origin);
+        } catch {
+            return false;
+        }
+    }
+
+    devicePermissionsPath(appId) {
+        return path.join(this.appDir(appId), DEVICE_PERMISSIONS_FILE);
+    }
+
+    normalizeDeviceOrigin(value) {
+        try {
+            return new URL(String(value || '')).origin;
+        } catch {
+            return '';
+        }
+    }
+
+    deviceFingerprint(deviceType, device = {}) {
+        const type = String(deviceType || device.type || '').toLowerCase();
+        const vendorId = device.vendorId ?? device.usbVendorId;
+        const productId = device.productId ?? device.usbProductId;
+
+        // Chromium 的设备选择事件与刷新后的 device permission 回调不保证
+        // 提供相同的展示字段和 HID collections。这里只使用跨枚举稳定的硬件
+        // 标识；deviceId、名称和 collections 均不能参与持久授权匹配。
+        return JSON.stringify({
+            type,
+            vendorId: Number.isFinite(Number(vendorId)) ? Number(vendorId) : null,
+            productId: Number.isFinite(Number(productId)) ? Number(productId) : null,
+            serialNumber: String(device.serialNumber || ''),
+        });
+    }
+
+    normalizeStoredDeviceFingerprint(deviceType, fingerprint) {
+        try {
+            const identity = JSON.parse(String(fingerprint || ''));
+            return this.deviceFingerprint(deviceType, identity);
+        } catch {
+            return String(fingerprint || '');
+        }
+    }
+
+    async loadDevicePermissionGrants(appId) {
+        try {
+            const data = await fs.readJson(this.devicePermissionsPath(appId));
+            const grants = Array.isArray(data?.grants) ? data.grants : [];
+            return grants
+                .filter((grant) =>
+                    ['hid', 'usb', 'serial'].includes(grant?.deviceType)
+                    && typeof grant.origin === 'string'
+                    && typeof grant.fingerprint === 'string'
+                )
+                .map((grant) => ({
+                    deviceType: grant.deviceType,
+                    origin: this.normalizeDeviceOrigin(grant.origin),
+                    // 自动兼容旧版包含 name/collections 的指纹格式；下次写入时
+                    // 会自然迁移为稳定格式。
+                    fingerprint: this.normalizeStoredDeviceFingerprint(
+                        grant.deviceType,
+                        grant.fingerprint
+                    ),
+                    name: String(grant.name || ''),
+                    grantedAt: String(grant.grantedAt || ''),
+                }))
+                .filter((grant) => grant.origin);
+        } catch {
+            return [];
+        }
+    }
+
+    async saveDevicePermissionGrants(instance) {
+        await fs.writeJson(this.devicePermissionsPath(instance.appId), {
+            schemaVersion: 1,
+            grants: instance.devicePermissionGrants,
+        }, { spaces: 2 });
+    }
+
+    hasDevicePermission(instance, deviceType, origin, device) {
+        const normalizedOrigin = this.normalizeDeviceOrigin(origin);
+        const fingerprint = this.deviceFingerprint(deviceType, device);
+        return instance.devicePermissionGrants.some((grant) =>
+            grant.deviceType === deviceType
+            && grant.origin === normalizedOrigin
+            && grant.fingerprint === fingerprint
+        );
+    }
+
+    async grantDevicePermission(instance, deviceType, origin, device, name = '') {
+        const normalizedOrigin = this.normalizeDeviceOrigin(origin);
+        if (!normalizedOrigin) throw new Error('设备授权来源无效。');
+        const fingerprint = this.deviceFingerprint(deviceType, device);
+        const existing = instance.devicePermissionGrants.find((grant) =>
+            grant.deviceType === deviceType
+            && grant.origin === normalizedOrigin
+            && grant.fingerprint === fingerprint
+        );
+        if (existing) {
+            existing.name = String(name || existing.name || '');
+            existing.grantedAt = new Date().toISOString();
+        } else {
+            instance.devicePermissionGrants.push({
+                deviceType,
+                origin: normalizedOrigin,
+                fingerprint,
+                name: String(name || ''),
+                grantedAt: new Date().toISOString(),
+            });
+        }
+
+        // 选择回调返回给 Chromium 之前必须完成持久化。否则 requestDevice()
+        // 已成功但紧随其后的刷新可能早于授权文件落盘。
+        await this.saveDevicePermissionGrants(instance);
+    }
+
+    revokeDevicePermission(instance, deviceType, origin, device) {
+        const normalizedOrigin = this.normalizeDeviceOrigin(origin);
+        const fingerprint = this.deviceFingerprint(deviceType, device);
+        const before = instance.devicePermissionGrants.length;
+        instance.devicePermissionGrants = instance.devicePermissionGrants.filter((grant) =>
+            !(
+                grant.deviceType === deviceType
+                && grant.origin === normalizedOrigin
+                && grant.fingerprint === fingerprint
+            )
+        );
+        if (instance.devicePermissionGrants.length !== before) {
+            void this.saveDevicePermissionGrants(instance).catch((error) => {
+                console.warn(`[VCPLoomManager] Failed to persist revoked device permission for ${instance.appId}: ${error.message}`);
+            });
+        }
+    }
+
+    configureDevicePermissionBroker(instance) {
+        const contents = instance.view.webContents;
+        const persistentSession = contents.session;
+        const permissionTypes = new Set(['hid', 'usb', 'serial']);
+
+        persistentSession.setPermissionCheckHandler((_webContents, permission, requestingOrigin) => {
+            return permissionTypes.has(permission)
+                && this.isAllowedHardwareOrigin(instance, requestingOrigin);
+        });
+        persistentSession.setPermissionRequestHandler((_webContents, permission, callback, details) => {
+            const origin = details?.requestingOrigin || details?.securityOrigin || contents.getURL();
+            callback(
+                permissionTypes.has(permission)
+                && this.isAllowedHardwareOrigin(instance, origin)
+            );
+        });
+        persistentSession.setDevicePermissionHandler((details) => {
+            const deviceType = String(details?.deviceType || '');
+            return permissionTypes.has(deviceType)
+                && this.isAllowedHardwareOrigin(instance, details?.origin)
+                && this.hasDevicePermission(
+                    instance,
+                    deviceType,
+                    details?.origin,
+                    details?.device || {}
+                );
+        });
+
+        const protocols = [
+            {
+                id: 'hid',
+                selectEvent: 'select-hid-device',
+                addedEvent: 'hid-device-added',
+                removedEvent: 'hid-device-removed',
+                initial: (args) => args[0]?.deviceList,
+                callback: (args) => args[1],
+                idOf: (device) => device?.deviceId,
+                nameOf: (device) => device?.productName,
+                requestOrigin: (args) =>
+                    args[0]?.frameOrigin || args[0]?.origin || contents.getURL(),
+                revokedEvent: 'hid-device-revoked',
+                revokedDevice: (details) => details?.device,
+                revokedOrigin: (details) => details?.origin,
+            },
+            {
+                id: 'usb',
+                selectEvent: 'select-usb-device',
+                addedEvent: 'usb-device-added',
+                removedEvent: 'usb-device-removed',
+                initial: (args) => args[0]?.deviceList,
+                callback: (args) => args[1],
+                idOf: (device) => device?.deviceId,
+                nameOf: (device) => device?.productName,
+                requestOrigin: (args) =>
+                    args[0]?.frameOrigin || args[0]?.origin || contents.getURL(),
+                revokedEvent: 'usb-device-revoked',
+                revokedDevice: (details) => details?.device,
+                revokedOrigin: (details) => details?.origin,
+            },
+            {
+                id: 'serial',
+                selectEvent: 'select-serial-port',
+                addedEvent: 'serial-port-added',
+                removedEvent: 'serial-port-removed',
+                initial: (args) => args[0],
+                callback: (args) => args[2],
+                idOf: (device) => device?.portId,
+                nameOf: (device) => device?.displayName,
+                requestOrigin: () => contents.getURL(),
+                revokedEvent: 'serial-port-revoked',
+                revokedDevice: (details) => details?.port,
+                revokedOrigin: (details) => details?.origin,
+            },
+        ];
+
+        const cleanupCallbacks = [];
+        const publish = (protocol, devicesById) => {
+            const devices = Array.from(devicesById.values()).map((device, index) => {
+                const id = String(protocol.idOf(device) || '');
+                const name = protocol.nameOf(device) || `${protocol.id.toUpperCase()} 设备 ${index + 1}`;
+                const ids = [];
+                if (device.vendorId !== undefined) {
+                    ids.push(`VID ${Number(device.vendorId).toString(16).padStart(4, '0')}`);
+                }
+                if (device.productId !== undefined) {
+                    ids.push(`PID ${Number(device.productId).toString(16).padStart(4, '0')}`);
+                }
+                if (device.serialNumber) ids.push(`SN ${device.serialNumber}`);
+                return { id, name, detail: ids.join(' · ') };
+            });
+            this.sendToShell(instance, 'loom:device-candidates', {
+                protocol: protocol.id,
+                devices,
+            });
+        };
+
+        for (const protocol of protocols) {
+            const onSelect = (event, ...args) => {
+                event.preventDefault();
+                instance.pendingDeviceSelections.get(protocol.id)?.cancel();
+
+                const callback = protocol.callback(args);
+                if (typeof callback !== 'function') return;
+                const devicesById = new Map();
+                const add = (device) => {
+                    const id = String(protocol.idOf(device) || '');
+                    if (id) devicesById.set(id, device);
+                };
+                for (const device of Array.isArray(protocol.initial(args)) ? protocol.initial(args) : []) {
+                    add(device);
+                }
+
+                let settled = false;
+                const onAdded = (_event, device) => {
+                    add(device);
+                    publish(protocol, devicesById);
+                };
+                const onRemoved = (_event, device) => {
+                    devicesById.delete(String(protocol.idOf(device) || ''));
+                    publish(protocol, devicesById);
+                };
+                const finish = (deviceId = '') => {
+                    if (settled) return;
+                    settled = true;
+                    persistentSession.removeListener(protocol.addedEvent, onAdded);
+                    persistentSession.removeListener(protocol.removedEvent, onRemoved);
+                    if (instance.pendingDeviceSelections.get(protocol.id)?.finish === finish) {
+                        instance.pendingDeviceSelections.delete(protocol.id);
+                    }
+                    callback(String(deviceId || ''));
+                };
+
+                persistentSession.on(protocol.addedEvent, onAdded);
+                persistentSession.on(protocol.removedEvent, onRemoved);
+                instance.pendingDeviceSelections.set(protocol.id, {
+                    protocol,
+                    origin: this.normalizeDeviceOrigin(protocol.requestOrigin(args)),
+                    devicesById,
+                    finish,
+                    cancel: () => finish(''),
+                });
+                publish(protocol, devicesById);
+            };
+            const onRevoked = (_event, details) => {
+                const device = protocol.revokedDevice(details);
+                const origin = protocol.revokedOrigin(details) || contents.getURL();
+                if (device) {
+                    this.revokeDevicePermission(instance, protocol.id, origin, device);
+                }
+            };
+            persistentSession.on(protocol.selectEvent, onSelect);
+            persistentSession.on(protocol.revokedEvent, onRevoked);
+            cleanupCallbacks.push(() => {
+                instance.pendingDeviceSelections.get(protocol.id)?.cancel();
+                persistentSession.removeListener(protocol.selectEvent, onSelect);
+                persistentSession.removeListener(protocol.revokedEvent, onRevoked);
+            });
+        }
+
+        const onBluetooth = (event, devices, callback) => {
+            event.preventDefault();
+            let pending = instance.pendingDeviceSelections.get('bluetooth');
+            if (!pending) {
+                const devicesById = new Map();
+                const finish = (deviceId = '') => {
+                    if (instance.pendingDeviceSelections.get('bluetooth') === pending) {
+                        instance.pendingDeviceSelections.delete('bluetooth');
+                    }
+                    callback(String(deviceId || ''));
+                };
+                pending = {
+                    devicesById,
+                    finish,
+                    cancel: () => finish(''),
+                };
+                instance.pendingDeviceSelections.set('bluetooth', pending);
+            }
+            for (const device of Array.isArray(devices) ? devices : []) {
+                const id = String(device?.deviceId || '');
+                if (id) pending.devicesById.set(id, device);
+            }
+            this.sendToShell(instance, 'loom:device-candidates', {
+                protocol: 'bluetooth',
+                devices: Array.from(pending.devicesById.values()).map((device, index) => ({
+                    id: String(device.deviceId || ''),
+                    name: device.deviceName || `蓝牙设备 ${index + 1}`,
+                    detail: '',
+                })),
+            });
+        };
+        contents.on('select-bluetooth-device', onBluetooth);
+        cleanupCallbacks.push(() => {
+            instance.pendingDeviceSelections.get('bluetooth')?.cancel();
+            contents.removeListener('select-bluetooth-device', onBluetooth);
+        });
+
+        instance.devicePermissionCleanup = () => {
+            for (const cleanup of cleanupCallbacks.splice(0)) cleanup();
+            for (const pending of instance.pendingDeviceSelections.values()) pending.cancel();
+            instance.pendingDeviceSelections.clear();
+        };
+    }
+
+    requestDeviceFromShell(instance, protocolId) {
+        const protocol = String(protocolId || '').toLowerCase();
+        const scripts = {
+            hid: `(async () => {
+                if (!navigator.hid) throw new Error('当前页面不支持 WebHID');
+                const selected = Array.from(await navigator.hid.requestDevice({ filters: [] }));
+                const keys = selected.map((device) =>
+                    [device.vendorId, device.productId, device.productName || ''].join(':')
+                );
+                for (let attempt = 0; attempt < 30; attempt += 1) {
+                    const granted = Array.from(await navigator.hid.getDevices());
+                    const confirmed = keys.every((key) => granted.some((device) =>
+                        [device.vendorId, device.productId, device.productName || ''].join(':') === key
+                    ));
+                    if (selected.length > 0 && confirmed) {
+                        return {
+                            confirmed: true,
+                            count: granted.length,
+                            name: selected.map((device) => device.productName || 'HID 设备').join('、')
+                        };
+                    }
+                    await new Promise((resolve) => setTimeout(resolve, 100));
+                }
+                return { confirmed: false, count: (await navigator.hid.getDevices()).length };
+            })()`,
+            usb: `(async () => {
+                if (!navigator.usb) throw new Error('当前页面不支持 WebUSB');
+                const selected = await navigator.usb.requestDevice({ filters: [] });
+                const key = [selected.vendorId, selected.productId, selected.productName || ''].join(':');
+                for (let attempt = 0; attempt < 30; attempt += 1) {
+                    const granted = Array.from(await navigator.usb.getDevices());
+                    if (granted.some((device) =>
+                        [device.vendorId, device.productId, device.productName || ''].join(':') === key
+                    )) {
+                        return {
+                            confirmed: true,
+                            count: granted.length,
+                            name: selected.productName || 'USB 设备'
+                        };
+                    }
+                    await new Promise((resolve) => setTimeout(resolve, 100));
+                }
+                return { confirmed: false, count: (await navigator.usb.getDevices()).length };
+            })()`,
+            serial: `(async () => {
+                if (!navigator.serial) throw new Error('当前页面不支持 WebSerial');
+                const selected = await navigator.serial.requestPort({ filters: [] });
+                const selectedInfo = selected.getInfo();
+                const key = [selectedInfo.usbVendorId || 0, selectedInfo.usbProductId || 0].join(':');
+                for (let attempt = 0; attempt < 30; attempt += 1) {
+                    const granted = Array.from(await navigator.serial.getPorts());
+                    if (granted.some((port) => {
+                        const info = port.getInfo();
+                        return [info.usbVendorId || 0, info.usbProductId || 0].join(':') === key;
+                    })) {
+                        return { confirmed: true, count: granted.length, name: '串口设备' };
+                    }
+                    await new Promise((resolve) => setTimeout(resolve, 100));
+                }
+                return { confirmed: false, count: (await navigator.serial.getPorts()).length };
+            })()`,
+            // WebBluetooth 没有 getDevices()，网站应直接消费 requestDevice()
+            // 返回值；不能通过一次盲目刷新来“确认”授权。
+            bluetooth: `(async () => {
+                if (!navigator.bluetooth) throw new Error('当前页面不支持 WebBluetooth');
+                const selected = await navigator.bluetooth.requestDevice({ acceptAllDevices: true });
+                return { confirmed: true, reload: false, count: 1, name: selected.name || '蓝牙设备' };
+            })()`,
+        };
+        if (!Object.prototype.hasOwnProperty.call(scripts, protocol)) {
+            throw new Error(`不支持的设备协议：${protocol}`);
+        }
+
+        const contents = instance.view.webContents;
+        if (contents.isDestroyed()) throw new Error('LoomAPP 页面进程不可用。');
+        const requestPromise = contents.executeJavaScript(scripts[protocol], true);
+        void requestPromise.then((result) => {
+            if (!result?.confirmed) {
+                this.sendToShell(instance, 'loom:device-candidates', {
+                    protocol,
+                    devices: [],
+                    error: `设备已选择，但授权尚未稳定（当前可回读 ${Number(result?.count) || 0} 个设备）。页面未刷新，请重试。`,
+                });
+                return;
+            }
+
+            this.sendToShell(instance, 'loom:device-candidates', {
+                protocol,
+                devices: [],
+                connected: true,
+                count: Number(result.count) || 0,
+                name: result.name || `${protocol.toUpperCase()} 设备`,
+            });
+
+            // 不在这里刷新。许多厂商站点会在 requestDevice() 完成后自行
+            // 重建或刷新控制应用；再次 reload 会销毁新页面刚打开的 HID/USB/
+            // Serial 句柄，导致首条 sendReport()/transferOut() 通讯失败。
+        }).catch((error) => {
+            this.sendToShell(instance, 'loom:device-candidates', {
+                protocol,
+                devices: [],
+                error: error?.message || String(error),
+            });
+        });
+        return { pending: true, protocol };
+    }
+
+    async selectDeviceFromShell(instance, payload = {}) {
+        const protocol = String(payload.protocol || '').toLowerCase();
+        const deviceId = String(payload.deviceId || '');
+        const pending = instance.pendingDeviceSelections.get(protocol);
+        if (!pending || !deviceId || !pending.devicesById.has(deviceId)) {
+            throw new Error('设备候选已失效，请重新扫描。');
+        }
+        const device = pending.devicesById.get(deviceId);
+        const name = pending.protocol?.nameOf?.(device)
+            || device?.deviceName
+            || `${protocol.toUpperCase()} 设备`;
+        if (pending.protocol && ['hid', 'usb', 'serial'].includes(protocol)) {
+            try {
+                await this.grantDevicePermission(
+                    instance,
+                    protocol,
+                    pending.origin || instance.view.webContents.getURL(),
+                    device,
+                    name
+                );
+            } catch (error) {
+                // 持久化失败时取消 Chromium 选择，避免产生“本次看似成功、
+                // 刷新或重启立即丢失”的半提交状态。
+                pending.finish('');
+                throw new Error(`设备授权持久化失败：${error.message}`);
+            }
+        }
+        pending.finish(deviceId);
+        return { connected: true, protocol, deviceId, name };
+    }
+
     configureSession(manifest) {
         const partition = this.partitionName(manifest.id);
         const persistentSession = session.fromPartition(partition, { cache: true });
@@ -820,20 +1366,45 @@ class VCPLoomManager {
                 webSecurity: true,
             },
         });
+        const deviceMenuView = new WebContentsView({
+            webPreferences: {
+                preload: this.preloadPath,
+                contextIsolation: true,
+                nodeIntegration: false,
+                sandbox: true,
+                javascript: true,
+                webSecurity: true,
+            },
+        });
+        deviceMenuView.setBackgroundColor('#00000000');
 
+        const devicePermissionGrants = await this.loadDevicePermissionGrants(manifest.id);
+        let resolveDocumentReady;
         const instance = {
             appId: manifest.id,
             manifest,
             window: win,
             view,
+            deviceMenuView,
             cssKey: null,
             loading: true,
             lastError: null,
             lastSuccessfulRender: null,
+            documentGeneration: 0,
+            documentReadyPromise: new Promise((resolve) => {
+                resolveDocumentReady = resolve;
+            }),
+            resolveDocumentReady,
             webAgentReady: false,
+            webAgentInitializationPromise: null,
             webAgentAdapter: null,
             webAgentRuntime: null,
+            deviceMenuOpen: false,
+            devicePermissionGrants,
+            pendingDeviceSelections: new Map(),
+            devicePermissionCleanup: null,
         };
+        this.configureDevicePermissionBroker(instance);
         instance.webAgentAdapter = createElectronWebAgentAdapter(view.webContents, {
             appId: manifest.id,
             worldId: WEB_AGENT_WORLD_ID,
@@ -850,6 +1421,10 @@ class VCPLoomManager {
 
         this.instances.set(manifest.id, instance);
         win.contentView.addChildView(view);
+        // 后加入的原生 View 位于网页 View 上方，菜单可真正覆盖网页。
+        win.contentView.addChildView(deviceMenuView);
+        deviceMenuView.setBounds({ x: 0, y: 0, width: 0, height: 0 });
+        await deviceMenuView.webContents.loadFile(this.deviceMenuUiPath);
         this.trackChildWindow(win);
         this.bindInstance(instance);
 
@@ -887,10 +1462,21 @@ class VCPLoomManager {
         win.on('maximize', syncBounds);
         win.on('unmaximize', syncBounds);
 
-        contents.on('did-start-loading', () => {
+        contents.on('did-start-navigation', (_event, _url, isInPlace, isMainFrame) => {
+            if (!isMainFrame || isInPlace) return;
+            instance.documentGeneration += 1;
             instance.loading = true;
             instance.webAgentReady = false;
+            instance.webAgentInitializationPromise = null;
+            instance.documentReadyPromise = new Promise((resolve) => {
+                instance.resolveDocumentReady = resolve;
+            });
             instance.webAgentAdapter?.invalidateDocument();
+            this.sendToShell(instance, 'loom:shell-state', this.buildShellState(instance));
+        });
+
+        contents.on('did-start-loading', () => {
+            instance.loading = true;
             this.sendToShell(instance, 'loom:shell-state', this.buildShellState(instance));
         });
 
@@ -901,17 +1487,32 @@ class VCPLoomManager {
 
         contents.on('did-finish-load', async () => {
             instance.lastError = null;
-            await this.applyInjections(instance);
-            try {
-                await this.initializeWebAgentRuntime(instance);
-            } catch (error) {
+            instance.loading = false;
+            instance.resolveDocumentReady?.();
+            const generation = instance.documentGeneration;
+
+            // 用户注入脚本、Agent 运行时和文本快照互不阻塞。尤其不能让一个
+            // 长时间运行的 inject.js 阻止 AI/CDP 侧获得页面能力。
+            const results = await Promise.allSettled([
+                this.applyInjections(instance),
+                this.ensureWebAgentRuntime(instance),
+                this.captureRenderedSnapshot(instance),
+            ]);
+            const agentResult = results[1];
+            if (
+                agentResult.status === 'rejected'
+                && generation === instance.documentGeneration
+                && agentResult.reason?.code !== 'LOOM_DOCUMENT_CHANGED'
+            ) {
                 instance.webAgentReady = false;
-                console.warn(`[VCPLoomManager] Failed to initialize Web Agent Runtime for ${instance.appId}: ${error.message}`);
+                console.warn(`[VCPLoomManager] Failed to initialize Web Agent Runtime for ${instance.appId}: ${agentResult.reason.message}`);
             }
-            try {
-                await this.captureRenderedSnapshot(instance);
-            } catch (error) {
-                console.warn(`[VCPLoomManager] Failed to capture rendered snapshot for ${instance.appId}: ${error.message}`);
+            const snapshotResult = results[2];
+            if (
+                snapshotResult.status === 'rejected'
+                && generation === instance.documentGeneration
+            ) {
+                console.warn(`[VCPLoomManager] Failed to capture rendered snapshot for ${instance.appId}: ${snapshotResult.reason.message}`);
             }
             this.sendToShell(instance, 'loom:shell-state', this.buildShellState(instance));
         });
@@ -919,6 +1520,7 @@ class VCPLoomManager {
         contents.on('did-fail-load', (_event, code, description, validatedUrl, isMainFrame) => {
             if (!isMainFrame || code === -3) return;
             instance.loading = false;
+            instance.resolveDocumentReady?.();
             instance.lastError = `${description} (${code})`;
             this.sendToShell(instance, 'loom:shell-state', this.buildShellState(instance));
             console.warn(`[VCPLoomManager] ${instance.appId} failed to load ${validatedUrl}: ${instance.lastError}`);
@@ -962,9 +1564,20 @@ class VCPLoomManager {
 
         win.once('close', () => {
             instance.closing = true;
+            instance.devicePermissionCleanup?.();
+            instance.devicePermissionCleanup = null;
             void instance.webAgentAdapter?.dispose().catch((error) => {
                 console.warn(`[VCPLoomManager] Failed to dispose Web Agent Adapter for ${instance.appId}: ${error.message}`);
             });
+            const menuContents = instance.deviceMenuView?.webContents;
+            if (menuContents && !menuContents.isDestroyed()) {
+                try {
+                    win.contentView.removeChildView(instance.deviceMenuView);
+                } catch (error) {
+                    console.warn(`[VCPLoomManager] Failed to detach device menu for ${instance.appId}: ${error.message}`);
+                }
+                menuContents.close({ waitForBeforeUnload: false });
+            }
             if (!contents.isDestroyed()) {
                 // WebContentsView 不会随 BrowserWindow 自动销毁。必须在父窗口的
                 // 原生对象释放前先脱离视图树并关闭，否则 closed 阶段操作它会触发
@@ -996,12 +1609,28 @@ class VCPLoomManager {
         const height = viewport.autoResize ? availableHeight : Math.min(viewport.height, availableHeight);
         const x = Math.max(0, Math.floor((availableWidth - width) / 2));
 
+        // 网页尺寸永远不因设备菜单开关而变化。
         instance.view.setBounds({
             x,
             y: TITLE_BAR_HEIGHT,
             width,
             height,
         });
+
+        const menuView = instance.deviceMenuView;
+        if (menuView?.webContents && !menuView.webContents.isDestroyed()) {
+            if (instance.deviceMenuOpen) {
+                const menuWidth = Math.max(280, Math.min(360, contentWidth - 16));
+                menuView.setBounds({
+                    x: Math.max(8, contentWidth - menuWidth - 8),
+                    y: TITLE_BAR_HEIGHT + 6,
+                    width: menuWidth,
+                    height: Math.min(212, availableHeight),
+                });
+            } else {
+                menuView.setBounds({ x: 0, y: 0, width: 0, height: 0 });
+            }
+        }
     }
 
     async applyInjections(instance) {
@@ -1050,11 +1679,20 @@ class VCPLoomManager {
         if (shellContents && !shellContents.isDestroyed()) {
             shellContents.send(channel, payload);
         }
+        if (channel === 'loom:device-candidates') {
+            const menuContents = instance?.deviceMenuView?.webContents;
+            if (menuContents && !menuContents.isDestroyed()) {
+                menuContents.send(channel, payload);
+            }
+        }
     }
 
     getInstanceBySender(sender) {
         for (const instance of this.instances.values()) {
-            if (!instance.window.isDestroyed() && instance.window.webContents.id === sender.id) {
+            if (instance.window.isDestroyed()) continue;
+            if (instance.window.webContents.id === sender.id) return instance;
+            const menuContents = instance.deviceMenuView?.webContents;
+            if (menuContents && !menuContents.isDestroyed() && menuContents.id === sender.id) {
                 return instance;
             }
         }
@@ -1124,6 +1762,24 @@ class VCPLoomManager {
         return { success: true, length: payload.length };
     }
 
+    toggleDevToolsForWindow(win) {
+        if (!win || win.isDestroyed()) return false;
+        const instance = Array.from(this.instances.values()).find((candidate) =>
+            !candidate.window.isDestroyed() && candidate.window === win
+        );
+        if (!instance || instance.view.webContents.isDestroyed()) return false;
+
+        const contents = instance.view.webContents;
+        if (contents.isDevToolsOpened()) {
+            contents.closeDevTools();
+        } else {
+            // WebContentsView 是位于 BrowserWindow 壳之上的原生视图。若把壳的
+            // DevTools 停靠在窗口内，网页视图会覆盖控制台，因此始终独立打开。
+            contents.openDevTools({ mode: 'detach', activate: true });
+        }
+        return true;
+    }
+
     async closeApp(appId) {
         const id = this.assertAppId(appId);
         const instance = this.instances.get(id);
@@ -1148,6 +1804,7 @@ class VCPLoomManager {
             persistentSession.clearAuthCache(),
         ]);
         await persistentSession.cookies.flushStore();
+        await fs.remove(this.devicePermissionsPath(id));
         return { success: true };
     }
 
@@ -1373,6 +2030,17 @@ class VCPLoomManager {
                 return this.navigateToUrl(instance, payload);
             } else if (action === 'share-text') {
                 return this.shareVisibleText(instance);
+            } else if (action === 'device-menu') {
+                instance.deviceMenuOpen = payload === true;
+                this.updateViewBounds(instance);
+                return {
+                    appId: instance.appId,
+                    deviceMenuOpen: instance.deviceMenuOpen,
+                };
+            } else if (action === 'device-request') {
+                return this.requestDeviceFromShell(instance, payload);
+            } else if (action === 'device-select') {
+                return this.selectDeviceFromShell(instance, payload);
             } else if (action === 'open-external') {
                 await shell.openExternal(instance.view.webContents.getURL());
             } else {

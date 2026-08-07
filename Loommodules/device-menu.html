@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Loom 设备中心</title>
+    <link rel="stylesheet" href="../styles/themes.css">
+    <style>
+        :root {
+            --line: color-mix(in srgb, var(--border-color, #3b4449) 72%, transparent);
+            --muted: var(--secondary-text, #a7afb1);
+            --accent: var(--highlight-text, #f2a900);
+            --text: var(--primary-text, #f2f0e9);
+            --panel: var(--notification-bg, var(--secondary-bg, #20252a));
+            --hover: color-mix(in srgb, var(--accent) 11%, transparent);
+        }
+        * { box-sizing: border-box; }
+        html, body {
+            width: 100%; height: 100%; margin: 0; overflow: hidden;
+            background: transparent; color: var(--text);
+            font-family: "Segoe UI", "Microsoft YaHei UI", sans-serif;
+        }
+        .menu {
+            width: 100%; height: 100%; display: flex; flex-direction: column; gap: 9px;
+            padding: 11px; border: 1px solid var(--line); border-radius: 12px;
+            background: color-mix(in srgb, var(--panel) 96%, transparent);
+            box-shadow: 0 14px 34px rgba(0, 0, 0, .38);
+        }
+        .head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+        .title { font-size: 12px; font-weight: 650; }
+        .status { min-width: 0; flex: 1; color: var(--muted); font-size: 10px; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .close {
+            width: 25px; height: 25px; border: 0; border-radius: 7px;
+            background: transparent; color: var(--muted); cursor: pointer;
+        }
+        .close:hover { background: var(--hover); color: var(--accent); }
+        .protocols { display: flex; gap: 6px; flex-wrap: wrap; }
+        .protocol {
+            min-height: 30px; padding: 0 11px; border: 1px solid var(--line); border-radius: 8px;
+            background: transparent; color: var(--muted); cursor: pointer; font-size: 11px;
+        }
+        .protocol:hover, .protocol.active {
+            border-color: color-mix(in srgb, var(--accent) 48%, transparent);
+            background: var(--hover); color: var(--accent);
+        }
+        .list {
+            min-height: 0; flex: 1; display: flex; flex-direction: column; gap: 5px;
+            padding-right: 2px; overflow: auto;
+        }
+        .item, .empty {
+            width: 100%; min-height: 38px; padding: 7px 9px; border: 1px solid var(--line);
+            border-radius: 8px; background: color-mix(in srgb, var(--primary-bg, #171a1d) 42%, transparent);
+            color: var(--text); text-align: left; font-size: 11px;
+        }
+        .item { cursor: pointer; }
+        .item:hover { border-color: color-mix(in srgb, var(--accent) 48%, transparent); }
+        .item small { display: block; margin-top: 2px; color: var(--muted); font-size: 9px; }
+        .empty { display: grid; place-items: center; color: var(--muted); text-align: center; }
+        .empty.error { color: var(--danger-color, #e06c5f); }
+        .empty.success { color: var(--success-color, #76bfae); }
+    </style>
+</head>
+<body>
+    <main class="menu">
+        <header class="head">
+            <span class="title">设备中心</span>
+            <span class="status" id="status">选择连接协议</span>
+            <button class="close" id="close" title="关闭">×</button>
+        </header>
+        <nav class="protocols" id="protocols"></nav>
+        <section class="list" id="list">
+            <div class="empty">选择协议后，将在此显示可连接设备</div>
+        </section>
+    </main>
+    <script>
+        'use strict';
+
+        const api = window.loomAPI;
+        const protocols = [
+            ['hid', 'HID'],
+            ['usb', 'USB'],
+            ['serial', '串口'],
+            ['bluetooth', '蓝牙'],
+        ];
+        let selectedProtocol = '';
+
+        const $ = (id) => document.getElementById(id);
+        const unwrap = (result) => {
+            if (!result || result.success !== true) throw new Error(result?.error || '操作失败');
+            return result.data;
+        };
+        const setMessage = (message, className = '') => {
+            $('list').replaceChildren();
+            const element = document.createElement('div');
+            element.className = `empty${className ? ` ${className}` : ''}`;
+            element.textContent = message;
+            $('list').appendChild(element);
+        };
+
+        function renderProtocols() {
+            $('protocols').replaceChildren();
+            for (const [id, label] of protocols) {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = `protocol${selectedProtocol === id ? ' active' : ''}`;
+                button.textContent = label;
+                button.addEventListener('click', async () => {
+                    selectedProtocol = id;
+                    renderProtocols();
+                    $('status').textContent = `正在扫描 ${label} 设备…`;
+                    setMessage('等待设备枚举…');
+                    try {
+                        unwrap(await api.shellAction('device-request', id));
+                    } catch (error) {
+                        $('status').textContent = '扫描失败';
+                        setMessage(error.message, 'error');
+                    }
+                });
+                $('protocols').appendChild(button);
+            }
+        }
+
+        function renderCandidates(payload = {}) {
+            if (payload.protocol !== selectedProtocol) return;
+
+            if (payload.error) {
+                $('status').textContent = '授权未完成';
+                setMessage(payload.error, 'error');
+                return;
+            }
+            if (payload.connected) {
+                $('status').textContent = `已授权 ${payload.name || '设备'}`;
+                setMessage(`授权已确认，可回读 ${Number(payload.count) || 1} 个设备`, 'success');
+                return;
+            }
+
+            const devices = Array.isArray(payload.devices) ? payload.devices : [];
+            $('status').textContent = devices.length ? `发现 ${devices.length} 个设备` : '暂未发现设备';
+            $('list').replaceChildren();
+            if (!devices.length) {
+                setMessage('未发现设备，请检查连接和设备模式');
+                return;
+            }
+
+            for (const device of devices) {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'item';
+                button.textContent = device.name || `${selectedProtocol.toUpperCase()} 设备`;
+                const detail = document.createElement('small');
+                detail.textContent = device.detail || '';
+                button.appendChild(detail);
+                button.addEventListener('click', async () => {
+                    $('status').textContent = '正在提交授权…';
+                    try {
+                        unwrap(await api.shellAction('device-select', {
+                            protocol: selectedProtocol,
+                            deviceId: device.id,
+                        }));
+                        $('status').textContent = '正在确认页面授权…';
+                    } catch (error) {
+                        $('status').textContent = '授权失败';
+                        setMessage(error.message, 'error');
+                    }
+                });
+                $('list').appendChild(button);
+            }
+        }
+
+        renderProtocols();
+        api.onDeviceCandidates(renderCandidates);
+        $('close').addEventListener('click', () => api.shellAction('device-menu', false));
+    </script>
+</body>
+</html>

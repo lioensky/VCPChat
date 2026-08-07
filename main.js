@@ -161,6 +161,13 @@ let isAudioEngineStopping = false;
 let appQuitCleanupPromise = null;
 let isFinalizingQuit = false;
 
+function toggleDevToolsForWindow(focusedWindow) {
+    if (!focusedWindow || focusedWindow.isDestroyed()) return;
+    if (loomManager?.toggleDevToolsForWindow(focusedWindow)) return;
+    const contents = focusedWindow.webContents;
+    if (contents && !contents.isDestroyed()) contents.toggleDevTools();
+}
+
 // --- Audio Engine Management ---
 // Now uses the Rust native audio engine instead of Python
 function startAudioEngine() {
@@ -862,10 +869,8 @@ if (!gotTheLock) {
                     {
                         label: '切换开发者工具',
                         accelerator: 'Ctrl+Shift+I',
-                        click: (item, focusedWindow) => {
-                            if (focusedWindow) {
-                                focusedWindow.webContents.toggleDevTools();
-                            }
+                        click: (_item, focusedWindow) => {
+                            toggleDevToolsForWindow(focusedWindow);
                         }
                     }
                 ]
@@ -1138,10 +1143,7 @@ if (!gotTheLock) {
         });
 
         globalShortcut.register('Control+Shift+I', () => {
-            const focusedWindow = BrowserWindow.getFocusedWindow();
-            if (focusedWindow && focusedWindow.webContents && !focusedWindow.webContents.isDestroyed()) {
-                focusedWindow.webContents.toggleDevTools();
-            }
+            toggleDevToolsForWindow(BrowserWindow.getFocusedWindow());
         });
 
         const noteMiniShortcutRegistered = globalShortcut.register('Super+Alt+Z', () => {

@@ -47,6 +47,7 @@ const loomAPI = Object.freeze({
 
     onRegistryChanged: (callback) => subscribe('loom:registry-changed', callback),
     onShellState: (callback) => subscribe('loom:shell-state', callback),
+    onDeviceCandidates: (callback) => subscribe('loom:device-candidates', callback),
 });
 
 contextBridge.exposeInMainWorld('loomAPI', loomAPI);

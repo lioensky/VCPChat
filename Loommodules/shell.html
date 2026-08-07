@@ -60,6 +60,8 @@
             width: auto; padding: 0 10px; gap: 5px; display: flex; font-size: 11px; border: 1px solid color-mix(in srgb, var(--accent) 32%, transparent);
             background: color-mix(in srgb, var(--accent) 9%, transparent);
         }
+        .device-center { position: relative; -webkit-app-region: no-drag; }
+        .device-button.active { background: var(--control-hover); color: var(--accent); }
         .windows { height: 44px; display: flex; margin-left: 3px; -webkit-app-region: no-drag; }
         .windows button { width: 43px; height: 43px; border: 0; color: var(--muted); background: transparent; cursor: pointer; font-size: 15px; }
         .windows button:hover { background: var(--control-hover); color: var(--accent); }
@@ -97,6 +99,9 @@
             <input class="url" id="url" type="text" inputmode="url" autocomplete="off" spellcheck="false" aria-label="网址" placeholder="输入网址并按 Enter">
         </div>
         <button class="tool" id="external" title="在系统浏览器中打开">↗</button>
+        <div class="device-center">
+            <button class="tool device-button" id="devices" title="设备中心">◉</button>
+        </div>
         <button class="tool share" id="share" title="将当前页面已渲染文本分享到 VChat 输入框"><span>◇</span><span>分享文本</span></button>
         <div class="windows">
             <button id="minimize" title="最小化">─</button>
@@ -113,6 +118,7 @@
         const $ = (id) => document.getElementById(id);
         let toastTimer = null;
         let currentUrl = '';
+        let deviceMenuOpen = false;
 
         function applyTheme(theme) {
             document.body.classList.toggle('light-theme', theme === 'light');
@@ -181,6 +187,15 @@
         $('url').addEventListener('blur', (event) => {
             if (!event.currentTarget.value.trim()) event.currentTarget.value = currentUrl;
         });
+        async function setDeviceMenu(open) {
+            const requestedState = Boolean(open);
+            const result = await action('device-menu', requestedState);
+            if (!result) return;
+            deviceMenuOpen = result.deviceMenuOpen === true;
+            $('devices').classList.toggle('active', deviceMenuOpen);
+        }
+
+        $('devices').addEventListener('click', () => setDeviceMenu(!deviceMenuOpen));
         $('back').addEventListener('click', () => action('back'));
         $('forward').addEventListener('click', () => action('forward'));
         $('home').addEventListener('click', () => action('home'));
