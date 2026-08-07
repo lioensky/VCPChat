@@ -10,186 +10,145 @@
     transition: opacity .5s ease-in-out;
 }
 
+html[data-ui-mode="next"] #vchat-dynamic-wallpaper-video {
+    top: var(--next-topbar-height, 44px);
+    right: auto;
+    bottom: auto;
+    left: var(--next-sidebar-width, 260px);
+    width: calc(100% - var(--next-sidebar-width, 260px));
+    height: calc(100% - var(--next-topbar-height, 44px));
+    border-radius: 14px 0 0 0;
+}
+
 body.vchat-dynamic-wallpaper-visible {
+    /* The theme wallpaper declaration is also important. */
+    /* stylelint-disable-next-line declaration-no-important */
     background-image: none !important;
 }
 
-#vchat-wallpaper-title-group {
-    display: flex;
-    align-items: center;
-    gap: 8px;
+/* The video is intentionally behind VChat's content.  Next UI normally
+ * paints an opaque main-panel color before its theme wallpaper, which made
+ * this layer look like a faint image instead of a wallpaper.  Keep a single
+ * readable theme scrim but remove that solid base while the plugin is shown. */
+html[data-ui-mode="next"] body.vchat-dynamic-wallpaper-visible {
+    --vchat-dynamic-wallpaper-scrim: color-mix(in srgb, var(--next-surface) 34%, transparent);
+}
+
+html[data-ui-mode="next"] body.vchat-dynamic-wallpaper-visible .main-content,
+html[data-ui-mode="next"] body.vchat-dynamic-wallpaper-visible .notifications-sidebar {
+    background-color: transparent;
+    background-image: linear-gradient(
+        var(--vchat-dynamic-wallpaper-scrim),
+        var(--vchat-dynamic-wallpaper-scrim)
+    ) !important;
+}
+
+.vchat-wallpaper-menu {
     min-width: 0;
-    flex: 1 1 auto;
-    overflow: hidden;
+    padding-right: 0;
 }
 
-#vchat-wallpaper-title-group #currentChatAgentName {
-    flex: 0 1 auto;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-#vchat-dynamic-wallpaper-panel {
-    display: flex;
-    align-items: center;
-    height: 32px;
-    padding: 4px 12px 4px 4px;
-    margin-left: 10px;
-    color: var(--secondary-text);
-    background: rgba(30, 30, 35, .6);
-    border: 1px solid rgba(255, 255, 255, .1);
-    border-radius: 20px;
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    box-shadow: 0 4px 6px rgba(0, 0, 0, .1);
-    box-sizing: border-box;
-    overflow: hidden;
-    transition: all .3s cubic-bezier(.4, 0, .2, 1);
-}
-
-body.light-theme #vchat-dynamic-wallpaper-panel {
-    background: rgba(240, 240, 245, .6);
-    border-color: rgba(0, 0, 0, .05);
-}
-
-#vchat-dynamic-wallpaper-panel.collapsed {
-    width: 32px;
-    padding: 4px;
-    background: transparent;
-    border-color: transparent;
-    box-shadow: none;
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-}
-
-#vchat-dynamic-wallpaper-panel svg[hidden] {
+.vchat-wallpaper-menu svg[hidden] {
     display: none;
 }
 
-.vchat-wallpaper-toggle,
 .vchat-wallpaper-control {
     display: flex;
     align-items: center;
     justify-content: center;
     flex: 0 0 auto;
     padding: 6px;
-    color: var(--secondary-text);
+    color: var(--vcp-ui-text-2, var(--secondary-text));
     background: transparent;
     border: 0;
-    border-radius: 50%;
+    border-radius: var(--vcp-ui-radius-sm, 4px);
     cursor: pointer;
-    transition: color .2s, background-color .2s, transform .2s;
+    transition: color .2s, background-color .2s;
 }
 
-.vchat-wallpaper-toggle {
-    width: 24px;
-    height: 24px;
-    padding: 4px;
-    border-radius: 4px;
+.vchat-wallpaper-control:disabled {
+    cursor: default;
+    opacity: .4;
 }
 
-.vchat-wallpaper-toggle:hover,
-.vchat-wallpaper-control:hover {
-    color: var(--primary-text);
-    background: rgba(255, 255, 255, .1);
-    transform: scale(1.1);
+.vchat-wallpaper-control:not(:disabled):hover {
+    color: var(--vcp-ui-text-0, var(--primary-text));
+    background: var(--vcp-ui-fill-1, rgba(255, 255, 255, .1));
 }
 
-body.light-theme .vchat-wallpaper-toggle:hover,
-body.light-theme .vchat-wallpaper-control:hover {
-    background: rgba(0, 0, 0, .05);
-}
-
-.vchat-wallpaper-toggle:active,
-.vchat-wallpaper-control:active {
-    transform: scale(.95);
-}
-
-.vchat-wallpaper-controls {
+.vchat-wallpaper-menu-row {
+    min-height: 34px;
+    padding: 0 8px;
     display: flex;
     align-items: center;
-    gap: 8px;
-    margin-left: 4px;
-    opacity: 1;
-    white-space: nowrap;
-    transition: opacity .2s ease-in;
+    justify-content: space-between;
+    gap: 12px;
+    color: var(--vcp-ui-text-1, var(--primary-text));
+    font-size: var(--vcp-ui-font-helper, 13px);
 }
 
-#vchat-dynamic-wallpaper-panel.collapsed .vchat-wallpaper-controls {
-    width: 0;
-    margin: 0;
-    opacity: 0;
-    pointer-events: none;
-}
-
-.vchat-wallpaper-visible {
-    position: relative;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex: 0 0 auto;
+.vchat-wallpaper-menu-row input[type="checkbox"] {
     width: 16px;
     height: 16px;
     margin: 0;
-    cursor: pointer;
+    accent-color: var(--vcp-ui-accent, var(--highlight-text));
 }
 
-.vchat-wallpaper-visible input {
-    width: 14px;
-    height: 14px;
-    margin: 0;
-    accent-color: var(--highlight-text);
-    cursor: pointer;
+html[data-ui-mode="next"] .vcp-ui-scope .vchat-wallpaper-menu .vchat-wallpaper-folder {
+    padding-left: 8px;
 }
 
-.vchat-wallpaper-group {
-    display: flex;
+.vchat-wallpaper-playback {
+    min-width: 0;
+    display: grid;
+    grid-template-columns: 32px 32px 32px minmax(0, 1fr);
     align-items: center;
-    gap: 2px;
+    gap: 4px;
+    padding: 4px 8px;
 }
 
-.vchat-wallpaper-divider {
-    width: 1px;
-    height: 16px;
-    margin: 0 4px;
-    background: var(--border-color);
-    opacity: .5;
+.vchat-wallpaper-playback .vchat-wallpaper-control {
+    min-width: 32px;
+    min-height: 32px;
+}
+
+.vchat-wallpaper-mode {
+    min-width: 0;
+    justify-content: flex-start;
+    gap: 6px;
+}
+
+.vchat-wallpaper-mode-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--vcp-ui-font-caption, 12px);
 }
 
 .vchat-wallpaper-volume {
+    min-width: 0;
+    padding: 4px 8px 8px;
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 8px;
 }
 
 .vchat-wallpaper-volume-slider {
+    min-width: 0;
+    flex: 1;
     display: flex;
     align-items: center;
-    width: 0;
-    margin-left: 0;
-    overflow: visible;
-    opacity: 0;
-    pointer-events: none;
-    transition: width .3s ease, opacity .3s ease, margin-left .3s ease;
-}
-
-.vchat-wallpaper-volume:hover .vchat-wallpaper-volume-slider,
-.vchat-wallpaper-volume-slider:hover {
-    width: 70px;
-    margin-left: 4px;
-    opacity: 1;
-    pointer-events: auto;
 }
 
 .vchat-wallpaper-volume-slider input {
     -webkit-appearance: none;
-    width: 60px;
+    width: 100%;
+    min-width: 0;
     height: 4px;
-    margin: 0 5px;
+    margin: 0;
     background: rgba(255, 255, 255, .3);
-    background-image: linear-gradient(var(--highlight-text), var(--highlight-text));
+    background-image: linear-gradient(var(--vcp-ui-accent, var(--highlight-text)), var(--vcp-ui-accent, var(--highlight-text)));
     background-repeat: no-repeat;
     border-radius: 2px;
     outline: none;
@@ -211,16 +170,11 @@ body.light-theme .vchat-wallpaper-volume-slider input {
     width: 12px;
     height: 12px;
     margin-top: -4px;
-    background: var(--highlight-text);
+    background: var(--vcp-ui-accent, var(--highlight-text));
     border-radius: 50%;
     box-shadow: 0 0 4px rgba(0, 0, 0, .3);
     cursor: pointer;
-    transition: transform .1s, background-color .2s;
-}
-
-.vchat-wallpaper-volume-slider input::-webkit-slider-thumb:hover {
-    background: #fff;
-    transform: scale(1.3);
+    transition: background-color .2s;
 }
 
 #vchat-dynamic-wallpaper-global-control {
@@ -231,10 +185,4 @@ body.light-theme .vchat-wallpaper-volume-slider input {
 
 #vchat-dynamic-wallpaper-global-control > label:first-child {
     margin: 0;
-}
-
-@media (max-width: 1100px) {
-    #vchat-dynamic-wallpaper-panel:not(.collapsed) {
-        max-width: 210px;
-    }
 }
