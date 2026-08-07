@@ -13,15 +13,19 @@ class PluginManager {
      * 跨平台进程树终止方法。
      * Windows 上 shell:true 会创建 cmd.exe 包装进程，直接 kill 只杀 cmd 不杀子进程，
      * 导致孤儿进程。此方法使用 taskkill /T /F 递归杀死整个进程树。
-     * Linux/macOS 上使用负 PID 发送信号给进程组，或回退到普通 SIGKILL。
+     * Linux/macOS 上的插件进程以 detached 模式启动为独立进程组，此处使用负 PID
+     * 向整个进程组发送信号；若进程组已不存在或未成功建立，则回退终止单个进程。
      */
     _killProcessTree(pid, pluginName) {
         if (!pid) return;
         try {
             if (process.platform === 'win32') {
-                spawn('taskkill', ['/T', '/F', '/PID', pid.toString()], {
+                const killer = spawn('taskkill', ['/T', '/F', '/PID', pid.toString()], {
                     windowsHide: true,
                     stdio: 'ignore'
+                });
+                killer.on('error', (err) => {
+                    console.warn(`[DistPluginManager] Failed to start taskkill for plugin "${pluginName}" (PID: ${pid}): ${err.message}`);
                 });
                 if (this.debugMode) console.log(`[DistPluginManager] Sent taskkill /T /F /PID ${pid} for plugin "${pluginName}"`);
             } else {
@@ -234,7 +238,14 @@ class PluginManager {
 
         return new Promise((resolve, reject) => {
             const [command, ...args] = plugin.entryPoint.command.split(' ');
-            const pluginProcess = spawn(command, args, { cwd: plugin.basePath, shell: true, env: envForProcess, windowsHide: true });
+            const pluginProcess = spawn(command, args, {
+                cwd: plugin.basePath,
+                shell: true,
+                env: envForProcess,
+                windowsHide: true,
+                // POSIX 上建立独立进程组，使超时时可通过负 PID 终止整个插件进程树。
+                detached: process.platform !== 'win32'
+            });
 
             let outputBuffer = '';
             let errorOutput = '';
@@ -370,7 +381,14 @@ class PluginManager {
             }
 
             const [command, ...args] = plugin.entryPoint.command.split(' ');
-            const pluginProcess = spawn(command, args, { cwd: plugin.basePath, shell: true, env: envForProcess, windowsHide: true });
+            const pluginProcess = spawn(command, args, {
+                cwd: plugin.basePath,
+                shell: true,
+                env: envForProcess,
+                windowsHide: true,
+                // POSIX 上建立独立进程组，使超时时可通过负 PID 终止整个插件进程树。
+                detached: process.platform !== 'win32'
+            });
             let output = '';
             let errorOutput = '';
             let processExited = false;
