@@ -1,0 +1,389 @@
+@layer vcp-ui.components {
+    html[data-ui-mode="next"] .vcp-ui-scope.chat-messages-container {
+        scrollbar-color: var(--vcp-ui-scrollbar-thumb) transparent;
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope.chat-messages-container::-webkit-scrollbar {
+        width: var(--vcp-ui-scrollbar-size);
+        height: var(--vcp-ui-scrollbar-size);
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope.chat-messages-container::-webkit-scrollbar-thumb {
+        background: var(--vcp-ui-scrollbar-thumb);
+        border-radius: var(--vcp-ui-radius-full);
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope.chat-messages-container::-webkit-scrollbar-thumb:hover {
+        background: var(--vcp-ui-scrollbar-thumb-hover);
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope .chat-messages {
+        gap: var(--vcp-ui-space-1);
+        padding: var(--vcp-ui-space-4) var(--vcp-ui-space-5) var(--vcp-ui-space-2);
+        font-family: 'Noto Sans SC Variable', var(--vcp-chat-font-family, sans-serif);
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope .message-item {
+        gap: var(--vcp-ui-space-2);
+        margin-bottom: var(--vcp-ui-space-3);
+        padding-bottom: var(--vcp-ui-space-1);
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope .chat-avatar {
+        width: var(--vcp-ui-message-avatar);
+        height: var(--vcp-ui-message-avatar);
+        border: 1px solid var(--dynamic-avatar-color, var(--vcp-ui-border));
+        transition: border-color var(--vcp-ui-transition-fast);
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope .details-and-bubble-wrapper {
+        gap: var(--vcp-ui-space-1);
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope .message-item .sender-name {
+        color: var(--dynamic-avatar-color, var(--vcp-ui-text-accent));
+        font-size: var(--vcp-ui-font-helper);
+        font-weight: 600;
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope .message-item.user .sender-name,
+    html[data-ui-mode="next"] .vcp-ui-scope .message-item .message-timestamp {
+        color: var(--vcp-ui-text-2);
+        font-size: var(--vcp-ui-font-caption);
+        opacity: 1;
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope .message-item .md-content {
+        max-width: var(--vcp-ui-message-max-width);
+        padding: var(--vcp-ui-space-3) var(--vcp-ui-space-4);
+        border: 1px solid var(--vcp-ui-border);
+        border-radius: var(--vcp-ui-radius-card);
+        background: var(--vcp-ui-message-assistant-bg);
+        color: var(--vcp-ui-message-assistant-text);
+        box-shadow: var(--vcp-ui-shadow-sm);
+        backdrop-filter: blur(12px) saturate(1.08);
+        transition: max-width var(--vcp-ui-transition-normal), border-color var(--vcp-ui-transition-fast), box-shadow var(--vcp-ui-transition-fast);
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope .message-item.user .md-content {
+        border-color: color-mix(in srgb, var(--vcp-ui-message-user-bg) 45%, var(--vcp-ui-border));
+        border-bottom-right-radius: var(--vcp-ui-radius-sm);
+        background: var(--vcp-ui-message-user-bg);
+        color: var(--vcp-ui-message-user-text);
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope .message-item.assistant .md-content,
+    html[data-ui-mode="next"] .vcp-ui-scope .message-item.user.user-bubble-ui-disabled .md-content {
+        border-bottom-left-radius: var(--vcp-ui-radius-sm);
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope .main-content.notifications-sidebar-active .message-item .md-content {
+        max-width: var(--vcp-ui-message-max-width-notifications);
+    }
+
+    html[data-ui-mode="next"] body.chat-wide-layout .vcp-ui-scope .message-item .md-content {
+        max-width: var(--vcp-ui-message-max-width-wide);
+    }
+
+    html[data-ui-mode="next"] body.chat-wide-layout .vcp-ui-scope .main-content.notifications-sidebar-active .message-item .md-content {
+        max-width: var(--vcp-ui-message-max-width-wide-notifications);
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope .message-item.system.system-message-layout {
+        max-width: min(100%, 640px);
+        padding: var(--vcp-ui-space-2) var(--vcp-ui-space-3);
+        border: 1px solid var(--vcp-ui-border);
+        border-radius: var(--vcp-ui-radius-card);
+        background: var(--vcp-ui-info-bg);
+        color: var(--vcp-ui-text-1);
+        font-size: var(--vcp-ui-font-helper);
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope .message-item.system.welcome-bubble {
+        max-width: min(100%, 520px);
+        margin: var(--vcp-ui-space-7) auto;
+        padding: var(--vcp-ui-space-4) var(--vcp-ui-space-5);
+        border-color: var(--vcp-ui-border);
+        border-radius: var(--vcp-ui-radius-card);
+        background: var(--vcp-ui-bg-1);
+        box-shadow: var(--vcp-ui-shadow-md);
+        color: var(--vcp-ui-text-0);
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope .message-item .md-content :is(h1, h2, h3) {
+        color: var(--vcp-ui-text-0);
+        font-size: var(--vcp-ui-font-emphasis);
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope .message-item .md-content :is(a, .highlighted-tag) {
+        color: var(--vcp-ui-text-accent);
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope .message-item .md-content blockquote {
+        border-left-color: var(--vcp-ui-border-strong);
+        color: var(--vcp-ui-text-2);
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope .message-item .md-content :is(code, pre) {
+        font-family: var(--vcp-chat-code-font-family, ui-monospace, monospace);
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope .message-item .md-content code {
+        border-radius: var(--vcp-ui-radius-sm);
+        background: var(--vcp-ui-fill-1);
+        color: inherit;
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope .message-item .md-content pre {
+        max-height: var(--vcp-ui-message-code-height);
+        border: 1px solid var(--vcp-ui-border);
+        border-radius: var(--vcp-ui-radius-card);
+        background: var(--vcp-ui-message-code-bg);
+        box-shadow: none;
+        color: var(--vcp-ui-message-code-text);
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope .message-item .md-content :is(img, video, audio) {
+        max-height: var(--vcp-ui-message-media-max);
+        border-radius: var(--vcp-ui-radius-card);
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope .message-item .md-content .message-attachment-file {
+        border-color: var(--vcp-ui-border);
+        border-radius: var(--vcp-ui-radius-card);
+        background: var(--vcp-ui-fill-0);
+        box-shadow: none;
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope .message-item .md-content .message-attachment-file:hover,
+    html[data-ui-mode="next"] .vcp-ui-scope .message-item .md-content .message-attachment-file:focus-visible {
+        border-color: var(--vcp-ui-border-strong);
+        background: var(--vcp-ui-fill-1);
+        box-shadow: 0 0 0 var(--vcp-ui-space-1) var(--vcp-ui-focus-ring);
+        outline: none;
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope .vcp-tool-result-bubble,
+    html[data-ui-mode="next"] .vcp-ui-scope .vcp-tool-call-summary-bubble,
+    html[data-ui-mode="next"] .vcp-ui-scope .vcp-tool-request-bubble {
+        width: var(--vcp-ui-tool-summary-min);
+        max-width: var(--vcp-ui-message-max-width);
+        box-sizing: border-box;
+        margin-block: var(--vcp-ui-space-3);
+        padding: var(--vcp-ui-space-3) var(--vcp-ui-space-4);
+        border-color: var(--vcp-ui-border);
+        border-radius: var(--vcp-ui-radius-card);
+        background: var(--vcp-ui-bg-2);
+        box-shadow: var(--vcp-ui-shadow-sm);
+        color: var(--vcp-ui-text-0);
+        font-family: 'Noto Sans SC Variable', var(--vcp-chat-font-family, sans-serif);
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope .vcp-tool-result-header,
+    html[data-ui-mode="next"] .vcp-ui-scope .vcp-tool-call-summary-header {
+        border-bottom-color: var(--vcp-ui-border);
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope .vcp-tool-result-name,
+    html[data-ui-mode="next"] .vcp-ui-scope .vcp-tool-call-summary-title {
+        color: var(--vcp-ui-text-accent);
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope .vcp-tool-result-item-value,
+    html[data-ui-mode="next"] .vcp-ui-scope .vcp-tool-result-markdown-content,
+    html[data-ui-mode="next"] .vcp-ui-scope .vcp-tool-call-summary-raw {
+        color: var(--vcp-ui-text-1);
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope .vcp-tool-call-summary-chip {
+        border-color: var(--vcp-ui-border);
+        background: var(--vcp-ui-fill-1);
+        color: var(--vcp-ui-text-1);
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope .thinking-indicator {
+        color: var(--vcp-ui-text-2);
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope :is(.vcp-thought-chain-bubble, .vcp-desktop-push-placeholder, .vcp-chat-canvas-placeholder, .mermaid-placeholder) {
+        width: 100%;
+        max-width: 100%;
+        box-sizing: border-box;
+        margin-block: var(--vcp-ui-space-3);
+        padding: var(--vcp-ui-space-3) var(--vcp-ui-space-4);
+        border: 1px solid var(--vcp-ui-border);
+        border-radius: var(--vcp-ui-radius-card);
+        background: var(--vcp-ui-bg-2);
+        box-shadow: none;
+        color: var(--vcp-ui-text-1);
+        font-family: 'Noto Sans SC Variable', var(--vcp-chat-font-family, sans-serif);
+        animation: none;
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope .vcp-thought-chain-header {
+        gap: var(--vcp-ui-space-2);
+        color: var(--vcp-ui-text-1);
+        opacity: 1;
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope .vcp-thought-chain-label,
+    html[data-ui-mode="next"] .vcp-ui-scope .vcp-desktop-push-label {
+        color: var(--vcp-ui-text-0);
+        font-size: var(--vcp-ui-font-helper);
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope .vcp-thought-chain-collapsible-content {
+        transition: max-height var(--vcp-ui-transition-normal), opacity var(--vcp-ui-transition-fast);
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope .vcp-thought-chain-bubble.expanded .vcp-thought-chain-collapsible-content {
+        margin-top: var(--vcp-ui-space-2);
+        padding-top: var(--vcp-ui-space-2);
+        border-top-color: var(--vcp-ui-border);
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope .vcp-thought-chain-body,
+    html[data-ui-mode="next"] .vcp-ui-scope .vcp-desktop-push-preview {
+        color: var(--vcp-ui-text-2);
+        font-size: var(--vcp-ui-font-helper);
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope :is(.vcp-thought-chain-body pre, .vcp-desktop-push-preview pre) {
+        border: 1px solid var(--vcp-ui-border);
+        border-radius: var(--vcp-ui-radius-sm);
+        background: var(--vcp-ui-message-code-bg);
+        color: var(--vcp-ui-message-code-text);
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope .mermaid {
+        margin-block: var(--vcp-ui-space-3);
+        padding: var(--vcp-ui-space-3);
+        border: 1px solid var(--vcp-ui-border);
+        border-radius: var(--vcp-ui-radius-card);
+        background: var(--vcp-ui-bg-2);
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope :is(.maid-diary-bubble, .valet-diary-bubble, .maid-diary-update-bubble, .valet-diary-update-bubble) {
+        width: 100%;
+        max-width: 100%;
+        box-sizing: border-box;
+        margin-block: var(--vcp-ui-space-3);
+        padding: var(--vcp-ui-space-3) var(--vcp-ui-space-4);
+        border: 1px solid var(--vcp-ui-border);
+        border-radius: var(--vcp-ui-radius-card);
+        background: var(--vcp-ui-bg-2);
+        box-shadow: var(--vcp-ui-shadow-sm);
+        color: var(--vcp-ui-text-1);
+        font-family: 'Noto Sans SC Variable', var(--vcp-chat-font-family, sans-serif);
+        font-size: var(--vcp-ui-font-body);
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope :is(.diary-header, .diary-update-header) {
+        margin-bottom: var(--vcp-ui-space-2);
+        padding-bottom: var(--vcp-ui-space-2);
+        border-bottom-color: var(--vcp-ui-border);
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope :is(.diary-title, .diary-update-title) {
+        color: var(--vcp-ui-text-0);
+        font-family: inherit;
+        font-size: var(--vcp-ui-font-emphasis);
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope :is(.diary-date, .diary-maid-info, .diary-update-meta, .diary-update-label, .diary-update-arrow) {
+        color: var(--vcp-ui-text-2);
+        font-size: var(--vcp-ui-font-caption);
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope :is(.diary-content, .diary-update-content) {
+        color: var(--vcp-ui-text-1);
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope .diary-update-side {
+        border-color: var(--vcp-ui-border);
+        border-radius: var(--vcp-ui-radius-sm);
+        background: var(--vcp-ui-fill-0);
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope .diary-update-before,
+    html[data-ui-mode="next"] .vcp-ui-scope .diary-update-after {
+        border-left-color: var(--vcp-ui-border-strong);
+        background: var(--vcp-ui-fill-0);
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope .md-content table {
+        display: block;
+        width: max-content;
+        max-width: 100%;
+        margin-block: var(--vcp-ui-space-3);
+        overflow-x: auto;
+        border: 1px solid var(--vcp-ui-border);
+        border-radius: var(--vcp-ui-radius-card);
+        background: var(--vcp-ui-bg-2);
+        color: var(--vcp-ui-text-1);
+        font-size: var(--vcp-ui-font-helper);
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope .md-content :is(th, td) {
+        padding: var(--vcp-ui-space-2) var(--vcp-ui-space-3);
+        border-color: var(--vcp-ui-border);
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope .md-content th {
+        background: var(--vcp-ui-fill-1);
+        color: var(--vcp-ui-text-0);
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope .md-content tr:hover td {
+        background: var(--vcp-ui-fill-0);
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope .md-content hr {
+        margin-block: var(--vcp-ui-space-4);
+        background: var(--vcp-ui-border);
+        opacity: 1;
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope :is(.vcp-html-preview-toggle, .vcp-code-copy-button) {
+        min-height: var(--vcp-ui-control-sm);
+        padding-inline: var(--vcp-ui-space-2);
+        border-color: var(--vcp-ui-border);
+        border-radius: var(--vcp-ui-radius-sm);
+        background: var(--vcp-ui-bg-3);
+        color: var(--vcp-ui-text-0);
+        font-family: 'Noto Sans SC Variable', var(--vcp-chat-font-family, sans-serif);
+        font-size: var(--vcp-ui-font-caption);
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope :is(.vcp-html-preview-toggle, .vcp-code-copy-button):hover {
+        border-color: var(--vcp-ui-border-strong);
+        background: var(--vcp-ui-bg-4);
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope .vcp-code-copy-button.copied {
+        border-color: var(--vcp-ui-success);
+        background: var(--vcp-ui-success-bg);
+        color: var(--vcp-ui-success);
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope .vcp-code-copy-button.failed {
+        border-color: var(--vcp-ui-danger);
+        background: var(--vcp-ui-danger-bg);
+        color: var(--vcp-ui-danger);
+    }
+
+    @media (max-width: 768px) {
+        html[data-ui-mode="next"] .vcp-ui-scope .chat-messages {
+            padding-inline: var(--vcp-ui-space-3);
+        }
+
+        html[data-ui-mode="next"] .vcp-ui-scope .chat-avatar {
+            width: var(--vcp-ui-control-lg);
+            height: var(--vcp-ui-control-lg);
+        }
+
+        html[data-ui-mode="next"] .vcp-ui-scope .message-item .md-content {
+            max-width: var(--vcp-ui-message-max-width-narrow);
+        }
+    }
+}
