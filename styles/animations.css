@@ -37,7 +37,7 @@
     }
 }
 
-.topic-item.active-topic-glowing {
+html:not([data-ui-mode="next"]) .topic-item.active-topic-glowing {
     position: relative;
     overflow: hidden;
     /* 替代动画的高亮效果：使用静态的背景色和边框 */
@@ -56,7 +56,7 @@
         inset 0 0 1px rgba(0, 0, 0, 0.08) !important;
 }
 
-.topic-item.active-topic-glowing::before {
+html:not([data-ui-mode="next"]) .topic-item.active-topic-glowing::before {
     content: '';
     position: absolute;
     left: 50%;
@@ -78,7 +78,7 @@
     z-index: 0;
     pointer-events: none;
 }
-body.light-theme .topic-item.active-topic-glowing::before {
+html:not([data-ui-mode="next"]) body.light-theme .topic-item.active-topic-glowing::before {
     background-image: radial-gradient(
         circle,
         rgba(65, 144, 213, 0.041) 0%,
@@ -87,7 +87,7 @@ body.light-theme .topic-item.active-topic-glowing::before {
     ) !important;
 }
 
-body:not(.light-theme) .topic-item.active-topic-glowing {
+html:not([data-ui-mode="next"]) body:not(.light-theme) .topic-item.active-topic-glowing {
     background:
         linear-gradient(
             180deg,

@@ -343,6 +343,9 @@
 
         if (modalElement) {
             modalElement.classList.add('active');
+            document.dispatchEvent(new CustomEvent('modal-visibility-changed', {
+                detail: { modalId, active: true }
+            }));
             // 确保新打开的模态框获得焦点
             modalElement.focus();
         } else {
@@ -356,7 +359,12 @@
      */
     uiHelperFunctions.closeModal = function(modalId) {
         const modalElement = document.getElementById(modalId);
-        if (modalElement) modalElement.classList.remove('active');
+        if (modalElement) {
+            modalElement.classList.remove('active');
+            document.dispatchEvent(new CustomEvent('modal-visibility-changed', {
+                detail: { modalId, active: false }
+            }));
+        }
     };
 
     /**
@@ -365,6 +373,11 @@
      * @param {number} [duration=3000] The duration in milliseconds.
      */
     uiHelperFunctions.showToastNotification = function(message, type = 'info', duration = 3000) {
+        if (document.documentElement.dataset.uiMode === 'next' && window.VCPUI?.feedback?.toast) {
+            const variant = type === 'error' ? 'error' : ['info', 'success', 'warning'].includes(type) ? type : 'info';
+            return window.VCPUI.feedback.toast(String(message), { variant, duration });
+        }
+
         const container = document.getElementById('floating-toast-notifications-container');
         if (!container) {
             console.warn("Toast notification container not found.");

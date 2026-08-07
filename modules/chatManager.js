@@ -24,6 +24,9 @@ window.chatManager = (() => {
     let isCanvasWindowOpen = false; // State to track if the canvas window is open
     let lastAssistantSuspendAt = 0;
     let activeHistoryLoadToken = 0;
+    let itemSelectionGeneration = 0;
+    let pendingItemSelectionToken = null;
+    let emptyStateObserver = null;
 
     function setCurrentItemActionButtonText(button, text) {
         if (!button) return;
@@ -255,6 +258,20 @@ window.chatManager = (() => {
 
         // DOM Elements
         elements = config.elements;
+
+        // The empty-state visual is a projection of the chat DOM.  History
+        // loads and file-watcher updates can complete out of order, so keep a
+        // final DOM-level guard against showing it over a real message.
+        if (emptyStateObserver) {
+            emptyStateObserver.disconnect();
+            emptyStateObserver = null;
+        }
+        if (elements.chatMessagesDiv && typeof MutationObserver !== 'undefined') {
+            emptyStateObserver = new MutationObserver(() => {
+                syncNextUiEmptyStateWithMessages();
+            });
+            emptyStateObserver.observe(elements.chatMessagesDiv, { childList: true, subtree: true });
+        }
         
         // Main Renderer Functions
         mainRendererFunctions = config.mainRendererFunctions;
@@ -332,8 +349,49 @@ window.chatManager = (() => {
     }
  
     // --- Functions moved from renderer.js ---
- 
+
+    function setNextUiEmptyStateActive(isActive, reason = null) {
+        if (isActive && hasRenderableChatMessages()) {
+            isActive = false;
+            reason = null;
+        }
+
+        const mainContent = document.querySelector('.main-content');
+        const emptyState = document.getElementById('nextUiEmptyState');
+
+        mainContent?.classList.toggle('next-ui-empty-state-active', isActive);
+        if (mainContent) {
+            mainContent.dataset.chatEmpty = String(isActive);
+            if (isActive && reason) {
+                mainContent.dataset.chatEmptyReason = reason;
+            } else {
+                delete mainContent.dataset.chatEmptyReason;
+            }
+        }
+        emptyState?.setAttribute('aria-hidden', String(!isActive));
+    }
+
+    function hasRenderableChatMessages() {
+        const chatMessagesDiv = elements.chatMessagesDiv;
+        if (!chatMessagesDiv) return false;
+        return Boolean(chatMessagesDiv.querySelector(
+            '.message-item:not(.welcome-bubble):not(.topic-timestamp-bubble)'
+        ));
+    }
+
+    function syncNextUiEmptyStateWithMessages() {
+        if (hasRenderableChatMessages()) {
+            setNextUiEmptyStateActive(false);
+        }
+    }
+
     function displayNoItemSelected() {
+        const selectedItem = currentSelectedItemRef?.get?.();
+        if (pendingItemSelectionToken !== null || selectedItem?.id) {
+            setNextUiEmptyStateActive(false);
+            return false;
+        }
+
         const { currentChatNameH3, chatMessagesDiv, currentItemActionBtn, messageInput, sendMessageBtn, attachFileBtn } = elements;
         const voiceChatBtn = document.getElementById('voiceChatBtn');
         currentChatNameH3.textContent = '选择一个 Agent 或群组开始聊天';
@@ -343,31 +401,45 @@ window.chatManager = (() => {
         messageInput.disabled = true;
         sendMessageBtn.disabled = true;
         attachFileBtn.disabled = true;
+        setNextUiEmptyStateActive(true, 'no-selection');
         if (mainRendererFunctions.displaySettingsForItem) {
             mainRendererFunctions.displaySettingsForItem(); 
         }
         if (topicListManager) topicListManager.loadTopicList();
+        return true;
     }
 
     async function selectItem(itemId, itemType, itemName, itemAvatarUrl, itemFullConfig) {
+        const selectionToken = ++itemSelectionGeneration;
+        pendingItemSelectionToken = selectionToken;
+        setNextUiEmptyStateActive(false);
+
         // Flowlock 只绑定目标 Agent 的 Topic，不再阻止用户切换到其他 Agent。
         // 当重新进入已锁 Agent 时，下面会优先恢复它的锁定 Topic。
         // Stop any previous watcher when switching items
         if (electronAPI.watcherStop) {
-            await electronAPI.watcherStop();
+            try {
+                await electronAPI.watcherStop();
+            } catch (error) {
+                console.warn('[ChatManager] Failed to stop the previous history watcher:', error);
+            }
         }
+
+        if (pendingItemSelectionToken !== selectionToken) return;
 
         const { currentChatNameH3, currentItemActionBtn, messageInput, sendMessageBtn, attachFileBtn } = elements;
         let currentSelectedItem = currentSelectedItemRef.get();
         let currentTopicId = currentTopicIdRef.get();
 
         if (currentSelectedItem.id === itemId && currentSelectedItem.type === itemType && currentTopicId) {
+            pendingItemSelectionToken = null;
             console.log(`Item ${itemType} ${itemId} already selected with topic ${currentTopicId}. No change.`);
             return;
         }
 
         currentSelectedItem = { id: itemId, type: itemType, name: itemName, avatarUrl: itemAvatarUrl, config: itemFullConfig };
         currentSelectedItemRef.set(currentSelectedItem);
+        pendingItemSelectionToken = null;
         currentTopicIdRef.set(null); // Reset topic
         currentChatHistoryRef.set([]);
         window.updateSendButtonState?.();
@@ -481,6 +553,7 @@ window.chatManager = (() => {
     }
  
     async function selectTopic(topicId) {
+        setNextUiEmptyStateActive(false);
         const selectedItemForLock = currentSelectedItemRef.get();
         const lockedTopicId = selectedItemForLock?.type === 'agent'
             ? window.flowlockManager?.getLockedTopicId?.(selectedItemForLock.id)
@@ -561,6 +634,7 @@ window.chatManager = (() => {
 
     async function loadChatHistory(itemId, itemType, topicId) {
         const loadToken = ++activeHistoryLoadToken;
+        setNextUiEmptyStateActive(false);
 
         const isLoadStillActive = () => loadToken === activeHistoryLoadToken;
         const abortIfStale = () => {
@@ -661,6 +735,14 @@ window.chatManager = (() => {
         } else if (historyResult) { // History is empty
             currentChatHistoryRef.set([]);
             window.updateSendButtonState?.();
+            const activeItem = currentSelectedItemRef.get();
+            if (
+                activeItem?.id === itemId
+                && activeItem?.type === itemType
+                && currentTopicIdRef.get() === topicId
+            ) {
+                setNextUiEmptyStateActive(true, 'empty-topic');
+            }
         } else {
             if (messageRenderer) messageRenderer.renderMessage({ role: 'system', content: `加载话题 "${topicId}" 的聊天记录时返回了无效数据。`, timestamp: Date.now() });
         }
@@ -964,6 +1046,8 @@ window.chatManager = (() => {
             uiHelper.openModal('globalSettingsModal');
             return;
         }
+
+        setNextUiEmptyStateActive(false);
 
         if (currentSelectedItem.type === 'group') {
             if (groupRenderer && typeof groupRenderer.handleSendGroupMessage === 'function') {
@@ -1795,6 +1879,7 @@ window.chatManager = (() => {
         handleSendMessage,
         createNewTopicForItem,
         displayNoItemSelected,
+        syncNextUiEmptyStateWithMessages,
         attemptTopicSummarizationIfNeeded,
         handleCreateBranch,
         handleForwardMessage,

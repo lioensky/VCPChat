@@ -12,8 +12,8 @@
     flex-shrink: 0;
     padding: 10px 8px 10px 17px; /* 整体向右边距增加2px，由6px变为8px */
 }
-/* 为亮色主题添加对应样式 */
-body.light-theme .notifications-header {
+/* 经典 UI 的亮色标题栏保持透明；新版标题栏由 UI System 的主题材质接管。 */
+html:not([data-ui-mode="next"]) body.light-theme .notifications-header {
     background: transparent !important;
 }
 
