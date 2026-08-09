@@ -206,6 +206,9 @@
     let sourceTrigger = null;
     let saving = false;
     let previewGeneration = 0;
+    let closePromptPromise = null;
+    let resolveClosePrompt = null;
+    let closePromptFocus = null;
     let installedThemes = [];
     let themesLoading = false;
     let themesLoadError = null;
@@ -669,7 +672,24 @@
                         <span class="vcp-ui-icon" aria-hidden="true">check</span><span>应用</span>
                     </button>
                 </footer>
-            </section>`;
+            </section>
+            <div class="vcp-appearance-unsaved-backdrop" data-unsaved-confirm hidden>
+                <section class="vcp-appearance-unsaved-dialog" role="alertdialog" aria-modal="true"
+                    aria-labelledby="vcpAppearanceUnsavedTitle" aria-describedby="vcpAppearanceUnsavedDescription" tabindex="-1">
+                    <span class="vcp-appearance-unsaved-icon vcp-ui-icon" aria-hidden="true">save</span>
+                    <div class="vcp-appearance-unsaved-copy">
+                        <h3 id="vcpAppearanceUnsavedTitle">保存外观更改？</h3>
+                        <p id="vcpAppearanceUnsavedDescription">关闭面板前保存刚才的调整，避免丢失当前外观方案。</p>
+                    </div>
+                    <div class="vcp-appearance-unsaved-actions">
+                        <button type="button" class="vcp-appearance-unsaved-continue" data-unsaved-action="continue">继续编辑</button>
+                        <button type="button" class="vcp-appearance-unsaved-discard" data-unsaved-action="discard">放弃更改</button>
+                        <button type="button" class="vcp-appearance-unsaved-save" data-unsaved-action="save">
+                            <span class="vcp-ui-icon" aria-hidden="true">check</span><span>保存并关闭</span>
+                        </button>
+                    </div>
+                </section>
+            </div>`;
 
         root.querySelectorAll('.vcp-appearance-option, .vcp-appearance-mode-grid button').forEach(button => {
             const check = document.createElement('span');
@@ -689,13 +709,15 @@
         const status = root.querySelector('[data-studio-status]');
         const saveButton = root.querySelector('[data-studio-save]');
         const wallpaperButton = root.querySelector('[data-studio-action="wallpaper"]');
+        const closePrompt = root.querySelector('[data-unsaved-confirm]');
+        const closePromptDialog = root.querySelector('.vcp-appearance-unsaved-dialog');
 
         root.addEventListener('click', handleClick);
         root.addEventListener('change', handleChange);
         root.addEventListener('input', handleInput);
         root.addEventListener('keydown', handleKeydown);
         root.addEventListener('pointerdown', event => {
-            if (event.target === root) void close({ rollback: true });
+            if (event.target === root && closePrompt.hidden) void requestClose();
         });
         surface = {
             root,
@@ -703,6 +725,8 @@
             status,
             saveButton,
             wallpaperButton,
+            closePrompt,
+            closePromptDialog,
             themePreviewStyle,
             themeGrid: root.querySelector('[data-theme-palette-grid]'),
             themeLoadState: root.querySelector('[data-theme-load-state]')
@@ -1100,8 +1124,39 @@
         }
     }
 
+    function settleClosePrompt(shouldClose, { defer = false } = {}) {
+        if (!surface?.closePrompt || surface.closePrompt.hidden) return;
+        surface.closePrompt.hidden = true;
+        surface.dialog.inert = false;
+        surface.root.classList.remove('is-confirming-close');
+        const resolve = resolveClosePrompt;
+        resolveClosePrompt = null;
+        closePromptPromise = null;
+        const nextFocus = closePromptFocus?.isConnected ? closePromptFocus : surface.dialog;
+        closePromptFocus = null;
+        if (!shouldClose) nextFocus?.focus?.();
+        if (!defer) resolve?.(shouldClose);
+        return resolve;
+    }
+
+    function requestClose() {
+        if (!surface || surface.root.hidden || saving) return Promise.resolve(false);
+        if (!draft || !snapshot || statesEqual(snapshot, draft)) {
+            return close({ rollback: true }).then(() => true);
+        }
+        if (closePromptPromise) return closePromptPromise;
+        closePromptFocus = document.activeElement;
+        surface.closePrompt.hidden = false;
+        surface.dialog.inert = true;
+        surface.root.classList.add('is-confirming-close');
+        closePromptPromise = new Promise(resolve => { resolveClosePrompt = resolve; });
+        requestAnimationFrame(() => surface.closePromptDialog.focus());
+        return closePromptPromise;
+    }
+
     async function close({ rollback = true } = {}) {
         if (!surface || surface.root.hidden || (saving && rollback)) return;
+        if (surface.closePrompt && !surface.closePrompt.hidden) settleClosePrompt(false);
         surface.root.hidden = true;
         surface.root.classList.remove('active');
         document.body.classList.remove('vcp-appearance-studio-open');
@@ -1140,7 +1195,7 @@
     }
 
     async function openAccountSubmenu(buttonId) {
-        await close({ rollback: true });
+        if (!await requestClose()) return;
         window.topTabManager?.openAccountMenu?.();
         if (buttonId === 'vchatDynamicWallpaperMenuButton') {
             window.VCPFrontendPlugins?.get?.('vchat-dynamic-wallpaper')?.openMenu?.();
@@ -1150,8 +1205,25 @@
     async function handleClick(event) {
         const target = event.target.closest('button');
         if (!target || saving) return;
-        if (target.matches('[data-studio-close], [data-studio-cancel]')) {
+        const unsavedAction = target.dataset.unsavedAction;
+        if (unsavedAction === 'continue') {
+            settleClosePrompt(false);
+            return;
+        }
+        if (unsavedAction === 'discard') {
+            const resolve = settleClosePrompt(true, { defer: true });
             await close({ rollback: true });
+            resolve?.(true);
+            return;
+        }
+        if (unsavedAction === 'save') {
+            const resolve = settleClosePrompt(true, { defer: true });
+            await save();
+            resolve?.(Boolean(surface?.root?.hidden));
+            return;
+        }
+        if (target.matches('[data-studio-close], [data-studio-cancel]')) {
+            await requestClose();
             return;
         }
         if (target.matches('[data-studio-save]')) {
@@ -1216,12 +1288,12 @@
             return;
         }
         if (target.dataset.studioAction === 'themes') {
-            await close({ rollback: true });
+            if (!await requestClose()) return;
             api()?.openThemesWindow?.();
         } else if (target.dataset.studioAction === 'wallpaper') {
             await openAccountSubmenu('vchatDynamicWallpaperMenuButton');
         } else if (target.dataset.studioAction === 'settings') {
-            await close({ rollback: true });
+            if (!await requestClose()) return;
             window.uiHelperFunctions?.openModal?.('globalSettingsModal');
         }
     }
@@ -1277,11 +1349,13 @@
     function handleKeydown(event) {
         if (event.key === 'Escape') {
             event.preventDefault();
-            void close({ rollback: true });
+            if (surface?.closePrompt && !surface.closePrompt.hidden) settleClosePrompt(false);
+            else void requestClose();
             return;
         }
         if (event.key !== 'Tab' || !surface) return;
-        const focusable = Array.from(surface.dialog.querySelectorAll(
+        const focusRoot = surface.closePrompt.hidden ? surface.dialog : surface.closePromptDialog;
+        const focusable = Array.from(focusRoot.querySelectorAll(
             'button:not([disabled]):not([hidden]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
         )).filter(element => element.getClientRects().length || element === document.activeElement);
         if (!focusable.length) return;
@@ -1317,6 +1391,7 @@
         PRESETS,
         open,
         close,
+        requestClose,
         isOpen: () => Boolean(surface && !surface.root.hidden),
         readState,
         syncAccountMenuValue,

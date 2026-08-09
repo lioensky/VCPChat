@@ -406,6 +406,36 @@ await studio.close({ rollback: true });
 assert.equal(document.documentElement.dataset.uiMode, 'classic');
 assert.equal(document.documentElement.classList.contains('vcp-appearance-studio-host'), false);
 
+studio.open();
+drawer.querySelector('[data-appearance-key="density"][data-appearance-value="compact"]').click();
+await new Promise(resolve => setImmediate(resolve));
+drawer.querySelector('[data-studio-close]').click();
+await Promise.resolve();
+const unsavedPrompt = drawer.querySelector('[data-unsaved-confirm]');
+assert.equal(unsavedPrompt.hidden, false, 'closing a dirty drawer must show the unsaved-changes prompt');
+assert.equal(studio.isOpen(), true, 'the drawer stays open while the user decides');
+assert.equal(drawer.querySelector('.vcp-appearance-studio').inert, true, 'background controls are inert while confirming');
+drawer.querySelector('[data-unsaved-action="continue"]').click();
+assert.equal(unsavedPrompt.hidden, true);
+assert.equal(studio.isOpen(), true, 'continue editing dismisses only the prompt');
+drawer.querySelector('[data-studio-close]').click();
+await Promise.resolve();
+drawer.querySelector('[data-unsaved-action="discard"]').click();
+await new Promise(resolve => setImmediate(resolve));
+assert.equal(studio.isOpen(), false, 'discard closes the drawer');
+assert.equal(document.documentElement.dataset.vcpDensity, 'relaxed', 'discard restores the saved snapshot');
+
+studio.open();
+drawer.querySelector('[data-appearance-key="density"][data-appearance-value="compact"]').click();
+await new Promise(resolve => setImmediate(resolve));
+drawer.querySelector('[data-studio-cancel]').click();
+await Promise.resolve();
+drawer.querySelector('[data-unsaved-action="save"]').click();
+await new Promise(resolve => setImmediate(resolve));
+assert.equal(studio.isOpen(), false, 'save and close persists changes before closing');
+assert.equal(window.globalSettings.appearanceProfile.density, 'compact');
+assert.equal(window.chatAPI.saved.length, 2);
+
 let releasePendingPreview;
 let asyncModeCall = 0;
 window.uiModeManager.applyAsync = async mode => {
@@ -417,7 +447,7 @@ window.uiModeManager.applyAsync = async mode => {
     return window.uiModeManager.apply(mode, { cache: false });
 };
 studio.open();
-drawer.querySelector('[data-appearance-key="density"][data-appearance-value="compact"]').click();
+drawer.querySelector('[data-appearance-key="density"][data-appearance-value="relaxed"]').click();
 await Promise.resolve();
 const closingDuringPreview = studio.close({ rollback: true });
 await closingDuringPreview;
@@ -425,7 +455,7 @@ releasePendingPreview();
 await new Promise(resolve => setImmediate(resolve));
 assert.equal(
     document.documentElement.dataset.vcpDensity,
-    'relaxed',
+    'compact',
     'a pending preview must not overwrite the snapshot after the drawer closes'
 );
 
