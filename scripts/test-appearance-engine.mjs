@@ -52,11 +52,15 @@ assert.equal(JSON.stringify(resolved), JSON.stringify({
     surfaceEffect: 'vibrancy',
     shellRadius: 'tuned', composerRadius: 'tuned', sidebarRadius: 'tuned', cardRadius: 'tuned',
     surfaceOpacity: 68, surfaceBlur: 24, surfaceSaturation: 145, surfaceBrightness: 103,
-    surfaceBorder: 32, surfaceShadow: 18, surfaceSheen: 18
+    surfaceBorder: 32, surfaceShadow: 18, surfaceSheen: 18,
+    sidebarRowHeight: 46, sidebarAvatarSize: 32, customRadius: 10
 }));
 assert.equal(document.documentElement.dataset.vcpRadius, 'square');
 assert.equal(document.documentElement.dataset.vcpShellRadius, 'tuned');
 assert.equal(document.documentElement.dataset.vcpComposerRadius, 'tuned');
+assert.match(document.getElementById('vcpAppearanceLayoutVariables').textContent, /--vcp-appearance-sidebar-row-height:46px/);
+assert.match(document.getElementById('vcpAppearanceLayoutVariables').textContent, /--vcp-appearance-sidebar-avatar-size:32px/);
+assert.match(document.getElementById('vcpAppearanceLayoutVariables').textContent, /--vcp-appearance-custom-radius:10px/);
 assert.equal(document.querySelector('.vcp-ui-scope').dataset.density, 'compact');
 assert.equal(appearance.readCache('next').contentWidth, 'centered');
 assert.equal(document.getElementById('vcpAppearanceMaterialVariables').textContent.includes('--vcp-material-blur:24px'), true);
@@ -81,6 +85,10 @@ assert.equal(document.documentElement.dataset.vcpSurface, 'custom');
 assert.equal(document.documentElement.dataset.vcpSurfaceEffect, 'liquid');
 assert.match(document.getElementById('vcpAppearanceMaterialVariables').textContent, /--vcp-material-sheen:81%/);
 assert.equal(appearance.normalize({ surfaceEffect: 'unknown' }, 'next').surfaceEffect, 'vibrancy');
+assert.equal(appearance.normalize({ sidebarRowHeight: 80 }, 'next').sidebarRowHeight, 64);
+assert.equal(appearance.normalize({ sidebarRowHeight: 20 }, 'next').sidebarRowHeight, 38);
+assert.equal(appearance.normalize({ sidebarRowHeight: 38, sidebarAvatarSize: 50 }, 'next').sidebarAvatarSize, 34);
+assert.equal(appearance.normalize({ radius: 'custom', customRadius: 40 }, 'next').customRadius, 32);
 
 const detailed = appearance.apply({
     ...resolved,
@@ -94,6 +102,8 @@ assert.equal(document.documentElement.dataset.vcpSidebarRadius, 'square');
 assert.equal(document.documentElement.dataset.vcpCardRadius, 'small');
 
 const appearanceCss = fs.readFileSync('styles/appearance.css', 'utf8');
+const tokensCss = fs.readFileSync('styles/ui-system/tokens.css', 'utf8');
+const sidebarCss = fs.readFileSync('styles/ui-system/sidebar.css', 'utf8');
 const fontsCss = fs.readFileSync('styles/ui-system/fonts.css', 'utf8');
 assert.match(appearanceCss, /\.vcp-material-optics\s*\{[^}]*position:\s*fixed/s);
 assert.match(appearanceCss, /html\[data-vcp-radius="square"\] \.vcp-ui-scope/);
@@ -105,5 +115,8 @@ assert.match(appearanceCss, /data-vcp-shell-radius="tuned"/);
 assert.match(appearanceCss, /--vcp-ui-sidebar-item-radius:\s*10px/);
 assert.match(appearanceCss, /data-vcp-surface-effect="liquid"\] \.next-ui-navigation-material/);
 assert.doesNotMatch(appearanceCss, /data-vcp-surface="custom"\] \.main-content/);
+assert.match(appearanceCss, /data-vcp-sidebar-radius="custom"[^}]*--vcp-ui-sidebar-item-radius:\s*var\(--vcp-appearance-custom-radius\)/s);
 assert.match(fontsCss, /--vcp-ui-font-family:\s*var\(--vcp-appearance-font-family/);
+assert.match(tokensCss, /--vcp-ui-sidebar-avatar-size:\s*var\(--vcp-appearance-sidebar-avatar-size/);
+assert.match(sidebarCss, /#nextUiAccountAvatar\s*\{[^}]*var\(--vcp-ui-sidebar-avatar-size\)/s);
 console.log('appearance engine checks passed.');

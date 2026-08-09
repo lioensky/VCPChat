@@ -106,6 +106,24 @@
         --vcp-ui-shell-curve-5: 0.5px;
     }
 
+    html[data-vcp-radius="custom"],
+    html[data-vcp-radius="custom"] .vcp-ui-scope {
+        --vcp-ui-radius-xs: var(--vcp-appearance-custom-radius);
+        --vcp-ui-radius-sm: var(--vcp-appearance-custom-radius);
+        --vcp-ui-radius-md: var(--vcp-appearance-custom-radius);
+        --vcp-ui-radius-lg: var(--vcp-appearance-custom-radius);
+        --vcp-ui-radius-xl: var(--vcp-appearance-custom-radius);
+        --vcp-ui-radius-control: var(--vcp-appearance-custom-radius);
+        --vcp-ui-radius-card: var(--vcp-appearance-custom-radius);
+        --vcp-ui-sidebar-item-radius: var(--vcp-appearance-custom-radius);
+        --vcp-ui-shell-radius: var(--vcp-appearance-custom-radius);
+        --vcp-ui-shell-curve-1: var(--vcp-appearance-shell-curve-1);
+        --vcp-ui-shell-curve-2: var(--vcp-appearance-shell-curve-2);
+        --vcp-ui-shell-curve-3: var(--vcp-appearance-shell-curve-3);
+        --vcp-ui-shell-curve-4: var(--vcp-appearance-shell-curve-4);
+        --vcp-ui-shell-curve-5: var(--vcp-appearance-shell-curve-5);
+    }
+
     html[data-vcp-shell-radius="tuned"],
     html[data-vcp-shell-radius="tuned"] .vcp-ui-scope {
         --vcp-ui-shell-radius: 14px;
@@ -155,6 +173,15 @@
         --vcp-ui-shell-curve-4: 2.6px;
         --vcp-ui-shell-curve-5: 0.5px;
     }
+    html[data-vcp-shell-radius="custom"],
+    html[data-vcp-shell-radius="custom"] .vcp-ui-scope {
+        --vcp-ui-shell-radius: var(--vcp-appearance-custom-radius);
+        --vcp-ui-shell-curve-1: var(--vcp-appearance-shell-curve-1);
+        --vcp-ui-shell-curve-2: var(--vcp-appearance-shell-curve-2);
+        --vcp-ui-shell-curve-3: var(--vcp-appearance-shell-curve-3);
+        --vcp-ui-shell-curve-4: var(--vcp-appearance-shell-curve-4);
+        --vcp-ui-shell-curve-5: var(--vcp-appearance-shell-curve-5);
+    }
 
     html[data-vcp-composer-radius="tuned"],
     html[data-vcp-composer-radius="tuned"] .vcp-ui-scope { --vcp-ui-composer-radius: 24px; }
@@ -168,6 +195,8 @@
     html[data-vcp-composer-radius="medium"] .vcp-ui-scope { --vcp-ui-composer-radius: 18px; }
     html[data-vcp-composer-radius="round"],
     html[data-vcp-composer-radius="round"] .vcp-ui-scope { --vcp-ui-composer-radius: 24px; }
+    html[data-vcp-composer-radius="custom"],
+    html[data-vcp-composer-radius="custom"] .vcp-ui-scope { --vcp-ui-composer-radius: var(--vcp-appearance-custom-radius); }
 
     html[data-vcp-sidebar-radius="tuned"],
     html[data-vcp-sidebar-radius="tuned"] .vcp-ui-scope { --vcp-ui-sidebar-item-radius: 10px; }
@@ -179,6 +208,8 @@
     html[data-vcp-sidebar-radius="medium"] .vcp-ui-scope { --vcp-ui-sidebar-item-radius: 10px; }
     html[data-vcp-sidebar-radius="round"],
     html[data-vcp-sidebar-radius="round"] .vcp-ui-scope { --vcp-ui-sidebar-item-radius: 14px; }
+    html[data-vcp-sidebar-radius="custom"],
+    html[data-vcp-sidebar-radius="custom"] .vcp-ui-scope { --vcp-ui-sidebar-item-radius: var(--vcp-appearance-custom-radius); }
 
     html[data-vcp-card-radius="tuned"],
     html[data-vcp-card-radius="tuned"] .vcp-ui-scope { --vcp-ui-radius-card: 8px; }
@@ -190,6 +221,8 @@
     html[data-vcp-card-radius="medium"] .vcp-ui-scope { --vcp-ui-radius-card: 8px; }
     html[data-vcp-card-radius="round"],
     html[data-vcp-card-radius="round"] .vcp-ui-scope { --vcp-ui-radius-card: 14px; }
+    html[data-vcp-card-radius="custom"],
+    html[data-vcp-card-radius="custom"] .vcp-ui-scope { --vcp-ui-radius-card: var(--vcp-appearance-custom-radius); }
 
     html[data-vcp-content-width="centered"] { --vcp-appearance-content-max: 1120px; }
 

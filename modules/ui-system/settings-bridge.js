@@ -30,8 +30,9 @@ function isNextUi() {
 }
 
 function isGlobalSettingsNextUi() {
-    return document.documentElement.dataset.uiMode === 'next'
-        && Boolean(document.getElementById('globalSettingsModal'));
+    // Global settings is the shared settings surface for both home layouts.
+    // It must expose the layout selector while Classic is active as well.
+    return Boolean(document.getElementById('globalSettingsModal'));
 }
 
 function syncGlobalSettingsHost() {

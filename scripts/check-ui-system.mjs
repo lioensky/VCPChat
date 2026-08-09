@@ -68,7 +68,9 @@ for (const file of filesIn(styleDir, '.css')) {
 const componentCss = fs.readFileSync(path.join(styleDir, 'components.css'), 'utf8');
 if (!componentCss.includes(':focus-visible')) report(path.join(styleDir, 'components.css'), 'missing focus-visible rules');
 
-const inlineStyleCompatibilityAllowlist = new Set();
+const inlineStyleCompatibilityAllowlist = new Set([
+    path.join(moduleDir, 'vcp-ui.js'), // Per-instance Range progress cannot be expressed as a static token.
+]);
 
 for (const file of filesIn(moduleDir, '.js')) {
     const source = fs.readFileSync(file, 'utf8');

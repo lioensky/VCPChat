@@ -690,6 +690,10 @@ html[data-ui-mode="next"] body:not(.chat-presentation-panel):not(.chat-presentat
     display: none;
 }
 
+html[data-vcp-home-visual="hidden"] #nextUiEmptyState {
+    display: none !important;
+}
+
 html[data-ui-mode="next"] .main-content {
     --next-empty-flow-primary: var(--button-bg);
     --next-empty-flow-secondary: hsl(from var(--button-bg) calc(h + 150) s l);

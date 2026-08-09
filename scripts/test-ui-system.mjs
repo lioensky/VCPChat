@@ -129,9 +129,15 @@ const enhancedRange = VCPUI.enhance('Range', legacyRange, { label: 'Legacy speed
 assert.equal(enhancedRange.element, legacyRange);
 assert.ok(legacyRange.classList.contains('vcp-ui-range'));
 assert.equal(VCPUI.getController(legacyRange), enhancedRange);
+legacyRange.min = '0';
+legacyRange.max = '100';
+legacyRange.value = '75';
+legacyRange.dispatchEvent(new Event('input', { bubbles: true }));
+assert.equal(legacyRange.style.getPropertyValue('--vcp-ui-range-progress'), '75%');
 enhancedRange.destroy();
 assert.ok(legacyRange.isConnected, 'enhanced elements should remain in the DOM after destroy');
 assert.equal(legacyRange.className, '');
+assert.equal(legacyRange.style.getPropertyValue('--vcp-ui-range-progress'), '');
 legacyRange.remove();
 
 const legacyInput = document.createElement('input');

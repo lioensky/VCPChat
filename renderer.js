@@ -2,12 +2,16 @@
 let globalSettings = {
     sidebarWidth: 260,
     uiMode: 'classic',
+    showHomeVisualBrand: true,
     appearanceProfile: {
         density: 'comfortable',
         radius: 'small',
         typography: 'system',
         fontScale: 'normal',
         contentWidth: 'full',
+        sidebarRowHeight: 46,
+        sidebarAvatarSize: 32,
+        customRadius: 10,
         surface: 'translucent'
     },
     enableMiddleClickQuickAction: false,
@@ -2188,12 +2192,24 @@ async function syncGlobalSettingsToUI() {
     safeCheck('enableAgentBubbleTheme', globalSettings.enableAgentBubbleTheme !== false);
     safeCheck('enableSmoothStreaming', globalSettings.enableSmoothStreaming === true);
     safeCheck('enableNextUi', globalSettings.uiMode === 'next');
+    safeCheck('appearanceUiModeClassic', globalSettings.uiMode !== 'next');
+    safeCheck('appearanceUiModeNext', globalSettings.uiMode === 'next');
+    safeCheck('showHomeVisualBrand', globalSettings.showHomeVisualBrand !== false);
     const appearance = window.VCPAppearance?.normalize(globalSettings.appearanceProfile, globalSettings.uiMode);
     safeSet('appearanceDensity', appearance?.density || 'comfortable');
     safeSet('appearanceRadius', appearance?.radius || 'small');
     safeSet('appearanceTypography', appearance?.typography || 'system');
     safeSet('appearanceFontScale', appearance?.fontScale || 'normal');
     safeSet('appearanceContentWidth', appearance?.contentWidth || 'full');
+    safeSet('appearanceSidebarRowHeight', appearance?.sidebarRowHeight ?? 46);
+    safeSet('appearanceSidebarRowHeightValue', `${appearance?.sidebarRowHeight ?? 46}px`);
+    safeSet('appearanceSidebarAvatarSize', appearance?.sidebarAvatarSize ?? 32);
+    safeSet('appearanceSidebarAvatarSizeValue', `${appearance?.sidebarAvatarSize ?? 32}px`);
+    safeSet('appearanceSidebarRadius', appearance?.sidebarRadius || 'tuned');
+    safeCheck(`appearanceSidebarRadiusChoice-${appearance?.sidebarRadius || 'tuned'}`, true);
+    safeSet('appearanceCustomRadius', appearance?.customRadius ?? 10);
+    safeSet('appearanceCustomRadiusValue', `${appearance?.customRadius ?? 10}px`);
+    document.getElementById('appearanceSidebarAvatarSize')?.dispatchEvent(new Event('input', { bubbles: true }));
     safeSet('appearanceSurface', appearance?.surface || 'translucent');
     safeSet('chatFontPreset', globalSettings.chatFontPreset || 'system');
     safeSet('chatFontCustom', globalSettings.chatFontCustom || '');

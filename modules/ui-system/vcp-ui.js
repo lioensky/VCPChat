@@ -5,6 +5,16 @@ const ENHANCERS = new Map();
 const VALID_SIZES = new Set(['sm', 'md', 'lg', 'xl']);
 const controllerByElement = new WeakMap();
 
+function updateRangeProgress(element) {
+    const min = Number(element.min || 0);
+    const max = Number(element.max || 100);
+    const value = Number(element.value);
+    const progress = max > min && Number.isFinite(value)
+        ? Math.min(100, Math.max(0, ((value - min) / (max - min)) * 100))
+        : 0;
+    element.style.setProperty('--vcp-ui-range-progress', `${Math.round(progress * 1000) / 1000}%`);
+}
+
 function devWarn(message) {
     console.warn(`[VCPUI] ${message}`);
 }
@@ -96,6 +106,7 @@ function rangeEnhancer(element, options = {}, { removeOnDestroy = false } = {}) 
     const originallyEnhanced = element.classList.contains('vcp-ui-range');
     const originalSize = element.getAttribute('data-size');
     const originalAriaLabel = element.getAttribute('aria-label');
+    const originalProgress = element.style.getPropertyValue('--vcp-ui-range-progress');
     const state = {
         size: 'md',
         label: originalAriaLabel || '',
@@ -111,7 +122,10 @@ function rangeEnhancer(element, options = {}, { removeOnDestroy = false } = {}) 
         if (current.step !== undefined) element.step = String(current.step);
         if (current.value !== undefined && element.value !== String(current.value)) element.value = String(current.value);
         if (current.disabled !== undefined) element.disabled = Boolean(current.disabled);
+        updateRangeProgress(element);
     }, () => {
+        if (originalProgress) element.style.setProperty('--vcp-ui-range-progress', originalProgress);
+        else element.style.removeProperty('--vcp-ui-range-progress');
         if (!originallyEnhanced) element.classList.remove('vcp-ui-range');
         if (originalSize === null) element.removeAttribute('data-size');
         else element.setAttribute('data-size', originalSize);
@@ -121,10 +135,12 @@ function rangeEnhancer(element, options = {}, { removeOnDestroy = false } = {}) 
 
     controller._listen(element, 'input', () => {
         state.value = element.value;
+        updateRangeProgress(element);
         state.onInput?.(Number(element.value), element);
     });
     controller._listen(element, 'change', () => {
         state.value = element.value;
+        updateRangeProgress(element);
         state.onChange?.(Number(element.value), element);
     });
     return controller;

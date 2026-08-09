@@ -41,6 +41,9 @@ export async function handleSaveGlobalSettings(e, deps) {
     const speechRecognizerBrowserPath = document.getElementById('speechRecognizerBrowserPath')?.value.trim() || '';
     const speechRecognizerPagePath = document.getElementById('speechRecognizerPagePath')?.value.trim() || '';
 
+    const selectedUiMode = document.querySelector('input[name="appearanceUiMode"]:checked')?.value
+        || (document.getElementById('enableNextUi')?.checked ? 'next' : 'classic');
+
     const newSettings = {
         userName: document.getElementById('userName').value.trim() || '用户',
         userAvatarBorderColor: document.getElementById('userAvatarBorderColor')?.value || '#3d5a80',
@@ -64,13 +67,21 @@ export async function handleSaveGlobalSettings(e, deps) {
         notificationsSidebarWidth: refs.globalSettings.get().notificationsSidebarWidth,
         enableAgentBubbleTheme: document.getElementById('enableAgentBubbleTheme').checked,
         enableSmoothStreaming: document.getElementById('enableSmoothStreaming').checked,
-        uiMode: document.getElementById('enableNextUi')?.checked ? 'next' : 'classic',
+        uiMode: selectedUiMode,
+        showHomeVisualBrand: document.getElementById('showHomeVisualBrand')?.checked !== false,
         appearanceProfile: window.VCPAppearance?.normalize({
             density: document.getElementById('appearanceDensity')?.value,
             radius: document.getElementById('appearanceRadius')?.value,
             typography: document.getElementById('appearanceTypography')?.value,
             fontScale: document.getElementById('appearanceFontScale')?.value,
             contentWidth: document.getElementById('appearanceContentWidth')?.value,
+            sidebarRowHeight: Number(document.getElementById('appearanceSidebarRowHeight')?.value)
+                || currentSettings.appearanceProfile?.sidebarRowHeight
+                || 46,
+            sidebarAvatarSize: Number(document.getElementById('appearanceSidebarAvatarSize')?.value)
+                || currentSettings.appearanceProfile?.sidebarAvatarSize
+                || 32,
+            customRadius: Number(document.getElementById('appearanceCustomRadius')?.value ?? 10),
             surface: document.getElementById('appearanceSurface')?.value,
             surfaceEffect: currentSettings.appearanceProfile?.surfaceEffect,
             surfaceOpacity: currentSettings.appearanceProfile?.surfaceOpacity,
@@ -82,9 +93,11 @@ export async function handleSaveGlobalSettings(e, deps) {
             surfaceSheen: currentSettings.appearanceProfile?.surfaceSheen,
             shellRadius: currentSettings.appearanceProfile?.shellRadius,
             composerRadius: currentSettings.appearanceProfile?.composerRadius,
-            sidebarRadius: currentSettings.appearanceProfile?.sidebarRadius,
+            sidebarRadius: document.querySelector('input[name="appearanceSidebarRadiusChoice"]:checked')?.value
+                || document.getElementById('appearanceSidebarRadius')?.value
+                || currentSettings.appearanceProfile?.sidebarRadius,
             cardRadius: currentSettings.appearanceProfile?.cardRadius
-        }, document.getElementById('enableNextUi')?.checked ? 'next' : 'classic') || currentSettings.appearanceProfile,
+        }, selectedUiMode) || currentSettings.appearanceProfile,
         chatFontPreset: document.getElementById('chatFontPreset')?.value || currentSettings.chatFontPreset || 'system',
         chatFontCustom: document.getElementById('chatFontCustom')?.value.trim() || '',
         chatCodeFontPreset: document.getElementById('chatCodeFontPreset')?.value || currentSettings.chatCodeFontPreset || 'consolas',

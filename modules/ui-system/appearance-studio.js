@@ -52,6 +52,9 @@
         'typography',
         'fontScale',
         'contentWidth',
+        'sidebarRowHeight',
+        'sidebarAvatarSize',
+        'customRadius',
         'surface',
         'surfaceEffect',
         ...MATERIAL_FIELDS,
@@ -73,6 +76,9 @@
                 typography: 'humanist',
                 fontScale: 'normal',
                 contentWidth: 'full',
+                sidebarRowHeight: 46,
+                sidebarAvatarSize: 32,
+                customRadius: 10,
                 surface: 'translucent',
                 surfaceEffect: 'vibrancy',
                 ...MATERIAL_DEFAULTS,
@@ -92,6 +98,9 @@
                 typography: 'system',
                 fontScale: 'small',
                 contentWidth: 'centered',
+                sidebarRowHeight: 40,
+                sidebarAvatarSize: 26,
+                customRadius: 6,
                 surface: 'solid',
                 surfaceEffect: 'vibrancy',
                 ...MATERIAL_DEFAULTS,
@@ -111,6 +120,9 @@
                 typography: 'serif',
                 fontScale: 'large',
                 contentWidth: 'centered',
+                sidebarRowHeight: 52,
+                sidebarAvatarSize: 38,
+                customRadius: 14,
                 surface: 'solid',
                 surfaceEffect: 'vibrancy',
                 ...MATERIAL_DEFAULTS,
@@ -128,12 +140,16 @@
         themeFileName: null,
         presentation: 'bubble',
         messageWidth: 'normal',
+        homeVisual: 'shown',
         profile: Object.freeze({
             density: 'comfortable',
             radius: 'medium',
             typography: 'humanist',
             fontScale: 'normal',
             contentWidth: 'full',
+            sidebarRowHeight: 46,
+            sidebarAvatarSize: 32,
+            customRadius: 10,
             surface: 'translucent',
             surfaceEffect: 'vibrancy',
             ...MATERIAL_DEFAULTS,
@@ -149,18 +165,23 @@
         typography: 'appearanceTypography',
         fontScale: 'appearanceFontScale',
         contentWidth: 'appearanceContentWidth',
+        sidebarRowHeight: 'appearanceSidebarRowHeight',
+        sidebarAvatarSize: 'appearanceSidebarAvatarSize',
+        sidebarRadius: 'appearanceSidebarRadius',
+        customRadius: 'appearanceCustomRadius',
         surface: 'appearanceSurface'
     });
     const SUMMARY_LABELS = Object.freeze({
         density: Object.freeze({ compact: '紧凑', comfortable: '舒适', relaxed: '宽松' }),
-        radius: Object.freeze({ square: '直角', small: '小圆角', medium: '中圆角', round: '大圆角' }),
+        radius: Object.freeze({ square: '直角 · 0px', small: '小圆角 · 6px', medium: '中圆角 · 10px', round: '大圆角 · 14px', custom: '自定义圆角' }),
         typography: Object.freeze({ system: '系统字体', humanist: '人文字体', serif: '衬线字体' }),
         contentWidth: Object.freeze({ full: '全宽阅读区', centered: '居中阅读区' }),
         messageWidth: Object.freeze({ normal: '标准消息宽度', wide: '宽屏消息宽度' }),
+        homeVisual: Object.freeze({ shown: '显示主页视觉文字', hidden: '隐藏主页视觉文字' }),
         surface: Object.freeze({ solid: '纯色表面', translucent: '主题材质', custom: '自定义磨砂' }),
         detailRadius: Object.freeze({
             tuned: '原设计', follow: '跟随全局', square: '直角',
-            small: '小圆角', medium: '中圆角', round: '大圆角'
+            small: '小圆角', medium: '中圆角', round: '大圆角', custom: '自定义'
         }),
         presentation: Object.freeze({ bubble: '气泡', panel: '面板', immersive: '沉浸' }),
         themeMode: Object.freeze({ light: '浅色', dark: '深色', system: '跟随系统' }),
@@ -169,17 +190,14 @@
     const DETAIL_RADIUS_FIELDS = Object.freeze([
         'shellRadius',
         'composerRadius',
-        'sidebarRadius',
         'cardRadius'
     ]);
-    const DETAIL_RADIUS_OPTIONS = Object.freeze([
-        ['tuned', '原设计'],
-        ['follow', '跟随全局'],
-        ['square', '直角'],
-        ['small', '小圆角'],
-        ['medium', '中圆角'],
-        ['round', '大圆角']
-    ]);
+    const DETAIL_RADIUS_LABELS = Object.freeze({
+        shellRadius: Object.freeze({ tuned: '原设计 · 14px', follow: '跟随全局', square: '直角 · 0px', small: '小圆角 · 8px', medium: '中圆角 · 12px', round: '大圆角 · 18px', custom: '自定义' }),
+        composerRadius: Object.freeze({ tuned: '原设计 · 24px', follow: '跟随全局', square: '直角 · 0px', small: '小圆角 · 12px', medium: '中圆角 · 18px', round: '大圆角 · 24px', custom: '自定义' }),
+        sidebarRadius: Object.freeze({ tuned: '原设计 · 10px', follow: '跟随全局', square: '直角 · 0px', small: '小圆角 · 6px', medium: '中圆角 · 10px', round: '大圆角 · 14px', custom: '自定义' }),
+        cardRadius: Object.freeze({ tuned: '原设计 · 8px', follow: '跟随全局', square: '直角 · 0px', small: '小圆角 · 6px', medium: '中圆角 · 8px', round: '大圆角 · 14px', custom: '自定义' })
+    });
 
     let surface = null;
     let snapshot = null;
@@ -187,6 +205,7 @@
     let draft = null;
     let sourceTrigger = null;
     let saving = false;
+    let previewGeneration = 0;
     let installedThemes = [];
     let themesLoading = false;
     let themesLoadError = null;
@@ -195,9 +214,14 @@
     const clone = value => JSON.parse(JSON.stringify(value));
     const api = () => window.chatAPI || window.electronAPI;
     const currentUiMode = () => document.documentElement.dataset.uiMode || 'classic';
-    const radiusDetailOptions = () => DETAIL_RADIUS_OPTIONS.map(([value, label]) => (
-        `<option value="${value}">${label}</option>`
-    )).join('');
+    function applyHomeVisual(value) {
+        const normalized = value === 'hidden' ? 'hidden' : 'shown';
+        document.documentElement.dataset.vcpHomeVisual = normalized;
+        return normalized;
+    }
+    const radiusDetailOptions = field => Object.entries(DETAIL_RADIUS_LABELS[field] || DETAIL_RADIUS_LABELS.sidebarRadius)
+        .map(([value, label]) => `<option value="${value}">${label}</option>`)
+        .join('');
     const materialControlRows = () => Object.entries(MATERIAL_CONTROLS).map(([key, control]) => `
         <label class="vcp-appearance-material-row">
             <span class="vcp-appearance-material-copy">
@@ -261,6 +285,7 @@
                 || clone(PRESETS.balanced.profile),
             presentation: window.normalizeChatPresentationMode?.(settings.chatPresentationMode) || 'bubble',
             messageWidth: settings.enableWideChatLayout === true ? 'wide' : 'normal',
+            homeVisual: settings.showHomeVisualBrand === false ? 'hidden' : 'shown',
             themeMode,
             themeFileName: null
         };
@@ -283,6 +308,9 @@
             messageWidth: source.messageWidth === 'wide' || source.messageWidth === 'normal'
                 ? source.messageWidth
                 : (base.messageWidth === 'wide' ? 'wide' : 'normal'),
+            homeVisual: source.homeVisual === 'hidden' || source.homeVisual === 'shown'
+                ? source.homeVisual
+                : (base.homeVisual === 'hidden' ? 'hidden' : 'shown'),
             themeMode,
             themeFileName
         };
@@ -298,13 +326,15 @@
                 [field, document.getElementById(id)?.value || base.profile[field]]
             )))
         };
+        const selectedUiMode = document.querySelector('input[name="appearanceUiMode"]:checked')?.value;
         const modeControl = document.getElementById('enableNextUi');
         return normalizeState({
-            uiMode: modeControl ? (modeControl.checked ? 'next' : 'classic') : base.uiMode,
+            uiMode: selectedUiMode || (modeControl ? (modeControl.checked ? 'next' : 'classic') : base.uiMode),
             profile,
             presentation: document.querySelector('input[name="chatPresentationMode"]:checked')?.value
                 || base.presentation,
             messageWidth: document.getElementById('chatLayoutModeWide')?.checked ? 'wide' : 'normal',
+            homeVisual: document.getElementById('showHomeVisualBrand')?.checked === false ? 'hidden' : 'shown',
             themeMode: base.themeMode
         }, base);
     }
@@ -362,6 +392,50 @@
         }
     }
 
+    function automaticSidebarAvatarSize(rowHeight) {
+        return Math.min(44, Math.max(24, rowHeight - 14));
+    }
+
+    function syncSettingsGeometryControls(changedId = null) {
+        const rowControl = document.getElementById('appearanceSidebarRowHeight');
+        const avatarControl = document.getElementById('appearanceSidebarAvatarSize');
+        if (!rowControl || !avatarControl) return;
+        const previousRowHeight = Number(rowControl.dataset.previousValue) || Number(rowControl.value) || 46;
+        const rowHeight = Math.min(64, Math.max(38, Math.round(Number(rowControl.value) || 46)));
+        let avatarSize = Math.round(Number(avatarControl.value) || 32);
+        if (changedId === 'appearanceSidebarRowHeight'
+            && avatarSize === automaticSidebarAvatarSize(previousRowHeight)) {
+            avatarSize = automaticSidebarAvatarSize(rowHeight);
+        }
+        const avatarMaximum = Math.min(52, rowHeight - 4);
+        avatarSize = Math.min(avatarMaximum, Math.max(20, avatarSize));
+        rowControl.value = String(rowHeight);
+        rowControl.dataset.previousValue = String(rowHeight);
+        avatarControl.max = String(avatarMaximum);
+        avatarControl.value = String(avatarSize);
+        window.VCPUI?.getController?.(avatarControl)?.update({
+            max: avatarMaximum,
+            value: avatarSize
+        });
+        const rowOutput = document.getElementById('appearanceSidebarRowHeightValue');
+        const avatarOutput = document.getElementById('appearanceSidebarAvatarSizeValue');
+        if (rowOutput) rowOutput.value = `${rowHeight}px`;
+        if (avatarOutput) avatarOutput.value = `${avatarSize}px`;
+        const customRadiusControl = document.getElementById('appearanceCustomRadius');
+        const customRadiusOutput = document.getElementById('appearanceCustomRadiusValue');
+        if (customRadiusControl && customRadiusOutput) {
+            const customRadius = Math.min(32, Math.max(0, Math.round(Number(customRadiusControl.value) || 0)));
+            customRadiusControl.value = String(customRadius);
+            customRadiusOutput.value = `${customRadius}px`;
+            window.VCPUI?.getController?.(customRadiusControl)?.update({ value: customRadius });
+        }
+        const sidebarRadiusControl = document.getElementById('appearanceSidebarRadius');
+        const sidebarRadiusChoice = document.getElementById(
+            `appearanceSidebarRadiusChoice-${sidebarRadiusControl?.value || 'tuned'}`
+        );
+        if (sidebarRadiusChoice) sidebarRadiusChoice.checked = true;
+    }
+
     function bindSettingsSummary() {
         const card = document.getElementById('appearanceSettingsWorkbenchCard');
         const form = document.getElementById('globalSettingsForm');
@@ -369,15 +443,33 @@
         if (!card || !form || !trigger) return;
         if (!card.dataset.appearanceSummaryBound) {
             form.addEventListener('change', event => {
-                if (event.target.matches('[id^="appearance"], input[name="chatPresentationMode"]')) {
+                if (event.target.matches('input[name="appearanceUiMode"]')) {
+                    const compatibilityControl = document.getElementById('enableNextUi');
+                    if (compatibilityControl) compatibilityControl.checked = event.target.value === 'next';
+                }
+                if (event.target.matches('input[name="appearanceSidebarRadiusChoice"]')) {
+                    const compatibilityControl = document.getElementById('appearanceSidebarRadius');
+                    if (compatibilityControl) compatibilityControl.value = event.target.value;
+                }
+                if (event.target.matches('[id^="appearance"], #showHomeVisualBrand, input[name="chatPresentationMode"]')) {
                     syncSettingsSummary();
                 }
+            });
+            form.addEventListener('input', event => {
+                if (event.target.id === 'appearanceCustomRadius') {
+                    const output = document.getElementById('appearanceCustomRadiusValue');
+                    if (output) output.value = `${event.target.value}px`;
+                    return;
+                }
+                if (!['appearanceSidebarRowHeight', 'appearanceSidebarAvatarSize'].includes(event.target.id)) return;
+                syncSettingsGeometryControls(event.target.id);
             });
             trigger.addEventListener('click', () => {
                 open({ trigger, initialState: readSettingsFormState() });
             });
             card.dataset.appearanceSummaryBound = 'true';
         }
+        syncSettingsGeometryControls();
         syncSettingsSummary();
     }
 
@@ -428,10 +520,29 @@
                         </div>
                         <div class="vcp-appearance-theme-palette-grid" data-theme-palette-grid aria-live="polite"></div>
                     </section>
+                    <section class="vcp-appearance-studio-section vcp-appearance-studio-section-presets" aria-labelledby="vcpAppearancePresetsTitle">
+                        <div class="vcp-appearance-studio-section-heading">
+                            <div>
+                                <h3 id="vcpAppearancePresetsTitle">快速预设</h3>
+                                <p>一键组合常用布局与阅读参数，不改变当前明暗主题</p>
+                            </div>
+                        </div>
+                        <div class="vcp-appearance-preset-grid">
+                            ${Object.entries(PRESETS).map(([id, preset]) => `
+                                <button type="button" class="vcp-appearance-preset vcp-appearance-tile" data-appearance-preset="${id}">
+                                    <span class="vcp-appearance-preset-preview vcp-appearance-preset-preview-${id}" aria-hidden="true">
+                                        <span></span><span></span><span></span>
+                                    </span>
+                                    <span class="vcp-appearance-tile-label">${preset.name}</span>
+                                    <span class="vcp-appearance-tile-description">${id === 'focus' ? '高效工作' : id === 'reading' ? '长文阅读' : '日常对话'}</span>
+                                    <span class="vcp-appearance-tile-check" aria-hidden="true"><span class="vcp-ui-icon">check</span></span>
+                                </button>`).join('')}
+                        </div>
+                    </section>
                     <section class="vcp-appearance-studio-section" aria-labelledby="vcpAppearanceLayoutTitle">
                         <div class="vcp-appearance-studio-section-heading">
-                            <div><h3 id="vcpAppearanceLayoutTitle">界面布局</h3><p>选择主页结构，再调整空间密度和内容区域</p></div>
-                            <button type="button" class="vcp-appearance-studio-reset" data-reset-section="layout" aria-label="重置界面布局" title="重置本节"><span class="vcp-ui-icon">refresh</span></button>
+                            <div><h3 id="vcpAppearanceLayoutTitle">页面布局</h3><p>选择主页结构与聊天内容的占用方式</p></div>
+                            <button type="button" class="vcp-appearance-studio-reset" data-reset-section="layout" aria-label="重置页面布局" title="重置本节"><span class="vcp-ui-icon">refresh</span></button>
                         </div>
                         <div class="vcp-appearance-subsection vcp-appearance-shell-subsection">
                             <h4>主页布局</h4>
@@ -447,86 +558,58 @@
                             </div>
                             <p class="vcp-appearance-shell-note"><span class="vcp-ui-icon" aria-hidden="true">info</span>只切换主页外壳；主题、壁纸与聊天内容保持不变。</p>
                         </div>
-                        <div class="vcp-appearance-subsection"><h4>密度</h4><div class="vcp-appearance-option-grid vcp-appearance-density-grid" role="group" aria-label="界面密度">
+                        <div class="vcp-appearance-mini-options" role="group" aria-label="阅读区、消息宽度和主页视觉文字">
+                            <div class="vcp-appearance-mini-item"><h4>阅读区布局</h4><div class="vcp-appearance-segmented"><button type="button" data-appearance-key="contentWidth" data-appearance-value="full">全宽画布</button><button type="button" data-appearance-key="contentWidth" data-appearance-value="centered">居中阅读</button></div><p class="vcp-appearance-mini-helper">控制整个聊天阅读区</p></div>
+                            <div class="vcp-appearance-mini-item"><h4>消息宽度</h4><div class="vcp-appearance-segmented"><button type="button" data-appearance-key="messageWidth" data-appearance-value="normal">标准</button><button type="button" data-appearance-key="messageWidth" data-appearance-value="wide">宽屏</button></div><p class="vcp-appearance-mini-helper">控制单条消息的最大宽度</p></div>
+                            <div class="vcp-appearance-mini-item vcp-appearance-mini-item-wide"><h4>主页视觉文字</h4><div class="vcp-appearance-segmented"><button type="button" data-appearance-key="homeVisual" data-appearance-value="shown">显示</button><button type="button" data-appearance-key="homeVisual" data-appearance-value="hidden">隐藏</button></div><p class="vcp-appearance-mini-helper">控制空会话中的 VCPCHAT 标识</p></div>
+                        </div>
+                    </section>
+                    <section class="vcp-appearance-studio-section" aria-labelledby="vcpAppearanceGeometryTitle">
+                        <div class="vcp-appearance-studio-section-heading">
+                            <div><h3 id="vcpAppearanceGeometryTitle">组件尺寸与形状</h3><p>统一界面密度、侧栏列表和圆角尺度</p></div>
+                            <button type="button" class="vcp-appearance-studio-reset" data-reset-section="geometry" aria-label="重置组件尺寸与形状" title="重置本节"><span class="vcp-ui-icon">refresh</span></button>
+                        </div>
+                        <div class="vcp-appearance-subsection"><h4>界面密度</h4><div class="vcp-appearance-option-grid vcp-appearance-density-grid" role="group" aria-label="界面密度">
                             <button type="button" class="vcp-appearance-option" data-appearance-key="density" data-appearance-value="compact"><span class="vcp-appearance-option-preview vcp-appearance-density-preview compact"><i></i><i></i><i></i><i></i></span><span class="vcp-appearance-tile-label">紧凑</span></button>
                             <button type="button" class="vcp-appearance-option" data-appearance-key="density" data-appearance-value="comfortable"><span class="vcp-appearance-option-preview vcp-appearance-density-preview comfortable"><i></i><i></i><i></i></span><span class="vcp-appearance-tile-label">舒适</span></button>
                             <button type="button" class="vcp-appearance-option" data-appearance-key="density" data-appearance-value="relaxed"><span class="vcp-appearance-option-preview vcp-appearance-density-preview relaxed"><i></i><i></i></span><span class="vcp-appearance-tile-label">宽松</span></button>
                         </div></div>
-                        <div class="vcp-appearance-subsection"><h4>圆角</h4><div class="vcp-appearance-option-grid vcp-appearance-radius-grid" role="group" aria-label="圆角">
-                            <button type="button" class="vcp-appearance-option" data-appearance-key="radius" data-appearance-value="square"><span class="vcp-appearance-option-preview vcp-appearance-radius-preview square"><i></i></span><span class="vcp-appearance-tile-label">直角</span></button>
-                            <button type="button" class="vcp-appearance-option" data-appearance-key="radius" data-appearance-value="small"><span class="vcp-appearance-option-preview vcp-appearance-radius-preview small"><i></i></span><span class="vcp-appearance-tile-label">小</span></button>
-                            <button type="button" class="vcp-appearance-option" data-appearance-key="radius" data-appearance-value="medium"><span class="vcp-appearance-option-preview vcp-appearance-radius-preview medium"><i></i></span><span class="vcp-appearance-tile-label">中</span></button>
-                            <button type="button" class="vcp-appearance-option" data-appearance-key="radius" data-appearance-value="round"><span class="vcp-appearance-option-preview vcp-appearance-radius-preview round"><i></i></span><span class="vcp-appearance-tile-label">圆润</span></button>
+                        <div class="vcp-appearance-sidebar-geometry">
+                            <div class="vcp-appearance-sidebar-geometry-heading"><h4>侧栏列表尺寸</h4><p>同步助手、话题、创建入口与左下角账户区域</p></div>
+                            <label class="vcp-appearance-geometry-row"><span>列表项高度</span><span class="vcp-appearance-inline-range"><input type="range" min="38" max="64" step="1" data-appearance-key="sidebarRowHeight" aria-label="列表项高度"><output data-appearance-output="sidebarRowHeight">46px</output></span></label>
+                            <label class="vcp-appearance-geometry-row"><span>头像大小</span><span class="vcp-appearance-inline-range"><input type="range" min="20" max="52" step="1" data-appearance-key="sidebarAvatarSize" aria-label="头像大小"><output data-appearance-output="sidebarAvatarSize">32px</output></span></label>
+                            <p class="vcp-appearance-sidebar-geometry-note">头像大小会受列表项高度约束，始终保留安全内边距。</p>
+                        </div>
+                        <div class="vcp-appearance-subsection vcp-appearance-radius-subsection"><h4>全局圆角</h4><div class="vcp-appearance-option-grid vcp-appearance-radius-grid" role="group" aria-label="圆角">
+                            <button type="button" class="vcp-appearance-option" data-appearance-key="radius" data-appearance-value="square"><span class="vcp-appearance-option-preview vcp-appearance-radius-preview square"><i></i></span><span class="vcp-appearance-tile-label">直角 · 0px</span></button>
+                            <button type="button" class="vcp-appearance-option" data-appearance-key="radius" data-appearance-value="small"><span class="vcp-appearance-option-preview vcp-appearance-radius-preview small"><i></i></span><span class="vcp-appearance-tile-label">小 · 6px</span></button>
+                            <button type="button" class="vcp-appearance-option" data-appearance-key="radius" data-appearance-value="medium"><span class="vcp-appearance-option-preview vcp-appearance-radius-preview medium"><i></i></span><span class="vcp-appearance-tile-label">中 · 10px</span></button>
+                            <button type="button" class="vcp-appearance-option" data-appearance-key="radius" data-appearance-value="round"><span class="vcp-appearance-option-preview vcp-appearance-radius-preview round"><i></i></span><span class="vcp-appearance-tile-label">圆润 · 14px</span></button>
+                            <button type="button" class="vcp-appearance-option" data-appearance-key="radius" data-appearance-value="custom"><span class="vcp-appearance-option-preview vcp-appearance-radius-preview custom"><i></i></span><span class="vcp-appearance-tile-label">自定义</span></button>
                         </div></div>
+                        <label class="vcp-appearance-custom-radius-row"><span>自定义圆角值</span><span class="vcp-appearance-inline-range"><input type="range" min="0" max="32" step="1" data-appearance-key="customRadius" aria-label="自定义圆角值"><output data-appearance-output="customRadius">10px</output></span></label>
+                        <div class="vcp-appearance-geometry-radius"><span>侧栏列表圆角</span><div class="vcp-appearance-radius-choice-grid" role="group" aria-label="列表项圆角"><button type="button" data-appearance-key="sidebarRadius" data-appearance-value="tuned">原设计<small>10px</small></button><button type="button" data-appearance-key="sidebarRadius" data-appearance-value="follow">跟随全局<small>自动</small></button><button type="button" data-appearance-key="sidebarRadius" data-appearance-value="square">直角<small>0px</small></button><button type="button" data-appearance-key="sidebarRadius" data-appearance-value="small">小圆角<small>6px</small></button><button type="button" data-appearance-key="sidebarRadius" data-appearance-value="medium">中圆角<small>10px</small></button><button type="button" data-appearance-key="sidebarRadius" data-appearance-value="round">大圆角<small>14px</small></button><button type="button" data-appearance-key="sidebarRadius" data-appearance-value="custom">自定义<small>使用全局自定义值</small></button></div></div>
                         <details class="vcp-appearance-detail-menu" data-radius-details>
                             <summary>
                                 <span class="vcp-ui-icon" aria-hidden="true">tune</span>
                                 <span class="vcp-appearance-detail-summary-copy">
                                     <strong>细节圆角</strong>
-                                    <small>关键区域可独立于全局圆角</small>
+                                    <small>主面板、输入框和卡片可独立调整</small>
                                 </span>
                                 <span class="vcp-appearance-detail-status" data-radius-details-status>使用原设计</span>
                                 <span class="vcp-ui-icon vcp-appearance-detail-chevron" aria-hidden="true">expand_more</span>
                             </summary>
                             <div class="vcp-appearance-detail-body">
-                                <label class="vcp-appearance-detail-row">
-                                    <span><strong>主面板</strong><small>主聊天与 Build 左上角</small></span>
-                                    <select data-appearance-key="shellRadius" aria-label="主面板圆角">${radiusDetailOptions()}</select>
-                                </label>
-                                <label class="vcp-appearance-detail-row">
-                                    <span><strong>消息输入框</strong><small>主聊天与 Build 输入卡片</small></span>
-                                    <select data-appearance-key="composerRadius" aria-label="消息输入框圆角">${radiusDetailOptions()}</select>
-                                </label>
-                                <label class="vcp-appearance-detail-row">
-                                    <span><strong>侧栏列表</strong><small>Agent、话题与会话列表同步</small></span>
-                                    <select data-appearance-key="sidebarRadius" aria-label="侧栏列表圆角">${radiusDetailOptions()}</select>
-                                </label>
-                                <label class="vcp-appearance-detail-row">
-                                    <span><strong>卡片与弹窗</strong><small>设置、通知及内容卡片</small></span>
-                                    <select data-appearance-key="cardRadius" aria-label="卡片与弹窗圆角">${radiusDetailOptions()}</select>
-                                </label>
-                            </div>
-                        </details>
-                        <div class="vcp-appearance-mini-options" role="group" aria-label="阅读区、消息宽度和导航材质">
-                            <div class="vcp-appearance-mini-item"><h4>阅读区布局</h4><div class="vcp-appearance-segmented"><button type="button" data-appearance-key="contentWidth" data-appearance-value="full">全宽画布</button><button type="button" data-appearance-key="contentWidth" data-appearance-value="centered">居中阅读</button></div><p class="vcp-appearance-mini-helper">控制整个聊天阅读区</p></div>
-                            <div class="vcp-appearance-mini-item"><h4>消息宽度</h4><div class="vcp-appearance-segmented"><button type="button" data-appearance-key="messageWidth" data-appearance-value="normal">标准</button><button type="button" data-appearance-key="messageWidth" data-appearance-value="wide">宽屏</button></div><p class="vcp-appearance-mini-helper">控制单条消息的最大宽度</p></div>
-                            <div class="vcp-appearance-mini-item vcp-appearance-mini-item-wide"><h4>导航材质</h4><div class="vcp-appearance-segmented vcp-appearance-material-segmented"><button type="button" data-appearance-key="surface" data-appearance-value="translucent">主题</button><button type="button" data-appearance-key="surface" data-appearance-value="solid">纯色</button><button type="button" data-appearance-key="surface" data-appearance-value="custom">自定义</button></div></div>
-                        </div>
-                        <details class="vcp-appearance-material-menu" data-material-details>
-                            <summary>
-                                <span class="vcp-ui-icon" aria-hidden="true">blur_on</span>
-                                <span class="vcp-appearance-detail-summary-copy">
-                                    <strong>导航磨砂编辑器</strong>
-                                    <small>仅作用于左侧栏与顶栏</small>
-                                </span>
-                                <span class="vcp-appearance-detail-status" data-material-details-status>主题原样</span>
-                                <span class="vcp-ui-icon vcp-appearance-detail-chevron" aria-hidden="true">expand_more</span>
-                            </summary>
-                            <div class="vcp-appearance-material-body">
-                                <div class="vcp-appearance-material-toolbar">
-                                    <span>选择效果配方，再继续微调</span>
-                                    <button type="button" data-reset-material>
-                                        <span class="vcp-ui-icon" aria-hidden="true">restart_alt</span>
-                                        <span>恢复主题默认</span>
-                                    </button>
-                                </div>
-                                <div class="vcp-appearance-material-effect-grid" role="group" aria-label="磨砂效果配方">
-                                    ${materialEffectTiles()}
-                                </div>
-                                <div class="vcp-appearance-material-preview" data-material-preview aria-hidden="true">
-                                    <span class="vcp-appearance-material-preview-scene"></span>
-                                    <span class="vcp-appearance-material-preview-topbar"></span>
-                                    <span class="vcp-appearance-material-preview-sidebar"><i></i><i></i><i></i></span>
-                                    <span class="vcp-appearance-material-preview-content"><i></i><i></i><i></i></span>
-                                </div>
-                                <div class="vcp-appearance-material-controls">${materialControlRows()}</div>
+                                <label class="vcp-appearance-detail-row"><span><strong>主面板</strong><small>主聊天内容区左上角</small></span><select data-appearance-key="shellRadius" aria-label="主面板圆角">${radiusDetailOptions('shellRadius')}</select></label>
+                                <label class="vcp-appearance-detail-row"><span><strong>消息输入框</strong><small>主聊天输入卡片</small></span><select data-appearance-key="composerRadius" aria-label="消息输入框圆角">${radiusDetailOptions('composerRadius')}</select></label>
+                                <label class="vcp-appearance-detail-row"><span><strong>卡片与弹窗</strong><small>设置、通知及内容卡片</small></span><select data-appearance-key="cardRadius" aria-label="卡片与弹窗圆角">${radiusDetailOptions('cardRadius')}</select></label>
                             </div>
                         </details>
                     </section>
-                    <section class="vcp-appearance-studio-section" aria-labelledby="vcpAppearanceTypeTitle">
+                    <section class="vcp-appearance-studio-section" aria-labelledby="vcpAppearanceReadingTitle">
                         <div class="vcp-appearance-studio-section-heading">
-                            <div><h3 id="vcpAppearanceTypeTitle">字体与阅读</h3><p>让文字更贴合你的阅读习惯</p></div>
-                            <button type="button" class="vcp-appearance-studio-reset" data-reset-section="type" aria-label="重置字体设置" title="重置本节"><span class="vcp-ui-icon">refresh</span></button>
+                            <div><h3 id="vcpAppearanceReadingTitle">字体与聊天呈现</h3><p>调整字形、字号以及消息的组织方式</p></div>
+                            <button type="button" class="vcp-appearance-studio-reset" data-reset-section="reading" aria-label="重置字体与聊天呈现" title="重置本节"><span class="vcp-ui-icon">refresh</span></button>
                         </div>
                         <div class="vcp-appearance-option-grid vcp-appearance-font-grid" role="group" aria-label="界面字形">
                             <button type="button" class="vcp-appearance-option" data-appearance-key="typography" data-appearance-value="system"><span class="vcp-appearance-font-preview system">Aa</span><span class="vcp-appearance-tile-label">系统</span></button>
@@ -534,12 +617,7 @@
                             <button type="button" class="vcp-appearance-option" data-appearance-key="typography" data-appearance-value="serif"><span class="vcp-appearance-font-preview serif">Aa</span><span class="vcp-appearance-tile-label">衬线</span></button>
                         </div>
                         <div class="vcp-appearance-font-scale"><h4>字号</h4><div class="vcp-appearance-segmented"><button type="button" data-appearance-key="fontScale" data-appearance-value="small">小</button><button type="button" data-appearance-key="fontScale" data-appearance-value="normal">标准</button><button type="button" data-appearance-key="fontScale" data-appearance-value="large">大</button></div></div>
-                    </section>
-                    <section class="vcp-appearance-studio-section" aria-labelledby="vcpAppearanceChatTitle">
-                        <div class="vcp-appearance-studio-section-heading">
-                            <div><h3 id="vcpAppearanceChatTitle">聊天呈现</h3><p>选择消息在主面板中的组织方式</p></div>
-                            <button type="button" class="vcp-appearance-studio-reset" data-reset-section="chat" aria-label="重置聊天呈现" title="重置本节"><span class="vcp-ui-icon">refresh</span></button>
-                        </div>
+                        <div class="vcp-appearance-subsection vcp-appearance-chat-subsection"><h4>消息样式</h4>
                         <div class="vcp-appearance-mode-grid" role="group" aria-label="聊天呈现">
                             <button type="button" data-appearance-key="presentation" data-appearance-value="bubble">
                                 <span class="vcp-appearance-chat-preview bubble" aria-hidden="true"><i></i><i></i></span><span class="vcp-appearance-tile-label">气泡</span>
@@ -551,25 +629,27 @@
                                 <span class="vcp-appearance-chat-preview immersive" aria-hidden="true"><i></i></span><span class="vcp-appearance-tile-label">沉浸</span>
                             </button>
                         </div>
+                        </div>
                     </section>
-                    <section class="vcp-appearance-studio-section vcp-appearance-studio-section-featured vcp-appearance-studio-section-presets" aria-labelledby="vcpAppearancePresetsTitle">
+                    <section class="vcp-appearance-studio-section vcp-appearance-material-section" aria-labelledby="vcpAppearanceMaterialTitle">
                         <div class="vcp-appearance-studio-section-heading">
-                            <div>
-                                <h3 id="vcpAppearancePresetsTitle">快速预设</h3>
-                                <p>一键组合布局与阅读参数，不改变当前明暗主题</p>
+                            <div><h3 id="vcpAppearanceMaterialTitle">导航材质</h3><p>控制左侧栏与顶栏的表面效果</p></div>
+                            <button type="button" class="vcp-appearance-studio-reset" data-reset-section="material" aria-label="重置导航材质" title="重置本节"><span class="vcp-ui-icon">refresh</span></button>
+                        </div>
+                        <div class="vcp-appearance-material-overview">
+                            <div class="vcp-appearance-segmented vcp-appearance-material-segmented" role="group" aria-label="导航材质模式"><button type="button" data-appearance-key="surface" data-appearance-value="translucent">主题</button><button type="button" data-appearance-key="surface" data-appearance-value="solid">纯色</button><button type="button" data-appearance-key="surface" data-appearance-value="custom">自定义</button></div>
+                            <div class="vcp-appearance-material-effect-grid" role="group" aria-label="磨砂效果配方">${materialEffectTiles()}</div>
+                            <div class="vcp-appearance-material-preview" data-material-preview aria-hidden="true">
+                                <span class="vcp-appearance-material-preview-scene"></span><span class="vcp-appearance-material-preview-topbar"></span><span class="vcp-appearance-material-preview-sidebar"><i></i><i></i><i></i></span><span class="vcp-appearance-material-preview-content"><i></i><i></i><i></i></span>
                             </div>
                         </div>
-                        <div class="vcp-appearance-preset-grid">
-                            ${Object.entries(PRESETS).map(([id, preset]) => `
-                                <button type="button" class="vcp-appearance-preset vcp-appearance-tile" data-appearance-preset="${id}">
-                                    <span class="vcp-appearance-preset-preview vcp-appearance-preset-preview-${id}" aria-hidden="true">
-                                        <span></span><span></span><span></span>
-                                    </span>
-                                    <span class="vcp-appearance-tile-label">${preset.name}</span>
-                                    <span class="vcp-appearance-tile-description">${id === 'focus' ? '高效工作' : id === 'reading' ? '长文阅读' : '日常对话'}</span>
-                                    <span class="vcp-appearance-tile-check" aria-hidden="true"><span class="vcp-ui-icon">check</span></span>
-                                </button>`).join('')}
-                        </div>
+                        <details class="vcp-appearance-material-menu" data-material-details>
+                            <summary><span class="vcp-ui-icon" aria-hidden="true">tune</span><span class="vcp-appearance-detail-summary-copy"><strong>高级材质参数</strong><small>浓度、模糊、饱和度与边缘细节</small></span><span class="vcp-appearance-detail-status" data-material-details-status>主题原样</span><span class="vcp-ui-icon vcp-appearance-detail-chevron" aria-hidden="true">expand_more</span></summary>
+                            <div class="vcp-appearance-material-body">
+                                <div class="vcp-appearance-material-toolbar"><span>精确微调当前材质</span><button type="button" data-reset-material><span class="vcp-ui-icon" aria-hidden="true">restart_alt</span><span>恢复主题默认</span></button></div>
+                                <div class="vcp-appearance-material-controls">${materialControlRows()}</div>
+                            </div>
+                        </details>
                     </section>
                     <section class="vcp-appearance-studio-section vcp-appearance-studio-actions" aria-label="更多外观设置">
                         <button type="button" data-studio-action="wallpaper">
@@ -599,6 +679,9 @@
         });
 
         document.body.append(root);
+        root.querySelectorAll('input[type="range"]').forEach(control => {
+            if (!window.VCPUI?.getController?.(control)) window.VCPUI?.enhance?.('Range', control);
+        });
         const themePreviewStyle = document.createElement('style');
         themePreviewStyle.dataset.appearanceThemeSwatches = 'true';
         root.append(themePreviewStyle);
@@ -780,8 +863,11 @@
             }
             if (button.matches('input[type="range"]')) {
                 button.value = String(current);
-                const output = surface.root.querySelector(`[data-material-output="${key}"]`);
-                if (output) output.textContent = `${current}${MATERIAL_CONTROLS[key]?.unit || ''}`;
+                window.VCPUI?.getController?.(button)?.update({ value: current });
+                const output = surface.root.querySelector(
+                    `[data-material-output="${key}"], [data-appearance-output="${key}"]`
+                );
+                if (output) output.textContent = `${current}${['sidebarRowHeight', 'sidebarAvatarSize', 'customRadius'].includes(key) ? 'px' : (MATERIAL_CONTROLS[key]?.unit || '')}`;
                 return;
             }
             const active = current === value;
@@ -827,39 +913,49 @@
         }
     }
 
-    function resetSection(section) {
+    async function resetSection(section) {
         if (!draft) return;
         const defaults = DEFAULT_STATE;
         if (section === 'theme') {
             draft.themeMode = defaults.themeMode;
         } else if (section === 'layout') {
-            ['density', 'radius', 'contentWidth', 'surface', ...MATERIAL_FIELDS, ...DETAIL_RADIUS_FIELDS].forEach(field => {
+            draft.uiMode = defaults.uiMode;
+            draft.profile.contentWidth = defaults.profile.contentWidth;
+            draft.messageWidth = defaults.messageWidth;
+            draft.homeVisual = defaults.homeVisual;
+        } else if (section === 'geometry') {
+            ['density', 'radius', 'sidebarRowHeight', 'sidebarAvatarSize', 'customRadius', 'sidebarRadius', ...DETAIL_RADIUS_FIELDS].forEach(field => {
                 draft.profile[field] = defaults.profile[field];
             });
-            draft.messageWidth = defaults.messageWidth;
-        } else if (section === 'type') {
+        } else if (section === 'reading') {
             ['typography', 'fontScale'].forEach(field => {
                 draft.profile[field] = defaults.profile[field];
             });
-        } else if (section === 'chat') {
             draft.presentation = defaults.presentation;
+        } else if (section === 'material') {
+            ['surface', 'surfaceEffect', ...MATERIAL_FIELDS].forEach(field => {
+                draft.profile[field] = defaults.profile[field];
+            });
         }
-        void preview();
+        await preview();
     }
 
     async function preview(options = {}) {
         if (!draft) return;
+        const generation = ++previewGeneration;
         if (window.uiModeManager?.applyAsync) {
             await window.uiModeManager.applyAsync(draft.uiMode, { cache: false });
         } else {
             window.uiModeManager?.apply(draft.uiMode, { cache: false });
         }
+        if (generation !== previewGeneration || !draft) return;
         window.VCPAppearance?.apply(draft.profile, {
             uiMode: draft.uiMode,
             cache: false,
             source: 'appearance-studio-preview'
         });
         document.body.classList.toggle('chat-wide-layout', draft.messageWidth === 'wide');
+        applyHomeVisual(draft.homeVisual);
         if (!options.appearanceOnly) {
             window.uiManager?.applyTheme?.(effectiveThemeForMode(draft.themeMode));
             previewThemeFile(draft.themeFileName);
@@ -878,6 +974,7 @@
 
     async function restoreSnapshot() {
         if (!snapshot) return;
+        previewGeneration += 1;
         if ((window.VCPAppearance?.getRevision?.() || 0) !== snapshotRevision) return;
         removeThemePreview();
         if (window.uiModeManager?.applyAsync) {
@@ -891,6 +988,7 @@
             source: 'appearance-studio-rollback'
         });
         document.body.classList.toggle('chat-wide-layout', snapshot.messageWidth === 'wide');
+        applyHomeVisual(snapshot.homeVisual);
         window.uiManager?.applyTheme?.(effectiveThemeForMode(snapshot.themeMode));
         await window.applyChatPresentationMode?.(snapshot.presentation, {
             persist: false,
@@ -904,6 +1002,12 @@
         if (!draft) return;
         const enableNextUi = document.getElementById('enableNextUi');
         if (enableNextUi) enableNextUi.checked = draft.uiMode === 'next';
+        const visibleMode = document.getElementById(
+            draft.uiMode === 'next' ? 'appearanceUiModeNext' : 'appearanceUiModeClassic'
+        );
+        if (visibleMode) visibleMode.checked = true;
+        const homeVisual = document.getElementById('showHomeVisualBrand');
+        if (homeVisual) homeVisual.checked = draft.homeVisual !== 'hidden';
         Object.entries(PROFILE_CONTROL_IDS).forEach(([field, id]) => {
             const control = document.getElementById(id);
             if (control) {
@@ -925,11 +1029,13 @@
             messageWidth.checked = true;
             messageWidth.dispatchEvent(new Event('change', { bubbles: true }));
         }
+        syncSettingsGeometryControls();
     }
 
     async function save() {
         if (!draft || saving || statesEqual(snapshot, draft)) return;
         setBusy(true);
+        previewGeneration += 1;
         const nextState = clone(draft);
         try {
             const result = await api()?.saveSettings?.({
@@ -937,6 +1043,7 @@
                 appearanceProfile: nextState.profile,
                 chatPresentationMode: nextState.presentation,
                 enableWideChatLayout: nextState.messageWidth === 'wide',
+                showHomeVisualBrand: nextState.homeVisual !== 'hidden',
                 currentThemeMode: nextState.themeMode
             });
             if (!result?.success) throw new Error(result?.error || '设置保存失败');
@@ -946,6 +1053,7 @@
                 appearanceProfile: nextState.profile,
                 chatPresentationMode: nextState.presentation,
                 enableWideChatLayout: nextState.messageWidth === 'wide',
+                showHomeVisualBrand: nextState.homeVisual !== 'hidden',
                 currentThemeMode: nextState.themeMode
             });
             if (window.uiModeManager?.applyAsync) {
@@ -1051,7 +1159,7 @@
             return;
         }
         if (target.matches('[data-reset-section]')) {
-            resetSection(target.dataset.resetSection);
+            await resetSection(target.dataset.resetSection);
             return;
         }
         if (target.matches('[data-reset-material]')) {
@@ -1086,6 +1194,7 @@
                 profile: clone(preset.profile),
                 presentation: preset.presentation,
                 messageWidth: draft.messageWidth,
+                homeVisual: draft.homeVisual,
                 themeMode: draft.themeMode,
                 themeFileName: draft.themeFileName
             };
@@ -1130,6 +1239,33 @@
         const control = event.target.closest('input[type="range"][data-appearance-key]');
         if (!control || saving || !draft) return;
         const key = control.dataset.appearanceKey;
+        if (key === 'sidebarRowHeight') {
+            const previousRowHeight = draft.profile.sidebarRowHeight;
+            const nextRowHeight = Math.min(64, Math.max(38, Math.round(Number(control.value) || 46)));
+            const previousAutoAvatar = Math.min(44, Math.max(24, previousRowHeight - 14));
+            const nextAutoAvatar = Math.min(44, Math.max(24, nextRowHeight - 14));
+            draft.profile.sidebarRowHeight = nextRowHeight;
+            if (draft.profile.sidebarAvatarSize === previousAutoAvatar) {
+                draft.profile.sidebarAvatarSize = nextAutoAvatar;
+            }
+            draft.profile.sidebarAvatarSize = Math.min(draft.profile.sidebarAvatarSize, nextRowHeight - 4);
+            await preview({ appearanceOnly: true });
+            return;
+        }
+        if (key === 'sidebarAvatarSize') {
+            draft.profile.sidebarAvatarSize = Math.min(
+                52,
+                draft.profile.sidebarRowHeight - 4,
+                Math.max(20, Math.round(Number(control.value) || 32))
+            );
+            await preview({ appearanceOnly: true });
+            return;
+        }
+        if (key === 'customRadius') {
+            draft.profile.customRadius = Math.min(32, Math.max(0, Math.round(Number(control.value) || 0)));
+            await preview({ appearanceOnly: true });
+            return;
+        }
         if (!MATERIAL_FIELDS.includes(key)) return;
         const config = MATERIAL_CONTROLS[key];
         const value = Math.min(config.max, Math.max(config.min, Number(control.value)));
@@ -1161,6 +1297,7 @@
     }
 
     window.addEventListener('global-settings-updated', () => {
+        if (!draft) applyHomeVisual(readState().homeVisual);
         if (!surface || surface.root.hidden) syncAccountMenuValue();
         syncSettingsSummary();
     });
@@ -1168,6 +1305,7 @@
         if (!surface || surface.root.hidden) syncSettingsSummary();
     });
     document.addEventListener('DOMContentLoaded', () => {
+        applyHomeVisual(readState().homeVisual);
         syncAccountMenuValue();
         bindSettingsSummary();
     });

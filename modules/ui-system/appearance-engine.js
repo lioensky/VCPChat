@@ -2,16 +2,21 @@
     const STORAGE_KEY = 'vcpchat.appearanceProfile';
     const OPTION_SETS = Object.freeze({
         density: new Set(['compact', 'comfortable', 'relaxed']),
-        radius: new Set(['square', 'small', 'medium', 'round']),
+        radius: new Set(['square', 'small', 'medium', 'round', 'custom']),
         typography: new Set(['system', 'humanist', 'serif']),
         fontScale: new Set(['small', 'normal', 'large']),
         contentWidth: new Set(['full', 'centered']),
         surface: new Set(['solid', 'translucent', 'custom']),
         surfaceEffect: new Set(['vibrancy', 'mica', 'acrylic', 'liquid']),
-        shellRadius: new Set(['tuned', 'follow', 'square', 'small', 'medium', 'round']),
-        composerRadius: new Set(['tuned', 'follow', 'square', 'small', 'medium', 'round']),
-        sidebarRadius: new Set(['tuned', 'follow', 'square', 'small', 'medium', 'round']),
-        cardRadius: new Set(['tuned', 'follow', 'square', 'small', 'medium', 'round'])
+        shellRadius: new Set(['tuned', 'follow', 'square', 'small', 'medium', 'round', 'custom']),
+        composerRadius: new Set(['tuned', 'follow', 'square', 'small', 'medium', 'round', 'custom']),
+        sidebarRadius: new Set(['tuned', 'follow', 'square', 'small', 'medium', 'round', 'custom']),
+        cardRadius: new Set(['tuned', 'follow', 'square', 'small', 'medium', 'round', 'custom'])
+    });
+    const LAYOUT_RANGES = Object.freeze({
+        sidebarRowHeight: Object.freeze({ min: 38, max: 64, default: 46 }),
+        sidebarAvatarSize: Object.freeze({ min: 20, max: 52, default: 32 }),
+        customRadius: Object.freeze({ min: 0, max: 32, default: 10 })
     });
     const MATERIAL_RANGES = Object.freeze({
         surfaceOpacity: Object.freeze({ min: 20, max: 100, default: 68 }),
@@ -31,6 +36,9 @@
         classic: Object.freeze({
             density: 'comfortable', radius: 'small', typography: 'system',
             fontScale: 'normal', contentWidth: 'full', surface: 'translucent',
+            sidebarRowHeight: 46,
+            sidebarAvatarSize: 32,
+            customRadius: 10,
             surfaceEffect: 'vibrancy',
             ...MATERIAL_DEFAULTS,
             shellRadius: 'tuned', composerRadius: 'tuned', sidebarRadius: 'tuned', cardRadius: 'tuned'
@@ -38,6 +46,9 @@
         next: Object.freeze({
             density: 'comfortable', radius: 'medium', typography: 'humanist',
             fontScale: 'normal', contentWidth: 'full', surface: 'translucent',
+            sidebarRowHeight: 46,
+            sidebarAvatarSize: 32,
+            customRadius: 10,
             surfaceEffect: 'vibrancy',
             ...MATERIAL_DEFAULTS,
             shellRadius: 'tuned', composerRadius: 'tuned', sidebarRadius: 'tuned', cardRadius: 'tuned'
@@ -60,7 +71,30 @@
             const value = Number.isFinite(parsed) ? parsed : preset[key];
             return [key, Math.min(range.max, Math.max(range.min, Math.round(value)))];
         }));
-        return { ...options, ...material };
+        const rowRange = LAYOUT_RANGES.sidebarRowHeight;
+        const parsedRowHeight = Number(source.sidebarRowHeight);
+        const sidebarRowHeight = Math.min(rowRange.max, Math.max(
+            rowRange.min,
+            Math.round(Number.isFinite(parsedRowHeight) ? parsedRowHeight : preset.sidebarRowHeight)
+        ));
+        const avatarRange = LAYOUT_RANGES.sidebarAvatarSize;
+        const parsedAvatarSize = Number(source.sidebarAvatarSize);
+        const sidebarAvatarSize = Math.min(
+            avatarRange.max,
+            sidebarRowHeight - 4,
+            Math.max(
+                avatarRange.min,
+                Math.round(Number.isFinite(parsedAvatarSize) ? parsedAvatarSize : preset.sidebarAvatarSize)
+            )
+        );
+        const customRadiusRange = LAYOUT_RANGES.customRadius;
+        const parsedCustomRadius = Number(source.customRadius);
+        const customRadius = Math.min(customRadiusRange.max, Math.max(
+            customRadiusRange.min,
+            Math.round(Number.isFinite(parsedCustomRadius) ? parsedCustomRadius : preset.customRadius)
+        ));
+        const layout = { sidebarRowHeight, sidebarAvatarSize, customRadius };
+        return { ...options, ...material, ...layout };
     }
 
     function applyMaterialVariables(resolved) {
@@ -84,6 +118,26 @@
             --vcp-material-sheen:${resolved.surfaceSheen}%;
             --vcp-material-sheen-soft:${softSheenStrength}%;
             --vcp-material-liquid-blur:${liquidBlur}px;
+        }`;
+    }
+
+    function applyLayoutVariables(resolved) {
+        let layoutVariablesNode = document.getElementById('vcpAppearanceLayoutVariables');
+        if (!layoutVariablesNode) {
+            layoutVariablesNode = document.createElement('style');
+            layoutVariablesNode.id = 'vcpAppearanceLayoutVariables';
+            document.head.append(layoutVariablesNode);
+        }
+        const curve = factor => Math.round(resolved.customRadius * factor * 10) / 10;
+        layoutVariablesNode.textContent = `:root{
+            --vcp-appearance-sidebar-row-height:${resolved.sidebarRowHeight}px;
+            --vcp-appearance-sidebar-avatar-size:${resolved.sidebarAvatarSize}px;
+            --vcp-appearance-custom-radius:${resolved.customRadius}px;
+            --vcp-appearance-shell-curve-1:${curve(0.767)}px;
+            --vcp-appearance-shell-curve-2:${curve(0.5)}px;
+            --vcp-appearance-shell-curve-3:${curve(0.294)}px;
+            --vcp-appearance-shell-curve-4:${curve(0.144)}px;
+            --vcp-appearance-shell-curve-5:${curve(0.028)}px;
         }`;
     }
 
@@ -136,6 +190,7 @@
         root.dataset.vcpSurfaceEffect = resolved.surfaceEffect;
         ensureMaterialOptics();
         applyMaterialVariables(resolved);
+        applyLayoutVariables(resolved);
         root.dataset.vcpShellRadius = resolved.shellRadius;
         root.dataset.vcpComposerRadius = resolved.composerRadius;
         root.dataset.vcpSidebarRadius = resolved.sidebarRadius;
@@ -171,5 +226,5 @@
 
     const bootMode = document.documentElement.dataset.uiMode || 'classic';
     apply(readCache(bootMode), { uiMode: bootMode, source: 'boot-cache' });
-    window.VCPAppearance = Object.freeze({ PRESETS, MATERIAL_RANGES, normalize, apply, commit, getRevision, readCache });
+    window.VCPAppearance = Object.freeze({ PRESETS, MATERIAL_RANGES, LAYOUT_RANGES, normalize, apply, commit, getRevision, readCache });
 })();
