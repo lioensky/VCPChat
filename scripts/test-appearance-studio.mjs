@@ -12,6 +12,8 @@ const dom = new JSDOM(`<!doctype html><html data-ui-mode="next"><body class="dar
         <input type="radio" id="appearanceUiModeClassic" name="appearanceUiMode" value="classic">
         <input type="radio" id="appearanceUiModeNext" name="appearanceUiMode" value="next" checked>
         <input type="checkbox" id="showHomeVisualBrand" checked>
+        <input type="checkbox" id="showHomeVisualTagline" checked>
+        <input type="text" id="homeVisualTagline" value="语义级打穿 AI、UI/UX、APP 与人类想象力的边界">
         <select id="appearanceDensity"><option value="compact">紧凑</option><option value="comfortable">舒适</option><option value="relaxed">宽松</option></select>
         <select id="appearanceRadius"><option value="small">小</option><option value="medium">中</option></select>
         <select id="appearanceTypography"><option value="system">系统</option><option value="humanist">人文</option><option value="serif">衬线</option></select>
@@ -40,7 +42,7 @@ const dom = new JSDOM(`<!doctype html><html data-ui-mode="next"><body class="dar
             <button type="button" id="openAppearanceStudioFromSettings">打开工作台</button>
         </div>
     </form>
-    <section id="nextUiEmptyState"></section>
+    <section id="nextUiEmptyState"><p id="nextUiEmptyTagline">语义级打穿 AI、UI/UX、APP 与人类想象力的边界</p></section>
 </body></html>`, {
     url: 'https://vcpchat.local/',
     runScripts: 'outside-only'
@@ -71,7 +73,9 @@ window.globalSettings = {
     },
     chatPresentationMode: 'bubble',
     enableWideChatLayout: false,
-    showHomeVisualBrand: true
+    showHomeVisualBrand: true,
+    showHomeVisualTagline: true,
+    homeVisualTagline: '语义级打穿 AI、UI/UX、APP 与人类想象力的边界'
 };
 window.chatAPI = {
     saved: [],
@@ -195,6 +199,14 @@ assert.match(drawer.textContent, /控制单条消息的最大宽度/);
 drawer.querySelector('[data-appearance-key="homeVisual"][data-appearance-value="hidden"]').click();
 await new Promise(resolve => setImmediate(resolve));
 assert.equal(document.documentElement.dataset.vcpHomeVisual, 'hidden');
+const studioTaglineInput = drawer.querySelector('[data-home-tagline-input]');
+assert.equal(studioTaglineInput.value, '语义级打穿 AI、UI/UX、APP 与人类想象力的边界');
+studioTaglineInput.value = '自定义首页寄语';
+studioTaglineInput.dispatchEvent(new Event('input', { bubbles: true }));
+drawer.querySelector('[data-appearance-key="homeTagline"][data-appearance-value="hidden"]').click();
+await new Promise(resolve => setImmediate(resolve));
+assert.equal(document.getElementById('nextUiEmptyTagline').textContent, '自定义首页寄语');
+assert.equal(document.getElementById('nextUiEmptyTagline').hidden, true);
 const sidebarRowHeight = drawer.querySelector('[data-appearance-key="sidebarRowHeight"]');
 sidebarRowHeight.value = '58';
 sidebarRowHeight.dispatchEvent(new Event('input', { bubbles: true }));
@@ -305,6 +317,8 @@ assert.equal(document.body.classList.contains('dark-theme'), true);
 assert.equal(document.body.classList.contains('chat-presentation-bubble'), true);
 assert.equal(document.body.classList.contains('chat-wide-layout'), false);
 assert.equal(document.documentElement.dataset.vcpHomeVisual, 'shown');
+assert.equal(document.documentElement.dataset.vcpHomeTagline, 'shown');
+assert.equal(document.getElementById('nextUiEmptyTagline').textContent, '语义级打穿 AI、UI/UX、APP 与人类想象力的边界');
 assert.match(document.getElementById('vcpAppearanceLayoutVariables').textContent, /--vcp-appearance-sidebar-row-height:46px/);
 assert.match(document.getElementById('vcpAppearanceLayoutVariables').textContent, /--vcp-appearance-sidebar-avatar-size:32px/);
 assert.equal(document.getElementById('vcpAppearanceThemePreview'), null);
@@ -330,6 +344,9 @@ assert.equal(document.body.classList.contains('dark-theme'), true, 'reading pres
 drawer.querySelector('[data-appearance-key="uiMode"][data-appearance-value="classic"]').click();
 drawer.querySelector('[data-appearance-key="messageWidth"][data-appearance-value="wide"]').click();
 drawer.querySelector('[data-appearance-key="homeVisual"][data-appearance-value="hidden"]').click();
+studioTaglineInput.value = '为想象力打开新的边界';
+studioTaglineInput.dispatchEvent(new Event('input', { bubbles: true }));
+drawer.querySelector('[data-appearance-key="homeTagline"][data-appearance-value="hidden"]').click();
 await new Promise(resolve => setImmediate(resolve));
 drawer.querySelector('[data-reset-section="layout"]').click();
 await new Promise(resolve => setImmediate(resolve));
@@ -352,6 +369,9 @@ sidebarRowHeight.dispatchEvent(new Event('input', { bubbles: true }));
 sidebarAvatarSize.value = '40';
 sidebarAvatarSize.dispatchEvent(new Event('input', { bubbles: true }));
 drawer.querySelector('[data-appearance-key="homeVisual"][data-appearance-value="hidden"]').click();
+studioTaglineInput.value = '为想象力打开新的边界';
+studioTaglineInput.dispatchEvent(new Event('input', { bubbles: true }));
+drawer.querySelector('[data-appearance-key="homeTagline"][data-appearance-value="hidden"]').click();
 await new Promise(resolve => setImmediate(resolve));
 drawer.querySelector('[data-theme-file-name="themes森林.css"]').click();
 drawer.querySelector('[data-studio-save]').click();
@@ -362,10 +382,14 @@ assert.equal(window.chatAPI.saved[0].appearanceProfile.typography, 'serif');
 assert.equal(window.chatAPI.saved[0].chatPresentationMode, 'immersive');
 assert.equal(window.chatAPI.saved[0].enableWideChatLayout, true);
 assert.equal(window.chatAPI.saved[0].showHomeVisualBrand, false);
+assert.equal(window.chatAPI.saved[0].showHomeVisualTagline, false);
+assert.equal(window.chatAPI.saved[0].homeVisualTagline, '为想象力打开新的边界');
 assert.equal(window.chatAPI.saved[0].appearanceProfile.sidebarRowHeight, 54);
 assert.equal(window.chatAPI.saved[0].appearanceProfile.sidebarAvatarSize, 40);
 assert.equal(window.globalSettings.enableWideChatLayout, true);
 assert.equal(window.globalSettings.showHomeVisualBrand, false);
+assert.equal(window.globalSettings.showHomeVisualTagline, false);
+assert.equal(window.globalSettings.homeVisualTagline, '为想象力打开新的边界');
 assert.equal(document.getElementById('showHomeVisualBrand').checked, false);
 assert.equal(document.getElementById('appearanceSidebarRowHeightValue').value, '54px');
 assert.equal(document.getElementById('appearanceSidebarAvatarSizeValue').value, '40px');

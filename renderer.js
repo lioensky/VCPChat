@@ -3,6 +3,8 @@ let globalSettings = {
     sidebarWidth: 260,
     uiMode: 'next',
     showHomeVisualBrand: true,
+    showHomeVisualTagline: true,
+    homeVisualTagline: '语义级打穿 AI、UI/UX、APP 与人类想象力的边界',
     appearanceProfile: {
         density: 'comfortable',
         radius: 'small',
@@ -2195,6 +2197,8 @@ async function syncGlobalSettingsToUI() {
     safeCheck('appearanceUiModeClassic', globalSettings.uiMode !== 'next');
     safeCheck('appearanceUiModeNext', globalSettings.uiMode === 'next');
     safeCheck('showHomeVisualBrand', globalSettings.showHomeVisualBrand !== false);
+    safeCheck('showHomeVisualTagline', globalSettings.showHomeVisualTagline !== false);
+    safeSet('homeVisualTagline', globalSettings.homeVisualTagline || '语义级打穿 AI、UI/UX、APP 与人类想象力的边界');
     const appearance = window.VCPAppearance?.normalize(globalSettings.appearanceProfile, globalSettings.uiMode);
     safeSet('appearanceDensity', appearance?.density || 'comfortable');
     safeSet('appearanceRadius', appearance?.radius || 'small');

@@ -152,6 +152,8 @@ class SettingsManager extends EventEmitter {
             enableSmoothStreaming: false,
             uiMode: 'next',
             showHomeVisualBrand: true,
+            showHomeVisualTagline: true,
+            homeVisualTagline: '语义级打穿 AI、UI/UX、APP 与人类想象力的边界',
             appearanceProfile: {
                 density: 'comfortable',
                 radius: 'small',

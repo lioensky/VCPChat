@@ -794,6 +794,10 @@ html[data-ui-mode="next"] .main-content.next-ui-empty-state-active[data-chat-emp
     text-shadow: 0 1px 8px color-mix(in srgb, var(--primary-bg) 72%, transparent);
 }
 
+html[data-vcp-home-tagline="hidden"] .next-ui-empty-tagline {
+    display: none;
+}
+
 html[data-ui-mode="next"] body.light-theme .next-ui-empty-brand-base {
     fill: color-mix(in srgb, #ffffff 78%, var(--primary-bg));
     stroke: color-mix(in srgb, #94a3b8 50%, var(--next-border));

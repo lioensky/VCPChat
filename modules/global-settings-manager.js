@@ -69,6 +69,9 @@ export async function handleSaveGlobalSettings(e, deps) {
         enableSmoothStreaming: document.getElementById('enableSmoothStreaming').checked,
         uiMode: selectedUiMode,
         showHomeVisualBrand: document.getElementById('showHomeVisualBrand')?.checked !== false,
+        showHomeVisualTagline: document.getElementById('showHomeVisualTagline')?.checked !== false,
+        homeVisualTagline: document.getElementById('homeVisualTagline')?.value.trim().slice(0, 120)
+            || '语义级打穿 AI、UI/UX、APP 与人类想象力的边界',
         appearanceProfile: window.VCPAppearance?.normalize({
             density: document.getElementById('appearanceDensity')?.value,
             radius: document.getElementById('appearanceRadius')?.value,

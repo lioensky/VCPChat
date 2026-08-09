@@ -99,5 +99,13 @@ assert.match(nextUiCss, /--next-empty-flow-primary:\s*var\(--button-bg\)/);
 assert.match(nextUiCss, /--next-empty-flow-secondary:\s*hsl\(from var\(--button-bg\) calc\(h \+ 150\) s l\)/);
 assert.doesNotMatch(nextUiCss, /stroke:\s*#(?:00f3ff|ff00ea)/i);
 assert.doesNotMatch(mainHtml, /stop-color="#(?:00f3ff|ff00ea)"/i);
+assert.match(
+    mainHtml,
+    /id="nextUiEmptyTagline"[^>]*>语义级打穿 AI、UI\/UX、APP 与人类想象力的边界</,
+    'the empty-state tagline must ship with the configured product default'
+);
+const settingsSource = fs.readFileSync(path.join(root, 'modules', 'utils', 'appSettingsManager.js'), 'utf8');
+assert.match(settingsSource, /showHomeVisualTagline:\s*true/);
+assert.match(settingsSource, /homeVisualTagline:\s*'语义级打穿 AI、UI\/UX、APP 与人类想象力的边界'/);
 
 console.log('Next UI empty-state race and theme-color contract passed.');
