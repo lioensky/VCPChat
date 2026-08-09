@@ -162,6 +162,24 @@ document.addEventListener('DOMContentLoaded', async () => {
         return fileName;
     }
 
+    function getPngDownloadName() {
+        const fileName = decodedTitle || 'image.png';
+        if (fileName.toLowerCase() !== 'image.png') return fileName;
+
+        const now = new Date();
+        const timestamp = [
+            now.getFullYear(),
+            String(now.getMonth() + 1).padStart(2, '0'),
+            String(now.getDate()).padStart(2, '0')
+        ].join('') + '_' + [
+            String(now.getHours()).padStart(2, '0'),
+            String(now.getMinutes()).padStart(2, '0'),
+            String(now.getSeconds()).padStart(2, '0')
+        ].join('');
+
+        return `image_${timestamp}.png`;
+    }
+
     // 保存当前画布状态到历史记录
     function saveToHistory() {
         historyStep++;
@@ -677,7 +695,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         mergedCtx.drawImage(canvas, 0, 0);
 
         link.href = mergedCanvas.toDataURL('image/png');
-        link.download = decodedTitle || 'image.png';
+        link.download = getPngDownloadName();
         link.click();
     });
 
