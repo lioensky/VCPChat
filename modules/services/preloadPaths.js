@@ -4,6 +4,7 @@ const PRELOAD_ROLES = Object.freeze({
     CHAT: 'chat',
     DESKTOP: 'desktop',
     UTILITY: 'utility',
+    DOCX: 'docx',
 });
 
 function resolvePreloadPathFromBase(basePath, role) {

@@ -46,6 +46,7 @@ const canvasHandlers = require('./modules/ipc/canvasHandlers'); // Import canvas
 const desktopHandlers = require('./modules/ipc/desktopHandlers'); // Import VCPdesktop handlers
 const desktopRemoteHandlers = require('./modules/ipc/desktopRemoteHandlers'); // Import desktop remote control handlers
 const tavernHandlers = require('./modules/ipc/tavernHandlers'); // Import VCPChatTarven (advanced reply) handlers
+const docxHandlers = require('./modules/ipc/docxHandlers'); // Import VCP Scriptorium handlers
 const loomManagerModule = require('./modules/loom/VCPLoomManager');
 const { PRELOAD_ROLES, resolveProjectPreload } = require('./modules/services/preloadPaths');
 const { ChatDataServiceFacade } = require('./modules/services/chatDataService');
@@ -1077,6 +1078,12 @@ if (!gotTheLock) {
         emoticonHandlers.initialize({ SETTINGS_FILE, APP_DATA_ROOT_IN_PROJECT });
         emoticonHandlers.setupEmoticonHandlers();
         canvasHandlers.initialize({ mainWindow, openChildWindows, CANVAS_CACHE_DIR });
+        docxHandlers.initialize({
+            mainWindow,
+            openChildWindows,
+            projectRoot: PROJECT_ROOT,
+            appDataRoot: APP_DATA_ROOT_IN_PROJECT
+        });
         desktopHandlers.initialize({ mainWindow, openChildWindows, settingsManager: appSettingsManager });
         loomManager = await loomManagerModule.initialize({
             projectRoot: PROJECT_ROOT,

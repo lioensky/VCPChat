@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' data: blob: file:; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: file:; font-src 'self' data: file:; connect-src 'self' blob: data:;">
+    <title>VCP Scriptorium · 共笔文坊</title>
+    <link rel="stylesheet" href="../styles/themes.css">
+    <link rel="stylesheet" href="../node_modules/superdoc/dist/style.css">
+    <link rel="stylesheet" href="scriptorium.css">
+</head>
+<body>
+    <header class="scriptorium-titlebar">
+        <div class="brand-lockup">
+            <div class="brand-sigil" aria-hidden="true">S</div>
+            <div class="brand-copy">
+                <strong>Scriptorium</strong>
+                <span>VCP 共笔文坊</span>
+            </div>
+        </div>
+
+        <div class="document-identity">
+            <span id="document-state-dot" class="state-dot"></span>
+            <button id="document-title" class="document-title" title="查看文档位置">未命名文稿</button>
+            <span id="save-state" class="save-state">等待落笔</span>
+        </div>
+
+        <div class="titlebar-actions">
+            <button id="outline-toggle-btn" class="icon-button titlebar-tool active" title="显示或收起篇章导航" aria-label="切换篇章导航" aria-pressed="true">
+                <svg viewBox="0 0 24 24"><path d="M4 5h3M4 12h3M4 19h3M10 5h10M10 12h7M10 19h10"/></svg>
+            </button>
+            <button id="focus-mode-btn" class="icon-button titlebar-tool" title="进入纯文专注模式" aria-label="专注模式">
+                <svg viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+            </button>
+            <button id="lineage-toggle-btn" class="icon-button titlebar-tool active" title="显示或收起文脉" aria-label="切换文脉" aria-pressed="true">
+                <svg viewBox="0 0 24 24"><path d="M6 3v12"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="6" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
+            </button>
+            <span class="titlebar-divider"></span>
+            <button id="minimize-btn" class="window-button" title="最小化" aria-label="最小化">
+                <svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg>
+            </button>
+            <button id="maximize-btn" class="window-button" title="最大化" aria-label="最大化">
+                <svg viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="1"/></svg>
+            </button>
+            <button id="close-btn" class="window-button close-button" title="关闭" aria-label="关闭">
+                <svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg>
+            </button>
+        </div>
+    </header>
+
+    <section class="command-deck" aria-label="文档工具">
+        <div class="command-cluster file-cluster">
+            <button id="new-btn" class="deck-button emphasized" title="新建文稿">
+                <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+                <span>新稿</span>
+            </button>
+            <button id="open-btn" class="deck-button" title="打开 DOCX 文档">
+                <svg viewBox="0 0 24 24"><path d="M3 7h6l2 2h10v10H3z"/><path d="m3 19 3-7h15"/></svg>
+                <span>打开</span>
+            </button>
+            <button id="save-btn" class="deck-button" title="保存 Ctrl+S">
+                <svg viewBox="0 0 24 24"><path d="M5 3h12l2 2v16H5z"/><path d="M8 3v6h8V3M8 21v-8h8v8"/></svg>
+                <span>保存</span>
+            </button>
+            <button id="save-as-btn" class="deck-button compact" title="另存为">
+                <svg viewBox="0 0 24 24"><path d="M12 16v-9M8 11l4-4 4 4"/><path d="M5 15v5h14v-5"/></svg>
+            </button>
+        </div>
+
+        <span class="deck-divider"></span>
+
+        <div class="command-cluster history-cluster">
+            <button class="format-button" data-command="undo" title="撤销 Ctrl+Z">
+                <svg viewBox="0 0 24 24"><path d="M9 7 4 12l5 5"/><path d="M5 12h8a6 6 0 0 1 6 6"/></svg>
+            </button>
+            <button class="format-button" data-command="redo" title="重做 Ctrl+Y">
+                <svg viewBox="0 0 24 24"><path d="m15 7 5 5-5 5"/><path d="M19 12h-8a6 6 0 0 0-6 6"/></svg>
+            </button>
+        </div>
+
+        <span class="deck-divider"></span>
+
+        <div class="command-cluster typography-cluster">
+            <label class="control-shell font-shell" title="字体">
+                <span class="sr-only">字体</span>
+                <select id="font-family-select" aria-label="字体">
+                    <option value="">系统字体</option>
+                </select>
+            </label>
+            <label class="control-shell size-shell" title="字号">
+                <span class="sr-only">字号</span>
+                <select id="font-size-select" aria-label="字号">
+                    <option value="9pt">9</option>
+                    <option value="10pt">10</option>
+                    <option value="10.5pt">10.5</option>
+                    <option value="11pt">11</option>
+                    <option value="12pt" selected>12</option>
+                    <option value="14pt">14</option>
+                    <option value="16pt">16</option>
+                    <option value="18pt">18</option>
+                    <option value="22pt">22</option>
+                    <option value="26pt">26</option>
+                    <option value="32pt">32</option>
+                    <option value="42pt">42</option>
+                </select>
+            </label>
+            <button class="format-button typographic" data-command="bold" title="粗体 Ctrl+B"><strong>B</strong></button>
+            <button class="format-button typographic italic" data-command="italic" title="斜体 Ctrl+I"><strong>I</strong></button>
+            <button class="format-button typographic underline" data-command="underline" title="下划线 Ctrl+U"><strong>U</strong></button>
+            <button class="format-button typographic strike" data-command="strikethrough" title="删除线"><strong>S</strong></button>
+            <label class="color-control" title="文字颜色">
+                <span class="color-letter">A</span>
+                <input id="text-color-input" type="color" value="#1b211f" aria-label="文字颜色">
+            </label>
+            <label class="color-control highlight-control" title="高亮颜色">
+                <svg viewBox="0 0 24 24"><path d="m9 11-6 6v4h4l6-6M14 4l6 6-7 7-6-6z"/></svg>
+                <input id="highlight-color-input" type="color" value="#f2a900" aria-label="高亮颜色">
+            </label>
+        </div>
+
+        <span class="deck-divider"></span>
+
+        <div class="command-cluster paragraph-cluster">
+            <button class="format-button" data-command="text-align" data-value="left" title="左对齐">
+                <svg viewBox="0 0 24 24"><path d="M4 6h16M4 10h10M4 14h16M4 18h10"/></svg>
+            </button>
+            <button class="format-button" data-command="text-align" data-value="center" title="居中">
+                <svg viewBox="0 0 24 24"><path d="M4 6h16M7 10h10M4 14h16M7 18h10"/></svg>
+            </button>
+            <button class="format-button" data-command="text-align" data-value="right" title="右对齐">
+                <svg viewBox="0 0 24 24"><path d="M4 6h16M10 10h10M4 14h16M10 18h10"/></svg>
+            </button>
+            <button class="format-button" data-command="text-align" data-value="justify" title="两端对齐">
+                <svg viewBox="0 0 24 24"><path d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>
+            </button>
+            <button class="format-button" data-command="bullet-list" title="项目符号">
+                <svg viewBox="0 0 24 24"><circle cx="5" cy="7" r="1"/><circle cx="5" cy="12" r="1"/><circle cx="5" cy="17" r="1"/><path d="M9 7h11M9 12h11M9 17h11"/></svg>
+            </button>
+            <button class="format-button" data-command="numbered-list" title="编号列表">
+                <svg viewBox="0 0 24 24"><path d="M3 6h2v4M3 10h3M3 14h3l-3 4h3M9 7h11M9 12h11M9 17h11"/></svg>
+            </button>
+            <label class="control-shell line-height-shell" title="行距">
+                <svg viewBox="0 0 24 24"><path d="M6 5v14M3 8l3-3 3 3M3 16l3 3 3-3M12 6h9M12 12h9M12 18h9"/></svg>
+                <select id="line-height-select" aria-label="行距">
+                    <option value="1">1.0</option>
+                    <option value="1.15">1.15</option>
+                    <option value="1.5" selected>1.5</option>
+                    <option value="1.75">1.75</option>
+                    <option value="2">2.0</option>
+                </select>
+            </label>
+        </div>
+
+        <span class="deck-divider"></span>
+
+        <div class="command-cluster insert-cluster">
+            <button class="deck-button compact" data-command="image" title="插入图片">
+                <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m4 18 5-5 4 4 3-3 4 4"/></svg>
+            </button>
+            <button id="insert-table-btn" class="deck-button compact" title="插入 3 × 3 表格">
+                <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="1"/><path d="M3 10h18M3 15h18M9 4v16M15 4v16"/></svg>
+            </button>
+            <button id="find-btn" class="deck-button compact" title="查找 Ctrl+F">
+                <svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg>
+            </button>
+        </div>
+    </section>
+
+    <main class="scriptorium-stage">
+        <aside id="outline-panel" class="outline-panel" aria-label="文档篇章导航">
+            <div class="outline-header">
+                <div>
+                    <span class="outline-kicker">DOCUMENT MAP</span>
+                    <h2>篇章</h2>
+                </div>
+                <span id="outline-count" class="outline-count">0 节</span>
+            </div>
+
+            <div class="outline-tabs" role="tablist" aria-label="导航类型">
+                <button id="outline-headings-tab" class="outline-tab active" type="button" role="tab" aria-selected="true" aria-controls="outline-headings-view">标题</button>
+                <button id="outline-paragraphs-tab" class="outline-tab" type="button" role="tab" aria-selected="false" aria-controls="outline-paragraphs-view">段落</button>
+            </div>
+
+            <div class="outline-body">
+                <nav id="outline-headings-view" class="outline-view active" role="tabpanel" aria-labelledby="outline-headings-tab">
+                    <div id="outline-tree" class="outline-tree"></div>
+                </nav>
+                <nav id="outline-paragraphs-view" class="outline-view" role="tabpanel" aria-labelledby="outline-paragraphs-tab" hidden>
+                    <div id="paragraph-index" class="paragraph-index"></div>
+                </nav>
+            </div>
+
+            <div id="outline-empty" class="outline-empty">
+                <svg viewBox="0 0 24 24"><path d="M5 4h14v16H5z"/><path d="M8 8h8M8 12h5M8 16h7"/></svg>
+                <strong>等待文稿结构</strong>
+                <p>使用“标题 1–6”样式组织篇章；普通正文会自动进入段落索引。</p>
+            </div>
+        </aside>
+
+        <section class="writing-chamber">
+            <div class="chamber-aura" aria-hidden="true"></div>
+            <div id="welcome-state" class="welcome-state">
+                <div class="welcome-mark">S</div>
+                <p class="welcome-kicker">A document is a place, not a file.</p>
+                <h1>让文字成为<br><em>共同抵达的地方</em></h1>
+                <p class="welcome-description">载入一份真实的 DOCX，或从一张空白纸开始。排版、分页、表格与图像都留在文档本身。</p>
+                <div class="welcome-actions">
+                    <button id="welcome-new-btn" class="welcome-primary">开始新稿</button>
+                    <button id="welcome-open-btn" class="welcome-secondary">打开文档</button>
+                </div>
+                <div id="recent-documents" class="recent-documents" aria-label="最近文档"></div>
+            </div>
+            <div id="superdoc-host" class="superdoc-host" hidden></div>
+            <div id="loading-state" class="loading-state" hidden>
+                <span class="loading-glyph"></span>
+                <strong>正在展开纸页</strong>
+                <small>解析文档结构、字体与分页…</small>
+            </div>
+        </section>
+
+        <aside id="lineage-panel" class="lineage-panel">
+            <div class="lineage-header">
+                <div>
+                    <span class="lineage-kicker">DOCUMENT LINEAGE</span>
+                    <h2>文脉</h2>
+                </div>
+                <button id="create-checkpoint-btn" class="checkpoint-add" title="创建手动保存点" disabled>
+                    <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+                </button>
+            </div>
+
+            <div class="lineage-summary">
+                <span><strong id="checkpoint-count">0</strong> 个刻点</span>
+                <span class="lineage-live"><i></i> 本地文脉</span>
+            </div>
+
+            <div id="lineage-flow" class="lineage-flow">
+                <div class="lineage-empty">
+                    <span class="empty-orbit"></span>
+                    <strong>文脉尚未开始</strong>
+                    <p>每次手动创建的文档保存点，以及未来 Agent 提交的修改保存点，都会在这里形成可回望的创作轨迹。</p>
+                </div>
+            </div>
+
+            <div class="agent-pipeline-placeholder">
+                <div class="pipeline-icon">
+                    <svg viewBox="0 0 24 24"><path d="M12 3v4M5.6 5.6l2.8 2.8M3 12h4M5.6 18.4l2.8-2.8M12 21v-4M18.4 18.4l-2.8-2.8M21 12h-4M18.4 5.6l-2.8 2.8"/><circle cx="12" cy="12" r="3"/></svg>
+                </div>
+                <div>
+                    <strong>协作者管线</strong>
+                    <span>接口已预留 · 当前由人类执笔</span>
+                </div>
+            </div>
+        </aside>
+    </main>
+
+    <footer class="document-statusbar">
+        <div class="status-group">
+            <span id="page-status">第 — 页 / 共 — 页</span>
+            <span class="status-separator"></span>
+            <span id="word-count">0 字</span>
+            <span id="character-count">0 字符</span>
+        </div>
+        <div class="status-group status-center">
+            <span id="font-status">字体就绪</span>
+        </div>
+        <div class="status-group zoom-group">
+            <button id="zoom-out-btn" aria-label="缩小">−</button>
+            <input id="zoom-range" type="range" min="50" max="200" step="10" value="100" aria-label="页面缩放">
+            <button id="zoom-in-btn" aria-label="放大">＋</button>
+            <span id="zoom-value">100%</span>
+        </div>
+    </footer>
+
+    <div id="toast-region" class="toast-region" aria-live="polite"></div>
+
+    <div id="selection-format-bar" class="selection-format-bar" role="toolbar" aria-label="选中文字快捷格式" hidden>
+        <label class="selection-format-control selection-font-control" title="字体">
+            <span class="sr-only">字体</span>
+            <select id="selection-font-family" aria-label="快捷字体"></select>
+        </label>
+        <label class="selection-format-control selection-size-control" title="字号">
+            <span class="sr-only">字号</span>
+            <select id="selection-font-size" aria-label="快捷字号">
+                <option value="9pt">9</option>
+                <option value="10pt">10</option>
+                <option value="10.5pt">10.5</option>
+                <option value="11pt">11</option>
+                <option value="12pt" selected>12</option>
+                <option value="14pt">14</option>
+                <option value="16pt">16</option>
+                <option value="18pt">18</option>
+                <option value="22pt">22</option>
+                <option value="26pt">26</option>
+                <option value="32pt">32</option>
+                <option value="42pt">42</option>
+            </select>
+        </label>
+        <span class="selection-format-divider"></span>
+        <button type="button" data-selection-command="bold" title="粗体"><strong>B</strong></button>
+        <button type="button" data-selection-command="italic" class="quick-italic" title="斜体"><strong>I</strong></button>
+        <button type="button" data-selection-command="underline" class="quick-underline" title="下划线"><strong>U</strong></button>
+        <label class="selection-color-control" title="文字颜色">
+            <span>A</span>
+            <input id="selection-text-color" type="color" value="#1b211f" aria-label="快捷文字颜色">
+        </label>
+    </div>
+
+    <div id="unsaved-dialog" class="dialog-backdrop" role="dialog" aria-modal="true" aria-labelledby="unsaved-dialog-title" hidden>
+        <section class="unsaved-dialog">
+            <div class="unsaved-dialog-mark" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M12 8v5M12 17h.01"/><path d="M10.3 4.6 3.5 17a2 2 0 0 0 1.8 3h13.4a2 2 0 0 0 1.8-3L13.7 4.6a2 2 0 0 0-3.4 0Z"/></svg>
+            </div>
+            <span class="dialog-kicker">UNSAVED MANUSCRIPT</span>
+            <h2 id="unsaved-dialog-title">墨迹尚未落定</h2>
+            <p id="unsaved-dialog-message">当前文稿仍有未保存修改。保存后继续，或舍弃这些修改。</p>
+            <div class="unsaved-document-name" id="unsaved-document-name">未命名文稿.docx</div>
+            <div class="dialog-actions unsaved-dialog-actions">
+                <button type="button" id="unsaved-cancel-btn">留在此处</button>
+                <button type="button" id="unsaved-discard-btn" class="dialog-danger">舍弃修改</button>
+                <button type="button" id="unsaved-save-btn" class="dialog-confirm">保存并继续</button>
+            </div>
+        </section>
+    </div>
+
+    <div id="checkpoint-dialog" class="dialog-backdrop" hidden>
+        <form class="checkpoint-dialog">
+            <span class="dialog-kicker">CREATE CHECKPOINT</span>
+            <h2>为这一刻留下名字</h2>
+            <p>刻点会记录当前 DOCX 的完整状态，成为文脉中的一个可回望节点。</p>
+            <input id="checkpoint-name-input" type="text" maxlength="80" placeholder="例如：第二章结构定稿" autocomplete="off">
+            <textarea id="checkpoint-note-input" maxlength="240" placeholder="可选：记下这一版发生了什么"></textarea>
+            <div class="dialog-actions">
+                <button type="button" id="checkpoint-cancel-btn">取消</button>
+                <button type="submit" class="dialog-confirm">保存刻点</button>
+            </div>
+        </form>
+    </div>
+
+    <script src="../node_modules/superdoc/dist/superdoc.min.js"></script>
+    <script src="scriptorium.js"></script>
+</body>
+</html>

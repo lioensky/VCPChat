@@ -14,4 +14,5 @@ module.exports = Object.freeze({
     THEMES: 'themes',
     TASK: 'task',
     PLUGIN_MANAGER: 'plugin-manager',
+    DOCX: 'docx-editor',
 });

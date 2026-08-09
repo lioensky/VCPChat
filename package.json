@@ -67,6 +67,7 @@
     "puppeteer": "^24.15.0",
     "sharp": "^0.35.3",
     "stylelint": "^16.25.0",
+    "superdoc": "^1.45.0",
     "tesseract.js": "^6.0.1",
     "three": "^0.178.0",
     "tmp": "^0.2.5",
@@ -100,6 +101,7 @@
       "VCPDistributedServer/Plugin/VChatAutoTTS/**/*",
       "assets/",
       "modules/**/*",
+      "ScriptoriumModules/**/*",
       "vendor/**/*",
       "node_modules/**/*"
     ],

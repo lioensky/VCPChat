@@ -776,6 +776,8 @@ function resolveAppActionToAppId(appAction) {
             return WINDOW_APP_IDS.TASK;
         case 'open-plugin-manager-window':
             return WINDOW_APP_IDS.PLUGIN_MANAGER;
+        case 'open-scriptorium-window':
+            return WINDOW_APP_IDS.DOCX;
         case 'open-desktop-window':
             return WINDOW_APP_IDS.DESKTOP;
         default:
