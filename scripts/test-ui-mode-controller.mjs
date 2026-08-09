@@ -133,10 +133,10 @@ check('defaultReadMode reads the query param when present', async () => {
     dom.window.history.replaceState({}, '', '/');
 });
 
-check('defaultReadMode falls back to classic when no provider exists', async () => {
+check('defaultReadMode falls back to Next when no persisted provider exists', async () => {
     dom.window.document.documentElement.dataset.uiMode = '';
     const instance = await controller.bootstrap();
-    assert.equal(instance.getMode(), 'classic');
+    assert.equal(instance.getMode(), 'next');
     instance.destroy();
 });
 

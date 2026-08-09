@@ -1,7 +1,7 @@
 // --- Globals ---
 let globalSettings = {
     sidebarWidth: 260,
-    uiMode: 'classic',
+    uiMode: 'next',
     showHomeVisualBrand: true,
     appearanceProfile: {
         density: 'comfortable',

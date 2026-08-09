@@ -216,7 +216,7 @@
 
     const clone = value => JSON.parse(JSON.stringify(value));
     const api = () => window.chatAPI || window.electronAPI;
-    const currentUiMode = () => document.documentElement.dataset.uiMode || 'classic';
+    const currentUiMode = () => document.documentElement.dataset.uiMode || 'next';
     function applyHomeVisual(value) {
         const normalized = value === 'hidden' ? 'hidden' : 'shown';
         document.documentElement.dataset.vcpHomeVisual = normalized;
