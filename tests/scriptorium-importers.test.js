@@ -35,6 +35,16 @@ async function createMinimalDocx() {
             <w:r><w:rPr><w:b/></w:rPr><w:t>人类创作</w:t></w:r>
             <w:r><w:t>，AI 排版。</w:t></w:r>
         </w:p>
+        <w:p>
+            <w:pPr>
+                <w:pStyle w:val="CustomSection"/>
+                <w:pageBreakBefore/>
+            </w:pPr>
+            <w:r><w:t>继承样式章节</w:t></w:r>
+        </w:p>
+        <w:p>
+            <w:r><w:t>分页后的连续正文。</w:t></w:r>
+        </w:p>
         <w:sectPr/>
     </w:body>
 </w:document>`);
@@ -46,6 +56,10 @@ async function createMinimalDocx() {
     <w:style w:type="paragraph" w:styleId="Heading2">
         <w:name w:val="Heading 2"/>
     </w:style>
+    <w:style w:type="paragraph" w:styleId="CustomSection">
+        <w:name w:val="自定义章节"/>
+        <w:basedOn w:val="Heading2"/>
+    </w:style>
 </w:styles>`);
     zip.folder('word').folder('_rels').file('document.xml.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"/>`);
@@ -53,6 +67,19 @@ async function createMinimalDocx() {
 }
 
 async function run() {
+    assert.equal(importer.headingLevelFromText('第一章 原生共笔'), 1);
+    assert.equal(importer.headingLevelFromText('第十三章：终幕'), 1);
+    assert.equal(importer.headingLevelFromText('第 13 章 结语'), 1);
+    assert.equal(importer.headingLevelFromText('这是第十三章的正文内容。'), null);
+
+    const pageBreakParagraphs = importer.parseDocxParagraphs(`
+        <w:p><w:r><w:lastRenderedPageBreak/><w:t>自动分页后的正文</w:t></w:r></w:p>
+        <w:p><w:pPr><w:pageBreakBefore/></w:pPr><w:r><w:t>手工分页后的正文</w:t></w:r></w:p>
+    `, new Map());
+    assert.equal(pageBreakParagraphs[0].pageBreakBefore, false);
+    assert.equal(pageBreakParagraphs[0].pageBreakAfter, false);
+    assert.equal(pageBreakParagraphs[1].pageBreakBefore, true);
+
     const markdown = await importer.importBuffer(
         '思想.md',
         Buffer.from(`# 总论
@@ -97,8 +124,13 @@ $$`)
     assert.match(docx.html, /<h2>设计原则<\/h2>/);
     assert.match(docx.html, /<p>这是从 DOCX 导入的正文。<\/p>/);
     assert.match(docx.html, /<strong>人类创作<\/strong>/);
+    assert.match(
+        docx.html,
+        /<h2 data-vdoc-page-break-before="true">继承样式章节<\/h2>/
+    );
+    assert.match(docx.html, /<p>分页后的连续正文。<\/p>/);
     assert.equal(docx.importMetadata.sourceFormat, 'docx');
-    assert.match(docx.importMetadata.importer, /semantic-import-v1/);
+    assert.match(docx.importMetadata.importer, /semantic-import-v2/);
 
     console.log('[ScriptoriumImporters] PASSED', {
         markdownMathNodes: (markdown.html.match(/data-vdoc-math=/g) || []).length,

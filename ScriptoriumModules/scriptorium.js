@@ -214,6 +214,7 @@
 .vdoc-runtime { display: block; padding: 18px 0 88px; }
 .vdoc-page {
     width: var(--vdoc-page-width) !important;
+    height: var(--vdoc-page-height) !important;
     min-height: var(--vdoc-page-height) !important;
     transform: scale(var(--vdoc-zoom, 1));
     transform-origin: top center;
@@ -260,7 +261,11 @@ ${state.document.source.css}`;
         nodes.forEach((node) => page.appendChild(node.cloneNode(true)));
         return page;
     }
-    function splitIntoPages(html) {
+    function pageOverflows(page) {
+        return page.scrollHeight > page.clientHeight + 1;
+    }
+
+    function paginateDocument(html, runtime) {
         const template = document.createElement('template');
         template.innerHTML = core.ensureTextNodeIds(html);
         const scene = core.createSceneConfig(state.document.manifest.scene);
@@ -269,17 +274,52 @@ ${state.document.source.css}`;
         if (scene.kind === core.PROJECT_KINDS.SLIDE_DECK) {
             const explicitSlides = [...template.content.querySelectorAll(':scope > [data-vdoc-slide]')];
             const slides = explicitSlides.length ? explicitSlides : rootNodes;
-            return slides.length
-                ? slides.map((slide) => [slide])
-                : [[document.createElement('section')]];
+            (slides.length ? slides : [document.createElement('section')]).forEach((slide, index) => {
+                runtime.appendChild(createPage(index, [slide]));
+            });
+            return;
         }
 
-        const pages = [];
-        const pageSize = 5;
-        for (let index = 0; index < rootNodes.length; index += pageSize) {
-            pages.push(rootNodes.slice(index, index + pageSize));
-        }
-        return pages.length ? pages : [[document.createElement('p')]];
+        let pageIndex = 0;
+        let page = createPage(pageIndex, []);
+        runtime.appendChild(page);
+
+        rootNodes.forEach((sourceNode) => {
+            const node = sourceNode.cloneNode(true);
+            const breakBefore = node.dataset.vdocPageBreakBefore === 'true';
+            const breakAfter = node.dataset.vdocPageBreakAfter === 'true';
+
+            if (breakBefore && page.children.length) {
+                page = createPage(pageIndex += 1, []);
+                runtime.appendChild(page);
+            }
+
+            page.appendChild(node);
+            if (pageOverflows(page) && page.children.length > 1) {
+                node.remove();
+
+                // 标题尽量与下一块保持在同一页，避免标题孤悬在纸页底部。
+                const previous = page.lastElementChild;
+                const keepHeading = previous?.matches?.('h1,h2,h3,h4,h5,h6');
+                if (keepHeading) previous.remove();
+
+                page = createPage(pageIndex += 1, []);
+                runtime.appendChild(page);
+                if (keepHeading) page.appendChild(previous);
+                page.appendChild(node);
+            }
+
+            if (breakAfter && page.children.length) {
+                page = createPage(pageIndex += 1, []);
+                runtime.appendChild(page);
+            }
+        });
+
+        if (!rootNodes.length) page.appendChild(document.createElement('p'));
+        if (!page.children.length && runtime.children.length > 1) page.remove();
+        [...runtime.querySelectorAll('.vdoc-page')].forEach((item, index) => {
+            item.dataset.pageIndex = String(index);
+        });
     }
 
     function updatePageZoomLayout(root = getRenderRoot()) {
@@ -309,10 +349,8 @@ ${state.document.source.css}`;
         const runtime = document.createElement('div');
         runtime.className = 'vdoc-runtime';
         runtime.dataset.sceneKind = state.document.manifest.scene.kind;
-        splitIntoPages(state.document.source.html).forEach((nodes, index) => {
-            runtime.appendChild(createPage(index, nodes));
-        });
         root.append(style, runtime);
+        paginateDocument(state.document.source.html, runtime);
         renderMathNodes(root);
 
         root.querySelectorAll(core.EDITABLE_SELECTOR).forEach((editable) => {
@@ -595,9 +633,36 @@ ${state.document.source.css}`;
     }
 
     function handleBlockEditingKeydown(event) {
+        const editable = event.target.closest?.('[data-vdoc-text]');
+        const selection = getRenderRoot()?.getSelection?.() || window.getSelection();
+
+        if (event.key === 'Tab' && editable && selection?.isCollapsed && selection.rangeCount) {
+            const range = selection.getRangeAt(0);
+            const prefix = range.cloneRange();
+            prefix.selectNodeContents(editable);
+            prefix.setEnd(range.startContainer, range.startOffset);
+
+            // 仅在文本块首行头部把 Tab 解释为中文四格缩进；其他位置仍允许
+            // 浏览器执行正常的焦点导航。比例字体中的四个半角空格通常只有
+            // 约一个汉字宽，因此使用两个全角空格稳定实现两个汉字（2em）缩进。
+            if (!prefix.toString()) {
+                event.preventDefault();
+                const indentation = document.createTextNode('\u3000\u3000');
+                range.insertNode(indentation);
+                range.setStartAfter(indentation);
+                range.collapse(true);
+                selection.removeAllRanges();
+                selection.addRange(range);
+                updateSourceNode(editable);
+                state.activeEditableBlock = editable;
+                markDirty();
+                captureSnapshot();
+                return;
+            }
+        }
+
         const block = event.target.closest?.('[data-vdoc-block][data-vdoc-removable="true"]');
         if (!block) return;
-        const selection = getRenderRoot()?.getSelection?.() || window.getSelection();
 
         if (event.key === 'Enter' && !event.shiftKey) {
             event.preventDefault();
@@ -1695,7 +1760,7 @@ ${preview.css}
             page.style.setProperty('--vdoc-zoom', String(state.zoom / 100));
         });
         updatePageZoomLayout(root);
-        window.requestAnimationFrame(() => updateCurrentPage(root));
+        if (root) window.requestAnimationFrame(() => updateCurrentPage(root));
         return state.zoom;
     }
 
