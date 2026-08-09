@@ -22,6 +22,7 @@ function registerMinimalIpc() {
     ipcMain.handle('scriptorium:choose-import', () => ({ success: false, canceled: true }));
     ipcMain.handle('docx:read-path', () => ({ success: false, canceled: true }));
     ipcMain.handle('docx:save', () => ({ success: false, canceled: true }));
+    ipcMain.handle('scriptorium:export-rich-document', () => ({ success: false, canceled: true }));
     ipcMain.handle('open-docx-window', () => ({ success: true }));
 
     ipcMain.on('window-lifecycle:ready', (_event, payload) => {
@@ -162,7 +163,7 @@ app.whenReady().then(async () => {
     await new Promise((resolve) => setTimeout(resolve, 250));
     const modeSwitchInteraction = await windowRef.webContents.executeJavaScript(`(() => {
         const root = document.getElementById('page-stream').shadowRoot;
-        const pages = root.querySelectorAll('.vdoc-page');
+        const flowRuntime = root.querySelector('.vdoc-flow-runtime');
         const plainBlock = [...root.querySelectorAll('[data-vdoc-text]')]
             .find((node) => !node.querySelector('img, table, [data-vdoc-math]'));
         const plainEstimate = plainBlock
@@ -174,11 +175,35 @@ app.whenReady().then(async () => {
             : window.ScriptoriumPretext?.complexityOf(
                 Object.assign(document.createElement('table'), { innerHTML: '<tr><td>复杂块</td></tr>' })
             );
+        const flowStyle = getComputedStyle(flowRuntime);
+        document.getElementById('read-mode-btn').click();
+        const readRoot = document.getElementById('read-page-stream').shadowRoot;
+        const previewPages = readRoot.querySelectorAll('.vdoc-page');
+        const previewEditable = readRoot.querySelector('[contenteditable="true"]');
+        const previewPageStyle = previewPages.length ? getComputedStyle(previewPages[0]) : null;
+        const previewContent = readRoot.querySelector('.vdoc-page-content');
+        const previewContentStyle = previewContent ? getComputedStyle(previewContent) : null;
+        const status = document.getElementById('page-status').textContent;
+        document.getElementById('render-mode-btn').click();
         return {
             renderVisible: !document.getElementById('render-host').hidden,
             sourceHidden: document.getElementById('source-host').hidden,
-            pageCount: pages.length,
-            remainsPaginated: pages.length > 1,
+            continuousEditorHasNoPages: root.querySelectorAll('.vdoc-page').length === 0,
+            hasContinuousRuntime: Boolean(flowRuntime),
+            previewPageCount: previewPages.length,
+            readingRemainsPaginated: previewPages.length > 1,
+            readingIsReadonly: !previewEditable,
+            readingStatus: status,
+            editorBackground: flowStyle.backgroundColor,
+            editorTextColor: flowStyle.color,
+            editorIsTransparent: flowStyle.backgroundColor === 'rgba(0, 0, 0, 0)',
+            editorTextIsReadable: flowStyle.color === getComputedStyle(document.body).color,
+            readingPageBackground: previewPageStyle?.backgroundColor || '',
+            readingContentBackground: previewContentStyle?.backgroundColor || '',
+            readingTextColor: previewContentStyle?.color || '',
+            readingUsesPaper: previewPageStyle?.backgroundColor === 'rgb(255, 253, 248)'
+                && previewContentStyle?.backgroundColor === 'rgb(255, 253, 248)',
+            readingUsesDarkInk: previewContentStyle?.color === 'rgb(29, 36, 33)',
             pretextReady: Boolean(window.Pretext?.prepare && window.ScriptoriumPretext?.isReady?.()),
             plainEstimateReady: Boolean(
                 plainEstimate
@@ -189,14 +214,6 @@ app.whenReady().then(async () => {
             complexUsesDomFallback: complexEstimate?.requiresDomMeasurement === true,
             hasLastRegressionParagraph: [...root.querySelectorAll('[data-vdoc-text]')]
                 .some((node) => (node.textContent || '').includes('分页回归段落 72'))
-                || [...root.querySelectorAll('.vdoc-page')]
-                    .some((page) => String(page._vdocFrozenHtml || '').includes('分页回归段落 72'))
-                || document.querySelector('.source-editor-shell .CodeMirror')?.CodeMirror
-                    ?.getValue().includes('分页回归段落 72')
-                || [...root.querySelectorAll('.vdoc-page')]
-                    .some((page) => String(page._vdocFrozenHtml || '').includes('分页回归段落 72'))
-                || document.querySelector('.source-editor-shell .CodeMirror')?.CodeMirror
-                    ?.getValue().includes('分页回归段落 72')
         };
     })()`);
     const formattingInteraction = await windowRef.webContents.executeJavaScript(`(() => {
@@ -366,7 +383,7 @@ app.whenReady().then(async () => {
 
     const enterInteraction = await windowRef.webContents.executeJavaScript(`(async () => {
         const root = document.getElementById('page-stream').shadowRoot;
-        const runtimeBeforeShiftEnter = root.querySelector('.vdoc-runtime');
+        const runtimeBeforeShiftEnter = root.querySelector('.vdoc-flow-runtime');
         const block = [...root.querySelectorAll('p[data-vdoc-block]')]
             .find((node) => (node.textContent || '').trim().length > 1);
         if (!block) return { available: false };
@@ -379,15 +396,8 @@ app.whenReady().then(async () => {
         selection.removeAllRanges();
         selection.addRange(range);
 
-        const countDocumentBlocks = () => [...root.querySelectorAll('.vdoc-page')]
-            .reduce((count, page) => {
-                if (page.dataset.runtimeState !== 'tombstone' || page._vdocFrozenHtml == null) {
-                    return count + page.querySelectorAll('[data-vdoc-block]').length;
-                }
-                const template = document.createElement('template');
-                template.innerHTML = page._vdocFrozenHtml;
-                return count + template.content.querySelectorAll('[data-vdoc-block]').length;
-            }, 0);
+        const countDocumentBlocks = () =>
+            root.querySelectorAll('.vdoc-flow-runtime [data-vdoc-block]').length;
         const host = document.getElementById('render-host');
         const scrollBefore = host.scrollTop;
         const blocksBefore = countDocumentBlocks();
@@ -402,17 +412,6 @@ app.whenReady().then(async () => {
         const breaksAfterEnter = block.querySelectorAll('br').length;
         const scrollAfterEnter = host.scrollTop;
 
-        const lastPage = [...root.querySelectorAll('.vdoc-page')].at(-1);
-        const frozenTailText = lastPage?.textContent || '';
-        if (lastPage && lastPage !== block.closest('.vdoc-page')) {
-            lastPage._vdocFrozenHtml = lastPage.innerHTML;
-            const marker = document.createElement('div');
-            marker.className = 'vdoc-page-tombstone';
-            marker.textContent = '末页冻结测试';
-            lastPage.replaceChildren(marker);
-            lastPage.dataset.runtimeState = 'tombstone';
-        }
-
         block.dispatchEvent(new KeyboardEvent('keydown', {
             key: 'Enter',
             shiftKey: true,
@@ -425,19 +424,15 @@ app.whenReady().then(async () => {
         const scrollAfterShiftEnter = host.scrollTop;
         const activeAfterReflow = root.activeElement;
         const pageCountAfterShiftEnter = root.querySelectorAll('.vdoc-page').length;
-        const renderedTextAfterReflow = [...root.querySelectorAll('[data-vdoc-text]')]
-            .map((node) => node.textContent || '').join('');
-        const frozenTailPreserved = !frozenTailText.trim()
-            || renderedTextAfterReflow.includes(frozenTailText.trim().slice(-24));
 
         return {
             available: true,
             enterKeepsBlockCount: blocksAfterEnter === blocksBefore,
             enterAddsSoftBreak: breaksAfterEnter === breaksBefore + 1,
             shiftEnterAddsBlock: blocksAfterShiftEnter === blocksAfterEnter + 1,
-            shiftEnterReflowsPages: pageCountAfterShiftEnter > 1,
-            shiftEnterUsesIncrementalRuntime: root.querySelector('.vdoc-runtime') === runtimeBeforeShiftEnter,
-            frozenTailPreserved,
+            continuousEditorStaysUnpaginated: pageCountAfterShiftEnter === 0,
+            shiftEnterPreservesContinuousRuntime:
+                root.querySelector('.vdoc-flow-runtime') === runtimeBeforeShiftEnter,
             shiftEnterRestoresFocus: Boolean(
                 activeAfterReflow?.matches?.('[data-vdoc-text]')
                 && !(activeAfterReflow.textContent || '').trim()
@@ -476,6 +471,14 @@ app.whenReady().then(async () => {
     title: document.title,
     hasApi: Boolean(window.scriptoriumAPI),
     hasImportApi: typeof window.scriptoriumAPI?.chooseImport === 'function',
+    hasRichExportApi: typeof window.scriptoriumAPI?.exportRichDocument === 'function',
+    hasPaginationEngine: Boolean(window.VDocPagination),
+    hasReadMode: Boolean(document.getElementById('read-mode-btn')),
+    hasExportButtons: Boolean(
+        document.getElementById('export-flow-html-btn')
+        && document.getElementById('export-paged-html-btn')
+        && document.getElementById('export-pdf-btn')
+    ),
     hasImportButton: Boolean(document.getElementById('import-btn')),
     importButtonLabel: document.getElementById('import-btn')?.innerText.trim(),
     hasCompatibilityApi: Boolean(window.docxAPI),
@@ -552,7 +555,9 @@ app.whenReady().then(async () => {
     console.log('[ScriptoriumSmoke] Snapshot:', JSON.stringify(snapshot, null, 2));
     console.log('[ScriptoriumSmoke] Screenshot:', screenshotPath);
 
-    if (!snapshot.hasApi || !snapshot.hasImportApi || !snapshot.hasImportButton
+    if (!snapshot.hasApi || !snapshot.hasImportApi || !snapshot.hasRichExportApi
+        || !snapshot.hasPaginationEngine || !snapshot.hasReadMode || !snapshot.hasExportButtons
+        || !snapshot.hasImportButton
         || snapshot.importButtonLabel !== '导入'
         || !snapshot.hasVdocCore || !snapshot.hasStyleLibrary
         || snapshot.format !== 'vcp-vdocx' || snapshot.welcomeVisible || !snapshot.workspaceVisible
@@ -574,7 +579,15 @@ app.whenReady().then(async () => {
         || !snapshot.mathInteraction.lightEditorAdapted
         || !snapshot.modeSwitchInteraction.renderVisible
         || !snapshot.modeSwitchInteraction.sourceHidden
-        || !snapshot.modeSwitchInteraction.remainsPaginated
+        || !snapshot.modeSwitchInteraction.continuousEditorHasNoPages
+        || !snapshot.modeSwitchInteraction.hasContinuousRuntime
+        || !snapshot.modeSwitchInteraction.readingRemainsPaginated
+        || !snapshot.modeSwitchInteraction.readingIsReadonly
+        || !snapshot.modeSwitchInteraction.editorIsTransparent
+        || !snapshot.modeSwitchInteraction.editorTextIsReadable
+        || !snapshot.modeSwitchInteraction.readingUsesPaper
+        || !snapshot.modeSwitchInteraction.readingUsesDarkInk
+        || !/^第 \d+ 页 \/ 共 \d+ 页$/.test(snapshot.modeSwitchInteraction.readingStatus)
         || !snapshot.modeSwitchInteraction.pretextReady
         || !snapshot.modeSwitchInteraction.plainEstimateReady
         || !snapshot.modeSwitchInteraction.complexUsesDomFallback
@@ -597,9 +610,8 @@ app.whenReady().then(async () => {
         || !snapshot.enterInteraction.enterKeepsBlockCount
         || !snapshot.enterInteraction.enterAddsSoftBreak
         || !snapshot.enterInteraction.shiftEnterAddsBlock
-        || !snapshot.enterInteraction.shiftEnterReflowsPages
-        || !snapshot.enterInteraction.shiftEnterUsesIncrementalRuntime
-        || !snapshot.enterInteraction.frozenTailPreserved
+        || !snapshot.enterInteraction.continuousEditorStaysUnpaginated
+        || !snapshot.enterInteraction.shiftEnterPreservesContinuousRuntime
         || !snapshot.enterInteraction.shiftEnterRestoresFocus
         || !snapshot.enterInteraction.enterScrollStable
         || !snapshot.enterInteraction.shiftEnterScrollStable

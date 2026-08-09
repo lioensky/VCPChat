@@ -31,6 +31,43 @@
 </article>`;
     }
 
+    function defaultSlideHtml() {
+        return `<section class="vdoc-slide-scene">
+    <div class="vdoc-slide-title">
+        <p class="vdoc-eyebrow">VCP SCRIPTORIUM</p>
+        <h1>未命名演示</h1>
+        <p>人类构建内容与基础布局，AI 继续完成每一页的视觉、动画与交互。</p>
+    </div>
+</section>`;
+    }
+
+    function createSlide(input = {}, index = 0) {
+        const candidate = input && typeof input === 'object' ? input : {};
+        return {
+            id: String(candidate.id || createId('slide')),
+            name: String(candidate.name || `第 ${index + 1} 页`),
+            html: formatHtml(ensureTextNodeIds(candidate.html || defaultSlideHtml())),
+            css: sanitizeCss(candidate.css || ''),
+            script: String(candidate.script || ''),
+            transition: String(candidate.transition || 'none'),
+            duration: Number.isFinite(Number(candidate.duration))
+                ? Math.max(0, Number(candidate.duration))
+                : null,
+            notes: String(candidate.notes || ''),
+            resources: Array.isArray(candidate.resources)
+                ? [...new Set(candidate.resources.map(String))]
+                : [],
+            import: candidate.import && typeof candidate.import === 'object'
+                ? candidate.import
+                : null,
+        };
+    }
+
+    function normalizeSlides(input) {
+        const slides = Array.isArray(input) ? input : [];
+        return (slides.length ? slides : [{}]).map(createSlide);
+    }
+
     function defaultCss() {
         return `:root {
     color-scheme: light;
@@ -41,8 +78,7 @@
     --vdoc-serif: "Noto Serif CJK SC", "Source Han Serif SC", "Songti SC", SimSun, serif;
 }
 * { box-sizing: border-box; }
-html { background: #d8d5cd; }
-body {
+html, body {
     margin: 0;
     color: var(--vdoc-ink);
     background: transparent;
@@ -51,16 +87,7 @@ body {
     line-height: 1.8;
     text-autospace: normal;
 }
-.vdoc-page {
-    width: 210mm;
-    min-height: 297mm;
-    margin: 24px auto;
-    padding: 24mm 22mm 26mm;
-    overflow: hidden;
-    background: var(--vdoc-paper);
-    box-shadow: 0 18px 55px rgba(25, 30, 27, .18);
-}
-.vdoc-manuscript { max-width: 100%; }
+.vdoc-manuscript { width: 100%; max-width: 100%; }
 .vdoc-hero { padding: 22mm 0 16mm; border-bottom: 1px solid rgba(139, 94, 52, .28); }
 .vdoc-eyebrow { color: var(--vdoc-accent); font: 700 9pt/1.4 system-ui, sans-serif; letter-spacing: .22em; }
 h1, h2, h3, h4, h5, h6 {
@@ -78,10 +105,6 @@ p { margin: .7em 0; text-align: justify; text-justify: inter-ideograph; text-wra
 [data-vdoc-text]:focus { border-radius: 3px; box-shadow: 0 0 0 3px rgba(139, 94, 52, .13); }
 @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; }
-}
-@media print {
-    html, body { background: #fff; }
-    .vdoc-page { margin: 0; box-shadow: none; break-after: page; }
 }`;
     }
 
@@ -127,9 +150,10 @@ p { margin: .7em 0; text-align: justify; text-justify: inter-ideograph; text-wra
                 modifiedAt: now,
                 generator: 'VCP Scriptorium',
                 capabilities: {
-                    scripts: false,
+                    scripts: options.kind === PROJECT_KINDS.SLIDE_DECK,
                     cssAnimations: true,
                     renderedTextEditing: true,
+                    sceneDiffs: options.kind === PROJECT_KINDS.SLIDE_DECK,
                 },
                 fonts: [],
                 resources: [],
@@ -142,8 +166,16 @@ p { margin: .7em 0; text-align: justify; text-justify: inter-ideograph; text-wra
                 }),
             },
             source: {
-                html: options.html || defaultHtml(),
+                html: options.kind === PROJECT_KINDS.SLIDE_DECK
+                    ? ''
+                    : options.html || defaultHtml(),
                 css: options.css || defaultCss(),
+                slides: options.kind === PROJECT_KINDS.SLIDE_DECK
+                    ? normalizeSlides(options.slides || (options.html ? [{
+                        html: options.html,
+                        name: '第 1 页',
+                    }] : null))
+                    : [],
             },
             checkpoints: [],
         });
@@ -300,9 +332,10 @@ p { margin: .7em 0; text-align: justify; text-justify: inter-ideograph; text-wra
                 modifiedAt: manifest.modifiedAt || now,
                 generator: 'VCP Scriptorium',
                 capabilities: {
-                    scripts: false,
+                    scripts: manifest.scene?.kind === PROJECT_KINDS.SLIDE_DECK,
                     cssAnimations: true,
                     renderedTextEditing: true,
+                    sceneDiffs: manifest.scene?.kind === PROJECT_KINDS.SLIDE_DECK,
                 },
                 fonts: Array.isArray(manifest.fonts) ? manifest.fonts : [],
                 resources: Array.isArray(manifest.resources) ? manifest.resources : [],
@@ -316,8 +349,19 @@ p { margin: .7em 0; text-align: justify; text-justify: inter-ideograph; text-wra
                 import: manifest.import || null,
             },
             source: {
-                html: formatHtml(ensureTextNodeIds(candidate.source?.html || defaultHtml())),
+                html: manifest.scene?.kind === PROJECT_KINDS.SLIDE_DECK
+                    ? ''
+                    : formatHtml(ensureTextNodeIds(candidate.source?.html || defaultHtml())),
                 css: sanitizeCss(candidate.source?.css || defaultCss()),
+                slides: manifest.scene?.kind === PROJECT_KINDS.SLIDE_DECK
+                    ? normalizeSlides(
+                        candidate.source?.slides
+                        || (candidate.source?.html ? [{
+                            html: candidate.source.html,
+                            name: '第 1 页',
+                        }] : null)
+                    )
+                    : [],
             },
             checkpoints: Array.isArray(candidate.checkpoints) ? candidate.checkpoints : [],
         };
@@ -368,6 +412,8 @@ p { margin: .7em 0; text-align: justify; text-justify: inter-ideograph; text-wra
         EDITABLE_SELECTOR,
         PRESERVED_CONTAINER_SELECTOR,
         createSceneConfig,
+        createSlide,
+        normalizeSlides,
         extensionForKind,
         createDocument,
         normalizeDocument,

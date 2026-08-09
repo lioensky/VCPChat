@@ -11,6 +11,7 @@ const scriptoriumImportService = require('../services/scriptoriumImportService')
 
 const MAX_DOCUMENT_BYTES = 100 * 1024 * 1024;
 const PROJECT_EXTENSIONS = new Set(['.vdocx', '.vpptx']);
+const EXPORT_FORMATS = new Set(['html-flow', 'html-paged', 'pdf']);
 const IMPORT_EXTENSIONS = new Set(scriptoriumImportService.SUPPORTED_EXTENSIONS);
 const OPEN_EXTENSIONS = new Set([...PROJECT_EXTENSIONS, ...IMPORT_EXTENSIONS]);
 const RECENT_LIMIT = 12;
@@ -38,7 +39,7 @@ function assertDocumentPath(filePath, options = {}) {
     if (!allowed) {
         throw new Error(options.forSave
             ? 'VCP 富文档工程必须保存为 .vdocx 或 .vpptx。'
-            : '仅支持 VDOCX、VPPTX、HTML、Markdown、TXT、RTF 或 DOCX。');
+            : '仅支持 VDOCX、VPPTX、HTML、Markdown、TXT、RTF、DOCX 或 PPTX。');
     }
     return resolved;
 }
@@ -239,6 +240,8 @@ async function readDocument(filePath) {
         kind: 'imported',
         importedKind: imported.kind,
         html: imported.html,
+        slides: imported.slides,
+        page: imported.page,
         importMetadata: imported.importMetadata,
         size: stat.size,
         modifiedAt: stat.mtimeMs,
@@ -268,12 +271,13 @@ async function chooseAndImportDocument(event) {
         filters: [
             {
                 name: '所有可导入文档',
-                extensions: ['html', 'htm', 'md', 'markdown', 'txt', 'rtf', 'docx'],
+                extensions: ['html', 'htm', 'md', 'markdown', 'txt', 'rtf', 'docx', 'pptx'],
             },
             { name: 'Markdown 文稿', extensions: ['md', 'markdown'] },
             { name: '纯文本', extensions: ['txt'] },
             { name: '富文本 RTF', extensions: ['rtf'] },
             { name: 'Word 文档（语义导入）', extensions: ['docx'] },
+            { name: 'PowerPoint 演示（静态版式导入）', extensions: ['pptx'] },
             { name: 'HTML 文档', extensions: ['html', 'htm'] },
         ],
     });
@@ -336,6 +340,115 @@ async function saveDocument(event, payload = {}) {
             : `${result.filePath}${projectExtension}`;
     }
     return atomicWrite(targetPath, payload.bytes);
+}
+
+async function atomicWriteExport(filePath, data) {
+    const resolved = path.resolve(filePath);
+    const bytes = Buffer.isBuffer(data) ? data : Buffer.from(data || '');
+    if (!bytes.length) throw new Error('拒绝导出空文档。');
+    if (bytes.length > MAX_DOCUMENT_BYTES) throw new Error('导出文档超过 100 MB 安全上限。');
+    await fs.ensureDir(path.dirname(resolved));
+    const temporaryPath = `${resolved}.vcp-exporting-${process.pid}-${Date.now()}`;
+    try {
+        await fs.writeFile(temporaryPath, bytes);
+        await fs.move(temporaryPath, resolved, { overwrite: true });
+    } finally {
+        await fs.remove(temporaryPath).catch(() => {});
+    }
+    const stat = await fs.stat(resolved);
+    return {
+        success: true,
+        filePath: resolved,
+        name: path.basename(resolved),
+        size: stat.size,
+        modifiedAt: stat.mtimeMs,
+    };
+}
+
+async function waitForExportLayout(win) {
+    await win.webContents.executeJavaScript(`(async () => {
+        await document.fonts?.ready;
+        await Promise.all([...document.images].map((image) => {
+            if (image.complete) return image.decode?.().catch(() => {});
+            return new Promise((resolve) => {
+                image.addEventListener('load', resolve, { once: true });
+                image.addEventListener('error', resolve, { once: true });
+            });
+        }));
+        document.documentElement.dataset.vdocPdf = 'true';
+        await new Promise((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(resolve))
+        );
+    })()`);
+}
+
+async function exportRichDocument(event, payload = {}) {
+    const format = String(payload.format || '');
+    if (!EXPORT_FORMATS.has(format)) throw new Error('不支持的富文档导出格式。');
+    const html = String(payload.html || '');
+    if (!html.trim()) throw new Error('拒绝导出空文档。');
+    if (Buffer.byteLength(html, 'utf8') > MAX_DOCUMENT_BYTES) {
+        throw new Error('导出文档超过 100 MB 安全上限。');
+    }
+
+    const owner = BrowserWindow.fromWebContents(event.sender) || docxWindow || mainWindow;
+    const isPdf = format === 'pdf';
+    const extension = isPdf ? '.pdf' : '.html';
+    const suggestedName = String(payload.suggestedName || `Scriptorium${extension}`)
+        .replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_');
+    const result = await dialog.showSaveDialog(owner, {
+        title: isPdf ? '导出分页 PDF' : '导出富文档 HTML',
+        defaultPath: suggestedName.toLowerCase().endsWith(extension)
+            ? suggestedName
+            : `${suggestedName}${extension}`,
+        filters: [{
+            name: isPdf ? 'PDF 文档' : 'HTML 富文档',
+            extensions: [extension.slice(1)],
+        }],
+    });
+    if (result.canceled || !result.filePath) {
+        return { success: false, canceled: true };
+    }
+    const targetPath = result.filePath.toLowerCase().endsWith(extension)
+        ? result.filePath
+        : `${result.filePath}${extension}`;
+
+    if (!isPdf) return atomicWriteExport(targetPath, html);
+
+    const temporaryHtmlPath = path.join(
+        app.getPath('temp'),
+        `vcp-scriptorium-export-${process.pid}-${Date.now()}.html`
+    );
+    const exportWindow = new BrowserWindow({
+        show: false,
+        width: 1200,
+        height: 900,
+        backgroundColor: '#ffffff',
+        webPreferences: {
+            contextIsolation: true,
+            nodeIntegration: false,
+            sandbox: true,
+            javascript: true,
+            webSecurity: true,
+        },
+    });
+    try {
+        await fs.writeFile(temporaryHtmlPath, html, 'utf8');
+        await exportWindow.loadFile(temporaryHtmlPath);
+        await waitForExportLayout(exportWindow);
+        const pdf = await exportWindow.webContents.printToPDF({
+            printBackground: true,
+            preferCSSPageSize: true,
+            displayHeaderFooter: false,
+            margins: {
+                marginType: 'none',
+            },
+        });
+        return await atomicWriteExport(targetPath, pdf);
+    } finally {
+        if (!exportWindow.isDestroyed()) exportWindow.destroy();
+        await fs.remove(temporaryHtmlPath).catch(() => {});
+    }
 }
 
 function focusWindow(win) {
@@ -416,6 +529,7 @@ function initialize(params) {
     ipcMain.handle('scriptorium:choose-import', chooseAndImportDocument);
     ipcMain.handle('docx:read-path', (_event, filePath) => readDocument(filePath));
     ipcMain.handle('docx:save', saveDocument);
+    ipcMain.handle('scriptorium:export-rich-document', exportRichDocument);
     ipcMain.handle('docx:recent-list', readRecentFiles);
     ipcMain.handle('docx:fonts-list', (_event, forceRefresh = false) => getSystemFonts(forceRefresh));
 }

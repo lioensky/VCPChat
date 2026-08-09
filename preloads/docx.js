@@ -15,6 +15,7 @@ const scriptoriumAPI = Object.freeze({
     chooseImport: () => ipcRenderer.invoke('scriptorium:choose-import'),
     readPath: (filePath) => ipcRenderer.invoke('docx:read-path', filePath),
     save: (payload) => ipcRenderer.invoke('docx:save', payload),
+    exportRichDocument: (payload) => ipcRenderer.invoke('scriptorium:export-rich-document', payload),
     listRecent: () => ipcRenderer.invoke('docx:recent-list'),
     listSystemFonts: (forceRefresh = false) => ipcRenderer.invoke('docx:fonts-list', forceRefresh),
 

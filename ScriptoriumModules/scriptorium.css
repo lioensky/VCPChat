@@ -1064,6 +1064,107 @@ body.outline-collapsed .outline-panel {
     line-height: 1.7;
 }
 
+/* ── VPPTX explicit scene navigator ─────────────────────── */
+.slide-navigator-header {
+    display: grid;
+    grid-template-columns: auto auto 1fr;
+    align-items: center;
+    gap: 6px;
+    padding: 0 12px 12px;
+    border-bottom: 1px solid var(--scriptorium-hairline);
+}
+
+.slide-navigator-header button {
+    height: 30px;
+    padding: 0 9px;
+    border: 1px solid var(--scriptorium-hairline);
+    border-radius: 7px;
+    color: var(--secondary-text);
+    background: color-mix(in srgb, var(--input-bg) 62%, transparent);
+    font-size: 9px;
+    cursor: pointer;
+}
+
+.slide-navigator-header button:first-child {
+    border-color: var(--scriptorium-accent-mid);
+    color: var(--highlight-text);
+    background: var(--scriptorium-accent-soft);
+}
+
+.slide-navigator-header button:disabled {
+    opacity: .38;
+    pointer-events: none;
+}
+
+.slide-navigator-header span {
+    justify-self: end;
+    color: var(--secondary-text);
+    font-size: 9px;
+}
+
+.slide-navigator {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 0;
+    height: 100%;
+    padding: 12px 10px 28px;
+    overflow-y: auto;
+}
+
+.slide-nav-item {
+    display: grid;
+    grid-template-columns: 22px minmax(0, 1fr);
+    align-items: center;
+    gap: 7px;
+    width: 100%;
+    padding: 5px;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    color: var(--secondary-text);
+    background: transparent;
+    text-align: left;
+    cursor: pointer;
+}
+
+.slide-nav-item:hover,
+.slide-nav-item.active {
+    border-color: var(--scriptorium-accent-mid);
+    color: var(--primary-text);
+    background: var(--scriptorium-accent-soft);
+}
+
+.slide-nav-ordinal {
+    color: var(--secondary-text);
+    font-size: 9px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+}
+
+.slide-nav-preview {
+    position: relative;
+    display: flex;
+    align-items: flex-end;
+    aspect-ratio: 16 / 9;
+    min-width: 0;
+    padding: 8px;
+    overflow: hidden;
+    border: 1px solid rgba(210, 203, 192, .55);
+    border-radius: 3px;
+    color: #1d2421;
+    background:
+        linear-gradient(145deg, rgba(185, 72, 50, .06), transparent 44%),
+        #fffdf8;
+    box-shadow: 0 5px 16px rgba(0, 0, 0, .18);
+}
+
+.slide-nav-title {
+    display: -webkit-box;
+    overflow: hidden;
+    font: 600 9px/1.35 var(--scriptorium-serif);
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+}
 /* ── Document lineage ───────────────────────────────────── */
 
 .lineage-panel {

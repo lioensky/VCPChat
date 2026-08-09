@@ -5,9 +5,12 @@ const { marked } = require('marked');
 const mammoth = require('mammoth');
 const JSZip = require('jszip');
 const cheerio = require('cheerio');
+const scriptoriumPptxImportService = require('./scriptoriumPptxImportService');
 
-const IMPORTER_VERSION = 2;
-const SUPPORTED_EXTENSIONS = new Set(['.html', '.htm', '.md', '.markdown', '.txt', '.rtf', '.docx']);
+const IMPORTER_VERSION = 3;
+const SUPPORTED_EXTENSIONS = new Set([
+    '.html', '.htm', '.md', '.markdown', '.txt', '.rtf', '.docx', '.pptx',
+]);
 
 function escapeHtml(value) {
     return String(value || '').replace(/[&<>"']/g, (character) =>
@@ -343,6 +346,7 @@ function kindForExtension(extension) {
     if (extension === '.txt') return 'text';
     if (extension === '.rtf') return 'rtf';
     if (extension === '.docx') return 'docx';
+    if (extension === '.pptx') return 'pptx';
     if (extension === '.html' || extension === '.htm') return 'html';
     return null;
 }
@@ -355,10 +359,17 @@ async function importBuffer(filePath, buffer) {
 
     const kind = kindForExtension(extension);
     let html = '';
+    let slides = [];
+    let page = null;
     let warnings = [];
     if (kind === 'docx') {
         const converted = await convertDocx(buffer);
         html = converted.html;
+        warnings = converted.warnings;
+    } else if (kind === 'pptx') {
+        const converted = await scriptoriumPptxImportService.convertPptx(buffer);
+        slides = converted.slides;
+        page = converted.page;
         warnings = converted.warnings;
     } else {
         const text = Buffer.from(buffer).toString('utf8').replace(/^\uFEFF/, '');
@@ -371,6 +382,8 @@ async function importBuffer(filePath, buffer) {
     return {
         kind,
         html,
+        slides,
+        page,
         importMetadata: {
             sourceFormat: kind,
             sourceName: path.basename(filePath),
