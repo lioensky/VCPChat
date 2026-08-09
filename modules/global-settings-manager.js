@@ -4,12 +4,6 @@
 export async function handleSaveGlobalSettings(e, deps) {
     const chatAPI = window.chatAPI || window.electronAPI;
     e.preventDefault();
-    const settingsForm = e.currentTarget || document.getElementById('globalSettingsForm');
-    const reportSaveResult = (success, error = '') => {
-        settingsForm?.dispatchEvent(new CustomEvent('vcp-settings-save-result', {
-            detail: { success, error: error || undefined }
-        }));
-    };
 
     const {
         refs,
@@ -41,9 +35,6 @@ export async function handleSaveGlobalSettings(e, deps) {
     const speechRecognizerBrowserPath = document.getElementById('speechRecognizerBrowserPath')?.value.trim() || '';
     const speechRecognizerPagePath = document.getElementById('speechRecognizerPagePath')?.value.trim() || '';
 
-    const selectedUiMode = document.querySelector('input[name="appearanceUiMode"]:checked')?.value
-        || (document.getElementById('enableNextUi')?.checked ? 'next' : 'classic');
-
     const newSettings = {
         userName: document.getElementById('userName').value.trim() || '用户',
         userAvatarBorderColor: document.getElementById('userAvatarBorderColor')?.value || '#3d5a80',
@@ -67,40 +58,6 @@ export async function handleSaveGlobalSettings(e, deps) {
         notificationsSidebarWidth: refs.globalSettings.get().notificationsSidebarWidth,
         enableAgentBubbleTheme: document.getElementById('enableAgentBubbleTheme').checked,
         enableSmoothStreaming: document.getElementById('enableSmoothStreaming').checked,
-        uiMode: selectedUiMode,
-        showHomeVisualBrand: document.getElementById('showHomeVisualBrand')?.checked !== false,
-        showHomeVisualTagline: document.getElementById('showHomeVisualTagline')?.checked !== false,
-        homeVisualTagline: document.getElementById('homeVisualTagline')?.value.trim().slice(0, 120)
-            || '语义级打穿 AI、UI/UX、APP 与人类想象力的边界',
-        appearanceProfile: window.VCPAppearance?.normalize({
-            density: document.getElementById('appearanceDensity')?.value,
-            radius: document.getElementById('appearanceRadius')?.value,
-            typography: document.getElementById('appearanceTypography')?.value,
-            fontScale: document.getElementById('appearanceFontScale')?.value,
-            contentWidth: document.getElementById('appearanceContentWidth')?.value,
-            sidebarRowHeight: Number(document.getElementById('appearanceSidebarRowHeight')?.value)
-                || currentSettings.appearanceProfile?.sidebarRowHeight
-                || 46,
-            sidebarAvatarSize: Number(document.getElementById('appearanceSidebarAvatarSize')?.value)
-                || currentSettings.appearanceProfile?.sidebarAvatarSize
-                || 32,
-            customRadius: Number(document.getElementById('appearanceCustomRadius')?.value ?? 10),
-            surface: document.getElementById('appearanceSurface')?.value,
-            surfaceEffect: currentSettings.appearanceProfile?.surfaceEffect,
-            surfaceOpacity: currentSettings.appearanceProfile?.surfaceOpacity,
-            surfaceBlur: currentSettings.appearanceProfile?.surfaceBlur,
-            surfaceSaturation: currentSettings.appearanceProfile?.surfaceSaturation,
-            surfaceBrightness: currentSettings.appearanceProfile?.surfaceBrightness,
-            surfaceBorder: currentSettings.appearanceProfile?.surfaceBorder,
-            surfaceShadow: currentSettings.appearanceProfile?.surfaceShadow,
-            surfaceSheen: currentSettings.appearanceProfile?.surfaceSheen,
-            shellRadius: currentSettings.appearanceProfile?.shellRadius,
-            composerRadius: currentSettings.appearanceProfile?.composerRadius,
-            sidebarRadius: document.querySelector('input[name="appearanceSidebarRadiusChoice"]:checked')?.value
-                || document.getElementById('appearanceSidebarRadius')?.value
-                || currentSettings.appearanceProfile?.sidebarRadius,
-            cardRadius: currentSettings.appearanceProfile?.cardRadius
-        }, selectedUiMode) || currentSettings.appearanceProfile,
         chatFontPreset: document.getElementById('chatFontPreset')?.value || currentSettings.chatFontPreset || 'system',
         chatFontCustom: document.getElementById('chatFontCustom')?.value.trim() || '',
         chatCodeFontPreset: document.getElementById('chatCodeFontPreset')?.value || currentSettings.chatCodeFontPreset || 'consolas',
@@ -255,7 +212,7 @@ export async function handleSaveGlobalSettings(e, deps) {
     }
 
     const result = await chatAPI.saveSettings(newSettings);
-    if (result?.success) {
+    if (result.success) {
         if (chatAPI?.saveRustAssistantConfig) {
             const rustSaveResult = await chatAPI.saveRustAssistantConfig(rustConfigPatch);
             if (!rustSaveResult?.success) {
@@ -268,39 +225,16 @@ export async function handleSaveGlobalSettings(e, deps) {
         }
 
         Object.assign(refs.globalSettings.get(), newSettings);
-        try {
-            // The settings write above succeeded, so this is the only point
-            // at which the renderer's boot cache may be synchronized.
-            if (window.uiModeManager?.applyAsync) {
-                await window.uiModeManager.applyAsync(newSettings.uiMode, { cache: true });
-            } else {
-                window.uiModeManager?.apply(newSettings.uiMode, { cache: true });
-            }
-            newSettings.appearanceProfile = window.VCPAppearance?.commit(
-                newSettings.appearanceProfile,
-                { uiMode: newSettings.uiMode, source: 'settings-save' }
-            ) || newSettings.appearanceProfile;
-            window.dispatchEvent(new CustomEvent('global-settings-updated', {
-                detail: { settings: refs.globalSettings.get(), source: 'settings-save' }
-            }));
-            if (typeof window.applyChatBubbleLayoutSettings === 'function') {
-                window.applyChatBubbleLayoutSettings(refs.globalSettings.get());
-            }
-            if (typeof window.applyChatPresentationMode === 'function') {
-                await window.applyChatPresentationMode(newSettings.chatPresentationMode, {
-                    persist: false,
-                    preserveScroll: true,
-                    source: 'global-settings'
-                });
-            }
-        } catch (presentationError) {
-            // Settings have already been written. Keep the dialog state
-            // truthful and surface this as a post-save presentation warning,
-            // rather than incorrectly reporting an unsaved form.
-            console.error('[GlobalSettings] Saved, but applying presentation settings failed:', presentationError);
-            uiHelperFunctions.showToastNotification(`设置已保存，但界面应用失败：${presentationError?.message || presentationError}`, 'warning');
+        if (typeof window.applyChatBubbleLayoutSettings === 'function') {
+            window.applyChatBubbleLayoutSettings(refs.globalSettings.get());
         }
-        reportSaveResult(true);
+        if (typeof window.applyChatPresentationMode === 'function') {
+            await window.applyChatPresentationMode(newSettings.chatPresentationMode, {
+                persist: false,
+                preserveScroll: true,
+                source: 'global-settings'
+            });
+        }
         uiHelperFunctions.showToastNotification('全局设置已保存！部分设置（如通知URL/Key）可能需要重新连接生效。');
         uiHelperFunctions.closeModal('globalSettingsModal');
         if (refs.globalSettings.get().vcpLogUrl && refs.globalSettings.get().vcpLogKey) {
@@ -310,8 +244,6 @@ export async function handleSaveGlobalSettings(e, deps) {
              if (window.notificationRenderer) window.notificationRenderer.updateVCPLogStatus({ status: 'error', message: 'VCPLog未配置' }, document.getElementById('vcpLogConnectionStatus'));
         }
    } else {
-       const error = result?.error || '保存接口未返回成功结果';
-       reportSaveResult(false, error);
-       uiHelperFunctions.showToastNotification(`保存全局设置失败: ${error}`, 'error');
+       uiHelperFunctions.showToastNotification(`保存全局设置失败: ${result.error}`, 'error');
     }
 }

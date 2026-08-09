@@ -119,17 +119,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     async function loadConfig() {
         try {
             const settings = await api.loadSettings();
-            vcpServerUrl = settings?.vcpServerUrl || '';
-            vcpApiKey = settings?.vcpApiKey || '';
-            if (vcpServerUrl && vcpApiKey) {
-                console.log('Translator config loaded successfully:', { vcpServerUrl });
+            if (settings.vcpServerUrl && settings.vcpApiKey) {
+                vcpServerUrl = settings.vcpServerUrl;
+                vcpApiKey = settings.vcpApiKey;
+                console.log('Translator config loaded successfully:', { vcpServerUrl, vcpApiKey });
             } else {
-                console.warn('Translator VCP config is not available yet; translation remains disabled until configured.');
+                console.error('Failed to load VCP config from settings.');
+                alert('无法从主程序加载翻译配置。');
             }
         } catch (error) {
             console.error('Error loading settings via IPC:', error);
-            vcpServerUrl = '';
-            vcpApiKey = '';
+            alert('加载配置时出错。');
         }
     }
 
@@ -323,7 +323,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // --- 为翻译按钮添加点击事件 ---
-    const runTranslation = () => {
+    translateBtn.addEventListener('click', () => {
         const sourceText = sourceTextarea.value.trim();
         if (!sourceText) {
             alert('请输入要翻译的文本。');
@@ -360,8 +360,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const modelConfig = getSelectedModelConfig();
 
         performDirectTranslation(messages, modelConfig);
-    };
-    translateBtn.addEventListener('click', runTranslation);
+    });
 
     // --- Settings Modal Listeners ---
     settingsTranslatorBtn.addEventListener('click', openSettingsModal);
@@ -419,207 +418,23 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // --- 为复制按钮添加点击事件 ---
-    // next 模式：复制按钮由 VCPUI IconButton 接管，反馈改用 VCPUI.feedback（Toast）。
-    let nextCopyButton = null;
-    const showCopyFeedback = (message, isSuccess) => {
-        if (nextCopyButton && window.VCPUI?.feedback) {
-            window.VCPUI.feedback.toast(message, { variant: isSuccess ? 'success' : 'error' });
-            return;
-        }
-        copyBtn.innerHTML = `<span class="copy-feedback">${message}</span>`;
-        setTimeout(() => {
-            copyBtn.innerHTML = originalCopyBtnIcon;
-        }, 2000);
-    };
-    const copyTranslation = () => {
+    copyBtn.addEventListener('click', () => {
         const textToCopy = translatedTextarea.value;
         if (textToCopy && !translatedTextarea.classList.contains('streaming')) {
             navigator.clipboard.writeText(textToCopy).then(() => {
-                showCopyFeedback('已复制!', true);
+                copyBtn.innerHTML = '<span class="copy-feedback">已复制!</span>';
+                setTimeout(() => {
+                    copyBtn.innerHTML = originalCopyBtnIcon;
+                }, 2000);
             }).catch(err => {
                 console.error('Could not copy text: ', err);
-                showCopyFeedback('失败', false);
+                copyBtn.innerHTML = '<span class="copy-feedback">失败</span>';
+                 setTimeout(() => {
+                    copyBtn.innerHTML = originalCopyBtnIcon;
+                }, 2000);
             });
         }
-    };
-    copyBtn.addEventListener('click', copyTranslation);
-
-    // --- 新版 UI：真实重建页面结构（AppPageShell + VCPUI 控件 + Web Awesome） ---
-    // 经典模式保持原 DOM/CSS；next 模式将既有业务节点移入 VCPUI 外壳并增强，
-    // 业务逻辑（流式翻译/复制/设置保存）继续操作同一批元素，无需重写。
-    let nextSettingsModal = null;
-    function buildNextTranslator() {
-        if (!window.VCPUI) return;
-        if (window.VCPUiModeController?.getCurrentMode() !== 'next') return;
-        if (document.body.classList.contains('vcp-ui-scope')) return;
-
-        const V = window.VCPUI;
-        const container = document.querySelector('.translator-container');
-        if (!container) return;
-        document.body.classList.add('vcp-ui-scope');
-
-        const shell = V.create('AppPageShell', {
-            title: '翻译助手',
-            windowControls: true,
-            onMinimize: () => api?.minimizeWindow?.(),
-            onClose: () => api?.closeWindow?.(),
-        });
-        shell.element.classList.add('vcp-ui-translator-shell', 'vcp-ui-integrated-shell');
-
-        // 设置入口：换为 VCPUI IconButton（保留原点击逻辑：打开设置弹窗）。
-        const legacySettingsBtn = document.getElementById('translator-settings-btn');
-        let settingsAction = null;
-        let openNextSettings = null;
-        if (legacySettingsBtn) {
-            settingsAction = V.create('IconButton', { icon: 'settings', label: '翻译设置', variant: 'ghost' });
-            settingsAction.element.title = '翻译设置';
-            settingsAction.element.addEventListener('click', () => {
-                openSettingsModal();
-                openNextSettings?.();
-            });
-        }
-        const shellTitle = document.createElement('span');
-        shellTitle.className = 'vcp-ui-translator-shell-title';
-        shellTitle.append(Object.assign(document.createElement('strong'), { textContent: '翻译助手' }));
-        if (settingsAction?.element) shellTitle.append(settingsAction.element);
-        const shellWorkspaceTitle = document.createElement('strong');
-        shellWorkspaceTitle.className = 'vcp-ui-translator-shell-workspace-title';
-        shellWorkspaceTitle.textContent = '翻译工作台';
-        shell.update({ title: shellTitle, actions: [shellWorkspaceTitle] });
-
-        // 原容器内容移入 shell 内容区，避免双标题。
-        const header = container.querySelector('.translator-header');
-        header?.querySelector('h2')?.remove();
-        const body = document.createElement('div');
-        body.className = 'vcp-ui-translator-body';
-        while (container.firstChild) body.append(container.firstChild);
-        shell.update({ content: body });
-
-        // 移除旧标题栏（AppPageShell 提供窗口控制）；清空已搬空的容器。
-        document.getElementById('custom-title-bar')?.remove();
-        container.remove();
-        document.body.append(shell.element);
-
-        const sourceTextarea = document.getElementById('sourceText');
-        const outputArea = body.querySelector('.output-area');
-        const translatorHeader = body.querySelector('.translator-header');
-        const translatorMain = body.querySelector('.translator-main');
-        const translatorControls = body.querySelector('.translator-controls');
-        if (translatorHeader && translatorMain && translatorControls) {
-            const layout = document.createElement('div');
-            layout.className = 'vcp-ui-translator-layout vcp-ui-integrated-layout';
-            layout.dataset.layout = 'rail';
-
-            translatorHeader.classList.add('vcp-ui-translator-sidebar', 'vcp-ui-integrated-rail');
-            if (settingsAction?.element) {
-                const sidebarTools = document.createElement('div');
-                sidebarTools.className = 'vcp-ui-translator-sidebar-tools';
-                sidebarTools.append(settingsAction.element);
-                translatorHeader.prepend(sidebarTools);
-            }
-
-            const controlLabels = new Map([
-                [modelSelect, '模型'],
-                [targetLanguageSelect, '目标语言'],
-                [customPromptVarInput, '自定义指令'],
-            ]);
-            for (const [control, labelText] of controlLabels) {
-                if (!control?.isConnected) continue;
-                const field = document.createElement('label');
-                field.className = 'vcp-ui-translator-field';
-                const label = document.createElement('span');
-                label.className = 'vcp-ui-translator-field-label';
-                label.textContent = labelText;
-                control.before(field);
-                field.append(label, control);
-            }
-
-            const workspace = document.createElement('section');
-            workspace.className = 'vcp-ui-translator-workspace vcp-ui-integrated-main';
-            translatorHeader.before(layout);
-            layout.append(translatorHeader, workspace);
-            workspace.append(translatorMain);
-        }
-        if (sourceTextarea && outputArea) {
-            const sourcePane = document.createElement('section');
-            sourcePane.className = 'vcp-ui-translation-pane vcp-ui-translation-source';
-            const sourceHeader = document.createElement('div');
-            sourceHeader.className = 'vcp-ui-translation-pane-header';
-            sourceHeader.textContent = '原文';
-            sourceTextarea.before(sourcePane);
-            sourcePane.append(sourceHeader, sourceTextarea);
-
-            outputArea.classList.add('vcp-ui-translation-pane', 'vcp-ui-translation-output');
-            const outputHeader = document.createElement('div');
-            outputHeader.className = 'vcp-ui-translation-pane-header';
-            outputHeader.textContent = '译文';
-            outputArea.prepend(outputHeader);
-        }
-
-        // 控件增强（VCPUI.enhance 保留原生 .value/.options 供业务逻辑使用）。
-        document.querySelectorAll('.translator-controls select').forEach(select => {
-            try { V.enhance('Select', select); } catch (error) { console.warn('[Translator] enhance select:', error); }
-        });
-        document.querySelectorAll('.translator-controls input[type="text"]').forEach(input => {
-            try { V.enhance('Input', input); } catch (error) { console.warn('[Translator] enhance input:', error); }
-        });
-        document.querySelectorAll('.translator-main textarea').forEach(textarea => {
-            try { V.enhance('Textarea', textarea); } catch (error) { console.warn('[Translator] enhance textarea:', error); }
-        });
-
-        // 翻译按钮 → VCPUI Button（保留原点击逻辑）。
-        let nextTranslate = null;
-        if (translateBtn && translateBtn.isConnected) {
-            nextTranslate = V.create('Button', { label: '翻译', icon: 'translate', variant: 'primary' });
-            nextTranslate.element.classList.add('vcp-ui-translator-translate');
-            nextTranslate.element.addEventListener('click', runTranslation);
-            translateBtn.replaceWith(nextTranslate.element);
-            translateBtn.dataset.nextUiReplaced = 'true';
-        }
-
-        // 复制按钮 → VCPUI IconButton（保留原点击逻辑；反馈走 VCPUI.feedback）。
-        if (copyBtn && copyBtn.isConnected) {
-            nextCopyButton = V.create('IconButton', { icon: 'copy', label: '复制译文', variant: 'secondary' });
-            nextCopyButton.element.classList.add('vcp-ui-translator-copy');
-            nextCopyButton.element.addEventListener('click', copyTranslation);
-            copyBtn.replaceWith(nextCopyButton.element);
-            copyBtn.dataset.nextUiReplaced = 'true';
-        }
-
-        // 设置弹窗 → VCPUI Modal（内容沿用同一批表单元素，业务读写不变）。
-        const settingsFormBody = document.querySelector('.settings-modal-body');
-        if (settingsFormBody) {
-            document.getElementById('closeSettingsModalBtn')?.remove();
-            const footerButtons = [document.getElementById('resetSettingsBtn'), document.getElementById('saveSettingsBtn')].filter(Boolean);
-            openNextSettings = () => {
-                nextSettingsModal?.close?.();
-                settingsFormBody.querySelectorAll('input[type="text"]').forEach(input => {
-                    try { V.enhance('Input', input); } catch (error) { console.warn('[Translator] enhance settings input:', error); }
-                });
-                nextSettingsModal = V.create('Modal', {
-                    title: '翻译设置',
-                    content: settingsFormBody,
-                    actions: footerButtons,
-                    closeOnBackdrop: true,
-                    onClose: () => settingsModal.classList.add('hidden'),
-                });
-                document.body.append(nextSettingsModal.element);
-            };
-            // 保存成功后的 setTimeout(closeSettingsModal, 500) 只是切回 hidden 类，
-            // 这里观察旧弹窗类名并同步关闭 VCPUI Modal。
-            const settingsObserver = new MutationObserver(() => {
-                if (settingsModal.classList.contains('hidden') && nextSettingsModal) nextSettingsModal.close?.();
-            });
-            settingsObserver.observe(settingsModal, { attributes: true, attributeFilter: ['class'] });
-        }
-
-        // Tooltip 通过 VCPUI.create('Tooltip') 创建（由 VCPUI 委托 Web Awesome）。
-        [settingsAction?.element, nextTranslate?.element, nextCopyButton?.element].filter(Boolean).forEach(el => {
-            const tip = V.create('Tooltip', { trigger: el, content: el.getAttribute('aria-label') || el.title || '操作', placement: 'top' });
-            document.body.append(tip.element);
-        });
-    }
-    window.addEventListener('vcp-ui-runtime-ready', buildNextTranslator);
+    });
 
     initialize();
 });

@@ -246,11 +246,6 @@ function getState(appId) {
     };
 }
 
-function getWindow(appId) {
-    const entry = getEntry(appId);
-    return refreshWindowState(entry);
-}
-
 module.exports = {
     register,
     attachWindow,
@@ -260,5 +255,4 @@ module.exports = {
     ensureReady,
     sendPayload,
     getState,
-    getWindow,
 };

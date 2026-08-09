@@ -724,7 +724,7 @@ body.light-theme .message-item.system.welcome-bubble {
 }
 
 
-:is(#messageInput, .chat-message-input) {
+#messageInput {
     display: block;
     width: 100%;
     box-sizing: border-box;
@@ -743,7 +743,7 @@ body.light-theme .message-item.system.welcome-bubble {
     overflow-y: auto;
     line-height: 1.4;
 }
-:is(#messageInput, .chat-message-input):focus {
+#messageInput:focus {
     outline: none;
     box-shadow: none;
 }
@@ -1233,13 +1233,6 @@ body.light-theme .suggestion-item {
 body {
     --chat-presentation-edge-gap: clamp(6px, 1.1vw, 14px);
     --chat-immersive-column-width: 880px;
-    --chat-presentation-surface:
-        linear-gradient(
-            180deg,
-            color-mix(in srgb, var(--panel-bg-dark) 82%, rgba(255, 255, 255, 0.06)),
-            color-mix(in srgb, var(--panel-bg-dark) 70%, transparent)
-        );
-    --chat-presentation-surface-filter: blur(16px) saturate(112%);
     /* Slightly stronger than Markdown <hr>, while remaining theme-aware. */
     --chat-presentation-divider-color: color-mix(
         in srgb,
@@ -1248,22 +1241,24 @@ body {
     );
 }
 
-body.light-theme {
-    --chat-presentation-surface:
-        linear-gradient(
-            180deg,
-            color-mix(in srgb, var(--panel-bg-light) 86%, rgba(255, 255, 255, 0.54)),
-            color-mix(in srgb, var(--panel-bg-light) 74%, rgba(255, 255, 255, 0.18))
-        );
-}
-
 /* Panel and immersive use a full-chat-area frosted surface.
  * Edge gaps constrain message content only, never the background surface. */
 body.chat-presentation-panel .chat-messages-container,
 body.chat-presentation-immersive .chat-messages-container {
-    background: var(--chat-presentation-surface);
-    backdrop-filter: var(--chat-presentation-surface-filter);
-    -webkit-backdrop-filter: var(--chat-presentation-surface-filter);
+    background:
+        linear-gradient(180deg,
+            color-mix(in srgb, var(--panel-bg-dark) 82%, rgba(255, 255, 255, 0.06)),
+            color-mix(in srgb, var(--panel-bg-dark) 70%, transparent));
+    backdrop-filter: blur(16px) saturate(112%);
+    -webkit-backdrop-filter: blur(16px) saturate(112%);
+}
+
+body.light-theme.chat-presentation-panel .chat-messages-container,
+body.light-theme.chat-presentation-immersive .chat-messages-container {
+    background:
+        linear-gradient(180deg,
+            color-mix(in srgb, var(--panel-bg-light) 86%, rgba(255, 255, 255, 0.54)),
+            color-mix(in srgb, var(--panel-bg-light) 74%, rgba(255, 255, 255, 0.18)));
 }
 
 body.chat-presentation-panel .chat-messages,

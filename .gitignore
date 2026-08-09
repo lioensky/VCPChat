@@ -59,7 +59,3 @@ loudness_cache.db-shm
 **/.codex/
 
 /开发文档/
-
-# UI QA screenshots captured by Electron smoke tests; never commit generated
-# visual artifacts as source baselines.
-/screenshots/

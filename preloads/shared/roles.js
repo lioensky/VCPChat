@@ -25,7 +25,6 @@ const SHARED_KEYS = [
     'openTextInNewWindow',
     'sendOpenExternalLink',
     'onThemeUpdated',
-    'onUiModeUpdated',
     'getCurrentTheme',
     'setTheme',
     'setThemeMode',
@@ -154,15 +153,6 @@ const CHAT_KEYS = [
     'sendFlowlockRpcResponse',
     'minimizeToTray',
     'closeApp',
-    'desktopCreateEmbeddedVchatApp',
-    'desktopActivateEmbeddedVchatApp',
-    'desktopSetEmbeddedVchatAppBounds',
-    'desktopCloseEmbeddedVchatApp',
-    'desktopDetachEmbeddedVchatApp',
-    'desktopCloseAllEmbeddedVchatApps',
-    'onEmbeddedVchatAppState',
-    'getThemes',
-    'applyTheme',
 ];
 
 const DESKTOP_KEYS = [

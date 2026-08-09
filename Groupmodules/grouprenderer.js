@@ -256,8 +256,6 @@ window.GroupRenderer = (() => {
             avatar.className = 'group-settings-summary-avatar';
             avatar.src = summaryValue.avatarSrc || 'assets/default_group_avatar.png';
             avatar.alt = '';
-            avatar.width = 30;
-            avatar.height = 30;
 
             const copy = document.createElement('div');
             copy.className = 'group-settings-summary-copy';
@@ -759,23 +757,10 @@ window.GroupRenderer = (() => {
         updateGroupSectionSummary('mode');
     }
 
-    function reportSettingsSaveResult(success, error = '') {
-        groupSettingsForm?.dispatchEvent(new CustomEvent('vcp-settings-save-result', {
-            detail: { success: Boolean(success), error }
-        }));
-    }
-
-    function reportSettingsDeleteResult(success, { cancelled = false, error = '' } = {}) {
-        groupSettingsForm?.dispatchEvent(new CustomEvent('vcp-settings-delete-result', {
-            detail: { success: Boolean(success), cancelled: Boolean(cancelled), error }
-        }));
-    }
-
     async function handleSaveGroupSettings(event) {
         event.preventDefault();
         if (!getGroupSettingsElements()) {
             alert("无法保存群组设置，表单元素未找到。");
-            reportSettingsSaveResult(false, 'missing-form-elements');
             return;
         }
 
@@ -818,7 +803,6 @@ window.GroupRenderer = (() => {
 
         if (!newConfig.name) {
             alert("群组名称不能为空！");
-            reportSettingsSaveResult(false, 'missing-name');
             return;
         }
 
@@ -832,7 +816,6 @@ window.GroupRenderer = (() => {
             if (groupUnifiedModelInput) {
                 groupUnifiedModelInput.focus();
             }
-            reportSettingsSaveResult(false, 'missing-unified-model');
             return;
         }
 
@@ -864,7 +847,6 @@ window.GroupRenderer = (() => {
             const saveButton = groupSettingsForm.querySelector('button[type="submit"]');
 
             if (result.success && result.agentGroup) {
-                reportSettingsSaveResult(true);
                 if (saveButton) uiHelper.showSaveFeedback(saveButton, true, "已保存!", "保存群组设置");
                 await mainRendererFunctions.loadItems(); // Reload list to reflect name/avatar changes
                 // If current selected group is this one, update its details
@@ -894,7 +876,6 @@ window.GroupRenderer = (() => {
                 }
                 // uiHelper.showToastNotification(`群组 "${result.agentGroup.name}" 设置已保存。`); // Removed successful save notification
             } else {
-                reportSettingsSaveResult(false, result.error || 'save-failed');
                 if (saveButton) uiHelper.showSaveFeedback(saveButton, false, "保存失败", "保存群组设置");
                 alert(`保存群组设置失败: ${result.error}`);
             }
@@ -913,7 +894,6 @@ window.GroupRenderer = (() => {
 
         } catch (error) {
             console.error("Error saving group settings:", error);
-            reportSettingsSaveResult(false, error.message);
             // 使用 uiHelper.showToastNotification 替换 alert
             if (uiHelper && typeof uiHelper.showToastNotification === 'function') {
                 uiHelper.showToastNotification(`保存群组设置时出错: ${error.message}`, 'error');
@@ -925,23 +905,14 @@ window.GroupRenderer = (() => {
     }
 
     async function handleDeleteCurrentGroup() {
-        if (!getGroupSettingsElements()) {
-            reportSettingsDeleteResult(false, { error: 'missing-form-elements' });
-            return;
-        }
+        if (!getGroupSettingsElements()) return;
         const groupId = document.getElementById('editingGroupId').value;
         const groupName = groupNameInput.value || '当前选中的群组';
 
-        const confirmed = await uiHelper.showConfirmDialog(`您确定要删除群组 "${groupName}" 吗？其所有聊天记录和设置都将被删除，此操作不可撤销！`, '删除确认', '删除', '取消', true);
-        if (!confirmed) {
-            reportSettingsDeleteResult(false, { cancelled: true });
-            return;
-        }
-
-        try {
+        if (await uiHelper.showConfirmDialog(`您确定要删除群组 "${groupName}" 吗？其所有聊天记录和设置都将被删除，此操作不可撤销！`, '删除确认', '删除', '取消', true)) {
+            try {
                 const result = await electronAPI.deleteAgentGroup(groupId);
                 if (result.success) {
-                    reportSettingsDeleteResult(true);
                     // alert(`群组 ${groupName} 已删除。`); // 移除成功提示
                     const currentSelected = currentSelectedItemRef.get();
                     if (currentSelected.id === groupId && currentSelected.type === 'group') {
@@ -993,13 +964,12 @@ window.GroupRenderer = (() => {
                         mainRendererFunctions.displaySettingsForItem();
                     }
                 } else {
-                    reportSettingsDeleteResult(false, { error: result.error || 'unknown-error' });
                     alert(`删除群组失败: ${result.error}`);
                 }
-        } catch (error) {
-            console.error("Error deleting group:", error);
-            reportSettingsDeleteResult(false, { error: error.message });
-            alert(`删除群组时出错: ${error.message}`);
+            } catch (error) {
+                console.error("Error deleting group:", error);
+                alert(`删除群组时出错: ${error.message}`);
+            }
         }
     }
 

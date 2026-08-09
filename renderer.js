@@ -1,21 +1,6 @@
 // --- Globals ---
 let globalSettings = {
     sidebarWidth: 260,
-    uiMode: 'next',
-    showHomeVisualBrand: true,
-    showHomeVisualTagline: true,
-    homeVisualTagline: '语义级打穿 AI、UI/UX、APP 与人类想象力的边界',
-    appearanceProfile: {
-        density: 'comfortable',
-        radius: 'small',
-        typography: 'system',
-        fontScale: 'normal',
-        contentWidth: 'full',
-        sidebarRowHeight: 46,
-        sidebarAvatarSize: 32,
-        customRadius: 10,
-        surface: 'translucent'
-    },
     enableMiddleClickQuickAction: false,
     middleClickQuickAction: '',
     enableMiddleClickAdvanced: false,
@@ -150,7 +135,10 @@ const tabContentSettings = document.getElementById('tabContentSettings');
 const topicSearchInput = document.getElementById('topicSearchInput'); // Should be in tabContentTopics
 const DEFAULT_SEND_BUTTON_HTML = sendMessageBtn?.innerHTML || '';
 const INTERRUPT_SEND_BUTTON_HTML = `
-    <span class="material-symbols-outlined vcp-ui-icon" aria-hidden="true">stop</span>
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+        fill="none" stroke="none" aria-hidden="true">
+        <rect x="4" y="4" width="16" height="16" rx="3" fill="currentColor"></rect>
+    </svg>
 `;
 
 function isContextForCurrentChat(context) {
@@ -207,7 +195,6 @@ function updateSendButtonState() {
     sendMessageBtn.classList.toggle('interrupt-mode', nextMode === 'interrupt');
     sendMessageBtn.innerHTML = nextMode === 'interrupt' ? INTERRUPT_SEND_BUTTON_HTML : DEFAULT_SEND_BUTTON_HTML;
     sendMessageBtn.title = nextMode === 'interrupt' ? '中止回复' : '发送消息/右键高级回复';
-    sendMessageBtn.setAttribute('aria-label', nextMode === 'interrupt' ? '中止回复' : '发送消息');
 }
 
 async function interruptActiveResponseFromSendButton() {
@@ -296,7 +283,6 @@ let inviteAgentButtonsContainerElement; // 新增：邀请发言按钮容器的�
 
 // Assistant settings elements
 const toggleAssistantBtn = document.getElementById('toggleAssistantBtn'); // New button
-const toggleSidebarModeBtn = document.getElementById('toggleSidebarModeBtn');
 // 模态框内部元素延迟加载
 let assistantAgentContainer = null;
 let assistantAgentSelect = null;
@@ -337,12 +323,6 @@ import { setupEventListeners } from './modules/event-listeners.js';
         window.trayManager.init();
     } else {
         console.error('[RENDERER_INIT] trayManager module not found!');
-    }
-
-    if (window.topTabManager) {
-        window.topTabManager.init();
-    } else {
-        console.error('[RENDERER_INIT] topTabManager module not found!');
     }
 
     // 确保在GroupRenderer初始化之前，其容器已准备好
@@ -1037,7 +1017,7 @@ import { setupEventListeners } from './modules/event-listeners.js';
             openNotesBtn: document.getElementById('openNotesBtn'),
             openMusicBtn: document.getElementById('openMusicBtn'),
             openCanvasBtn: document.getElementById('openCanvasBtn'),
-            toggleAssistantBtn, toggleSidebarModeBtn,
+            toggleAssistantBtn,
             voiceChatBtn: document.getElementById('voiceChatBtn'),
             enableContextSanitizerCheckbox: document.getElementById('enableContextSanitizer'),
             contextSanitizerDepthContainer: document.getElementById('contextSanitizerDepthContainer'),
@@ -1062,13 +1042,6 @@ import { setupEventListeners } from './modules/event-listeners.js';
             filterAgentList: uiHelperFunctions.filterAgentList,
             addNetworkPathInput: uiHelperFunctions.addNetworkPathInput
         });
-
-        // A visible DOM shell is not enough to call the desktop interactive:
-        // template-backed modals and settings actions depend on the listeners
-        // registered above.  Expose one explicit readiness point for startup
-        // diagnostics and isolated Electron smoke tests.
-        document.documentElement.dataset.vcpRendererReady = 'true';
-        window.dispatchEvent(new CustomEvent('vcp-renderer-ready'));
 
         // Emoticon panel event listener
         if (attachFileBtn && emoticonTriggerBtn && window.emoticonManager) {
@@ -1593,20 +1566,6 @@ async function loadAndApplyGlobalSettings() {
     if (settings && !settings.error) {
         globalSettings = { ...globalSettings, ...settings }; // Merge with defaults
         window.globalSettings = globalSettings;
-        // Settings read through Main is authoritative; update the optional
-        // boot cache only after it has been successfully loaded.
-        if (window.uiModeManager?.applyAsync) {
-            await window.uiModeManager.applyAsync(globalSettings.uiMode, { cache: true });
-        } else {
-            window.uiModeManager?.apply(globalSettings.uiMode, { cache: true });
-        }
-        globalSettings.appearanceProfile = window.VCPAppearance?.commit(
-            globalSettings.appearanceProfile,
-            { uiMode: globalSettings.uiMode, source: 'settings-load' }
-        ) || globalSettings.appearanceProfile;
-        window.dispatchEvent(new CustomEvent('global-settings-updated', {
-            detail: { settings: globalSettings, source: 'settings-load' }
-        }));
         applyChatBubbleLayoutSettings(globalSettings);
         
         // 🟢 优化：仅更新始终存在的 UI 元素
@@ -1636,11 +1595,6 @@ async function loadAndApplyGlobalSettings() {
         // Set the initial state of the new toggle button in the main UI
         if (toggleAssistantBtn) {
             toggleAssistantBtn.classList.toggle('active', !!globalSettings.assistantEnabled);
-        }
-        if (toggleSidebarModeBtn) {
-            const avatarOnly = globalSettings.sidebarActive !== false && globalSettings.sidebarAvatarOnly === true;
-            toggleSidebarModeBtn.classList.toggle('active', avatarOnly);
-            toggleSidebarModeBtn.setAttribute('aria-pressed', String(avatarOnly));
         }
         // Selection listener startup moved to post-renderer-ready stage.
 
@@ -1772,47 +1726,46 @@ function syncChatPresentationModeControls(mode = globalSettings.chatPresentation
 }
 
 function setupChatPresentationQuickSwitcher() {
-    document.querySelectorAll('.chat-presentation-quick-switcher').forEach((switcher) => {
-        const options = Array.from(switcher.querySelectorAll('.chat-presentation-quick-option'));
-        if (!options.length || switcher.dataset.bound === 'true') return;
+    const switcher = document.getElementById('chat-presentation-quick-switcher');
+    const options = Array.from(switcher?.querySelectorAll('.chat-presentation-quick-option') || []);
+    if (!switcher || !options.length || switcher.dataset.bound === 'true') return;
 
-        const selectMode = async (option) => {
-            const mode = option?.dataset.presentationMode;
-            if (!mode) return;
-            await applyChatPresentationMode(mode, {
-                persist: true,
-                preserveScroll: true,
-                notify: false,
-                source: `${switcher.id || 'chat-presentation'}-quick-switcher`
-            });
-        };
-
-        options.forEach((option) => {
-            option.addEventListener('click', () => selectMode(option));
-            option.addEventListener('keydown', (event) => {
-                if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
-                event.preventDefault();
-
-                const currentIndex = Math.max(0, options.indexOf(option));
-                let nextIndex = currentIndex;
-                if (event.key === 'ArrowLeft') nextIndex = (currentIndex - 1 + options.length) % options.length;
-                if (event.key === 'ArrowRight') nextIndex = (currentIndex + 1) % options.length;
-                if (event.key === 'Home') nextIndex = 0;
-                if (event.key === 'End') nextIndex = options.length - 1;
-
-                options[nextIndex].focus();
-                selectMode(options[nextIndex]);
-            });
+    const selectMode = async (option) => {
+        const mode = option?.dataset.presentationMode;
+        if (!mode) return;
+        await applyChatPresentationMode(mode, {
+            persist: true,
+            preserveScroll: true,
+            notify: false,
+            source: 'title-bar-quick-switcher'
         });
+    };
 
-        switcher.addEventListener('keydown', (event) => {
-            if (event.key !== 'Escape') return;
+    options.forEach((option) => {
+        option.addEventListener('click', () => selectMode(option));
+        option.addEventListener('keydown', (event) => {
+            if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
             event.preventDefault();
-            document.querySelector(`[aria-controls="${switcher.id}"]`)?.focus();
-        });
 
-        switcher.dataset.bound = 'true';
+            const currentIndex = Math.max(0, options.indexOf(option));
+            let nextIndex = currentIndex;
+            if (event.key === 'ArrowLeft') nextIndex = (currentIndex - 1 + options.length) % options.length;
+            if (event.key === 'ArrowRight') nextIndex = (currentIndex + 1) % options.length;
+            if (event.key === 'Home') nextIndex = 0;
+            if (event.key === 'End') nextIndex = options.length - 1;
+
+            options[nextIndex].focus();
+            selectMode(options[nextIndex]);
+        });
     });
+
+    switcher.addEventListener('keydown', (event) => {
+        if (event.key !== 'Escape') return;
+        event.preventDefault();
+        document.getElementById('themes-btn')?.focus();
+    });
+
+    switcher.dataset.bound = 'true';
     syncChatPresentationModeControls(globalSettings.chatPresentationMode);
 }
 
@@ -2193,28 +2146,6 @@ async function syncGlobalSettingsToUI() {
 
     safeCheck('enableAgentBubbleTheme', globalSettings.enableAgentBubbleTheme !== false);
     safeCheck('enableSmoothStreaming', globalSettings.enableSmoothStreaming === true);
-    safeCheck('enableNextUi', globalSettings.uiMode === 'next');
-    safeCheck('appearanceUiModeClassic', globalSettings.uiMode !== 'next');
-    safeCheck('appearanceUiModeNext', globalSettings.uiMode === 'next');
-    safeCheck('showHomeVisualBrand', globalSettings.showHomeVisualBrand !== false);
-    safeCheck('showHomeVisualTagline', globalSettings.showHomeVisualTagline !== false);
-    safeSet('homeVisualTagline', globalSettings.homeVisualTagline || '语义级打穿 AI、UI/UX、APP 与人类想象力的边界');
-    const appearance = window.VCPAppearance?.normalize(globalSettings.appearanceProfile, globalSettings.uiMode);
-    safeSet('appearanceDensity', appearance?.density || 'comfortable');
-    safeSet('appearanceRadius', appearance?.radius || 'small');
-    safeSet('appearanceTypography', appearance?.typography || 'system');
-    safeSet('appearanceFontScale', appearance?.fontScale || 'normal');
-    safeSet('appearanceContentWidth', appearance?.contentWidth || 'full');
-    safeSet('appearanceSidebarRowHeight', appearance?.sidebarRowHeight ?? 46);
-    safeSet('appearanceSidebarRowHeightValue', `${appearance?.sidebarRowHeight ?? 46}px`);
-    safeSet('appearanceSidebarAvatarSize', appearance?.sidebarAvatarSize ?? 32);
-    safeSet('appearanceSidebarAvatarSizeValue', `${appearance?.sidebarAvatarSize ?? 32}px`);
-    safeSet('appearanceSidebarRadius', appearance?.sidebarRadius || 'tuned');
-    safeCheck(`appearanceSidebarRadiusChoice-${appearance?.sidebarRadius || 'tuned'}`, true);
-    safeSet('appearanceCustomRadius', appearance?.customRadius ?? 10);
-    safeSet('appearanceCustomRadiusValue', `${appearance?.customRadius ?? 10}px`);
-    document.getElementById('appearanceSidebarAvatarSize')?.dispatchEvent(new Event('input', { bubbles: true }));
-    safeSet('appearanceSurface', appearance?.surface || 'translucent');
     safeSet('chatFontPreset', globalSettings.chatFontPreset || 'system');
     safeSet('chatFontCustom', globalSettings.chatFontCustom || '');
     safeSet('chatCodeFontPreset', globalSettings.chatCodeFontPreset || 'consolas');
@@ -2475,7 +2406,7 @@ if (window.marked && typeof window.marked.Marked === 'function') { // Ensure Mar
     console.warn("Marked library not found or not in expected format, Markdown rendering will be basic.");
     markedInstance = { parse: (text) => `<p>${String(text || '').replace(/\n/g, '<br>')}</p>` };
 }
-
+ 
 window.addEventListener('contextmenu', (e) => {
     // Allow context menu for text input fields
     if (e.target.closest('textarea, input[type="text"], .message-item .md-content')) { // Also allow on rendered message content

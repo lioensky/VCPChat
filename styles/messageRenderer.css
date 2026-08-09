@@ -296,29 +296,29 @@
 
 /* Main container for the diary entry */
 .maid-diary-bubble {
-    background: rgba(253, 250, 246, 0.5);
+    background: rgba(253, 250, 246, 0.5) !important;
     /* A very light, warm parchment color */
     border: 1px solid #eaddd0;
     /* A soft, paper-like border */
-    border-radius: 8px;
-    padding: 12px 18px 15px 18px;
+    border-radius: 8px !important;
+    padding: 12px 18px 15px 18px !important;
     /* Compact padding; icon is now inline with the title */
-    color: #5d4037;
+    color: #5d4037 !important;
     /* A warm, dark brown for text */
     box-shadow: 0 3px 8px rgba(0, 0, 0, 0.08);
-    margin-top: 10px;
+    margin-top: 10px !important;
     /* Add space above the diary bubble */
-    margin-bottom: 12px;
+    margin-bottom: 12px !important;
     position: relative;
     overflow: visible;
     /* Allow for potential pseudo-elements to peek out */
     line-height: 1.7;
-    display: block;
-    font-family: var(--vcp-diary-font-family, 'Georgia', 'Times New Roman', serif);
-    font-size: 1em;
-    white-space: normal;
+    display: block !important;
+    font-family: var(--vcp-diary-font-family, 'Georgia', 'Times New Roman', serif) !important;
+    font-size: 1em !important;
+    white-space: normal !important;
     /* Allow text to wrap naturally */
-    word-break: break-word;
+    word-break: break-word !important;
     will-change: transform;
     /* 优化：日记气泡提升为独立层 */
 }
@@ -452,17 +452,17 @@
 
 /* --- Maid Diary Update Bubble --- */
 .maid-diary-update-bubble {
-    display: block;
-    background: rgba(255, 253, 249, 0.5);
+    display: block !important;
+    background: rgba(255, 253, 249, 0.5) !important;
     border: 1px solid #e4d7c8;
-    border-radius: 8px;
-    padding: 12px 14px;
-    color: #4e342e;
+    border-radius: 8px !important;
+    padding: 12px 14px !important;
+    color: #4e342e !important;
     box-shadow: 0 3px 8px rgba(0, 0, 0, 0.08);
-    margin-top: 10px;
-    margin-bottom: 12px;
-    font-family: var(--vcp-diary-font-family, 'Georgia', 'Times New Roman', serif);
-    font-size: 0.95em;
+    margin-top: 10px !important;
+    margin-bottom: 12px !important;
+    font-family: var(--vcp-diary-font-family, 'Georgia', 'Times New Roman', serif) !important;
+    font-size: 0.95em !important;
     line-height: 1.65;
     box-sizing: border-box;
 }
@@ -558,14 +558,14 @@
 }
 
 body:not(.light-theme) .maid-diary-update-bubble {
-    background: rgba(44, 42, 58, 0.5);
+    background: rgba(44, 42, 58, 0.5) !important;
     border-color: #4a485f;
-    color: #d8d2c9;
+    color: #d8d2c9 !important;
     box-shadow: 0 3px 10px rgba(0, 0, 0, 0.25);
 }
 
 .valet-diary-update-bubble {
-    background: rgba(249, 251, 255, 0.5);
+    background: rgba(249, 251, 255, 0.5) !important;
     border-color: #d0dbe8;
     color: #374151 !important;
 }
@@ -622,10 +622,10 @@ body:not(.light-theme) .diary-update-content {
 
 /* --- Maid Diary Dark Theme Overrides --- */
 body:not(.light-theme) .maid-diary-bubble {
-    background: rgba(44, 42, 58, 0.5);
+    background: rgba(44, 42, 58, 0.5) !important;
     /* A deep, slightly magical purple-gray */
     border-color: #4a485f;
-    color: #d8d2c9;
+    color: #d8d2c9 !important;
     /* A soft, parchment-like off-white */
     box-shadow: 0 3px 10px rgba(0, 0, 0, 0.25);
 }
@@ -657,9 +657,9 @@ body:not(.light-theme) .diary-folder-name {
 
 body:not(.light-theme) .valet-diary-bubble,
 body:not(.light-theme) .valet-diary-update-bubble {
-    background: rgba(38, 50, 65, 0.5);
+    background: rgba(38, 50, 65, 0.5) !important;
     border-color: #3e536b;
-    color: #d4dde8;
+    color: #d4dde8 !important;
 }
 
 body:not(.light-theme) .valet-diary-bubble .diary-title,
@@ -1263,18 +1263,18 @@ body.light-theme {
 
 /* --- VCP Tool Result Bubble --- */
 .vcp-tool-result-bubble {
-    display: block;
-    background: var(--tool-result-bg);
-    border-radius: 10px;
+    display: block !important;
+    background: var(--tool-result-bg) !important;
+    border-radius: 10px !important;
     border: 1px solid var(--tool-result-border-color);
-    padding: 12px 18px;
-    color: var(--tool-result-text-color);
+    padding: 12px 18px !important;
+    color: var(--tool-result-text-color) !important;
     box-shadow: var(--tool-result-shadow);
     margin-top: 10px !important;
     margin-bottom: 12px !important;
     position: relative;
-    font-family: var(--vcp-tool-card-font-family, var(--vcp-chat-font-family, 'Segoe UI', 'Roboto', sans-serif));
-    font-size: 0.95em;
+    font-family: var(--vcp-tool-card-font-family, var(--vcp-chat-font-family, 'Segoe UI', 'Roboto', sans-serif)) !important;
+    font-size: 0.95em !important;
     line-height: 1.6;
     width: 100%;
     max-width: 95%;
@@ -2403,15 +2403,15 @@ body:not(.light-theme) .vcp-html-preview-container {
 
 /* --- VCP Thought Chain Bubble --- */
 .vcp-thought-chain-bubble {
-    display: block;
-    background: rgba(120, 120, 128, 0.05);
-    border-radius: 12px;
+    display: block !important;
+    background: rgba(120, 120, 128, 0.05) !important;
+    border-radius: 12px !important;
     border: 1px solid rgba(120, 120, 128, 0.2);
-    padding: 10px 15px;
-    margin: 10px 0;
+    padding: 10px 15px !important;
+    margin: 10px 0 !important;
     position: relative;
-    font-family: var(--vcp-tool-card-font-family, var(--vcp-chat-font-family, var(--font-family, sans-serif)));
-    font-size: 0.92em;
+    font-family: var(--vcp-tool-card-font-family, var(--vcp-chat-font-family, var(--font-family, sans-serif))) !important;
+    font-size: 0.92em !important;
     line-height: 1.6;
     width: fit-content;
     max-width: 98%;
@@ -2419,7 +2419,7 @@ body:not(.light-theme) .vcp-html-preview-container {
 }
 
 body.light-theme .vcp-thought-chain-bubble {
-    background: rgba(0, 0, 0, 0.03);
+    background: rgba(0, 0, 0, 0.03) !important;
     border-color: rgba(0, 0, 0, 0.1);
 }
 
@@ -2487,18 +2487,18 @@ body.light-theme .vcp-thought-chain-bubble {
 
 /* --- Tool Call Summary Bubble --- */
 .vcp-tool-call-summary-bubble {
-    display: block;
+    display: block !important;
     width: fit-content;
     max-width: 95%;
-    margin: 10px 0 12px 0;
-    padding: 10px 14px;
-    border-radius: 12px;
+    margin: 10px 0 12px 0 !important;
+    padding: 10px 14px !important;
+    border-radius: 12px !important;
     border: 1px solid var(--tool-summary-border-color, rgba(100, 210, 255, 0.22));
-    background: var(--tool-summary-bg, linear-gradient(145deg, rgba(40, 70, 105, 0.22), rgba(24, 42, 70, 0.30)));
+    background: var(--tool-summary-bg, linear-gradient(145deg, rgba(40, 70, 105, 0.22), rgba(24, 42, 70, 0.30))) !important;
     color: var(--tool-summary-text-color, var(--primary-text));
     box-shadow: var(--tool-summary-shadow, 0 6px 18px rgba(0, 0, 0, 0.18));
-    font-family: var(--vcp-tool-card-font-family, var(--vcp-chat-font-family, 'Segoe UI', 'Roboto', sans-serif));
-    font-size: 0.92em;
+    font-family: var(--vcp-tool-card-font-family, var(--vcp-chat-font-family, 'Segoe UI', 'Roboto', sans-serif)) !important;
+    font-size: 0.92em !important;
     line-height: 1.5;
     box-sizing: border-box;
     backdrop-filter: blur(6px);
@@ -2757,15 +2757,15 @@ body.light-theme .vcp-role-divider.role-user {
 
 /* --- VCPdesktop Push Placeholder --- */
 .vcp-desktop-push-placeholder {
-    display: block;
-    background: linear-gradient(145deg, rgba(30, 60, 90, 0.15), rgba(20, 40, 70, 0.25));
-    border-radius: 10px;
+    display: block !important;
+    background: linear-gradient(145deg, rgba(30, 60, 90, 0.15), rgba(20, 40, 70, 0.25)) !important;
+    border-radius: 10px !important;
     border: 1px solid rgba(100, 180, 255, 0.2);
-    padding: 12px 16px;
-    margin: 10px 0;
+    padding: 12px 16px !important;
+    margin: 10px 0 !important;
     position: relative;
-    font-family: var(--vcp-tool-card-font-family, var(--vcp-chat-font-family, 'Segoe UI', 'Roboto', sans-serif));
-    font-size: 0.92em;
+    font-family: var(--vcp-tool-card-font-family, var(--vcp-chat-font-family, 'Segoe UI', 'Roboto', sans-serif)) !important;
+    font-size: 0.92em !important;
     line-height: 1.5;
     width: fit-content;
     max-width: 95%;
@@ -2821,7 +2821,7 @@ body.light-theme .vcp-role-divider.role-user {
 }
 
 body.light-theme .vcp-desktop-push-placeholder {
-    background: linear-gradient(145deg, rgba(200, 220, 240, 0.3), rgba(180, 210, 240, 0.2));
+    background: linear-gradient(145deg, rgba(200, 220, 240, 0.3), rgba(180, 210, 240, 0.2)) !important;
     border-color: rgba(50, 120, 200, 0.2);
 }
 
