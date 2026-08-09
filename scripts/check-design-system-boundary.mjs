@@ -91,6 +91,7 @@ const allowedSourceDifferences = new Set([
     'scripts/test-settings-wa.mjs',
     'scripts/test-page-runtime.mjs',
     'scripts/test-next-ui-tab-lifecycle.mjs',
+    'scripts/test-next-ui-empty-state.mjs',
     'scripts/test-ui-mode-controller.mjs',
     'scripts/test-ui-mode-manager.mjs',
     'scripts/test-webawesome-adapter.mjs',

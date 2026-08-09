@@ -902,7 +902,7 @@
                                     filter="url(#nextUiEmptyLogoGlow)">VCPCHAT</text>
                             </svg>
                         </div>
-                        <p class="next-ui-empty-tagline">让每一次对话，都成为新的连接</p>
+                        <p id="nextUiEmptyTagline" class="next-ui-empty-tagline">语义级打穿 AI、UI/UX、APP 与人类想象力的边界</p>
                     </div>
                 </section>
                 <div class="chat-messages" id="chatMessages">
@@ -1304,6 +1304,23 @@
                                     <label class="switch" aria-label="显示主页视觉文字">
                                         <input type="checkbox" id="showHomeVisualBrand" name="showHomeVisualBrand" checked>
                                         <span class="slider round"></span>
+                                    </label>
+                                </div>
+                                <div class="appearance-home-tagline-setting">
+                                    <div class="appearance-home-visual-setting">
+                                        <span class="appearance-home-visual-copy">
+                                            <strong>首页寄语</strong>
+                                            <small>显示在 VCPCHAT 视觉文字下方</small>
+                                        </span>
+                                        <label class="switch" aria-label="显示首页寄语">
+                                            <input type="checkbox" id="showHomeVisualTagline" name="showHomeVisualTagline" checked>
+                                            <span class="slider round"></span>
+                                        </label>
+                                    </div>
+                                    <label class="settings-form-group" for="homeVisualTagline">
+                                        <span>寄语内容</span>
+                                        <input type="text" id="homeVisualTagline" name="homeVisualTagline" maxlength="120"
+                                            value="语义级打穿 AI、UI/UX、APP 与人类想象力的边界">
                                     </label>
                                 </div>
                                 <!-- Compatibility field retained for integrations that still read the legacy checkbox. -->

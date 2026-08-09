@@ -120,6 +120,8 @@ const populateForm = (settings) => {
     check('appearanceUiModeClassic', settings.uiMode !== 'next');
     check('appearanceUiModeNext', settings.uiMode === 'next');
     check('showHomeVisualBrand', settings.showHomeVisualBrand !== false);
+    check('showHomeVisualTagline', settings.showHomeVisualTagline !== false);
+    set('homeVisualTagline', settings.homeVisualTagline || '语义级打穿 AI、UI/UX、APP 与人类想象力的边界');
     set('appearanceSidebarRowHeight', settings.appearanceProfile?.sidebarRowHeight ?? 46);
     set('appearanceSidebarAvatarSize', settings.appearanceProfile?.sidebarAvatarSize ?? 32);
     set('appearanceSidebarRadius', settings.appearanceProfile?.sidebarRadius ?? 'tuned');
@@ -163,6 +165,8 @@ assert.ok(form, 'globalSettingsForm must be present in the cloned template');
 assert.ok(document.getElementById('appearanceSettingsWorkbenchCard').nextElementSibling.matches('.appearance-layout-selector'), 'layout selector follows workbench card');
 assert.equal(document.querySelectorAll('input[name="appearanceUiMode"]').length, 2, 'Classic and Next layout cards exist');
 assert.ok(document.getElementById('showHomeVisualBrand'), 'home visual toggle exists');
+assert.ok(document.getElementById('showHomeVisualTagline'), 'home tagline toggle exists');
+assert.ok(document.getElementById('homeVisualTagline'), 'home tagline text control exists');
 assert.ok(document.getElementById('appearanceSidebarRowHeight'), 'navigation row height range exists');
 assert.ok(document.getElementById('appearanceSidebarAvatarSize'), 'sidebar avatar size range exists');
 assert.ok(document.getElementById('appearanceSidebarRadius'), 'sidebar item radius control exists');
@@ -369,17 +373,21 @@ for (const category of categories) {
 }
 
 // Prominent appearance controls use their visible inputs as the persistence source.
-currentSettings = { uiMode: 'next', showHomeVisualBrand: false, appearanceProfile: { sidebarRowHeight: 50, sidebarAvatarSize: 36, sidebarRadius: 'medium', customRadius: 11 } };
+currentSettings = { uiMode: 'next', showHomeVisualBrand: false, showHomeVisualTagline: false, homeVisualTagline: '已保存的寄语', appearanceProfile: { sidebarRowHeight: 50, sidebarAvatarSize: 36, sidebarRadius: 'medium', customRadius: 11 } };
 populateForm(currentSettings);
 assert.equal(document.getElementById('appearanceUiModeNext').checked, true, 'Next layout card reflects persisted mode');
 assert.equal(document.getElementById('enableNextUi').checked, true, 'legacy mode checkbox stays synchronized');
 assert.equal(document.getElementById('showHomeVisualBrand').checked, false, 'home visual toggle reflects persisted false');
+assert.equal(document.getElementById('showHomeVisualTagline').checked, false, 'home tagline toggle reflects persisted false');
+assert.equal(document.getElementById('homeVisualTagline').value, '已保存的寄语', 'home tagline text reflects persisted content');
 assert.equal(document.getElementById('appearanceSidebarRowHeight').value, '50', 'navigation row height reflects persisted value');
 assert.equal(document.getElementById('appearanceSidebarAvatarSize').value, '36', 'sidebar avatar size reflects persisted value');
 assert.equal(document.getElementById('appearanceSidebarRadius').value, 'medium', 'sidebar item radius reflects persisted value');
 assert.equal(document.getElementById('appearanceCustomRadius').value, '11', 'custom radius reflects persisted value');
 document.getElementById('appearanceUiModeClassic').checked = true;
 document.getElementById('showHomeVisualBrand').checked = true;
+document.getElementById('showHomeVisualTagline').checked = true;
+document.getElementById('homeVisualTagline').value = '自定义首页寄语';
 document.getElementById('appearanceSidebarRowHeight').value = '60';
 document.getElementById('appearanceSidebarAvatarSize').value = '44';
 document.getElementById('appearanceSidebarRadius').value = 'round';
@@ -388,6 +396,8 @@ document.getElementById('appearanceCustomRadius').value = '18';
 await submitForm();
 assert.equal(savedSettings.last.uiMode, 'classic', 'visible Classic card is authoritative when saving');
 assert.equal(savedSettings.last.showHomeVisualBrand, true, 'home visual toggle persists');
+assert.equal(savedSettings.last.showHomeVisualTagline, true, 'home tagline toggle persists');
+assert.equal(savedSettings.last.homeVisualTagline, '自定义首页寄语', 'home tagline text persists');
 assert.equal(savedSettings.last.appearanceProfile.sidebarRowHeight, 60, 'navigation row height persists');
 assert.equal(savedSettings.last.appearanceProfile.sidebarAvatarSize, 44, 'sidebar avatar size persists');
 assert.equal(savedSettings.last.appearanceProfile.sidebarRadius, 'round', 'sidebar item radius persists');

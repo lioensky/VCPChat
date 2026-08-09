@@ -1266,6 +1266,58 @@
         border-radius: var(--vcp-ui-radius-md);
         background: var(--vcp-ui-fill-0);
     }
+    :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope .appearance-home-tagline-setting {
+        margin-bottom: var(--vcp-ui-space-4);
+        padding: var(--vcp-ui-space-3) var(--vcp-ui-space-4);
+        display: grid;
+        gap: var(--vcp-ui-space-3);
+        border: 1px solid var(--vcp-ui-border);
+        border-radius: var(--vcp-ui-radius-md);
+        background: var(--vcp-ui-fill-0);
+    }
+    :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope .appearance-home-tagline-setting .appearance-home-visual-setting {
+        margin: 0;
+        padding: 0;
+        border: 0;
+        background: transparent;
+    }
+    :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope .appearance-home-tagline-setting .settings-form-group { margin: 0; }
+
+    :is(html[data-ui-mode="next"], html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-tagline-editor {
+        margin-top: var(--vcp-ui-space-4);
+        padding-top: var(--vcp-ui-space-4);
+        display: grid;
+        gap: var(--vcp-ui-space-3);
+        border-top: 1px solid var(--vcp-ui-border);
+    }
+    :is(html[data-ui-mode="next"], html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-tagline-heading {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--vcp-ui-space-3);
+    }
+    :is(html[data-ui-mode="next"], html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-tagline-heading p {
+        margin: 3px 0 0;
+        color: var(--vcp-ui-text-3);
+        font-size: var(--vcp-ui-font-caption);
+        line-height: var(--vcp-ui-line-body);
+    }
+    :is(html[data-ui-mode="next"], html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-tagline-editor > input {
+        width: 100%;
+        min-height: var(--vcp-ui-control-lg);
+        padding: 0 var(--vcp-ui-space-3);
+        border: 1px solid var(--vcp-ui-border);
+        border-radius: var(--vcp-ui-radius-control);
+        color: var(--vcp-ui-text-0);
+        background: var(--vcp-ui-bg-2);
+        font: inherit;
+        font-size: var(--vcp-ui-font-helper);
+        outline: 0;
+    }
+    :is(html[data-ui-mode="next"], html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-tagline-editor > input:focus {
+        border-color: var(--vcp-ui-accent);
+        box-shadow: 0 0 0 2px var(--vcp-ui-focus-ring);
+    }
     :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope .appearance-range-heading {
         display: flex;
         align-items: center;

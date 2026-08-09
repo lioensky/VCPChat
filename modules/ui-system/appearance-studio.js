@@ -1,6 +1,8 @@
 (() => {
     'use strict';
 
+    const DEFAULT_HOME_TAGLINE = '语义级打穿 AI、UI/UX、APP 与人类想象力的边界';
+
     const MATERIAL_FIELDS = Object.freeze([
         'surfaceOpacity',
         'surfaceBlur',
@@ -141,6 +143,8 @@
         presentation: 'bubble',
         messageWidth: 'normal',
         homeVisual: 'shown',
+        homeTagline: 'shown',
+        homeTaglineText: DEFAULT_HOME_TAGLINE,
         profile: Object.freeze({
             density: 'comfortable',
             radius: 'medium',
@@ -217,10 +221,25 @@
     const clone = value => JSON.parse(JSON.stringify(value));
     const api = () => window.chatAPI || window.electronAPI;
     const currentUiMode = () => document.documentElement.dataset.uiMode || 'next';
+    function normalizeHomeTaglineText(value, fallback = DEFAULT_HOME_TAGLINE) {
+        const normalized = typeof value === 'string' ? value.trim().slice(0, 120) : '';
+        return normalized || fallback;
+    }
     function applyHomeVisual(value) {
         const normalized = value === 'hidden' ? 'hidden' : 'shown';
         document.documentElement.dataset.vcpHomeVisual = normalized;
         return normalized;
+    }
+    function applyHomeTagline(visibility, textValue) {
+        const tagline = document.getElementById('nextUiEmptyTagline');
+        const visible = visibility !== 'hidden';
+        const text = normalizeHomeTaglineText(textValue);
+        document.documentElement.dataset.vcpHomeTagline = visible ? 'shown' : 'hidden';
+        if (tagline) {
+            tagline.textContent = text;
+            tagline.hidden = !visible;
+        }
+        return { visibility: visible ? 'shown' : 'hidden', text };
     }
     const radiusDetailOptions = field => Object.entries(DETAIL_RADIUS_LABELS[field] || DETAIL_RADIUS_LABELS.sidebarRadius)
         .map(([value, label]) => `<option value="${value}">${label}</option>`)
@@ -289,6 +308,8 @@
             presentation: window.normalizeChatPresentationMode?.(settings.chatPresentationMode) || 'bubble',
             messageWidth: settings.enableWideChatLayout === true ? 'wide' : 'normal',
             homeVisual: settings.showHomeVisualBrand === false ? 'hidden' : 'shown',
+            homeTagline: settings.showHomeVisualTagline === false ? 'hidden' : 'shown',
+            homeTaglineText: normalizeHomeTaglineText(settings.homeVisualTagline),
             themeMode,
             themeFileName: null
         };
@@ -314,6 +335,10 @@
             homeVisual: source.homeVisual === 'hidden' || source.homeVisual === 'shown'
                 ? source.homeVisual
                 : (base.homeVisual === 'hidden' ? 'hidden' : 'shown'),
+            homeTagline: source.homeTagline === 'hidden' || source.homeTagline === 'shown'
+                ? source.homeTagline
+                : (base.homeTagline === 'hidden' ? 'hidden' : 'shown'),
+            homeTaglineText: normalizeHomeTaglineText(source.homeTaglineText, base.homeTaglineText),
             themeMode,
             themeFileName
         };
@@ -338,6 +363,8 @@
                 || base.presentation,
             messageWidth: document.getElementById('chatLayoutModeWide')?.checked ? 'wide' : 'normal',
             homeVisual: document.getElementById('showHomeVisualBrand')?.checked === false ? 'hidden' : 'shown',
+            homeTagline: document.getElementById('showHomeVisualTagline')?.checked === false ? 'hidden' : 'shown',
+            homeTaglineText: normalizeHomeTaglineText(document.getElementById('homeVisualTagline')?.value, base.homeTaglineText),
             themeMode: base.themeMode
         }, base);
     }
@@ -454,7 +481,7 @@
                     const compatibilityControl = document.getElementById('appearanceSidebarRadius');
                     if (compatibilityControl) compatibilityControl.value = event.target.value;
                 }
-                if (event.target.matches('[id^="appearance"], #showHomeVisualBrand, input[name="chatPresentationMode"]')) {
+                if (event.target.matches('[id^="appearance"], #showHomeVisualBrand, #showHomeVisualTagline, #homeVisualTagline, input[name="chatPresentationMode"]')) {
                     syncSettingsSummary();
                 }
             });
@@ -565,6 +592,13 @@
                             <div class="vcp-appearance-mini-item"><h4>阅读区布局</h4><div class="vcp-appearance-segmented"><button type="button" data-appearance-key="contentWidth" data-appearance-value="full">全宽画布</button><button type="button" data-appearance-key="contentWidth" data-appearance-value="centered">居中阅读</button></div><p class="vcp-appearance-mini-helper">控制整个聊天阅读区</p></div>
                             <div class="vcp-appearance-mini-item"><h4>消息宽度</h4><div class="vcp-appearance-segmented"><button type="button" data-appearance-key="messageWidth" data-appearance-value="normal">标准</button><button type="button" data-appearance-key="messageWidth" data-appearance-value="wide">宽屏</button></div><p class="vcp-appearance-mini-helper">控制单条消息的最大宽度</p></div>
                             <div class="vcp-appearance-mini-item vcp-appearance-mini-item-wide"><h4>主页视觉文字</h4><div class="vcp-appearance-segmented"><button type="button" data-appearance-key="homeVisual" data-appearance-value="shown">显示</button><button type="button" data-appearance-key="homeVisual" data-appearance-value="hidden">隐藏</button></div><p class="vcp-appearance-mini-helper">控制空会话中的 VCPCHAT 标识</p></div>
+                        </div>
+                        <div class="vcp-appearance-tagline-editor">
+                            <div class="vcp-appearance-tagline-heading">
+                                <div><h4>首页寄语</h4><p>显示在 VCPCHAT 视觉文字下方</p></div>
+                                <div class="vcp-appearance-segmented" role="group" aria-label="首页寄语显示状态"><button type="button" data-appearance-key="homeTagline" data-appearance-value="shown">显示</button><button type="button" data-appearance-key="homeTagline" data-appearance-value="hidden">隐藏</button></div>
+                            </div>
+                            <input type="text" maxlength="120" data-home-tagline-input aria-label="首页寄语内容" value="${DEFAULT_HOME_TAGLINE}">
                         </div>
                     </section>
                     <section class="vcp-appearance-studio-section" aria-labelledby="vcpAppearanceGeometryTitle">
@@ -878,6 +912,10 @@
 
     function syncControls() {
         if (!surface || !draft) return;
+        const taglineInput = surface.root.querySelector('[data-home-tagline-input]');
+        if (taglineInput && taglineInput.value !== draft.homeTaglineText) {
+            taglineInput.value = draft.homeTaglineText;
+        }
         surface.root.querySelectorAll('[data-appearance-key]').forEach(button => {
             const { appearanceKey: key, appearanceValue: value } = button.dataset;
             const current = PROFILE_FIELDS.includes(key) ? draft.profile[key] : draft[key];
@@ -947,6 +985,8 @@
             draft.profile.contentWidth = defaults.profile.contentWidth;
             draft.messageWidth = defaults.messageWidth;
             draft.homeVisual = defaults.homeVisual;
+            draft.homeTagline = defaults.homeTagline;
+            draft.homeTaglineText = defaults.homeTaglineText;
         } else if (section === 'geometry') {
             ['density', 'radius', 'sidebarRowHeight', 'sidebarAvatarSize', 'customRadius', 'sidebarRadius', ...DETAIL_RADIUS_FIELDS].forEach(field => {
                 draft.profile[field] = defaults.profile[field];
@@ -980,6 +1020,7 @@
         });
         document.body.classList.toggle('chat-wide-layout', draft.messageWidth === 'wide');
         applyHomeVisual(draft.homeVisual);
+        applyHomeTagline(draft.homeTagline, draft.homeTaglineText);
         if (!options.appearanceOnly) {
             window.uiManager?.applyTheme?.(effectiveThemeForMode(draft.themeMode));
             previewThemeFile(draft.themeFileName);
@@ -1013,6 +1054,7 @@
         });
         document.body.classList.toggle('chat-wide-layout', snapshot.messageWidth === 'wide');
         applyHomeVisual(snapshot.homeVisual);
+        applyHomeTagline(snapshot.homeTagline, snapshot.homeTaglineText);
         window.uiManager?.applyTheme?.(effectiveThemeForMode(snapshot.themeMode));
         await window.applyChatPresentationMode?.(snapshot.presentation, {
             persist: false,
@@ -1032,6 +1074,10 @@
         if (visibleMode) visibleMode.checked = true;
         const homeVisual = document.getElementById('showHomeVisualBrand');
         if (homeVisual) homeVisual.checked = draft.homeVisual !== 'hidden';
+        const homeTagline = document.getElementById('showHomeVisualTagline');
+        if (homeTagline) homeTagline.checked = draft.homeTagline !== 'hidden';
+        const homeTaglineText = document.getElementById('homeVisualTagline');
+        if (homeTaglineText) homeTaglineText.value = draft.homeTaglineText;
         Object.entries(PROFILE_CONTROL_IDS).forEach(([field, id]) => {
             const control = document.getElementById(id);
             if (control) {
@@ -1068,6 +1114,8 @@
                 chatPresentationMode: nextState.presentation,
                 enableWideChatLayout: nextState.messageWidth === 'wide',
                 showHomeVisualBrand: nextState.homeVisual !== 'hidden',
+                showHomeVisualTagline: nextState.homeTagline !== 'hidden',
+                homeVisualTagline: nextState.homeTaglineText,
                 currentThemeMode: nextState.themeMode
             });
             if (!result?.success) throw new Error(result?.error || '设置保存失败');
@@ -1078,6 +1126,8 @@
                 chatPresentationMode: nextState.presentation,
                 enableWideChatLayout: nextState.messageWidth === 'wide',
                 showHomeVisualBrand: nextState.homeVisual !== 'hidden',
+                showHomeVisualTagline: nextState.homeTagline !== 'hidden',
+                homeVisualTagline: nextState.homeTaglineText,
                 currentThemeMode: nextState.themeMode
             });
             if (window.uiModeManager?.applyAsync) {
@@ -1267,6 +1317,8 @@
                 presentation: preset.presentation,
                 messageWidth: draft.messageWidth,
                 homeVisual: draft.homeVisual,
+                homeTagline: draft.homeTagline,
+                homeTaglineText: draft.homeTaglineText,
                 themeMode: draft.themeMode,
                 themeFileName: draft.themeFileName
             };
@@ -1308,6 +1360,13 @@
     }
 
     async function handleInput(event) {
+        const taglineInput = event.target.closest('[data-home-tagline-input]');
+        if (taglineInput && !saving && draft) {
+            draft.homeTaglineText = normalizeHomeTaglineText(taglineInput.value, DEFAULT_HOME_TAGLINE);
+            applyHomeTagline(draft.homeTagline, draft.homeTaglineText);
+            syncControls();
+            return;
+        }
         const control = event.target.closest('input[type="range"][data-appearance-key]');
         if (!control || saving || !draft) return;
         const key = control.dataset.appearanceKey;
@@ -1371,7 +1430,11 @@
     }
 
     window.addEventListener('global-settings-updated', () => {
-        if (!draft) applyHomeVisual(readState().homeVisual);
+        if (!draft) {
+            const state = readState();
+            applyHomeVisual(state.homeVisual);
+            applyHomeTagline(state.homeTagline, state.homeTaglineText);
+        }
         if (!surface || surface.root.hidden) syncAccountMenuValue();
         syncSettingsSummary();
     });
@@ -1379,7 +1442,9 @@
         if (!surface || surface.root.hidden) syncSettingsSummary();
     });
     document.addEventListener('DOMContentLoaded', () => {
-        applyHomeVisual(readState().homeVisual);
+        const state = readState();
+        applyHomeVisual(state.homeVisual);
+        applyHomeTagline(state.homeTagline, state.homeTaglineText);
         syncAccountMenuValue();
         bindSettingsSummary();
     });
