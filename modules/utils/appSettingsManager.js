@@ -150,7 +150,7 @@ class SettingsManager extends EventEmitter {
             toolAutoApprovalRules: [],
             enableAgentBubbleTheme: false,
             enableSmoothStreaming: false,
-            uiMode: 'classic',
+            uiMode: 'next',
             showHomeVisualBrand: true,
             appearanceProfile: {
                 density: 'comfortable',

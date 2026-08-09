@@ -25,7 +25,7 @@ async function resolveDescriptor(appAction, appRoot, readSettings) {
     } catch (error) {
         console.warn('[EmbeddedApps] Failed to read authoritative settings:', error.message);
     }
-    const uiMode = settings?.uiMode === 'next' ? 'next' : 'classic';
+    const uiMode = settings?.uiMode === 'classic' ? 'classic' : 'next';
     const entry = embeddedAppAllowlist.get(appAction);
     return entry ? { url: toFileUrl(appRoot, entry.page, { uiMode }) } : null;
 }
@@ -51,7 +51,7 @@ function createEmbeddedAppSessionManager({ mainWindow, launchStandalone, readSet
 
     const unsubscribeSettings = typeof subscribeSettings === 'function'
         ? subscribeSettings(settings => {
-            const uiMode = settings?.uiMode === 'next' ? 'next' : 'classic';
+            const uiMode = settings?.uiMode === 'classic' ? 'classic' : 'next';
             if (uiMode === lastUiMode) return;
             lastUiMode = uiMode;
             sessions.forEach(session => {

@@ -15,7 +15,7 @@ function normalizeMode(mode) {
 }
 
 function currentMode() {
-    return normalizeMode(document.documentElement.dataset.uiMode || 'classic');
+    return normalizeMode(document.documentElement.dataset.uiMode || 'next');
 }
 
 // Runs `onEnter` the first time the document becomes next mode and `onLeave`
@@ -59,7 +59,7 @@ async function defaultReadMode() {
     try {
         const api = window.utilityAPI || window.electronAPI;
         const settings = await api?.loadSettings?.();
-        return normalizeMode(settings?.uiMode);
+        return settings?.uiMode == null ? 'next' : normalizeMode(settings.uiMode);
     } catch {
         return 'classic';
     }
@@ -74,7 +74,7 @@ async function bootstrap(options = {}) {
         subscribeMode,
         navigate = url => window.location.replace(url),
     } = options;
-    const initial = normalizeMode((await readMode()) || 'classic');
+    const initial = normalizeMode((await readMode()) || 'next');
     document.documentElement.dataset.uiMode = initial;
     window.dispatchEvent(new CustomEvent('ui-mode-changed', {
         detail: { mode: initial, previousMode: null },

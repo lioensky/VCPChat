@@ -6,6 +6,26 @@ import { JSDOM } from 'jsdom';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const source = fs.readFileSync(path.join(root, 'modules', 'uiModeManager.js'), 'utf8');
+const freshDom = new JSDOM('<!doctype html><html><body></body></html>', {
+    url: 'https://vcpchat.local/',
+    runScripts: 'outside-only'
+});
+freshDom.window.eval(source);
+assert.equal(freshDom.window.document.documentElement.dataset.uiMode, 'next', 'missing boot cache must default to Next');
+
+const classicDom = new JSDOM('<!doctype html><html><body></body></html>', {
+    url: 'https://vcpchat.local/',
+    runScripts: 'outside-only'
+});
+classicDom.window.localStorage.setItem('vcpchat.uiMode', 'classic');
+classicDom.window.eval(source);
+assert.equal(classicDom.window.document.documentElement.dataset.uiMode, 'classic', 'an explicit Classic preference must be preserved');
+
+const rendererSource = fs.readFileSync(path.join(root, 'renderer.js'), 'utf8');
+const settingsSource = fs.readFileSync(path.join(root, 'modules', 'utils', 'appSettingsManager.js'), 'utf8');
+assert.match(rendererSource, /let globalSettings = \{[\s\S]*?uiMode:\s*'next'/, 'renderer boot state must default to Next');
+assert.match(settingsSource, /this\.defaultSettings = \{[\s\S]*?uiMode:\s*'next'/, 'new settings files must default to Next');
+
 const dom = new JSDOM('<!doctype html><html><body></body></html>', {
     url: 'https://vcpchat.local/',
     runScripts: 'outside-only'

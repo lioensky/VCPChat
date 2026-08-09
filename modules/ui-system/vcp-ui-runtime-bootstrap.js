@@ -36,7 +36,7 @@ if (document.documentElement.dataset.uiMode) {
 // automatic consequence of the main window using next UI. Pages that are not
 // on the active allowlist remain on their classic DOM while their experimental
 // AppPageShell implementations stay archived in source control.
-const requestedMode = document.documentElement.dataset.uiMode || 'classic';
+const requestedMode = document.documentElement.dataset.uiMode || 'next';
 const effectiveMode = resolveSurfaceUiMode(requestedMode, window.location);
 if (effectiveMode !== requestedMode) {
     if (bootstrapController?.apply) {
@@ -89,7 +89,7 @@ let selectObserver = null;
 function dispatchRuntimeReady() {
     window.dispatchEvent(new CustomEvent('vcp-ui-runtime-ready', {
         detail: {
-            mode: document.documentElement.dataset.uiMode || 'classic',
+            mode: document.documentElement.dataset.uiMode || 'next',
             waKernel: waPreloaded && document.documentElement.dataset.uiMode === 'next'
                 ? 'web-awesome'
                 : 'native',

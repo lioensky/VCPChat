@@ -59,7 +59,7 @@
         return mode === 'next' ? 'next' : 'classic';
     }
 
-    function normalize(profile, uiMode = 'classic') {
+    function normalize(profile, uiMode = 'next') {
         const preset = PRESETS[normalizeUiMode(uiMode)];
         const source = profile && typeof profile === 'object' ? profile : {};
         const options = Object.fromEntries(Object.entries(OPTION_SETS).map(([key, allowed]) => {
@@ -178,7 +178,7 @@
     }
 
     function apply(profile, options = {}) {
-        const uiMode = options.uiMode || document.documentElement.dataset.uiMode || 'classic';
+        const uiMode = options.uiMode || document.documentElement.dataset.uiMode || 'next';
         const resolved = normalize(profile, uiMode);
         const root = document.documentElement;
         root.dataset.vcpDensity = resolved.density;
@@ -216,7 +216,7 @@
         return revision;
     }
 
-    function readCache(uiMode = 'classic') {
+    function readCache(uiMode = 'next') {
         try {
             return normalize(JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null'), uiMode);
         } catch {
@@ -224,7 +224,7 @@
         }
     }
 
-    const bootMode = document.documentElement.dataset.uiMode || 'classic';
+    const bootMode = document.documentElement.dataset.uiMode || 'next';
     apply(readCache(bootMode), { uiMode: bootMode, source: 'boot-cache' });
     window.VCPAppearance = Object.freeze({ PRESETS, MATERIAL_RANGES, LAYOUT_RANGES, normalize, apply, commit, getRevision, readCache });
 })();

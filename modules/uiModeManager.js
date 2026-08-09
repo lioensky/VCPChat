@@ -47,7 +47,7 @@
 
     // The cache never writes back by itself. `loadAndApplyGlobalSettings()`
     // will reconcile it with the authoritative settings file.
-    const cachedMode = localStorage.getItem(STORAGE_KEY);
+    const cachedMode = localStorage.getItem(STORAGE_KEY) ?? NEXT_MODE;
     apply(cachedMode, { cache: false });
 
     window.uiModeManager = Object.freeze({
