@@ -30,6 +30,10 @@
         selectionRange: null,
         selectionText: '',
         selectionBlockIds: [],
+        explicitBlockSelection: false,
+        blockSelectionAnchorId: null,
+        pointerSelectionAnchorId: null,
+        pointerSelectingBlocks: false,
         selectedAdvancedStyleId: null,
         usedAdvancedStyleIds: new Set(),
         styleLibraryDisposer: null,
@@ -61,7 +65,7 @@
             'outline-headings-view', 'outline-paragraphs-view', 'outline-tree',
             'paragraph-index', 'outline-empty', 'lineage-flow', 'checkpoint-count',
             'create-checkpoint-btn', 'page-status', 'word-count', 'character-count',
-            'font-status', 'zoom-out-btn', 'zoom-range', 'zoom-in-btn', 'zoom-value',
+            'font-status', 'selection-status', 'zoom-out-btn', 'zoom-range', 'zoom-in-btn', 'zoom-value',
             'toast-region', 'selection-format-bar', 'selection-font-family',
             'selection-font-size', 'selection-text-color', 'advanced-style-btn',
             'style-library-dialog', 'style-library-close-btn', 'style-search-input',
@@ -236,6 +240,13 @@
 .vdoc-page[data-runtime-state="paused"] *::after {
     animation-play-state: paused !important;
 }
+[data-vdoc-text][data-vdoc-editor-selected="true"] {
+    position: relative;
+    outline: 2px solid rgba(58, 139, 120, .72) !important;
+    outline-offset: 3px;
+    background-color: rgba(58, 139, 120, .12) !important;
+    box-shadow: 0 0 0 5px rgba(58, 139, 120, .06) !important;
+}
 .vdoc-page-tombstone {
     display: grid;
     width: var(--vdoc-page-width);
@@ -377,8 +388,42 @@ ${state.document.source.css}`;
             syncFormattingControls(event.target);
         });
 
+        root.addEventListener('pointerdown', (event) => {
+            if (event.button !== 0) return;
+            const block = event.target.closest?.('[data-vdoc-text]');
+            if (!block) return;
+            const blockId = block.dataset.vdocText;
+            state.pointerSelectionAnchorId = blockId;
+            state.pointerSelectingBlocks = false;
+
+            if (event.shiftKey && state.blockSelectionAnchorId) {
+                event.preventDefault();
+                state.pointerSelectingBlocks = true;
+                selectBlockInterval(state.blockSelectionAnchorId, blockId);
+            } else if (event.ctrlKey || event.metaKey) {
+                event.preventDefault();
+                state.pointerSelectingBlocks = true;
+                toggleExplicitBlock(blockId);
+            } else {
+                state.blockSelectionAnchorId = blockId;
+                if (state.explicitBlockSelection) clearExplicitBlockSelection();
+            }
+        });
+
+        root.addEventListener('pointermove', (event) => {
+            if (!(event.buttons & 1) || !state.pointerSelectionAnchorId) return;
+            const block = event.target.closest?.('[data-vdoc-text]');
+            const blockId = block?.dataset?.vdocText;
+            if (!blockId || blockId === state.pointerSelectionAnchorId) return;
+            event.preventDefault();
+            state.pointerSelectingBlocks = true;
+            selectBlockInterval(state.pointerSelectionAnchorId, blockId, { preserveAnchor: true });
+        });
+
         root.addEventListener('mouseup', () => {
-            captureCurrentSelection();
+            if (!state.pointerSelectingBlocks) captureCurrentSelection();
+            state.pointerSelectionAnchorId = null;
+            state.pointerSelectingBlocks = false;
             syncFormattingFromCurrentSelection();
         });
         root.addEventListener('keyup', () => {
@@ -400,7 +445,7 @@ ${state.document.source.css}`;
         });
 
         root.addEventListener('contextmenu', (event) => {
-            if (!captureCurrentSelection()) return;
+            if (!state.explicitBlockSelection && !captureCurrentSelection()) return;
             event.preventDefault();
             showSelectionBar(event.clientX, event.clientY);
         });
@@ -422,17 +467,107 @@ ${state.document.source.css}`;
         });
     }
 
+    function allRenderedTextBlocks() {
+        return [...(getRenderRoot()?.querySelectorAll('[data-vdoc-text]') || [])];
+    }
+
+    function blocksForIds(ids = state.selectionBlockIds) {
+        const selected = new Set(ids);
+        return allRenderedTextBlocks().filter((block) => selected.has(block.dataset.vdocText));
+    }
+
+    function updateBlockSelectionPresentation() {
+        const selected = new Set(state.selectionBlockIds);
+        allRenderedTextBlocks().forEach((block) => {
+            if (state.explicitBlockSelection && selected.has(block.dataset.vdocText)) {
+                block.dataset.vdocEditorSelected = 'true';
+            } else {
+                block.removeAttribute('data-vdoc-editor-selected');
+            }
+        });
+        document.querySelectorAll('.outline-item, .paragraph-item').forEach((button) => {
+            const active = state.explicitBlockSelection && selected.has(button.dataset.vdocText);
+            button.classList.toggle('active', active);
+            button.setAttribute('aria-selected', String(active));
+        });
+        if (elements['selection-status']) {
+            elements['selection-status'].hidden = !state.explicitBlockSelection;
+            elements['selection-status'].textContent = state.explicitBlockSelection
+                ? `已选 ${state.selectionBlockIds.length} 块`
+                : '';
+        }
+    }
+
+    function clearExplicitBlockSelection() {
+        state.explicitBlockSelection = false;
+        state.selectionBlockIds = [];
+        state.selectionRange = null;
+        state.selectionText = '';
+        currentRenderSelection()?.removeAllRanges();
+        updateBlockSelectionPresentation();
+    }
+
+    function setExplicitBlockSelection(ids, options = {}) {
+        const ordered = allRenderedTextBlocks();
+        const wanted = new Set(ids);
+        const blocks = ordered.filter((block) => wanted.has(block.dataset.vdocText));
+        if (!blocks.length) {
+            clearExplicitBlockSelection();
+            return false;
+        }
+
+        state.explicitBlockSelection = true;
+        state.selectionBlockIds = blocks.map((block) => block.dataset.vdocText);
+        if (!options.preserveAnchor) state.blockSelectionAnchorId = state.selectionBlockIds[0];
+
+        const range = document.createRange();
+        range.setStartBefore(blocks[0]);
+        range.setEndAfter(blocks[blocks.length - 1]);
+        state.selectionRange = range.cloneRange();
+        state.selectionText = blocks.map((block) => block.textContent || '').join('\n');
+        const selection = currentRenderSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+        state.activeEditableBlock = blocks[0];
+        syncFormattingControls(blocks[0]);
+        updateBlockSelectionPresentation();
+        return true;
+    }
+
+    function selectBlockInterval(anchorId, focusId, options = {}) {
+        const blocks = allRenderedTextBlocks();
+        const anchorIndex = blocks.findIndex((block) => block.dataset.vdocText === anchorId);
+        const focusIndex = blocks.findIndex((block) => block.dataset.vdocText === focusId);
+        if (anchorIndex < 0 || focusIndex < 0) return false;
+        const start = Math.min(anchorIndex, focusIndex);
+        const end = Math.max(anchorIndex, focusIndex);
+        return setExplicitBlockSelection(
+            blocks.slice(start, end + 1).map((block) => block.dataset.vdocText),
+            { preserveAnchor: options.preserveAnchor ?? true }
+        );
+    }
+
+    function toggleExplicitBlock(blockId) {
+        const ids = new Set(state.explicitBlockSelection ? state.selectionBlockIds : []);
+        if (ids.has(blockId)) ids.delete(blockId);
+        else ids.add(blockId);
+        if (!state.blockSelectionAnchorId) state.blockSelectionAnchorId = blockId;
+        return setExplicitBlockSelection([...ids], { preserveAnchor: true });
+    }
+
     function captureCurrentSelection() {
         const selection = currentRenderSelection();
         if (!selection || selection.isCollapsed || !selection.rangeCount) return false;
         const range = selection.getRangeAt(0);
         const root = getRenderRoot();
         if (!root || !root.contains(range.commonAncestorContainer)) return false;
+        state.explicitBlockSelection = false;
         state.selectionRange = range.cloneRange();
         state.selectionText = selection.toString();
         state.selectionBlockIds = editableBlocksForRange(range)
             .map((block) => block.dataset.vdocText)
             .filter(Boolean);
+        updateBlockSelectionPresentation();
         return true;
     }
 
@@ -443,14 +578,7 @@ ${state.document.source.css}`;
         root.querySelectorAll('.vdoc-page[data-runtime-state="tombstone"]').forEach(activatePage);
         const blocks = [...root.querySelectorAll('[data-vdoc-text]')];
         if (!blocks.length) return false;
-        const range = document.createRange();
-        range.setStartBefore(blocks[0]);
-        range.setEndAfter(blocks[blocks.length - 1]);
-        const selection = currentRenderSelection();
-        selection.removeAllRanges();
-        selection.addRange(range);
-        captureCurrentSelection();
-        syncFormattingControls(blocks[0]);
+        setExplicitBlockSelection(blocks.map((block) => block.dataset.vdocText));
         showToast(`已选择全文 · ${blocks.length} 个文本块`, 'success');
         return true;
     }
@@ -501,6 +629,10 @@ ${state.document.source.css}`;
     }
 
     function selectedEditableBlocks(preferSaved = false) {
+        if (state.explicitBlockSelection) {
+            const explicitBlocks = blocksForIds();
+            if (explicitBlocks.length) return explicitBlocks;
+        }
         const range = selectedRange(preferSaved);
         const blocks = editableBlocksForRange(range);
         if (blocks.length) return blocks;
@@ -513,8 +645,17 @@ ${state.document.source.css}`;
     function wrapSelectionRanges(configureWrapper, preferSaved = false) {
         const sourceRange = selectedRange(preferSaved);
         if (!sourceRange || sourceRange.collapsed) return [];
-        const ranges = editableBlocksForRange(sourceRange)
-            .map((block) => rangeWithinBlock(sourceRange, block))
+        const targetBlocks = state.explicitBlockSelection
+            ? blocksForIds()
+            : editableBlocksForRange(sourceRange);
+        const ranges = targetBlocks
+            .map((block) => state.explicitBlockSelection
+                ? (() => {
+                    const range = document.createRange();
+                    range.selectNodeContents(block);
+                    return range;
+                })()
+                : rangeWithinBlock(sourceRange, block))
             .filter(Boolean);
         if (!ranges.length) return [];
 
@@ -1204,8 +1345,11 @@ ${state.document.source.css}`;
             if (!sourceNode) return;
             sourceNode.innerHTML = semanticInnerHtml(renderedNode);
             sourceNode.className = renderedNode.className;
+            sourceNode.removeAttribute('data-vdoc-editor-selected');
             for (const attribute of [...renderedNode.attributes]) {
-                if (attribute.name === 'contenteditable' || attribute.name === 'spellcheck') continue;
+                if (attribute.name === 'contenteditable'
+                    || attribute.name === 'spellcheck'
+                    || attribute.name === 'data-vdoc-editor-selected') continue;
                 sourceNode.setAttribute(attribute.name, attribute.value);
             }
         });
@@ -1239,7 +1383,7 @@ ${state.document.source.css}`;
 
     function inferSelectionTarget() {
         const range = state.selectionRange;
-        const blocks = editableBlocksForRange(range);
+        const blocks = state.explicitBlockSelection ? blocksForIds() : editableBlocksForRange(range);
         if (blocks.length > 1) return 'block';
         const editable = blocks[0];
         if (/^H[1-6]$/.test(editable?.tagName || '')) return 'heading';
@@ -1371,7 +1515,7 @@ ${preview.css}
         const style = styleLibrary.get(state.selectedAdvancedStyleId);
         const range = selectedRange(true);
         if (!style || !range) return false;
-        const blocks = editableBlocksForRange(range);
+        const blocks = state.explicitBlockSelection ? blocksForIds() : editableBlocksForRange(range);
         if (!blocks.length) {
             showToast('当前选区无法应用高级样式。', 'error');
             return false;
@@ -1406,6 +1550,8 @@ ${preview.css}
         hideSelectionBar();
         state.selectionRange = null;
         state.selectionBlockIds = [];
+        state.explicitBlockSelection = false;
+        updateBlockSelectionPresentation();
         showToast(`已应用高级样式 · ${style.name}${blocks.length > 1 ? ` · ${blocks.length} 个块` : ''}`, 'success');
         return true;
     }
@@ -1452,21 +1598,32 @@ ${preview.css}
         elements['outline-tree'].replaceChildren(...headings.map(createOutlineItem));
         elements['paragraph-index'].replaceChildren(...paragraphs.map(createOutlineItem));
         elements['outline-empty'].hidden = items.length > 0;
+        updateBlockSelectionPresentation();
     }
 
     function createOutlineItem(item) {
         const button = document.createElement('button');
         button.type = 'button';
         button.className = item.kind === 'heading' ? 'outline-item' : 'paragraph-item';
+        button.dataset.vdocText = item.id;
+        button.setAttribute('aria-selected', 'false');
         const label = document.createElement('span');
         label.className = item.kind === 'heading' ? 'outline-item-title' : 'paragraph-preview';
         label.textContent = item.text || '（空段落）';
         button.appendChild(label);
         button.style.setProperty('--outline-level', String(item.level || 1));
-        button.addEventListener('click', () => {
+        button.addEventListener('click', (event) => {
             const target = getRenderRoot()?.querySelector(`[data-vdoc-text="${CSS.escape(item.id)}"]`);
-            target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            target?.focus();
+            if (!target) return;
+            if (event.shiftKey && state.blockSelectionAnchorId) {
+                selectBlockInterval(state.blockSelectionAnchorId, item.id);
+            } else if (event.ctrlKey || event.metaKey) {
+                toggleExplicitBlock(item.id);
+            } else {
+                state.blockSelectionAnchorId = item.id;
+                setExplicitBlockSelection([item.id]);
+            }
+            target.scrollIntoView({ behavior: 'smooth', block: 'center' });
         });
         return button;
     }
@@ -1518,6 +1675,11 @@ ${preview.css}
                     : []
             );
             state.ready = true;
+            state.selectionRange = null;
+            state.selectionText = '';
+            state.selectionBlockIds = [];
+            state.explicitBlockSelection = false;
+            state.blockSelectionAnchorId = null;
             state.history = [];
             state.historyIndex = -1;
             elements['welcome-state'].hidden = true;
@@ -1956,6 +2118,7 @@ ${preview.css}
             } else if (event.key === 'Escape') {
                 closeStyleLibrary();
                 hideSelectionBar();
+                clearExplicitBlockSelection();
                 elements['checkpoint-dialog'].hidden = true;
             }
         });

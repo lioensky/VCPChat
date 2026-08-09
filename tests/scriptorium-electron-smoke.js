@@ -223,6 +223,37 @@ app.whenReady().then(async () => {
             .slice(0, 2);
         if (blocks.length < 2) return { available: false };
 
+        blocks[0].dispatchEvent(new PointerEvent('pointerdown', {
+            button: 0,
+            buttons: 1,
+            bubbles: true,
+            composed: true,
+            cancelable: true
+        }));
+        blocks[0].dispatchEvent(new PointerEvent('pointerup', {
+            button: 0,
+            bubbles: true,
+            composed: true
+        }));
+        blocks[1].dispatchEvent(new PointerEvent('pointerdown', {
+            button: 0,
+            buttons: 1,
+            shiftKey: true,
+            bubbles: true,
+            composed: true,
+            cancelable: true
+        }));
+        blocks[1].dispatchEvent(new PointerEvent('pointerup', {
+            button: 0,
+            shiftKey: true,
+            bubbles: true,
+            composed: true
+        }));
+        const explicitSelectedCount = root.querySelectorAll(
+            '[data-vdoc-text][data-vdoc-editor-selected="true"]'
+        ).length;
+        const explicitSelectionStatus = document.getElementById('selection-status').textContent;
+
         const firstText = [...blocks[0].childNodes].find((node) => node.nodeType === Node.TEXT_NODE)
             || blocks[0].firstChild;
         const lastText = [...blocks[1].childNodes].reverse()
@@ -291,6 +322,8 @@ app.whenReady().then(async () => {
 
         return {
             available: true,
+            explicitShiftSelection: explicitSelectedCount === 2,
+            explicitSelectionStatus,
             crossBlockFontApplied: styledBlocks.length === 2,
             preservesBlockStructure: !root.querySelector('span > p, span > h1, span > h2, span > h3, span > blockquote'),
             multiBlockAlignment: blocks.every((block) => block.style.textAlign === 'center'),
@@ -484,6 +517,8 @@ app.whenReady().then(async () => {
         || !snapshot.formattingInteraction.topFontRecognized
         || !snapshot.formattingInteraction.quickFontRecognized
         || !snapshot.rangeSelectionInteraction.available
+        || !snapshot.rangeSelectionInteraction.explicitShiftSelection
+        || snapshot.rangeSelectionInteraction.explicitSelectionStatus !== '已选 2 块'
         || !snapshot.rangeSelectionInteraction.crossBlockFontApplied
         || !snapshot.rangeSelectionInteraction.preservesBlockStructure
         || !snapshot.rangeSelectionInteraction.multiBlockAlignment
