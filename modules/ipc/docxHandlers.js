@@ -15,6 +15,27 @@ const EXPORT_FORMATS = new Set(['html-flow', 'html-paged', 'pdf']);
 const IMPORT_EXTENSIONS = new Set(scriptoriumImportService.SUPPORTED_EXTENSIONS);
 const OPEN_EXTENSIONS = new Set([...PROJECT_EXTENSIONS, ...IMPORT_EXTENSIONS]);
 const RECENT_LIMIT = 12;
+const AGENT_REQUEST_TIMEOUT_MS = 30000;
+const AGENT_ENDPOINT_METHODS = Object.freeze({
+    common: new Set([
+        'getDocumentInfo', 'getRenderedText', 'getOutline', 'getSource',
+        'searchSource', 'getViewportSource', 'getPrHistory', 'submitSourcePr',
+    ]),
+    docx: new Set([
+        'getDocumentInfo', 'getRenderedText', 'getOutline', 'getSource',
+        'searchSource', 'getViewportSource', 'getPrHistory', 'submitSourcePr',
+        'getFullText', 'getSection',
+    ]),
+    pptx: new Set([
+        'getDocumentInfo', 'getRenderedText', 'getOutline', 'getSource',
+        'searchSource', 'getViewportSource', 'getPrHistory', 'submitSourcePr',
+        'getSlideCount', 'getSlide', 'getActiveSlide', 'selectSlide',
+        'addSlide', 'insertSlide', 'deleteSlide',
+    ]),
+});
+const AGENT_MUTATION_METHODS = new Set([
+    'submitSourcePr', 'addSlide', 'insertSlide', 'deleteSlide',
+]);
 
 let docxWindow = null;
 let mainWindow = null;
@@ -23,6 +44,94 @@ let projectRoot = null;
 let recentFilePath = null;
 let initialized = false;
 let fontCache = null;
+const pendingAgentRequests = new Map();
+
+function normalizeAgentAuthor(author) {
+    if (typeof author === 'string' && author.trim()) {
+        return { id: author.trim(), name: author.trim(), type: 'agent' };
+    }
+    if (!author || typeof author !== 'object') return null;
+    const name = String(author.name || author.signature || author.id || '').trim();
+    if (!name) return null;
+    return {
+        id: String(author.id || name),
+        name,
+        type: author.type === 'human' ? 'human' : 'agent',
+    };
+}
+
+function validateAgentRequest(request = {}) {
+    const endpoint = String(request.endpoint || '');
+    const method = String(request.method || '');
+    if (!AGENT_ENDPOINT_METHODS[endpoint]?.has(method)) {
+        throw new Error(`不允许的 Scriptorium Agent 接口：${endpoint}.${method}`);
+    }
+    const payload = request.payload && typeof request.payload === 'object'
+        ? { ...request.payload }
+        : {};
+    if (AGENT_MUTATION_METHODS.has(method)) {
+        const author = normalizeAgentAuthor(payload.author || request.author);
+        if (!author) throw new Error('Agent PR 必须提供署名字段 author。');
+        const summary = String(payload.summary || request.summary || '').trim();
+        if (!summary) throw new Error('Agent PR 必须提供摘要字段 summary。');
+        payload.author = author;
+        payload.summary = summary;
+        payload.requestId = String(payload.requestId || request.requestId || '');
+        if (!payload.requestId) throw new Error('Agent 写操作必须提供幂等键 requestId。');
+    }
+    return {
+        requestId: String(request.requestId || payload.requestId
+            || `${Date.now()}-${Math.random().toString(36).slice(2)}`),
+        endpoint,
+        method,
+        payload,
+    };
+}
+
+function requestAgentOperation(request = {}) {
+    const validated = validateAgentRequest(request);
+    if (!docxWindow || docxWindow.isDestroyed()) {
+        return Promise.reject(new Error('Scriptorium 窗口尚未打开。'));
+    }
+    if (pendingAgentRequests.has(validated.requestId)) {
+        return pendingAgentRequests.get(validated.requestId).promise;
+    }
+
+    let resolveRequest;
+    let rejectRequest;
+    const promise = new Promise((resolve, reject) => {
+        resolveRequest = resolve;
+        rejectRequest = reject;
+    });
+    const timer = setTimeout(() => {
+        pendingAgentRequests.delete(validated.requestId);
+        rejectRequest(new Error('Scriptorium Agent 请求超时。'));
+    }, AGENT_REQUEST_TIMEOUT_MS);
+    pendingAgentRequests.set(validated.requestId, {
+        promise,
+        resolve: resolveRequest,
+        reject: rejectRequest,
+        timer,
+        webContentsId: docxWindow.webContents.id,
+    });
+    docxWindow.webContents.send('scriptorium:agent-request', validated);
+    return promise;
+}
+
+function handleAgentResponse(event, payload = {}) {
+    const requestId = String(payload.requestId || '');
+    const pending = pendingAgentRequests.get(requestId);
+    if (!pending || event.sender.id !== pending.webContentsId) return;
+    clearTimeout(pending.timer);
+    pendingAgentRequests.delete(requestId);
+    if (payload.error) {
+        const error = new Error(String(payload.error.message || 'Agent 请求失败。'));
+        error.code = payload.error.code;
+        pending.reject(error);
+    } else {
+        pending.resolve(payload.result);
+    }
+}
 
 function removeChildWindow(win) {
     const index = openChildWindows.indexOf(win);
@@ -503,6 +612,11 @@ async function openDocxWindow(options = {}) {
 
     docxWindow.on('closed', () => {
         removeChildWindow(docxWindow);
+        pendingAgentRequests.forEach((pending) => {
+            clearTimeout(pending.timer);
+            pending.reject(new Error('Scriptorium 窗口已关闭。'));
+        });
+        pendingAgentRequests.clear();
         docxWindow = null;
     });
 
@@ -525,6 +639,9 @@ function initialize(params) {
     });
 
     ipcMain.handle('open-docx-window', (_event, options = {}) => openDocxWindow(options));
+    ipcMain.handle('scriptorium:agent-call', (_event, request = {}) =>
+        requestAgentOperation(request));
+    ipcMain.on('scriptorium:agent-response', handleAgentResponse);
     ipcMain.handle('docx:choose-open', chooseAndReadDocument);
     ipcMain.handle('scriptorium:choose-import', chooseAndImportDocument);
     ipcMain.handle('docx:read-path', (_event, filePath) => readDocument(filePath));
@@ -537,6 +654,7 @@ function initialize(params) {
 module.exports = {
     initialize,
     openDocxWindow,
+    requestAgentOperation,
     getDocxWindow: () => docxWindow,
     getSystemFonts,
 };

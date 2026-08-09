@@ -25,10 +25,14 @@
         pathRequestDisposer: null,
         agentCheckpointDisposer: null,
         unsavedResolver: null,
-        sourceUpdateTimer: null,
+        renderUpdateTimer: null,
+        sourceEditorTimer: null,
         metricsTimer: null,
         paginationTimer: null,
         documentRevision: 0,
+        documentGeneration: 0,
+        agentApi: null,
+        agentRequestDisposer: null,
         previewRevision: -1,
         previewResult: null,
         activeSlideIndex: 0,
@@ -344,8 +348,12 @@
 }
 .vdoc-page[data-runtime-state="paused"] *,
 .vdoc-page[data-runtime-state="paused"] *::before,
-.vdoc-page[data-runtime-state="paused"] *::after {
+.vdoc-page[data-runtime-state="paused"] *::after,
+.vdoc-runtime-paused *,
+.vdoc-runtime-paused *::before,
+.vdoc-runtime-paused *::after {
     animation-play-state: paused !important;
+    transition: none !important;
 }
 [data-vdoc-text][data-vdoc-editor-selected="true"] {
     position: relative;
@@ -751,8 +759,8 @@ ${state.document.source.html}
             updateSourceNode(editable);
             window.ScriptoriumPretext?.evictNode(editable.dataset.vdocText);
             markDirty();
-            window.clearTimeout(state.sourceUpdateTimer);
-            state.sourceUpdateTimer = window.setTimeout(() => {
+            window.clearTimeout(state.renderUpdateTimer);
+            state.renderUpdateTimer = window.setTimeout(() => {
                 captureSnapshot();
                 renderOutline();
             }, 450);
@@ -1391,21 +1399,15 @@ ${state.document.source.html}
 
     function initializePageVisibility(root, renderHost = elements['read-host']) {
         state.pageObserver?.disconnect();
-        state.pageObserver = new IntersectionObserver((entries) => {
-            entries.forEach((entry) => {
-                entry.target.dataset.runtimeState = entry.isIntersecting ? 'active' : 'paused';
-            });
-            updateCurrentPage(root, renderHost);
-        }, {
-            root: renderHost,
+        state.pageObserver = window.ScriptoriumVisibility.observePages(root, renderHost, {
+            selector: '.vdoc-page',
             rootMargin: '120% 0px',
-            threshold: 0,
         });
-        root.querySelectorAll('.vdoc-page').forEach((page) => state.pageObserver.observe(page));
+        updateCurrentPage(root, renderHost);
     }
 
     function activatePage(page) {
-        if (page) page.dataset.runtimeState = 'active';
+        if (page) window.ScriptoriumVisibility.resume(page);
     }
 
     function updateCurrentPage(root, host = elements['read-host']) {
@@ -1549,8 +1551,8 @@ ${state.document.source.html}
         });
         state.sourceEditor.on('change', () => {
             validateSource();
-            window.clearTimeout(state.sourceUpdateTimer);
-            state.sourceUpdateTimer = window.setTimeout(refreshSourceColorMarks, 180);
+            window.clearTimeout(state.sourceEditorTimer);
+            state.sourceEditorTimer = window.setTimeout(refreshSourceColorMarks, 180);
         });
         state.sourceEditor.on('cursorActivity', syncSourceColorTool);
     }
@@ -2059,11 +2061,16 @@ ${preview.css}
     }
 
     async function createEditor(documentModel = null, metadata = {}) {
+        const generation = state.documentGeneration += 1;
         state.loading = true;
         elements['loading-state'].hidden = false;
         updateIdentity();
         try {
-            state.document = documentModel ? core.normalizeDocument(documentModel) : core.createDocument();
+            const nextDocument = documentModel
+                ? core.normalizeDocument(documentModel)
+                : core.createDocument();
+            if (generation !== state.documentGeneration) return false;
+            state.document = nextDocument;
             state.currentPath = metadata.filePath || null;
             const projectExtension = core.extensionForKind(state.document.manifest.scene.kind);
             const fallbackName = state.document.manifest.scene.kind === core.PROJECT_KINDS.SLIDE_DECK
@@ -2116,10 +2123,13 @@ ${preview.css}
             markSaved();
             renderLineage();
             showToast(documentModel ? 'VDOCX 已展开' : '共笔新稿已建立', 'success');
+            return true;
         } finally {
-            state.loading = false;
-            elements['loading-state'].hidden = true;
-            updateIdentity();
+            if (generation === state.documentGeneration) {
+                state.loading = false;
+                elements['loading-state'].hidden = true;
+                updateIdentity();
+            }
         }
     }
 
@@ -2200,7 +2210,11 @@ ${preview.css}
 
     async function saveDocument(saveAs = false) {
         if (!state.ready || state.saving) return false;
-        if (state.mode === 'html' || state.mode === 'css') applySourceChanges(false);
+        if (state.mode === 'html' || state.mode === 'css') {
+            if (applySourceChanges(false) === false) return false;
+        }
+        const generation = state.documentGeneration;
+        const savedRevision = state.documentRevision;
         state.saving = true;
         updateIdentity();
         try {
@@ -2216,10 +2230,11 @@ ${preview.css}
                 saveAs,
                 bytes,
             });
-            if (!result?.success) return false;
+            if (!result?.success || generation !== state.documentGeneration) return false;
             state.currentPath = result.filePath;
             state.currentName = result.name;
-            markSaved();
+            if (state.documentRevision === savedRevision) markSaved();
+            else updateIdentity();
             await renderRecentDocuments();
             showToast(`已保存 · ${result.name}`, 'success');
             return true;
@@ -2234,6 +2249,9 @@ ${preview.css}
 
     function requestUnsavedDecision(message) {
         if (!state.dirty) return Promise.resolve('discard');
+        if (state.unsavedResolver) {
+            return Promise.resolve('cancel');
+        }
         elements['unsaved-dialog-message'].textContent = message;
         elements['unsaved-document-name'].textContent = state.currentName;
         elements['unsaved-dialog'].hidden = false;
@@ -2303,10 +2321,16 @@ ${preview.css}
             const item = document.createElement('article');
             item.className = `checkpoint-item ${checkpoint.source}`;
             item.innerHTML = '<div class="checkpoint-meta"><span class="checkpoint-source"></span><time></time></div><h3></h3><p></p>';
-            item.querySelector('.checkpoint-source').textContent = checkpoint.source === 'agent' ? 'AI 协作' : '人类刻点';
+            const authorName = checkpoint.author?.name || checkpoint.author?.signature || '';
+            item.querySelector('.checkpoint-source').textContent = checkpoint.source === 'agent'
+                ? `AI 协作${authorName ? ` · ${authorName}` : ''}`
+                : `人类刻点${authorName ? ` · ${authorName}` : ''}`;
             item.querySelector('time').textContent = new Date(checkpoint.createdAt).toLocaleString('zh-CN');
             item.querySelector('h3').textContent = checkpoint.name;
-            item.querySelector('p').textContent = checkpoint.note || '完整源码状态已记录。';
+            item.querySelector('p').textContent = checkpoint.summary
+                || checkpoint.note
+                || '完整源码状态已记录。';
+            item.title = checkpoint.note || checkpoint.summary || '';
             return item;
         }));
     }
@@ -2595,13 +2619,35 @@ ${preview.css}
 
     function bindRuntime() {
         state.pathRequestDisposer = api.onOpenPathRequest(openPath);
+        state.agentRequestDisposer = api.onAgentRequest?.(async (request) => {
+            const requestId = request?.requestId;
+            try {
+                const endpointName = request?.endpoint || 'current';
+                const endpoint = endpointName === 'current'
+                    ? state.agentApi?.current?.()
+                    : state.agentApi?.[endpointName];
+                const method = endpoint?.[request?.method];
+                if (typeof method !== 'function') {
+                    throw new Error(`未知 Agent 方法：${request?.method || '—'}`);
+                }
+                const result = await method(request.payload || {});
+                api.respondAgentRequest?.({ requestId, result });
+            } catch (error) {
+                api.respondAgentRequest?.({
+                    requestId,
+                    error: { code: 'AGENT_REQUEST_FAILED', message: error.message },
+                });
+            }
+        });
         state.agentCheckpointDisposer = api.onAgentCheckpointProposed((payload) => {
             if (!payload) return;
             state.checkpoints.unshift({
                 id: payload.id || `agent-${Date.now()}`,
                 source: 'agent',
+                author: payload.author || null,
                 name: payload.name || 'AI 排版提案',
-                note: payload.note || 'AI 已提交一轮润色与排版。',
+                summary: payload.summary || payload.note || 'AI 已提交一轮润色与排版。',
+                note: payload.note || '',
                 createdAt: payload.createdAt || Date.now(),
             });
             renderLineage();
@@ -2609,17 +2655,21 @@ ${preview.css}
         window.addEventListener('beforeunload', () => {
             state.pageObserver?.disconnect();
             window.clearTimeout(state.paginationTimer);
+            window.clearTimeout(state.renderUpdateTimer);
+            window.clearTimeout(state.sourceEditorTimer);
             window.ScriptoriumPretext?.clear?.();
             state.themeDisposer?.();
             state.pathRequestDisposer?.();
             state.agentCheckpointDisposer?.();
+            state.agentRequestDisposer?.();
             state.styleLibraryDisposer?.();
         });
     }
 
     async function initialize() {
-        if (!api || !core || !styleLibrary || !pagination) {
-            throw new Error('Scriptorium 原生文档内核未载入。');
+        if (!api || !core || !styleLibrary || !pagination
+            || !window.ScriptoriumVisibility || !window.ScriptoriumAgentModule) {
+            throw new Error('Scriptorium 原生文档内核或模块未载入。');
         }
         cacheElements();
         restorePanelWidths();
@@ -2628,6 +2678,24 @@ ${preview.css}
         initializeSourceEditor();
         bindControls();
         bindKeyboard();
+        state.agentApi = window.ScriptoriumAgentModule.createAgentApi({
+            state,
+            core,
+            getRenderRoot,
+            getReadRoot,
+            getCurrentHtml: currentSourceHtml,
+            getCurrentCss: currentSourceCss,
+            setCurrentHtml: setCurrentSourceHtml,
+            setCurrentCss: setCurrentSourceCss,
+            renderDocument,
+            renderReadingPreview,
+            markDirty,
+            captureSnapshot,
+            renderLineage,
+            syncRenderedToSource: syncContinuousStructureToSource,
+            selectSlide,
+        });
+        window.ScriptoriumAgent = state.agentApi;
         bindRuntime();
         await initializeTheme();
         state.styleLibraryDisposer = styleLibrary.subscribe(() => {

@@ -36,8 +36,10 @@ const scriptoriumAPI = Object.freeze({
     onWindowUnmaximized: (callback) => subscribe('window-unmaximized', callback),
     onOpenPathRequest: (callback) => subscribe('docx:open-path-request', callback),
 
-    // Agent 管线占位：首版没有对应主进程执行入口，只保留只读事件订阅契约。
+    // Agent 双端桥：主进程负责授权与路由，渲染端只执行已验证的结构化请求。
     onAgentCheckpointProposed: (callback) => subscribe('docx:agent-checkpoint-proposed', callback),
+    onAgentRequest: (callback) => subscribe('scriptorium:agent-request', callback),
+    respondAgentRequest: (payload) => ipcRenderer.send('scriptorium:agent-response', payload),
 });
 
 contextBridge.exposeInMainWorld('scriptoriumAPI', scriptoriumAPI);
