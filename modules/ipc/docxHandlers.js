@@ -7,8 +7,12 @@ const { execFile } = require('child_process');
 const windowService = require('../services/windowService');
 const WINDOW_APP_IDS = require('../services/windowAppIds');
 const { PRELOAD_ROLES, resolveAppPreload } = require('../services/preloadPaths');
+const scriptoriumImportService = require('../services/scriptoriumImportService');
 
-const MAX_DOCX_BYTES = 100 * 1024 * 1024;
+const MAX_DOCUMENT_BYTES = 100 * 1024 * 1024;
+const PROJECT_EXTENSIONS = new Set(['.vdocx', '.vpptx']);
+const IMPORT_EXTENSIONS = new Set(scriptoriumImportService.SUPPORTED_EXTENSIONS);
+const OPEN_EXTENSIONS = new Set([...PROJECT_EXTENSIONS, ...IMPORT_EXTENSIONS]);
 const RECENT_LIMIT = 12;
 
 let docxWindow = null;
@@ -24,14 +28,19 @@ function removeChildWindow(win) {
     if (index >= 0) openChildWindows.splice(index, 1);
 }
 
-function assertDocxPath(filePath) {
+function assertDocumentPath(filePath, options = {}) {
     if (typeof filePath !== 'string' || !filePath.trim()) {
-        throw new Error('缺少 DOCX 文件路径。');
+        throw new Error('缺少文档文件路径。');
     }
-    if (path.extname(filePath).toLowerCase() !== '.docx') {
-        throw new Error('仅支持 .docx 文档。');
+    const resolved = path.resolve(filePath);
+    const extension = path.extname(resolved).toLowerCase();
+    const allowed = options.forSave ? PROJECT_EXTENSIONS.has(extension) : OPEN_EXTENSIONS.has(extension);
+    if (!allowed) {
+        throw new Error(options.forSave
+            ? 'VCP 富文档工程必须保存为 .vdocx 或 .vpptx。'
+            : '仅支持 VDOCX、VPPTX、HTML、Markdown、TXT、RTF 或 DOCX。');
     }
-    return path.resolve(filePath);
+    return resolved;
 }
 
 function runFile(executable, args, options = {}) {
@@ -129,12 +138,11 @@ async function getSystemFonts(forceRefresh = false) {
         else if (process.platform === 'darwin') discovered = await listMacFonts();
         else discovered = await listUnixFonts();
     } catch (error) {
-        console.warn('[DocxEditor] System font enumeration failed:', error.message);
+        console.warn('[Scriptorium] System font enumeration failed:', error.message);
     }
 
-    // Windows 枚举结果必须保持真实：不要追加可能并未安装的字体，否则渲染器
-    // 会把虚构的“可用字体”交给 SuperDoc，最终得到缺字方框。仅在系统枚举
-    // 完全失败时提供最小安全列表。
+    // Windows 枚举结果必须保持真实：不要追加可能并未安装的字体。
+    // Scriptorium 直接将该列表用于中日韩 CSS 字体栈与缺字回退诊断。
     fontCache = normalizeFontNames(discovered.length ? discovered : [
         'Arial',
         'Calibri',
@@ -158,13 +166,13 @@ async function readRecentFiles() {
         }
         return existing.slice(0, RECENT_LIMIT);
     } catch (error) {
-        console.warn('[DocxEditor] Failed to read recent documents:', error.message);
+        console.warn('[Scriptorium] Failed to read recent documents:', error.message);
         return [];
     }
 }
 
 async function rememberRecentFile(filePath) {
-    const resolved = assertDocxPath(filePath);
+    const resolved = assertDocumentPath(filePath);
     const current = await readRecentFiles();
     const next = [
         { path: resolved, name: path.basename(resolved), openedAt: Date.now() },
@@ -176,18 +184,36 @@ async function rememberRecentFile(filePath) {
 }
 
 async function readDocument(filePath) {
-    const resolved = assertDocxPath(filePath);
+    const resolved = assertDocumentPath(filePath);
     const stat = await fs.stat(resolved);
     if (!stat.isFile()) throw new Error('目标不是有效文件。');
-    if (stat.size > MAX_DOCX_BYTES) throw new Error('文档超过 100 MB 安全上限。');
+    if (stat.size > MAX_DOCUMENT_BYTES) throw new Error('文档超过 100 MB 安全上限。');
 
     const bytes = await fs.readFile(resolved);
     await rememberRecentFile(resolved);
+    const extension = path.extname(resolved).toLowerCase();
+
+    if (PROJECT_EXTENSIONS.has(extension)) {
+        return {
+            success: true,
+            filePath: resolved,
+            name: path.basename(resolved),
+            kind: extension === '.vpptx' ? 'vpptx' : 'vdocx',
+            bytes: Uint8Array.from(bytes),
+            size: stat.size,
+            modifiedAt: stat.mtimeMs,
+        };
+    }
+
+    const imported = await scriptoriumImportService.importBuffer(resolved, bytes);
     return {
         success: true,
         filePath: resolved,
         name: path.basename(resolved),
-        bytes: Uint8Array.from(bytes),
+        kind: 'imported',
+        importedKind: imported.kind,
+        html: imported.html,
+        importMetadata: imported.importMetadata,
         size: stat.size,
         modifiedAt: stat.mtimeMs,
     };
@@ -196,10 +222,33 @@ async function readDocument(filePath) {
 async function chooseAndReadDocument(event) {
     const owner = BrowserWindow.fromWebContents(event.sender) || docxWindow || mainWindow;
     const result = await dialog.showOpenDialog(owner, {
-        title: '打开 DOCX 文档',
+        title: '打开 VCP 富文档工程',
         properties: ['openFile'],
         filters: [
-            { name: 'Word 文档', extensions: ['docx'] },
+            { name: 'VCP 富文档工程', extensions: ['vdocx', 'vpptx'] },
+        ],
+    });
+    if (result.canceled || !result.filePaths.length) {
+        return { success: false, canceled: true };
+    }
+    return readDocument(result.filePaths[0]);
+}
+
+async function chooseAndImportDocument(event) {
+    const owner = BrowserWindow.fromWebContents(event.sender) || docxWindow || mainWindow;
+    const result = await dialog.showOpenDialog(owner, {
+        title: '导入为 VDOCX 文稿',
+        properties: ['openFile'],
+        filters: [
+            {
+                name: '所有可导入文档',
+                extensions: ['html', 'htm', 'md', 'markdown', 'txt', 'rtf', 'docx'],
+            },
+            { name: 'Markdown 文稿', extensions: ['md', 'markdown'] },
+            { name: '纯文本', extensions: ['txt'] },
+            { name: '富文本 RTF', extensions: ['rtf'] },
+            { name: 'Word 文档（语义导入）', extensions: ['docx'] },
+            { name: 'HTML 文档', extensions: ['html', 'htm'] },
         ],
     });
     if (result.canceled || !result.filePaths.length) {
@@ -209,10 +258,10 @@ async function chooseAndReadDocument(event) {
 }
 
 async function atomicWrite(filePath, bytes) {
-    const resolved = assertDocxPath(filePath);
+    const resolved = assertDocumentPath(filePath, { forSave: true });
     const data = Buffer.from(bytes || []);
     if (!data.length) throw new Error('拒绝保存空文档。');
-    if (data.length > MAX_DOCX_BYTES) throw new Error('文档超过 100 MB 安全上限。');
+    if (data.length > MAX_DOCUMENT_BYTES) throw new Error('文档超过 100 MB 安全上限。');
 
     await fs.ensureDir(path.dirname(resolved));
     const temporaryPath = `${resolved}.vcp-writing-${process.pid}-${Date.now()}`;
@@ -236,19 +285,29 @@ async function atomicWrite(filePath, bytes) {
 
 async function saveDocument(event, payload = {}) {
     let targetPath = payload.filePath;
+    const requestedExtension = path.extname(targetPath || payload.suggestedName || '').toLowerCase();
+    const projectExtension = requestedExtension === '.vpptx' ? '.vpptx' : '.vdocx';
     if (!targetPath || payload.saveAs) {
         const owner = BrowserWindow.fromWebContents(event.sender) || docxWindow || mainWindow;
+        const isDeck = projectExtension === '.vpptx';
         const result = await dialog.showSaveDialog(owner, {
-            title: payload.saveAs ? '文档另存为' : '保存 DOCX 文档',
-            defaultPath: targetPath || payload.suggestedName || '未命名文档.docx',
-            filters: [{ name: 'Word 文档', extensions: ['docx'] }],
+            title: payload.saveAs
+                ? `${projectExtension.toUpperCase()} 另存为`
+                : `保存 ${projectExtension.toUpperCase()} 工程`,
+            defaultPath: targetPath
+                || payload.suggestedName
+                || (isDeck ? '未命名演示.vpptx' : '未命名文稿.vdocx'),
+            filters: [{
+                name: isDeck ? 'VPPTX 演示工程' : 'VDOCX 共笔工程',
+                extensions: [projectExtension.slice(1)],
+            }],
         });
         if (result.canceled || !result.filePath) {
             return { success: false, canceled: true };
         }
-        targetPath = result.filePath.toLowerCase().endsWith('.docx')
+        targetPath = result.filePath.toLowerCase().endsWith(projectExtension)
             ? result.filePath
-            : `${result.filePath}.docx`;
+            : `${result.filePath}${projectExtension}`;
     }
     return atomicWrite(targetPath, payload.bytes);
 }
@@ -317,7 +376,7 @@ function initialize(params) {
     mainWindow = params.mainWindow;
     openChildWindows = params.openChildWindows || [];
     projectRoot = params.projectRoot;
-    recentFilePath = path.join(params.appDataRoot, 'DocxEditor', 'recent.json');
+    recentFilePath = path.join(params.appDataRoot, 'Scriptorium', 'recent.json');
 
     windowService.register(WINDOW_APP_IDS.DOCX, {
         owner: 'docxHandlers',
@@ -328,6 +387,7 @@ function initialize(params) {
 
     ipcMain.handle('open-docx-window', (_event, options = {}) => openDocxWindow(options));
     ipcMain.handle('docx:choose-open', chooseAndReadDocument);
+    ipcMain.handle('scriptorium:choose-import', chooseAndImportDocument);
     ipcMain.handle('docx:read-path', (_event, filePath) => readDocument(filePath));
     ipcMain.handle('docx:save', saveDocument);
     ipcMain.handle('docx:recent-list', readRecentFiles);

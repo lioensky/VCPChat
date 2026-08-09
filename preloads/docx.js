@@ -9,9 +9,10 @@ function subscribe(channel, callback) {
     return () => ipcRenderer.removeListener(channel, listener);
 }
 
-const docxAPI = Object.freeze({
+const scriptoriumAPI = Object.freeze({
     openWindow: (options = {}) => ipcRenderer.invoke('open-docx-window', options),
     chooseOpen: () => ipcRenderer.invoke('docx:choose-open'),
+    chooseImport: () => ipcRenderer.invoke('scriptorium:choose-import'),
     readPath: (filePath) => ipcRenderer.invoke('docx:read-path', filePath),
     save: (payload) => ipcRenderer.invoke('docx:save', payload),
     listRecent: () => ipcRenderer.invoke('docx:recent-list'),
@@ -38,4 +39,7 @@ const docxAPI = Object.freeze({
     onAgentCheckpointProposed: (callback) => subscribe('docx:agent-checkpoint-proposed', callback),
 });
 
-contextBridge.exposeInMainWorld('docxAPI', docxAPI);
+contextBridge.exposeInMainWorld('scriptoriumAPI', scriptoriumAPI);
+
+// 兼容尚未迁移的调用方；新文坊渲染器只使用 scriptoriumAPI。
+contextBridge.exposeInMainWorld('docxAPI', scriptoriumAPI);
