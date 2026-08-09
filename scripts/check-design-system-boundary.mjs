@@ -174,6 +174,11 @@ if (/executeJavaScript|insertCSS/.test(embeddedHostSource)) {
     failures.push('embeddedAppSessionManager.js: embedded mode must be declared by preload, not post-load injection');
 }
 
+const retainedEventListenersSource = fs.readFileSync(path.join(root, 'modules/event-listeners.js'), 'utf8');
+if (/\bgetAgentSidebar\b/.test(retainedEventListenersSource)) {
+    failures.push('event-listeners.js: removed Agent sidebar accessor leaked into the retained main-chat sidebar controls');
+}
+
 const nextCommandConsumers = [
     'modules/topTabManager.js',
     'modules/ui-system/appearance-studio.js',

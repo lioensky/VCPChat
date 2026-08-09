@@ -1615,7 +1615,7 @@ export function setupEventListeners(deps) {
                 wasSidebarLongPress = false;
                 sidebarLongPressTimer = setTimeout(() => {
                     sidebarLongPressTimer = null;
-                    if (!leftSidebar && !getAgentSidebar()) return;
+                    if (!leftSidebar) return;
 
                     wasSidebarLongPress = true;
                     toggleSidebarVisibility();
@@ -1632,17 +1632,13 @@ export function setupEventListeners(deps) {
                 }
                 clearSidebarLongPress();
 
-                const agentSidebar = getAgentSidebar();
-                const agentsTabIsActive = agentSidebar
-                    ? true
-                    : document.getElementById('tabContentAgents')?.classList.contains('active');
-                if ((!leftSidebar && !agentSidebar) || !agentsTabIsActive) {
+                const agentsTabIsActive = document.getElementById('tabContentAgents')?.classList.contains('active');
+                if (!leftSidebar || !agentsTabIsActive) {
                     uiHelperFunctions.showToastNotification('请先切换到助手列表。', 'info');
                     return;
                 }
 
-                const target = agentSidebar || leftSidebar;
-                const enableAvatarOnly = !target.classList.contains('avatar-only');
+                const enableAvatarOnly = !leftSidebar.classList.contains('avatar-only');
                 if (setAvatarOnlyMode(enableAvatarOnly)) {
                     uiHelperFunctions.showToastNotification(
                         enableAvatarOnly ? '侧栏已切换为仅头像模式' : '侧栏已恢复完整模式',
