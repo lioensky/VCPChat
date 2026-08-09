@@ -268,7 +268,9 @@
     :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope.vcp-ui-feedback-host .vcp-ui-loading-layer { pointer-events: auto; }
     :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope .vcp-ui-toast-stack { position: fixed; top: calc(var(--next-topbar-height, 44px) + var(--vcp-ui-space-4)); right: var(--vcp-ui-space-4); z-index: var(--vcp-ui-z-toast); display: grid; width: min(360px, calc(100vw - var(--vcp-ui-space-6))); gap: var(--vcp-ui-space-2); }
     :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope .vcp-ui-toast { display: flex; align-items: center; gap: var(--vcp-ui-space-2); min-height: 48px; padding: var(--vcp-ui-space-2) var(--vcp-ui-space-3); border: 1px solid var(--vcp-ui-border); border-radius: var(--vcp-ui-radius-md); background: var(--vcp-ui-bg-secondary); box-shadow: var(--vcp-ui-shadow-md); pointer-events: none; animation: vcp-ui-toast-in var(--vcp-ui-transition-spring); }
-    :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope .vcp-ui-toast > button { pointer-events: auto; }
+    /* Toasts ignore pointer input so they do not block the workspace; both native
+       and Web Awesome close controls must opt back in. */
+    :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope .vcp-ui-toast > :is(button, wa-button) { pointer-events: auto; }
     :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope .vcp-ui-toast > span:nth-child(2) { flex: 1; }
     :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope .vcp-ui-toast[data-variant="success"] > .vcp-ui-icon:first-child { color: var(--vcp-ui-success); }
     :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope .vcp-ui-toast[data-variant="warning"] > .vcp-ui-icon:first-child { color: var(--vcp-ui-warning); }
