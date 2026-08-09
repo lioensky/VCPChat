@@ -988,6 +988,78 @@
     :is(html[data-ui-mode="next"], html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-studio button:focus-visible { outline: 2px solid var(--vcp-ui-focus-ring); outline-offset: 2px; }
     :is(html[data-ui-mode="next"], html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-studio button:disabled { cursor: default; opacity: .48; }
 
+    :is(html[data-ui-mode="next"], html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-unsaved-backdrop {
+        position: absolute;
+        z-index: 2;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        padding: var(--vcp-ui-space-5);
+        background: color-mix(in srgb, var(--vcp-ui-backdrop) 82%, transparent);
+        backdrop-filter: blur(4px);
+        -webkit-backdrop-filter: blur(4px);
+    }
+    :is(html[data-ui-mode="next"], html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-unsaved-backdrop[hidden] { display: none; }
+    :is(html[data-ui-mode="next"], html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-unsaved-dialog {
+        width: min(390px, calc(100vw - 40px));
+        padding: var(--vcp-ui-space-5);
+        display: grid;
+        grid-template-columns: 40px minmax(0, 1fr);
+        gap: var(--vcp-ui-space-3);
+        border: 1px solid var(--vcp-ui-border-strong);
+        border-radius: var(--vcp-ui-radius-card);
+        color: var(--vcp-ui-text-0);
+        background: var(--vcp-ui-bg-1);
+        box-shadow: var(--vcp-ui-shadow-lg);
+        outline: 0;
+    }
+    :is(html[data-ui-mode="next"], html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-unsaved-icon {
+        width: 40px;
+        height: 40px;
+        display: grid;
+        place-items: center;
+        border-radius: var(--vcp-ui-radius-control);
+        color: var(--vcp-ui-text-accent);
+        background: color-mix(in srgb, var(--vcp-ui-accent) 12%, transparent);
+        font-size: var(--vcp-ui-icon-md);
+    }
+    :is(html[data-ui-mode="next"], html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-unsaved-copy { min-width: 0; }
+    :is(html[data-ui-mode="next"], html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-unsaved-copy h3 {
+        margin: 1px 0 var(--vcp-ui-space-1);
+        color: var(--vcp-ui-text-0);
+        font-size: var(--vcp-ui-font-emphasis);
+        line-height: var(--vcp-ui-line-compact);
+    }
+    :is(html[data-ui-mode="next"], html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-unsaved-copy p {
+        margin: 0;
+        color: var(--vcp-ui-text-3);
+        font-size: var(--vcp-ui-font-caption);
+        line-height: var(--vcp-ui-line-body);
+    }
+    :is(html[data-ui-mode="next"], html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-unsaved-actions {
+        grid-column: 1 / -1;
+        display: flex;
+        justify-content: flex-end;
+        gap: var(--vcp-ui-space-2);
+        margin-top: var(--vcp-ui-space-2);
+    }
+    :is(html[data-ui-mode="next"], html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-unsaved-actions button {
+        min-height: var(--vcp-ui-control-lg);
+        padding: 0 var(--vcp-ui-space-3);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: var(--vcp-ui-space-1);
+        border-radius: var(--vcp-ui-radius-control);
+        font: inherit;
+        font-size: var(--vcp-ui-font-helper);
+        cursor: pointer;
+    }
+    :is(html[data-ui-mode="next"], html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-unsaved-continue { border: 0; color: var(--vcp-ui-text-2); background: transparent; }
+    :is(html[data-ui-mode="next"], html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-unsaved-discard { border: 1px solid var(--vcp-ui-border); color: var(--vcp-ui-text-1); background: var(--vcp-ui-bg-2); }
+    :is(html[data-ui-mode="next"], html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-unsaved-save { border: 1px solid var(--vcp-ui-accent); color: var(--vcp-ui-on-accent); background: var(--vcp-ui-accent); }
+    :is(html[data-ui-mode="next"], html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .vcp-appearance-unsaved-actions button:focus-visible { outline: 2px solid var(--vcp-ui-focus-ring); outline-offset: 2px; }
+
     :is(html[data-ui-mode="next"], html.vcp-appearance-studio-host, html.vcp-global-settings-host) .vcp-ui-scope .appearance-workbench-card {
         min-width: 0;
         margin-bottom: var(--vcp-ui-space-4);
