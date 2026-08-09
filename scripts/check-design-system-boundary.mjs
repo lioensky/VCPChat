@@ -104,6 +104,7 @@ const allowedSourceDifferences = new Set([
     'styles/ui-next.css',
     'styles/ui-system/shell.css',
     'styles/ui-system/sidebar.css',
+    'styles/ui-system/components.css',
     'styles/ui-system/appearance-studio.css',
     'styles/ui-system/showcase.css',
     'styles/ui-system/tokens.css',

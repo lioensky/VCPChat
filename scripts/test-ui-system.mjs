@@ -7,6 +7,7 @@ import { JSDOM } from 'jsdom';
 
 const composerSafeFocusSelector = /:focus-visible:not\(#messageInput\):not\(\.chat-message-input\)\s*\{/;
 const paperThemeSource = fs.readFileSync('styles/themes/themes纸墨与机芯.css', 'utf8');
+const componentStyles = fs.readFileSync('styles/ui-system/components.css', 'utf8');
 assert.match(paperThemeSource, composerSafeFocusSelector, 'the paper theme must preserve the composer focus contract');
 assert.doesNotMatch(
     paperThemeSource,
@@ -17,6 +18,11 @@ const activeThemeSource = fs.readFileSync('styles/themes.css', 'utf8');
 if (activeThemeSource.includes(':focus-visible')) {
     assert.match(activeThemeSource, composerSafeFocusSelector, 'the active theme must preserve the composer focus contract');
 }
+assert.match(
+    componentStyles,
+    /\.vcp-ui-toast > :is\(button, wa-button\)\s*\{\s*pointer-events:\s*auto/s,
+    'the toast close control must remain clickable after Web Awesome upgrades it to wa-button'
+);
 
 const dom = new JSDOM('<!doctype html><html data-ui-mode="next"><body><main class="vcp-ui-scope" data-density="comfortable"></main></body></html>', {
     url: 'https://vcpchat.local/'
@@ -695,6 +701,12 @@ assert.equal(waIconButton.element.tagName.toLowerCase(), 'wa-button');
 assert.equal(waIconButton.element.getAttribute('aria-label'), '关闭');
 assert.equal(waIconButton.element.getAttribute('aria-pressed'), 'true');
 assert.equal(waIconButton.element.getAttribute('appearance'), 'plain');
+
+const waToast = VCPUI.feedback.toast('Web Awesome close', { duration: 0 });
+const waToastClose = waToast.element.querySelector('wa-button[aria-label="关闭通知"]');
+assert.ok(waToastClose, 'a Web Awesome toast must expose a close button');
+waToastClose.click();
+assert.ok(!waToast.element.isConnected, 'clicking the Web Awesome toast close button must dismiss the toast');
 
 const waInput = VCPUI.create('Input', { value: 'hi', placeholder: 'Name', label: 'Name' });
 assert.equal(waInput.element.tagName.toLowerCase(), 'wa-input');
