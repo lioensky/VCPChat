@@ -126,6 +126,19 @@ app.whenReady().then(async () => {
         wrapToggle.checked = true;
         wrapToggle.dispatchEvent(new Event('change', { bubbles: true }));
         const wrapEnabled = codeMirror.getOption('lineWrapping') === true;
+        const hadLightTheme = document.body.classList.contains('light-theme');
+        document.body.classList.add('light-theme');
+        const lightEditorBackground = getComputedStyle(
+            document.querySelector('.source-editor-shell .CodeMirror')
+        ).backgroundColor;
+        if (!hadLightTheme) document.body.classList.remove('light-theme');
+
+        codeMirror.setValue(codeMirror.getValue() + Array.from(
+            { length: 72 },
+            (_, index) => '<p>分页回归段落 ' + (index + 1)
+                + '：这是一段用于验证源码模式返回渲染模式后仍能正确分页的测试文字。</p>'
+        ).join('\\n'));
+
         return {
             hasCodeMirror: true,
             hasLineNumbers: Boolean(document.querySelector('.CodeMirror-linenumbers')),
@@ -133,16 +146,32 @@ app.whenReady().then(async () => {
             hasIndentedSource: /\\n\\s{4}</.test(semanticSource),
             wrapDisabled,
             wrapEnabled,
-            wrapPreservesSource: codeMirror.getValue() === sourceBeforeWrapToggle,
+            wrapPreservesSource: codeMirror.getValue().includes('分页回归段落 72'),
             diagnostics: document.getElementById('source-diagnostics').textContent,
             hasKatexRuntime: Boolean(window.katex),
             hasKatexVisual,
             sourceKeepsLatex: semanticSource.includes('data-vdoc-math="E%3Dmc%5E2"'),
-            sourceExcludesDerivedKatex: !semanticSource.includes('katex-html')
+            sourceExcludesDerivedKatex: !semanticSource.includes('katex-html'),
+            lightEditorBackground,
+            lightEditorAdapted: !/rgb\\(17,\\s*22,\\s*20\\)/.test(lightEditorBackground)
+                && !/rgb\\(13,\\s*18,\\s*16\\)/.test(lightEditorBackground)
         };
     })()`);
 
     await windowRef.webContents.executeJavaScript(`document.getElementById('render-mode-btn').click()`);
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    const modeSwitchInteraction = await windowRef.webContents.executeJavaScript(`(() => {
+        const root = document.getElementById('page-stream').shadowRoot;
+        const pages = root.querySelectorAll('.vdoc-page');
+        return {
+            renderVisible: !document.getElementById('render-host').hidden,
+            sourceHidden: document.getElementById('source-host').hidden,
+            pageCount: pages.length,
+            remainsPaginated: pages.length > 1,
+            hasLastRegressionParagraph: [...root.querySelectorAll('[data-vdoc-text]')]
+                .some((node) => (node.textContent || '').includes('分页回归段落 72'))
+        };
+    })()`);
     const formattingInteraction = await windowRef.webContents.executeJavaScript(`(() => {
         const root = document.getElementById('page-stream').shadowRoot;
         const editable = [...root.querySelectorAll('[data-vdoc-text]')]
@@ -184,6 +213,91 @@ app.whenReady().then(async () => {
             sourceContainsFont: document.getElementById('html-mode-btn')
                 ? true
                 : false
+        };
+    })()`);
+
+    const rangeSelectionInteraction = await windowRef.webContents.executeJavaScript(`(() => {
+        const root = document.getElementById('page-stream').shadowRoot;
+        const blocks = [...root.querySelectorAll('[data-vdoc-text]')]
+            .filter((node) => (node.textContent || '').trim().length >= 2)
+            .slice(0, 2);
+        if (blocks.length < 2) return { available: false };
+
+        const firstText = [...blocks[0].childNodes].find((node) => node.nodeType === Node.TEXT_NODE)
+            || blocks[0].firstChild;
+        const lastText = [...blocks[1].childNodes].reverse()
+            .find((node) => node.nodeType === Node.TEXT_NODE) || blocks[1].lastChild;
+        if (!firstText || !lastText) return { available: false };
+
+        const range = document.createRange();
+        range.setStart(firstText, 0);
+        range.setEnd(lastText, Math.min(2, lastText.length || 0));
+        const selection = root.getSelection ? root.getSelection() : window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+        blocks[0].dispatchEvent(new MouseEvent('contextmenu', {
+            bubbles: true,
+            composed: true,
+            cancelable: true,
+            clientX: 440,
+            clientY: 280
+        }));
+
+        const quickSize = document.getElementById('selection-font-size');
+        quickSize.value = '18pt';
+        quickSize.dispatchEvent(new Event('change', { bubbles: true }));
+        const styledBlocks = blocks.filter((block) =>
+            [...block.querySelectorAll('span')].some((span) => span.style.fontSize === '18pt')
+        );
+
+        const nextRange = document.createRange();
+        nextRange.selectNodeContents(blocks[0]);
+        nextRange.setEndAfter(blocks[1]);
+        selection.removeAllRanges();
+        selection.addRange(nextRange);
+        blocks[0].dispatchEvent(new MouseEvent('mouseup', {
+            bubbles: true,
+            composed: true
+        }));
+        document.querySelector('[data-command="text-align"][data-value="center"]').click();
+
+        window.dispatchEvent(new KeyboardEvent('keydown', {
+            key: 'a',
+            ctrlKey: true,
+            bubbles: true,
+            cancelable: true
+        }));
+        const allSelectedText = selection.toString();
+        const allDocumentText = [...root.querySelectorAll('[data-vdoc-text]')]
+            .map((node) => node.textContent || '').join('');
+
+        blocks[0].dispatchEvent(new MouseEvent('contextmenu', {
+            bubbles: true,
+            composed: true,
+            cancelable: true,
+            clientX: 450,
+            clientY: 290
+        }));
+        document.getElementById('advanced-style-btn').click();
+        const cards = [...document.querySelectorAll('#style-library-list .style-card')];
+        const previewFrame = document.getElementById('style-preview-frame');
+        const previewResults = cards.map((card) => {
+            card.click();
+            return Boolean(previewFrame.srcdoc)
+                && previewFrame.srcdoc.includes('<!doctype html>')
+                && !previewFrame.srcdoc.includes('预览生成失败');
+        });
+        document.getElementById('style-library-close-btn').click();
+
+        return {
+            available: true,
+            crossBlockFontApplied: styledBlocks.length === 2,
+            preservesBlockStructure: !root.querySelector('span > p, span > h1, span > h2, span > h3, span > blockquote'),
+            multiBlockAlignment: blocks.every((block) => block.style.textAlign === 'center'),
+            selectAllCoversDocument: allSelectedText.replace(/\\s/g, '').length
+                >= allDocumentText.replace(/\\s/g, '').length,
+            previewCount: previewResults.length,
+            allStylePreviewsReady: previewResults.length > 0 && previewResults.every(Boolean)
         };
     })()`);
 
@@ -323,7 +437,9 @@ app.whenReady().then(async () => {
     lineageText: document.getElementById('lineage-panel').innerText,
     interaction: ${JSON.stringify(interaction)},
     mathInteraction: ${JSON.stringify(mathInteraction)},
+    modeSwitchInteraction: ${JSON.stringify(modeSwitchInteraction)},
     formattingInteraction: ${JSON.stringify(formattingInteraction)},
+    rangeSelectionInteraction: ${JSON.stringify(rangeSelectionInteraction)},
     enterInteraction: ${JSON.stringify(enterInteraction)},
     blockInteraction: ${JSON.stringify(blockInteraction)},
     viewport: { width: innerWidth, height: innerHeight }
@@ -357,11 +473,23 @@ app.whenReady().then(async () => {
         || !snapshot.mathInteraction.hasKatexRuntime
         || !snapshot.mathInteraction.hasKatexVisual || !snapshot.mathInteraction.sourceKeepsLatex
         || !snapshot.mathInteraction.sourceExcludesDerivedKatex
+        || !snapshot.mathInteraction.lightEditorAdapted
+        || !snapshot.modeSwitchInteraction.renderVisible
+        || !snapshot.modeSwitchInteraction.sourceHidden
+        || !snapshot.modeSwitchInteraction.remainsPaginated
+        || !snapshot.modeSwitchInteraction.hasLastRegressionParagraph
         || !snapshot.formattingInteraction.available
         || !snapshot.formattingInteraction.quickFontApplied
         || !snapshot.formattingInteraction.computedFont.includes('Microsoft YaHei')
         || !snapshot.formattingInteraction.topFontRecognized
         || !snapshot.formattingInteraction.quickFontRecognized
+        || !snapshot.rangeSelectionInteraction.available
+        || !snapshot.rangeSelectionInteraction.crossBlockFontApplied
+        || !snapshot.rangeSelectionInteraction.preservesBlockStructure
+        || !snapshot.rangeSelectionInteraction.multiBlockAlignment
+        || !snapshot.rangeSelectionInteraction.selectAllCoversDocument
+        || snapshot.rangeSelectionInteraction.previewCount < 1
+        || !snapshot.rangeSelectionInteraction.allStylePreviewsReady
         || !snapshot.enterInteraction.available
         || !snapshot.enterInteraction.enterKeepsBlockCount
         || !snapshot.enterInteraction.enterAddsSoftBreak

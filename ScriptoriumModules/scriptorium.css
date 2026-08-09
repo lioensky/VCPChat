@@ -2305,6 +2305,72 @@ body.focus-mode .writing-chamber::after {
     background: rgba(139, 94, 52, .34) !important;
 }
 
+body.light-theme .source-editor-shell {
+    border-color: rgba(115, 101, 79, .22);
+    background: #f7f3e9;
+}
+
+body.light-theme .source-editor-shell .CodeMirror,
+body.light-theme .source-editor-shell .cm-s-material-darker.CodeMirror {
+    color: #28332e;
+    background: #f7f3e9;
+}
+
+body.light-theme .source-editor-shell .CodeMirror-gutters,
+body.light-theme .source-editor-shell .cm-s-material-darker .CodeMirror-gutters {
+    border-right-color: rgba(75, 66, 51, .14);
+    color: #8a8275;
+    background: #eee8dc;
+}
+
+body.light-theme .source-editor-shell .CodeMirror-linenumber {
+    color: #999083;
+}
+
+body.light-theme .source-editor-shell .CodeMirror-cursor {
+    border-left-color: #2d5f52;
+}
+
+body.light-theme .source-editor-shell .CodeMirror-selected,
+body.light-theme .source-editor-shell .CodeMirror-focused .CodeMirror-selected {
+    background: rgba(75, 125, 107, .22) !important;
+}
+
+body.light-theme .source-editor-shell .CodeMirror-activeline-background {
+    background: rgba(75, 125, 107, .07);
+}
+
+body.light-theme .source-editor-shell .cm-s-material-darker .cm-tag,
+body.light-theme .source-editor-shell .cm-s-material-darker .cm-keyword {
+    color: #8f3f52;
+}
+
+body.light-theme .source-editor-shell .cm-s-material-darker .cm-attribute,
+body.light-theme .source-editor-shell .cm-s-material-darker .cm-property {
+    color: #7a5b20;
+}
+
+body.light-theme .source-editor-shell .cm-s-material-darker .cm-string,
+body.light-theme .source-editor-shell .cm-s-material-darker .cm-string-2 {
+    color: #28705d;
+}
+
+body.light-theme .source-editor-shell .cm-s-material-darker .cm-number,
+body.light-theme .source-editor-shell .cm-s-material-darker .cm-atom {
+    color: #7652a1;
+}
+
+body.light-theme .source-editor-shell .cm-s-material-darker .cm-comment {
+    color: #8b8477;
+    font-style: italic;
+}
+
+body.light-theme .source-editor-shell .cm-s-material-darker .cm-bracket,
+body.light-theme .source-editor-shell .cm-s-material-darker .cm-meta,
+body.light-theme .source-editor-shell .cm-s-material-darker .cm-qualifier {
+    color: #52635c;
+}
+
 .source-editor-shell .cm-vdoc-color {
     border-bottom: 2px solid var(--cm-color, transparent);
     border-radius: 2px;

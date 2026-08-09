@@ -29,6 +29,7 @@
         systemFonts: [],
         selectionRange: null,
         selectionText: '',
+        selectionBlockIds: [],
         selectedAdvancedStyleId: null,
         usedAdvancedStyleIds: new Set(),
         styleLibraryDisposer: null,
@@ -376,8 +377,14 @@ ${state.document.source.css}`;
             syncFormattingControls(event.target);
         });
 
-        root.addEventListener('mouseup', () => syncFormattingFromCurrentSelection());
-        root.addEventListener('keyup', () => syncFormattingFromCurrentSelection());
+        root.addEventListener('mouseup', () => {
+            captureCurrentSelection();
+            syncFormattingFromCurrentSelection();
+        });
+        root.addEventListener('keyup', () => {
+            captureCurrentSelection();
+            syncFormattingFromCurrentSelection();
+        });
         root.addEventListener('keydown', handleBlockEditingKeydown);
 
         root.addEventListener('input', (event) => {
@@ -393,17 +400,59 @@ ${state.document.source.css}`;
         });
 
         root.addEventListener('contextmenu', (event) => {
-            const selection = root.getSelection?.() || window.getSelection();
-            if (!selection || selection.isCollapsed || !selection.rangeCount) return;
+            if (!captureCurrentSelection()) return;
             event.preventDefault();
-            state.selectionRange = selection.getRangeAt(0).cloneRange();
-            state.selectionText = selection.toString();
             showSelectionBar(event.clientX, event.clientY);
         });
     }
 
     function currentRenderSelection() {
         return getRenderRoot()?.getSelection?.() || window.getSelection();
+    }
+
+    function editableBlocksForRange(range) {
+        const root = getRenderRoot();
+        if (!root || !range || range.collapsed) return [];
+        return [...root.querySelectorAll('[data-vdoc-text]')].filter((block) => {
+            try {
+                return range.intersectsNode(block);
+            } catch {
+                return false;
+            }
+        });
+    }
+
+    function captureCurrentSelection() {
+        const selection = currentRenderSelection();
+        if (!selection || selection.isCollapsed || !selection.rangeCount) return false;
+        const range = selection.getRangeAt(0);
+        const root = getRenderRoot();
+        if (!root || !root.contains(range.commonAncestorContainer)) return false;
+        state.selectionRange = range.cloneRange();
+        state.selectionText = selection.toString();
+        state.selectionBlockIds = editableBlocksForRange(range)
+            .map((block) => block.dataset.vdocText)
+            .filter(Boolean);
+        return true;
+    }
+
+    function selectEntireRenderedDocument() {
+        const root = getRenderRoot();
+        const runtime = root?.querySelector('.vdoc-runtime');
+        if (!runtime) return false;
+        root.querySelectorAll('.vdoc-page[data-runtime-state="tombstone"]').forEach(activatePage);
+        const blocks = [...root.querySelectorAll('[data-vdoc-text]')];
+        if (!blocks.length) return false;
+        const range = document.createRange();
+        range.setStartBefore(blocks[0]);
+        range.setEndAfter(blocks[blocks.length - 1]);
+        const selection = currentRenderSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+        captureCurrentSelection();
+        syncFormattingControls(blocks[0]);
+        showToast(`已选择全文 · ${blocks.length} 个文本块`, 'success');
+        return true;
     }
 
     function restoreSavedSelection() {
@@ -416,12 +465,85 @@ ${state.document.source.css}`;
     }
 
     function selectedRange(preferSaved = false) {
-        if (preferSaved && state.selectionRange?.startContainer?.isConnected) {
+        if (preferSaved && state.selectionRange?.startContainer?.isConnected
+            && state.selectionRange?.endContainer?.isConnected) {
             return state.selectionRange;
         }
         const selection = currentRenderSelection();
-        if (selection?.rangeCount) return selection.getRangeAt(0);
-        return state.selectionRange?.startContainer?.isConnected ? state.selectionRange : null;
+        if (selection?.rangeCount && !selection.isCollapsed) return selection.getRangeAt(0);
+        return state.selectionRange?.startContainer?.isConnected
+            && state.selectionRange?.endContainer?.isConnected
+            ? state.selectionRange
+            : null;
+    }
+
+    function rangeWithinBlock(sourceRange, block) {
+        if (!sourceRange || !block) return null;
+        try {
+            if (!sourceRange.intersectsNode(block)) return null;
+            const blockRange = document.createRange();
+            blockRange.selectNodeContents(block);
+            const range = document.createRange();
+            if (sourceRange.compareBoundaryPoints(Range.START_TO_START, blockRange) > 0) {
+                range.setStart(sourceRange.startContainer, sourceRange.startOffset);
+            } else {
+                range.setStart(blockRange.startContainer, blockRange.startOffset);
+            }
+            if (sourceRange.compareBoundaryPoints(Range.END_TO_END, blockRange) < 0) {
+                range.setEnd(sourceRange.endContainer, sourceRange.endOffset);
+            } else {
+                range.setEnd(blockRange.endContainer, blockRange.endOffset);
+            }
+            return range.collapsed ? null : range;
+        } catch {
+            return null;
+        }
+    }
+
+    function selectedEditableBlocks(preferSaved = false) {
+        const range = selectedRange(preferSaved);
+        const blocks = editableBlocksForRange(range);
+        if (blocks.length) return blocks;
+        const root = getRenderRoot();
+        return state.activeEditableBlock && root?.contains(state.activeEditableBlock)
+            ? [state.activeEditableBlock]
+            : [];
+    }
+
+    function wrapSelectionRanges(configureWrapper, preferSaved = false) {
+        const sourceRange = selectedRange(preferSaved);
+        if (!sourceRange || sourceRange.collapsed) return [];
+        const ranges = editableBlocksForRange(sourceRange)
+            .map((block) => rangeWithinBlock(sourceRange, block))
+            .filter(Boolean);
+        if (!ranges.length) return [];
+
+        const wrappers = [];
+        [...ranges].reverse().forEach((range) => {
+            const wrapper = document.createElement('span');
+            configureWrapper(wrapper);
+            try {
+                range.surroundContents(wrapper);
+            } catch {
+                wrapper.appendChild(range.extractContents());
+                range.insertNode(wrapper);
+            }
+            wrappers.unshift(wrapper);
+        });
+        if (!wrappers.length) return [];
+
+        const nextRange = document.createRange();
+        nextRange.setStartBefore(wrappers[0]);
+        nextRange.setEndAfter(wrappers[wrappers.length - 1]);
+        state.selectionRange = nextRange.cloneRange();
+        state.selectionText = nextRange.toString();
+        state.selectionBlockIds = editableBlocksForRange(nextRange)
+            .map((block) => block.dataset.vdocText)
+            .filter(Boolean);
+        const selection = currentRenderSelection();
+        selection.removeAllRanges();
+        selection.addRange(nextRange);
+        return wrappers;
     }
 
     function cssColorToHex(color) {
@@ -498,28 +620,13 @@ ${state.document.source.css}`;
     }
 
     function applyInlineStyle(property, value, preferSaved = false) {
-        const range = selectedRange(preferSaved);
-        if (!range || range.collapsed) return false;
         if (preferSaved) restoreSavedSelection();
-
-        const wrapper = document.createElement('span');
-        wrapper.style[property] = value;
-        try {
-            range.surroundContents(wrapper);
-        } catch {
-            wrapper.appendChild(range.extractContents());
-            range.insertNode(wrapper);
-        }
-
-        const nextRange = document.createRange();
-        nextRange.selectNodeContents(wrapper);
-        state.selectionRange = nextRange.cloneRange();
-        state.selectionText = wrapper.textContent || '';
-        const selection = currentRenderSelection();
-        selection.removeAllRanges();
-        selection.addRange(nextRange);
+        const wrappers = wrapSelectionRanges((wrapper) => {
+            wrapper.style[property] = value;
+        }, preferSaved);
+        if (!wrappers.length) return false;
         syncRenderedDocumentToSource();
-        syncFormattingControls(wrapper);
+        syncFormattingControls(wrappers[0]);
         return true;
     }
 
@@ -822,7 +929,13 @@ ${state.document.source.css}`;
         page.dataset.runtimeState = 'paused';
     }
 
+    function hasExpandedRenderSelection() {
+        const selection = currentRenderSelection();
+        return Boolean(selection && !selection.isCollapsed && selection.rangeCount);
+    }
+
     function tombstoneRemotePages(root) {
+        if (hasExpandedRenderSelection()) return;
         const pages = [...root.querySelectorAll('.vdoc-page')];
         const hostRect = elements['render-host'].getBoundingClientRect();
         pages.forEach((page) => {
@@ -983,9 +1096,18 @@ ${state.document.source.css}`;
 
     function switchMode(mode) {
         if (!state.ready) return;
-        if (state.mode !== 'render' && mode === 'render') applySourceChanges(false);
-        state.mode = mode;
         const isRender = mode === 'render';
+        const returningToRender = state.mode !== 'render' && isRender;
+
+        // 分页依赖真实的页面 clientHeight。必须先让渲染容器参与布局，再应用
+        // 源码并重建页面；否则 hidden 容器中的页面高度为 0，文稿会退化成单页。
+        if (returningToRender) {
+            elements['render-host'].hidden = false;
+            elements['source-host'].hidden = true;
+            applySourceChanges(false);
+        }
+
+        state.mode = mode;
         elements['render-host'].hidden = !isRender;
         elements['source-host'].hidden = isRender;
         for (const candidate of ['render', 'html', 'css']) {
@@ -1046,18 +1168,23 @@ ${state.document.source.css}`;
         if (command === 'text-color') return applyInlineStyle('color', value, preferSaved);
         if (command === 'highlight-color') return applyInlineStyle('backgroundColor', value, preferSaved);
         if (command === 'line-height') {
-            const block = state.activeEditableBlock;
-            if (!block) return false;
-            block.style.lineHeight = String(value);
+            const blocks = selectedEditableBlocks(preferSaved);
+            if (!blocks.length) return false;
+            blocks.forEach((block) => {
+                block.style.lineHeight = String(value);
+            });
             syncRenderedDocumentToSource();
-            syncFormattingControls(block);
+            syncFormattingControls(blocks[0]);
             return true;
         }
         if (command === 'text-align') {
-            const block = state.activeEditableBlock;
-            if (!block) return false;
-            block.style.textAlign = value;
+            const blocks = selectedEditableBlocks(preferSaved);
+            if (!blocks.length) return false;
+            blocks.forEach((block) => {
+                block.style.textAlign = value;
+            });
             syncRenderedDocumentToSource();
+            syncFormattingControls(blocks[0]);
             return true;
         }
         if (command === 'image') return insertImage();
@@ -1112,10 +1239,9 @@ ${state.document.source.css}`;
 
     function inferSelectionTarget() {
         const range = state.selectionRange;
-        const element = range?.commonAncestorContainer?.nodeType === Node.ELEMENT_NODE
-            ? range.commonAncestorContainer
-            : range?.commonAncestorContainer?.parentElement;
-        const editable = element?.closest?.('[data-vdoc-text]');
+        const blocks = editableBlocksForRange(range);
+        if (blocks.length > 1) return 'block';
+        const editable = blocks[0];
         if (/^H[1-6]$/.test(editable?.tagName || '')) return 'heading';
         if (editable && range?.toString().trim() === editable.textContent.trim()) return 'paragraph';
         return 'inline';
@@ -1163,6 +1289,10 @@ ${state.document.source.css}`;
         }).filter((style) => style.targets.includes(inferredTarget)
             || style.targets.includes('inline')
             || (inferredTarget === 'heading' && style.targets.includes('block')));
+        if (!styles.some((style) => style.id === state.selectedAdvancedStyleId)) {
+            state.selectedAdvancedStyleId = null;
+            elements['style-apply-btn'].disabled = true;
+        }
         elements['style-library-list'].replaceChildren(...styles.map((style) => {
             const button = document.createElement('button');
             button.type = 'button';
@@ -1210,50 +1340,61 @@ ${state.document.source.css}`;
     }
 
     function renderStylePreview(style) {
-        const preview = styleLibrary.createPreviewDocument(style.id, {
-            text: state.selectionText || style.previewText,
-        });
-        const tag = preview.target === 'heading'
-            ? 'h2'
-            : preview.target === 'inline'
-                ? 'span'
-                : 'div';
-        elements['style-preview-frame'].srcdoc =
-            `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><style>
+        const frame = elements['style-preview-frame'];
+        try {
+            const preview = styleLibrary.createPreviewDocument(style.id, {
+                text: state.selectionText || style.previewText,
+            });
+            const tag = style.targets.includes('heading')
+                ? 'h2'
+                : style.targets.includes('paragraph')
+                    ? 'p'
+                    : style.targets.includes('block')
+                        ? 'div'
+                        : 'span';
+            const previewText = (preview.text || style.previewText || '高级样式预览文字').slice(0, 1200);
+            frame.srcdoc =
+                `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><style>
 html,body{margin:0;min-height:100%;background:#fffdf8;color:#202723}
 body{display:grid;place-items:center;padding:34px;box-sizing:border-box;font-family:"Noto Serif CJK SC","Microsoft YaHei",serif;line-height:1.75}
+body>*{max-width:100%;overflow-wrap:anywhere}
 ${preview.css}
-</style></head><body><${tag} class="${escapeHtml(preview.className)}">${escapeHtml(preview.text)}</${tag}></body></html>`;
+</style></head><body><${tag} class="${escapeHtml(preview.className)}">${escapeHtml(previewText)}</${tag}></body></html>`;
+        } catch (error) {
+            frame.srcdoc = `<!doctype html><html lang="zh-CN"><body style="margin:0;display:grid;min-height:100vh;place-items:center;background:#fffdf8;color:#8b3d35;font:14px system-ui;padding:24px;box-sizing:border-box">预览生成失败：${escapeHtml(error.message)}</body></html>`;
+            elements['style-apply-btn'].disabled = true;
+            console.error('[Scriptorium] Advanced style preview failed:', error);
+        }
     }
 
     function applySelectedAdvancedStyle() {
         const style = styleLibrary.get(state.selectedAdvancedStyleId);
-        const range = state.selectionRange;
+        const range = selectedRange(true);
         if (!style || !range) return false;
-        const ancestor = range.commonAncestorContainer.nodeType === Node.ELEMENT_NODE
-            ? range.commonAncestorContainer
-            : range.commonAncestorContainer.parentElement;
-        const editable = ancestor?.closest?.('[data-vdoc-text]');
-        if (!editable) {
+        const blocks = editableBlocksForRange(range);
+        if (!blocks.length) {
             showToast('当前选区无法应用高级样式。', 'error');
             return false;
         }
 
+        const fullSingleBlock = blocks.length === 1
+            && range.toString().trim() === blocks[0].textContent.trim();
         const useBlock = style.targets.includes('heading')
             || style.targets.includes('paragraph')
-            || (style.targets.includes('block') && range.toString().trim() === editable.textContent.trim());
+            || (style.targets.includes('block') && (blocks.length > 1 || fullSingleBlock));
         if (useBlock) {
-            editable.classList.add(style.className);
-            editable.dataset.vdocStyle = style.id;
+            blocks.forEach((block) => {
+                block.classList.add(style.className);
+                block.dataset.vdocStyle = style.id;
+            });
         } else {
-            const wrapper = document.createElement('span');
-            wrapper.className = style.className;
-            wrapper.dataset.vdocStyle = style.id;
-            try {
-                range.surroundContents(wrapper);
-            } catch {
-                wrapper.appendChild(range.extractContents());
-                range.insertNode(wrapper);
+            const wrappers = wrapSelectionRanges((wrapper) => {
+                wrapper.className = style.className;
+                wrapper.dataset.vdocStyle = style.id;
+            }, true);
+            if (!wrappers.length) {
+                showToast('当前选区无法应用高级样式。', 'error');
+                return false;
             }
         }
 
@@ -1264,7 +1405,8 @@ ${preview.css}
         closeStyleLibrary();
         hideSelectionBar();
         state.selectionRange = null;
-        showToast(`已应用高级样式 · ${style.name}`, 'success');
+        state.selectionBlockIds = [];
+        showToast(`已应用高级样式 · ${style.name}${blocks.length > 1 ? ` · ${blocks.length} 个块` : ''}`, 'success');
         return true;
     }
 
@@ -1792,7 +1934,11 @@ ${preview.css}
         window.addEventListener('keydown', (event) => {
             const modifier = event.ctrlKey || event.metaKey;
             const key = event.key.toLowerCase();
-            if (modifier && key === 's') {
+            const formControl = event.target?.closest?.('input, textarea, select, .CodeMirror');
+            if (modifier && key === 'a' && state.ready && state.mode === 'render' && !formControl) {
+                event.preventDefault();
+                selectEntireRenderedDocument();
+            } else if (modifier && key === 's') {
                 event.preventDefault();
                 saveDocument(event.shiftKey);
             } else if (modifier && key === 'o') {
