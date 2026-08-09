@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import { pathToFileURL } from 'node:url';
 import { JSDOM } from 'jsdom';
 
 const dom = new JSDOM(`<!doctype html><html data-ui-mode="next"><body class="dark-theme">
@@ -8,11 +9,21 @@ const dom = new JSDOM(`<!doctype html><html data-ui-mode="next"><body class="dar
     <div id="nextUiAccountMenu" hidden></div>
     <form id="globalSettingsForm">
         <input type="checkbox" id="enableNextUi" checked>
+        <input type="radio" id="appearanceUiModeClassic" name="appearanceUiMode" value="classic">
+        <input type="radio" id="appearanceUiModeNext" name="appearanceUiMode" value="next" checked>
+        <input type="checkbox" id="showHomeVisualBrand" checked>
         <select id="appearanceDensity"><option value="compact">紧凑</option><option value="comfortable">舒适</option><option value="relaxed">宽松</option></select>
         <select id="appearanceRadius"><option value="small">小</option><option value="medium">中</option></select>
         <select id="appearanceTypography"><option value="system">系统</option><option value="humanist">人文</option><option value="serif">衬线</option></select>
         <select id="appearanceFontScale"><option value="small">小</option><option value="normal">标准</option><option value="large">大</option></select>
         <select id="appearanceContentWidth"><option value="full">铺满</option><option value="centered">居中</option></select>
+        <input type="range" id="appearanceSidebarRowHeight" min="38" max="64" value="46">
+        <output id="appearanceSidebarRowHeightValue">46px</output>
+        <input type="range" id="appearanceSidebarAvatarSize" min="20" max="52" value="32">
+        <output id="appearanceSidebarAvatarSizeValue">32px</output>
+        <select id="appearanceSidebarRadius"><option value="tuned">原设计</option><option value="medium">中</option><option value="round">大</option></select>
+        <input type="range" id="appearanceCustomRadius" min="0" max="32" value="10">
+        <output id="appearanceCustomRadiusValue">10px</output>
         <select id="appearanceSurface"><option value="solid">实色</option><option value="translucent">主题</option><option value="custom">自定义</option></select>
         <input type="radio" name="chatPresentationMode" value="bubble" checked>
         <input type="radio" name="chatPresentationMode" value="panel">
@@ -29,6 +40,7 @@ const dom = new JSDOM(`<!doctype html><html data-ui-mode="next"><body class="dar
             <button type="button" id="openAppearanceStudioFromSettings">打开工作台</button>
         </div>
     </form>
+    <section id="nextUiEmptyState"></section>
 </body></html>`, {
     url: 'https://vcpchat.local/',
     runScripts: 'outside-only'
@@ -41,20 +53,25 @@ Object.assign(globalThis, {
     Event: window.Event,
     CustomEvent: window.CustomEvent,
     MutationObserver: window.MutationObserver,
+    Node: window.Node,
+    HTMLElement: window.HTMLElement,
     requestAnimationFrame: callback => callback(),
     matchMedia: () => ({ matches: false })
 });
 window.requestAnimationFrame = globalThis.requestAnimationFrame;
 window.matchMedia = globalThis.matchMedia;
+await import(`${pathToFileURL(`${process.cwd()}/modules/ui-system/vcp-ui.js`).href}?appearance-studio-test=1`);
 window.globalSettings = {
     uiMode: 'next',
     currentThemeMode: 'dark',
     appearanceProfile: {
         density: 'comfortable', radius: 'medium', typography: 'humanist',
-        fontScale: 'normal', contentWidth: 'full', surface: 'translucent'
+        fontScale: 'normal', contentWidth: 'full', surface: 'translucent',
+        sidebarRowHeight: 46, sidebarAvatarSize: 32, customRadius: 10
     },
     chatPresentationMode: 'bubble',
-    enableWideChatLayout: false
+    enableWideChatLayout: false,
+    showHomeVisualBrand: true
 };
 window.chatAPI = {
     saved: [],
@@ -123,6 +140,16 @@ window.eval(fs.readFileSync('modules/ui-system/appearance-engine.js', 'utf8'));
 window.eval(fs.readFileSync('modules/ui-system/appearance-studio.js', 'utf8'));
 document.dispatchEvent(new CustomEvent('modal-ready', { detail: { modalId: 'globalSettingsModal' } }));
 
+const settingsRowHeight = document.getElementById('appearanceSidebarRowHeight');
+const settingsAvatarSize = document.getElementById('appearanceSidebarAvatarSize');
+settingsRowHeight.value = '38';
+settingsRowHeight.dispatchEvent(new Event('input', { bubbles: true }));
+assert.equal(settingsAvatarSize.value, '24', 'default avatar follows the global-settings row-height slider');
+assert.equal(settingsAvatarSize.max, '34', 'global-settings avatar is bounded by the current row height');
+settingsRowHeight.value = '46';
+settingsRowHeight.dispatchEvent(new Event('input', { bubbles: true }));
+assert.equal(settingsAvatarSize.value, '32');
+
 const studio = window.VCPAppearanceStudio;
 assert.ok(studio);
 assert.equal(studio.PRESETS.focus.themeMode, undefined);
@@ -137,13 +164,62 @@ assert.equal(drawer.querySelector('.vcp-appearance-studio-header'), null);
 assert.ok(drawer.querySelector('.vcp-appearance-theme-section [data-studio-close]'));
 assert.ok(
     [...drawer.querySelectorAll('.vcp-appearance-studio-section')].indexOf(drawer.querySelector('.vcp-appearance-studio-section-presets'))
-    > [...drawer.querySelectorAll('.vcp-appearance-studio-section')].indexOf(drawer.querySelector('[aria-labelledby="vcpAppearanceChatTitle"]')),
-    'quick presets should appear after the detailed appearance controls'
+    < [...drawer.querySelectorAll('.vcp-appearance-studio-section')].indexOf(drawer.querySelector('[aria-labelledby="vcpAppearanceLayoutTitle"]')),
+    'quick presets should appear near the top, before detailed appearance controls'
+);
+assert.deepEqual(
+    [...drawer.querySelectorAll('.vcp-appearance-studio-content > .vcp-appearance-studio-section[aria-labelledby]')]
+        .map(section => section.getAttribute('aria-labelledby')),
+    [
+        'vcpAppearanceThemeTitle',
+        'vcpAppearancePresetsTitle',
+        'vcpAppearanceLayoutTitle',
+        'vcpAppearanceGeometryTitle',
+        'vcpAppearanceReadingTitle',
+        'vcpAppearanceMaterialTitle'
+    ],
+    'appearance settings remain one continuous panel with a predictable reading order'
 );
 assert.match(drawer.textContent, /阅读区布局/);
 assert.match(drawer.textContent, /消息宽度/);
+assert.match(drawer.textContent, /主页视觉文字/);
+assert.match(drawer.textContent, /侧栏列表尺寸/);
+assert.match(drawer.textContent, /头像大小/);
+assert.match(drawer.textContent, /侧栏列表圆角/);
+assert.match(drawer.textContent, /直角 · 0px/);
+assert.match(drawer.textContent, /圆润 · 14px/);
+assert.equal(drawer.querySelectorAll('[data-appearance-key="radius"]').length, 5);
+assert.ok(drawer.querySelector('[data-appearance-key="customRadius"]').classList.contains('vcp-ui-range'), 'studio ranges use the shared VCPUI design');
 assert.match(drawer.textContent, /控制整个聊天阅读区/);
 assert.match(drawer.textContent, /控制单条消息的最大宽度/);
+drawer.querySelector('[data-appearance-key="homeVisual"][data-appearance-value="hidden"]').click();
+await new Promise(resolve => setImmediate(resolve));
+assert.equal(document.documentElement.dataset.vcpHomeVisual, 'hidden');
+const sidebarRowHeight = drawer.querySelector('[data-appearance-key="sidebarRowHeight"]');
+sidebarRowHeight.value = '58';
+sidebarRowHeight.dispatchEvent(new Event('input', { bubbles: true }));
+await new Promise(resolve => setImmediate(resolve));
+assert.match(document.getElementById('vcpAppearanceLayoutVariables').textContent, /--vcp-appearance-sidebar-row-height:58px/);
+assert.equal(drawer.querySelector('[data-appearance-output="sidebarRowHeight"]').textContent, '58px');
+assert.equal(drawer.querySelector('[data-appearance-output="sidebarAvatarSize"]').textContent, '44px');
+const sidebarAvatarSize = drawer.querySelector('[data-appearance-key="sidebarAvatarSize"]');
+sidebarAvatarSize.value = '48';
+sidebarAvatarSize.dispatchEvent(new Event('input', { bubbles: true }));
+await new Promise(resolve => setImmediate(resolve));
+assert.match(document.getElementById('vcpAppearanceLayoutVariables').textContent, /--vcp-appearance-sidebar-avatar-size:48px/);
+const geometryRadius = drawer.querySelector('.vcp-appearance-geometry-radius [data-appearance-key="sidebarRadius"][data-appearance-value="round"]');
+geometryRadius.click();
+await new Promise(resolve => setImmediate(resolve));
+assert.equal(document.documentElement.dataset.vcpSidebarRadius, 'round');
+const customRadius = drawer.querySelector('[data-appearance-key="customRadius"]');
+customRadius.value = '17';
+customRadius.dispatchEvent(new Event('input', { bubbles: true }));
+drawer.querySelector('[data-appearance-key="radius"][data-appearance-value="custom"]').click();
+drawer.querySelector('.vcp-appearance-geometry-radius [data-appearance-key="sidebarRadius"][data-appearance-value="custom"]').click();
+await new Promise(resolve => setImmediate(resolve));
+assert.equal(document.documentElement.dataset.vcpRadius, 'custom');
+assert.equal(document.documentElement.dataset.vcpSidebarRadius, 'custom');
+assert.match(document.getElementById('vcpAppearanceLayoutVariables').textContent, /--vcp-appearance-custom-radius:17px/);
 assert.doesNotMatch(drawer.textContent, /内容宽度/);
 drawer.querySelector('[data-appearance-key="messageWidth"][data-appearance-value="wide"]').click();
 await new Promise(resolve => setImmediate(resolve));
@@ -169,8 +245,13 @@ const detailMenu = drawer.querySelector('[data-radius-details]');
 assert.ok(detailMenu);
 const materialMenu = drawer.querySelector('[data-material-details]');
 assert.ok(materialMenu);
+assert.equal(materialMenu.open, false, 'advanced material parameters are collapsed by default');
 assert.equal(materialMenu.querySelectorAll('input[type="range"]').length, 7);
-assert.equal(materialMenu.querySelectorAll('[data-material-effect]').length, 4);
+assert.equal(materialMenu.querySelectorAll('[data-material-effect]').length, 0, 'material recipes stay outside the advanced disclosure');
+assert.equal(drawer.querySelectorAll('.vcp-appearance-material-overview [data-material-effect]').length, 4);
+assert.equal(drawer.querySelectorAll('.vcp-appearance-material-overview [data-appearance-key="surface"]').length, 3);
+assert.equal(materialMenu.querySelector('[data-appearance-key="surfaceOpacity"]').style.getPropertyValue('--vcp-ui-range-progress'), '60%');
+assert.equal(materialMenu.querySelector('[data-appearance-key="surfaceShadow"]').style.getPropertyValue('--vcp-ui-range-progress'), '18%');
 materialMenu.open = true;
 const blurControl = materialMenu.querySelector('[data-appearance-key="surfaceBlur"]');
 blurControl.value = '32';
@@ -179,13 +260,14 @@ await new Promise(resolve => setImmediate(resolve));
 assert.equal(document.documentElement.dataset.vcpSurface, 'custom');
 assert.equal(drawer.querySelector('[data-material-details-status]').textContent, 'Vibrancy · 自定义');
 assert.equal(drawer.querySelector('[data-material-output="surfaceBlur"]').textContent, '32px');
+assert.equal(blurControl.style.getPropertyValue('--vcp-ui-range-progress'), '80%');
 assert.match(document.getElementById('vcpAppearanceMaterialVariables').textContent, /--vcp-material-blur:32px/);
-materialMenu.querySelector('[data-material-effect="acrylic"]').click();
+drawer.querySelector('[data-material-effect="acrylic"]').click();
 await new Promise(resolve => setImmediate(resolve));
 assert.equal(document.documentElement.dataset.vcpSurfaceEffect, 'acrylic');
 assert.equal(drawer.querySelector('[data-material-details-status]').textContent, 'Acrylic · 自定义');
 assert.equal(drawer.querySelector('[data-material-output="surfaceSaturation"]').textContent, '125%');
-materialMenu.querySelector('[data-material-effect="liquid"]').click();
+drawer.querySelector('[data-material-effect="liquid"]').click();
 await new Promise(resolve => setImmediate(resolve));
 assert.equal(document.documentElement.dataset.vcpSurfaceEffect, 'liquid');
 assert.equal(drawer.querySelector('[data-material-details-status]').textContent, 'Liquid Glass · 自定义');
@@ -195,13 +277,15 @@ await new Promise(resolve => setImmediate(resolve));
 assert.equal(document.documentElement.dataset.vcpSurface, 'translucent');
 assert.equal(drawer.querySelector('[data-material-details-status]').textContent, '主题原样');
 assert.equal(drawer.querySelector('[data-material-output="surfaceBlur"]').textContent, '24px');
+assert.equal(blurControl.style.getPropertyValue('--vcp-ui-range-progress'), '60%');
 assert.equal(detailMenu.querySelector('[data-appearance-key="composerRadius"]').value, 'tuned');
 detailMenu.open = true;
-const sidebarRadius = detailMenu.querySelector('[data-appearance-key="sidebarRadius"]');
-sidebarRadius.value = 'round';
-sidebarRadius.dispatchEvent(new Event('change', { bubbles: true }));
+assert.equal(detailMenu.querySelector('[data-appearance-key="sidebarRadius"]'), null, 'sidebar radius is not duplicated inside detail radius controls');
+const shellRadius = detailMenu.querySelector('[data-appearance-key="shellRadius"]');
+shellRadius.value = 'round';
+shellRadius.dispatchEvent(new Event('change', { bubbles: true }));
 await new Promise(resolve => setImmediate(resolve));
-assert.equal(document.documentElement.dataset.vcpSidebarRadius, 'round');
+assert.equal(document.documentElement.dataset.vcpShellRadius, 'round');
 assert.equal(drawer.querySelector('[data-radius-details-status]').textContent, '1 项自定义');
 drawer.querySelector('[data-appearance-key="density"][data-appearance-value="compact"]').click();
 assert.equal(document.documentElement.dataset.vcpDensity, 'compact');
@@ -220,6 +304,9 @@ assert.equal(document.documentElement.dataset.vcpSidebarRadius, 'tuned');
 assert.equal(document.body.classList.contains('dark-theme'), true);
 assert.equal(document.body.classList.contains('chat-presentation-bubble'), true);
 assert.equal(document.body.classList.contains('chat-wide-layout'), false);
+assert.equal(document.documentElement.dataset.vcpHomeVisual, 'shown');
+assert.match(document.getElementById('vcpAppearanceLayoutVariables').textContent, /--vcp-appearance-sidebar-row-height:46px/);
+assert.match(document.getElementById('vcpAppearanceLayoutVariables').textContent, /--vcp-appearance-sidebar-avatar-size:32px/);
 assert.equal(document.getElementById('vcpAppearanceThemePreview'), null);
 assert.deepEqual(window.chatAPI.appliedColorThemes, []);
 
@@ -240,7 +327,18 @@ studio.setThemeMode('dark', { persist: false, source: 'preset-theme-independence
 drawer.querySelector('[data-appearance-preset="reading"]').click();
 await new Promise(resolve => setImmediate(resolve));
 assert.equal(document.body.classList.contains('dark-theme'), true, 'reading preset must not force light mode');
+drawer.querySelector('[data-appearance-key="uiMode"][data-appearance-value="classic"]').click();
+drawer.querySelector('[data-appearance-key="messageWidth"][data-appearance-value="wide"]').click();
+drawer.querySelector('[data-appearance-key="homeVisual"][data-appearance-value="hidden"]').click();
+await new Promise(resolve => setImmediate(resolve));
 drawer.querySelector('[data-reset-section="layout"]').click();
+await new Promise(resolve => setImmediate(resolve));
+assert.equal(document.documentElement.dataset.uiMode, 'next');
+assert.equal(document.documentElement.dataset.vcpContentWidth, 'full');
+assert.equal(document.body.classList.contains('chat-wide-layout'), false);
+assert.equal(document.documentElement.dataset.vcpHomeVisual, 'shown');
+assert.equal(document.documentElement.dataset.vcpDensity, 'relaxed', 'layout reset must not reset component geometry');
+drawer.querySelector('[data-reset-section="geometry"]').click();
 assert.equal(document.documentElement.dataset.vcpDensity, 'comfortable');
 assert.equal(document.documentElement.dataset.vcpRadius, 'medium');
 drawer.querySelector('[data-reset-all]').click();
@@ -249,6 +347,11 @@ assert.equal(document.body.classList.contains('chat-presentation-bubble'), true)
 drawer.querySelector('[data-appearance-preset="reading"]').click();
 await new Promise(resolve => setImmediate(resolve));
 drawer.querySelector('[data-appearance-key="messageWidth"][data-appearance-value="wide"]').click();
+sidebarRowHeight.value = '54';
+sidebarRowHeight.dispatchEvent(new Event('input', { bubbles: true }));
+sidebarAvatarSize.value = '40';
+sidebarAvatarSize.dispatchEvent(new Event('input', { bubbles: true }));
+drawer.querySelector('[data-appearance-key="homeVisual"][data-appearance-value="hidden"]').click();
 await new Promise(resolve => setImmediate(resolve));
 drawer.querySelector('[data-theme-file-name="themes森林.css"]').click();
 drawer.querySelector('[data-studio-save]').click();
@@ -258,7 +361,16 @@ assert.equal(window.chatAPI.saved[0].uiMode, 'next');
 assert.equal(window.chatAPI.saved[0].appearanceProfile.typography, 'serif');
 assert.equal(window.chatAPI.saved[0].chatPresentationMode, 'immersive');
 assert.equal(window.chatAPI.saved[0].enableWideChatLayout, true);
+assert.equal(window.chatAPI.saved[0].showHomeVisualBrand, false);
+assert.equal(window.chatAPI.saved[0].appearanceProfile.sidebarRowHeight, 54);
+assert.equal(window.chatAPI.saved[0].appearanceProfile.sidebarAvatarSize, 40);
 assert.equal(window.globalSettings.enableWideChatLayout, true);
+assert.equal(window.globalSettings.showHomeVisualBrand, false);
+assert.equal(document.getElementById('showHomeVisualBrand').checked, false);
+assert.equal(document.getElementById('appearanceSidebarRowHeightValue').value, '54px');
+assert.equal(document.getElementById('appearanceSidebarAvatarSizeValue').value, '40px');
+assert.equal(document.getElementById('appearanceSidebarRadius').value, 'tuned');
+assert.equal(document.getElementById('appearanceCustomRadiusValue').value, '14px');
 assert.equal(document.getElementById('chatLayoutModeWide').checked, true);
 assert.equal(window.globalSettings.appearanceProfile.radius, 'round');
 assert.deepEqual(window.chatAPI.appliedColorThemes, ['themes森林.css']);
@@ -293,6 +405,29 @@ assert.equal(drawer.querySelector('[data-appearance-key="uiMode"][data-appearanc
 await studio.close({ rollback: true });
 assert.equal(document.documentElement.dataset.uiMode, 'classic');
 assert.equal(document.documentElement.classList.contains('vcp-appearance-studio-host'), false);
+
+let releasePendingPreview;
+let asyncModeCall = 0;
+window.uiModeManager.applyAsync = async mode => {
+    asyncModeCall += 1;
+    if (asyncModeCall === 1) {
+        await new Promise(resolve => { releasePendingPreview = resolve; });
+        return document.documentElement.dataset.uiMode;
+    }
+    return window.uiModeManager.apply(mode, { cache: false });
+};
+studio.open();
+drawer.querySelector('[data-appearance-key="density"][data-appearance-value="compact"]').click();
+await Promise.resolve();
+const closingDuringPreview = studio.close({ rollback: true });
+await closingDuringPreview;
+releasePendingPreview();
+await new Promise(resolve => setImmediate(resolve));
+assert.equal(
+    document.documentElement.dataset.vcpDensity,
+    'relaxed',
+    'a pending preview must not overwrite the snapshot after the drawer closes'
+);
 
 const source = fs.readFileSync('main.html', 'utf8');
 assert.match(source, /nextUiAccountAppearanceStudioBtn/);

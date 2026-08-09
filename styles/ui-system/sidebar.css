@@ -488,7 +488,7 @@
     html[data-ui-mode="next"] .vcp-ui-scope .next-ui-account-dock {
         position: relative;
         width: calc(100% - var(--vcp-ui-sidebar-list-gutter) - var(--vcp-ui-sidebar-list-gutter));
-        min-height: 46px;
+        min-height: var(--vcp-ui-sidebar-row-height);
         margin: var(--vcp-ui-space-2) var(--vcp-ui-sidebar-list-gutter) 0;
         display: flex;
         align-items: center;
@@ -508,7 +508,7 @@
     }
 
     html[data-ui-mode="next"] .vcp-ui-scope .next-ui-account-trigger {
-        height: 46px;
+        height: var(--vcp-ui-sidebar-row-height);
         min-width: 0;
         padding: 0 var(--vcp-ui-space-2) 0 var(--vcp-ui-sidebar-account-left-padding);
         display: flex;
@@ -527,9 +527,9 @@
     }
 
     html[data-ui-mode="next"] .vcp-ui-scope #nextUiAccountAvatar {
-        width: var(--vcp-ui-control-md);
-        height: var(--vcp-ui-control-md);
-        flex: 0 0 var(--vcp-ui-control-md);
+        width: var(--vcp-ui-sidebar-avatar-size);
+        height: var(--vcp-ui-sidebar-avatar-size);
+        flex: 0 0 var(--vcp-ui-sidebar-avatar-size);
         border: 1px solid var(--vcp-ui-border);
         border-radius: var(--vcp-ui-radius-full);
         background: var(--vcp-ui-bg-2);
@@ -558,12 +558,12 @@
     }
 
     html[data-ui-mode="next"] .vcp-ui-scope .next-ui-account-settings {
-        width: 46px;
-        height: 46px;
+        width: var(--vcp-ui-sidebar-row-height);
+        height: var(--vcp-ui-sidebar-row-height);
         padding: 0;
         display: grid;
         place-items: center;
-        flex: 0 0 46px;
+        flex: 0 0 var(--vcp-ui-sidebar-row-height);
         border-radius: var(--vcp-ui-radius-md);
     }
 
@@ -577,7 +577,10 @@
         right: 0;
         bottom: calc(100% + var(--vcp-ui-space-2));
         left: 0;
+        max-height: min(70vh, 560px);
         padding: var(--vcp-ui-space-2);
+        overflow-y: auto;
+        overscroll-behavior: contain;
         border: 1px solid var(--vcp-ui-border);
         border-radius: var(--vcp-ui-radius-card);
         color: var(--vcp-ui-text-1);
@@ -593,7 +596,7 @@
     html[data-ui-mode="next"] .vcp-ui-scope .next-ui-account-menu-item,
     html[data-ui-mode="next"] .vcp-ui-scope .next-ui-account-submenu-item {
         width: 100%;
-        min-height: var(--vcp-ui-control-md);
+        min-height: var(--vcp-ui-sidebar-row-height);
         padding: 0 var(--vcp-ui-space-2);
         display: flex;
         align-items: center;

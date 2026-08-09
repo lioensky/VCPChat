@@ -72,6 +72,7 @@ window.chatAPI = {
     disconnectVCPLog() {},
 };
 window.uiModeManager = { apply() {} };
+window.VCPAppearance = { normalize: profile => profile, commit: profile => profile };
 window.normalizeChatPresentationMode = (mode) => (['bubble', 'panel', 'immersive'].includes(mode) ? mode : 'bubble');
 
 let currentSettings = {};
@@ -116,6 +117,14 @@ const populateForm = (settings) => {
     set('vcpLogUrl', settings.vcpLogUrl || '');
     set('vcpLogKey', settings.vcpLogKey || '');
     check('enableNextUi', settings.uiMode === 'next');
+    check('appearanceUiModeClassic', settings.uiMode !== 'next');
+    check('appearanceUiModeNext', settings.uiMode === 'next');
+    check('showHomeVisualBrand', settings.showHomeVisualBrand !== false);
+    set('appearanceSidebarRowHeight', settings.appearanceProfile?.sidebarRowHeight ?? 46);
+    set('appearanceSidebarAvatarSize', settings.appearanceProfile?.sidebarAvatarSize ?? 32);
+    set('appearanceSidebarRadius', settings.appearanceProfile?.sidebarRadius ?? 'tuned');
+    check(`appearanceSidebarRadiusChoice-${settings.appearanceProfile?.sidebarRadius ?? 'tuned'}`, true);
+    set('appearanceCustomRadius', settings.appearanceProfile?.customRadius ?? 10);
     set('minChunkBufferSize', settings.minChunkBufferSize ?? 16);
     set('smoothStreamIntervalMs', settings.smoothStreamIntervalMs ?? 100);
     set('chatFontPreset', settings.chatFontPreset || 'system');
@@ -151,6 +160,13 @@ const populateForm = (settings) => {
 
 const form = document.getElementById('globalSettingsForm');
 assert.ok(form, 'globalSettingsForm must be present in the cloned template');
+assert.ok(document.getElementById('appearanceSettingsWorkbenchCard').nextElementSibling.matches('.appearance-layout-selector'), 'layout selector follows workbench card');
+assert.equal(document.querySelectorAll('input[name="appearanceUiMode"]').length, 2, 'Classic and Next layout cards exist');
+assert.ok(document.getElementById('showHomeVisualBrand'), 'home visual toggle exists');
+assert.ok(document.getElementById('appearanceSidebarRowHeight'), 'navigation row height range exists');
+assert.ok(document.getElementById('appearanceSidebarAvatarSize'), 'sidebar avatar size range exists');
+assert.ok(document.getElementById('appearanceSidebarRadius'), 'sidebar item radius control exists');
+assert.ok(document.getElementById('appearanceCustomRadius'), 'custom radius range exists');
 
 // ---- 0. SettingsShell build (Classic and Next home layouts) ----
 window.VCPUISettingsBridge.refresh();
@@ -351,5 +367,30 @@ for (const category of categories) {
 
     console.log(`  [PASS] ${category.name} (${category.key}): load -> modify -> save -> fail -> reopen-restore`);
 }
+
+// Prominent appearance controls use their visible inputs as the persistence source.
+currentSettings = { uiMode: 'next', showHomeVisualBrand: false, appearanceProfile: { sidebarRowHeight: 50, sidebarAvatarSize: 36, sidebarRadius: 'medium', customRadius: 11 } };
+populateForm(currentSettings);
+assert.equal(document.getElementById('appearanceUiModeNext').checked, true, 'Next layout card reflects persisted mode');
+assert.equal(document.getElementById('enableNextUi').checked, true, 'legacy mode checkbox stays synchronized');
+assert.equal(document.getElementById('showHomeVisualBrand').checked, false, 'home visual toggle reflects persisted false');
+assert.equal(document.getElementById('appearanceSidebarRowHeight').value, '50', 'navigation row height reflects persisted value');
+assert.equal(document.getElementById('appearanceSidebarAvatarSize').value, '36', 'sidebar avatar size reflects persisted value');
+assert.equal(document.getElementById('appearanceSidebarRadius').value, 'medium', 'sidebar item radius reflects persisted value');
+assert.equal(document.getElementById('appearanceCustomRadius').value, '11', 'custom radius reflects persisted value');
+document.getElementById('appearanceUiModeClassic').checked = true;
+document.getElementById('showHomeVisualBrand').checked = true;
+document.getElementById('appearanceSidebarRowHeight').value = '60';
+document.getElementById('appearanceSidebarAvatarSize').value = '44';
+document.getElementById('appearanceSidebarRadius').value = 'round';
+document.getElementById('appearanceSidebarRadiusChoice-round').checked = true;
+document.getElementById('appearanceCustomRadius').value = '18';
+await submitForm();
+assert.equal(savedSettings.last.uiMode, 'classic', 'visible Classic card is authoritative when saving');
+assert.equal(savedSettings.last.showHomeVisualBrand, true, 'home visual toggle persists');
+assert.equal(savedSettings.last.appearanceProfile.sidebarRowHeight, 60, 'navigation row height persists');
+assert.equal(savedSettings.last.appearanceProfile.sidebarAvatarSize, 44, 'sidebar avatar size persists');
+assert.equal(savedSettings.last.appearanceProfile.sidebarRadius, 'round', 'sidebar item radius persists');
+assert.equal(savedSettings.last.appearanceProfile.customRadius, 18, 'custom radius persists');
 
 console.log('\nSettings WA persistence gate passed (8/8 categories + shell nav/search interactions).');

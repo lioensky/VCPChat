@@ -1278,7 +1278,35 @@
                                         <span>打开工作台</span>
                                     </button>
                                 </div>
-                                <!-- Compatibility field: the visible Classic/Next layout control lives in Appearance Studio. -->
+                                <fieldset class="appearance-layout-selector" aria-labelledby="appearanceLayoutSelectorTitle">
+                                    <legend id="appearanceLayoutSelectorTitle">主页布局</legend>
+                                    <div class="appearance-layout-options">
+                                        <label class="appearance-layout-option" for="appearanceUiModeClassic">
+                                            <input type="radio" id="appearanceUiModeClassic" name="appearanceUiMode" value="classic">
+                                            <span class="appearance-layout-preview classic" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+                                            <span class="appearance-layout-copy"><strong>经典布局</strong><small>原版标题栏与三栏结构</small></span>
+                                            <span class="vcp-ui-icon appearance-layout-check" aria-hidden="true">check</span>
+                                        </label>
+                                        <label class="appearance-layout-option" for="appearanceUiModeNext">
+                                            <input type="radio" id="appearanceUiModeNext" name="appearanceUiMode" value="next">
+                                            <span class="appearance-layout-preview next" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+                                            <span class="appearance-layout-copy"><strong>Next 布局</strong><small>标签顶栏与圆角内容区</small></span>
+                                            <span class="vcp-ui-icon appearance-layout-check" aria-hidden="true">check</span>
+                                        </label>
+                                    </div>
+                                    <p class="appearance-layout-helper">切换主页外壳，不会改变主题、壁纸或聊天内容。</p>
+                                </fieldset>
+                                <div class="appearance-home-visual-setting">
+                                    <span class="appearance-home-visual-copy">
+                                        <strong>主页视觉文字</strong>
+                                        <small>在空会话中显示 VCPCHAT 标识与寄语</small>
+                                    </span>
+                                    <label class="switch" aria-label="显示主页视觉文字">
+                                        <input type="checkbox" id="showHomeVisualBrand" name="showHomeVisualBrand" checked>
+                                        <span class="slider round"></span>
+                                    </label>
+                                </div>
+                                <!-- Compatibility field retained for integrations that still read the legacy checkbox. -->
                                 <input type="checkbox" id="enableNextUi" name="enableNextUi" hidden>
                                 <div class="settings-subsection settings-subsection-new appearance-settings-section">
                                     <div class="settings-subsection-heading">
@@ -1297,10 +1325,11 @@
                                         <label class="settings-form-group" for="appearanceRadius">
                                             <span>圆角</span>
                                             <select id="appearanceRadius" name="appearanceRadius">
-                                                <option value="square">直角</option>
-                                                <option value="small">小圆角</option>
-                                                <option value="medium">中圆角</option>
-                                                <option value="round">大圆角</option>
+                                                <option value="square">直角 · 0px</option>
+                                                <option value="small">小圆角 · 6px 基准</option>
+                                                <option value="medium">中圆角 · 10px 基准</option>
+                                                <option value="round">大圆角 · 14px 基准</option>
+                                                <option value="custom">自定义</option>
                                             </select>
                                         </label>
                                         <label class="settings-form-group" for="appearanceTypography">
@@ -1335,6 +1364,52 @@
                                             </select>
                                         </label>
                                     </div>
+                                </div>
+                                <div class="settings-subsection appearance-sidebar-geometry-section">
+                                    <div class="settings-subsection-heading">
+                                        <div class="settings-subsection-title">侧栏列表尺寸</div>
+                                        <p class="settings-subsection-description">统一控制助手、话题、创建入口与账户菜单的尺寸。</p>
+                                    </div>
+                                    <div class="appearance-sidebar-geometry-controls">
+                                        <label class="settings-form-group appearance-geometry-control" for="appearanceSidebarRowHeight">
+                                            <span class="appearance-range-heading">
+                                                <span>列表项高度</span>
+                                                <output id="appearanceSidebarRowHeightValue" for="appearanceSidebarRowHeight">46px</output>
+                                            </span>
+                                            <input type="range" id="appearanceSidebarRowHeight" name="appearanceSidebarRowHeight"
+                                                min="38" max="64" step="1" value="46">
+                                        </label>
+                                        <label class="settings-form-group appearance-geometry-control" for="appearanceSidebarAvatarSize">
+                                            <span class="appearance-range-heading">
+                                                <span>头像大小</span>
+                                                <output id="appearanceSidebarAvatarSizeValue" for="appearanceSidebarAvatarSize">32px</output>
+                                            </span>
+                                            <input type="range" id="appearanceSidebarAvatarSize" name="appearanceSidebarAvatarSize"
+                                                min="20" max="52" step="1" value="32">
+                                        </label>
+                                        <div class="settings-form-group appearance-geometry-control appearance-radius-choice-control">
+                                            <span>列表项圆角</span>
+                                            <div class="appearance-radius-choice-grid" role="radiogroup" aria-label="列表项圆角">
+                                                <label><input id="appearanceSidebarRadiusChoice-tuned" type="radio" name="appearanceSidebarRadiusChoice" value="tuned"><span>原设计<small>10px</small></span></label>
+                                                <label><input id="appearanceSidebarRadiusChoice-follow" type="radio" name="appearanceSidebarRadiusChoice" value="follow"><span>跟随全局<small>自动</small></span></label>
+                                                <label><input id="appearanceSidebarRadiusChoice-square" type="radio" name="appearanceSidebarRadiusChoice" value="square"><span>直角<small>0px</small></span></label>
+                                                <label><input id="appearanceSidebarRadiusChoice-small" type="radio" name="appearanceSidebarRadiusChoice" value="small"><span>小圆角<small>6px</small></span></label>
+                                                <label><input id="appearanceSidebarRadiusChoice-medium" type="radio" name="appearanceSidebarRadiusChoice" value="medium"><span>中圆角<small>10px</small></span></label>
+                                                <label><input id="appearanceSidebarRadiusChoice-round" type="radio" name="appearanceSidebarRadiusChoice" value="round"><span>大圆角<small>14px</small></span></label>
+                                                <label><input id="appearanceSidebarRadiusChoice-custom" type="radio" name="appearanceSidebarRadiusChoice" value="custom"><span>自定义<small>使用下方数值</small></span></label>
+                                            </div>
+                                            <input type="hidden" id="appearanceSidebarRadius" name="appearanceSidebarRadius" value="tuned">
+                                        </div>
+                                        <label class="settings-form-group appearance-geometry-control" for="appearanceCustomRadius">
+                                            <span class="appearance-range-heading">
+                                                <span>自定义圆角值</span>
+                                                <output id="appearanceCustomRadiusValue" for="appearanceCustomRadius">10px</output>
+                                            </span>
+                                            <input type="range" id="appearanceCustomRadius" name="appearanceCustomRadius"
+                                                min="0" max="32" step="1" value="10">
+                                        </label>
+                                    </div>
+                                    <small class="appearance-geometry-helper">头像最大值会随当前列表项高度自动限制，避免超出圆角边界。</small>
                                 </div>
                                 <div class="settings-subsection">
                                     <div class="settings-subsection-heading">

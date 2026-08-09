@@ -130,8 +130,8 @@
         --vcp-ui-message-max-width-wide-notifications: 96%;
         --vcp-ui-message-code-height: 420px;
         --vcp-ui-message-media-max: 360px;
-        --vcp-ui-sidebar-row-height: 46px;
-        --vcp-ui-sidebar-avatar-size: 32px;
+        --vcp-ui-sidebar-row-height: var(--vcp-appearance-sidebar-row-height, 46px);
+        --vcp-ui-sidebar-avatar-size: var(--vcp-appearance-sidebar-avatar-size, clamp(24px, calc(var(--vcp-ui-sidebar-row-height) - 14px), 44px));
         --vcp-ui-sidebar-font-size: 14.5px;
         --vcp-ui-sidebar-item-radius: 10px;
         --vcp-ui-sidebar-list-gutter: 8px;

@@ -43,18 +43,21 @@ class SettingsValidator {
         const appearanceDefaults = defaultSettings.appearanceProfile;
         const appearanceOptions = {
             density: new Set(['compact', 'comfortable', 'relaxed']),
-            radius: new Set(['square', 'small', 'medium', 'round']),
+            radius: new Set(['square', 'small', 'medium', 'round', 'custom']),
             typography: new Set(['system', 'humanist', 'serif']),
             fontScale: new Set(['small', 'normal', 'large']),
             contentWidth: new Set(['full', 'centered']),
             surface: new Set(['solid', 'translucent', 'custom']),
             surfaceEffect: new Set(['vibrancy', 'mica', 'acrylic', 'liquid']),
-            shellRadius: new Set(['tuned', 'follow', 'square', 'small', 'medium', 'round']),
-            composerRadius: new Set(['tuned', 'follow', 'square', 'small', 'medium', 'round']),
-            sidebarRadius: new Set(['tuned', 'follow', 'square', 'small', 'medium', 'round']),
-            cardRadius: new Set(['tuned', 'follow', 'square', 'small', 'medium', 'round'])
+            shellRadius: new Set(['tuned', 'follow', 'square', 'small', 'medium', 'round', 'custom']),
+            composerRadius: new Set(['tuned', 'follow', 'square', 'small', 'medium', 'round', 'custom']),
+            sidebarRadius: new Set(['tuned', 'follow', 'square', 'small', 'medium', 'round', 'custom']),
+            cardRadius: new Set(['tuned', 'follow', 'square', 'small', 'medium', 'round', 'custom'])
         };
         const appearanceRanges = {
+            sidebarRowHeight: { min: 38, max: 64 },
+            sidebarAvatarSize: { min: 20, max: 52 },
+            customRadius: { min: 0, max: 32 },
             surfaceOpacity: { min: 20, max: 100 },
             surfaceBlur: { min: 0, max: 40 },
             surfaceSaturation: { min: 50, max: 180 },
@@ -81,6 +84,12 @@ class SettingsValidator {
                     : fallback;
                 if (normalizedAppearance[key] !== validated.appearanceProfile[key]) hasIssues = true;
             }
+            const safeAvatarSize = Math.min(
+                normalizedAppearance.sidebarAvatarSize,
+                normalizedAppearance.sidebarRowHeight - 4
+            );
+            if (safeAvatarSize !== normalizedAppearance.sidebarAvatarSize) hasIssues = true;
+            normalizedAppearance.sidebarAvatarSize = safeAvatarSize;
             validated.appearanceProfile = normalizedAppearance;
         }
 
@@ -142,12 +151,16 @@ class SettingsManager extends EventEmitter {
             enableAgentBubbleTheme: false,
             enableSmoothStreaming: false,
             uiMode: 'classic',
+            showHomeVisualBrand: true,
             appearanceProfile: {
                 density: 'comfortable',
                 radius: 'small',
                 typography: 'system',
                 fontScale: 'normal',
                 contentWidth: 'full',
+                sidebarRowHeight: 46,
+                sidebarAvatarSize: 32,
+                customRadius: 10,
                 surface: 'translucent',
                 surfaceEffect: 'vibrancy',
                 surfaceOpacity: 68,
