@@ -6,7 +6,6 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'self' data: blob: file:; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: file:; font-src 'self' data: file:; connect-src 'self' blob: data:;">
     <title>VCP Scriptorium · 共笔文坊</title>
     <link rel="stylesheet" href="../styles/themes.css">
-    <link rel="stylesheet" href="../node_modules/superdoc/dist/style.css">
     <link rel="stylesheet" href="scriptorium.css">
 </head>
 <body>
@@ -54,9 +53,13 @@
                 <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
                 <span>新稿</span>
             </button>
-            <button id="open-btn" class="deck-button" title="打开 DOCX 文档">
+            <button id="open-btn" class="deck-button" title="打开 VDOCX 或 VPPTX 工程">
                 <svg viewBox="0 0 24 24"><path d="M3 7h6l2 2h10v10H3z"/><path d="m3 19 3-7h15"/></svg>
                 <span>打开</span>
+            </button>
+            <button id="import-btn" class="deck-button" title="导入 HTML、Markdown、TXT、RTF 或 DOCX">
+                <svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 17v3h16v-3"/></svg>
+                <span>导入</span>
             </button>
             <button id="save-btn" class="deck-button" title="保存 Ctrl+S">
                 <svg viewBox="0 0 24 24"><path d="M5 3h12l2 2v16H5z"/><path d="M8 3v6h8V3M8 21v-8h8v8"/></svg>
@@ -64,6 +67,20 @@
             </button>
             <button id="save-as-btn" class="deck-button compact" title="另存为">
                 <svg viewBox="0 0 24 24"><path d="M12 16v-9M8 11l4-4 4 4"/><path d="M5 15v5h14v-5"/></svg>
+            </button>
+        </div>
+
+        <span class="deck-divider"></span>
+
+        <div class="command-cluster surface-cluster" role="group" aria-label="文档工作面">
+            <button id="render-mode-btn" class="deck-button surface-mode active" type="button" aria-pressed="true">
+                <span>渲染编辑</span>
+            </button>
+            <button id="html-mode-btn" class="deck-button surface-mode" type="button" aria-pressed="false">
+                <span>HTML 源码</span>
+            </button>
+            <button id="css-mode-btn" class="deck-button surface-mode" type="button" aria-pressed="false">
+                <span>CSS 源码</span>
             </button>
         </div>
 
@@ -154,6 +171,20 @@
         <span class="deck-divider"></span>
 
         <div class="command-cluster insert-cluster">
+            <label class="control-shell block-type-shell" title="插入结构块">
+                <span class="sr-only">结构块类型</span>
+                <select id="block-type-select" aria-label="结构块类型">
+                    <option value="paragraph">裸文本</option>
+                    <option value="heading-1">一级标题</option>
+                    <option value="heading-2">二级标题</option>
+                    <option value="heading-3">三级标题</option>
+                    <option value="blockquote">引文</option>
+                    <option value="table">表格</option>
+                </select>
+            </label>
+            <button id="insert-block-btn" class="deck-button compact" type="button" title="在当前块后插入">
+                <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/><path d="M4 3h16M4 21h16"/></svg>
+            </button>
             <button class="deck-button compact" data-command="image" title="插入图片">
                 <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m4 18 5-5 4 4 3-3 4 4"/></svg>
             </button>
@@ -197,26 +228,58 @@
             </div>
         </aside>
 
+        <div id="outline-resizer" class="panel-resizer panel-resizer-left" role="separator" aria-orientation="vertical" aria-label="调整篇章栏宽度"></div>
+
         <section class="writing-chamber">
             <div class="chamber-aura" aria-hidden="true"></div>
             <div id="welcome-state" class="welcome-state">
                 <div class="welcome-mark">S</div>
                 <p class="welcome-kicker">A document is a place, not a file.</p>
                 <h1>让文字成为<br><em>共同抵达的地方</em></h1>
-                <p class="welcome-description">载入一份真实的 DOCX，或从一张空白纸开始。排版、分页、表格与图像都留在文档本身。</p>
+                <p class="welcome-description">人类执笔思想与文化，AI 面向源码完成润色与排版。以 HTML/CSS 共建一份真正属于我们的文档。</p>
                 <div class="welcome-actions">
                     <button id="welcome-new-btn" class="welcome-primary">开始新稿</button>
                     <button id="welcome-open-btn" class="welcome-secondary">打开文档</button>
                 </div>
                 <div id="recent-documents" class="recent-documents" aria-label="最近文档"></div>
             </div>
-            <div id="superdoc-host" class="superdoc-host" hidden></div>
+            <div id="document-workspace" class="document-workspace" hidden>
+                <div id="render-host" class="render-host" aria-label="渲染后文档编辑面">
+                    <div id="page-stream" class="page-stream"></div>
+                </div>
+                <section id="source-host" class="source-host" hidden aria-label="文档源码编辑面">
+                    <header class="source-header">
+                        <div>
+                            <strong id="source-title">HTML 源码</strong>
+                            <span id="source-description">AI 始终以此源码为文档真相</span>
+                        </div>
+                        <div class="source-tools">
+                            <span id="source-diagnostics" class="source-diagnostics">等待检查</span>
+                            <label class="source-wrap-tool" title="仅改变显示，不修改源码内容">
+                                <input id="source-wrap-toggle" type="checkbox" checked>
+                                <span>自动换行</span>
+                            </label>
+                            <label class="source-color-tool" title="选择或替换颜色">
+                                <span id="source-color-swatch" class="source-color-swatch"></span>
+                                <input id="source-color-input" type="color" value="#8b5e34" aria-label="源码颜色选择器">
+                            </label>
+                            <button id="format-source-btn" type="button">格式化</button>
+                            <button id="apply-source-btn" type="button">应用到渲染</button>
+                        </div>
+                    </header>
+                    <div class="source-editor-shell">
+                        <textarea id="source-editor" spellcheck="false" autocomplete="off" aria-label="文档源码"></textarea>
+                    </div>
+                </section>
+            </div>
             <div id="loading-state" class="loading-state" hidden>
                 <span class="loading-glyph"></span>
                 <strong>正在展开纸页</strong>
                 <small>解析文档结构、字体与分页…</small>
             </div>
         </section>
+
+        <div id="lineage-resizer" class="panel-resizer panel-resizer-right" role="separator" aria-orientation="vertical" aria-label="调整文脉栏宽度"></div>
 
         <aside id="lineage-panel" class="lineage-panel">
             <div class="lineage-header">
@@ -304,6 +367,45 @@
             <span>A</span>
             <input id="selection-text-color" type="color" value="#1b211f" aria-label="快捷文字颜色">
         </label>
+        <span class="selection-format-divider"></span>
+        <button id="advanced-style-btn" type="button" class="advanced-style-trigger" title="应用高级样式">高级样式</button>
+    </div>
+
+    <div id="style-library-dialog" class="style-library-backdrop" role="dialog" aria-modal="true" aria-labelledby="style-library-title" hidden>
+        <section class="style-library-dialog">
+            <header class="style-library-header">
+                <div>
+                    <span class="dialog-kicker">VCP ADVANCED STYLE LIBRARY</span>
+                    <h2 id="style-library-title">高级样式库</h2>
+                    <p>为选中文字或段落应用可移植的 HTML/CSS 样式配方。</p>
+                </div>
+                <button id="style-library-close-btn" type="button" class="style-library-close" aria-label="关闭">×</button>
+            </header>
+            <div class="style-library-toolbar">
+                <input id="style-search-input" type="search" placeholder="搜索名称、分类或标签" autocomplete="off">
+                <select id="style-category-select" aria-label="高级样式分类">
+                    <option value="">全部分类</option>
+                </select>
+                <button id="style-import-btn" type="button">导入样式包</button>
+                <button id="style-export-btn" type="button">导出样式包</button>
+                <input id="style-import-input" type="file" accept=".json,.vstyle.json,application/json" hidden>
+            </div>
+            <div class="style-library-body">
+                <div id="style-library-list" class="style-library-list" role="listbox" aria-label="高级样式"></div>
+                <aside class="style-preview-panel">
+                    <div class="style-preview-meta">
+                        <span id="style-preview-category">选择样式</span>
+                        <h3 id="style-preview-name">预览</h3>
+                        <p id="style-preview-description">样式将在隔离预览画布中呈现，不会修改文档。</p>
+                    </div>
+                    <iframe id="style-preview-frame" class="style-preview-frame" sandbox="" title="高级样式安全预览"></iframe>
+                    <div class="style-preview-actions">
+                        <span id="style-preview-targets">适用：—</span>
+                        <button id="style-apply-btn" type="button" disabled>应用到选区</button>
+                    </div>
+                </aside>
+            </div>
+        </section>
     </div>
 
     <div id="unsaved-dialog" class="dialog-backdrop" role="dialog" aria-modal="true" aria-labelledby="unsaved-dialog-title" hidden>
@@ -314,7 +416,7 @@
             <span class="dialog-kicker">UNSAVED MANUSCRIPT</span>
             <h2 id="unsaved-dialog-title">墨迹尚未落定</h2>
             <p id="unsaved-dialog-message">当前文稿仍有未保存修改。保存后继续，或舍弃这些修改。</p>
-            <div class="unsaved-document-name" id="unsaved-document-name">未命名文稿.docx</div>
+            <div class="unsaved-document-name" id="unsaved-document-name">未命名文稿.vdocx</div>
             <div class="dialog-actions unsaved-dialog-actions">
                 <button type="button" id="unsaved-cancel-btn">留在此处</button>
                 <button type="button" id="unsaved-discard-btn" class="dialog-danger">舍弃修改</button>
@@ -327,7 +429,7 @@
         <form class="checkpoint-dialog">
             <span class="dialog-kicker">CREATE CHECKPOINT</span>
             <h2>为这一刻留下名字</h2>
-            <p>刻点会记录当前 DOCX 的完整状态，成为文脉中的一个可回望节点。</p>
+            <p>刻点会记录当前 VDOCX 源码与排版状态，成为人机共建文脉中的可回望节点。</p>
             <input id="checkpoint-name-input" type="text" maxlength="80" placeholder="例如：第二章结构定稿" autocomplete="off">
             <textarea id="checkpoint-note-input" maxlength="240" placeholder="可选：记下这一版发生了什么"></textarea>
             <div class="dialog-actions">
@@ -337,7 +439,18 @@
         </form>
     </div>
 
-    <script src="../node_modules/superdoc/dist/superdoc.min.js"></script>
+    <link rel="stylesheet" href="../node_modules/codemirror/lib/codemirror.css">
+    <link rel="stylesheet" href="../node_modules/codemirror/theme/material-darker.css">
+    <script src="../node_modules/codemirror/lib/codemirror.js"></script>
+    <script src="../node_modules/codemirror/mode/xml/xml.js"></script>
+    <script src="../node_modules/codemirror/mode/css/css.js"></script>
+    <script src="../node_modules/codemirror/mode/javascript/javascript.js"></script>
+    <script src="../node_modules/codemirror/mode/htmlmixed/htmlmixed.js"></script>
+    <script src="../node_modules/codemirror/addon/edit/closebrackets.js"></script>
+    <script src="../node_modules/codemirror/addon/edit/closetag.js"></script>
+    <script src="../vendor/katex.min.js"></script>
+    <script src="vdoc-core.js"></script>
+    <script src="vdoc-style-library.js"></script>
     <script src="scriptorium.js"></script>
 </body>
 </html>
