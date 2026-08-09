@@ -8,12 +8,20 @@ const DEFAULT_SLIDE_WIDTH = 12192000;
 const DEFAULT_SLIDE_HEIGHT = 6858000;
 
 function decodeXml(value) {
+    // XML 基础实体必须最后解码 &，否则像 &lt; 这样的文本会被
+    // 意外二次解释为标签字符。数字实体同样常见于 Office 生成的文本。
     return String(value || '')
-        .replace(/</g, '<')
-        .replace(/>/g, '>')
-        .replace(/"/g, '"')
-        .replace(/'/g, "'")
-        .replace(/&/g, '&');
+        .replace(/&#x([0-9a-f]+);/gi, (_match, hex) =>
+            String.fromCodePoint(Number.parseInt(hex, 16))
+        )
+        .replace(/&#(\d+);/g, (_match, decimal) =>
+            String.fromCodePoint(Number.parseInt(decimal, 10))
+        )
+        .replace(/</gi, '<')
+        .replace(/>/gi, '>')
+        .replace(/"/gi, '"')
+        .replace(/'/gi, "'")
+        .replace(/&/gi, '&');
 }
 
 function escapeHtml(value) {

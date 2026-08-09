@@ -425,6 +425,29 @@ app.whenReady().then(async () => {
         const activeAfterReflow = root.activeElement;
         const pageCountAfterShiftEnter = root.querySelectorAll('.vdoc-page').length;
 
+        const firstBlock = root.querySelector(
+            '.vdoc-flow-runtime [data-vdoc-block][data-vdoc-removable="true"]'
+        );
+        const firstBlockText = firstBlock?.textContent || '';
+        const blocksBeforePrepend = countDocumentBlocks();
+        if (firstBlock) {
+            const startRange = document.createRange();
+            startRange.selectNodeContents(firstBlock);
+            startRange.collapse(true);
+            selection.removeAllRanges();
+            selection.addRange(startRange);
+            firstBlock.focus();
+            firstBlock.dispatchEvent(new KeyboardEvent('keydown', {
+                key: 'Enter',
+                bubbles: true,
+                composed: true,
+                cancelable: true
+            }));
+        }
+        await new Promise((resolve) => requestAnimationFrame(resolve));
+        const prependedBlock = firstBlock?.previousElementSibling;
+        const blocksAfterPrepend = countDocumentBlocks();
+
         return {
             available: true,
             enterKeepsBlockCount: blocksAfterEnter === blocksBefore,
@@ -437,6 +460,12 @@ app.whenReady().then(async () => {
                 activeAfterReflow?.matches?.('[data-vdoc-text]')
                 && !(activeAfterReflow.textContent || '').trim()
             ),
+            enterAtStartPrependsBlock: Boolean(
+                prependedBlock?.matches?.('[data-vdoc-block]')
+                && blocksAfterPrepend === blocksBeforePrepend + 1
+            ),
+            prependPreservesOriginalBlock: firstBlock?.textContent === firstBlockText,
+            prependedBlockReceivesFocus: root.activeElement === prependedBlock,
             enterScrollStable: Math.abs(scrollAfterEnter - scrollBefore) < 80,
             shiftEnterScrollStable: Math.abs(scrollAfterShiftEnter - scrollAfterEnter) < 80
         };
@@ -613,6 +642,9 @@ app.whenReady().then(async () => {
         || !snapshot.enterInteraction.continuousEditorStaysUnpaginated
         || !snapshot.enterInteraction.shiftEnterPreservesContinuousRuntime
         || !snapshot.enterInteraction.shiftEnterRestoresFocus
+        || !snapshot.enterInteraction.enterAtStartPrependsBlock
+        || !snapshot.enterInteraction.prependPreservesOriginalBlock
+        || !snapshot.enterInteraction.prependedBlockReceivesFocus
         || !snapshot.enterInteraction.enterScrollStable
         || !snapshot.enterInteraction.shiftEnterScrollStable
         || snapshot.blockInteraction.initialContainers < 1

@@ -66,6 +66,72 @@ async function createMinimalDocx() {
     return zip.generateAsync({ type: 'nodebuffer' });
 }
 
+async function createMinimalPptx() {
+    const zip = new JSZip();
+    zip.file('[Content_Types].xml', `<?xml version="1.0" encoding="UTF-8"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+    <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+    <Default Extension="xml" ContentType="application/xml"/>
+    <Default Extension="png" ContentType="image/png"/>
+    <Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/>
+    <Override PartName="/ppt/slides/slide1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>
+    <Override PartName="/ppt/slides/slide2.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>
+</Types>`);
+    zip.folder('ppt').file('presentation.xml', `<?xml version="1.0" encoding="UTF-8"?>
+<p:presentation xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+    xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+    xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
+    <p:sldIdLst>
+        <p:sldId id="256" r:id="rId2"/>
+        <p:sldId id="257" r:id="rId1"/>
+    </p:sldIdLst>
+    <p:sldSz cx="12192000" cy="6858000"/>
+</p:presentation>`);
+    zip.folder('ppt').folder('_rels').file('presentation.xml.rels', `<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+    <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/slide1.xml"/>
+    <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/slide2.xml"/>
+</Relationships>`);
+
+    const slide = (title, includePicture, includeAnimation) => `<?xml version="1.0" encoding="UTF-8"?>
+<p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+    xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+    xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
+    <p:cSld><p:spTree>
+        <p:nvGrpSpPr/><p:grpSpPr/>
+        <p:sp>
+            <p:nvSpPr><p:cNvPr id="2" name="${title}"/><p:cNvSpPr/><p:nvPr><p:ph type="title"/></p:nvPr></p:nvSpPr>
+            <p:spPr>
+                <a:xfrm rot="900000"><a:off x="914400" y="685800"/><a:ext cx="4572000" cy="914400"/></a:xfrm>
+                <a:solidFill><a:srgbClr val="DDEEFF"/></a:solidFill>
+                <a:ln w="12700"><a:solidFill><a:srgbClr val="112233"/></a:solidFill></a:ln>
+            </p:spPr>
+            <p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:pPr algn="ctr"/>
+                <a:r><a:rPr sz="2400" b="1"><a:solidFill><a:srgbClr val="445566"/></a:solidFill><a:latin typeface="Arial"/></a:rPr><a:t>${title} & 共创</a:t></a:r>
+            </a:p></p:txBody>
+        </p:sp>
+        ${includePicture ? `<p:pic>
+            <p:nvPicPr><p:cNvPr id="3" name="示例图片"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr>
+            <p:blipFill><a:blip r:embed="rIdImage"/></p:blipFill>
+            <p:spPr><a:xfrm><a:off x="6096000" y="1371600"/><a:ext cx="3048000" cy="2286000"/></a:xfrm></p:spPr>
+        </p:pic>` : ''}
+    </p:spTree></p:cSld>
+    ${includeAnimation ? '<p:transition/><p:timing><p:tnLst/></p:timing>' : ''}
+</p:sld>`;
+
+    zip.folder('ppt').folder('slides').file('slide1.xml', slide('原始第一页', false, false));
+    zip.folder('ppt').folder('slides').file('slide2.xml', slide('先展示的第二页', true, true));
+    zip.folder('ppt').folder('slides').folder('_rels').file('slide2.xml.rels', `<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+    <Relationship Id="rIdImage" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/image1.png"/>
+</Relationships>`);
+    zip.folder('ppt').folder('media').file(
+        'image1.png',
+        Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=', 'base64')
+    );
+    return zip.generateAsync({ type: 'nodebuffer' });
+}
+
 async function run() {
     assert.equal(importer.headingLevelFromText('第一章 原生共笔'), 1);
     assert.equal(importer.headingLevelFromText('第十三章：终幕'), 1);
@@ -130,11 +196,38 @@ $$`)
     );
     assert.match(docx.html, /<p>分页后的连续正文。<\/p>/);
     assert.equal(docx.importMetadata.sourceFormat, 'docx');
-    assert.match(docx.importMetadata.importer, /semantic-import-v2/);
+    assert.match(docx.importMetadata.importer, /semantic-import-v3/);
+
+    const pptx = await importer.importBuffer('静态演示.pptx', await createMinimalPptx());
+    assert.equal(pptx.kind, 'pptx');
+    assert.equal(pptx.html, '');
+    assert.equal(pptx.slides.length, 2);
+    assert.deepEqual(pptx.page, { width: '13.333333333333334in', height: '7.5in' });
+    assert.match(pptx.slides[0].html, /先展示的第二页 &#38; 共创/);
+    assert.match(pptx.slides[1].html, /原始第一页 &#38; 共创/);
+    assert.equal(pptx.slides[0].name, '先展示的第二页 & 共创');
+    assert.match(pptx.slides[0].html, /left:7\.50000%;top:10\.00000%/);
+    assert.match(pptx.slides[0].html, /z-index:1/);
+    assert.match(pptx.slides[0].html, /transform:rotate\(15deg\)/);
+    assert.match(pptx.slides[0].html, /left:50\.00000%;top:20\.00000%/);
+    assert.match(pptx.slides[0].html, /z-index:2/);
+    assert.match(pptx.slides[0].html, /font-size:24pt/);
+    assert.match(pptx.slides[0].html, /font-weight:700/);
+    assert.match(pptx.slides[0].html, /font-family:&#34;Arial&#34;/);
+    assert.match(pptx.slides[0].html, /data:image\/png;base64,/);
+    assert.equal(pptx.slides[0].transition, 'pptx-imported');
+    assert.equal(pptx.slides[0].import.sourceSlide, 'ppt/slides/slide2.xml');
+    assert.equal(pptx.slides[0].import.hadNativeAnimation, true);
+    assert.equal(pptx.importMetadata.warnings.length, 1);
+    assert.equal(pptx.importMetadata.warnings[0].type, 'animation-not-translated');
+    assert.equal(pptx.importMetadata.sourceFormat, 'pptx');
+    assert.match(pptx.importMetadata.importer, /semantic-import-v3/);
 
     console.log('[ScriptoriumImporters] PASSED', {
         markdownMathNodes: (markdown.html.match(/data-vdoc-math=/g) || []).length,
         docxWarnings: docx.importMetadata.warnings.length,
+        pptxSlides: pptx.slides.length,
+        pptxWarnings: pptx.importMetadata.warnings.length,
     });
 }
 

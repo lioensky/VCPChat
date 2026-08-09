@@ -539,23 +539,26 @@ body{display:grid;place-items:center;font-family:system-ui,sans-serif}
 .vcp-slide{position:absolute;inset:0;display:none;width:100%;height:100%;overflow:hidden;color:#1d2421;background:#fff}
 .vcp-slide.active{display:block}
 .vcp-slide>.vdoc-slide-scene,.vcp-slide>[data-vdoc-slide]{width:100%;height:100%}
-.vcp-deck-controls{position:fixed;right:18px;bottom:16px;z-index:30;display:flex;align-items:center;gap:7px;padding:6px;border:1px solid rgba(255,255,255,.2);border-radius:10px;background:rgba(8,10,11,.72);backdrop-filter:blur(14px);opacity:.25;transition:opacity .2s}
-.vcp-deck-controls:hover,.vcp-deck-controls:focus-within{opacity:1}
+.vcp-deck-control-dock{position:fixed;left:0;right:0;bottom:0;z-index:30;height:88px;display:flex;align-items:flex-end;justify-content:center;padding:0 18px 16px}
+.vcp-deck-controls{display:flex;align-items:center;gap:7px;padding:6px;border:1px solid rgba(255,255,255,.2);border-radius:10px;background:rgba(8,10,11,.78);box-shadow:0 12px 40px rgba(0,0,0,.38);backdrop-filter:blur(14px);opacity:0;transform:translateY(14px);pointer-events:auto;transition:opacity .2s ease,transform .2s ease}
+.vcp-deck-control-dock:hover .vcp-deck-controls,.vcp-deck-control-dock:focus-within .vcp-deck-controls{opacity:1;transform:translateY(0)}
 .vcp-deck-controls button{height:32px;min-width:34px;border:0;border-radius:7px;color:#fff;background:rgba(255,255,255,.1);cursor:pointer}
 .vcp-deck-status{min-width:64px;text-align:center;font:12px system-ui}
-@media print{html,body{height:auto;overflow:visible;background:#fff}.vcp-deck{display:block;width:${scene.page.width};height:auto;aspect-ratio:auto;box-shadow:none}.vcp-slide{position:relative;display:block!important;width:${scene.page.width};height:${scene.page.height};break-after:page}.vcp-deck-controls{display:none}}
+@media print{html,body{height:auto;overflow:visible;background:#fff}.vcp-deck{display:block;width:${scene.page.width};height:auto;aspect-ratio:auto;box-shadow:none}.vcp-slide{position:relative;display:block!important;width:${scene.page.width};height:${scene.page.height};break-after:page}.vcp-deck-control-dock{display:none}}
 </style>
 </head>
 <body>
 <main id="vcp-deck" class="vcp-deck" aria-label="${title}">
 ${slideMarkup}
 </main>
-<nav class="vcp-deck-controls" aria-label="演示控制">
-    <button type="button" data-deck-action="previous" title="上一页">←</button>
-    <span class="vcp-deck-status">1 / ${slides.length}</span>
-    <button type="button" data-deck-action="next" title="下一页">→</button>
-    <button type="button" data-deck-action="fullscreen" title="全屏">⛶</button>
-</nav>
+<div class="vcp-deck-control-dock">
+    <nav class="vcp-deck-controls" aria-label="演示控制">
+        <button type="button" data-deck-action="previous" title="上一页">←</button>
+        <span class="vcp-deck-status">1 / ${slides.length}</span>
+        <button type="button" data-deck-action="next" title="下一页">→</button>
+        <button type="button" data-deck-action="fullscreen" title="全屏">⛶</button>
+    </nav>
+</div>
 <script>
 (() => {
     const slides = [...document.querySelectorAll('.vcp-slide')];
@@ -655,7 +658,11 @@ ${state.document.source.html}
             }
             let html;
             let paged = false;
-            if (format === 'html-flow') {
+            if (isSlideDeck() && format !== 'pdf') {
+                // 演示项目不存在“连续 HTML / 分页 HTML”的语义差异：
+                // 所有 HTML 均导出为单页全屏导播器，只有 PDF 使用静态逐页版式。
+                html = buildPresentationHtml();
+            } else if (format === 'html-flow') {
                 html = buildFlowHtml();
             } else {
                 paged = true;
@@ -1193,6 +1200,30 @@ ${state.document.source.html}
         setCurrentSourceHtml(clone.innerHTML);
     }
 
+    function caretIsAtBlockStart(selection, block) {
+        if (!selection?.isCollapsed || !selection.rangeCount || !block) return false;
+        const range = selection.getRangeAt(0);
+        if (!block.contains(range.startContainer)) return false;
+        const prefix = range.cloneRange();
+        prefix.selectNodeContents(block);
+        prefix.setEnd(range.startContainer, range.startOffset);
+        return prefix.collapsed || prefix.toString().length === 0;
+    }
+
+    function insertParagraphBeforeBlock(block) {
+        if (!block?.parentElement) return null;
+        const paragraph = createEditableBlock('paragraph');
+        block.before(paragraph);
+        state.activeEditableBlock = paragraph;
+        syncContinuousStructureToSource();
+        renderOutline();
+        scheduleMetrics();
+        markDirty();
+        captureSnapshot();
+        placeCaretAtStart(paragraph);
+        return paragraph;
+    }
+
     function handleBlockEditingKeydown(event) {
         const editable = event.target.closest?.('[data-vdoc-text]');
         const selection = getRenderRoot()?.getSelection?.() || window.getSelection();
@@ -1227,6 +1258,15 @@ ${state.document.source.html}
 
         if (event.key === 'Enter' && !event.shiftKey) {
             event.preventDefault();
+
+            // 在块的绝对开头按 Enter，表示在当前块上方创建一个新段落。
+            // 这为文档/Scene 的首块提供稳定的“向前插入”入口；其他位置
+            // 仍沿用块内软换行，Shift+Enter 则继续在下方新增结构块。
+            if (caretIsAtBlockStart(selection, block)) {
+                insertParagraphBeforeBlock(block);
+                return;
+            }
+
             // Enter 必须以当前光标为准。当前选区折叠时不能回退到此前保存的
             // 全文/跨块范围，否则一次回车可能误删整个旧选区。
             const range = selection?.rangeCount
@@ -2062,6 +2102,14 @@ ${preview.css}
             state.historyIndex = -1;
             elements['welcome-state'].hidden = true;
             elements['document-workspace'].hidden = false;
+            const presentation = isSlideDeck();
+            elements['read-mode-btn'].querySelector('span').textContent =
+                presentation ? '放映预览' : '阅读预览';
+            elements['export-flow-html-btn'].title =
+                presentation ? '导出单文件演示 HTML' : '导出连续流语义 HTML';
+            elements['export-paged-html-btn'].title =
+                presentation ? '导出单文件演示 HTML' : '导出逐页富文档 HTML';
+            elements['export-paged-html-btn'].hidden = presentation;
             renderDocument();
             switchMode('render');
             captureSnapshot();
