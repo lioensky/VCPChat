@@ -8,6 +8,7 @@ import { JSDOM } from 'jsdom';
 const composerSafeFocusSelector = /:focus-visible:not\(#messageInput\):not\(\.chat-message-input\)\s*\{/;
 const paperThemeSource = fs.readFileSync('styles/themes/themes纸墨与机芯.css', 'utf8');
 const componentStyles = fs.readFileSync('styles/ui-system/components.css', 'utf8');
+const sidebarStyles = fs.readFileSync('styles/ui-system/sidebar.css', 'utf8');
 assert.match(paperThemeSource, composerSafeFocusSelector, 'the paper theme must preserve the composer focus contract');
 assert.doesNotMatch(
     paperThemeSource,
@@ -22,6 +23,16 @@ assert.match(
     componentStyles,
     /\.vcp-ui-toast > :is\(button, wa-button\)\s*\{\s*pointer-events:\s*auto/s,
     'the toast close control must remain clickable after Web Awesome upgrades it to wa-button'
+);
+assert.doesNotMatch(
+    sidebarStyles,
+    /html\[data-ui-mode="next"\][^{]*\.agent-name::after[^}]*display:\s*none/s,
+    'Next UI must not hide the assistant emotion text shown on hover'
+);
+assert.doesNotMatch(
+    sidebarStyles,
+    /html\[data-ui-mode="next"\][^{]*\.agent-emotion-card[^}]*display:\s*none/s,
+    'Next UI must not disable the assistant emotion animation card'
 );
 
 const dom = new JSDOM('<!doctype html><html data-ui-mode="next"><body><main class="vcp-ui-scope" data-density="comfortable"></main></body></html>', {

@@ -452,13 +452,6 @@
         line-height: var(--vcp-ui-line-compact);
     }
 
-    html[data-ui-mode="next"] .vcp-ui-scope.sidebar .agent-list li.has-agent-emotion:hover .agent-name {
-        color: var(--vcp-ui-text-0);
-        text-shadow: none;
-    }
-
-    html[data-ui-mode="next"] .vcp-ui-scope.sidebar .agent-list li.has-agent-emotion .agent-name::after,
-    html[data-ui-mode="next"] .vcp-ui-scope.sidebar .agent-list .agent-emotion-card,
     html[data-ui-mode="next"] .vcp-ui-scope.sidebar .topic-list .topic-item::before,
     html[data-ui-mode="next"] .vcp-ui-scope.sidebar .topic-list .topic-item .message-count::after {
         display: none;
