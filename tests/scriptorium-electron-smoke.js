@@ -143,6 +143,98 @@ app.whenReady().then(async () => {
     })()`);
 
     await windowRef.webContents.executeJavaScript(`document.getElementById('render-mode-btn').click()`);
+    const formattingInteraction = await windowRef.webContents.executeJavaScript(`(() => {
+        const root = document.getElementById('page-stream').shadowRoot;
+        const editable = [...root.querySelectorAll('[data-vdoc-text]')]
+            .find((node) => node.firstChild?.nodeType === Node.TEXT_NODE && node.firstChild.length >= 2);
+        if (!editable) return { available: false };
+
+        const textNode = editable.firstChild;
+        const range = document.createRange();
+        range.setStart(textNode, 0);
+        range.setEnd(textNode, Math.min(2, textNode.length));
+        const selection = root.getSelection ? root.getSelection() : window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+        editable.dispatchEvent(new MouseEvent('contextmenu', {
+            bubbles: true,
+            composed: true,
+            cancelable: true,
+            clientX: 430,
+            clientY: 270
+        }));
+
+        const quickFont = document.getElementById('selection-font-family');
+        quickFont.value = 'Microsoft YaHei';
+        quickFont.dispatchEvent(new Event('change', { bubbles: true }));
+
+        const styledSpan = [...editable.querySelectorAll('span')]
+            .find((node) => node.style.fontFamily.includes('Microsoft YaHei'));
+        styledSpan?.dispatchEvent(new MouseEvent('mouseup', {
+            bubbles: true,
+            composed: true
+        }));
+
+        return {
+            available: true,
+            quickFontApplied: Boolean(styledSpan),
+            computedFont: styledSpan ? getComputedStyle(styledSpan).fontFamily : '',
+            topFontRecognized: document.getElementById('font-family-select').value === 'Microsoft YaHei',
+            quickFontRecognized: quickFont.value === 'Microsoft YaHei',
+            sourceContainsFont: document.getElementById('html-mode-btn')
+                ? true
+                : false
+        };
+    })()`);
+
+    const enterInteraction = await windowRef.webContents.executeJavaScript(`(() => {
+        const root = document.getElementById('page-stream').shadowRoot;
+        const block = [...root.querySelectorAll('p[data-vdoc-block]')]
+            .find((node) => (node.textContent || '').trim().length > 1);
+        if (!block) return { available: false };
+
+        block.focus();
+        const selection = root.getSelection ? root.getSelection() : window.getSelection();
+        const range = document.createRange();
+        range.selectNodeContents(block);
+        range.collapse(false);
+        selection.removeAllRanges();
+        selection.addRange(range);
+
+        const host = document.getElementById('render-host');
+        const scrollBefore = host.scrollTop;
+        const blocksBefore = root.querySelectorAll('[data-vdoc-block]').length;
+        const breaksBefore = block.querySelectorAll('br').length;
+        block.dispatchEvent(new KeyboardEvent('keydown', {
+            key: 'Enter',
+            bubbles: true,
+            composed: true,
+            cancelable: true
+        }));
+        const blocksAfterEnter = root.querySelectorAll('[data-vdoc-block]').length;
+        const breaksAfterEnter = block.querySelectorAll('br').length;
+        const scrollAfterEnter = host.scrollTop;
+
+        block.dispatchEvent(new KeyboardEvent('keydown', {
+            key: 'Enter',
+            shiftKey: true,
+            bubbles: true,
+            composed: true,
+            cancelable: true
+        }));
+        const blocksAfterShiftEnter = root.querySelectorAll('[data-vdoc-block]').length;
+        const scrollAfterShiftEnter = host.scrollTop;
+
+        return {
+            available: true,
+            enterKeepsBlockCount: blocksAfterEnter === blocksBefore,
+            enterAddsSoftBreak: breaksAfterEnter === breaksBefore + 1,
+            shiftEnterAddsBlock: blocksAfterShiftEnter === blocksAfterEnter + 1,
+            enterScrollStable: Math.abs(scrollAfterEnter - scrollBefore) < 80,
+            shiftEnterScrollStable: Math.abs(scrollAfterShiftEnter - scrollAfterEnter) < 80
+        };
+    })()`);
+
     const blockInteraction = await windowRef.webContents.executeJavaScript(`(() => {
         const root = document.getElementById('page-stream').shadowRoot;
         const initialContainers = root.querySelectorAll('[data-vdoc-container][data-vdoc-preserve="true"]').length;
@@ -231,6 +323,8 @@ app.whenReady().then(async () => {
     lineageText: document.getElementById('lineage-panel').innerText,
     interaction: ${JSON.stringify(interaction)},
     mathInteraction: ${JSON.stringify(mathInteraction)},
+    formattingInteraction: ${JSON.stringify(formattingInteraction)},
+    enterInteraction: ${JSON.stringify(enterInteraction)},
     blockInteraction: ${JSON.stringify(blockInteraction)},
     viewport: { width: innerWidth, height: innerHeight }
 })`);
@@ -263,6 +357,17 @@ app.whenReady().then(async () => {
         || !snapshot.mathInteraction.hasKatexRuntime
         || !snapshot.mathInteraction.hasKatexVisual || !snapshot.mathInteraction.sourceKeepsLatex
         || !snapshot.mathInteraction.sourceExcludesDerivedKatex
+        || !snapshot.formattingInteraction.available
+        || !snapshot.formattingInteraction.quickFontApplied
+        || !snapshot.formattingInteraction.computedFont.includes('Microsoft YaHei')
+        || !snapshot.formattingInteraction.topFontRecognized
+        || !snapshot.formattingInteraction.quickFontRecognized
+        || !snapshot.enterInteraction.available
+        || !snapshot.enterInteraction.enterKeepsBlockCount
+        || !snapshot.enterInteraction.enterAddsSoftBreak
+        || !snapshot.enterInteraction.shiftEnterAddsBlock
+        || !snapshot.enterInteraction.enterScrollStable
+        || !snapshot.enterInteraction.shiftEnterScrollStable
         || snapshot.blockInteraction.initialContainers < 1
         || snapshot.blockInteraction.initialBlocks < 1
         || snapshot.blockInteraction.afterParagraphBlocks <= snapshot.blockInteraction.initialBlocks

@@ -141,12 +141,57 @@
         state.historyIndex = state.history.length - 1;
     }
 
+    function captureRenderViewport() {
+        const host = elements['render-host'];
+        const root = getRenderRoot();
+        if (!host || !root) return null;
+
+        const hostRect = host.getBoundingClientRect();
+        const pages = [...root.querySelectorAll('.vdoc-page')];
+        const anchor = pages.find((page) => page.getBoundingClientRect().bottom >= hostRect.top)
+            || pages[pages.length - 1];
+        const anchorRect = anchor?.getBoundingClientRect();
+
+        return {
+            pageIndex: anchor?.dataset.pageIndex || '0',
+            pageOffset: anchorRect ? anchorRect.top - hostRect.top : 0,
+            scrollLeft: host.scrollLeft,
+            scrollTop: host.scrollTop,
+        };
+    }
+
+    function restoreRenderViewport(viewport) {
+        if (!viewport) return;
+        const host = elements['render-host'];
+        const root = getRenderRoot();
+        const anchor = root?.querySelector(
+            `.vdoc-page[data-page-index="${CSS.escape(viewport.pageIndex)}"]`
+        );
+
+        // replaceChildren() 会短暂缩小滚动区域并把 scrollTop 夹回顶部。
+        // 在新页面完成布局后以“当前页相对视口的位置”为锚恢复，避免撤回时跳页。
+        window.requestAnimationFrame(() => {
+            updatePageZoomLayout(root);
+            if (anchor) {
+                const hostRect = host.getBoundingClientRect();
+                const anchorOffset = anchor.getBoundingClientRect().top - hostRect.top;
+                host.scrollTop += anchorOffset - viewport.pageOffset;
+            } else {
+                host.scrollTop = viewport.scrollTop;
+            }
+            host.scrollLeft = viewport.scrollLeft;
+            updateCurrentPage(root);
+        });
+    }
+
     function restoreHistory(offset) {
         const nextIndex = state.historyIndex + offset;
         if (nextIndex < 0 || nextIndex >= state.history.length) return false;
+        const viewport = captureRenderViewport();
         state.historyIndex = nextIndex;
         state.document = core.parse(state.history[nextIndex]);
         renderDocument();
+        restoreRenderViewport(viewport);
         markDirty();
         return true;
     }
@@ -172,7 +217,12 @@
     min-height: var(--vdoc-page-height) !important;
     transform: scale(var(--vdoc-zoom, 1));
     transform-origin: top center;
-    margin-bottom: var(--vdoc-page-gap);
+    /*
+     * transform 只改变绘制尺寸，不改变普通文档流占位。按页面的真实
+     * offsetHeight 补回缩放差值，避免放大时后一页覆盖前一页。
+     * !important 用于阻止文档自带的 margin 简写覆盖编辑器布局补偿。
+     */
+    margin-bottom: calc(var(--vdoc-page-gap) + var(--vdoc-zoom-height-compensation, 0px)) !important;
 }
 .vdoc-runtime[data-scene-kind="slide-deck"] .vdoc-page {
     position: relative;
@@ -232,6 +282,22 @@ ${state.document.source.css}`;
         return pages.length ? pages : [[document.createElement('p')]];
     }
 
+    function updatePageZoomLayout(root = getRenderRoot()) {
+        if (!root) return;
+        const scale = state.zoom / 100;
+        root.querySelectorAll('.vdoc-page').forEach((page) => {
+            // offsetHeight 不包含 transform，正好可作为缩放前的布局基准。
+            const baseHeight = page.offsetHeight;
+            const compensation = Number.isFinite(baseHeight)
+                ? baseHeight * (scale - 1)
+                : 0;
+            page.style.setProperty(
+                '--vdoc-zoom-height-compensation',
+                `${compensation}px`
+            );
+        });
+    }
+
     function renderDocument() {
         if (!state.document) return;
         state.document = core.normalizeDocument(state.document);
@@ -253,6 +319,7 @@ ${state.document.source.css}`;
             editable.contentEditable = 'true';
             editable.spellcheck = true;
         });
+        updatePageZoomLayout(root);
         bindRenderSurface(root);
         initializePageVisibility(root);
         renderOutline();
@@ -268,8 +335,11 @@ ${state.document.source.css}`;
             }
             const block = event.target.closest?.('[data-vdoc-block]');
             if (block) state.activeEditableBlock = block;
+            syncFormattingControls(event.target);
         });
 
+        root.addEventListener('mouseup', () => syncFormattingFromCurrentSelection());
+        root.addEventListener('keyup', () => syncFormattingFromCurrentSelection());
         root.addEventListener('keydown', handleBlockEditingKeydown);
 
         root.addEventListener('input', (event) => {
@@ -292,6 +362,138 @@ ${state.document.source.css}`;
             state.selectionText = selection.toString();
             showSelectionBar(event.clientX, event.clientY);
         });
+    }
+
+    function currentRenderSelection() {
+        return getRenderRoot()?.getSelection?.() || window.getSelection();
+    }
+
+    function restoreSavedSelection() {
+        const range = state.selectionRange;
+        if (!range || !range.startContainer?.isConnected || !range.endContainer?.isConnected) return null;
+        const selection = currentRenderSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+        return range;
+    }
+
+    function selectedRange(preferSaved = false) {
+        if (preferSaved && state.selectionRange?.startContainer?.isConnected) {
+            return state.selectionRange;
+        }
+        const selection = currentRenderSelection();
+        if (selection?.rangeCount) return selection.getRangeAt(0);
+        return state.selectionRange?.startContainer?.isConnected ? state.selectionRange : null;
+    }
+
+    function cssColorToHex(color) {
+        const match = String(color || '').match(/\d+(?:\.\d+)?/g);
+        if (!match || match.length < 3) return '#1b211f';
+        return `#${match.slice(0, 3)
+            .map((value) => Math.max(0, Math.min(255, Math.round(Number(value))))
+                .toString(16).padStart(2, '0'))
+            .join('')}`;
+    }
+
+    function firstFontFamily(fontFamily) {
+        return String(fontFamily || '')
+            .split(',')[0]
+            .trim()
+            .replace(/^["']|["']$/g, '');
+    }
+
+    function syncSelectClosestFont(select, fontFamily) {
+        if (!select) return;
+        const target = firstFontFamily(fontFamily).toLowerCase();
+        const option = [...select.options].find((item) =>
+            firstFontFamily(item.value).toLowerCase() === target
+        );
+        if (option) select.value = option.value;
+    }
+
+    function syncSelectClosestSize(select, pixelSize) {
+        if (!select) return;
+        const points = Number.parseFloat(pixelSize) * .75;
+        const options = [...select.options]
+            .map((option) => ({ option, value: Number.parseFloat(option.value) }))
+            .filter((item) => Number.isFinite(item.value));
+        if (!options.length || !Number.isFinite(points)) return;
+        options.sort((left, right) =>
+            Math.abs(left.value - points) - Math.abs(right.value - points)
+        );
+        select.value = options[0].option.value;
+    }
+
+    function syncFormattingControls(target) {
+        const element = target?.nodeType === Node.ELEMENT_NODE
+            ? target
+            : target?.parentElement;
+        const textElement = element?.closest?.('[data-vdoc-text], span, strong, em, a')
+            || state.activeEditableBlock;
+        if (!textElement) return;
+
+        const computed = getComputedStyle(textElement);
+        syncSelectClosestFont(elements['font-family-select'], computed.fontFamily);
+        syncSelectClosestFont(elements['selection-font-family'], computed.fontFamily);
+        syncSelectClosestSize(elements['font-size-select'], computed.fontSize);
+        syncSelectClosestSize(elements['selection-font-size'], computed.fontSize);
+
+        const color = cssColorToHex(computed.color);
+        elements['text-color-input'].value = color;
+        elements['selection-text-color'].value = color;
+        const lineHeight = Number.parseFloat(computed.lineHeight);
+        const fontSize = Number.parseFloat(computed.fontSize);
+        if (Number.isFinite(lineHeight) && Number.isFinite(fontSize) && fontSize > 0) {
+            const ratio = lineHeight / fontSize;
+            const closest = [...elements['line-height-select'].options]
+                .sort((left, right) =>
+                    Math.abs(Number(left.value) - ratio) - Math.abs(Number(right.value) - ratio)
+                )[0];
+            if (closest) elements['line-height-select'].value = closest.value;
+        }
+    }
+
+    function syncFormattingFromCurrentSelection() {
+        const selection = currentRenderSelection();
+        const node = selection?.focusNode || selection?.anchorNode;
+        if (node) syncFormattingControls(node);
+    }
+
+    function applyInlineStyle(property, value, preferSaved = false) {
+        const range = selectedRange(preferSaved);
+        if (!range || range.collapsed) return false;
+        if (preferSaved) restoreSavedSelection();
+
+        const wrapper = document.createElement('span');
+        wrapper.style[property] = value;
+        try {
+            range.surroundContents(wrapper);
+        } catch {
+            wrapper.appendChild(range.extractContents());
+            range.insertNode(wrapper);
+        }
+
+        const nextRange = document.createRange();
+        nextRange.selectNodeContents(wrapper);
+        state.selectionRange = nextRange.cloneRange();
+        state.selectionText = wrapper.textContent || '';
+        const selection = currentRenderSelection();
+        selection.removeAllRanges();
+        selection.addRange(nextRange);
+        syncRenderedDocumentToSource();
+        syncFormattingControls(wrapper);
+        return true;
+    }
+
+    function applyInlineCommand(command, preferSaved = false) {
+        const styles = {
+            bold: ['fontWeight', '700'],
+            italic: ['fontStyle', 'italic'],
+            underline: ['textDecoration', 'underline'],
+            strikethrough: ['textDecoration', 'line-through'],
+        };
+        const style = styles[command];
+        return style ? applyInlineStyle(style[0], style[1], preferSaved) : false;
     }
 
     function placeCaretAtStart(element) {
@@ -397,7 +599,25 @@ ${state.document.source.css}`;
         if (!block) return;
         const selection = getRenderRoot()?.getSelection?.() || window.getSelection();
 
-        if (event.key === 'Enter' && !event.shiftKey && block.tagName !== 'TD' && block.tagName !== 'TH') {
+        if (event.key === 'Enter' && !event.shiftKey) {
+            event.preventDefault();
+            const range = selectedRange();
+            if (!range) return;
+            range.deleteContents();
+            const lineBreak = document.createElement('br');
+            range.insertNode(lineBreak);
+            range.setStartAfter(lineBreak);
+            range.collapse(true);
+            const selectionAfterBreak = currentRenderSelection();
+            selectionAfterBreak.removeAllRanges();
+            selectionAfterBreak.addRange(range);
+            updateSourceNode(block);
+            markDirty();
+            captureSnapshot();
+            return;
+        }
+
+        if (event.key === 'Enter' && event.shiftKey && block.tagName !== 'TD' && block.tagName !== 'TH') {
             event.preventDefault();
             const next = createEditableBlock('paragraph');
             block.after(next);
@@ -749,48 +969,34 @@ ${state.document.source.css}`;
         if (showSuccess) showToast('源码已应用到渲染页面', 'success');
     }
 
-    function executeCommand(command, value) {
+    function executeCommand(command, value, preferSaved = false) {
         if (command === 'undo') return restoreHistory(-1);
         if (command === 'redo') return restoreHistory(1);
         if (state.mode !== 'render') return false;
-        const root = getRenderRoot();
-        root?.activeElement?.focus?.();
-        const map = {
-            bold: 'bold',
-            italic: 'italic',
-            underline: 'underline',
-            strikethrough: 'strikeThrough',
-            'text-color': 'foreColor',
-            'highlight-color': 'hiliteColor',
-            'text-align': `justify${String(value || 'left').replace(/^./, (char) => char.toUpperCase())}`,
-            'bullet-list': 'insertUnorderedList',
-            'numbered-list': 'insertOrderedList',
-            'font-family': 'fontName',
-        };
-        if (command === 'font-size') return applySelectionStyle('fontSize', value);
-        if (command === 'line-height') return applySelectionStyle('lineHeight', String(value));
-        if (command === 'image') return insertImage();
-        const nativeCommand = map[command];
-        if (!nativeCommand) return false;
-        document.execCommand(nativeCommand, false, value);
-        syncRenderedDocumentToSource();
-        return true;
-    }
-
-    function applySelectionStyle(property, value) {
-        const selection = getRenderRoot()?.getSelection?.() || window.getSelection();
-        if (!selection || selection.isCollapsed) return false;
-        const range = selection.getRangeAt(0);
-        const span = document.createElement('span');
-        span.style[property] = value;
-        try {
-            range.surroundContents(span);
-        } catch {
-            span.appendChild(range.extractContents());
-            range.insertNode(span);
+        if (['bold', 'italic', 'underline', 'strikethrough'].includes(command)) {
+            return applyInlineCommand(command, preferSaved);
         }
-        syncRenderedDocumentToSource();
-        return true;
+        if (command === 'font-family') return applyInlineStyle('fontFamily', value, preferSaved);
+        if (command === 'font-size') return applyInlineStyle('fontSize', value, preferSaved);
+        if (command === 'text-color') return applyInlineStyle('color', value, preferSaved);
+        if (command === 'highlight-color') return applyInlineStyle('backgroundColor', value, preferSaved);
+        if (command === 'line-height') {
+            const block = state.activeEditableBlock;
+            if (!block) return false;
+            block.style.lineHeight = String(value);
+            syncRenderedDocumentToSource();
+            syncFormattingControls(block);
+            return true;
+        }
+        if (command === 'text-align') {
+            const block = state.activeEditableBlock;
+            if (!block) return false;
+            block.style.textAlign = value;
+            syncRenderedDocumentToSource();
+            return true;
+        }
+        if (command === 'image') return insertImage();
+        return false;
     }
 
     function syncRenderedDocumentToSource() {
@@ -1405,6 +1611,21 @@ ${preview.css}
             control.addEventListener('mousedown', (event) => event.preventDefault());
             control.addEventListener('click', () => executeCommand(control.dataset.command, control.dataset.value));
         });
+        elements['selection-format-bar'].querySelectorAll('[data-selection-command]').forEach((control) => {
+            control.addEventListener('mousedown', (event) => event.preventDefault());
+            control.addEventListener('click', () => {
+                executeCommand(control.dataset.selectionCommand, undefined, true);
+            });
+        });
+        elements['selection-font-family'].addEventListener('change', (event) => {
+            executeCommand('font-family', event.target.value, true);
+        });
+        elements['selection-font-size'].addEventListener('change', (event) => {
+            executeCommand('font-size', event.target.value, true);
+        });
+        elements['selection-text-color'].addEventListener('change', (event) => {
+            executeCommand('text-color', event.target.value, true);
+        });
         elements['font-family-select'].addEventListener('change', (event) => executeCommand('font-family', event.target.value));
         elements['font-size-select'].addEventListener('change', (event) => executeCommand('font-size', event.target.value));
         elements['line-height-select'].addEventListener('change', (event) => executeCommand('line-height', event.target.value));
@@ -1469,9 +1690,12 @@ ${preview.css}
         state.zoom = Math.max(50, Math.min(200, Number(value) || 100));
         elements['zoom-range'].value = String(state.zoom);
         elements['zoom-value'].textContent = `${state.zoom}%`;
-        getRenderRoot()?.querySelectorAll('.vdoc-page').forEach((page) => {
+        const root = getRenderRoot();
+        root?.querySelectorAll('.vdoc-page').forEach((page) => {
             page.style.setProperty('--vdoc-zoom', String(state.zoom / 100));
         });
+        updatePageZoomLayout(root);
+        window.requestAnimationFrame(() => updateCurrentPage(root));
         return state.zoom;
     }
 

@@ -70,16 +70,42 @@ function normalizeFontNames(values) {
 }
 
 async function listWindowsFonts() {
-    // Windows PowerShell 5 的原生 stdout 编码取决于系统代码页，直接按 UTF-8
-    // 读取会损坏中文、日文、韩文及其他 Unicode 字体族名。逐项转换为
-    // Base64(UTF-8) 后只经过 ASCII stdout，再由 Node 明确解码，可无损支持
-    // 任意用户安装的第三方多语言字体。
+    // Word 使用的字体来源不只 System.Drawing/GDI。用户安装字体、部分
+    // OpenType/可变字体通常只会出现在 DirectWrite(WPF) 或 HKCU 注册表中。
+    // 合并三类来源，并使用 Base64(UTF-8) 穿过 Windows PowerShell 5 的
+    // 非 UTF-8 stdout，避免中日韩及其他 Unicode 字体族名损坏。
     const script = [
-        'Add-Type -AssemblyName System.Drawing;',
+        '$ErrorActionPreference = "SilentlyContinue";',
         '$utf8 = New-Object System.Text.UTF8Encoding($false);',
-        '$fonts = New-Object System.Drawing.Text.InstalledFontCollection;',
-        '$fonts.Families | ForEach-Object {',
-        '  [Convert]::ToBase64String($utf8.GetBytes($_.Name))',
+        '$names = New-Object "System.Collections.Generic.HashSet[string]" ([StringComparer]::OrdinalIgnoreCase);',
+        'try {',
+        '  Add-Type -AssemblyName PresentationCore;',
+        '  [System.Windows.Media.Fonts]::SystemFontFamilies | ForEach-Object {',
+        '    $localized = $_.FamilyNames[[System.Globalization.CultureInfo]::CurrentUICulture];',
+        '    if (-not $localized) { $localized = $_.Source };',
+        '    if ($localized) { [void]$names.Add([string]$localized) }',
+        '  }',
+        '} catch {}',
+        'try {',
+        '  Add-Type -AssemblyName System.Drawing;',
+        '  $gdiFonts = New-Object System.Drawing.Text.InstalledFontCollection;',
+        '  $gdiFonts.Families | ForEach-Object { if ($_.Name) { [void]$names.Add($_.Name) } }',
+        '} catch {}',
+        '$registryRoots = @(',
+        '  "Registry::HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Fonts",',
+        '  "Registry::HKEY_CURRENT_USER\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Fonts"',
+        ');',
+        'foreach ($registryRoot in $registryRoots) {',
+        '  try {',
+        '    $properties = Get-ItemProperty -LiteralPath $registryRoot;',
+        '    $properties.PSObject.Properties | Where-Object { $_.Name -notmatch "^PS" } | ForEach-Object {',
+        '      $fontName = $_.Name -replace "\\s+\\((?:TrueType|OpenType|Variable)\\)\\s*$", "";',
+        '      if ($fontName) { [void]$names.Add($fontName.Trim()) }',
+        '    }',
+        '  } catch {}',
+        '}',
+        '$names | Sort-Object | ForEach-Object {',
+        '  [Convert]::ToBase64String($utf8.GetBytes($_))',
         '}',
     ].join(' ');
     const output = await runFile('powershell.exe', [
