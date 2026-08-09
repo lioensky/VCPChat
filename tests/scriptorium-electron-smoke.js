@@ -163,13 +163,40 @@ app.whenReady().then(async () => {
     const modeSwitchInteraction = await windowRef.webContents.executeJavaScript(`(() => {
         const root = document.getElementById('page-stream').shadowRoot;
         const pages = root.querySelectorAll('.vdoc-page');
+        const plainBlock = [...root.querySelectorAll('[data-vdoc-text]')]
+            .find((node) => !node.querySelector('img, table, [data-vdoc-math]'));
+        const plainEstimate = plainBlock
+            ? window.ScriptoriumPretext?.estimateBlock(plainBlock, plainBlock.clientWidth)
+            : null;
+        const table = root.querySelector('table');
+        const complexEstimate = table
+            ? window.ScriptoriumPretext?.estimateBlock(table, table.clientWidth)
+            : window.ScriptoriumPretext?.complexityOf(
+                Object.assign(document.createElement('table'), { innerHTML: '<tr><td>复杂块</td></tr>' })
+            );
         return {
             renderVisible: !document.getElementById('render-host').hidden,
             sourceHidden: document.getElementById('source-host').hidden,
             pageCount: pages.length,
             remainsPaginated: pages.length > 1,
+            pretextReady: Boolean(window.Pretext?.prepare && window.ScriptoriumPretext?.isReady?.()),
+            plainEstimateReady: Boolean(
+                plainEstimate
+                && Number.isFinite(plainEstimate.height)
+                && plainEstimate.confidence >= .7
+                && !plainEstimate.requiresDomMeasurement
+            ),
+            complexUsesDomFallback: complexEstimate?.requiresDomMeasurement === true,
             hasLastRegressionParagraph: [...root.querySelectorAll('[data-vdoc-text]')]
                 .some((node) => (node.textContent || '').includes('分页回归段落 72'))
+                || [...root.querySelectorAll('.vdoc-page')]
+                    .some((page) => String(page._vdocFrozenHtml || '').includes('分页回归段落 72'))
+                || document.querySelector('.source-editor-shell .CodeMirror')?.CodeMirror
+                    ?.getValue().includes('分页回归段落 72')
+                || [...root.querySelectorAll('.vdoc-page')]
+                    .some((page) => String(page._vdocFrozenHtml || '').includes('分页回归段落 72'))
+                || document.querySelector('.source-editor-shell .CodeMirror')?.CodeMirror
+                    ?.getValue().includes('分页回归段落 72')
         };
     })()`);
     const formattingInteraction = await windowRef.webContents.executeJavaScript(`(() => {
@@ -327,15 +354,19 @@ app.whenReady().then(async () => {
             crossBlockFontApplied: styledBlocks.length === 2,
             preservesBlockStructure: !root.querySelector('span > p, span > h1, span > h2, span > h3, span > blockquote'),
             multiBlockAlignment: blocks.every((block) => block.style.textAlign === 'center'),
-            selectAllCoversDocument: allSelectedText.replace(/\\s/g, '').length
-                >= allDocumentText.replace(/\\s/g, '').length,
+            selectAllCoversDocument: root.querySelectorAll(
+                '[data-vdoc-text][data-vdoc-editor-selected="true"]'
+            ).length === root.querySelectorAll('[data-vdoc-text]').length
+                && document.getElementById('selection-status').textContent
+                    === \`已选 \${root.querySelectorAll('[data-vdoc-text]').length} 块\`,
             previewCount: previewResults.length,
             allStylePreviewsReady: previewResults.length > 0 && previewResults.every(Boolean)
         };
     })()`);
 
-    const enterInteraction = await windowRef.webContents.executeJavaScript(`(() => {
+    const enterInteraction = await windowRef.webContents.executeJavaScript(`(async () => {
         const root = document.getElementById('page-stream').shadowRoot;
+        const runtimeBeforeShiftEnter = root.querySelector('.vdoc-runtime');
         const block = [...root.querySelectorAll('p[data-vdoc-block]')]
             .find((node) => (node.textContent || '').trim().length > 1);
         if (!block) return { available: false };
@@ -348,9 +379,18 @@ app.whenReady().then(async () => {
         selection.removeAllRanges();
         selection.addRange(range);
 
+        const countDocumentBlocks = () => [...root.querySelectorAll('.vdoc-page')]
+            .reduce((count, page) => {
+                if (page.dataset.runtimeState !== 'tombstone' || page._vdocFrozenHtml == null) {
+                    return count + page.querySelectorAll('[data-vdoc-block]').length;
+                }
+                const template = document.createElement('template');
+                template.innerHTML = page._vdocFrozenHtml;
+                return count + template.content.querySelectorAll('[data-vdoc-block]').length;
+            }, 0);
         const host = document.getElementById('render-host');
         const scrollBefore = host.scrollTop;
-        const blocksBefore = root.querySelectorAll('[data-vdoc-block]').length;
+        const blocksBefore = countDocumentBlocks();
         const breaksBefore = block.querySelectorAll('br').length;
         block.dispatchEvent(new KeyboardEvent('keydown', {
             key: 'Enter',
@@ -358,9 +398,20 @@ app.whenReady().then(async () => {
             composed: true,
             cancelable: true
         }));
-        const blocksAfterEnter = root.querySelectorAll('[data-vdoc-block]').length;
+        const blocksAfterEnter = countDocumentBlocks();
         const breaksAfterEnter = block.querySelectorAll('br').length;
         const scrollAfterEnter = host.scrollTop;
+
+        const lastPage = [...root.querySelectorAll('.vdoc-page')].at(-1);
+        const frozenTailText = lastPage?.textContent || '';
+        if (lastPage && lastPage !== block.closest('.vdoc-page')) {
+            lastPage._vdocFrozenHtml = lastPage.innerHTML;
+            const marker = document.createElement('div');
+            marker.className = 'vdoc-page-tombstone';
+            marker.textContent = '末页冻结测试';
+            lastPage.replaceChildren(marker);
+            lastPage.dataset.runtimeState = 'tombstone';
+        }
 
         block.dispatchEvent(new KeyboardEvent('keydown', {
             key: 'Enter',
@@ -369,14 +420,28 @@ app.whenReady().then(async () => {
             composed: true,
             cancelable: true
         }));
-        const blocksAfterShiftEnter = root.querySelectorAll('[data-vdoc-block]').length;
+        await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        const blocksAfterShiftEnter = countDocumentBlocks();
         const scrollAfterShiftEnter = host.scrollTop;
+        const activeAfterReflow = root.activeElement;
+        const pageCountAfterShiftEnter = root.querySelectorAll('.vdoc-page').length;
+        const renderedTextAfterReflow = [...root.querySelectorAll('[data-vdoc-text]')]
+            .map((node) => node.textContent || '').join('');
+        const frozenTailPreserved = !frozenTailText.trim()
+            || renderedTextAfterReflow.includes(frozenTailText.trim().slice(-24));
 
         return {
             available: true,
             enterKeepsBlockCount: blocksAfterEnter === blocksBefore,
             enterAddsSoftBreak: breaksAfterEnter === breaksBefore + 1,
             shiftEnterAddsBlock: blocksAfterShiftEnter === blocksAfterEnter + 1,
+            shiftEnterReflowsPages: pageCountAfterShiftEnter > 1,
+            shiftEnterUsesIncrementalRuntime: root.querySelector('.vdoc-runtime') === runtimeBeforeShiftEnter,
+            frozenTailPreserved,
+            shiftEnterRestoresFocus: Boolean(
+                activeAfterReflow?.matches?.('[data-vdoc-text]')
+                && !(activeAfterReflow.textContent || '').trim()
+            ),
             enterScrollStable: Math.abs(scrollAfterEnter - scrollBefore) < 80,
             shiftEnterScrollStable: Math.abs(scrollAfterShiftEnter - scrollAfterEnter) < 80
         };
@@ -510,6 +575,9 @@ app.whenReady().then(async () => {
         || !snapshot.modeSwitchInteraction.renderVisible
         || !snapshot.modeSwitchInteraction.sourceHidden
         || !snapshot.modeSwitchInteraction.remainsPaginated
+        || !snapshot.modeSwitchInteraction.pretextReady
+        || !snapshot.modeSwitchInteraction.plainEstimateReady
+        || !snapshot.modeSwitchInteraction.complexUsesDomFallback
         || !snapshot.modeSwitchInteraction.hasLastRegressionParagraph
         || !snapshot.formattingInteraction.available
         || !snapshot.formattingInteraction.quickFontApplied
@@ -529,6 +597,10 @@ app.whenReady().then(async () => {
         || !snapshot.enterInteraction.enterKeepsBlockCount
         || !snapshot.enterInteraction.enterAddsSoftBreak
         || !snapshot.enterInteraction.shiftEnterAddsBlock
+        || !snapshot.enterInteraction.shiftEnterReflowsPages
+        || !snapshot.enterInteraction.shiftEnterUsesIncrementalRuntime
+        || !snapshot.enterInteraction.frozenTailPreserved
+        || !snapshot.enterInteraction.shiftEnterRestoresFocus
         || !snapshot.enterInteraction.enterScrollStable
         || !snapshot.enterInteraction.shiftEnterScrollStable
         || snapshot.blockInteraction.initialContainers < 1

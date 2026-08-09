@@ -26,6 +26,7 @@
         unsavedResolver: null,
         sourceUpdateTimer: null,
         metricsTimer: null,
+        paginationTimer: null,
         systemFonts: [],
         selectionRange: null,
         selectionText: '',
@@ -436,6 +437,8 @@ ${state.document.source.css}`;
             const editable = event.target.closest?.('[data-vdoc-text]');
             if (!editable) return;
             updateSourceNode(editable);
+            window.ScriptoriumPretext?.evictNode(editable.dataset.vdocText);
+            scheduleIncrementalPagination(editable);
             markDirty();
             window.clearTimeout(state.sourceUpdateTimer);
             state.sourceUpdateTimer = window.setTimeout(() => {
@@ -851,20 +854,155 @@ ${state.document.source.css}`;
         state.activeEditableBlock = block.matches('[data-vdoc-block]')
             ? block
             : block.querySelector('[data-vdoc-block]');
-        syncPageStructureToSource();
+        const focusTarget = state.activeEditableBlock || block.querySelector('td, th');
+        const focusId = focusTarget?.dataset?.vdocText;
+        reflowAfterStructureChange(focusId);
         renderOutline();
         scheduleMetrics();
-        const focusTarget = state.activeEditableBlock || block.querySelector('td, th');
-        if (focusTarget) placeCaretAtStart(focusTarget);
+        if (focusTarget && !focusId) placeCaretAtStart(focusTarget);
         markDirty();
         captureSnapshot();
         return true;
     }
 
+    function ensureActivePageForReflow(page) {
+        if (!page) return null;
+        if (page.dataset.runtimeState === 'tombstone') activatePage(page);
+        page.dataset.runtimeState = 'active';
+        return page;
+    }
+
+    function createEmptyRuntimePage(root, afterPage) {
+        const runtime = root?.querySelector('.vdoc-runtime');
+        if (!runtime) return null;
+        const page = createPage(runtime.querySelectorAll('.vdoc-page').length, []);
+        if (afterPage?.parentElement === runtime) afterPage.after(page);
+        else runtime.appendChild(page);
+        state.pageObserver?.observe(page);
+        return page;
+    }
+
+    function estimatedBlockFitsPage(page, block) {
+        const pretext = window.ScriptoriumPretext;
+        if (!pretext?.isReady?.()) return null;
+        const estimate = pretext.estimateBlock(block, page.clientWidth);
+        if (estimate.requiresDomMeasurement || !Number.isFinite(estimate.height)) return null;
+        const remaining = page.clientHeight - page.scrollHeight;
+        return estimate.height <= remaining + 1;
+    }
+
+    function canPullBlockIntoPage(page, candidate) {
+        if (!page || !candidate) return false;
+        if (candidate.dataset.vdocPageBreakBefore === 'true') return false;
+        if (page.lastElementChild?.dataset?.vdocPageBreakAfter === 'true') return false;
+        const prediction = estimatedBlockFitsPage(page, candidate);
+        return prediction !== false;
+    }
+
+    function incrementalPaginateFrom(startNode) {
+        const root = getRenderRoot();
+        let page = ensureActivePageForReflow(startNode?.closest?.('.vdoc-page'));
+        if (!root || !page) return false;
+
+        const runtime = page.parentElement;
+        let changed = false;
+        let propagationBudget = 200;
+
+        while (page && propagationBudget > 0) {
+            propagationBudget -= 1;
+            let nextPage = page.nextElementSibling?.matches?.('.vdoc-page')
+                ? page.nextElementSibling
+                : null;
+            let pageChanged = false;
+
+            while (pageOverflows(page) && page.children.length > 1 && propagationBudget > 0) {
+                propagationBudget -= 1;
+                if (!nextPage) nextPage = createEmptyRuntimePage(root, page);
+                ensureActivePageForReflow(nextPage);
+                const overflow = page.lastElementChild;
+                nextPage.insertBefore(overflow, nextPage.firstChild);
+                pageChanged = true;
+                changed = true;
+            }
+
+            if (nextPage) {
+                ensureActivePageForReflow(nextPage);
+                let candidate = nextPage.firstElementChild;
+                while (candidate && canPullBlockIntoPage(page, candidate) && propagationBudget > 0) {
+                    propagationBudget -= 1;
+                    page.appendChild(candidate);
+                    if (pageOverflows(page)) {
+                        nextPage.insertBefore(candidate, nextPage.firstChild);
+                        break;
+                    }
+                    pageChanged = true;
+                    changed = true;
+                    candidate = nextPage.firstElementChild;
+                }
+            }
+
+            if (nextPage && !nextPage.children.length) {
+                const afterEmpty = nextPage.nextElementSibling?.matches?.('.vdoc-page')
+                    ? nextPage.nextElementSibling
+                    : null;
+                state.pageObserver?.unobserve(nextPage);
+                nextPage.remove();
+                nextPage = afterEmpty;
+                pageChanged = true;
+                changed = true;
+            }
+
+            if (!pageChanged) break;
+            page = nextPage;
+        }
+
+        [...runtime.querySelectorAll('.vdoc-page')].forEach((item, index) => {
+            item.dataset.pageIndex = String(index);
+        });
+        updatePageZoomLayout(root);
+        updateCurrentPage(root);
+        return changed;
+    }
+
+    function scheduleIncrementalPagination(node, delay = 160) {
+        const nodeId = node?.dataset?.vdocText;
+        window.clearTimeout(state.paginationTimer);
+        state.paginationTimer = window.setTimeout(() => {
+            const target = nodeId
+                ? getRenderRoot()?.querySelector(`[data-vdoc-text="${CSS.escape(nodeId)}"]`)
+                : node;
+            if (!target?.isConnected) return;
+            incrementalPaginateFrom(target);
+            syncPageStructureToSource();
+        }, delay);
+    }
+
+    function reflowAfterStructureChange(focusNodeId = null) {
+        const target = focusNodeId
+            ? getRenderRoot()?.querySelector(`[data-vdoc-text="${CSS.escape(focusNodeId)}"]`)
+            : state.activeEditableBlock;
+        if (!target) {
+            syncPageStructureToSource();
+            return;
+        }
+
+        incrementalPaginateFrom(target);
+        syncPageStructureToSource();
+        state.activeEditableBlock = target;
+        placeCaretAtStart(target);
+    }
+
     function syncPageStructureToSource() {
         const root = getRenderRoot();
         const pageContents = [...root.querySelectorAll('.vdoc-page')].map((page) => {
-            const clone = page.cloneNode(true);
+            const clone = page.cloneNode(false);
+            if (page.dataset.runtimeState === 'tombstone' && page._vdocFrozenHtml != null) {
+                // 冻结页的真实正文保存在页面对象上；不能序列化当前占位 DOM，
+                // 否则删除 tombstone 后该页会变成空页并永久截断后半篇文稿。
+                clone.innerHTML = page._vdocFrozenHtml;
+            } else {
+                clone.innerHTML = page.innerHTML;
+            }
             clone.querySelectorAll('.vdoc-page-tombstone').forEach((node) => node.remove());
             restoreMathSemantics(clone);
             clone.querySelectorAll('[contenteditable], [spellcheck], [data-runtime-state], [style]').forEach((node) => {
@@ -914,8 +1052,12 @@ ${state.document.source.css}`;
 
         if (event.key === 'Enter' && !event.shiftKey) {
             event.preventDefault();
-            const range = selectedRange();
-            if (!range) return;
+            // Enter 必须以当前光标为准。当前选区折叠时不能回退到此前保存的
+            // 全文/跨块范围，否则一次回车可能误删整个旧选区。
+            const range = selection?.rangeCount
+                ? selection.getRangeAt(0)
+                : selectedRange();
+            if (!range || !block.contains(range.commonAncestorContainer)) return;
             range.deleteContents();
             const lineBreak = document.createElement('br');
             range.insertNode(lineBreak);
@@ -925,6 +1067,8 @@ ${state.document.source.css}`;
             selectionAfterBreak.removeAllRanges();
             selectionAfterBreak.addRange(range);
             updateSourceNode(block);
+            window.ScriptoriumPretext?.evictNode(block.dataset.vdocText);
+            scheduleIncrementalPagination(block);
             markDirty();
             captureSnapshot();
             return;
@@ -934,11 +1078,11 @@ ${state.document.source.css}`;
             event.preventDefault();
             const next = createEditableBlock('paragraph');
             block.after(next);
+            const nextId = next.dataset.vdocText
+                || next.querySelector('[data-vdoc-text]')?.dataset.vdocText;
             state.activeEditableBlock = next;
-            syncPageStructureToSource();
-            renderOutline();
+            reflowAfterStructureChange(nextId);
             scheduleMetrics();
-            placeCaretAtStart(next);
             markDirty();
             captureSnapshot();
             return;
@@ -958,14 +1102,13 @@ ${state.document.source.css}`;
             parent.appendChild(target);
         }
 
-        syncPageStructureToSource();
-        renderOutline();
-        scheduleMetrics();
         target = target?.matches?.('[data-vdoc-block]')
             ? target
             : target?.querySelector?.('[data-vdoc-block]') || getRenderRoot().querySelector('[data-vdoc-block]');
         state.activeEditableBlock = target || null;
-        if (target) placeCaretAtStart(target);
+        reflowAfterStructureChange(target?.dataset?.vdocText);
+        renderOutline();
+        scheduleMetrics();
         markDirty();
         captureSnapshot();
     }
@@ -2139,6 +2282,8 @@ ${preview.css}
         });
         window.addEventListener('beforeunload', () => {
             state.pageObserver?.disconnect();
+            window.clearTimeout(state.paginationTimer);
+            window.ScriptoriumPretext?.clear?.();
             state.themeDisposer?.();
             state.pathRequestDisposer?.();
             state.agentCheckpointDisposer?.();
