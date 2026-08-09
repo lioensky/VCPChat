@@ -1343,9 +1343,14 @@
 
         elements['superdoc-host'].addEventListener('contextmenu', (event) => {
             if (!state.ready || !captureCurrentSelection()) return;
+
+            // 有文字选区时由 Scriptorium 快捷条独占右键事件，避免 SuperDoc
+            // 自带上下文菜单在冒泡阶段同时打开。无选区时不拦截原生菜单。
             event.preventDefault();
+            event.stopPropagation();
+            event.stopImmediatePropagation();
             showSelectionFormatBar(event.clientX, event.clientY);
-        });
+        }, { capture: true });
 
         window.addEventListener('pointerdown', (event) => {
             if (!bar.hidden && !bar.contains(event.target)) hideSelectionFormatBar();
@@ -1361,8 +1366,7 @@
             event.preventDefault();
 
             const direction = event.deltaY < 0 ? 1 : -1;
-            const magnitude = Math.min(3, Math.max(1, Math.round(Math.abs(event.deltaY) / 100)));
-            updateZoomDisplay(state.zoom + direction * magnitude * 10);
+            updateZoomDisplay(state.zoom + direction * 5);
             scheduleZoomSettlement();
         }, { passive: false, capture: true });
     }
