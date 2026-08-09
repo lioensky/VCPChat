@@ -49,6 +49,7 @@ function createCatalog(ops) {
         sendOpenExternalLink: command((url) => ops.send('open-external-link', url)),
         openPythonAttachmentInTextEditor: query((fileUrl) => ops.invoke('open-python-attachment-in-text-editor', fileUrl)),
         onThemeUpdated: subscription(ops.subscribe('theme-updated', (_event, theme) => theme)),
+        onUiModeUpdated: subscription(ops.subscribe('ui-mode-updated', (_event, mode) => mode)),
         getCurrentTheme: query(() => ops.invoke('get-current-theme')),
         setTheme: command((theme) => ops.send('set-theme', theme)),
         setThemeMode: command((themeMode) => ops.send('set-theme-mode', themeMode)),

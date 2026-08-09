@@ -1,0 +1,37 @@
+const stable = (name, category, aliases = []) => Object.freeze({ name, category, aliases, status: 'stable', since: '1.0.0' });
+const candidate = (name, category) => Object.freeze({ name, category, aliases: [], status: 'candidate', since: '1.1.0' });
+
+export const COMPONENT_MANIFEST = Object.freeze([
+    stable('Button', 'actions'),
+    stable('IconButton', 'actions'),
+    stable('Input', 'forms'),
+    stable('Textarea', 'forms'),
+    stable('Select', 'forms'),
+    candidate('Range', 'forms'),
+    candidate('SettingsSection', 'forms'),
+    candidate('SettingsActionBar', 'forms'),
+    stable('Checkbox', 'forms'),
+    stable('Switch', 'forms'),
+    stable('Field', 'forms'),
+    stable('Badge', 'foundation'),
+    stable('Alert', 'foundation'),
+    stable('Card', 'foundation'),
+    stable('Tabs', 'navigation'),
+    stable('Toolbar', 'actions'),
+    stable('List', 'navigation', ['ListItem']),
+    stable('TableFrame', 'data'),
+    stable('EmptyState', 'foundation'),
+    stable('Modal', 'feedback'),
+    stable('Toast', 'feedback'),
+    stable('ConfirmDialog', 'feedback'),
+    stable('InputDialog', 'feedback'),
+    candidate('Divider', 'foundation'),
+    candidate('Tooltip', 'feedback'),
+    candidate('Skeleton', 'foundation'),
+    candidate('SegmentedControl', 'actions'),
+    candidate('Pagination', 'data'),
+    candidate('ScrollArea', 'data'),
+    candidate('AppPageShell', 'application'),
+    candidate('WindowControls', 'application'),
+    candidate('AsyncBoundary', 'feedback')
+]);

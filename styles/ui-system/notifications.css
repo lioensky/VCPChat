@@ -1,0 +1,246 @@
+@layer vcp-ui.components {
+    html[data-ui-mode="next"] .vcp-ui-scope.chat-header,
+    html[data-ui-mode="next"] .vcp-ui-scope .notifications-header {
+        height: var(--vcp-ui-shell-header-height);
+        min-height: var(--vcp-ui-shell-header-height);
+        box-sizing: border-box;
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope .notifications-header {
+        position: relative;
+        padding: 0 20px 0 var(--vcp-ui-space-3);
+        gap: var(--vcp-ui-space-2);
+        border-bottom: 1px solid var(--vcp-ui-border);
+        background: var(--next-header-bg);
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope .next-ui-notification-toggle-host {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex: 0 0 auto;
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope #toggleNotificationsBtn {
+        width: var(--vcp-ui-control-md);
+        min-width: var(--vcp-ui-control-md);
+        height: var(--vcp-ui-control-md);
+        margin: 0;
+        padding: 0;
+        display: grid;
+        place-items: center;
+        border: 0;
+        border-radius: var(--vcp-ui-radius-sm);
+        color: var(--vcp-ui-text-2);
+        background: transparent;
+        box-shadow: none;
+        cursor: pointer;
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope #toggleNotificationsBtn:hover,
+    html[data-ui-mode="next"] .vcp-ui-scope #toggleNotificationsBtn.notification-panel-active {
+        color: var(--vcp-ui-text-0);
+        background: var(--vcp-ui-fill-1);
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope #toggleNotificationsBtn:focus-visible {
+        outline: 2px solid var(--vcp-ui-focus-ring);
+        outline-offset: 2px;
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope #toggleNotificationsBtn svg {
+        width: var(--vcp-ui-icon-md);
+        height: var(--vcp-ui-icon-md);
+        stroke: currentColor;
+    }
+
+    html[data-ui-mode="next"] body:is(.chat-presentation-panel, .chat-presentation-immersive) .vcp-ui-scope.notifications-sidebar {
+        position: relative;
+        isolation: isolate;
+    }
+
+    html[data-ui-mode="next"] body:is(.chat-presentation-panel, .chat-presentation-immersive) .vcp-ui-scope.notifications-sidebar::before {
+        position: absolute;
+        z-index: 0;
+        inset: var(--vcp-ui-shell-header-height) 0 0;
+        content: "";
+        pointer-events: none;
+        background: var(--chat-presentation-surface);
+        backdrop-filter: var(--chat-presentation-surface-filter);
+        -webkit-backdrop-filter: var(--chat-presentation-surface-filter);
+    }
+
+    html[data-ui-mode="next"] body:is(.chat-presentation-panel, .chat-presentation-immersive) .vcp-ui-scope.notifications-sidebar > * {
+        position: relative;
+        z-index: 1;
+    }
+
+    html[data-ui-mode="next"] body:is(.chat-presentation-panel, .chat-presentation-immersive) .vcp-ui-scope .notifications-header {
+        background: var(--chat-presentation-surface);
+        backdrop-filter: var(--chat-presentation-surface-filter);
+        -webkit-backdrop-filter: var(--chat-presentation-surface-filter);
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope .datetime-container {
+        margin: 0;
+        padding: 0;
+        display: flex;
+        align-items: baseline;
+        flex-direction: row;
+        gap: var(--vcp-ui-space-2);
+        transform: none;
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope .digital-clock {
+        color: var(--vcp-ui-text-0);
+        font-family: inherit;
+        font-size: var(--vcp-ui-font-emphasis);
+        font-weight: 650;
+        letter-spacing: 0;
+        line-height: var(--vcp-ui-line-compact);
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope .date-display {
+        position: static;
+        color: var(--vcp-ui-text-3);
+        font-family: inherit;
+        font-size: var(--vcp-ui-font-caption);
+        font-weight: 500;
+        line-height: var(--vcp-ui-line-compact);
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope .notification-header-actions {
+        display: none;
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope .next-ui-notification-actions {
+        position: relative;
+        display: flex;
+        align-items: center;
+        flex: 0 0 auto;
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope .next-ui-notification-menu-trigger {
+        width: var(--vcp-ui-control-md);
+        height: var(--vcp-ui-control-md);
+        padding: 0;
+        display: grid;
+        place-items: center;
+        border: 0;
+        border-radius: var(--vcp-ui-radius-sm);
+        color: var(--vcp-ui-text-2);
+        background: transparent;
+        cursor: pointer;
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope .next-ui-notification-menu-trigger:hover,
+    html[data-ui-mode="next"] .vcp-ui-scope .next-ui-notification-menu-trigger[aria-expanded="true"] {
+        color: var(--vcp-ui-text-0);
+        background: var(--vcp-ui-fill-1);
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope .next-ui-notification-menu-trigger svg {
+        width: var(--vcp-ui-icon-md);
+        height: var(--vcp-ui-icon-md);
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope .next-ui-notification-menu {
+        position: absolute;
+        z-index: 90;
+        top: calc(100% + var(--vcp-ui-space-2));
+        right: 0;
+        width: 196px;
+        padding: var(--vcp-ui-space-2);
+        border: 1px solid var(--vcp-ui-border);
+        border-radius: var(--vcp-ui-radius-card);
+        color: var(--vcp-ui-text-1);
+        background: var(--vcp-ui-bg-1);
+        box-shadow: var(--vcp-ui-shadow-lg);
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope .next-ui-notification-menu:not([hidden]) {
+        display: grid;
+        gap: var(--vcp-ui-space-1);
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope .next-ui-notification-menu-item {
+        width: 100%;
+        min-height: var(--vcp-ui-control-md);
+        padding: 0 var(--vcp-ui-space-2);
+        display: flex;
+        align-items: center;
+        gap: var(--vcp-ui-space-2);
+        border: 0;
+        border-radius: var(--vcp-ui-radius-sm);
+        color: var(--vcp-ui-text-1);
+        background: transparent;
+        font: inherit;
+        font-size: var(--vcp-ui-font-helper);
+        text-align: left;
+        cursor: pointer;
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope .next-ui-notification-menu-item:hover {
+        color: var(--vcp-ui-text-0);
+        background: var(--vcp-ui-fill-1);
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope .next-ui-notification-menu-item.danger:hover {
+        color: var(--vcp-ui-danger);
+        background: var(--vcp-ui-danger-bg);
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope .next-ui-notification-menu-item > .vcp-ui-icon:first-child {
+        --vcp-ui-icon-size: var(--vcp-ui-icon-sm);
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope .next-ui-notification-menu-state {
+        margin-left: auto;
+        color: var(--vcp-ui-text-3);
+        font-size: var(--vcp-ui-font-caption);
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope .next-ui-notification-menu-item[aria-checked="true"] .next-ui-notification-menu-state {
+        color: var(--vcp-ui-success);
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope .next-ui-notification-menu-divider {
+        height: 1px;
+        margin: var(--vcp-ui-space-1) 0;
+        background: var(--vcp-ui-border);
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope :is(.next-ui-notification-menu-trigger, .next-ui-notification-menu-item):focus-visible {
+        outline: 2px solid var(--vcp-ui-focus-ring);
+        outline-offset: 2px;
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope .notifications-status {
+        min-height: var(--vcp-ui-control-sm);
+        padding: var(--vcp-ui-space-1) var(--vcp-ui-space-3);
+        display: grid;
+        place-items: center;
+        border-bottom: 1px solid var(--vcp-ui-border);
+        color: var(--vcp-ui-text-2);
+        background: var(--vcp-ui-bg-2);
+        font-size: var(--vcp-ui-font-caption);
+        font-weight: 500;
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope .notifications-status.status-open {
+        color: var(--vcp-ui-success);
+        background: color-mix(in srgb, var(--vcp-ui-success) 10%, var(--vcp-ui-bg-2));
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope .notifications-status:is(.status-closed, .status-error) {
+        color: var(--vcp-ui-danger);
+        background: color-mix(in srgb, var(--vcp-ui-danger) 10%, var(--vcp-ui-bg-2));
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope .notifications-status.status-connecting {
+        color: var(--vcp-ui-warning);
+        background: color-mix(in srgb, var(--vcp-ui-warning) 10%, var(--vcp-ui-bg-2));
+    }
+}
