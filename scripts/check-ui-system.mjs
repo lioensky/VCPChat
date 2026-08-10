@@ -65,6 +65,33 @@ for (const file of filesIn(styleDir, '.css')) {
     if (!['index.css'].includes(basename)) inspectSelectors(file, css);
 }
 
+const messageStylesFile = path.join(styleDir, 'messages.css');
+const messageStyles = postcss.parse(fs.readFileSync(messageStylesFile, 'utf8'), { from: messageStylesFile });
+const upstreamMessageComponentMarkers = [
+    '.vcp-tool-',
+    '.vcp-thought-chain',
+    '.vcp-desktop-push',
+    '.vcp-chat-canvas',
+    '.mermaid',
+    '.maid-diary',
+    '.valet-diary',
+    '.diary-',
+    '.message-attachment',
+    '.vcp-html-preview',
+    '.vcp-code-copy',
+    '.thinking-indicator',
+];
+messageStyles.walkRules(rule => {
+    if (rule.parent?.type === 'atrule' && /keyframes$/i.test(rule.parent.name)) return;
+    rule.selectors.forEach(selector => {
+        if (/\.md-content(?:\s|>|\+|~)/.test(selector)) {
+            report(messageStylesFile, `must not restyle descendants of the upstream message body: ${selector}`);
+        }
+        const marker = upstreamMessageComponentMarkers.find(candidate => selector.includes(candidate));
+        if (marker) report(messageStylesFile, `must not restyle upstream message component ${marker}: ${selector}`);
+    });
+});
+
 const componentCss = fs.readFileSync(path.join(styleDir, 'components.css'), 'utf8');
 if (!componentCss.includes(':focus-visible')) report(path.join(styleDir, 'components.css'), 'missing focus-visible rules');
 

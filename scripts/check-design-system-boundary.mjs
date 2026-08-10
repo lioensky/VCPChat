@@ -112,6 +112,7 @@ const allowedSourceDifferences = new Set([
     'styles/ui-system/appearance-studio.css',
     'styles/ui-system/ask-nova.css',
     'styles/ui-system/index.css',
+    'styles/ui-system/messages.css',
     'styles/ui-system/notifications.css',
     'styles/ui-system/showcase.css',
     'styles/ui-system/tokens.css',

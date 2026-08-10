@@ -456,6 +456,68 @@ try {
     assert.equal(brandAssets.fontLoaded, true, `VCPChat Orbitron wordmark font failed to load: ${JSON.stringify(brandAssets)}`);
     assert.match(brandAssets.computedFamily, /VCP Orbitron/, `VCPChat wordmark resolved to the wrong family: ${JSON.stringify(brandAssets)}`);
     assert.ok(brandAssets.novaWidth > 0 && brandAssets.novaHeight > 0, `Nova launch asset failed to decode: ${JSON.stringify(brandAssets)}`);
+    const messageSemantics = await page.evaluate(() => {
+        const originalMode = document.documentElement.dataset.uiMode || 'next';
+        const host = document.createElement('div');
+        host.className = 'vcp-ui-scope chat-messages-container';
+        host.style.position = 'fixed';
+        host.style.left = '-10000px';
+        host.style.top = '0';
+        host.style.width = '720px';
+        host.innerHTML = `
+            <div class="chat-messages">
+                <article class="message-item assistant">
+                    <img class="chat-avatar" alt="">
+                    <div class="details-and-bubble-wrapper">
+                        <div class="sender-name">Nova</div>
+                        <div class="md-content">
+                            <blockquote>upstream quote</blockquote>
+                            <pre><code>const value = 1;</code><button class="vcp-code-copy-button" type="button">Copy</button></pre>
+                            <div class="vcp-tool-result-bubble"><div class="vcp-tool-result-header">Result</div></div>
+                            <div class="vcp-thought-chain-bubble"><div class="vcp-thought-chain-header">Thought</div></div>
+                            <div class="maid-diary-update-bubble">
+                                <div class="diary-update-side diary-update-before">Before</div>
+                                <div class="diary-update-side diary-update-after">After</div>
+                            </div>
+                            <table><tbody><tr><td>Cell</td></tr></tbody></table>
+                            <img class="semantic-media" alt="" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==">
+                        </div>
+                    </div>
+                </article>
+            </div>`;
+        document.body.append(host);
+
+        const read = (selector, properties) => {
+            const style = getComputedStyle(host.querySelector(selector));
+            return Object.fromEntries(properties.map(property => [property, style[property]]));
+        };
+        const snapshot = () => ({
+            outerBubble: read('.md-content', ['borderRadius', 'backgroundColor', 'paddingTop']),
+            quote: read('blockquote', ['borderLeftWidth', 'borderLeftStyle', 'borderRadius']),
+            code: read('pre', ['borderRadius', 'borderLeftWidth', 'borderLeftStyle', 'maxHeight']),
+            tool: read('.vcp-tool-result-bubble', ['maxWidth', 'borderRadius', 'backgroundColor', 'fontFamily']),
+            thought: read('.vcp-thought-chain-bubble', ['maxWidth', 'borderRadius', 'fontFamily', 'animationName']),
+            diary: read('.maid-diary-update-bubble', ['borderRadius', 'backgroundColor', 'fontFamily']),
+            before: read('.diary-update-before', ['borderLeftWidth', 'borderLeftColor', 'backgroundColor']),
+            after: read('.diary-update-after', ['borderLeftWidth', 'borderLeftColor', 'backgroundColor']),
+            table: read('table', ['display', 'borderRadius']),
+            media: read('.semantic-media', ['borderRadius', 'maxHeight']),
+            copy: read('.vcp-code-copy-button', ['borderRadius', 'backgroundColor']),
+        });
+
+        document.documentElement.dataset.uiMode = 'classic';
+        const classic = snapshot();
+        document.documentElement.dataset.uiMode = 'next';
+        const next = snapshot();
+        document.documentElement.dataset.uiMode = originalMode;
+        host.remove();
+        return { classic, next };
+    });
+    const { outerBubble: classicOuterBubble, ...classicMessageComponents } = messageSemantics.classic;
+    const { outerBubble: nextOuterBubble, ...nextMessageComponents } = messageSemantics.next;
+    assert.deepEqual(nextMessageComponents, classicMessageComponents, `Next must preserve upstream structured-message semantics: ${JSON.stringify(messageSemantics)}`);
+    assert.notDeepEqual(nextOuterBubble, classicOuterBubble, 'Next must retain its own outer message bubble presentation');
+    assert.notEqual(messageSemantics.next.before.borderLeftColor, messageSemantics.next.after.borderLeftColor, 'Diary before/after emphasis colors must remain distinct');
     const bootLucide = await page.evaluate(() => ({
         lucideIcons: document.querySelectorAll('[data-lucide]').length,
         lucideGlobal: Boolean(window.lucide),
@@ -527,7 +589,7 @@ try {
     await capture(page, 'main-ask-nova.png');
     await page.keyboard.press('Escape');
     await page.waitForFunction(() => !document.querySelector('.ask-nova-modal-host'), { timeout: timeoutMs });
-    summary.push({ surface: '主界面 shell', mode: 'next', pass: true, lucide: bootLucide.lucideIcons, note: 'boot: WA 零请求/零注册，Orbitron/Nova/lucide 已载入，应用托盘与 Ask Nova 模态入口可用' });
+    summary.push({ surface: '主界面 shell', mode: 'next', pass: true, lucide: bootLucide.lucideIcons, note: 'boot: WA 零请求/零注册，Orbitron/Nova/lucide 已载入，上游消息组件语义保留，应用托盘与 Ask Nova 可用' });
 
     // 2. Open the UI 组件库 internal app; WA must register lazily.
     await page.click('#nextUiAddTabBtn');
