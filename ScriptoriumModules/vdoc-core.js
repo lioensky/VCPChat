@@ -9,7 +9,9 @@
     });
     const EDITABLE_SELECTOR = 'h1,h2,h3,h4,h5,h6,p,li,blockquote,figcaption,td,th';
     const PRESERVED_CONTAINER_SELECTOR = 'article,main,section,header,footer,aside,nav,figure,table,thead,tbody,tfoot,tr,ul,ol';
-    const BLOCKED_ELEMENTS = 'script,iframe,object,embed,applet,base,meta[http-equiv],link[rel="import"]';
+    // script 由 ScriptoriumProgrammableContent 执行 warn/refuse 审查并显式激活；
+    // 这里只移除可建立独立浏览上下文或插件执行环境的危险宿主元素。
+    const BLOCKED_ELEMENTS = 'iframe,object,embed,applet,base,meta[http-equiv],link[rel="import"]';
     const URL_ATTRIBUTES = ['href', 'src', 'poster', 'action', 'formaction', 'xlink:href'];
 
     function createId(prefix = 'node') {
@@ -177,7 +179,9 @@ p { margin: .7em 0; text-align: justify; text-justify: inter-ideograph; text-wra
                 modifiedAt: now,
                 generator: 'VCP Scriptorium',
                 capabilities: {
-                    scripts: options.kind === PROJECT_KINDS.SLIDE_DECK,
+                    scripts: true,
+                    programmableContentReview: true,
+                    localAnimationLibraries: ['anime', 'three'],
                     cssAnimations: true,
                     renderedTextEditing: true,
                     sceneDiffs: options.kind === PROJECT_KINDS.SLIDE_DECK,
@@ -186,6 +190,7 @@ p { margin: .7em 0; text-align: justify; text-justify: inter-ideograph; text-wra
                 resources: [],
                 styleDependencies: [],
                 embeddedStyles: [],
+                programmableDependencies: [],
                 scene: createSceneConfig({
                     kind: options.kind,
                     page: options.page,
@@ -359,7 +364,9 @@ p { margin: .7em 0; text-align: justify; text-justify: inter-ideograph; text-wra
                 modifiedAt: manifest.modifiedAt || now,
                 generator: 'VCP Scriptorium',
                 capabilities: {
-                    scripts: manifest.scene?.kind === PROJECT_KINDS.SLIDE_DECK,
+                    scripts: true,
+                    programmableContentReview: true,
+                    localAnimationLibraries: ['anime', 'three'],
                     cssAnimations: true,
                     renderedTextEditing: true,
                     sceneDiffs: manifest.scene?.kind === PROJECT_KINDS.SLIDE_DECK,
@@ -371,6 +378,13 @@ p { margin: .7em 0; text-align: justify; text-justify: inter-ideograph; text-wra
                     : [],
                 embeddedStyles: Array.isArray(manifest.embeddedStyles)
                     ? manifest.embeddedStyles
+                    : [],
+                programmableDependencies: Array.isArray(manifest.programmableDependencies)
+                    ? [...new Set(
+                        manifest.programmableDependencies
+                            .map(String)
+                            .filter((item) => ['anime', 'three'].includes(item))
+                    )]
                     : [],
                 scene: createSceneConfig(manifest.scene || {}),
                 import: manifest.import || null,

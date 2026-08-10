@@ -173,6 +173,118 @@
         return { success: true, source: next, applied };
     }
 
+    function programmablePolicy() {
+        return window.ScriptoriumProgrammableContent || null;
+    }
+
+    function reviewProgrammableHtml(html, context = {}) {
+        const policy = programmablePolicy();
+        if (!policy) {
+            return {
+                html: String(html || ''),
+                dependencies: [],
+                diagnostics: [{
+                    level: 'refuse',
+                    ruleId: 'review-engine-unavailable',
+                    message: '可编程内容审查器未加载。',
+                    context,
+                }],
+                refused: true,
+            };
+        }
+
+        const normalized = policy.normalizeHtmlDependencies(html, context);
+        const diagnostics = [...normalized.diagnostics];
+        policy.reviewScriptsInHtml(normalized.html, context).forEach((entry) => {
+            if (entry.kind !== 'inline' || !entry.review) return;
+            entry.review.findings.forEach((finding) => diagnostics.push({
+                ...finding,
+                scriptId: entry.scriptId,
+                context: entry.review.context,
+            }));
+        });
+
+        return {
+            ...normalized,
+            diagnostics,
+            refused: diagnostics.some((item) => item.level === 'refuse'),
+        };
+    }
+
+    function reviewStandaloneScript(source, context = {}) {
+        const policy = programmablePolicy();
+        if (policy) return policy.reviewJavaScript(source, context);
+        return {
+            allowed: false,
+            level: 'refuse',
+            findings: [{
+                level: 'refuse',
+                ruleId: 'review-engine-unavailable',
+                message: '可编程内容审查器未加载。',
+            }],
+            context,
+        };
+    }
+
+    function normalizeProjectProgrammableContent(payload, deck) {
+        const diagnostics = [];
+        const dependencies = new Set();
+
+        if (!deck) {
+            const result = reviewProgrammableHtml(payload.html, {
+                phase: 'create',
+                documentKind: 'docx',
+            });
+            result.dependencies.forEach((item) => dependencies.add(item));
+            diagnostics.push(...result.diagnostics);
+            return {
+                html: result.html,
+                slides: undefined,
+                dependencies: [...dependencies],
+                diagnostics,
+                refused: result.refused,
+            };
+        }
+
+        const slides = (Array.isArray(payload.slides) ? payload.slides : [])
+            .map((slide, index) => {
+                const htmlResult = reviewProgrammableHtml(slide?.html, {
+                    phase: 'create',
+                    documentKind: 'pptx',
+                    slideIndex: index,
+                });
+                htmlResult.dependencies.forEach((item) => dependencies.add(item));
+                diagnostics.push(...htmlResult.diagnostics);
+
+                const scriptReview = reviewStandaloneScript(slide?.script, {
+                    phase: 'create',
+                    documentKind: 'pptx',
+                    slideIndex: index,
+                    scriptId: slide?.id || `slide-${index + 1}`,
+                });
+                (scriptReview.dependencies || [])
+                    .forEach((item) => dependencies.add(item));
+                scriptReview.findings.forEach((finding) => diagnostics.push({
+                    ...finding,
+                    scriptId: scriptReview.context?.scriptId,
+                    context: scriptReview.context,
+                }));
+
+                return {
+                    ...(slide && typeof slide === 'object' ? slide : {}),
+                    html: htmlResult.html,
+                };
+            });
+
+        return {
+            html: undefined,
+            slides,
+            dependencies: [...dependencies],
+            diagnostics,
+            refused: diagnostics.some((item) => item.level === 'refuse'),
+        };
+    }
+
     function createAgentApi(context) {
         const {
             state,
@@ -215,12 +327,33 @@
             if (!state.ready || !state.document) throw new Error('Scriptorium 文档尚未就绪。');
         }
 
+        function currentProgrammableContentStatus() {
+            const diagnostics = Array.isArray(state.programmableContentDiagnostics)
+                ? state.programmableContentDiagnostics
+                : [];
+            const status = diagnostics.some((item) => item.level === 'refuse')
+                ? 'refuse'
+                : diagnostics.some((item) => item.level === 'warn')
+                    ? 'warn'
+                    : 'allow';
+            return {
+                status,
+                dependencies: Array.isArray(
+                    state.document?.manifest?.programmableDependencies
+                )
+                    ? state.document.manifest.programmableDependencies
+                    : [],
+                diagnostics,
+            };
+        }
+
         function response(data = {}) {
             return {
                 success: true,
                 documentId: state.document.manifest.id,
                 documentKind: isDeck() ? 'pptx' : 'docx',
                 revision: revision(),
+                programmableContent: currentProgrammableContentStatus(),
                 ...data,
             };
         }
@@ -383,15 +516,36 @@
             const summary = String(payload.summary || '').trim()
                 || '创建完整 Scriptorium 工程';
             const title = String(payload.title || (deck ? '未命名演示' : '未命名文稿'));
+            const programmable = normalizeProjectProgrammableContent(payload, deck);
+            if (programmable.refused) {
+                return {
+                    success: false,
+                    code: 'PROGRAMMABLE_CONTENT_REFUSED',
+                    message: [
+                        '工程包含被 Scriptorium 安全策略拒绝的 JavaScript，未创建文件。',
+                        ...programmable.diagnostics
+                            .filter((item) => item.level === 'refuse')
+                            .map((item) => `[${item.ruleId}] ${item.message}`),
+                    ].join(' '),
+                    documentKind: deck ? 'pptx' : 'docx',
+                    programmableContent: {
+                        status: 'refuse',
+                        dependencies: programmable.dependencies,
+                        diagnostics: programmable.diagnostics,
+                    },
+                };
+            }
+
             const model = core.createDocument({
                 title,
                 kind: deck ? core.PROJECT_KINDS.SLIDE_DECK : core.PROJECT_KINDS.FLOW_DOCUMENT,
-                html: deck ? undefined : payload.html,
+                html: deck ? undefined : programmable.html,
                 css: payload.css,
-                slides: deck ? payload.slides : undefined,
+                slides: deck ? programmable.slides : undefined,
                 page: payload.page,
                 presentation: payload.presentation,
             });
+            model.manifest.programmableDependencies = programmable.dependencies;
             const createdAt = Date.now();
             model.checkpoints.unshift({
                 id: `agent-create-${crypto.randomUUID()}`,
@@ -416,6 +570,13 @@
                 documentKind: deck ? 'pptx' : 'docx',
                 title: model.manifest.title,
                 suggestedName: `${model.manifest.title}${deck ? '.vpptx' : '.vdocx'}`,
+                programmableContent: {
+                    status: programmable.diagnostics.some((item) => item.level === 'warn')
+                        ? 'warn'
+                        : 'allow',
+                    dependencies: programmable.dependencies,
+                    diagnostics: programmable.diagnostics,
+                },
                 serialized: core.serialize(model),
             };
         }
@@ -826,32 +987,154 @@
             const slideIndex = isDeck()
                 ? Number(payload.slideIndex ?? state.activeSlideIndex)
                 : null;
-            const replacements = Array.isArray(payload.replacements)
+            const suppliedReplacements = Array.isArray(payload.replacements)
                 ? payload.replacements
                 : [payload];
+            const original = sourceFor(sourceKind, slideIndex);
+            const preliminary = applyReplacements(original, suppliedReplacements);
+            if (!preliminary.success) return Promise.resolve(response(preliminary));
+
+            let replacements = suppliedReplacements;
+            let programmableContent = {
+                status: 'allow',
+                dependencies: [],
+                diagnostics: [],
+            };
+
+            if (sourceKind === 'html') {
+                // 在 PR 建立前规范化 replacement 片段，使人类审阅的是最终源码：
+                // Anime/Three CDN 会变成 VDOC 内置依赖标记，其他外链变成忽略标记。
+                replacements = suppliedReplacements.map((replacement, index) => {
+                    const normalized = reviewProgrammableHtml(
+                        replacement?.replace ?? replacement?.replacement ?? '',
+                        {
+                            phase: 'pr',
+                            documentKind: isDeck() ? 'pptx' : 'docx',
+                            slideIndex,
+                            replacementIndex: index,
+                        }
+                    );
+                    programmableContent.dependencies.push(...normalized.dependencies);
+                    programmableContent.diagnostics.push(...normalized.diagnostics);
+                    return {
+                        ...replacement,
+                        replace: normalized.html,
+                    };
+                });
+                programmableContent.dependencies = [
+                    ...new Set(programmableContent.dependencies),
+                ];
+
+                // 再审查应用转换后 replacement 得到的完整候选源码。
+                const candidate = applyReplacements(original, replacements);
+                if (!candidate.success) return Promise.resolve(response(candidate));
+                const candidateReview = reviewProgrammableHtml(candidate.source, {
+                    phase: 'pr-candidate',
+                    documentKind: isDeck() ? 'pptx' : 'docx',
+                    slideIndex,
+                });
+                programmableContent.dependencies = [
+                    ...new Set([
+                        ...programmableContent.dependencies,
+                        ...candidateReview.dependencies,
+                    ]),
+                ];
+                programmableContent.diagnostics.push(...candidateReview.diagnostics);
+            } else if (sourceKind === 'script') {
+                const scriptReview = reviewStandaloneScript(preliminary.source, {
+                    phase: 'pr',
+                    documentKind: isDeck() ? 'pptx' : 'docx',
+                    slideIndex,
+                    scriptId: isDeck() ? `slide-${slideIndex + 1}` : 'document',
+                });
+                programmableContent.dependencies.push(
+                    ...(scriptReview.dependencies || [])
+                );
+                scriptReview.findings.forEach((finding) =>
+                    programmableContent.diagnostics.push({
+                        ...finding,
+                        context: scriptReview.context,
+                    })
+                );
+            }
+
+            programmableContent.status = programmableContent.diagnostics.some(
+                (item) => item.level === 'refuse'
+            )
+                ? 'refuse'
+                : programmableContent.diagnostics.some((item) => item.level === 'warn')
+                    ? 'warn'
+                    : 'allow';
+
+            if (programmableContent.status === 'refuse') {
+                return Promise.resolve(response({
+                    success: false,
+                    code: 'PROGRAMMABLE_CONTENT_REFUSED',
+                    message: '源码变更包含被安全策略拒绝的 JavaScript，未建立待审 PR。',
+                    programmableContent,
+                }));
+            }
+
             return queueMutation({
                 ...payload,
+                replacements,
                 proposal: {
                     type: 'source-replace',
                     sourceKind,
                     slideIndex,
                     replacements,
+                    programmableContent,
                 },
             }, async () => {
-                const original = sourceFor(sourceKind, slideIndex);
-                const result = applyReplacements(original, replacements);
+                const current = sourceFor(sourceKind, slideIndex);
+                const result = applyReplacements(current, replacements);
                 if (!result.success) return result;
+
+                let nextSource = result.source;
+                if (sourceKind === 'html') {
+                    const normalized = reviewProgrammableHtml(nextSource, {
+                        phase: 'pr-apply',
+                        documentKind: isDeck() ? 'pptx' : 'docx',
+                        slideIndex,
+                    });
+                    if (normalized.refused) {
+                        return {
+                            success: false,
+                            code: 'PROGRAMMABLE_CONTENT_REFUSED',
+                            message: '审批后复核发现被拒绝的 JavaScript，未应用变更。',
+                            programmableContent: {
+                                status: 'refuse',
+                                dependencies: normalized.dependencies,
+                                diagnostics: normalized.diagnostics,
+                            },
+                        };
+                    }
+                    nextSource = normalized.html;
+                    state.document.manifest.programmableDependencies = [
+                        ...new Set([
+                            ...(state.document.manifest.programmableDependencies || []),
+                            ...normalized.dependencies,
+                        ]),
+                    ];
+                } else if (sourceKind === 'script') {
+                    state.document.manifest.programmableDependencies = [
+                        ...new Set([
+                            ...(state.document.manifest.programmableDependencies || []),
+                            ...programmableContent.dependencies,
+                        ]),
+                    ];
+                }
 
                 if (isDeck()) {
                     const slide = slides()[slideIndex];
                     if (!slide) throw new Error('指定幻灯片不存在。');
-                    if (sourceKind === 'css') slide.css = core.sanitizeCss(result.source);
-                    else if (sourceKind === 'script') slide.script = String(result.source);
-                    else slide.html = core.formatHtml(core.ensureTextNodeIds(result.source));
+                    if (sourceKind === 'css') slide.css = core.sanitizeCss(nextSource);
+                    else if (sourceKind === 'script') slide.script = String(nextSource);
+                    else slide.html = core.formatHtml(core.ensureTextNodeIds(nextSource));
                 } else if (sourceKind === 'css') {
-                    setCurrentCss(result.source);
+                    setCurrentCss(nextSource);
                 } else {
-                    setCurrentHtml(result.source);
+                    setCurrentHtml(nextSource);
                 }
                 renderDocument();
                 return {
@@ -861,28 +1144,95 @@
                         sourceKind,
                         slideIndex,
                         replacements: result.applied,
+                        programmableContent,
                     },
+                    programmableContent,
                 };
             });
         }
 
         function mutateSlides(payload = {}, type) {
+            if (!isDeck()) {
+                return Promise.resolve(response({
+                    success: false,
+                    code: 'PPTX_REQUIRED',
+                    message: '幻灯片操作仅适用于 PPTX 端。',
+                }));
+            }
+
+            let normalizedPayload = payload;
+            let programmableContent = {
+                status: 'allow',
+                dependencies: [],
+                diagnostics: [],
+            };
+
+            if (type !== 'delete') {
+                const insertionIndex = type === 'insert'
+                    ? Math.max(0, Math.min(slides().length, Number(payload.slideIndex) || 0))
+                    : slides().length;
+                const htmlReview = reviewProgrammableHtml(payload.html, {
+                    phase: 'pr',
+                    documentKind: 'pptx',
+                    slideIndex: insertionIndex,
+                });
+                const scriptReview = reviewStandaloneScript(payload.script, {
+                    phase: 'pr',
+                    documentKind: 'pptx',
+                    slideIndex: insertionIndex,
+                    scriptId: payload.id || `slide-${insertionIndex + 1}`,
+                });
+                programmableContent.dependencies = [
+                    ...new Set([
+                        ...htmlReview.dependencies,
+                        ...(scriptReview.dependencies || []),
+                    ]),
+                ];
+                programmableContent.diagnostics = [
+                    ...htmlReview.diagnostics,
+                    ...scriptReview.findings.map((finding) => ({
+                        ...finding,
+                        context: scriptReview.context,
+                    })),
+                ];
+                programmableContent.status = programmableContent.diagnostics.some(
+                    (item) => item.level === 'refuse'
+                )
+                    ? 'refuse'
+                    : programmableContent.diagnostics.some((item) => item.level === 'warn')
+                        ? 'warn'
+                        : 'allow';
+                normalizedPayload = {
+                    ...payload,
+                    html: htmlReview.html,
+                };
+
+                if (programmableContent.status === 'refuse') {
+                    return Promise.resolve(response({
+                        success: false,
+                        code: 'PROGRAMMABLE_CONTENT_REFUSED',
+                        message: '新增页面包含被安全策略拒绝的 JavaScript，未建立待审 PR。',
+                        programmableContent,
+                    }));
+                }
+            }
+
             return queueMutation({
-                ...payload,
+                ...normalizedPayload,
                 proposal: {
                     type: `slide-${type}`,
-                    slideIndex: payload.slideIndex,
-                    name: payload.name,
-                    html: payload.html,
-                    css: payload.css,
-                    script: payload.script,
-                    notes: payload.notes,
+                    slideIndex: normalizedPayload.slideIndex,
+                    name: normalizedPayload.name,
+                    html: normalizedPayload.html,
+                    css: normalizedPayload.css,
+                    script: normalizedPayload.script,
+                    notes: normalizedPayload.notes,
+                    programmableContent,
                 },
             }, async () => {
-                if (!isDeck()) throw new Error('幻灯片操作仅适用于 PPTX 端。');
                 const list = slides();
                 if (type === 'delete') {
-                    const index = Number(payload.slideIndex ?? state.activeSlideIndex);
+                    const index = Number(normalizedPayload.slideIndex ?? state.activeSlideIndex);
                     if (!list[index]) throw new Error('指定幻灯片不存在。');
                     if (list.length <= 1) throw new Error('演示至少需要保留一页。');
                     const [removed] = list.splice(index, 1);
@@ -894,23 +1244,35 @@
                     };
                 }
                 const insertionIndex = type === 'insert'
-                    ? Math.max(0, Math.min(list.length, Number(payload.slideIndex) || 0))
+                    ? Math.max(0, Math.min(list.length, Number(normalizedPayload.slideIndex) || 0))
                     : list.length;
                 const slide = core.createSlide({
-                    name: payload.name,
-                    html: payload.html,
-                    css: payload.css,
-                    script: payload.script,
-                    transition: payload.transition,
-                    notes: payload.notes,
-                    resources: payload.resources,
+                    name: normalizedPayload.name,
+                    html: normalizedPayload.html,
+                    css: normalizedPayload.css,
+                    script: normalizedPayload.script,
+                    transition: normalizedPayload.transition,
+                    notes: normalizedPayload.notes,
+                    resources: normalizedPayload.resources,
                 }, insertionIndex);
                 list.splice(insertionIndex, 0, slide);
+                state.document.manifest.programmableDependencies = [
+                    ...new Set([
+                        ...(state.document.manifest.programmableDependencies || []),
+                        ...programmableContent.dependencies,
+                    ]),
+                ];
                 state.activeSlideIndex = insertionIndex;
                 renderDocument();
                 return {
                     success: true,
-                    operation: { type: `slide-${type}`, index: insertionIndex, slideId: slide.id },
+                    operation: {
+                        type: `slide-${type}`,
+                        index: insertionIndex,
+                        slideId: slide.id,
+                        programmableContent,
+                    },
+                    programmableContent,
                 };
             });
         }

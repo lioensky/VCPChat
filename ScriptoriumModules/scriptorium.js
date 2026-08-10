@@ -55,6 +55,8 @@
         autoApprovalScheduled: new Set(),
         slideThumbnailObserver: null,
         slideRuntimeDisposer: null,
+        slideRuntimeIdentity: null,
+        programmableContentDiagnostics: [],
         checkpointSaveQueue: Promise.resolve(),
     };
 
@@ -421,6 +423,7 @@ ${surface === 'edit' ? `
             console.error('[Scriptorium] Slide runtime cleanup failed:', error);
         }
         state.slideRuntimeDisposer = null;
+        state.slideRuntimeIdentity = null;
     }
 
     function createScopedDocument(runtimeRoot) {
@@ -444,12 +447,93 @@ ${surface === 'edit' ? `
         });
     }
 
+    function recordProgrammableDiagnostics(diagnostics = []) {
+        state.programmableContentDiagnostics = diagnostics.map((item) => ({
+            ...item,
+            createdAt: Date.now(),
+        }));
+        diagnostics.forEach((item) => {
+            const log = item.level === 'refuse' ? console.error : console.warn;
+            log('[Scriptorium Programmable Content]', item);
+        });
+    }
+
+    function reviewRuntimeScript(source, context = {}) {
+        const policy = window.ScriptoriumProgrammableContent;
+        if (!policy) {
+            return {
+                allowed: false,
+                level: 'refuse',
+                findings: [{
+                    level: 'refuse',
+                    ruleId: 'review-engine-unavailable',
+                    message: '可编程内容审查器未加载，拒绝执行脚本。',
+                }],
+                context,
+            };
+        }
+        return policy.reviewJavaScript(source, context);
+    }
+
+    function diagnosticsFromReview(review, extra = {}) {
+        return review.findings.map((finding) => ({
+            ...finding,
+            ...extra,
+            context: review.context,
+        }));
+    }
+
     function runSlideRuntime(slide, runtimeRoot, surface = 'edit') {
+        if (!slide?.script || !runtimeRoot?.isConnected) {
+            disposeSlideRuntime();
+            return null;
+        }
+
+        const identity = {
+            slideId: slide.id,
+            surface,
+            root: runtimeRoot,
+        };
+        const currentIdentity = state.slideRuntimeIdentity;
+        if (
+            currentIdentity
+            && currentIdentity.slideId === identity.slideId
+            && currentIdentity.surface === identity.surface
+            && currentIdentity.root === identity.root
+            && runtimeRoot.isConnected
+        ) {
+            return currentIdentity.runtime || null;
+        }
+
         disposeSlideRuntime();
-        if (!slide?.script || !runtimeRoot?.isConnected) return null;
+
+        // AI 页面脚本常用 data-bound 防止重复绑定。它属于运行时状态，
+        // 不应阻止新建渲染树重新启动，也不应被持久化回 VPPTX。
+        if (runtimeRoot.hasAttribute?.('data-bound')) {
+            runtimeRoot.removeAttribute('data-bound');
+        }
+        runtimeRoot.querySelectorAll?.('[data-bound]').forEach((element) => {
+            element.removeAttribute('data-bound');
+        });
 
         const animationFrames = new Set();
         const timeouts = new Set();
+        const review = reviewRuntimeScript(slide.script, {
+            documentKind: 'pptx',
+            surface,
+            scriptId: slide.id,
+        });
+        recordProgrammableDiagnostics(diagnosticsFromReview(review, {
+            scriptId: slide.id,
+            documentKind: 'pptx',
+            surface,
+        }));
+        if (!review.allowed) {
+            runtimeRoot.dataset.vdocScriptRefused = 'true';
+            return null;
+        }
+        runtimeRoot.removeAttribute('data-vdoc-script-refused');
+
         const intervals = new Set();
         const cleanups = [];
         let disposed = false;
@@ -560,7 +644,267 @@ ${surface === 'edit' ? `
                 }
             });
         };
+        state.slideRuntimeIdentity = {
+            ...identity,
+            runtime,
+        };
         return runtime;
+    }
+
+    function runDocumentRuntime(runtimeRoot, surface = 'edit') {
+        disposeSlideRuntime();
+        if (!runtimeRoot?.isConnected) return null;
+
+        const policy = window.ScriptoriumProgrammableContent;
+        const scriptElements = [...runtimeRoot.querySelectorAll('script')];
+        if (!scriptElements.length) {
+            recordProgrammableDiagnostics([]);
+            return null;
+        }
+
+        const animationFrames = new Set();
+        const timeouts = new Set();
+        const intervals = new Set();
+        const cleanups = [];
+        const diagnostics = [];
+        let disposed = false;
+
+        const trackedRequestAnimationFrame = (callback) => {
+            if (disposed) return 0;
+            const id = window.requestAnimationFrame((timestamp) => {
+                animationFrames.delete(id);
+                if (!disposed) callback(timestamp);
+            });
+            animationFrames.add(id);
+            return id;
+        };
+        const trackedCancelAnimationFrame = (id) => {
+            animationFrames.delete(id);
+            window.cancelAnimationFrame(id);
+        };
+        const trackedSetTimeout = (callback, wait, ...args) => {
+            if (disposed) return 0;
+            const id = window.setTimeout(() => {
+                timeouts.delete(id);
+                if (!disposed) callback(...args);
+            }, wait);
+            timeouts.add(id);
+            return id;
+        };
+        const trackedClearTimeout = (id) => {
+            timeouts.delete(id);
+            window.clearTimeout(id);
+        };
+        const trackedSetInterval = (callback, wait, ...args) => {
+            if (disposed) return 0;
+            const id = window.setInterval(() => {
+                if (!disposed) callback(...args);
+            }, wait);
+            intervals.add(id);
+            return id;
+        };
+        const trackedClearInterval = (id) => {
+            intervals.delete(id);
+            window.clearInterval(id);
+        };
+
+        scriptElements.forEach((scriptElement, index) => {
+            const scriptId = scriptElement.id
+                || scriptElement.dataset.vdocScript
+                || `document-island-${index + 1}`;
+            const island = scriptElement.closest(
+                '[data-vdoc-interactive], [data-vdoc-component], section, article, figure, div'
+            ) || runtimeRoot;
+
+            if (scriptElement.dataset.vdocLibrary) {
+                diagnostics.push({
+                    level: 'info',
+                    ruleId: 'local-library',
+                    message: `${scriptElement.dataset.vdocLibrary} 使用 Scriptorium 内置本地依赖。`,
+                    scriptId,
+                    library: scriptElement.dataset.vdocLibrary,
+                    documentKind: 'docx',
+                    surface,
+                });
+                return;
+            }
+
+            if (
+                scriptElement.dataset.vdocIgnoredSrc
+                || scriptElement.type === 'application/x-vdoc-ignored-external'
+            ) {
+                diagnostics.push({
+                    level: 'warn',
+                    ruleId: 'external-script-ignored',
+                    message: `未允许的外部脚本保持忽略：${
+                        scriptElement.dataset.vdocIgnoredSrc || '未知来源'
+                    }`,
+                    scriptId,
+                    source: scriptElement.dataset.vdocIgnoredSrc || '',
+                    documentKind: 'docx',
+                    surface,
+                });
+                return;
+            }
+
+            if (scriptElement.src || scriptElement.getAttribute('src')) {
+                const dependency = policy?.dependencyForUrl(
+                    scriptElement.getAttribute('src')
+                ) || {
+                    action: 'ignore',
+                    level: 'refuse',
+                    message: '依赖审查器不可用，外部脚本已拒绝。',
+                };
+                if (dependency.level === 'warn' || dependency.level === 'refuse') {
+                    diagnostics.push({
+                        level: dependency.level,
+                        ruleId: dependency.code || 'external-script',
+                        message: dependency.message,
+                        scriptId,
+                        documentKind: 'docx',
+                        surface,
+                    });
+                } else {
+                    diagnostics.push({
+                        level: 'info',
+                        ruleId: 'local-library-redirect',
+                        message: dependency.message,
+                        scriptId,
+                        library: dependency.library,
+                        source: dependency.source,
+                        localUrl: dependency.localUrl,
+                        documentKind: 'docx',
+                        surface,
+                    });
+                }
+                // 外链标签作为文档源码与导出依赖声明保留。通过 innerHTML
+                // 插入的 script 不会自动执行，因此未允许的外链不会在编辑器加载。
+                scriptElement.dataset.vdocDependencyAction = dependency.action;
+                if (dependency.library) {
+                    scriptElement.dataset.vdocLocalLibrary = dependency.library;
+                }
+                return;
+            }
+
+            const source = scriptElement.textContent || '';
+            const review = reviewRuntimeScript(source, {
+                documentKind: 'docx',
+                surface,
+                scriptId,
+            });
+            diagnostics.push(...diagnosticsFromReview(review, {
+                scriptId,
+                documentKind: 'docx',
+                surface,
+            }));
+            // 内联脚本节点保留为 VDOCX 文档真相；运行时只显式执行审查通过的源码。
+            scriptElement.dataset.vdocReviewLevel = review.level;
+            if (!review.allowed) {
+                island.dataset.vdocScriptRefused = 'true';
+                return;
+            }
+            island.removeAttribute('data-vdoc-script-refused');
+            island.removeAttribute('data-bound');
+            island.querySelectorAll('[data-bound]').forEach((node) =>
+                node.removeAttribute('data-bound')
+            );
+
+            const runtime = Object.freeze({
+                surface,
+                root: island,
+                scriptId,
+                addCleanup(callback) {
+                    if (typeof callback === 'function') cleanups.push(callback);
+                    return callback;
+                },
+                requestAnimationFrame: trackedRequestAnimationFrame,
+                cancelAnimationFrame: trackedCancelAnimationFrame,
+                setTimeout: trackedSetTimeout,
+                clearTimeout: trackedClearTimeout,
+                setInterval: trackedSetInterval,
+                clearInterval: trackedClearInterval,
+            });
+
+            try {
+                const execute = new Function(
+                    'scene',
+                    'runtime',
+                    'document',
+                    'requestAnimationFrame',
+                    'cancelAnimationFrame',
+                    'setTimeout',
+                    'clearTimeout',
+                    'setInterval',
+                    'clearInterval',
+                    source
+                );
+                const returned = execute.call(
+                    island,
+                    island,
+                    runtime,
+                    createScopedDocument(island),
+                    trackedRequestAnimationFrame,
+                    trackedCancelAnimationFrame,
+                    trackedSetTimeout,
+                    trackedClearTimeout,
+                    trackedSetInterval,
+                    trackedClearInterval
+                );
+                if (typeof returned === 'function') cleanups.push(returned);
+                else if (returned && typeof returned.dispose === 'function') {
+                    cleanups.push(() => returned.dispose());
+                }
+            } catch (error) {
+                diagnostics.push({
+                    level: 'refuse',
+                    ruleId: 'runtime-execution-error',
+                    message: `脚本执行失败：${error.message}`,
+                    scriptId,
+                    documentKind: 'docx',
+                    surface,
+                });
+                console.error(`[Scriptorium] Document island ${scriptId} failed:`, error);
+            }
+        });
+
+        recordProgrammableDiagnostics(diagnostics);
+        state.slideRuntimeDisposer = () => {
+            if (disposed) return;
+            disposed = true;
+            animationFrames.forEach((id) => window.cancelAnimationFrame(id));
+            timeouts.forEach((id) => window.clearTimeout(id));
+            intervals.forEach((id) => window.clearInterval(id));
+            animationFrames.clear();
+            timeouts.clear();
+            intervals.clear();
+            [...cleanups].reverse().forEach((cleanup) => {
+                try {
+                    cleanup();
+                } catch (error) {
+                    console.error('[Scriptorium] Document island cleanup failed:', error);
+                }
+            });
+        };
+        state.slideRuntimeIdentity = {
+            slideId: state.document?.manifest?.id || 'document',
+            surface,
+            root: runtimeRoot,
+            runtime: { diagnostics },
+        };
+        return { diagnostics };
+    }
+
+    function activateProgrammableContent(surface = state.mode) {
+        if (isSlideDeck()) {
+            activateCurrentSlideRuntime(surface);
+            return;
+        }
+        const root = surface === 'read' ? getReadRoot() : getRenderRoot();
+        const runtimeRoot = surface === 'read'
+            ? root?.querySelector('.vdoc-paged-runtime')
+            : root?.querySelector('.vdoc-flow-runtime');
+        if (runtimeRoot) runDocumentRuntime(runtimeRoot, surface);
+        else disposeSlideRuntime();
     }
 
     function activateCurrentSlideRuntime(surface = state.mode) {
@@ -622,9 +966,9 @@ ${surface === 'edit' ? `
         });
         bindRenderSurface(root);
         updatePageZoomLayout(root);
-        if (state.mode === 'render' && isSlideDeck()) {
+        if (state.mode === 'render') {
             window.requestAnimationFrame(() => {
-                if (state.mode === 'render') activateCurrentSlideRuntime('render');
+                if (state.mode === 'render') activateProgrammableContent('render');
             });
         }
         renderOutline();
@@ -911,6 +1255,8 @@ ${state.document.source.html}
                 paged,
                 suggestedName: `${baseName}${format === 'pdf' ? '.pdf' : '.html'}`,
                 page: core.createSceneConfig(state.document.manifest.scene).page,
+                programmableDependencies:
+                    state.document.manifest.programmableDependencies || [],
             });
             if (!result?.success) return false;
             showToast(`已导出 · ${result.name}`, 'success');
@@ -1424,10 +1770,14 @@ ${state.document.source.html}
         if (!runtime) return;
         const clone = runtime.cloneNode(true);
         restoreMathSemantics(clone);
-        clone.querySelectorAll('[contenteditable], [spellcheck], [data-vdoc-editor-selected]').forEach((node) => {
+        clone.removeAttribute('data-bound');
+        clone.querySelectorAll(
+            '[contenteditable], [spellcheck], [data-vdoc-editor-selected], [data-bound]'
+        ).forEach((node) => {
             node.removeAttribute('contenteditable');
             node.removeAttribute('spellcheck');
             node.removeAttribute('data-vdoc-editor-selected');
+            node.removeAttribute('data-bound');
         });
         setCurrentSourceHtml(clone.innerHTML);
     }
@@ -1821,16 +2171,14 @@ ${state.document.source.html}
             renderReadingPreview();
             window.requestAnimationFrame(() => {
                 updateCurrentPage(getReadRoot(), elements['read-host']);
-                if (state.mode === 'read' && isSlideDeck()) {
-                    activateCurrentSlideRuntime('read');
+                if (state.mode === 'read') {
+                    activateProgrammableContent('read');
                 }
             });
         } else if (isRender) {
-            if (isSlideDeck()) {
-                window.requestAnimationFrame(() => {
-                    if (state.mode === 'render') activateCurrentSlideRuntime('render');
-                });
-            }
+            window.requestAnimationFrame(() => {
+                if (state.mode === 'render') activateProgrammableContent('render');
+            });
             state.pageObserver?.disconnect();
             elements['page-status'].textContent = isSlideDeck()
                 ? `第 ${state.activeSlideIndex + 1} 页 / 共 ${state.document.source.slides.length} 页`

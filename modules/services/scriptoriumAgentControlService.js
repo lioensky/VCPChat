@@ -261,8 +261,39 @@ class ScriptoriumAgentControlService {
                 summary: String(payload.summary || '创建完整 Scriptorium 工程').trim(),
             },
         });
-        if (!normalized?.success || !normalized.serialized) {
+        if (!normalized?.success) {
+            const programmableContent = normalized?.programmableContent || null;
+            if (normalized?.code === 'PROGRAMMABLE_CONTENT_REFUSED') {
+                return {
+                    content: [{
+                        type: 'text',
+                        text: [
+                            '# Scriptorium 工程创建已拒绝',
+                            '',
+                            `- 状态：${programmableContent?.status || 'refuse'}`,
+                            `- 原因：${normalized.message || '可编程内容未通过安全审查。'}`,
+                            ...(programmableContent?.diagnostics || []).map((item) =>
+                                `- [${item.level}] ${item.ruleId || 'programmable-content'}：${item.message}`
+                            ),
+                            '',
+                            '未创建或写入任何工程文件。',
+                        ].join('\n'),
+                    }],
+                    details: {
+                        command: 'CreateProject',
+                        success: false,
+                        code: normalized.code,
+                        message: normalized.message,
+                        projectType,
+                        fileCreated: false,
+                        programmableContent,
+                    },
+                };
+            }
             throw new Error(normalized?.message || 'Scriptorium 工程规范化失败。');
+        }
+        if (!normalized.serialized) {
+            throw new Error('Scriptorium 工程规范化未返回序列化内容。');
         }
 
         const serialized = String(normalized.serialized);
@@ -291,6 +322,11 @@ class ScriptoriumAgentControlService {
         if (openRequested) {
             await this.documentHandlers.openDocxWindow({ filePath: targetPath });
         }
+        const programmableContent = normalized.programmableContent || {
+            status: 'allow',
+            dependencies: [],
+            diagnostics: [],
+        };
         return {
             content: [{
                 type: 'text',
@@ -302,6 +338,13 @@ class ScriptoriumAgentControlService {
                     `- 署名：${maid.name}`,
                     `- 路径：${targetPath}`,
                     `- SHA-256：${fileHash}`,
+                    `- 可编程内容审查：${programmableContent.status}`,
+                    programmableContent.dependencies?.length
+                        ? `- 内置动画依赖：${programmableContent.dependencies.join('、')}`
+                        : '- 内置动画依赖：无',
+                    ...(programmableContent.diagnostics || []).map((item) =>
+                        `- [${item.level}] ${item.ruleId || 'programmable-content'}：${item.message}`
+                    ),
                     openRequested
                         ? '- 打开状态：已请求在 Scriptorium 中打开；若当前文档有未保存修改，最终是否切换由人类确认。'
                         : '- 打开状态：仅完成落盘，未请求切换当前窗口文档。',
@@ -320,6 +363,7 @@ class ScriptoriumAgentControlService {
                 maid,
                 openRequested,
                 currentWindowDocumentReplaced: false,
+                programmableContent,
             },
         };
     }

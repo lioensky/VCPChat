@@ -495,6 +495,101 @@ async function atomicWriteExport(filePath, data) {
     };
 }
 
+function escapeInlineScriptSource(source) {
+    return String(source || '').replace(/<\/script/gi, '<\\/script');
+}
+
+function libraryForExternalScriptUrl(value) {
+    const url = String(value || '').trim();
+    if (
+        /^https?:\/\/cdnjs\.cloudflare\.com\/ajax\/libs\/three\.js(?:\/|$)/i.test(url)
+        || /^https?:\/\/cdn\.jsdelivr\.net\/npm\/three(?:@[^/]+)?(?:\/|$)/i.test(url)
+        || /^https?:\/\/unpkg\.com\/three(?:@[^/]+)?(?:\/|$)/i.test(url)
+        || /(?:^|\/)vendor\/three(?:\.min)?\.js(?:[?#].*)?$/i.test(url)
+    ) return 'three';
+    if (
+        /^https?:\/\/cdnjs\.cloudflare\.com\/ajax\/libs\/animejs(?:\/|$)/i.test(url)
+        || /^https?:\/\/cdn\.jsdelivr\.net\/npm\/animejs(?:@[^/]+)?(?:\/|$)/i.test(url)
+        || /^https?:\/\/unpkg\.com\/animejs(?:@[^/]+)?(?:\/|$)/i.test(url)
+        || /(?:^|\/)vendor\/anime(?:\.min)?\.js(?:[?#].*)?$/i.test(url)
+    ) return 'anime';
+    return null;
+}
+
+function collectMarkedDependencies(html) {
+    const dependencies = new Set();
+    const scriptPattern = /<script\b([^>]*)>[\s\S]*?<\/script\s*>/gi;
+    let match;
+    while ((match = scriptPattern.exec(String(html || '')))) {
+        const attributes = match[1] || '';
+        const libraryMatch = attributes.match(
+            /\bdata-vdoc-library\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s>]+))/i
+        );
+        const library = String(
+            libraryMatch?.[1] || libraryMatch?.[2] || libraryMatch?.[3] || ''
+        ).toLowerCase();
+        if (['anime', 'three'].includes(library)) dependencies.add(library);
+
+        const sourceMatch = attributes.match(
+            /\bsrc\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s>]+))/i
+        );
+        const source = sourceMatch?.[1] || sourceMatch?.[2] || sourceMatch?.[3] || '';
+        const externalLibrary = libraryForExternalScriptUrl(source);
+        if (externalLibrary) dependencies.add(externalLibrary);
+    }
+    return dependencies;
+}
+
+async function inlineProgrammableDependencies(html, requestedDependencies = []) {
+    const dependencies = collectMarkedDependencies(html);
+    (Array.isArray(requestedDependencies) ? requestedDependencies : [])
+        .map((item) => String(item || '').toLowerCase())
+        .filter((item) => ['anime', 'three'].includes(item))
+        .forEach((item) => dependencies.add(item));
+
+    // 依赖声明和被忽略的外链仅用于 VDOCX/VPPTX 工程审计，
+    // 导出的可执行 HTML 中由本地内联库取代，不保留这些占位节点。
+    let output = String(html || '')
+        // 兼容旧工程和导入 HTML：所有带 src 的脚本都不会原样进入导出文件；
+        // Anime/Three 已在上方识别并改为内联本地库，其他外链直接忽略。
+        .replace(
+            /<script\b(?=[^>]*\bsrc\s*=)[^>]*>[\s\S]*?<\/script\s*>/gi,
+            ''
+        )
+        .replace(
+            /<script\b(?=[^>]*\bdata-vdoc-library\s*=)[^>]*>[\s\S]*?<\/script\s*>/gi,
+            ''
+        )
+        .replace(
+            /<script\b(?=[^>]*\bdata-vdoc-ignored-src\s*=)[^>]*>[\s\S]*?<\/script\s*>/gi,
+            ''
+        )
+        .replace(
+            /<script\b[^>]*type\s*=\s*(?:"application\/x-vdoc-ignored-external"|'application\/x-vdoc-ignored-external')[^>]*>[\s\S]*?<\/script\s*>/gi,
+            ''
+        );
+
+    const sources = [];
+    for (const library of ['anime', 'three']) {
+        if (!dependencies.has(library)) continue;
+        const fileName = library === 'anime' ? 'anime.min.js' : 'three.min.js';
+        const sourcePath = path.join(projectRoot, 'vendor', fileName);
+        const source = await fs.readFile(sourcePath, 'utf8');
+        sources.push(
+            `<script data-vdoc-embedded-library="${library}">\n${
+                escapeInlineScriptSource(source)
+            }\n</script>`
+        );
+    }
+
+    if (!sources.length) return output;
+    const embedded = sources.join('\n');
+    if (/<\/head\s*>/i.test(output)) {
+        return output.replace(/<\/head\s*>/i, `${embedded}\n</head>`);
+    }
+    return `${embedded}\n${output}`;
+}
+
 async function waitForExportLayout(win) {
     await win.webContents.executeJavaScript(`(async () => {
         await document.fonts?.ready;
@@ -515,7 +610,10 @@ async function waitForExportLayout(win) {
 async function exportRichDocument(event, payload = {}) {
     const format = String(payload.format || '');
     if (!EXPORT_FORMATS.has(format)) throw new Error('不支持的富文档导出格式。');
-    const html = String(payload.html || '');
+    const html = await inlineProgrammableDependencies(
+        String(payload.html || ''),
+        payload.programmableDependencies
+    );
     if (!html.trim()) throw new Error('拒绝导出空文档。');
     if (Buffer.byteLength(html, 'utf8') > MAX_DOCUMENT_BYTES) {
         throw new Error('导出文档超过 100 MB 安全上限。');
