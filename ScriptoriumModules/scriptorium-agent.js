@@ -314,7 +314,6 @@
             createVersionSnapshot,
             renderLineage,
             persistCheckpoint,
-            syncRenderedToSource,
             selectSlide,
         } = context;
         const handledRequests = new Map();
@@ -703,7 +702,8 @@
 
         function viewportSource(options = {}) {
             assertReady();
-            syncRenderedToSource?.();
+            // 查询必须是纯读取。渲染面的每一次人类编辑都已在其事件处理中
+            // 定向写入源码，因此这里无需（也绝不允许）反向序列化运行时 DOM。
             const root = state.mode === 'read' ? getReadRoot() : getRenderRoot();
             const host = state.mode === 'read'
                 ? document.getElementById('read-host')

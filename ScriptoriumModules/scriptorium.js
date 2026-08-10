@@ -669,7 +669,8 @@ ${surface === 'edit' ? `
             records.forEach((record) => {
                 record.addedNodes.forEach((node) => {
                     if (node.nodeType !== Node.ELEMENT_NODE) return;
-                    node.dataset.vdocRuntimeGenerated = 'true';
+                    // SVG/MathML 元素没有 dataset，必须使用属性 API 标记。
+                    node.setAttribute('data-vdoc-runtime-generated', 'true');
                 });
             });
         });
@@ -1891,11 +1892,14 @@ ${parsedDocument().html}
         if (anchor?.parentElement) anchor.after(block);
         else parent.appendChild(block);
 
+        // 只把这一个新建块写入源码。锚点及其它任何节点的源码形态保持原样，
+        // 页内脚本对实时 DOM 的改动不会经由此路径进入文档真相。
+        insertSourceBlockRelativeTo(blockIdentityOf(anchor), block, 'after');
+
         state.activeEditableBlock = block.matches('[data-vdoc-block]')
             ? block
             : block.querySelector('[data-vdoc-block]');
         const focusTarget = state.activeEditableBlock || block.querySelector('td, th');
-        syncContinuousStructureToSource();
         renderOutline();
         scheduleMetrics();
         if (focusTarget) placeCaretAtStart(focusTarget);
@@ -1904,63 +1908,89 @@ ${parsedDocument().html}
         return true;
     }
 
-    function reflowAfterStructureChange(focusNodeId = null) {
+    // ── 定向源码写入 ──────────────────────────────────────────────
+    //
+    // 渲染树是源码的产物，不是源码的副本。页内脚本（Anime.js、Three.js、
+    // 自定义交互等）会持续改写实时 DOM 的 style、class、data-* 和子节点，
+    // 这些都属于运行时状态。因此编辑器绝不整树序列化渲染面。
+    //
+    // 人类在渲染面的能力被严格限定为：编辑文本块内容、增删文本块、
+    // 调整块级格式。每一种都有明确锚点，下列函数只在源码中定位该锚点，
+    // 并只改动那一处。任何未被显式编辑的节点，其源码形态原样保留。
+
+    function withCurrentSourceDocument(mutate) {
+        const template = document.createElement('template');
+        template.innerHTML = currentSourceHtml();
+        if (mutate(template.content) === false) return false;
+        setCurrentSourceHtml(template.innerHTML);
+        state.document.manifest.modifiedAt = new Date().toISOString();
+        return true;
+    }
+
+    function sourceBlockById(fragment, blockId) {
+        if (!blockId) return null;
+        return fragment.querySelector(`[data-vdoc-text="${CSS.escape(blockId)}"]`)
+            || fragment.querySelector(`[data-vdoc-block="${CSS.escape(blockId)}"]`);
+    }
+
+    function blockIdentityOf(renderedBlock) {
+        return renderedBlock?.dataset?.vdocText
+            || renderedBlock?.dataset?.vdocBlock
+            || renderedBlock?.querySelector?.('[data-vdoc-text]')?.dataset?.vdocText
+            || null;
+    }
+
+    function cleanBlockForSource(renderedBlock) {
+        // 新建块由 createEditableBlock() 就地构造，尚未经过任何页面脚本，
+        // 因此可以安全序列化。仅剥离编辑器自身附加的可编辑标记。
+        const clone = renderedBlock.cloneNode(true);
+        restoreMathSemantics(clone);
+        [clone, ...clone.querySelectorAll(
+            '[contenteditable], [spellcheck], [data-vdoc-editor-selected]'
+        )].forEach((node) => {
+            node.removeAttribute?.('contenteditable');
+            node.removeAttribute?.('spellcheck');
+            node.removeAttribute?.('data-vdoc-editor-selected');
+        });
+        return clone;
+    }
+
+    function insertSourceBlockRelativeTo(anchorId, renderedBlock, position) {
+        const prepared = cleanBlockForSource(renderedBlock);
+        return withCurrentSourceDocument((fragment) => {
+            const anchor = sourceBlockById(fragment, anchorId);
+            if (anchor) {
+                if (position === 'before') anchor.before(prepared);
+                else anchor.after(prepared);
+                return true;
+            }
+            // 没有锚点时只能追加到正文容器末尾。仍然是定向写入：
+            // 只新增这一个节点，不触碰任何既有节点。
+            const container = fragment.querySelector('[data-vdoc-preserve="true"]')
+                || fragment.lastElementChild;
+            if (!container) return false;
+            container.appendChild(prepared);
+            return true;
+        });
+    }
+
+    function removeSourceBlock(blockId) {
+        if (!blockId) return false;
+        return withCurrentSourceDocument((fragment) => {
+            const target = sourceBlockById(fragment, blockId);
+            if (!target) return false;
+            target.remove();
+            return true;
+        });
+    }
+
+    function focusRenderedBlock(focusNodeId) {
         const target = focusNodeId
             ? getRenderRoot()?.querySelector(`[data-vdoc-text="${CSS.escape(focusNodeId)}"]`)
             : state.activeEditableBlock;
-        syncContinuousStructureToSource();
         if (!target) return;
         state.activeEditableBlock = target;
         placeCaretAtStart(target);
-    }
-
-    function syncContinuousStructureToSource() {
-        const runtime = getRenderRoot()?.querySelector(
-            isSlideDeck() ? '.vdoc-slide-editor-runtime' : '.vdoc-flow-runtime'
-        );
-        if (!runtime) return;
-        const clone = runtime.cloneNode(true);
-        restoreMathSemantics(clone);
-        clone.removeAttribute('data-bound');
-        clone.querySelectorAll('[data-vdoc-runtime-generated]').forEach((node) => {
-            node.remove();
-        });
-        clone.querySelectorAll(
-            '[contenteditable], [spellcheck], [data-vdoc-editor-selected], [data-bound]'
-        ).forEach((node) => {
-            node.removeAttribute('contenteditable');
-            node.removeAttribute('spellcheck');
-            node.removeAttribute('data-vdoc-editor-selected');
-            node.removeAttribute('data-bound');
-        });
-
-        if (isSlideDeck()) {
-            // 编辑渲染树只包含页面标记和外部依赖声明；页内 style 与受控
-            // inline script 在 parsedSlide() 阶段被临时抽离。结构同步必须把
-            // 它们放回完整源码，否则一次可视化编辑就会删除动画与交互代码。
-            const current = parsedSlide();
-            const parts = [];
-            if (current.css.trim()) {
-                parts.push(`<style data-vdoc-slide-style>\n${
-                    current.css.replace(/<\/style/gi, '<\\/style')
-                }\n</style>`);
-            }
-            parts.push(clone.innerHTML);
-            if (current.script.trim()) {
-                parts.push(`<script data-vdoc-slide-script>\n${
-                    current.script.replace(/<\/script/gi, '<\\/script')
-                }\n</script>`);
-            }
-            setCurrentSourceHtml(parts.join('\n'));
-            return;
-        }
-
-        // DOCX 渲染树保留正文中的脚本节点，但不包含文档 style；只恢复样式，
-        // 其余完整结构直接来自清理后的渲染克隆。
-        const current = parsedDocument();
-        setCurrentSourceHtml(`<style data-vdoc-document-style>\n${
-            current.css.replace(/<\/style/gi, '<\\/style')
-        }\n</style>\n${clone.innerHTML}`);
     }
 
     function caretIsAtBlockStart(selection, block) {
@@ -1977,8 +2007,8 @@ ${parsedDocument().html}
         if (!block?.parentElement) return null;
         const paragraph = createEditableBlock('paragraph');
         block.before(paragraph);
+        insertSourceBlockRelativeTo(blockIdentityOf(block), paragraph, 'before');
         state.activeEditableBlock = paragraph;
-        syncContinuousStructureToSource();
         renderOutline();
         scheduleMetrics();
         markDirty();
@@ -2050,15 +2080,15 @@ ${parsedDocument().html}
             captureSnapshot();
             return;
         }
-
         if (event.key === 'Enter' && event.shiftKey && block.tagName !== 'TD' && block.tagName !== 'TH') {
             event.preventDefault();
             const next = createEditableBlock('paragraph');
             block.after(next);
             const nextId = next.dataset.vdocText
                 || next.querySelector('[data-vdoc-text]')?.dataset.vdocText;
+            insertSourceBlockRelativeTo(blockIdentityOf(block), next, 'after');
             state.activeEditableBlock = next;
-            reflowAfterStructureChange(nextId);
+            focusRenderedBlock(nextId);
             scheduleMetrics();
             markDirty();
             captureSnapshot();
@@ -2069,21 +2099,24 @@ ${parsedDocument().html}
         if (event.key !== 'Backspace' || !isEmpty || !selection?.isCollapsed) return;
 
         const parent = block.parentElement;
+        const removedId = blockIdentityOf(block);
         let target = block.previousElementSibling || block.nextElementSibling;
         event.preventDefault();
         block.remove();
+        removeSourceBlock(removedId);
 
         if (parent?.matches('[data-vdoc-preserve="true"]')
             && !parent.querySelector('[data-vdoc-block], table')) {
             target = createEditableBlock('paragraph');
             parent.appendChild(target);
+            insertSourceBlockRelativeTo(null, target, 'after');
         }
 
         target = target?.matches?.('[data-vdoc-block]')
             ? target
             : target?.querySelector?.('[data-vdoc-block]') || getRenderRoot().querySelector('[data-vdoc-block]');
         state.activeEditableBlock = target || null;
-        reflowAfterStructureChange(target?.dataset?.vdocText);
+        focusRenderedBlock(target?.dataset?.vdocText);
         renderOutline();
         scheduleMetrics();
         markDirty();
@@ -2131,6 +2164,8 @@ ${parsedDocument().html}
     }
 
     function semanticInnerHtml(renderedNode) {
+        // 只序列化文本块内部内容。块自身的属性由定向写入路径单独维护，
+        // 页内脚本对宿主节点属性的改动因此无法进入源码。
         const clone = renderedNode.cloneNode(true);
         restoreMathSemantics(clone);
         clone.querySelectorAll('[contenteditable], [spellcheck]').forEach((node) => {
@@ -2150,6 +2185,31 @@ ${parsedDocument().html}
         target.innerHTML = semanticInnerHtml(renderedNode);
         setCurrentSourceHtml(template.innerHTML);
         state.document.manifest.modifiedAt = new Date().toISOString();
+    }
+
+    function updateSourceBlockAttributes(renderedBlocks, attributes) {
+        const template = document.createElement('template');
+        template.innerHTML = currentSourceHtml();
+        renderedBlocks.forEach((renderedBlock) => {
+            const nodeId = renderedBlock?.dataset?.vdocText;
+            if (!nodeId) return;
+            const sourceBlock = template.content.querySelector(
+                `[data-vdoc-text="${CSS.escape(nodeId)}"]`
+            );
+            if (!sourceBlock) return;
+            attributes.forEach((attribute) => {
+                if (attribute === 'class') sourceBlock.className = renderedBlock.className;
+                else if (attribute === 'style') {
+                    sourceBlock.setAttribute('style', renderedBlock.getAttribute('style') || '');
+                    if (!sourceBlock.getAttribute('style')) sourceBlock.removeAttribute('style');
+                } else if (renderedBlock.hasAttribute(attribute)) {
+                    sourceBlock.setAttribute(attribute, renderedBlock.getAttribute(attribute));
+                } else {
+                    sourceBlock.removeAttribute(attribute);
+                }
+            });
+        });
+        setCurrentSourceHtml(core.sanitizeHtml(template.innerHTML));
     }
 
     function initializePageVisibility(root, renderHost = elements['read-host']) {
@@ -2450,6 +2510,7 @@ ${parsedDocument().html}
             blocks.forEach((block) => {
                 block.style.lineHeight = String(value);
             });
+            updateSourceBlockAttributes(blocks, ['style']);
             syncRenderedDocumentToSource();
             syncFormattingControls(blocks[0]);
             return true;
@@ -2460,6 +2521,7 @@ ${parsedDocument().html}
             blocks.forEach((block) => {
                 block.style.textAlign = value;
             });
+            updateSourceBlockAttributes(blocks, ['style']);
             syncRenderedDocumentToSource();
             syncFormattingControls(blocks[0]);
             return true;
@@ -2480,14 +2542,7 @@ ${parsedDocument().html}
             );
             if (!sourceNode) return;
             sourceNode.innerHTML = semanticInnerHtml(renderedNode);
-            sourceNode.className = renderedNode.className;
             sourceNode.removeAttribute('data-vdoc-editor-selected');
-            for (const attribute of [...renderedNode.attributes]) {
-                if (attribute.name === 'contenteditable'
-                    || attribute.name === 'spellcheck'
-                    || attribute.name === 'data-vdoc-editor-selected') continue;
-                sourceNode.setAttribute(attribute.name, attribute.value);
-            }
         });
         setCurrentSourceHtml(core.sanitizeHtml(sourceTemplate.innerHTML));
         state.document.manifest.styleDependencies = [...state.usedAdvancedStyleIds];
@@ -2677,6 +2732,9 @@ ${preview.css}
         }
 
         state.usedAdvancedStyleIds.add(style.id);
+        if (useBlock) {
+            updateSourceBlockAttributes(blocks, ['class', 'data-vdoc-style']);
+        }
         syncRenderedDocumentToSource();
         const rootStyle = getRenderRoot()?.querySelector('style');
         if (rootStyle) rootStyle.textContent = buildDocumentStyle();
@@ -2916,19 +2974,15 @@ svg set {
         });
         state.slideThumbnailObserver.observe(elements['slide-navigator']);
     }
-
     function selectSlide(index) {
         const slides = state.document?.source?.slides || [];
         if (!slides[index] || index === state.activeSlideIndex) return false;
 
-        // 切页是一个严格事务：源码编辑器中的缓冲区属于旧 activeSlide。
-        // 必须在改变索引前提交，否则稍后应用时会按新索引把旧页源码覆盖到新页。
+        // 切页是一个严格事务：源码编辑器中的缓冲区属于旧 activeSlide，
+        // 必须在改变索引前提交。渲染面无需在此提交——文本、结构与格式
+        // 编辑都已在各自事件中定向写入源码，切页不再触碰运行时 DOM。
         const sourceMode = state.mode === 'html' || state.mode === 'css';
-        if (sourceMode) {
-            if (applySourceChanges(false) === false) return false;
-        } else if (state.mode === 'render') {
-            syncContinuousStructureToSource();
-        }
+        if (sourceMode && applySourceChanges(false) === false) return false;
 
         state.activeSlideIndex = index;
         state.activeEditableBlock = null;
@@ -2956,12 +3010,11 @@ svg set {
             refreshSourceColorMarks();
         }, 0);
     }
-
     function commitActiveSlideBeforeNavigation() {
         if (state.mode === 'html' || state.mode === 'css') {
             return applySourceChanges(false) !== false;
         }
-        if (state.mode === 'render') syncContinuousStructureToSource();
+        // 渲染面采用逐操作定向写入，导航无需再提交任何结构。
         return true;
     }
 
@@ -4459,7 +4512,6 @@ ${safeCss}
             createVersionSnapshot,
             renderLineage,
             persistCheckpoint: persistCheckpointToFile,
-            syncRenderedToSource: syncContinuousStructureToSource,
             selectSlide,
         });
         window.ScriptoriumAgent = state.agentApi;
