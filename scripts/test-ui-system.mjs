@@ -507,6 +507,11 @@ const mainHtml = fs.readFileSync(new URL('../main.html', import.meta.url), 'utf8
 const trayManagerSource = fs.readFileSync(new URL('../modules/trayManager.js', import.meta.url), 'utf8');
 const mainChatCommandsSource = fs.readFileSync(new URL('../modules/mainChatCommands.js', import.meta.url), 'utf8');
 const eventListenersSource = fs.readFileSync(new URL('../modules/event-listeners.js', import.meta.url), 'utf8');
+const rendererSource = fs.readFileSync(new URL('../renderer.js', import.meta.url), 'utf8');
+const topTabManagerSource = fs.readFileSync(new URL('../modules/topTabManager.js', import.meta.url), 'utf8');
+const agentHandlersSource = fs.readFileSync(new URL('../modules/ipc/agentHandlers.js', import.meta.url), 'utf8');
+const appearanceStyles = fs.readFileSync(new URL('../styles/appearance.css', import.meta.url), 'utf8');
+const messageRendererStyles = fs.readFileSync(new URL('../styles/messageRenderer.css', import.meta.url), 'utf8');
 assert.match(mainHtml, /id="nextUiPresentationBtn"[\s\S]*id="nextUiThemeStoreBtn"[\s\S]*id="nextUiThemeBtn"/,
     'Next must expose chat presentation and theme shortcuts in the topbar');
 assert.doesNotMatch(mainHtml, /id="nextUi(?:PresentationBtn|ThemeStoreBtn|ThemeBtn)"[^>]*next-ui-relocated-action/,
@@ -515,6 +520,34 @@ assert.match(mainHtml, /id="nextUiMinimizeToTrayBtn"[^>]*aria-label="最小化�
     'Next must expose a distinct minimize-to-tray control');
 assert.match(mainChatCommandsSource, /function minimizeToTray\(\)[\s\S]*minimizeToTray\?\.\(\)/,
     'minimize-to-tray must route through the existing preload API');
+assert.doesNotMatch(appearanceStyles, /html\[data-vcp-/,
+    'appearance selectors must never affect Classic without an explicit next-mode gate');
+assert.match(appearanceStyles, /html\[data-ui-mode="next"\] body\s*\{[^}]*font-family:[^}]*font-size:/s,
+    'Next typography must be scoped to the Next presentation');
+assert.doesNotMatch(appearanceStyles, /(?:^|\n)\s*body\s*\{[^}]*font-(?:family|size):/s,
+    'Classic body typography must remain owned by the upstream stylesheet');
+assert.match(messageRendererStyles, /\.maid-diary-bubble\s*\{[^}]*background:[^;]+!important;[^}]*border-radius:[^;]+!important;/s,
+    'upstream diary component declarations must retain their cascade authority');
+assert.match(messageRendererStyles, /\.vcp-tool-result-bubble\s*\{[^}]*background:[^;]+!important;[^}]*border-radius:[^;]+!important;/s,
+    'upstream tool result declarations must retain their cascade authority');
+assert.doesNotMatch(mainChatCommandsSource, /function createAgentConfig/,
+    'renderer commands must not duplicate the canonical Agent defaults');
+assert.match(mainChatCommandsSource, /createAgent\?\.\(name, model \? \{ model \} : undefined\)/,
+    'Next creation may send only the selected model override');
+assert.match(agentHandlersSource, /const defaultConfig = \{[\s\S]*const configToSave = \{ \.\.\.defaultConfig, \.\.\.configOverrides, name: agentName \}/,
+    'the main process must merge renderer overrides into canonical Agent defaults');
+assert.match(mainChatCommandsSource, /navigationSuccess: false, warning: error\.message/,
+    'post-create navigation failures must not be reported as creation failures');
+assert.match(nextUiCss, /\.next-ui-chat-presentation-switcher\.is-open\s*\{/,
+    'the Next presentation popup must use explicit open state');
+assert.doesNotMatch(nextUiCss, /next-ui-presentation-switcher:focus-within[^\{]*next-ui-chat-presentation-switcher/,
+    'the Next presentation popup must not use focus-within as its state authority');
+assert.match(rendererSource, /usesExplicitState[\s\S]*setOpen\(false\)[\s\S]*trigger\?\.focus\(\)/,
+    'the presentation popup must close explicitly and restore trigger focus');
+assert.match(topTabManagerSource, /topbarThemeButton[\s\S]*nextThemeLabel[\s\S]*setAttribute\('aria-label', nextThemeLabel\)/,
+    'the Next topbar theme shortcut must synchronize its action label');
+assert.match(eventListenersSource, /const runMenuAction = async[\s\S]*catch \(error\)[\s\S]*finally \{[\s\S]*closeNotificationMenu/,
+    'notification menu actions must close and restore focus even after rejection');
 assert.match(mainHtml, /id="nextUiNotificationForum"[\s\S]*id="nextUiNotificationMemo"[\s\S]*id="nextUiNotificationFilterToggle"[\s\S]*id="nextUiNotificationClear"/,
     'the Next notification menu must contain separate Forum and Memo entries plus filter and clear commands');
 assert.doesNotMatch(eventListenersSource, /(?:doNotDisturbBtn|clearNotificationsBtn)\.click\(\)/,
@@ -533,6 +566,28 @@ assert.match(mainHtml, /id="appTrayPinnedApps"[\s\S]*id="appTrayMoreBtn"[\s\S]*i
     'the app tray must retain pinned apps and the complete app drawer');
 assert.match(trayManagerSource, /localStorage\.setItem\('vcp-tray-pinned-apps'/,
     'the app tray must retain the upstream pinned-app persistence contract');
+
+const commandDom = new JSDOM('<!doctype html><html><body><ul id="notificationsList"></ul></body></html>', {
+    url: 'https://vcpchat.local/',
+    runScripts: 'outside-only'
+});
+const creationCalls = [];
+commandDom.window.chatAPI = {
+    createAgent: async (...args) => {
+        creationCalls.push(args);
+        return { success: true, agentId: 'agent-1', agentName: args[0], config: { model: args[1]?.model } };
+    },
+};
+commandDom.window.itemListManager = {
+    loadItems: async () => { throw new Error('list refresh failed'); }
+};
+commandDom.window.uiHelperFunctions = { showToastNotification() {} };
+commandDom.window.eval(mainChatCommandsSource);
+const partialCreation = await commandDom.window.MainChatCommands.createAgent({ name: 'Nova', model: 'model-next' });
+assert.equal(JSON.stringify(creationCalls[0]), JSON.stringify(['Nova', { model: 'model-next' }]),
+    'renderer creation must pass only the model override to the main process');
+assert.equal(partialCreation.success, true, 'a persisted Agent must remain a successful creation result');
+assert.equal(partialCreation.navigationSuccess, false, 'post-create UI failure must be reported separately');
 assert.match(mainHtml,
     /id="nextUiMainPanel"[^>]*>[\s\S]*<main class="main-content">[\s\S]*id="resizerRight"[\s\S]*id="notificationsSidebar"[\s\S]*<\/section>/s,
     'main chat, notification resizer, and notification sidebar must share one clipping host');

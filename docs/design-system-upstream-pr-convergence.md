@@ -1,6 +1,6 @@
 # 设计系统上游 PR 架构收敛
 
-> 状态：架构与提交边界收敛完成，可按堆叠分支提交上游审阅
+> 状态：Classic/Next 功能对等整改中，完成本节门禁前不得重新提交上游审阅
 > 基线：`upstream-review/main`
 > 原则：只修复本设计分支新增或显著放大的问题，不借设计 PR 重构上游 Classic。
 
@@ -124,3 +124,38 @@ Memo、Forum、Log、Plugin Manager、Task、Human ToolBox、VchatManager、RAG 
 - `node --test tests/frontend-plugins.test.js`：5/5 通过。
 - Next/Classic 生命周期测试覆盖延迟关闭与快速回切：旧 teardown 完成前不会恢复新的原生 view。
 - `git -c core.whitespace=cr-at-eol diff --check upstream-review/main -- ':(exclude)vendor/webawesome-runtime/**'`：通过；vendor 保持上游 npm 产物原字节。
+
+## 2026-08-10 Classic / Next 对抗审查与整改目标
+
+本轮审查只处理设计分支引入或放大的差异，不借机整改上游 Classic。核心目标是：Classic 必须保持最新上游的业务 DOM、行为和 computed style；Next 可以提供独立 presentation，但不得复制业务默认值、修改上游结构化消息语义或依赖隐藏的 Classic 控件。
+
+### 已确认问题
+
+1. `styles/appearance.css` 的字体、字号、内容宽度及外观 token 未限定 `data-ui-mode="next"`，导致切回 Classic 后仍保留 Next 外观参数。Classic 的上游 `15px` 基准字号会被覆盖为 `16px`。
+2. Next 创建助手在 renderer 复制完整默认配置，绕过主进程的权威默认值；选择模型时可能与 Classic 创建出不同的上下文限制、主题标记和默认话题。
+3. Next 聊天显示模式弹层依赖 `:focus-within`，Escape 把焦点恢复到同一容器后弹层仍保持可见。该问题已在真实 Electron 中复现。
+4. Next 顶栏主题快捷按钮不随当前明暗状态更新图标和可访问名称，和 Classic 的状态反馈不一致。
+5. 为规避旧 Next 覆盖而删除了上游结构化消息声明中的 `!important`，削弱了日记、工具、思考链等组件抵抗主题覆盖的能力。
+6. Next 通知菜单只在异步 command 成功后关闭；command 抛错时可能留下展开菜单和未处理 rejection。
+7. 现有对等测试偏重 DOM 存在和 command 调用，缺少 Classic computed style、弹层关闭、主题状态、创建默认值和最小窗口布局断言。
+8. Appearance Engine 在 DOM 尚未就绪时安排的材质 SVG 挂载没有在回调执行时复核模式；启动阶段快速切回 Classic 可能让 Next 材质节点延迟泄漏到 Classic。
+
+### 修复准则
+
+- Appearance 的运行时视觉规则只允许在 `html[data-ui-mode="next"]` 下生效；Classic 不继承 Next 字体、字号、密度、圆角、材质或内容宽度。
+- 助手默认配置只由主进程构造。renderer 只能传递受限 override，例如用户选择的模型；创建成功后的 UI 导航失败必须返回 warning，不得谎报“创建失败”并诱导重复创建。
+- 弹层使用显式 open state、`aria-expanded`、Escape、外部点击和焦点恢复，不再以 `:focus-within` 作为状态真源。
+- Classic 结构化消息样式与最新上游逐声明一致；Next 只控制普通消息外层排版。
+- Next 快捷按钮必须同步当前状态，而不只是能触发 command。
+- 异步菜单 action 无论成功或失败都必须完成菜单关闭和焦点恢复，并向用户反馈失败。
+- 延迟挂载的 Next 视觉资源必须在执行时再次核对当前模式，不能只相信安排任务时的状态。
+
+### 新增 PR 门禁
+
+- Classic 下 `body` 的基准字号、字体和消息组件关键声明必须与上游一致。
+- Next 聊天显示模式弹层必须通过点击打开，并可由 Escape、外部点击和选择操作关闭。
+- 深浅主题切换后，Classic 与 Next 的快捷按钮名称和图标必须表达正确的下一步动作。
+- Classic 创建和 Next 选择模型创建必须共享主进程默认配置构造器。
+- command 成功但后续列表刷新或选中失败时，结果必须保留 `success: true` 并带 `navigationSuccess: false`。
+- DOM 就绪前发生 Next → Classic 切换时，Classic 不得挂载 Next 材质 SVG 或其他延迟视觉资源。
+- 900px 最小窗口、多个动态标签和通知栏展开组合必须完成截图与像素级无重叠检查。

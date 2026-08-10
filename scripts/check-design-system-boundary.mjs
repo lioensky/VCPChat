@@ -50,6 +50,7 @@ const allowedSourceDifferences = new Set([
     'modules/global-settings-manager.js',
     'modules/ipc/deepWikiHandlers.js',
     'modules/ipc/desktopHandlers.js',
+    'modules/ipc/agentHandlers.js',
     'modules/mainChatCommands.js',
     'modules/services/deepWikiService.js',
     'modules/services/embeddedAppSessionManager.js',

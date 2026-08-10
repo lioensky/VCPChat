@@ -8,7 +8,7 @@
 | 通知侧栏 | 铃铛左键开关、右键监控 | 同一铃铛在聊天头与通知头之间移动 | `aria-expanded`、标题、激活态 | Electron + 人工 |
 | 明暗主题 | 聊天头快捷按钮 | Next 顶栏快捷按钮 | 即时应用并持久化 | Electron + 人工 |
 | 主题选择 | Classic 主题入口 | Next 顶栏调色板按钮 | 打开主题窗口 | Electron + 人工 |
-| 聊天显示模式 | 标题栏气泡/统一/刊物 | Next 顶栏显示模式弹层 | 方向键、Home/End、持久化 | Electron + 人工 |
+| 聊天显示模式 | 标题栏气泡/统一/刊物 | Next 顶栏显示模式弹层 | 显式展开状态、方向键、Home/End、Escape、外部点击、焦点恢复、持久化 | Electron + 人工 |
 | 最小化到托盘 | 独立标题栏按钮 | Next 独立窗口按钮 | 不得与普通最小化混淆 | Electron + 人工 |
 | Forum / Memo | 通知头按钮左键/右键 | 三点菜单内拆分为 Forum、Memo 两项 | 单击对应项目，执行后关闭菜单并恢复焦点 | Electron + 人工 |
 | 通知过滤 | 通知头按钮左键/右键 | 三点菜单过滤项左键/右键 | `aria-checked`、开启/关闭文字、保存失败回滚 | Electron + 人工 |
@@ -18,6 +18,8 @@
 | Ask Nova | 无对应入口 | Next 启动台模态对话 | 焦点、Escape、取消请求、不直接跳转 | Electron |
 | 助手情绪 | 列表悬停播放 | 保持上游悬停语义 | 动画与文本均可见 | Electron + 人工 |
 | 结构化消息 | 上游代码、引用、工具和日记样式 | 直接继承上游内部组件样式 | 左侧强调线、状态色、动画、复制与预览 | Electron + 人工 |
+| Classic 外观隔离 | 上游字体、15px 基准字号、原内容宽度 | Appearance Profile 只在 Next 生效 | Classic computed style 不受 Next 预览或已保存配置污染 | Electron + computed style |
+| 创建默认配置 | 主进程权威默认值 | 同一默认值，仅传模型 override | 创建成功与后续导航失败分开报告，避免重复创建 | IPC + Electron |
 
 ## PR 门禁
 

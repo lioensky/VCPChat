@@ -561,6 +561,32 @@ try {
         };
 
         const display = id => getComputedStyle(document.getElementById(id)).display;
+        const presentationButton = document.getElementById('nextUiPresentationBtn');
+        const presentationSwitcher = document.getElementById('nextUiChatPresentationSwitcher');
+        presentationButton?.click();
+        const presentationOpened = presentationSwitcher?.classList.contains('is-open') === true
+            && presentationButton?.getAttribute('aria-expanded') === 'true';
+        document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', {
+            key: 'Escape', bubbles: true, cancelable: true
+        }));
+        const presentationClosedByEscape = presentationSwitcher?.classList.contains('is-open') === false
+            && presentationButton?.getAttribute('aria-expanded') === 'false'
+            && document.activeElement === presentationButton;
+
+        const bodyWasDark = document.body.classList.contains('dark-theme');
+        const bodyWasLight = document.body.classList.contains('light-theme');
+        document.body.classList.remove('light-theme');
+        document.body.classList.add('dark-theme');
+        await tick();
+        const darkThemeActionLabel = document.getElementById('nextUiThemeBtn')?.getAttribute('aria-label');
+        document.body.classList.remove('dark-theme');
+        document.body.classList.add('light-theme');
+        await tick();
+        const lightThemeActionLabel = document.getElementById('nextUiThemeBtn')?.getAttribute('aria-label');
+        document.body.classList.toggle('dark-theme', bodyWasDark);
+        document.body.classList.toggle('light-theme', bodyWasLight);
+        await tick();
+
         document.getElementById('nextUiThemeBtn')?.click();
         document.getElementById('nextUiMinimizeToTrayBtn')?.click();
 
@@ -597,6 +623,16 @@ try {
         document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
         const closedByEscape = menu.hidden && menuButton.getAttribute('aria-expanded') === 'false';
 
+        window.MainChatCommands = {
+            ...originalCommands,
+            openForum: async () => { throw new Error('expected menu action failure'); },
+        };
+        await openMenu();
+        forum.click();
+        await tick();
+        await tick();
+        const rejectedActionClosed = menu.hidden && menuButton.getAttribute('aria-expanded') === 'false';
+
         window.MainChatCommands = originalCommands;
         const notifications = document.getElementById('notificationsList');
         const disposable = document.createElement('li');
@@ -621,9 +657,14 @@ try {
                 minimizeToTray: display('nextUiMinimizeToTrayBtn'),
             },
             calls,
+            presentationOpened,
+            presentationClosedByEscape,
+            darkThemeActionLabel,
+            lightThemeActionLabel,
             firstFocus,
             arrowFocus,
             closedByEscape,
+            rejectedActionClosed,
             clearProtection,
         };
     });
@@ -639,9 +680,14 @@ try {
         'filter-settings',
         'clear',
     ], `Next parity controls routed to the wrong commands: ${JSON.stringify(parityControls)}`);
+    assert.equal(parityControls.presentationOpened, true, `presentation popup did not open explicitly: ${JSON.stringify(parityControls)}`);
+    assert.equal(parityControls.presentationClosedByEscape, true, `presentation popup did not close on Escape: ${JSON.stringify(parityControls)}`);
+    assert.equal(parityControls.darkThemeActionLabel, '切换为浅色模式', `dark theme action state is stale: ${JSON.stringify(parityControls)}`);
+    assert.equal(parityControls.lightThemeActionLabel, '切换为深色模式', `light theme action state is stale: ${JSON.stringify(parityControls)}`);
     assert.equal(parityControls.firstFocus, 'nextUiNotificationForum', `notification menu initial focus is wrong: ${JSON.stringify(parityControls)}`);
     assert.equal(parityControls.arrowFocus, 'nextUiNotificationMemo', `notification menu arrow navigation is wrong: ${JSON.stringify(parityControls)}`);
     assert.equal(parityControls.closedByEscape, true, `notification menu did not close on Escape: ${JSON.stringify(parityControls)}`);
+    assert.equal(parityControls.rejectedActionClosed, true, `notification menu stayed open after command rejection: ${JSON.stringify(parityControls)}`);
     assert.deepEqual(parityControls.clearProtection, {
         disposableRemoved: true,
         protectedPreserved: true,
@@ -829,6 +875,12 @@ try {
         const input = document.getElementById('globalSettingsForm')?.querySelector('input[id]');
         return !input || !input.className.includes('vcp-ui-native-input');
     }, { timeout: timeoutMs });
+    const classicMainStyle = await page.evaluate(() => ({
+        fontSize: getComputedStyle(document.body).fontSize,
+        materialOpticsPresent: Boolean(document.getElementById('vcpMaterialOptics')),
+    }));
+    assert.equal(classicMainStyle.fontSize, '15px', `Classic body typography was changed by Next Appearance: ${JSON.stringify(classicMainStyle)}`);
+    assert.equal(classicMainStyle.materialOpticsPresent, false, `Classic retained Next material runtime DOM: ${JSON.stringify(classicMainStyle)}`);
     summary.push({ surface: '全局设置', mode: 'classic', pass: true, lucide: 0, note: 'next 表面已拆除' });
 
     console.log('Electron UI apps smoke passed (boot WA gate, showcase, global settings, 2 active child Next surfaces, upstream-Classic host integration, classic regression).');
