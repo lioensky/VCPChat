@@ -27,6 +27,82 @@ function commandOf(args = {}) {
     return String(args.command || args.action || '').trim().toLowerCase();
 }
 
+function getSerialCommandEntries(args = {}) {
+    return Object.entries(args)
+        .map(([key, value]) => {
+            const match = key.match(/^command(\d+)$/i);
+            return match
+                ? { index: Number(match[1]), command: String(value || '').trim() }
+                : null;
+        })
+        .filter((entry) => entry && entry.index > 0 && entry.command)
+        .sort((a, b) => a.index - b.index);
+}
+
+function extractSerialStepArgs(rawArgs, index) {
+    const step = {};
+    for (const [key, value] of Object.entries(rawArgs)) {
+        const match = key.match(/^(.+?)(\d+)$/);
+        if (!match || Number(match[2]) !== index || match[1].toLowerCase() === 'command') {
+            continue;
+        }
+        step[match[1]] = value;
+    }
+
+    // 未编号字段是串行请求的公共参数，例如 endpoint、maid 与截图延迟。
+    // command/action 和所有编号字段不能泄漏到单步参数中。
+    for (const [key, value] of Object.entries(rawArgs)) {
+        if (
+            key.toLowerCase() === 'command'
+            || key.toLowerCase() === 'action'
+            || /\d+$/.test(key)
+            || Object.prototype.hasOwnProperty.call(step, key)
+        ) {
+            continue;
+        }
+        step[key] = value;
+    }
+    step.command = String(rawArgs[`command${index}`] || '').trim();
+    return step;
+}
+
+function parseWaitMs(args = {}, fallback = 1000) {
+    let value = args.waitMs ?? args.durationMs ?? args.delayMs;
+    if (value === undefined && args.seconds !== undefined) {
+        value = Number(args.seconds) * 1000;
+    }
+    const parsed = value === undefined || value === ''
+        ? fallback
+        : Number(value);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+        throw new Error('[ScriptoriumCollaborator] 等待时长必须是非负数。');
+    }
+    return Math.min(Math.round(parsed), 30000);
+}
+
+function parseVisualDelayMs(args = {}) {
+    const value = args.visualDelayMs
+        ?? args.captureDelayMs
+        ?? args.screenshotDelayMs;
+    return parseWaitMs({ waitMs: value }, 750);
+}
+
+function delay(waitMs) {
+    return new Promise((resolve) => setTimeout(resolve, waitMs));
+}
+
+function isWaitCommand(command) {
+    return ['wait', 'sleep', 'delay'].includes(String(command || '').trim().toLowerCase());
+}
+
+function isVisualCommand(command) {
+    return [
+        'getvisualcontext',
+        'getviewportimage',
+        'getslidevisual',
+    ].includes(String(command || '').trim().toLowerCase());
+}
+
 function parseObject(value, fieldName, fallback = {}) {
     if (value === undefined || value === null || value === '') return fallback;
     if (typeof value === 'object' && !Array.isArray(value)) return value;
@@ -187,9 +263,9 @@ async function getViewportSource(args) {
     });
 }
 
-async function getVisualContext(args) {
+async function getVisualContext(args, executionContext = {}) {
     return requireControl().captureVisualContext({
-        requestId: requestIdOf(args),
+        requestId: requestIdOf(args, executionContext),
         endpoint: endpointFor(args),
         scope: args.scope || 'viewport',
         slideIndex: args.slideIndex,
@@ -268,10 +344,7 @@ async function createProject(args, executionContext = {}) {
     });
 }
 
-async function processToolCall(args = {}, executionContext = {}) {
-    if (!args || typeof args !== 'object' || Array.isArray(args)) {
-        throw new Error('[ScriptoriumCollaborator] 无效的工具参数。');
-    }
+async function processSingleToolCall(args, executionContext = {}) {
     switch (commandOf(args)) {
         case 'getdocumentinfo':
             return getDocumentInfo(args);
@@ -291,7 +364,7 @@ async function processToolCall(args = {}, executionContext = {}) {
         case 'getvisualcontext':
         case 'getviewportimage':
         case 'getslidevisual':
-            return getVisualContext(args);
+            return getVisualContext(args, executionContext);
         case 'getprhistory':
             return getPrHistory(args);
         case 'submitsourcepr':
@@ -317,6 +390,135 @@ async function processToolCall(args = {}, executionContext = {}) {
     }
 }
 
+function serialStepSummary(step) {
+    if (step.status === 'failed') {
+        return `- 步骤 ${step.index} · ${step.command}：失败 — ${step.error}`;
+    }
+    if (step.type === 'wait') {
+        return `- 步骤 ${step.index} · ${step.command}：已等待 ${step.waitMs} ms`;
+    }
+    const automaticDelay = step.automaticDelayMs
+        ? `（截图防竞态延迟 ${step.automaticDelayMs} ms）`
+        : '';
+    return `- 步骤 ${step.index} · ${step.command}：成功${automaticDelay}`;
+}
+
+async function processSerialToolCall(rawArgs, executionContext = {}) {
+    const entries = getSerialCommandEntries(rawArgs);
+    const steps = [];
+    let previousWasVisual = false;
+    let failedStep = null;
+
+    for (const entry of entries) {
+        const stepArgs = extractSerialStepArgs(rawArgs, entry.index);
+        const stepContext = {
+            ...executionContext,
+            requestId: executionContext.requestId
+                ? `${executionContext.requestId}:${entry.index}`
+                : undefined,
+        };
+
+        try {
+            if (isWaitCommand(entry.command)) {
+                const waitMs = parseWaitMs(stepArgs);
+                await delay(waitMs);
+                steps.push({
+                    index: entry.index,
+                    command: entry.command,
+                    type: 'wait',
+                    status: 'success',
+                    waitMs,
+                });
+                previousWasVisual = false;
+                continue;
+            }
+
+            let automaticDelayMs = 0;
+            if (previousWasVisual && isVisualCommand(entry.command)) {
+                automaticDelayMs = parseVisualDelayMs(stepArgs);
+                if (automaticDelayMs > 0) await delay(automaticDelayMs);
+            }
+
+            const output = await processSingleToolCall(stepArgs, stepContext);
+            steps.push({
+                index: entry.index,
+                command: entry.command,
+                type: 'command',
+                status: 'success',
+                automaticDelayMs,
+                output,
+            });
+            previousWasVisual = isVisualCommand(entry.command);
+        } catch (error) {
+            failedStep = {
+                index: entry.index,
+                command: entry.command,
+                type: isWaitCommand(entry.command) ? 'wait' : 'command',
+                status: 'failed',
+                error: error.message,
+            };
+            steps.push(failedStep);
+            break;
+        }
+    }
+
+    const completedSteps = steps.filter((step) => step.status === 'success');
+    const content = [{
+        type: 'text',
+        text: [
+            failedStep
+                ? '# Scriptorium 串行指令部分完成'
+                : '# Scriptorium 串行指令执行完成',
+            '',
+            ...steps.map(serialStepSummary),
+            failedStep ? '' : null,
+            failedStep ? `步骤 ${failedStep.index} 失败，后续步骤已停止；此前 ${completedSteps.length} 个步骤的回执保留如下。` : null,
+        ].filter((line) => line !== null).join('\n'),
+    }];
+
+    // 保留每个成功步骤的完整多模态回执，包括多张截图。
+    for (const step of completedSteps) {
+        if (!Array.isArray(step.output?.content)) continue;
+        content.push({
+            type: 'text',
+            text: `## 步骤 ${step.index} · ${step.command} 回执`,
+        });
+        content.push(...step.output.content);
+    }
+
+    return {
+        content,
+        details: {
+            command: 'SerialExecute',
+            status: failedStep ? 'partial_failure' : 'success',
+            requestedCount: entries.length,
+            completedCount: completedSteps.length,
+            stopped: Boolean(failedStep),
+            failedStep,
+            steps: steps.map((step) => ({
+                index: step.index,
+                command: step.command,
+                type: step.type,
+                status: step.status,
+                waitMs: step.waitMs,
+                automaticDelayMs: step.automaticDelayMs,
+                error: step.error,
+                details: step.output?.details || null,
+            })),
+        },
+    };
+}
+
+async function processToolCall(args = {}, executionContext = {}) {
+    if (!args || typeof args !== 'object' || Array.isArray(args)) {
+        throw new Error('[ScriptoriumCollaborator] 无效的工具参数。');
+    }
+    if (getSerialCommandEntries(args).length) {
+        return processSerialToolCall(args, executionContext);
+    }
+    return processSingleToolCall(args, executionContext);
+}
+
 function resetForTests() {
     runtime = { control: null, logger: console };
 }
@@ -326,6 +528,11 @@ module.exports = {
     processToolCall,
     _test: {
         commandOf,
+        getSerialCommandEntries,
+        extractSerialStepArgs,
+        parseWaitMs,
+        parseVisualDelayMs,
+        isVisualCommand,
         parseObject,
         parseArray,
         booleanOf,

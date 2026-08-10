@@ -158,6 +158,9 @@ function buildSerialActionArgs(command, stepArgs) {
 }
 
 function summarizeSerialStep(index, command, result) {
+    if (result.status === 'failed') {
+        return `- 步骤 ${index} · ${command}：失败 — ${result.error}`;
+    }
     if (result.type === 'wait') {
         return `- 步骤 ${index} · ${command}：已等待 ${result.waitMs} ms`;
     }
@@ -177,6 +180,7 @@ async function processSerialToolCall(rawArgs) {
     }
 
     const steps = [];
+    let failedStep = null;
     for (const entry of entries) {
         const stepArgs = extractSerialStepArgs(rawArgs, entry.index);
         const normalized = entry.command.toLowerCase();
@@ -188,6 +192,7 @@ async function processSerialToolCall(rawArgs) {
                     index: entry.index,
                     command: entry.command,
                     type: 'wait',
+                    status: 'success',
                     waitMs,
                 });
                 continue;
@@ -203,45 +208,66 @@ async function processSerialToolCall(rawArgs) {
                 index: entry.index,
                 command: entry.command,
                 type: 'command',
+                status: 'success',
                 output,
             });
         } catch (error) {
-            error.message = `[LoomController] 串行步骤 ${entry.index} (${entry.command}) 失败，后续步骤已停止：${error.message}`;
-            error.serialSteps = steps;
-            throw error;
+            failedStep = {
+                index: entry.index,
+                command: entry.command,
+                type: ['wait', 'sleep', 'delay'].includes(normalized) ? 'wait' : 'command',
+                status: 'failed',
+                error: error.message,
+            };
+            steps.push(failedStep);
+            break;
         }
     }
 
-    const lastPageInfoStep = [...steps].reverse().find((step) =>
-        step.output?.details?.command === 'GetPageInfo'
-        || step.output?.details?.actionId === 'page_get_info'
-    );
+    const completedSteps = steps.filter((step) => step.status === 'success');
     const content = [{
         type: 'text',
         text: [
-            '# LoomAPP 串行指令执行完成',
+            failedStep
+                ? '# LoomAPP 串行指令部分完成'
+                : '# LoomAPP 串行指令执行完成',
             '',
             ...steps.map((step) => summarizeSerialStep(step.index, step.command, step)),
-        ].join('\n'),
+            failedStep ? '' : null,
+            failedStep
+                ? `步骤 ${failedStep.index} 失败，后续步骤已停止；此前 ${completedSteps.length} 个步骤的回执保留如下。`
+                : null,
+        ].filter((line) => line !== null).join('\n'),
     }];
-    if (lastPageInfoStep?.output?.content?.[0]?.text) {
+
+    // 统一串行协议：保留失败前所有成功步骤的完整文本或多模态回执。
+    for (const step of completedSteps) {
+        if (!Array.isArray(step.output?.content)) continue;
         content.push({
             type: 'text',
-            text: lastPageInfoStep.output.content[0].text,
+            text: `## 步骤 ${step.index} · ${step.command} 回执`,
         });
+        content.push(...step.output.content);
     }
 
     return {
         content,
         details: {
             command: 'SerialExecute',
+            status: failedStep ? 'partial_failure' : 'success',
             count: steps.length,
+            requestedCount: entries.length,
+            completedCount: completedSteps.length,
+            stopped: Boolean(failedStep),
+            failedStep,
             appId: firstNonEmptyString(rawArgs.appId, rawArgs.app_id, rawArgs.id),
             steps: steps.map((step) => ({
                 index: step.index,
                 command: step.command,
                 type: step.type,
+                status: step.status,
                 waitMs: step.waitMs,
+                error: step.error,
                 details: step.output?.details || null,
             })),
         },

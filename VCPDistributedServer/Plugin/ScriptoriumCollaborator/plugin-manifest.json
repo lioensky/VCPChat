@@ -53,8 +53,8 @@
       },
       {
         "command": "GetVisualContext",
-        "description": "获取当前人类可见阅读区域或指定 PPTX 页面的渲染后多模态信息。严格返回 OpenAI content 数组：先返回 type=text 的语义摘要，再返回 type=image_url 且 image_url.url=data:image/...;base64,... 的实际截图，AI 可直接读取图像。\n参数：command 固定为 GetVisualContext；endpoint 可选 docx/pptx；scope 可选 viewport/slide；slideIndex 可选；format 可选 jpeg/png；quality 可选 1-100。\n调用格式：\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」GetVisualContext「末」,\nendpoint:「始」pptx「末」,\nscope:「始」slide「末」,\nslideIndex:「始」2「末」,\nformat:「始」jpeg「末」,\nquality:「始」85「末」\n<<<[END_TOOL_REQUEST]>>>",
-        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」GetVisualContext「末」,\nendpoint:「始」docx「末」,\nscope:「始」viewport「末」,\nformat:「始」jpeg「末」,\nquality:「始」85「末」\n<<<[END_TOOL_REQUEST]>>>"
+        "description": "获取当前人类可见阅读区域或指定 PPTX 页面的渲染后多模态信息。严格返回 OpenAI content 数组：先返回 type=text 的语义摘要，再返回 type=image_url 且 image_url.url=data:image/...;base64,... 的实际截图，AI 可直接读取图像。\n参数：command 固定为 GetVisualContext；endpoint 可选 docx/pptx；scope 可选 viewport/slide；slideIndex 可选；format 可选 jpeg/png；quality 可选 1-100。\n支持 VCP 标准编号串行格式 command1/参数1、command2/参数2，并按编号严格顺序执行；未编号的 endpoint、maid 等字段由各步骤继承。支持 wait/sleep/delay 显式等待，waitMs 默认 1000ms、最大 30000ms。连续两个截图类步骤之间自动等待 750ms，可通过公共或编号 visualDelayMs、captureDelayMs、screenshotDelayMs 调整，设为 0 可关闭。任一步失败会停止后续步骤，但响应会保留此前所有成功步骤的完整文本和图片回执，并以 partial_failure 和 failedStep 标明失败位置与原因。\n调用格式：\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」GetVisualContext「末」,\nendpoint:「始」pptx「末」,\nscope:「始」slide「末」,\nslideIndex:「始」2「末」,\nformat:「始」jpeg「末」,\nquality:「始」85「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "example": "连续获取多页 PPT 图片：\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScriptoriumCollaborator「末」,\nendpoint:「始」pptx「末」,\nscope:「始」slide「末」,\nformat:「始」jpeg「末」,\nquality:「始」85「末」,\nvisualDelayMs:「始」750「末」,\ncommand1:「始」GetVisualContext「末」,\nslideIndex1:「始」0「末」,\ncommand2:「始」GetVisualContext「末」,\nslideIndex2:「始」1「末」,\ncommand3:「始」GetVisualContext「末」,\nslideIndex3:「始」2「末」\n<<<[END_TOOL_REQUEST]>>>"
       },
       {
         "command": "GetPrHistory",
