@@ -2285,25 +2285,46 @@ ${parsedDocument().html}
         return paragraph;
     }
 
-    function insertStableSoftBreak(range, selection) {
-        // contenteditable 段尾的单个 BR 同时承担换行和空行占位语义，
-        // Chromium 会重新规范化其 DOM 与光标。显式补一个占位 BR，
-        // 并把光标放在两者之间，可避免“回车偶尔无效/下一字位置异常”。
+    function insertStableSoftBreak(range, selection, block) {
+        // 新建文本块以单个 BR 作为空内容占位。输入第一行后，Chromium 可能
+        // 保留这个尾部 BR；Range.insertNode() 还会在文本末尾分裂出空文本
+        // 节点。若仅用 nextSibling 判断段尾，第一次 Enter 的光标就可能落在
+        // “换行 BR / 空文本 / 原占位 BR”之间的歧义位置，看起来完全没换行。
         const trailingRange = range.cloneRange();
-        trailingRange.selectNodeContents(range.commonAncestorContainer);
         try {
-            trailingRange.setStart(range.endContainer, range.endOffset);
+            trailingRange.setEnd(block, block.childNodes.length);
         } catch {
-            trailingRange.setStartAfter(range.commonAncestorContainer);
+            trailingRange.selectNodeContents(block);
         }
-        const atEnd = trailingRange.collapsed || trailingRange.toString().length === 0;
+        const trailingFragment = trailingRange.cloneContents();
+        const trailingElements = [...trailingFragment.querySelectorAll('*')];
+        const hasTrailingContent = Boolean(trailingFragment.textContent)
+            || trailingElements.some((node) => node.tagName !== 'BR');
 
         const lineBreak = document.createElement('br');
         range.insertNode(lineBreak);
-        if (atEnd && !lineBreak.nextSibling) {
-            lineBreak.after(document.createElement('br'));
+
+        // insertNode 在文本边界产生的零长度节点没有语义，却会让 Chromium
+        // 无法稳定决定 BR 前后哪一行承载光标。
+        while (lineBreak.nextSibling?.nodeType === Node.TEXT_NODE
+            && lineBreak.nextSibling.nodeValue === '') {
+            lineBreak.nextSibling.remove();
         }
-        range.setStartAfter(lineBreak);
+
+        if (!hasTrailingContent) {
+            // 光标后若只有旧的占位 BR，直接复用；否则建立一个明确占位。
+            // 使用 setStartBefore 而非 setStartAfter(lineBreak)，把落点锚定到
+            // 具体节点边界，保证新建块的第一次 Enter 也立即显示新行。
+            let placeholder = lineBreak.nextSibling;
+            if (placeholder?.nodeType !== Node.ELEMENT_NODE
+                || placeholder.tagName !== 'BR') {
+                placeholder = document.createElement('br');
+                lineBreak.after(placeholder);
+            }
+            range.setStartBefore(placeholder);
+        } else {
+            range.setStartAfter(lineBreak);
+        }
         range.collapse(true);
         selection.removeAllRanges();
         selection.addRange(range);
@@ -2316,7 +2337,7 @@ ${parsedDocument().html}
         if (!range || !block?.contains(range.commonAncestorContainer)) return false;
 
         range.deleteContents();
-        insertStableSoftBreak(range, selection);
+        insertStableSoftBreak(range, selection, block);
         queueRenderedNodeUpdate(block);
         window.ScriptoriumPretext?.evictNode(block.dataset.vdocText);
         state.activeEditableBlock = block;
