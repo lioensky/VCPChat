@@ -1199,9 +1199,16 @@ export function setupEventListeners(deps) {
         });
 
         const runMenuAction = async (action, { restoreFocus = true } = {}) => {
-            await action?.();
-            syncNotificationFilterState();
-            closeNotificationMenu({ restoreFocus });
+            try {
+                return await action?.();
+            } catch (error) {
+                console.warn('[Notifications] Menu action failed:', error);
+                uiHelperFunctions.showToastNotification(`通知操作失败：${error.message}`, 'error');
+                return { success: false, error: error.message };
+            } finally {
+                syncNotificationFilterState();
+                closeNotificationMenu({ restoreFocus });
+            }
         };
 
         nextUiNotificationForum.addEventListener('click', () => {

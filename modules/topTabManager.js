@@ -522,6 +522,8 @@
         const themeToggleButton = document.getElementById('nextUiAccountThemeToggleBtn');
         const themeIcon = document.getElementById('nextUiAccountThemeIcon');
         const themeLabel = document.getElementById('nextUiAccountThemeLabel');
+        const topbarThemeButton = document.getElementById('nextUiThemeBtn');
+        const topbarThemeIcon = topbarThemeButton?.querySelector('.vcp-ui-icon');
         if (!dock || !menu || !trigger || !avatar || !userName) return;
 
         const sync = () => {
@@ -536,6 +538,12 @@
             if (themeLabel) themeLabel.textContent = nextThemeLabel;
             themeToggleButton?.setAttribute('aria-label', nextThemeLabel);
             themeToggleButton?.setAttribute('aria-pressed', String(isDark));
+            if (topbarThemeIcon) {
+                if (window.VCPIcons?.set) window.VCPIcons.set(topbarThemeIcon, isDark ? 'light_mode' : 'dark_mode');
+                else topbarThemeIcon.textContent = isDark ? 'light_mode' : 'dark_mode';
+            }
+            topbarThemeButton?.setAttribute('aria-label', nextThemeLabel);
+            topbarThemeButton?.setAttribute('title', nextThemeLabel);
         };
 
         const setOpen = (open) => {
@@ -737,7 +745,12 @@
                     ? await window.MainChatCommands.createGroup({ name, model })
                     : await window.MainChatCommands.createAgent({ name, model });
                 if (!result?.success) throw new Error(result?.error || '创建失败，请稍后重试。');
-                window.VCPUI?.feedback?.toast(`${kind === 'group' ? '群组' : '助手'}“${name}”已创建`, { variant: 'success' });
+                window.VCPUI?.feedback?.toast(
+                    result.navigationSuccess === false
+                        ? `${kind === 'group' ? '群组' : '助手'}“${name}”已创建，请刷新列表查看`
+                        : `${kind === 'group' ? '群组' : '助手'}“${name}”已创建`,
+                    { variant: result.navigationSuccess === false ? 'warning' : 'success' }
+                );
                 if (modal.element.isConnected) modal.close(true);
             } catch (creationError) {
                 console.error('[NextUI] Failed to create item:', creationError);

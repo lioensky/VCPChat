@@ -1775,6 +1775,13 @@ function setupChatPresentationQuickSwitcher() {
     document.querySelectorAll('.chat-presentation-quick-switcher').forEach((switcher) => {
         const options = Array.from(switcher.querySelectorAll('.chat-presentation-quick-option'));
         if (!options.length || switcher.dataset.bound === 'true') return;
+        const trigger = document.querySelector(`[aria-controls="${switcher.id}"]`);
+        const usesExplicitState = switcher.classList.contains('next-ui-chat-presentation-switcher');
+
+        const setOpen = (open) => {
+            switcher.classList.toggle('is-open', open);
+            trigger?.setAttribute('aria-expanded', String(open));
+        };
 
         const selectMode = async (option) => {
             const mode = option?.dataset.presentationMode;
@@ -1787,8 +1794,34 @@ function setupChatPresentationQuickSwitcher() {
             });
         };
 
+        if (usesExplicitState && trigger) {
+            trigger.addEventListener('click', (event) => {
+                event.stopPropagation();
+                const open = !switcher.classList.contains('is-open');
+                setOpen(open);
+                if (open) {
+                    options.find(option => option.getAttribute('aria-checked') === 'true')?.focus();
+                }
+            });
+            document.addEventListener('pointerdown', (event) => {
+                if (!switcher.classList.contains('is-open')) return;
+                if (switcher.contains(event.target) || trigger.contains(event.target)) return;
+                setOpen(false);
+            });
+            document.addEventListener('keydown', (event) => {
+                if (event.key !== 'Escape' || !switcher.classList.contains('is-open')) return;
+                event.preventDefault();
+                event.stopPropagation();
+                setOpen(false);
+                trigger.focus();
+            });
+        }
+
         options.forEach((option) => {
-            option.addEventListener('click', () => selectMode(option));
+            option.addEventListener('click', async () => {
+                await selectMode(option);
+                if (usesExplicitState) setOpen(false);
+            });
             option.addEventListener('keydown', (event) => {
                 if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
                 event.preventDefault();
@@ -1808,7 +1841,10 @@ function setupChatPresentationQuickSwitcher() {
         switcher.addEventListener('keydown', (event) => {
             if (event.key !== 'Escape') return;
             event.preventDefault();
-            document.querySelector(`[aria-controls="${switcher.id}"]`)?.focus();
+            event.stopPropagation();
+            if (usesExplicitState) setOpen(false);
+            trigger?.focus();
+            if (!usesExplicitState) trigger?.blur();
         });
 
         switcher.dataset.bound = 'true';

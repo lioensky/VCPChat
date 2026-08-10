@@ -93,26 +93,19 @@
         return { success: true, removed };
     }
 
-    function createAgentConfig(name, model) {
-        return {
-            systemPrompt: `你是 ${name}。`,
-            model,
-            temperature: 0.7,
-            contextTokenLimit: 1000000,
-            maxOutputTokens: 60000,
-            topics: [{ id: 'default', name: '主要对话', createdAt: Date.now() }],
-            disableCustomColors: true,
-            useThemeColorsInChat: true,
-        };
-    }
-
     async function createAgent({ name, model = '' }) {
-        const result = await api()?.createAgent?.(name, model ? createAgentConfig(name, model) : undefined);
+        const result = await api()?.createAgent?.(name, model ? { model } : undefined);
         if (!result?.success) return result || { success: false, error: '创建功能不可用' };
-        await window.itemListManager?.loadItems?.();
-        await window.chatManager?.selectItem?.(result.agentId, 'agent', result.agentName, null, result.config);
-        window.uiManager?.switchToTab?.('settings');
-        return result;
+        try {
+            await window.itemListManager?.loadItems?.();
+            await window.chatManager?.selectItem?.(result.agentId, 'agent', result.agentName, null, result.config);
+            window.uiManager?.switchToTab?.('settings');
+            return { ...result, navigationSuccess: true };
+        } catch (error) {
+            console.error('[MainChatCommands] Agent created but UI navigation failed:', error);
+            notify(`助手已创建，但界面刷新失败：${error.message}`, 'warning');
+            return { ...result, navigationSuccess: false, warning: error.message };
+        }
     }
 
     async function createGroup({ name, model = '' }) {
@@ -121,10 +114,16 @@
         if (!result?.success) return result || { success: false, error: '创建功能不可用' };
         const group = result.agentGroup;
         if (!group?.id) return { success: false, error: '群组已创建，但返回数据不完整。' };
-        await window.itemListManager?.loadItems?.();
-        await window.chatManager?.selectItem?.(group.id, 'group', group.name, group.avatarUrl, group);
-        window.uiManager?.switchToTab?.('settings');
-        return result;
+        try {
+            await window.itemListManager?.loadItems?.();
+            await window.chatManager?.selectItem?.(group.id, 'group', group.name, group.avatarUrl, group);
+            window.uiManager?.switchToTab?.('settings');
+            return { ...result, navigationSuccess: true };
+        } catch (error) {
+            console.error('[MainChatCommands] Group created but UI navigation failed:', error);
+            notify(`群组已创建，但界面刷新失败：${error.message}`, 'warning');
+            return { ...result, navigationSuccess: false, warning: error.message };
+        }
     }
 
     window.MainChatCommands = Object.freeze({

@@ -135,8 +135,7 @@ html[data-ui-mode="next"] .next-ui-chat-presentation-switcher {
     transform-origin: right top;
 }
 
-html[data-ui-mode="next"] .next-ui-presentation-switcher:hover .next-ui-chat-presentation-switcher,
-html[data-ui-mode="next"] .next-ui-presentation-switcher:focus-within .next-ui-chat-presentation-switcher {
+html[data-ui-mode="next"] .next-ui-chat-presentation-switcher.is-open {
     opacity: 1;
     visibility: visible;
     pointer-events: auto;
