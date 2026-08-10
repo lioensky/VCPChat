@@ -1,166 +1,325 @@
 # VCP Scriptorium · 共笔文坊
 
-Scriptorium 是 VCPChat 内置的沉浸式 DOCX 写作空间。
+> Alpha 原型：以 HTML、CSS 与受控 JavaScript 为共同语言的人机协作文档工作台。
 
-它不是聊天窗口的附件预览器，也不是“富文本编辑器 + DOCX 导出器”。Scriptorium 以真实 DOCX / OOXML 文档为唯一真源，优先服务论文、文学创作、长文写作和精细排版。
+Scriptorium 是 VCPChat 内置的本地富文档与演示创作空间。它同时面向人类作者和 VCP Agent：人类可以直接编辑渲染后的文字与版式，Agent 可以读取文档语义、源码和视觉上下文，并通过可审阅的 PR 修改文档。
+
+它不是 DOCX/PPTX 的原位 OOXML 编辑器。Scriptorium 使用自己的 VDOC 工程模型：
+
+- **VDOCX**：连续流文稿工程，扩展名为 `.vdocx`。
+- **VPPTX**：逐页演示工程，扩展名为 `.vpptx`。
+- 原生 `.docx`、`.pptx` 是导入源；导入后应保存为对应的 VDOC 工程。
+- 工程文件当前是 UTF-8 JSON，而不是 ZIP/OOXML 容器。
 
 > A document is a place, not a file.  
 > 文档不是一个文件，而是人类与协作者共同抵达的地方。
 
-## 第一阶段原则
+## Alpha 已经能做什么
 
-1. **人类执笔优先**
-   - 所有核心交互首先为人类写作打磨。
-   - Agent 当前没有修改、保存或执行入口。
-   - 不因未来 Agent 能力牺牲人类编辑体验。
+### 文稿与演示
 
-2. **真实 DOCX**
-   - 使用 SuperDoc 的 OOXML 编辑内核。
-   - 文档载入、分页、编辑和导出都围绕 DOCX 原始结构进行。
-   - 不使用 Mammoth HTML 转换结果回写 DOCX，避免排版和结构损失。
+- 新建、打开、保存和另存 VDOCX / VPPTX 工程。
+- 连续流文稿编辑与分页阅读预览。
+- 演示页面新增、删除、切换、静态缩略图和放映预览。
+- HTML 与 CSS 源码编辑、格式化、诊断和即时应用。
+- 字体、字号、粗体、斜体、下划线、删除线、文字颜色、高亮、行距和对齐。
+- 跨文本块选择、全文选择和右键快捷格式栏。
+- 插入段落、标题、引文和 3 × 3 表格。
+- 标题目录、段落索引、字数与字符数统计。
+- 50%–200% 缩放，以及 Ctrl/Command + 滚轮指针中心缩放。
+- 高级样式库、隔离预览、样式包导入导出和工程内嵌样式。
+- KaTeX 数学节点渲染。
+- 最多 80 个窗口内撤销历史快照；连续输入按约 2 秒合并为一轮历史操作。
 
-3. **离线与本地**
-   - 文档数据仅在本地 Electron 渲染进程与主进程之间流动。
-   - SuperDoc 遥测显式关闭。
-   - CSP 禁止编辑器连接外部网络。
-   - 文件保存使用临时文件 + 原子替换，降低保存中断造成原文件损坏的风险。
+### 导入与导出
 
-4. **文档是视觉中心**
-   - 中央纸页是界面的绝对主角。
-   - 工具带、标题栏、状态栏和文脉主动降低视觉权重。
-   - 支持一键进入“纯文模式”，隐藏所有非文档界面。
+可导入：
 
-## 界面概念
+- HTML / HTM
+- Markdown
+- TXT
+- RTF
+- DOCX（语义导入）
+- PPTX（静态版式导入）
 
-### 悬浮装订台
+可导出：
 
-Scriptorium 不沿用传统 Office Ribbon，也不复用 VCPChat 现有 App 布局。
+- VDOCX 文稿：连续流 HTML、分页 HTML、PDF。
+- VPPTX 演示：单文件可播放 HTML、逐页 PDF。
+- 演示 HTML 支持键盘翻页、底部控制条、全屏和页面内交互脚本。
+- 受支持的 Anime.js / Three.js 依赖会在导出时嵌入单文件 HTML。
 
-界面由四个层级组成：
+导入是面向 Scriptorium 模型的转换，不保证对原生 Office 文件进行像素级或可逆还原。DOCX 会提取正文语义、标题和显式分页信息；PPTX 以静态页面结构进入 VPPTX。
 
-- **沉浸式标题栏**：品牌、文档名、保存状态、窗口控制。
-- **排版工具带**：文件操作、字体、字号、字符格式、段落、表格、图片和查找。
-- **纸页场**：SuperDoc 真实分页渲染与编辑表面。
-- **文脉**：文档保存点与未来协作者提交的演化记录。
+### 文脉与版本
 
-### 文脉与刻点
+文脉已经是工程数据，而不是 UI 占位：
 
-右侧“文脉”是文档演化流的 UI 与协议占位。
+- 人类可以创建带名称和备注的刻点。
+- 刻点包含操作元数据、源码状态、changeSet 和工程内嵌版本快照。
+- Agent PR 会以 pending、applied、rejected、conflict 或 failed 状态进入同一条文脉。
+- 每次审批都可填写回执，并记录审阅者、时间和是否自动批准。
+- 可查看文脉节点的记录、变更内容与审批信息。
+- 可回溯到带快照的历史节点。
+- 回溯前会自动保存当前版本，且不会删除后续文脉。
 
-- **人类刻点**：用户主动命名并保存的文档状态。
-- **Agent 提交**：未来 Agent 提交、等待人类审阅的修改状态。
-- 两者在视觉层级上平等，通过来源色标区分。
-- 第一阶段只实现人类刻点 UI；Agent 只有只读事件订阅占位，没有修改入口。
-- 当前刻点列表属于窗口会话状态；持久化快照、差异比较与回溯将在后续阶段实现。
+## 核心设计：源码是唯一真相
 
-## 字体机制
+Scriptorium 不把实时渲染 DOM 当作文档存储。
 
-Scriptorium 会请求主进程枚举当前操作系统已安装的字体：
+### VDOCX
 
-- Windows：通过 `System.Drawing.Text.InstalledFontCollection`。
-- Linux：通过 `fc-list`。
-- macOS：优先使用 `fc-list`，不可用时扫描系统和用户字体目录。
-- 枚举失败时提供常用字体保底列表。
+一份 VDOCX 只有一个完整 HTML source。它可以同时包含：
 
-字体列表只用于提供选择项，不会强行替换 DOCX 中已有字体。SuperDoc 仍负责文档字体解析、替代字体与排版测量。
+- 文档级 `<style>`
+- 完整正文 HTML
+- 本地依赖声明
+- 内联交互 `<script>`
 
-## DOCX 数据流
+### VPPTX
 
-### 打开
+一份 VPPTX 包含：
 
-1. 渲染进程调用最小权限预加载 API。
-2. 主进程显示仅允许 `.docx` 的文件选择器。
-3. 主进程验证扩展名、文件类型和 100 MB 安全上限。
-4. 主进程将二进制数据作为 `Uint8Array` 返回。
-5. 渲染进程将二进制包装为 `File` 并交给 SuperDoc。
+- 一份演示共享 `deckCss`
+- 多个 slide
+- 每个 slide 只有一个完整 source，其中可包含页面 `<style>`、HTML、依赖声明和内联 `<script>`
+- 页面名称、转场、时长、备注与资源元数据
 
-### 保存
+### 为什么不序列化渲染树
 
-1. 渲染进程调用 `SuperDoc.export()` 得到 DOCX `Blob`。
-2. 通过预加载桥发送 `Uint8Array` 到主进程。
-3. 主进程写入同目录临时文件。
-4. 写入成功后原子替换目标文档。
-5. 最近文档列表写入 `AppData/DocxEditor/recent.json`。
+可编程页面会在运行时创建 Canvas、SVG、控制节点，或持续修改 class、style 和 data 属性。若把渲染树整体写回工程，这些瞬态状态会污染源码并在每次重渲染时重复累积。
 
-## 安全边界
+因此人类在渲染面进行的修改使用定向写入：
 
-专属预加载文件只暴露以下能力：
+1. 每个可编辑文本块拥有稳定的 `data-vdoc-text` 标识。
+2. 文本编辑只更新该标识对应节点的内部语义 HTML。
+3. 块级格式只同步明确允许的属性。
+4. 新增和删除结构块只修改对应源码锚点。
+5. 未被显式编辑的源码节点保持原样。
 
-- 打开、读取、保存 DOCX。
-- 查询最近文档。
-- 查询系统字体。
-- 获取主题和监听主题变化。
-- 当前窗口控制。
-- 订阅未来 Agent 保存点提案事件。
+Agent 也不直接操作实时 DOM，而是读取和修改同一份完整源码。
 
-Scriptorium 不复用权限较宽的 Utility 预加载角色，也没有 Node.js 渲染进程权限。
+## 四个工作面
 
-## Agent 占位协议
+### 连续编辑
 
-当前仅保留渲染侧事件：
+人类直接编辑渲染结果。VDOCX 使用连续流画布；VPPTX 使用当前页面画布。页面内脚本产生的运行时 DOM 不会被误写回工程。
 
-```text
-docx:agent-checkpoint-proposed
+### 阅读 / 放映预览
+
+VDOCX 通过本地分页器生成纸页预览；VPPTX 生成逐页放映预览。离开视口的页面会暂停动画和媒体，以降低长文档资源占用。
+
+### HTML 源码
+
+使用 CodeMirror 编辑当前完整源码。演示中该工作面始终对应当前页，切页前会先提交旧页缓冲区。
+
+### CSS 源码
+
+VDOCX 编辑文档全局 CSS；VPPTX 编辑整套演示共享的 `deckCss`。单页样式仍位于该页完整 HTML source 中。
+
+## 人机协作工作流
+
+ScriptoriumCollaborator 是 VCP 分布式服务器中的 hybrid service。它通过 Electron 主进程控制服务与当前 Scriptorium 窗口通信，Agent 不直接获得文件系统或渲染进程权限。
+
+推荐流程：
+
+1. Agent 调用 **GetDocumentInfo** 获取文档类型、当前修订和页面状态。
+2. 使用 **GetOutline**、**GetRenderedText**、**GetSource**、**SearchSource** 或 **GetViewportSource** 定位内容。
+3. 需要检查视觉结果时调用 **GetVisualContext** 获取语义摘要和真实截图。
+4. Agent 使用 `maid` 署名、`summary` 摘要、`requestId` 幂等键和建议的 `expectedRevision` 提交 PR。
+5. 提案进入右侧文脉，人类查看局部渲染差异、局部源码差异与安全诊断。
+6. 人类允许或拒绝，并可填写回执。
+7. 允许后才执行变更、增加修订、生成 changeSet 和版本快照并保存工程。
+8. Agent 获得审批结果；等待超过 5 分钟时返回 `PR_RECEIPT_TIMEOUT`，但提案仍保留在文脉中。
+
+### 自动允许策略
+
+自动允许只能由人类在 Scriptorium UI 中启用，并按操作类型单独勾选。Agent 无法通过工具参数开启它。
+
+当前 UI 可配置的类型包括：
+
+- 源码替换
+- 新增末页
+- 插入页面
+- 删除页面
+
+命中 refuse 级安全规则的提案永远不会自动批准，必须由人类打开审阅后手动决定。
+
+## ScriptoriumCollaborator 命令
+
+插件定义位于 [`plugin-manifest.json`](../VCPDistributedServer/Plugin/ScriptoriumCollaborator/plugin-manifest.json)，服务实现位于 [`ScriptoriumCollaboratorService.js`](../VCPDistributedServer/Plugin/ScriptoriumCollaborator/ScriptoriumCollaboratorService.js)。
+
+| 命令 | 用途 | 写操作 |
+| --- | --- | --- |
+| ListFonts | 按 all、zh-CN 或 en 列出真实系统字体 | 否 |
+| GetDocumentInfo | 获取类型、标题、修订、保存状态和 scene | 否 |
+| GetRenderedText | 获取文稿全文或演示页面的纯文本语义 | 否 |
+| GetOutline | 获取文稿标题目录或演示页面目录 | 否 |
+| GetSection | 按 ID 或索引读取 VDOCX 章节 | 否 |
+| GetSource | 按行读取完整 HTML source 或 deck-css | 否 |
+| SearchSource | 普通字符串或正则源码检索 | 否 |
+| GetViewportSource | 获取当前可见文本块附近的源码 | 否 |
+| GetVisualContext | 返回语义摘要和 JPEG/PNG 截图 | 否 |
+| GetPrHistory | 查询刻点、PR、状态和审批回执 | 否 |
+| SubmitSourcePr | 提交 target/replace 源码替换 PR | 是 |
+| AddSlide | 向 VPPTX 末尾提交完整页面 PR | 是 |
+| InsertSlide | 向 VPPTX 指定位置提交完整页面 PR | 是 |
+| DeleteSlide | 提交删除页面 PR | 是 |
+| UpdatePresentationConfig | 提交画布、宽高比、主题和转场配置 PR | 是 |
+| CreateProject | 规范化并直接落盘完整 VDOCX / VPPTX | 直接创建文件 |
+| GetStorageInfo | 查询 Agent 工程落盘目录与冲突策略 | 否 |
+
+完整参数和 VCP 工具调用示例以插件清单为准。
+
+### 串行调用
+
+插件支持 VCP 编号串行参数：`command1`、`command2`、`command3`……，并严格按编号执行。
+
+- 未编号字段作为所有步骤的公共参数。
+- 支持 wait、sleep、delay 步骤。
+- 等待默认 1000 ms，最大 30000 ms。
+- 任一步失败后停止后续步骤。
+- 响应仍保留此前成功步骤的完整文本与图片回执。
+- 多页视觉采集会等待切页、字体、图片和合成帧稳定后截图。
+
+### 直接创建工程
+
+**CreateProject** 不修改当前窗口模型，也不进入当前窗口 PR 审批。它会让 Scriptorium 内核先完成规范化和可编程内容审查，再原子写入：
+
+- `AppData/ScriptoriumDocument/VDOCX`
+- `AppData/ScriptoriumDocument/VPPTX`
+
+默认重名策略为 rename。overwrite 必须同时提供目标文件当前的 SHA-256 `expectedFileHash`，否则拒绝覆盖。`openAfterCreate` 只请求打开新工程；若窗口中有未保存内容，最终切换仍由人类决定。
+
+## 可编程内容
+
+VDOCX 文档和 VPPTX 页面可以携带 CSS 动画及内联 JavaScript。运行时提供受跟踪的：
+
+- requestAnimationFrame / cancelAnimationFrame
+- setTimeout / clearTimeout
+- setInterval / clearInterval
+- `runtime.addCleanup()`
+- 当前文档岛或页面范围内的 scoped document 查询
+
+切页、重渲染或关闭文档时，Scriptorium 会停止已跟踪的帧、定时器和 interval，并逆序执行清理函数。
+
+受支持的本地库：
+
+- Anime.js
+- Three.js
+
+常见 CDN 地址会在源码进入审批或工程落盘前转换为本地固定依赖；其他外部脚本会保留审计信息，但变为不可执行声明。
+
+## 安全模型
+
+默认安全策略由三层组成：
+
+1. HTML/CSS 清理：移除 iframe、object、embed 等独立执行宿主，移除事件属性和危险 URL scheme。
+2. 依赖本地化：受支持库映射到本地文件，未知公网脚本不直接加载。
+3. JavaScript 审查：按 allow、warn、refuse 输出诊断；refuse 脚本不执行。
+
+refuse 规则覆盖 Node 模块、process/global、文件系统、进程执行、Electron/IPC、二次动态求值、构造器逃逸、宿主文档破坏、file URL 和特权导航等。网络、持久化存储、全局事件、持续运行任务和 WebGL 会产生 warn。
+
+人类可在本机经过二次确认后关闭脚本审查。此设置不写入工程，且不会取消 PR 审批、外部依赖本地化或 CSP。
+
+**重要：这是 Alpha 级纵深防御，不是通用恶意 JavaScript 沙箱。** 审查基于规则扫描，scoped document 主要用于作用域约束与兼容性。不要在关闭审查后打开不可信的可编程文档。
+
+## 文件与数据安全
+
+- 渲染窗口启用 context isolation，且不开放 Node.js integration。
+- 专属预加载桥只暴露文档、字体、主题、窗口和 Agent 请求相关能力。
+- 工程和导出文件最大 100 MB。
+- 保存与导出先写同目录临时文件，再替换目标文件。
+- 最近文件列表保存在 `AppData/Scriptorium/recent.json`。
+- Agent 写操作要求 maid 署名、summary 和主进程侧 requestId。
+- PR 记录提交时的 documentId；审批时若当前窗口已切换工程，将以冲突状态拒绝应用。
+- target/replace 在真正合并时重新定位，目标已变化时不会盲目覆盖。
+
+## 工程结构
+
+| 文件 | 职责 |
+| --- | --- |
+| [`scriptorium.html`](scriptorium.html) | 编辑器 UI、对话框与本地依赖装载 |
+| [`scriptorium.css`](scriptorium.css) | 文坊视觉系统与响应式布局 |
+| [`scriptorium.js`](scriptorium.js) | 编辑器状态、渲染、编辑、导出、文脉和运行时 |
+| [`vdoc-core.js`](vdoc-core.js) | VDOC 模型、规范化、序列化和源码清理 |
+| [`scriptorium-pagination.js`](scriptorium-pagination.js) | 连续流、分页预览与分页 HTML |
+| [`scriptorium-agent.js`](scriptorium-agent.js) | 渲染侧 Agent 读取、PR、审批和版本协议 |
+| [`scriptorium-programmable-content.js`](scriptorium-programmable-content.js) | 依赖本地化与脚本安全审查 |
+| [`vdoc-style-library.js`](vdoc-style-library.js) | 高级样式注册、预览、编译与样式包 |
+| [`scriptorium-visibility.js`](scriptorium-visibility.js) | 页面可见性与运行时暂停 |
+| [`scriptorium-pretext-bridge.js`](scriptorium-pretext-bridge.js) | Pretext 文本测量桥 |
+| [`../preloads/docx.js`](../preloads/docx.js) | 最小权限 Electron API |
+| [`../modules/ipc/docxHandlers.js`](../modules/ipc/docxHandlers.js) | 窗口、文件、字体、导入导出和 Agent IPC |
+| [`../modules/services/scriptoriumImportService.js`](../modules/services/scriptoriumImportService.js) | HTML/Markdown/TXT/RTF/DOCX 语义导入 |
+| [`../modules/services/scriptoriumPptxImportService.js`](../modules/services/scriptoriumPptxImportService.js) | PPTX 静态版式导入 |
+| [`../modules/services/scriptoriumAgentControlService.js`](../modules/services/scriptoriumAgentControlService.js) | Agent 窗口控制、截图和工程落盘 |
+| [`../VCPDistributedServer/Plugin/ScriptoriumCollaborator`](../VCPDistributedServer/Plugin/ScriptoriumCollaborator) | VCP hybrid service 与工具清单 |
+
+## 启动
+
+在 VCPChat 项目根目录安装依赖并启动 Electron：
+
+```bash
+npm install
+npm start
 ```
 
-建议的只读载荷：
+启动后可从 VCPChat 的“文坊”入口或托盘菜单打开 Scriptorium。
 
-```json
-{
-  "id": "agent-checkpoint-id",
-  "name": "修改提案名称",
-  "note": "修改摘要",
-  "createdAt": 1786233600000
-}
-```
-
-当前没有以下能力：
-
-- Agent 读取当前文档内容。
-- Agent 直接操作编辑器命令。
-- Agent 导出或覆盖文件。
-- Agent 自动接受自己的提交。
-- Agent 绕过人类确认创建持久化刻点。
-
-后续实现必须维持“提案 → 可视差异 → 人类审阅 → 接受/拒绝 → 保存”的边界。
-
-## 文件结构
-
-- `scriptorium.html`：产品结构与语义界面。
-- `scriptorium.css`：主题自适应视觉系统。
-- `scriptorium.js`：SuperDoc 生命周期、文件交互、排版命令和文脉 UI。
-- `../preloads/docx.js`：最小权限 Electron 桥。
-- `../modules/ipc/docxHandlers.js`：窗口、文件、最近记录与系统字体主进程实现。
-
-## 依赖与许可证注意
-
-Scriptorium 使用 `superdoc@1.45.0`。SuperDoc 为 AGPLv3 / 商业双许可证项目。
-
-VCPChat 当前使用 CC BY-NC-SA 4.0。公开分发包含 SuperDoc 的构建版本前，应再次核对组合分发、源码提供和许可证兼容要求；若未来进入专有或商业分发，应获取 SuperDoc 商业许可。
+也可由插件调用自动打开窗口；控制服务会等待渲染侧 `window.ScriptoriumAgent` 就绪。
 
 ## 验证
 
-静态检查：
+### 静态语法检查
 
 ```bash
 node --check ScriptoriumModules/scriptorium.js
+node --check ScriptoriumModules/scriptorium-agent.js
+node --check ScriptoriumModules/vdoc-core.js
+node --check ScriptoriumModules/scriptorium-programmable-content.js
 node --check modules/ipc/docxHandlers.js
-node --check preloads/docx.js
+node --check modules/services/scriptoriumAgentControlService.js
+node --check VCPDistributedServer/Plugin/ScriptoriumCollaborator/ScriptoriumCollaboratorService.js
 ```
 
-独立 Electron 冒烟测试：
+### Node 测试
+
+```bash
+node tests/scriptorium-collaborator.test.js
+node tests/scriptorium-importers.test.js
+```
+
+### Electron 冒烟与集成测试
+
+Windows CMD 中先清除可能残留的 Electron Node 模式：
 
 ```bat
 set ELECTRON_RUN_AS_NODE=
 npx electron tests/scriptorium-electron-smoke.js
+npx electron tests/scriptorium-vpptx-electron.test.js
+npx electron tests/scriptorium-cdn-localization-electron.test.js
 ```
 
-测试会验证：
+主冒烟测试覆盖编辑器装载、文稿创建、分页、编辑、Agent PR 审批、运行时安全和截图；截图写入 `AppData/Scriptorium/scriptorium-smoke.png`。
 
-- 最小权限预加载存在。
-- SuperDoc UMD 内核成功载入。
-- 主题和系统字体数据成功到达。
-- 空白 DOCX 成功创建。
-- Presentation / Canvas 编辑表面成功渲染。
-- 页面无遥测外联和运行时错误。
-- 实际截图输出到 `AppData/DocxEditor/scriptorium-smoke.png`。
+## Alpha 已知限制
+
+- VDOCX / VPPTX 是 VCP 自有格式，与原生 DOCX / PPTX 不二进制兼容。
+- Office 导入是语义或静态版式转换，不是无损往返编辑。
+- 图片资源本地化层尚未接入；工具栏“插入图片”目前只显示提示。
+- 工具栏中的项目符号和编号列表按钮尚未接入编辑命令。
+- 分页器面向 Web 富文档语义，不追求 Word 排版引擎逐像素一致。
+- JavaScript 安全审查不是完整沙箱；关闭审查后不应运行不可信源码。
+- 当前工程格式版本为 `vcp-vdocx` version 1，Alpha 阶段仍可能演进。
+- 撤销栈只存在于当前窗口会话；需要长期恢复时应使用持久化文脉刻点。
+- 外部图片、媒体和字体的可移植资源打包仍需继续完善。
+- 大型复杂 WebGL 页面、长时间动画和第三方脚本兼容性仍需更多压力测试。
+
+## Alpha 定位
+
+这个版本已经完成了可实际使用的核心闭环：
+
+**人类编辑渲染结果 → 源码定向同步 → 本地工程保存 → Agent 读取语义/源码/画面 → 提交署名 PR → 人类查看双重差异 → 审批与回执 → 文脉持久化 → 可回溯版本。**
+
+它仍不是面向普通用户发布的稳定 Office 替代品，但已经是一套能够继续验证“人类写作 + Agent 源码协作 + 可编程富文档”方向的 Alpha 原型。
