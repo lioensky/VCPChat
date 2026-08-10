@@ -5,7 +5,21 @@ const path = require('path');
 const fs = require('fs-extra');
 
 const projectRoot = path.resolve(__dirname, '..');
+const SMOKE_TIMEOUT_MS = 120000;
 let windowRef = null;
+let smokeWatchdog = null;
+
+function progress(stage) {
+    console.log(`[ScriptoriumSmoke] Stage: ${stage}`);
+}
+
+function finish(exitCode) {
+    if (smokeWatchdog) {
+        clearTimeout(smokeWatchdog);
+        smokeWatchdog = null;
+    }
+    app.exit(exitCode);
+}
 
 function registerMinimalIpc() {
     ipcMain.handle('get-current-theme', () => nativeTheme.shouldUseDarkColors ? 'dark' : 'light');
@@ -36,8 +50,16 @@ function registerMinimalIpc() {
 }
 
 app.whenReady().then(async () => {
+    smokeWatchdog = setTimeout(() => {
+        console.error(
+            `[ScriptoriumSmoke] TIMEOUT after ${SMOKE_TIMEOUT_MS} ms; forcing exit.`
+        );
+        finish(1);
+    }, SMOKE_TIMEOUT_MS);
+    progress('register-ipc');
     registerMinimalIpc();
 
+    progress('create-window');
     windowRef = new BrowserWindow({
         width: 1440,
         height: 900,
@@ -65,11 +87,14 @@ app.whenReady().then(async () => {
         errors.push(`render-process-gone: ${details.reason}`);
     });
 
+    progress('load-editor');
     await windowRef.loadFile(path.join(projectRoot, 'ScriptoriumModules', 'scriptorium.html'));
     await new Promise((resolve) => setTimeout(resolve, 1500));
+    progress('create-document');
     await windowRef.webContents.executeJavaScript(`document.getElementById('welcome-new-btn').click()`);
     await new Promise((resolve) => setTimeout(resolve, 5000));
 
+    progress('submit-agent-pr');
     const approvalPending = await windowRef.webContents.executeJavaScript(`(() => {
         const api = window.ScriptoriumAgent;
         const before = api.common.getSource({
@@ -108,6 +133,7 @@ app.whenReady().then(async () => {
         };
     })()`);
 
+    progress('approve-agent-pr');
     const approvalResult = await windowRef.webContents.executeJavaScript(`(async () => {
         const receipt = document.querySelector('.checkpoint-item.pending .pr-inline-receipt');
         const approve = document.querySelector('.checkpoint-item.pending .pr-approve');
@@ -135,6 +161,7 @@ app.whenReady().then(async () => {
         };
     })()`);
 
+    progress('advanced-style-interaction');
     const interaction = await windowRef.webContents.executeJavaScript(`(() => {
         const root = document.getElementById('page-stream').shadowRoot;
         const editable = root.querySelector('[data-vdoc-text]');
@@ -171,6 +198,7 @@ app.whenReady().then(async () => {
         };
     })()`);
 
+    progress('source-and-math-interaction');
     await windowRef.webContents.executeJavaScript(`document.getElementById('html-mode-btn').click()`);
     await new Promise((resolve) => setTimeout(resolve, 100));
     const mathInteraction = await windowRef.webContents.executeJavaScript(`(() => {
@@ -224,6 +252,7 @@ app.whenReady().then(async () => {
         };
     })()`);
 
+    progress('mode-switch-and-pagination');
     await windowRef.webContents.executeJavaScript(`document.getElementById('render-mode-btn').click()`);
     await new Promise((resolve) => setTimeout(resolve, 250));
     const modeSwitchInteraction = await windowRef.webContents.executeJavaScript(`(() => {
@@ -281,6 +310,7 @@ app.whenReady().then(async () => {
                 .some((node) => (node.textContent || '').includes('分页回归段落 72'))
         };
     })()`);
+    progress('formatting-interaction');
     const formattingInteraction = await windowRef.webContents.executeJavaScript(`(() => {
         const root = document.getElementById('page-stream').shadowRoot;
         const editable = [...root.querySelectorAll('[data-vdoc-text]')]
@@ -325,6 +355,7 @@ app.whenReady().then(async () => {
         };
     })()`);
 
+    progress('range-selection-interaction');
     const rangeSelectionInteraction = await windowRef.webContents.executeJavaScript(`(() => {
         const root = document.getElementById('page-stream').shadowRoot;
         const blocks = [...root.querySelectorAll('[data-vdoc-text]')]
@@ -446,6 +477,7 @@ app.whenReady().then(async () => {
         };
     })()`);
 
+    progress('enter-key-interaction');
     const enterInteraction = await windowRef.webContents.executeJavaScript(`(async () => {
         const root = document.getElementById('page-stream').shadowRoot;
         const runtimeBeforeShiftEnter = root.querySelector('.vdoc-flow-runtime');
@@ -536,6 +568,7 @@ app.whenReady().then(async () => {
         };
     })()`);
 
+    progress('block-interaction');
     const blockInteraction = await windowRef.webContents.executeJavaScript(`(() => {
         const root = document.getElementById('page-stream').shadowRoot;
         const initialContainers = root.querySelectorAll('[data-vdoc-container][data-vdoc-preserve="true"]').length;
@@ -561,6 +594,7 @@ app.whenReady().then(async () => {
     })()`);
     await windowRef.webContents.executeJavaScript(`document.getElementById('html-mode-btn').click()`);
 
+    progress('collect-snapshot');
     const snapshot = await windowRef.webContents.executeJavaScript(`({
     title: document.title,
     hasApi: Boolean(window.scriptoriumAPI),
@@ -602,13 +636,16 @@ app.whenReady().then(async () => {
         const restored = window.VDocCore.parse(window.VDocCore.serialize(flow));
         return restored.format === 'vcp-vdocx'
             && restored.manifest.scene.kind === 'flow-document'
-            && restored.source.html.includes('data-vdoc-text');
+            && restored.source.content.includes('data-vdoc-text');
     })(),
     slideDeckRoundTrips: (() => {
         const deck = window.VDocCore.createDocument({
             title: '演示测试',
             kind: window.VDocCore.PROJECT_KINDS.SLIDE_DECK,
-            html: '<section data-vdoc-slide><h1>第一页</h1></section>'
+            slides: [{
+                name: '第一页',
+                source: '<section data-vdoc-slide><h1>第一页</h1></section>'
+            }]
         });
         const restored = window.VDocCore.parse(window.VDocCore.serialize(deck));
         return restored.manifest.scene.kind === 'slide-deck'
@@ -642,6 +679,7 @@ app.whenReady().then(async () => {
     viewport: { width: innerWidth, height: innerHeight }
 })`);
 
+    progress('capture-screenshot');
     const outputDir = path.join(projectRoot, 'AppData', 'Scriptorium');
     await fs.ensureDir(outputDir);
     const image = await windowRef.webContents.capturePage();
@@ -740,12 +778,15 @@ app.whenReady().then(async () => {
 
     if (errors.length) {
         console.error('[ScriptoriumSmoke] FAILED:', JSON.stringify(errors, null, 2));
-        app.exit(1);
+        finish(1);
         return;
     }
 
     console.log('[ScriptoriumSmoke] PASSED');
-    app.exit(0);
+    finish(0);
+}).catch((error) => {
+    console.error('[ScriptoriumSmoke] UNHANDLED:', error?.stack || error);
+    finish(1);
 });
 
 app.on('window-all-closed', () => app.quit());
