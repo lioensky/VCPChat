@@ -105,9 +105,7 @@ app.whenReady().then(async () => {
                 {
                     id: 'scene-stable-a',
                     name: '甲页',
-                    html: '<section class="vdoc-slide-scene"><h1>甲</h1></section>',
-                    css: '.a{color:red}',
-                    script: 'scene.dataset.ran = "true";',
+                    source: '<style>.a{color:red}</style><section class="vdoc-slide-scene"><h1>甲</h1></section><script>scene.dataset.ran = "true";</script>',
                     transition: 'fade',
                     duration: 4,
                     notes: '甲备注',
@@ -116,11 +114,12 @@ app.whenReady().then(async () => {
                 {
                     id: 'scene-stable-b',
                     name: '乙页',
-                    html: '<section class="vdoc-slide-scene"><h1>乙</h1></section>'
+                    source: '<section class="vdoc-slide-scene"><h1>乙</h1></section>'
                 }
             ]
         });
         const restored = window.VDocCore.parse(window.VDocCore.serialize(model));
+        const slideASplit = window.VDocCore.splitSlideSource(restored.source.slides[0].source);
         return {
             title: document.getElementById('document-title').textContent,
             navigatorVisible: !document.getElementById('slide-navigator').hidden,
@@ -135,7 +134,7 @@ app.whenReady().then(async () => {
             roundTrip: restored.source.slides.length === 2
                 && restored.source.slides[0].id === 'scene-stable-a'
                 && restored.source.slides[1].id === 'scene-stable-b'
-                && restored.source.slides[0].script.includes('dataset.ran')
+                && slideASplit.script.includes('dataset.ran')
                 && restored.source.slides[0].transition === 'fade'
                 && restored.source.slides[0].duration === 4
                 && restored.source.slides[0].notes === '甲备注'
