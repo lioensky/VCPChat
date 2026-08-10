@@ -2380,6 +2380,187 @@ ${preview.css}
         return result;
     }
 
+    function appendSourceDiffLine(host, type, text) {
+        const line = document.createElement('span');
+        line.className = `pr-source-line pr-source-line-${type}`;
+        line.textContent = text || ' ';
+        host.appendChild(line);
+    }
+
+    function renderSourceReplacementDiff(host, replacements) {
+        host.replaceChildren();
+        const legend = document.createElement('div');
+        legend.className = 'pr-source-legend';
+        legend.innerHTML = '<span class="removed">− 移除</span><span class="added">＋ 新增</span>';
+        host.appendChild(legend);
+        replacements.forEach((replacement, index) => {
+            if (index) appendSourceDiffLine(host, 'spacer', ' ');
+            appendSourceDiffLine(
+                host,
+                'hunk',
+                `@@ replacement ${index + 1}${
+                    replacement.startLine ? ` · hint line ${replacement.startLine}` : ''
+                } @@`
+            );
+            String(replacement.target || '').replace(/\r\n?/g, '\n').split('\n')
+                .forEach((line) => appendSourceDiffLine(host, 'removed', `− ${line}`));
+            String(replacement.replace ?? replacement.replacement ?? '')
+                .replace(/\r\n?/g, '\n').split('\n')
+                .forEach((line) => appendSourceDiffLine(host, 'added', `+ ${line}`));
+        });
+    }
+
+    function prSourceFor(proposal) {
+        const sourceKind = String(proposal.sourceKind || 'html');
+        if (isSlideDeck() && proposal.slideIndex !== null && proposal.slideIndex !== undefined) {
+            const slide = state.document?.source?.slides?.[Number(proposal.slideIndex)];
+            if (!slide) return '';
+            if (sourceKind === 'css') return slide.css || '';
+            if (sourceKind === 'script') return slide.script || '';
+            return slide.html || '';
+        }
+        return sourceKind === 'css' ? currentSourceCss() : currentSourceHtml();
+    }
+
+    function elementChildren(node) {
+        return [...(node?.children || [])];
+    }
+
+    function nearestPreviewIsland(node, root) {
+        if (!node || node === root) return root;
+        const preferred = 'div,section,article,aside,header,footer,main,figure,table,blockquote,li,[data-vdoc-block],[data-vdoc-slide]';
+        const island = node.matches?.(preferred) ? node : node.closest?.(preferred);
+        return island && root.contains(island) ? island : (node.parentElement || node);
+    }
+
+    function collectChangedDomPairs(beforeRoot, afterRoot, limit = 8) {
+        const pairs = [];
+        const seen = new Set();
+        const addPair = (beforeNode, afterNode) => {
+            const beforeIsland = beforeNode ? nearestPreviewIsland(beforeNode, beforeRoot) : null;
+            const afterIsland = afterNode ? nearestPreviewIsland(afterNode, afterRoot) : null;
+            const key = `${beforeIsland?.outerHTML || '∅'}\u0000${afterIsland?.outerHTML || '∅'}`;
+            if (seen.has(key) || (!beforeIsland && !afterIsland)) return;
+            seen.add(key);
+            pairs.push({ before: beforeIsland, after: afterIsland });
+        };
+        const compare = (beforeNode, afterNode, depth = 0) => {
+            if (pairs.length >= limit) return;
+            if (!beforeNode || !afterNode) {
+                addPair(beforeNode, afterNode);
+                return;
+            }
+            if (beforeNode.outerHTML === afterNode.outerHTML) return;
+            if (depth > 30 || beforeNode.tagName !== afterNode.tagName) {
+                addPair(beforeNode, afterNode);
+                return;
+            }
+            const beforeChildren = elementChildren(beforeNode);
+            const afterChildren = elementChildren(afterNode);
+            const attributesChanged = [...beforeNode.attributes].some((attribute) =>
+                afterNode.getAttribute(attribute.name) !== attribute.value)
+                || [...afterNode.attributes].some((attribute) =>
+                    beforeNode.getAttribute(attribute.name) !== attribute.value);
+            const directText = (node) => [...node.childNodes]
+                .filter((child) => child.nodeType === Node.TEXT_NODE)
+                .map((child) => child.textContent)
+                .join('');
+            if (attributesChanged || directText(beforeNode) !== directText(afterNode)) {
+                addPair(beforeNode, afterNode);
+                return;
+            }
+            const maximum = Math.max(beforeChildren.length, afterChildren.length);
+            if (!maximum) {
+                addPair(beforeNode, afterNode);
+                return;
+            }
+            for (let index = 0; index < maximum; index += 1) {
+                compare(beforeChildren[index], afterChildren[index], depth + 1);
+            }
+        };
+        const maximum = Math.max(beforeRoot.children.length, afterRoot.children.length);
+        for (let index = 0; index < maximum && pairs.length < limit; index += 1) {
+            compare(beforeRoot.children[index], afterRoot.children[index]);
+        }
+        return pairs;
+    }
+
+    function buildIslandPreviewDocument(html, css, stateLabel) {
+        const safeCss = String(css || '').replace(/<\/style/gi, '<\\/style');
+        const markup = html || `<div class="pr-island-missing">${
+            stateLabel === 'before' ? '变更前不存在' : '变更后已删除'
+        }</div>`;
+        return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><style>
+html,body{margin:0;min-height:100%;box-sizing:border-box;background:#fffdf8;color:#1d2421}
+body{padding:20px;font-family:"Noto Serif CJK SC","Microsoft YaHei",serif;overflow:auto}
+*,*::before,*::after{box-sizing:border-box;animation-play-state:paused!important;transition:none!important}
+.pr-island-missing{display:grid;min-height:120px;place-items:center;border:1px dashed #b7ada0;border-radius:8px;color:#81776b;background:#f4efe5;font:13px system-ui}
+${safeCss}
+</style></head><body>${markup}</body></html>`;
+    }
+
+    function renderHtmlIslandDiff(host, beforeHtml, afterHtml, css) {
+        const beforeTemplate = document.createElement('template');
+        const afterTemplate = document.createElement('template');
+        beforeTemplate.innerHTML = beforeHtml;
+        afterTemplate.innerHTML = afterHtml;
+        const pairs = collectChangedDomPairs(beforeTemplate.content, afterTemplate.content);
+        const usablePairs = pairs.length <= 8 ? pairs : [];
+        const previewPairs = usablePairs.length
+            ? usablePairs
+            : [{
+                before: beforeTemplate.content.firstElementChild,
+                after: afterTemplate.content.firstElementChild,
+                fallback: true,
+            }];
+        host.replaceChildren(...previewPairs.map((pair, index) => {
+            const group = document.createElement('section');
+            group.className = 'pr-island-group';
+            const heading = document.createElement('div');
+            heading.className = 'pr-island-heading';
+            heading.textContent = pair.fallback
+                ? '无法可靠定位最小变化岛，已降级显示文档根容器'
+                : `变化岛 ${index + 1}`;
+            const canvases = document.createElement('div');
+            canvases.className = 'pr-island-canvases';
+            const createCanvas = (label, node, stateLabel) => {
+                const card = document.createElement('section');
+                card.className = `pr-island-card ${stateLabel}`;
+                const title = document.createElement('strong');
+                title.textContent = label;
+                const frame = document.createElement('iframe');
+                frame.className = 'pr-island-frame';
+                frame.sandbox = '';
+                frame.title = `${label}隔离渲染预览`;
+                frame.srcdoc = buildIslandPreviewDocument(node?.outerHTML || '', css, stateLabel);
+                card.append(title, frame);
+                return card;
+            };
+            canvases.append(
+                createCanvas('变更前', pair.before, 'before'),
+                createCanvas('变更后', pair.after, 'after')
+            );
+            group.append(heading, canvases);
+            return group;
+        }));
+    }
+
+    function renderTextualProposalFallback(host, replacements, reason) {
+        const notice = document.createElement('div');
+        notice.className = 'pr-render-fallback';
+        notice.textContent = reason;
+        const blocks = replacements.flatMap((replacement) => {
+            const before = document.createElement('div');
+            before.className = 'pr-diff-before';
+            before.textContent = replacement.target || '（空 target）';
+            const after = document.createElement('div');
+            after.className = 'pr-diff-after';
+            after.textContent = replacement.replace ?? replacement.replacement ?? '（删除）';
+            return [before, after];
+        });
+        host.replaceChildren(notice, ...blocks);
+    }
+
     function renderProposalDiff(checkpoint) {
         const proposal = checkpoint?.proposal || {};
         const replacements = Array.isArray(proposal.replacements)
@@ -2388,21 +2569,27 @@ ${preview.css}
         const renderDiff = elements['pr-render-diff'];
         const sourceDiff = elements['pr-source-diff'];
         if (proposal.type === 'source-replace' && replacements.length) {
-            renderDiff.replaceChildren(...replacements.flatMap((replacement, index) => {
-                const before = document.createElement('div');
-                before.className = 'pr-diff-before';
-                before.textContent = replacement.target || '（空 target）';
-                const after = document.createElement('div');
-                after.className = 'pr-diff-after';
-                after.textContent = replacement.replace ?? replacement.replacement ?? '（删除）';
-                if (index) before.style.marginTop = '16px';
-                return [before, after];
-            }));
-            sourceDiff.textContent = replacements.map((replacement, index) => [
-                `@@ replacement ${index + 1}${replacement.startLine ? ` · hint line ${replacement.startLine}` : ''} @@`,
-                `- ${String(replacement.target || '').replace(/\n/g, '\n- ')}`,
-                `+ ${String(replacement.replace ?? replacement.replacement ?? '').replace(/\n/g, '\n+ ')}`,
-            ].join('\n')).join('\n\n');
+            renderSourceReplacementDiff(sourceDiff, replacements);
+            const sourceKind = String(proposal.sourceKind || 'html');
+            const beforeSource = prSourceFor(proposal);
+            const applied = window.ScriptoriumAgentModule.applyReplacements(
+                beforeSource,
+                replacements
+            );
+            if (sourceKind === 'html' && applied.success) {
+                const documentCss = isSlideDeck()
+                    ? state.document?.source?.slides?.[Number(proposal.slideIndex)]?.css || ''
+                    : currentSourceCss();
+                renderHtmlIslandDiff(renderDiff, beforeSource, applied.source, documentCss);
+            } else {
+                renderTextualProposalFallback(
+                    renderDiff,
+                    replacements,
+                    sourceKind === 'html'
+                        ? `无法在当前修订定位替换目标：${applied.message || '未知原因'}`
+                        : `${sourceKind.toUpperCase()} 变更无法映射到单一 DOM 岛，已安全降级为文本差异。`
+                );
+            }
             return;
         }
 
@@ -2417,7 +2604,9 @@ ${preview.css}
             ? '该页面将在合并后移除'
             : textFromProposal(proposal);
         renderDiff.replaceChildren(before, after);
-        sourceDiff.textContent = JSON.stringify(proposal, null, 2);
+        sourceDiff.replaceChildren();
+        JSON.stringify(proposal, null, 2).split('\n')
+            .forEach((line) => appendSourceDiffLine(sourceDiff, 'context', line));
     }
 
     function textFromProposal(proposal) {
