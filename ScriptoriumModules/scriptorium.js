@@ -6,6 +6,9 @@
     const styleLibrary = window.VDocStyleLibrary;
     const pagination = window.VDocPagination;
     const asyncModule = window.ScriptoriumAsync;
+    const runtimeModule = window.ScriptoriumRuntime;
+    const sourceEditorModule = window.ScriptoriumSourceEditor;
+    const sessionModule = window.ScriptoriumSession;
     const state = {
         document: null,
         currentPath: null,
@@ -83,6 +86,32 @@
     });
     const elements = {};
     const $ = (id) => document.getElementById(id);
+    const sourceEditorController = sourceEditorModule?.createSourceEditorController({
+        state,
+        elements,
+        core,
+        getCurrentHtml: currentSourceHtml,
+        getCurrentCss: currentSourceCss,
+    });
+    const sessionController = sessionModule?.createSessionController({
+        state,
+        elements,
+        api,
+        core,
+        styleLibrary,
+        asyncCoordinator,
+        isSlideDeck,
+        finalizeEditBurst,
+        applySourceChanges,
+        renderDocument,
+        switchMode,
+        captureSnapshot,
+        markDirty,
+        markSaved,
+        updateIdentity,
+        renderLineage,
+        showToast,
+    });
 
     function cacheElements() {
         [
@@ -597,536 +626,29 @@ ${surface === 'edit' ? `
         }
     }
 
-    function disposeSlideRuntime() {
-        try {
-            state.slideRuntimeDisposer?.();
-        } catch (error) {
-            console.error('[Scriptorium] Slide runtime cleanup failed:', error);
-        }
-        state.slideRuntimeDisposer = null;
-        state.slideRuntimeIdentity = null;
-    }
+    const runtimeController = runtimeModule.createRuntimeController({
+        state,
+        parsedSlide,
+        isSlideDeck,
+        activeSlide,
+        getRenderRoot,
+        getReadRoot,
+    });
 
-    function createScopedDocument(runtimeRoot) {
-        return new Proxy(document, {
-            get(target, property) {
-                if (property === 'querySelector') {
-                    return (selector) =>
-                        runtimeRoot.querySelector(selector) || target.querySelector(selector);
-                }
-                if (property === 'querySelectorAll') {
-                    return (selector) => runtimeRoot.querySelectorAll(selector);
-                }
-                if (property === 'getElementById') {
-                    return (id) =>
-                        runtimeRoot.querySelector(`#${CSS.escape(String(id))}`)
-                        || target.getElementById(id);
-                }
-                const value = Reflect.get(target, property, target);
-                return typeof value === 'function' ? value.bind(target) : value;
-            },
-        });
+    function disposeSlideRuntime() {
+        return runtimeController.dispose();
     }
 
     function recordProgrammableDiagnostics(diagnostics = []) {
-        state.programmableContentDiagnostics = diagnostics.map((item) => ({
-            ...item,
-            createdAt: Date.now(),
-        }));
-        diagnostics.forEach((item) => {
-            const log = item.level === 'refuse' ? console.error : console.warn;
-            log('[Scriptorium Programmable Content]', item);
-        });
-    }
-
-    function reviewRuntimeScript(source, context = {}) {
-        const policy = window.ScriptoriumProgrammableContent;
-        if (!policy) {
-            return {
-                allowed: false,
-                level: 'refuse',
-                findings: [{
-                    level: 'refuse',
-                    ruleId: 'review-engine-unavailable',
-                    message: '可编程内容审查器未加载，拒绝执行脚本。',
-                }],
-                context,
-            };
-        }
-        return policy.reviewJavaScript(source, context);
-    }
-
-    function diagnosticsFromReview(review, extra = {}) {
-        return review.findings.map((finding) => ({
-            ...finding,
-            ...extra,
-            context: review.context,
-        }));
-    }
-
-    function runSlideRuntime(slide, runtimeRoot, surface = 'edit') {
-        const runtimeSlide = parsedSlide(slide);
-        if (!runtimeSlide.script || !runtimeRoot?.isConnected) {
-            disposeSlideRuntime();
-            return null;
-        }
-
-        const identity = {
-            slideId: slide.id,
-            surface,
-            root: runtimeRoot,
-        };
-        const currentIdentity = state.slideRuntimeIdentity;
-        if (
-            currentIdentity
-            && currentIdentity.slideId === identity.slideId
-            && currentIdentity.surface === identity.surface
-            && currentIdentity.root === identity.root
-            && runtimeRoot.isConnected
-        ) {
-            return currentIdentity.runtime || null;
-        }
-
-        disposeSlideRuntime();
-
-        // AI 页面脚本常用 data-bound 防止重复绑定。它属于运行时状态，
-        // 不应阻止新建渲染树重新启动，也不应被持久化回 VPPTX。
-        if (runtimeRoot.hasAttribute?.('data-bound')) {
-            runtimeRoot.removeAttribute('data-bound');
-        }
-        runtimeRoot.querySelectorAll?.('[data-bound]').forEach((element) => {
-            element.removeAttribute('data-bound');
-        });
-
-        const animationFrames = new Set();
-        const timeouts = new Set();
-        const review = reviewRuntimeScript(runtimeSlide.script, {
-            documentKind: 'pptx',
-            surface,
-            scriptId: slide.id,
-        });
-        recordProgrammableDiagnostics(diagnosticsFromReview(review, {
-            scriptId: slide.id,
-            documentKind: 'pptx',
-            surface,
-        }));
-        if (!review.allowed) {
-            runtimeRoot.dataset.vdocScriptRefused = 'true';
-            return null;
-        }
-        runtimeRoot.removeAttribute('data-vdoc-script-refused');
-
-        const intervals = new Set();
-        const cleanups = [];
-        let disposed = false;
-
-        // 页面脚本创建的 Canvas、SVG、控制节点等只属于当前运行时，
-        // 不能在编辑器同步结构时写回 slide.html，否则每次重渲染都会
-        // 再执行脚本并重复追加一份运行时 DOM。
-        const runtimeMutationObserver = new MutationObserver((records) => {
-            records.forEach((record) => {
-                record.addedNodes.forEach((node) => {
-                    if (node.nodeType !== Node.ELEMENT_NODE) return;
-                    // SVG/MathML 元素没有 dataset，必须使用属性 API 标记。
-                    node.setAttribute('data-vdoc-runtime-generated', 'true');
-                });
-            });
-        });
-        runtimeMutationObserver.observe(runtimeRoot, {
-            childList: true,
-            subtree: true,
-        });
-        cleanups.push(() => runtimeMutationObserver.disconnect());
-
-        const trackedRequestAnimationFrame = (callback) => {
-            if (disposed) return 0;
-            const id = window.requestAnimationFrame((timestamp) => {
-                animationFrames.delete(id);
-                if (!disposed) callback(timestamp);
-            });
-            animationFrames.add(id);
-            return id;
-        };
-        const trackedCancelAnimationFrame = (id) => {
-            animationFrames.delete(id);
-            window.cancelAnimationFrame(id);
-        };
-        const trackedSetTimeout = (callback, wait, ...args) => {
-            if (disposed) return 0;
-            const id = window.setTimeout(() => {
-                timeouts.delete(id);
-                if (!disposed) callback(...args);
-            }, wait);
-            timeouts.add(id);
-            return id;
-        };
-        const trackedClearTimeout = (id) => {
-            timeouts.delete(id);
-            window.clearTimeout(id);
-        };
-        const trackedSetInterval = (callback, wait, ...args) => {
-            if (disposed) return 0;
-            const id = window.setInterval(() => {
-                if (!disposed) callback(...args);
-            }, wait);
-            intervals.add(id);
-            return id;
-        };
-        const trackedClearInterval = (id) => {
-            intervals.delete(id);
-            window.clearInterval(id);
-        };
-        const runtime = Object.freeze({
-            surface,
-            root: runtimeRoot,
-            slideId: slide.id,
-            addCleanup(callback) {
-                if (typeof callback === 'function') cleanups.push(callback);
-                return callback;
-            },
-            requestAnimationFrame: trackedRequestAnimationFrame,
-            cancelAnimationFrame: trackedCancelAnimationFrame,
-            setTimeout: trackedSetTimeout,
-            clearTimeout: trackedClearTimeout,
-            setInterval: trackedSetInterval,
-            clearInterval: trackedClearInterval,
-        });
-
-        try {
-            const execute = new Function(
-                'scene',
-                'deck',
-                'runtime',
-                'document',
-                'requestAnimationFrame',
-                'cancelAnimationFrame',
-                'setTimeout',
-                'clearTimeout',
-                'setInterval',
-                'clearInterval',
-                String(runtimeSlide.script)
-            );
-            const returned = execute.call(
-                runtimeRoot,
-                runtimeRoot,
-                window.VCPDeck || null,
-                runtime,
-                createScopedDocument(runtimeRoot),
-                trackedRequestAnimationFrame,
-                trackedCancelAnimationFrame,
-                trackedSetTimeout,
-                trackedClearTimeout,
-                trackedSetInterval,
-                trackedClearInterval
-            );
-            if (typeof returned === 'function') cleanups.push(returned);
-            else if (returned && typeof returned.dispose === 'function') {
-                cleanups.push(() => returned.dispose());
-            }
-        } catch (error) {
-            console.error(`[Scriptorium] Slide ${slide.id} runtime failed:`, error);
-        }
-
-        state.slideRuntimeDisposer = () => {
-            if (disposed) return;
-            disposed = true;
-            animationFrames.forEach((id) => window.cancelAnimationFrame(id));
-            timeouts.forEach((id) => window.clearTimeout(id));
-            intervals.forEach((id) => window.clearInterval(id));
-            animationFrames.clear();
-            timeouts.clear();
-            intervals.clear();
-            [...cleanups].reverse().forEach((cleanup) => {
-                try {
-                    cleanup();
-                } catch (error) {
-                    console.error('[Scriptorium] Slide custom cleanup failed:', error);
-                }
-            });
-        };
-        state.slideRuntimeIdentity = {
-            ...identity,
-            runtime,
-        };
-        return runtime;
-    }
-
-    function runDocumentRuntime(runtimeRoot, surface = 'edit') {
-        disposeSlideRuntime();
-        if (!runtimeRoot?.isConnected) return null;
-
-        const policy = window.ScriptoriumProgrammableContent;
-        const scriptElements = [...runtimeRoot.querySelectorAll('script')];
-        if (!scriptElements.length) {
-            recordProgrammableDiagnostics([]);
-            return null;
-        }
-
-        const animationFrames = new Set();
-        const timeouts = new Set();
-        const intervals = new Set();
-        const cleanups = [];
-        const diagnostics = [];
-        let disposed = false;
-
-        const trackedRequestAnimationFrame = (callback) => {
-            if (disposed) return 0;
-            const id = window.requestAnimationFrame((timestamp) => {
-                animationFrames.delete(id);
-                if (!disposed) callback(timestamp);
-            });
-            animationFrames.add(id);
-            return id;
-        };
-        const trackedCancelAnimationFrame = (id) => {
-            animationFrames.delete(id);
-            window.cancelAnimationFrame(id);
-        };
-        const trackedSetTimeout = (callback, wait, ...args) => {
-            if (disposed) return 0;
-            const id = window.setTimeout(() => {
-                timeouts.delete(id);
-                if (!disposed) callback(...args);
-            }, wait);
-            timeouts.add(id);
-            return id;
-        };
-        const trackedClearTimeout = (id) => {
-            timeouts.delete(id);
-            window.clearTimeout(id);
-        };
-        const trackedSetInterval = (callback, wait, ...args) => {
-            if (disposed) return 0;
-            const id = window.setInterval(() => {
-                if (!disposed) callback(...args);
-            }, wait);
-            intervals.add(id);
-            return id;
-        };
-        const trackedClearInterval = (id) => {
-            intervals.delete(id);
-            window.clearInterval(id);
-        };
-
-        scriptElements.forEach((scriptElement, index) => {
-            const scriptId = scriptElement.id
-                || scriptElement.dataset.vdocScript
-                || `document-island-${index + 1}`;
-            const island = scriptElement.closest(
-                '[data-vdoc-interactive], [data-vdoc-component], section, article, figure, div'
-            ) || runtimeRoot;
-
-            if (scriptElement.dataset.vdocLibrary) {
-                diagnostics.push({
-                    level: 'info',
-                    ruleId: 'local-library',
-                    message: `${scriptElement.dataset.vdocLibrary} 使用 Scriptorium 内置本地依赖。`,
-                    scriptId,
-                    library: scriptElement.dataset.vdocLibrary,
-                    documentKind: 'docx',
-                    surface,
-                });
-                return;
-            }
-
-            if (
-                scriptElement.dataset.vdocIgnoredSrc
-                || scriptElement.type === 'application/x-vdoc-ignored-external'
-            ) {
-                diagnostics.push({
-                    level: 'warn',
-                    ruleId: 'external-script-ignored',
-                    message: `未允许的外部脚本保持忽略：${
-                        scriptElement.dataset.vdocIgnoredSrc || '未知来源'
-                    }`,
-                    scriptId,
-                    source: scriptElement.dataset.vdocIgnoredSrc || '',
-                    documentKind: 'docx',
-                    surface,
-                });
-                return;
-            }
-
-            if (scriptElement.src || scriptElement.getAttribute('src')) {
-                const dependency = policy?.dependencyForUrl(
-                    scriptElement.getAttribute('src')
-                ) || {
-                    action: 'ignore',
-                    level: 'refuse',
-                    message: '依赖审查器不可用，外部脚本已拒绝。',
-                };
-                if (dependency.level === 'warn' || dependency.level === 'refuse') {
-                    diagnostics.push({
-                        level: dependency.level,
-                        ruleId: dependency.code || 'external-script',
-                        message: dependency.message,
-                        scriptId,
-                        documentKind: 'docx',
-                        surface,
-                    });
-                } else {
-                    diagnostics.push({
-                        level: 'info',
-                        ruleId: 'local-library-redirect',
-                        message: dependency.message,
-                        scriptId,
-                        library: dependency.library,
-                        source: dependency.source,
-                        localUrl: dependency.localUrl,
-                        documentKind: 'docx',
-                        surface,
-                    });
-                }
-                // 外链标签作为文档源码与导出依赖声明保留。通过 innerHTML
-                // 插入的 script 不会自动执行，因此未允许的外链不会在编辑器加载。
-                scriptElement.dataset.vdocDependencyAction = dependency.action;
-                if (dependency.library) {
-                    scriptElement.dataset.vdocLocalLibrary = dependency.library;
-                }
-                return;
-            }
-
-            const source = scriptElement.textContent || '';
-            const review = reviewRuntimeScript(source, {
-                documentKind: 'docx',
-                surface,
-                scriptId,
-            });
-            diagnostics.push(...diagnosticsFromReview(review, {
-                scriptId,
-                documentKind: 'docx',
-                surface,
-            }));
-            // 内联脚本节点保留为 VDOCX 文档真相；运行时只显式执行审查通过的源码。
-            scriptElement.dataset.vdocReviewLevel = review.level;
-            if (!review.allowed) {
-                island.dataset.vdocScriptRefused = 'true';
-                return;
-            }
-            island.removeAttribute('data-vdoc-script-refused');
-            island.removeAttribute('data-bound');
-            island.querySelectorAll('[data-bound]').forEach((node) =>
-                node.removeAttribute('data-bound')
-            );
-
-            const runtime = Object.freeze({
-                surface,
-                root: island,
-                scriptId,
-                addCleanup(callback) {
-                    if (typeof callback === 'function') cleanups.push(callback);
-                    return callback;
-                },
-                requestAnimationFrame: trackedRequestAnimationFrame,
-                cancelAnimationFrame: trackedCancelAnimationFrame,
-                setTimeout: trackedSetTimeout,
-                clearTimeout: trackedClearTimeout,
-                setInterval: trackedSetInterval,
-                clearInterval: trackedClearInterval,
-            });
-
-            try {
-                const execute = new Function(
-                    'scene',
-                    'runtime',
-                    'document',
-                    'requestAnimationFrame',
-                    'cancelAnimationFrame',
-                    'setTimeout',
-                    'clearTimeout',
-                    'setInterval',
-                    'clearInterval',
-                    source
-                );
-                const returned = execute.call(
-                    island,
-                    island,
-                    runtime,
-                    createScopedDocument(island),
-                    trackedRequestAnimationFrame,
-                    trackedCancelAnimationFrame,
-                    trackedSetTimeout,
-                    trackedClearTimeout,
-                    trackedSetInterval,
-                    trackedClearInterval
-                );
-                if (typeof returned === 'function') cleanups.push(returned);
-                else if (returned && typeof returned.dispose === 'function') {
-                    cleanups.push(() => returned.dispose());
-                }
-            } catch (error) {
-                diagnostics.push({
-                    level: 'refuse',
-                    ruleId: 'runtime-execution-error',
-                    message: `脚本执行失败：${error.message}`,
-                    scriptId,
-                    documentKind: 'docx',
-                    surface,
-                });
-                console.error(`[Scriptorium] Document island ${scriptId} failed:`, error);
-            }
-        });
-
-        recordProgrammableDiagnostics(diagnostics);
-        state.slideRuntimeDisposer = () => {
-            if (disposed) return;
-            disposed = true;
-            animationFrames.forEach((id) => window.cancelAnimationFrame(id));
-            timeouts.forEach((id) => window.clearTimeout(id));
-            intervals.forEach((id) => window.clearInterval(id));
-            animationFrames.clear();
-            timeouts.clear();
-            intervals.clear();
-            [...cleanups].reverse().forEach((cleanup) => {
-                try {
-                    cleanup();
-                } catch (error) {
-                    console.error('[Scriptorium] Document island cleanup failed:', error);
-                }
-            });
-        };
-        state.slideRuntimeIdentity = {
-            slideId: state.document?.manifest?.id || 'document',
-            surface,
-            root: runtimeRoot,
-            runtime: { diagnostics },
-        };
-        return { diagnostics };
+        return runtimeController.recordDiagnostics(diagnostics);
     }
 
     function activateProgrammableContent(surface = state.mode) {
-        if (isSlideDeck()) {
-            activateCurrentSlideRuntime(surface);
-            return;
-        }
-        const root = surface === 'read' ? getReadRoot() : getRenderRoot();
-        const runtimeRoot = surface === 'read'
-            ? root?.querySelector('.vdoc-paged-runtime')
-            : root?.querySelector('.vdoc-flow-runtime');
-        if (runtimeRoot) runDocumentRuntime(runtimeRoot, surface);
-        else disposeSlideRuntime();
+        return runtimeController.activate(surface);
     }
 
     function activateCurrentSlideRuntime(surface = state.mode) {
-        if (!isSlideDeck()) {
-            disposeSlideRuntime();
-            return;
-        }
-        const slide = activeSlide();
-        const root = surface === 'read' ? getReadRoot() : getRenderRoot();
-        let runtimeRoot;
-        if (surface === 'read') {
-            runtimeRoot = root?.querySelector(
-                `[data-vdoc-slide-id="${CSS.escape(slide?.id || '')}"]`
-            ) || root?.querySelectorAll('.vdoc-page')?.[state.activeSlideIndex];
-        } else {
-            runtimeRoot = root?.querySelector('.vdoc-slide-editor-runtime');
-        }
-        if (!runtimeRoot) {
-            disposeSlideRuntime();
-            return;
-        }
-        runSlideRuntime(slide, runtimeRoot, surface);
+        return runtimeController.activateCurrentSlide(surface);
     }
 
     function renderDocument() {
@@ -2679,132 +2201,31 @@ ${parsedDocument().html}
     }
 
     function getSourceValue() {
-        return state.sourceEditor?.getValue() ?? elements['source-editor'].value;
+        return sourceEditorController.getValue();
     }
 
     function setSourceValue(value) {
-        if (state.sourceEditor) state.sourceEditor.setValue(String(value || ''));
-        else elements['source-editor'].value = String(value || '');
+        return sourceEditorController.setValue(value);
     }
 
     function validateSource() {
-        const source = getSourceValue();
-        let valid = true;
-        let message = '源码有效';
-        if (state.sourceMode === 'html') {
-            const template = document.createElement('template');
-            template.innerHTML = source;
-            // script 由可编程内容策略执行依赖本地化和 warn/refuse 审查，
-            // 不能再被旧源码校验器统一拒绝，否则合法本地依赖也无法应用。
-            const blocked = template.content.querySelector('iframe,object,embed');
-            if (blocked) {
-                valid = false;
-                message = `禁止使用 <${blocked.tagName.toLowerCase()}>`;
-            } else if (template.content.querySelector('script')) {
-                message = '源码有效 · 脚本将在应用时执行依赖本地化与安全审查';
-            }
-        } else {
-            const opens = (source.match(/\{/g) || []).length;
-            const closes = (source.match(/\}/g) || []).length;
-            if (opens !== closes) {
-                valid = false;
-                message = `CSS 花括号不平衡：${opens} / ${closes}`;
-            }
-        }
-        elements['source-diagnostics'].textContent = message;
-        elements['source-diagnostics'].classList.toggle('valid', valid);
-        elements['source-diagnostics'].classList.toggle('invalid', !valid);
-        return valid;
+        return sourceEditorController.validate();
     }
 
     function refreshSourceColorMarks() {
-        if (!state.sourceEditor) return;
-        state.sourceColorMarks.forEach((mark) => mark.clear());
-        state.sourceColorMarks = [];
-        const hexPattern = /#[0-9a-fA-F]{3,8}\b/g;
-        state.sourceEditor.eachLine((lineHandle) => {
-            const line = state.sourceEditor.getLineNumber(lineHandle);
-            let match;
-            while ((match = hexPattern.exec(lineHandle.text))) {
-                const mark = state.sourceEditor.markText(
-                    { line, ch: match.index },
-                    { line, ch: match.index + match[0].length },
-                    { className: 'cm-vdoc-color', css: `--cm-color:${match[0]}` }
-                );
-                state.sourceColorMarks.push(mark);
-            }
-        });
-    }
-
-    function sourceColorAtCursor() {
-        if (!state.sourceEditor) return null;
-        const cursor = state.sourceEditor.getCursor();
-        const line = state.sourceEditor.getLine(cursor.line);
-        const pattern = /#[0-9a-fA-F]{3,8}\b/g;
-        let match;
-        while ((match = pattern.exec(line))) {
-            if (cursor.ch >= match.index && cursor.ch <= match.index + match[0].length) {
-                return {
-                    value: match[0],
-                    from: { line: cursor.line, ch: match.index },
-                    to: { line: cursor.line, ch: match.index + match[0].length },
-                };
-            }
-        }
-        return null;
-    }
-
-    function syncSourceColorTool() {
-        const color = sourceColorAtCursor();
-        if (!color || !/^#[0-9a-fA-F]{6}$/.test(color.value)) return;
-        elements['source-color-input'].value = color.value;
-        elements['source-color-swatch'].style.background = color.value;
+        return sourceEditorController.refreshColorMarks();
     }
 
     function replaceSourceColor(value) {
-        if (!state.sourceEditor) return;
-        const color = sourceColorAtCursor();
-        if (color) state.sourceEditor.replaceRange(value, color.from, color.to);
-        else state.sourceEditor.replaceSelection(value);
-        elements['source-color-swatch'].style.background = value;
-        state.sourceEditor.focus();
+        return sourceEditorController.replaceColor(value);
     }
 
     function formatSource() {
-        const source = getSourceValue();
-        if (state.sourceMode === 'html') {
-            setSourceValue(core.formatHtml(source));
-        } else {
-            setSourceValue(core.sanitizeCss(source)
-                .replace(/\s*\{\s*/g, ' {\n    ')
-                .replace(/;\s*/g, ';\n    ')
-                .replace(/\s*\}\s*/g, '\n}\n')
-                .replace(/[ \t]+\n/g, '\n'));
-        }
-        validateSource();
-        refreshSourceColorMarks();
+        return sourceEditorController.format();
     }
 
     function initializeSourceEditor() {
-        if (!window.CodeMirror || state.sourceEditor) return;
-        state.sourceEditor = window.CodeMirror.fromTextArea(elements['source-editor'], {
-            mode: 'htmlmixed',
-            theme: 'material-darker',
-            lineNumbers: true,
-            lineWrapping: true,
-            indentUnit: 4,
-            tabSize: 4,
-            indentWithTabs: false,
-            autoCloseBrackets: true,
-            autoCloseTags: true,
-            viewportMargin: 20,
-        });
-        state.sourceEditor.on('change', () => {
-            validateSource();
-            window.clearTimeout(state.sourceEditorTimer);
-            state.sourceEditorTimer = window.setTimeout(refreshSourceColorMarks, 180);
-        });
-        state.sourceEditor.on('cursorActivity', syncSourceColorTool);
+        return sourceEditorController.initialize();
     }
 
     function switchMode(mode) {
@@ -3490,283 +2911,48 @@ svg set {
         elements['character-count'].textContent = `${compact.length} 字符`;
     }
 
-    async function createEditor(documentModel = null, metadata = {}) {
-        const generation = state.documentGeneration += 1;
-        asyncCoordinator.invalidateLatest('document-open');
-        state.saving = false;
-        state.loading = true;
-        elements['loading-state'].hidden = false;
-        updateIdentity();
-        try {
-            // 打开旧工程必须保持无副作用。依赖升级不能位于载入关键路径，
-            // 否则单个异常历史节点会阻止整个文档进入渲染界面。
-            const nextDocument = documentModel
-                ? core.normalizeDocument(documentModel)
-                : core.createDocument();
-            if (generation !== state.documentGeneration) return false;
-            state.document = nextDocument;
-            state.currentPath = metadata.filePath || null;
-            const projectExtension = core.extensionForKind(state.document.manifest.scene.kind);
-            const fallbackName = state.document.manifest.scene.kind === core.PROJECT_KINDS.SLIDE_DECK
-                ? '未命名演示.vpptx'
-                : '未命名文稿.vdocx';
-            state.currentName = metadata.name || state.document.manifest.title || fallbackName;
-            if (!state.currentName.toLowerCase().endsWith(projectExtension)) {
-                state.currentName = `${state.currentName.replace(/\.[^.]+$/, '')}${projectExtension}`;
-            }
-            state.checkpoints = [...state.document.checkpoints];
-            state.documentRevision = 0;
-            state.previewRevision = -1;
-            state.previewResult = null;
-            const embeddedStyles = Array.isArray(state.document.manifest.embeddedStyles)
-                ? state.document.manifest.embeddedStyles
-                : [];
-            embeddedStyles.forEach((style) => {
-                styleLibrary.register(style, {
-                    packId: `document.${state.document.manifest.id}`,
-                    conflict: 'replace',
-                });
-            });
-            state.usedAdvancedStyleIds = new Set(
-                Array.isArray(state.document.manifest.styleDependencies)
-                    ? state.document.manifest.styleDependencies.filter((styleId) => styleLibrary.get(styleId))
-                    : []
-            );
-            state.ready = true;
-            state.activeSlideIndex = 0;
-            state.selectionRange = null;
-            state.selectionText = '';
-            state.selectionBlockIds = [];
-            state.explicitBlockSelection = false;
-            state.blockSelectionAnchorId = null;
-            state.history = [];
-            state.historyIndex = -1;
-            elements['welcome-state'].hidden = true;
-            elements['document-workspace'].hidden = false;
-            const presentation = isSlideDeck();
-            elements['read-mode-btn'].querySelector('span').textContent =
-                presentation ? '放映预览' : '阅读预览';
-            elements['export-flow-html-btn'].title =
-                presentation ? '导出单文件演示 HTML' : '导出连续流语义 HTML';
-            elements['export-paged-html-btn'].title =
-                presentation ? '导出单文件演示 HTML' : '导出逐页富文档 HTML';
-            elements['export-paged-html-btn'].hidden = presentation;
-            renderDocument();
-            switchMode('render');
-            captureSnapshot();
-            markSaved();
-            renderLineage();
-            showToast(documentModel ? 'VDOCX 已展开' : '共笔新稿已建立', 'success');
-            return true;
-        } finally {
-            if (generation === state.documentGeneration) {
-                state.loading = false;
-                elements['loading-state'].hidden = true;
-                updateIdentity();
-            }
-        }
+    function createEditor(documentModel = null, metadata = {}) {
+        return sessionController.createEditor(documentModel, metadata);
     }
 
-    async function openResult(result, intent = null) {
-        if (!result?.success || (intent && !asyncCoordinator.isLatest(intent))) return false;
-        if (result.kind === 'imported') {
-            const title = String(result.name || '导入文稿').replace(/\.[^.]+$/, '');
-            const isPresentation = result.importedKind === 'pptx';
-            const model = core.createDocument({
-                title,
-                kind: isPresentation ? core.PROJECT_KINDS.SLIDE_DECK : undefined,
-                source: isPresentation ? undefined : String(result.html || ''),
-                slides: isPresentation ? result.slides : undefined,
-                page: isPresentation ? result.page : undefined,
-            });
-            model.manifest.import = result.importMetadata || {
-                sourceFormat: result.importedKind,
-                sourceName: result.name,
-            };
-            const projectType = isPresentation ? 'VPPTX' : 'VDOCX';
-            if (intent && !asyncCoordinator.isLatest(intent)) return false;
-            await createEditor(model, {
-                filePath: null,
-                name: `${title}${isPresentation ? '.vpptx' : '.vdocx'}`,
-                imported: true,
-            });
-            markDirty();
-            const warningCount = model.manifest.import?.warnings?.length || 0;
-            showToast(
-                warningCount
-                    ? `已导入 ${result.importedKind.toUpperCase()} · ${warningCount} 条转换提示`
-                    : `已导入 ${result.importedKind.toUpperCase()}，请保存为 ${projectType}`,
-                warningCount ? 'info' : 'success',
-                4200
-            );
-            return;
-        }
-
-        const bytes = Uint8Array.from(result.bytes || []);
-        const model = core.parse(bytes);
-        if (intent && !asyncCoordinator.isLatest(intent)) return false;
-        return createEditor(model, result);
+    function openResult(result, intent = null) {
+        return sessionController.openResult(result, intent);
     }
 
-    async function chooseOpen() {
-        await runAfterUnsavedDecision('打开另一份文档前，可以保存当前修改，或舍弃这些修改。', async () => {
-            const intent = asyncCoordinator.beginLatest('document-open');
-            try {
-                await openResult(await api.chooseOpen(), intent);
-                if (asyncCoordinator.isLatest(intent)) await renderRecentDocuments();
-            } catch (error) {
-                if (asyncCoordinator.isLatest(intent)) {
-                    showToast(`打开失败：${error.message}`, 'error', 5000);
-                }
-            }
-        });
+    function chooseOpen() {
+        return sessionController.chooseOpen();
     }
 
-    async function chooseImport() {
-        await runAfterUnsavedDecision(
-            '导入文档会建立一份新的 VDOCX 文稿。可以先保存当前修改，或舍弃这些修改。',
-            async () => {
-                const intent = asyncCoordinator.beginLatest('document-open');
-                try {
-                    const result = await api.chooseImport();
-                    await openResult(result, intent);
-                    if (result?.success && asyncCoordinator.isLatest(intent)) {
-                        await renderRecentDocuments();
-                    }
-                } catch (error) {
-                    if (asyncCoordinator.isLatest(intent)) {
-                        showToast(`导入失败：${error.message}`, 'error', 5000);
-                    }
-                }
-            }
-        );
+    function chooseImport() {
+        return sessionController.chooseImport();
     }
 
-    async function openPath(filePath) {
-        await runAfterUnsavedDecision('载入另一份文档前，可以保存当前修改，或舍弃这些修改。', async () => {
-            const intent = asyncCoordinator.beginLatest('document-open');
-            try {
-                await openResult(await api.readPath(filePath), intent);
-            } catch (error) {
-                if (asyncCoordinator.isLatest(intent)) {
-                    showToast(`载入失败：${error.message}`, 'error', 5000);
-                }
-            }
-        });
+    function openPath(filePath) {
+        return sessionController.openPath(filePath);
     }
 
-    async function saveDocument(saveAs = false) {
-        if (!state.ready || state.saving) return false;
-        finalizeEditBurst();
-        if (state.mode === 'html' || state.mode === 'css') {
-            if (applySourceChanges(false) === false) return false;
-        }
-        const context = asyncCoordinator.captureContext();
-        const generation = context.generation;
-        const savedRevision = context.revision;
-        state.saving = true;
-        updateIdentity();
-        try {
-            state.document.checkpoints = state.checkpoints;
-            state.document.manifest.styleDependencies = [...state.usedAdvancedStyleIds];
-            state.document.manifest.embeddedStyles = [...state.usedAdvancedStyleIds]
-                .map((styleId) => styleLibrary.get(styleId))
-                .filter(Boolean);
-            const bytes = new TextEncoder().encode(core.serialize(state.document));
-            const result = await api.save({
-                filePath: state.currentPath,
-                suggestedName: state.currentName,
-                saveAs,
-                bytes,
-            });
-            if (!result?.success || !asyncCoordinator.isContextCurrent(context)) return false;
-            state.currentPath = result.filePath;
-            state.currentName = result.name;
-            if (state.documentRevision === savedRevision) markSaved();
-            else updateIdentity();
-            await renderRecentDocuments();
-            showToast(`已保存 · ${result.name}`, 'success');
-            return true;
-        } catch (error) {
-            showToast(`保存失败：${error.message}`, 'error', 5000);
-            return false;
-        } finally {
-            if (generation === state.documentGeneration) {
-                state.saving = false;
-                updateIdentity();
-            }
-        }
+    function saveDocument(saveAs = false) {
+        return sessionController.saveDocument(saveAs);
     }
 
     function persistCheckpointToFile(reason = '刻点') {
-        if (!state.ready || !state.document) return Promise.resolve(false);
-        const generation = state.documentGeneration;
-
-        // 刻点元数据需要进入文件，但不能递增正文 revision：
-        // pending PR 的 baseRevision 依赖该值，若提交刻点本身增加 revision，
-        // 随后的批准会被误判为正文修订冲突。
-        state.document.checkpoints = state.checkpoints;
-        state.dirty = true;
-        updateIdentity();
-
-        state.checkpointSaveQueue = state.checkpointSaveQueue
-            .catch(() => false)
-            .then(async () => {
-                while (state.saving && generation === state.documentGeneration) {
-                    await new Promise((resolve) => window.setTimeout(resolve, 40));
-                }
-                if (generation !== state.documentGeneration) return false;
-                const saved = await saveDocument(false);
-                if (!saved) {
-                    showToast(`${reason}已建立，但自动保存到文件失败`, 'error', 5000);
-                }
-                return saved;
-            });
-        return state.checkpointSaveQueue;
+        return sessionController.persistCheckpoint(reason);
     }
 
     function requestUnsavedDecision(message) {
-        if (!state.dirty) return Promise.resolve('discard');
-        if (state.unsavedResolver) {
-            return Promise.resolve('cancel');
-        }
-        elements['unsaved-dialog-message'].textContent = message;
-        elements['unsaved-document-name'].textContent = state.currentName;
-        elements['unsaved-dialog'].hidden = false;
-        return new Promise((resolve) => {
-            state.unsavedResolver = resolve;
-        });
+        return sessionController.requestUnsavedDecision(message);
     }
 
     function resolveUnsavedDecision(decision) {
-        const resolve = state.unsavedResolver;
-        if (!resolve) return;
-        state.unsavedResolver = null;
-        elements['unsaved-dialog'].hidden = true;
-        resolve(decision);
+        return sessionController.resolveUnsavedDecision(decision);
     }
 
-    async function runAfterUnsavedDecision(message, action) {
-        if (!state.dirty) return action();
-        const decision = await requestUnsavedDecision(message);
-        if (decision === 'cancel') return false;
-        if (decision === 'save' && !await saveDocument(false)) return false;
-        return action();
+    function runAfterUnsavedDecision(message, action) {
+        return sessionController.runAfterUnsavedDecision(message, action);
     }
 
-    async function renderRecentDocuments() {
-        let recent = [];
-        try {
-            recent = await api.listRecent();
-        } catch {}
-        elements['recent-documents'].replaceChildren(...recent.slice(0, 6).map((item) => {
-            const button = document.createElement('button');
-            button.className = 'recent-document';
-            button.textContent = item.name;
-            button.title = item.path;
-            button.addEventListener('click', () => openPath(item.path));
-            return button;
-        }));
+    function renderRecentDocuments() {
+        return sessionController.renderRecentDocuments();
     }
 
     async function loadSystemFonts() {
@@ -4934,6 +4120,8 @@ ${safeCss}
 
     async function initialize() {
         if (!api || !core || !styleLibrary || !pagination || !asyncModule
+            || !runtimeModule || !sourceEditorModule || !sessionModule
+            || !sourceEditorController || !sessionController
             || !window.ScriptoriumVisibility || !window.ScriptoriumAgentModule) {
             throw new Error('Scriptorium 原生文档内核或模块未载入。');
         }

@@ -136,7 +136,7 @@ async function run() {
         projectType: 'docx',
         maid: 'Mia',
         title: '测试文稿',
-        html: '<article><h1>测试文稿</h1></article>',
+        source: '<style>h1{color:#315f55}</style><article><h1>测试文稿</h1></article>',
         conflictPolicy: 'rename',
     }, {
         requestId: 'create-request',
@@ -149,6 +149,10 @@ async function run() {
         name: 'Mia',
         type: 'agent',
     });
+    assert.strictEqual(
+        createCall.payload.source,
+        '<style>h1{color:#315f55}</style><article><h1>测试文稿</h1></article>'
+    );
     assert.strictEqual(created.details.command, 'CreateProject');
     assert.strictEqual(created.details.maid.name, 'Mia');
 

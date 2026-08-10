@@ -241,8 +241,11 @@ refuse 规则覆盖 Node 模块、process/global、文件系统、进程执行�
 | --- | --- |
 | [`scriptorium.html`](scriptorium.html) | 编辑器 UI、对话框与本地依赖装载 |
 | [`scriptorium.css`](scriptorium.css) | 文坊视觉系统与响应式布局 |
-| [`scriptorium.js`](scriptorium.js) | 编辑器组合根；状态、工作面编排和 UI 事件（持续拆分中） |
+| [`scriptorium.js`](scriptorium.js) | 编辑器组合根；共享状态、渲染/选择编排与 UI 事件（持续拆分中） |
 | [`scriptorium-async.js`](scriptorium-async.js) | latest-wins 令牌、文档上下文快照与命名串行队列 |
+| [`scriptorium-runtime.js`](scriptorium-runtime.js) | 文档岛与幻灯片可编程运行时、脚本审查及资源生命周期 |
+| [`scriptorium-source-editor.js`](scriptorium-source-editor.js) | CodeMirror 适配、源码诊断、格式化与颜色工具 |
+| [`scriptorium-session.js`](scriptorium-session.js) | 新建、打开、导入、保存、未保存决策、最近文档与刻点持久化 |
 | [`vdoc-core.js`](vdoc-core.js) | VDOC 模型、规范化、序列化和源码清理 |
 | [`scriptorium-pagination.js`](scriptorium-pagination.js) | 连续流、分页预览与分页 HTML |
 | [`scriptorium-agent.js`](scriptorium-agent.js) | 渲染侧 Agent 读取、PR、审批和版本协议 |
@@ -277,6 +280,9 @@ npm start
 ```bash
 node --check ScriptoriumModules/scriptorium.js
 node --check ScriptoriumModules/scriptorium-async.js
+node --check ScriptoriumModules/scriptorium-runtime.js
+node --check ScriptoriumModules/scriptorium-source-editor.js
+node --check ScriptoriumModules/scriptorium-session.js
 node --check ScriptoriumModules/scriptorium-agent.js
 node --check ScriptoriumModules/vdoc-core.js
 node --check ScriptoriumModules/scriptorium-programmable-content.js
@@ -305,16 +311,22 @@ Scriptorium 仍使用按顺序加载的经典浏览器脚本，以兼容当前 E
 - 异步 `finally` 只能清理自己发起时所属的文档状态，不能修改已切换的新文档。
 - 渲染定时器、动画帧和观察器继续使用 disposer / AbortController 管理生命周期。
 
-建议后续按以下顺序继续拆分：
+当前已完成首轮主模块拆分：
 
-1. `scriptorium-document-session.js`：打开、保存、导入、最近文档和未保存决策。
-2. `scriptorium-source-editor.js`：CodeMirror、源码诊断、格式化和颜色工具。
-3. `scriptorium-render-runtime.js`：文档/幻灯片可编程运行时及资源清理。
-4. `scriptorium-selection.js`：选区、块选择、格式命令与定向源码同步。
-5. `scriptorium-lineage-ui.js`：刻点、PR 审阅、差异预览与版本回溯。
-6. `scriptorium-shell.js`：控件绑定、面板、缩放与应用初始化。
+1. `scriptorium-runtime.js` 已接管文档/幻灯片可编程运行时，并统一原先重复的 RAF、timeout、interval 与 cleanup 跟踪。
+2. `scriptorium-source-editor.js` 已接管 CodeMirror、源码诊断、格式化和颜色工具。
+3. `scriptorium-session.js` 已接管打开、保存、导入、最近文档、未保存决策和刻点持久化。
+4. `scriptorium.js` 通过显式上下文创建控制器，仅保留兼容代理供尚未迁移的调用点使用。
 
-每次只迁移一个高内聚边界，并保持现有全局 API 与 Electron 冒烟测试通过，避免进行一次性的大爆炸式重写。
+后续按以下顺序继续拆分：
+
+1. `scriptorium-selection.js`：选区、块选择、格式命令与定向源码同步。
+2. `scriptorium-lineage-ui.js`：PR 审阅、差异预览、刻点展示与版本回溯。
+3. `scriptorium-renderer.js`：文档样式、连续渲染、分页预览、缩略图与数学渲染。
+4. `scriptorium-export.js`：连续 HTML、分页 HTML、演示 HTML 与 PDF 导出构建。
+5. `scriptorium-shell.js`：控件绑定、面板、缩放、键盘与应用初始化。
+
+依赖方向保持单向：基础模块不调用组合根；控制器只接收显式上下文；跨模块操作通过注入的函数完成。每次只迁移一个高内聚边界，并保持现有全局 API 与 Electron 冒烟测试通过，避免一次性的大爆炸式重写。
 
 ### Electron 冒烟与集成测试
 
