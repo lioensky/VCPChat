@@ -272,7 +272,7 @@
             radial-gradient(ellipse at 42% -18%, color-mix(in srgb, var(--primary-text) var(--vcp-material-sheen-soft), transparent), transparent 58%);
     }
 
-    html[data-ui-mode="next"][data-vcp-surface="custom"] .next-ui-panel-elevation {
+    html[data-ui-mode="next"][data-vcp-surface="custom"] .next-ui-main-panel {
         --next-panel-edge: color-mix(in srgb, var(--border-color) var(--vcp-material-border), transparent);
     }
 
@@ -342,13 +342,6 @@
 
     html[data-ui-mode="next"] .vcp-ui-scope .chat-input-card {
         border-radius: var(--vcp-ui-composer-radius, 24px);
-    }
-
-    html[data-ui-mode="next"][data-vcp-shell-radius="square"] .next-ui-panel-elevation::before,
-    html[data-ui-mode="next"][data-vcp-shell-radius="square"] .next-ui-panel-elevation::after,
-    html[data-ui-mode="next"][data-vcp-shell-radius="follow"][data-vcp-radius="square"] .next-ui-panel-elevation::before,
-    html[data-ui-mode="next"][data-vcp-shell-radius="follow"][data-vcp-radius="square"] .next-ui-panel-elevation::after {
-        display: none;
     }
 
     html[data-vcp-content-width="centered"] .chat-messages {

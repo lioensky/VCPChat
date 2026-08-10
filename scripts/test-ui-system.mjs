@@ -515,27 +515,20 @@ assert.match(mainHtml, /id="appTrayPinnedApps"[\s\S]*id="appTrayMoreBtn"[\s\S]*i
     'the app tray must retain pinned apps and the complete app drawer');
 assert.match(trayManagerSource, /localStorage\.setItem\('vcp-tray-pinned-apps'/,
     'the app tray must retain the upstream pinned-app persistence contract');
+assert.match(mainHtml,
+    /id="nextUiMainPanel"[^>]*>[\s\S]*<main class="main-content">[\s\S]*id="resizerRight"[\s\S]*id="notificationsSidebar"[\s\S]*<\/section>/s,
+    'main chat, notification resizer, and notification sidebar must share one clipping host');
 assert.match(nextUiCss,
-    /html\[data-ui-mode="next"\] \.main-content\s*\{[^}]*overflow:\s*hidden;[^}]*border-radius:\s*var\(--vcp-ui-shell-radius\) 0 0 0;[^}]*clip-path:\s*inset\(0 round var\(--vcp-ui-shell-radius\) 0 0 0\);[^}]*isolation:\s*isolate;/s,
-    'the main chat panel must apply one final rounded compositor clip');
+    /html\[data-ui-mode="next"\] \.next-ui-main-panel\s*\{[^}]*overflow:\s*hidden;[^}]*isolation:\s*isolate;[^}]*border-radius:\s*var\(--vcp-ui-shell-radius\) 0 0 0;[^}]*var\(--next-wallpaper\);/s,
+    'the shared host must own both the panel radius and the theme wallpaper clip');
 assert.match(nextUiCss,
-    /html\[data-ui-mode="next"\] \.chat-header\s*\{[^}]*border-radius:\s*var\(--vcp-ui-shell-radius\) 0 0 0;/s,
-    'the opaque main chat header surface must not cover the panel corner');
+    /html\[data-ui-mode="next"\] \.main-content\s*\{[^}]*background:\s*transparent;/s,
+    'the chat layer must not repaint the theme wallpaper outside the shared clip');
+assert.doesNotMatch(nextUiCss, /next-ui-panel-elevation|mask-image:\s*radial-gradient|clip-path:\s*polygon/,
+    'the panel corner must not be reconstructed by fixed overlays, masks, or polygon approximations');
 assert.doesNotMatch(nextUiCss,
-    /html\[data-ui-mode="next"\] \.main-content\s*\{[^}]*(?:border-width|background-clip):/s,
-    'the panel corner fix must not create a visible inset between the panel edge and wallpaper');
-assert.match(nextUiCss,
-    /\.next-ui-navigation-material\s*\{[\s\S]*clip-path:\s*polygon\([\s\S]*--vcp-ui-shell-curve-1[\s\S]*--vcp-ui-shell-curve-2[\s\S]*--vcp-ui-shell-curve-3[\s\S]*--vcp-ui-shell-curve-4[\s\S]*--vcp-ui-shell-curve-5[\s\S]*\);/s,
-    'the navigation material cutout must follow the rounded panel corner instead of leaving a square underlay');
-assert.match(nextUiCss,
-    /\.next-ui-panel-elevation\s*\{[^}]*border-radius:\s*var\(--vcp-ui-shell-radius\) 0 0 0;[^}]*box-shadow:\s*none;/s,
-    'the panel edge must not cast a rectangular shadow across the rounded cutout');
-assert.match(nextUiCss,
-    /\.next-ui-panel-elevation::before\s*\{[^}]*width:\s*calc\(var\(--vcp-ui-shell-radius\) \+ 1px\);[^}]*height:\s*calc\(var\(--vcp-ui-shell-radius\) \+ 1px\);[^}]*background-color:\s*var\(--next-shell-bg\);[^}]*background-image:\s*var\(--next-material-sheen\);[^}]*backdrop-filter:\s*var\(--next-backdrop-filter\);[^}]*mask-image:\s*radial-gradient\([^;]*var\(--vcp-ui-shell-radius\)[^;]*\);/s,
-    'the exposed outer-corner triangle must be painted with the topbar and sidebar shell material');
-assert.match(nextUiCss,
-    /\.next-ui-panel-elevation::after\s*\{[^}]*width:\s*calc\(var\(--vcp-ui-shell-radius\) \+ 1px\);[^}]*height:\s*calc\(var\(--vcp-ui-shell-radius\) \+ 1px\);[^}]*border-top:\s*1px solid var\(--next-panel-edge\);[^}]*border-left:\s*1px solid var\(--next-panel-edge\);[^}]*border-radius:\s*var\(--vcp-ui-shell-radius\) 0 0 0;/s,
-    'the corner patch must redraw the rounded edge above the shell-colored triangle');
+    /html\[data-ui-mode="next"\] :is\(\.main-content, \.chat-header\)[^{]*\{[^}]*(?:border-radius|clip-path):/s,
+    'child chat layers must not draw a second copy of the shell corner');
 assert.match(uiComponentsCss,
     /\.vcp-ui-window-control-button\s*\{[^}]*-webkit-app-region:\s*no-drag/s,
     'WindowControls must keep the no-drag contract in next-UI scoped CSS rather than inline mutation');

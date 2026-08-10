@@ -87,7 +87,6 @@
         </div>
     </div>
     <div class="next-ui-navigation-material" aria-hidden="true"></div>
-    <div class="next-ui-panel-elevation" aria-hidden="true"></div>
     <header id="nextUiTopbar" class="next-ui-topbar vcp-ui-scope" data-density="comfortable" aria-label="主导航">
         <nav class="next-ui-tab-strip" aria-label="页面标签">
             <div class="next-ui-brand-tab-group">
@@ -785,7 +784,8 @@
             </div>
         </aside>
         <div class="resizer" id="resizerLeft"></div>
-        <main class="main-content">
+        <section id="nextUiMainPanel" class="next-ui-main-panel">
+          <main class="main-content">
             <header class="chat-header vcp-ui-scope">
                 <h3 id="currentChatAgentName">选择一个Agent开始聊天</h3>
                 <div class="chat-actions">
@@ -932,9 +932,9 @@
                     </div>
                 </div>
             </footer>
-        </main>
-        <div class="resizer" id="resizerRight"></div>
-        <aside class="notifications-sidebar vcp-ui-scope" id="notificationsSidebar">
+          </main>
+          <div class="resizer" id="resizerRight"></div>
+          <aside class="notifications-sidebar vcp-ui-scope" id="notificationsSidebar">
             <header class="notifications-header">
                 <h4 id="notificationTitle" style="display: none;">VCP 通知</h4>
                 <div class="datetime-container">
@@ -1039,7 +1039,8 @@
                     <div id="appTrayDrawerGrid" class="app-tray-drawer-grid"></div>
                 </div>
             </div>
-        </aside>
+          </aside>
+        </section>
     </div>
 
     <div id="modal-container"></div>

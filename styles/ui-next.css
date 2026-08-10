@@ -62,9 +62,12 @@ html[data-ui-mode="next"] body.dark-theme {
 
 .next-ui-topbar,
 .next-ui-launchpad,
-.next-ui-navigation-material,
-.next-ui-panel-elevation {
+.next-ui-navigation-material {
     display: none;
+}
+
+.next-ui-main-panel {
+    display: contents;
 }
 
 html[data-ui-mode="next"] .title-bar,
@@ -82,69 +85,6 @@ html[data-ui-mode="next"] .next-ui-navigation-material {
     background-image: var(--next-material-sheen);
     backdrop-filter: var(--next-backdrop-filter);
     -webkit-backdrop-filter: var(--next-backdrop-filter);
-    clip-path: polygon(
-        0 0,
-        100% 0,
-        100% var(--next-topbar-height),
-        calc(var(--next-sidebar-width, 260px) + var(--vcp-ui-shell-radius)) var(--next-topbar-height),
-        calc(var(--next-sidebar-width, 260px) + var(--vcp-ui-shell-curve-1)) calc(var(--next-topbar-height) + var(--vcp-ui-shell-curve-5)),
-        calc(var(--next-sidebar-width, 260px) + var(--vcp-ui-shell-curve-2)) calc(var(--next-topbar-height) + var(--vcp-ui-shell-curve-4)),
-        calc(var(--next-sidebar-width, 260px) + var(--vcp-ui-shell-curve-3)) calc(var(--next-topbar-height) + var(--vcp-ui-shell-curve-3)),
-        calc(var(--next-sidebar-width, 260px) + var(--vcp-ui-shell-curve-4)) calc(var(--next-topbar-height) + var(--vcp-ui-shell-curve-2)),
-        calc(var(--next-sidebar-width, 260px) + var(--vcp-ui-shell-curve-5)) calc(var(--next-topbar-height) + var(--vcp-ui-shell-curve-1)),
-        var(--next-sidebar-width, 260px) calc(var(--next-topbar-height) + var(--vcp-ui-shell-radius)),
-        var(--next-sidebar-width, 260px) 100%,
-        0 100%
-    );
-}
-
-html[data-ui-mode="next"] .next-ui-panel-elevation {
-    position: fixed;
-    top: var(--next-topbar-height);
-    right: 0;
-    bottom: 0;
-    left: var(--next-sidebar-width, 260px);
-    z-index: 2;
-    display: block;
-    pointer-events: none;
-    border-top: 1px solid var(--next-panel-edge);
-    border-left: 1px solid var(--next-panel-edge);
-    border-radius: var(--vcp-ui-shell-radius) 0 0 0;
-    box-shadow: none;
-    box-sizing: border-box;
-}
-
-html[data-ui-mode="next"] .next-ui-panel-elevation::before {
-    content: "";
-    position: absolute;
-    top: -1px;
-    left: -1px;
-    width: calc(var(--vcp-ui-shell-radius) + 1px);
-    height: calc(var(--vcp-ui-shell-radius) + 1px);
-    pointer-events: none;
-    background-color: var(--next-shell-bg);
-    background-image: var(--next-material-sheen);
-    background-attachment: fixed;
-    backdrop-filter: var(--next-backdrop-filter);
-    -webkit-backdrop-filter: var(--next-backdrop-filter);
-    -webkit-mask-image: radial-gradient(circle at calc(var(--vcp-ui-shell-radius) + 1px) calc(var(--vcp-ui-shell-radius) + 1px), transparent 0 calc(var(--vcp-ui-shell-radius) - 0.5px), #000 var(--vcp-ui-shell-radius));
-    mask-image: radial-gradient(circle at calc(var(--vcp-ui-shell-radius) + 1px) calc(var(--vcp-ui-shell-radius) + 1px), transparent 0 calc(var(--vcp-ui-shell-radius) - 0.5px), #000 var(--vcp-ui-shell-radius));
-    -webkit-mask-repeat: no-repeat;
-    mask-repeat: no-repeat;
-}
-
-html[data-ui-mode="next"] .next-ui-panel-elevation::after {
-    content: "";
-    position: absolute;
-    top: -1px;
-    left: -1px;
-    width: calc(var(--vcp-ui-shell-radius) + 1px);
-    height: calc(var(--vcp-ui-shell-radius) + 1px);
-    pointer-events: none;
-    border-top: 1px solid var(--next-panel-edge);
-    border-left: 1px solid var(--next-panel-edge);
-    border-radius: var(--vcp-ui-shell-radius) 0 0 0;
-    box-sizing: border-box;
 }
 
 html[data-ui-mode="next"] body.next-ui-internal-app-open:has(
@@ -502,6 +442,31 @@ html[data-ui-mode="next"] .container {
     -webkit-backdrop-filter: none;
 }
 
+html[data-ui-mode="next"] .next-ui-main-panel {
+    position: relative;
+    display: flex;
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 100%;
+    overflow: hidden;
+    isolation: isolate;
+    border: 1px solid var(--next-panel-edge);
+    border-right: 0;
+    border-bottom: 0;
+    border-radius: var(--vcp-ui-shell-radius) 0 0 0;
+    box-sizing: border-box;
+    background-color: var(--primary-bg, var(--next-surface));
+    background-image:
+        linear-gradient(var(--next-chat-surface), var(--next-chat-surface)),
+        var(--next-wallpaper);
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: cover;
+    background-attachment: fixed;
+    backdrop-filter: var(--next-surface-backdrop-filter);
+    -webkit-backdrop-filter: var(--next-surface-backdrop-filter);
+}
+
 html[data-ui-mode="next"] .sidebar {
     background: transparent;
     backdrop-filter: none;
@@ -529,26 +494,18 @@ html[data-ui-mode="next"] #resizerRight {
 }
 
 html[data-ui-mode="next"] .main-content {
+    position: relative;
+    z-index: 1;
+    min-width: 0;
     overflow: hidden;
-    border-radius: var(--vcp-ui-shell-radius) 0 0 0;
-    clip-path: inset(0 round var(--vcp-ui-shell-radius) 0 0 0);
-    isolation: isolate;
-    background-color: var(--primary-bg, var(--next-surface));
-    background-image:
-        linear-gradient(var(--next-chat-surface), var(--next-chat-surface)),
-        var(--next-wallpaper);
-    background-repeat: no-repeat;
-    background-position: center;
-    background-size: cover;
-    background-attachment: fixed;
-    backdrop-filter: var(--next-surface-backdrop-filter);
-    -webkit-backdrop-filter: var(--next-surface-backdrop-filter);
+    background: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
 }
 
 html[data-ui-mode="next"] .chat-header {
     padding: 7px 20px;
     border-bottom: 1px solid var(--next-border);
-    border-radius: var(--vcp-ui-shell-radius) 0 0 0;
     background: var(--next-header-bg);
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
@@ -854,16 +811,11 @@ html[data-ui-mode="next"] .chat-actions .header-button:hover {
 }
 
 html[data-ui-mode="next"] .notifications-sidebar {
-    background-color: var(--primary-bg, var(--next-surface));
-    background-image:
-        linear-gradient(var(--next-chat-surface), var(--next-chat-surface)),
-        var(--next-wallpaper);
-    background-repeat: no-repeat;
-    background-position: center;
-    background-size: cover;
-    background-attachment: fixed;
-    backdrop-filter: var(--next-surface-backdrop-filter);
-    -webkit-backdrop-filter: var(--next-surface-backdrop-filter);
+    position: relative;
+    z-index: 1;
+    background: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
 }
 
 html[data-ui-mode="next"] .notifications-sidebar.active {
