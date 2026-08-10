@@ -598,7 +598,7 @@
                 });
                 resolve(accepted);
                 return accepted;
-            }).catch((error) => {
+            }).catch(async (error) => {
                 record.status = 'failed';
                 record.reviewedAt = Date.now();
                 record.receipt = {
