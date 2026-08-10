@@ -346,12 +346,65 @@ app.whenReady().then(async () => {
             requestAnimationFrame(() => requestAnimationFrame(resolve))
         );
 
+        const toggleBlock = [...root.querySelectorAll('[data-vdoc-text]')]
+            .find((node) => (node.textContent || '').includes('分页回归段落 72'))
+            || editable;
+        const toggleCommands = ['bold', 'italic', 'underline', 'strikethrough'];
+        const toggleResults = {};
+
+        const commandIsActive = (element, command) => {
+            const computed = getComputedStyle(element);
+            if (command === 'bold') return Number.parseFloat(computed.fontWeight) >= 600;
+            if (command === 'italic') return /^(?:italic|oblique)/i.test(computed.fontStyle);
+            const decoration = computed.textDecorationLine || computed.textDecoration || '';
+            return decoration.includes(
+                command === 'underline' ? 'underline' : 'line-through'
+            );
+        };
+
+        for (const command of toggleCommands) {
+            const candidate = [...toggleBlock.childNodes]
+                .find((node) => node.nodeType === Node.TEXT_NODE && node.length >= 4)
+                || toggleBlock.firstChild;
+            if (!candidate) {
+                toggleResults[command] = { applied: false, removed: false };
+                continue;
+            }
+            const commandRange = document.createRange();
+            commandRange.setStart(candidate, 0);
+            commandRange.setEnd(candidate, Math.min(4, candidate.length || 0));
+            selection.removeAllRanges();
+            selection.addRange(commandRange);
+            toggleBlock.dispatchEvent(new MouseEvent('mouseup', {
+                bubbles: true,
+                composed: true
+            }));
+
+            const button = document.querySelector(\`[data-command="\${command}"]\`);
+            button.click();
+            const appliedNode = selection.focusNode?.nodeType === Node.ELEMENT_NODE
+                ? selection.focusNode
+                : selection.focusNode?.parentElement;
+            const applied = commandIsActive(appliedNode || toggleBlock, command);
+            button.click();
+            const removedNode = selection.focusNode?.nodeType === Node.ELEMENT_NODE
+                ? selection.focusNode
+                : selection.focusNode?.parentElement;
+            toggleResults[command] = {
+                applied,
+                removed: !commandIsActive(removedNode || toggleBlock, command)
+            };
+        }
+
         return {
             available: true,
             quickFontApplied: Boolean(styledSpan),
             computedFont: styledSpan ? getComputedStyle(styledSpan).fontFamily : '',
             topFontRecognized: document.getElementById('font-family-select').value === 'Microsoft YaHei',
             quickFontRecognized: quickFont.value === 'Microsoft YaHei',
+            inlineToggleResults: toggleResults,
+            inlineToggleMarkersCleaned:
+                !root.querySelector('[data-vdoc-format-removal]'),
             sourceContainsFont: document.getElementById('html-mode-btn')
                 ? true
                 : false
@@ -734,6 +787,11 @@ app.whenReady().then(async () => {
         || !snapshot.formattingInteraction.computedFont.includes('Microsoft YaHei')
         || !snapshot.formattingInteraction.topFontRecognized
         || !snapshot.formattingInteraction.quickFontRecognized
+        || !snapshot.formattingInteraction.inlineToggleMarkersCleaned
+        || !['bold', 'italic', 'underline', 'strikethrough'].every((command) =>
+            snapshot.formattingInteraction.inlineToggleResults?.[command]?.applied
+            && snapshot.formattingInteraction.inlineToggleResults?.[command]?.removed
+        )
         || !snapshot.rangeSelectionInteraction.available
         || !snapshot.rangeSelectionInteraction.explicitShiftSelection
         || snapshot.rangeSelectionInteraction.explicitSelectionStatus !== '已选 2 块'

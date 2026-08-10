@@ -1037,6 +1037,12 @@ ${parsedDocument().html}
                 createTextBlockAtBlankPoint(event);
                 return;
             }
+
+            // pointerdown 先于焦点和选区更新发生。直接以命中的实际文字节点
+            // 同步工具栏，使重复点击已经聚焦的块、以及点击块内不同字号的
+            // span 时，顶部字体和字号也能立即跳到当前位置。
+            state.activeEditableBlock = block;
+            scheduleFormattingControls(event.target);
             const blockId = block.dataset.vdocText;
             state.pointerSelectionAnchorId = blockId;
             state.pointerSelectingBlocks = false;
@@ -1378,24 +1384,38 @@ ${parsedDocument().html}
             .join('')}`;
     }
 
-    function firstFontFamily(fontFamily) {
+    function fontFamilies(fontFamily) {
         return String(fontFamily || '')
-            .split(',')[0]
-            .trim()
-            .replace(/^["']|["']$/g, '');
+            .split(',')
+            .map((family) => family.trim().replace(/^["']|["']$/g, ''))
+            .filter(Boolean);
+    }
+
+    function firstFontFamily(fontFamily) {
+        return fontFamilies(fontFamily)[0] || '';
     }
 
     function syncSelectClosestFont(select, fontFamily) {
         if (!select) return;
         let lookup = state.fontOptionLookup.get(select);
-        if (!lookup || lookup.size !== select.options.length) {
-            lookup = new Map([...select.options].map((option) => [
-                firstFontFamily(option.value).toLowerCase(),
-                option.value,
-            ]));
+        if (!lookup || lookup.optionCount !== select.options.length) {
+            lookup = {
+                optionCount: select.options.length,
+                values: new Map([...select.options].flatMap((option) =>
+                    fontFamilies(option.value).map((family) => [
+                        family.toLowerCase(),
+                        option.value,
+                    ])
+                )),
+            };
             state.fontOptionLookup.set(select, lookup);
         }
-        const value = lookup.get(firstFontFamily(fontFamily).toLowerCase());
+
+        // computedStyle 通常返回完整字体回退栈。首选字体不在系统列表时，
+        // 继续匹配后续实际可用字体，而不是让工具栏停留在上一个文本块。
+        const value = fontFamilies(fontFamily)
+            .map((family) => lookup.values.get(family.toLowerCase()))
+            .find((candidate) => candidate !== undefined);
         if (value !== undefined && select.value !== value) select.value = value;
     }
 
@@ -1412,11 +1432,47 @@ ${parsedDocument().html}
         select.value = options[0].option.value;
     }
 
+    function setInlineCommandControlState(command, active) {
+        document.querySelectorAll(
+            `[data-command="${command}"], [data-selection-command="${command}"]`
+        ).forEach((control) => {
+            control.classList.toggle('active', active);
+            control.setAttribute('aria-pressed', String(active));
+        });
+    }
+
+    function elementHasInlineCommand(element, command) {
+        if (!element) return false;
+        const block = element.closest?.('[data-vdoc-text]');
+        if (!block) return false;
+
+        if (command === 'bold') {
+            const weight = getComputedStyle(element).fontWeight;
+            return Number.parseFloat(weight) >= 600 || weight === 'bold';
+        }
+        if (command === 'italic') {
+            return /^(?:italic|oblique)/i.test(getComputedStyle(element).fontStyle);
+        }
+
+        const wantedDecoration = command === 'underline' ? 'underline' : 'line-through';
+        for (let current = element; current; current = current.parentElement) {
+            if (command === 'underline' && current.tagName === 'U') return true;
+            if (command === 'strikethrough'
+                && (current.tagName === 'S' || current.tagName === 'STRIKE')) return true;
+            const decoration = `${current.style?.textDecorationLine || ''} ${
+                current.style?.textDecoration || ''
+            }`;
+            if (decoration.split(/\s+/).includes(wantedDecoration)) return true;
+            if (current === block) break;
+        }
+        return false;
+    }
+
     function syncFormattingControls(target) {
         const element = target?.nodeType === Node.ELEMENT_NODE
             ? target
             : target?.parentElement;
-        const textElement = element?.closest?.('[data-vdoc-text], span, strong, em, a')
+        const textElement = element?.closest?.('[data-vdoc-text], span, strong, em, a, u, s, strike')
             || state.activeEditableBlock;
         if (!textElement) return;
 
@@ -1425,6 +1481,12 @@ ${parsedDocument().html}
         syncSelectClosestFont(elements['selection-font-family'], computed.fontFamily);
         syncSelectClosestSize(elements['font-size-select'], computed.fontSize);
         syncSelectClosestSize(elements['selection-font-size'], computed.fontSize);
+        ['bold', 'italic', 'underline', 'strikethrough'].forEach((command) => {
+            setInlineCommandControlState(
+                command,
+                elementHasInlineCommand(textElement, command)
+            );
+        });
 
         const color = cssColorToHex(computed.color);
         elements['text-color-input'].value = color;
@@ -1475,15 +1537,216 @@ ${parsedDocument().html}
         return true;
     }
 
+    function selectedTextElements(preferSaved = false) {
+        const range = selectedRange(preferSaved);
+        if (!range || range.collapsed) return [];
+        const blocks = state.explicitBlockSelection
+            ? blocksForIds()
+            : editableBlocksForRange(range);
+        const elementsInRange = [];
+        blocks.forEach((block) => {
+            const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
+            for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+                if (!(node.nodeValue || '').length) continue;
+                try {
+                    if (range.intersectsNode(node)) {
+                        elementsInRange.push(node.parentElement || block);
+                    }
+                } catch {}
+            }
+        });
+        return elementsInRange.length ? elementsInRange : blocks;
+    }
+
+    function selectionHasInlineCommand(command, preferSaved = false) {
+        const targets = selectedTextElements(preferSaved);
+        return targets.length > 0
+            && targets.every((target) => elementHasInlineCommand(target, command));
+    }
+
+    function removeInlineCommandFromFragment(fragment, command) {
+        const semanticTags = {
+            bold: new Set(['B', 'STRONG']),
+            italic: new Set(['I', 'EM']),
+            underline: new Set(['U']),
+            strikethrough: new Set(['S', 'STRIKE']),
+        };
+        const styleProperty = {
+            bold: 'fontWeight',
+            italic: 'fontStyle',
+            underline: 'textDecoration',
+            strikethrough: 'textDecoration',
+        }[command];
+        const decoration = command === 'underline' ? 'underline' : 'line-through';
+
+        [...fragment.querySelectorAll('*')].reverse().forEach((node) => {
+            if (styleProperty === 'textDecoration') {
+                const lines = `${node.style.textDecorationLine || ''} ${
+                    node.style.textDecoration || ''
+                }`.split(/\s+/).filter((line) =>
+                    line && line !== decoration && line !== 'none'
+                );
+                node.style.removeProperty('text-decoration');
+                node.style.removeProperty('text-decoration-line');
+                if (lines.length) node.style.textDecorationLine = [...new Set(lines)].join(' ');
+            } else {
+                node.style[styleProperty] = '';
+            }
+            if (!node.getAttribute('style')?.trim()) node.removeAttribute('style');
+
+            if (semanticTags[command].has(node.tagName)) {
+                node.replaceWith(...node.childNodes);
+            } else if (node.tagName === 'SPAN' && !node.attributes.length) {
+                node.replaceWith(...node.childNodes);
+            }
+        });
+    }
+
+    function elementDeclaresInlineCommand(element, command) {
+        if (!element) return false;
+        const semanticTags = {
+            bold: ['B', 'STRONG'],
+            italic: ['I', 'EM'],
+            underline: ['U'],
+            strikethrough: ['S', 'STRIKE'],
+        };
+        if (semanticTags[command]?.includes(element.tagName)) return true;
+
+        if (command === 'bold') {
+            const weight = element.style.fontWeight;
+            return weight === 'bold' || Number.parseFloat(weight) >= 600;
+        }
+        if (command === 'italic') {
+            return /^(?:italic|oblique)/i.test(element.style.fontStyle);
+        }
+        const decoration = `${element.style.textDecorationLine || ''} ${
+            element.style.textDecoration || ''
+        }`;
+        return decoration.split(/\s+/).includes(
+            command === 'underline' ? 'underline' : 'line-through'
+        );
+    }
+
+    function splitElementAroundChild(parent, child) {
+        if (!parent?.parentNode || child?.parentNode !== parent) return child;
+        const before = parent.cloneNode(false);
+        const after = parent.cloneNode(false);
+        while (parent.firstChild && parent.firstChild !== child) {
+            before.appendChild(parent.firstChild);
+        }
+        while (child.nextSibling) after.appendChild(child.nextSibling);
+        const replacements = [];
+        if (before.childNodes.length) replacements.push(before);
+        replacements.push(child);
+        if (after.childNodes.length) replacements.push(after);
+        parent.replaceWith(...replacements);
+        return child;
+    }
+
+    function liftMarkerOutsideInlineCommand(marker, command, block) {
+        let commandAncestor = marker.parentElement;
+        while (commandAncestor && commandAncestor !== block
+            && !elementDeclaresInlineCommand(commandAncestor, command)) {
+            commandAncestor = commandAncestor.parentElement;
+        }
+        if (!commandAncestor || commandAncestor === block) return marker;
+
+        // marker 可能嵌在若干无关 span/a 中。逐层拆分这些中间节点，
+        // 再拆分真正声明格式的祖先，使选区脱离其继承格式，同时保留
+        // 选区前后两侧原有的 DOM 与样式。
+        while (marker.parentElement && marker.parentElement !== commandAncestor) {
+            splitElementAroundChild(marker.parentElement, marker);
+        }
+        if (marker.parentElement === commandAncestor) {
+            splitElementAroundChild(commandAncestor, marker);
+        }
+        return marker;
+    }
+
+    function removeInlineCommand(command, preferSaved = false) {
+        if (preferSaved) restoreSavedSelection();
+        const sourceRange = selectedRange(preferSaved);
+        if (!sourceRange || sourceRange.collapsed) return false;
+        const targetBlocks = state.explicitBlockSelection
+            ? blocksForIds()
+            : editableBlocksForRange(sourceRange);
+        const ranges = targetBlocks.map((block) => {
+            if (state.explicitBlockSelection) {
+                const range = document.createRange();
+                range.selectNodeContents(block);
+                return range;
+            }
+            return rangeWithinBlock(sourceRange, block);
+        }).filter(Boolean);
+        if (!ranges.length) return false;
+
+        const markers = [];
+        [...ranges].reverse().forEach((range) => {
+            const marker = document.createElement('span');
+            marker.dataset.vdocFormatRemoval = command;
+            try {
+                range.surroundContents(marker);
+            } catch {
+                marker.appendChild(range.extractContents());
+                range.insertNode(marker);
+            }
+            markers.unshift(marker);
+        });
+
+        const insertedBoundaries = markers.map((marker, index) => {
+            const block = targetBlocks[index]
+                || marker.closest('[data-vdoc-text]');
+
+            // 导入内容可能同时使用语义标签与行内样式表达同一种格式。
+            // 持续向外拆分，直到选区不再继承任何一层同类格式。
+            while (marker.parentElement && marker.parentElement !== block) {
+                const previousParent = marker.parentElement;
+                liftMarkerOutsideInlineCommand(marker, command, block);
+                if (marker.parentElement === previousParent) break;
+            }
+
+            removeInlineCommandFromFragment(marker, command);
+            const first = marker.firstChild;
+            const last = marker.lastChild;
+            if (!first || !last) {
+                marker.remove();
+                return null;
+            }
+            marker.replaceWith(...marker.childNodes);
+            return { first, last };
+        }).filter(Boolean);
+        if (!insertedBoundaries.length) return false;
+
+        const nextRange = document.createRange();
+        nextRange.setStartBefore(insertedBoundaries[0].first);
+        nextRange.setEndAfter(insertedBoundaries[insertedBoundaries.length - 1].last);
+        state.selectionRange = nextRange.cloneRange();
+        state.selectionText = nextRange.toString();
+        state.selectionBlockIds = editableBlocksForRange(nextRange)
+            .map((block) => block.dataset.vdocText)
+            .filter(Boolean);
+        const selection = currentRenderSelection();
+        selection.removeAllRanges();
+        selection.addRange(nextRange);
+
+        queueRenderedNodesUpdate(targetBlocks);
+        markDirty({ coalesce: true });
+        scheduleFormattingControls(insertedBoundaries[0].first);
+        return true;
+    }
+
     function applyInlineCommand(command, preferSaved = false) {
         const styles = {
             bold: ['fontWeight', '700'],
             italic: ['fontStyle', 'italic'],
-            underline: ['textDecoration', 'underline'],
-            strikethrough: ['textDecoration', 'line-through'],
+            underline: ['textDecorationLine', 'underline'],
+            strikethrough: ['textDecorationLine', 'line-through'],
         };
         const style = styles[command];
-        return style ? applyInlineStyle(style[0], style[1], preferSaved) : false;
+        if (!style) return false;
+        return selectionHasInlineCommand(command, preferSaved)
+            ? removeInlineCommand(command, preferSaved)
+            : applyInlineStyle(style[0], style[1], preferSaved);
     }
 
     function placeCaretAtStart(element) {
