@@ -54,6 +54,7 @@
         activeReviewPrId: null,
         autoApprovalScheduled: new Set(),
         slideThumbnailObserver: null,
+        slideRuntimeDisposer: null,
         checkpointSaveQueue: Promise.resolve(),
     };
 
@@ -413,7 +414,179 @@ ${surface === 'edit' ? `
         }
     }
 
+    function disposeSlideRuntime() {
+        try {
+            state.slideRuntimeDisposer?.();
+        } catch (error) {
+            console.error('[Scriptorium] Slide runtime cleanup failed:', error);
+        }
+        state.slideRuntimeDisposer = null;
+    }
+
+    function createScopedDocument(runtimeRoot) {
+        return new Proxy(document, {
+            get(target, property) {
+                if (property === 'querySelector') {
+                    return (selector) =>
+                        runtimeRoot.querySelector(selector) || target.querySelector(selector);
+                }
+                if (property === 'querySelectorAll') {
+                    return (selector) => runtimeRoot.querySelectorAll(selector);
+                }
+                if (property === 'getElementById') {
+                    return (id) =>
+                        runtimeRoot.querySelector(`#${CSS.escape(String(id))}`)
+                        || target.getElementById(id);
+                }
+                const value = Reflect.get(target, property, target);
+                return typeof value === 'function' ? value.bind(target) : value;
+            },
+        });
+    }
+
+    function runSlideRuntime(slide, runtimeRoot, surface = 'edit') {
+        disposeSlideRuntime();
+        if (!slide?.script || !runtimeRoot?.isConnected) return null;
+
+        const animationFrames = new Set();
+        const timeouts = new Set();
+        const intervals = new Set();
+        const cleanups = [];
+        let disposed = false;
+
+        const trackedRequestAnimationFrame = (callback) => {
+            if (disposed) return 0;
+            const id = window.requestAnimationFrame((timestamp) => {
+                animationFrames.delete(id);
+                if (!disposed) callback(timestamp);
+            });
+            animationFrames.add(id);
+            return id;
+        };
+        const trackedCancelAnimationFrame = (id) => {
+            animationFrames.delete(id);
+            window.cancelAnimationFrame(id);
+        };
+        const trackedSetTimeout = (callback, wait, ...args) => {
+            if (disposed) return 0;
+            const id = window.setTimeout(() => {
+                timeouts.delete(id);
+                if (!disposed) callback(...args);
+            }, wait);
+            timeouts.add(id);
+            return id;
+        };
+        const trackedClearTimeout = (id) => {
+            timeouts.delete(id);
+            window.clearTimeout(id);
+        };
+        const trackedSetInterval = (callback, wait, ...args) => {
+            if (disposed) return 0;
+            const id = window.setInterval(() => {
+                if (!disposed) callback(...args);
+            }, wait);
+            intervals.add(id);
+            return id;
+        };
+        const trackedClearInterval = (id) => {
+            intervals.delete(id);
+            window.clearInterval(id);
+        };
+        const runtime = Object.freeze({
+            surface,
+            root: runtimeRoot,
+            slideId: slide.id,
+            addCleanup(callback) {
+                if (typeof callback === 'function') cleanups.push(callback);
+                return callback;
+            },
+            requestAnimationFrame: trackedRequestAnimationFrame,
+            cancelAnimationFrame: trackedCancelAnimationFrame,
+            setTimeout: trackedSetTimeout,
+            clearTimeout: trackedClearTimeout,
+            setInterval: trackedSetInterval,
+            clearInterval: trackedClearInterval,
+        });
+
+        try {
+            const execute = new Function(
+                'scene',
+                'deck',
+                'runtime',
+                'document',
+                'requestAnimationFrame',
+                'cancelAnimationFrame',
+                'setTimeout',
+                'clearTimeout',
+                'setInterval',
+                'clearInterval',
+                String(slide.script)
+            );
+            const returned = execute.call(
+                runtimeRoot,
+                runtimeRoot,
+                window.VCPDeck || null,
+                runtime,
+                createScopedDocument(runtimeRoot),
+                trackedRequestAnimationFrame,
+                trackedCancelAnimationFrame,
+                trackedSetTimeout,
+                trackedClearTimeout,
+                trackedSetInterval,
+                trackedClearInterval
+            );
+            if (typeof returned === 'function') cleanups.push(returned);
+            else if (returned && typeof returned.dispose === 'function') {
+                cleanups.push(() => returned.dispose());
+            }
+        } catch (error) {
+            console.error(`[Scriptorium] Slide ${slide.id} runtime failed:`, error);
+        }
+
+        state.slideRuntimeDisposer = () => {
+            if (disposed) return;
+            disposed = true;
+            animationFrames.forEach((id) => window.cancelAnimationFrame(id));
+            timeouts.forEach((id) => window.clearTimeout(id));
+            intervals.forEach((id) => window.clearInterval(id));
+            animationFrames.clear();
+            timeouts.clear();
+            intervals.clear();
+            [...cleanups].reverse().forEach((cleanup) => {
+                try {
+                    cleanup();
+                } catch (error) {
+                    console.error('[Scriptorium] Slide custom cleanup failed:', error);
+                }
+            });
+        };
+        return runtime;
+    }
+
+    function activateCurrentSlideRuntime(surface = state.mode) {
+        if (!isSlideDeck()) {
+            disposeSlideRuntime();
+            return;
+        }
+        const slide = activeSlide();
+        const root = surface === 'read' ? getReadRoot() : getRenderRoot();
+        let runtimeRoot;
+        if (surface === 'read') {
+            runtimeRoot = root?.querySelector(
+                `[data-vdoc-slide-id="${CSS.escape(slide?.id || '')}"]`
+            ) || root?.querySelectorAll('.vdoc-page')?.[state.activeSlideIndex];
+        } else {
+            runtimeRoot = root?.querySelector('.vdoc-slide-editor-runtime');
+        }
+        if (!runtimeRoot) {
+            disposeSlideRuntime();
+            return;
+        }
+        runSlideRuntime(slide, runtimeRoot, surface);
+    }
+
     function renderDocument() {
+        disposeSlideRuntime();
         if (!state.document) return;
         state.document = core.normalizeDocument(state.document);
         const root = getRenderRoot() || elements['page-stream'].attachShadow({ mode: 'open' });
@@ -449,6 +622,11 @@ ${surface === 'edit' ? `
         });
         bindRenderSurface(root);
         updatePageZoomLayout(root);
+        if (state.mode === 'render' && isSlideDeck()) {
+            window.requestAnimationFrame(() => {
+                if (state.mode === 'render') activateCurrentSlideRuntime('render');
+            });
+        }
         renderOutline();
         elements['page-status'].textContent = isSlideDeck()
             ? `第 ${state.activeSlideIndex + 1} 页 / 共 ${state.document.source.slides.length} 页`
@@ -548,8 +726,29 @@ html[data-vdoc-pdf="true"] *, html[data-vdoc-pdf="true"] *::before, html[data-vd
     const scene = document.querySelector('[data-slide-index="${index}"]');
     if (!scene) return;
     try {
-        const run = new Function('scene', 'deck', ${inlineScriptLiteral(slide.script)});
-        run.call(scene, scene, window.VCPDeck);
+        const scopedDocument = new Proxy(document, {
+            get(target, property) {
+                if (property === 'querySelector') {
+                    return (selector) => scene.querySelector(selector) || target.querySelector(selector);
+                }
+                if (property === 'querySelectorAll') {
+                    return (selector) => scene.querySelectorAll(selector);
+                }
+                if (property === 'getElementById') {
+                    return (id) => scene.querySelector('#' + CSS.escape(String(id)))
+                        || target.getElementById(id);
+                }
+                const value = Reflect.get(target, property, target);
+                return typeof value === 'function' ? value.bind(target) : value;
+            }
+        });
+        const run = new Function(
+            'scene',
+            'deck',
+            'document',
+            ${inlineScriptLiteral(slide.script)}
+        );
+        run.call(scene, scene, window.VCPDeck, scopedDocument);
     } catch (error) {
         console.error('[VCPDeck] Scene ${String(slide.id).replace(/['\\\r\n]/g, '')} script failed:', error);
     }
@@ -1455,6 +1654,21 @@ ${state.document.source.html}
             }
         });
         elements['page-status'].textContent = `第 ${pages.length ? current + 1 : '—'} 页 / 共 ${pages.length || '—'} 页`;
+
+        // 放映预览只运行当前可见页的交互脚本。翻到另一页时停止旧页
+        // Canvas/RAF/定时器，再启动新页；缩略图仍保持静态冻结。
+        if (
+            state.mode === 'read'
+            && isSlideDeck()
+            && current !== state.activeSlideIndex
+        ) {
+            state.activeSlideIndex = current;
+            window.requestAnimationFrame(() => {
+                if (state.mode === 'read' && state.activeSlideIndex === current) {
+                    activateCurrentSlideRuntime('read');
+                }
+            });
+        }
     }
 
     function getSourceValue() {
@@ -1584,6 +1798,7 @@ ${state.document.source.html}
 
     function switchMode(mode) {
         if (!state.ready) return;
+        disposeSlideRuntime();
         const isRender = mode === 'render';
         const isRead = mode === 'read';
         const isSource = mode === 'html' || mode === 'css';
@@ -1604,8 +1819,18 @@ ${state.document.source.html}
 
         if (isRead) {
             renderReadingPreview();
-            window.requestAnimationFrame(() => updateCurrentPage(getReadRoot(), elements['read-host']));
+            window.requestAnimationFrame(() => {
+                updateCurrentPage(getReadRoot(), elements['read-host']);
+                if (state.mode === 'read' && isSlideDeck()) {
+                    activateCurrentSlideRuntime('read');
+                }
+            });
         } else if (isRender) {
+            if (isSlideDeck()) {
+                window.requestAnimationFrame(() => {
+                    if (state.mode === 'render') activateCurrentSlideRuntime('render');
+                });
+            }
             state.pageObserver?.disconnect();
             elements['page-status'].textContent = isSlideDeck()
                 ? `第 ${state.activeSlideIndex + 1} 页 / 共 ${state.document.source.slides.length} 页`
@@ -3239,6 +3464,7 @@ ${safeCss}
             await persistCheckpointToFile('AI 刻点');
         });
         window.addEventListener('beforeunload', () => {
+            disposeSlideRuntime();
             state.pageObserver?.disconnect();
             state.slideThumbnailObserver?.disconnect();
             window.clearTimeout(state.paginationTimer);
