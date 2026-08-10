@@ -2324,11 +2324,12 @@ ${parsedDocument().html}
             prefix.selectNodeContents(editable);
             prefix.setEnd(range.startContainer, range.startOffset);
 
-            // 仅在文本块首行头部把 Tab 解释为中文四格缩进；其他位置仍允许
-            // 浏览器执行正常的焦点导航。比例字体中的四个半角空格通常只有
-            // 约一个汉字宽，因此使用两个全角空格稳定实现两个汉字（2em）缩进。
-            if (!prefix.toString()) {
+            // 光标前没有内容或只有 DOCX 遗留的 Tab/空格时，都仍属于首行头部。
+            // 先移除这些可能被 HTML 折叠的隐藏空白，再规范化为两个全角空格，
+            // 避免原始 Tab 导致浏览器执行焦点导航，或重复叠加多份缩进。
+            if (/^[\s\u00a0\u3000]*$/u.test(prefix.toString())) {
                 event.preventDefault();
+                prefix.deleteContents();
                 const indentation = document.createTextNode('\u3000\u3000');
                 range.insertNode(indentation);
                 range.setStartAfter(indentation);

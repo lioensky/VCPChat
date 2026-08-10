@@ -29,6 +29,9 @@ async function createMinimalDocx() {
             <w:r><w:t>这是从 DOCX 导入的正文。</w:t></w:r>
         </w:p>
         <w:p>
+            <w:r><w:tab/><w:t>段首 Tab 正文。</w:t></w:r>
+        </w:p>
+        <w:p>
             <w:pPr><w:pStyle w:val="Heading2"/></w:pPr>
             <w:r><w:t>设计原则</w:t></w:r>
         </w:p>
@@ -272,6 +275,8 @@ $$`)
     assert.match(docx.html, /<h1 style="text-align:center">第一章 原生共笔<\/h1>/);
     assert.match(docx.html, /<h2>设计原则<\/h2>/);
     assert.match(docx.html, /<p style="text-indent:2em">这是从 DOCX 导入的正文。<\/p>/);
+    assert.match(docx.html, /<p style="text-indent:2em">段首 Tab 正文。<\/p>/);
+    assert.doesNotMatch(docx.html, />\t+段首 Tab 正文。/);
     assert.match(docx.html, /<strong>人类创作<\/strong>/);
     assert.match(
         docx.html,

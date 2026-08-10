@@ -294,6 +294,33 @@ function normalizeComparableText(value) {
     return String(value || '').replace(/\s+/g, '').trim();
 }
 
+function leadingTabCount(value) {
+    return String(value || '').match(/^\t+/)?.[0].length || 0;
+}
+
+function removeLeadingTabsFromElement(element, count) {
+    let remaining = Math.max(0, Number(count) || 0);
+    const visit = (node) => {
+        if (!node || remaining <= 0) return;
+        if (node.type === 'text') {
+            const match = String(node.data || '').match(/^\t+/);
+            if (!match) return;
+            const removed = Math.min(remaining, match[0].length);
+            node.data = match[0].slice(removed) + String(node.data || '').slice(match[0].length);
+            remaining -= removed;
+            return;
+        }
+        for (const child of node.children || []) {
+            if (remaining <= 0) break;
+            if (child.type === 'text' && !String(child.data || '').length) continue;
+            visit(child);
+            if (child.type === 'text' && String(child.data || '').replace(/^\t+/, '').length) break;
+        }
+    };
+    visit(element);
+    return count - remaining;
+}
+
 function isNaturalLeftAlignedDocxParagraph(paragraph) {
     const format = paragraph.paragraphFormat || {};
     return !paragraph.headingLevel
@@ -361,15 +388,25 @@ function parseDocxParagraphs(documentXml, styles) {
         }
         const inheritedFormat = resolveStyleParagraphFormat(styleId, styles);
         const directFormat = parseDocxParagraphFormat(paragraphProperties);
+        const tabsAtStart = leadingTabCount(text);
+        const paragraphFormat = mergeParagraphFormats(inheritedFormat, directFormat);
+        // Word 的段首 w:tab 是显式排版操作。HTML 会折叠它，使其既不可见又
+        // 阻断编辑器的段首判断，因此转换为稳定的 CSS 首行缩进。
+        if (tabsAtStart && !paragraphFormat.textIndentExplicit) {
+            paragraphFormat.textIndent = `${tabsAtStart * 2}em`;
+            paragraphFormat.textIndentExplicit = true;
+            paragraphFormat.textIndentFromLeadingTabs = true;
+        }
         paragraphs.push({
             text,
             comparableText: normalizeComparableText(text),
+            leadingTabCount: tabsAtStart,
             hasLeadingWhitespace: /^[\s\u00a0\u3000]/u.test(text),
             hasNumbering: /<w:numPr\b/i.test(paragraphProperties),
             headingLevel: explicitHeadingLevel
                 || resolveStyleHeadingLevel(styleId, styles)
                 || headingLevelFromText(text),
-            paragraphFormat: mergeParagraphFormats(inheritedFormat, directFormat),
+            paragraphFormat,
             pageBreakBefore: pendingPageBreak || /<w:pageBreakBefore\b/i.test(xml),
             pageBreakAfter: pageBreak && !/<w:pageBreakBefore\b/i.test(xml),
         });
@@ -414,6 +451,9 @@ function applyDocxParagraphSemantics(html, paragraphs) {
 
         const semantic = paragraphs[matchIndex];
         paragraphIndex = matchIndex + 1;
+        if (semantic.leadingTabCount) {
+            removeLeadingTabsFromElement(element, semantic.leadingTabCount);
+        }
         if (semantic.headingLevel && !/^(?:li|blockquote)$/i.test(element.tagName)) {
             element.tagName = `h${semantic.headingLevel}`;
             element.name = element.tagName;
@@ -549,6 +589,8 @@ module.exports = {
     convertRtf,
     parseDocxStyles,
     parseDocxParagraphFormat,
+    leadingTabCount,
+    removeLeadingTabsFromElement,
     isNaturalLeftAlignedDocxParagraph,
     applyDominantDocxTextIndent,
     resolveStyleHeadingLevel,
