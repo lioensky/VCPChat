@@ -243,4 +243,72 @@
         color: var(--vcp-ui-warning);
         background: color-mix(in srgb, var(--vcp-ui-warning) 10%, var(--vcp-ui-bg-2));
     }
+
+    html[data-ui-mode="next"] .vcp-ui-scope.notifications-sidebar > .section-divider {
+        height: 1px;
+        padding: 0;
+        background: var(--vcp-ui-border);
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope #vchatAppTray {
+        display: flex;
+        min-height: calc(var(--vcp-ui-control-md) + var(--vcp-ui-space-4));
+        padding: var(--vcp-ui-space-2) var(--vcp-ui-space-3);
+        gap: var(--vcp-ui-space-2);
+        border-top: 0;
+        background: var(--next-header-bg);
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope #appTrayPinnedApps {
+        gap: var(--vcp-ui-space-2);
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope #vchatAppTray :is(.capsule-button, .app-tray-more-btn) {
+        height: var(--vcp-ui-control-md);
+        border: 1px solid var(--vcp-ui-border);
+        background: var(--vcp-ui-bg-2);
+        box-shadow: none;
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope #vchatAppTray :is(.notes-button-label, svg) {
+        color: var(--vcp-ui-text-1);
+        stroke: currentColor;
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope #vchatAppTray :is(.capsule-button, .app-tray-more-btn):hover,
+    html[data-ui-mode="next"] .vcp-ui-scope #vchatAppTray .app-tray-more-btn.active {
+        border-color: color-mix(in srgb, var(--vcp-ui-accent) 38%, var(--vcp-ui-border));
+        background: color-mix(in srgb, var(--vcp-ui-accent) 12%, var(--vcp-ui-bg-2));
+        transform: none;
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope #vchatAppTray :is(.capsule-button, .app-tray-more-btn):hover :is(.notes-button-label, svg),
+    html[data-ui-mode="next"] .vcp-ui-scope #vchatAppTray .app-tray-more-btn.active svg {
+        color: var(--vcp-ui-accent);
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope #vchatAppTray .notes-button-label {
+        font-size: var(--vcp-ui-font-caption);
+        font-weight: 550;
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope #appTrayDrawer {
+        right: var(--vcp-ui-space-3);
+        bottom: calc(100% + var(--vcp-ui-space-2));
+        left: var(--vcp-ui-space-3);
+        padding: var(--vcp-ui-space-3);
+        border-color: var(--vcp-ui-border);
+        border-radius: var(--vcp-ui-radius-card);
+        color: var(--vcp-ui-text-1);
+        background: var(--vcp-ui-bg-1);
+        box-shadow: var(--vcp-ui-shadow-lg);
+        backdrop-filter: var(--next-surface-backdrop-filter);
+        -webkit-backdrop-filter: var(--next-surface-backdrop-filter);
+    }
+
+    html[data-ui-mode="next"] .vcp-ui-scope #appTrayDrawer::after {
+        background: var(--vcp-ui-bg-1);
+    }
 }

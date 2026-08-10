@@ -461,7 +461,29 @@ try {
         lucideGlobal: Boolean(window.lucide),
     }));
     assert.ok(bootLucide.lucideGlobal, 'lucide library must be present in the main renderer');
-    summary.push({ surface: '主界面 shell', mode: 'next', pass: true, lucide: bootLucide.lucideIcons, note: 'boot: WA 零请求/零注册，Orbitron/Nova/lucide 已载入' });
+    await page.waitForFunction(
+        () => document.querySelectorAll('#appTrayPinnedApps > button').length > 0,
+        { timeout: timeoutMs }
+    );
+    const appTrayState = await page.evaluate(async () => {
+        const tray = document.getElementById('vchatAppTray');
+        const moreButton = document.getElementById('appTrayMoreBtn');
+        const drawer = document.getElementById('appTrayDrawer');
+        const pinnedCount = document.querySelectorAll('#appTrayPinnedApps > button').length;
+        const drawerItemCount = document.querySelectorAll('#appTrayDrawerGrid > button').length;
+        const trayDisplay = tray ? getComputedStyle(tray).display : 'missing';
+        moreButton?.click();
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        const opened = drawer?.classList.contains('active') === true
+            && getComputedStyle(drawer).visibility === 'visible';
+        moreButton?.click();
+        return { trayDisplay, pinnedCount, drawerItemCount, opened };
+    });
+    assert.equal(appTrayState.trayDisplay, 'flex', `Next app tray is not visible: ${JSON.stringify(appTrayState)}`);
+    assert.ok(appTrayState.pinnedCount > 0, `Next app tray has no pinned shortcuts: ${JSON.stringify(appTrayState)}`);
+    assert.ok(appTrayState.drawerItemCount > 0, `Next app tray drawer has no applications: ${JSON.stringify(appTrayState)}`);
+    assert.equal(appTrayState.opened, true, `Next app tray drawer did not open: ${JSON.stringify(appTrayState)}`);
+    summary.push({ surface: '主界面 shell', mode: 'next', pass: true, lucide: bootLucide.lucideIcons, note: 'boot: WA 零请求/零注册，Orbitron/Nova/lucide 已载入，应用托盘与更多应用可用' });
 
     // 2. Open the UI 组件库 internal app; WA must register lazily.
     await page.click('#nextUiAddTabBtn');

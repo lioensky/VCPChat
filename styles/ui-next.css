@@ -1164,11 +1164,6 @@ body.light-theme .next-ui-nova-panel::before {
 .next-ui-app-icon[data-tone="charcoal"] { background: #273244; }
 .next-ui-app-icon[data-tone="purple"] { background: #8b4ff0; }
 
-html[data-ui-mode="next"] #vchatAppTray,
-html[data-ui-mode="next"] #vchatAppTray + * {
-    display: none;
-}
-
 @media (max-width: 980px) {
     .next-ui-app-grid {
         grid-template-columns: repeat(4, minmax(100px, 1fr));

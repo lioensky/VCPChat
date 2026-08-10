@@ -423,6 +423,19 @@ assert.equal(behaviorWindowControls.element.querySelectorAll('.vcp-ui-window-con
     'WindowControls must mark every clickable host as a no-drag control');
 const uiComponentsCss = fs.readFileSync(new URL('../styles/ui-system/components.css', import.meta.url), 'utf8');
 const nextUiCss = fs.readFileSync(new URL('../styles/ui-next.css', import.meta.url), 'utf8');
+const notificationSystemCss = fs.readFileSync(new URL('../styles/ui-system/notifications.css', import.meta.url), 'utf8');
+const mainHtml = fs.readFileSync(new URL('../main.html', import.meta.url), 'utf8');
+const trayManagerSource = fs.readFileSync(new URL('../modules/trayManager.js', import.meta.url), 'utf8');
+assert.doesNotMatch(nextUiCss,
+    /html\[data-ui-mode="next"\][^{]*#vchatAppTray[^{]*\{[^}]*display:\s*none/s,
+    'Next UI must preserve the upstream app tray instead of hiding it');
+assert.match(notificationSystemCss,
+    /html\[data-ui-mode="next"\] \.vcp-ui-scope #vchatAppTray\s*\{[^}]*display:\s*flex/s,
+    'Next UI must expose the app tray in the notification sidebar');
+assert.match(mainHtml, /id="appTrayPinnedApps"[\s\S]*id="appTrayMoreBtn"[\s\S]*id="appTrayDrawer"/,
+    'the app tray must retain pinned apps and the complete app drawer');
+assert.match(trayManagerSource, /localStorage\.setItem\('vcp-tray-pinned-apps'/,
+    'the app tray must retain the upstream pinned-app persistence contract');
 assert.match(nextUiCss,
     /html\[data-ui-mode="next"\] \.main-content\s*\{[^}]*overflow:\s*hidden;[^}]*border-radius:\s*var\(--vcp-ui-shell-radius\) 0 0 0;[^}]*clip-path:\s*inset\(0 round var\(--vcp-ui-shell-radius\) 0 0 0\);[^}]*isolation:\s*isolate;/s,
     'the main chat panel must apply one final rounded compositor clip');
