@@ -36,6 +36,8 @@
         pointerSelectionFrame: null,
         pendingPointerSelectionId: null,
         renderSurfaceAbortController: null,
+        compositionEnterTarget: null,
+        compositionEnterFrame: null,
         formattingSyncFrame: null,
         pendingFormattingTarget: null,
         fontOptionLookup: new WeakMap(),
@@ -2308,9 +2310,46 @@ ${parsedDocument().html}
         return lineBreak;
     }
 
+    function insertSoftBreakAtCurrentSelection(block) {
+        const selection = currentRenderSelection();
+        const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
+        if (!range || !block?.contains(range.commonAncestorContainer)) return false;
+
+        range.deleteContents();
+        insertStableSoftBreak(range, selection);
+        queueRenderedNodeUpdate(block);
+        window.ScriptoriumPretext?.evictNode(block.dataset.vdocText);
+        state.activeEditableBlock = block;
+        markDirty({ coalesce: true });
+        return true;
+    }
+
     function handleBlockEditingKeydown(event) {
         const editable = event.target.closest?.('[data-vdoc-text]');
         const selection = getRenderRoot()?.getSelection?.() || window.getSelection();
+
+        // keyCode 229 兼容部分 Chromium/Windows 输入法未正确暴露
+        // KeyboardEvent.isComposing 的情况。不能 preventDefault，否则会阻止
+        // 候选词上屏。也不能等待 compositionend：部分 Windows 输入法会将
+        // 该事件延后数百毫秒。候选词提交和 input 默认动作会在浏览器进入
+        // 下一渲染帧前完成，因此直接在下一帧以提交后的光标补执行换行。
+        if (event.key === 'Enter' && editable
+            && (event.isComposing || event.keyCode === 229)) {
+            const block = editable.closest?.(
+                '[data-vdoc-block][data-vdoc-removable="true"]'
+            ) || editable;
+            state.compositionEnterTarget = block;
+            if (state.compositionEnterFrame !== null) {
+                window.cancelAnimationFrame(state.compositionEnterFrame);
+            }
+            state.compositionEnterFrame = window.requestAnimationFrame(() => {
+                state.compositionEnterFrame = null;
+                const target = state.compositionEnterTarget;
+                state.compositionEnterTarget = null;
+                if (target?.isConnected) insertSoftBreakAtCurrentSelection(target);
+            });
+            return;
+        }
 
         if (event.key === 'Backspace' && state.explicitBlockSelection) {
             event.preventDefault();
@@ -2349,6 +2388,14 @@ ${parsedDocument().html}
         if (event.key === 'Enter' && !event.shiftKey) {
             event.preventDefault();
 
+            // 某些输入法在 compositionend 后还会为同一次物理按键派发普通
+            // Enter。若延迟换行尚未执行，则由本次 keydown 接管，避免双换行。
+            if (state.compositionEnterFrame !== null) {
+                window.cancelAnimationFrame(state.compositionEnterFrame);
+                state.compositionEnterFrame = null;
+                state.compositionEnterTarget = null;
+            }
+
             // 在块的绝对开头按 Enter，表示在当前块上方创建一个新段落。
             // 这为文档/Scene 的首块提供稳定的“向前插入”入口；其他位置
             // 仍沿用块内软换行，Shift+Enter 则继续在下方新增结构块。
@@ -2359,15 +2406,7 @@ ${parsedDocument().html}
 
             // Enter 必须以当前光标为准。当前选区折叠时不能回退到此前保存的
             // 全文/跨块范围，否则一次回车可能误删整个旧选区。
-            const range = selection?.rangeCount
-                ? selection.getRangeAt(0)
-                : selectedRange();
-            if (!range || !block.contains(range.commonAncestorContainer)) return;
-            range.deleteContents();
-            insertStableSoftBreak(range, currentRenderSelection());
-            queueRenderedNodeUpdate(block);
-            window.ScriptoriumPretext?.evictNode(block.dataset.vdocText);
-            markDirty({ coalesce: true });
+            insertSoftBreakAtCurrentSelection(block);
             return;
         }
         if (event.key === 'Enter' && event.shiftKey && block.tagName !== 'TD' && block.tagName !== 'TH') {
@@ -4823,6 +4862,9 @@ ${safeCss}
         window.addEventListener('beforeunload', () => {
             finalizeEditBurst();
             state.renderSurfaceAbortController?.abort();
+            if (state.compositionEnterFrame !== null) {
+                window.cancelAnimationFrame(state.compositionEnterFrame);
+            }
             if (state.formattingSyncFrame !== null) {
                 window.cancelAnimationFrame(state.formattingSyncFrame);
             }
