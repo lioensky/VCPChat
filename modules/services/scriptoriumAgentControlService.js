@@ -282,7 +282,8 @@ class ScriptoriumAgentControlService {
         const fileHash = sha256(serialized);
         const stats = await fs.stat(targetPath);
 
-        if (payload.openAfterCreate === true) {
+        const openRequested = payload.openAfterCreate === true;
+        if (openRequested) {
             await this.documentHandlers.openDocxWindow({ filePath: targetPath });
         }
         return {
@@ -296,6 +297,9 @@ class ScriptoriumAgentControlService {
                     `- 署名：${maid.name}`,
                     `- 路径：${targetPath}`,
                     `- SHA-256：${fileHash}`,
+                    openRequested
+                        ? '- 打开状态：已请求在 Scriptorium 中打开；若当前文档有未保存修改，最终是否切换由人类确认。'
+                        : '- 打开状态：仅完成落盘，未请求切换当前窗口文档。',
                 ].join('\n'),
             }],
             details: {
@@ -309,7 +313,8 @@ class ScriptoriumAgentControlService {
                 size: stats.size,
                 conflictPolicy,
                 maid,
-                opened: payload.openAfterCreate === true,
+                openRequested,
+                currentWindowDocumentReplaced: false,
             },
         };
     }
