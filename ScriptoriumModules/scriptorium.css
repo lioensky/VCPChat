@@ -1349,7 +1349,16 @@ body.lineage-collapsed .lineage-panel {
     border: 1px solid var(--scriptorium-hairline);
     border-radius: 3px 13px 3px 13px;
     background: color-mix(in srgb, var(--secondary-bg) 62%, transparent);
-    cursor: default;
+    cursor: pointer;
+    transition: border-color .16s ease, background .16s ease, transform .16s ease;
+}
+
+.checkpoint-item:hover,
+.checkpoint-item:focus-visible {
+    border-color: var(--scriptorium-accent-mid);
+    outline: 0;
+    background: color-mix(in srgb, var(--secondary-bg) 76%, var(--scriptorium-accent-soft));
+    transform: translateX(-2px);
 }
 
 .checkpoint-item::before {
@@ -1480,6 +1489,34 @@ body.lineage-collapsed .lineage-panel {
 
 .zoom-group {
     justify-content: flex-end;
+}
+
+.security-review-toggle {
+    display: inline-flex !important;
+    align-items: center;
+    gap: 6px;
+    width: auto !important;
+    height: 24px !important;
+    padding: 0 8px !important;
+    border: 1px solid color-mix(in srgb, var(--success-color) 45%, var(--scriptorium-hairline)) !important;
+    border-radius: 999px !important;
+    color: var(--success-color) !important;
+    font-size: 8px;
+    white-space: nowrap;
+}
+
+.security-review-toggle i {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+    box-shadow: 0 0 8px currentColor;
+}
+
+.security-review-toggle.disabled {
+    border-color: color-mix(in srgb, var(--danger-color) 58%, var(--scriptorium-hairline)) !important;
+    color: var(--danger-color) !important;
+    background: color-mix(in srgb, var(--danger-color) 8%, transparent) !important;
 }
 
 .zoom-group button {
@@ -2725,6 +2762,17 @@ body.focus-mode .document-workspace {
         color-mix(in srgb, var(--secondary-bg) 68%, transparent);
 }
 
+.checkpoint-item.pending.high-risk {
+    border-color: color-mix(in srgb, var(--danger-color) 68%, var(--scriptorium-hairline));
+    background:
+        linear-gradient(
+            145deg,
+            color-mix(in srgb, var(--danger-color) 11%, transparent),
+            transparent 52%
+        ),
+        color-mix(in srgb, var(--secondary-bg) 72%, transparent);
+}
+
 .checkpoint-item.pending::before {
     background: var(--highlight-text);
     animation: prPendingPulse 1.5s ease-in-out infinite;
@@ -2754,6 +2802,92 @@ body.focus-mode .document-workspace {
 .checkpoint-item.pending .checkpoint-status {
     border-color: var(--scriptorium-accent-mid);
     color: var(--highlight-text);
+}
+
+.checkpoint-item.pending.high-risk .checkpoint-status {
+    border-color: color-mix(in srgb, var(--danger-color) 58%, var(--scriptorium-hairline));
+    color: var(--danger-color);
+    background: color-mix(in srgb, var(--danger-color) 8%, transparent);
+}
+
+.pr-risk-notice {
+    margin-bottom: 12px;
+    padding: 12px;
+    border: 1px solid color-mix(in srgb, var(--danger-color) 48%, #d2cbc0);
+    border-radius: 8px;
+    color: #5f2929;
+    background: #fff0ed;
+    font-family: var(--scriptorium-ui);
+    user-select: text;
+}
+
+.pr-risk-notice.compact {
+    margin: 9px 0 0;
+    padding: 8px;
+    color: var(--primary-text);
+    background: color-mix(in srgb, var(--danger-color) 9%, transparent);
+    border-color: color-mix(in srgb, var(--danger-color) 42%, var(--scriptorium-hairline));
+}
+
+.pr-risk-notice > strong {
+    display: block;
+    color: #a23434;
+    font-size: 11px;
+    line-height: 1.45;
+}
+
+.pr-risk-notice.compact > strong {
+    color: var(--danger-color);
+    font-size: 9px;
+}
+
+.pr-risk-notice > p {
+    margin: 5px 0 8px;
+    color: #7a4a46;
+    font-size: 9px;
+    line-height: 1.55;
+}
+
+.pr-risk-notice.compact > p {
+    color: var(--secondary-text);
+    font-size: 8px;
+}
+
+.pr-risk-notice ul {
+    display: grid;
+    gap: 6px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.pr-risk-notice li {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 2px 7px;
+    align-items: baseline;
+    padding-top: 6px;
+    border-top: 1px solid rgba(162, 52, 52, .16);
+}
+
+.pr-risk-notice code {
+    padding: 1px 5px;
+    border-radius: 4px;
+    color: #9f2e2e;
+    background: rgba(162, 52, 52, .1);
+    font: 700 9px/1.5 Consolas, monospace;
+}
+
+.pr-risk-notice li > span {
+    font-size: 9px;
+    line-height: 1.5;
+}
+
+.pr-risk-notice li > small {
+    grid-column: 1 / -1;
+    color: #8a5e59;
+    font-size: 8px;
+    line-height: 1.4;
 }
 
 .pr-inline-receipt {
@@ -2802,6 +2936,12 @@ body.focus-mode .document-workspace {
 .pr-card-actions .pr-approve {
     border-color: color-mix(in srgb, var(--success-color) 48%, var(--scriptorium-hairline));
     color: var(--success-color);
+}
+
+.pr-card-actions .pr-approve.high-risk {
+    border-color: color-mix(in srgb, var(--danger-color) 58%, var(--scriptorium-hairline));
+    color: var(--danger-color);
+    background: color-mix(in srgb, var(--danger-color) 8%, transparent);
 }
 
 .pr-card-actions .pr-reject {
@@ -3077,6 +3217,239 @@ body.focus-mode .document-workspace {
     background: rgba(52, 139, 105, .12);
 }
 
+/* ── Security review confirmation and internal lineage versions ── */
+.security-review-dialog {
+    width: min(570px, calc(100vw - 40px));
+    padding: 30px;
+    border: 1px solid color-mix(in srgb, var(--danger-color) 48%, var(--scriptorium-hairline));
+    border-radius: 4px 24px 4px 24px;
+    color: var(--primary-text);
+    background:
+        radial-gradient(circle at 12% 8%, color-mix(in srgb, var(--danger-color) 14%, transparent), transparent 34%),
+        var(--scriptorium-glass-solid);
+    box-shadow: var(--scriptorium-shadow);
+}
+
+.security-review-dialog-mark {
+    display: grid;
+    width: 44px;
+    height: 44px;
+    margin-bottom: 18px;
+    place-items: center;
+    border: 1px solid color-mix(in srgb, var(--danger-color) 52%, var(--scriptorium-hairline));
+    border-radius: 50%;
+    color: var(--danger-color);
+    background: color-mix(in srgb, var(--danger-color) 10%, transparent);
+}
+
+.security-review-dialog h2 {
+    margin: 7px 0 0;
+    font: 500 27px var(--scriptorium-serif);
+}
+
+.security-review-dialog > p,
+.security-review-dialog > ul {
+    color: var(--secondary-text);
+    font-size: 10px;
+    line-height: 1.75;
+}
+
+.security-review-dialog > ul {
+    margin: 12px 0;
+    padding-left: 20px;
+}
+
+.security-confirm-check {
+    display: flex;
+    gap: 9px;
+    margin-top: 17px;
+    padding: 12px;
+    border: 1px solid color-mix(in srgb, var(--danger-color) 38%, var(--scriptorium-hairline));
+    border-radius: 8px;
+    color: var(--primary-text);
+    background: color-mix(in srgb, var(--danger-color) 7%, transparent);
+    font-size: 10px;
+    line-height: 1.55;
+    cursor: pointer;
+}
+
+.security-confirm-check input {
+    flex: 0 0 auto;
+    margin-top: 2px;
+    accent-color: var(--danger-color);
+}
+
+.dialog-actions button:disabled {
+    opacity: .36;
+    cursor: default;
+    pointer-events: none;
+}
+
+.lineage-detail-backdrop {
+    z-index: 1950;
+}
+
+.lineage-detail-dialog {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    width: min(1060px, calc(100vw - 54px));
+    height: min(740px, calc(100vh - 54px));
+    overflow: hidden;
+    border: 1px solid var(--scriptorium-hairline);
+    border-radius: 5px 24px 5px 24px;
+    color: var(--primary-text);
+    background:
+        radial-gradient(circle at 84% 8%, var(--scriptorium-accent-soft), transparent 30%),
+        var(--scriptorium-glass-solid);
+    box-shadow: 0 34px 100px rgba(0, 0, 0, .52);
+}
+
+.lineage-detail-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 18px;
+    padding: 20px 24px 16px;
+    border-bottom: 1px solid var(--scriptorium-hairline);
+}
+
+.lineage-detail-header h2 {
+    margin: 5px 0 3px;
+    font: 500 26px var(--scriptorium-serif);
+}
+
+.lineage-detail-header p {
+    margin: 0;
+    color: var(--secondary-text);
+    font-size: 10px;
+}
+
+.lineage-detail-header > button {
+    width: 34px;
+    height: 34px;
+    border: 1px solid var(--scriptorium-hairline);
+    border-radius: 50%;
+    color: var(--secondary-text);
+    background: transparent;
+    font-size: 22px;
+    cursor: pointer;
+}
+
+.lineage-detail-body {
+    display: grid;
+    grid-template-columns: .8fr 1.2fr;
+    min-height: 0;
+}
+
+.lineage-detail-body > section {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    min-width: 0;
+    min-height: 0;
+    padding: 16px;
+}
+
+.lineage-detail-body > section + section {
+    border-left: 1px solid var(--scriptorium-hairline);
+}
+
+.lineage-detail-body h3 {
+    margin: 0 0 10px;
+    color: var(--secondary-text);
+    font-size: 10px;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+}
+
+.lineage-detail-record {
+    min-height: 0;
+    margin: 0;
+    padding: 13px;
+    overflow: auto;
+    border: 1px solid var(--scriptorium-hairline);
+    border-radius: 8px;
+    color: #d9e0dc;
+    background: #111614;
+    font: 11px/1.65 Consolas, "Maple Mono", monospace;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    user-select: text;
+}
+
+.lineage-detail-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+    padding: 14px 20px 18px;
+    border-top: 1px solid var(--scriptorium-hairline);
+}
+
+.lineage-detail-footer > div {
+    display: grid;
+    gap: 3px;
+}
+
+.lineage-detail-footer strong {
+    color: var(--primary-text);
+    font-size: 10px;
+}
+
+.lineage-detail-footer span {
+    color: var(--secondary-text);
+    font-size: 8px;
+    line-height: 1.5;
+}
+
+.lineage-detail-footer button {
+    flex: 0 0 auto;
+    height: 38px;
+    padding: 0 16px;
+    border: 1px solid color-mix(in srgb, var(--danger-color) 48%, var(--scriptorium-hairline));
+    border-radius: 8px;
+    color: var(--danger-color);
+    background: color-mix(in srgb, var(--danger-color) 8%, transparent);
+    cursor: pointer;
+}
+
+.lineage-detail-footer button:disabled {
+    opacity: .36;
+    cursor: default;
+}
+
+.lineage-restore-dialog {
+    width: min(520px, calc(100vw - 40px));
+}
+
+@media (max-width: 900px) {
+    .security-review-toggle span {
+        display: none;
+    }
+
+    .lineage-detail-dialog {
+        width: calc(100vw - 24px);
+        height: calc(100vh - 24px);
+    }
+
+    .lineage-detail-body {
+        grid-template-columns: 1fr;
+        overflow: auto;
+    }
+
+    .lineage-detail-body > section {
+        min-height: 280px;
+    }
+
+    .lineage-detail-body > section + section {
+        border-top: 1px solid var(--scriptorium-hairline);
+        border-left: 0;
+    }
+
+    .lineage-detail-footer {
+        align-items: stretch;
+        flex-direction: column;
+    }
+}
+
 .pr-island-frame {
     width: 100%;
     height: 100%;
@@ -3142,6 +3515,13 @@ body.focus-mode .document-workspace {
     color: var(--text-on-accent);
     border-color: var(--button-bg);
     background: var(--button-bg);
+}
+
+.pr-review-actions .dialog-confirm.high-risk {
+    color: #fff;
+    border-color: var(--danger-color);
+    background: color-mix(in srgb, var(--danger-color) 82%, #431d1d);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--danger-color) 22%, transparent);
 }
 
 @media (max-width: 900px) {

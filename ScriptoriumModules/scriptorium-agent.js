@@ -299,6 +299,7 @@
             renderReadingPreview,
             markDirty,
             captureSnapshot,
+            createVersionSnapshot,
             renderLineage,
             persistCheckpoint,
             syncRenderedToSource,
@@ -783,6 +784,20 @@
                 };
             }
             const { record, operation, resolve } = pending;
+            const programmableContent = record.proposal?.programmableContent;
+            if (
+                options.automatic === true
+                && programmableContent?.status === 'refuse'
+            ) {
+                return {
+                    success: false,
+                    code: 'PR_REQUIRES_HUMAN_REVIEW',
+                    message: '该提案命中 refuse 级安全规则，自动批准已禁用，必须由人类查看风险后手动决定。',
+                    revision: revision(),
+                    pr: publicRecord(record),
+                    programmableContent,
+                };
+            }
             pendingPrs.delete(record.id);
             const receipt = createReceipt(
                 options.automatic === true ? 'auto-approved' : 'approved',
@@ -846,7 +861,9 @@
                 record.revision = revision();
                 record.operation = result.operation;
                 record.receipt = receipt;
-                record.snapshot = core.serialize(state.document);
+                record.snapshot = createVersionSnapshot
+                    ? createVersionSnapshot(state.document)
+                    : core.serialize(state.document);
                 renderLineage();
                 await persistCheckpoint?.('AI 提案合并刻点');
                 const accepted = response({
@@ -1067,15 +1084,6 @@
                     ? 'warn'
                     : 'allow';
 
-            if (programmableContent.status === 'refuse') {
-                return Promise.resolve(response({
-                    success: false,
-                    code: 'PROGRAMMABLE_CONTENT_REFUSED',
-                    message: '源码变更包含被安全策略拒绝的 JavaScript，未建立待审 PR。',
-                    programmableContent,
-                }));
-            }
-
             return queueMutation({
                 ...payload,
                 replacements,
@@ -1098,18 +1106,8 @@
                         documentKind: isDeck() ? 'pptx' : 'docx',
                         slideIndex,
                     });
-                    if (normalized.refused) {
-                        return {
-                            success: false,
-                            code: 'PROGRAMMABLE_CONTENT_REFUSED',
-                            message: '审批后复核发现被拒绝的 JavaScript，未应用变更。',
-                            programmableContent: {
-                                status: 'refuse',
-                                dependencies: normalized.dependencies,
-                                diagnostics: normalized.diagnostics,
-                            },
-                        };
-                    }
+                    // refuse 级发现不再阻止人类手动合并。源码进入文档审计链，
+                    // 运行时仍会独立复核并拒绝执行命中的脚本。
                     nextSource = normalized.html;
                     state.document.manifest.programmableDependencies = [
                         ...new Set([
@@ -1273,15 +1271,6 @@
                     ...payload,
                     html: htmlReview.html,
                 };
-
-                if (programmableContent.status === 'refuse') {
-                    return Promise.resolve(response({
-                        success: false,
-                        code: 'PROGRAMMABLE_CONTENT_REFUSED',
-                        message: '新增页面包含被安全策略拒绝的 JavaScript，未建立待审 PR。',
-                        programmableContent,
-                    }));
-                }
             }
 
             return queueMutation({

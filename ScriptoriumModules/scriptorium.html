@@ -363,6 +363,11 @@
             <span id="font-status">字体就绪</span>
         </div>
         <div class="status-group zoom-group">
+            <button id="security-review-toggle" class="security-review-toggle" type="button"
+                aria-pressed="true" title="安全审查已开启；点击可申请关闭">
+                <i></i><span>安全审查</span>
+            </button>
+            <span class="status-separator"></span>
             <button id="zoom-out-btn" aria-label="缩小">−</button>
             <input id="zoom-range" type="range" min="50" max="200" step="10" value="100" aria-label="页面缩放">
             <button id="zoom-in-btn" aria-label="放大">＋</button>
@@ -504,6 +509,75 @@
                     <button id="pr-review-approve-btn" type="button" class="dialog-confirm">允许并合并</button>
                 </div>
             </footer>
+        </section>
+    </div>
+
+    <div id="security-review-dialog" class="dialog-backdrop" role="dialog"
+        aria-modal="true" aria-labelledby="security-review-dialog-title" hidden>
+        <section class="security-review-dialog">
+            <div class="security-review-dialog-mark" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M12 8v5M12 17h.01"/><path d="M10.3 4.6 3.5 17a2 2 0 0 0 1.8 3h13.4a2 2 0 0 0 1.8-3L13.7 4.6a2 2 0 0 0-3.4 0Z"/></svg>
+            </div>
+            <span class="dialog-kicker">DISABLE PROGRAMMABLE CONTENT REVIEW</span>
+            <h2 id="security-review-dialog-title">确认关闭安全审查？</h2>
+            <p>关闭后，文档内脚本将不再因 Node.js、动态求值、宿主导航等 refuse 规则而停止执行。恶意文档可能读取页面状态、持续占用资源或尝试逃逸运行边界。</p>
+            <ul>
+                <li>此设置只保存在本机，不写入文档工程。</li>
+                <li>Agent PR 与人工审批流程仍然保留。</li>
+                <li>公网脚本仍不会直接载入；受支持依赖继续映射到本地。</li>
+            </ul>
+            <label class="security-confirm-check">
+                <input id="security-review-confirm-check" type="checkbox">
+                <span>我理解关闭审查会允许高风险脚本执行，并愿意承担当前文档的运行风险。</span>
+            </label>
+            <div class="dialog-actions">
+                <button type="button" id="security-review-cancel-btn">保持开启</button>
+                <button type="button" id="security-review-disable-btn" class="dialog-danger" disabled>确认关闭</button>
+            </div>
+        </section>
+    </div>
+
+    <div id="lineage-detail-dialog" class="dialog-backdrop lineage-detail-backdrop"
+        role="dialog" aria-modal="true" aria-labelledby="lineage-detail-title" hidden>
+        <section class="lineage-detail-dialog">
+            <header class="lineage-detail-header">
+                <div>
+                    <span class="dialog-kicker">DOCUMENT VERSION RECORD</span>
+                    <h2 id="lineage-detail-title">文脉节点详情</h2>
+                    <p id="lineage-detail-meta">等待选择节点</p>
+                </div>
+                <button id="lineage-detail-close-btn" type="button" aria-label="关闭">×</button>
+            </header>
+            <div class="lineage-detail-body">
+                <section>
+                    <h3>提交记录与审批</h3>
+                    <pre id="lineage-detail-record" class="lineage-detail-record"></pre>
+                </section>
+                <section>
+                    <h3>修改内容</h3>
+                    <pre id="lineage-detail-change" class="lineage-detail-record"></pre>
+                </section>
+            </div>
+            <footer class="lineage-detail-footer">
+                <div>
+                    <strong id="lineage-snapshot-status">检查内部版本快照…</strong>
+                    <span>回溯会先保存当前版本，再基于该节点的工程内嵌快照建立一个新的文脉节点，不删除后续历史。</span>
+                </div>
+                <button id="lineage-restore-btn" type="button" class="dialog-danger" disabled>回溯到此节点</button>
+            </footer>
+        </section>
+    </div>
+
+    <div id="lineage-restore-dialog" class="dialog-backdrop" role="dialog"
+        aria-modal="true" aria-labelledby="lineage-restore-title" hidden>
+        <section class="security-review-dialog lineage-restore-dialog">
+            <span class="dialog-kicker">RESTORE INTERNAL DOCUMENT VERSION</span>
+            <h2 id="lineage-restore-title">确认回溯文档版本？</h2>
+            <p id="lineage-restore-message">当前内容会先写入一个安全刻点，然后载入所选文脉节点的 `.vdocx/.vpptx` 内嵌快照。</p>
+            <div class="dialog-actions">
+                <button type="button" id="lineage-restore-cancel-btn">取消</button>
+                <button type="button" id="lineage-restore-confirm-btn" class="dialog-danger">保存当前版并回溯</button>
+            </div>
         </section>
     </div>
 

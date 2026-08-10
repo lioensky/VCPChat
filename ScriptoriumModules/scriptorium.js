@@ -52,6 +52,9 @@
         sourceColorMarks: [],
         activeEditableBlock: null,
         activeReviewPrId: null,
+        activeLineageRecordId: null,
+        pendingRestoreRecordId: null,
+        securityReviewEnabled: true,
         autoApprovalScheduled: new Set(),
         slideThumbnailObserver: null,
         slideRuntimeDisposer: null,
@@ -102,6 +105,13 @@
             'pr-review-dialog', 'pr-review-title', 'pr-review-meta',
             'pr-review-close-btn', 'pr-render-diff', 'pr-source-diff',
             'pr-review-receipt', 'pr-review-reject-btn', 'pr-review-approve-btn',
+            'security-review-toggle', 'security-review-dialog',
+            'security-review-confirm-check', 'security-review-cancel-btn',
+            'security-review-disable-btn', 'lineage-detail-dialog',
+            'lineage-detail-title', 'lineage-detail-meta', 'lineage-detail-close-btn',
+            'lineage-detail-record', 'lineage-detail-change', 'lineage-snapshot-status',
+            'lineage-restore-btn', 'lineage-restore-dialog', 'lineage-restore-message',
+            'lineage-restore-cancel-btn', 'lineage-restore-confirm-btn',
         ].forEach((id) => {
             elements[id] = $(id);
         });
@@ -166,6 +176,18 @@
     function markSaved() {
         state.dirty = false;
         updateIdentity();
+    }
+
+    function createVersionSnapshot(documentModel = state.document) {
+        if (!documentModel) return '';
+        // 工程内版本快照保留完整文档模型和文脉元数据，但剥离各历史节点
+        // 自身携带的 snapshot 字符串，避免版本快照递归嵌套造成文件指数膨胀。
+        const normalized = JSON.parse(core.serialize(documentModel));
+        normalized.checkpoints = (normalized.checkpoints || []).map((checkpoint) => {
+            const { snapshot, ...record } = checkpoint || {};
+            return record;
+        });
+        return JSON.stringify(normalized, null, 2);
     }
 
     function captureSnapshot() {
@@ -3044,8 +3066,119 @@ svg set {
         }
     }
 
+    function setSecurityReviewEnabled(enabled, options = {}) {
+        const next = enabled !== false;
+        state.securityReviewEnabled = next;
+        window.ScriptoriumProgrammableContent?.setReviewEnabled(next);
+        localStorage.setItem('scriptorium:security-review-enabled', String(next));
+        const toggle = elements['security-review-toggle'];
+        toggle.classList.toggle('disabled', !next);
+        toggle.setAttribute('aria-pressed', String(next));
+        toggle.title = next
+            ? '安全审查已开启；点击可申请关闭'
+            : '安全审查已关闭；点击立即重新开启';
+        toggle.querySelector('span').textContent = next ? '安全审查' : '审查已关闭';
+        if (!options.silent) {
+            disposeSlideRuntime();
+            renderDocument();
+            showToast(
+                next ? '可编程内容安全审查已重新开启' : '安全审查已关闭 · 高风险脚本允许执行',
+                next ? 'success' : 'error',
+                5000
+            );
+        }
+        return next;
+    }
+
+    function restoreSecurityReviewConfig() {
+        const stored = localStorage.getItem('scriptorium:security-review-enabled');
+        setSecurityReviewEnabled(stored !== 'false', { silent: true });
+    }
+
+    function openSecurityReviewConfirmation() {
+        if (!state.securityReviewEnabled) {
+            setSecurityReviewEnabled(true);
+            return;
+        }
+        elements['security-review-confirm-check'].checked = false;
+        elements['security-review-disable-btn'].disabled = true;
+        elements['security-review-dialog'].hidden = false;
+        elements['security-review-confirm-check'].focus();
+    }
+
+    function closeSecurityReviewConfirmation() {
+        elements['security-review-dialog'].hidden = true;
+        elements['security-review-confirm-check'].checked = false;
+        elements['security-review-disable-btn'].disabled = true;
+    }
+
     function prOperationType(checkpoint) {
         return checkpoint?.proposal?.type || checkpoint?.operation?.type || '';
+    }
+
+    function programmableContentForPr(checkpoint) {
+        return checkpoint?.proposal?.programmableContent || null;
+    }
+
+    function refuseDiagnosticsForPr(checkpoint) {
+        const diagnostics = programmableContentForPr(checkpoint)?.diagnostics;
+        return Array.isArray(diagnostics)
+            ? diagnostics.filter((item) => item?.level === 'refuse')
+            : [];
+    }
+
+    function hasRefuseRisk(checkpoint) {
+        return programmableContentForPr(checkpoint)?.status === 'refuse'
+            || refuseDiagnosticsForPr(checkpoint).length > 0;
+    }
+
+    function diagnosticLocation(item = {}) {
+        const context = item.context && typeof item.context === 'object'
+            ? item.context
+            : {};
+        const parts = [];
+        const slideIndex = item.slideIndex ?? context.slideIndex;
+        const replacementIndex = item.replacementIndex ?? context.replacementIndex;
+        const scriptId = item.scriptId ?? context.scriptId;
+        const phase = item.phase ?? context.phase;
+        if (Number.isFinite(Number(slideIndex))) {
+            parts.push(`第 ${Number(slideIndex) + 1} 页`);
+        }
+        if (Number.isFinite(Number(replacementIndex))) {
+            parts.push(`替换片段 ${Number(replacementIndex) + 1}`);
+        }
+        if (scriptId) parts.push(`脚本 ${scriptId}`);
+        if (phase) parts.push(`阶段 ${phase}`);
+        return parts.join(' · ') || '位置未能精确定位';
+    }
+
+    function createPrRiskNotice(checkpoint, compact = false) {
+        const diagnostics = refuseDiagnosticsForPr(checkpoint);
+        if (!diagnostics.length) return null;
+        const notice = document.createElement('section');
+        notice.className = `pr-risk-notice${compact ? ' compact' : ''}`;
+        const heading = document.createElement('strong');
+        heading.textContent = compact
+            ? `高风险提案 · ${diagnostics.length} 项 · 禁止自动批准`
+            : `检测到 ${diagnostics.length} 项 refuse 级风险`;
+        const explanation = document.createElement('p');
+        explanation.textContent = compact
+            ? '必须由人类打开审阅并手动决定。'
+            : '自动批准已强制禁用。人类仍可合并源码，但命中规则的脚本会继续被 Scriptorium 运行时阻止执行。';
+        const list = document.createElement('ul');
+        diagnostics.forEach((item) => {
+            const entry = document.createElement('li');
+            const rule = document.createElement('code');
+            rule.textContent = item.ruleId || 'unknown-rule';
+            const message = document.createElement('span');
+            message.textContent = item.message || '未提供风险说明';
+            const location = document.createElement('small');
+            location.textContent = diagnosticLocation(item);
+            entry.append(rule, message, location);
+            list.appendChild(entry);
+        });
+        notice.append(heading, explanation, list);
+        return notice;
     }
 
     function autoApprovalConfig() {
@@ -3317,23 +3450,24 @@ ${safeCss}
                         : `${sourceKind.toUpperCase()} 变更无法映射到单一 DOM 岛，已安全降级为文本差异。`
                 );
             }
-            return;
+        } else {
+            const before = document.createElement('div');
+            before.className = 'pr-diff-before';
+            before.textContent = proposal.type === 'slide-delete'
+                ? `删除第 ${Number(proposal.slideIndex) + 1} 页`
+                : '当前演示结构';
+            const after = document.createElement('div');
+            after.className = 'pr-diff-after';
+            after.textContent = proposal.type === 'slide-delete'
+                ? '该页面将在合并后移除'
+                : textFromProposal(proposal);
+            renderDiff.replaceChildren(before, after);
+            sourceDiff.replaceChildren();
+            JSON.stringify(proposal, null, 2).split('\n')
+                .forEach((line) => appendSourceDiffLine(sourceDiff, 'context', line));
         }
-
-        const before = document.createElement('div');
-        before.className = 'pr-diff-before';
-        before.textContent = proposal.type === 'slide-delete'
-            ? `删除第 ${Number(proposal.slideIndex) + 1} 页`
-            : '当前演示结构';
-        const after = document.createElement('div');
-        after.className = 'pr-diff-after';
-        after.textContent = proposal.type === 'slide-delete'
-            ? '该页面将在合并后移除'
-            : textFromProposal(proposal);
-        renderDiff.replaceChildren(before, after);
-        sourceDiff.replaceChildren();
-        JSON.stringify(proposal, null, 2).split('\n')
-            .forEach((line) => appendSourceDiffLine(sourceDiff, 'context', line));
+        const riskNotice = createPrRiskNotice(checkpoint);
+        if (riskNotice) renderDiff.prepend(riskNotice);
     }
 
     function textFromProposal(proposal) {
@@ -3349,10 +3483,19 @@ ${safeCss}
         if (!checkpoint || checkpoint.status !== 'pending') return;
         state.activeReviewPrId = checkpoint.id;
         const author = checkpoint.author?.name || checkpoint.author?.signature || '未署名 Agent';
+        const highRisk = hasRefuseRisk(checkpoint);
         elements['pr-review-title'].textContent = checkpoint.name || '协作变更审阅';
-        elements['pr-review-meta'].textContent =
-            `${author} · ${checkpoint.summary || '无摘要'} · 基于修订 ${checkpoint.baseRevision}`;
+        elements['pr-review-meta'].textContent = highRisk
+            ? `${author} · 高风险人工审阅 · 自动批准已禁用 · 基于修订 ${checkpoint.baseRevision}`
+            : `${author} · ${checkpoint.summary || '无摘要'} · 基于修订 ${checkpoint.baseRevision}`;
         elements['pr-review-receipt'].value = '';
+        elements['pr-review-approve-btn'].textContent = highRisk
+            ? '人工确认并合并'
+            : '允许并合并';
+        elements['pr-review-approve-btn'].classList.toggle('high-risk', highRisk);
+        elements['pr-review-approve-btn'].title = highRisk
+            ? '仅合并源码；命中 refuse 规则的脚本仍不会被运行时执行'
+            : '';
         renderProposalDiff(checkpoint);
         elements['pr-review-dialog'].hidden = false;
         elements['pr-review-receipt'].focus();
@@ -3360,6 +3503,9 @@ ${safeCss}
 
     function scheduleAutoApproval(checkpoint) {
         if (checkpoint.status !== 'pending' || state.autoApprovalScheduled.has(checkpoint.id)) return;
+        // refuse 级风险只能由人类审阅。即使该操作类型已在本地策略中勾选，
+        // 也不得进入自动批准调度；Agent API 还会进行第二层强制校验。
+        if (hasRefuseRisk(checkpoint)) return;
         const config = autoApprovalConfig();
         const operationType = prOperationType(checkpoint);
         if (!config.enabled || !config.allowedTypes.has(operationType)) return;
@@ -3395,7 +3541,10 @@ ${safeCss}
         elements['lineage-flow'].replaceChildren(...state.checkpoints.map((checkpoint) => {
             const item = document.createElement('article');
             const status = checkpoint.status || 'applied';
-            item.className = `checkpoint-item ${checkpoint.source} ${status}`;
+            const highRisk = hasRefuseRisk(checkpoint);
+            item.className = `checkpoint-item ${checkpoint.source} ${status}${
+                highRisk ? ' high-risk' : ''
+            }`;
             item.innerHTML = '<div class="checkpoint-meta"><span class="checkpoint-source"></span><time></time></div><h3></h3><p></p><span class="checkpoint-status"></span>';
             const authorName = checkpoint.author?.name || checkpoint.author?.signature || '';
             item.querySelector('.checkpoint-source').textContent = checkpoint.source === 'agent'
@@ -3407,7 +3556,7 @@ ${safeCss}
                 || checkpoint.note
                 || '完整源码状态已记录。';
             const statusLabels = {
-                pending: '等待人类审阅',
+                pending: highRisk ? '高风险 · 仅限人工审阅' : '等待人类审阅',
                 applied: checkpoint.receipt?.automatic ? '自动允许并已合并' : '已应用',
                 rejected: '已拒绝',
                 conflict: '修订冲突',
@@ -3416,6 +3565,8 @@ ${safeCss}
             item.querySelector('.checkpoint-status').textContent = statusLabels[status] || status;
 
             if (status === 'pending') {
+                const riskNotice = createPrRiskNotice(checkpoint, true);
+                if (riskNotice) item.appendChild(riskNotice);
                 const receipt = document.createElement('textarea');
                 receipt.className = 'pr-inline-receipt';
                 receipt.maxLength = 1200;
@@ -3434,8 +3585,11 @@ ${safeCss}
                     reviewPendingPr(checkpoint.id, 'reject', receipt.value));
                 const approve = document.createElement('button');
                 approve.type = 'button';
-                approve.className = 'pr-approve';
-                approve.textContent = '允许';
+                approve.className = `pr-approve${highRisk ? ' high-risk' : ''}`;
+                approve.textContent = highRisk ? '人工允许' : '允许';
+                approve.title = highRisk
+                    ? '自动批准已禁用；人工允许后高风险脚本仍由运行时阻止执行'
+                    : '';
                 approve.addEventListener('click', () =>
                     reviewPendingPr(checkpoint.id, 'approve', receipt.value));
                 actions.append(review, reject, approve);
@@ -3452,9 +3606,155 @@ ${safeCss}
                 );
                 item.appendChild(receipt);
             }
-            item.title = checkpoint.note || checkpoint.summary || '';
+            item.title = checkpoint.note || checkpoint.summary || '点击查看文脉详情';
+            item.tabIndex = 0;
+            item.setAttribute('role', 'button');
+            item.addEventListener('click', (event) => {
+                if (event.target.closest('button, textarea, input, select, a')) return;
+                openLineageDetail(checkpoint);
+            });
+            item.addEventListener('keydown', (event) => {
+                if ((event.key === 'Enter' || event.key === ' ')
+                    && !event.target.closest('button, textarea, input, select, a')) {
+                    event.preventDefault();
+                    openLineageDetail(checkpoint);
+                }
+            });
             return item;
         }));
+    }
+
+    function lineageRecordById(recordId) {
+        return state.checkpoints.find((record) => record.id === recordId) || null;
+    }
+
+    function openLineageDetail(record) {
+        if (!record) return;
+        state.activeLineageRecordId = record.id;
+        const author = record.author?.name
+            || record.maid?.name
+            || (record.source === 'human' ? '人类' : '未署名 Agent');
+        elements['lineage-detail-title'].textContent = record.name || '未命名文脉节点';
+        elements['lineage-detail-meta'].textContent = [
+            author,
+            record.status || 'applied',
+            new Date(record.createdAt || Date.now()).toLocaleString('zh-CN'),
+            Number.isFinite(Number(record.revision)) ? `修订 ${record.revision}` : null,
+        ].filter(Boolean).join(' · ');
+        elements['lineage-detail-record'].textContent = JSON.stringify({
+            id: record.id,
+            source: record.source,
+            author: record.author || record.maid || null,
+            name: record.name,
+            summary: record.summary || '',
+            note: record.note || '',
+            status: record.status || 'applied',
+            baseRevision: record.baseRevision ?? null,
+            revision: record.revision ?? null,
+            createdAt: record.createdAt,
+            reviewedAt: record.reviewedAt || null,
+        }, null, 2);
+        elements['lineage-detail-change'].textContent = JSON.stringify({
+            proposal: record.proposal || null,
+            operation: record.operation || null,
+            receipt: record.receipt || null,
+        }, null, 2);
+        const restorable = typeof record.snapshot === 'string' && record.snapshot.trim();
+        elements['lineage-snapshot-status'].textContent = restorable
+            ? '工程内嵌版本快照可用'
+            : '此节点没有可用快照，仅可查看记录';
+        elements['lineage-restore-btn'].disabled = !restorable
+            || record.status === 'pending';
+        elements['lineage-detail-dialog'].hidden = false;
+    }
+
+    function closeLineageDetail() {
+        state.activeLineageRecordId = null;
+        elements['lineage-detail-dialog'].hidden = true;
+    }
+
+    function requestLineageRestore(record) {
+        if (!record?.snapshot || record.status === 'pending') return;
+        state.pendingRestoreRecordId = record.id;
+        elements['lineage-restore-message'].textContent =
+            `将回溯到“${record.name || '未命名节点'}”。当前内容会先保存为新的工程内刻点，后续文脉不会被删除。`;
+        elements['lineage-restore-dialog'].hidden = false;
+    }
+
+    function cancelLineageRestore() {
+        state.pendingRestoreRecordId = null;
+        elements['lineage-restore-dialog'].hidden = true;
+    }
+
+    async function confirmLineageRestore() {
+        const target = lineageRecordById(state.pendingRestoreRecordId);
+        if (!target?.snapshot) {
+            cancelLineageRestore();
+            return false;
+        }
+        try {
+            const currentSnapshot = createVersionSnapshot();
+            const restored = core.parse(target.snapshot);
+            const timeline = state.checkpoints;
+            const now = Date.now();
+            timeline.unshift({
+                id: `human-before-restore-${now}`,
+                source: 'human',
+                author: { id: 'human', name: '人类审阅者', type: 'human' },
+                name: `回溯前备份 · ${state.currentName}`,
+                summary: `回溯到“${target.name || target.id}”前自动保存当前版本。`,
+                note: '',
+                createdAt: now,
+                revision: state.documentRevision,
+                operation: {
+                    type: 'version-backup-before-restore',
+                    targetCheckpointId: target.id,
+                },
+                status: 'applied',
+                snapshot: currentSnapshot,
+            });
+            state.document = restored;
+            state.document.checkpoints = timeline;
+            state.checkpoints = timeline;
+            state.activeSlideIndex = 0;
+            state.selectionRange = null;
+            state.selectionText = '';
+            state.selectionBlockIds = [];
+            state.explicitBlockSelection = false;
+            state.previewRevision = -1;
+            state.previewResult = null;
+            state.documentRevision += 1;
+            renderDocument();
+            timeline.unshift({
+                id: `human-restore-${now}`,
+                source: 'human',
+                author: { id: 'human', name: '人类审阅者', type: 'human' },
+                name: `已回溯 · ${target.name || target.id}`,
+                summary: '基于工程内嵌版本快照恢复文档内容，历史文脉保持不变。',
+                note: '',
+                createdAt: now + 1,
+                baseRevision: target.revision ?? null,
+                revision: state.documentRevision,
+                operation: {
+                    type: 'version-restore',
+                    targetCheckpointId: target.id,
+                },
+                status: 'applied',
+                snapshot: createVersionSnapshot(),
+            });
+            state.document.checkpoints = timeline;
+            captureSnapshot();
+            markDirty();
+            renderLineage();
+            closeLineageDetail();
+            cancelLineageRestore();
+            await persistCheckpointToFile('文脉版本回溯');
+            showToast(`已回溯到 · ${target.name || target.id}`, 'success', 4200);
+            return true;
+        } catch (error) {
+            showToast(`版本回溯失败：${error.message}`, 'error', 5000);
+            return false;
+        }
     }
 
     async function createCheckpoint(event) {
@@ -3467,7 +3767,7 @@ ${safeCss}
             name,
             note: elements['checkpoint-note-input'].value.trim(),
             createdAt: Date.now(),
-            snapshot: core.serialize(state.document),
+            snapshot: createVersionSnapshot(),
         });
         elements['checkpoint-dialog'].hidden = true;
         renderLineage();
@@ -3675,6 +3975,33 @@ ${safeCss}
         });
         elements['checkpoint-cancel-btn'].addEventListener('click', () => elements['checkpoint-dialog'].hidden = true);
         elements['checkpoint-dialog'].querySelector('form').addEventListener('submit', createCheckpoint);
+        elements['security-review-toggle'].addEventListener('click', openSecurityReviewConfirmation);
+        elements['security-review-confirm-check'].addEventListener('change', (event) => {
+            elements['security-review-disable-btn'].disabled = !event.target.checked;
+        });
+        elements['security-review-cancel-btn'].addEventListener('click', closeSecurityReviewConfirmation);
+        elements['security-review-disable-btn'].addEventListener('click', () => {
+            if (!elements['security-review-confirm-check'].checked) return;
+            closeSecurityReviewConfirmation();
+            setSecurityReviewEnabled(false);
+        });
+        elements['security-review-dialog'].addEventListener('click', (event) => {
+            if (event.target === elements['security-review-dialog']) {
+                closeSecurityReviewConfirmation();
+            }
+        });
+        elements['lineage-detail-close-btn'].addEventListener('click', closeLineageDetail);
+        elements['lineage-detail-dialog'].addEventListener('click', (event) => {
+            if (event.target === elements['lineage-detail-dialog']) closeLineageDetail();
+        });
+        elements['lineage-restore-btn'].addEventListener('click', () => {
+            requestLineageRestore(lineageRecordById(state.activeLineageRecordId));
+        });
+        elements['lineage-restore-cancel-btn'].addEventListener('click', cancelLineageRestore);
+        elements['lineage-restore-confirm-btn'].addEventListener('click', confirmLineageRestore);
+        elements['lineage-restore-dialog'].addEventListener('click', (event) => {
+            if (event.target === elements['lineage-restore-dialog']) cancelLineageRestore();
+        });
         elements['unsaved-cancel-btn'].addEventListener('click', () => resolveUnsavedDecision('cancel'));
         elements['unsaved-discard-btn'].addEventListener('click', () => resolveUnsavedDecision('discard'));
         elements['unsaved-save-btn'].addEventListener('click', () => resolveUnsavedDecision('save'));
@@ -3768,6 +4095,9 @@ ${safeCss}
                 closeStyleLibrary();
                 hideSelectionBar();
                 clearExplicitBlockSelection();
+                closeSecurityReviewConfirmation();
+                closeLineageDetail();
+                cancelLineageRestore();
                 elements['checkpoint-dialog'].hidden = true;
                 elements['pr-review-dialog'].hidden = true;
                 state.activeReviewPrId = null;
@@ -3835,6 +4165,7 @@ ${safeCss}
         cacheElements();
         restorePanelWidths();
         restoreAutoApprovalConfig();
+        restoreSecurityReviewConfig();
         elements['page-stream'].attachShadow({ mode: 'open' });
         elements['read-page-stream'].attachShadow({ mode: 'open' });
         initializeSourceEditor();
@@ -3853,6 +4184,7 @@ ${safeCss}
             renderReadingPreview,
             markDirty,
             captureSnapshot,
+            createVersionSnapshot,
             renderLineage,
             persistCheckpoint: persistCheckpointToFile,
             syncRenderedToSource: syncContinuousStructureToSource,

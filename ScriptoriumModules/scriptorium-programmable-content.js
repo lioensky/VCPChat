@@ -1,6 +1,8 @@
 'use strict';
 
 (() => {
+    let reviewEnabled = true;
+
     const LOCAL_LIBRARIES = Object.freeze({
         anime: '../vendor/anime.min.js',
         three: '../vendor/three.min.js',
@@ -73,8 +75,12 @@
         },
         {
             id: 'privileged-navigation',
-            pattern: /\b(?:window\.)?(?:top|parent|opener)\b|\blocation\s*\.\s*(?:assign|replace)\s*\(/,
-            message: '禁止控制宿主窗口、父窗口或外部导航。',
+            // 只拒绝对特权窗口引用的实际成员访问，以及明确的导航调用。
+            // 裸单词 top/parent/opener 可能合法出现在局部变量、注释和文案中；
+            // globalThis.THREE/anime/devicePixelRatio 也是本地依赖常见读取方式，
+            // 均不应仅因接触全局命名空间而被误判为宿主导航。
+            pattern: /\b(?:window|globalThis)\s*(?:\.\s*(?:top|parent|opener)\b|\[\s*['"](?:top|parent|opener)['"]\s*\])|\b(?:top|parent|opener)\s*(?:\.|\[)|\b(?:(?:window|globalThis)\s*\.\s*)?location\s*\.\s*(?:assign|replace)\s*\(/,
+            message: '禁止访问特权窗口引用或控制宿主导航。',
         },
     ]);
 
@@ -165,6 +171,26 @@
     function reviewJavaScript(source, context = {}) {
         const code = String(source || '');
         const findings = [];
+
+        if (!reviewEnabled) {
+            return {
+                allowed: true,
+                level: 'allow',
+                context: {
+                    ...context,
+                    documentKind: context.documentKind || 'unknown',
+                    surface: context.surface || 'unknown',
+                    scriptId: context.scriptId || null,
+                },
+                dependencies: dependenciesForJavaScript(code),
+                findings: [{
+                    level: 'info',
+                    ruleId: 'security-review-disabled',
+                    message: '人类已在本机关闭可编程内容安全审查；脚本未执行 warn/refuse 规则扫描。',
+                }],
+                reviewDisabled: true,
+            };
+        }
 
         for (const rule of REFUSE_RULES) {
             if (rule.pattern.test(code)) {
@@ -311,5 +337,10 @@
         reviewJavaScript,
         reviewScriptsInHtml,
         normalizeHtmlDependencies,
+        isReviewEnabled: () => reviewEnabled,
+        setReviewEnabled(value) {
+            reviewEnabled = value !== false;
+            return reviewEnabled;
+        },
     });
 })();
