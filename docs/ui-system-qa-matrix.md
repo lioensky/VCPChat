@@ -6,7 +6,7 @@
 
 | Surface | Verified | Remaining |
 | --- | --- | --- |
-| Shell、侧栏、输入区 | 新版字体、Material Symbols、焦点、无横向溢出；经典模式输入圆角回归 | 最小窗口人工截图复查 |
+| Shell、侧栏、输入区 | 新版字体、Material Symbols、焦点、主题/聊天模式快捷入口、独立托盘最小化；经典模式输入圆角回归 | 最小窗口人工截图复查 |
 | 内部应用 | UI 组件库打开后切到经典 UI，会清理 Host、标签、展示页根节点和 Feedback Host | 组件库长时间打开的内存采样 |
 | Web Awesome 运行时 | 3.11.0 从锁定 npm 源包生成到 `vendor/webawesome-runtime`；启动时零 WA 请求/注册，打开「UI 组件库」后按需加载；`pack:check` 已验证 101 文件、0.46 MiB 的可复现闭包 | 后续版本升级时重跑闭包生成与 Electron smoke |
 | Web Awesome 适配器 | `WebAwesomeAdapter` 契约测试全过（属性/事件/`updateComplete`/refcount 主题/销毁/next 守卫）；业务目录门禁 `check:ui-applications` 生效（禁 `<wa-*>`、裸 `--wa-*`、CDN、未登记 `::part()`）；新增 Lucide 边界门禁（业务页禁直引 lucide 运行时，仅 main.html / ToolBox 许可） | — |
@@ -17,6 +17,7 @@
 | 全局搜索 | Ctrl+F 首开、输入聚焦、Escape、模式切换清理、空态 | 带真实结果的分页和跳转 |
 | Agent/Group 设置 | 真实 Agent 选择、设置页、折叠区段；新旧模式样式隔离 | 保存、删除、校验、真实 Group 数据 |
 | 消息与富内容 | 壁纸透出；消息、代码、工具摘要、思考链、桌面推送、日记、表格；700px 表格不溢出 | 真实长流、错误、工具调用、媒体和最小窗口 |
+| 通知与快捷入口 | 三点菜单保留 Forum/Memo、过滤开关/设置的左右键语义；清空保留工具审批；铃铛保留监控右键 | 深浅主题真实鼠标复查 |
 | 页面运行时 | `test-page-runtime` 报告 `2 active rebuilt, 10 upstream classic`；Electron 20/20 验证 Notes/Translator Next、通用 Classic 标签宿主及全局 Classic 回退 | 未启用页面未来必须独立迁移，不在本 PR 保存实验实现 |
 
 ### 当前逐页状态

@@ -5,7 +5,7 @@ import postcss from 'postcss';
 
 const root = process.cwd();
 const sourceRef = process.env.VCP_DESIGN_SOURCE_REF || 'codex/vcpchat-codex-app-server';
-const upstreamRef = process.env.VCP_UPSTREAM_REF || 'upstream-review/main';
+const upstreamRef = process.env.VCP_UPSTREAM_REF || 'upstream-live/main';
 const failures = [];
 
 const forbiddenPaths = [
@@ -40,10 +40,13 @@ const allowedSourceDifferences = new Set([
     'docs/ui-system.md',
     'docs/ui-applications-webawesome-migration-plan.md',
     'docs/ui-system-qa-matrix.md',
+    'docs/upstream-function-parity.md',
+    'Groupmodules/grouprenderer.js',
     'main.html',
     'main.js',
     'modules/chatManager.js',
     'modules/event-listeners.js',
+    'modules/filterManager.js',
     'modules/global-settings-manager.js',
     'modules/ipc/deepWikiHandlers.js',
     'modules/ipc/desktopHandlers.js',
@@ -103,6 +106,7 @@ const allowedSourceDifferences = new Set([
     'scripts/test-electron-ui-apps-smoke.mjs',
     'scripts/test-settings-wa-electron.mjs',
     'style.css',
+    'styles/notifications.css',
     'styles/themes.css',
     'styles/appearance.css',
     'styles/ui-next.css',

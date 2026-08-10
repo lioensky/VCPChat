@@ -505,6 +505,24 @@ const nextUiCss = fs.readFileSync(new URL('../styles/ui-next.css', import.meta.u
 const notificationSystemCss = fs.readFileSync(new URL('../styles/ui-system/notifications.css', import.meta.url), 'utf8');
 const mainHtml = fs.readFileSync(new URL('../main.html', import.meta.url), 'utf8');
 const trayManagerSource = fs.readFileSync(new URL('../modules/trayManager.js', import.meta.url), 'utf8');
+const mainChatCommandsSource = fs.readFileSync(new URL('../modules/mainChatCommands.js', import.meta.url), 'utf8');
+const eventListenersSource = fs.readFileSync(new URL('../modules/event-listeners.js', import.meta.url), 'utf8');
+assert.match(mainHtml, /id="nextUiPresentationBtn"[\s\S]*id="nextUiThemeStoreBtn"[\s\S]*id="nextUiThemeBtn"/,
+    'Next must expose chat presentation and theme shortcuts in the topbar');
+assert.doesNotMatch(mainHtml, /id="nextUi(?:PresentationBtn|ThemeStoreBtn|ThemeBtn)"[^>]*next-ui-relocated-action/,
+    'visible Next shortcuts must not carry the hidden relocated-action class');
+assert.match(mainHtml, /id="nextUiMinimizeToTrayBtn"[^>]*aria-label="最小化到系统托盘"/,
+    'Next must expose a distinct minimize-to-tray control');
+assert.match(mainChatCommandsSource, /function minimizeToTray\(\)[\s\S]*minimizeToTray\?\.\(\)/,
+    'minimize-to-tray must route through the existing preload API');
+assert.match(mainHtml, /id="nextUiNotificationForum"[\s\S]*id="nextUiNotificationFilterToggle"[\s\S]*id="nextUiNotificationClear"/,
+    'the Next notification menu must contain Forum\/Memo, filter, and clear commands');
+assert.doesNotMatch(eventListenersSource, /(?:doNotDisturbBtn|clearNotificationsBtn)\.click\(\)/,
+    'Next notification actions must not proxy hidden Classic controls');
+assert.match(eventListenersSource, /nextUiNotificationForum\.addEventListener\('contextmenu'[\s\S]*openMemo/,
+    'Forum menu secondary action must open Memo');
+assert.match(eventListenersSource, /nextUiNotificationFilterToggle\.addEventListener\('contextmenu'[\s\S]*openNotificationFilterSettings/,
+    'filter menu secondary action must open filter settings');
 assert.doesNotMatch(nextUiCss,
     /html\[data-ui-mode="next"\][^{]*#vchatAppTray[^{]*\{[^}]*display:\s*none/s,
     'Next UI must preserve the upstream app tray instead of hiding it');

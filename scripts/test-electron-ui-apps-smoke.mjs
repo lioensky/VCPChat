@@ -545,6 +545,107 @@ try {
     assert.ok(appTrayState.pinnedCount > 0, `Next app tray has no pinned shortcuts: ${JSON.stringify(appTrayState)}`);
     assert.ok(appTrayState.drawerItemCount > 0, `Next app tray drawer has no applications: ${JSON.stringify(appTrayState)}`);
     assert.equal(appTrayState.opened, true, `Next app tray drawer did not open: ${JSON.stringify(appTrayState)}`);
+    const parityControls = await page.evaluate(async () => {
+        const originalCommands = window.MainChatCommands;
+        const calls = [];
+        const tick = () => new Promise(resolve => setTimeout(resolve, 0));
+        window.MainChatCommands = {
+            ...originalCommands,
+            toggleTheme: () => calls.push('theme'),
+            minimizeToTray: () => calls.push('minimize-to-tray'),
+            openForum: () => calls.push('forum'),
+            openMemo: () => calls.push('memo'),
+            toggleNotificationFilter: () => calls.push('filter-toggle'),
+            openNotificationFilterSettings: () => calls.push('filter-settings'),
+            clearNotifications: () => calls.push('clear'),
+        };
+
+        const display = id => getComputedStyle(document.getElementById(id)).display;
+        document.getElementById('nextUiThemeBtn')?.click();
+        document.getElementById('nextUiMinimizeToTrayBtn')?.click();
+
+        const menuButton = document.getElementById('nextUiNotificationMenuBtn');
+        const menu = document.getElementById('nextUiNotificationMenu');
+        const forum = document.getElementById('nextUiNotificationForum');
+        const filter = document.getElementById('nextUiNotificationFilterToggle');
+        const clear = document.getElementById('nextUiNotificationClear');
+        const openMenu = async () => {
+            if (menu.hidden) menuButton.click();
+            await tick();
+        };
+
+        await openMenu();
+        const firstFocus = document.activeElement?.id;
+        forum.click();
+        await tick();
+        await openMenu();
+        forum.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2 }));
+        await tick();
+        await openMenu();
+        filter.click();
+        await tick();
+        await openMenu();
+        filter.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2 }));
+        await tick();
+        await openMenu();
+        clear.click();
+        await tick();
+        await openMenu();
+        forum.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
+        const arrowFocus = document.activeElement?.id;
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+        const closedByEscape = menu.hidden && menuButton.getAttribute('aria-expanded') === 'false';
+
+        window.MainChatCommands = originalCommands;
+        const notifications = document.getElementById('notificationsList');
+        const disposable = document.createElement('li');
+        disposable.className = 'notification-item parity-disposable';
+        const protectedItem = document.createElement('li');
+        protectedItem.className = 'notification-item parity-protected';
+        protectedItem.dataset.protectedNotification = 'tool-approval';
+        notifications.append(disposable, protectedItem);
+        const clearResult = originalCommands.clearNotifications();
+        const clearProtection = {
+            disposableRemoved: !notifications.querySelector('.parity-disposable'),
+            protectedPreserved: Boolean(notifications.querySelector('.parity-protected')),
+            removed: clearResult.removed,
+        };
+        protectedItem.remove();
+
+        return {
+            display: {
+                presentation: display('nextUiPresentationBtn'),
+                themeStore: display('nextUiThemeStoreBtn'),
+                theme: display('nextUiThemeBtn'),
+                minimizeToTray: display('nextUiMinimizeToTrayBtn'),
+            },
+            calls,
+            firstFocus,
+            arrowFocus,
+            closedByEscape,
+            clearProtection,
+        };
+    });
+    Object.entries(parityControls.display).forEach(([control, display]) => {
+        assert.notEqual(display, 'none', `Next ${control} shortcut is hidden: ${JSON.stringify(parityControls)}`);
+    });
+    assert.deepEqual(parityControls.calls, [
+        'theme',
+        'minimize-to-tray',
+        'forum',
+        'memo',
+        'filter-toggle',
+        'filter-settings',
+        'clear',
+    ], `Next parity controls routed to the wrong commands: ${JSON.stringify(parityControls)}`);
+    assert.equal(parityControls.firstFocus, 'nextUiNotificationForum', `notification menu initial focus is wrong: ${JSON.stringify(parityControls)}`);
+    assert.equal(parityControls.arrowFocus, 'nextUiNotificationFilterToggle', `notification menu arrow navigation is wrong: ${JSON.stringify(parityControls)}`);
+    assert.equal(parityControls.closedByEscape, true, `notification menu did not close on Escape: ${JSON.stringify(parityControls)}`);
+    assert.deepEqual(parityControls.clearProtection, {
+        disposableRemoved: true,
+        protectedPreserved: true,
+        removed: 1,
+    }, `notification clear must preserve tool approvals: ${JSON.stringify(parityControls)}`);
     await page.waitForFunction(() => Boolean(window.askNovaController), { timeout: timeoutMs });
     const askNovaEntryState = await page.evaluate(() => ({
         buttons: document.querySelectorAll('button[data-ask-nova-target]').length,
