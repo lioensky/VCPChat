@@ -236,16 +236,111 @@
             });
         }
 
-        function visualContext(options = {}) {
+        function nextAnimationFrame() {
+            return new Promise((resolve) => window.requestAnimationFrame(resolve));
+        }
+
+        function boundedDelay(waitMs) {
+            return new Promise((resolve) => window.setTimeout(resolve, waitMs));
+        }
+
+        function visualStabilizationMs(options = {}, slideChanged = false) {
+            const supplied = options.stabilizationMs
+                ?? options.renderStabilizationMs
+                ?? options.visualDelayMs;
+            const fallback = slideChanged ? 750 : 0;
+            const parsed = supplied === undefined || supplied === ''
+                ? fallback
+                : Number(supplied);
+            if (!Number.isFinite(parsed) || parsed < 0) {
+                throw new Error('视觉渲染稳定等待必须是非负数。');
+            }
+            return Math.min(Math.round(parsed), 5000);
+        }
+
+        function waitForTransition(root, timeoutMs) {
+            if (!root || timeoutMs <= 0) return Promise.resolve('disabled');
+            return new Promise((resolve) => {
+                let settled = false;
+                const finish = (reason) => {
+                    if (settled) return;
+                    settled = true;
+                    window.clearTimeout(timer);
+                    root.removeEventListener('transitionend', onTransitionEnd, true);
+                    root.removeEventListener('transitioncancel', onTransitionCancel, true);
+                    resolve(reason);
+                };
+                const onTransitionEnd = () => finish('transitionend');
+                const onTransitionCancel = () => finish('transitioncancel');
+                const timer = window.setTimeout(() => finish('timeout'), timeoutMs);
+                root.addEventListener('transitionend', onTransitionEnd, true);
+                root.addEventListener('transitioncancel', onTransitionCancel, true);
+            });
+        }
+
+        async function waitForVisualStability(root, options, slideChanged) {
+            const stabilizationMs = visualStabilizationMs(options, slideChanged);
+
+            // renderDocument() 同步替换 Shadow DOM；先跨两帧让样式计算、布局和
+            // 合成器接收到新页面，再开始观察新页面自己的过渡事件。
+            await nextAnimationFrame();
+            await nextAnimationFrame();
+
+            const transitionResult = slideChanged
+                ? await waitForTransition(root, stabilizationMs)
+                : 'not-switched';
+
+            // 字体和图片会在 DOM 已建立后继续改变排版。等待这些资源，但使用同一
+            // 安全上限，避免网络资源或损坏字体永久阻塞 Agent 调用。
+            const resourceTimeoutMs = Math.max(250, stabilizationMs || 750);
+            const resourceTasks = [];
+            if (document.fonts?.ready) resourceTasks.push(document.fonts.ready.catch(() => undefined));
+            root?.querySelectorAll?.('img').forEach((image) => {
+                if (image.complete) {
+                    if (typeof image.decode === 'function') {
+                        resourceTasks.push(image.decode().catch(() => undefined));
+                    }
+                    return;
+                }
+                resourceTasks.push(new Promise((resolve) => {
+                    image.addEventListener('load', resolve, { once: true });
+                    image.addEventListener('error', resolve, { once: true });
+                }));
+            });
+            if (resourceTasks.length) {
+                await Promise.race([
+                    Promise.allSettled(resourceTasks),
+                    boundedDelay(resourceTimeoutMs),
+                ]);
+            }
+
+            // Canvas 绘制、ResizeObserver 与字体替换可能在资源完成后再提交更新；
+            // 最后两帧是 capturePage() 前的合成提交屏障。
+            await nextAnimationFrame();
+            await nextAnimationFrame();
+
+            return {
+                slideChanged,
+                stabilizationMs,
+                transitionResult,
+                framesAfterRender: 4,
+            };
+        }
+
+        async function visualContext(options = {}) {
             assertReady();
             const requestedSlideIndex = options.slideIndex === undefined
                 ? state.activeSlideIndex
                 : Number(options.slideIndex);
+            let slideChanged = false;
             if (isDeck() && requestedSlideIndex !== state.activeSlideIndex) {
                 if (!slides()[requestedSlideIndex]) throw new Error('指定幻灯片不存在。');
-                selectSlide(requestedSlideIndex);
+                slideChanged = selectSlide(requestedSlideIndex) === true;
             }
             if (state.mode === 'read') renderReadingPreview();
+
+            const root = state.mode === 'read' ? getReadRoot() : getRenderRoot();
+            const stability = await waitForVisualStability(root, options, slideChanged);
             const host = state.mode === 'read'
                 ? document.getElementById('read-host')
                 : document.getElementById('render-host');
@@ -264,6 +359,7 @@
                 activeSlideIndex: isDeck() ? state.activeSlideIndex : null,
                 renderedText: textFromHtml(sourceHtml),
                 media: mediaFromHtml(sourceHtml),
+                visualStability: stability,
                 captureRect: {
                     x: rect.left,
                     y: rect.top,

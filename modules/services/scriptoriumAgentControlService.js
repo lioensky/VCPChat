@@ -154,6 +154,11 @@ class ScriptoriumAgentControlService {
             payload: {
                 scope: request.scope || 'viewport',
                 slideIndex: request.slideIndex,
+                stabilizationMs: request.stabilizationMs
+                    ?? request.renderStabilizationMs
+                    ?? request.visualDelayMs
+                    ?? request.captureDelayMs
+                    ?? request.screenshotDelayMs,
             },
         });
         const captureRect = semantic?.captureRect;

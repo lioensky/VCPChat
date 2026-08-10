@@ -512,18 +512,35 @@ html[data-vdoc-pdf="true"] *, html[data-vdoc-pdf="true"] *::before, html[data-vd
 }`;
     }
 
+    function inlineScriptLiteral(source) {
+        // HTML 解析器不会理会 JavaScript 字符串边界；原始 </script> 会提前
+        // 关闭外层脚本。仅转义 HTML 边界字符，运行时恢复原始源码，不过滤、
+        // 禁止或改写任何交互逻辑。
+        return JSON.stringify(String(source || ''))
+            .replace(/</g, '\\u003c')
+            .replace(/>/g, '\\u003e')
+            .replace(/\u2028/g, '\\u2028')
+            .replace(/\u2029/g, '\\u2029');
+    }
+
     function buildPresentationHtml() {
         const scene = core.createSceneConfig(state.document.manifest.scene);
         const title = escapeHtml(state.document.manifest.title || state.currentName);
         const language = escapeHtml(state.document.manifest.language || 'zh-CN');
         const slides = state.document.source.slides;
+        const ratioParts = String(scene.presentation.aspectRatio || '16 / 9')
+            .match(/^(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)$/);
+        const ratioWidth = Number(ratioParts?.[1]) || 16;
+        const ratioHeight = Number(ratioParts?.[2]) || 9;
+        const numericRatio = ratioWidth / ratioHeight;
+        const cssAspectRatio = `${ratioWidth} / ${ratioHeight}`;
         const slideMarkup = slides.map((slide, index) => `
 <section class="vcp-slide${index === 0 ? ' active' : ''}"
     data-slide-index="${index}"
     data-slide-id="${escapeHtml(slide.id)}"
-    data-transition="${escapeHtml(slide.transition || 'none')}"
+    data-transition="${escapeHtml(core.normalizeTransition(slide.transition))}"
     aria-hidden="${index === 0 ? 'false' : 'true'}">
-    <style>${slide.css || ''}</style>
+    <style>${String(slide.css || '').replace(/<\/style/gi, '<\\/style')}</style>
     ${slide.html}
 </section>`).join('\n');
         const slideScripts = slides.map((slide, index) => slide.script
@@ -531,10 +548,10 @@ html[data-vdoc-pdf="true"] *, html[data-vdoc-pdf="true"] *::before, html[data-vd
     const scene = document.querySelector('[data-slide-index="${index}"]');
     if (!scene) return;
     try {
-        const run = new Function('scene', 'deck', ${JSON.stringify(slide.script)});
-        run(scene, window.VCPDeck);
+        const run = new Function('scene', 'deck', ${inlineScriptLiteral(slide.script)});
+        run.call(scene, scene, window.VCPDeck);
     } catch (error) {
-        console.error('[VCPDeck] Scene ${escapeHtml(slide.id)} script failed:', error);
+        console.error('[VCPDeck] Scene ${String(slide.id).replace(/['\\\r\n]/g, '')} script failed:', error);
     }
 })();`
             : '').filter(Boolean).join('\n');
@@ -551,7 +568,7 @@ ${styleLibrary.compileCss([...state.usedAdvancedStyleIds])}
 *{box-sizing:border-box}
 html,body{width:100%;height:100%;margin:0;overflow:hidden;background:#090b0c;color:#fff}
 body{display:grid;place-items:center;font-family:system-ui,sans-serif}
-.vcp-deck{position:relative;width:min(100vw,calc(100vh * ${scene.presentation.aspectRatio || '16 / 9'}));aspect-ratio:${scene.presentation.aspectRatio || '16 / 9'};overflow:hidden;background:#fff;box-shadow:0 24px 90px rgba(0,0,0,.55)}
+.vcp-deck{position:relative;width:min(100vw,calc(100vh * ${numericRatio}));height:min(100vh,calc(100vw / ${numericRatio}));aspect-ratio:${cssAspectRatio};overflow:hidden;background:#fff;box-shadow:0 24px 90px rgba(0,0,0,.55)}
 .vcp-slide{position:absolute;inset:0;display:none;width:100%;height:100%;overflow:hidden;color:#1d2421;background:#fff}
 .vcp-slide.active{display:block}
 .vcp-slide>.vdoc-slide-scene,.vcp-slide>[data-vdoc-slide]{width:100%;height:100%}

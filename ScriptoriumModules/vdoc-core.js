@@ -41,6 +41,31 @@
 </section>`;
     }
 
+    function normalizeTransition(value) {
+        const candidate = value && typeof value === 'object' && !Array.isArray(value)
+            ? value.type ?? value.name ?? value.id ?? value.effect
+            : value;
+        const normalized = String(candidate || 'none').trim().toLowerCase();
+        if (!normalized || normalized === '[object object]') return 'none';
+        return /^[a-z][a-z0-9_-]{0,63}$/i.test(normalized) ? normalized : 'none';
+    }
+
+    function normalizeAspectRatio(value, fallback = '16 / 9') {
+        if (value && typeof value === 'object' && !Array.isArray(value)) {
+            const width = Number(value.width ?? value.x ?? value.numerator);
+            const height = Number(value.height ?? value.y ?? value.denominator);
+            if (Number.isFinite(width) && width > 0 && Number.isFinite(height) && height > 0) {
+                return `${width} / ${height}`;
+            }
+        }
+        const normalized = String(value || fallback).trim();
+        const match = normalized.match(/^(\d+(?:\.\d+)?)\s*(?:\/|:)\s*(\d+(?:\.\d+)?)$/);
+        if (!match) return fallback;
+        const width = Number(match[1]);
+        const height = Number(match[2]);
+        return width > 0 && height > 0 ? `${width} / ${height}` : fallback;
+    }
+
     function createSlide(input = {}, index = 0) {
         const candidate = input && typeof input === 'object' ? input : {};
         return {
@@ -49,7 +74,7 @@
             html: formatHtml(ensureTextNodeIds(candidate.html || defaultSlideHtml())),
             css: sanitizeCss(candidate.css || ''),
             script: String(candidate.script || ''),
-            transition: String(candidate.transition || 'none'),
+            transition: normalizeTransition(candidate.transition),
             duration: Number.isFinite(Number(candidate.duration))
                 ? Math.max(0, Number(candidate.duration))
                 : null,
@@ -130,9 +155,11 @@ p { margin: .7em 0; text-align: justify; text-justify: inter-ideograph; text-wra
             presentation: {
                 enabled: isDeck,
                 navigation: input.presentation?.navigation || 'linear',
-                transition: input.presentation?.transition || 'none',
+                transition: normalizeTransition(input.presentation?.transition),
                 loop: Boolean(input.presentation?.loop),
-                aspectRatio: input.presentation?.aspectRatio || (isDeck ? '16 / 9' : null),
+                aspectRatio: isDeck
+                    ? normalizeAspectRatio(input.presentation?.aspectRatio)
+                    : null,
             },
         };
     }
@@ -414,6 +441,8 @@ p { margin: .7em 0; text-align: justify; text-justify: inter-ideograph; text-wra
         createSceneConfig,
         createSlide,
         normalizeSlides,
+        normalizeTransition,
+        normalizeAspectRatio,
         extensionForKind,
         createDocument,
         normalizeDocument,

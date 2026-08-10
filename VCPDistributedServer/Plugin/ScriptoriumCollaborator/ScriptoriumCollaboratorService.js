@@ -271,6 +271,11 @@ async function getVisualContext(args, executionContext = {}) {
         slideIndex: args.slideIndex,
         format: args.format || args.imageFormat,
         quality: args.quality,
+        stabilizationMs: args.stabilizationMs
+            ?? args.renderStabilizationMs
+            ?? args.visualDelayMs
+            ?? args.captureDelayMs
+            ?? args.screenshotDelayMs,
     });
 }
 
@@ -397,16 +402,16 @@ function serialStepSummary(step) {
     if (step.type === 'wait') {
         return `- 步骤 ${step.index} · ${step.command}：已等待 ${step.waitMs} ms`;
     }
-    const automaticDelay = step.automaticDelayMs
-        ? `（截图防竞态延迟 ${step.automaticDelayMs} ms）`
+    const stability = step.output?.details?.visualStability;
+    const stabilization = stability?.slideChanged
+        ? `（切页后渲染稳定等待 ${stability.stabilizationMs} ms 上限）`
         : '';
-    return `- 步骤 ${step.index} · ${step.command}：成功${automaticDelay}`;
+    return `- 步骤 ${step.index} · ${step.command}：成功${stabilization}`;
 }
 
 async function processSerialToolCall(rawArgs, executionContext = {}) {
     const entries = getSerialCommandEntries(rawArgs);
     const steps = [];
-    let previousWasVisual = false;
     let failedStep = null;
 
     for (const entry of entries) {
@@ -429,14 +434,7 @@ async function processSerialToolCall(rawArgs, executionContext = {}) {
                     status: 'success',
                     waitMs,
                 });
-                previousWasVisual = false;
                 continue;
-            }
-
-            let automaticDelayMs = 0;
-            if (previousWasVisual && isVisualCommand(entry.command)) {
-                automaticDelayMs = parseVisualDelayMs(stepArgs);
-                if (automaticDelayMs > 0) await delay(automaticDelayMs);
             }
 
             const output = await processSingleToolCall(stepArgs, stepContext);
@@ -445,10 +443,8 @@ async function processSerialToolCall(rawArgs, executionContext = {}) {
                 command: entry.command,
                 type: 'command',
                 status: 'success',
-                automaticDelayMs,
                 output,
             });
-            previousWasVisual = isVisualCommand(entry.command);
         } catch (error) {
             failedStep = {
                 index: entry.index,
@@ -501,7 +497,6 @@ async function processSerialToolCall(rawArgs, executionContext = {}) {
                 type: step.type,
                 status: step.status,
                 waitMs: step.waitMs,
-                automaticDelayMs: step.automaticDelayMs,
                 error: step.error,
                 details: step.output?.details || null,
             })),
