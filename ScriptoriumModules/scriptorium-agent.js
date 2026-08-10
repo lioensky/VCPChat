@@ -505,6 +505,11 @@
 
         async function visualContext(options = {}) {
             assertReady();
+            const requestContext = {
+                generation: state.documentGeneration,
+                documentId: state.document?.manifest?.id || null,
+                revision: state.documentRevision,
+            };
             const requestedSlideIndex = options.slideIndex === undefined
                 ? state.activeSlideIndex
                 : Number(options.slideIndex);
@@ -517,6 +522,15 @@
 
             const root = state.mode === 'read' ? getReadRoot() : getRenderRoot();
             const stability = await waitForVisualStability(root, options, slideChanged);
+            const contextChanged = requestContext.generation !== state.documentGeneration
+                || requestContext.documentId !== (state.document?.manifest?.id || null)
+                || requestContext.revision !== state.documentRevision
+                || (isDeck() && requestedSlideIndex !== state.activeSlideIndex);
+            if (contextChanged) {
+                const error = new Error('视觉采集期间文档或页面已变化，请基于最新修订重试。');
+                error.code = 'VISUAL_CONTEXT_CHANGED';
+                throw error;
+            }
             const host = state.mode === 'read'
                 ? document.getElementById('read-host')
                 : document.getElementById('render-host');

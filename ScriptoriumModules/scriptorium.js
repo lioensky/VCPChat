@@ -5,6 +5,7 @@
     const core = window.VDocCore;
     const styleLibrary = window.VDocStyleLibrary;
     const pagination = window.VDocPagination;
+    const asyncModule = window.ScriptoriumAsync;
     const state = {
         document: null,
         currentPath: null,
@@ -75,6 +76,11 @@
         checkpointSaveQueue: Promise.resolve(),
     };
 
+    const asyncCoordinator = asyncModule?.createCoordinator({
+        getGeneration: () => state.documentGeneration,
+        getDocumentId: () => state.document?.manifest?.id || null,
+        getRevision: () => state.documentRevision,
+    });
     const elements = {};
     const $ = (id) => document.getElementById(id);
 
@@ -1440,6 +1446,7 @@ ${parsedDocument().html}
     async function exportRichDocument(format) {
         if (!state.ready || state.saving) return false;
         finalizeEditBurst();
+        const context = asyncCoordinator.captureContext();
         try {
             if (state.mode === 'html' || state.mode === 'css') {
                 if (applySourceChanges(false) === false) return false;
@@ -1458,6 +1465,9 @@ ${parsedDocument().html}
                 await new Promise((resolve) =>
                     requestAnimationFrame(() => requestAnimationFrame(resolve))
                 );
+                if (!asyncCoordinator.isContextCurrent(context, { revision: true })) {
+                    return false;
+                }
                 html = buildPagedExportHtml();
             }
             const baseName = state.currentName.replace(/\.(?:vdocx|vpptx)$/i, '');
@@ -1470,7 +1480,7 @@ ${parsedDocument().html}
                 programmableDependencies:
                     state.document.manifest.programmableDependencies || [],
             });
-            if (!result?.success) return false;
+            if (!result?.success || !asyncCoordinator.isContextCurrent(context)) return false;
             showToast(`已导出 · ${result.name}`, 'success');
             return true;
         } catch (error) {
@@ -3482,6 +3492,8 @@ svg set {
 
     async function createEditor(documentModel = null, metadata = {}) {
         const generation = state.documentGeneration += 1;
+        asyncCoordinator.invalidateLatest('document-open');
+        state.saving = false;
         state.loading = true;
         elements['loading-state'].hidden = false;
         updateIdentity();
@@ -3555,8 +3567,8 @@ svg set {
         }
     }
 
-    async function openResult(result) {
-        if (!result?.success) return;
+    async function openResult(result, intent = null) {
+        if (!result?.success || (intent && !asyncCoordinator.isLatest(intent))) return false;
         if (result.kind === 'imported') {
             const title = String(result.name || '导入文稿').replace(/\.[^.]+$/, '');
             const isPresentation = result.importedKind === 'pptx';
@@ -3572,6 +3584,7 @@ svg set {
                 sourceName: result.name,
             };
             const projectType = isPresentation ? 'VPPTX' : 'VDOCX';
+            if (intent && !asyncCoordinator.isLatest(intent)) return false;
             await createEditor(model, {
                 filePath: null,
                 name: `${title}${isPresentation ? '.vpptx' : '.vdocx'}`,
@@ -3591,16 +3604,20 @@ svg set {
 
         const bytes = Uint8Array.from(result.bytes || []);
         const model = core.parse(bytes);
-        await createEditor(model, result);
+        if (intent && !asyncCoordinator.isLatest(intent)) return false;
+        return createEditor(model, result);
     }
 
     async function chooseOpen() {
         await runAfterUnsavedDecision('打开另一份文档前，可以保存当前修改，或舍弃这些修改。', async () => {
+            const intent = asyncCoordinator.beginLatest('document-open');
             try {
-                await openResult(await api.chooseOpen());
-                await renderRecentDocuments();
+                await openResult(await api.chooseOpen(), intent);
+                if (asyncCoordinator.isLatest(intent)) await renderRecentDocuments();
             } catch (error) {
-                showToast(`打开失败：${error.message}`, 'error', 5000);
+                if (asyncCoordinator.isLatest(intent)) {
+                    showToast(`打开失败：${error.message}`, 'error', 5000);
+                }
             }
         });
     }
@@ -3609,12 +3626,17 @@ svg set {
         await runAfterUnsavedDecision(
             '导入文档会建立一份新的 VDOCX 文稿。可以先保存当前修改，或舍弃这些修改。',
             async () => {
+                const intent = asyncCoordinator.beginLatest('document-open');
                 try {
                     const result = await api.chooseImport();
-                    await openResult(result);
-                    if (result?.success) await renderRecentDocuments();
+                    await openResult(result, intent);
+                    if (result?.success && asyncCoordinator.isLatest(intent)) {
+                        await renderRecentDocuments();
+                    }
                 } catch (error) {
-                    showToast(`导入失败：${error.message}`, 'error', 5000);
+                    if (asyncCoordinator.isLatest(intent)) {
+                        showToast(`导入失败：${error.message}`, 'error', 5000);
+                    }
                 }
             }
         );
@@ -3622,10 +3644,13 @@ svg set {
 
     async function openPath(filePath) {
         await runAfterUnsavedDecision('载入另一份文档前，可以保存当前修改，或舍弃这些修改。', async () => {
+            const intent = asyncCoordinator.beginLatest('document-open');
             try {
-                await openResult(await api.readPath(filePath));
+                await openResult(await api.readPath(filePath), intent);
             } catch (error) {
-                showToast(`载入失败：${error.message}`, 'error', 5000);
+                if (asyncCoordinator.isLatest(intent)) {
+                    showToast(`载入失败：${error.message}`, 'error', 5000);
+                }
             }
         });
     }
@@ -3636,8 +3661,9 @@ svg set {
         if (state.mode === 'html' || state.mode === 'css') {
             if (applySourceChanges(false) === false) return false;
         }
-        const generation = state.documentGeneration;
-        const savedRevision = state.documentRevision;
+        const context = asyncCoordinator.captureContext();
+        const generation = context.generation;
+        const savedRevision = context.revision;
         state.saving = true;
         updateIdentity();
         try {
@@ -3653,7 +3679,7 @@ svg set {
                 saveAs,
                 bytes,
             });
-            if (!result?.success || generation !== state.documentGeneration) return false;
+            if (!result?.success || !asyncCoordinator.isContextCurrent(context)) return false;
             state.currentPath = result.filePath;
             state.currentName = result.name;
             if (state.documentRevision === savedRevision) markSaved();
@@ -3665,8 +3691,10 @@ svg set {
             showToast(`保存失败：${error.message}`, 'error', 5000);
             return false;
         } finally {
-            state.saving = false;
-            updateIdentity();
+            if (generation === state.documentGeneration) {
+                state.saving = false;
+                updateIdentity();
+            }
         }
     }
 
@@ -4905,7 +4933,7 @@ ${safeCss}
     }
 
     async function initialize() {
-        if (!api || !core || !styleLibrary || !pagination
+        if (!api || !core || !styleLibrary || !pagination || !asyncModule
             || !window.ScriptoriumVisibility || !window.ScriptoriumAgentModule) {
             throw new Error('Scriptorium 原生文档内核或模块未载入。');
         }
