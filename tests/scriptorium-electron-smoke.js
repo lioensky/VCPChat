@@ -311,7 +311,7 @@ app.whenReady().then(async () => {
         };
     })()`);
     progress('formatting-interaction');
-    const formattingInteraction = await windowRef.webContents.executeJavaScript(`(() => {
+    const formattingInteraction = await windowRef.webContents.executeJavaScript(`(async () => {
         const root = document.getElementById('page-stream').shadowRoot;
         const editable = [...root.querySelectorAll('[data-vdoc-text]')]
             .find((node) => node.firstChild?.nodeType === Node.TEXT_NODE && node.firstChild.length >= 2);
@@ -342,6 +342,9 @@ app.whenReady().then(async () => {
             bubbles: true,
             composed: true
         }));
+        await new Promise((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(resolve))
+        );
 
         return {
             available: true,
