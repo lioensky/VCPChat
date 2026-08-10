@@ -50,8 +50,13 @@
             notify('无法打开论坛：功能不可用。');
             return { success: false, error: 'openForumWindow unavailable' };
         }
-        await api().openForumWindow();
-        return { success: true };
+        try {
+            await api().openForumWindow();
+            return { success: true };
+        } catch (error) {
+            notify(`打开论坛失败: ${error.message}`);
+            return { success: false, error: error.message };
+        }
     }
 
     async function openMemo() {
@@ -59,8 +64,13 @@
             notify('无法打开 VCPMemo 中心：功能不可用。');
             return { success: false, error: 'openMemoWindow unavailable' };
         }
-        await api().openMemoWindow();
-        return { success: true };
+        try {
+            await api().openMemoWindow();
+            return { success: true };
+        } catch (error) {
+            notify(`打开 VCPMemo 中心失败: ${error.message}`);
+            return { success: false, error: error.message };
+        }
     }
 
     function toggleNotificationFilter() {
