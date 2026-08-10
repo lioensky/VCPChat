@@ -567,6 +567,7 @@ try {
         const menuButton = document.getElementById('nextUiNotificationMenuBtn');
         const menu = document.getElementById('nextUiNotificationMenu');
         const forum = document.getElementById('nextUiNotificationForum');
+        const memo = document.getElementById('nextUiNotificationMemo');
         const filter = document.getElementById('nextUiNotificationFilterToggle');
         const clear = document.getElementById('nextUiNotificationClear');
         const openMenu = async () => {
@@ -579,7 +580,7 @@ try {
         forum.click();
         await tick();
         await openMenu();
-        forum.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2 }));
+        memo.click();
         await tick();
         await openMenu();
         filter.click();
@@ -639,7 +640,7 @@ try {
         'clear',
     ], `Next parity controls routed to the wrong commands: ${JSON.stringify(parityControls)}`);
     assert.equal(parityControls.firstFocus, 'nextUiNotificationForum', `notification menu initial focus is wrong: ${JSON.stringify(parityControls)}`);
-    assert.equal(parityControls.arrowFocus, 'nextUiNotificationFilterToggle', `notification menu arrow navigation is wrong: ${JSON.stringify(parityControls)}`);
+    assert.equal(parityControls.arrowFocus, 'nextUiNotificationMemo', `notification menu arrow navigation is wrong: ${JSON.stringify(parityControls)}`);
     assert.equal(parityControls.closedByEscape, true, `notification menu did not close on Escape: ${JSON.stringify(parityControls)}`);
     assert.deepEqual(parityControls.clearProtection, {
         disposableRemoved: true,

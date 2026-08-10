@@ -1152,6 +1152,7 @@ export function setupEventListeners(deps) {
     const nextUiNotificationMenuBtn = document.getElementById('nextUiNotificationMenuBtn');
     const nextUiNotificationMenu = document.getElementById('nextUiNotificationMenu');
     const nextUiNotificationForum = document.getElementById('nextUiNotificationForum');
+    const nextUiNotificationMemo = document.getElementById('nextUiNotificationMemo');
     const nextUiNotificationFilterToggle = document.getElementById('nextUiNotificationFilterToggle');
     const nextUiNotificationFilterState = document.getElementById('nextUiNotificationFilterState');
     const nextUiNotificationClear = document.getElementById('nextUiNotificationClear');
@@ -1161,6 +1162,7 @@ export function setupEventListeners(deps) {
         nextUiNotificationMenuBtn
         && nextUiNotificationMenu
         && nextUiNotificationForum
+        && nextUiNotificationMemo
         && nextUiNotificationFilterToggle
         && nextUiNotificationFilterState
         && nextUiNotificationClear
@@ -1205,8 +1207,7 @@ export function setupEventListeners(deps) {
         nextUiNotificationForum.addEventListener('click', () => {
             void runMenuAction(() => window.MainChatCommands?.openForum?.());
         });
-        nextUiNotificationForum.addEventListener('contextmenu', event => {
-            event.preventDefault();
+        nextUiNotificationMemo.addEventListener('click', () => {
             void runMenuAction(() => window.MainChatCommands?.openMemo?.());
         });
 
@@ -1243,8 +1244,7 @@ export function setupEventListeners(deps) {
 
         nextUiNotificationMenu.addEventListener('keydown', (event) => {
             if ((event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10'))
-                && (document.activeElement === nextUiNotificationForum
-                    || document.activeElement === nextUiNotificationFilterToggle)) {
+                && document.activeElement === nextUiNotificationFilterToggle) {
                 event.preventDefault();
                 document.activeElement.dispatchEvent(new MouseEvent('contextmenu', {
                     bubbles: true,

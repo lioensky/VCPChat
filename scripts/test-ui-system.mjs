@@ -515,12 +515,12 @@ assert.match(mainHtml, /id="nextUiMinimizeToTrayBtn"[^>]*aria-label="最小化�
     'Next must expose a distinct minimize-to-tray control');
 assert.match(mainChatCommandsSource, /function minimizeToTray\(\)[\s\S]*minimizeToTray\?\.\(\)/,
     'minimize-to-tray must route through the existing preload API');
-assert.match(mainHtml, /id="nextUiNotificationForum"[\s\S]*id="nextUiNotificationFilterToggle"[\s\S]*id="nextUiNotificationClear"/,
-    'the Next notification menu must contain Forum\/Memo, filter, and clear commands');
+assert.match(mainHtml, /id="nextUiNotificationForum"[\s\S]*id="nextUiNotificationMemo"[\s\S]*id="nextUiNotificationFilterToggle"[\s\S]*id="nextUiNotificationClear"/,
+    'the Next notification menu must contain separate Forum and Memo entries plus filter and clear commands');
 assert.doesNotMatch(eventListenersSource, /(?:doNotDisturbBtn|clearNotificationsBtn)\.click\(\)/,
     'Next notification actions must not proxy hidden Classic controls');
-assert.match(eventListenersSource, /nextUiNotificationForum\.addEventListener\('contextmenu'[\s\S]*openMemo/,
-    'Forum menu secondary action must open Memo');
+assert.match(eventListenersSource, /nextUiNotificationMemo\.addEventListener\('click'[\s\S]*openMemo/,
+    'the dedicated Memo menu item must open Memo');
 assert.match(eventListenersSource, /nextUiNotificationFilterToggle\.addEventListener\('contextmenu'[\s\S]*openNotificationFilterSettings/,
     'filter menu secondary action must open filter settings');
 assert.doesNotMatch(nextUiCss,
