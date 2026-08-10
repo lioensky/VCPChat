@@ -183,18 +183,18 @@
                     <span>ASK NOVA ABOUT VCP</span>
                 </div>
                 <div class="next-ui-nova-panel-actions">
-                    <a class="next-ui-nova-link next-ui-nova-link-frontend"
-                        href="https://deepwiki.com/lioensky/VCPChat" target="_blank" rel="noreferrer">
+                    <button class="next-ui-nova-link next-ui-nova-link-frontend" type="button"
+                        data-ask-nova-target="frontend" aria-label="向 Nova 询问 VCPChat 源码">
                         FRONTEND
-                    </a>
-                    <a class="next-ui-nova-link next-ui-nova-link-backend"
-                        href="https://deepwiki.com/lioensky/VCPToolBox" target="_blank" rel="noreferrer">
+                    </button>
+                    <button class="next-ui-nova-link next-ui-nova-link-backend" type="button"
+                        data-ask-nova-target="backend" aria-label="向 Nova 询问 VCPToolBox 源码">
                         BACKEND
-                    </a>
-                    <a class="next-ui-nova-link next-ui-nova-link-fullstack"
-                        href="https://deepwiki.com/search?q=lioensky%2FVCPToolBox%20lioensky%2FVCPChat" target="_blank" rel="noreferrer">
+                    </button>
+                    <button class="next-ui-nova-link next-ui-nova-link-fullstack" type="button"
+                        data-ask-nova-target="fullstack" aria-label="向 Nova 询问 VCP 全栈源码">
                         FULLSTACK
-                    </a>
+                    </button>
                 </div>
             </nav>
             <div id="nextUiAppGrid" class="next-ui-app-grid"></div>
@@ -2600,6 +2600,7 @@
     <script type="module" src="modules/ui-system/vcp-main-ui-runtime.js"></script>
     <script type="module" src="modules/ui-system/settings-bridge.js"></script>
     <script type="module" src="modules/ui-system/next-ui-apps.js"></script>
+    <script type="module" src="modules/ui-system/ask-nova-modal.js"></script>
     <script type="module" src="modules/ui-system/component-showcase.js"></script>
     <script src="modules/mainChatCommands.js"></script>
     <script src="modules/topTabManager.js"></script>

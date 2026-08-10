@@ -5,6 +5,8 @@ import { webcrypto } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { JSDOM } from 'jsdom';
 
+await import('./test-ask-nova-service.mjs');
+
 const composerSafeFocusSelector = /:focus-visible:not\(#messageInput\):not\(\.chat-message-input\)\s*\{/;
 const paperThemeSource = fs.readFileSync('styles/themes/themes纸墨与机芯.css', 'utf8');
 const componentStyles = fs.readFileSync('styles/ui-system/components.css', 'utf8');
@@ -48,6 +50,7 @@ Object.assign(globalThis, {
     CustomEvent: dom.window.CustomEvent,
     KeyboardEvent: dom.window.KeyboardEvent,
     MutationObserver: dom.window.MutationObserver,
+    DOMParser: dom.window.DOMParser,
     Option: dom.window.Option,
     HTMLElement: dom.window.HTMLElement,
     HTMLButtonElement: dom.window.HTMLButtonElement,
@@ -83,6 +86,82 @@ window.VCPWebAwesome = Object.freeze({
 const { VCPUI } = window;
 const scope = document.querySelector('.vcp-ui-scope');
 assert.ok(VCPUI, 'VCPUI should be exposed on window');
+
+const { createAskNovaController, renderSafeMarkdown } = await import(`${pathToFileURL(`${process.cwd()}/modules/ui-system/ask-nova-modal.js`).href}?ask-nova-contract-test=1`);
+const unsafeMarkdownHost = document.createElement('div');
+unsafeMarkdownHost.append(renderSafeMarkdown('unsafe', {
+    document,
+    marked: {
+        parse: () => '<p onclick="alert(1)">Safe <strong>text</strong></p><script>alert(1)</script><a href="javascript:alert(1)">bad</a><a href="https://deepwiki.com/lioensky/VCPChat">good</a>'
+    }
+}));
+assert.equal(unsafeMarkdownHost.querySelector('script'), null, 'Ask Nova Markdown must remove scripts');
+assert.equal(unsafeMarkdownHost.querySelector('[onclick]'), null, 'Ask Nova Markdown must remove event attributes');
+assert.equal(unsafeMarkdownHost.querySelector('a[href^="javascript:"]'), null, 'Ask Nova Markdown must remove dangerous links');
+assert.equal(unsafeMarkdownHost.querySelector('a[href^="https:"]')?.getAttribute('rel'), 'noreferrer noopener');
+
+const askNovaCalls = [];
+const askNovaApi = {
+    askNovaQuery: async payload => {
+        askNovaCalls.push(payload);
+        return { success: true, answer: '**Answer**', queryId: `${payload.target}-session` };
+    },
+    cancelAskNovaQuery: async requestId => {
+        askNovaCalls.push({ cancel: requestId });
+        return { success: true, cancelled: true };
+    },
+    sendOpenExternalLink: url => askNovaCalls.push({ external: url })
+};
+const askNovaController = createAskNovaController({ document, api: askNovaApi, VCPUI, marked: { parse: value => `<p>${value}</p>` } });
+const askNovaModal = askNovaController.open('backend');
+assert.equal(askNovaModal.getState().targetId, 'backend');
+assert.ok(askNovaModal.element.querySelector('.ask-nova-dialog'), 'Ask Nova modal must mount through VCPUI');
+const askNovaTextarea = askNovaModal.element.querySelector('.ask-nova-composer textarea');
+askNovaTextarea.value = 'Explain plugins';
+askNovaTextarea.dispatchEvent(new Event('input', { bubbles: true }));
+askNovaModal.element.querySelector('.ask-nova-composer').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+await new Promise(resolve => setTimeout(resolve, 0));
+assert.equal(askNovaCalls[0].target, 'backend');
+assert.deepEqual(askNovaCalls[0].history, []);
+assert.match(askNovaModal.element.querySelector('.ask-nova-message-assistant .ask-nova-message-bubble')?.textContent || '', /Answer/);
+askNovaModal.switchTarget('frontend');
+assert.equal(askNovaModal.getState().targetId, 'frontend');
+assert.equal(askNovaModal.getState().sessions.frontend.messages.length, 1, 'Ask Nova tabs must keep independent sessions');
+askNovaModal.element.querySelector('.ask-nova-open-external').click();
+assert.match(askNovaCalls.at(-1).external, /VCPChat/);
+askNovaModal.close();
+assert.equal(askNovaController.activeModal, null, 'Ask Nova close must clean up modal state');
+askNovaController.destroy();
+
+let pendingAskNovaResolve;
+const pendingAskNovaCalls = [];
+const pendingAskNovaController = createAskNovaController({
+    document,
+    VCPUI,
+    marked: { parse: value => `<p>${value}</p>` },
+    api: {
+        askNovaQuery: payload => {
+            pendingAskNovaCalls.push(payload);
+            return new Promise(resolve => { pendingAskNovaResolve = resolve; });
+        },
+        cancelAskNovaQuery: async requestId => {
+            pendingAskNovaCalls.push({ cancel: requestId });
+            return { success: true, cancelled: true };
+        },
+        sendOpenExternalLink: () => {}
+    }
+});
+const pendingAskNovaModal = pendingAskNovaController.open('frontend');
+const pendingTextarea = pendingAskNovaModal.element.querySelector('.ask-nova-composer textarea');
+pendingTextarea.value = 'Long query';
+pendingTextarea.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+await new Promise(resolve => setTimeout(resolve, 0));
+const pendingRequestId = pendingAskNovaCalls[0].requestId;
+pendingAskNovaModal.close();
+await new Promise(resolve => setTimeout(resolve, 0));
+assert.equal(pendingAskNovaCalls.at(-1).cancel, pendingRequestId, 'closing Ask Nova must cancel its active request');
+pendingAskNovaResolve({ success: false, cancelled: true });
+pendingAskNovaController.destroy();
 
 const expected = ['button', 'iconbutton', 'input', 'textarea', 'select', 'range', 'checkbox', 'switch', 'field', 'settingssection', 'settingsactionbar', 'badge', 'alert', 'card', 'tabs', 'toolbar', 'list', 'listitem', 'tableframe', 'emptystate', 'divider', 'tooltip', 'skeleton', 'segmentedcontrol', 'pagination', 'scrollarea', 'modal', 'toast', 'confirmdialog', 'inputdialog', 'apppageshell', 'windowcontrols', 'asyncboundary'];
 expected.forEach(name => assert.ok(VCPUI.components.includes(name), `missing public component ${name}`));

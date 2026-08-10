@@ -473,7 +473,7 @@ try {
         const drawerItemCount = document.querySelectorAll('#appTrayDrawerGrid > button').length;
         const trayDisplay = tray ? getComputedStyle(tray).display : 'missing';
         moreButton?.click();
-        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        await new Promise(resolve => setTimeout(resolve, 360));
         const opened = drawer?.classList.contains('active') === true
             && getComputedStyle(drawer).visibility === 'visible';
         moreButton?.click();
@@ -483,7 +483,51 @@ try {
     assert.ok(appTrayState.pinnedCount > 0, `Next app tray has no pinned shortcuts: ${JSON.stringify(appTrayState)}`);
     assert.ok(appTrayState.drawerItemCount > 0, `Next app tray drawer has no applications: ${JSON.stringify(appTrayState)}`);
     assert.equal(appTrayState.opened, true, `Next app tray drawer did not open: ${JSON.stringify(appTrayState)}`);
-    summary.push({ surface: '主界面 shell', mode: 'next', pass: true, lucide: bootLucide.lucideIcons, note: 'boot: WA 零请求/零注册，Orbitron/Nova/lucide 已载入，应用托盘与更多应用可用' });
+    await page.waitForFunction(() => Boolean(window.askNovaController), { timeout: timeoutMs });
+    const askNovaEntryState = await page.evaluate(() => ({
+        buttons: document.querySelectorAll('button[data-ask-nova-target]').length,
+        externalAnchors: document.querySelectorAll('a[data-ask-nova-target]').length,
+    }));
+    assert.equal(askNovaEntryState.buttons, 3, `Ask Nova must expose three modal buttons: ${JSON.stringify(askNovaEntryState)}`);
+    assert.equal(askNovaEntryState.externalAnchors, 0, `Ask Nova entries must not navigate directly: ${JSON.stringify(askNovaEntryState)}`);
+    await page.evaluate(() => window.topTabManager.openLaunchpad());
+    await page.waitForFunction(() => {
+        const button = document.querySelector('button[data-ask-nova-target="frontend"]');
+        const rect = button?.getBoundingClientRect();
+        return document.body.classList.contains('next-ui-launchpad-open')
+            && rect?.width > 0
+            && rect?.height > 0
+            && getComputedStyle(button).visibility !== 'hidden';
+    }, { timeout: timeoutMs });
+    await page.click('button[data-ask-nova-target="frontend"]');
+    await page.waitForFunction(() => Boolean(document.querySelector('.ask-nova-modal-host .ask-nova-dialog')), { timeout: timeoutMs });
+    await page.waitForFunction(() => {
+        const modal = document.querySelector('.ask-nova-modal-host');
+        return modal?.contains(document.activeElement) === true;
+    }, { timeout: timeoutMs });
+    const askNovaModalState = await page.evaluate(() => {
+        const host = document.querySelector('.ask-nova-modal-host');
+        const rect = host?.getBoundingClientRect();
+        return {
+            activeTarget: document.querySelector('.ask-nova-target-tab.active')?.dataset.target || '',
+            promptCount: document.querySelectorAll('.ask-nova-prompts button').length,
+            hasComposer: Boolean(document.querySelector('.ask-nova-composer textarea')),
+            isDialog: document.querySelector('.ask-nova-modal-host [role="dialog"]')?.getAttribute('aria-modal') === 'true'
+                || host?.localName === 'wa-dialog',
+            visibleOverlay: getComputedStyle(host).position === 'fixed'
+                && rect?.width >= window.innerWidth * 0.9
+                && rect?.height >= window.innerHeight * 0.9,
+        };
+    });
+    assert.equal(askNovaModalState.activeTarget, 'frontend', `Ask Nova opened the wrong target: ${JSON.stringify(askNovaModalState)}`);
+    assert.ok(askNovaModalState.promptCount > 0, `Ask Nova quick prompts missing: ${JSON.stringify(askNovaModalState)}`);
+    assert.equal(askNovaModalState.hasComposer, true, `Ask Nova composer missing: ${JSON.stringify(askNovaModalState)}`);
+    assert.equal(askNovaModalState.isDialog, true, `Ask Nova modal semantics missing: ${JSON.stringify(askNovaModalState)}`);
+    assert.equal(askNovaModalState.visibleOverlay, true, `Ask Nova modal is mounted but not visibly covering the window: ${JSON.stringify(askNovaModalState)}`);
+    await capture(page, 'main-ask-nova.png');
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => !document.querySelector('.ask-nova-modal-host'), { timeout: timeoutMs });
+    summary.push({ surface: '主界面 shell', mode: 'next', pass: true, lucide: bootLucide.lucideIcons, note: 'boot: WA 零请求/零注册，Orbitron/Nova/lucide 已载入，应用托盘与 Ask Nova 模态入口可用' });
 
     // 2. Open the UI 组件库 internal app; WA must register lazily.
     await page.click('#nextUiAddTabBtn');

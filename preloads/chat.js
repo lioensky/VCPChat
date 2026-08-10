@@ -146,6 +146,8 @@ function createCatalog(ops) {
         setThemeMode: command((themeMode) => ops.send('set-theme-mode', themeMode)),
         getPlatform: query(() => ops.invoke('get-platform')),
         getWallpaperThumbnail: query((filePath) => ops.invoke('get-wallpaper-thumbnail', filePath)),
+        askNovaQuery: query((payload) => ops.invoke('ask-nova:query', payload)),
+        cancelAskNovaQuery: query((requestId) => ops.invoke('ask-nova:cancel', requestId)),
 
         // Shared window launching
         openNotesWindow: query((theme) => ops.invoke('open-notes-window', theme)),
@@ -472,6 +474,8 @@ const ALLOWED_KEYS = [
     "setThemeMode",
     "getPlatform",
     "getWallpaperThumbnail",
+    "askNovaQuery",
+    "cancelAskNovaQuery",
     "openNotesWindow",
     "openNotesWithContent",
     "openTranslatorWindow",
