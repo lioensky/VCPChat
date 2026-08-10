@@ -587,7 +587,14 @@ async function inlineProgrammableDependencies(html, requestedDependencies = []) 
     if (!sources.length) return output;
     const embedded = sources.join('\n');
     if (/<\/head\s*>/i.test(output)) {
-        return output.replace(/<\/head\s*>/i, `${embedded}\n</head>`);
+        // 必须使用函数型替换。Three.js 压缩源码包含大量 `$&`、`$'`
+        // 等字符序列；若直接作为 replace 的 replacement string，
+        // JavaScript 会将其解释为匹配引用并把 `</head>` 写进库源码，
+        // 最终导致导出页面报 Unexpected token '<'。
+        return output.replace(
+            /<\/head\s*>/i,
+            () => `${embedded}\n</head>`
+        );
     }
     return `${embedded}\n${output}`;
 }
