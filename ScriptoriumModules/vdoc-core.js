@@ -97,14 +97,51 @@
         };
     }
 
+    function splitSlideSource(source, fallbackScript = '') {
+        const template = document.createElement('template');
+        template.innerHTML = sanitizeHtml(source);
+        const inlineScripts = [];
+        template.content.querySelectorAll('script').forEach((script) => {
+            // src 依赖声明必须留在页面结构中，供本地化、审计和单文件导出使用；
+            // 无 src 的脚本则交给 Scriptorium 受控生命周期运行时执行。
+            if (script.getAttribute('src')
+                || script.dataset.vdocLibrary
+                || script.dataset.vdocIgnoredSrc
+                || script.type === 'application/x-vdoc-ignored-external') {
+                return;
+            }
+            inlineScripts.push(script.textContent || '');
+            script.remove();
+        });
+        return {
+            html: template.innerHTML,
+            script: inlineScripts.length
+                ? inlineScripts.join('\n\n')
+                : String(fallbackScript || ''),
+            hadInlineScript: inlineScripts.length > 0,
+        };
+    }
+
+    function composeSlideSource(slide = {}) {
+        const html = String(slide.html || '');
+        const script = String(slide.script || '');
+        if (!script.trim()) return html;
+        const safeScript = script.replace(/<\/script/gi, '<\\/script');
+        return `${html}\n<script data-vdoc-slide-script>\n${safeScript}\n</script>`;
+    }
+
     function createSlide(input = {}, index = 0) {
         const candidate = input && typeof input === 'object' ? input : {};
+        const source = splitSlideSource(
+            candidate.source ?? candidate.html ?? defaultSlideHtml(),
+            candidate.script
+        );
         return {
             id: String(candidate.id || createId('slide')),
             name: String(candidate.name || `第 ${index + 1} 页`),
-            html: formatHtml(ensureTextNodeIds(candidate.html || defaultSlideHtml())),
+            html: formatHtml(ensureTextNodeIds(source.html || defaultSlideHtml())),
             css: sanitizeCss(candidate.css || ''),
-            script: String(candidate.script || ''),
+            script: source.script,
             transition: normalizeTransition(candidate.transition),
             duration: Number.isFinite(Number(candidate.duration))
                 ? Math.max(0, Number(candidate.duration))
@@ -498,6 +535,8 @@ p { margin: .7em 0; text-align: justify; text-justify: inter-ideograph; text-wra
         EDITABLE_SELECTOR,
         PRESERVED_CONTAINER_SELECTOR,
         createSceneConfig,
+        splitSlideSource,
+        composeSlideSource,
         createSlide,
         normalizeSlides,
         normalizeTransition,

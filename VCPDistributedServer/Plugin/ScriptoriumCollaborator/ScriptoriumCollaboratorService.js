@@ -315,6 +315,7 @@ async function mutateSlide(args, method, executionContext = {}) {
         requestId: requestIdOf(args, executionContext),
         slideIndex: args.slideIndex,
         name: args.name,
+        source: args.source ?? args.html,
         html: args.html,
         css: args.css,
         script: args.script,

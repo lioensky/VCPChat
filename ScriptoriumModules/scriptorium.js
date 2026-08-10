@@ -318,13 +318,19 @@
     }
 
     function currentSourceHtml() {
-        return isSlideDeck() ? activeSlide()?.html || '' : state.document?.source?.html || '';
+        return isSlideDeck()
+            ? core.composeSlideSource(activeSlide())
+            : state.document?.source?.html || '';
     }
 
     function setCurrentSourceHtml(html) {
         if (isSlideDeck()) {
             const slide = activeSlide();
-            if (slide) slide.html = core.formatHtml(core.ensureTextNodeIds(html));
+            if (slide) {
+                const source = core.splitSlideSource(html, slide.script);
+                slide.html = core.formatHtml(core.ensureTextNodeIds(source.html));
+                slide.script = source.script;
+            }
         } else {
             state.document.source.html = core.formatHtml(core.ensureTextNodeIds(html));
         }
@@ -630,6 +636,23 @@ ${surface === 'edit' ? `
         const intervals = new Set();
         const cleanups = [];
         let disposed = false;
+
+        // 页面脚本创建的 Canvas、SVG、控制节点等只属于当前运行时，
+        // 不能在编辑器同步结构时写回 slide.html，否则每次重渲染都会
+        // 再执行脚本并重复追加一份运行时 DOM。
+        const runtimeMutationObserver = new MutationObserver((records) => {
+            records.forEach((record) => {
+                record.addedNodes.forEach((node) => {
+                    if (node.nodeType !== Node.ELEMENT_NODE) return;
+                    node.dataset.vdocRuntimeGenerated = 'true';
+                });
+            });
+        });
+        runtimeMutationObserver.observe(runtimeRoot, {
+            childList: true,
+            subtree: true,
+        });
+        cleanups.push(() => runtimeMutationObserver.disconnect());
 
         const trackedRequestAnimationFrame = (callback) => {
             if (disposed) return 0;
@@ -1864,6 +1887,9 @@ ${state.document.source.html}
         const clone = runtime.cloneNode(true);
         restoreMathSemantics(clone);
         clone.removeAttribute('data-bound');
+        clone.querySelectorAll('[data-vdoc-runtime-generated]').forEach((node) => {
+            node.remove();
+        });
         clone.querySelectorAll(
             '[contenteditable], [spellcheck], [data-vdoc-editor-selected], [data-bound]'
         ).forEach((node) => {
@@ -2284,9 +2310,13 @@ ${state.document.source.html}
 
         if (isSource) {
             state.sourceMode = mode;
-            elements['source-title'].textContent = mode === 'html' ? 'HTML 源码' : 'CSS 源码';
+            elements['source-title'].textContent = mode === 'html'
+                ? (isSlideDeck() ? '当前页完整源码' : 'HTML 源码')
+                : 'CSS 源码';
             elements['source-description'].textContent = mode === 'html'
-                ? '人类编辑渲染结果，AI 始终以此结构为真相'
+                ? (isSlideDeck()
+                    ? '当前页结构、依赖声明与交互脚本均可在此编辑'
+                    : '人类编辑渲染结果，AI 始终以此结构为真相')
                 : '样式与纯 CSS 动画由 AI 协助设计';
             state.sourceEditor?.setOption('mode', mode === 'html' ? 'htmlmixed' : 'css');
             if (mode === 'html') setCurrentSourceHtml(currentSourceHtml());

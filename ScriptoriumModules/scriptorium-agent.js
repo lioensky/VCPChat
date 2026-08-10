@@ -213,10 +213,37 @@
 
     function reviewStandaloneScript(source, context = {}) {
         const policy = programmablePolicy();
-        if (policy) return policy.reviewJavaScript(source, context);
+        if (policy) {
+            const normalized = policy.normalizeJavaScriptDependencies
+                ? policy.normalizeJavaScriptDependencies(source, context)
+                : {
+                    source: String(source || ''),
+                    dependencies: [],
+                    diagnostics: [],
+                    changed: false,
+                };
+            const review = policy.reviewJavaScript(normalized.source, context);
+            return {
+                ...review,
+                source: normalized.source,
+                dependencies: [
+                    ...new Set([
+                        ...(normalized.dependencies || []),
+                        ...(review.dependencies || []),
+                    ]),
+                ],
+                findings: [
+                    ...(normalized.diagnostics || []),
+                    ...(review.findings || []),
+                ],
+                changed: normalized.changed,
+            };
+        }
         return {
             allowed: false,
             level: 'refuse',
+            source: String(source || ''),
+            dependencies: [],
             findings: [{
                 level: 'refuse',
                 ruleId: 'review-engine-unavailable',
@@ -248,7 +275,8 @@
 
         const slides = (Array.isArray(payload.slides) ? payload.slides : [])
             .map((slide, index) => {
-                const htmlResult = reviewProgrammableHtml(slide?.html, {
+                const completeSource = slide?.source ?? slide?.html;
+                const htmlResult = reviewProgrammableHtml(completeSource, {
                     phase: 'create',
                     documentKind: 'pptx',
                     slideIndex: index,
@@ -272,7 +300,9 @@
 
                 return {
                     ...(slide && typeof slide === 'object' ? slide : {}),
+                    source: htmlResult.html,
                     html: htmlResult.html,
+                    script: scriptReview.source,
                 };
             });
 
@@ -345,7 +375,7 @@
                 if (!slide) throw new Error('指定幻灯片不存在。');
                 if (kind === 'css') return slide.css || '';
                 if (kind === 'script') return slide.script || '';
-                return slide.html || '';
+                return core.composeSlideSource(slide);
             }
             return kind === 'css' ? getCurrentCss() : getCurrentHtml();
         };
@@ -1099,6 +1129,13 @@
                     slideIndex,
                     scriptId: isDeck() ? `slide-${slideIndex + 1}` : 'document',
                 });
+                if (scriptReview.changed) {
+                    replacements = [{
+                        target: original,
+                        replace: scriptReview.source,
+                        startLine: 1,
+                    }];
+                }
                 programmableContent.dependencies.push(
                     ...(scriptReview.dependencies || [])
                 );
@@ -1161,9 +1198,20 @@
                 if (isDeck()) {
                     const slide = slides()[slideIndex];
                     if (!slide) throw new Error('指定幻灯片不存在。');
-                    if (sourceKind === 'css') slide.css = core.sanitizeCss(nextSource);
-                    else if (sourceKind === 'script') slide.script = String(nextSource);
-                    else slide.html = core.formatHtml(core.ensureTextNodeIds(nextSource));
+                    if (sourceKind === 'css') {
+                        slide.css = core.sanitizeCss(nextSource);
+                    } else if (sourceKind === 'script') {
+                        slide.script = String(nextSource);
+                    } else {
+                        const completeSource = core.splitSlideSource(
+                            nextSource,
+                            slide.script
+                        );
+                        slide.html = core.formatHtml(
+                            core.ensureTextNodeIds(completeSource.html)
+                        );
+                        slide.script = completeSource.script;
+                    }
                 } else if (sourceKind === 'css') {
                     setCurrentCss(nextSource);
                 } else {
@@ -1270,7 +1318,8 @@
                 const insertionIndex = type === 'insert'
                     ? Math.max(0, Math.min(slides().length, Number(payload.slideIndex) || 0))
                     : slides().length;
-                const htmlReview = reviewProgrammableHtml(payload.html, {
+                const completeSource = payload.source ?? payload.html;
+                const htmlReview = reviewProgrammableHtml(completeSource, {
                     phase: 'pr',
                     documentKind: 'pptx',
                     slideIndex: insertionIndex,
@@ -1303,7 +1352,9 @@
                         : 'allow';
                 normalizedPayload = {
                     ...payload,
+                    source: htmlReview.html,
                     html: htmlReview.html,
+                    script: scriptReview.source,
                 };
             }
 
@@ -1338,7 +1389,7 @@
                     : list.length;
                 const slide = core.createSlide({
                     name: normalizedPayload.name,
-                    html: normalizedPayload.html,
+                    source: normalizedPayload.source ?? normalizedPayload.html,
                     css: normalizedPayload.css,
                     script: normalizedPayload.script,
                     transition: normalizedPayload.transition,

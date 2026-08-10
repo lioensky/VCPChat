@@ -12,20 +12,27 @@
         {
             library: 'three',
             patterns: [
-                /^https?:\/\/cdnjs\.cloudflare\.com\/ajax\/libs\/three\.js(?:\/|$)/i,
-                /^https?:\/\/cdn\.jsdelivr\.net\/npm\/three(?:@[^/]+)?(?:\/|$)/i,
-                /^https?:\/\/unpkg\.com\/three(?:@[^/]+)?(?:\/|$)/i,
+                /^(?:https?:)?\/\/cdnjs\.cloudflare\.com\/ajax\/libs\/three\.js(?:\/|$)/i,
+                /^(?:https?:)?\/\/cdn\.jsdelivr\.net\/npm\/three(?:@[^/]+)?(?:\/|$)/i,
+                /^(?:https?:)?\/\/unpkg\.com\/three(?:@[^/]+)?(?:\/|$)/i,
+                /^(?:https?:)?\/\/esm\.sh\/three(?:@[^/?#]+)?(?:[/?#]|$)/i,
+                /^(?:https?:)?\/\/cdn\.skypack\.dev\/three(?:@[^/?#]+)?(?:[/?#]|$)/i,
             ],
         },
         {
             library: 'anime',
             patterns: [
-                /^https?:\/\/cdnjs\.cloudflare\.com\/ajax\/libs\/animejs(?:\/|$)/i,
-                /^https?:\/\/cdn\.jsdelivr\.net\/npm\/animejs(?:@[^/]+)?(?:\/|$)/i,
-                /^https?:\/\/unpkg\.com\/animejs(?:@[^/]+)?(?:\/|$)/i,
+                /^(?:https?:)?\/\/cdnjs\.cloudflare\.com\/ajax\/libs\/animejs(?:\/|$)/i,
+                /^(?:https?:)?\/\/cdn\.jsdelivr\.net\/npm\/animejs(?:@[^/]+)?(?:\/|$)/i,
+                /^(?:https?:)?\/\/unpkg\.com\/animejs(?:@[^/]+)?(?:\/|$)/i,
+                /^(?:https?:)?\/\/esm\.sh\/animejs(?:@[^/?#]+)?(?:[/?#]|$)/i,
+                /^(?:https?:)?\/\/cdn\.skypack\.dev\/animejs(?:@[^/?#]+)?(?:[/?#]|$)/i,
             ],
         },
     ]);
+
+    const JAVASCRIPT_URL_PATTERN =
+        /(?:https?:)?\/\/[^\s'"`\\)]+|(?:\.\.?\/|\/)?vendor\/(?:anime|three)(?:\.min)?\.js(?:[?#][^\s'"`\\)]*)?/gi;
 
     const REFUSE_RULES = Object.freeze([
         {
@@ -160,12 +167,41 @@
         };
     }
 
+    function normalizeJavaScriptDependencies(source, context = {}) {
+        const code = String(source || '');
+        const diagnostics = [];
+        const dependencies = new Set();
+        const normalizedSource = code.replace(JAVASCRIPT_URL_PATTERN, (url) => {
+            const dependency = dependencyForUrl(url);
+            if (dependency.action !== 'local' || !dependency.library) return url;
+            dependencies.add(dependency.library);
+            diagnostics.push({
+                level: 'info',
+                ruleId: 'javascript-cdn-localized',
+                library: dependency.library,
+                source: url,
+                localUrl: dependency.localUrl,
+                message: `${dependency.library} JavaScript 中的 CDN URL 已转换为 Scriptorium 本地链接。`,
+                context,
+            });
+            return dependency.localUrl;
+        });
+        return {
+            source: normalizedSource,
+            dependencies: [...dependencies],
+            diagnostics,
+            changed: normalizedSource !== code,
+        };
+    }
+
     function dependenciesForJavaScript(source) {
         const code = String(source || '');
-        const dependencies = [];
-        if (/\bTHREE\s*\.|\bnew\s+THREE\b/.test(code)) dependencies.push('three');
-        if (/\banime\s*\(|\banime\s*\./.test(code)) dependencies.push('anime');
-        return dependencies;
+        const dependencies = new Set(
+            normalizeJavaScriptDependencies(code).dependencies
+        );
+        if (/\bTHREE\s*\.|\bnew\s+THREE\b/.test(code)) dependencies.add('three');
+        if (/\banime\s*\(|\banime\s*\./.test(code)) dependencies.add('anime');
+        return [...dependencies];
     }
 
     function reviewJavaScript(source, context = {}) {
@@ -362,6 +398,7 @@
     window.ScriptoriumProgrammableContent = Object.freeze({
         LOCAL_LIBRARIES,
         dependencyForUrl,
+        normalizeJavaScriptDependencies,
         dependenciesForJavaScript,
         reviewJavaScript,
         reviewScriptsInHtml,
