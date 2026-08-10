@@ -299,6 +299,7 @@
             model.checkpoints.unshift({
                 id: `agent-create-${crypto.randomUUID()}`,
                 source: author.type,
+                maid: author,
                 author,
                 name: deck ? 'Agent 创建演示工程' : 'Agent 创建文稿工程',
                 summary,
@@ -465,7 +466,8 @@
             return {
                 id: record.id,
                 source: record.source,
-                author: record.author || null,
+                maid: record.maid || record.author || null,
+                author: record.author || record.maid || null,
                 name: record.name,
                 summary: record.summary || record.note || '',
                 note: record.note || '',
@@ -528,14 +530,19 @@
                 options
             );
             const task = mutationQueue.then(async () => {
-                if (record.baseRevision !== revision()) {
+                const activeDocumentId = state.document?.manifest?.id || null;
+                if (record.documentId !== activeDocumentId
+                    || record.baseRevision !== revision()) {
                     record.status = 'conflict';
                     record.reviewedAt = Date.now();
                     record.receipt = {
                         ...receipt,
                         decision: 'conflict',
-                        message: receipt.message
-                            || '审批时文档修订已变化，未应用该提案。',
+                        message: receipt.message || (
+                            record.documentId !== activeDocumentId
+                                ? '审批时当前窗口已切换到另一份文档，未应用该提案。'
+                                : '审批时文档修订已变化，未应用该提案。'
+                        ),
                     };
                     renderLineage();
                     const conflict = response({
@@ -673,7 +680,9 @@
 
             const record = {
                 id: payload.prId || `pr-${crypto.randomUUID()}`,
+                documentId: state.document.manifest.id,
                 source: author.type,
+                maid: author,
                 author,
                 name: String(payload.name || 'Agent 源码变更'),
                 summary,
