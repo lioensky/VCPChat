@@ -326,15 +326,17 @@ class ScriptoriumAgentControlService {
             }
             throw new Error(normalized?.message || 'Scriptorium 工程规范化失败。');
         }
-        if (!normalized.serialized) {
-            throw new Error('Scriptorium 工程规范化未返回序列化内容。');
+        if (!normalized.bytes) {
+            throw new Error('Scriptorium 工程规范化未返回 ZIP 字节。');
         }
 
-        const serialized = String(normalized.serialized);
+        const artifactBytes = Buffer.from(normalized.bytes);
         const maximumBytes = 100 * 1024 * 1024;
-        if (!Buffer.byteLength(serialized, 'utf8')
-            || Buffer.byteLength(serialized, 'utf8') > maximumBytes) {
-            throw new Error('规范化后的工程为空或超过 100 MB 安全上限。');
+        if (!artifactBytes.length || artifactBytes.length > maximumBytes) {
+            throw new Error('规范化后的 ZIP 工程为空或超过 100 MB 安全上限。');
+        }
+        if (artifactBytes[0] !== 0x50 || artifactBytes[1] !== 0x4b) {
+            throw new Error('Scriptorium 工程规范化结果不是有效 ZIP 容器。');
         }
         const targetPath = await this.resolveTargetPath(
             payload.fileName || normalized.suggestedName || payload.title,
@@ -344,12 +346,12 @@ class ScriptoriumAgentControlService {
         );
         const writeResult = await this.documentHandlers.writeProjectArtifact(
             targetPath,
-            serialized
+            artifactBytes
         );
         if (!writeResult?.success) {
             throw new Error(writeResult?.message || 'Scriptorium 工程写入失败。');
         }
-        const fileHash = sha256(serialized);
+        const fileHash = sha256(artifactBytes);
         const stats = await fs.stat(targetPath);
 
         const openRequested = payload.openAfterCreate === true;

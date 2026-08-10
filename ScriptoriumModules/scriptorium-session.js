@@ -7,6 +7,7 @@
             elements,
             api,
             core,
+            containerModule,
             styleLibrary,
             asyncCoordinator,
             isSlideDeck,
@@ -36,7 +37,17 @@
                     : core.createDocument();
                 if (generation !== state.documentGeneration) return false;
 
+                state.resourceResolver?.revoke();
+                state.resourceObjectUrls = new Map();
+                state.documentResourceData = metadata.resourceData instanceof Map
+                    ? metadata.resourceData
+                    : new Map();
                 state.document = nextDocument;
+                state.resourceResolver = containerModule.createRuntimeResolver(
+                    state.document,
+                    state.documentResourceData,
+                    state.resourceObjectUrls
+                );
                 state.currentPath = metadata.filePath || null;
                 const projectExtension = core.extensionForKind(
                     state.document.manifest.scene.kind
@@ -172,9 +183,178 @@
             }
 
             const bytes = Uint8Array.from(result.bytes || []);
-            const model = core.parse(bytes);
+            const unpacked = await containerModule.unpack(bytes, core);
             if (intent && !asyncCoordinator.isLatest(intent)) return false;
-            return createEditor(model, result);
+            return createEditor(unpacked.document, {
+                ...result,
+                resourceData: unpacked.resourceData,
+            });
+        }
+
+        function isCollectableExternalUrl(value) {
+            return /^(?:file|https?):/i.test(String(value || '').trim());
+        }
+
+        function fontFaceUrls(css) {
+            const urls = [];
+            String(css || '').replace(/@font-face\s*\{[\s\S]*?\}/gi, (block) => {
+                block.replace(/url\(\s*(?:"([^"]+)"|'([^']+)'|([^)'"\s]+))\s*\)/gi,
+                    (_match, doubleQuoted, singleQuoted, bare) => {
+                        const url = doubleQuoted || singleQuoted || bare || '';
+                        if (isCollectableExternalUrl(url)) urls.push(url);
+                        return _match;
+                    });
+                return block;
+            });
+            return [...new Set(urls)];
+        }
+
+        function replaceFontFaceUrl(css, sourceUrl, replacement) {
+            return String(css || '').replace(/@font-face\s*\{[\s\S]*?\}/gi, (block) =>
+                block.replace(/url\(\s*(?:"([^"]+)"|'([^']+)'|([^)'"\s]+))\s*\)/gi,
+                    (match, doubleQuoted, singleQuoted, bare) => {
+                        const url = doubleQuoted || singleQuoted || bare || '';
+                        return url === sourceUrl ? `url("${replacement}")` : match;
+                    })
+            );
+        }
+
+        async function collectExternalResources() {
+            if (!elements['collect-external-resources']?.checked) {
+                return { collected: 0, retained: 0 };
+            }
+            const cache = new Map();
+            const collectUrl = async (url, metadata = {}) => {
+                if (!isCollectableExternalUrl(url)) return null;
+                if (!cache.has(url)) {
+                    cache.set(url, (async () => {
+                        try {
+                            const result = await api.readExternalResource({ url });
+                            if (!result?.success || !result.collectable || !result.bytes) {
+                                return { retained: true, reason: result?.reason || '资源不可收纳' };
+                            }
+                            const resource = await containerModule.registerResource(
+                                state.document,
+                                state.documentResourceData,
+                                {
+                                    bytes: Uint8Array.from(result.bytes),
+                                    kind: result.category === 'fonts' ? 'font' : 'media',
+                                    name: result.name,
+                                    mime: result.mime,
+                                    description: metadata.description,
+                                    nativeWidth: metadata.nativeWidth,
+                                    nativeHeight: metadata.nativeHeight,
+                                    duration: metadata.duration,
+                                    durationText: metadata.durationText,
+                                }
+                            );
+                            return {
+                                retained: false,
+                                reference: containerModule.resourceReference(resource),
+                            };
+                        } catch (error) {
+                            return { retained: true, reason: error.message };
+                        }
+                    })());
+                }
+                return cache.get(url);
+            };
+
+            const collectHtml = async (source) => {
+                const template = document.createElement('template');
+                template.innerHTML = String(source || '');
+                let collected = 0;
+                let retained = 0;
+                const mediaNodes = [...template.content.querySelectorAll(
+                    'img[src], video[src], audio[src], source[src]'
+                )];
+                for (const node of mediaNodes) {
+                    const url = node.getAttribute('src') || '';
+                    if (!isCollectableExternalUrl(url)) continue;
+                    const figure = node.closest('figure');
+                    const outcome = await collectUrl(url, {
+                        description: node.getAttribute('description')
+                            || figure?.getAttribute('description')
+                            || node.getAttribute('alt')
+                            || node.getAttribute('aria-label')
+                            || '',
+                        nativeWidth: Number(
+                            figure?.dataset.vdocNativeWidth || node.getAttribute('width')
+                        ) || null,
+                        nativeHeight: Number(
+                            figure?.dataset.vdocNativeHeight || node.getAttribute('height')
+                        ) || null,
+                        duration: Number(
+                            figure?.dataset.vdocDuration || node.dataset.vdocDuration
+                        ),
+                        durationText: figure?.dataset.vdocDurationText || '',
+                    });
+                    if (outcome?.reference) {
+                        node.setAttribute('src', outcome.reference);
+                        if (figure) {
+                            figure.dataset.vdocSrc = outcome.reference;
+                            figure.dataset.vdocSourceKind = 'embedded-resource';
+                        }
+                        collected += 1;
+                    } else {
+                        retained += 1;
+                    }
+                }
+
+                const styleNodes = [...template.content.querySelectorAll('style')];
+                for (const style of styleNodes) {
+                    for (const url of fontFaceUrls(style.textContent)) {
+                        const outcome = await collectUrl(url);
+                        if (outcome?.reference) {
+                            style.textContent = replaceFontFaceUrl(
+                                style.textContent,
+                                url,
+                                outcome.reference
+                            );
+                            collected += 1;
+                        } else {
+                            retained += 1;
+                        }
+                    }
+                }
+                return { source: template.innerHTML, collected, retained };
+            };
+
+            let collected = 0;
+            let retained = 0;
+            if (isSlideDeck()) {
+                for (const slide of state.document.source.slides || []) {
+                    const result = await collectHtml(slide.source);
+                    slide.source = core.normalizeCompleteSlideSource(result.source);
+                    collected += result.collected;
+                    retained += result.retained;
+                }
+                for (const url of fontFaceUrls(state.document.source.deckCss)) {
+                    const outcome = await collectUrl(url);
+                    if (outcome?.reference) {
+                        state.document.source.deckCss = replaceFontFaceUrl(
+                            state.document.source.deckCss,
+                            url,
+                            outcome.reference
+                        );
+                        collected += 1;
+                    } else {
+                        retained += 1;
+                    }
+                }
+            } else {
+                const result = await collectHtml(state.document.source.content);
+                state.document.source.content = result.source;
+                collected = result.collected;
+                retained = result.retained;
+            }
+            if (collected) {
+                state.document.manifest.modifiedAt = new Date().toISOString();
+                state.previewRevision = -1;
+                state.previewResult = null;
+                renderDocument();
+            }
+            return { collected, retained };
         }
 
         async function saveDocument(saveAs = false) {
@@ -191,6 +371,7 @@
             updateIdentity();
 
             try {
+                const collection = await collectExternalResources();
                 state.document.checkpoints = state.checkpoints;
                 state.document.manifest.styleDependencies = [
                     ...state.usedAdvancedStyleIds,
@@ -199,8 +380,9 @@
                     ...state.usedAdvancedStyleIds,
                 ].map((styleId) => styleLibrary.get(styleId)).filter(Boolean);
 
-                const bytes = new TextEncoder().encode(
-                    core.serialize(state.document)
+                const bytes = await containerModule.pack(
+                    state.document,
+                    state.documentResourceData
                 );
                 const result = await api.save({
                     filePath: state.currentPath,
@@ -222,7 +404,17 @@
 
                 await renderRecentDocuments();
                 if (asyncCoordinator.isContextCurrent(operationContext)) {
-                    showToast(`已保存 · ${result.name}`, 'success');
+                    const collectionSummary = collection.collected
+                        ? ` · 已收纳 ${collection.collected} 项资源`
+                        : '';
+                    const retainedSummary = collection.retained
+                        ? ` · ${collection.retained} 项保留原 URL`
+                        : '';
+                    showToast(
+                        `已保存 · ${result.name}${collectionSummary}${retainedSummary}`,
+                        'success',
+                        collection.retained ? 4200 : 2600
+                    );
                 }
                 return true;
             } catch (error) {

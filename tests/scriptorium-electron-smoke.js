@@ -648,7 +648,112 @@ app.whenReady().then(async () => {
             leafProtocol: Boolean(finalRoot.querySelector('[data-vdoc-block][data-vdoc-removable="true"]'))
         };
     })()`);
-    await windowRef.webContents.executeJavaScript(`document.getElementById('html-mode-btn').click()`);
+
+    progress('media-insertion-interaction');
+    const mediaInteraction = await windowRef.webContents.executeJavaScript(`(async () => {
+        const mediaButton = document.querySelector('[data-command="image"]');
+        mediaButton.click();
+        const dialog = document.getElementById('media-dialog');
+        const dialogVisibleAfterClick = dialog.hidden === false;
+        const srcInput = document.getElementById('media-src-input');
+        const descriptionInput = document.getElementById('media-description-input');
+        srcInput.value = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="32" height="18"%3E%3Crect width="32" height="18" fill="%238b5e34"/%3E%3C/svg%3E';
+        descriptionInput.value = '用于验证原生尺寸和源码描述的测试图片';
+        document.getElementById('media-form').requestSubmit();
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        const root = document.getElementById('page-stream').shadowRoot;
+        const figure = root.querySelector('figure[data-vdoc-media="image"]');
+        const image = figure?.querySelector('img');
+        const dialogClosedAfterInsert = dialog.hidden === true;
+
+        mediaButton.click();
+        const transfer = new DataTransfer();
+        transfer.items.add(new File([
+            '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="20"><rect width="40" height="20" fill="red"/></svg>'
+        ], 'batch-first.svg', { type: 'image/svg+xml' }));
+        transfer.items.add(new File([
+            '<svg xmlns="http://www.w3.org/2000/svg" width="60" height="30"><rect width="60" height="30" fill="blue"/></svg>'
+        ], 'batch-second.svg', { type: 'image/svg+xml' }));
+        const localInput = document.getElementById('media-local-input');
+        localInput.files = transfer.files;
+        localInput.dispatchEvent(new Event('change', { bubbles: true }));
+        const localCards = [...document.querySelectorAll('.media-local-item')];
+        const localDescriptions = [...document.querySelectorAll('.media-local-description')];
+        const srcFieldsHiddenInLocalMode =
+            document.getElementById('media-src-fields').hidden === true
+            && document.getElementById('media-src-input').disabled === true;
+        localDescriptions[0].value = '批量第一张红色测试图';
+        localDescriptions[0].dispatchEvent(new Event('input', { bubbles: true }));
+        localDescriptions[1].value = '批量第二张蓝色测试图';
+        localDescriptions[1].dispatchEvent(new Event('input', { bubbles: true }));
+        document.getElementById('media-form').requestSubmit();
+        const batchDeadline = Date.now() + 8000;
+        while (!document.getElementById('media-dialog').hidden
+            && Date.now() < batchDeadline) {
+            await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+        const batch = root.querySelector('[data-vdoc-media-batch="2"]');
+        const batchFigures = [...(batch?.querySelectorAll('figure[data-vdoc-media]') || [])];
+        const batchDescriptions = batchFigures.map((node) => node.getAttribute('description'));
+        const batchSourceNames = batchFigures.map((node) => node.dataset.vdocSourceName);
+        const batchUsesInternalResources = batchFigures.length === 2
+            && batchFigures.every((node) =>
+                node.dataset.vdocSourceKind === 'embedded-resource'
+                && node.querySelector('img')?.src.startsWith('blob:')
+            );
+
+        document.getElementById('html-mode-btn').click();
+        const source = document.querySelector(
+            '.source-editor-shell .CodeMirror'
+        )?.CodeMirror?.getValue() || '';
+        const internalReferences = source.match(
+            /vdoc-resource:\\/\\/media\\/[a-f0-9]{64}/gi
+        ) || [];
+        return {
+            buttonTitle: mediaButton.title || '',
+            dialogVisibleAfterClick,
+            dialogHasDescriptionField: Boolean(descriptionInput),
+            dialogClosedAfterInsert,
+            inserted: Boolean(figure && image),
+            localPickerSupportsMultiple: localInput.multiple === true,
+            localCardCount: localCards.length,
+            srcFieldsHiddenInLocalMode,
+            batchInserted: Boolean(batch),
+            batchDescriptions,
+            batchSourceNames,
+            batchUsesInternalResources,
+            sourceUsesInternalReferences: internalReferences.length >= 2,
+            sourceExcludesBatchData: !source.includes(
+                'PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmci'
+            ) && !source.includes('data:image/svg+xml;base64'),
+            usesSrc: image?.getAttribute('src')?.startsWith('data:image/svg+xml') === true,
+            nativeWidth: image?.getAttribute('width') || '',
+            nativeHeight: image?.getAttribute('height') || '',
+            centeredFigure: figure?.style.textAlign === 'center'
+                && figure?.style.margin === '1em auto',
+            centeredMedia: image?.style.margin === '0px auto'
+                || image?.style.margin === '0 auto',
+            description: figure?.getAttribute('description') || '',
+            completeDescription: figure?.dataset.vdocDescription || '',
+            mediaDescription: image?.getAttribute('description') || '',
+            sourceKeepsMetadata: source.includes('data-vdoc-media="image"')
+                && source.includes('data-vdoc-native-width="32"')
+                && source.includes('data-vdoc-native-height="18"')
+                && source.includes('description="用于验证原生尺寸和源码描述的测试图片"')
+                && source.includes('data-vdoc-description=')
+                && source.includes('原生分辨率 32 × 18 px')
+                && source.includes('data-vdoc-media-batch="2"')
+                && source.includes('data-vdoc-source-name="batch-first.svg"')
+                && source.includes('data-vdoc-source-name="batch-second.svg"')
+                && source.includes('description="批量第一张红色测试图"')
+                && source.includes('description="批量第二张蓝色测试图"')
+        };
+    })()`);
+    if (!mediaInteraction.inserted) {
+        await windowRef.webContents.executeJavaScript(
+            `document.getElementById('html-mode-btn').click()`
+        );
+    }
 
     progress('collect-snapshot');
     const snapshot = await windowRef.webContents.executeJavaScript(`({
@@ -730,6 +835,7 @@ app.whenReady().then(async () => {
     rangeSelectionInteraction: ${JSON.stringify(rangeSelectionInteraction)},
     enterInteraction: ${JSON.stringify(enterInteraction)},
     blockInteraction: ${JSON.stringify(blockInteraction)},
+    mediaInteraction: ${JSON.stringify(mediaInteraction)},
     approvalPending: ${JSON.stringify(approvalPending)},
     approvalResult: ${JSON.stringify(approvalResult)},
     viewport: { width: innerWidth, height: innerHeight }
@@ -819,6 +925,33 @@ app.whenReady().then(async () => {
         || snapshot.blockInteraction.finalContainers < 1
         || !snapshot.blockInteraction.hasTable || !snapshot.blockInteraction.hasEditableCells
         || !snapshot.blockInteraction.leafProtocol
+        || snapshot.mediaInteraction.buttonTitle !== '插入媒体'
+        || !snapshot.mediaInteraction.dialogVisibleAfterClick
+        || !snapshot.mediaInteraction.dialogHasDescriptionField
+        || !snapshot.mediaInteraction.dialogClosedAfterInsert
+        || !snapshot.mediaInteraction.inserted
+        || !snapshot.mediaInteraction.localPickerSupportsMultiple
+        || snapshot.mediaInteraction.localCardCount !== 2
+        || !snapshot.mediaInteraction.srcFieldsHiddenInLocalMode
+        || !snapshot.mediaInteraction.batchInserted
+        || snapshot.mediaInteraction.batchDescriptions?.join('|')
+           !== '批量第一张红色测试图|批量第二张蓝色测试图'
+        || snapshot.mediaInteraction.batchSourceNames?.join('|')
+           !== 'batch-first.svg|batch-second.svg'
+        || !snapshot.mediaInteraction.batchUsesInternalResources
+        || !snapshot.mediaInteraction.sourceUsesInternalReferences
+        || !snapshot.mediaInteraction.sourceExcludesBatchData
+        || !snapshot.mediaInteraction.usesSrc
+        || snapshot.mediaInteraction.nativeWidth !== '32'
+        || snapshot.mediaInteraction.nativeHeight !== '18'
+        || !snapshot.mediaInteraction.centeredFigure
+        || !snapshot.mediaInteraction.centeredMedia
+        || snapshot.mediaInteraction.description
+           !== '用于验证原生尺寸和源码描述的测试图片'
+        || snapshot.mediaInteraction.mediaDescription
+           !== '用于验证原生尺寸和源码描述的测试图片'
+        || !snapshot.mediaInteraction.completeDescription.includes('原生分辨率 32 × 18 px')
+        || !snapshot.mediaInteraction.sourceKeepsMetadata
         || snapshot.approvalPending.pendingCount !== 1
         || snapshot.approvalPending.pendingAuthor !== '冒烟测试 Agent'
         || snapshot.approvalPending.pendingStatus !== 'pending'

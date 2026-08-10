@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self' data: blob: file:; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: file:; media-src 'self' data: blob: file:; font-src 'self' data: file:; connect-src 'self' blob: data:;">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' data: blob: file:; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: file: http: https:; media-src 'self' data: blob: file: http: https:; font-src 'self' data: blob: file: http: https:; connect-src 'self' blob: data:;">
     <title>VCP Scriptorium · 共笔文坊</title>
     <link rel="stylesheet" href="../styles/themes.css">
     <link rel="stylesheet" href="scriptorium.css">
@@ -69,6 +69,11 @@
                 <svg viewBox="0 0 24 24"><path d="M5 3h12l2 2v16H5z"/><path d="M8 3v6h8V3M8 21v-8h8v8"/></svg>
                 <span>保存</span>
             </button>
+            <label class="resource-collection-toggle"
+                title="保存时尝试将可确认的外部媒体与字体收纳进工程；网页和未知 URL 保持原样">
+                <input id="collect-external-resources" type="checkbox">
+                <span>收纳外链</span>
+            </label>
             <button id="save-as-btn" class="deck-button compact" title="另存为">
                 <svg viewBox="0 0 24 24"><path d="M12 16v-9M8 11l4-4 4 4"/><path d="M5 15v5h14v-5"/></svg>
             </button>
@@ -201,7 +206,7 @@
             <button id="insert-block-btn" class="deck-button compact" type="button" title="在当前块后插入">
                 <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/><path d="M4 3h16M4 21h16"/></svg>
             </button>
-            <button class="deck-button compact" data-command="image" title="插入图片">
+            <button class="deck-button compact" data-command="image" title="插入媒体" aria-label="插入媒体">
                 <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m4 18 5-5 4 4 3-3 4 4"/></svg>
             </button>
             <button id="insert-table-btn" class="deck-button compact" title="插入 3 × 3 表格">
@@ -465,6 +470,53 @@
         </section>
     </div>
 
+    <div id="media-dialog" class="dialog-backdrop" role="dialog" aria-modal="true"
+        aria-labelledby="media-dialog-title" hidden>
+        <form id="media-form" class="checkpoint-dialog media-dialog">
+            <span class="dialog-kicker">INSERT MEDIA FROM SRC</span>
+            <h2 id="media-dialog-title">插入媒体</h2>
+            <p>输入单个媒体 src，或从本地一次选择多个文件。批量模式可为每个素材分别填写 description，插入时自动读取原生分辨率与音视频时长。</p>
+            <div class="media-local-picker">
+                <button type="button" id="media-local-select-btn">选择本地媒体文件</button>
+                <span id="media-local-count">尚未选择本地文件</span>
+                <input id="media-local-input" type="file"
+                    accept="image/*,video/*,audio/*" multiple hidden>
+            </div>
+            <div id="media-local-list" class="media-local-list" hidden
+                aria-label="待插入本地媒体及描述"></div>
+            <div id="media-src-fields">
+                <div class="media-source-separator"><span>或者插入单个 src</span></div>
+                <label class="media-field">
+                    <span>媒体类型</span>
+                    <select id="media-kind-select" aria-label="媒体类型">
+                        <option value="auto">自动识别</option>
+                        <option value="image">图片</option>
+                        <option value="video">视频</option>
+                        <option value="audio">音频</option>
+                    </select>
+                </label>
+                <label class="media-field">
+                    <span>媒体 src</span>
+                    <input id="media-src-input" type="text" required
+                        placeholder="https://example.com/media.png 或 data:image/..."
+                        autocomplete="off" spellcheck="false">
+                </label>
+                <label class="media-field">
+                    <span>内容描述</span>
+                    <textarea id="media-description-input"
+                        placeholder="描述媒体内容，供无障碍工具与 AI 理解"></textarea>
+                </label>
+            </div>
+            <div id="media-dialog-status" class="media-dialog-status" role="status">
+                等待输入媒体地址
+            </div>
+            <div class="dialog-actions">
+                <button type="button" id="media-cancel-btn">取消</button>
+                <button type="submit" id="media-insert-btn" class="dialog-confirm">读取信息并插入</button>
+            </div>
+        </form>
+    </div>
+
     <div id="checkpoint-dialog" class="dialog-backdrop" hidden>
         <form class="checkpoint-dialog">
             <span class="dialog-kicker">CREATE CHECKPOINT</span>
@@ -594,9 +646,11 @@
     <script src="../vendor/anime.min.js"></script>
     <script src="../vendor/three.min.js"></script>
     <script src="../modules/renderer/pretext.bundle.js"></script>
+    <script src="../node_modules/jszip/dist/jszip.min.js"></script>
     <script src="scriptorium-pretext-bridge.js"></script>
     <script src="scriptorium-programmable-content.js"></script>
     <script src="vdoc-core.js"></script>
+    <script src="vdoc-container.js"></script>
     <script src="vdoc-style-library.js"></script>
     <script src="scriptorium-pagination.js"></script>
     <script src="scriptorium-visibility.js"></script>

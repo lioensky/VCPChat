@@ -3,6 +3,7 @@
 (() => {
     const api = window.scriptoriumAPI || window.docxAPI;
     const core = window.VDocCore;
+    const containerModule = window.VDocContainer;
     const styleLibrary = window.VDocStyleLibrary;
     const pagination = window.VDocPagination;
     const asyncModule = window.ScriptoriumAsync;
@@ -77,6 +78,10 @@
         slideRuntimeIdentity: null,
         programmableContentDiagnostics: [],
         checkpointSaveQueue: Promise.resolve(),
+        documentResourceData: new Map(),
+        resourceObjectUrls: new Map(),
+        resourceResolver: null,
+        mediaLocalItems: [],
     };
 
     const asyncCoordinator = asyncModule?.createCoordinator({
@@ -98,6 +103,7 @@
         elements,
         api,
         core,
+        containerModule,
         styleLibrary,
         asyncCoordinator,
         isSlideDeck,
@@ -119,6 +125,7 @@
             'outline-toggle-btn', 'focus-mode-btn', 'lineage-toggle-btn',
             'minimize-btn', 'maximize-btn', 'close-btn',
             'new-btn', 'new-deck-btn', 'open-btn', 'import-btn', 'save-btn', 'save-as-btn',
+            'collect-external-resources',
             'export-flow-html-btn', 'export-paged-html-btn', 'export-pdf-btn',
             'render-mode-btn', 'read-mode-btn', 'html-mode-btn', 'css-mode-btn',
             'font-family-select', 'font-size-select', 'text-color-input',
@@ -147,7 +154,11 @@
             'style-preview-name', 'style-preview-description', 'style-preview-frame',
             'style-preview-targets', 'style-apply-btn', 'unsaved-dialog',
             'unsaved-dialog-message', 'unsaved-document-name', 'unsaved-cancel-btn',
-            'unsaved-discard-btn', 'unsaved-save-btn', 'checkpoint-dialog',
+            'unsaved-discard-btn', 'unsaved-save-btn', 'media-dialog', 'media-form',
+            'media-src-fields', 'media-kind-select', 'media-src-input', 'media-description-input',
+            'media-dialog-status', 'media-cancel-btn', 'media-insert-btn',
+            'media-local-select-btn', 'media-local-input', 'media-local-count',
+            'media-local-list', 'checkpoint-dialog',
             'checkpoint-name-input', 'checkpoint-note-input', 'checkpoint-cancel-btn',
             'pr-review-dialog', 'pr-review-title', 'pr-review-meta',
             'pr-review-close-btn', 'pr-render-diff', 'pr-source-diff',
@@ -408,6 +419,10 @@
         }
     }
 
+    function resolveRuntimeResources(source) {
+        return state.resourceResolver?.resolveHtml(source) || String(source || '');
+    }
+
     function currentSourceCss() {
         return isSlideDeck()
             ? state.document?.source?.deckCss || ''
@@ -660,7 +675,7 @@ ${surface === 'edit' ? `
         root.replaceChildren();
 
         const style = document.createElement('style');
-        style.textContent = buildDocumentStyle('edit');
+        style.textContent = resolveRuntimeResources(buildDocumentStyle('edit'));
         const runtime = document.createElement('div');
         runtime.dataset.sceneKind = state.document.manifest.scene.kind;
         runtime.style.setProperty('--vdoc-zoom', String(state.zoom / 100));
@@ -671,15 +686,19 @@ ${surface === 'edit' ? `
             const source = parsedSlide(slide);
             runtime.className = 'vdoc-runtime vdoc-slide-editor-runtime';
             runtime.dataset.slideId = slide?.id || '';
-            runtime.innerHTML = source.html;
+            runtime.innerHTML = resolveRuntimeResources(source.html);
             const slideStyle = document.createElement('style');
             slideStyle.dataset.vdocSlideStyle = slide?.id || '';
-            slideStyle.textContent = source.css;
+            slideStyle.textContent = resolveRuntimeResources(source.css);
             root.appendChild(slideStyle);
         } else {
-            pagination.renderContinuous(parsedDocument().html, runtime, {
-                ensureIds: core.ensureTextNodeIds,
-            });
+            pagination.renderContinuous(
+                resolveRuntimeResources(parsedDocument().html),
+                runtime,
+                {
+                    ensureIds: core.ensureTextNodeIds,
+                }
+            );
         }
         renderMathNodes(root);
 
@@ -715,16 +734,16 @@ ${surface === 'edit' ? `
             || elements['read-page-stream'].attachShadow({ mode: 'open' });
         root.replaceChildren();
         const style = document.createElement('style');
-        style.textContent = buildDocumentStyle('paged');
+        style.textContent = resolveRuntimeResources(buildDocumentStyle('paged'));
         const runtime = document.createElement('div');
         runtime.dataset.sceneKind = state.document.manifest.scene.kind;
         root.append(style, runtime);
-        const previewHtml = isSlideDeck()
+        const previewHtml = resolveRuntimeResources(isSlideDeck()
             ? state.document.source.slides.map((slide) => {
                 const source = parsedSlide(slide);
                 return `<section data-vdoc-slide data-vdoc-slide-id="${escapeHtml(slide.id)}">${source.html}<style>${source.css}</style></section>`;
             }).join('\n')
-            : parsedDocument().html;
+            : parsedDocument().html);
         state.previewResult = pagination.paginate(previewHtml, runtime, {
             ensureIds: core.ensureTextNodeIds,
             scene: core.createSceneConfig(state.document.manifest.scene),
@@ -992,6 +1011,7 @@ ${parsedDocument().html}
                 }
                 html = buildPagedExportHtml();
             }
+            html = state.resourceResolver?.resolveExportHtml(html) || html;
             const baseName = state.currentName.replace(/\.(?:vdocx|vpptx)$/i, '');
             const result = await api.exportRichDocument({
                 format,
@@ -1930,6 +1950,10 @@ ${parsedDocument().html}
         // 因此可以安全序列化。仅剥离编辑器自身附加的可编辑标记。
         const clone = renderedBlock.cloneNode(true);
         restoreMathSemantics(clone);
+        clone.querySelectorAll('[data-vdoc-resource-src]').forEach((media) => {
+            media.setAttribute('src', media.dataset.vdocResourceSrc);
+            media.removeAttribute('data-vdoc-resource-src');
+        });
         [clone, ...clone.querySelectorAll(
             '[contenteditable], [spellcheck], [data-vdoc-editor-selected]'
         )].forEach((node) => {
@@ -2629,7 +2653,7 @@ ${parsedDocument().html}
             scheduleFormattingControls(blocks[0]);
             return true;
         }
-        if (command === 'image') return insertImage();
+        if (command === 'image') return insertMedia();
         return false;
     }
 
@@ -2647,9 +2671,442 @@ ${parsedDocument().html}
         markDirty({ coalesce: true });
     }
 
-    function insertImage() {
-        showToast('图片资源本地化将在 VDOCX 资源层接入。');
+    function inferMediaKind(src) {
+        const normalized = String(src || '').trim().toLowerCase();
+        const dataType = normalized.match(/^data:(image|video|audio)\//)?.[1];
+        if (dataType) return dataType;
+        const pathname = normalized.split(/[?#]/, 1)[0];
+        if (/\.(?:avif|bmp|gif|ico|jpe?g|png|svg|webp|tiff?)$/i.test(pathname)) {
+            return 'image';
+        }
+        if (/\.(?:m4v|mkv|mov|mp4|mpeg|mpg|ogv|webm)$/i.test(pathname)) {
+            return 'video';
+        }
+        if (/\.(?:aac|flac|m4a|mp3|oga|ogg|opus|wav|weba|wma)$/i.test(pathname)) {
+            return 'audio';
+        }
+        return '';
+    }
+
+    function mediaNameFromSrc(src) {
+        try {
+            const pathname = new URL(src, location.href).pathname;
+            return decodeURIComponent(pathname.split('/').filter(Boolean).pop() || '');
+        } catch {
+            return String(src || '').split(/[\\/]/).pop()?.split(/[?#]/, 1)[0] || '';
+        }
+    }
+
+    function formatMediaDuration(seconds) {
+        if (!Number.isFinite(seconds) || seconds < 0) return '';
+        const milliseconds = Math.round(seconds * 1000);
+        const hours = Math.floor(milliseconds / 3600000);
+        const minutes = Math.floor((milliseconds % 3600000) / 60000);
+        const wholeSeconds = Math.floor((milliseconds % 60000) / 1000);
+        const fraction = milliseconds % 1000;
+        const clock = [
+            ...(hours ? [String(hours).padStart(2, '0')] : []),
+            String(minutes).padStart(2, '0'),
+            String(wholeSeconds).padStart(2, '0'),
+        ].join(':');
+        return `${clock}.${String(fraction).padStart(3, '0')}`;
+    }
+
+    function readMediaMetadata(kind, src, timeout = 15000) {
+        return new Promise((resolve) => {
+            const media = kind === 'image'
+                ? new Image()
+                : document.createElement(kind);
+            let settled = false;
+            const finish = (metadata) => {
+                if (settled) return;
+                settled = true;
+                window.clearTimeout(timer);
+                media.removeAttribute?.('src');
+                media.load?.();
+                resolve(metadata);
+            };
+            const timer = window.setTimeout(() => finish({ available: false }), timeout);
+
+            if (kind === 'image') {
+                media.onload = () => finish({
+                    available: true,
+                    width: media.naturalWidth,
+                    height: media.naturalHeight,
+                });
+                media.onerror = () => finish({ available: false });
+            } else {
+                media.preload = 'metadata';
+                media.onloadedmetadata = () => finish({
+                    available: true,
+                    width: kind === 'video' ? media.videoWidth : null,
+                    height: kind === 'video' ? media.videoHeight : null,
+                    duration: Number.isFinite(media.duration) ? media.duration : null,
+                });
+                media.onerror = () => finish({ available: false });
+            }
+            media.src = src;
+        });
+    }
+
+    function createMediaFigure(kind, src, metadata, description, sourceInfo = {}) {
+        const figure = document.createElement('figure');
+        figure.className = 'vdoc-media';
+        figure.dataset.vdocMedia = kind;
+        if (!src.startsWith('data:')) figure.dataset.vdocSrc = src;
+        figure.dataset.vdocSourceKind = src.startsWith(containerModule.RESOURCE_SCHEME)
+            ? 'embedded-resource'
+            : 'external-src';
+        if (sourceInfo.name) figure.dataset.vdocSourceName = sourceInfo.name;
+        if (sourceInfo.type) figure.dataset.vdocSourceType = sourceInfo.type;
+        if (Number.isFinite(sourceInfo.size)) {
+            figure.dataset.vdocSourceSize = String(sourceInfo.size);
+        }
+        figure.style.margin = '1em auto';
+        figure.style.textAlign = 'center';
+
+        const media = document.createElement(kind === 'image' ? 'img' : kind);
+        const internalResource = src.startsWith(containerModule.RESOURCE_SCHEME);
+        if (internalResource) {
+            media.dataset.vdocResourceSrc = src;
+            media.src = resolveRuntimeResources(src);
+        } else {
+            media.src = src;
+        }
+        media.dataset.vdocMediaSource = 'src';
+        media.style.display = 'block';
+        media.style.margin = '0 auto';
+        media.style.maxWidth = '100%';
+        if (kind !== 'audio') media.style.height = 'auto';
+        if (kind === 'image') {
+            media.alt = description;
+            media.loading = 'lazy';
+            media.decoding = 'async';
+        } else {
+            media.controls = true;
+            media.preload = 'metadata';
+            media.setAttribute('aria-label', description);
+        }
+
+        const nativeWidth = Number(metadata.width);
+        const nativeHeight = Number(metadata.height);
+        if (nativeWidth > 0 && nativeHeight > 0) {
+            media.width = nativeWidth;
+            media.height = nativeHeight;
+            figure.dataset.vdocNativeWidth = String(nativeWidth);
+            figure.dataset.vdocNativeHeight = String(nativeHeight);
+        }
+        if (kind === 'audio') {
+            media.style.width = 'min(100%, 640px)';
+        }
+
+        const duration = Number(metadata.duration);
+        const durationText = formatMediaDuration(duration);
+        if (Number.isFinite(duration) && duration >= 0) {
+            figure.dataset.vdocDuration = String(Math.round(duration * 1000) / 1000);
+            figure.dataset.vdocDurationText = durationText;
+            media.dataset.vdocDuration = figure.dataset.vdocDuration;
+        }
+
+        const nativeFacts = [];
+        if (nativeWidth > 0 && nativeHeight > 0) {
+            nativeFacts.push(`原生分辨率 ${nativeWidth} × ${nativeHeight} px`);
+        }
+        if (durationText) {
+            nativeFacts.push(`原生时长 ${durationText}（${figure.dataset.vdocDuration} 秒）`);
+        }
+        if (!metadata.available) nativeFacts.push('原生元数据未能读取');
+        const nativeDescription = [
+            kind === 'image' ? '图片' : kind === 'video' ? '视频' : '音频',
+            description,
+            ...nativeFacts,
+        ].filter(Boolean).join('；');
+        // description 保存人类输入的内容语义；data-vdoc-description 则补充
+        // 分辨率、时长等机器探测结果，AI 可分别读取原始描述和完整媒体信息。
+        figure.setAttribute('description', description);
+        figure.dataset.vdocDescription = nativeDescription;
+        figure.setAttribute('aria-label', nativeDescription);
+        media.setAttribute('description', description);
+        media.dataset.vdocDescription = nativeDescription;
+        media.title = nativeDescription;
+
+        const caption = document.createElement('figcaption');
+        caption.textContent = description;
+        caption.style.marginTop = '.5em';
+        caption.style.fontSize = '.875em';
+        caption.style.opacity = '.72';
+        figure.append(media, caption);
+        return figure;
+    }
+
+    function insertMediaFigure(figure) {
+        flushPendingRenderedEdits();
+        const root = getRenderRoot();
+        if (!root) return false;
+        const current = state.activeEditableBlock && root.contains(state.activeEditableBlock)
+            ? state.activeEditableBlock
+            : root.querySelector('[data-vdoc-block]:last-of-type');
+        const anchor = current?.closest?.('table, [data-vdoc-block]') || current;
+        const parent = anchor?.parentElement
+            || root.querySelector('[data-vdoc-preserve="true"]')
+            || root.querySelector('.vdoc-flow-runtime, .vdoc-slide-editor-runtime');
+        if (!parent) return false;
+        if (anchor?.parentElement) anchor.after(figure);
+        else parent.appendChild(figure);
+        insertSourceBlockRelativeTo(blockIdentityOf(anchor), figure, 'after');
+        markDirty({ coalesce: true });
+        scheduleEditSnapshot();
         return true;
+    }
+
+    function mediaKindForFile(file) {
+        const mimeKind = String(file?.type || '').match(/^(image|video|audio)\//)?.[1];
+        return mimeKind || inferMediaKind(file?.name || '');
+    }
+
+    function formatFileSize(bytes) {
+        const size = Number(bytes) || 0;
+        if (size < 1024) return `${size} B`;
+        if (size < 1024 ** 2) return `${(size / 1024).toFixed(1)} KB`;
+        return `${(size / 1024 ** 2).toFixed(1)} MB`;
+    }
+
+    function syncMediaInputMode() {
+        const localMode = state.mediaLocalItems.length > 0;
+        elements['media-src-fields'].hidden = localMode;
+        elements['media-src-input'].disabled = localMode;
+        elements['media-kind-select'].disabled = localMode;
+        elements['media-description-input'].disabled = localMode;
+        elements['media-local-list'].querySelectorAll('textarea, button').forEach((control) => {
+            control.disabled = elements['media-insert-btn'].disabled;
+        });
+    }
+
+    function renderMediaLocalItems() {
+        const list = elements['media-local-list'];
+        const items = state.mediaLocalItems;
+        list.hidden = !items.length;
+        elements['media-local-count'].textContent = items.length
+            ? `已选择 ${items.length} 个文件`
+            : '尚未选择本地文件';
+        list.replaceChildren(...items.map((item, index) => {
+            const card = document.createElement('article');
+            card.className = 'media-local-item';
+            const kind = document.createElement('span');
+            kind.className = 'media-local-kind';
+            kind.textContent = item.kind === 'image' ? '图片'
+                : item.kind === 'video' ? '视频' : '音频';
+            const meta = document.createElement('div');
+            meta.className = 'media-local-meta';
+            const name = document.createElement('strong');
+            name.textContent = item.file.name;
+            const details = document.createElement('small');
+            details.textContent = `${item.file.type || '未知 MIME'} · ${formatFileSize(item.file.size)}`;
+            meta.append(name, details);
+            const remove = document.createElement('button');
+            remove.type = 'button';
+            remove.className = 'media-local-remove';
+            remove.textContent = '×';
+            remove.title = `移除 ${item.file.name}`;
+            remove.addEventListener('click', () => {
+                state.mediaLocalItems.splice(index, 1);
+                renderMediaLocalItems();
+            });
+            const description = document.createElement('textarea');
+            description.className = 'media-local-description';
+            description.placeholder = `描述“${item.file.name}”的实际内容，供 AI 理解`;
+            description.value = item.description;
+            description.dataset.mediaLocalId = item.id;
+            description.addEventListener('input', () => {
+                item.description = description.value;
+            });
+            card.append(kind, meta, remove, description);
+            return card;
+        }));
+        elements['media-insert-btn'].textContent = items.length
+            ? `读取信息并批量插入（${items.length}）`
+            : '读取信息并插入';
+        syncMediaInputMode();
+    }
+
+    function selectLocalMediaFiles(files) {
+        const accepted = [...(files || [])].map((file, index) => ({
+            id: `local-media-${Date.now()}-${index}`,
+            file,
+            kind: mediaKindForFile(file),
+            description: '',
+        })).filter((item) => ['image', 'video', 'audio'].includes(item.kind));
+        state.mediaLocalItems = accepted;
+        renderMediaLocalItems();
+        if (!accepted.length && files?.length) {
+            setMediaDialogStatus('所选文件中没有可识别的图片、视频或音频。', 'error');
+        } else if (accepted.length) {
+            setMediaDialogStatus(
+                `已载入 ${accepted.length} 个本地媒体；请逐一填写 description 后批量插入。`
+            );
+        }
+    }
+
+    function setMediaDialogStatus(message, type = '') {
+        const status = elements['media-dialog-status'];
+        status.textContent = message;
+        status.classList.toggle('loading', type === 'loading');
+        status.classList.toggle('error', type === 'error');
+    }
+
+    function closeMediaDialog() {
+        elements['media-dialog'].hidden = true;
+        elements['media-insert-btn'].disabled = false;
+        elements['media-cancel-btn'].disabled = false;
+        elements['media-src-input'].disabled = false;
+        elements['media-kind-select'].disabled = false;
+        elements['media-description-input'].disabled = false;
+        state.mediaLocalItems = [];
+        elements['media-local-input'].value = '';
+        renderMediaLocalItems();
+        setMediaDialogStatus('等待输入媒体地址或选择本地文件');
+    }
+
+    function insertMedia() {
+        if (!state.ready || state.mode !== 'render') {
+            showToast('请先打开文档并切换到连续编辑模式。');
+            return false;
+        }
+        elements['media-form'].reset();
+        state.mediaLocalItems = [];
+        renderMediaLocalItems();
+        setMediaDialogStatus('等待输入媒体地址或选择本地文件');
+        elements['media-dialog'].hidden = false;
+        window.setTimeout(() => elements['media-src-input'].focus(), 0);
+        return true;
+    }
+
+    async function submitMediaInsertion(event) {
+        event.preventDefault();
+        const localItems = [...state.mediaLocalItems];
+        const normalizedSrc = elements['media-src-input'].value.trim();
+        if (!localItems.length && !normalizedSrc) {
+            setMediaDialogStatus('请选择本地媒体文件，或输入媒体 src 地址。', 'error');
+            elements['media-src-input'].focus();
+            return false;
+        }
+
+        const selectedKind = elements['media-kind-select'].value;
+        const kind = selectedKind === 'auto'
+            ? inferMediaKind(normalizedSrc)
+            : selectedKind;
+        if (!localItems.length && !['image', 'video', 'audio'].includes(kind)) {
+            setMediaDialogStatus(
+                '无法自动识别媒体类型，请在上方明确选择图片、视频或音频。',
+                'error'
+            );
+            elements['media-kind-select'].focus();
+            return false;
+        }
+
+        elements['media-insert-btn'].disabled = true;
+        elements['media-cancel-btn'].disabled = true;
+        elements['media-src-input'].disabled = true;
+        elements['media-kind-select'].disabled = true;
+        elements['media-description-input'].disabled = true;
+        syncMediaInputMode();
+        setMediaDialogStatus('正在读取原生分辨率与音视频时长…', 'loading');
+
+        try {
+            let insertedFigures = [];
+            if (localItems.length) {
+                const batch = document.createElement('section');
+                batch.className = 'vdoc-media-batch';
+                batch.dataset.vdocMediaBatch = String(localItems.length);
+                batch.style.textAlign = 'center';
+                for (let index = 0; index < localItems.length; index += 1) {
+                    const item = localItems[index];
+                    setMediaDialogStatus(
+                        `正在读取第 ${index + 1} / ${localItems.length} 个媒体：${item.file.name}`,
+                        'loading'
+                    );
+                    const bytes = new Uint8Array(await item.file.arrayBuffer());
+                    const probeUrl = URL.createObjectURL(new Blob(
+                        [bytes],
+                        { type: item.file.type || 'application/octet-stream' }
+                    ));
+                    let metadata;
+                    try {
+                        metadata = await readMediaMetadata(item.kind, probeUrl);
+                    } finally {
+                        URL.revokeObjectURL(probeUrl);
+                    }
+                    const description = item.description.trim() || item.file.name;
+                    const resource = await containerModule.registerResource(
+                        state.document,
+                        state.documentResourceData,
+                        {
+                            bytes,
+                            kind: 'media',
+                            name: item.file.name,
+                            mime: item.file.type,
+                            description,
+                            nativeWidth: metadata.width,
+                            nativeHeight: metadata.height,
+                            duration: metadata.duration,
+                            durationText: formatMediaDuration(Number(metadata.duration)),
+                        }
+                    );
+                    const resourceSrc = containerModule.resourceReference(resource);
+                    const figure = createMediaFigure(
+                        item.kind,
+                        resourceSrc,
+                        metadata,
+                        description,
+                        {
+                            embedded: true,
+                            name: item.file.name,
+                            type: item.file.type,
+                            size: item.file.size,
+                        }
+                    );
+                    batch.appendChild(figure);
+                    insertedFigures.push(figure);
+                }
+                if (!insertMediaFigure(batch)) insertedFigures = [];
+            } else {
+                const metadata = await readMediaMetadata(kind, normalizedSrc);
+                const fallbackDescription = mediaNameFromSrc(normalizedSrc)
+                    || (kind === 'image'
+                        ? '插入的图片'
+                        : kind === 'video'
+                            ? '插入的视频'
+                            : '插入的音频');
+                const description = elements['media-description-input'].value.trim()
+                    || fallbackDescription;
+                const figure = createMediaFigure(
+                    kind,
+                    normalizedSrc,
+                    metadata,
+                    description
+                );
+                if (insertMediaFigure(figure)) insertedFigures = [figure];
+            }
+            if (!insertedFigures.length) {
+                setMediaDialogStatus('当前页面没有可插入媒体的位置。', 'error');
+                return false;
+            }
+
+            const summary = insertedFigures.length === 1
+                ? insertedFigures[0].dataset.vdocDescription
+                : `${insertedFigures.length} 个本地媒体，均已写入独立 description 与源信息`;
+            if (localItems.length) renderDocument();
+            closeMediaDialog();
+            showToast(`已插入媒体 · ${summary}`, 'success', 5000);
+            return true;
+        } catch (error) {
+            setMediaDialogStatus(`媒体插入失败：${error.message}`, 'error');
+            return false;
+        } finally {
+            elements['media-insert-btn'].disabled = false;
+            elements['media-cancel-btn'].disabled = false;
+            syncMediaInputMode();
+        }
     }
 
     function showSelectionBar(x, y) {
@@ -2981,8 +3438,8 @@ ${preview.css}
     width: 100%;
     height: 100%;
 }
-${documentCssForShadow()}
-${parsedSlide(slide).css}
+${resolveRuntimeResources(documentCssForShadow())}
+${resolveRuntimeResources(parsedSlide(slide).css)}
 
 /* 必须位于分页自定义 CSS 之后，保证预览始终冻结在初始帧。 */
 .slide-thumbnail-stage *,
@@ -3002,7 +3459,7 @@ svg set {
 `;
         const stage = document.createElement('span');
         stage.className = 'slide-thumbnail-stage';
-        stage.innerHTML = parsedSlide(slide).html;
+        stage.innerHTML = resolveRuntimeResources(parsedSlide(slide).html);
         root.append(style, stage);
 
         stage.querySelectorAll('[contenteditable]').forEach((node) =>
@@ -4057,6 +4514,14 @@ ${safeCss}
         elements['open-btn'].addEventListener('click', chooseOpen);
         elements['import-btn'].addEventListener('click', chooseImport);
         elements['welcome-open-btn'].addEventListener('click', chooseOpen);
+        elements['collect-external-resources'].checked =
+            localStorage.getItem('scriptorium:collect-external-resources') === 'true';
+        elements['collect-external-resources'].addEventListener('change', (event) => {
+            localStorage.setItem(
+                'scriptorium:collect-external-resources',
+                String(event.target.checked)
+            );
+        });
         elements['save-btn'].addEventListener('click', () => saveDocument(false));
         elements['save-as-btn'].addEventListener('click', () => saveDocument(true));
         elements['export-flow-html-btn'].addEventListener('click', () => exportRichDocument('html-flow'));
@@ -4176,6 +4641,18 @@ ${safeCss}
                 'reject',
                 elements['pr-review-receipt'].value
             );
+        });
+        elements['media-local-select-btn'].addEventListener(
+            'click',
+            () => elements['media-local-input'].click()
+        );
+        elements['media-local-input'].addEventListener('change', (event) => {
+            selectLocalMediaFiles(event.target.files);
+        });
+        elements['media-form'].addEventListener('submit', submitMediaInsertion);
+        elements['media-cancel-btn'].addEventListener('click', closeMediaDialog);
+        elements['media-dialog'].addEventListener('click', (event) => {
+            if (event.target === elements['media-dialog']) closeMediaDialog();
         });
         elements['create-checkpoint-btn'].addEventListener('click', () => {
             elements['checkpoint-name-input'].value = '';
@@ -4309,6 +4786,7 @@ ${safeCss}
                 event.preventDefault();
                 restoreHistory(1);
             } else if (event.key === 'Escape') {
+                closeMediaDialog();
                 closeStyleLibrary();
                 hideSelectionBar();
                 clearExplicitBlockSelection();
@@ -4369,6 +4847,8 @@ ${safeCss}
         });
         window.addEventListener('beforeunload', () => {
             finalizeEditBurst();
+            state.resourceResolver?.revoke();
+            state.resourceResolver = null;
             state.renderSurfaceAbortController?.abort();
             if (state.compositionEnterFrame !== null) {
                 window.cancelAnimationFrame(state.compositionEnterFrame);
@@ -4392,7 +4872,8 @@ ${safeCss}
     }
 
     async function initialize() {
-        if (!api || !core || !styleLibrary || !pagination || !asyncModule
+        if (!api || !core || !containerModule || !window.JSZip
+            || !styleLibrary || !pagination || !asyncModule
             || !runtimeModule || !sourceEditorModule || !sessionModule
             || !sourceEditorController || !sessionController
             || !window.ScriptoriumVisibility || !window.ScriptoriumAgentModule) {
@@ -4410,6 +4891,7 @@ ${safeCss}
         state.agentApi = window.ScriptoriumAgentModule.createAgentApi({
             state,
             core,
+            containerModule,
             getRenderRoot,
             getReadRoot,
             getCurrentHtml: currentSourceHtml,

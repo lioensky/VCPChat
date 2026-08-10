@@ -53,15 +53,56 @@
             .trim();
     }
 
-    function mediaFromHtml(html) {
+    function mediaFromHtml(html, documentModel = null) {
         const template = document.createElement('template');
         template.innerHTML = String(html || '');
-        return [...template.content.querySelectorAll('img,video,audio,svg,canvas')].map((node) => ({
-            kind: node.tagName.toLowerCase(),
-            source: node.getAttribute('src') || node.getAttribute('href') || '',
-            alt: node.getAttribute('alt') || node.getAttribute('aria-label') || '',
-            title: node.getAttribute('title') || '',
-        }));
+        const resources = new Map(
+            (documentModel?.manifest?.resources || []).map((resource) => [
+                resource.id,
+                resource,
+            ])
+        );
+        return [...template.content.querySelectorAll('img,video,audio,svg,canvas')].map((node) => {
+            const source = node.getAttribute('src') || node.getAttribute('href') || '';
+            const resourceId = source.match(
+                /^vdoc-resource:\/\/(?:media|fonts)\/([a-f0-9]{64})$/i
+            )?.[1]?.toLowerCase();
+            const resource = resourceId ? resources.get(resourceId) : null;
+            const figure = node.closest('figure');
+            return {
+                kind: node.tagName.toLowerCase(),
+                source,
+                sourceKind: resource ? 'embedded-resource' : 'external-url',
+                description: node.getAttribute('description')
+                    || figure?.getAttribute('description')
+                    || resource?.description
+                    || '',
+                alt: node.getAttribute('alt') || node.getAttribute('aria-label') || '',
+                title: node.getAttribute('title') || '',
+                name: resource?.name || figure?.dataset.vdocSourceName || '',
+                mime: resource?.mime || figure?.dataset.vdocSourceType || '',
+                size: resource?.size || Number(figure?.dataset.vdocSourceSize) || null,
+                nativeWidth: resource?.nativeWidth
+                    || Number(figure?.dataset.vdocNativeWidth)
+                    || Number(node.getAttribute('width'))
+                    || null,
+                nativeHeight: resource?.nativeHeight
+                    || Number(figure?.dataset.vdocNativeHeight)
+                    || Number(node.getAttribute('height'))
+                    || null,
+                duration: (() => {
+                    const value = Number(
+                        resource?.duration
+                        ?? figure?.dataset.vdocDuration
+                        ?? node.dataset.vdocDuration
+                    );
+                    return Number.isFinite(value) ? value : null;
+                })(),
+                durationText: resource?.durationText
+                    || figure?.dataset.vdocDurationText
+                    || '',
+            };
+        });
     }
 
     function findAll(source, query, options = {}) {
@@ -301,6 +342,7 @@
         const {
             state,
             core,
+            containerModule,
             getRenderRoot,
             getReadRoot,
             getCurrentHtml,
@@ -548,7 +590,7 @@
                 mode: state.mode,
                 activeSlideIndex: isDeck() ? state.activeSlideIndex : null,
                 renderedText: textFromHtml(sourceHtml),
-                media: mediaFromHtml(sourceHtml),
+                media: mediaFromHtml(sourceHtml, state.document),
                 visualStability: stability,
                 captureRect: {
                     x: rect.left,
@@ -559,7 +601,7 @@
             });
         }
 
-        function buildProjectArtifact(payload = {}) {
+        async function buildProjectArtifact(payload = {}) {
             const projectType = String(payload.projectType || '').toLowerCase();
             const deck = projectType === 'pptx' || projectType === 'vpptx';
             const author = normalizeAuthor(payload.maid);
@@ -639,7 +681,7 @@
                     dependencies: programmable.dependencies,
                     diagnostics: programmable.diagnostics,
                 },
-                serialized: core.serialize(model),
+                bytes: await containerModule.pack(model, new Map()),
             };
         }
 
@@ -658,7 +700,7 @@
                             id: slide.id,
                             name: slide.name,
                             text: textFromHtml(slide.source),
-                            media: mediaFromHtml(slide.source),
+                            media: mediaFromHtml(slide.source, state.document),
                             notes: slide.notes || '',
                         };
                     }),

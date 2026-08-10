@@ -9,7 +9,9 @@ Scriptorium 是 VCPChat 内置的本地富文档与演示创作空间。它同�
 - **VDOCX**：连续流文稿工程，扩展名为 `.vdocx`。
 - **VPPTX**：逐页演示工程，扩展名为 `.vpptx`。
 - 原生 `.docx`、`.pptx` 是导入源；导入后应保存为对应的 VDOC 工程。
-- 工程文件当前是 UTF-8 JSON，而不是 ZIP/OOXML 容器。
+- VDOCX / VPPTX 是 VCP 自有 ZIP 容器，不是 OOXML，也不再接受旧式裸 JSON 工程。
+- 容器根目录的 `document.json` 保存文档模型与资源清单；`resources/media/` 和 `resources/fonts/` 分别保存媒体与字体二进制。
+- 内部资源使用 SHA-256 内容寻址和去重，源码只保存 `vdoc-resource://media/<sha256>` 或 `vdoc-resource://fonts/<sha256>` 短引用。
 
 > A document is a place, not a file.  
 > 文档不是一个文件，而是人类与协作者共同抵达的地方。
@@ -171,6 +173,20 @@ ScriptoriumCollaborator 是 VCP 分布式服务器中的 hybrid service。它通
 
 完整参数和 VCP 工具调用示例以插件清单为准。
 
+### 字体发现与使用约定
+
+Scriptorium 不要求 Agent 通过专用“字体管理”命令应用系统字体。字体名称是 CSS 源码的一部分，推荐流程如下：
+
+1. Agent 先调用 **ListFonts**，按 `all`、`zh-CN` 或 `en` 查询当前机器真实安装的字体。
+2. 将返回的准确字体族名称直接写入完整源码的 `font-family`，并提供合适的回退字体栈。
+3. 系统字体不需要 `@font-face`、资源 ID或额外的应用命令；只要当前机器已安装，编辑、预览与导出渲染即可直接使用。
+4. 不应凭空猜测字体名称。需要指定字体时应优先查询 **ListFonts**，避免 CSS 因字体不存在而静默回退。
+5. 系统字体不具备跨机器可移植性。若需要在其他设备保持同一字形，应使用 `@font-face` 引用明确的字体文件 URL。
+6. 外部字体 URL默认保留原样；用户勾选“收纳外链”并保存后，可确认的字体文件会进入 ZIP 的 `resources/fonts/`，CSS URL会替换为 `vdoc-resource://fonts/<sha256>` 短引用。
+7. Agent 只需操作字体名称和 CSS 引用，不读取或输出字体二进制、blob URL或 base64。
+
+例如，**ListFonts** 返回 `Microsoft YaHei` 后，Agent 可以在文档级样式、演示共享 `deckCss` 或单页 `<style>` 中使用 `font-family: "Microsoft YaHei", sans-serif`。若需要嵌入外部字体，则在源码中声明 `@font-face`，再由保存侧按用户选择决定是否收纳。
+
 ### 串行调用
 
 插件支持 VCP 编号串行参数：`command1`、`command2`、`command3`……，并严格按编号执行。
@@ -190,6 +206,23 @@ ScriptoriumCollaborator 是 VCP 分布式服务器中的 hybrid service。它通
 - `AppData/ScriptoriumDocument/VPPTX`
 
 默认重名策略为 rename。overwrite 必须同时提供目标文件当前的 SHA-256 `expectedFileHash`，否则拒绝覆盖。`openAfterCreate` 只请求打开新工程；若窗口中有未保存内容，最终切换仍由人类决定。
+
+## AI 可理解的原生多媒体
+
+VDOCX 与 VPPTX 的完整 HTML 源码可以原生引用图片、视频、音频及其他 Web 多媒体内容。媒体节点、来源、内容语义和时间信息共同保留在文档真相中，使人类与 Agent 看到同一份可阅读、可编辑、可追踪的多媒体上下文。
+
+- 人类点击“插入媒体”后进入应用内模态窗，可以输入单个 `src`，也可以多选本地文件并为每项填写独立的 `description`。
+- 人类或 AI 输入的原始 `description` 同时写入媒体节点及其语义容器；`data-vdoc-description` 补充媒体类型、原生分辨率和时长等技术信息。
+- 图片和视频记录原生宽高；音频和视频记录机器可读秒数及格式化原生时长。Agent 可据此设计版式、转场、字幕、动画和交互时间轴。
+- 本地文件会直接注册到 ZIP 的 `resources/media/`，HTML 源码只保存 `vdoc-resource://media/<sha256>`，不会出现媒体 base64。
+- 外部 `file:`、VCP HTTP 和公网 HTTPS URL 默认保持原样。勾选工具栏“收纳外链”后，保存事务才尝试将可确认的媒体和字体收纳进工程。
+- 网络资源是否可收纳由响应 MIME、`Content-Disposition`、扩展名和文件头共同判定。HTML 网页、登录页、`application/octet-stream` 及其他无法确认类型的响应不收纳，继续作为通用 URL 保留。
+- 普通 `<a href>` 超链接不参与资源扫描；收纳逻辑只处理媒体 `src` 与 `@font-face` 字体 URL。
+- 编辑和预览期间，内部短引用映射为生命周期受控的 `blob:` URL；导出单文件 HTML/PDF 时，只在导出副本中转换为 `data:` URL，不会污染工程源码。
+- Agent 只读取原始 URL或内部短引用，以及资源名称、MIME、大小、描述、原生尺寸和时长等结构化元数据，不读取 ZIP 二进制或 base64。
+- Agent 通过超栈追踪管线嵌入或修改媒体时，也应填写同一套 `description` 与媒体源信息字段，供后续内容、视觉、动画和审阅 Agent 延续理解。
+
+这使 VCP 原生文档中的媒体不仅能够播放，还能被人类描述、被 Agent 理解、被超栈追踪、被文脉审阅，并持续参与动画与交互编排。
 
 ## 可编程内容
 
@@ -343,15 +376,15 @@ npx electron tests/scriptorium-cdn-localization-electron.test.js
 
 ## Alpha 已知限制
 
-- VDOCX / VPPTX 是 VCP 自有格式，与原生 DOCX / PPTX 不二进制兼容。
+- VDOCX / VPPTX 是 VCP 自有 ZIP 格式，与原生 DOCX / PPTX 不二进制兼容。
 - Office 导入是语义或静态版式转换，不是无损往返编辑。
-- 图片资源本地化层尚未接入；工具栏“插入图片”目前只显示提示。
+- 工具栏“插入媒体”支持外部 `src` 和本地文件批量插入。本地媒体进入独立资源区；源码记录居中布局、原始文件信息、原生分辨率、逐项描述及音视频时长。
 - 工具栏中的项目符号和编号列表按钮尚未接入编辑命令。
 - 分页器面向 Web 富文档语义，不追求 Word 排版引擎逐像素一致。
 - JavaScript 安全审查不是完整沙箱；关闭审查后不应运行不可信源码。
 - 当前工程格式版本为 `vcp-vdocx` version 1，Alpha 阶段仍可能演进。
 - 撤销栈只存在于当前窗口会话；需要长期恢复时应使用持久化文脉刻点。
-- 外部图片、媒体和字体的可移植资源打包仍需继续完善。
+- 无法确认真实文件类型的外部 URL 不会自动收纳，需要保持网络可访问或由用户改为明确的媒体/字体文件地址。
 - 大型复杂 WebGL 页面、长时间动画和第三方脚本兼容性仍需更多压力测试。
 
 ## Alpha 定位

@@ -13,6 +13,7 @@
     // 这里只移除可建立独立浏览上下文或插件执行环境的危险宿主元素。
     const BLOCKED_ELEMENTS = 'iframe,object,embed,applet,base,meta[http-equiv],link[rel="import"]';
     const URL_ATTRIBUTES = ['href', 'src', 'poster', 'action', 'formaction', 'xlink:href'];
+    const FILE_SOURCE_ELEMENTS = new Set(['IMG', 'VIDEO', 'AUDIO', 'SOURCE', 'TRACK']);
 
     function createId(prefix = 'node') {
         const uuid = globalThis.crypto?.randomUUID?.();
@@ -320,6 +321,11 @@ p { margin: .7em 0; text-align: justify; text-justify: inter-ideograph; text-wra
         });
     }
 
+    function allowsFileUrl(element, attributeName) {
+        if (attributeName === 'poster') return element.tagName === 'VIDEO';
+        return attributeName === 'src' && FILE_SOURCE_ELEMENTS.has(element.tagName);
+    }
+
     function sanitizeHtml(html) {
         const template = document.createElement('template');
         template.innerHTML = String(html || '');
@@ -333,7 +339,9 @@ p { margin: .7em 0; text-align: justify; text-justify: inter-ideograph; text-wra
                     element.removeAttribute(attribute.name);
                     continue;
                 }
-                if (URL_ATTRIBUTES.includes(name) && /^(?:javascript|vbscript|file):/i.test(value)) {
+                if (!URL_ATTRIBUTES.includes(name)) continue;
+                if (/^(?:javascript|vbscript):/i.test(value)
+                    || (/^file:/i.test(value) && !allowsFileUrl(element, name))) {
                     element.removeAttribute(attribute.name);
                 }
             }
@@ -344,7 +352,7 @@ p { margin: .7em 0; text-align: justify; text-justify: inter-ideograph; text-wra
     function sanitizeCss(css) {
         return String(css || '')
             .replace(/@import\s+[^;]+;?/gi, '')
-            .replace(/url\(\s*(['"]?)\s*(?:javascript|vbscript|file):[\s\S]*?\1\s*\)/gi, 'none')
+            .replace(/url\(\s*(['"]?)\s*(?:javascript|vbscript):[\s\S]*?\1\s*\)/gi, 'none')
             .replace(/expression\s*\([\s\S]*?\)/gi, '');
     }
 
