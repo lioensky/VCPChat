@@ -25,6 +25,28 @@ const DEFAULT_SCREENSHOT_OPTIONS = Object.freeze({
     quality: 85,
 });
 
+const CJK_FONT_PATTERN = /[\u3400-\u9fff\uf900-\ufaff]|(?:cjk|source\s*han|noto\s+(?:sans|serif)\s+(?:sc|tc|hk|jp|kr)|yahei|simsun|simhei|kaiti|fangsong|dengxian|songti|heiti|pingfang|hiragino|meiryo|yu\s+(?:gothic|mincho)|malgun|batang|gulim|mingliu|jhenghei|ms\s+(?:gothic|mincho))/i;
+
+function normalizeFontLanguage(value) {
+    const normalized = String(value || 'all').trim().toLowerCase();
+    if (['all', '*', 'any'].includes(normalized)) return 'all';
+    if (['zh', 'zh-cn', 'zh-hans', 'chinese', 'cn', '中文'].includes(normalized)) {
+        return 'zh-CN';
+    }
+    if (['en', 'en-us', 'en-gb', 'english', 'latin', '英文'].includes(normalized)) {
+        return 'en';
+    }
+    const error = new Error('字体 language 仅支持 all、zh-CN（中文）或 en（英文/拉丁）。');
+    error.code = 'INVALID_FONT_LANGUAGE';
+    throw error;
+}
+
+function fontMatchesLanguage(font, language) {
+    if (language === 'all') return true;
+    const cjk = CJK_FONT_PATTERN.test(String(font || ''));
+    return language === 'zh-CN' ? cjk : !cjk;
+}
+
 function normalizeMaid(value) {
     if (typeof value === 'string') {
         const name = value.trim();
@@ -145,6 +167,18 @@ class ScriptoriumAgentControlService {
         return this.documentHandlers.requestAgentOperation(request);
     }
 
+    async listFonts(options = {}) {
+        this.assertReady();
+        const language = normalizeFontLanguage(options.language);
+        const fonts = await this.documentHandlers.getSystemFonts(
+            options.forceRefresh === true
+        );
+        return {
+            language,
+            fonts: fonts.filter((font) => fontMatchesLanguage(font, language)),
+        };
+    }
+
     async captureVisualContext(request = {}) {
         const win = await this.ensureWindow();
         const semantic = await this.call({
@@ -252,9 +286,9 @@ class ScriptoriumAgentControlService {
                 requestId,
                 projectType,
                 title: payload.title,
-                html: payload.html,
-                css: payload.css,
-                slides: payload.slides,
+                source: projectType === 'docx' ? payload.source : undefined,
+                deckCss: projectType === 'pptx' ? payload.deckCss : undefined,
+                slides: projectType === 'pptx' ? payload.slides : undefined,
                 page: payload.page,
                 presentation: payload.presentation,
                 maid,
@@ -383,6 +417,8 @@ class ScriptoriumAgentControlService {
 module.exports = {
     ScriptoriumAgentControlService,
     PROJECT_TYPES,
+    normalizeFontLanguage,
+    fontMatchesLanguage,
     normalizeMaid,
     normalizeProjectType,
     normalizeFileName,

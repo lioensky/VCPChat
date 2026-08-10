@@ -1,8 +1,8 @@
 {
   "name": "ScriptoriumCollaborator",
   "displayName": "Scriptorium 协作编辑器",
-  "version": "1.0.0",
-  "description": "供 Agent 感知 DOCX/VDOCX 与 PPTX/VPPTX 的渲染文本、可见区域、多模态画面和源码，并通过带 maid 署名、人工审批回执与修订冲突保护的 PR 协议协作编辑当前窗口文档；也支持直接创建并落盘完整 VDOCX/VPPTX 工程。",
+  "version": "2.0.0",
+  "description": "供 Agent 感知 DOCX/VDOCX 与 PPTX/VPPTX 的渲染文本、可见区域、多模态画面和源码，并通过带 maid 署名、人工审批回执与修订冲突保护的 PR 协议协作编辑当前窗口文档；也支持直接创建并落盘完整 VDOCX/VPPTX 工程。所有源码编辑均以唯一完整 source 为真相：DOCX 只有一份包含 style、正文 HTML、依赖声明和内联 script 的完整源码；VPPTX 每页只有一份同样完整的单页源码，外加一份演示共享 deckCss。",
   "author": "VCPToolBox",
   "license": "MIT",
   "pluginType": "hybridservice",
@@ -16,6 +16,11 @@
   },
   "capabilities": {
     "invocationCommands": [
+      {
+        "command": "ListFonts",
+        "description": "列出当前系统已安装的字体，返回纯 Markdown 平铺列表，AI 可直接使用这些名称作为 CSS font-family 值。可通过 language 限制返回范围：zh-CN 仅返回中文字体，en 仅返回英文/拉丁字体，all 或省略返回全部。\n参数：command 固定为 ListFonts；language 可选 zh-CN/en/all，默认 all；forceRefresh 可选。\n调用格式：\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」ListFonts「末」,\nlanguage:「始」zh-CN「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」ListFonts「末」,\nlanguage:「始」zh-CN「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
       {
         "command": "GetDocumentInfo",
         "description": "获取当前 Scriptorium 窗口文档的标题、类型、修订号、保存状态、当前幻灯片和总页数。\n参数：command 固定为 GetDocumentInfo；endpoint 可选 docx、pptx 或 common。\n调用格式：\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」GetDocumentInfo「末」,\nendpoint:「始」common「末」\n<<<[END_TOOL_REQUEST]>>>",
@@ -38,17 +43,17 @@
       },
       {
         "command": "GetSource",
-        "description": "按行查询当前 DOCX 或指定 PPTX 页面源码，返回实际起止行、总行数和源码。PPTX 的 sourceKind=html 返回该页完整源码，包含页面结构、依赖声明与内联交互脚本，Agent 可据此完整编辑页面。sourceKind=script 仅为兼容旧调用保留。单次最多返回 2000 行。\n参数：command 固定为 GetSource；sourceKind 可选 html/css/script；slideIndex 可选；startLine、endLine 可选。\n调用格式：\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」GetSource「末」,\nendpoint:「始」pptx「末」,\nsourceKind:「始」html「末」,\nslideIndex:「始」0「末」,\nstartLine:「始」1「末」,\nendLine:「始」2000「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "description": "按行查询当前 DOCX 完整源码或指定 PPTX 页面的完整单页源码，返回实际起止行、总行数和源码。sourceKind=html 返回完整源码，包含 style、页面 HTML、依赖声明与内联交互 script。PPTX 的 sourceKind=deck-css 返回演示共享全局 CSS。单次最多返回 2000 行。\n参数：command 固定为 GetSource；sourceKind 可选 html/deck-css（DOCX 仅支持 html）；slideIndex 可选；startLine、endLine 可选。\n调用格式：\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」GetSource「末」,\nendpoint:「始」pptx「末」,\nsourceKind:「始」html「末」,\nslideIndex:「始」0「末」,\nstartLine:「始」1「末」,\nendLine:「始」2000「末」\n<<<[END_TOOL_REQUEST]>>>",
         "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」GetSource「末」,\nendpoint:「始」docx「末」,\nsourceKind:「始」html「末」,\nstartLine:「始」20「末」,\nendLine:「始」80「末」\n<<<[END_TOOL_REQUEST]>>>"
       },
       {
         "command": "SearchSource",
-        "description": "对源码执行全文检索。支持 DOCX HTML/CSS 与 PPTX 各页 HTML/CSS/script，可使用普通字符串或正则表达式并返回命中行和上下文。\n参数：command 固定为 SearchSource；query 必填；sourceKind 可选 html/css/script/all；slideIndex、regex、caseSensitive 可选。\n调用格式：\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」SearchSource「末」,\nquery:「始」项目背景「末」,\nsourceKind:「始」all「末」,\nregex:「始」false「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "description": "对源码执行全文检索。支持 DOCX 完整源码与 PPTX 各页完整源码及演示共享 CSS，可使用普通字符串或正则表达式并返回命中行和上下文。\n参数：command 固定为 SearchSource；query 必填；sourceKind 可选 html/deck-css/all；slideIndex、regex、caseSensitive 可选。\n调用格式：\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」SearchSource「末」,\nquery:「始」项目背景「末」,\nsourceKind:「始」all「末」,\nregex:「始」false「末」\n<<<[END_TOOL_REQUEST]>>>",
         "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」SearchSource「末」,\nquery:「始」项目背景「末」,\nsourceKind:「始」all「末」,\nregex:「始」false「末」\n<<<[END_TOOL_REQUEST]>>>"
       },
       {
         "command": "GetViewportSource",
-        "description": "查询当前人类阅读窗口附近的 HTML/CSS 源码，返回内容来自第 startLine 行至 endLine 行，并附可见文本块 ID。\n参数：command 固定为 GetViewportSource；sourceKind 可选；radius 可选，范围 1-200。\n调用格式：\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」GetViewportSource「末」,\nsourceKind:「始」html「末」,\nradius:「始」40「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "description": "查询当前人类阅读窗口附近的完整源码，返回内容来自第 startLine 行至 endLine 行，并附可见文本块 ID。\n参数：command 固定为 GetViewportSource；sourceKind 可选 html/deck-css；radius 可选，范围 1-200。\n调用格式：\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」GetViewportSource「末」,\nsourceKind:「始」html「末」,\nradius:「始」40「末」\n<<<[END_TOOL_REQUEST]>>>",
         "example": "<<<[TOOL_REQUEST]>>>\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」GetViewportSource「末」,\nsourceKind:「始」html「末」,\nradius:「始」40「末」\n<<<[END_TOOL_REQUEST]>>>"
       },
       {
@@ -63,18 +68,18 @@
       },
       {
         "command": "SubmitSourcePr",
-        "description": "向当前窗口文档提交 target/replace 源码变更 PR。多个相同 target 会依据 startLine 就近匹配。此命令不会立即修改文档：工具调用会同步等待人类在右侧栏允许或拒绝，并返回人类填写的回执；仅当人类在 UI 中预先开启且允许该操作类型时才会自动批准。若等待回执超时，返回 PR_RECEIPT_TIMEOUT，提案仍保留供人类之后处理。Agent 无权通过参数开启自动批准。\n参数：command 固定为 SubmitSourcePr；maid 必填；summary 必填；requestId 建议提供；sourceKind 可选 html/css/script；slideIndex 可选；expectedRevision 建议提供；可直接提供 target、replace、startLine，或 replacements JSON 数组。\n调用格式：\n<<<[TOOL_REQUEST]>>>\nmaid:「始」Nova「末」,\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」SubmitSourcePr「末」,\nendpoint:「始」docx「末」,\nsourceKind:「始」html「末」,\nsummary:「始」修正第二章标题「末」,\nexpectedRevision:「始」12「末」,\ntarget:「始」<h2>旧标题</h2>「末」,\nreplace:「始」<h2>新标题</h2>「末」,\nstartLine:「始」86「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "description": "向当前窗口文档提交 target/replace 源码变更 PR。多个相同 target 会依据 startLine 就近匹配。此命令不会立即修改文档：工具调用会同步等待人类在右侧栏允许或拒绝，并返回人类填写的回执；仅当人类在 UI 中预先开启且允许该操作类型时才会自动批准。若等待回执超时，返回 PR_RECEIPT_TIMEOUT，提案仍保留供人类之后处理。Agent 无权通过参数开启自动批准。\n参数：command 固定为 SubmitSourcePr；maid 必填；summary 必填；requestId 建议提供；sourceKind 可选 html/deck-css（DOCX 仅支持 html）；slideIndex 可选；expectedRevision 建议提供；可直接提供 target、replace、startLine，或 replacements JSON 数组。replace 片段中的 CDN 脚本会在进入审批前自动转换为 Scriptorium 本地依赖标记。\n调用格式：\n<<<[TOOL_REQUEST]>>>\nmaid:「始」Nova「末」,\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」SubmitSourcePr「末」,\nendpoint:「始」docx「末」,\nsourceKind:「始」html「末」,\nsummary:「始」修正第二章标题「末」,\nexpectedRevision:「始」12「末」,\ntarget:「始」<h2>旧标题</h2>「末」,\nreplace:「始」<h2>新标题</h2>「末」,\nstartLine:「始」86「末」\n<<<[END_TOOL_REQUEST]>>>",
         "example": "<<<[TOOL_REQUEST]>>>\nmaid:「始」Nova「末」,\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」SubmitSourcePr「末」,\nendpoint:「始」docx「末」,\nsourceKind:「始」html「末」,\nsummary:「始」修正第二章标题「末」,\nexpectedRevision:「始」12「末」,\ntarget:「始」<h2>旧标题</h2>「末」,\nreplace:「始」<h2>新标题</h2>「末」,\nstartLine:「始」86「末」\n<<<[END_TOOL_REQUEST]>>>"
       },
       {
         "command": "AddSlide",
-        "description": "向当前窗口 PPTX 末尾提交新增页面 PR。推荐通过 source 一次提交该页完整源码，其中可同时包含页面 HTML、Three.js/Anime.js 依赖标签与内联交互脚本；受支持 CDN 会在进入审批前转换为本地链接。css 单独提供页面样式。旧版 html 与 script 分离参数继续兼容，但新页面应优先使用 source。同步等待人类或 UI 自动允许策略审批并返回回执；超时后提案仍保留。\n参数：command 固定为 AddSlide；maid、summary 必填；source 推荐必填；name、css、notes、transition、resources、expectedRevision 可选；html、script 为兼容参数。\n调用格式：\n<<<[TOOL_REQUEST]>>>\nmaid:「始」Nova「末」,\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」AddSlide「末」,\nsummary:「始」新增完整交互页「末」,\nname:「始」Mini 3D「末」,\nsource:「始」<section class=\"vdoc-slide-scene mini-three\"><script src=\"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js\"></script><div class=\"stage\"></div></section><script>(()=>{const scene=new THREE.Scene(); /* 页面交互逻辑 */})();</script>「末」,\ncss:「始」.vdoc-slide-scene { position:relative; width:100%; height:100%; }「末」\n<<<[END_TOOL_REQUEST]>>>",
-        "example": "<<<[TOOL_REQUEST]>>>\nmaid:「始」Nova「末」,\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」AddSlide「末」,\nsummary:「始」新增结论页「末」,\nname:「始」结论「末」,\nhtml:「始」<section class=\"vdoc-slide-scene\"><h1>结论</h1></section>「末」,\ncss:「始」.vdoc-slide-scene { display:grid; place-items:center; }「末」\n<<<[END_TOOL_REQUEST]>>>"
+        "description": "向当前窗口 PPTX 末尾提交新增页面 PR。必须通过 source 一次提交该页完整源码，其中可同时包含 style、页面 HTML、Three.js/Anime.js 依赖标签与内联交互 script；受支持 CDN 会在进入审批前转换为本地链接。不再接受 html、css、script 分离参数。同步等待人类或 UI 自动允许策略审批并返回回执；超时后提案仍保留。\n参数：command 固定为 AddSlide；maid、summary 必填；source 必填；name、notes、transition、resources、expectedRevision 可选。\n调用格式：\n<<<[TOOL_REQUEST]>>>\nmaid:「始」Nova「末」,\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」AddSlide「末」,\nsummary:「始」新增完整交互页「末」,\nname:「始」Mini 3D「末」,\nsource:「始」<style>.stage{width:100%;height:100%}</style><section class=\"vdoc-slide-scene\"><script src=\"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js\"></script><div class=\"stage\"></div></section><script>(()=>{const scene=new THREE.Scene();})();</script>「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "example": "<<<[TOOL_REQUEST]>>>\nmaid:「始」Nova「末」,\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」AddSlide「末」,\nsummary:「始」新增结论页「末」,\nname:「始」结论「末」,\nsource:「始」<style>.vdoc-slide-scene{display:grid;place-items:center}</style><section class=\"vdoc-slide-scene\"><h1>结论</h1></section>「末」\n<<<[END_TOOL_REQUEST]>>>"
       },
       {
         "command": "InsertSlide",
-        "description": "向当前窗口 PPTX 指定索引提交插入页面 PR。推荐使用 source 提交包含页面结构、依赖声明和内联交互脚本的完整单页源码；受支持 CDN 会在进入审批前转换为本地链接。旧版 html 与 script 分离参数继续兼容。同步等待审批并返回回执；超时后提案仍保留。\n参数：command 固定为 InsertSlide；maid、summary、slideIndex 必填；source 推荐必填；name、css、notes、transition、resources、expectedRevision 可选；html、script 为兼容参数。\n调用格式：\n<<<[TOOL_REQUEST]>>>\nmaid:「始」Nova「末」,\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」InsertSlide「末」,\nslideIndex:「始」2「末」,\nsummary:「始」在第三页前插入完整交互页「末」,\nname:「始」第二部分「末」,\nsource:「始」<section class=\"vdoc-slide-scene\"><h1>第二部分</h1></section><script>(()=>{const root=document.querySelector('.vdoc-slide-scene');root.dataset.ready='true';})();</script>「末」\n<<<[END_TOOL_REQUEST]>>>",
-        "example": "<<<[TOOL_REQUEST]>>>\nmaid:「始」Nova「末」,\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」InsertSlide「末」,\nslideIndex:「始」2「末」,\nsummary:「始」在第三页前插入过渡页「末」,\nname:「始」第二部分「末」,\nhtml:「始」<section class=\"vdoc-slide-scene\"><h1>第二部分</h1></section>「末」\n<<<[END_TOOL_REQUEST]>>>"
+        "description": "向当前窗口 PPTX 指定索引提交插入页面 PR。必须使用 source 提交包含 style、页面结构、依赖声明和内联交互 script 的完整单页源码；受支持 CDN 会在进入审批前转换为本地链接。不再接受 html、css、script 分离参数。同步等待审批并返回回执；超时后提案仍保留。\n参数：command 固定为 InsertSlide；maid、summary、slideIndex 必填；source 必填；name、notes、transition、resources、expectedRevision 可选。\n调用格式：\n<<<[TOOL_REQUEST]>>>\nmaid:「始」Nova「末」,\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」InsertSlide「末」,\nslideIndex:「始」2「末」,\nsummary:「始」在第三页前插入完整交互页「末」,\nname:「始」第二部分「末」,\nsource:「始」<section class=\"vdoc-slide-scene\"><h1>第二部分</h1></section><script>(()=>{document.querySelector('.vdoc-slide-scene').dataset.ready='true';})();</script>「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "example": "<<<[TOOL_REQUEST]>>>\nmaid:「始」Nova「末」,\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」InsertSlide「末」,\nslideIndex:「始」2「末」,\nsummary:「始」在第三页前插入过渡页「末」,\nname:「始」第二部分「末」,\nsource:「始」<section class=\"vdoc-slide-scene\"><h1>第二部分</h1></section>「末」\n<<<[END_TOOL_REQUEST]>>>"
       },
       {
         "command": "DeleteSlide",
@@ -88,8 +93,8 @@
       },
       {
         "command": "CreateProject",
-        "description": "让 Scriptorium 内核规范化并直接创建完整 VDOCX 或 VPPTX 工程，分别写入 AppData/ScriptoriumDocument/VDOCX 与 AppData/ScriptoriumDocument/VPPTX。创建 VPPTX 时，slides JSON 数组中的每个页面对象都应优先提供 source 完整源码，source 可包含该页 HTML 结构、依赖标签与内联交互脚本；每页 css 仍作为样式字段。旧版每页 html 与 script 分离字段继续兼容。受支持 CDN 会在落盘前转换为本地依赖。该物理文件创建操作直接落盘，不进入窗口 PR 审批，也不会替换当前窗口中的文档模型。默认重名自动改名；覆盖必须显式使用 overwrite 并提供 expectedFileHash。\n参数：command 固定为 CreateProject；projectType 必填 docx/pptx；maid 必填；title、fileName、html、css、slides、page、presentation 可选；VPPTX 的 slides 项推荐格式为 {name,source,css,notes,transition,resources}；conflictPolicy 可选 rename/error/overwrite，默认 rename；expectedFileHash 仅覆盖时必填；openAfterCreate 可选。\n调用格式：\n<<<[TOOL_REQUEST]>>>\nmaid:「始」Nova「末」,\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」CreateProject「末」,\nprojectType:「始」pptx「末」,\ntitle:「始」交互演示「末」,\nslides:「始」[{\"name\":\"第一页\",\"source\":\"<section class=\\\"vdoc-slide-scene\\\"><h1>第一页</h1></section><script>(()=>{document.querySelector('.vdoc-slide-scene').dataset.ready='true';})();</script>\",\"css\":\".vdoc-slide-scene{width:100%;height:100%}\"}]「末」,\nconflictPolicy:「始」rename「末」,\nopenAfterCreate:「始」false「末」\n<<<[END_TOOL_REQUEST]>>>",
-        "example": "<<<[TOOL_REQUEST]>>>\nmaid:「始」Nova「末」,\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」CreateProject「末」,\nprojectType:「始」docx「末」,\ntitle:「始」研究报告「末」,\nfileName:「始」研究报告.vdocx「末」,\nhtml:「始」<article><h1>研究报告</h1><p>报告正文。</p></article>「末」,\ncss:「始」h1 { color:#315f55; }「末」,\nconflictPolicy:「始」rename「末」,\nopenAfterCreate:「始」false「末」\n<<<[END_TOOL_REQUEST]>>>"
+        "description": "让 Scriptorium 内核规范化并直接创建完整 VDOCX 或 VPPTX 工程，分别写入 AppData/ScriptoriumDocument/VDOCX 与 AppData/ScriptoriumDocument/VPPTX。创建 VDOCX 时，source 必须是包含 style、完整正文 HTML、依赖声明和内联 script 的唯一完整源码。创建 VPPTX 时，slides JSON 数组中的每个页面对象都必须提供 source 完整单页源码；演示共享样式通过 deckCss 提供。不再接受 html、css、script 分离参数。受支持 CDN 会在落盘前转换为本地依赖。该物理文件创建操作直接落盘，不进入窗口 PR 审批，也不会替换当前窗口中的文档模型。默认重名自动改名；覆盖必须显式使用 overwrite 并提供 expectedFileHash。\n参数：command 固定为 CreateProject；projectType 必填 docx/pptx；maid 必填；title、fileName、source（DOCX 必填）、deckCss（PPTX 可选）、slides（PPTX 必填，每项含 source）、page、presentation 可选；conflictPolicy 可选 rename/error/overwrite，默认 rename；expectedFileHash 仅覆盖时必填；openAfterCreate 可选。\n调用格式：\n<<<[TOOL_REQUEST]>>>\nmaid:「始」Nova「末」,\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」CreateProject「末」,\nprojectType:「始」pptx「末」,\ntitle:「始」交互演示「末」,\nslides:「始」[{\"name\":\"第一页\",\"source\":\"<style>.vdoc-slide-scene{width:100%;height:100%}</style><section class=\\\"vdoc-slide-scene\\\"><h1>第一页</h1></section><script>(()=>{document.querySelector('.vdoc-slide-scene').dataset.ready='true';})();</script>\"}]「末」,\ndeckCss:「始」html,body{margin:0}「末」,\nconflictPolicy:「始」rename「末」,\nopenAfterCreate:「始」false「末」\n<<<[END_TOOL_REQUEST]>>>",
+        "example": "<<<[TOOL_REQUEST]>>>\nmaid:「始」Nova「末」,\ntool_name:「始」ScriptoriumCollaborator「末」,\ncommand:「始」CreateProject「末」,\nprojectType:「始」docx「末」,\ntitle:「始」研究报告「末」,\nfileName:「始」研究报告.vdocx「末」,\nsource:「始」<style>h1{color:#315f55}</style><article><h1>研究报告</h1><p>报告正文。</p></article>「末」,\nconflictPolicy:「始」rename「末」,\nopenAfterCreate:「始」false「末」\n<<<[END_TOOL_REQUEST]>>>"
       },
       {
         "command": "GetStorageInfo",

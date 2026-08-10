@@ -331,8 +331,7 @@ async function parseSlide(zip, slideFile, size, index) {
     if (!slideXml) {
         return {
             name: `第 ${index + 1} 页`,
-            html: '<section class="vdoc-slide-scene"><p>无法读取此幻灯片。</p></section>',
-            css: '',
+            source: '<section class="vdoc-slide-scene"><p>无法读取此幻灯片。</p></section>',
             warnings: [{ type: 'missing-slide', message: `缺失 ${slideFile}` }],
         };
     }
@@ -362,16 +361,19 @@ async function parseSlide(zip, slideFile, size, index) {
         slideXml.match(/<p:ph\b[^>]*\btype=(?:"title"|'title')[^>]*>[\s\S]*?<a:t\b[^>]*>([\s\S]*?)<\/a:t>/i)?.[1]
         || ''
     );
-    return {
-        name: titleText.trim() || `第 ${index + 1} 页`,
-        html: `<section class="vdoc-slide-scene pptx-imported-slide" data-pptx-slide="${index + 1}">
-${elements.join('\n')}
-</section>`,
-        css: `.pptx-imported-slide{position:relative;width:100%;height:100%;overflow:hidden;background:#fff;color:#1d2421}
+    const slideCss = `.pptx-imported-slide{position:relative;width:100%;height:100%;overflow:hidden;background:#fff;color:#1d2421}
 .pptx-shape,.pptx-picture{margin:0}
 .pptx-text-frame{width:100%;height:100%;padding:.08in;overflow:hidden;box-sizing:border-box}
 .pptx-text-frame p{margin:0;line-height:1.15;white-space:pre-wrap}
-.pptx-missing-media{display:grid;width:100%;height:100%;place-items:center;background:#eee;color:#777;font:12px sans-serif}`,
+.pptx-missing-media{display:grid;width:100%;height:100%;place-items:center;background:#eee;color:#777;font:12px sans-serif}`;
+    return {
+        name: titleText.trim() || `第 ${index + 1} 页`,
+        source: `<style data-vdoc-slide-style>
+${slideCss}
+</style>
+<section class="vdoc-slide-scene pptx-imported-slide" data-pptx-slide="${index + 1}">
+${elements.join('\n')}
+</section>`,
         transition: /<p:transition\b/i.test(slideXml) ? 'pptx-imported' : 'none',
         import: {
             sourceSlide: slideFile,
@@ -405,9 +407,7 @@ async function convertPptx(buffer) {
         warnings.push(...slide.warnings);
         slides.push({
             name: slide.name,
-            html: slide.html,
-            css: slide.css,
-            script: '',
+            source: slide.source,
             transition: slide.transition,
             duration: null,
             notes: '',

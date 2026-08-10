@@ -258,14 +258,14 @@
         const dependencies = new Set();
 
         if (!deck) {
-            const result = reviewProgrammableHtml(payload.html, {
+            const result = reviewProgrammableHtml(payload.source, {
                 phase: 'create',
                 documentKind: 'docx',
             });
             result.dependencies.forEach((item) => dependencies.add(item));
             diagnostics.push(...result.diagnostics);
             return {
-                html: result.html,
+                source: result.html,
                 slides: undefined,
                 dependencies: [...dependencies],
                 diagnostics,
@@ -275,34 +275,16 @@
 
         const slides = (Array.isArray(payload.slides) ? payload.slides : [])
             .map((slide, index) => {
-                const completeSource = slide?.source ?? slide?.html;
-                const htmlResult = reviewProgrammableHtml(completeSource, {
+                const htmlResult = reviewProgrammableHtml(slide?.source, {
                     phase: 'create',
                     documentKind: 'pptx',
                     slideIndex: index,
                 });
                 htmlResult.dependencies.forEach((item) => dependencies.add(item));
                 diagnostics.push(...htmlResult.diagnostics);
-
-                const scriptReview = reviewStandaloneScript(slide?.script, {
-                    phase: 'create',
-                    documentKind: 'pptx',
-                    slideIndex: index,
-                    scriptId: slide?.id || `slide-${index + 1}`,
-                });
-                (scriptReview.dependencies || [])
-                    .forEach((item) => dependencies.add(item));
-                scriptReview.findings.forEach((finding) => diagnostics.push({
-                    ...finding,
-                    scriptId: scriptReview.context?.scriptId,
-                    context: scriptReview.context,
-                }));
-
                 return {
                     ...(slide && typeof slide === 'object' ? slide : {}),
                     source: htmlResult.html,
-                    html: htmlResult.html,
-                    script: scriptReview.source,
                 };
             });
 
@@ -349,16 +331,14 @@
             return {
                 documentKind: deck ? 'pptx' : 'docx',
                 scene: documentModel?.manifest?.scene || null,
-                html: deck ? '' : String(documentModel?.source?.html || ''),
-                css: String(documentModel?.source?.css || ''),
+                source: deck ? '' : String(documentModel?.source?.content || ''),
+                deckCss: deck ? String(documentModel?.source?.deckCss || '') : '',
                 slides: deck
                     ? (documentModel?.source?.slides || []).map((slide, index) => ({
                         index,
                         id: slide.id,
                         name: slide.name,
-                        html: String(slide.html || ''),
-                        css: String(slide.css || ''),
-                        script: String(slide.script || ''),
+                        source: String(slide.source || ''),
                         transition: slide.transition ?? null,
                         duration: slide.duration ?? null,
                         notes: String(slide.notes || ''),
@@ -370,14 +350,20 @@
             };
         };
         const sourceFor = (kind = 'html', slideIndex = null) => {
+            if (isDeck() && kind === 'deck-css') {
+                return state.document?.source?.deckCss || '';
+            }
+            if (kind !== 'html') {
+                throw new Error(isDeck()
+                    ? 'PPTX 仅支持 html（单页完整源码）或 deck-css（演示全局 CSS）。'
+                    : 'DOCX 仅支持 html 完整源码。');
+            }
             if (isDeck() && slideIndex !== null) {
                 const slide = slides()[Number(slideIndex)];
                 if (!slide) throw new Error('指定幻灯片不存在。');
-                if (kind === 'css') return slide.css || '';
-                if (kind === 'script') return slide.script || '';
-                return core.composeSlideSource(slide);
+                return String(slide.source || '');
             }
-            return kind === 'css' ? getCurrentCss() : getCurrentHtml();
+            return getCurrentHtml();
         };
 
         function assertReady() {
@@ -540,8 +526,8 @@
                 throw new Error('当前文档阅读窗口不可见，无法获取视觉上下文。');
             }
             const sourceHtml = isDeck()
-                ? slides()[state.activeSlideIndex]?.html || ''
-                : state.document.source.html;
+                ? slides()[state.activeSlideIndex]?.source || ''
+                : state.document.source.content;
             return response({
                 scope: String(options.scope || 'viewport'),
                 title: state.document.manifest.title,
@@ -597,8 +583,8 @@
             const model = core.createDocument({
                 title,
                 kind: deck ? core.PROJECT_KINDS.SLIDE_DECK : core.PROJECT_KINDS.FLOW_DOCUMENT,
-                html: deck ? undefined : programmable.html,
-                css: payload.css,
+                source: deck ? undefined : programmable.source,
+                deckCss: deck ? payload.deckCss : undefined,
                 slides: deck ? programmable.slides : undefined,
                 page: payload.page,
                 presentation: payload.presentation,
@@ -658,14 +644,14 @@
                             index,
                             id: slide.id,
                             name: slide.name,
-                            text: textFromHtml(slide.html),
-                            media: mediaFromHtml(slide.html),
+                            text: textFromHtml(slide.source),
+                            media: mediaFromHtml(slide.source),
                             notes: slide.notes || '',
                         };
                     }),
                 });
             }
-            return response({ text: textFromHtml(state.document.source.html) });
+            return response({ text: textFromHtml(state.document.source.content) });
         }
 
         function outline() {
@@ -675,12 +661,12 @@
                     items: slides().map((slide, index) => ({
                         index,
                         id: slide.id,
-                        title: slide.name || textFromHtml(slide.html).slice(0, 80),
+                        title: slide.name || textFromHtml(slide.source).slice(0, 80),
                     })),
                 });
             }
             return response({
-                items: core.extractOutline(state.document.source.html)
+                items: core.extractOutline(state.document.source.content)
                     .filter((item) => item.kind === 'heading'),
             });
         }
@@ -688,7 +674,7 @@
         function section(options = {}) {
             assertReady();
             if (isDeck()) throw new Error('章节查询仅适用于 DOCX 端。');
-            const items = core.extractOutline(state.document.source.html);
+            const items = core.extractOutline(state.document.source.content);
             const headings = items.filter((item) => item.kind === 'heading');
             const heading = options.id
                 ? headings.find((item) => item.id === options.id)
@@ -705,7 +691,7 @@
             }
             const ids = new Set(all.slice(start, end).map((item) => item.id));
             const template = document.createElement('template');
-            template.innerHTML = state.document.source.html;
+            template.innerHTML = state.document.source.content;
             const nodes = [...template.content.querySelectorAll('[data-vdoc-text]')]
                 .filter((node) => ids.has(node.dataset.vdocText));
             return response({
@@ -768,7 +754,7 @@
         function searchSource(options = {}) {
             assertReady();
             const kinds = options.sourceKind === 'all'
-                ? (isDeck() ? ['html', 'css', 'script'] : ['html', 'css'])
+                ? (isDeck() ? ['html', 'deck-css'] : ['html'])
                 : [options.sourceKind || 'html'];
             const targets = isDeck()
                 ? (options.slideIndex === undefined
@@ -776,10 +762,17 @@
                     : [Number(options.slideIndex)])
                 : [null];
             const results = [];
-            targets.forEach((slideIndex) => kinds.forEach((sourceKind) => {
-                findAll(sourceFor(sourceKind, slideIndex), options.query, options)
-                    .forEach((item) => results.push({ slideIndex, sourceKind, ...item }));
-            }));
+            kinds.forEach((sourceKind) => {
+                const sourceTargets = sourceKind === 'deck-css' ? [null] : targets;
+                sourceTargets.forEach((slideIndex) => {
+                    findAll(sourceFor(sourceKind, slideIndex), options.query, options)
+                        .forEach((item) => results.push({
+                            slideIndex,
+                            sourceKind,
+                            ...item,
+                        }));
+                });
+            });
             return response({
                 query: options.query,
                 results: results.slice(0, MAX_SEARCH_RESULTS),
@@ -1066,6 +1059,14 @@
 
         function submitSourcePr(payload = {}) {
             const sourceKind = payload.sourceKind || 'html';
+            const allowedKinds = isDeck() ? ['html', 'deck-css'] : ['html'];
+            if (!allowedKinds.includes(sourceKind)) {
+                return Promise.resolve(response({
+                    success: false,
+                    code: 'UNSUPPORTED_SOURCE_KIND',
+                    message: `仅支持源码类型：${allowedKinds.join('、')}。`,
+                }));
+            }
             const slideIndex = isDeck()
                 ? Number(payload.slideIndex ?? state.activeSlideIndex)
                 : null;
@@ -1122,29 +1123,6 @@
                     ]),
                 ];
                 programmableContent.diagnostics.push(...candidateReview.diagnostics);
-            } else if (sourceKind === 'script') {
-                const scriptReview = reviewStandaloneScript(preliminary.source, {
-                    phase: 'pr',
-                    documentKind: isDeck() ? 'pptx' : 'docx',
-                    slideIndex,
-                    scriptId: isDeck() ? `slide-${slideIndex + 1}` : 'document',
-                });
-                if (scriptReview.changed) {
-                    replacements = [{
-                        target: original,
-                        replace: scriptReview.source,
-                        startLine: 1,
-                    }];
-                }
-                programmableContent.dependencies.push(
-                    ...(scriptReview.dependencies || [])
-                );
-                scriptReview.findings.forEach((finding) =>
-                    programmableContent.diagnostics.push({
-                        ...finding,
-                        context: scriptReview.context,
-                    })
-                );
             }
 
             programmableContent.status = programmableContent.diagnostics.some(
@@ -1186,34 +1164,13 @@
                             ...normalized.dependencies,
                         ]),
                     ];
-                } else if (sourceKind === 'script') {
-                    state.document.manifest.programmableDependencies = [
-                        ...new Set([
-                            ...(state.document.manifest.programmableDependencies || []),
-                            ...programmableContent.dependencies,
-                        ]),
-                    ];
                 }
-
-                if (isDeck()) {
+                if (isDeck() && sourceKind === 'deck-css') {
+                    state.document.source.deckCss = core.sanitizeCss(nextSource);
+                } else if (isDeck()) {
                     const slide = slides()[slideIndex];
                     if (!slide) throw new Error('指定幻灯片不存在。');
-                    if (sourceKind === 'css') {
-                        slide.css = core.sanitizeCss(nextSource);
-                    } else if (sourceKind === 'script') {
-                        slide.script = String(nextSource);
-                    } else {
-                        const completeSource = core.splitSlideSource(
-                            nextSource,
-                            slide.script
-                        );
-                        slide.html = core.formatHtml(
-                            core.ensureTextNodeIds(completeSource.html)
-                        );
-                        slide.script = completeSource.script;
-                    }
-                } else if (sourceKind === 'css') {
-                    setCurrentCss(nextSource);
+                    slide.source = core.normalizeCompleteSlideSource(nextSource);
                 } else {
                     setCurrentHtml(nextSource);
                 }
@@ -1318,31 +1275,20 @@
                 const insertionIndex = type === 'insert'
                     ? Math.max(0, Math.min(slides().length, Number(payload.slideIndex) || 0))
                     : slides().length;
-                const completeSource = payload.source ?? payload.html;
-                const htmlReview = reviewProgrammableHtml(completeSource, {
+                if (!String(payload.source || '').trim()) {
+                    return Promise.resolve(response({
+                        success: false,
+                        code: 'SLIDE_SOURCE_REQUIRED',
+                        message: '新增或插入页面必须提供完整 source。',
+                    }));
+                }
+                const htmlReview = reviewProgrammableHtml(payload.source, {
                     phase: 'pr',
                     documentKind: 'pptx',
                     slideIndex: insertionIndex,
                 });
-                const scriptReview = reviewStandaloneScript(payload.script, {
-                    phase: 'pr',
-                    documentKind: 'pptx',
-                    slideIndex: insertionIndex,
-                    scriptId: payload.id || `slide-${insertionIndex + 1}`,
-                });
-                programmableContent.dependencies = [
-                    ...new Set([
-                        ...htmlReview.dependencies,
-                        ...(scriptReview.dependencies || []),
-                    ]),
-                ];
-                programmableContent.diagnostics = [
-                    ...htmlReview.diagnostics,
-                    ...scriptReview.findings.map((finding) => ({
-                        ...finding,
-                        context: scriptReview.context,
-                    })),
-                ];
+                programmableContent.dependencies = [...new Set(htmlReview.dependencies)];
+                programmableContent.diagnostics = [...htmlReview.diagnostics];
                 programmableContent.status = programmableContent.diagnostics.some(
                     (item) => item.level === 'refuse'
                 )
@@ -1353,8 +1299,6 @@
                 normalizedPayload = {
                     ...payload,
                     source: htmlReview.html,
-                    html: htmlReview.html,
-                    script: scriptReview.source,
                 };
             }
 
@@ -1364,9 +1308,7 @@
                     type: `slide-${type}`,
                     slideIndex: normalizedPayload.slideIndex,
                     name: normalizedPayload.name,
-                    html: normalizedPayload.html,
-                    css: normalizedPayload.css,
-                    script: normalizedPayload.script,
+                    source: normalizedPayload.source,
                     notes: normalizedPayload.notes,
                     programmableContent,
                 },
@@ -1389,9 +1331,7 @@
                     : list.length;
                 const slide = core.createSlide({
                     name: normalizedPayload.name,
-                    source: normalizedPayload.source ?? normalizedPayload.html,
-                    css: normalizedPayload.css,
-                    script: normalizedPayload.script,
+                    source: normalizedPayload.source,
                     transition: normalizedPayload.transition,
                     notes: normalizedPayload.notes,
                     resources: normalizedPayload.resources,

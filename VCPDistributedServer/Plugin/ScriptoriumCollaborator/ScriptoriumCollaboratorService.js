@@ -213,6 +213,31 @@ async function call(
     return resultText(`Scriptorium · ${method}`, result);
 }
 
+async function listFonts(args = {}) {
+    const result = await requireControl().listFonts({
+        language: args.language || args.locale || 'all',
+        forceRefresh: booleanOf(args.forceRefresh, false),
+    });
+    const labels = {
+        'zh-CN': '中文字体',
+        en: '英文字体 / 拉丁字体',
+        all: '全部系统字体',
+    };
+    const fonts = Array.isArray(result.fonts) ? result.fonts : [];
+    return {
+        content: [{
+            type: 'text',
+            text: [
+                `# Scriptorium 可用字体 · ${labels[result.language] || result.language}`,
+                '',
+                `共 ${fonts.length} 种已安装字体。以下名称可直接用于 CSS font-family：`,
+                '',
+                ...fonts.map((font) => `- ${font}`),
+            ].join('\n'),
+        }],
+    };
+}
+
 async function getDocumentInfo(args) {
     return call(args, 'getDocumentInfo');
 }
@@ -311,14 +336,18 @@ async function submitSourcePr(args, executionContext = {}) {
 
 async function mutateSlide(args, method, executionContext = {}) {
     const maid = authorFromMaid(args, executionContext);
+    const deleting = method === 'deleteSlide';
+    const source = String(args.source || '');
+    if (!deleting && !source.trim()) {
+        throw new Error(
+            '[ScriptoriumCollaborator] AddSlide/InsertSlide 必须通过 source 一次提交包含 <style>、页面 HTML、依赖声明和内联 <script> 的完整单页源码。'
+        );
+    }
     const payload = {
         requestId: requestIdOf(args, executionContext),
         slideIndex: args.slideIndex,
         name: args.name,
-        source: args.source ?? args.html,
-        html: args.html,
-        css: args.css,
-        script: args.script,
+        source: deleting ? undefined : source,
         notes: args.notes,
         transition: args.transition,
         resources: parseArray(args.resources, 'resources'),
@@ -377,14 +406,32 @@ async function updatePresentationConfig(args, executionContext = {}) {
 
 async function createProject(args, executionContext = {}) {
     const config = presentationConfigFromArgs(args);
+    const projectType = String(args.projectType || args.type || '').trim().toLowerCase();
+    const deck = ['pptx', 'vpptx', 'presentation', 'slide-deck'].includes(projectType);
+    const source = String(args.source || '');
+    const slides = parseArray(args.slides, 'slides');
+
+    if (!deck && !source.trim()) {
+        throw new Error(
+            '[ScriptoriumCollaborator] 创建 DOCX 必须通过 source 一次提交包含 <style>、完整正文 HTML、依赖声明和内联 <script> 的唯一完整源码。'
+        );
+    }
+    if (deck && (!slides.length || slides.some((slide) =>
+        !slide || typeof slide !== 'object' || !String(slide.source || '').trim()
+    ))) {
+        throw new Error(
+            '[ScriptoriumCollaborator] 创建 PPTX 必须提供 slides，且每页都必须包含唯一完整 source。'
+        );
+    }
+
     return requireControl().createProjectArtifact({
         requestId: requestIdOf(args, executionContext),
-        projectType: args.projectType || args.type,
+        projectType,
         fileName: args.fileName,
         title: args.title,
-        html: args.html,
-        css: args.css,
-        slides: parseArray(args.slides, 'slides'),
+        source: deck ? undefined : source,
+        deckCss: deck ? String(args.deckCss || '') : undefined,
+        slides: deck ? slides : undefined,
         page: config.page,
         presentation: config.presentation,
         maid: authorFromMaid(args, executionContext),
@@ -397,6 +444,9 @@ async function createProject(args, executionContext = {}) {
 
 async function processSingleToolCall(args, executionContext = {}) {
     switch (commandOf(args)) {
+        case 'listfonts':
+        case 'getfonts':
+            return listFonts(args);
         case 'getdocumentinfo':
             return getDocumentInfo(args);
         case 'getrenderedtext':
@@ -440,7 +490,7 @@ async function processSingleToolCall(args, executionContext = {}) {
             );
         default:
             throw new Error(
-                '[ScriptoriumCollaborator] 不支持的 command。可用值：GetDocumentInfo、GetRenderedText、GetOutline、GetSection、GetSource、SearchSource、GetViewportSource、GetVisualContext、GetPrHistory、SubmitSourcePr、AddSlide、InsertSlide、DeleteSlide、UpdatePresentationConfig、CreateProject、GetStorageInfo。'
+                '[ScriptoriumCollaborator] 不支持的 command。可用值：ListFonts、GetDocumentInfo、GetRenderedText、GetOutline、GetSection、GetSource、SearchSource、GetViewportSource、GetVisualContext、GetPrHistory、SubmitSourcePr、AddSlide、InsertSlide、DeleteSlide、UpdatePresentationConfig、CreateProject、GetStorageInfo。'
             );
     }
 }

@@ -187,16 +187,14 @@
             scene: documentModel.manifest?.scene
                 ? JSON.parse(JSON.stringify(documentModel.manifest.scene))
                 : null,
-            html: deck ? '' : String(documentModel.source?.html || ''),
-            css: String(documentModel.source?.css || ''),
+            source: deck ? '' : String(documentModel.source?.content || ''),
+            deckCss: deck ? String(documentModel.source?.deckCss || '') : '',
             slides: deck
                 ? (documentModel.source?.slides || []).map((slide, index) => ({
                     index,
                     id: slide.id,
                     name: slide.name,
-                    html: String(slide.html || ''),
-                    css: String(slide.css || ''),
-                    script: String(slide.script || ''),
+                    source: String(slide.source || ''),
                     transition: slide.transition ?? null,
                     duration: slide.duration ?? null,
                     notes: String(slide.notes || ''),
@@ -317,40 +315,66 @@
         return slides[state.activeSlideIndex] || slides[0] || null;
     }
 
-    function currentSourceHtml() {
-        return isSlideDeck()
-            ? core.composeSlideSource(activeSlide())
-            : state.document?.source?.html || '';
+    function parsedSlide(slide = activeSlide()) {
+        if (!slide) return { html: '', css: '', script: '' };
+        return {
+            ...core.splitSlideSource(slide.source),
+            id: slide.id,
+            name: slide.name,
+        };
     }
 
-    function setCurrentSourceHtml(html) {
+    function parsedDocument() {
+        const source = String(state.document?.source?.content || '');
+        const template = document.createElement('template');
+        template.innerHTML = source;
+        const styles = [...template.content.querySelectorAll('style')]
+            .map((style) => style.textContent || '');
+        template.content.querySelectorAll('style').forEach((style) => style.remove());
+        return {
+            html: template.innerHTML,
+            css: core.sanitizeCss(styles.join('\n\n')),
+        };
+    }
+
+    function currentSourceHtml() {
+        return isSlideDeck()
+            ? String(activeSlide()?.source || '')
+            : String(state.document?.source?.content || '');
+    }
+
+    function setCurrentSourceHtml(source) {
         if (isSlideDeck()) {
             const slide = activeSlide();
-            if (slide) {
-                const source = core.splitSlideSource(html, slide.script);
-                slide.html = core.formatHtml(core.ensureTextNodeIds(source.html));
-                slide.script = source.script;
-            }
+            if (slide) slide.source = core.normalizeCompleteSlideSource(source);
         } else {
-            state.document.source.html = core.formatHtml(core.ensureTextNodeIds(html));
+            state.document.source.content = String(source || '');
         }
     }
 
     function currentSourceCss() {
-        return isSlideDeck() ? activeSlide()?.css || '' : state.document?.source?.css || '';
+        return isSlideDeck()
+            ? state.document?.source?.deckCss || ''
+            : parsedDocument().css;
     }
 
     function setCurrentSourceCss(css) {
         if (isSlideDeck()) {
-            const slide = activeSlide();
-            if (slide) slide.css = core.sanitizeCss(css);
-        } else {
-            state.document.source.css = core.sanitizeCss(css);
+            state.document.source.deckCss = core.sanitizeCss(css);
+            return;
         }
+        const documentSource = parsedDocument();
+        state.document.source.content = `<style data-vdoc-document-style>
+${core.sanitizeCss(css)}
+</style>
+${core.formatHtml(core.ensureTextNodeIds(documentSource.html))}`;
     }
 
     function documentCssForShadow() {
-        return state.document.source.css
+        const css = isSlideDeck()
+            ? state.document.source.deckCss
+            : parsedDocument().css;
+        return String(css || '')
             .replace(/(^|})\s*:root\s*\{/g, '$1\n:host {')
             .replace(/(^|})\s*html\s*,\s*body\s*\{/g, '$1\n:host {')
             .replace(/(^|})\s*body\s*\{/g, '$1\n:host {');
@@ -583,7 +607,8 @@ ${surface === 'edit' ? `
     }
 
     function runSlideRuntime(slide, runtimeRoot, surface = 'edit') {
-        if (!slide?.script || !runtimeRoot?.isConnected) {
+        const runtimeSlide = parsedSlide(slide);
+        if (!runtimeSlide.script || !runtimeRoot?.isConnected) {
             disposeSlideRuntime();
             return null;
         }
@@ -617,7 +642,7 @@ ${surface === 'edit' ? `
 
         const animationFrames = new Set();
         const timeouts = new Set();
-        const review = reviewRuntimeScript(slide.script, {
+        const review = reviewRuntimeScript(runtimeSlide.script, {
             documentKind: 'pptx',
             surface,
             scriptId: slide.id,
@@ -720,7 +745,7 @@ ${surface === 'edit' ? `
                 'clearTimeout',
                 'setInterval',
                 'clearInterval',
-                String(slide.script)
+                String(runtimeSlide.script)
             );
             const returned = execute.call(
                 runtimeRoot,
@@ -1062,15 +1087,16 @@ ${surface === 'edit' ? `
 
         if (isSlideDeck()) {
             const slide = activeSlide();
+            const source = parsedSlide(slide);
             runtime.className = 'vdoc-runtime vdoc-slide-editor-runtime';
             runtime.dataset.slideId = slide?.id || '';
-            runtime.innerHTML = slide?.html || '';
+            runtime.innerHTML = source.html;
             const slideStyle = document.createElement('style');
             slideStyle.dataset.vdocSlideStyle = slide?.id || '';
-            slideStyle.textContent = slide?.css || '';
+            slideStyle.textContent = source.css;
             root.appendChild(slideStyle);
         } else {
-            pagination.renderContinuous(state.document.source.html, runtime, {
+            pagination.renderContinuous(parsedDocument().html, runtime, {
                 ensureIds: core.ensureTextNodeIds,
             });
         }
@@ -1108,10 +1134,11 @@ ${surface === 'edit' ? `
         runtime.dataset.sceneKind = state.document.manifest.scene.kind;
         root.append(style, runtime);
         const previewHtml = isSlideDeck()
-            ? state.document.source.slides.map((slide) =>
-                `<section data-vdoc-slide data-vdoc-slide-id="${escapeHtml(slide.id)}">${slide.html}<style>${slide.css}</style></section>`
-            ).join('\n')
-            : state.document.source.html;
+            ? state.document.source.slides.map((slide) => {
+                const source = parsedSlide(slide);
+                return `<section data-vdoc-slide data-vdoc-slide-id="${escapeHtml(slide.id)}">${source.html}<style>${source.css}</style></section>`;
+            }).join('\n')
+            : parsedDocument().html;
         state.previewResult = pagination.paginate(previewHtml, runtime, {
             ensureIds: core.ensureTextNodeIds,
             scene: core.createSceneConfig(state.document.manifest.scene),
@@ -1138,7 +1165,9 @@ ${surface === 'edit' ? `
         return `${buildDocumentStyle(surface)
             .replace('@import url("../vendor/katex.min.css");', '')
             .replace(':host {', ':root {')
-            .replace(documentCssForShadow(), state.document.source.css)
+            .replace(documentCssForShadow(), isSlideDeck()
+                ? state.document.source.deckCss
+                : parsedDocument().css)
             .replace(/transform:\s*scale\(var\(--vdoc-zoom,\s*1\)\);/g, 'transform: none;')
             .replace(/margin-bottom:\s*calc\(var\(--vdoc-page-gap\)\s*\+\s*var\(--vdoc-zoom-height-compensation,\s*0px\)\)\s*!important;/g,
                 'margin-bottom: var(--vdoc-page-gap) !important;')}
@@ -1172,16 +1201,21 @@ html[data-vdoc-pdf="true"] *, html[data-vdoc-pdf="true"] *::before, html[data-vd
         const ratioHeight = Number(ratioParts?.[2]) || 9;
         const numericRatio = ratioWidth / ratioHeight;
         const cssAspectRatio = `${ratioWidth} / ${ratioHeight}`;
-        const slideMarkup = slides.map((slide, index) => `
+        const slideMarkup = slides.map((slide, index) => {
+            const source = parsedSlide(slide);
+            return `
 <section class="vcp-slide${index === 0 ? ' active' : ''}"
     data-slide-index="${index}"
     data-slide-id="${escapeHtml(slide.id)}"
     data-transition="${escapeHtml(core.normalizeTransition(slide.transition))}"
     aria-hidden="${index === 0 ? 'false' : 'true'}">
-    <style>${String(slide.css || '').replace(/<\/style/gi, '<\\/style')}</style>
-    ${slide.html}
-</section>`).join('\n');
-        const slideScripts = slides.map((slide, index) => slide.script
+    <style>${String(source.css).replace(/<\/style/gi, '<\\/style')}</style>
+    ${source.html}
+</section>`;
+        }).join('\n');
+        const slideScripts = slides.map((slide, index) => {
+            const source = parsedSlide(slide);
+            return source.script
             ? `(() => {
     const scene = document.querySelector('[data-slide-index="${index}"]');
     if (!scene) return;
@@ -1206,14 +1240,15 @@ html[data-vdoc-pdf="true"] *, html[data-vdoc-pdf="true"] *::before, html[data-vd
             'scene',
             'deck',
             'document',
-            ${inlineScriptLiteral(slide.script)}
+            ${inlineScriptLiteral(source.script)}
         );
         run.call(scene, scene, window.VCPDeck, scopedDocument);
     } catch (error) {
         console.error('[VCPDeck] Scene ${String(slide.id).replace(/['\\\r\n]/g, '')} script failed:', error);
     }
 })();`
-            : '').filter(Boolean).join('\n');
+                : '';
+        }).filter(Boolean).join('\n');
 
         return `<!doctype html>
 <html lang="${language}">
@@ -1222,7 +1257,7 @@ html[data-vdoc-pdf="true"] *, html[data-vdoc-pdf="true"] *::before, html[data-vd
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>${title}</title>
 <style>
-${state.document.source.css}
+${state.document.source.deckCss}
 ${styleLibrary.compileCss([...state.usedAdvancedStyleIds])}
 *{box-sizing:border-box}
 html,body{width:100%;height:100%;margin:0;overflow:hidden;background:#090b0c;color:#fff}
@@ -1314,7 +1349,7 @@ ${slideScripts}
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${title}</title>
 <style>
-${state.document.source.css}
+${parsedDocument().css}
 ${compiledStyles}
 html,body{margin:0;min-height:100%}
 body{padding:clamp(24px,6vw,96px)}
@@ -1324,7 +1359,7 @@ body{padding:clamp(24px,6vw,96px)}
 </head>
 <body>
 <main class="vdoc-flow-export">
-${state.document.source.html}
+${parsedDocument().html}
 </main>
 </body>
 </html>`;
@@ -1898,7 +1933,34 @@ ${state.document.source.html}
             node.removeAttribute('data-vdoc-editor-selected');
             node.removeAttribute('data-bound');
         });
-        setCurrentSourceHtml(clone.innerHTML);
+
+        if (isSlideDeck()) {
+            // 编辑渲染树只包含页面标记和外部依赖声明；页内 style 与受控
+            // inline script 在 parsedSlide() 阶段被临时抽离。结构同步必须把
+            // 它们放回完整源码，否则一次可视化编辑就会删除动画与交互代码。
+            const current = parsedSlide();
+            const parts = [];
+            if (current.css.trim()) {
+                parts.push(`<style data-vdoc-slide-style>\n${
+                    current.css.replace(/<\/style/gi, '<\\/style')
+                }\n</style>`);
+            }
+            parts.push(clone.innerHTML);
+            if (current.script.trim()) {
+                parts.push(`<script data-vdoc-slide-script>\n${
+                    current.script.replace(/<\/script/gi, '<\\/script')
+                }\n</script>`);
+            }
+            setCurrentSourceHtml(parts.join('\n'));
+            return;
+        }
+
+        // DOCX 渲染树保留正文中的脚本节点，但不包含文档 style；只恢复样式，
+        // 其余完整结构直接来自清理后的渲染克隆。
+        const current = parsedDocument();
+        setCurrentSourceHtml(`<style data-vdoc-document-style>\n${
+            current.css.replace(/<\/style/gi, '<\\/style')
+        }\n</style>\n${clone.innerHTML}`);
     }
 
     function caretIsAtBlockStart(selection, block) {
@@ -2312,12 +2374,14 @@ ${state.document.source.html}
             state.sourceMode = mode;
             elements['source-title'].textContent = mode === 'html'
                 ? (isSlideDeck() ? '当前页完整源码' : 'HTML 源码')
-                : 'CSS 源码';
+                : (isSlideDeck() ? '演示全局 CSS' : '文档全局 CSS');
             elements['source-description'].textContent = mode === 'html'
                 ? (isSlideDeck()
-                    ? '当前页结构、依赖声明与交互脚本均可在此编辑'
+                    ? '当前页的 <style>、HTML、依赖声明与交互脚本均在此编辑'
                     : '人类编辑渲染结果，AI 始终以此结构为真相')
-                : '样式与纯 CSS 动画由 AI 协助设计';
+                : (isSlideDeck()
+                    ? '应用于全部页面和演示共享外观；页内样式请编辑当前页完整源码'
+                    : '应用于整份文档的共享样式与 CSS 动画');
             state.sourceEditor?.setOption('mode', mode === 'html' ? 'htmlmixed' : 'css');
             if (mode === 'html') setCurrentSourceHtml(currentSourceHtml());
             setSourceValue(mode === 'html' ? currentSourceHtml() : currentSourceCss());
@@ -2670,7 +2734,7 @@ ${preview.css}
         document.querySelector('.outline-tabs').hidden = false;
         elements['outline-headings-view'].hidden = false;
         elements['outline-paragraphs-view'].hidden = true;
-        const items = core.extractOutline(state.document?.source.html || '');
+        const items = core.extractOutline(parsedDocument().html);
         const headings = items.filter((item) => item.kind === 'heading');
         const paragraphs = items.filter((item) => item.kind === 'paragraph' && item.text);
         elements['outline-count'].textContent = `${headings.length} 节`;
@@ -2758,7 +2822,7 @@ ${preview.css}
     height: 100%;
 }
 ${documentCssForShadow()}
-${slide.css || ''}
+${parsedSlide(slide).css}
 
 /* 必须位于分页自定义 CSS 之后，保证预览始终冻结在初始帧。 */
 .slide-thumbnail-stage *,
@@ -2778,7 +2842,7 @@ svg set {
 `;
         const stage = document.createElement('span');
         stage.className = 'slide-thumbnail-stage';
-        stage.innerHTML = slide.html || '';
+        stage.innerHTML = parsedSlide(slide).html;
         root.append(style, stage);
 
         stage.querySelectorAll('[contenteditable]').forEach((node) =>
@@ -2834,7 +2898,7 @@ svg set {
             const title = document.createElement('span');
             title.className = 'slide-nav-title';
             const template = document.createElement('template');
-            template.innerHTML = slide.html;
+            template.innerHTML = parsedSlide(slide).html;
             title.textContent = slide.name
                 || template.content.textContent?.trim().slice(0, 42)
                 || `第 ${index + 1} 页`;
@@ -2856,24 +2920,66 @@ svg set {
     function selectSlide(index) {
         const slides = state.document?.source?.slides || [];
         if (!slides[index] || index === state.activeSlideIndex) return false;
-        syncContinuousStructureToSource();
+
+        // 切页是一个严格事务：源码编辑器中的缓冲区属于旧 activeSlide。
+        // 必须在改变索引前提交，否则稍后应用时会按新索引把旧页源码覆盖到新页。
+        const sourceMode = state.mode === 'html' || state.mode === 'css';
+        if (sourceMode) {
+            if (applySourceChanges(false) === false) return false;
+        } else if (state.mode === 'render') {
+            syncContinuousStructureToSource();
+        }
+
         state.activeSlideIndex = index;
         state.activeEditableBlock = null;
         state.selectionRange = null;
+        state.selectionText = '';
+        state.selectionBlockIds = [];
+        state.explicitBlockSelection = false;
         renderDocument();
+
+        // 源码面切页后必须立即替换整个编辑缓冲区，不能让上一页内容
+        // 在新 activeSlideIndex 下继续存在。
+        if (sourceMode) refreshSourceEditorForActiveSlide();
+        return true;
+    }
+
+    function refreshSourceEditorForActiveSlide() {
+        if (state.mode !== 'html' && state.mode !== 'css') return;
+        setSourceValue(state.sourceMode === 'html'
+            ? currentSourceHtml()
+            : currentSourceCss());
+        window.clearTimeout(state.sourceEditorTimer);
+        window.setTimeout(() => {
+            state.sourceEditor?.refresh();
+            validateSource();
+            refreshSourceColorMarks();
+        }, 0);
+    }
+
+    function commitActiveSlideBeforeNavigation() {
+        if (state.mode === 'html' || state.mode === 'css') {
+            return applySourceChanges(false) !== false;
+        }
+        if (state.mode === 'render') syncContinuousStructureToSource();
         return true;
     }
 
     function addSlide() {
-        if (!isSlideDeck()) return false;
-        syncContinuousStructureToSource();
+        if (!isSlideDeck() || !commitActiveSlideBeforeNavigation()) return false;
         state.document.source.slides.push(
             core.createSlide({}, state.document.source.slides.length)
         );
         state.activeSlideIndex = state.document.source.slides.length - 1;
+        state.activeEditableBlock = null;
+        state.selectionRange = null;
+        state.selectionText = '';
+        state.selectionBlockIds = [];
+        state.explicitBlockSelection = false;
         markDirty();
         captureSnapshot();
         renderDocument();
+        refreshSourceEditorForActiveSlide();
         return true;
     }
 
@@ -2884,13 +2990,18 @@ svg set {
             showToast('演示至少需要保留一页。');
             return false;
         }
+        if (!commitActiveSlideBeforeNavigation()) return false;
         slides.splice(state.activeSlideIndex, 1);
         state.activeSlideIndex = Math.min(state.activeSlideIndex, slides.length - 1);
         state.activeEditableBlock = null;
         state.selectionRange = null;
+        state.selectionText = '';
+        state.selectionBlockIds = [];
+        state.explicitBlockSelection = false;
         markDirty();
         captureSnapshot();
         renderDocument();
+        refreshSourceEditorForActiveSlide();
         return true;
     }
 
@@ -2902,8 +3013,10 @@ svg set {
     function updateMetrics() {
         const template = document.createElement('template');
         template.innerHTML = isSlideDeck()
-            ? state.document.source.slides.map((slide) => slide.html).join('\n')
-            : state.document?.source.html || '';
+            ? state.document.source.slides
+                .map((slide) => parsedSlide(slide).html)
+                .join('\n')
+            : parsedDocument().html;
         const text = template.content.textContent || '';
         const compact = text.replace(/\s/g, '');
         const words = (text.match(/[\p{L}\p{N}]+/gu) || []).length;
@@ -2995,7 +3108,7 @@ svg set {
             const model = core.createDocument({
                 title,
                 kind: isPresentation ? core.PROJECT_KINDS.SLIDE_DECK : undefined,
-                html: isPresentation ? undefined : result.html,
+                source: isPresentation ? undefined : String(result.html || ''),
                 slides: isPresentation ? result.slides : undefined,
                 page: isPresentation ? result.page : undefined,
             });
@@ -3398,14 +3511,14 @@ svg set {
 
     function prSourceFor(proposal) {
         const sourceKind = String(proposal.sourceKind || 'html');
+        if (isSlideDeck() && sourceKind === 'deck-css') {
+            return state.document?.source?.deckCss || '';
+        }
         if (isSlideDeck() && proposal.slideIndex !== null && proposal.slideIndex !== undefined) {
             const slide = state.document?.source?.slides?.[Number(proposal.slideIndex)];
-            if (!slide) return '';
-            if (sourceKind === 'css') return slide.css || '';
-            if (sourceKind === 'script') return slide.script || '';
-            return slide.html || '';
+            return slide?.source || '';
         }
-        return sourceKind === 'css' ? currentSourceCss() : currentSourceHtml();
+        return sourceKind === 'deck-css' ? currentSourceCss() : currentSourceHtml();
     }
 
     function elementChildren(node) {
@@ -3564,7 +3677,9 @@ ${safeCss}
             );
             if (sourceKind === 'html' && applied.success) {
                 const documentCss = isSlideDeck()
-                    ? state.document?.source?.slides?.[Number(proposal.slideIndex)]?.css || ''
+                    ? core.splitSlideSource(
+                        state.document?.source?.slides?.[Number(proposal.slideIndex)]?.source || ''
+                    ).css
                     : currentSourceCss();
                 renderHtmlIslandDiff(renderDiff, beforeSource, applied.source, documentCss);
             } else {
@@ -3598,7 +3713,7 @@ ${safeCss}
 
     function textFromProposal(proposal) {
         const template = document.createElement('template');
-        template.innerHTML = String(proposal.html || '');
+        template.innerHTML = String(proposal.source || '');
         return template.content.textContent?.trim()
             || proposal.name
             || proposal.type

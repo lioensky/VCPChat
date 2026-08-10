@@ -3416,6 +3416,11 @@ body.focus-mode .document-workspace {
     cursor: default;
 }
 
+#lineage-restore-dialog {
+    z-index: 2100;
+    pointer-events: auto;
+}
+
 .lineage-restore-dialog {
     width: min(520px, calc(100vw - 40px));
 }

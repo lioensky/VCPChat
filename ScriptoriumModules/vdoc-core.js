@@ -97,10 +97,15 @@
         };
     }
 
-    function splitSlideSource(source, fallbackScript = '') {
+    function splitSlideSource(source) {
         const template = document.createElement('template');
         template.innerHTML = sanitizeHtml(source);
         const inlineScripts = [];
+        const inlineStyles = [];
+        template.content.querySelectorAll('style').forEach((style) => {
+            inlineStyles.push(style.textContent || '');
+            style.remove();
+        });
         template.content.querySelectorAll('script').forEach((script) => {
             // src 依赖声明必须留在页面结构中，供本地化、审计和单文件导出使用；
             // 无 src 的脚本则交给 Scriptorium 受控生命周期运行时执行。
@@ -115,33 +120,41 @@
         });
         return {
             html: template.innerHTML,
-            script: inlineScripts.length
-                ? inlineScripts.join('\n\n')
-                : String(fallbackScript || ''),
+            css: sanitizeCss(inlineStyles.join('\n\n')),
+            script: inlineScripts.join('\n\n'),
+            hadInlineStyle: inlineStyles.length > 0,
             hadInlineScript: inlineScripts.length > 0,
         };
     }
 
     function composeSlideSource(slide = {}) {
-        const html = String(slide.html || '');
-        const script = String(slide.script || '');
-        if (!script.trim()) return html;
-        const safeScript = script.replace(/<\/script/gi, '<\\/script');
-        return `${html}\n<script data-vdoc-slide-script>\n${safeScript}\n</script>`;
+        return String(slide.source || '');
+    }
+
+    function normalizeCompleteSource(value, fallback) {
+        // 完整源码本身就是唯一文档真相。仅做安全清理、编辑节点标记和
+        // 可读格式化；绝不能抽取并重组 style/script，否则会改变标签属性、
+        // 执行顺序、DOM 归属以及人类在源码面看到的内容。
+        return formatHtml(ensureTextNodeIds(sanitizeHtml(value || fallback)));
+    }
+
+    function normalizeCompleteSlideSource(value) {
+        return normalizeCompleteSource(value, defaultSlideHtml());
+    }
+
+    function normalizeCompleteDocumentSource(value) {
+        return normalizeCompleteSource(value, `<style data-vdoc-document-style>
+${defaultCss()}
+</style>
+${defaultHtml()}`);
     }
 
     function createSlide(input = {}, index = 0) {
         const candidate = input && typeof input === 'object' ? input : {};
-        const source = splitSlideSource(
-            candidate.source ?? candidate.html ?? defaultSlideHtml(),
-            candidate.script
-        );
         return {
             id: String(candidate.id || createId('slide')),
             name: String(candidate.name || `第 ${index + 1} 页`),
-            html: formatHtml(ensureTextNodeIds(source.html || defaultSlideHtml())),
-            css: sanitizeCss(candidate.css || ''),
-            script: source.script,
+            source: normalizeCompleteSlideSource(candidate.source),
             transition: normalizeTransition(candidate.transition),
             duration: Number.isFinite(Number(candidate.duration))
                 ? Math.max(0, Number(candidate.duration))
@@ -159,6 +172,18 @@
     function normalizeSlides(input) {
         const slides = Array.isArray(input) ? input : [];
         return (slides.length ? slides : [{}]).map(createSlide);
+    }
+
+    function splitDocumentSource(source) {
+        const template = document.createElement('template');
+        template.innerHTML = sanitizeHtml(source);
+        return {
+            html: template.innerHTML,
+        };
+    }
+
+    function composeDocumentSource(documentModel = {}) {
+        return String(documentModel.source?.content || '');
     }
 
     function defaultCss() {
@@ -250,6 +275,7 @@ p { margin: .7em 0; text-align: justify; text-justify: inter-ideograph; text-wra
 
     function createDocument(options = {}) {
         const now = new Date().toISOString();
+        const documentSource = normalizeCompleteDocumentSource(options.source);
         return normalizeDocument({
             format: FORMAT,
             version: VERSION,
@@ -280,15 +306,14 @@ p { margin: .7em 0; text-align: justify; text-justify: inter-ideograph; text-wra
                 }),
             },
             source: {
-                html: options.kind === PROJECT_KINDS.SLIDE_DECK
+                content: options.kind === PROJECT_KINDS.SLIDE_DECK
                     ? ''
-                    : options.html || defaultHtml(),
-                css: options.css || defaultCss(),
+                    : documentSource,
+                deckCss: options.kind === PROJECT_KINDS.SLIDE_DECK
+                    ? sanitizeCss(options.deckCss || '')
+                    : '',
                 slides: options.kind === PROJECT_KINDS.SLIDE_DECK
-                    ? normalizeSlides(options.slides || (options.html ? [{
-                        html: options.html,
-                        name: '第 1 页',
-                    }] : null))
+                    ? normalizeSlides(options.slides)
                     : [],
             },
             checkpoints: [],
@@ -472,18 +497,14 @@ p { margin: .7em 0; text-align: justify; text-justify: inter-ideograph; text-wra
                 import: manifest.import || null,
             },
             source: {
-                html: manifest.scene?.kind === PROJECT_KINDS.SLIDE_DECK
+                content: manifest.scene?.kind === PROJECT_KINDS.SLIDE_DECK
                     ? ''
-                    : formatHtml(ensureTextNodeIds(candidate.source?.html || defaultHtml())),
-                css: sanitizeCss(candidate.source?.css || defaultCss()),
+                    : normalizeCompleteDocumentSource(candidate.source?.content),
+                deckCss: manifest.scene?.kind === PROJECT_KINDS.SLIDE_DECK
+                    ? sanitizeCss(candidate.source?.deckCss || '')
+                    : '',
                 slides: manifest.scene?.kind === PROJECT_KINDS.SLIDE_DECK
-                    ? normalizeSlides(
-                        candidate.source?.slides
-                        || (candidate.source?.html ? [{
-                            html: candidate.source.html,
-                            name: '第 1 页',
-                        }] : null)
-                    )
+                    ? normalizeSlides(candidate.source?.slides)
                     : [],
             },
             checkpoints: Array.isArray(candidate.checkpoints) ? candidate.checkpoints : [],
@@ -535,8 +556,13 @@ p { margin: .7em 0; text-align: justify; text-justify: inter-ideograph; text-wra
         EDITABLE_SELECTOR,
         PRESERVED_CONTAINER_SELECTOR,
         createSceneConfig,
+        splitDocumentSource,
+        composeDocumentSource,
         splitSlideSource,
         composeSlideSource,
+        normalizeCompleteSource,
+        normalizeCompleteSlideSource,
+        normalizeCompleteDocumentSource,
         createSlide,
         normalizeSlides,
         normalizeTransition,
