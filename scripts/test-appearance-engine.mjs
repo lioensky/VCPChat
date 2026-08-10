@@ -4,6 +4,23 @@ import { JSDOM } from 'jsdom';
 
 const appearanceEngineSource = fs.readFileSync('modules/ui-system/appearance-engine.js', 'utf8');
 
+const raceDom = new JSDOM('<!doctype html><html data-ui-mode="next"><head></head><body></body></html>', {
+    url: 'https://vcpchat.local/',
+    runScripts: 'outside-only'
+});
+const raceBody = raceDom.window.document.body;
+raceBody.remove();
+raceDom.window.eval(appearanceEngineSource);
+raceDom.window.document.documentElement.dataset.uiMode = 'classic';
+raceDom.window.document.documentElement.append(raceBody);
+raceDom.window.document.dispatchEvent(new raceDom.window.Event('DOMContentLoaded'));
+assert.equal(
+    raceDom.window.document.getElementById('vcpMaterialOptics'),
+    null,
+    'a deferred Next optics mount must not leak into Classic after a pre-DOM mode switch'
+);
+raceDom.window.close();
+
 const bootDom = new JSDOM(`<!doctype html><html data-ui-mode="classic"><head>
     <script>${appearanceEngineSource.replace(/<\/script/gi, '<\\/script')}</script>
     </head><body><main id="classicLayout"></main></body></html>`, {
@@ -14,9 +31,7 @@ if (bootDom.window.document.readyState === 'loading') {
     await new Promise(resolve => bootDom.window.document.addEventListener('DOMContentLoaded', resolve, { once: true }));
 }
 const bootOptics = bootDom.window.document.getElementById('vcpMaterialOptics');
-assert.ok(bootOptics, 'material optics mounts after body creation');
-assert.equal(bootOptics.parentElement, bootDom.window.document.body, 'material optics never becomes an inline html child');
-assert.ok(bootOptics.classList.contains('vcp-material-optics'), 'material optics uses the out-of-flow geometry class');
+assert.equal(bootOptics, null, 'Classic must not mount the Next material optics runtime');
 assert.equal(bootDom.window.document.documentElement.querySelector(':scope > svg'), null, 'classic layout has no pre-body SVG line box');
 bootDom.window.close();
 
@@ -34,6 +49,7 @@ Object.assign(globalThis, {
 dom.window.eval(appearanceEngineSource);
 const appearance = dom.window.VCPAppearance;
 assert.ok(appearance);
+assert.ok(document.getElementById('vcpMaterialOptics'), 'Next mounts the material optics runtime');
 assert.equal(appearance.getRevision(), 0);
 assert.equal(appearance.normalize({ radius: 'round' }, 'next').radius, 'round');
 assert.equal(appearance.normalize({ radius: 'invalid' }, 'next').radius, 'medium');
@@ -106,7 +122,7 @@ const tokensCss = fs.readFileSync('styles/ui-system/tokens.css', 'utf8');
 const sidebarCss = fs.readFileSync('styles/ui-system/sidebar.css', 'utf8');
 const fontsCss = fs.readFileSync('styles/ui-system/fonts.css', 'utf8');
 assert.match(appearanceCss, /\.vcp-material-optics\s*\{[^}]*position:\s*fixed/s);
-assert.match(appearanceCss, /html\[data-vcp-radius="square"\] \.vcp-ui-scope/);
+assert.match(appearanceCss, /html\[data-ui-mode="next"\]\[data-vcp-radius="square"\] \.vcp-ui-scope/);
 assert.match(appearanceCss, /--vcp-ui-font-family:\s*var\(--vcp-appearance-font-family\)/);
 assert.match(appearanceCss, /\.chat-input-card\s*\{\s*border-radius:\s*var\(--vcp-ui-composer-radius, 24px\)/s);
 assert.match(appearanceCss, /--vcp-ui-shell-radius:\s*0px/);

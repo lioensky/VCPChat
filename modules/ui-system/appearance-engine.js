@@ -143,6 +143,7 @@
 
     function mountMaterialOptics() {
         materialOpticsMountPending = false;
+        if (normalizeUiMode(document.documentElement.dataset.uiMode) !== 'next') return;
         if (!document.body || document.getElementById('vcpMaterialOptics')) return;
         const namespace = 'http://www.w3.org/2000/svg';
         const optics = document.createElementNS(namespace, 'svg');
@@ -177,6 +178,15 @@
         document.addEventListener('DOMContentLoaded', mountMaterialOptics, { once: true });
     }
 
+    function syncMaterialOptics(uiMode) {
+        if (normalizeUiMode(uiMode) === 'next') {
+            ensureMaterialOptics();
+            return;
+        }
+        materialOpticsMountPending = false;
+        document.getElementById('vcpMaterialOptics')?.remove();
+    }
+
     function apply(profile, options = {}) {
         const uiMode = options.uiMode || document.documentElement.dataset.uiMode || 'next';
         const resolved = normalize(profile, uiMode);
@@ -188,7 +198,7 @@
         root.dataset.vcpContentWidth = resolved.contentWidth;
         root.dataset.vcpSurface = resolved.surface;
         root.dataset.vcpSurfaceEffect = resolved.surfaceEffect;
-        ensureMaterialOptics();
+        syncMaterialOptics(uiMode);
         applyMaterialVariables(resolved);
         applyLayoutVariables(resolved);
         root.dataset.vcpShellRadius = resolved.shellRadius;
@@ -226,5 +236,8 @@
 
     const bootMode = document.documentElement.dataset.uiMode || 'next';
     apply(readCache(bootMode), { uiMode: bootMode, source: 'boot-cache' });
+    window.addEventListener('ui-mode-changed', event => {
+        syncMaterialOptics(event.detail?.mode || document.documentElement.dataset.uiMode);
+    });
     window.VCPAppearance = Object.freeze({ PRESETS, MATERIAL_RANGES, LAYOUT_RANGES, normalize, apply, commit, getRevision, readCache });
 })();
