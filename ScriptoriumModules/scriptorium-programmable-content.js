@@ -261,7 +261,33 @@
         const dependencies = new Set();
 
         [...template.content.querySelectorAll('script')].forEach((script, index) => {
-            const source = script.getAttribute('src');
+            const markedLibrary = String(script.dataset.vdocLibrary || '').toLowerCase();
+            let source = script.getAttribute('src');
+
+            // 兼容早期工程中的不可执行依赖占位节点。重新经过规范化时，
+            // 将其升级为明确指向 Scriptorium vendor 的本地可执行脚本标签。
+            if (!source && LOCAL_LIBRARIES[markedLibrary]) {
+                source = script.dataset.vdocOriginalSrc || LOCAL_LIBRARIES[markedLibrary];
+                script.setAttribute('src', LOCAL_LIBRARIES[markedLibrary]);
+                if (script.type === 'application/x-vdoc-library') {
+                    script.removeAttribute('type');
+                }
+                dependencies.add(markedLibrary);
+                diagnostics.push({
+                    level: 'info',
+                    ruleId: 'local-library-marker-upgraded',
+                    scriptId: script.id
+                        || script.dataset.vdocScript
+                        || `external-${index + 1}`,
+                    library: markedLibrary,
+                    source,
+                    localUrl: LOCAL_LIBRARIES[markedLibrary],
+                    message: `${markedLibrary} 旧依赖占位节点已升级为本地可执行脚本链接。`,
+                    context,
+                });
+                return;
+            }
+
             if (!source) {
                 dependenciesForJavaScript(script.textContent)
                     .forEach((library) => dependencies.add(library));
@@ -285,20 +311,23 @@
 
             if (dependency.action === 'local' && dependency.library) {
                 dependencies.add(dependency.library);
-                script.removeAttribute('src');
+                script.setAttribute('src', dependency.localUrl);
                 script.removeAttribute('integrity');
                 script.removeAttribute('crossorigin');
                 script.removeAttribute('referrerpolicy');
                 script.dataset.vdocLibrary = dependency.library;
-                script.dataset.vdocOriginalSrc = source;
-                script.type = 'application/x-vdoc-library';
+                script.dataset.vdocOriginalSrc = script.dataset.vdocOriginalSrc || source;
+                if (script.type === 'application/x-vdoc-library') {
+                    script.removeAttribute('type');
+                }
                 diagnostics.push({
                     level: 'info',
                     ruleId: 'cdn-localized',
                     scriptId,
                     library: dependency.library,
                     source,
-                    message: `${dependency.library} CDN 依赖已在源码进入审批前转换为 VDOC 内置依赖标记。`,
+                    localUrl: dependency.localUrl,
+                    message: `${dependency.library} CDN 依赖已在源码进入审批前发布为 Scriptorium 本地脚本链接。`,
                     context,
                 });
                 return;

@@ -178,16 +178,87 @@
         updateIdentity();
     }
 
+    function sourceStateOf(documentModel = state.document) {
+        if (!documentModel) return null;
+        const deck = documentModel.manifest?.scene?.kind
+            === core.PROJECT_KINDS.SLIDE_DECK;
+        return {
+            documentKind: deck ? 'pptx' : 'docx',
+            scene: documentModel.manifest?.scene
+                ? JSON.parse(JSON.stringify(documentModel.manifest.scene))
+                : null,
+            html: deck ? '' : String(documentModel.source?.html || ''),
+            css: String(documentModel.source?.css || ''),
+            slides: deck
+                ? (documentModel.source?.slides || []).map((slide, index) => ({
+                    index,
+                    id: slide.id,
+                    name: slide.name,
+                    html: String(slide.html || ''),
+                    css: String(slide.css || ''),
+                    script: String(slide.script || ''),
+                    transition: slide.transition ?? null,
+                    duration: slide.duration ?? null,
+                    notes: String(slide.notes || ''),
+                    resources: Array.isArray(slide.resources)
+                        ? JSON.parse(JSON.stringify(slide.resources))
+                        : [],
+                }))
+                : [],
+        };
+    }
+
     function createVersionSnapshot(documentModel = state.document) {
         if (!documentModel) return '';
-        // 工程内版本快照保留完整文档模型和文脉元数据，但剥离各历史节点
-        // 自身携带的 snapshot 字符串，避免版本快照递归嵌套造成文件指数膨胀。
+        // 工程内版本快照保留完整文档模型、changeSet 和文脉元数据，
+        // 但剥离各历史节点自身携带的 snapshot 字符串，避免快照递归嵌套。
         const normalized = JSON.parse(core.serialize(documentModel));
         normalized.checkpoints = (normalized.checkpoints || []).map((checkpoint) => {
             const { snapshot, ...record } = checkpoint || {};
             return record;
         });
         return JSON.stringify(normalized, null, 2);
+    }
+
+    function changeSetForLineageRecord(record) {
+        if (record?.changeSet) {
+            return {
+                storage: 'changeSet',
+                exactBeforeAfter: record.changeSet.before !== undefined
+                    && record.changeSet.after !== undefined,
+                ...record.changeSet,
+            };
+        }
+        if (typeof record?.snapshot === 'string' && record.snapshot.trim()) {
+            try {
+                const snapshotDocument = core.parse(record.snapshot);
+                return {
+                    storage: 'legacy-snapshot',
+                    exactBeforeAfter: false,
+                    notice: '旧节点未保存精确代码差异；以下为该节点版本快照中的完整源码状态。',
+                    type: record.operation?.type || 'snapshot-state',
+                    before: null,
+                    after: sourceStateOf(snapshotDocument),
+                };
+            } catch (error) {
+                return {
+                    storage: 'invalid-snapshot',
+                    exactBeforeAfter: false,
+                    notice: `节点快照无法解析：${error.message}`,
+                    type: record.operation?.type || 'unknown',
+                    before: null,
+                    after: null,
+                };
+            }
+        }
+        return {
+            storage: 'metadata-only',
+            exactBeforeAfter: false,
+            notice: '此旧节点没有保存 changeSet 或版本快照，无法恢复原始代码变动。',
+            type: record?.operation?.type || record?.proposal?.type || 'unknown',
+            before: null,
+            after: null,
+        };
     }
 
     function captureSnapshot() {
@@ -2059,10 +2130,14 @@ ${state.document.source.html}
         if (state.sourceMode === 'html') {
             const template = document.createElement('template');
             template.innerHTML = source;
-            const blocked = template.content.querySelector('script,iframe,object,embed');
+            // script 由可编程内容策略执行依赖本地化和 warn/refuse 审查，
+            // 不能再被旧源码校验器统一拒绝，否则合法本地依赖也无法应用。
+            const blocked = template.content.querySelector('iframe,object,embed');
             if (blocked) {
                 valid = false;
                 message = `禁止使用 <${blocked.tagName.toLowerCase()}>`;
+            } else if (template.content.querySelector('script')) {
+                message = '源码有效 · 脚本将在应用时执行依赖本地化与安全审查';
             }
         } else {
             const opens = (source.match(/\{/g) || []).length;
@@ -2233,7 +2308,26 @@ ${state.document.source.html}
         }
         const source = getSourceValue();
         if (state.sourceMode === 'html') {
-            setCurrentSourceHtml(source);
+            const policy = window.ScriptoriumProgrammableContent;
+            const normalized = policy?.normalizeHtmlDependencies
+                ? policy.normalizeHtmlDependencies(source, {
+                    phase: 'human-source-apply',
+                    documentKind: isSlideDeck() ? 'pptx' : 'docx',
+                    slideIndex: isSlideDeck() ? state.activeSlideIndex : null,
+                })
+                : {
+                    html: source,
+                    dependencies: [],
+                    diagnostics: [],
+                };
+            setCurrentSourceHtml(normalized.html);
+            state.document.manifest.programmableDependencies = [
+                ...new Set([
+                    ...(state.document.manifest.programmableDependencies || []),
+                    ...(normalized.dependencies || []),
+                ]),
+            ];
+            recordProgrammableDiagnostics(normalized.diagnostics || []);
             setSourceValue(currentSourceHtml());
         } else {
             setCurrentSourceCss(source);
@@ -2794,6 +2888,8 @@ svg set {
         elements['loading-state'].hidden = false;
         updateIdentity();
         try {
+            // 打开旧工程必须保持无副作用。依赖升级不能位于载入关键路径，
+            // 否则单个异常历史节点会阻止整个文档进入渲染界面。
             const nextDocument = documentModel
                 ? core.normalizeDocument(documentModel)
                 : core.createDocument();
@@ -3655,6 +3751,7 @@ ${safeCss}
             reviewedAt: record.reviewedAt || null,
         }, null, 2);
         elements['lineage-detail-change'].textContent = JSON.stringify({
+            changeSet: changeSetForLineageRecord(record),
             proposal: record.proposal || null,
             operation: record.operation || null,
             receipt: record.receipt || null,
@@ -3694,7 +3791,9 @@ ${safeCss}
         }
         try {
             const currentSnapshot = createVersionSnapshot();
+            const currentSourceState = sourceStateOf();
             const restored = core.parse(target.snapshot);
+            const restoredSourceState = sourceStateOf(restored);
             const timeline = state.checkpoints;
             const now = Date.now();
             timeline.unshift({
@@ -3709,6 +3808,11 @@ ${safeCss}
                 operation: {
                     type: 'version-backup-before-restore',
                     targetCheckpointId: target.id,
+                },
+                changeSet: {
+                    type: 'version-backup-before-restore',
+                    before: null,
+                    after: currentSourceState,
                 },
                 status: 'applied',
                 snapshot: currentSnapshot,
@@ -3739,6 +3843,11 @@ ${safeCss}
                     type: 'version-restore',
                     targetCheckpointId: target.id,
                 },
+                changeSet: {
+                    type: 'version-restore',
+                    before: currentSourceState,
+                    after: restoredSourceState,
+                },
                 status: 'applied',
                 snapshot: createVersionSnapshot(),
             });
@@ -3767,6 +3876,15 @@ ${safeCss}
             name,
             note: elements['checkpoint-note-input'].value.trim(),
             createdAt: Date.now(),
+            operation: {
+                type: 'checkpoint-state',
+            },
+            changeSet: {
+                type: 'checkpoint-state',
+                before: null,
+                after: sourceStateOf(),
+            },
+            status: 'applied',
             snapshot: createVersionSnapshot(),
         });
         elements['checkpoint-dialog'].hidden = true;
@@ -4137,6 +4255,15 @@ ${safeCss}
                 summary: payload.summary || payload.note || 'AI 已提交一轮润色与排版。',
                 note: payload.note || '',
                 createdAt: payload.createdAt || Date.now(),
+                operation: payload.operation || { type: 'agent-checkpoint-state' },
+                proposal: payload.proposal || null,
+                changeSet: payload.changeSet || {
+                    type: 'agent-checkpoint-state',
+                    before: null,
+                    after: sourceStateOf(),
+                },
+                status: payload.status || 'applied',
+                snapshot: payload.snapshot || createVersionSnapshot(),
             });
             renderLineage();
             await persistCheckpointToFile('AI 刻点');

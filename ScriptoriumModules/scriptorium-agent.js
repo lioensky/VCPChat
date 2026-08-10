@@ -313,6 +313,32 @@
         const isDeck = () =>
             state.document?.manifest?.scene?.kind === core.PROJECT_KINDS.SLIDE_DECK;
         const slides = () => state.document?.source?.slides || [];
+        const sourceStateOf = (documentModel = state.document) => {
+            const deck = documentModel?.manifest?.scene?.kind
+                === core.PROJECT_KINDS.SLIDE_DECK;
+            return {
+                documentKind: deck ? 'pptx' : 'docx',
+                scene: documentModel?.manifest?.scene || null,
+                html: deck ? '' : String(documentModel?.source?.html || ''),
+                css: String(documentModel?.source?.css || ''),
+                slides: deck
+                    ? (documentModel?.source?.slides || []).map((slide, index) => ({
+                        index,
+                        id: slide.id,
+                        name: slide.name,
+                        html: String(slide.html || ''),
+                        css: String(slide.css || ''),
+                        script: String(slide.script || ''),
+                        transition: slide.transition ?? null,
+                        duration: slide.duration ?? null,
+                        notes: String(slide.notes || ''),
+                        resources: Array.isArray(slide.resources)
+                            ? [...slide.resources]
+                            : [],
+                    }))
+                    : [],
+            };
+        };
         const sourceFor = (kind = 'html', slideIndex = null) => {
             if (isDeck() && slideIndex !== null) {
                 const slide = slides()[Number(slideIndex)];
@@ -564,6 +590,11 @@
                     type: 'project-create',
                     projectType: deck ? 'pptx' : 'docx',
                 },
+                changeSet: {
+                    type: 'project-create',
+                    before: null,
+                    after: sourceStateOf(model),
+                },
                 status: 'applied',
             });
             return {
@@ -719,7 +750,10 @@
                 findAll(sourceFor(sourceKind, slideIndex), options.query, options)
                     .forEach((item) => results.push({ slideIndex, sourceKind, ...item }));
             }));
-            return response({ query: options.query, results: results.slice(0, MAX_SEARCH_RESULTS) });
+            return response({
+                query: options.query,
+                results: results.slice(0, MAX_SEARCH_RESULTS),
+            });
         }
 
         function publicRecord(record) {
@@ -737,6 +771,7 @@
                 revision: record.revision ?? null,
                 operation: record.operation || null,
                 proposal: record.proposal || null,
+                changeSet: record.changeSet || null,
                 status: record.status || 'applied',
                 receipt: record.receipt || null,
             };
@@ -805,33 +840,30 @@
             );
             const task = mutationQueue.then(async () => {
                 const activeDocumentId = state.document?.manifest?.id || null;
-                if (record.documentId !== activeDocumentId
-                    || record.baseRevision !== revision()) {
+                if (record.documentId !== activeDocumentId) {
                     record.status = 'conflict';
                     record.reviewedAt = Date.now();
                     record.receipt = {
                         ...receipt,
                         decision: 'conflict',
-                        message: receipt.message || (
-                            record.documentId !== activeDocumentId
-                                ? '审批时当前窗口已切换到另一份文档，未应用该提案。'
-                                : '审批时文档修订已变化，未应用该提案。'
-                        ),
+                        message: receipt.message
+                            || '审批时当前窗口已切换到另一份文档，提案不能应用到不同工程。',
                     };
                     renderLineage();
-                    await persistCheckpoint?.('AI 提案冲突状态');
+                    await persistCheckpoint?.('AI 提案上下文冲突状态');
                     const conflict = response({
                         success: false,
-                        code: 'REVISION_CONFLICT',
+                        code: 'DOCUMENT_CONTEXT_CHANGED',
                         message: record.receipt.message,
                         pr: publicRecord(record),
                         receipt: record.receipt,
-                        expectedRevision: record.baseRevision,
-                        actualRevision: revision(),
+                        expectedDocumentId: record.documentId,
+                        actualDocumentId: activeDocumentId,
                     });
                     resolve(conflict);
                     return conflict;
                 }
+                const sourceBefore = sourceStateOf();
                 const result = await operation();
                 if (!result?.success) {
                     record.status = 'failed';
@@ -860,6 +892,11 @@
                 record.reviewedAt = Date.now();
                 record.revision = revision();
                 record.operation = result.operation;
+                record.changeSet = {
+                    type: result.operation?.type || record.proposal?.type || 'mutation',
+                    before: sourceBefore,
+                    after: sourceStateOf(),
+                };
                 record.receipt = receipt;
                 record.snapshot = createVersionSnapshot
                     ? createVersionSnapshot(state.document)
@@ -948,17 +985,11 @@
             }
             const requestId = String(payload.requestId || crypto.randomUUID());
             if (handledRequests.has(requestId)) return handledRequests.get(requestId);
-            if (Number.isFinite(Number(payload.expectedRevision))
-                && Number(payload.expectedRevision) !== revision()) {
-                return Promise.resolve({
-                    success: false,
-                    code: 'REVISION_CONFLICT',
-                    message: '文档已被人类或其他 Agent 修改，请基于最新修订重新提交。',
-                    expectedRevision: Number(payload.expectedRevision),
-                    actualRevision: revision(),
-                });
-            }
 
+            // expectedRevision 仅记录 Agent 提案所依据的版本，不作为所有操作的
+            // 全局拒绝条件。源码替换在真正合并时用 target 再定位；新增页面等
+            // 可重放操作不应因为无关修订变化而被挡在 PR 建立之前。
+            const submittedRevision = Number(payload.expectedRevision);
             const record = {
                 id: payload.prId || `pr-${crypto.randomUUID()}`,
                 documentId: state.document.manifest.id,
@@ -969,7 +1000,10 @@
                 summary,
                 note: String(payload.note || ''),
                 createdAt: Date.now(),
-                baseRevision: revision(),
+                baseRevision: Number.isFinite(submittedRevision)
+                    ? submittedRevision
+                    : revision(),
+                queuedRevision: revision(),
                 revision: null,
                 requestId,
                 operation: null,
