@@ -512,6 +512,37 @@ ${core.formatHtml(core.ensureTextNodeIds(documentSource.html))}`;
 }
 ${styleLibrary.compileCss([...state.usedAdvancedStyleIds])}
 ${documentCssForShadow()}
+
+/*
+ * 分页框架边界必须位于文档自定义 CSS 之后。统一源码允许作者定义通用的
+ * section、div、* 盒模型规则，但这些规则不能改变分页器自身的测量容器。
+ * page-content 使用 border-box 后，其 100% 宽高才包含纸张内边距，不会
+ * 向右、向下越出纸页并欺骗 scrollHeight/clientHeight 溢出判断。
+ */
+.vdoc-paged-runtime {
+    display: flow-root !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+}
+.vdoc-paged-runtime > .vdoc-page {
+    display: block !important;
+    box-sizing: border-box !important;
+    flex: none !important;
+    max-width: none !important;
+}
+.vdoc-paged-runtime > .vdoc-page > .vdoc-page-content {
+    display: block !important;
+    box-sizing: border-box !important;
+    width: 100% !important;
+    height: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+}
+.vdoc-paged-runtime > .vdoc-page > .vdoc-page-content * {
+    max-width: 100%;
+    overflow-wrap: break-word;
+}
 ${surface === 'edit' ? `
 .vdoc-page { display: none !important; }
 ` : ''}`;
@@ -1170,8 +1201,10 @@ ${surface === 'edit' ? `
                 ? state.document.source.deckCss
                 : parsedDocument().css)
             .replace(/transform:\s*scale\(var\(--vdoc-zoom,\s*1\)\);/g, 'transform: none;')
-            .replace(/margin-bottom:\s*calc\(var\(--vdoc-page-gap\)\s*\+\s*var\(--vdoc-zoom-height-compensation,\s*0px\)\)\s*!important;/g,
-                'margin-bottom: var(--vdoc-page-gap) !important;')}
+            .replace(
+                /margin:\s*0\s+auto\s+calc\(var\(--vdoc-page-gap\)\s*\+\s*var\(--vdoc-zoom-height-compensation,\s*0px\)\)\s*!important;/g,
+                'margin: 0 auto var(--vdoc-page-gap) !important;'
+            )}
 @page { size: ${scene.page.width} ${scene.page.height}; margin: 0; }
 html, body { margin: 0; background: #fff; }
 html[data-vdoc-pdf="true"] *, html[data-vdoc-pdf="true"] *::before, html[data-vdoc-pdf="true"] *::after {
