@@ -188,6 +188,7 @@
             markDirty,
             captureSnapshot,
             renderLineage,
+            persistCheckpoint,
             syncRenderedToSource,
             selectSlide,
         } = context;
@@ -545,6 +546,7 @@
                         ),
                     };
                     renderLineage();
+                    await persistCheckpoint?.('AI 提案冲突状态');
                     const conflict = response({
                         success: false,
                         code: 'REVISION_CONFLICT',
@@ -567,6 +569,7 @@
                         message: result.message || receipt.message || '变更应用失败。',
                     };
                     renderLineage();
+                    await persistCheckpoint?.('AI 提案失败状态');
                     const failure = response({
                         success: false,
                         code: result.code || 'MUTATION_FAILED',
@@ -587,6 +590,7 @@
                 record.receipt = receipt;
                 record.snapshot = core.serialize(state.document);
                 renderLineage();
+                await persistCheckpoint?.('AI 提案合并刻点');
                 const accepted = response({
                     pr: publicRecord(record),
                     receipt,
@@ -603,6 +607,7 @@
                     message: error.message,
                 };
                 renderLineage();
+                await persistCheckpoint?.('AI 提案异常状态');
                 const failure = {
                     success: false,
                     code: 'MUTATION_FAILED',
@@ -618,7 +623,7 @@
             return task;
         }
 
-        function rejectPr(prId, options = {}) {
+        async function rejectPr(prId, options = {}) {
             const pending = pendingPrs.get(String(prId || ''));
             if (!pending) {
                 return {
@@ -634,6 +639,7 @@
             pending.record.reviewedAt = Date.now();
             pending.record.receipt = receipt;
             renderLineage();
+            await persistCheckpoint?.('AI 提案拒绝状态');
             const rejected = response({
                 success: false,
                 code: 'PR_REJECTED',
@@ -708,6 +714,7 @@
             });
             handledRequests.set(requestId, task);
             renderLineage();
+            persistCheckpoint?.('AI 待审刻点');
             window.dispatchEvent(new CustomEvent('scriptorium:pr-pending', {
                 detail: publicRecord(record),
             }));

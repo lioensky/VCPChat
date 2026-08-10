@@ -53,6 +53,8 @@
         activeEditableBlock: null,
         activeReviewPrId: null,
         autoApprovalScheduled: new Set(),
+        slideThumbnailObserver: null,
+        checkpointSaveQueue: Promise.resolve(),
     };
 
     const elements = {};
@@ -1969,6 +1971,102 @@ ${preview.css}
         return button;
     }
 
+    function updateSlideThumbnailScale(host) {
+        const stage = host?.shadowRoot?.querySelector('.slide-thumbnail-stage');
+        if (!stage || !host.isConnected) return;
+        const availableWidth = host.clientWidth;
+        const baseWidth = stage.offsetWidth;
+        const baseHeight = stage.offsetHeight;
+        if (!availableWidth || !baseWidth || !baseHeight) return;
+        const availableHeight = host.clientHeight;
+        const scale = Math.min(availableWidth / baseWidth, availableHeight / baseHeight);
+        stage.style.transform = `translate(-50%, -50%) scale(${scale})`;
+    }
+
+    function createSlideThumbnail(slide) {
+        const scene = core.createSceneConfig(state.document.manifest.scene);
+        const host = document.createElement('span');
+        host.className = 'slide-thumbnail-host';
+        host.setAttribute('aria-hidden', 'true');
+
+        const root = host.attachShadow({ mode: 'open' });
+        const style = document.createElement('style');
+        style.textContent = `
+:host {
+    position: relative;
+    display: block;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    contain: strict;
+    background: #fffdf8;
+    pointer-events: none;
+}
+.slide-thumbnail-stage {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: ${scene.page.width};
+    height: ${scene.page.height};
+    overflow: hidden;
+    color: #1d2421;
+    background: #fffdf8;
+    transform-origin: center;
+    --vdoc-ink: #1d2421;
+    --vdoc-muted: #66706b;
+    --vdoc-paper: #fffdf8;
+}
+.slide-thumbnail-stage > .vdoc-slide-scene,
+.slide-thumbnail-stage > [data-vdoc-slide] {
+    width: 100%;
+    height: 100%;
+}
+${documentCssForShadow()}
+${slide.css || ''}
+
+/* 必须位于分页自定义 CSS 之后，保证预览始终冻结在初始帧。 */
+.slide-thumbnail-stage *,
+.slide-thumbnail-stage *::before,
+.slide-thumbnail-stage *::after {
+    animation: none !important;
+    animation-play-state: paused !important;
+    transition: none !important;
+    caret-color: transparent !important;
+}
+svg animate,
+svg animateMotion,
+svg animateTransform,
+svg set {
+    display: none !important;
+}
+`;
+        const stage = document.createElement('span');
+        stage.className = 'slide-thumbnail-stage';
+        stage.innerHTML = slide.html || '';
+        root.append(style, stage);
+
+        stage.querySelectorAll('[contenteditable]').forEach((node) =>
+            node.removeAttribute('contenteditable')
+        );
+        stage.querySelectorAll('video, audio').forEach((media) => {
+            media.removeAttribute('autoplay');
+            media.removeAttribute('controls');
+            try {
+                media.pause();
+                media.currentTime = 0;
+            } catch {}
+        });
+        stage.querySelectorAll('svg').forEach((svg) => {
+            try {
+                svg.pauseAnimations?.();
+                svg.setCurrentTime?.(0);
+            } catch {}
+        });
+        renderMathNodes(root);
+        window.requestAnimationFrame(() => updateSlideThumbnailScale(host));
+        return host;
+    }
+
     function renderSlideNavigator() {
         const slides = state.document?.source?.slides || [];
         elements['slide-navigator-header'].hidden = false;
@@ -1993,6 +2091,10 @@ ${preview.css}
 
             const preview = document.createElement('span');
             preview.className = 'slide-nav-preview';
+            const canvas = document.createElement('span');
+            canvas.className = 'slide-nav-canvas';
+            canvas.appendChild(createSlideThumbnail(slide));
+
             const title = document.createElement('span');
             title.className = 'slide-nav-title';
             const template = document.createElement('template');
@@ -2000,11 +2102,19 @@ ${preview.css}
             title.textContent = slide.name
                 || template.content.textContent?.trim().slice(0, 42)
                 || `第 ${index + 1} 页`;
-            preview.appendChild(title);
+
+            preview.append(canvas, title);
             button.append(ordinal, preview);
             button.addEventListener('click', () => selectSlide(index));
             return button;
         }));
+
+        state.slideThumbnailObserver?.disconnect();
+        state.slideThumbnailObserver = new ResizeObserver(() => {
+            elements['slide-navigator'].querySelectorAll('.slide-thumbnail-host')
+                .forEach(updateSlideThumbnailScale);
+        });
+        state.slideThumbnailObserver.observe(elements['slide-navigator']);
     }
 
     function selectSlide(index) {
@@ -2253,6 +2363,33 @@ ${preview.css}
         }
     }
 
+    function persistCheckpointToFile(reason = '刻点') {
+        if (!state.ready || !state.document) return Promise.resolve(false);
+        const generation = state.documentGeneration;
+
+        // 刻点元数据需要进入文件，但不能递增正文 revision：
+        // pending PR 的 baseRevision 依赖该值，若提交刻点本身增加 revision，
+        // 随后的批准会被误判为正文修订冲突。
+        state.document.checkpoints = state.checkpoints;
+        state.dirty = true;
+        updateIdentity();
+
+        state.checkpointSaveQueue = state.checkpointSaveQueue
+            .catch(() => false)
+            .then(async () => {
+                while (state.saving && generation === state.documentGeneration) {
+                    await new Promise((resolve) => window.setTimeout(resolve, 40));
+                }
+                if (generation !== state.documentGeneration) return false;
+                const saved = await saveDocument(false);
+                if (!saved) {
+                    showToast(`${reason}已建立，但自动保存到文件失败`, 'error', 5000);
+                }
+                return saved;
+            });
+        return state.checkpointSaveQueue;
+    }
+
     function requestUnsavedDecision(message) {
         if (!state.dirty) return Promise.resolve('discard');
         if (state.unsavedResolver) {
@@ -2363,7 +2500,7 @@ ${preview.css}
                 automatic: options.automatic === true,
                 policy: options.policy || null,
             })
-            : reviewApi.rejectPr(prId, { message });
+            : await reviewApi.rejectPr(prId, { message });
         state.activeReviewPrId = null;
         elements['pr-review-dialog'].hidden = true;
         renderLineage();
@@ -2743,8 +2880,8 @@ ${safeCss}
             snapshot: core.serialize(state.document),
         });
         elements['checkpoint-dialog'].hidden = true;
-        markDirty();
         renderLineage();
+        await persistCheckpointToFile('人类刻点');
     }
 
     function restorePanelWidths() {
@@ -3070,7 +3207,7 @@ ${safeCss}
                 });
             }
         });
-        state.agentCheckpointDisposer = api.onAgentCheckpointProposed((payload) => {
+        state.agentCheckpointDisposer = api.onAgentCheckpointProposed(async (payload) => {
             if (!payload) return;
             state.checkpoints.unshift({
                 id: payload.id || `agent-${Date.now()}`,
@@ -3082,9 +3219,11 @@ ${safeCss}
                 createdAt: payload.createdAt || Date.now(),
             });
             renderLineage();
+            await persistCheckpointToFile('AI 刻点');
         });
         window.addEventListener('beforeunload', () => {
             state.pageObserver?.disconnect();
+            state.slideThumbnailObserver?.disconnect();
             window.clearTimeout(state.paginationTimer);
             window.clearTimeout(state.renderUpdateTimer);
             window.clearTimeout(state.sourceEditorTimer);
@@ -3124,6 +3263,7 @@ ${safeCss}
             markDirty,
             captureSnapshot,
             renderLineage,
+            persistCheckpoint: persistCheckpointToFile,
             syncRenderedToSource: syncContinuousStructureToSource,
             selectSlide,
         });
