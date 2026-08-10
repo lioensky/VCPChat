@@ -25,6 +25,7 @@ async function createMinimalDocx() {
             <w:r><w:t>第一章 原生共笔</w:t></w:r>
         </w:p>
         <w:p>
+            <w:pPr><w:ind w:firstLineChars="200"/></w:pPr>
             <w:r><w:t>这是从 DOCX 导入的正文。</w:t></w:r>
         </w:p>
         <w:p>
@@ -52,6 +53,7 @@ async function createMinimalDocx() {
 <w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
     <w:style w:type="paragraph" w:styleId="Heading1">
         <w:name w:val="Heading 1"/>
+        <w:pPr><w:jc w:val="center"/></w:pPr>
     </w:style>
     <w:style w:type="paragraph" w:styleId="Heading2">
         <w:name w:val="Heading 2"/>
@@ -146,6 +148,87 @@ async function run() {
     assert.equal(pageBreakParagraphs[0].pageBreakAfter, false);
     assert.equal(pageBreakParagraphs[1].pageBreakBefore, true);
 
+    assert.deepEqual(
+        importer.parseDocxParagraphFormat(
+            '<w:jc w:val="center"/><w:ind w:firstLineChars="200" w:left="720"/>'
+        ),
+        {
+            textAlign: 'center',
+            textIndent: '2em',
+            textIndentExplicit: true,
+            marginLeft: '36pt',
+            marginRight: '',
+        }
+    );
+    assert.equal(
+        importer.parseDocxParagraphFormat(
+            '<w:ind w:firstLine="0"/>'
+        ).textIndentExplicit,
+        true
+    );
+
+    const dominantIndentParagraphs = [
+        ...Array.from({ length: 3 }, (_, index) => ({
+            text: `已有缩进正文 ${index}`,
+            paragraphFormat: {
+                textAlign: index === 0 ? 'justify' : '',
+                textIndent: '2em',
+                textIndentExplicit: true,
+            },
+            headingLevel: null,
+            hasLeadingWhitespace: false,
+            hasNumbering: false,
+        })),
+        {
+            text: '应自动补齐',
+            paragraphFormat: {},
+            headingLevel: null,
+            hasLeadingWhitespace: false,
+            hasNumbering: false,
+        },
+        {
+            text: '　已有全角空格',
+            paragraphFormat: {},
+            headingLevel: null,
+            hasLeadingWhitespace: true,
+            hasNumbering: false,
+        },
+        {
+            text: '显式零缩进',
+            paragraphFormat: { textIndentExplicit: true },
+            headingLevel: null,
+            hasLeadingWhitespace: false,
+            hasNumbering: false,
+        },
+        {
+            text: '居中文本',
+            paragraphFormat: { textAlign: 'center' },
+            headingLevel: null,
+            hasLeadingWhitespace: false,
+            hasNumbering: false,
+        },
+        {
+            text: '编号文本',
+            paragraphFormat: {},
+            headingLevel: null,
+            hasLeadingWhitespace: false,
+            hasNumbering: true,
+        },
+        {
+            text: '标题文本',
+            paragraphFormat: {},
+            headingLevel: 1,
+            hasLeadingWhitespace: false,
+            hasNumbering: false,
+        },
+    ];
+    importer.applyDominantDocxTextIndent(dominantIndentParagraphs);
+    assert.equal(dominantIndentParagraphs[3].paragraphFormat.textIndent, '2em');
+    assert.equal(dominantIndentParagraphs[3].paragraphFormat.textIndentInferred, true);
+    for (const index of [4, 5, 6, 7, 8]) {
+        assert.equal(dominantIndentParagraphs[index].paragraphFormat.textIndent, undefined);
+    }
+
     const markdown = await importer.importBuffer(
         '思想.md',
         Buffer.from(`# 总论
@@ -186,9 +269,9 @@ $$`)
 
     const docx = await importer.importBuffer('旧文档.docx', await createMinimalDocx());
     assert.equal(docx.kind, 'docx');
-    assert.match(docx.html, /<h1>第一章 原生共笔<\/h1>/);
+    assert.match(docx.html, /<h1 style="text-align:center">第一章 原生共笔<\/h1>/);
     assert.match(docx.html, /<h2>设计原则<\/h2>/);
-    assert.match(docx.html, /<p>这是从 DOCX 导入的正文。<\/p>/);
+    assert.match(docx.html, /<p style="text-indent:2em">这是从 DOCX 导入的正文。<\/p>/);
     assert.match(docx.html, /<strong>人类创作<\/strong>/);
     assert.match(
         docx.html,
@@ -196,32 +279,32 @@ $$`)
     );
     assert.match(docx.html, /<p>分页后的连续正文。<\/p>/);
     assert.equal(docx.importMetadata.sourceFormat, 'docx');
-    assert.match(docx.importMetadata.importer, /semantic-import-v3/);
+    assert.match(docx.importMetadata.importer, /semantic-import-v4/);
 
     const pptx = await importer.importBuffer('静态演示.pptx', await createMinimalPptx());
     assert.equal(pptx.kind, 'pptx');
     assert.equal(pptx.html, '');
     assert.equal(pptx.slides.length, 2);
     assert.deepEqual(pptx.page, { width: '13.333333333333334in', height: '7.5in' });
-    assert.match(pptx.slides[0].html, /先展示的第二页 &#38; 共创/);
-    assert.match(pptx.slides[1].html, /原始第一页 &#38; 共创/);
+    assert.match(pptx.slides[0].source, /先展示的第二页 &#38; 共创/);
+    assert.match(pptx.slides[1].source, /原始第一页 &#38; 共创/);
     assert.equal(pptx.slides[0].name, '先展示的第二页 & 共创');
-    assert.match(pptx.slides[0].html, /left:7\.50000%;top:10\.00000%/);
-    assert.match(pptx.slides[0].html, /z-index:1/);
-    assert.match(pptx.slides[0].html, /transform:rotate\(15deg\)/);
-    assert.match(pptx.slides[0].html, /left:50\.00000%;top:20\.00000%/);
-    assert.match(pptx.slides[0].html, /z-index:2/);
-    assert.match(pptx.slides[0].html, /font-size:24pt/);
-    assert.match(pptx.slides[0].html, /font-weight:700/);
-    assert.match(pptx.slides[0].html, /font-family:&#34;Arial&#34;/);
-    assert.match(pptx.slides[0].html, /data:image\/png;base64,/);
+    assert.match(pptx.slides[0].source, /left:7\.50000%;top:10\.00000%/);
+    assert.match(pptx.slides[0].source, /z-index:1/);
+    assert.match(pptx.slides[0].source, /transform:rotate\(15deg\)/);
+    assert.match(pptx.slides[0].source, /left:50\.00000%;top:20\.00000%/);
+    assert.match(pptx.slides[0].source, /z-index:2/);
+    assert.match(pptx.slides[0].source, /font-size:24pt/);
+    assert.match(pptx.slides[0].source, /font-weight:700/);
+    assert.match(pptx.slides[0].source, /font-family:&#34;Arial&#34;/);
+    assert.match(pptx.slides[0].source, /data:image\/png;base64,/);
     assert.equal(pptx.slides[0].transition, 'pptx-imported');
     assert.equal(pptx.slides[0].import.sourceSlide, 'ppt/slides/slide2.xml');
     assert.equal(pptx.slides[0].import.hadNativeAnimation, true);
     assert.equal(pptx.importMetadata.warnings.length, 1);
     assert.equal(pptx.importMetadata.warnings[0].type, 'animation-not-translated');
     assert.equal(pptx.importMetadata.sourceFormat, 'pptx');
-    assert.match(pptx.importMetadata.importer, /semantic-import-v3/);
+    assert.match(pptx.importMetadata.importer, /semantic-import-v4/);
 
     console.log('[ScriptoriumImporters] PASSED', {
         markdownMathNodes: (markdown.html.match(/data-vdoc-math=/g) || []).length,

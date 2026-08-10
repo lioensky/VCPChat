@@ -1499,7 +1499,10 @@ ${parsedDocument().html}
         root.addEventListener('pointerdown', (event) => {
             if (event.button !== 0) return;
             const block = event.target.closest?.('[data-vdoc-text]');
-            if (!block) return;
+            if (!block) {
+                createTextBlockAtBlankPoint(event);
+                return;
+            }
             const blockId = block.dataset.vdocText;
             state.pointerSelectionAnchorId = blockId;
             state.pointerSelectingBlocks = false;
@@ -2001,6 +2004,68 @@ ${parsedDocument().html}
         return prepareEditableStructure(element);
     }
 
+    function createTextBlockAtBlankPoint(event) {
+        if (!state.ready || state.mode !== 'render' || isSlideDeck()
+            || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) {
+            return false;
+        }
+        const root = getRenderRoot();
+        const target = event.target;
+        if (!root || !target?.matches?.(
+            '.vdoc-flow-runtime, [data-vdoc-preserve="true"]'
+        )) {
+            return false;
+        }
+
+        const container = target.matches('[data-vdoc-preserve="true"]')
+            ? target
+            : root.querySelector('[data-vdoc-preserve="true"]');
+        if (!container) return false;
+
+        flushPendingRenderedEdits();
+        const blocks = allRenderedTextBlocks().filter((block) => container.contains(block));
+        let anchor = null;
+        let position = 'after';
+        if (blocks.length) {
+            anchor = blocks.reduce((closest, candidate) => {
+                const rect = candidate.getBoundingClientRect();
+                const distance = event.clientY < rect.top
+                    ? rect.top - event.clientY
+                    : event.clientY > rect.bottom
+                        ? event.clientY - rect.bottom
+                        : 0;
+                return !closest || distance < closest.distance
+                    ? { block: candidate, rect, distance }
+                    : closest;
+            }, null);
+            position = event.clientY < anchor.rect.top + anchor.rect.height / 2
+                ? 'before'
+                : 'after';
+        }
+
+        event.preventDefault();
+        if (state.explicitBlockSelection) clearExplicitBlockSelection();
+        const paragraph = createEditableBlock('paragraph');
+        if (anchor?.block?.parentElement) {
+            if (position === 'before') anchor.block.before(paragraph);
+            else anchor.block.after(paragraph);
+        } else {
+            container.appendChild(paragraph);
+        }
+        state.renderedTextBlocks = [];
+        insertSourceBlockRelativeTo(
+            blockIdentityOf(anchor?.block),
+            paragraph,
+            position
+        );
+        state.activeEditableBlock = paragraph;
+        state.blockSelectionAnchorId = paragraph.dataset.vdocText;
+        placeCaretAtStart(paragraph);
+        markDirty({ coalesce: true });
+        scheduleEditSnapshot();
+        return true;
+    }
+
     function insertStructureBlock(type = elements['block-type-select']?.value || 'paragraph') {
         if (!state.ready || state.mode !== 'render') return false;
         flushPendingRenderedEdits();
@@ -2107,6 +2172,84 @@ ${parsedDocument().html}
         });
     }
 
+    function removeSourceBlocks(blockIds) {
+        const ids = [...new Set(blockIds.filter(Boolean))];
+        if (!ids.length) return false;
+        return withCurrentSourceDocument((fragment) => {
+            let changed = false;
+            ids.forEach((blockId) => {
+                const target = sourceBlockById(fragment, blockId);
+                if (!target) return;
+                target.remove();
+                changed = true;
+            });
+            return changed;
+        });
+    }
+
+    function deleteExplicitBlockSelection() {
+        if (!state.explicitBlockSelection) return false;
+        const root = getRenderRoot();
+        const selectedBlocks = blocksForIds().filter((block) =>
+            block.matches('[data-vdoc-block][data-vdoc-removable="true"]')
+        );
+        if (!root || !selectedBlocks.length) return false;
+
+        flushPendingRenderedEdits();
+        const selectedSet = new Set(selectedBlocks);
+        const orderedBlocks = allRenderedTextBlocks();
+        const firstIndex = orderedBlocks.indexOf(selectedBlocks[0]);
+        let target = null;
+        for (let index = firstIndex - 1; index >= 0; index -= 1) {
+            if (!selectedSet.has(orderedBlocks[index])) {
+                target = orderedBlocks[index];
+                break;
+            }
+        }
+        if (!target) {
+            target = orderedBlocks.find((block, index) =>
+                index > firstIndex && !selectedSet.has(block)
+            ) || null;
+        }
+
+        const removedIds = selectedBlocks.map(blockIdentityOf).filter(Boolean);
+        removeSourceBlocks(removedIds);
+        selectedBlocks.forEach((block) => {
+            window.ScriptoriumPretext?.evictNode(block.dataset.vdocText);
+            block.remove();
+        });
+        state.renderedTextBlocks = [];
+        state.explicitBlockSelection = false;
+        state.selectionRange = null;
+        state.selectionText = '';
+        state.selectionBlockIds = [];
+        state.blockSelectionAnchorId = null;
+        currentRenderSelection()?.removeAllRanges();
+
+        // 全文删除后仍保留一个可继续输入的段落。表格行等结构容器不接收
+        // 非法的段落子节点，兜底段落只追加到正文级保留容器。
+        if (!root.querySelector('[data-vdoc-text]')) {
+            const paragraph = createEditableBlock('paragraph');
+            const parent = root.querySelector(
+                '[data-vdoc-preserve="true"]:not(table):not(thead):not(tbody):not(tfoot):not(tr):not(ul):not(ol)'
+            ) || root.querySelector('.vdoc-flow-runtime, .vdoc-slide-editor-runtime');
+            parent?.appendChild(paragraph);
+            insertSourceBlockRelativeTo(null, paragraph, 'after');
+            target = paragraph;
+            state.renderedTextBlocks = [];
+        }
+
+        updateBlockSelectionPresentation();
+        state.activeEditableBlock = target?.isConnected ? target : null;
+        if (state.activeEditableBlock) {
+            focusRenderedBlock(state.activeEditableBlock.dataset.vdocText);
+        }
+        markDirty({ coalesce: true });
+        scheduleEditSnapshot();
+        showToast(`已删除 ${removedIds.length} 个文本块`, 'success');
+        return true;
+    }
+
     function focusRenderedBlock(focusNodeId) {
         const target = focusNodeId
             ? getRenderRoot()?.querySelector(`[data-vdoc-text="${CSS.escape(focusNodeId)}"]`)
@@ -2168,6 +2311,12 @@ ${parsedDocument().html}
     function handleBlockEditingKeydown(event) {
         const editable = event.target.closest?.('[data-vdoc-text]');
         const selection = getRenderRoot()?.getSelection?.() || window.getSelection();
+
+        if (event.key === 'Backspace' && state.explicitBlockSelection) {
+            event.preventDefault();
+            deleteExplicitBlockSelection();
+            return;
+        }
 
         if (event.key === 'Tab' && editable && selection?.isCollapsed && selection.rangeCount) {
             const range = selection.getRangeAt(0);
@@ -4585,7 +4734,15 @@ ${safeCss}
             const modifier = event.ctrlKey || event.metaKey;
             const key = event.key.toLowerCase();
             const formControl = event.target?.closest?.('input, textarea, select, .CodeMirror');
-            if (modifier && key === 'a' && state.ready && state.mode === 'render' && !formControl) {
+            if (event.key === 'Backspace'
+                && !event.defaultPrevented
+                && state.ready
+                && state.mode === 'render'
+                && state.explicitBlockSelection
+                && !formControl) {
+                event.preventDefault();
+                deleteExplicitBlockSelection();
+            } else if (modifier && key === 'a' && state.ready && state.mode === 'render' && !formControl) {
                 event.preventDefault();
                 selectEntireRenderedDocument();
             } else if (modifier && key === 's') {
