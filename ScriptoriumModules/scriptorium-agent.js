@@ -366,6 +366,7 @@
                 dirty: state.dirty,
                 activeSlideIndex: isDeck() ? state.activeSlideIndex : null,
                 slideCount: isDeck() ? slides().length : null,
+                scene: core.createSceneConfig(state.document.manifest.scene),
             });
         }
 
@@ -1151,6 +1152,72 @@
             });
         }
 
+        function updatePresentationConfig(payload = {}) {
+            if (!isDeck()) {
+                return Promise.resolve(response({
+                    success: false,
+                    code: 'PPTX_REQUIRED',
+                    message: '演示场景配置仅适用于 PPTX 端。',
+                }));
+            }
+
+            const current = core.createSceneConfig(state.document.manifest.scene);
+            const suppliedPage = payload.page && typeof payload.page === 'object'
+                ? payload.page
+                : {};
+            const suppliedPresentation = payload.presentation
+                && typeof payload.presentation === 'object'
+                ? payload.presentation
+                : {};
+            const candidate = core.createSceneConfig({
+                ...current,
+                kind: core.PROJECT_KINDS.SLIDE_DECK,
+                page: {
+                    ...current.page,
+                    ...suppliedPage,
+                },
+                presentation: {
+                    ...current.presentation,
+                    ...suppliedPresentation,
+                },
+            });
+            const changed = JSON.stringify(candidate) !== JSON.stringify(current);
+            if (!changed) {
+                return Promise.resolve(response({
+                    success: false,
+                    code: 'SCENE_CONFIG_UNCHANGED',
+                    message: '提交的演示场景配置与当前配置相同。',
+                    scene: current,
+                }));
+            }
+
+            return queueMutation({
+                ...payload,
+                name: payload.name || 'Agent 演示场景配置变更',
+                proposal: {
+                    type: 'presentation-config-update',
+                    before: current,
+                    after: candidate,
+                    page: candidate.page,
+                    presentation: candidate.presentation,
+                },
+            }, async () => {
+                state.document.manifest.scene = core.createSceneConfig(candidate);
+                state.previewRevision = -1;
+                state.previewResult = null;
+                renderDocument();
+                return {
+                    success: true,
+                    operation: {
+                        type: 'presentation-config-update',
+                        before: current,
+                        after: state.document.manifest.scene,
+                    },
+                    scene: state.document.manifest.scene,
+                };
+            });
+        }
+
         function mutateSlides(payload = {}, type) {
             if (!isDeck()) {
                 return Promise.resolve(response({
@@ -1307,6 +1374,8 @@
             addSlide: (payload = {}) => mutateSlides(payload, 'add'),
             insertSlide: (payload = {}) => mutateSlides(payload, 'insert'),
             deleteSlide: (payload = {}) => mutateSlides(payload, 'delete'),
+            updatePresentationConfig,
+            updateSceneConfig: updatePresentationConfig,
         });
 
         return Object.freeze({

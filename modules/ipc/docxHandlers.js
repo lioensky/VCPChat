@@ -33,10 +33,12 @@ const AGENT_ENDPOINT_METHODS = Object.freeze({
         'searchSource', 'getViewportSource', 'getVisualContext', 'getPrHistory',
         'submitSourcePr', 'buildProjectArtifact', 'getSlideCount', 'getSlide',
         'getActiveSlide', 'selectSlide', 'addSlide', 'insertSlide', 'deleteSlide',
+        'updatePresentationConfig', 'updateSceneConfig',
     ]),
 });
 const AGENT_MUTATION_METHODS = new Set([
     'submitSourcePr', 'addSlide', 'insertSlide', 'deleteSlide',
+    'updatePresentationConfig', 'updateSceneConfig',
 ]);
 
 let docxWindow = null;

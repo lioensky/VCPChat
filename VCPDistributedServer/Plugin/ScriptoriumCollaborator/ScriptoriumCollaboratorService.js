@@ -330,7 +330,52 @@ async function mutateSlide(args, method, executionContext = {}) {
     return call(args, method, payload, 'pptx', executionContext);
 }
 
+function presentationConfigFromArgs(args = {}) {
+    const page = {
+        ...parseObject(args.page, 'page'),
+    };
+    const presentation = {
+        ...parseObject(args.presentation, 'presentation'),
+    };
+
+    if (args.width !== undefined) page.width = args.width;
+    if (args.height !== undefined) page.height = args.height;
+    if (args.gap !== undefined) page.gap = args.gap;
+    if (args.aspectRatio !== undefined) presentation.aspectRatio = args.aspectRatio;
+    if (args.theme !== undefined) presentation.theme = args.theme;
+    if (args.navigation !== undefined) presentation.navigation = args.navigation;
+    if (args.loop !== undefined) presentation.loop = booleanOf(args.loop, false);
+    if (args.defaultTransition !== undefined) {
+        presentation.defaultTransition = parseObject(
+            args.defaultTransition,
+            'defaultTransition'
+        );
+    } else if (args.transition !== undefined) {
+        presentation.defaultTransition = typeof args.transition === 'object'
+            ? args.transition
+            : { type: args.transition, duration: args.transitionDuration };
+    }
+
+    return { page, presentation };
+}
+
+async function updatePresentationConfig(args, executionContext = {}) {
+    const maid = authorFromMaid(args, executionContext);
+    const config = presentationConfigFromArgs(args);
+    return call(args, 'updatePresentationConfig', {
+        requestId: requestIdOf(args, executionContext),
+        ...config,
+        expectedRevision: args.expectedRevision,
+        maid,
+        author: maid,
+        summary: String(args.summary || '').trim(),
+        name: args.name,
+        note: args.note,
+    }, 'pptx', executionContext);
+}
+
 async function createProject(args, executionContext = {}) {
+    const config = presentationConfigFromArgs(args);
     return requireControl().createProjectArtifact({
         requestId: requestIdOf(args, executionContext),
         projectType: args.projectType || args.type,
@@ -339,8 +384,8 @@ async function createProject(args, executionContext = {}) {
         html: args.html,
         css: args.css,
         slides: parseArray(args.slides, 'slides'),
-        page: parseObject(args.page, 'page'),
-        presentation: parseObject(args.presentation, 'presentation'),
+        page: config.page,
+        presentation: config.presentation,
         maid: authorFromMaid(args, executionContext),
         summary: args.summary,
         conflictPolicy: args.conflictPolicy || 'rename',
@@ -380,6 +425,10 @@ async function processSingleToolCall(args, executionContext = {}) {
             return mutateSlide(args, 'insertSlide', executionContext);
         case 'deleteslide':
             return mutateSlide(args, 'deleteSlide', executionContext);
+        case 'updatepresentationconfig':
+        case 'updatesceneconfig':
+        case 'setpresentationconfig':
+            return updatePresentationConfig(args, executionContext);
         case 'createscriptoriumproject':
         case 'createproject':
             return createProject(args, executionContext);
@@ -390,7 +439,7 @@ async function processSingleToolCall(args, executionContext = {}) {
             );
         default:
             throw new Error(
-                '[ScriptoriumCollaborator] 不支持的 command。可用值：GetDocumentInfo、GetRenderedText、GetOutline、GetSection、GetSource、SearchSource、GetViewportSource、GetVisualContext、GetPrHistory、SubmitSourcePr、AddSlide、InsertSlide、DeleteSlide、CreateProject、GetStorageInfo。'
+                '[ScriptoriumCollaborator] 不支持的 command。可用值：GetDocumentInfo、GetRenderedText、GetOutline、GetSection、GetSource、SearchSource、GetViewportSource、GetVisualContext、GetPrHistory、SubmitSourcePr、AddSlide、InsertSlide、DeleteSlide、UpdatePresentationConfig、CreateProject、GetStorageInfo。'
             );
     }
 }
@@ -531,6 +580,7 @@ module.exports = {
         parseObject,
         parseArray,
         booleanOf,
+        presentationConfigFromArgs,
         authorFromMaid,
         endpointFor,
         resetForTests,

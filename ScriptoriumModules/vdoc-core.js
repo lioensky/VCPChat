@@ -68,6 +68,35 @@
         return width > 0 && height > 0 ? `${width} / ${height}` : fallback;
     }
 
+    function normalizePageLength(value, fallback) {
+        if (value === undefined || value === null || value === '') return fallback;
+        if (typeof value === 'number') {
+            return Number.isFinite(value) && value > 0 ? `${value}px` : fallback;
+        }
+        const normalized = String(value).trim();
+        return /^\d+(?:\.\d+)?$/.test(normalized)
+            ? `${normalized}px`
+            : normalized || fallback;
+    }
+
+    function normalizeTheme(value, fallback = '') {
+        const normalized = String(value || fallback).trim();
+        return /^[a-z0-9][a-z0-9_-]{0,127}$/i.test(normalized) ? normalized : fallback;
+    }
+
+    function normalizeDefaultTransition(value, legacyTransition = 'none') {
+        const candidate = value && typeof value === 'object' && !Array.isArray(value)
+            ? value
+            : { type: value || legacyTransition };
+        const duration = Number(candidate.duration ?? candidate.durationMs);
+        return {
+            type: normalizeTransition(candidate.type ?? candidate.name ?? legacyTransition),
+            duration: Number.isFinite(duration) && duration >= 0
+                ? Math.min(duration, 60000)
+                : 0,
+        };
+    }
+
     function createSlide(input = {}, index = 0) {
         const candidate = input && typeof input === 'object' ? input : {};
         return {
@@ -140,13 +169,27 @@ p { margin: .7em 0; text-align: justify; text-justify: inter-ideograph; text-wra
             ? PROJECT_KINDS.SLIDE_DECK
             : PROJECT_KINDS.FLOW_DOCUMENT;
         const isDeck = kind === PROJECT_KINDS.SLIDE_DECK;
+        const presentationInput = input.presentation
+            && typeof input.presentation === 'object'
+            ? input.presentation
+            : {};
+        const defaultTransition = normalizeDefaultTransition(
+            presentationInput.defaultTransition,
+            presentationInput.transition
+        );
         return {
             kind,
             orientation: isDeck ? 'landscape' : 'portrait',
             page: {
-                width: String(input.page?.width || (isDeck ? '13.333in' : '210mm')),
-                height: String(input.page?.height || (isDeck ? '7.5in' : '297mm')),
-                gap: String(input.page?.gap || '24px'),
+                width: normalizePageLength(
+                    input.page?.width,
+                    isDeck ? '13.333in' : '210mm'
+                ),
+                height: normalizePageLength(
+                    input.page?.height,
+                    isDeck ? '7.5in' : '297mm'
+                ),
+                gap: normalizePageLength(input.page?.gap, '24px'),
             },
             pagination: {
                 mode: isDeck ? 'explicit' : 'flow',
@@ -156,11 +199,13 @@ p { margin: .7em 0; text-align: justify; text-justify: inter-ideograph; text-wra
             },
             presentation: {
                 enabled: isDeck,
-                navigation: input.presentation?.navigation || 'linear',
-                transition: normalizeTransition(input.presentation?.transition),
-                loop: Boolean(input.presentation?.loop),
+                navigation: presentationInput.navigation || 'linear',
+                transition: defaultTransition.type,
+                defaultTransition,
+                theme: normalizeTheme(presentationInput.theme),
+                loop: Boolean(presentationInput.loop),
                 aspectRatio: isDeck
-                    ? normalizeAspectRatio(input.presentation?.aspectRatio)
+                    ? normalizeAspectRatio(presentationInput.aspectRatio)
                     : null,
             },
         };
@@ -457,6 +502,9 @@ p { margin: .7em 0; text-align: justify; text-justify: inter-ideograph; text-wra
         normalizeSlides,
         normalizeTransition,
         normalizeAspectRatio,
+        normalizePageLength,
+        normalizeTheme,
+        normalizeDefaultTransition,
         extensionForKind,
         createDocument,
         normalizeDocument,
