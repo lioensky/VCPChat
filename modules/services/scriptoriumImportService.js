@@ -484,8 +484,13 @@ function applyDocxParagraphSemantics(html, paragraphs) {
 }
 
 function normalizeMammothHtml(html) {
-    return String(html || '')
-        .replace(/<p>\s*<\/p>/g, '');
+    // Mammoth 对 Word 空段落输出空的 <p></p>。保留其文档顺序，并加入 BR
+    // 作为 contenteditable 的稳定占位；带显式 w:br 的段落本身已有内容，
+    // 不会命中这里，也就不会被误标记为空白行。
+    return String(html || '').replace(
+        /<p(?:\s[^>]*)?>\s*<\/p>/gi,
+        '<p data-vdoc-empty-line="true"><br></p>'
+    );
 }
 
 async function inspectDocx(buffer) {
@@ -508,7 +513,8 @@ async function convertDocx(buffer) {
         {
             styleMap: inspection.styleMap,
             includeDefaultStyleMap: true,
-            ignoreEmptyParagraphs: true,
+            // 空段落是作者实际留下的垂直节奏，不应在语义导入时丢弃。
+            ignoreEmptyParagraphs: false,
             // Word 自动分页位置依赖原机器的字体和打印布局；导入后重新流排。
             ignoreLastRenderedPageBreaks: true,
         }
