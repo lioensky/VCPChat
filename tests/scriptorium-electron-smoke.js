@@ -70,6 +70,71 @@ app.whenReady().then(async () => {
     await windowRef.webContents.executeJavaScript(`document.getElementById('welcome-new-btn').click()`);
     await new Promise((resolve) => setTimeout(resolve, 5000));
 
+    const approvalPending = await windowRef.webContents.executeJavaScript(`(() => {
+        const api = window.ScriptoriumAgent;
+        const before = api.common.getSource({
+            sourceKind: 'html',
+            startLine: 1,
+            endLine: 80
+        });
+        const info = api.common.getDocumentInfo();
+        window.__scriptoriumApprovalPromise = api.common.submitSourcePr({
+            requestId: 'scriptorium-smoke-pr-approval',
+            author: { id: 'smoke-agent', name: '冒烟测试 Agent', type: 'agent' },
+            summary: '验证人类审批前不修改源码',
+            expectedRevision: info.revision,
+            sourceKind: 'html',
+            replacements: [{
+                target: '未命名文稿',
+                replace: '审批后文稿',
+                startLine: 1
+            }]
+        });
+        const afterSubmit = api.common.getSource({
+            sourceKind: 'html',
+            startLine: 1,
+            endLine: 80
+        });
+        const pending = api.review.listPending();
+        return {
+            pendingCount: pending.length,
+            pendingAuthor: pending[0]?.author?.name || '',
+            pendingStatus: pending[0]?.status || '',
+            sourceUnchangedBeforeApproval:
+                before.source === afterSubmit.source
+                && afterSubmit.source.includes('未命名文稿'),
+            hasPendingCard: Boolean(document.querySelector('.checkpoint-item.pending')),
+            pendingCounter: document.getElementById('pending-pr-count')?.textContent
+        };
+    })()`);
+
+    const approvalResult = await windowRef.webContents.executeJavaScript(`(async () => {
+        const receipt = document.querySelector('.checkpoint-item.pending .pr-inline-receipt');
+        const approve = document.querySelector('.checkpoint-item.pending .pr-approve');
+        if (!receipt || !approve) return { uiAvailable: false };
+        receipt.value = '内容准确，允许合并。';
+        approve.click();
+        const result = await window.__scriptoriumApprovalPromise;
+        const source = window.ScriptoriumAgent.common.getSource({
+            sourceKind: 'html',
+            startLine: 1,
+            endLine: 80
+        });
+        return {
+            uiAvailable: true,
+            success: result?.success === true,
+            receiptMessage: result?.receipt?.message || '',
+            receiptDecision: result?.receipt?.decision || '',
+            authorName: result?.pr?.author?.name || '',
+            status: result?.pr?.status || '',
+            sourceChangedAfterApproval: source.source.includes('审批后文稿')
+                && !source.source.includes('未命名文稿'),
+            pendingCountAfterApproval: window.ScriptoriumAgent.review.listPending().length,
+            pendingCounterAfterApproval:
+                document.getElementById('pending-pr-count')?.textContent
+        };
+    })()`);
+
     const interaction = await windowRef.webContents.executeJavaScript(`(() => {
         const root = document.getElementById('page-stream').shadowRoot;
         const editable = root.querySelector('[data-vdoc-text]');
@@ -572,6 +637,8 @@ app.whenReady().then(async () => {
     rangeSelectionInteraction: ${JSON.stringify(rangeSelectionInteraction)},
     enterInteraction: ${JSON.stringify(enterInteraction)},
     blockInteraction: ${JSON.stringify(blockInteraction)},
+    approvalPending: ${JSON.stringify(approvalPending)},
+    approvalResult: ${JSON.stringify(approvalResult)},
     viewport: { width: innerWidth, height: innerHeight }
 })`);
 
@@ -652,7 +719,22 @@ app.whenReady().then(async () => {
         || snapshot.blockInteraction.afterParagraphBlocks <= snapshot.blockInteraction.initialBlocks
         || snapshot.blockInteraction.finalContainers < 1
         || !snapshot.blockInteraction.hasTable || !snapshot.blockInteraction.hasEditableCells
-        || !snapshot.blockInteraction.leafProtocol) {
+        || !snapshot.blockInteraction.leafProtocol
+        || snapshot.approvalPending.pendingCount !== 1
+        || snapshot.approvalPending.pendingAuthor !== '冒烟测试 Agent'
+        || snapshot.approvalPending.pendingStatus !== 'pending'
+        || !snapshot.approvalPending.sourceUnchangedBeforeApproval
+        || !snapshot.approvalPending.hasPendingCard
+        || snapshot.approvalPending.pendingCounter !== '1'
+        || !snapshot.approvalResult.uiAvailable
+        || !snapshot.approvalResult.success
+        || snapshot.approvalResult.receiptMessage !== '内容准确，允许合并。'
+        || snapshot.approvalResult.receiptDecision !== 'approved'
+        || snapshot.approvalResult.authorName !== '冒烟测试 Agent'
+        || snapshot.approvalResult.status !== 'applied'
+        || !snapshot.approvalResult.sourceChangedAfterApproval
+        || snapshot.approvalResult.pendingCountAfterApproval !== 0
+        || snapshot.approvalResult.pendingCounterAfterApproval !== '0') {
         errors.push('Required VDOCX editing or advanced style surface is unavailable.');
     }
 

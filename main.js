@@ -47,6 +47,7 @@ const desktopHandlers = require('./modules/ipc/desktopHandlers'); // Import VCPd
 const desktopRemoteHandlers = require('./modules/ipc/desktopRemoteHandlers'); // Import desktop remote control handlers
 const tavernHandlers = require('./modules/ipc/tavernHandlers'); // Import VCPChatTarven (advanced reply) handlers
 const docxHandlers = require('./modules/ipc/docxHandlers'); // Import VCP Scriptorium handlers
+const { ScriptoriumAgentControlService } = require('./modules/services/scriptoriumAgentControlService');
 const loomManagerModule = require('./modules/loom/VCPLoomManager');
 const { PRELOAD_ROLES, resolveProjectPreload } = require('./modules/services/preloadPaths');
 const { ChatDataServiceFacade } = require('./modules/services/chatDataService');
@@ -152,6 +153,7 @@ let distributedServer = null; // To hold the distributed server instance
 let chatDataService = null; // Optional VCP-CDS shadow service.
 let appSettingsManager = null;
 let loomManager = null;
+let scriptoriumAgentControl = null;
 let networkNotesTreeCache = null; // In-memory cache for the network notes
 let cachedModels = []; // Cache for models fetched from VCP server
 const NOTES_MODULE_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'Notemodules');
@@ -1084,6 +1086,11 @@ if (!gotTheLock) {
             projectRoot: PROJECT_ROOT,
             appDataRoot: APP_DATA_ROOT_IN_PROJECT
         });
+        scriptoriumAgentControl = new ScriptoriumAgentControlService().initialize({
+            appDataRoot: APP_DATA_ROOT_IN_PROJECT,
+            documentHandlers: docxHandlers,
+            logger: console,
+        });
         desktopHandlers.initialize({ mainWindow, openChildWindows, settingsManager: appSettingsManager });
         loomManager = await loomManagerModule.initialize({
             projectRoot: PROJECT_ROOT,
@@ -1121,7 +1128,8 @@ if (!gotTheLock) {
                         handleFlowlockControl: desktopRemoteHandlers.handleFlowlockControl, // Inject the flowlock control handler
                         handleDesktopRemoteControl: desktopRemoteHandlers.handleDesktopRemoteControl, // Inject the desktop remote control handler
                         chatDataService, // Share the Electron-owned VCP-CDS facade with direct plugins.
-                        loomManager // Share the Electron-owned VCP Loom manager with direct plugins.
+                        loomManager, // Share the Electron-owned VCP Loom manager with direct plugins.
+                        scriptoriumAgentControl
                     };
                     distributedServer = new DistributedServer(config);
                     await distributedServer.initialize();

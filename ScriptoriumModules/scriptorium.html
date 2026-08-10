@@ -321,6 +321,7 @@
 
             <div class="lineage-summary">
                 <span><strong id="checkpoint-count">0</strong> 个刻点</span>
+                <span><strong id="pending-pr-count">0</strong> 个待审</span>
                 <span class="lineage-live"><i></i> 本地文脉</span>
             </div>
 
@@ -332,15 +333,21 @@
                 </div>
             </div>
 
-            <div class="agent-pipeline-placeholder">
-                <div class="pipeline-icon">
-                    <svg viewBox="0 0 24 24"><path d="M12 3v4M5.6 5.6l2.8 2.8M3 12h4M5.6 18.4l2.8-2.8M12 21v-4M18.4 18.4l-2.8-2.8M21 12h-4M18.4 5.6l-2.8 2.8"/><circle cx="12" cy="12" r="3"/></svg>
+            <section class="agent-approval-policy" aria-label="Agent 自动允许策略">
+                <label class="auto-approval-master">
+                    <input id="auto-approval-enabled" type="checkbox">
+                    <span>
+                        <strong>自动允许</strong>
+                        <small>仅按下方已勾选类型自动合并</small>
+                    </span>
+                </label>
+                <div id="auto-approval-types" class="auto-approval-types">
+                    <label><input type="checkbox" value="source-replace">源码替换</label>
+                    <label><input type="checkbox" value="slide-add">新增末页</label>
+                    <label><input type="checkbox" value="slide-insert">插入页面</label>
+                    <label><input type="checkbox" value="slide-delete">删除页面</label>
                 </div>
-                <div>
-                    <strong>协作者管线</strong>
-                    <span>接口已预留 · 当前由人类执笔</span>
-                </div>
-            </div>
+            </section>
         </aside>
     </main>
 
@@ -465,6 +472,39 @@
                 <button type="submit" class="dialog-confirm">保存刻点</button>
             </div>
         </form>
+    </div>
+
+    <div id="pr-review-dialog" class="dialog-backdrop pr-review-backdrop" role="dialog" aria-modal="true" aria-labelledby="pr-review-title" hidden>
+        <section class="pr-review-dialog">
+            <header class="pr-review-header">
+                <div>
+                    <span class="dialog-kicker">AGENT CHANGE REVIEW</span>
+                    <h2 id="pr-review-title">协作变更审阅</h2>
+                    <p id="pr-review-meta">等待选择提案</p>
+                </div>
+                <button id="pr-review-close-btn" type="button" aria-label="关闭">×</button>
+            </header>
+            <div class="pr-review-body">
+                <section class="pr-review-pane">
+                    <h3>局部渲染差异</h3>
+                    <div id="pr-render-diff" class="pr-render-diff"></div>
+                </section>
+                <section class="pr-review-pane">
+                    <h3>局部源码差异</h3>
+                    <pre id="pr-source-diff" class="pr-source-diff"></pre>
+                </section>
+            </div>
+            <footer class="pr-review-footer">
+                <label>
+                    <span>给 Agent 的回执</span>
+                    <textarea id="pr-review-receipt" maxlength="1200" placeholder="可说明批准或拒绝原因，也可提出下一轮修改建议。"></textarea>
+                </label>
+                <div class="pr-review-actions">
+                    <button id="pr-review-reject-btn" type="button" class="dialog-danger">拒绝</button>
+                    <button id="pr-review-approve-btn" type="button" class="dialog-confirm">允许并合并</button>
+                </div>
+            </footer>
+        </section>
     </div>
 
     <link rel="stylesheet" href="../node_modules/codemirror/lib/codemirror.css">

@@ -16,21 +16,23 @@ const IMPORT_EXTENSIONS = new Set(scriptoriumImportService.SUPPORTED_EXTENSIONS)
 const OPEN_EXTENSIONS = new Set([...PROJECT_EXTENSIONS, ...IMPORT_EXTENSIONS]);
 const RECENT_LIMIT = 12;
 const AGENT_REQUEST_TIMEOUT_MS = 30000;
+const AGENT_REVIEW_TIMEOUT_MS = 5 * 60 * 1000;
 const AGENT_ENDPOINT_METHODS = Object.freeze({
     common: new Set([
         'getDocumentInfo', 'getRenderedText', 'getOutline', 'getSource',
-        'searchSource', 'getViewportSource', 'getPrHistory', 'submitSourcePr',
+        'searchSource', 'getViewportSource', 'getVisualContext', 'getPrHistory',
+        'submitSourcePr', 'buildProjectArtifact',
     ]),
     docx: new Set([
         'getDocumentInfo', 'getRenderedText', 'getOutline', 'getSource',
-        'searchSource', 'getViewportSource', 'getPrHistory', 'submitSourcePr',
-        'getFullText', 'getSection',
+        'searchSource', 'getViewportSource', 'getVisualContext', 'getPrHistory',
+        'submitSourcePr', 'buildProjectArtifact', 'getFullText', 'getSection',
     ]),
     pptx: new Set([
         'getDocumentInfo', 'getRenderedText', 'getOutline', 'getSource',
-        'searchSource', 'getViewportSource', 'getPrHistory', 'submitSourcePr',
-        'getSlideCount', 'getSlide', 'getActiveSlide', 'selectSlide',
-        'addSlide', 'insertSlide', 'deleteSlide',
+        'searchSource', 'getViewportSource', 'getVisualContext', 'getPrHistory',
+        'submitSourcePr', 'buildProjectArtifact', 'getSlideCount', 'getSlide',
+        'getActiveSlide', 'selectSlide', 'addSlide', 'insertSlide', 'deleteSlide',
     ]),
 });
 const AGENT_MUTATION_METHODS = new Set([
@@ -103,15 +105,34 @@ function requestAgentOperation(request = {}) {
         resolveRequest = resolve;
         rejectRequest = reject;
     });
+    const waitsForReview = AGENT_MUTATION_METHODS.has(validated.method);
+    const timeoutMs = waitsForReview
+        ? AGENT_REVIEW_TIMEOUT_MS
+        : AGENT_REQUEST_TIMEOUT_MS;
     const timer = setTimeout(() => {
         pendingAgentRequests.delete(validated.requestId);
+        if (waitsForReview) {
+            resolveRequest({
+                success: false,
+                code: 'PR_RECEIPT_TIMEOUT',
+                message: '窗口编辑提案已成功提交并继续保留，但等待人类审批回执超时。人类之后仍可在 Scriptorium 右侧栏选择合并或拒绝。',
+                submitted: true,
+                pending: true,
+                requestId: validated.requestId,
+                method: validated.method,
+                timeoutMs,
+            });
+            return;
+        }
         rejectRequest(new Error('Scriptorium Agent 请求超时。'));
-    }, AGENT_REQUEST_TIMEOUT_MS);
+    }, timeoutMs);
     pendingAgentRequests.set(validated.requestId, {
         promise,
         resolve: resolveRequest,
         reject: rejectRequest,
         timer,
+        method: validated.method,
+        waitsForReview,
         webContentsId: docxWindow.webContents.id,
     });
     docxWindow.webContents.send('scriptorium:agent-request', validated);
@@ -655,6 +676,8 @@ module.exports = {
     initialize,
     openDocxWindow,
     requestAgentOperation,
+    writeProjectArtifact: (filePath, serialized) =>
+        atomicWrite(filePath, Buffer.from(String(serialized || ''), 'utf8')),
     getDocxWindow: () => docxWindow,
     getSystemFonts,
 };

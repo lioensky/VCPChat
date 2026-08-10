@@ -192,6 +192,7 @@
             selectSlide,
         } = context;
         const handledRequests = new Map();
+        const pendingPrs = new Map();
         let mutationQueue = Promise.resolve();
 
         const revision = () => state.documentRevision;
@@ -232,6 +233,93 @@
                 activeSlideIndex: isDeck() ? state.activeSlideIndex : null,
                 slideCount: isDeck() ? slides().length : null,
             });
+        }
+
+        function visualContext(options = {}) {
+            assertReady();
+            const requestedSlideIndex = options.slideIndex === undefined
+                ? state.activeSlideIndex
+                : Number(options.slideIndex);
+            if (isDeck() && requestedSlideIndex !== state.activeSlideIndex) {
+                if (!slides()[requestedSlideIndex]) throw new Error('指定幻灯片不存在。');
+                selectSlide(requestedSlideIndex);
+            }
+            if (state.mode === 'read') renderReadingPreview();
+            const host = state.mode === 'read'
+                ? document.getElementById('read-host')
+                : document.getElementById('render-host');
+            const rect = host?.getBoundingClientRect();
+            if (!rect || rect.width <= 0 || rect.height <= 0) {
+                throw new Error('当前文档阅读窗口不可见，无法获取视觉上下文。');
+            }
+            const sourceHtml = isDeck()
+                ? slides()[state.activeSlideIndex]?.html || ''
+                : state.document.source.html;
+            return response({
+                scope: String(options.scope || 'viewport'),
+                title: state.document.manifest.title,
+                name: state.currentName,
+                mode: state.mode,
+                activeSlideIndex: isDeck() ? state.activeSlideIndex : null,
+                renderedText: textFromHtml(sourceHtml),
+                media: mediaFromHtml(sourceHtml),
+                captureRect: {
+                    x: rect.left,
+                    y: rect.top,
+                    width: rect.width,
+                    height: rect.height,
+                },
+            });
+        }
+
+        function buildProjectArtifact(payload = {}) {
+            const projectType = String(payload.projectType || '').toLowerCase();
+            const deck = projectType === 'pptx' || projectType === 'vpptx';
+            const author = normalizeAuthor(payload.maid);
+            if (!author) {
+                return {
+                    success: false,
+                    code: 'MAID_REQUIRED',
+                    message: '创建完整工程必须提供 maid 署名字段。',
+                };
+            }
+            const summary = String(payload.summary || '').trim()
+                || '创建完整 Scriptorium 工程';
+            const title = String(payload.title || (deck ? '未命名演示' : '未命名文稿'));
+            const model = core.createDocument({
+                title,
+                kind: deck ? core.PROJECT_KINDS.SLIDE_DECK : core.PROJECT_KINDS.FLOW_DOCUMENT,
+                html: deck ? undefined : payload.html,
+                css: payload.css,
+                slides: deck ? payload.slides : undefined,
+                page: payload.page,
+                presentation: payload.presentation,
+            });
+            const createdAt = Date.now();
+            model.checkpoints.unshift({
+                id: `agent-create-${crypto.randomUUID()}`,
+                source: author.type,
+                author,
+                name: deck ? 'Agent 创建演示工程' : 'Agent 创建文稿工程',
+                summary,
+                note: '',
+                createdAt,
+                baseRevision: null,
+                revision: 0,
+                operation: {
+                    type: 'project-create',
+                    projectType: deck ? 'pptx' : 'docx',
+                },
+                status: 'applied',
+            });
+            return {
+                success: true,
+                documentId: model.manifest.id,
+                documentKind: deck ? 'pptx' : 'docx',
+                title: model.manifest.title,
+                suggestedName: `${model.manifest.title}${deck ? '.vpptx' : '.vdocx'}`,
+                serialized: core.serialize(model),
+            };
         }
 
         function renderedText(options = {}) {
@@ -373,24 +461,181 @@
             return response({ query: options.query, results: results.slice(0, MAX_SEARCH_RESULTS) });
         }
 
+        function publicRecord(record) {
+            return {
+                id: record.id,
+                source: record.source,
+                author: record.author || null,
+                name: record.name,
+                summary: record.summary || record.note || '',
+                note: record.note || '',
+                createdAt: record.createdAt,
+                reviewedAt: record.reviewedAt || null,
+                baseRevision: record.baseRevision ?? null,
+                revision: record.revision ?? null,
+                operation: record.operation || null,
+                proposal: record.proposal || null,
+                status: record.status || 'applied',
+                receipt: record.receipt || null,
+            };
+        }
+
         function history(options = {}) {
             assertReady();
             const limit = Math.max(1, Math.min(500, Number(options.limit) || 100));
-            return response({
-                records: state.checkpoints.slice(0, limit).map((record) => ({
-                    id: record.id,
-                    source: record.source,
-                    author: record.author || null,
-                    name: record.name,
-                    summary: record.summary || record.note || '',
-                    note: record.note || '',
-                    createdAt: record.createdAt,
-                    baseRevision: record.baseRevision ?? null,
-                    revision: record.revision ?? null,
-                    operation: record.operation || null,
-                    status: record.status || 'applied',
-                })),
+            const requestedStatus = String(options.status || '').trim().toLowerCase();
+            const records = state.checkpoints
+                .filter((record) => !requestedStatus
+                    || String(record.status || 'applied').toLowerCase() === requestedStatus)
+                .slice(0, limit)
+                .map(publicRecord);
+            return response({ records });
+        }
+
+        function createReceipt(decision, options = {}) {
+            const reviewer = normalizeAuthor(options.reviewer)
+                || {
+                    id: decision === 'auto-approved' ? 'scriptorium-auto-policy' : 'human',
+                    name: decision === 'auto-approved' ? 'Scriptorium 自动允许策略' : '人类审阅者',
+                    type: 'human',
+                };
+            return {
+                decision,
+                message: String(options.message || options.reason || '').trim(),
+                reviewer,
+                createdAt: Date.now(),
+                automatic: decision === 'auto-approved',
+                policy: options.policy && typeof options.policy === 'object'
+                    ? options.policy
+                    : null,
+            };
+        }
+
+        async function approvePr(prId, options = {}) {
+            const pending = pendingPrs.get(String(prId || ''));
+            if (!pending) {
+                return {
+                    success: false,
+                    code: 'PR_NOT_PENDING',
+                    message: '指定 PR 不存在或已完成审阅。',
+                    revision: revision(),
+                };
+            }
+            const { record, operation, resolve } = pending;
+            pendingPrs.delete(record.id);
+            const receipt = createReceipt(
+                options.automatic === true ? 'auto-approved' : 'approved',
+                options
+            );
+            const task = mutationQueue.then(async () => {
+                if (record.baseRevision !== revision()) {
+                    record.status = 'conflict';
+                    record.reviewedAt = Date.now();
+                    record.receipt = {
+                        ...receipt,
+                        decision: 'conflict',
+                        message: receipt.message
+                            || '审批时文档修订已变化，未应用该提案。',
+                    };
+                    renderLineage();
+                    const conflict = response({
+                        success: false,
+                        code: 'REVISION_CONFLICT',
+                        message: record.receipt.message,
+                        pr: publicRecord(record),
+                        receipt: record.receipt,
+                        expectedRevision: record.baseRevision,
+                        actualRevision: revision(),
+                    });
+                    resolve(conflict);
+                    return conflict;
+                }
+                const result = await operation();
+                if (!result?.success) {
+                    record.status = 'failed';
+                    record.reviewedAt = Date.now();
+                    record.receipt = {
+                        ...receipt,
+                        decision: 'failed',
+                        message: result.message || receipt.message || '变更应用失败。',
+                    };
+                    renderLineage();
+                    const failure = response({
+                        success: false,
+                        code: result.code || 'MUTATION_FAILED',
+                        message: record.receipt.message,
+                        pr: publicRecord(record),
+                        receipt: record.receipt,
+                        result,
+                    });
+                    resolve(failure);
+                    return failure;
+                }
+                markDirty();
+                captureSnapshot();
+                record.status = 'applied';
+                record.reviewedAt = Date.now();
+                record.revision = revision();
+                record.operation = result.operation;
+                record.receipt = receipt;
+                record.snapshot = core.serialize(state.document);
+                renderLineage();
+                const accepted = response({
+                    pr: publicRecord(record),
+                    receipt,
+                    result,
+                });
+                resolve(accepted);
+                return accepted;
+            }).catch((error) => {
+                record.status = 'failed';
+                record.reviewedAt = Date.now();
+                record.receipt = {
+                    ...receipt,
+                    decision: 'failed',
+                    message: error.message,
+                };
+                renderLineage();
+                const failure = {
+                    success: false,
+                    code: 'MUTATION_FAILED',
+                    message: error.message,
+                    revision: revision(),
+                    pr: publicRecord(record),
+                    receipt: record.receipt,
+                };
+                resolve(failure);
+                return failure;
             });
+            mutationQueue = task.then(() => undefined, () => undefined);
+            return task;
+        }
+
+        function rejectPr(prId, options = {}) {
+            const pending = pendingPrs.get(String(prId || ''));
+            if (!pending) {
+                return {
+                    success: false,
+                    code: 'PR_NOT_PENDING',
+                    message: '指定 PR 不存在或已完成审阅。',
+                    revision: revision(),
+                };
+            }
+            pendingPrs.delete(pending.record.id);
+            const receipt = createReceipt('rejected', options);
+            pending.record.status = 'rejected';
+            pending.record.reviewedAt = Date.now();
+            pending.record.receipt = receipt;
+            renderLineage();
+            const rejected = response({
+                success: false,
+                code: 'PR_REJECTED',
+                message: receipt.message || '人类拒绝了该变更提案。',
+                pr: publicRecord(pending.record),
+                receipt,
+            });
+            pending.resolve(rejected);
+            return rejected;
         }
 
         function queueMutation(payload, operation) {
@@ -415,63 +660,74 @@
             }
             const requestId = String(payload.requestId || crypto.randomUUID());
             if (handledRequests.has(requestId)) return handledRequests.get(requestId);
-            const task = mutationQueue.then(async () => {
-                if (Number.isFinite(Number(payload.expectedRevision))
-                    && Number(payload.expectedRevision) !== revision()) {
-                    return {
-                        success: false,
-                        code: 'REVISION_CONFLICT',
-                        message: '文档已被人类或其他 Agent 修改，请基于最新修订重新提交。',
-                        expectedRevision: Number(payload.expectedRevision),
-                        actualRevision: revision(),
-                    };
-                }
-                const baseRevision = revision();
-                const result = await operation();
-                if (!result?.success) return result;
-                markDirty();
-                captureSnapshot();
-                const record = {
-                    id: payload.prId || `pr-${crypto.randomUUID()}`,
-                    source: author.type,
-                    author,
-                    name: String(payload.name || 'Agent 源码变更'),
-                    summary,
-                    note: String(payload.note || ''),
-                    createdAt: Date.now(),
-                    baseRevision,
-                    revision: revision(),
-                    requestId,
-                    operation: result.operation,
-                    status: 'applied',
-                    snapshot: core.serialize(state.document),
-                };
-                state.checkpoints.unshift(record);
-                renderLineage();
-                return response({ pr: record, result });
-            }).catch((error) => ({
-                success: false,
-                code: 'MUTATION_FAILED',
-                message: error.message,
-                revision: revision(),
-            }));
-            mutationQueue = task.then(() => undefined, () => undefined);
+            if (Number.isFinite(Number(payload.expectedRevision))
+                && Number(payload.expectedRevision) !== revision()) {
+                return Promise.resolve({
+                    success: false,
+                    code: 'REVISION_CONFLICT',
+                    message: '文档已被人类或其他 Agent 修改，请基于最新修订重新提交。',
+                    expectedRevision: Number(payload.expectedRevision),
+                    actualRevision: revision(),
+                });
+            }
+
+            const record = {
+                id: payload.prId || `pr-${crypto.randomUUID()}`,
+                source: author.type,
+                author,
+                name: String(payload.name || 'Agent 源码变更'),
+                summary,
+                note: String(payload.note || ''),
+                createdAt: Date.now(),
+                baseRevision: revision(),
+                revision: null,
+                requestId,
+                operation: null,
+                proposal: payload.proposal || null,
+                status: 'pending',
+                receipt: null,
+            };
+            state.checkpoints.unshift(record);
+            let resolvePending;
+            const task = new Promise((resolve) => {
+                resolvePending = resolve;
+            });
+            pendingPrs.set(record.id, {
+                record,
+                operation,
+                resolve: resolvePending,
+            });
             handledRequests.set(requestId, task);
+            renderLineage();
+            window.dispatchEvent(new CustomEvent('scriptorium:pr-pending', {
+                detail: publicRecord(record),
+            }));
             if (handledRequests.size > 500) {
-                handledRequests.delete(handledRequests.keys().next().value);
+                const oldest = handledRequests.keys().next().value;
+                if (oldest !== requestId) handledRequests.delete(oldest);
             }
             return task;
         }
 
         function submitSourcePr(payload = {}) {
-            return queueMutation(payload, async () => {
-                const sourceKind = payload.sourceKind || 'html';
-                const slideIndex = isDeck()
-                    ? Number(payload.slideIndex ?? state.activeSlideIndex)
-                    : null;
+            const sourceKind = payload.sourceKind || 'html';
+            const slideIndex = isDeck()
+                ? Number(payload.slideIndex ?? state.activeSlideIndex)
+                : null;
+            const replacements = Array.isArray(payload.replacements)
+                ? payload.replacements
+                : [payload];
+            return queueMutation({
+                ...payload,
+                proposal: {
+                    type: 'source-replace',
+                    sourceKind,
+                    slideIndex,
+                    replacements,
+                },
+            }, async () => {
                 const original = sourceFor(sourceKind, slideIndex);
-                const result = applyReplacements(original,
-                    Array.isArray(payload.replacements) ? payload.replacements : [payload]);
+                const result = applyReplacements(original, replacements);
                 if (!result.success) return result;
 
                 if (isDeck()) {
@@ -499,7 +755,18 @@
         }
 
         function mutateSlides(payload = {}, type) {
-            return queueMutation(payload, async () => {
+            return queueMutation({
+                ...payload,
+                proposal: {
+                    type: `slide-${type}`,
+                    slideIndex: payload.slideIndex,
+                    name: payload.name,
+                    html: payload.html,
+                    css: payload.css,
+                    script: payload.script,
+                    notes: payload.notes,
+                },
+            }, async () => {
                 if (!isDeck()) throw new Error('幻灯片操作仅适用于 PPTX 端。');
                 const list = slides();
                 if (type === 'delete') {
@@ -543,8 +810,10 @@
             getSource,
             searchSource,
             getViewportSource: viewportSource,
+            getVisualContext: visualContext,
             getPrHistory: history,
             submitSourcePr,
+            buildProjectArtifact,
         });
         const docx = Object.freeze({
             ...common,
@@ -567,11 +836,17 @@
         });
 
         return Object.freeze({
-            version: 1,
+            version: 2,
             common,
             docx,
             pptx,
             current: () => isDeck() ? pptx : docx,
+            review: Object.freeze({
+                approvePr,
+                rejectPr,
+                listPending: () => [...pendingPrs.values()]
+                    .map((item) => publicRecord(item.record)),
+            }),
         });
     }
 

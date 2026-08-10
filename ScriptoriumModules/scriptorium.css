@@ -2627,3 +2627,384 @@ body.focus-mode .document-workspace {
         border-radius: 3px 11px 11px 11px;
     }
 }
+
+/* ── Agent PR approval workflow ─────────────────────────── */
+.agent-approval-policy {
+    display: grid;
+    gap: 9px;
+    margin: 0 14px 14px;
+    padding: 11px;
+    border: 1px solid var(--scriptorium-hairline);
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--primary-bg) 26%, transparent);
+}
+
+.auto-approval-master {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    cursor: pointer;
+}
+
+.auto-approval-master input,
+.auto-approval-types input {
+    accent-color: var(--highlight-text);
+}
+
+.auto-approval-master span {
+    display: grid;
+    gap: 2px;
+}
+
+.auto-approval-master strong {
+    color: var(--primary-text);
+    font-size: 9px;
+}
+
+.auto-approval-master small {
+    color: var(--secondary-text);
+    font-size: 8px;
+}
+
+.auto-approval-types {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 5px;
+    padding-top: 8px;
+    border-top: 1px solid var(--scriptorium-hairline);
+    opacity: .48;
+    pointer-events: none;
+}
+
+.agent-approval-policy:has(#auto-approval-enabled:checked) .auto-approval-types {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.auto-approval-types label {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--secondary-text);
+    font-size: 8px;
+    cursor: pointer;
+}
+
+.checkpoint-item.pending {
+    border-color: color-mix(in srgb, var(--highlight-text) 52%, var(--scriptorium-hairline));
+    background:
+        linear-gradient(145deg, var(--scriptorium-accent-soft), transparent),
+        color-mix(in srgb, var(--secondary-bg) 68%, transparent);
+}
+
+.checkpoint-item.pending::before {
+    background: var(--highlight-text);
+    animation: prPendingPulse 1.5s ease-in-out infinite;
+}
+
+.checkpoint-item.rejected {
+    opacity: .7;
+    border-color: color-mix(in srgb, var(--danger-color) 35%, var(--scriptorium-hairline));
+}
+
+.checkpoint-item.conflict,
+.checkpoint-item.failed {
+    border-color: color-mix(in srgb, var(--danger-color) 55%, var(--scriptorium-hairline));
+}
+
+.checkpoint-status {
+    display: inline-flex;
+    align-items: center;
+    margin-top: 8px;
+    padding: 2px 6px;
+    border: 1px solid var(--scriptorium-hairline);
+    border-radius: 999px;
+    color: var(--secondary-text);
+    font-size: 8px;
+}
+
+.checkpoint-item.pending .checkpoint-status {
+    border-color: var(--scriptorium-accent-mid);
+    color: var(--highlight-text);
+}
+
+.pr-inline-receipt {
+    width: 100%;
+    min-height: 52px;
+    margin-top: 9px;
+    padding: 7px 8px;
+    resize: vertical;
+    border: 1px solid var(--scriptorium-hairline);
+    border-radius: 7px;
+    outline: 0;
+    color: var(--primary-text);
+    background: color-mix(in srgb, var(--input-bg) 82%, transparent);
+    font-size: 9px;
+    line-height: 1.5;
+}
+
+.pr-inline-receipt:focus {
+    border-color: var(--highlight-text);
+}
+
+.pr-card-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 5px;
+    margin-top: 7px;
+}
+
+.pr-card-actions button {
+    min-width: 0;
+    height: 29px;
+    padding: 0 5px;
+    border: 1px solid var(--scriptorium-hairline);
+    border-radius: 6px;
+    color: var(--secondary-text);
+    background: transparent;
+    font-size: 8px;
+    cursor: pointer;
+}
+
+.pr-card-actions button:hover {
+    border-color: var(--highlight-text);
+    color: var(--highlight-text);
+}
+
+.pr-card-actions .pr-approve {
+    border-color: color-mix(in srgb, var(--success-color) 48%, var(--scriptorium-hairline));
+    color: var(--success-color);
+}
+
+.pr-card-actions .pr-reject {
+    border-color: color-mix(in srgb, var(--danger-color) 42%, var(--scriptorium-hairline));
+    color: var(--danger-color);
+}
+
+.pr-receipt-summary {
+    margin-top: 8px;
+    padding: 7px 8px;
+    border-left: 2px solid var(--scriptorium-accent-mid);
+    color: var(--secondary-text);
+    background: color-mix(in srgb, var(--input-bg) 44%, transparent);
+    font-size: 8px;
+    line-height: 1.55;
+}
+
+@keyframes prPendingPulse {
+    50% {
+        box-shadow:
+            0 0 0 2px var(--scriptorium-accent-mid),
+            0 0 12px var(--scriptorium-accent-mid);
+    }
+}
+
+.pr-review-backdrop {
+    z-index: 1900;
+}
+
+.pr-review-dialog {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    width: min(1120px, calc(100vw - 54px));
+    height: min(780px, calc(100vh - 54px));
+    overflow: hidden;
+    border: 1px solid var(--scriptorium-hairline);
+    border-radius: 5px 24px 5px 24px;
+    color: var(--primary-text);
+    background:
+        radial-gradient(circle at 86% 7%, var(--scriptorium-accent-soft), transparent 30%),
+        var(--scriptorium-glass-solid);
+    box-shadow: 0 34px 100px rgba(0, 0, 0, .52);
+}
+
+.pr-review-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 18px;
+    padding: 20px 24px 16px;
+    border-bottom: 1px solid var(--scriptorium-hairline);
+}
+
+.pr-review-header h2 {
+    margin: 5px 0 3px;
+    font: 500 26px var(--scriptorium-serif);
+}
+
+.pr-review-header p {
+    margin: 0;
+    color: var(--secondary-text);
+    font-size: 10px;
+}
+
+.pr-review-header > button {
+    width: 34px;
+    height: 34px;
+    border: 1px solid var(--scriptorium-hairline);
+    border-radius: 50%;
+    color: var(--secondary-text);
+    background: transparent;
+    font-size: 22px;
+    cursor: pointer;
+}
+
+.pr-review-body {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    min-height: 0;
+}
+
+.pr-review-pane {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    min-width: 0;
+    min-height: 0;
+    padding: 15px;
+}
+
+.pr-review-pane + .pr-review-pane {
+    border-left: 1px solid var(--scriptorium-hairline);
+}
+
+.pr-review-pane h3 {
+    margin: 0 0 10px;
+    color: var(--secondary-text);
+    font-size: 10px;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+}
+
+.pr-render-diff,
+.pr-source-diff {
+    min-height: 0;
+    margin: 0;
+    overflow: auto;
+    border: 1px solid var(--scriptorium-hairline);
+    border-radius: 8px;
+}
+
+.pr-render-diff {
+    padding: 18px;
+    color: #1d2421;
+    background: #fffdf8;
+    font-family: var(--scriptorium-serif);
+    line-height: 1.7;
+    user-select: text;
+}
+
+.pr-diff-before,
+.pr-diff-after {
+    padding: 10px;
+    border-radius: 5px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.pr-diff-before {
+    margin-bottom: 10px;
+    color: #713a35;
+    background: rgba(181, 72, 61, .11);
+    text-decoration: line-through;
+}
+
+.pr-diff-after {
+    color: #245f4c;
+    background: rgba(52, 139, 105, .12);
+}
+
+.pr-source-diff {
+    padding: 16px;
+    color: #d9e0dc;
+    background: #111614;
+    font: 11px/1.65 Consolas, "Maple Mono", monospace;
+    white-space: pre-wrap;
+    user-select: text;
+}
+
+.pr-review-footer {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: end;
+    gap: 14px;
+    padding: 14px 20px 18px;
+    border-top: 1px solid var(--scriptorium-hairline);
+}
+
+.pr-review-footer label {
+    display: grid;
+    gap: 6px;
+    color: var(--secondary-text);
+    font-size: 9px;
+}
+
+.pr-review-footer textarea {
+    width: 100%;
+    min-height: 66px;
+    padding: 9px 10px;
+    resize: vertical;
+    border: 1px solid var(--scriptorium-hairline);
+    border-radius: 7px;
+    outline: 0;
+    color: var(--primary-text);
+    background: var(--input-bg);
+    font-size: 10px;
+}
+
+.pr-review-footer textarea:focus {
+    border-color: var(--highlight-text);
+}
+
+.pr-review-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.pr-review-actions button {
+    height: 38px;
+    padding: 0 15px;
+    border: 1px solid var(--scriptorium-hairline);
+    border-radius: 8px;
+    color: var(--primary-text);
+    background: transparent;
+    cursor: pointer;
+}
+
+.pr-review-actions .dialog-danger {
+    color: var(--danger-color);
+    border-color: color-mix(in srgb, var(--danger-color) 48%, var(--scriptorium-hairline));
+}
+
+.pr-review-actions .dialog-confirm {
+    color: var(--text-on-accent);
+    border-color: var(--button-bg);
+    background: var(--button-bg);
+}
+
+@media (max-width: 900px) {
+    .pr-review-dialog {
+        width: calc(100vw - 24px);
+        height: calc(100vh - 24px);
+    }
+
+    .pr-review-body {
+        grid-template-columns: 1fr;
+        overflow: auto;
+    }
+
+    .pr-review-pane {
+        min-height: 280px;
+    }
+
+    .pr-review-pane + .pr-review-pane {
+        border-top: 1px solid var(--scriptorium-hairline);
+        border-left: 0;
+    }
+
+    .pr-review-footer {
+        grid-template-columns: 1fr;
+    }
+
+    .pr-review-actions {
+        justify-content: flex-end;
+    }
+}

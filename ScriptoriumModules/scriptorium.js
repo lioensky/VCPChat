@@ -51,6 +51,8 @@
         sourceEditor: null,
         sourceColorMarks: [],
         activeEditableBlock: null,
+        activeReviewPrId: null,
+        autoApprovalScheduled: new Set(),
     };
 
     const elements = {};
@@ -78,7 +80,8 @@
             'outline-headings-view', 'outline-paragraphs-view', 'outline-tree',
             'paragraph-index', 'outline-empty', 'slide-navigator-header',
             'add-slide-btn', 'delete-slide-btn', 'slide-count', 'slide-navigator',
-            'lineage-flow', 'checkpoint-count',
+            'lineage-flow', 'checkpoint-count', 'pending-pr-count',
+            'auto-approval-enabled', 'auto-approval-types',
             'create-checkpoint-btn', 'page-status', 'word-count', 'character-count',
             'font-status', 'selection-status', 'zoom-out-btn', 'zoom-range', 'zoom-in-btn', 'zoom-value',
             'toast-region', 'selection-format-bar', 'selection-font-family',
@@ -91,6 +94,9 @@
             'unsaved-dialog-message', 'unsaved-document-name', 'unsaved-cancel-btn',
             'unsaved-discard-btn', 'unsaved-save-btn', 'checkpoint-dialog',
             'checkpoint-name-input', 'checkpoint-note-input', 'checkpoint-cancel-btn',
+            'pr-review-dialog', 'pr-review-title', 'pr-review-meta',
+            'pr-review-close-btn', 'pr-render-diff', 'pr-source-diff',
+            'pr-review-receipt', 'pr-review-reject-btn', 'pr-review-approve-btn',
         ].forEach((id) => {
             elements[id] = $(id);
         });
@@ -2311,16 +2317,170 @@ ${preview.css}
         }
     }
 
+    function prOperationType(checkpoint) {
+        return checkpoint?.proposal?.type || checkpoint?.operation?.type || '';
+    }
+
+    function autoApprovalConfig() {
+        const enabled = elements['auto-approval-enabled']?.checked === true;
+        const allowedTypes = new Set([
+            ...(elements['auto-approval-types']?.querySelectorAll('input:checked') || []),
+        ].map((input) => input.value));
+        return { enabled, allowedTypes };
+    }
+
+    function saveAutoApprovalConfig() {
+        const config = autoApprovalConfig();
+        localStorage.setItem('scriptorium:auto-approval', JSON.stringify({
+            enabled: config.enabled,
+            allowedTypes: [...config.allowedTypes],
+        }));
+    }
+
+    function restoreAutoApprovalConfig() {
+        try {
+            const stored = JSON.parse(localStorage.getItem('scriptorium:auto-approval') || '{}');
+            elements['auto-approval-enabled'].checked = stored.enabled === true;
+            const allowed = new Set(Array.isArray(stored.allowedTypes) ? stored.allowedTypes : []);
+            elements['auto-approval-types'].querySelectorAll('input').forEach((input) => {
+                input.checked = allowed.has(input.value);
+            });
+        } catch {
+            elements['auto-approval-enabled'].checked = false;
+        }
+    }
+
+    function receiptMessageFor(checkpoint, fallback = '') {
+        return String(checkpoint?.receipt?.message || fallback || '').trim();
+    }
+
+    async function reviewPendingPr(prId, decision, message = '', options = {}) {
+        const reviewApi = state.agentApi?.review;
+        if (!reviewApi) return null;
+        const result = decision === 'approve'
+            ? await reviewApi.approvePr(prId, {
+                message,
+                automatic: options.automatic === true,
+                policy: options.policy || null,
+            })
+            : reviewApi.rejectPr(prId, { message });
+        state.activeReviewPrId = null;
+        elements['pr-review-dialog'].hidden = true;
+        renderLineage();
+        if (result?.success) {
+            showToast(
+                options.automatic ? '自动允许策略已合并 Agent 提案' : 'Agent 提案已合并',
+                'success'
+            );
+        } else if (result?.code === 'PR_REJECTED') {
+            showToast('Agent 提案已拒绝', 'info');
+        } else {
+            showToast(`Agent 提案处理失败：${result?.message || '未知错误'}`, 'error', 5000);
+        }
+        return result;
+    }
+
+    function renderProposalDiff(checkpoint) {
+        const proposal = checkpoint?.proposal || {};
+        const replacements = Array.isArray(proposal.replacements)
+            ? proposal.replacements
+            : [];
+        const renderDiff = elements['pr-render-diff'];
+        const sourceDiff = elements['pr-source-diff'];
+        if (proposal.type === 'source-replace' && replacements.length) {
+            renderDiff.replaceChildren(...replacements.flatMap((replacement, index) => {
+                const before = document.createElement('div');
+                before.className = 'pr-diff-before';
+                before.textContent = replacement.target || '（空 target）';
+                const after = document.createElement('div');
+                after.className = 'pr-diff-after';
+                after.textContent = replacement.replace ?? replacement.replacement ?? '（删除）';
+                if (index) before.style.marginTop = '16px';
+                return [before, after];
+            }));
+            sourceDiff.textContent = replacements.map((replacement, index) => [
+                `@@ replacement ${index + 1}${replacement.startLine ? ` · hint line ${replacement.startLine}` : ''} @@`,
+                `- ${String(replacement.target || '').replace(/\n/g, '\n- ')}`,
+                `+ ${String(replacement.replace ?? replacement.replacement ?? '').replace(/\n/g, '\n+ ')}`,
+            ].join('\n')).join('\n\n');
+            return;
+        }
+
+        const before = document.createElement('div');
+        before.className = 'pr-diff-before';
+        before.textContent = proposal.type === 'slide-delete'
+            ? `删除第 ${Number(proposal.slideIndex) + 1} 页`
+            : '当前演示结构';
+        const after = document.createElement('div');
+        after.className = 'pr-diff-after';
+        after.textContent = proposal.type === 'slide-delete'
+            ? '该页面将在合并后移除'
+            : textFromProposal(proposal);
+        renderDiff.replaceChildren(before, after);
+        sourceDiff.textContent = JSON.stringify(proposal, null, 2);
+    }
+
+    function textFromProposal(proposal) {
+        const template = document.createElement('template');
+        template.innerHTML = String(proposal.html || '');
+        return template.content.textContent?.trim()
+            || proposal.name
+            || proposal.type
+            || '演示页面结构变更';
+    }
+
+    function openPrReview(checkpoint) {
+        if (!checkpoint || checkpoint.status !== 'pending') return;
+        state.activeReviewPrId = checkpoint.id;
+        const author = checkpoint.author?.name || checkpoint.author?.signature || '未署名 Agent';
+        elements['pr-review-title'].textContent = checkpoint.name || '协作变更审阅';
+        elements['pr-review-meta'].textContent =
+            `${author} · ${checkpoint.summary || '无摘要'} · 基于修订 ${checkpoint.baseRevision}`;
+        elements['pr-review-receipt'].value = '';
+        renderProposalDiff(checkpoint);
+        elements['pr-review-dialog'].hidden = false;
+        elements['pr-review-receipt'].focus();
+    }
+
+    function scheduleAutoApproval(checkpoint) {
+        if (checkpoint.status !== 'pending' || state.autoApprovalScheduled.has(checkpoint.id)) return;
+        const config = autoApprovalConfig();
+        const operationType = prOperationType(checkpoint);
+        if (!config.enabled || !config.allowedTypes.has(operationType)) return;
+        state.autoApprovalScheduled.add(checkpoint.id);
+        window.setTimeout(async () => {
+            try {
+                await reviewPendingPr(
+                    checkpoint.id,
+                    'approve',
+                    `已由本地自动允许策略批准 ${operationType} 操作。`,
+                    {
+                        automatic: true,
+                        policy: {
+                            source: 'scriptorium-ui',
+                            allowedOperationType: operationType,
+                        },
+                    }
+                );
+            } finally {
+                state.autoApprovalScheduled.delete(checkpoint.id);
+            }
+        }, 0);
+    }
+
     function renderLineage() {
         elements['checkpoint-count'].textContent = String(state.checkpoints.length);
+        const pendingCount = state.checkpoints.filter((record) => record.status === 'pending').length;
+        elements['pending-pr-count'].textContent = String(pendingCount);
         if (!state.checkpoints.length) {
             elements['lineage-flow'].innerHTML = '<div class="lineage-empty"><strong>文脉尚未开始</strong><p>人类与 AI 的每次共建刻点都会在这里留下轨迹。</p></div>';
             return;
         }
         elements['lineage-flow'].replaceChildren(...state.checkpoints.map((checkpoint) => {
             const item = document.createElement('article');
-            item.className = `checkpoint-item ${checkpoint.source}`;
-            item.innerHTML = '<div class="checkpoint-meta"><span class="checkpoint-source"></span><time></time></div><h3></h3><p></p>';
+            const status = checkpoint.status || 'applied';
+            item.className = `checkpoint-item ${checkpoint.source} ${status}`;
+            item.innerHTML = '<div class="checkpoint-meta"><span class="checkpoint-source"></span><time></time></div><h3></h3><p></p><span class="checkpoint-status"></span>';
             const authorName = checkpoint.author?.name || checkpoint.author?.signature || '';
             item.querySelector('.checkpoint-source').textContent = checkpoint.source === 'agent'
                 ? `AI 协作${authorName ? ` · ${authorName}` : ''}`
@@ -2330,6 +2490,52 @@ ${preview.css}
             item.querySelector('p').textContent = checkpoint.summary
                 || checkpoint.note
                 || '完整源码状态已记录。';
+            const statusLabels = {
+                pending: '等待人类审阅',
+                applied: checkpoint.receipt?.automatic ? '自动允许并已合并' : '已应用',
+                rejected: '已拒绝',
+                conflict: '修订冲突',
+                failed: '应用失败',
+            };
+            item.querySelector('.checkpoint-status').textContent = statusLabels[status] || status;
+
+            if (status === 'pending') {
+                const receipt = document.createElement('textarea');
+                receipt.className = 'pr-inline-receipt';
+                receipt.maxLength = 1200;
+                receipt.placeholder = '可填写给 Agent 的批准/拒绝原因或修改建议';
+                const actions = document.createElement('div');
+                actions.className = 'pr-card-actions';
+                const review = document.createElement('button');
+                review.type = 'button';
+                review.textContent = '审阅';
+                review.addEventListener('click', () => openPrReview(checkpoint));
+                const reject = document.createElement('button');
+                reject.type = 'button';
+                reject.className = 'pr-reject';
+                reject.textContent = '拒绝';
+                reject.addEventListener('click', () =>
+                    reviewPendingPr(checkpoint.id, 'reject', receipt.value));
+                const approve = document.createElement('button');
+                approve.type = 'button';
+                approve.className = 'pr-approve';
+                approve.textContent = '允许';
+                approve.addEventListener('click', () =>
+                    reviewPendingPr(checkpoint.id, 'approve', receipt.value));
+                actions.append(review, reject, approve);
+                item.append(receipt, actions);
+                scheduleAutoApproval(checkpoint);
+            } else if (checkpoint.receipt) {
+                const receipt = document.createElement('div');
+                receipt.className = 'pr-receipt-summary';
+                receipt.textContent = receiptMessageFor(
+                    checkpoint,
+                    checkpoint.receipt.decision === 'rejected'
+                        ? '人类拒绝了该提案。'
+                        : '该提案已完成审阅。'
+                );
+                item.appendChild(receipt);
+            }
             item.title = checkpoint.note || checkpoint.summary || '';
             return item;
         }));
@@ -2512,6 +2718,40 @@ ${preview.css}
         elements['focus-mode-btn'].addEventListener('click', () => document.body.classList.toggle('focus-mode'));
         elements['outline-headings-tab'].addEventListener('click', () => setOutlineTab(true));
         elements['outline-paragraphs-tab'].addEventListener('click', () => setOutlineTab(false));
+        elements['auto-approval-enabled'].addEventListener('change', () => {
+            saveAutoApprovalConfig();
+            renderLineage();
+        });
+        elements['auto-approval-types'].addEventListener('change', () => {
+            saveAutoApprovalConfig();
+            renderLineage();
+        });
+        elements['pr-review-close-btn'].addEventListener('click', () => {
+            state.activeReviewPrId = null;
+            elements['pr-review-dialog'].hidden = true;
+        });
+        elements['pr-review-dialog'].addEventListener('click', (event) => {
+            if (event.target === elements['pr-review-dialog']) {
+                state.activeReviewPrId = null;
+                elements['pr-review-dialog'].hidden = true;
+            }
+        });
+        elements['pr-review-approve-btn'].addEventListener('click', () => {
+            if (!state.activeReviewPrId) return;
+            reviewPendingPr(
+                state.activeReviewPrId,
+                'approve',
+                elements['pr-review-receipt'].value
+            );
+        });
+        elements['pr-review-reject-btn'].addEventListener('click', () => {
+            if (!state.activeReviewPrId) return;
+            reviewPendingPr(
+                state.activeReviewPrId,
+                'reject',
+                elements['pr-review-receipt'].value
+            );
+        });
         elements['create-checkpoint-btn'].addEventListener('click', () => {
             elements['checkpoint-name-input'].value = '';
             elements['checkpoint-note-input'].value = '';
@@ -2613,6 +2853,8 @@ ${preview.css}
                 hideSelectionBar();
                 clearExplicitBlockSelection();
                 elements['checkpoint-dialog'].hidden = true;
+                elements['pr-review-dialog'].hidden = true;
+                state.activeReviewPrId = null;
             }
         });
     }
@@ -2673,6 +2915,7 @@ ${preview.css}
         }
         cacheElements();
         restorePanelWidths();
+        restoreAutoApprovalConfig();
         elements['page-stream'].attachShadow({ mode: 'open' });
         elements['read-page-stream'].attachShadow({ mode: 'open' });
         initializeSourceEditor();
