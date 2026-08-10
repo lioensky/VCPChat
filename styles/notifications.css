@@ -276,15 +276,17 @@ body:not(.light-theme) .notes-section > button {
 }
 
 .notes-section > button:hover,
-.app-tray-pinned-apps > button:hover {
+.app-tray-pinned-apps > button:hover,
+.app-tray-drawer-item:hover {
     background-color: var(--button-hover-bg);
     border-color: var(--button-hover-bg);
-    color: var(--primary-text);
+    color: var(--primary-text) !important;
 }
 
 body:not(.light-theme) .notes-section > button:hover,
-body:not(.light-theme) .app-tray-pinned-apps > button:hover {
-    color: var(--text-on-accent);
+body:not(.light-theme) .app-tray-pinned-apps > button:hover,
+body:not(.light-theme) .app-tray-drawer-item:hover {
+    color: var(--text-on-accent) !important;
 }
 
 .notes-section > button svg,
@@ -314,10 +316,11 @@ body.light-theme .app-tray-pinned-apps > button {
 }
 
 body.light-theme .notes-section > button:hover,
-body.light-theme .app-tray-pinned-apps > button:hover {
-    background-color: var(--button-hover-bg);
-    color: #ffffff !important;
-    border-color: var(--button-hover-bg);
+body.light-theme .app-tray-pinned-apps > button:hover,
+body.light-theme .app-tray-drawer-item:hover {
+    background-color: var(--secondary-bg);
+    color: var(--highlight-text) !important;
+    border-color: var(--highlight-text);
 }
 
 @container notifications-sidebar (max-width: 280px) {
@@ -411,8 +414,8 @@ body.light-theme .app-tray-pinned-apps > button:hover {
     padding: 4px;
 }
 
-/* 统一胶囊按钮内样式 */
-.header-button.capsule-button {
+/* 统一胶囊按钮内样式；使用 Dock 自身作用域，避免依赖全局 Header 类。 */
+.notes-section .capsule-button {
     border-radius: 999px !important; /* Force capsule shape */
     padding: 0 10px !important; /* Compact padding */
     justify-content: center !important; /* Center icon + text */
@@ -459,13 +462,13 @@ body.light-theme .app-tray-pinned-apps > button:hover {
 
 .app-tray-more-btn:hover {
     background: var(--button-hover-bg);
-    color: var(--primary-text);
+    color: var(--primary-text) !important;
     transform: scale(1.05);
 }
 
 .app-tray-more-btn.active {
     background: var(--highlight-text);
-    color: var(--text-on-accent);
+    color: var(--text-on-accent) !important;
 }
 
 .app-tray-settings-btn {

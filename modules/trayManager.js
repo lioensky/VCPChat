@@ -113,7 +113,9 @@ const trayManager = (function () {
             if (!app || app.id === 'vchat-app-main') return;
 
             const btn = document.createElement('button');
-            btn.className = 'header-button capsule-button';
+            // 托盘按钮不属于页面 Header，避免被全局 .header-button 主题规则覆盖，
+            // 确保其普通态与 Hover 态始终和“更多”按钮使用同一套 Dock 配色。
+            btn.className = 'capsule-button';
             btn.title = app.name;
             btn.innerHTML = `
                 ${SVG_ICONS[app.icon] || ''}
@@ -139,7 +141,7 @@ const trayManager = (function () {
 
         drawerApps.forEach(app => {
             const item = document.createElement('button');
-            item.className = 'header-button capsule-button app-tray-drawer-item';
+            item.className = 'capsule-button app-tray-drawer-item';
             item.title = app.name;
             item.innerHTML = `
                 ${SVG_ICONS[app.icon] || ''}
