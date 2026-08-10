@@ -2415,6 +2415,9 @@ ${parsedDocument().html}
             showToast('请先选择一段文字。');
             return;
         }
+        // 浮动格式条拥有独立的 fixed 层叠上下文。进入模态样式库前主动
+        // 收起它，避免格式条悬浮在遮罩和对话框之上。
+        hideSelectionBar();
         elements['style-library-dialog'].hidden = false;
         populateStyleCategories();
         renderStyleLibrary();
@@ -2503,7 +2506,14 @@ ${parsedDocument().html}
     }
 
     function renderStylePreview(style) {
-        const frame = elements['style-preview-frame'];
+        const previousFrame = elements['style-preview-frame'];
+        // Chromium 可能在 iframe 隐藏后复用相同 srcdoc 的浏览上下文，导致
+        // 第二次打开模态窗时只剩空白画布。每轮预览使用全新的隔离 iframe，
+        // 强制建立新的文档上下文，同时保留原节点的 class、sandbox 和标题。
+        const frame = previousFrame.cloneNode(false);
+        frame.removeAttribute('srcdoc');
+        previousFrame.replaceWith(frame);
+        elements['style-preview-frame'] = frame;
         try {
             const preview = styleLibrary.createPreviewDocument(style.id, {
                 text: state.selectionText || style.previewText,
