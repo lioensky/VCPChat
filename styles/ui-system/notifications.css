@@ -202,6 +202,13 @@
         font-size: var(--vcp-ui-font-caption);
     }
 
+    html[data-ui-mode="next"] .vcp-ui-scope .next-ui-notification-menu-hint {
+        margin-left: auto;
+        color: var(--vcp-ui-text-3);
+        font-size: var(--vcp-ui-font-caption);
+        white-space: nowrap;
+    }
+
     html[data-ui-mode="next"] .vcp-ui-scope .next-ui-notification-menu-item[aria-checked="true"] .next-ui-notification-menu-state {
         color: var(--vcp-ui-success);
     }

@@ -113,7 +113,7 @@
             </button>
         </nav>
         <div class="next-ui-topbar-actions">
-            <div class="next-ui-presentation-switcher next-ui-relocated-action">
+            <div class="next-ui-presentation-switcher">
                 <button id="nextUiPresentationBtn" class="next-ui-icon-button" type="button"
                     title="聊天显示模式" aria-label="聊天显示模式" aria-haspopup="true"
                     aria-controls="nextUiChatPresentationSwitcher">
@@ -130,14 +130,17 @@
                         data-presentation-mode="immersive" role="radio" aria-checked="false">刊物</button>
                 </div>
             </div>
-            <button id="nextUiThemeStoreBtn" class="next-ui-icon-button next-ui-relocated-action" type="button" title="选择主题" aria-label="选择主题">
+            <button id="nextUiThemeStoreBtn" class="next-ui-icon-button" type="button" title="选择主题" aria-label="选择主题">
                 <span class="vcp-ui-icon" aria-hidden="true">palette</span>
             </button>
-            <button id="nextUiThemeBtn" class="next-ui-icon-button next-ui-relocated-action" type="button" title="切换主题" aria-label="切换主题">
+            <button id="nextUiThemeBtn" class="next-ui-icon-button" type="button" title="切换明暗主题" aria-label="切换明暗主题">
                 <span class="vcp-ui-icon" aria-hidden="true">light_mode</span>
             </button>
             <button id="nextUiSettingsBtn" class="next-ui-icon-button next-ui-relocated-action" type="button" title="全局设置" aria-label="全局设置">
                 <span class="vcp-ui-icon" aria-hidden="true">settings</span>
+            </button>
+            <button id="nextUiMinimizeToTrayBtn" class="next-ui-window-button" type="button" title="最小化到系统托盘" aria-label="最小化到系统托盘">
+                <span class="vcp-ui-icon" aria-hidden="true">keyboard_arrow_down</span>
             </button>
             <button id="nextUiMinimizeBtn" class="next-ui-window-button" type="button" title="最小化" aria-label="最小化">
                 <span class="vcp-ui-icon" aria-hidden="true">remove</span>
@@ -983,16 +986,18 @@
                     </button>
                     <div id="nextUiNotificationMenu" class="next-ui-notification-menu" role="menu"
                         aria-label="通知选项" hidden>
+                        <button id="nextUiNotificationForum" class="next-ui-notification-menu-item"
+                            type="button" role="menuitem" title="左键打开 VCP Forum，右键打开 VCP Memo">
+                            <span class="vcp-ui-icon" aria-hidden="true">forum</span>
+                            <span>VCP Forum / Memo</span>
+                            <span class="next-ui-notification-menu-hint">左键 / 右键</span>
+                        </button>
                         <button id="nextUiNotificationFilterToggle" class="next-ui-notification-menu-item"
-                            type="button" role="menuitemcheckbox" aria-checked="false">
+                            type="button" role="menuitemcheckbox" aria-checked="false"
+                            title="左键切换过滤模式，右键打开过滤设置">
                             <span class="vcp-ui-icon" aria-hidden="true">list_filter</span>
                             <span>过滤模式</span>
                             <span id="nextUiNotificationFilterState" class="next-ui-notification-menu-state">关闭</span>
-                        </button>
-                        <button id="nextUiNotificationFilterSettings" class="next-ui-notification-menu-item"
-                            type="button" role="menuitem">
-                            <span class="vcp-ui-icon" aria-hidden="true">settings_2</span>
-                            <span>筛选规则设置</span>
                         </button>
                         <div class="next-ui-notification-menu-divider" role="separator"></div>
                         <button id="nextUiNotificationClear" class="next-ui-notification-menu-item danger"

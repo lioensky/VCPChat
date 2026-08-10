@@ -605,19 +605,6 @@
         }, []);
     }
 
-    function createAgentConfig(name, model) {
-        return {
-            systemPrompt: `你是 ${name}。`,
-            model,
-            temperature: 0.7,
-            contextTokenLimit: 1000000,
-            maxOutputTokens: 60000,
-            topics: [{ id: 'default', name: '主要对话', createdAt: Date.now() }],
-            disableCustomColors: true,
-            useThemeColorsInChat: true
-        };
-    }
-
     function closeCreateDialog() {
         activeCreateModal?.close(null);
     }
@@ -629,7 +616,7 @@
         }
         const ui = window.VCPUI;
         const api = window.chatAPI || window.electronAPI;
-        if (!ui || !api?.createAgent || !api?.createAgentGroup) {
+        if (!ui || !window.MainChatCommands?.createAgent || !window.MainChatCommands?.createGroup) {
             window.uiHelperFunctions?.showToastNotification?.('创建功能尚未准备好，请稍后重试。', 'error');
             return;
         }
@@ -747,19 +734,9 @@
 
             try {
                 const result = kind === 'group'
-                    ? await api.createAgentGroup(name, model ? { useUnifiedModel: true, unifiedModel: model } : undefined)
-                    : await api.createAgent(name, model ? createAgentConfig(name, model) : undefined);
+                    ? await window.MainChatCommands.createGroup({ name, model })
+                    : await window.MainChatCommands.createAgent({ name, model });
                 if (!result?.success) throw new Error(result?.error || '创建失败，请稍后重试。');
-
-                await window.itemListManager?.loadItems?.();
-                if (kind === 'group') {
-                    const group = result.agentGroup;
-                    if (!group?.id) throw new Error('群组已创建，但返回数据不完整。');
-                    await window.chatManager?.selectItem?.(group.id, 'group', group.name, group.avatarUrl, group);
-                } else {
-                    await window.chatManager?.selectItem?.(result.agentId, 'agent', result.agentName, null, result.config);
-                }
-                window.uiManager?.switchToTab?.('settings');
                 window.VCPUI?.feedback?.toast(`${kind === 'group' ? '群组' : '助手'}“${name}”已创建`, { variant: 'success' });
                 if (modal.element.isConnected) modal.close(true);
             } catch (creationError) {
@@ -865,6 +842,7 @@
         listen(document.getElementById('nextUiThemeStoreBtn'), 'click', () => window.MainChatCommands?.openThemes?.());
         listen(document.getElementById('nextUiThemeBtn'), 'click', () => window.MainChatCommands?.toggleTheme?.());
         listen(document.getElementById('nextUiSettingsBtn'), 'click', () => window.MainChatCommands?.openSettings?.());
+        listen(document.getElementById('nextUiMinimizeToTrayBtn'), 'click', () => window.MainChatCommands?.minimizeToTray?.());
         listen(document.getElementById('nextUiMinimizeBtn'), 'click', () => window.MainChatCommands?.minimize?.());
         listen(document.getElementById('nextUiMaximizeBtn'), 'click', () => window.MainChatCommands?.toggleMaximize?.());
         listen(document.getElementById('nextUiCloseBtn'), 'click', () => window.MainChatCommands?.close?.());

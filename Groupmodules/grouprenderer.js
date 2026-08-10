@@ -358,15 +358,11 @@ window.GroupRenderer = (() => {
             if (groupName) {
                 uiHelper.closeModal('createGroupModal');
                 try {
-                    const result = await electronAPI.createAgentGroup(groupName);
-                    if (result.success && result.agentGroup) {
-                        // uiHelper.showToastNotification(`群组 "${result.agentGroup.name}" 已创建!`); // Removed toast notification
-                        await mainRendererFunctions.loadItems(); // Reload combined list
-                        mainRendererFunctions.selectItem(result.agentGroup.id, 'group', result.agentGroup.name, result.agentGroup.avatarUrl, result.agentGroup);
-                        mainRendererFunctions.switchToTab('settings');
-                        // displayGroupSettingsPage is called by selectItem or switchToTab indirectly
+                    const result = await window.MainChatCommands?.createGroup?.({ name: groupName });
+                    if (result?.success && result.agentGroup) {
+                        return;
                     } else {
-                        uiHelper.showToastNotification(`创建群组失败: ${result.error}`, 'error');
+                        uiHelper.showToastNotification(`创建群组失败: ${result?.error || '创建功能不可用'}`, 'error');
                     }
                 } catch (error) {
                     console.error('创建群组时出错:', error);
