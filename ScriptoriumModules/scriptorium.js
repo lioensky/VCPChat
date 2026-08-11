@@ -1324,6 +1324,28 @@ ${parsedDocument().html}
         }, listenerOptions);
         root.addEventListener('keydown', handleBlockEditingKeydown, listenerOptions);
 
+        root.addEventListener('paste', (event) => {
+            const editable = event.target.closest?.('[data-vdoc-text]');
+            if (!editable) return;
+
+            // 从本编辑器复制整块标题/段落时，Chromium 的 text/html 可能携带
+            // data-vdoc-text、data-vdoc-block 等源码身份。若让浏览器原样粘贴，
+            // 会在当前块内部制造重复 ID；后续按 ID 定向回写就会命中原块，
+            // 表现为粘贴后的标题可以输入，却无法保存。内部块粘贴只采用可见
+            // 文本，并把换行转换为 BR；外部富文本仍交给浏览器默认粘贴。
+            const clipboard = event.clipboardData || window.clipboardData;
+            const html = clipboard?.getData?.('text/html') || '';
+            if (!/\bdata-vdoc-(?:text|block|container)\s*=/i.test(html)) return;
+
+            event.preventDefault();
+            const text = clipboard?.getData?.('text/plain') || '';
+            if (!insertPlainTextAtCurrentSelection(editable, text)) return;
+            queueRenderedNodeUpdate(editable);
+            window.ScriptoriumPretext?.evictNode(editable.dataset.vdocText);
+            state.activeEditableBlock = editable;
+            markDirty({ coalesce: true });
+        }, listenerOptions);
+
         root.addEventListener('input', (event) => {
             const editable = event.target.closest?.('[data-vdoc-text]');
             if (!editable) return;
@@ -2347,6 +2369,37 @@ ${parsedDocument().html}
         selection.removeAllRanges();
         selection.addRange(range);
         return lineBreak;
+    }
+
+    function insertPlainTextAtCurrentSelection(block, text) {
+        const selection = currentRenderSelection();
+        const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
+        if (!range || !block?.contains(range.commonAncestorContainer)) return false;
+
+        range.deleteContents();
+        const fragment = document.createDocumentFragment();
+        let lastNode = null;
+        String(text || '').replace(/\r\n?/g, '\n').split('\n').forEach((line, index) => {
+            if (index) {
+                lastNode = document.createElement('br');
+                fragment.appendChild(lastNode);
+            }
+            if (line) {
+                lastNode = document.createTextNode(line);
+                fragment.appendChild(lastNode);
+            }
+        });
+        if (!lastNode) {
+            lastNode = document.createTextNode('');
+            fragment.appendChild(lastNode);
+        }
+        range.insertNode(fragment);
+        range.setStartAfter(lastNode);
+        range.collapse(true);
+        selection.removeAllRanges();
+        selection.addRange(range);
+        block.focus();
+        return true;
     }
 
     function insertSoftBreakAtCurrentSelection(block) {

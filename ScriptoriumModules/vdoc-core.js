@@ -359,19 +359,38 @@ p { margin: .7em 0; text-align: justify; text-justify: inter-ideograph; text-wra
     function ensureTextNodeIds(html) {
         const template = document.createElement('template');
         template.innerHTML = sanitizeHtml(html);
-        template.content.querySelectorAll(PRESERVED_CONTAINER_SELECTOR).forEach((element) => {
-            if (!element.hasAttribute('data-vdoc-container')) {
-                element.setAttribute('data-vdoc-container', createId('container'));
-            }
+
+        // data-vdoc-* 是渲染树定向回写源码的主键，不只是展示元数据。
+        // 粘贴 HTML、手工复制源码或旧版导入都可能留下重复值；querySelector
+        // 随后只会命中第一个节点，使另一个节点的编辑看似成功却无法保存。
+        // 因此归一化既补齐缺失身份，也为重复身份重新签发 ID。
+        const ensureUniqueAttribute = (elements, attribute, prefix) => {
+            const seen = new Set();
+            elements.forEach((element) => {
+                const candidate = String(element.getAttribute(attribute) || '').trim();
+                let identity = candidate;
+                if (!identity || seen.has(identity)) {
+                    do {
+                        identity = createId(prefix);
+                    } while (seen.has(identity));
+                    element.setAttribute(attribute, identity);
+                }
+                seen.add(identity);
+            });
+        };
+
+        const containers = [
+            ...template.content.querySelectorAll(PRESERVED_CONTAINER_SELECTOR),
+        ];
+        ensureUniqueAttribute(containers, 'data-vdoc-container', 'container');
+        containers.forEach((element) => {
             element.setAttribute('data-vdoc-preserve', 'true');
         });
-        template.content.querySelectorAll(EDITABLE_SELECTOR).forEach((element) => {
-            if (!element.hasAttribute('data-vdoc-text')) {
-                element.setAttribute('data-vdoc-text', createId('text'));
-            }
-            if (!element.hasAttribute('data-vdoc-block')) {
-                element.setAttribute('data-vdoc-block', createId('block'));
-            }
+
+        const editables = [...template.content.querySelectorAll(EDITABLE_SELECTOR)];
+        ensureUniqueAttribute(editables, 'data-vdoc-text', 'text');
+        ensureUniqueAttribute(editables, 'data-vdoc-block', 'block');
+        editables.forEach((element) => {
             element.setAttribute('data-vdoc-removable', 'true');
         });
         return template.innerHTML;
