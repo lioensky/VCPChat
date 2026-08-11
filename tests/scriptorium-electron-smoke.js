@@ -419,6 +419,98 @@ app.whenReady().then(async () => {
         };
     })()`);
 
+    progress('copied-heading-paste-interaction');
+    const copiedHeadingPasteInteraction = await windowRef.webContents.executeJavaScript(`(async () => {
+        const root = document.getElementById('page-stream').shadowRoot;
+        const headings = [...root.querySelectorAll('h1[data-vdoc-text], h2[data-vdoc-text]')];
+        if (headings.length < 2) return { available: false };
+
+        const copied = headings[0];
+        const target = headings[1];
+        const copiedId = copied.dataset.vdocText;
+        const targetId = target.dataset.vdocText;
+        const selection = root.getSelection ? root.getSelection() : window.getSelection();
+        const range = document.createRange();
+        range.selectNodeContents(target);
+        selection.removeAllRanges();
+        selection.addRange(range);
+
+        const clipboard = new DataTransfer();
+        clipboard.setData('text/plain', copied.textContent || '');
+        clipboard.setData('text/html', copied.outerHTML);
+        target.dispatchEvent(new ClipboardEvent('paste', {
+            bubbles: true,
+            composed: true,
+            cancelable: true,
+            clipboardData: clipboard
+        }));
+
+        target.appendChild(document.createTextNode(' · 可保存'));
+        target.dispatchEvent(new InputEvent('input', {
+            bubbles: true,
+            composed: true,
+            inputType: 'insertText',
+            data: ' · 可保存'
+        }));
+        await new Promise((resolve) => setTimeout(resolve, 2300));
+
+        const source = window.ScriptoriumAgent.common.getSource({
+            sourceKind: 'html',
+            startLine: 1,
+            endLine: 200
+        }).source;
+        const sourceTemplate = document.createElement('template');
+        sourceTemplate.innerHTML = source;
+        const storedTarget = sourceTemplate.content.querySelector(
+            '[data-vdoc-text="' + CSS.escape(targetId) + '"]'
+        );
+        const storedCopied = sourceTemplate.content.querySelector(
+            '[data-vdoc-text="' + CSS.escape(copiedId) + '"]'
+        );
+        const sourceIds = [...sourceTemplate.content.querySelectorAll('[data-vdoc-text]')]
+            .map((node) => node.dataset.vdocText);
+
+        const duplicateFixture = window.VDocCore.ensureTextNodeIds(
+            '<section data-vdoc-container="duplicate-container">'
+            + '<h1 data-vdoc-text="duplicate-text" data-vdoc-block="duplicate-block">甲</h1>'
+            + '<section data-vdoc-container="duplicate-container">'
+            + '<h2 data-vdoc-text="duplicate-text" data-vdoc-block="duplicate-block">乙</h2>'
+            + '</section></section>'
+        );
+        const normalizedTemplate = document.createElement('template');
+        normalizedTemplate.innerHTML = duplicateFixture;
+        const normalizedTextIds = [
+            ...normalizedTemplate.content.querySelectorAll('[data-vdoc-text]')
+        ].map((node) => node.dataset.vdocText);
+        const normalizedBlockIds = [
+            ...normalizedTemplate.content.querySelectorAll('[data-vdoc-block]')
+        ].map((node) => node.dataset.vdocBlock);
+        const normalizedContainerIds = [
+            ...normalizedTemplate.content.querySelectorAll('[data-vdoc-container]')
+        ].map((node) => node.dataset.vdocContainer);
+
+        return {
+            available: true,
+            pasteDefaultPrevented: target.textContent === (copied.textContent || '') + ' · 可保存',
+            pastedIdentityNotNested: !target.querySelector(
+                '[data-vdoc-text], [data-vdoc-block], [data-vdoc-container]'
+            ),
+            renderedIdsRemainUnique: new Set(
+                [...root.querySelectorAll('[data-vdoc-text]')]
+                    .map((node) => node.dataset.vdocText)
+            ).size === root.querySelectorAll('[data-vdoc-text]').length,
+            sourceIdsRemainUnique: new Set(sourceIds).size === sourceIds.length,
+            targetEditSaved: storedTarget?.textContent === (copied.textContent || '') + ' · 可保存',
+            originalHeadingUnaffected: storedCopied?.textContent === copied.textContent,
+            duplicateTextIdsReissued:
+                new Set(normalizedTextIds).size === normalizedTextIds.length,
+            duplicateBlockIdsReissued:
+                new Set(normalizedBlockIds).size === normalizedBlockIds.length,
+            duplicateContainerIdsReissued:
+                new Set(normalizedContainerIds).size === normalizedContainerIds.length
+        };
+    })()`);
+
     progress('range-selection-interaction');
     const rangeSelectionInteraction = await windowRef.webContents.executeJavaScript(`(() => {
         const root = document.getElementById('page-stream').shadowRoot;
@@ -840,6 +932,7 @@ app.whenReady().then(async () => {
     mathInteraction: ${JSON.stringify(mathInteraction)},
     modeSwitchInteraction: ${JSON.stringify(modeSwitchInteraction)},
     formattingInteraction: ${JSON.stringify(formattingInteraction)},
+    copiedHeadingPasteInteraction: ${JSON.stringify(copiedHeadingPasteInteraction)},
     rangeSelectionInteraction: ${JSON.stringify(rangeSelectionInteraction)},
     enterInteraction: ${JSON.stringify(enterInteraction)},
     blockInteraction: ${JSON.stringify(blockInteraction)},
@@ -906,6 +999,16 @@ app.whenReady().then(async () => {
             snapshot.formattingInteraction.inlineToggleResults?.[command]?.applied
             && snapshot.formattingInteraction.inlineToggleResults?.[command]?.removed
         )
+        || !snapshot.copiedHeadingPasteInteraction.available
+        || !snapshot.copiedHeadingPasteInteraction.pasteDefaultPrevented
+        || !snapshot.copiedHeadingPasteInteraction.pastedIdentityNotNested
+        || !snapshot.copiedHeadingPasteInteraction.renderedIdsRemainUnique
+        || !snapshot.copiedHeadingPasteInteraction.sourceIdsRemainUnique
+        || !snapshot.copiedHeadingPasteInteraction.targetEditSaved
+        || !snapshot.copiedHeadingPasteInteraction.originalHeadingUnaffected
+        || !snapshot.copiedHeadingPasteInteraction.duplicateTextIdsReissued
+        || !snapshot.copiedHeadingPasteInteraction.duplicateBlockIdsReissued
+        || !snapshot.copiedHeadingPasteInteraction.duplicateContainerIdsReissued
         || !snapshot.rangeSelectionInteraction.available
         || !snapshot.rangeSelectionInteraction.explicitShiftSelection
         || snapshot.rangeSelectionInteraction.explicitSelectionStatus !== '已选 2 块'

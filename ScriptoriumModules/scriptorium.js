@@ -88,6 +88,11 @@
         lineageAgents: [],
         lineageAvatarCache: new Map(),
         lineageAvatarPending: new Map(),
+        copiedRichHtml: '',
+        copiedPlainText: '',
+        textContextBlock: null,
+        textContextRange: null,
+        textContextPoint: null,
     };
 
     const asyncCoordinator = asyncModule?.createCoordinator({
@@ -138,7 +143,8 @@
             'font-family-select', 'font-size-select', 'text-color-input',
             'highlight-color-input', 'line-height-select', 'block-type-select',
             'insert-block-btn', 'insert-table-btn', 'find-btn',
-            'shape-kind-select', 'insert-shape-btn', 'object-context-menu',
+            'shape-kind-select', 'insert-shape-btn', 'text-context-menu',
+            'object-context-menu',
             'object-inspector-dialog', 'object-inspector-form',
             'object-inspector-title', 'object-inspector-cancel-btn',
             'object-name-input', 'object-description-input',
@@ -1324,15 +1330,32 @@ ${parsedDocument().html}
         }, listenerOptions);
         root.addEventListener('keydown', handleBlockEditingKeydown, listenerOptions);
 
+        root.addEventListener('copy', (event) => {
+            const payload = richClipboardPayload();
+            if (!payload) return;
+            state.copiedRichHtml = payload.html;
+            state.copiedPlainText = payload.text;
+            event.clipboardData?.setData('text/plain', payload.text);
+            event.clipboardData?.setData('text/html', payload.html);
+            event.preventDefault();
+        }, listenerOptions);
+
+        root.addEventListener('cut', (event) => {
+            const payload = richClipboardPayload();
+            if (!payload) return;
+            state.copiedRichHtml = payload.html;
+            state.copiedPlainText = payload.text;
+            event.clipboardData?.setData('text/plain', payload.text);
+            event.clipboardData?.setData('text/html', payload.html);
+        }, listenerOptions);
+
         root.addEventListener('paste', (event) => {
             const editable = event.target.closest?.('[data-vdoc-text]');
             if (!editable) return;
 
-            // 从本编辑器复制整块标题/段落时，Chromium 的 text/html 可能携带
-            // data-vdoc-text、data-vdoc-block 等源码身份。若让浏览器原样粘贴，
-            // 会在当前块内部制造重复 ID；后续按 ID 定向回写就会命中原块，
-            // 表现为粘贴后的标题可以输入，却无法保存。内部块粘贴只采用可见
-            // 文本，并把换行转换为 BR；外部富文本仍交给浏览器默认粘贴。
+            // Ctrl+V 是安全默认项“粘贴”：内部复制也只插入文字，避免浏览器
+            // 把完整 H1/H2 嵌进另一个可编辑块。保留结构由右键菜单中的
+            // “粘贴（维持格式）”显式执行。
             const clipboard = event.clipboardData || window.clipboardData;
             const html = clipboard?.getData?.('text/html') || '';
             if (!/\bdata-vdoc-(?:text|block|container)\s*=/i.test(html)) return;
@@ -1355,9 +1378,16 @@ ${parsedDocument().html}
         }, listenerOptions);
 
         root.addEventListener('contextmenu', (event) => {
-            if (!state.explicitBlockSelection && !captureCurrentSelection()) return;
+            if (event.target.closest?.('[data-vdoc-object-id]')) return;
             event.preventDefault();
-            showSelectionBar(event.clientX, event.clientY);
+            const block = event.target.closest?.('[data-vdoc-text]');
+            const hasSelection = state.explicitBlockSelection || captureCurrentSelection();
+            if (hasSelection && block) {
+                showSelectionBar(event.clientX, event.clientY);
+            } else {
+                hideSelectionBar();
+            }
+            showTextContextMenu(event.clientX, event.clientY, block, event);
         }, listenerOptions);
     }
 
@@ -2369,6 +2399,115 @@ ${parsedDocument().html}
         selection.removeAllRanges();
         selection.addRange(range);
         return lineBreak;
+    }
+
+    function richClipboardPayload() {
+        const blocks = selectedEditableBlocks(true);
+        const range = selectedRange(true);
+        if (!blocks.length || !range) return null;
+
+        const fullBlocks = state.explicitBlockSelection
+            || blocks.every((block) => {
+                const blockRange = document.createRange();
+                blockRange.selectNodeContents(block);
+                return range.toString().trim() === blockRange.toString().trim();
+            });
+        if (fullBlocks) {
+            const clones = blocks.map((block) => cleanBlockForSource(block));
+            return {
+                html: clones.map((clone) => clone.outerHTML).join('\n'),
+                text: blocks.map((block) => block.textContent || '').join('\n'),
+            };
+        }
+        const fragment = range.cloneContents();
+        restoreMathSemantics(fragment);
+        fragment.querySelectorAll?.(
+            '[contenteditable], [spellcheck], [data-vdoc-editor-selected]'
+        ).forEach((node) => {
+            node.removeAttribute('contenteditable');
+            node.removeAttribute('spellcheck');
+            node.removeAttribute('data-vdoc-editor-selected');
+        });
+        const container = document.createElement('div');
+        container.appendChild(fragment);
+        return {
+            html: core.sanitizeHtml(container.innerHTML),
+            text: range.toString(),
+        };
+    }
+
+    function prepareRichClipboardBlocks(html) {
+        const template = document.createElement('template');
+        template.innerHTML = core.sanitizeHtml(String(html || ''));
+        const editables = [...template.content.querySelectorAll(core.EDITABLE_SELECTOR)];
+        const topLevel = editables.filter((node) =>
+            !node.parentElement?.closest?.(core.EDITABLE_SELECTOR)
+        );
+        if (!topLevel.length) return [];
+
+        topLevel.forEach((block) => {
+            [block, ...block.querySelectorAll('*')].forEach((node) => {
+                node.removeAttribute?.('contenteditable');
+                node.removeAttribute?.('spellcheck');
+                node.removeAttribute?.('data-vdoc-editor-selected');
+                node.removeAttribute?.('data-vdoc-text');
+                node.removeAttribute?.('data-vdoc-block');
+                node.removeAttribute?.('data-vdoc-container');
+                node.removeAttribute?.('data-vdoc-preserve');
+                node.removeAttribute?.('data-vdoc-removable');
+            });
+        });
+
+        const normalized = core.ensureTextNodeIds(
+            topLevel.map((block) => block.outerHTML).join('')
+        );
+        const prepared = document.createElement('template');
+        prepared.innerHTML = normalized;
+        return [...prepared.content.children].map((block) => {
+            block.querySelectorAll?.(core.EDITABLE_SELECTOR).forEach((editable) => {
+                editable.contentEditable = 'true';
+                editable.spellcheck = false;
+            });
+            if (block.matches?.(core.EDITABLE_SELECTOR)) {
+                block.contentEditable = 'true';
+                block.spellcheck = false;
+            }
+            return block;
+        });
+    }
+
+    function insertFormattedClipboardAtContext(html) {
+        const blocks = prepareRichClipboardBlocks(html);
+        if (!blocks.length) return false;
+        flushPendingRenderedEdits();
+
+        const root = getRenderRoot();
+        let anchor = state.textContextBlock;
+        if (!anchor?.isConnected || !root?.contains(anchor)) {
+            anchor = nearestTextBlockForPoint(state.textContextPoint);
+        }
+        const parent = anchor?.parentElement
+            || root?.querySelector('[data-vdoc-preserve="true"]')
+            || root?.querySelector('.vdoc-flow-runtime, .vdoc-slide-editor-runtime');
+        if (!parent) return false;
+
+        let anchorId = blockIdentityOf(anchor);
+        blocks.forEach((block) => {
+            if (anchor?.parentElement) anchor.after(block);
+            else parent.appendChild(block);
+            insertSourceBlockRelativeTo(anchorId, block, 'after');
+            anchor = block;
+            anchorId = blockIdentityOf(block);
+        });
+
+        state.renderedTextBlocks = [];
+        state.activeEditableBlock = blocks[blocks.length - 1];
+        state.blockSelectionAnchorId = blockIdentityOf(state.activeEditableBlock);
+        placeCaretAtStart(state.activeEditableBlock);
+        markDirty({ coalesce: true });
+        scheduleEditSnapshot();
+        renderOutline();
+        return true;
     }
 
     function insertPlainTextAtCurrentSelection(block, text) {
@@ -3441,6 +3580,116 @@ ${parsedDocument().html}
 
     function hideSelectionBar() {
         elements['selection-format-bar'].hidden = true;
+    }
+
+    function hideTextContextMenu() {
+        const menu = elements['text-context-menu'];
+        if (menu) menu.hidden = true;
+    }
+
+    function nearestTextBlockForPoint(point = state.textContextPoint) {
+        if (!point) return null;
+        const blocks = allRenderedTextBlocks();
+        return blocks.reduce((nearest, block) => {
+            const rect = block.getBoundingClientRect();
+            const distance = point.y < rect.top
+                ? rect.top - point.y
+                : point.y > rect.bottom
+                    ? point.y - rect.bottom
+                    : 0;
+            return !nearest || distance < nearest.distance
+                ? { block, distance }
+                : nearest;
+        }, null)?.block || null;
+    }
+
+    function showTextContextMenu(x, y, block = null, sourceEvent = null) {
+        const menu = elements['text-context-menu'];
+        if (!menu) return false;
+        state.textContextBlock = block || nearestTextBlockForPoint({ x, y });
+        state.textContextPoint = { x, y };
+        const selection = currentRenderSelection();
+        state.textContextRange = selection?.rangeCount
+            ? selection.getRangeAt(0).cloneRange()
+            : null;
+        const hasSelection = Boolean(
+            state.explicitBlockSelection
+            || (selection?.rangeCount && !selection.isCollapsed)
+        );
+        menu.querySelectorAll('[data-requires-selection]').forEach((control) => {
+            control.disabled = !hasSelection;
+        });
+        menu.querySelectorAll('[data-requires-block]').forEach((control) => {
+            control.disabled = !state.textContextBlock;
+        });
+        menu.hidden = false;
+        const width = 246;
+        const height = 290;
+        menu.style.left = `${Math.max(8, Math.min(innerWidth - width - 8, x))}px`;
+        menu.style.top = `${Math.max(8, Math.min(innerHeight - height - 8, y))}px`;
+        sourceEvent?.stopPropagation?.();
+        return true;
+    }
+
+    async function plainTextFromClipboard() {
+        try {
+            return await navigator.clipboard.readText();
+        } catch {
+            return state.copiedPlainText || '';
+        }
+    }
+
+    function restoreTextContextSelection() {
+        const range = state.textContextRange;
+        if (!range?.startContainer?.isConnected || !range?.endContainer?.isConnected) {
+            return false;
+        }
+        const selection = currentRenderSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+        return true;
+    }
+
+    async function runTextContextAction(action) {
+        hideTextContextMenu();
+        const block = state.textContextBlock;
+        if (action === 'copy' || action === 'cut') {
+            restoreTextContextSelection();
+            document.execCommand(action);
+            return true;
+        }
+        if (action === 'select-all') return selectEntireRenderedDocument();
+        if (action === 'select-block' && block) {
+            return setExplicitBlockSelection([blockIdentityOf(block)]);
+        }
+        if (action === 'insert-paragraph') {
+            const anchor = block || nearestTextBlockForPoint();
+            if (anchor) return insertParagraphBeforeBlock(anchor);
+            return insertStructureBlock('paragraph');
+        }
+        if (action === 'paste-formatted') {
+            if (!state.copiedRichHtml) {
+                showToast('剪贴板中没有可维持格式的 Scriptorium 元素。');
+                return false;
+            }
+            return insertFormattedClipboardAtContext(state.copiedRichHtml);
+        }
+        if (action === 'paste') {
+            const text = await plainTextFromClipboard();
+            let target = block;
+            if (!target) {
+                const anchor = nearestTextBlockForPoint();
+                target = anchor ? insertParagraphBeforeBlock(anchor) : null;
+            }
+            if (!target) return false;
+            placeCaretAtStart(target);
+            if (!insertPlainTextAtCurrentSelection(target, text)) return false;
+            queueRenderedNodeUpdate(target);
+            state.activeEditableBlock = target;
+            markDirty({ coalesce: true });
+            return true;
+        }
+        return false;
     }
 
     function inferSelectionTarget() {
@@ -4964,6 +5213,10 @@ ${safeCss}
             control.addEventListener('mousedown', (event) => event.preventDefault());
             control.addEventListener('click', () => executeCommand(control.dataset.command, control.dataset.value));
         });
+        elements['text-context-menu'].addEventListener('click', (event) => {
+            const action = event.target.closest('[data-text-action]')?.dataset.textAction;
+            if (action) runTextContextAction(action);
+        });
         elements['selection-format-bar'].querySelectorAll('[data-selection-command]').forEach((control) => {
             control.addEventListener('mousedown', (event) => event.preventDefault());
             control.addEventListener('click', () => {
@@ -5111,8 +5364,17 @@ ${safeCss}
         elements['unsaved-cancel-btn'].addEventListener('click', () => resolveUnsavedDecision('cancel'));
         elements['unsaved-discard-btn'].addEventListener('click', () => resolveUnsavedDecision('discard'));
         elements['unsaved-save-btn'].addEventListener('click', () => resolveUnsavedDecision('save'));
+        elements['render-host'].addEventListener('contextmenu', (event) => {
+            if (event.composedPath().some((node) =>
+                node?.matches?.('[data-vdoc-text], [data-vdoc-object-id]')
+            )) return;
+            event.preventDefault();
+            hideSelectionBar();
+            showTextContextMenu(event.clientX, event.clientY, null, event);
+        });
         window.addEventListener('pointerdown', (event) => {
             if (!elements['selection-format-bar'].contains(event.target)) hideSelectionBar();
+            if (!elements['text-context-menu'].contains(event.target)) hideTextContextMenu();
         }, true);
     }
 
@@ -5215,6 +5477,7 @@ ${safeCss}
                 closeMediaDialog();
                 closeStyleLibrary();
                 hideSelectionBar();
+                hideTextContextMenu();
                 clearExplicitBlockSelection();
                 closeSecurityReviewConfirmation();
                 closeLineageDetail();

@@ -542,6 +542,33 @@
         </form>
     </div>
 
+    <nav id="text-context-menu" class="text-context-menu" role="menu"
+        aria-label="文字与文档操作" hidden>
+        <button type="button" data-text-action="cut" data-requires-selection role="menuitem">
+            <span>剪切</span><kbd>Ctrl+X</kbd>
+        </button>
+        <button type="button" data-text-action="copy" data-requires-selection role="menuitem">
+            <span>复制</span><kbd>Ctrl+C</kbd>
+        </button>
+        <span class="text-menu-separator"></span>
+        <button type="button" data-text-action="paste" role="menuitem">
+            <span>粘贴</span><small>仅文字</small>
+        </button>
+        <button type="button" data-text-action="paste-formatted" role="menuitem">
+            <span>粘贴（维持格式）</span><small>新建元素与 ID</small>
+        </button>
+        <span class="text-menu-separator"></span>
+        <button type="button" data-text-action="select-block" data-requires-block role="menuitem">
+            <span>选择当前块</span>
+        </button>
+        <button type="button" data-text-action="select-all" role="menuitem">
+            <span>全选文档</span><kbd>Ctrl+A</kbd>
+        </button>
+        <button type="button" data-text-action="insert-paragraph" role="menuitem">
+            <span>在此插入裸文本</span>
+        </button>
+    </nav>
+
     <nav id="object-context-menu" class="object-context-menu" role="menu"
         aria-label="视觉对象操作" hidden>
         <button type="button" data-object-action="edit" role="menuitem">编辑对象属性…</button>
