@@ -209,6 +209,22 @@
             <button class="deck-button compact" data-command="image" title="插入媒体" aria-label="插入媒体">
                 <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m4 18 5-5 4 4 3-3 4 4"/></svg>
             </button>
+            <label class="control-shell shape-kind-shell" title="选择 SVG 图形">
+                <span class="sr-only">图形类型</span>
+                <select id="shape-kind-select" aria-label="图形类型">
+                    <option value="rectangle">矩形</option>
+                    <option value="rounded">圆角矩形</option>
+                    <option value="ellipse">椭圆</option>
+                    <option value="triangle">三角形</option>
+                    <option value="star">星形</option>
+                    <option value="arrow">箭头</option>
+                    <option value="line">直线</option>
+                </select>
+            </label>
+            <button id="insert-shape-btn" class="deck-button compact" type="button"
+                title="插入所选 SVG 图形" aria-label="插入图形">
+                <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="3"/><circle cx="12" cy="12" r="4"/></svg>
+            </button>
             <button id="insert-table-btn" class="deck-button compact" title="插入 3 × 3 表格">
                 <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="1"/><path d="M3 10h18M3 15h18M9 4v16M15 4v16"/></svg>
             </button>
@@ -517,6 +533,148 @@
         </form>
     </div>
 
+    <nav id="object-context-menu" class="object-context-menu" role="menu"
+        aria-label="视觉对象操作" hidden>
+        <button type="button" data-object-action="edit" role="menuitem">编辑对象属性…</button>
+        <span class="object-menu-separator"></span>
+        <button type="button" data-object-action="layout-block"
+            data-object-flow-only role="menuitem">独占一行</button>
+        <button type="button" data-object-action="layout-float-left"
+            data-object-flow-only role="menuitem">左侧文字环绕</button>
+        <button type="button" data-object-action="layout-float-right"
+            data-object-flow-only role="menuitem">右侧文字环绕</button>
+        <button type="button" data-object-action="front"
+            data-object-deck-only role="menuitem">置于顶层</button>
+        <button type="button" data-object-action="forward"
+            data-object-deck-only role="menuitem">上移一层</button>
+        <button type="button" data-object-action="backward"
+            data-object-deck-only role="menuitem">下移一层</button>
+        <button type="button" data-object-action="back"
+            data-object-deck-only role="menuitem">置于底层</button>
+        <span class="object-menu-separator"></span>
+        <button type="button" data-object-action="delete"
+            class="object-menu-danger" role="menuitem">删除对象</button>
+    </nav>
+
+    <div id="object-inspector-dialog" class="dialog-backdrop object-inspector-backdrop"
+        role="dialog" aria-modal="true" aria-labelledby="object-inspector-title" hidden>
+        <form id="object-inspector-form" class="object-inspector-dialog">
+            <header class="object-inspector-header">
+                <div>
+                    <span class="dialog-kicker">VISUAL OBJECT INSPECTOR</span>
+                    <h2 id="object-inspector-title">编辑视觉对象</h2>
+                    <p>属性修改会在画布中实时预览；应用后才写入源码并建立历史。</p>
+                </div>
+            </header>
+            <div class="object-inspector-body">
+                <section class="object-inspector-fields">
+                    <h3>对象语义</h3>
+                    <label>
+                        <span>对象名称</span>
+                        <input id="object-name-input" type="text" maxlength="120">
+                    </label>
+                    <label>
+                        <span>内容描述</span>
+                        <textarea id="object-description-input" maxlength="1200"
+                            placeholder="供无障碍工具与 AI 理解"></textarea>
+                    </label>
+                    <h3>尺寸与布局</h3>
+                    <div class="object-field-pair">
+                        <label>
+                            <span>宽度（px）</span>
+                            <input id="object-width-input" type="number" min="24" max="4096" step="1">
+                        </label>
+                        <label>
+                            <span>高度（px）</span>
+                            <input id="object-height-input" type="number" min="24" max="4096" step="1">
+                        </label>
+                    </div>
+                    <label id="object-layout-field">
+                        <span>文档排版</span>
+                        <select id="object-layout-select">
+                            <option value="block">独占一行</option>
+                            <option value="float-left">左侧文字环绕</option>
+                            <option value="float-right">右侧文字环绕</option>
+                        </select>
+                    </label>
+                    <label id="object-rotation-field">
+                        <span>旋转角度</span>
+                        <input id="object-rotation-input" type="number" min="-360" max="360" step="1">
+                    </label>
+                    <section id="object-shape-fields" class="object-shape-fields">
+                        <h3>SVG 图形</h3>
+                        <div class="object-field-pair">
+                            <label>
+                                <span>填充颜色</span>
+                                <input id="object-fill-input" type="color" value="#4f8f80">
+                            </label>
+                            <label>
+                                <span>边框颜色</span>
+                                <input id="object-stroke-input" type="color" value="#245c50">
+                            </label>
+                        </div>
+                        <div class="object-field-pair">
+                            <label>
+                                <span>边框粗细</span>
+                                <input id="object-stroke-width-input" type="number"
+                                    min="0" max="24" step=".5">
+                            </label>
+                            <label>
+                                <span>圆角</span>
+                                <input id="object-radius-input" type="number"
+                                    min="0" max="50" step="1">
+                            </label>
+                        </div>
+                        <label>
+                            <span>描边形态</span>
+                            <select id="object-dash-select">
+                                <option value="solid">实线</option>
+                                <option value="dash">虚线</option>
+                                <option value="dot">点线</option>
+                            </select>
+                        </label>
+                        <label>
+                            <span>整体透明度</span>
+                            <input id="object-opacity-input" type="range"
+                                min="0" max="100" step="1" value="100">
+                        </label>
+                        <label class="object-source-field">
+                            <span>SVG 源码</span>
+                            <textarea id="object-svg-source-input" class="object-code-input"
+                                spellcheck="false" autocomplete="off"
+                                placeholder="粘贴一个以 <svg> 为根的图标或图形"></textarea>
+                            <small>仅接受单一 SVG 根；脚本、事件属性和外部执行宿主会被移除。</small>
+                        </label>
+                    </section>
+                    <section class="object-css-fields">
+                        <h3>对象附加 CSS</h3>
+                        <label class="object-source-field">
+                            <span>CSS 规则</span>
+                            <textarea id="object-css-source-input" class="object-code-input"
+                                spellcheck="false" autocomplete="off"
+                                placeholder="svg { filter: drop-shadow(0 8px 12px #0005); }&#10;path:hover { opacity: .75; }"></textarea>
+                            <small>普通选择器会自动限定到当前对象；可用 :object 显式代表对象外壳。</small>
+                        </label>
+                    </section>
+                </section>
+                <aside class="object-inspector-help">
+                    <strong>隔离实时预览</strong>
+                    <div id="object-source-diagnostics" class="object-source-diagnostics"
+                        role="status">等待对象源码</div>
+                    <iframe id="object-preview-frame" class="object-preview-frame"
+                        sandbox="" title="视觉对象隔离预览"></iframe>
+                    <p>文稿对象只保存文字环绕关系；演示对象使用自由坐标与图层。</p>
+                    <p>源码和 CSS 只在点击“应用到源码”后进入文档历史。</p>
+                </aside>
+            </div>
+            <footer class="object-inspector-actions">
+                <button id="object-inspector-cancel-btn" type="button">取消并还原</button>
+                <button id="object-inspector-apply-btn" type="submit"
+                    class="dialog-confirm">应用到源码</button>
+            </footer>
+        </form>
+    </div>
+
     <div id="checkpoint-dialog" class="dialog-backdrop" hidden>
         <form class="checkpoint-dialog">
             <span class="dialog-kicker">CREATE CHECKPOINT</span>
@@ -659,6 +817,7 @@
     <script src="scriptorium-source-editor.js"></script>
     <script src="scriptorium-session.js"></script>
     <script src="scriptorium-agent.js"></script>
+    <script src="scriptorium-objects.js"></script>
     <script src="scriptorium.js"></script>
 </body>
 </html>

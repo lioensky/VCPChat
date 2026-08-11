@@ -10,6 +10,7 @@
     const runtimeModule = window.ScriptoriumRuntime;
     const sourceEditorModule = window.ScriptoriumSourceEditor;
     const sessionModule = window.ScriptoriumSession;
+    const objectModule = window.ScriptoriumObjects;
     const state = {
         document: null,
         currentPath: null,
@@ -82,6 +83,7 @@
         resourceObjectUrls: new Map(),
         resourceResolver: null,
         mediaLocalItems: [],
+        objectController: null,
     };
 
     const asyncCoordinator = asyncModule?.createCoordinator({
@@ -131,6 +133,18 @@
             'font-family-select', 'font-size-select', 'text-color-input',
             'highlight-color-input', 'line-height-select', 'block-type-select',
             'insert-block-btn', 'insert-table-btn', 'find-btn',
+            'shape-kind-select', 'insert-shape-btn', 'object-context-menu',
+            'object-inspector-dialog', 'object-inspector-form',
+            'object-inspector-title', 'object-inspector-cancel-btn',
+            'object-name-input', 'object-description-input',
+            'object-width-input', 'object-height-input', 'object-rotation-input',
+            'object-layout-field', 'object-layout-select', 'object-rotation-field',
+            'object-shape-fields', 'object-fill-input', 'object-stroke-input',
+            'object-stroke-width-input', 'object-radius-input',
+            'object-opacity-input', 'object-dash-select',
+            'object-svg-source-input', 'object-css-source-input',
+            'object-source-diagnostics', 'object-preview-frame',
+            'object-inspector-apply-btn',
             'welcome-state', 'welcome-new-btn', 'welcome-open-btn', 'recent-documents',
             'document-workspace', 'render-host', 'page-stream', 'read-host',
             'read-page-stream', 'source-host',
@@ -567,6 +581,44 @@ ${core.formatHtml(core.ensureTextNodeIds(documentSource.html))}`;
     background-color: rgba(58, 139, 120, .12) !important;
     box-shadow: 0 0 0 5px rgba(58, 139, 120, .06) !important;
 }
+/*
+ * 对象编辑装饰仅存在于编辑 ShadowRoot。对象本身的布局属性位于源码，
+ * 选择框、拖拽光标和落点提示不会进入 VDOC 或导出结果。
+ */
+[data-vdoc-object-id] {
+    box-sizing: border-box;
+    touch-action: none;
+}
+[data-vdoc-object-id][data-vdoc-object-layout="free"] {
+    cursor: move;
+    user-select: none;
+}
+[data-vdoc-object-id][data-vdoc-object-layout^="float"],
+[data-vdoc-object-id][data-vdoc-object-layout="block"] {
+    cursor: grab;
+}
+[data-vdoc-object-id][data-vdoc-object-selected="true"] {
+    outline: 2px solid #3a8b78 !important;
+    outline-offset: 4px;
+    box-shadow: 0 0 0 6px rgba(58, 139, 120, .14) !important;
+}
+[data-vdoc-object-id][data-vdoc-object-dragging="true"] {
+    cursor: grabbing !important;
+    opacity: .84;
+}
+[data-vdoc-text][data-vdoc-object-drop="before"] {
+    box-shadow: 0 -3px 0 #3a8b78 !important;
+}
+[data-vdoc-text][data-vdoc-object-drop="after"] {
+    box-shadow: 0 3px 0 #3a8b78 !important;
+}
+[data-vdoc-object="shape"] > svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+    pointer-events: none;
+}
 .vdoc-page-tombstone {
     display: grid;
     width: var(--vdoc-page-width);
@@ -616,6 +668,55 @@ ${documentCssForShadow()}
 }
 ${surface === 'edit' ? `
 .vdoc-page { display: none !important; }
+
+/*
+ * 四角缩放手柄是纯编辑器装饰，必须位于文档 CSS 之后并使用高优先级，
+ * 避免作者针对 span、* 或 figure 子元素的规则改变命中区域。
+ */
+[data-vdoc-object-id] > [data-vdoc-object-resize-handle] {
+    position: absolute !important;
+    z-index: 2147483000 !important;
+    display: block !important;
+    width: 11px !important;
+    min-width: 11px !important;
+    max-width: none !important;
+    height: 11px !important;
+    min-height: 11px !important;
+    padding: 0 !important;
+    border: 2px solid #fff !important;
+    border-radius: 3px !important;
+    overflow: visible !important;
+    background: #3a8b78 !important;
+    box-shadow: 0 1px 5px rgba(0, 0, 0, .42) !important;
+    opacity: 1 !important;
+    pointer-events: auto !important;
+    touch-action: none !important;
+    user-select: none !important;
+}
+[data-vdoc-object-resize-handle="nw"] {
+    top: -7px !important;
+    left: -7px !important;
+    cursor: nwse-resize !important;
+}
+[data-vdoc-object-resize-handle="ne"] {
+    top: -7px !important;
+    right: -7px !important;
+    cursor: nesw-resize !important;
+}
+[data-vdoc-object-resize-handle="sw"] {
+    bottom: -7px !important;
+    left: -7px !important;
+    cursor: nesw-resize !important;
+}
+[data-vdoc-object-resize-handle="se"] {
+    right: -7px !important;
+    bottom: -7px !important;
+    cursor: nwse-resize !important;
+}
+[data-vdoc-object-id][data-vdoc-object-dragging="true"]
+    > [data-vdoc-object-resize-handle] {
+    opacity: .92 !important;
+}
 ` : ''}`;
     }
 
@@ -666,10 +767,19 @@ ${surface === 'edit' ? `
         return runtimeController.activateCurrentSlide(surface);
     }
 
+    function normalizeCurrentVisualObjects() {
+        if (!state.document || !objectModule) return false;
+        const normalized = objectModule.normalizeSource(currentSourceHtml(), isSlideDeck());
+        if (!normalized.changed) return false;
+        setCurrentSourceHtml(normalized.source);
+        return true;
+    }
+
     function renderDocument() {
         disposeSlideRuntime();
         if (!state.document) return;
         state.document = core.normalizeDocument(state.document);
+        normalizeCurrentVisualObjects();
         const root = getRenderRoot() || elements['page-stream'].attachShadow({ mode: 'open' });
         state.pageObserver?.disconnect();
         root.replaceChildren();
@@ -711,6 +821,9 @@ ${surface === 'edit' ? `
         state.renderedTextBlocks = [...root.querySelectorAll('[data-vdoc-text]')];
         state.pendingRenderedNodes.clear();
         state.pendingRenderedAttributes.clear();
+        // 对象控制器使用捕获阶段拦截。必须先于文字选择委托注册，
+        // 否则对象上的首次 pointerdown 会先触发空白建段或文本选择。
+        state.objectController?.bindRoot(root);
         bindRenderSurface(root);
         updatePageZoomLayout(root);
         if (state.mode === 'render') {
@@ -2518,6 +2631,8 @@ ${parsedDocument().html}
     function switchMode(mode) {
         if (!state.ready) return;
         if (state.mode === 'render' && mode !== 'render') {
+            state.objectController?.closeInspector(true);
+            state.objectController?.clearSelection();
             finalizeEditBurst();
         }
         disposeSlideRuntime();
@@ -2836,27 +2951,95 @@ ${parsedDocument().html}
         caption.style.fontSize = '.875em';
         caption.style.opacity = '.72';
         figure.append(media, caption);
+        // 单项媒体由 insertVisualObject() 转换为视觉对象。批量插入时这些
+        // figure 会先进入统一媒体组，不能提前变成 absolute 的 PPT 子对象，
+        // 否则组内所有媒体会重叠在同一坐标。
         return figure;
     }
 
-    function insertMediaFigure(figure) {
+    function insertVisualObject(object) {
         flushPendingRenderedEdits();
         const root = getRenderRoot();
-        if (!root) return false;
-        const current = state.activeEditableBlock && root.contains(state.activeEditableBlock)
-            ? state.activeEditableBlock
-            : root.querySelector('[data-vdoc-block]:last-of-type');
-        const anchor = current?.closest?.('table, [data-vdoc-block]') || current;
-        const parent = anchor?.parentElement
-            || root.querySelector('[data-vdoc-preserve="true"]')
-            || root.querySelector('.vdoc-flow-runtime, .vdoc-slide-editor-runtime');
-        if (!parent) return false;
-        if (anchor?.parentElement) anchor.after(figure);
-        else parent.appendChild(figure);
-        insertSourceBlockRelativeTo(blockIdentityOf(anchor), figure, 'after');
-        markDirty({ coalesce: true });
-        scheduleEditSnapshot();
+        if (!root || !object) return false;
+        objectModule?.normalizeObjectNode(object, isSlideDeck());
+
+        if (isSlideDeck()) {
+            const scene = root.querySelector(
+                '.vdoc-slide-editor-runtime > .vdoc-slide-scene,'
+                + '.vdoc-slide-editor-runtime > [data-vdoc-slide]'
+            ) || root.querySelector('.vdoc-slide-editor-runtime');
+            if (!scene) return false;
+            scene.appendChild(object);
+            const prepared = cleanBlockForSource(object);
+            const inserted = withCurrentSourceDocument((fragment) => {
+                const sourceScene = fragment.querySelector(
+                    '.vdoc-slide-scene, [data-vdoc-slide]'
+                ) || fragment.firstElementChild;
+                if (!sourceScene) return false;
+                sourceScene.appendChild(prepared);
+                return true;
+            });
+            if (!inserted) {
+                object.remove();
+                return false;
+            }
+        } else {
+            const current = state.activeEditableBlock
+                && root.contains(state.activeEditableBlock)
+                ? state.activeEditableBlock
+                : root.querySelector('[data-vdoc-block]:last-of-type');
+            const anchor = current?.closest?.('table, [data-vdoc-block]') || current;
+            const parent = anchor?.parentElement
+                || root.querySelector('[data-vdoc-preserve="true"]')
+                || root.querySelector('.vdoc-flow-runtime');
+            if (!parent) return false;
+            if (anchor?.parentElement) anchor.after(object);
+            else parent.appendChild(object);
+            if (!insertSourceBlockRelativeTo(blockIdentityOf(anchor), object, 'after')) {
+                object.remove();
+                return false;
+            }
+        }
+
+        markDirty();
+        captureSnapshot();
+        renderDocument();
+        const objectId = object.dataset.vdocObjectId;
+        const rendered = objectId
+            ? getRenderRoot()?.querySelector(
+                `[data-vdoc-object-id="${CSS.escape(objectId)}"]`
+            )
+            : null;
+        if (rendered) state.objectController?.select(rendered);
         return true;
+    }
+
+    function commitVisualObjectMutation(mutation) {
+        if (!state.document || !mutation?.objectId) return false;
+        finalizeEditBurst();
+        const result = objectModule.applyMutationToSource(
+            currentSourceHtml(),
+            mutation,
+            isSlideDeck()
+        );
+        if (!result.changed) return false;
+        setCurrentSourceHtml(result.source);
+        state.previewRevision = -1;
+        state.previewResult = null;
+        markDirty();
+        captureSnapshot();
+        renderDocument();
+        if (mutation.type !== 'delete') {
+            const rendered = getRenderRoot()?.querySelector(
+                `[data-vdoc-object-id="${CSS.escape(mutation.objectId)}"]`
+            );
+            if (rendered) state.objectController?.select(rendered);
+        }
+        return true;
+    }
+
+    function insertMediaFigure(figure) {
+        return insertVisualObject(figure);
     }
 
     function mediaKindForFile(file) {
@@ -3018,6 +3201,8 @@ ${parsedDocument().html}
                 const batch = document.createElement('section');
                 batch.className = 'vdoc-media-batch';
                 batch.dataset.vdocMediaBatch = String(localItems.length);
+                batch.dataset.vdocObject = 'media-group';
+                batch.dataset.vdocObjectName = `${localItems.length} 个媒体`;
                 batch.style.textAlign = 'center';
                 for (let index = 0; index < localItems.length; index += 1) {
                     const item = localItems[index];
@@ -3095,7 +3280,6 @@ ${parsedDocument().html}
             const summary = insertedFigures.length === 1
                 ? insertedFigures[0].dataset.vdocDescription
                 : `${insertedFigures.length} 个本地媒体，均已写入独立 description 与源信息`;
-            if (localItems.length) renderDocument();
             closeMediaDialog();
             showToast(`已插入媒体 · ${summary}`, 'success', 5000);
             return true;
@@ -4756,6 +4940,7 @@ ${safeCss}
 
     function bindKeyboard() {
         window.addEventListener('keydown', (event) => {
+            if (state.objectController?.handleKeydown(event)) return;
             const modifier = event.ctrlKey || event.metaKey;
             const key = event.key.toLowerCase();
             const formControl = event.target?.closest?.('input, textarea, select, .CodeMirror');
@@ -4857,6 +5042,7 @@ ${safeCss}
                 window.cancelAnimationFrame(state.formattingSyncFrame);
             }
             disposeSlideRuntime();
+            state.objectController?.dispose();
             state.pageObserver?.disconnect();
             state.slideThumbnailObserver?.disconnect();
             window.clearTimeout(state.paginationTimer);
@@ -4874,12 +5060,34 @@ ${safeCss}
     async function initialize() {
         if (!api || !core || !containerModule || !window.JSZip
             || !styleLibrary || !pagination || !asyncModule
-            || !runtimeModule || !sourceEditorModule || !sessionModule
+            || !runtimeModule || !sourceEditorModule || !sessionModule || !objectModule
             || !sourceEditorController || !sessionController
             || !window.ScriptoriumVisibility || !window.ScriptoriumAgentModule) {
             throw new Error('Scriptorium 原生文档内核或模块未载入。');
         }
         cacheElements();
+        state.objectController = objectModule.createObjectController({
+            elements,
+            getRoot: getRenderRoot,
+            getZoom: () => state.zoom,
+            isSlideDeck,
+            canInsert: () => state.ready && state.mode === 'render',
+            insertObject: insertVisualObject,
+            commitMutation: commitVisualObjectMutation,
+            onSelectionChange: (selection) => {
+                if (!elements['selection-status']) return;
+                if (!selection) {
+                    elements['selection-status'].hidden = !state.explicitBlockSelection;
+                    elements['selection-status'].textContent = state.explicitBlockSelection
+                        ? `已选 ${state.selectionBlockIds.length} 块`
+                        : '';
+                    return;
+                }
+                elements['selection-status'].hidden = false;
+                elements['selection-status'].textContent =
+                    `对象 · ${selection.name || '未命名'}`;
+            },
+        });
         restorePanelWidths();
         restoreAutoApprovalConfig();
         restoreSecurityReviewConfig();
