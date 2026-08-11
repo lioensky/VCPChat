@@ -95,20 +95,9 @@ def set_name(
     name_table.setName(english, name_id, 3, 10, WINDOWS_EN_US)
     name_table.setName(chinese_value, name_id, 3, 10, WINDOWS_ZH_CN)
 
-    # Keep conservative Macintosh records for older consumers.
-    name_table.setName(english, name_id, 1, 0, MAC_ENGLISH)
-    try:
-        name_table.setName(
-            chinese_value,
-            name_id,
-            1,
-            25,
-            MAC_SIMPLIFIED_CHINESE,
-        )
-    except UnicodeEncodeError:
-        # Some fontTools/Mac codec combinations cannot encode every CJK name.
-        # Windows Unicode records above remain authoritative.
-        pass
+    # Compatibility copies target Windows DirectWrite/Chromium. Do not create
+    # legacy Macintosh records: setName defers encoding until font.save(), so a
+    # Chinese primary family would fail later under the Mac Roman codec.
 
 
 def normalized_copy(
