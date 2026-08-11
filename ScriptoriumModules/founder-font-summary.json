@@ -1,0 +1,79 @@
+[
+  {
+    "registryName": "方正舒体 (TrueType)",
+    "fontFile": "C:\\WINDOWS\\Fonts\\FZSTK.TTF",
+    "cssFamilyCandidates": [
+      "FZShuTi",
+      "方正舒体",
+      "FZSTK--GBK1-0"
+    ],
+    "cjkUnifiedIdeographs": 9683,
+    "error": null
+  },
+  {
+    "registryName": "方正姚体 (TrueType)",
+    "fontFile": "C:\\WINDOWS\\Fonts\\FZYTK.TTF",
+    "cssFamilyCandidates": [
+      "FZYaoTi",
+      "方正姚体",
+      "FZYTK--GBK1-0"
+    ],
+    "cjkUnifiedIdeographs": 9819,
+    "error": null
+  },
+  {
+    "registryName": "方正粗黑宋简体 (TrueType)",
+    "fontFile": "C:\\Users\\Administrator\\AppData\\Local\\Microsoft\\Windows\\Fonts\\方正粗黑宋简体.TTF",
+    "cssFamilyCandidates": [
+      "FZCuHeiSongS-B-GB",
+      "方正粗黑宋简体",
+      "FZCHSJW--GB1-0"
+    ],
+    "cjkUnifiedIdeographs": 6763,
+    "error": null
+  },
+  {
+    "registryName": "方正清刻本悦宋简体 (TrueType)",
+    "fontFile": "C:\\Users\\Administrator\\AppData\\Local\\Microsoft\\Windows\\Fonts\\方正清刻本悦宋简体.TTF",
+    "cssFamilyCandidates": [
+      "FZQingKeBenYueSongS-R-GB",
+      "方正清刻本悦宋简体",
+      "FZQKBYSJW--GB1-0"
+    ],
+    "cjkUnifiedIdeographs": 6763,
+    "error": null
+  },
+  {
+    "registryName": "方正宋刻本秀楷简体 (TrueType)",
+    "fontFile": "C:\\Users\\Administrator\\AppData\\Local\\Microsoft\\Windows\\Fonts\\方正宋刻本秀楷简体.ttf",
+    "cssFamilyCandidates": [
+      "FZSongKeBenXiuKaiS-R-GB",
+      "方正宋刻本秀楷简体",
+      "FZSKBXKJW--GB1-0"
+    ],
+    "cjkUnifiedIdeographs": 6763,
+    "error": null
+  },
+  {
+    "registryName": "方正隶变简体 (TrueType)",
+    "fontFile": "C:\\Users\\Administrator\\AppData\\Local\\Microsoft\\Windows\\Fonts\\FZLBJW.TTF",
+    "cssFamilyCandidates": [
+      "FZLiBian-S02S",
+      "方正隶变简体",
+      "FZLBJW--GB1-0"
+    ],
+    "cjkUnifiedIdeographs": 6763,
+    "error": null
+  },
+  {
+    "registryName": "方正粗雅宋_GBK (TrueType)",
+    "fontFile": "C:\\Users\\Administrator\\AppData\\Local\\Microsoft\\Windows\\Fonts\\方正粗雅宋_GBK.TTF",
+    "cssFamilyCandidates": [
+      "FZYaSong-B-GBK",
+      "方正粗雅宋_GBK",
+      "FZCYSK--GBK1-0"
+    ],
+    "cjkUnifiedIdeographs": 20902,
+    "error": null
+  }
+]

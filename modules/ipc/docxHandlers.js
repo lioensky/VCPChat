@@ -236,10 +236,52 @@ async function listWindowsFonts() {
         ');',
         'foreach ($registryRoot in $registryRoots) {',
         '  try {',
+        '    $inspectInternalNames = $registryRoot -like "*HKEY_CURRENT_USER*";',
         '    $properties = Get-ItemProperty -LiteralPath $registryRoot;',
         '    $properties.PSObject.Properties | Where-Object { $_.Name -notmatch "^PS" } | ForEach-Object {',
-        '      $fontName = $_.Name -replace "\\s+\\((?:TrueType|OpenType|Variable)\\)\\s*$", "";',
-        '      if ($fontName) { [void]$names.Add($fontName.Trim()) }',
+        '      $registryName = ($_.Name -replace "\\s+\\((?:TrueType|OpenType|Variable)\\)\\s*$", "").Trim();',
+        '      $fontPath = [Environment]::ExpandEnvironmentVariables([string]$_.Value);',
+        '      if ($fontPath -and -not [IO.Path]::IsPathRooted($fontPath)) {',
+        '        $fontPath = Join-Path (Join-Path $env:WINDIR "Fonts") $fontPath;',
+        '      }',
+        '      $internalNamesFound = $false;',
+        '      $shouldInspectFile = $inspectInternalNames -or $registryName -match "[^\\x00-\\x7F]";',
+        '      if ($shouldInspectFile -and $fontPath -and [IO.File]::Exists($fontPath)) {',
+        '        try {',
+        '          $glyph = New-Object System.Windows.Media.GlyphTypeface ([Uri]$fontPath);',
+        '          $aliases = New-Object "System.Collections.Generic.List[string]";',
+        '          $preferredCultures = @(',
+        '            [System.Globalization.CultureInfo]::CurrentUICulture,',
+        '            [System.Globalization.CultureInfo]::GetCultureInfo("zh-CN"),',
+        '            [System.Globalization.CultureInfo]::GetCultureInfo("en-US")',
+        '          );',
+        '          foreach ($culture in $preferredCultures) {',
+        '            $familyName = ([string]$glyph.FamilyNames[$culture]).Trim();',
+        '            if ($familyName -and -not $aliases.Contains($familyName)) {',
+        '              $aliases.Add($familyName);',
+        '            }',
+        '          }',
+        '          $glyph.FamilyNames.Values | ForEach-Object {',
+        '            $familyName = ([string]$_).Trim();',
+        '            if ($familyName -and -not $aliases.Contains($familyName)) {',
+        '              $aliases.Add($familyName);',
+        '            }',
+        '          };',
+        '          if ($aliases.Count) {',
+        '            $cssStack = ($aliases | ForEach-Object {',
+        '              [char]34 + $_.Replace([char]34, "\\" + [char]34) + [char]34',
+        '            }) -join ", ";',
+        '            [void]$names.Add($cssStack);',
+        '            $internalNamesFound = $true;',
+        '          }',
+        '        } catch {}',
+        '      }',
+        // 注册表名称经常是 full name，例如“霞鹜文楷 Regular”，而 CSS
+        // font-family 只接受内部 family“霞鹜文楷”。这里不能把 JavaScript
+        // 注释写进 PowerShell 字符串：脚本最终拼成单行，# 会吞掉后续所有代码。
+        '      if (-not $internalNamesFound -and $registryName) {',
+        '        [void]$names.Add($registryName);',
+        '      }',
         '    }',
         '  } catch {}',
         '}',
@@ -252,7 +294,11 @@ async function listWindowsFonts() {
         '-NonInteractive',
         '-ExecutionPolicy', 'Bypass',
         '-Command', script,
-    ]);
+    ], {
+        // 首次读取 HKCU 第三方字体的 OpenType family 表会触发 WPF 字体缓存。
+        // 不能沿用普通辅助命令的 15 秒限制，否则超时后只显示七个兜底字体。
+        timeout: 60000,
+    });
     return output
         .split(/\r?\n/)
         .map((encoded) => encoded.trim())
@@ -306,9 +352,13 @@ async function getSystemFonts(forceRefresh = false) {
         console.warn('[Scriptorium] System font enumeration failed:', error.message);
     }
 
-    // Windows 枚举结果必须保持真实：不要追加可能并未安装的字体。
-    // Scriptorium 直接将该列表用于中日韩 CSS 字体栈与缺字回退诊断。
-    fontCache = normalizeFontNames(discovered.length ? discovered : [
+    if (discovered.length) {
+        fontCache = normalizeFontNames(discovered);
+        return fontCache;
+    }
+
+    // 只有本轮真实枚举失败时才使用最小兜底集；兜底结果仅保存在当前进程。
+    fontCache = normalizeFontNames([
         'Arial',
         'Calibri',
         'Cambria',
