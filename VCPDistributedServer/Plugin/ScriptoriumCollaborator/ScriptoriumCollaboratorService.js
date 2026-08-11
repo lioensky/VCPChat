@@ -175,23 +175,199 @@ function endpointFor(args = {}) {
     return 'common';
 }
 
+const MARKDOWN_FIELD_LABELS = Object.freeze({
+    success: '成功',
+    code: '状态码',
+    message: '消息',
+    documentId: '文档 ID',
+    documentKind: '文档类型',
+    revision: '修订号',
+    title: '标题',
+    name: '名称',
+    dirty: '存在未保存修改',
+    activeSlideIndex: '当前幻灯片索引',
+    slideCount: '幻灯片总数',
+    scene: '场景配置',
+    programmableContent: '可编程内容',
+    status: '状态',
+    dependencies: '依赖',
+    diagnostics: '诊断信息',
+    text: '渲染文本',
+    renderedText: '渲染文本',
+    pages: '页面',
+    items: '目录项',
+    records: '历史记录',
+    results: '检索结果',
+    query: '检索词',
+    sourceKind: '源码类型',
+    slideIndex: '幻灯片索引',
+    startLine: '起始行',
+    endLine: '结束行',
+    totalLines: '总行数',
+    source: '源码',
+    html: 'HTML',
+    deckCss: '演示共享 CSS',
+    context: '上下文源码',
+    target: '目标源码',
+    replace: '替换源码',
+    replacement: '替换源码',
+    heading: '章节标题',
+    visibleBlockIds: '可见文本块 ID',
+    media: '媒体',
+    notes: '备注',
+    note: '备注',
+    summary: '摘要',
+    maid: 'Maid 署名',
+    author: '作者',
+    reviewer: '审阅者',
+    receipt: '审批回执',
+    decision: '审批决定',
+    automatic: '自动审批',
+    createdAt: '创建时间',
+    reviewedAt: '审阅时间',
+    baseRevision: '基础修订号',
+    operation: '操作',
+    proposal: '提案',
+    changeSet: '变更集',
+    pr: 'PR',
+    result: '执行结果',
+    root: '根目录',
+    docxDirectory: 'VDOCX 目录',
+    pptxDirectory: 'VPPTX 目录',
+    defaultConflictPolicy: '默认重名策略',
+    overwriteRequiresExpectedFileHash: '覆盖需要预期文件哈希',
+});
+
+const MARKDOWN_CODE_FIELDS = new Set([
+    'source',
+    'html',
+    'deckCss',
+    'context',
+    'target',
+    'replace',
+    'replacement',
+]);
+
 function compactDetails(value) {
     if (!value || typeof value !== 'object') return {};
     const { serialized, snapshot, ...rest } = value;
     return rest;
 }
 
+function markdownLabel(key) {
+    return MARKDOWN_FIELD_LABELS[key] || String(key)
+        .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+        .replace(/^./, (character) => character.toUpperCase());
+}
+
+function escapeMarkdownInline(value) {
+    return String(value)
+        .replace(/\\/g, '\\\\')
+        .replace(/([`*_[\]<>])/g, '\\$1')
+        .replace(/\r?\n/g, ' ');
+}
+
+function markdownFence(content, language = 'text') {
+    const text = String(content ?? '').replace(/\r\n?/g, '\n');
+    const longestFence = Math.max(
+        0,
+        ...([...text.matchAll(/`+/g)].map((match) => match[0].length))
+    );
+    const fence = '`'.repeat(Math.max(3, longestFence + 1));
+    return `${fence}${language}\n${text}\n${fence}`;
+}
+
+function codeLanguage(key, parent = {}) {
+    if (key === 'deckCss') return 'css';
+    if (key === 'html') return 'html';
+    const sourceKind = String(parent.sourceKind || '').toLowerCase();
+    if (sourceKind === 'deck-css') return 'css';
+    if (['source', 'context', 'target', 'replace', 'replacement'].includes(key)) {
+        return sourceKind === 'html' || /<\/?[a-z][\s\S]*>/i.test(String(parent[key] || ''))
+            ? 'html'
+            : 'text';
+    }
+    return 'text';
+}
+
+function markdownScalar(value) {
+    if (value === null) return '无';
+    if (value === undefined) return '未提供';
+    if (typeof value === 'boolean') return value ? '是' : '否';
+    return escapeMarkdownInline(value);
+}
+
+function markdownValue(key, value, parent, depth = 2) {
+    const label = markdownLabel(key);
+    const heading = '#'.repeat(Math.min(6, depth));
+
+    if (MARKDOWN_CODE_FIELDS.has(key) && typeof value === 'string') {
+        return [`${heading} ${label}`, '', markdownFence(value, codeLanguage(key, parent))];
+    }
+
+    if (typeof value === 'string' && value.includes('\n')) {
+        return [`${heading} ${label}`, '', markdownFence(value, 'text')];
+    }
+
+    if (Array.isArray(value)) {
+        if (!value.length) return [`- **${label}**：无`];
+        if (value.every((item) =>
+            item === null || ['string', 'number', 'boolean'].includes(typeof item)
+        )) {
+            return [
+                `${heading} ${label}`,
+                '',
+                ...value.map((item) => `- ${markdownScalar(item)}`),
+            ];
+        }
+        const lines = [`${heading} ${label}`, ''];
+        value.forEach((item, index) => {
+            const itemHeading = '#'.repeat(Math.min(6, depth + 1));
+            lines.push(`${itemHeading} ${label} ${index + 1}`, '');
+            if (item && typeof item === 'object') {
+                lines.push(...markdownObject(item, depth + 2), '');
+            } else {
+                lines.push(markdownScalar(item), '');
+            }
+        });
+        return lines.slice(0, -1);
+    }
+
+    if (value && typeof value === 'object') {
+        return [
+            `${heading} ${label}`,
+            '',
+            ...markdownObject(value, depth + 1),
+        ];
+    }
+
+    return [`- **${label}**：${markdownScalar(value)}`];
+}
+
+function markdownObject(value, depth = 2) {
+    const lines = [];
+    for (const [key, fieldValue] of Object.entries(value || {})) {
+        if (key === 'serialized' || key === 'snapshot') continue;
+        const block = markdownValue(key, fieldValue, value, depth);
+        const blockLike = block[0]?.startsWith('#');
+        if (blockLike && lines.length && lines.at(-1) !== '') lines.push('');
+        lines.push(...block);
+        if (blockLike) lines.push('');
+    }
+    while (lines.at(-1) === '') lines.pop();
+    return lines;
+}
+
 function resultText(title, result) {
+    const markdown = [
+        `# ${title}`,
+        '',
+        ...markdownObject(compactDetails(result)),
+    ].join('\n');
     return {
         content: [{
             type: 'text',
-            text: [
-                `# ${title}`,
-                '',
-                '```json',
-                JSON.stringify(compactDetails(result), null, 2),
-                '```',
-            ].join('\n'),
+            text: markdown,
         }],
         details: result,
     };
@@ -623,6 +799,9 @@ module.exports = {
     processToolCall,
     _test: {
         commandOf,
+        markdownFence,
+        markdownObject,
+        resultText,
         getSerialCommandEntries,
         extractSerialStepArgs,
         parseWaitMs,

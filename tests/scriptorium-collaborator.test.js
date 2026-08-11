@@ -30,6 +30,19 @@ function createControl() {
                     },
                 };
             }
+            if (request.method === 'getSource') {
+                return {
+                    success: true,
+                    documentId: 'document-test',
+                    documentKind: 'docx',
+                    revision: 1,
+                    sourceKind: 'html',
+                    startLine: 1,
+                    endLine: 2,
+                    totalLines: 2,
+                    source: '<article data-title="原生文本">\n  <p>无需 JSON 反转义</p>\n</article>',
+                };
+            }
             return {
                 success: true,
                 documentId: 'document-test',
@@ -98,6 +111,24 @@ async function run() {
     assert.strictEqual(visual.content[1].type, 'image_url');
     assert.ok(visual.content[1].image_url.url.startsWith('data:image/png;base64,'));
 
+    const sourceResult = await collaborator.processToolCall({
+        command: 'GetSource',
+        endpoint: 'docx',
+        sourceKind: 'html',
+    });
+    const sourceMarkdown = sourceResult.content[0].text;
+    assert.ok(sourceMarkdown.startsWith('# Scriptorium · getSource'));
+    assert.ok(sourceMarkdown.includes('## 源码'));
+    assert.ok(sourceMarkdown.includes('```html'));
+    assert.ok(sourceMarkdown.includes('<article data-title="原生文本">'));
+    assert.ok(sourceMarkdown.includes('\n  <p>无需 JSON 反转义</p>\n'));
+    assert.ok(!sourceMarkdown.includes('\\"原生文本\\"'));
+    assert.ok(!sourceMarkdown.includes('\\n  <p>'));
+    assert.strictEqual(
+        sourceResult.details.source,
+        '<article data-title="原生文本">\n  <p>无需 JSON 反转义</p>\n</article>'
+    );
+
     const submitted = await collaborator.processToolCall({
         command: 'SubmitSourcePr',
         endpoint: 'docx',
@@ -130,6 +161,20 @@ async function run() {
     );
     assert.strictEqual(submitted.details.receipt.message, '人类确认通过。');
     assert.strictEqual(submitted.details.pr.author.name, 'Nova');
+    const submittedMarkdown = submitted.content[0].text;
+    assert.ok(submittedMarkdown.includes('## PR'));
+    assert.ok(submittedMarkdown.includes('### 作者'));
+    assert.ok(submittedMarkdown.includes('- **名称**：Nova'));
+    assert.ok(submittedMarkdown.includes('## 审批回执'));
+    assert.ok(submittedMarkdown.includes('- **消息**：人类确认通过。'));
+    assert.ok(!submittedMarkdown.includes('```json'));
+
+    const fenced = collaborator._test.markdownFence(
+        'const example = `value`;\n```\nend',
+        'javascript'
+    );
+    assert.ok(fenced.startsWith('````javascript\n'));
+    assert.ok(fenced.endsWith('\n````'));
 
     const created = await collaborator.processToolCall({
         command: 'CreateProject',
