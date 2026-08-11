@@ -16,7 +16,9 @@ function handleSyncTopicHashBatch(payload) {
   const logger = getLogger();
   if (!db) {
     logger.logOperation("topic_metadata", "diff_batch", "global", "error", "database not initialized");
-    return { type: "SYNC_TOPIC_HASH_RESULTS", changedTopics: [] };
+    throw Object.assign(new Error("Database not initialized"), {
+      code: "SYNC_DB_UNAVAILABLE",
+    });
   }
 
   const hashes = payload.hashes || {};
@@ -36,8 +38,10 @@ function handleSyncTopicHashBatch(payload) {
       }
       changedTopics.push(topicId);
     } catch (e) {
-      // 查询出错时保守处理：视为有变化
-      changedTopics.push(topicId);
+      throw Object.assign(
+        new Error(`Topic hash lookup failed for ${topicId}: ${e.message}`),
+        { code: "SYNC_DB_QUERY_FAILED" },
+      );
     }
   }
 
@@ -59,7 +63,9 @@ function handleSyncTopicHashBatchV2(payload) {
   const logger = getLogger();
   if (!db) {
     logger.logOperation("topic_metadata", "diff_batch_v2", "global", "error", "database not initialized");
-    return { type: "SYNC_TOPIC_HASH_RESULTS", changedTopics: [] };
+    throw Object.assign(new Error("Database not initialized"), {
+      code: "SYNC_DB_UNAVAILABLE",
+    });
   }
 
   const hashes = payload.hashes || {};
@@ -89,7 +95,10 @@ function handleSyncTopicHashBatchV2(payload) {
         changedTopics.push(topicId);
       }
     } catch (e) {
-      changedTopics.push(topicId);
+      throw Object.assign(
+        new Error(`Topic hash lookup failed for ${topicId}: ${e.message}`),
+        { code: "SYNC_DB_QUERY_FAILED" },
+      );
     }
   }
 
@@ -107,30 +116,91 @@ function handleSyncTopicHashBatchV2(payload) {
  * @param {object} payload - { topics: { topicId: { topicHash, messages: { msgId: hash } } } }
  * @returns {object} { type: "SYNC_DIFF_RESULTS_BATCH", results: { topicId: { toPull, toPush } } }
  */
-function handleSyncMessageDiffBatch(payload) {
-  const db = getDb();
+function handleSyncMessageDiffBatch(payload, database = getDb()) {
+  const db = database;
   const logger = getLogger();
   if (!db) {
     logger.logOperation("messages", "diff_batch", "global", "error", "database not initialized");
-    return { type: "SYNC_DIFF_RESULTS_BATCH", results: {} };
+    throw Object.assign(new Error("Database not initialized"), {
+      code: "SYNC_DB_UNAVAILABLE",
+    });
   }
 
   const results = {};
-  const topics = payload.topics || {};
+  const topics = payload?.topics;
+  if (
+    !topics ||
+    typeof topics !== "object" ||
+    Array.isArray(topics)
+  ) {
+    throw Object.assign(new Error("SYNC_MESSAGE_DIFF_BATCH.topics must be an object"), {
+      code: "SYNC_PROTOCOL_INVALID",
+    });
+  }
   const topicIds = Object.keys(topics);
+  if (topicIds.length > 10_000) {
+    throw Object.assign(new Error("Message diff exceeds 10000 topics"), {
+      code: "SYNC_BUDGET_EXCEEDED",
+    });
+  }
   let fastPathCount = 0;
   let detailedCount = 0;
+  let messageCount = 0;
 
   for (const [topicId, localState] of Object.entries(topics)) {
-    if (topicId === "default") continue;
+    if (
+      !topicId ||
+      topicId === "default" ||
+      !localState ||
+      typeof localState !== "object" ||
+      Array.isArray(localState) ||
+      typeof localState.topicHash !== "string" ||
+      !localState.messages ||
+      typeof localState.messages !== "object" ||
+      Array.isArray(localState.messages)
+    ) {
+      throw Object.assign(new Error(`Invalid message diff state for topic ${topicId}`), {
+        code: "SYNC_PROTOCOL_INVALID",
+      });
+    }
+    const localEntries = Object.entries(localState.messages);
+    messageCount += localEntries.length;
+    if (localEntries.length > 10_000 || messageCount > 100_000) {
+      throw Object.assign(new Error("Message diff exceeds its message count budget"), {
+        code: "SYNC_BUDGET_EXCEEDED",
+      });
+    }
+    for (const [msgId, hash] of localEntries) {
+      if (
+        !msgId ||
+        typeof hash !== "string" ||
+        (hash !== "DELETED" && !/^[a-f0-9]{64}$/.test(hash))
+      ) {
+        throw Object.assign(
+          new Error(`Invalid message diff entry ${topicId}/${msgId}`),
+          { code: "SYNC_PROTOCOL_INVALID" },
+        );
+      }
+    }
     try {
       // 1. 快速路径：比较 topic 级 aggregated_hash
       const topicRow = db
         .prepare("SELECT aggregated_hash FROM entity_index WHERE id = ? AND (type = 'topic' OR type = 'agent_topic' OR type = 'group_topic') AND deleted_at IS NULL")
         .get(topicId);
 
-      if (topicRow && topicRow.aggregated_hash !== null && topicRow.aggregated_hash === localState.topicHash) {
-        results[topicId] = { toPull: [], toPush: false };
+      if (!topicRow) {
+        results[topicId] = {
+          ok: false,
+          error: {
+            code: "TOPIC_NOT_FOUND",
+            message: `Topic ${topicId} was not found in the desktop index`,
+          },
+        };
+        continue;
+      }
+
+      if (topicRow.aggregated_hash !== null && topicRow.aggregated_hash === localState.topicHash) {
+        results[topicId] = { ok: true, toPull: [], toPush: false };
         fastPathCount++;
         // fast-path 的 topic 不输出单条日志，避免日志噪音
         continue;
@@ -142,7 +212,7 @@ function handleSyncMessageDiffBatch(payload) {
         .all(topicId);
 
       const remoteMap = new Map(remoteRows.map((r) => [r.msg_id, r.hash]));
-      const localMap = localState.messages || {};
+      const localMap = localState.messages;
 
       const toPull = [];
       let toPush = false;
@@ -150,25 +220,7 @@ function handleSyncMessageDiffBatch(payload) {
       for (const [msgId, remoteHash] of remoteMap) {
         const localHash = localMap[msgId];
         
-        if (localHash === "DELETED") {
-          // 💥 墓碑拦截：手机端已执行软截断删除
-          // 1. 桌面端本地数据库将该消息也标记为软删除
-          try {
-            const { softDeleteMessageIndex } = require("../core/db");
-            softDeleteMessageIndex(msgId, Date.now(), topicId);
-          } catch (e) {
-            logger.logOperation("messages", "diff_soft_delete", msgId, "error", e.message);
-          }
-
-          // 2. 并异步从桌面端物理 history.json 中修剪它
-          try {
-            const { pruneMessageFromPhysicalHistory } = require("./message");
-            pruneMessageFromPhysicalHistory(topicId, msgId).catch(() => {});
-          } catch (e) {}
-
-          // 3. 绝对阻止回流！不加入 toPull 队列
-          continue;
-        }
+        if (localHash === "DELETED") continue;
 
         if (!localHash) {
           toPull.push(msgId);
@@ -179,18 +231,24 @@ function handleSyncMessageDiffBatch(payload) {
 
       // 本地有而远程没有的 → push
       for (const msgId of Object.keys(localMap)) {
-        if (!remoteMap.has(msgId)) {
+        if (localMap[msgId] !== "DELETED" && !remoteMap.has(msgId)) {
           toPush = true;
           break;
         }
       }
 
-      results[topicId] = { toPull, toPush };
+      results[topicId] = { ok: true, toPull, toPush };
       detailedCount++;
       logger.logOperation("messages", "diff", topicId, "success", `toPull=${toPull.length} toPush=${toPush}`);
     } catch (e) {
       logger.logOperation("messages", "diff", topicId, "error", e.message);
-      results[topicId] = { toPull: [], toPush: false, error: e.message };
+      results[topicId] = {
+        ok: false,
+        error: {
+          code: "MESSAGE_DIFF_FAILED",
+          message: e.message,
+        },
+      };
     }
   }
 

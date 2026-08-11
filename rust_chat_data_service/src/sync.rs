@@ -1,6 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
-    fs,
+    fs::{self, File, OpenOptions},
+    io::Write,
     path::{Path, PathBuf},
     str::FromStr,
 };
@@ -14,7 +15,8 @@ use sha2::{Digest, Sha256};
 use crate::{
     domain::{OwnerType, TopicKey},
     ingest::{sha256_hex, Reconciler},
-    storage::{now_ms, Database, IngestCommit},
+    storage::{Database, IngestCommit},
+    sync_wire::{canonicalize_for_wire, canonicalize_message, message_fingerprint, WireWarnings},
 };
 
 #[derive(Debug, Clone, Deserialize)]
@@ -98,6 +100,14 @@ pub struct TopicSelector {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct TopicIdentityResponse {
+    pub topic_id: String,
+    pub owner_type: OwnerType,
+    pub owner_id: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct MessageManifestItem {
     pub msg_id: String,
     pub content_hash: String,
@@ -171,8 +181,43 @@ pub struct MessageDiffState {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MessageDiffResult {
-    pub to_pull: Vec<String>,
-    pub to_push: bool,
+    pub ok: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub to_pull: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub to_push: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<SyncDecisionError>,
+}
+
+impl MessageDiffResult {
+    fn success(to_pull: Vec<String>, to_push: bool) -> Self {
+        Self {
+            ok: true,
+            to_pull: Some(to_pull),
+            to_push: Some(to_push),
+            error: None,
+        }
+    }
+
+    fn failure(code: &str, message: impl Into<String>) -> Self {
+        Self {
+            ok: false,
+            to_pull: None,
+            to_push: None,
+            error: Some(SyncDecisionError {
+                code: code.to_string(),
+                message: message.into(),
+            }),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncDecisionError {
+    pub code: String,
+    pub message: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -208,6 +253,10 @@ pub struct MessagesPullFrame {
     pub owner_type: OwnerType,
     pub owner_id: String,
     pub messages: Vec<Value>,
+    #[serde(skip_serializing_if = "is_zero")]
+    pub legacy_attachment_warnings: usize,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub warning_samples: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -228,6 +277,15 @@ pub struct MessagesPushTopic {
     pub messages: Vec<Value>,
     #[serde(default)]
     pub deleted_message_ids: Vec<String>,
+    #[serde(default)]
+    pub deleted_message_tombstones: Vec<MessageTombstoneInput>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct MessageTombstoneInput {
+    pub msg_id: String,
+    pub deleted_at: i64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -238,6 +296,7 @@ pub struct MessagesPushResult {
     pub changed: bool,
     pub revision: Option<i64>,
     pub message_count: usize,
+    pub needed_attachment_hashes: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
 }
@@ -384,20 +443,35 @@ pub fn message_manifest(
          WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3
          ORDER BY ordinal ASC",
     )?;
-    let messages = statement
+    let rows = statement
         .query_map(
             params![key.owner_type.as_str(), key.owner_id, key.topic_id],
             |row| {
-                let metadata: String = row.get(1)?;
-                Ok(MessageManifestItem {
-                    msg_id: row.get(0)?,
-                    content_hash: mobile_message_hash_from_json(&metadata),
-                    updated_at: row.get(2)?,
-                    deleted_at: row.get(3)?,
-                })
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, i64>(2)?,
+                    row.get::<_, Option<i64>>(3)?,
+                ))
             },
         )?
         .collect::<rusqlite::Result<Vec<_>>>()?;
+    drop(statement);
+    drop(connection);
+    ensure_topic_sync_source_healthy(database, &key)?;
+    let messages = rows
+        .into_iter()
+        .map(|(msg_id, metadata, updated_at, deleted_at)| {
+            let content_hash = mobile_message_hash_from_json(&metadata, &key.topic_id)
+                .with_context(|| format!("message {msg_id} cannot cross sync wire"))?;
+            Ok(MessageManifestItem {
+                msg_id,
+                content_hash,
+                updated_at,
+                deleted_at,
+            })
+        })
+        .collect::<Result<Vec<_>>>()?;
 
     Ok(MessageManifestResponse {
         response_type: "MESSAGE_MANIFEST_RESULTS",
@@ -405,6 +479,18 @@ pub fn message_manifest(
         owner_type: key.owner_type,
         owner_id: key.owner_id,
         messages,
+    })
+}
+
+pub fn topic_identity(
+    database: &Database,
+    selector: &TopicSelector,
+) -> Result<TopicIdentityResponse> {
+    let key = resolve_topic(database, selector)?;
+    Ok(TopicIdentityResponse {
+        topic_id: key.topic_id,
+        owner_type: key.owner_type,
+        owner_id: key.owner_id,
     })
 }
 
@@ -463,44 +549,97 @@ pub fn message_diff(
     database: &Database,
     request: MessageDiffRequest,
 ) -> Result<MessageDiffResponse> {
+    anyhow::ensure!(
+        request.topics.len() <= 10_000,
+        "message diff exceeds 10000 topics"
+    );
     let mut results = HashMap::new();
+    let mut total_messages = 0_usize;
     for (topic_id, state) in request.topics {
+        anyhow::ensure!(
+            !topic_id.is_empty(),
+            "message diff topicId must be non-empty"
+        );
+        anyhow::ensure!(
+            state.owner_type.is_some() == state.owner_id.is_some(),
+            "message diff ownerType and ownerId must be supplied together"
+        );
+        anyhow::ensure!(
+            state
+                .owner_id
+                .as_deref()
+                .is_none_or(|owner_id| !owner_id.is_empty()),
+            "message diff ownerId must be non-empty"
+        );
+        anyhow::ensure!(
+            state.messages.len() <= 10_000,
+            "message diff topic exceeds 10000 messages"
+        );
+        total_messages = total_messages
+            .checked_add(state.messages.len())
+            .context("message diff count overflow")?;
+        anyhow::ensure!(
+            total_messages <= 100_000,
+            "message diff exceeds 100000 messages"
+        );
+        for (message_id, hash) in &state.messages {
+            anyhow::ensure!(
+                !message_id.is_empty(),
+                "message diff message id must be non-empty"
+            );
+            anyhow::ensure!(
+                hash == "DELETED" || canonical_wire_hash(hash).is_some(),
+                "message diff contains an invalid content hash for {topic_id}/{message_id}"
+            );
+        }
         let selector = TopicSelector {
             topic_id: topic_id.clone(),
             owner_type: state.owner_type,
             owner_id: state.owner_id,
         };
-        let Ok(key) = resolve_topic(database, &selector) else {
-            results.insert(
-                topic_id,
-                MessageDiffResult {
-                    to_pull: Vec::new(),
-                    to_push: !state.messages.is_empty(),
-                },
-            );
-            continue;
+        let key = match resolve_topic(database, &selector) {
+            Ok(key) => key,
+            Err(error) => {
+                results.insert(
+                    topic_id,
+                    MessageDiffResult::failure("TOPIC_NOT_FOUND", format!("{error:#}")),
+                );
+                continue;
+            }
         };
 
-        let local_topic = topic_manifest(database, &key)?;
+        let local_topic = match topic_manifest(database, &key) {
+            Ok(local_topic) => local_topic,
+            Err(error) => {
+                results.insert(
+                    topic_id,
+                    MessageDiffResult::failure("TOPIC_HASH_FAILED", format!("{error:#}")),
+                );
+                continue;
+            }
+        };
         if !state.topic_hash.is_empty() && state.topic_hash == local_topic.content_hash {
-            results.insert(
-                topic_id,
-                MessageDiffResult {
-                    to_pull: Vec::new(),
-                    to_push: false,
-                },
-            );
+            results.insert(topic_id, MessageDiffResult::success(Vec::new(), false));
             continue;
         }
 
-        let manifest = message_manifest(database, &selector)?;
+        let manifest = match message_manifest(database, &selector) {
+            Ok(manifest) => manifest,
+            Err(error) => {
+                results.insert(
+                    topic_id,
+                    MessageDiffResult::failure("MESSAGE_MANIFEST_FAILED", format!("{error:#}")),
+                );
+                continue;
+            }
+        };
         let active = manifest
             .messages
             .into_iter()
             .filter(|item| item.deleted_at.is_none())
             .map(|item| (item.msg_id, item.content_hash))
             .collect::<HashMap<_, _>>();
-        let to_pull = active
+        let mut to_pull = active
             .iter()
             .filter_map(|(id, hash)| {
                 let remote = state.messages.get(id);
@@ -508,12 +647,13 @@ pub fn message_diff(
                     || remote.is_some_and(|value| value != hash && value != "DELETED"))
                 .then_some(id.clone())
             })
-            .collect();
+            .collect::<Vec<_>>();
+        to_pull.sort();
         let to_push = state
             .messages
             .iter()
             .any(|(id, hash)| hash != "DELETED" && !active.contains_key(id));
-        results.insert(topic_id, MessageDiffResult { to_pull, to_push });
+        results.insert(topic_id, MessageDiffResult::success(to_pull, to_push));
     }
 
     Ok(MessageDiffResponse {
@@ -528,51 +668,77 @@ pub fn pull_messages(
 ) -> Result<Vec<MessagesPullFrame>> {
     let mut frames = Vec::with_capacity(request.requests.len());
     for topic in request.requests {
-        let selector = TopicSelector {
-            topic_id: topic.topic_id.clone(),
-            owner_type: topic.owner_type,
-            owner_id: topic.owner_id,
-        };
-        let key = resolve_topic(database, &selector)?;
-        let wanted = topic.msg_ids.into_iter().collect::<HashSet<_>>();
-        let connection = database.connection.lock();
-        let mut statement = connection.prepare(
-            "SELECT metadata_json FROM messages
-             WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3 AND deleted_at IS NULL
-             ORDER BY ordinal ASC",
-        )?;
-        let messages = statement
-            .query_map(
-                params![key.owner_type.as_str(), key.owner_id, key.topic_id],
-                |row| row.get::<_, String>(0),
-            )?
-            .filter_map(|result| {
-                let raw = result.ok()?;
-                let mut message = serde_json::from_str::<Value>(&raw).ok()?;
-                let id = message
-                    .get("id")
-                    .and_then(Value::as_str)
-                    .unwrap_or_default();
-                if !wanted.is_empty() && !wanted.contains(id) {
-                    return None;
-                }
-                if let Some(object) = message.as_object_mut() {
-                    object.insert(
-                        "contentHash".to_string(),
-                        Value::String(mobile_message_hash(object)),
-                    );
-                }
-                Some(message)
-            })
-            .collect();
-        frames.push(MessagesPullFrame {
-            topic_id: key.topic_id,
-            owner_type: key.owner_type,
-            owner_id: key.owner_id,
-            messages,
-        });
+        frames.push(pull_topic_messages(database, topic)?);
     }
     Ok(frames)
+}
+
+pub fn pull_topic_messages(
+    database: &Database,
+    topic: MessagesPullTopic,
+) -> Result<MessagesPullFrame> {
+    let selector = TopicSelector {
+        topic_id: topic.topic_id.clone(),
+        owner_type: topic.owner_type,
+        owner_id: topic.owner_id,
+    };
+    let key = resolve_topic(database, &selector)?;
+    ensure_topic_sync_source_healthy(database, &key)?;
+    anyhow::ensure!(
+        topic.msg_ids.len() <= 10_000,
+        "topic message request exceeds 10000 ids"
+    );
+    let wanted = topic.msg_ids.into_iter().collect::<HashSet<_>>();
+    let connection = database.connection.lock();
+    let mut statement = connection.prepare(
+        "SELECT metadata_json FROM messages
+         WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3 AND deleted_at IS NULL
+         ORDER BY ordinal ASC",
+    )?;
+    let rows = statement
+        .query_map(
+            params![key.owner_type.as_str(), key.owner_id, key.topic_id],
+            |row| row.get::<_, String>(0),
+        )?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    drop(statement);
+    drop(connection);
+
+    let mut warnings = WireWarnings::default();
+    let mut messages = Vec::new();
+    let mut seen = HashSet::new();
+    for raw in rows {
+        let value =
+            serde_json::from_str::<Value>(&raw).context("stored message JSON is invalid")?;
+        let id = value
+            .get("id")
+            .and_then(Value::as_str)
+            .filter(|id| !id.is_empty())
+            .context("stored message id is missing")?;
+        if !wanted.is_empty() && !wanted.contains(id) {
+            continue;
+        }
+        anyhow::ensure!(
+            seen.insert(id.to_string()),
+            "duplicate stored message id {id}"
+        );
+        messages.push(canonicalize_for_wire(value, &key.topic_id, &mut warnings)?);
+    }
+    if !wanted.is_empty() {
+        anyhow::ensure!(
+            seen == wanted,
+            "requested message set is incomplete for topic {}",
+            key.topic_id
+        );
+    }
+    Ok(MessagesPullFrame {
+        topic_id: key.topic_id,
+        owner_type: key.owner_type,
+        owner_id: key.owner_id,
+        messages,
+        legacy_attachment_warnings: warnings.count,
+        warning_samples: warnings.samples,
+    })
 }
 
 pub async fn push_messages(
@@ -589,6 +755,7 @@ pub async fn push_messages(
                 changed: commit.changed,
                 revision: Some(commit.revision),
                 message_count: commit.message_count,
+                needed_attachment_hashes: Vec::new(),
                 error: None,
             },
             Err(error) => MessagesPushResult {
@@ -597,6 +764,7 @@ pub async fn push_messages(
                 changed: false,
                 revision: None,
                 message_count: 0,
+                needed_attachment_hashes: Vec::new(),
                 error: Some(format!("{error:#}")),
             },
         });
@@ -605,6 +773,62 @@ pub async fn push_messages(
 }
 
 async fn push_topic(reconciler: &Reconciler, topic: &MessagesPushTopic) -> Result<IngestCommit> {
+    anyhow::ensure!(
+        topic.owner_type.is_some() == topic.owner_id.is_some(),
+        "pushed topic ownerType and ownerId must be supplied together"
+    );
+    anyhow::ensure!(
+        topic
+            .owner_id
+            .as_deref()
+            .is_none_or(|owner_id| !owner_id.is_empty()),
+        "pushed topic ownerId must be non-empty"
+    );
+    let mut deleted = topic
+        .deleted_message_ids
+        .iter()
+        .cloned()
+        .collect::<HashSet<_>>();
+    anyhow::ensure!(
+        deleted.len() == topic.deleted_message_ids.len()
+            && deleted.iter().all(|message_id| !message_id.is_empty()),
+        "deleted message ids must be non-empty and unique"
+    );
+    let mut explicit_tombstones = Vec::with_capacity(topic.deleted_message_tombstones.len());
+    for tombstone in &topic.deleted_message_tombstones {
+        anyhow::ensure!(
+            !tombstone.msg_id.is_empty() && deleted.insert(tombstone.msg_id.clone()),
+            "deleted message tombstones must have non-empty unique ids"
+        );
+        anyhow::ensure!(
+            (0..=9_007_199_254_740_991).contains(&tombstone.deleted_at),
+            "deleted message tombstone timestamp must be a non-negative safe integer"
+        );
+        explicit_tombstones.push((tombstone.msg_id.clone(), tombstone.deleted_at));
+    }
+    let mut live_ids = HashSet::new();
+    for message in &topic.messages {
+        let id = message
+            .get("id")
+            .and_then(Value::as_str)
+            .filter(|id| !id.is_empty())
+            .context("pushed message id is required")?;
+        anyhow::ensure!(
+            live_ids.insert(id.to_string()),
+            "duplicate pushed message id {id}"
+        );
+        anyhow::ensure!(
+            !deleted.contains(id),
+            "message {id} is both live and deleted"
+        );
+        let mut warnings = WireWarnings::default();
+        canonicalize_message(message.clone(), &topic.topic_id, &mut warnings)
+            .with_context(|| format!("pushed message {id} is invalid"))?;
+        anyhow::ensure!(
+            warnings.count == 0,
+            "pushed message {id} contains an invalid attachment"
+        );
+    }
     let key = resolve_topic(
         reconciler.database(),
         &TopicSelector {
@@ -621,12 +845,7 @@ async fn push_topic(reconciler: &Reconciler, topic: &MessagesPushTopic) -> Resul
         .join(&topic.topic_id)
         .join("history.json");
 
-    let mut current = read_history_or_empty(&history_path)?;
-    let deleted = topic
-        .deleted_message_ids
-        .iter()
-        .cloned()
-        .collect::<HashSet<_>>();
+    let (mut current, expected_source_hash) = read_history_snapshot(&history_path)?;
     current.retain(|value| {
         value
             .get("id")
@@ -657,11 +876,24 @@ async fn push_topic(reconciler: &Reconciler, topic: &MessagesPushTopic) -> Resul
         }
     }
 
-    write_json_atomic(&history_path, &Value::Array(current))?;
-    reconciler
+    write_json_atomic(
+        &history_path,
+        &Value::Array(current),
+        expected_source_hash.as_deref(),
+    )?;
+    let mut commit = reconciler
         .ingest_path(&history_path, "mobile_sync")
         .await?
-        .context("projected history path was not accepted by CDS")
+        .context("projected history path was not accepted by CDS")?;
+    if let Some(revision) = reconciler.database().apply_explicit_message_tombstones(
+        &key,
+        &explicit_tombstones,
+        "mobile_sync",
+    )? {
+        commit.changed = true;
+        commit.revision = revision;
+    }
+    Ok(commit)
 }
 
 pub fn changes(database: &Database, after: i64, limit: usize) -> Result<ChangeFeedResponse> {
@@ -845,21 +1077,50 @@ fn owner_content_hash(
 }
 
 fn topic_content_hash(database: &Database, key: &TopicKey) -> Result<String> {
+    ensure_topic_sync_source_healthy(database, key)?;
     let connection = database.connection.lock();
     let mut statement = connection.prepare(
         "SELECT metadata_json FROM messages
          WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3 AND deleted_at IS NULL",
     )?;
-    let hashes = statement
+    let rows = statement
         .query_map(
             params![key.owner_type.as_str(), key.owner_id, key.topic_id],
-            |row| {
-                let raw: String = row.get(0)?;
-                Ok(mobile_message_hash_from_json(&raw))
-            },
+            |row| row.get::<_, String>(0),
         )?
         .collect::<rusqlite::Result<Vec<_>>>()?;
+    drop(statement);
+    drop(connection);
+    let hashes = rows
+        .into_iter()
+        .map(|raw| mobile_message_hash_from_json(&raw, &key.topic_id))
+        .collect::<Result<Vec<_>>>()?;
     Ok(aggregate_hash(hashes))
+}
+
+fn ensure_topic_sync_source_healthy(database: &Database, key: &TopicKey) -> Result<()> {
+    let connection = database.connection.lock();
+    let (source_path, status, last_error): (String, Option<String>, Option<String>) = connection
+        .query_row(
+            "SELECT t.source_path, hs.status, hs.last_error
+             FROM topics t
+             LEFT JOIN history_sources hs ON hs.source_path=t.source_path
+             WHERE t.owner_type=?1 AND t.owner_id=?2 AND t.topic_id=?3
+               AND t.deleted_at IS NULL",
+            params![key.owner_type.as_str(), key.owner_id, key.topic_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )?;
+    drop(connection);
+    if let Some(status) = status {
+        anyhow::ensure!(
+            status == "ready",
+            "history source is not ready for sync: {}",
+            last_error.unwrap_or(status)
+        );
+    } else if Path::new(&source_path).exists() {
+        anyhow::bail!("history source exists but has not been ingested");
+    }
+    Ok(())
 }
 
 fn resolve_topic(database: &Database, selector: &TopicSelector) -> Result<TopicKey> {
@@ -869,7 +1130,8 @@ fn resolve_topic(database: &Database, selector: &TopicSelector) -> Result<TopicK
         let exists = connection
             .query_row(
                 "SELECT 1 FROM topics
-                 WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3",
+                 WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3
+                   AND deleted_at IS NULL",
                 params![owner_type.as_str(), owner_id, selector.topic_id],
                 |_| Ok(()),
             )
@@ -911,26 +1173,53 @@ fn resolve_topic(database: &Database, selector: &TopicSelector) -> Result<TopicK
     }
 }
 
-fn read_history_or_empty(path: &Path) -> Result<Vec<Value>> {
-    if !path.exists() {
-        return Ok(Vec::new());
-    }
-    let bytes = fs::read(path)?;
-    if bytes.is_empty() {
-        return Ok(Vec::new());
-    }
-    serde_json::from_slice::<Vec<Value>>(&bytes).context("existing history is invalid")
+fn read_history_snapshot(path: &Path) -> Result<(Vec<Value>, Option<String>)> {
+    let bytes = match fs::read(path) {
+        Ok(bytes) => bytes,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok((Vec::new(), None));
+        }
+        Err(error) => return Err(error).context("failed to read existing history"),
+    };
+    let history = serde_json::from_slice::<Vec<Value>>(&bytes)
+        .context("existing history is invalid or has a non-array root")?;
+    Ok((history, Some(sha256_hex(&bytes))))
 }
 
-fn write_json_atomic(path: &Path, value: &Value) -> Result<()> {
+fn write_json_atomic(path: &Path, value: &Value, expected_source_hash: Option<&str>) -> Result<()> {
     let parent = path.parent().context("history path has no parent")?;
     fs::create_dir_all(parent)?;
     let temporary = temporary_path(path);
-    fs::write(&temporary, serde_json::to_vec_pretty(value)?)?;
-    if path.exists() {
-        fs::remove_file(path)?;
+    let bytes = serde_json::to_vec_pretty(value)?;
+    let mut file = OpenOptions::new()
+        .create_new(true)
+        .write(true)
+        .open(&temporary)
+        .context("failed to create unique history temporary file")?;
+    if let Err(error) = file.write_all(&bytes).and_then(|_| file.sync_all()) {
+        let _ = fs::remove_file(&temporary);
+        return Err(error).context("failed to durably write history temporary file");
     }
-    fs::rename(&temporary, path)?;
+    drop(file);
+
+    let current_hash = match fs::read(path) {
+        Ok(current) => Some(sha256_hex(&current)),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+        Err(error) => {
+            let _ = fs::remove_file(&temporary);
+            return Err(error).context("failed to revalidate history before commit");
+        }
+    };
+    if current_hash.as_deref() != expected_source_hash {
+        let _ = fs::remove_file(&temporary);
+        anyhow::bail!("history changed concurrently; retry the sync topic");
+    }
+
+    if let Err(error) = atomic_replace(&temporary, path) {
+        let _ = fs::remove_file(&temporary);
+        return Err(error).context("failed to atomically replace history");
+    }
+    sync_parent_directory(parent)?;
     Ok(())
 }
 
@@ -939,55 +1228,69 @@ fn temporary_path(path: &Path) -> PathBuf {
         .file_name()
         .and_then(|value| value.to_str())
         .unwrap_or("history.json");
-    path.with_file_name(format!("{name}.cds-{}.tmp", now_ms()))
+    path.with_file_name(format!("{name}.cds-{}.tmp", uuid::Uuid::new_v4()))
 }
 
-fn mobile_message_hash_from_json(raw: &str) -> String {
-    serde_json::from_str::<Value>(raw)
-        .ok()
-        .and_then(|value| value.as_object().cloned())
-        .map_or_else(String::new, |object| mobile_message_hash(&object))
+#[cfg(not(windows))]
+fn atomic_replace(from: &Path, to: &Path) -> std::io::Result<()> {
+    fs::rename(from, to)
 }
 
-fn mobile_message_hash(message: &Map<String, Value>) -> String {
-    let content = message
-        .get("content")
-        .and_then(Value::as_str)
-        .unwrap_or_default();
-    let mut attachment_hashes = message
-        .get("attachments")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(|attachment| {
-            attachment
-                .get("hash")
-                .and_then(Value::as_str)
-                .or_else(|| {
-                    attachment
-                        .get("_fileManagerData")
-                        .and_then(|data| data.get("hash"))
-                        .and_then(Value::as_str)
-                })
-                .filter(|hash| !hash.is_empty())
-                .map(ToString::to_string)
-        })
+#[cfg(windows)]
+fn atomic_replace(from: &Path, to: &Path) -> std::io::Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::Storage::FileSystem::{
+        MoveFileExW, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH,
+    };
+
+    let from = from
+        .as_os_str()
+        .encode_wide()
+        .chain(Some(0))
         .collect::<Vec<_>>();
-    attachment_hashes.sort();
-
-    let canonical = if attachment_hashes.is_empty() {
-        format!(
-            r#"{{"content":{}}}"#,
-            serde_json::to_string(content).unwrap_or_default()
-        )
-    } else {
-        format!(
-            r#"{{"attachmentHashes":{},"content":{}}}"#,
-            serde_json::to_string(&attachment_hashes).unwrap_or_default(),
-            serde_json::to_string(content).unwrap_or_default()
+    let to = to
+        .as_os_str()
+        .encode_wide()
+        .chain(Some(0))
+        .collect::<Vec<_>>();
+    let result = unsafe {
+        MoveFileExW(
+            from.as_ptr(),
+            to.as_ptr(),
+            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
         )
     };
-    sha256_hex(canonical.as_bytes())
+    if result == 0 {
+        Err(std::io::Error::last_os_error())
+    } else {
+        Ok(())
+    }
+}
+
+#[cfg(unix)]
+fn sync_parent_directory(parent: &Path) -> Result<()> {
+    File::open(parent)?.sync_all()?;
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn sync_parent_directory(_parent: &Path) -> Result<()> {
+    Ok(())
+}
+
+fn mobile_message_hash_from_json(raw: &str, topic_id: &str) -> Result<String> {
+    let value = serde_json::from_str::<Value>(raw).context("stored message JSON is invalid")?;
+    let mut warnings = WireWarnings::default();
+    let canonical = canonicalize_message(value, topic_id, &mut warnings)?;
+    message_fingerprint(&canonical)
+}
+
+fn canonical_wire_hash(value: &str) -> Option<String> {
+    let normalized = value.to_ascii_lowercase();
+    (normalized.len() == 64
+        && normalized.bytes().all(|byte| byte.is_ascii_hexdigit())
+        && normalized == value)
+        .then_some(normalized)
 }
 
 fn mobile_owner_config_hash(owner_type: OwnerType, path: &Path) -> Result<String> {
@@ -1248,13 +1551,62 @@ const fn is_false(value: &bool) -> bool {
     !*value
 }
 
+const fn is_zero(value: &usize) -> bool {
+    *value == 0
+}
+
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
+    use std::{collections::HashMap, fs, sync::Arc};
 
-    use super::{aggregate_hash, mobile_message_hash, unique_manifest_item_by_id, ManifestItem};
-    use crate::domain::OwnerType;
+    use super::{
+        aggregate_hash, message_manifest, pull_topic_messages, push_messages, topic_identity,
+        unique_manifest_item_by_id, ManifestItem, MessagesPullTopic, MessagesPushRequest,
+        MessagesPushTopic, TopicSelector,
+    };
+    use crate::{
+        config::{Cli, ServiceConfig},
+        domain::OwnerType,
+        ingest::Reconciler,
+        storage::Database,
+        sync_wire::{canonicalize_message, message_fingerprint, WireWarnings},
+    };
     use serde_json::json;
+    use tempfile::TempDir;
+
+    fn sync_fixture() -> (TempDir, Arc<ServiceConfig>, Database, Reconciler) {
+        let temp = TempDir::new().expect("create temp directory");
+        let app_data = temp.path().join("AppData");
+        fs::create_dir_all(app_data.join("Agents/agent-a")).expect("create agent");
+        fs::create_dir_all(app_data.join("AgentGroups")).expect("create groups");
+        fs::create_dir_all(app_data.join("UserData/agent-a/topics/topic-a"))
+            .expect("create history directory");
+        fs::write(
+            app_data.join("Agents/agent-a/config.json"),
+            serde_json::to_vec(&json!({
+                "name": "Agent A",
+                "topics": [{"id":"topic-a","name":"Topic A","createdAt":1}]
+            }))
+            .expect("serialize config"),
+        )
+        .expect("write config");
+        let config = Arc::new(
+            ServiceConfig::from_cli(Cli {
+                app_data,
+                host: "127.0.0.1".to_string(),
+                port: 0,
+                notify_enabled: false,
+                tantivy_enabled: false,
+                raw_event_capacity: 64,
+                coalesced_path_capacity: 64,
+                ingest_capacity: 16,
+            })
+            .expect("create config"),
+        );
+        let database = Database::open(&config.database_path).expect("open database");
+        let reconciler = Reconciler::new(config.clone(), database.clone());
+        (temp, config, database, reconciler)
+    }
 
     fn manifest_item(id: &str, owner_type: OwnerType, owner_id: &str) -> ManifestItem {
         ManifestItem {
@@ -1305,7 +1657,12 @@ mod tests {
     #[test]
     fn mobile_fingerprint_matches_content_only_contract() {
         let value = json!({"id":"m1","content":"hello"});
-        let hash = mobile_message_hash(value.as_object().expect("object"));
+        let mut value = value;
+        value["role"] = json!("user");
+        value["timestamp"] = json!(1);
+        let mut warnings = WireWarnings::default();
+        let canonical = canonicalize_message(value, "topic", &mut warnings).expect("canonical");
+        let hash = message_fingerprint(&canonical).expect("hash");
         assert_eq!(
             hash,
             "20b2dda940d741d9780897200aaef2ef356ab32b38c7de0d94306fb5a66b4a8e"
@@ -1318,5 +1675,294 @@ mod tests {
             aggregate_hash(vec!["b".to_string(), "a".to_string()]),
             aggregate_hash(vec!["a".to_string(), "b".to_string()])
         );
+    }
+
+    #[tokio::test]
+    async fn ingest_pull_canonicalize_push_round_trip_is_sync_only_and_strict() {
+        let (_temp, config, database, reconciler) = sync_fixture();
+        let valid_hash = "A".repeat(64);
+        let history_path = config
+            .user_data_dir
+            .join("agent-a/topics/topic-a/history.json");
+        fs::write(
+            &history_path,
+            serde_json::to_vec_pretty(&json!([
+                {
+                    "id":"m1",
+                    "role":"user",
+                    "content":"legacy",
+                    "timestamp":"1",
+                    "attachments":[{
+                        "type":"text/plain",
+                        "name":"legacy.txt",
+                        "size":3,
+                        "src":"file:///desktop/private",
+                        "_fileManagerData":{
+                            "hash":valid_hash,
+                            "internalPath":"file:///desktop/private"
+                        }
+                    }]
+                },
+                {
+                    "id":"m2",
+                    "role":"assistant",
+                    "content":"keep message, omit bad attachment",
+                    "timestamp":2,
+                    "attachments":[{"type":"text/plain","name":"bad.txt","size":1}]
+                }
+            ]))
+            .expect("serialize history"),
+        )
+        .expect("write history");
+        reconciler.reconcile().await.expect("reconcile history");
+
+        let frame = pull_topic_messages(
+            &database,
+            MessagesPullTopic {
+                topic_id: "topic-a".to_string(),
+                owner_type: None,
+                owner_id: None,
+                msg_ids: Vec::new(),
+            },
+        )
+        .expect("pull canonical frame");
+        assert_eq!(frame.owner_type, OwnerType::Agent);
+        assert_eq!(frame.owner_id, "agent-a");
+        assert_eq!(frame.legacy_attachment_warnings, 1);
+        assert_eq!(frame.messages.len(), 2);
+        assert_eq!(frame.messages[0]["attachments"][0]["hash"], "a".repeat(64));
+        assert!(frame.messages[0]["attachments"][0]
+            .get("_fileManagerData")
+            .is_none());
+        assert!(frame.messages[1].get("attachments").is_none());
+
+        let response = push_messages(
+            &reconciler,
+            MessagesPushRequest {
+                topics: vec![MessagesPushTopic {
+                    topic_id: "topic-a".to_string(),
+                    owner_type: Some(OwnerType::Agent),
+                    owner_id: Some("agent-a".to_string()),
+                    messages: vec![json!({
+                        "id":"m3",
+                        "role":"user",
+                        "content":"projected native",
+                        "timestamp":3,
+                        "attachments":[{
+                            "type":"text/plain",
+                            "src":"file:///actual/app-data/attachment.txt",
+                            "name":"attachment.txt",
+                            "size":1,
+                            "_fileManagerData":{
+                                "hash":"b".repeat(64),
+                                "internalPath":"file:///actual/app-data/attachment.txt"
+                            }
+                        }]
+                    })],
+                    deleted_message_ids: Vec::new(),
+                    deleted_message_tombstones: Vec::new(),
+                }],
+            },
+        )
+        .await;
+        assert!(response.results[0].success);
+        assert!(response.results[0].needed_attachment_hashes.is_empty());
+        let persisted: Vec<serde_json::Value> =
+            serde_json::from_slice(&fs::read(&history_path).expect("read history"))
+                .expect("parse history");
+        assert_eq!(persisted.len(), 3);
+        assert_eq!(
+            persisted[2]["attachments"][0]["_fileManagerData"]["hash"],
+            "b".repeat(64)
+        );
+
+        let manifest = message_manifest(
+            &database,
+            &TopicSelector {
+                topic_id: "topic-a".to_string(),
+                owner_type: Some(OwnerType::Agent),
+                owner_id: Some("agent-a".to_string()),
+            },
+        )
+        .expect("message manifest after push");
+        assert_eq!(manifest.messages.len(), 3);
+        assert!(manifest
+            .messages
+            .iter()
+            .all(|message| message.content_hash.len() == 64));
+    }
+
+    #[tokio::test]
+    async fn explicit_message_tombstones_preserve_wire_time_and_cover_absent_rows() {
+        let (_temp, config, database, reconciler) = sync_fixture();
+        let history_path = config
+            .user_data_dir
+            .join("agent-a/topics/topic-a/history.json");
+        fs::write(
+            &history_path,
+            br#"[{"id":"m1","role":"user","content":"delete me","timestamp":1}]"#,
+        )
+        .expect("write initial history");
+        reconciler.reconcile().await.expect("initial reconcile");
+
+        let delete = |m1_deleted_at, missing_deleted_at| MessagesPushRequest {
+            topics: vec![MessagesPushTopic {
+                topic_id: "topic-a".to_string(),
+                owner_type: Some(OwnerType::Agent),
+                owner_id: Some("agent-a".to_string()),
+                messages: Vec::new(),
+                deleted_message_ids: Vec::new(),
+                deleted_message_tombstones: vec![
+                    super::MessageTombstoneInput {
+                        msg_id: "m1".to_string(),
+                        deleted_at: m1_deleted_at,
+                    },
+                    super::MessageTombstoneInput {
+                        msg_id: "never-seen".to_string(),
+                        deleted_at: missing_deleted_at,
+                    },
+                ],
+            }],
+        };
+
+        let first = push_messages(&reconciler, delete(42, 43)).await;
+        assert!(first.results[0].success);
+        assert!(first.results[0].changed);
+        let persisted: Vec<serde_json::Value> =
+            serde_json::from_slice(&fs::read(&history_path).expect("read history"))
+                .expect("parse history");
+        assert!(persisted.is_empty());
+
+        let tombstone_times = {
+            let connection = database.connection.lock();
+            let mut statement = connection
+                .prepare(
+                    "SELECT entity_id, deleted_at FROM tombstones
+                     WHERE entity_type='message' AND owner_type='agent'
+                       AND owner_id='agent-a' AND topic_id='topic-a'
+                     ORDER BY entity_id",
+                )
+                .expect("prepare tombstone query");
+            statement
+                .query_map([], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+                })
+                .expect("query tombstones")
+                .collect::<rusqlite::Result<Vec<_>>>()
+                .expect("collect tombstones")
+        };
+        assert_eq!(
+            tombstone_times,
+            vec![("m1".to_string(), 42), ("never-seen".to_string(), 43)]
+        );
+
+        let replay = push_messages(&reconciler, delete(99, 100)).await;
+        assert!(replay.results[0].success);
+        assert!(!replay.results[0].changed);
+        let replay_times = {
+            let connection = database.connection.lock();
+            let mut statement = connection
+                .prepare(
+                    "SELECT entity_id, deleted_at FROM tombstones
+                     WHERE entity_type='message' AND owner_type='agent'
+                       AND owner_id='agent-a' AND topic_id='topic-a'
+                     ORDER BY entity_id",
+                )
+                .expect("prepare replay query");
+            statement
+                .query_map([], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+                })
+                .expect("query replay tombstones")
+                .collect::<rusqlite::Result<Vec<_>>>()
+                .expect("collect replay tombstones")
+        };
+        assert_eq!(replay_times, tombstone_times);
+    }
+
+    #[tokio::test]
+    async fn invalid_history_source_is_never_served_from_stale_sqlite() {
+        let (_temp, config, database, reconciler) = sync_fixture();
+        let history_path = config
+            .user_data_dir
+            .join("agent-a/topics/topic-a/history.json");
+        fs::write(
+            &history_path,
+            br#"[{"id":"m1","role":"user","content":"valid","timestamp":1}]"#,
+        )
+        .expect("write valid history");
+        reconciler.reconcile().await.expect("initial reconcile");
+        fs::write(&history_path, b"{").expect("corrupt history");
+        let stats = reconciler
+            .reconcile()
+            .await
+            .expect("invalid reconcile completes");
+        assert_eq!(stats.files_invalid, 1);
+
+        let error = pull_topic_messages(
+            &database,
+            MessagesPullTopic {
+                topic_id: "topic-a".to_string(),
+                owner_type: None,
+                owner_id: None,
+                msg_ids: Vec::new(),
+            },
+        )
+        .expect_err("invalid source must fail closed");
+        assert!(error.to_string().contains("history source is not ready"));
+    }
+
+    #[tokio::test]
+    async fn topic_identity_rejects_cross_owner_ambiguity() {
+        let (_temp, config, database, reconciler) = sync_fixture();
+        fs::create_dir_all(config.groups_dir.join("group-a")).expect("create group");
+        fs::create_dir_all(config.user_data_dir.join("group-a/topics/topic-a"))
+            .expect("create group history");
+        fs::write(
+            config.groups_dir.join("group-a/config.json"),
+            serde_json::to_vec(&json!({
+                "id":"group-a",
+                "name":"Group A",
+                "topics":[{"id":"topic-a","name":"Shared","createdAt":1}]
+            }))
+            .expect("serialize group"),
+        )
+        .expect("write group");
+        fs::write(
+            config
+                .user_data_dir
+                .join("agent-a/topics/topic-a/history.json"),
+            b"[]",
+        )
+        .expect("write agent history");
+        fs::write(
+            config
+                .user_data_dir
+                .join("group-a/topics/topic-a/history.json"),
+            b"[]",
+        )
+        .expect("write group history");
+        reconciler.reconcile().await.expect("reconcile owners");
+
+        assert!(topic_identity(
+            &database,
+            &TopicSelector {
+                topic_id: "topic-a".to_string(),
+                owner_type: None,
+                owner_id: None,
+            }
+        )
+        .is_err());
+        let identity = topic_identity(
+            &database,
+            &TopicSelector {
+                topic_id: "topic-a".to_string(),
+                owner_type: Some(OwnerType::Group),
+                owner_id: Some("group-a".to_string()),
+            },
+        )
+        .expect("resolve compound identity");
+        assert_eq!(identity.owner_type, OwnerType::Group);
+        assert_eq!(identity.owner_id, "group-a");
     }
 }

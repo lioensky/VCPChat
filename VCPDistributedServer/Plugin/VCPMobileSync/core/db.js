@@ -113,6 +113,21 @@ function getDb() {
 function upsertEntityIndex(id, type, filePath, hash, updatedAt = Date.now()) {
   if (!db) return;
 
+  if (["topic", "agent_topic", "group_topic"].includes(type)) {
+    const existing = db
+      .prepare(
+        "SELECT file_path FROM entity_index WHERE id = ? AND (type = 'topic' OR type = 'agent_topic' OR type = 'group_topic')",
+      )
+      .get(id);
+    if (
+      existing?.file_path &&
+      filePath &&
+      pathIdentity(existing.file_path) !== pathIdentity(filePath)
+    ) {
+      throw new Error(`Topic id ${id} is ambiguous across desktop owners`);
+    }
+  }
+
   if (filePath === null) {
     // 仅更新已存在实体的哈希与时间戳 (用于 WS 通知等场景)
     db.prepare(
@@ -134,6 +149,11 @@ function upsertEntityIndex(id, type, filePath, hash, updatedAt = Date.now()) {
     `,
     ).run(id, type, filePath, hash, updatedAt);
   }
+}
+
+function pathIdentity(value) {
+  const normalized = String(value || "").replace(/\\/g, "/");
+  return process.platform === "win32" ? normalized.toLowerCase() : normalized;
 }
 
 /**
@@ -164,11 +184,10 @@ function upsertMessageIndex(msgId, topicId, hash, updatedAt = Date.now()) {
  * @param {number} updatedAt - 更新时间戳
  */
 function upsertAttachmentIndex(hash, filePath, updatedAt = Date.now()) {
-  if (!db) return;
+  if (!db) throw new Error("Database not initialized");
 
-  try {
-    db.prepare(
-      `
+  db.prepare(
+    `
       INSERT INTO attachment_index (hash, file_path, updated_at)
       VALUES (?, ?, ?)
       ON CONFLICT(hash) DO UPDATE SET
@@ -176,15 +195,7 @@ function upsertAttachmentIndex(hash, filePath, updatedAt = Date.now()) {
         updated_at = excluded.updated_at,
         deleted_at = NULL
     `,
-    ).run(hash, filePath, updatedAt);
-  } catch (e) {
-    const logger = getLogger();
-    if (logger) {
-      logger.logOperation("reconcile", "attachment", hash.substring(0, 16), "error", e.message);
-    } else {
-      console.error(`[VCPMobileSync] 附件索引失败 [${hash}]:`, e.message);
-    }
-  }
+  ).run(hash, filePath, updatedAt);
 }
 
 /**

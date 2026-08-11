@@ -1,0 +1,175 @@
+{
+  "schema": "vcp-sync-protocol-1.1-golden",
+  "wireProtocol": "1.1",
+  "validFrames": [
+    {
+      "name": "flat_nested_null_missing_conflict_unicode_html_empty",
+      "input": {
+        "topicId": "topic-golden",
+        "messages": [
+          {
+            "id": "message-unicode",
+            "role": "user",
+            "content": "你好 <section data-raw=\"yes\">raw html</section>",
+            "timestamp": "1700000000",
+            "topicId": "topic-golden",
+            "attachments": [
+              {
+                "type": "text/plain",
+                "name": "flat.txt",
+                "size": 1,
+                "hash": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+                "src": "G:\\VCPChat\\UserData\\flat.txt"
+              },
+              {
+                "type": "text/plain",
+                "name": "nested.txt",
+                "size": 2,
+                "_fileManagerData": {
+                  "hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                  "extractedText": "trusted nested text"
+                }
+              },
+              {
+                "type": "image/png",
+                "name": "same.png",
+                "size": 3,
+                "hash": "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
+                "_fileManagerData": {
+                  "hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+                }
+              },
+              {
+                "type": "text/plain",
+                "name": "null.txt",
+                "size": 4,
+                "hash": null
+              },
+              {
+                "type": "text/plain",
+                "name": "missing.txt",
+                "size": 5
+              },
+              {
+                "type": "text/plain",
+                "name": "invalid.txt",
+                "size": 6,
+                "hash": "not-a-sha256"
+              },
+              {
+                "type": "text/plain",
+                "name": "conflict.txt",
+                "size": 7,
+                "hash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+                "_fileManagerData": {
+                  "hash": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+                }
+              }
+            ]
+          },
+          {
+            "id": "message-empty",
+            "role": "assistant",
+            "content": "",
+            "timestamp": 1700000001
+          }
+        ]
+      },
+      "expected": {
+        "topicId": "topic-golden",
+        "messageCount": 2,
+        "warningCount": 4,
+        "attachmentHashes": [
+          "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        ],
+        "nestedExtractedText": "trusted nested text",
+        "canonicalMessages": [
+          {
+            "id": "message-unicode",
+            "role": "user",
+            "content": "你好 <section data-raw=\"yes\">raw html</section>",
+            "timestamp": 1700000000,
+            "isThinking": null,
+            "agentId": null,
+            "groupId": null,
+            "topicId": "topic-golden",
+            "isGroupMessage": null,
+            "attachments": [
+              {
+                "type": "text/plain",
+                "name": "flat.txt",
+                "size": 1,
+                "hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              },
+              {
+                "type": "text/plain",
+                "name": "nested.txt",
+                "size": 2,
+                "hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "extractedText": "trusted nested text"
+              },
+              {
+                "type": "image/png",
+                "name": "same.png",
+                "size": 3,
+                "hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+              }
+            ]
+          },
+          {
+            "id": "message-empty",
+            "role": "assistant",
+            "content": "",
+            "timestamp": 1700000001,
+            "isThinking": null,
+            "agentId": null,
+            "groupId": null,
+            "topicId": null,
+            "isGroupMessage": null
+          }
+        ],
+        "contentHashes": [
+          "f1bddfc028a86b52a400027e85b6db09e43b50a57298bea25fe3c77bbb61354b",
+          "48ccd6c4782cb6d3408131d10950321aa7e29efd550e5fdde387e044389c786f"
+        ]
+      }
+    }
+  ],
+  "invalidFrames": [
+    {
+      "name": "owner_topic_conflict",
+      "input": {
+        "topicId": "topic-owner-a",
+        "messages": [
+          {
+            "id": "message-owner-conflict",
+            "role": "user",
+            "content": "owner conflict",
+            "timestamp": 1700000002,
+            "topicId": "topic-owner-b"
+          }
+        ]
+      },
+      "errorContains": "conflicts with frame topic"
+    },
+    {
+      "name": "tombstoned_message",
+      "input": {
+        "topicId": "topic-tombstone",
+        "messages": [
+          {
+            "id": "message-tombstone",
+            "role": "user",
+            "content": "must not resurrect",
+            "timestamp": 1700000003,
+            "status": "removed",
+            "deletedAt": 1700000004
+          }
+        ]
+      },
+      "errorContains": "Tombstoned message"
+    }
+  ]
+}

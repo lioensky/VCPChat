@@ -30,6 +30,19 @@ const GROUP_DEFAULTS = {
   avatarCalculatedColor: null,
 };
 
+function resolveCentralIndexPreference(pluginConfig = {}, chatDataService = null) {
+  const hasPluginSetting =
+    Object.prototype.hasOwnProperty.call(
+      pluginConfig,
+      "MobileSyncUseCentralIndex",
+    ) && typeof pluginConfig.MobileSyncUseCentralIndex === "boolean";
+  if (hasPluginSetting) return pluginConfig.MobileSyncUseCentralIndex;
+  if (typeof chatDataService?.mobileSyncUseCentralIndex === "boolean") {
+    return chatDataService.mobileSyncUseCentralIndex;
+  }
+  return true;
+}
+
 // Agent Topic 默认值 (仅当手机端缺失 locked/unread 时使用)
 // 实际场景：手机端 TopicSyncDTO 已包含这些字段，会覆盖默认值
 const AGENT_TOPIC_DEFAULTS = {
@@ -125,18 +138,16 @@ function createGroupTopic(dto) {
  * @param {string} ext - 扩展名
  * @returns {object} 桌面端标准附件结构
  */
-function createDesktopAttachment(dto, desktopPath, ext) {
+function createDesktopAttachment(dto, desktopPath, ext, fallbackCreatedAt = 0) {
   const hash = dto.hash || "";
   const name = dto.name || "unnamed";
   const type = dto.type || "application/octet-stream";
   const size = dto.size || 0;
-  const createdAt = dto.createdAt || Date.now();
+  const createdAt = dto.createdAt ?? fallbackCreatedAt;
   
-  // 推导合理的内部名和展示路径 (修正：统一使用 file:// 前缀)
+  // 只使用调用方基于实际 AppData 解析出的路径；不得在协议层猜测安装目录。
   const internalFileName = hash ? `${hash}${ext}` : "";
-  const desktopSrc = desktopPath 
-    ? `file://${desktopPath}` 
-    : (hash ? `file://G:\\VCPChat\\AppData\\UserData\\attachments\\${internalFileName}` : "");
+  const desktopSrc = desktopPath ? `file://${desktopPath}` : "";
 
   return {
     type,
@@ -168,4 +179,5 @@ module.exports = {
   createAgentTopic,
   createGroupTopic,
   createDesktopAttachment,
+  resolveCentralIndexPreference,
 };

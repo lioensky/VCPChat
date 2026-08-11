@@ -23,7 +23,7 @@ const {
   downloadMessagesStreamRaw,
   uploadMessagesBatchRaw,
   downloadAttachment,
-  uploadAttachment,
+  uploadAttachmentStream,
 } = require("../sync/message");
 const { getLogger } = require("../core/logger");
 
@@ -192,16 +192,20 @@ function registerRoutes(app, { syncToken, appDataPath, centralSync = null }) {
   // 5. 上传附件
   router.post(
     "/upload-attachment",
-    express.raw({ type: "*/*", limit: "100mb" }),
-
     async (req, res) => {
       const { hash, name, type } = req.query;
       if (!hash) return res.status(400).send("Missing hash");
 
+      const rawLength = req.headers["content-length"];
+      const declaredLength = rawLength === undefined
+        ? undefined
+        : Number(rawLength);
+
       try {
-        const result = await uploadAttachment({
+        const result = await uploadAttachmentStream({
           hash,
-          data: req.body,
+          input: req,
+          declaredLength,
           name,
           type,
           appDataPath,
@@ -247,7 +251,7 @@ function registerRoutes(app, { syncToken, appDataPath, centralSync = null }) {
   // 8. 上传头像
   router.post(
     "/upload-avatar",
-    express.raw({ type: "*/*", limit: "10mb" }),
+    express.raw({ type: "*/*", limit: "20mb" }),
     async (req, res) => {
       const { id, type } = req.query;
 
@@ -289,31 +293,31 @@ function registerRoutes(app, { syncToken, appDataPath, centralSync = null }) {
   // 10. 删除消息。中央模式通过 Push 的 deletedMessageIds 原子投影，
   // 避免旧私有墓碑与 CDS 墓碑发生双写。
   router.post("/delete-message", express.json(), async (req, res) => {
-    const { msgId, deletedAt, topicId, ownerType, ownerId } = req.body;
+    const { msgId, deletedAt, topicId } = req.body;
 
-    if (!msgId || !deletedAt) {
+    if (
+      typeof msgId !== "string" ||
+      msgId.length === 0 ||
+      typeof topicId !== "string" ||
+      topicId.length === 0 ||
+      !Number.isSafeInteger(deletedAt) ||
+      deletedAt < 0
+    ) {
       return res.status(400).json({ error: "Missing required fields" });
     }
 
     try {
       if (centralSync) {
-        if (!topicId || !ownerType || !ownerId) {
-          return res.status(400).json({
-            error: "Central delete requires topicId, ownerType and ownerId",
-          });
-        }
-        const result = await centralSync.requireClient().syncMessagesPush({
-          topics: [{
-            topicId,
-            ownerType,
-            ownerId,
-            messages: [],
-            deletedMessageIds: [msgId],
-          }],
-        });
-        return res.json(result.results?.[0] || { success: false });
+        return res.json(
+          await centralSync.deleteMessage({ topicId, msgId, deletedAt }),
+        );
       }
-      const result = await deleteMessage({ msgId, deletedAt, topicId });
+      const result = await deleteMessage({
+        msgId,
+        deletedAt,
+        topicId,
+        appDataPath,
+      });
       res.json(result);
     } catch (e) {
       res.status(500).json({ error: e.message });
