@@ -28,7 +28,8 @@
             <button id="outline-toggle-btn" class="icon-button titlebar-tool active" title="显示或收起篇章导航" aria-label="切换篇章导航" aria-pressed="true">
                 <svg viewBox="0 0 24 24"><path d="M4 5h3M4 12h3M4 19h3M10 5h10M10 12h7M10 19h10"/></svg>
             </button>
-            <button id="focus-mode-btn" class="icon-button titlebar-tool" title="进入纯文专注模式" aria-label="专注模式">
+            <button id="focus-mode-btn" class="icon-button titlebar-tool" title="进入纯文专注模式"
+                aria-label="专注模式" aria-pressed="false" hidden>
                 <svg viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
             </button>
             <button id="lineage-toggle-btn" class="icon-button titlebar-tool active" title="显示或收起文脉" aria-label="切换文脉" aria-pressed="true">
@@ -46,6 +47,14 @@
             </button>
         </div>
     </header>
+
+    <div id="focus-mode-dock" class="focus-mode-dock" aria-label="专注模式控制" hidden>
+        <span id="focus-document-title" class="focus-document-title">未命名文稿</span>
+        <button id="focus-exit-btn" type="button" title="退出专注模式（Esc）" aria-label="退出专注模式">
+            <svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
+            <span>返回</span>
+        </button>
+    </div>
 
     <section class="command-deck" aria-label="文档工具">
         <div class="command-cluster file-cluster">

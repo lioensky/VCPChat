@@ -128,7 +128,8 @@
     function cacheElements() {
         [
             'document-state-dot', 'document-title', 'save-state',
-            'outline-toggle-btn', 'focus-mode-btn', 'lineage-toggle-btn',
+            'outline-toggle-btn', 'focus-mode-btn', 'focus-mode-dock',
+            'focus-document-title', 'focus-exit-btn', 'lineage-toggle-btn',
             'minimize-btn', 'maximize-btn', 'close-btn',
             'new-btn', 'new-deck-btn', 'open-btn', 'import-btn', 'save-btn', 'save-as-btn',
             'collect-external-resources',
@@ -218,8 +219,11 @@
     }
 
     function updateIdentity() {
-        elements['document-title'].textContent = state.currentName || '未命名文稿.vdocx';
+        const displayName = state.currentName || '未命名文稿.vdocx';
+        elements['document-title'].textContent = displayName;
         elements['document-title'].title = state.currentPath || '尚未保存到磁盘';
+        elements['focus-document-title'].textContent = displayName;
+        elements['focus-document-title'].title = state.currentPath || displayName;
         elements['save-state'].textContent = state.loading
             ? '正在展开'
             : state.saving
@@ -237,6 +241,7 @@
         elements['export-paged-html-btn'].disabled = !state.ready || state.saving;
         elements['export-pdf-btn'].disabled = !state.ready || state.saving;
         elements['create-checkpoint-btn'].disabled = !state.ready || state.saving;
+        syncFocusModeAvailability();
     }
     function markDirty(options = {}) {
         if (!state.ready || state.loading) return;
@@ -393,6 +398,44 @@
 
     function isSlideDeck() {
         return state.document?.manifest?.scene?.kind === core.PROJECT_KINDS.SLIDE_DECK;
+    }
+
+    function syncFocusModeAvailability() {
+        const available = state.ready && !state.loading && !isSlideDeck();
+        elements['focus-mode-btn'].hidden = !available;
+        elements['focus-mode-btn'].disabled = !available;
+        if (!available && document.body.classList.contains('focus-mode')) {
+            setFocusMode(false);
+        }
+        return available;
+    }
+
+    function setFocusMode(enabled) {
+        const enter = enabled === true;
+        if (enter) {
+            if (!syncFocusModeAvailability()) return false;
+            if (state.mode !== 'render') switchMode('render');
+            if (state.mode !== 'render') return false;
+            hideSelectionBar();
+            state.objectController?.closeInspector(true);
+            state.objectController?.clearSelection();
+        }
+
+        document.body.classList.toggle('focus-mode', enter);
+        elements['focus-mode-dock'].hidden = !enter;
+        elements['focus-mode-btn'].classList.toggle('active', enter);
+        elements['focus-mode-btn'].setAttribute('aria-pressed', String(enter));
+        elements['focus-mode-btn'].title = enter
+            ? '退出纯文专注模式'
+            : '进入纯文专注模式';
+        if (enter) {
+            window.requestAnimationFrame(() => state.activeEditableBlock?.focus?.());
+        }
+        return enter;
+    }
+
+    function toggleFocusMode() {
+        return setFocusMode(!document.body.classList.contains('focus-mode'));
     }
 
     function activeSlide() {
@@ -4916,7 +4959,8 @@ ${safeCss}
         bindPanelResizer(elements['lineage-resizer'], 'right');
         elements['outline-toggle-btn'].addEventListener('click', () => document.body.classList.toggle('outline-collapsed'));
         elements['lineage-toggle-btn'].addEventListener('click', () => document.body.classList.toggle('lineage-collapsed'));
-        elements['focus-mode-btn'].addEventListener('click', () => document.body.classList.toggle('focus-mode'));
+        elements['focus-mode-btn'].addEventListener('click', toggleFocusMode);
+        elements['focus-exit-btn'].addEventListener('click', () => setFocusMode(false));
         elements['outline-headings-tab'].addEventListener('click', () => setOutlineTab(true));
         elements['outline-paragraphs-tab'].addEventListener('click', () => setOutlineTab(false));
         elements['auto-approval-enabled'].addEventListener('change', () => {
@@ -5098,6 +5142,11 @@ ${safeCss}
                 event.preventDefault();
                 restoreHistory(1);
             } else if (event.key === 'Escape') {
+                if (document.body.classList.contains('focus-mode')) {
+                    event.preventDefault();
+                    setFocusMode(false);
+                    return;
+                }
                 closeMediaDialog();
                 closeStyleLibrary();
                 hideSelectionBar();

@@ -2050,6 +2050,70 @@ body.lineage-collapsed .lineage-panel {
 
 /* ── Pure text focus mode ───────────────────────────────── */
 
+.focus-mode-dock {
+    position: fixed;
+    top: 12px;
+    right: 14px;
+    z-index: 120;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    max-width: min(360px, calc(100vw - 28px));
+    padding: 4px;
+    border: 1px solid color-mix(in srgb, var(--border-color) 34%, transparent);
+    border-radius: 9px;
+    color: var(--secondary-text);
+    background: color-mix(in srgb, var(--scriptorium-glass-solid) 62%, transparent);
+    box-shadow: 0 5px 20px rgba(0, 0, 0, .1);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    opacity: .38;
+    transition: opacity .18s ease, background .18s ease;
+    -webkit-app-region: no-drag;
+}
+
+.focus-mode-dock:hover,
+.focus-mode-dock:focus-within {
+    opacity: 1;
+    background: color-mix(in srgb, var(--scriptorium-glass-solid) 90%, transparent);
+}
+
+.focus-document-title {
+    min-width: 0;
+    max-width: 220px;
+    overflow: hidden;
+    padding-left: 7px;
+    font-size: 9px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.focus-mode-dock button {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    height: 28px;
+    padding: 0 8px 0 6px;
+    border: 0;
+    border-radius: 6px;
+    color: inherit;
+    background: transparent;
+    font-size: 9px;
+    cursor: pointer;
+}
+
+.focus-mode-dock button:hover,
+.focus-mode-dock button:focus-visible {
+    outline: 0;
+    color: var(--highlight-text);
+    background: var(--scriptorium-accent-soft);
+}
+
+.focus-mode-dock svg {
+    width: 14px;
+    height: 14px;
+}
+
 body.focus-mode {
     grid-template-rows: 0 0 minmax(0, 1fr) 0;
 }
@@ -2059,24 +2123,24 @@ body.focus-mode .command-deck,
 body.focus-mode .document-statusbar,
 body.focus-mode .outline-panel,
 body.focus-mode .lineage-panel {
+    visibility: hidden;
     opacity: 0;
     pointer-events: none;
 }
 
 body.focus-mode .scriptorium-stage {
-    grid-template-columns: 0 minmax(0, 1fr) 0;
+    grid-template-columns: 0 0 minmax(0, 1fr) 0 0;
 }
 
-body.focus-mode .superdoc-host {
-    padding-top: 72px;
+body.focus-mode .writing-chamber {
+    scrollbar-gutter: auto;
+    background: color-mix(in srgb, var(--primary-bg) 44%, transparent);
 }
 
-body.focus-mode .writing-chamber::before {
-    left: 12px;
-}
-
-body.focus-mode .writing-chamber::after {
-    right: 12px;
+body.focus-mode .writing-chamber::before,
+body.focus-mode .writing-chamber::after,
+body.focus-mode .chamber-aura {
+    display: none;
 }
 
 /* ── Responsive containment ─────────────────────────────── */
@@ -2829,11 +2893,19 @@ body.light-theme .document-workspace {
 }
 
 body.focus-mode .document-workspace {
-    width: calc(100% - 16px);
-    height: calc(100% - 16px);
-    margin: 8px;
-    border-color: color-mix(in srgb, var(--border-color) 52%, transparent);
-    box-shadow: 0 8px 30px rgba(0, 0, 0, .16);
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
+body.focus-mode .document-workspace::before {
+    display: none;
 }
 
 @media (max-width: 900px) {
