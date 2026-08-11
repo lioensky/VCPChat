@@ -55,6 +55,7 @@ Scriptorium 是 VCPChat 内置的本地富文档与演示创作空间。它同�
 - VDOCX 文稿：连续流 HTML、分页 HTML、PDF。
 - VPPTX 演示：单文件可播放 HTML、逐页 PDF。
 - 演示 HTML 支持键盘翻页、底部控制条、全屏和页面内交互脚本。
+- VDOCX 与 VPPTX 导出 HTML 时，会统一尝试将 `file:` 和普通 HTTP 图片、音频转换为 `data:`，提高单文件跨平台播放能力；HTTPS 公网资源与视频保持原链接。
 - 受支持的 Anime.js / Three.js 依赖会在导出时嵌入单文件 HTML。
 
 导入是面向 Scriptorium 模型的转换，不保证对原生 Office 文件进行像素级或可逆还原。DOCX 会提取正文语义、标题和显式分页信息；PPTX 以静态页面结构进入 VPPTX。
@@ -235,8 +236,10 @@ VDOCX 与 VPPTX 的完整 HTML 源码可以原生引用图片、视频、音频�
 - 本地文件会直接注册到 ZIP 的 `resources/media/`，HTML 源码只保存 `vdoc-resource://media/<sha256>`，不会出现媒体 base64。
 - 外部 `file:`、VCP HTTP 和公网 HTTPS URL 默认保持原样。勾选工具栏“收纳外链”后，保存事务才尝试将可确认的媒体和字体收纳进工程。
 - 网络资源是否可收纳由响应 MIME、`Content-Disposition`、扩展名和文件头共同判定。HTML 网页、登录页、`application/octet-stream` 及其他无法确认类型的响应不收纳，继续作为通用 URL 保留。
-- 普通 `<a href>` 超链接不参与资源扫描；收纳逻辑只处理媒体 `src` 与 `@font-face` 字体 URL。
+- 普通 `<a href>` 超链接不参与资源扫描；保存收纳逻辑只处理媒体 `src` 与 `@font-face` 字体 URL。
 - 编辑和预览期间，内部短引用映射为生命周期受控的 `blob:` URL；导出单文件 HTML/PDF 时，只在导出副本中转换为 `data:` URL，不会污染工程源码。
+- 在此之后，VDOCX 与 VPPTX 共用的 HTML 导出适配层还会扫描图片 `src` / `srcset`、`picture source`、SVG `image`、视频封面及音频源，将尚未收纳的 `file:` 和普通 HTTP 图片、音频临时内联为 `data:`。
+- HTTPS 被视为公网资源并保持原链接；视频文件不进行 Base64 内联。无法读取、类型不匹配或超过内联体积上限的资源也保留原 URL，并在导出结果中汇总提示。
 - Agent 只读取原始 URL或内部短引用，以及资源名称、MIME、大小、描述、原生尺寸和时长等结构化元数据，不读取 ZIP 二进制或 base64。
 - Agent 通过超栈追踪管线嵌入或修改媒体时，也应填写同一套 `description` 与媒体源信息字段，供后续内容、视觉、动画和审阅 Agent 延续理解。
 
@@ -296,6 +299,7 @@ refuse 规则覆盖 Node 模块、process/global、文件系统、进程执行�
 | [`scriptorium-async.js`](scriptorium-async.js) | latest-wins 令牌、文档上下文快照与命名串行队列 |
 | [`scriptorium-runtime.js`](scriptorium-runtime.js) | 文档岛与幻灯片可编程运行时、脚本审查及资源生命周期 |
 | [`scriptorium-source-editor.js`](scriptorium-source-editor.js) | CodeMirror 适配、源码诊断、格式化与颜色工具 |
+| [`scriptorium-export-resources.js`](scriptorium-export-resources.js) | 两类文档共用的 HTML 导出图片/音频便携化、去重、体积限制与失败诊断 |
 | [`scriptorium-session.js`](scriptorium-session.js) | 新建、打开、导入、保存、未保存决策、最近文档与刻点持久化 |
 | [`scriptorium-objects.js`](scriptorium-objects.js) | 统一视觉对象、SVG Schema/源码校验、对象作用域 CSS、文档环绕、PPT 画布拖拽、四角缩放、图层与属性事务 |
 | [`vdoc-core.js`](vdoc-core.js) | VDOC 模型、规范化、序列化和源码清理 |
@@ -334,6 +338,7 @@ node --check ScriptoriumModules/scriptorium.js
 node --check ScriptoriumModules/scriptorium-async.js
 node --check ScriptoriumModules/scriptorium-runtime.js
 node --check ScriptoriumModules/scriptorium-source-editor.js
+node --check ScriptoriumModules/scriptorium-export-resources.js
 node --check ScriptoriumModules/scriptorium-session.js
 node --check ScriptoriumModules/scriptorium-agent.js
 node --check ScriptoriumModules/scriptorium-objects.js
@@ -390,9 +395,10 @@ set ELECTRON_RUN_AS_NODE=
 npx electron tests/scriptorium-electron-smoke.js
 npx electron tests/scriptorium-vpptx-electron.test.js
 npx electron tests/scriptorium-cdn-localization-electron.test.js
+npx electron tests/scriptorium-export-resources-electron.test.js
 ```
 
-主冒烟测试覆盖编辑器装载、文稿创建、分页、编辑、Agent PR 审批、运行时安全和截图；截图写入 `AppData/Scriptorium/scriptorium-smoke.png`。
+主冒烟测试覆盖编辑器装载、文稿创建、分页、编辑、Agent PR 审批、运行时安全和截图；截图写入 `AppData/Scriptorium/scriptorium-smoke.png`。导出资源测试覆盖 HTTP/file 图片与音频内联、URL 去重、HTTPS/视频保留、类型不匹配诊断以及 SVG、`srcset` 和视频封面。
 
 ### 视觉对象 GUI 手工验证
 

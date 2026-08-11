@@ -7,6 +7,7 @@
     const styleLibrary = window.VDocStyleLibrary;
     const pagination = window.VDocPagination;
     const asyncModule = window.ScriptoriumAsync;
+    const exportResourcesModule = window.ScriptoriumExportResources;
     const runtimeModule = window.ScriptoriumRuntime;
     const sourceEditorModule = window.ScriptoriumSourceEditor;
     const sessionModule = window.ScriptoriumSession;
@@ -1107,6 +1108,7 @@ ${parsedDocument().html}
             }
             let html;
             let paged = false;
+            let resourceLocalization = null;
             if (isSlideDeck() && format !== 'pdf') {
                 // 演示项目不存在“连续 HTML / 分页 HTML”的语义差异：
                 // 所有 HTML 均导出为单页全屏导播器，只有 PDF 使用静态逐页版式。
@@ -1125,6 +1127,16 @@ ${parsedDocument().html}
                 html = buildPagedExportHtml();
             }
             html = state.resourceResolver?.resolveExportHtml(html) || html;
+            if (format !== 'pdf') {
+                resourceLocalization = await exportResourcesModule.localizeHtmlMedia(html, {
+                    readExternalResource: (payload) => api.readExternalResource(payload),
+                    bytesToBase64: containerModule.bytesToBase64,
+                });
+                if (!asyncCoordinator.isContextCurrent(context, { revision: true })) {
+                    return false;
+                }
+                html = resourceLocalization.html;
+            }
             const baseName = state.currentName.replace(/\.(?:vdocx|vpptx)$/i, '');
             const result = await api.exportRichDocument({
                 format,
@@ -1136,7 +1148,23 @@ ${parsedDocument().html}
                     state.document.manifest.programmableDependencies || [],
             });
             if (!result?.success || !asyncCoordinator.isContextCurrent(context)) return false;
-            showToast(`已导出 · ${result.name}`, 'success');
+            const localizedSummary = resourceLocalization?.localized
+                ? ` · 已内联 ${resourceLocalization.localized} 项图片/音频`
+                : '';
+            const retainedSummary = resourceLocalization?.retained
+                ? ` · ${resourceLocalization.retained} 项保留原 URL`
+                : '';
+            showToast(
+                `已导出 · ${result.name}${localizedSummary}${retainedSummary}`,
+                resourceLocalization?.retained ? 'info' : 'success',
+                resourceLocalization?.retained ? 5000 : 2600
+            );
+            if (resourceLocalization?.failures?.length) {
+                console.warn(
+                    '[Scriptorium] Export media localization retained external URLs:',
+                    resourceLocalization.failures
+                );
+            }
             return true;
         } catch (error) {
             showToast(`导出失败：${error.message}`, 'error', 5000);
@@ -5059,7 +5087,7 @@ ${safeCss}
 
     async function initialize() {
         if (!api || !core || !containerModule || !window.JSZip
-            || !styleLibrary || !pagination || !asyncModule
+            || !styleLibrary || !pagination || !asyncModule || !exportResourcesModule
             || !runtimeModule || !sourceEditorModule || !sessionModule || !objectModule
             || !sourceEditorController || !sessionController
             || !window.ScriptoriumVisibility || !window.ScriptoriumAgentModule) {
