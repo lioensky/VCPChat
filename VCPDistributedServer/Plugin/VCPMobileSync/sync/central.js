@@ -3,7 +3,7 @@
 const { getDb } = require("../core/db");
 const { getLogger } = require("../core/logger");
 const { parseJsonWithoutDuplicateKeys } = require("../protocol");
-const { canonicalizeTopicFrame } = require("./canonical");
+const { SyncProtocolError, canonicalizeTopicFrame } = require("./canonical");
 const { projectMobileTopic } = require("./projection");
 const {
   MAX_NDJSON_MESSAGES,
@@ -73,16 +73,20 @@ class CentralSyncAdapter {
   async handleSyncManifest(payload) {
     return this.requireClient().syncManifest({
       dataType: payload.dataType,
-      data: payload.data || [],
-      targetedOwners: payload.targetedOwners || null,
+      data: payload.data,
+      ...(payload.targetedOwners === undefined
+        ? {}
+        : { targetedOwners: payload.targetedOwners }),
     });
   }
 
   async handleMessageManifest(payload) {
     const result = await this.requireClient().syncMessageManifest({
       topicId: payload.topicId,
-      ownerType: payload.ownerType || null,
-      ownerId: payload.ownerId || null,
+      ...(payload.ownerType === undefined
+        ? {}
+        : { ownerType: payload.ownerType }),
+      ...(payload.ownerId === undefined ? {} : { ownerId: payload.ownerId }),
     });
     return {
       type: "MESSAGE_MANIFEST_RESULTS",
@@ -99,15 +103,16 @@ class CentralSyncAdapter {
   }
 
   async handleTopicHashBatch(payload) {
+    const hasCompoundStates = Array.isArray(payload.topics) && payload.topics.length > 0;
     return this.requireClient().syncTopicDiff({
-      hashes: payload.hashes || {},
-      topics: payload.topics || [],
+      hashes: hasCompoundStates ? {} : payload.hashes,
+      ...(hasCompoundStates ? { topics: payload.topics } : {}),
     });
   }
 
   async handleMessageDiffBatch(payload) {
     return this.requireClient().syncMessageDiff({
-      topics: payload.topics || {},
+      topics: payload.topics,
     });
   }
 
@@ -119,16 +124,19 @@ class CentralSyncAdapter {
     if (!Array.isArray(requests) || requests.length > MAX_NDJSON_TOPICS) {
       throw new Error("Central pull requires at most 10000 topic requests");
     }
-    const expected = new Set();
+    const expected = new Map();
     let requestedMessages = 0;
     const normalizedRequests = requests.map((request) => {
       if (
         !request ||
         typeof request.topicId !== "string" ||
         request.topicId.length === 0 ||
+        !["agent", "group"].includes(request.ownerType) ||
+        typeof request.ownerId !== "string" ||
+        request.ownerId.length === 0 ||
         !Array.isArray(request.msgIds)
       ) {
-        throw new Error("Central pull request has an invalid topic frame");
+        throw new Error("Central pull request requires exact topic owner identity");
       }
       if (expected.has(request.topicId)) {
         throw new Error(`Central pull contains duplicate topic ${request.topicId}`);
@@ -147,11 +155,14 @@ class CentralSyncAdapter {
       ) {
         throw new Error("Central pull exceeds the message count budget");
       }
-      expected.add(request.topicId);
+      expected.set(request.topicId, {
+        ownerType: request.ownerType,
+        ownerId: request.ownerId,
+      });
       return {
         topicId: request.topicId,
-        ownerType: request.ownerType || null,
-        ownerId: request.ownerId || null,
+        ownerType: request.ownerType,
+        ownerId: request.ownerId,
         msgIds: request.msgIds,
       };
     });
@@ -169,11 +180,18 @@ class CentralSyncAdapter {
       if (seen.has(topicId)) {
         throw new Error(`CDS pull returned duplicate topic ${topicId}`);
       }
+      const identity = expected.get(topicId);
+      if (
+        canonical.frame.ownerType !== identity.ownerType ||
+        canonical.frame.ownerId !== identity.ownerId
+      ) {
+        throw new Error(`CDS pull returned conflicting owner identity for ${topicId}`);
+      }
       seen.add(topicId);
       await writer.write(canonical.frame);
     }
     if (seen.size !== expected.size) {
-      const missing = [...expected].filter((topicId) => !seen.has(topicId));
+      const missing = [...expected.keys()].filter((topicId) => !seen.has(topicId));
       throw new Error(`CDS pull omitted topics: ${missing.slice(0, 8).join(", ")}`);
     }
     res.end();
@@ -203,9 +221,14 @@ class CentralSyncAdapter {
         if (
           typeof topicId !== "string" ||
           topicId.length === 0 ||
+          !["agent", "group"].includes(frame.ownerType) ||
+          typeof frame.ownerId !== "string" ||
+          frame.ownerId.length === 0 ||
           !Array.isArray(frame.messages)
         ) {
-          throw new Error("Central message push requires topicId and messages");
+          throw new SyncProtocolError(
+            "Central message push requires exact topic owner identity and messages",
+          );
         }
         topicCount += 1;
         messageCount += frame.messages.length;
@@ -214,19 +237,27 @@ class CentralSyncAdapter {
           frame.messages.length > 10_000 ||
           messageCount > MAX_NDJSON_MESSAGES
         ) {
-          throw new Error("Central message push exceeds its count budget");
+          throw new SyncProtocolError(
+            "Central message push exceeds its count budget",
+            "SYNC_BUDGET_EXCEEDED",
+          );
         }
         if (seen.has(topicId)) {
-          throw new Error(`Central message push contains duplicate topic ${topicId}`);
+          throw new SyncProtocolError(
+            `Central message push contains duplicate topic ${topicId}`,
+          );
         }
         seen.add(topicId);
 
-        const identity = await client.syncTopicIdentity({ topicId });
+        const identity = await client.syncTopicIdentity({
+          topicId,
+          ownerType: frame.ownerType,
+          ownerId: frame.ownerId,
+        });
         if (
           identity?.topicId !== topicId ||
-          !["agent", "group"].includes(identity?.ownerType) ||
-          typeof identity?.ownerId !== "string" ||
-          identity.ownerId.length === 0
+          identity?.ownerType !== frame.ownerType ||
+          identity?.ownerId !== frame.ownerId
         ) {
           throw new Error(`CDS returned an invalid identity for topic ${topicId}`);
         }
@@ -264,6 +295,14 @@ class CentralSyncAdapter {
           neededAttachmentHashes: [...needed].sort(),
         });
       } catch (error) {
+        if (
+          error?.name === "SyncProtocolError" ||
+          error?.code === "SYNC_PROTOCOL_INVALID" ||
+          error?.code === "SYNC_BUDGET_EXCEEDED" ||
+          String(error?.code || "").startsWith("PROTOCOL_")
+        ) {
+          throw error;
+        }
         if (typeof topicId !== "string" || topicId.length === 0) throw error;
         await writer.write({
           topicId,

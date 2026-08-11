@@ -26,6 +26,11 @@ test("Electron Builder allowlist includes the complete MobileSync/CDS runtime ch
     ),
     true,
   );
+  const buildRuntime = fs.readFileSync(
+    path.join(ROOT, "rust_chat_data_service", "build-runtime.js"),
+    "utf8",
+  );
+  assert.match(buildRuntime, /'build', '--release', '--locked'/);
   for (const relativePath of [
     "VCPDistributedServer/VCPDistributedServer.js",
     "VCPDistributedServer/Plugin.js",

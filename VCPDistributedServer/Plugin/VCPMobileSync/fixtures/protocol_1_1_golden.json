@@ -19,7 +19,7 @@
                 "name": "flat.txt",
                 "size": 1,
                 "hash": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-                "src": "G:\\VCPChat\\UserData\\flat.txt"
+                "src": "desktop-internal-path-must-not-cross-wire"
               },
               {
                 "type": "text/plain",

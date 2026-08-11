@@ -18,6 +18,9 @@ const {
 const {
   readNdjsonLines,
 } = require("../VCPDistributedServer/Plugin/VCPMobileSync/transport/ndjson");
+const {
+  ChatDataServiceClient,
+} = require("../modules/services/chatDataService/client");
 
 class FakeResponse extends EventEmitter {
   constructor({ blockFirstWrite = false } = {}) {
@@ -106,8 +109,18 @@ test("中央 pull 逐帧 canonicalize 并遵守响应背压", async () => {
 
   await adapter.downloadMessagesStreamRaw(
     [
-      { topicId: "topic-a", msgIds: [] },
-      { topicId: "topic-b", msgIds: [] },
+      {
+        topicId: "topic-a",
+        ownerType: "agent",
+        ownerId: "agent-a",
+        msgIds: [],
+      },
+      {
+        topicId: "topic-b",
+        ownerType: "group",
+        ownerId: "group-b",
+        msgIds: [],
+      },
     ],
     response,
   );
@@ -125,13 +138,46 @@ test("中央 pull 逐帧 canonicalize 并遵守响应背压", async () => {
   );
 });
 
+test("中央 pull 拒绝 CDS 返回的 Owner 身份漂移", async () => {
+  const adapter = createCentralSyncAdapter({
+    client: {
+      async *syncMessagesPullStream() {
+        yield {
+          topicId: "topic-a",
+          ownerType: "group",
+          ownerId: "group-a",
+          messages: [],
+        };
+      },
+    },
+  });
+  await assert.rejects(
+    () => adapter.downloadMessagesStreamRaw(
+      [{
+        topicId: "topic-a",
+        ownerType: "agent",
+        ownerId: "agent-a",
+        msgIds: [],
+      }],
+      new FakeResponse(),
+    ),
+    /conflicting owner identity/,
+  );
+});
+
 test("中央 push 逐 topic 投影为 VCPChat 原生附件并回传 needed hash", async (t) => {
   const appDataPath = fs.mkdtempSync(path.join(os.tmpdir(), "vcp-sync-central-"));
   t.after(() => fs.rmSync(appDataPath, { recursive: true, force: true }));
   const hash = "b".repeat(64);
   let pushedTopic = null;
   const client = {
-    async syncTopicIdentity({ topicId }) {
+    async syncTopicIdentity(selector) {
+      assert.deepEqual(selector, {
+        topicId: "topic-a",
+        ownerType: "agent",
+        ownerId: "agent-a",
+      });
+      const { topicId } = selector;
       return { topicId, ownerType: "agent", ownerId: "agent-a" };
     },
     async syncMessagesPushTopic(topic) {
@@ -156,6 +202,8 @@ test("中央 push 逐 topic 投影为 VCPChat 原生附件并回传 needed hash"
   const request = Readable.from([
     `${JSON.stringify({
       topicId: "topic-a",
+      ownerType: "agent",
+      ownerId: "agent-a",
       messages: [
         {
           id: "m-a",
@@ -288,4 +336,24 @@ test("NDJSON reader 在 JSON parse 前拒绝 32 MiB 以上单帧", async () => {
     },
     /32 MiB/,
   );
+});
+
+test("CDS Node client 以字节边界消费拆分 Unicode NDJSON", async (t) => {
+  const originalFetch = global.fetch;
+  t.after(() => {
+    global.fetch = originalFetch;
+  });
+  const bytes = Buffer.from(`${JSON.stringify({ topicId: "主题", messages: [] })}\n`);
+  const split = bytes.indexOf(Buffer.from("题")) + 1;
+  global.fetch = async () => ({
+    ok: true,
+    status: 200,
+    body: Readable.from([bytes.subarray(0, split), bytes.subarray(split)]),
+  });
+  const client = new ChatDataServiceClient({ port: 1, authToken: "test" });
+  const frames = [];
+  for await (const frame of client.syncMessagesPullStream({ requests: [] })) {
+    frames.push(frame);
+  }
+  assert.deepEqual(frames, [{ topicId: "主题", messages: [] }]);
 });

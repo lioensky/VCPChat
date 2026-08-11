@@ -7,11 +7,24 @@ const MAX_NDJSON_TOTAL_BYTES = 256 * 1024 * 1024;
 const MAX_NDJSON_TOPICS = 10_000;
 const MAX_NDJSON_MESSAGES = 100_000;
 
+function protocolError(message, code = "SYNC_PROTOCOL_INVALID") {
+  const error = new Error(message);
+  error.code = code;
+  return error;
+}
+
+function hasJsonContent(line) {
+  for (const byte of line) {
+    if (byte !== 0x20 && byte !== 0x09 && byte !== 0x0d) return true;
+  }
+  return false;
+}
+
 function decodeNdjsonLine(line) {
   try {
     return new TextDecoder("utf-8", { fatal: true }).decode(line);
   } catch (error) {
-    throw new Error(`NDJSON frame is not valid UTF-8: ${error.message}`);
+    throw protocolError(`NDJSON frame is not valid UTF-8: ${error.message}`);
   }
 }
 
@@ -30,7 +43,10 @@ async function* readNdjsonLines(
     const chunk = Buffer.isBuffer(rawChunk) ? rawChunk : Buffer.from(rawChunk);
     totalBytes += chunk.length;
     if (totalBytes > maxTotalBytes) {
-      throw new Error("NDJSON request exceeds 256 MiB total budget");
+      throw protocolError(
+        "NDJSON request exceeds 256 MiB total budget",
+        "SYNC_BUDGET_EXCEEDED",
+      );
     }
     let start = 0;
     while (start < chunk.length) {
@@ -38,7 +54,10 @@ async function* readNdjsonLines(
       if (newline === -1) break;
       const part = chunk.subarray(start, newline);
       if (lineBytes + part.length > maxLineBytes) {
-        throw new Error("NDJSON frame exceeds 32 MiB budget");
+        throw protocolError(
+          "NDJSON frame exceeds 32 MiB budget",
+          "SYNC_BUDGET_EXCEEDED",
+        );
       }
       const length = lineBytes + part.length;
       const line = fragments.length
@@ -46,14 +65,17 @@ async function* readNdjsonLines(
         : part;
       fragments = [];
       lineBytes = 0;
-      if (line.length > 0 && line.toString("utf8").trim()) yield line;
+      if (line.length > 0 && hasJsonContent(line)) yield line;
       start = newline + 1;
     }
     if (start < chunk.length) {
       const remainder = chunk.subarray(start);
       lineBytes += remainder.length;
       if (lineBytes > maxLineBytes) {
-        throw new Error("NDJSON frame exceeds 32 MiB budget");
+        throw protocolError(
+          "NDJSON frame exceeds 32 MiB budget",
+          "SYNC_BUDGET_EXCEEDED",
+        );
       }
       fragments.push(remainder);
     }
@@ -64,7 +86,7 @@ async function* readNdjsonLines(
       fragments.length === 1
         ? fragments[0]
         : Buffer.concat(fragments, lineBytes);
-    if (line.toString("utf8").trim()) yield line;
+    if (hasJsonContent(line)) yield line;
   }
 }
 

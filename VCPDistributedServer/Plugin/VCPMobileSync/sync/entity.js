@@ -124,12 +124,21 @@ async function downloadEntities(requests) {
   for (const req of requests) {
     const safeId = sanitizeId(req.id);
     const key = `${req.type || ""}:${safeId}`;
-    if (!safeId || safeId !== req.id || seen.has(key)) {
+    const validType = [
+      "agent",
+      "group",
+      "topic",
+      "agent_topic",
+      "group_topic",
+    ].includes(req.type);
+    if (!safeId || safeId !== req.id || !validType || seen.has(key)) {
       results.push({
         id: req.id,
         type: req.type,
         success: false,
-        error: seen.has(key) ? "duplicate entity request" : "invalid entity id",
+        error: seen.has(key)
+          ? "duplicate entity request"
+          : "invalid entity identity",
       });
       continue;
     }
@@ -577,7 +586,7 @@ async function handleTopicUpload({
 }) {
   // 防御：若 config 为数组或无效对象，说明文件读取异常，尝试重新读取父级 config
   if (Array.isArray(config) || config === null || typeof config !== 'object') {
-    logger.logOperation("topic_metadata", "upload", id, "error", `invalid config, refusing to write`);
+    getLogger().logOperation("topic_metadata", "upload", id, "error", "invalid config, refusing to write");
     throw new Error(`Invalid parent config for topic ${id}`);
   }
 
@@ -812,6 +821,25 @@ async function deleteEntity({ id, type, ownerType = null, deletedAt, appDataPath
   if (!db) return { success: false, error: "Database not initialized" };
 
   const safeId = sanitizeId(id);
+  const allowedTypes = new Set([
+    "agent",
+    "group",
+    "topic",
+    "agent_topic",
+    "group_topic",
+    "avatar",
+  ]);
+  if (
+    !safeId ||
+    safeId !== id ||
+    !allowedTypes.has(type) ||
+    !Number.isSafeInteger(deletedAt) ||
+    deletedAt < 0 ||
+    (type === "avatar" && !["agent", "group", "user"].includes(ownerType)) ||
+    (type === "avatar" && ownerType === "user" && safeId !== "user_avatar")
+  ) {
+    return { success: false, id, error: "Invalid entity deletion payload" };
+  }
   const isTopic = type === "agent_topic" || type === "group_topic" || type === "topic";
   const actualPhase = isTopic ? "topic_metadata" : "owner_metadata";
 
@@ -834,7 +862,7 @@ async function deleteEntity({ id, type, ownerType = null, deletedAt, appDataPath
       }
       softDeleteAvatarIndex(safeId, ownerType, deletedAt);
       logger.logOperation(actualPhase, "delete", safeId, "success", "type=avatar, soft deleted");
-      return { success: true };
+      return { success: true, id: safeId };
     }
 
     let entityDir = null;
@@ -843,12 +871,19 @@ async function deleteEntity({ id, type, ownerType = null, deletedAt, appDataPath
       if (type === "agent" || type === "group") {
         entityDir = path.dirname(row.file_path);
       }
-    } else if (type === "agent" || type === "group") {
-      const baseDirName = type === "group" ? "AgentGroups" : "Agents";
-      entityDir = path.join(appDataPath, baseDirName, safeId);
     }
 
-    softDeleteEntityIndex(safeId, type, deletedAt);
+    softDeleteEntityIndex(safeId, row?.type || type, deletedAt);
+    if (row && (type === "agent" || type === "group")) {
+      softDeleteAvatarIndex(safeId, type, deletedAt);
+      db.prepare(
+        `UPDATE entity_index
+         SET deleted_at = CASE
+           WHEN deleted_at IS NULL THEN ?1 ELSE MIN(deleted_at, ?1) END
+         WHERE file_path = ?2
+           AND (type = 'topic' OR type = 'agent_topic' OR type = 'group_topic')`,
+      ).run(deletedAt, row.file_path);
+    }
 
     if (entityDir && (type === "agent" || type === "group")) {
       try {
@@ -856,6 +891,7 @@ async function deleteEntity({ id, type, ownerType = null, deletedAt, appDataPath
         logger.logOperation(actualPhase, "delete", safeId, "success", `type=${type}, physical dir removed`);
       } catch (e) {
         logger.logOperation(actualPhase, "delete", safeId, "error", `physical removal failed: ${e.message}`);
+        throw e;
       }
     }
 
@@ -876,11 +912,12 @@ async function deleteEntity({ id, type, ownerType = null, deletedAt, appDataPath
           }
         } catch (e) {
           logger.logOperation(actualPhase, "delete", safeId, "error", `remove from parent config failed: ${e.message}`);
+          throw e;
         }
       }
     }
 
-    return { success: true };
+    return { success: true, id: safeId };
   } catch (e) {
     logger.logOperation(actualPhase, "delete", safeId, "error", e.message);
     return { success: false, error: e.message };
@@ -909,6 +946,16 @@ async function deleteMessage({ msgId, deletedAt, topicId, appDataPath }) {
   const safeTopicId = topicId ? sanitizeId(topicId) : null;
 
   try {
+    if (
+      !safeMsgId ||
+      safeMsgId !== msgId ||
+      !safeTopicId ||
+      safeTopicId !== topicId ||
+      !Number.isSafeInteger(deletedAt) ||
+      deletedAt < 0
+    ) {
+      throw new Error("Invalid message deletion payload");
+    }
     softDeleteMessageIndex(safeMsgId, deletedAt, safeTopicId);
     if (safeTopicId && appDataPath) {
       const { pruneMessageFromPhysicalHistory } = require("./message");

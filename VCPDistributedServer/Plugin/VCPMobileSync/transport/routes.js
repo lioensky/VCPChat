@@ -92,6 +92,9 @@ function registerRoutes(app, { syncToken, appDataPath, centralSync = null }) {
   // 1.1 批量下载实体
   router.post("/download-entities", express.json(), async (req, res) => {
     const { requests } = req.body;
+    if (!Array.isArray(requests) || requests.length > 10_000) {
+      return res.status(400).json({ error: "requests must be an array of at most 10000 items" });
+    }
 
     try {
       const results = await downloadEntities(requests);
@@ -107,18 +110,23 @@ function registerRoutes(app, { syncToken, appDataPath, centralSync = null }) {
     express.json({ limit: "5mb" }),
     async (req, res) => {
       const opId = req.headers["x-idempotency-key"];
-      const { duplicate, result: prevResult } = checkIdempotency(opId);
+      const {
+        duplicate,
+        result: prevResult,
+        statusCode: previousStatus = 200,
+      } = checkIdempotency(opId);
       if (duplicate) {
         logger.logOperation("http", "idempotency", "upload-entity", "warn", `duplicate detected: ${opId}`);
-        return res.json(prevResult);
+        return res.status(previousStatus).json(prevResult);
       }
 
       const { id, type, data } = req.body;
 
       try {
         const result = await uploadEntity({ id, type, data, appDataPath });
-        recordOperation(opId, result);
-        res.json(result);
+        const statusCode = result?.success === true ? 200 : 409;
+        recordOperation(opId, result, statusCode);
+        res.status(statusCode).json(result);
       } catch (e) {
         res.status(500).json({ error: e.message });
       }
@@ -134,10 +142,16 @@ function registerRoutes(app, { syncToken, appDataPath, centralSync = null }) {
       if (!Array.isArray(items)) {
         return res.status(400).json({ error: "items must be an array" });
       }
+      if (items.length > 10_000) {
+        return res.status(413).json({ error: "items exceed the 10000 item budget" });
+      }
 
       try {
         const results = await uploadEntitiesBatch(items, appDataPath);
-        res.json({ success: true, results });
+        const success =
+          results.length === items.length &&
+          results.every((result) => result?.success === true);
+        res.json({ success, results });
       } catch (e) {
         res.status(500).json({ error: e.message });
       }
@@ -271,20 +285,36 @@ function registerRoutes(app, { syncToken, appDataPath, centralSync = null }) {
 
   // 9. 删除实体
   router.post("/delete-entity", express.json(), async (req, res) => {
-    const { id, type, deletedAt } = req.body;
+    const { id, type, ownerType = null, deletedAt } = req.body;
+    const allowedTypes = new Set([
+      "agent",
+      "group",
+      "topic",
+      "agent_topic",
+      "group_topic",
+      "avatar",
+    ]);
 
-    if (!id || !type || !deletedAt) {
-      return res.status(400).json({ error: "Missing required fields" });
+    if (
+      typeof id !== "string" ||
+      id.length === 0 ||
+      !allowedTypes.has(type) ||
+      !Number.isSafeInteger(deletedAt) ||
+      deletedAt < 0 ||
+      (type === "avatar" && !["agent", "group", "user"].includes(ownerType))
+    ) {
+      return res.status(400).json({ error: "Invalid delete entity fields" });
     }
 
     try {
       const result = await deleteEntity({
         id,
         type,
+        ownerType,
         deletedAt,
         appDataPath,
       });
-      res.json(result);
+      res.status(result?.success === true ? 200 : 409).json(result);
     } catch (e) {
       res.status(500).json({ error: e.message });
     }
@@ -318,7 +348,7 @@ function registerRoutes(app, { syncToken, appDataPath, centralSync = null }) {
         topicId,
         appDataPath,
       });
-      res.json(result);
+      res.status(result?.success === true ? 200 : 409).json(result);
     } catch (e) {
       res.status(500).json({ error: e.message });
     }

@@ -320,7 +320,7 @@ mod tests {
     const GOLDEN: &[u8] = include_bytes!(
         "../../VCPDistributedServer/Plugin/VCPMobileSync/fixtures/protocol_1_1_golden.json"
     );
-    const GOLDEN_SHA256: &str = "62654d4ecf6fc144c40b4635b5248e851a880ca003229bad37337e693bdb81ae";
+    const GOLDEN_SHA256: &str = "3b5f56d0731c1babede9aba001d9664117fae6bbc8d97cae56882f12a48e8e60";
 
     #[test]
     fn protocol_1_1_golden_bundle_matches_mobile() {

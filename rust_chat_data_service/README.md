@@ -14,6 +14,8 @@ VCP-CDS 是 VCPChat 的中央聊天数据服务。第一阶段建立旁路镜像
 - 中央同步模式不打开或写入旧 `VCPMobileSync/sync_state.db`，也不启动其历史扫描和 watcher。
 - 关闭 `MobileSyncUseCentralIndex` 可恢复旧同步索引链路；旧数据库文件不会自动删除。
 - 普通桌面聊天保存仍先写 `history.json`，由直接通知或 `notify` 摄取。
+- VCP-CDS 的 Mobile Push 属于同步数据面：它会把 Mobile wire DTO 投影为 VCPChat 原生消息后写回 `history.json`，但不会参与模型调用、提示词、渲染或普通聊天保存。
+- 同步写入严格读取历史、校验来源 SHA-256、同步唯一临时文件并原子替换；检测到损坏或来源变化时失败，不覆盖现有历史。
 
 ## 构建与部署
 
@@ -80,7 +82,7 @@ vcp_chat_data_service --app-data ../AppData --port 0
 ```json
 {
   "type": "ready",
-  "protocolVersion": 1,
+  "protocolVersion": 2,
   "schemaVersion": 1,
   "port": 49152,
   "instanceId": "uuid",
@@ -201,13 +203,18 @@ POST /v1/sync/topic-diff
 POST /v1/sync/message-diff
 POST /v1/sync/messages/pull
 POST /v1/sync/messages/push
+POST /v2/sync/messages/pull
+POST /v2/sync/messages/push-topic
+POST /v2/sync/topic-identity
 POST /v1/flush
 POST /v1/shutdown
 ```
 
-同步 Push 接受 Topic 批次。每个 Topic 可携带新增/修改消息和
-`deletedMessageIds`；CDS 合并后原子投影 `history.json`，在同一摄取事务中更新
-SQLite 消息、Tombstone 与 `change_log`，随后补齐 Tantivy revision。
+`/v2/sync/messages/pull` 返回逐 Topic NDJSON。每帧先通过与 Node/Mobile golden fixture 一致的 canonicalizer：消息 ID、role 和 timestamp 必须合法；桌面附件只从顶层或 `_fileManagerData.hash` 接受一致的 SHA-256，非法附件产生有界 warning 而不丢消息。`history_sources.status` 非 ready 时禁止从旧 SQLite 镜像下发。
+
+`/v2/sync/messages/push-topic` 每次只提交一个 Topic，接受 VCPChat 原生投影消息及 `deletedMessageTombstones: [{msgId, deletedAt}]`。CDS 原子投影 `history.json`、严格摄取 SQLite，并为本地缺失消息也建立稳定墓碑；重放保留最早删除时间。结果始终显式返回 `neededAttachmentHashes`，调用方必须检查 HTTP 状态、Topic 身份和逐项成功值。
+
+同步流预算为单帧 32 MiB、单 attempt 256 MiB、最多 10,000 Topic 和 100,000 Message。SQLite 阻塞读取在受控 blocking task 中执行，NDJSON Body 由 HTTP 消费节奏驱动，不在服务端预先累计完整响应。
 
 VCPMobileSync 保留手机鉴权、WebSocket、HTTP/NDJSON 和 DTO 编排。中央模式下：
 
@@ -218,10 +225,23 @@ VCPMobileSync 保留手机鉴权、WebSocket、HTTP/NDJSON 和 DTO 编排。中�
 5. 消息下载与上传通过中央客户端转发。
 6. `/api/mobile-sync/changes` 暴露带游标的 Change Feed。
 
+`MobileSyncUseCentralIndex` 的优先级固定为：插件显式布尔值 > 主程序 Facade 布尔值 > 默认 `true`。显式 `false` 只影响重启后的新 session，不在 attempt 中途回退。CDS 启动在后台进行，失败只禁用中央同步，不阻塞普通 Chat 窗口创建。
+
+## 协议与失败语义
+
+- VCPMobileSync public wire 固定为 1.1；CDS Node/Rust 内部握手固定为 protocol 2。
+- 1.0/1.1 不支持混跑，桌面插件、CDS runtime 与 APK 必须配对发布和回滚。
+- Phase 3 decision 是严格判别联合：`{ok:true,toPull,toPush}` 或 `{ok:false,error}`。
+- 缺 Topic、重复 Topic、错误字段类型、无效历史、DB/HTTP/附件错误均终止当前 attempt；不得以空集合降级成成功。
+- Topic manifest 和 NDJSON 消息帧必须携带 `ownerType + ownerId + topicId` 复合身份；CDS 不接受路径模糊匹配或跨 Owner 同名 Topic 降级。
+- Desktop→Mobile 不新增附件二进制下载。合法 hash 仍随消息下发，Mobile 缺少 CAS 文件时保存为 `desktop_only` 占位。
+
 ## 测试
 
 ```text
-cargo test
+cargo fmt --check
+cargo test --locked
+cargo clippy --locked --all-targets -- -D warnings
 ```
 
 当前自动测试覆盖：
@@ -235,6 +255,9 @@ cargo test
 - 移动消息指纹与旧 `content + attachment hashes` 合约一致。
 - 中央同步聚合哈希顺序无关。
 - VCPMobileSync 中央适配器 Manifest 字段兼容和 Change Feed 游标转发。
+- wire 1.1 golden canonical output、hash 与 JavaScript safe-integer 边界。
+- ingest → streaming pull → canonicalizer → native push 全链路。
+- 损坏 history source fail closed、Owner/Topic 歧义拒绝及稳定消息 Tombstone 重放。
 
 Node 静态检查：
 
@@ -244,8 +267,10 @@ node --check modules/services/chatDataService/client.js
 node --check modules/services/chatDataService/lifecycle.js
 node --check modules/services/chatDataService/index.js
 node --check VCPDistributedServer/Plugin/VCPMobileSync/sync/central.js
-node --test tests/mobile-sync-central-adapter.test.js
+npm run test:mobile-sync
 ```
+
+Electron unpacked smoke 在设置 `VCP_UNPACKED_DIR=dist/<platform>-unpacked` 时，额外检查 `app.asar` 中的分布式服务入口、Plugin loader、VCPMobileSync canonicalizer，以及 `app.asar.unpacked` 中对应平台的 CDS runtime。
 
 ## 恢复
 

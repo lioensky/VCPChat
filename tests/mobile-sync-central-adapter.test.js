@@ -83,6 +83,37 @@ test("中央适配器将 WebSocket Manifest 转发给 CDS", async () => {
   });
 });
 
+test("中央 Topic hash 转发使用复合 Owner 状态而不重复同一 Topic", async () => {
+  let captured;
+  const adapter = createCentralSyncAdapter({
+    client: createClient({
+      syncTopicDiff: async (request) => {
+        captured = request;
+        return { type: "SYNC_TOPIC_HASH_RESULTS", changedTopics: [] };
+      },
+    }),
+  });
+  const state = {
+    topicId: "topic_1",
+    ownerType: "agent",
+    ownerId: "agent_1",
+    configHash: "a".repeat(64),
+    contentHash: "",
+  };
+
+  await adapter.handleTopicHashBatch({
+    hashes: {
+      topic_1: {
+        configHash: state.configHash,
+        contentHash: state.contentHash,
+      },
+    },
+    topics: [state],
+  });
+
+  assert.deepEqual(captured, { hashes: {}, topics: [state] });
+});
+
 test("中央适配器保留 Change Feed 游标", async () => {
   let captured;
   const adapter = createCentralSyncAdapter({

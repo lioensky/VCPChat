@@ -5,14 +5,117 @@
 
 const { getDb } = require("../core/db");
 const { getLogger } = require("../core/logger");
+const { assertHistoryTopicHealthy } = require("./message");
+
+const CONTENT_HASH_PATTERN = /^(?:|[a-f0-9]{64})$/;
+
+function requireTopicHashMap(payload, { doubleHash = false } = {}) {
+  const hashes = payload?.hashes;
+  if (!hashes || typeof hashes !== "object" || Array.isArray(hashes)) {
+    throw Object.assign(new Error("SYNC_TOPIC_HASH_BATCH.hashes must be an object"), {
+      code: "SYNC_PROTOCOL_INVALID",
+    });
+  }
+  const entries = Object.entries(hashes);
+  if (entries.length > 10_000) {
+    throw Object.assign(new Error("Topic hash batch exceeds 10000 topics"), {
+      code: "SYNC_BUDGET_EXCEEDED",
+    });
+  }
+  for (const [topicId, value] of entries) {
+    if (!topicId) {
+      throw Object.assign(new Error("Topic hash batch contains an empty topic id"), {
+        code: "SYNC_PROTOCOL_INVALID",
+      });
+    }
+    const valid = doubleHash
+      ? value &&
+        typeof value === "object" &&
+        !Array.isArray(value) &&
+        typeof value.configHash === "string" &&
+        typeof value.contentHash === "string" &&
+        CONTENT_HASH_PATTERN.test(value.configHash) &&
+        CONTENT_HASH_PATTERN.test(value.contentHash)
+      : typeof value === "string" && CONTENT_HASH_PATTERN.test(value);
+    if (!valid) {
+      throw Object.assign(new Error(`Invalid topic hash state for ${topicId}`), {
+        code: "SYNC_PROTOCOL_INVALID",
+      });
+    }
+  }
+  return { hashes, entries };
+}
+
+function requireCompoundTopicStates(payload, entries) {
+  if (!Array.isArray(payload?.topics) || payload.topics.length !== entries.length) {
+    throw Object.assign(
+      new Error("SYNC_TOPIC_HASH_BATCH_V2.topics must exactly cover hashes"),
+      { code: "SYNC_PROTOCOL_INVALID" },
+    );
+  }
+  const states = new Map();
+  for (const state of payload.topics) {
+    if (
+      !state ||
+      typeof state !== "object" ||
+      Array.isArray(state) ||
+      typeof state.topicId !== "string" ||
+      state.topicId.length === 0 ||
+      !["agent", "group"].includes(state.ownerType) ||
+      typeof state.ownerId !== "string" ||
+      state.ownerId.length === 0 ||
+      typeof state.configHash !== "string" ||
+      typeof state.contentHash !== "string" ||
+      !CONTENT_HASH_PATTERN.test(state.configHash) ||
+      !CONTENT_HASH_PATTERN.test(state.contentHash) ||
+      states.has(state.topicId)
+    ) {
+      throw Object.assign(new Error("Invalid or duplicate compound topic hash state"), {
+        code: "SYNC_PROTOCOL_INVALID",
+      });
+    }
+    states.set(state.topicId, state);
+  }
+  for (const [topicId, hashes] of entries) {
+    const state = states.get(topicId);
+    if (
+      !state ||
+      state.configHash !== hashes.configHash ||
+      state.contentHash !== hashes.contentHash
+    ) {
+      throw Object.assign(
+        new Error(`Compound topic hash state conflicts for ${topicId}`),
+        { code: "SYNC_PROTOCOL_INVALID" },
+      );
+    }
+  }
+  return states;
+}
+
+function indexedTopicOwner(filePath) {
+  const parts = String(filePath || "").replace(/\\/g, "/").split("/").filter(Boolean);
+  const ownerId = parts.at(-2);
+  const ownerType = parts.includes("AgentGroups")
+    ? "group"
+    : parts.includes("Agents")
+      ? "agent"
+      : null;
+  if (!ownerType || !ownerId) {
+    throw Object.assign(new Error("Topic index has an invalid owner path"), {
+      code: "SYNC_INDEX_INVALID",
+    });
+  }
+  return { ownerType, ownerId };
+}
 
 /**
  * 处理 SYNC_TOPIC_HASH_BATCH
  * @param {object} payload - { hashes: { topicId: contentHash } }
  * @returns {object} { type: "SYNC_TOPIC_HASH_RESULTS", changedTopics: [topicId, ...] }
  */
-function handleSyncTopicHashBatch(payload) {
-  const db = getDb();
+function handleSyncTopicHashBatch(payload, database = getDb()) {
+  const { hashes, entries } = requireTopicHashMap(payload);
+  const db = database;
   const logger = getLogger();
   if (!db) {
     logger.logOperation("topic_metadata", "diff_batch", "global", "error", "database not initialized");
@@ -21,12 +124,12 @@ function handleSyncTopicHashBatch(payload) {
     });
   }
 
-  const hashes = payload.hashes || {};
   const changedTopics = [];
   let matchCount = 0;
 
-  for (const [topicId, localHash] of Object.entries(hashes)) {
+  for (const [topicId, localHash] of entries) {
     if (topicId === "default") continue;
+    assertHistoryTopicHealthy(topicId);
     try {
       const topicRow = db
         .prepare("SELECT aggregated_hash FROM entity_index WHERE id = ? AND (type = 'topic' OR type = 'agent_topic' OR type = 'group_topic') AND deleted_at IS NULL")
@@ -58,8 +161,12 @@ function handleSyncTopicHashBatch(payload) {
  * 处理 SYNC_TOPIC_HASH_BATCH_V2 (V2: 支持双哈希对比)
  * @param {object} payload - { hashes: { topicId: { configHash, contentHash } } }
  */
-function handleSyncTopicHashBatchV2(payload) {
-  const db = getDb();
+function handleSyncTopicHashBatchV2(payload, database = getDb()) {
+  const { hashes, entries } = requireTopicHashMap(payload, {
+    doubleHash: true,
+  });
+  const topicStates = requireCompoundTopicStates(payload, entries);
+  const db = database;
   const logger = getLogger();
   if (!db) {
     logger.logOperation("topic_metadata", "diff_batch_v2", "global", "error", "database not initialized");
@@ -68,20 +175,32 @@ function handleSyncTopicHashBatchV2(payload) {
     });
   }
 
-  const hashes = payload.hashes || {};
   const changedTopics = [];
   let matchCount = 0;
 
-  for (const [topicId, remoteHashes] of Object.entries(hashes)) {
+  for (const [topicId, remoteHashes] of entries) {
     if (topicId === "default") continue;
+    assertHistoryTopicHealthy(topicId);
     try {
       const topicRow = db
-        .prepare("SELECT hash, aggregated_hash FROM entity_index WHERE id = ? AND (type = 'topic' OR type = 'agent_topic' OR type = 'group_topic') AND deleted_at IS NULL")
+        .prepare("SELECT hash, aggregated_hash, file_path FROM entity_index WHERE id = ? AND (type = 'topic' OR type = 'agent_topic' OR type = 'group_topic') AND deleted_at IS NULL")
         .get(topicId);
 
       if (!topicRow) {
         changedTopics.push(topicId);
         continue;
+      }
+
+      const expectedOwner = topicStates.get(topicId);
+      const actualOwner = indexedTopicOwner(topicRow.file_path);
+      if (
+        actualOwner.ownerType !== expectedOwner.ownerType ||
+        actualOwner.ownerId !== expectedOwner.ownerId
+      ) {
+        throw Object.assign(
+          new Error(`Topic hash owner identity conflicts for ${topicId}`),
+          { code: "SYNC_OWNER_CONFLICT" },
+        );
       }
 
       const localConfig = topicRow.hash || "";
@@ -114,7 +233,7 @@ function handleSyncTopicHashBatchV2(payload) {
 /**
  * 处理 SYNC_MESSAGE_DIFF_BATCH
  * @param {object} payload - { topics: { topicId: { topicHash, messages: { msgId: hash } } } }
- * @returns {object} { type: "SYNC_DIFF_RESULTS_BATCH", results: { topicId: { toPull, toPush } } }
+ * @returns {object} strict discriminated results: `{ok:true,toPull,toPush}` or `{ok:false,error}`
  */
 function handleSyncMessageDiffBatch(payload, database = getDb()) {
   const db = database;
@@ -155,6 +274,10 @@ function handleSyncMessageDiffBatch(payload, database = getDb()) {
       typeof localState !== "object" ||
       Array.isArray(localState) ||
       typeof localState.topicHash !== "string" ||
+      !CONTENT_HASH_PATTERN.test(localState.topicHash) ||
+      !["agent", "group"].includes(localState.ownerType) ||
+      typeof localState.ownerId !== "string" ||
+      localState.ownerId.length === 0 ||
       !localState.messages ||
       typeof localState.messages !== "object" ||
       Array.isArray(localState.messages)
@@ -183,9 +306,10 @@ function handleSyncMessageDiffBatch(payload, database = getDb()) {
       }
     }
     try {
+      assertHistoryTopicHealthy(topicId);
       // 1. 快速路径：比较 topic 级 aggregated_hash
       const topicRow = db
-        .prepare("SELECT aggregated_hash FROM entity_index WHERE id = ? AND (type = 'topic' OR type = 'agent_topic' OR type = 'group_topic') AND deleted_at IS NULL")
+        .prepare("SELECT aggregated_hash, file_path FROM entity_index WHERE id = ? AND (type = 'topic' OR type = 'agent_topic' OR type = 'group_topic') AND deleted_at IS NULL")
         .get(topicId);
 
       if (!topicRow) {
@@ -197,6 +321,17 @@ function handleSyncMessageDiffBatch(payload, database = getDb()) {
           },
         };
         continue;
+      }
+
+      const actualOwner = indexedTopicOwner(topicRow.file_path);
+      if (
+        actualOwner.ownerType !== localState.ownerType ||
+        actualOwner.ownerId !== localState.ownerId
+      ) {
+        throw Object.assign(
+          new Error(`Message diff owner identity conflicts for ${topicId}`),
+          { code: "SYNC_OWNER_CONFLICT" },
+        );
       }
 
       if (topicRow.aggregated_hash !== null && topicRow.aggregated_hash === localState.topicHash) {

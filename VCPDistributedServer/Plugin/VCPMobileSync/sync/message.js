@@ -5,6 +5,7 @@
 const fs = require("fs").promises;
 const path = require("path");
 const crypto = require("crypto");
+const { TextDecoder } = require("node:util");
 const {
   getDb,
   getEntityIndex,
@@ -28,6 +29,28 @@ const {
   readNdjsonLines,
 } = require("../transport/ndjson");
 
+const unhealthyHistoryTopics = new Map();
+
+function markHistoryTopicUnhealthy(topicId, error) {
+  if (typeof topicId === "string" && topicId.length > 0) {
+    unhealthyHistoryTopics.set(topicId, String(error?.message || error));
+  }
+}
+
+function clearHistoryTopicUnhealthy(topicId) {
+  unhealthyHistoryTopics.delete(topicId);
+}
+
+function assertHistoryTopicHealthy(topicId) {
+  const reason = unhealthyHistoryTopics.get(topicId);
+  if (reason !== undefined) {
+    throw Object.assign(
+      new Error(`History source for topic ${topicId} is invalid: ${reason}`),
+      { code: "HISTORY_SOURCE_INVALID" },
+    );
+  }
+}
+
 async function readHistoryStrict(filePath) {
   let bytes;
   try {
@@ -38,7 +61,7 @@ async function readHistoryStrict(filePath) {
   }
   let history;
   try {
-    history = JSON.parse(bytes.toString("utf8"));
+    history = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
   } catch (error) {
     throw new Error(`Invalid history JSON: ${error.message}`);
   }
@@ -145,13 +168,14 @@ async function downloadMessagesStreamRaw(requests, appDataPath, res) {
         throw new Error("Message pull IDs must be non-empty strings and unique");
       }
       if (
-        (ownerType == null) !== (ownerId == null) ||
-        (ownerType != null && !["agent", "group"].includes(ownerType)) ||
-        (ownerId != null && (typeof ownerId !== "string" || ownerId.length === 0))
+        !["agent", "group"].includes(ownerType) ||
+        typeof ownerId !== "string" ||
+        ownerId.length === 0
       ) {
-        throw new Error("Message pull ownerType and ownerId must be valid together");
+        throw new Error("Message pull requires exact ownerType and ownerId");
       }
       seenTopics.add(safeTopicId);
+      assertHistoryTopicHealthy(safeTopicId);
       requestedMessages += msgIds.length;
       if (msgIds.length > 10_000 || requestedMessages > MAX_NDJSON_MESSAGES) {
         throw new Error("Message pull exceeds message count budget");
@@ -166,8 +190,8 @@ async function downloadMessagesStreamRaw(requests, appDataPath, res) {
       const parentId = path.basename(path.dirname(row.file_path));
       const actualOwnerType = row.file_path.includes("AgentGroups") ? "group" : "agent";
       if (
-        (ownerType && ownerType !== actualOwnerType) ||
-        (ownerId && ownerId !== parentId)
+        ownerType !== actualOwnerType ||
+        ownerId !== parentId
       ) {
         throw new Error("topic owner identity conflicts with desktop index");
       }
@@ -328,6 +352,13 @@ async function uploadMessagesBatchRaw(req, appDataPath, res) {
         if (!Array.isArray(messages)) {
           throw new Error("messages must be an array");
         }
+        if (
+          !["agent", "group"].includes(ownerType) ||
+          typeof ownerId !== "string" ||
+          ownerId.length === 0
+        ) {
+          throw new Error("Message push requires exact ownerType and ownerId");
+        }
         topicCount += 1;
         messageCount += messages.length;
         if (
@@ -337,11 +368,10 @@ async function uploadMessagesBatchRaw(req, appDataPath, res) {
         ) {
           throw new Error("Message push exceeds topic or message count budget");
         }
-        const identity = `${ownerType || ""}:${ownerId || ""}:${safeTopicId}`;
-        if (seenTopics.has(identity)) {
+        if (seenTopics.has(safeTopicId)) {
           throw new Error("Message push contains a duplicate topic identity");
         }
-        seenTopics.add(identity);
+        seenTopics.add(safeTopicId);
 
         const row = getEntityIndex(safeTopicId, "topic");
         if (!row) {
@@ -359,8 +389,8 @@ async function uploadMessagesBatchRaw(req, appDataPath, res) {
           ? "group"
           : "agent";
         if (
-          (ownerType && ownerType !== actualOwnerType) ||
-          (ownerId && ownerId !== actualOwnerId)
+          ownerType !== actualOwnerType ||
+          ownerId !== actualOwnerId
         ) {
           throw new Error("topic owner identity conflicts with desktop index");
         }
@@ -423,7 +453,6 @@ async function ingestHistoryToDb(filePath, topicId, source = "watcher") {
     const canonical = canonicalizeHistory(history, topicId);
     const now = Date.now();
     const fingerprints = [];
-    let msgCount = 0;
     let attachmentCount = 0;
 
     // Canonical messages are the only values allowed to influence wire hashes.
@@ -433,45 +462,70 @@ async function ingestHistoryToDb(filePath, topicId, source = "watcher") {
         return tsDiff !== 0 ? tsDiff : (a.id || "").localeCompare(b.id || "");
       });
 
-    for (const m of validMessages) {
-      const hash = computeMessageFingerprint(m);
-      upsertMessageIndex(m.id, topicId, hash, now);
-      fingerprints.push(hash);
-      msgCount++;
+    const liveIds = new Set(validMessages.map((message) => message.id));
+    const applyIndex = db.transaction(() => {
+      const existing = db
+        .prepare(
+          "SELECT msg_id FROM message_index WHERE topic_id = ? AND deleted_at IS NULL",
+        )
+        .all(topicId);
+      for (const m of validMessages) {
+        const hash = computeMessageFingerprint(m);
+        upsertMessageIndex(m.id, topicId, hash, now);
+        fingerprints.push(hash);
 
-      // 提取并索引附件关联 (核心修复)
-      if (Array.isArray(m.attachments)) {
-        m.attachments.forEach((att, index) => {
-          const attHash = att.hash;
-          if (attHash) {
-            upsertMessageAttachment(
-              m.id,
-              attHash,
-              index,
-              att.name || "unnamed",
-              att.createdAt || now,
-            );
-            attachmentCount++;
-          }
-        });
+        if (Array.isArray(m.attachments)) {
+          m.attachments.forEach((att, index) => {
+            if (att.hash) {
+              upsertMessageAttachment(
+                m.id,
+                att.hash,
+                index,
+                att.name || "unnamed",
+                att.createdAt ?? now,
+              );
+              attachmentCount++;
+            }
+          });
+        }
       }
-    }
+      for (const row of existing) {
+        if (!liveIds.has(row.msg_id)) {
+          const removed = db
+            .prepare(
+              "UPDATE message_index SET deleted_at = ? WHERE topic_id = ? AND msg_id = ? AND deleted_at IS NULL",
+            )
+            .run(now, topicId, row.msg_id);
+          if (removed.changes !== 1) {
+            throw new Error(`Message tombstone missed ${topicId}/${row.msg_id}`);
+          }
+        }
+      }
 
-    // 更新 Topic 聚合哈希 (V2: 统一使用 computeAggregatedHash，确保空列表结果一致)
-    const topicRootHash = computeAggregatedHash(fingerprints);
-    const updated = db.prepare(
-      "UPDATE entity_index SET aggregated_hash = ?, updated_at = ? WHERE id = ? AND (type = 'topic' OR type = 'agent_topic' OR type = 'group_topic')",
-    ).run(topicRootHash, now, topicId);
-    if (updated.changes !== 1) {
-      throw new Error(`Topic ${topicId} is missing or ambiguous in the local index`);
-    }
+      const topicRootHash = computeAggregatedHash(fingerprints);
+      const updated = db.prepare(
+        "UPDATE entity_index SET aggregated_hash = ?, updated_at = ? WHERE id = ? AND (type = 'topic' OR type = 'agent_topic' OR type = 'group_topic') AND deleted_at IS NULL",
+      ).run(topicRootHash, now, topicId);
+      if (updated.changes !== 1) {
+        throw new Error(`Topic ${topicId} is missing or ambiguous in the local index`);
+      }
 
-    // V2: 触发层级冒泡 (Agent/Group content_hash 更新)
+      if (source !== "reconcile") {
+        const { computeAggregatedHashes } = require("../index");
+        computeAggregatedHashes(db, logger);
+      }
+    });
+    applyIndex();
+    clearHistoryTopicUnhealthy(topicId);
+
     if (source !== "reconcile") {
-      const { computeAggregatedHashes } = require("../index");
-      computeAggregatedHashes(db, logger);
-
-      logger.logOperation("messages", "ingest", topicId, "success", `msgs=${msgCount} attachments=${attachmentCount}`);
+      logger.logOperation(
+        "messages",
+        "ingest",
+        topicId,
+        "success",
+        `msgs=${validMessages.length} attachments=${attachmentCount}`,
+      );
     }
     if (canonical.warningCount > 0) {
       logger.logOperation(
@@ -483,6 +537,7 @@ async function ingestHistoryToDb(filePath, topicId, source = "watcher") {
       );
     }
   } catch (e) {
+    markHistoryTopicUnhealthy(topicId, e);
     logger.logOperation("messages", "ingest", topicId, "error", e.message);
     throw e;
   }
@@ -673,4 +728,7 @@ module.exports = {
   pruneMessageFromPhysicalHistory,
   readHistoryStrict,
   writeHistoryAtomic,
+  assertHistoryTopicHealthy,
+  markHistoryTopicUnhealthy,
+  clearHistoryTopicUnhealthy,
 };

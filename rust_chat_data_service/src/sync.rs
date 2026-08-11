@@ -23,7 +23,6 @@ use crate::{
 #[serde(rename_all = "camelCase")]
 pub struct ManifestRequest {
     pub data_type: String,
-    #[serde(default)]
     pub data: Vec<RemoteManifestItem>,
     #[serde(default)]
     pub targeted_owners: Option<Vec<String>>,
@@ -33,13 +32,11 @@ pub struct ManifestRequest {
 #[serde(rename_all = "camelCase")]
 pub struct RemoteManifestItem {
     pub id: String,
-    #[serde(default)]
     pub hash: String,
     #[serde(default)]
     pub config_hash: Option<String>,
     #[serde(default)]
     pub content_hash: Option<String>,
-    #[serde(default)]
     pub ts: i64,
     #[serde(default)]
     pub deleted_at: Option<i64>,
@@ -331,14 +328,129 @@ pub struct ChangeFeedResponse {
     pub has_more: bool,
 }
 
+const MAX_SYNC_ITEMS: usize = 10_000;
+const MAX_SAFE_JSON_INTEGER: i64 = (1_i64 << 53) - 1;
+
+fn is_lower_sha256(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+}
+
+fn validate_manifest_request(request: &ManifestRequest) -> Result<()> {
+    anyhow::ensure!(
+        matches!(request.data_type.as_str(), "agent" | "group" | "topic"),
+        "unsupported manifest dataType {}",
+        request.data_type
+    );
+    anyhow::ensure!(
+        request.data.len() <= MAX_SYNC_ITEMS,
+        "manifest exceeds {MAX_SYNC_ITEMS} items"
+    );
+
+    let targeted_owners = request.targeted_owners.as_deref();
+    if request.data_type == "topic" {
+        let owners = targeted_owners.context("topic manifest requires targetedOwners")?;
+        anyhow::ensure!(
+            owners.len() <= MAX_SYNC_ITEMS,
+            "targetedOwners exceeds {MAX_SYNC_ITEMS} items"
+        );
+        let unique = owners.iter().collect::<HashSet<_>>();
+        anyhow::ensure!(
+            unique.len() == owners.len() && owners.iter().all(|owner| !owner.is_empty()),
+            "targetedOwners contains empty or duplicate owner IDs"
+        );
+    } else {
+        anyhow::ensure!(
+            targeted_owners.is_none(),
+            "targetedOwners is only valid for topic manifests"
+        );
+    }
+
+    let mut seen_ids = HashSet::new();
+    for item in &request.data {
+        anyhow::ensure!(!item.id.is_empty(), "manifest item id must not be empty");
+        anyhow::ensure!(
+            seen_ids.insert(item.id.as_str()),
+            "manifest contains duplicate id {}",
+            item.id
+        );
+        anyhow::ensure!(
+            is_lower_sha256(&item.hash),
+            "manifest item {} hash must be lowercase SHA-256",
+            item.id
+        );
+        let config_hash = item
+            .config_hash
+            .as_deref()
+            .context("manifest configHash is required")?;
+        anyhow::ensure!(
+            is_lower_sha256(config_hash),
+            "manifest item {} configHash must be lowercase SHA-256",
+            item.id
+        );
+        let content_hash = item
+            .content_hash
+            .as_deref()
+            .context("manifest contentHash is required")?;
+        anyhow::ensure!(
+            content_hash.is_empty() || is_lower_sha256(content_hash),
+            "manifest item {} contentHash must be empty or lowercase SHA-256",
+            item.id
+        );
+        anyhow::ensure!(
+            (0..=MAX_SAFE_JSON_INTEGER).contains(&item.ts),
+            "manifest item {} timestamp must be a non-negative safe integer",
+            item.id
+        );
+        if let Some(deleted_at) = item.deleted_at {
+            anyhow::ensure!(
+                (0..=MAX_SAFE_JSON_INTEGER).contains(&deleted_at),
+                "manifest item {} deletedAt must be a non-negative safe integer",
+                item.id
+            );
+        }
+        if request.data_type == "topic" {
+            let owner_type = item
+                .owner_type
+                .context("topic manifest item requires ownerType")?;
+            let owner_id = item
+                .owner_id
+                .as_deref()
+                .filter(|owner_id| !owner_id.is_empty())
+                .context("topic manifest item requires ownerId")?;
+            anyhow::ensure!(
+                targeted_owners.is_some_and(|owners| owners.iter().any(|id| id == owner_id)),
+                "topic manifest item {} has unexpected owner {}:{}",
+                item.id,
+                owner_type.as_str(),
+                owner_id
+            );
+        }
+    }
+    Ok(())
+}
+
 pub fn manifest(database: &Database, request: ManifestRequest) -> Result<ManifestResponse> {
+    validate_manifest_request(&request)?;
     let local = local_manifest(
         database,
         &request.data_type,
         request.targeted_owners.as_deref(),
     )?;
+    anyhow::ensure!(
+        local.len() <= MAX_SYNC_ITEMS,
+        "local manifest exceeds {MAX_SYNC_ITEMS} items"
+    );
     let mut local_by_key = HashMap::new();
+    let mut local_ids = HashSet::new();
     for item in local {
+        anyhow::ensure!(
+            local_ids.insert(item.id.clone()),
+            "local manifest contains ambiguous topic id {}",
+            item.id
+        );
         local_by_key.insert(
             manifest_key(&item.id, item.owner_type, item.owner_id.as_deref()),
             item,
@@ -349,9 +461,18 @@ pub fn manifest(database: &Database, request: ManifestRequest) -> Result<Manifes
     let mut processed = HashSet::new();
     for remote in &request.data {
         let key = manifest_key(&remote.id, remote.owner_type, remote.owner_id.as_deref());
-        let local = local_by_key
-            .get(&key)
-            .or_else(|| unique_manifest_item_by_id(&local_by_key, &remote.id));
+        let exact = local_by_key.get(&key);
+        if request.data_type == "topic"
+            && exact.is_none()
+            && unique_manifest_item_by_id(&local_by_key, &remote.id).is_some()
+        {
+            anyhow::bail!("topic {} owner conflicts with the CDS index", remote.id);
+        }
+        let local = if request.data_type == "topic" {
+            exact
+        } else {
+            exact.or_else(|| unique_manifest_item_by_id(&local_by_key, &remote.id))
+        };
         processed.insert(local.map_or(key, |item| {
             manifest_key(&item.id, item.owner_type, item.owner_id.as_deref())
         }));
@@ -498,18 +619,40 @@ pub fn topic_hash_diff(
     database: &Database,
     request: TopicHashDiffRequest,
 ) -> Result<TopicHashDiffResponse> {
+    anyhow::ensure!(
+        request.topics.len().saturating_add(request.hashes.len()) <= 10_000,
+        "topic hash diff exceeds 10000 topics"
+    );
     let mut states = request.topics;
+    let mut seen_topic_ids = states
+        .iter()
+        .map(|state| state.topic_id.clone())
+        .collect::<HashSet<_>>();
+    anyhow::ensure!(
+        seen_topic_ids.len() == states.len(),
+        "topic hash diff contains duplicate topic ids"
+    );
     for (topic_id, value) in request.hashes {
-        let (config_hash, content_hash) = if let Some(object) = value.as_object() {
-            (
-                string_field(object, "configHash"),
-                string_field(object, "contentHash"),
-            )
-        } else {
-            (
-                String::new(),
-                value.as_str().unwrap_or_default().to_string(),
-            )
+        anyhow::ensure!(
+            seen_topic_ids.insert(topic_id.clone()),
+            "topic hash diff contains duplicate topic {topic_id}"
+        );
+        let (config_hash, content_hash) = match value {
+            Value::Object(object) => {
+                let config_hash = object
+                    .get("configHash")
+                    .and_then(Value::as_str)
+                    .context("topic hash configHash must be a string")?
+                    .to_string();
+                let content_hash = object
+                    .get("contentHash")
+                    .and_then(Value::as_str)
+                    .context("topic hash contentHash must be a string")?
+                    .to_string();
+                (config_hash, content_hash)
+            }
+            Value::String(content_hash) => (String::new(), content_hash),
+            _ => anyhow::bail!("topic hash state must be a string or object"),
         };
         states.push(TopicHashState {
             topic_id,
@@ -522,6 +665,28 @@ pub fn topic_hash_diff(
 
     let mut changed_topics = Vec::new();
     for state in states {
+        anyhow::ensure!(
+            !state.topic_id.is_empty(),
+            "topic hash diff topicId is empty"
+        );
+        anyhow::ensure!(
+            state.owner_type.is_some() == state.owner_id.is_some(),
+            "topic hash diff ownerType and ownerId must be supplied together"
+        );
+        anyhow::ensure!(
+            state
+                .owner_id
+                .as_deref()
+                .is_none_or(|owner_id| !owner_id.is_empty()),
+            "topic hash diff ownerId must be non-empty"
+        );
+        anyhow::ensure!(
+            (state.config_hash.is_empty() || canonical_wire_hash(&state.config_hash).is_some())
+                && (state.content_hash.is_empty()
+                    || canonical_wire_hash(&state.content_hash).is_some()),
+            "topic hash diff contains an invalid hash for {}",
+            state.topic_id
+        );
         let selector = TopicSelector {
             topic_id: state.topic_id.clone(),
             owner_type: state.owner_type,
@@ -538,6 +703,7 @@ pub fn topic_hash_diff(
             changed_topics.push(state.topic_id);
         }
     }
+    changed_topics.sort();
 
     Ok(TopicHashDiffResponse {
         response_type: "SYNC_TOPIC_HASH_RESULTS",
@@ -560,16 +726,17 @@ pub fn message_diff(
             !topic_id.is_empty(),
             "message diff topicId must be non-empty"
         );
+        let owner_type = state
+            .owner_type
+            .context("message diff ownerType is required")?;
+        let owner_id = state
+            .owner_id
+            .as_deref()
+            .filter(|owner_id| !owner_id.is_empty())
+            .context("message diff ownerId is required")?;
         anyhow::ensure!(
-            state.owner_type.is_some() == state.owner_id.is_some(),
-            "message diff ownerType and ownerId must be supplied together"
-        );
-        anyhow::ensure!(
-            state
-                .owner_id
-                .as_deref()
-                .is_none_or(|owner_id| !owner_id.is_empty()),
-            "message diff ownerId must be non-empty"
+            state.topic_hash.is_empty() || canonical_wire_hash(&state.topic_hash).is_some(),
+            "message diff topicHash is invalid for {topic_id}"
         );
         anyhow::ensure!(
             state.messages.len() <= 10_000,
@@ -594,8 +761,8 @@ pub fn message_diff(
         }
         let selector = TopicSelector {
             topic_id: topic_id.clone(),
-            owner_type: state.owner_type,
-            owner_id: state.owner_id,
+            owner_type: Some(owner_type),
+            owner_id: Some(owner_id.to_string()),
         };
         let key = match resolve_topic(database, &selector) {
             Ok(key) => key,
@@ -1539,14 +1706,6 @@ fn manifest_action(
     }
 }
 
-fn string_field(object: &Map<String, Value>, key: &str) -> String {
-    object
-        .get(key)
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .to_string()
-}
-
 const fn is_false(value: &bool) -> bool {
     !*value
 }
@@ -1560,9 +1719,10 @@ mod tests {
     use std::{collections::HashMap, fs, sync::Arc};
 
     use super::{
-        aggregate_hash, message_manifest, pull_topic_messages, push_messages, topic_identity,
-        unique_manifest_item_by_id, ManifestItem, MessagesPullTopic, MessagesPushRequest,
-        MessagesPushTopic, TopicSelector,
+        aggregate_hash, message_manifest, pull_topic_messages, push_messages, topic_hash_diff,
+        topic_identity, unique_manifest_item_by_id, validate_manifest_request, ManifestItem,
+        ManifestRequest, MessagesPullTopic, MessagesPushRequest, MessagesPushTopic,
+        RemoteManifestItem, TopicHashDiffRequest, TopicHashState, TopicSelector,
     };
     use crate::{
         config::{Cli, ServiceConfig},
@@ -1675,6 +1835,78 @@ mod tests {
             aggregate_hash(vec!["b".to_string(), "a".to_string()]),
             aggregate_hash(vec!["a".to_string(), "b".to_string()])
         );
+    }
+
+    #[test]
+    fn manifest_requires_exact_topic_owner_and_safe_wire_fields() {
+        let hash = "a".repeat(64);
+        let valid = ManifestRequest {
+            data_type: "topic".to_string(),
+            data: vec![RemoteManifestItem {
+                id: "topic-a".to_string(),
+                hash: hash.clone(),
+                config_hash: Some(hash),
+                content_hash: Some(String::new()),
+                ts: 1,
+                deleted_at: Some(0),
+                owner_type: Some(OwnerType::Agent),
+                owner_id: Some("agent-a".to_string()),
+            }],
+            targeted_owners: Some(vec!["agent-a".to_string()]),
+        };
+        validate_manifest_request(&valid).expect("valid topic manifest");
+
+        let mut missing_owner = valid.clone();
+        missing_owner.data[0].owner_id = None;
+        assert!(validate_manifest_request(&missing_owner)
+            .expect_err("missing owner must fail")
+            .to_string()
+            .contains("ownerId"));
+
+        let mut unsafe_timestamp = valid;
+        unsafe_timestamp.data[0].ts = (1_i64 << 53) + 1;
+        assert!(validate_manifest_request(&unsafe_timestamp)
+            .expect_err("unsafe timestamp must fail")
+            .to_string()
+            .contains("safe integer"));
+    }
+
+    #[test]
+    fn topic_hash_diff_rejects_duplicate_and_malformed_states_before_db_work() {
+        let (_temp, _config, database, _reconciler) = sync_fixture();
+        let duplicate = topic_hash_diff(
+            &database,
+            TopicHashDiffRequest {
+                hashes: HashMap::from([(
+                    "topic-a".to_string(),
+                    json!({"configHash":"", "contentHash":""}),
+                )]),
+                topics: vec![TopicHashState {
+                    topic_id: "topic-a".to_string(),
+                    owner_type: Some(OwnerType::Agent),
+                    owner_id: Some("agent-a".to_string()),
+                    config_hash: String::new(),
+                    content_hash: String::new(),
+                }],
+            },
+        )
+        .expect_err("duplicate topic state must fail");
+        assert!(duplicate.to_string().contains("duplicate topic"));
+
+        let malformed = topic_hash_diff(
+            &database,
+            TopicHashDiffRequest {
+                hashes: HashMap::from([(
+                    "topic-a".to_string(),
+                    json!({"configHash":1, "contentHash":""}),
+                )]),
+                topics: Vec::new(),
+            },
+        )
+        .expect_err("malformed topic hash must fail");
+        assert!(malformed
+            .to_string()
+            .contains("configHash must be a string"));
     }
 
     #[tokio::test]

@@ -10,12 +10,25 @@ const {
   resolveCentralIndexPreference,
 } = require("../VCPDistributedServer/Plugin/VCPMobileSync/config/defaults");
 const {
+  handleSyncTopicHashBatch,
+  handleSyncTopicHashBatchV2,
   handleSyncMessageDiffBatch,
 } = require("../VCPDistributedServer/Plugin/VCPMobileSync/sync/diff");
 const {
+  checkIdempotency,
+  recordOperation,
+} = require("../VCPDistributedServer/Plugin/VCPMobileSync/core/idempotency");
+const {
   readHistoryStrict,
   writeHistoryAtomic,
+  markHistoryTopicUnhealthy,
+  clearHistoryTopicUnhealthy,
 } = require("../VCPDistributedServer/Plugin/VCPMobileSync/sync/message");
+const {
+  getLocalManifest,
+  handleSyncManifest,
+  handleMessageManifest,
+} = require("../VCPDistributedServer/Plugin/VCPMobileSync/sync/manifest");
 
 function fakeDiffDatabase({ topics = {}, messages = {}, fail = false } = {}) {
   return {
@@ -28,6 +41,29 @@ function fakeDiffDatabase({ topics = {}, messages = {}, fail = false } = {}) {
         return { all: (topicId) => messages[topicId] || [] };
       }
       throw new Error(`unexpected SQL in fake database: ${sql}`);
+    },
+  };
+}
+
+function fakeManifestDatabase({ entities = [], avatars = [], messages = [] } = {}) {
+  return {
+    prepare(sql) {
+      if (sql.includes("FROM avatar_index")) {
+        return { all: () => avatars };
+      }
+      if (sql.includes("FROM entity_index") && sql.includes("type = ?")) {
+        return { all: (type) => entities.filter((row) => row.type === type) };
+      }
+      if (sql.includes("FROM entity_index")) {
+        return {
+          all: () => entities.filter((row) =>
+            ["topic", "agent_topic", "group_topic"].includes(row.type)),
+        };
+      }
+      if (sql.includes("FROM message_index")) {
+        return { all: (topicId) => messages.filter((row) => row.topic_id === topicId) };
+      }
+      throw new Error(`unexpected SQL in fake manifest database: ${sql}`);
     },
   };
 }
@@ -60,17 +96,26 @@ test("Phase 3 decision 只返回严格判别联合且不在 diff 中执行删除
     {
       topics: {
         "topic-live": {
-          topicHash: "different",
+          topicHash: "c".repeat(64),
+          ownerType: "agent",
+          ownerId: "agent-a",
           messages: { "message-1": "DELETED" },
         },
         "topic-missing": {
           topicHash: "",
+          ownerType: "agent",
+          ownerId: "agent-a",
           messages: {},
         },
       },
     },
     fakeDiffDatabase({
-      topics: { "topic-live": { aggregated_hash: "desktop" } },
+      topics: {
+        "topic-live": {
+          aggregated_hash: "desktop",
+          file_path: "/app/Agents/agent-a/config.json",
+        },
+      },
       messages: {
         "topic-live": [{ msg_id: "message-1", hash: remoteHash }],
       },
@@ -97,7 +142,12 @@ test("Phase 3 malformed hash 与 DB 查询错误都不能伪装成 no-op 完成"
       handleSyncMessageDiffBatch(
         {
           topics: {
-            topic: { topicHash: "", messages: { message: "not-a-hash" } },
+            topic: {
+              topicHash: "",
+              ownerType: "agent",
+              ownerId: "agent-a",
+              messages: { message: "not-a-hash" },
+            },
           },
         },
         fakeDiffDatabase(),
@@ -108,7 +158,12 @@ test("Phase 3 malformed hash 与 DB 查询错误都不能伪装成 no-op 完成"
   const result = handleSyncMessageDiffBatch(
     {
       topics: {
-        topic: { topicHash: "", messages: {} },
+        topic: {
+          topicHash: "",
+          ownerType: "agent",
+          ownerId: "agent-a",
+          messages: {},
+        },
       },
     },
     fakeDiffDatabase({ fail: true }),
@@ -116,6 +171,164 @@ test("Phase 3 malformed hash 与 DB 查询错误都不能伪装成 no-op 完成"
   assert.equal(result.results.topic.ok, false);
   assert.equal(result.results.topic.error.code, "MESSAGE_DIFF_FAILED");
   assert.match(result.results.topic.error.message, /injected database failure/);
+});
+
+test("Phase 2.5 topic hash 对错误类型和超预算 fail closed", () => {
+  assert.throws(
+    () => handleSyncTopicHashBatch({ hashes: { topic: null } }),
+    (error) => error.code === "SYNC_PROTOCOL_INVALID",
+  );
+  assert.throws(
+    () =>
+      handleSyncTopicHashBatchV2({
+        hashes: { topic: { configHash: "bad", contentHash: "" } },
+      }),
+    (error) => error.code === "SYNC_PROTOCOL_INVALID",
+  );
+  const hashes = Object.fromEntries(
+    Array.from({ length: 10_001 }, (_, index) => [`topic-${index}`, ""]),
+  );
+  assert.throws(
+    () => handleSyncTopicHashBatch({ hashes }),
+    (error) => error.code === "SYNC_BUDGET_EXCEEDED",
+  );
+});
+
+test("Topic manifest 使用复合 Owner 身份且不做路径模糊匹配", () => {
+  const hash = "a".repeat(64);
+  const database = fakeManifestDatabase({
+    entities: [
+      {
+        id: "topic-a",
+        type: "topic",
+        file_path: "/app/Agents/agent-a/config.json",
+        hash,
+        aggregated_hash: "",
+        updated_at: 1,
+        deleted_at: null,
+      },
+      {
+        id: "topic-b",
+        type: "topic",
+        file_path: "/app/Agents/agent-aa/config.json",
+        hash,
+        aggregated_hash: "",
+        updated_at: 1,
+        deleted_at: null,
+      },
+    ],
+  });
+
+  assert.deepEqual(
+    getLocalManifest("topic", ["agent-a"], database).map((item) => item.id),
+    ["topic-a"],
+  );
+  const result = handleSyncManifest(
+    {
+      dataType: "topic",
+      phase: 2,
+      targetedOwners: ["agent-a"],
+      data: [{
+        id: "topic-a",
+        hash,
+        configHash: hash,
+        contentHash: "",
+        ts: 1,
+        ownerType: "agent",
+        ownerId: "agent-a",
+      }],
+    },
+    database,
+  );
+  assert.deepEqual(result.data, []);
+
+  assert.throws(
+    () => handleSyncManifest(
+      {
+        dataType: "topic",
+        phase: 2,
+        targetedOwners: ["agent-a", "agent-b"],
+        data: [{
+          id: "topic-a",
+          hash,
+          configHash: hash,
+          contentHash: "",
+          ts: 1,
+          ownerType: "agent",
+          ownerId: "agent-b",
+        }],
+      },
+      database,
+    ),
+    (error) => error.code === "SYNC_OWNER_CONFLICT",
+  );
+});
+
+test("Manifest 错型、重复 ID 和 deletedAt=0 均按硬切契约处理", () => {
+  const hash = "b".repeat(64);
+  const database = fakeManifestDatabase();
+  assert.throws(
+    () => handleSyncManifest({ dataType: "agent", phase: 1, data: {} }, database),
+    (error) => error.code === "SYNC_PROTOCOL_INVALID",
+  );
+  const item = {
+    id: "agent-a",
+    hash,
+    configHash: hash,
+    contentHash: "",
+    ts: 1,
+  };
+  assert.throws(
+    () => handleSyncManifest(
+      { dataType: "agent", phase: 1, data: [item, item] },
+      database,
+    ),
+    /duplicate id/,
+  );
+  const result = handleSyncManifest(
+    {
+      dataType: "agent",
+      phase: 1,
+      data: [{ ...item, deletedAt: 0 }],
+    },
+    database,
+  );
+  assert.deepEqual(result.data, [
+    { id: "agent-a", action: "DELETE", deletedAt: 0 },
+  ]);
+});
+
+test("损坏 history 的旧索引不能走 topic hash 或消息 manifest 快速成功", () => {
+  const topicId = "topic-unhealthy";
+  markHistoryTopicUnhealthy(topicId, new Error("invalid JSON"));
+  try {
+    assert.throws(
+      () => handleSyncTopicHashBatch(
+        { hashes: { [topicId]: "" } },
+        fakeDiffDatabase({ topics: { [topicId]: { aggregated_hash: "" } } }),
+      ),
+      (error) => error.code === "HISTORY_SOURCE_INVALID",
+    );
+    assert.throws(
+      () => handleMessageManifest(
+        { topicId },
+        fakeManifestDatabase(),
+      ),
+      (error) => error.code === "HISTORY_SOURCE_INVALID",
+    );
+  } finally {
+    clearHistoryTopicUnhealthy(topicId);
+  }
+});
+
+test("幂等失败重放保留原 HTTP 状态", () => {
+  const operationId = `failure-${process.pid}-${Date.now()}`;
+  recordOperation(operationId, { success: false, error: "durable failure" }, 409);
+  assert.deepEqual(checkIdempotency(operationId), {
+    duplicate: true,
+    result: { success: false, error: "durable failure" },
+    statusCode: 409,
+  });
 });
 
 test("history.json 只有不存在可视为空，损坏内容绝不被覆盖", async (t) => {

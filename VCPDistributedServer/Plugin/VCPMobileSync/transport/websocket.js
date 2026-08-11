@@ -4,6 +4,7 @@
 
 const { getLogger, setWss } = require("../core/logger");
 const { parseJsonWithoutDuplicateKeys } = require("../protocol");
+const { TextDecoder } = require("node:util");
 
 let WebSocket;
 try {
@@ -98,12 +99,15 @@ function startWsServer({ port, syncToken, onMessage }) {
     );
 
     let versionAccepted = false;
+    let terminated = false;
     let messageChain = Promise.resolve();
+    const utf8Decoder = new TextDecoder("utf-8", { fatal: true });
 
     const handleMessage = async (message) => {
+      if (terminated) return;
       try {
         const text =
-          typeof message === "string" ? message : message.toString("utf8");
+          typeof message === "string" ? message : utf8Decoder.decode(message);
         const payload = parseJsonWithoutDuplicateKeys(text);
         if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
           const error = new Error("WebSocket payload must be an object");
@@ -153,6 +157,7 @@ function startWsServer({ port, syncToken, onMessage }) {
           });
         }
       } catch (e) {
+        terminated = true;
         const logger = getLogger();
         logger.logOperation("websocket", "message_handler", "error", "error", e.message);
         if (ws.readyState === WebSocket.OPEN) {
@@ -176,6 +181,7 @@ function startWsServer({ port, syncToken, onMessage }) {
     });
 
     ws.on("close", (code, reason) => {
+      terminated = true;
       const logger = getLogger();
       logger.logOperation("websocket", "disconnection", req.socket?.remoteAddress || "unknown", "info", `code=${code}`);
       logger.endSession();
