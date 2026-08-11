@@ -29,6 +29,9 @@ function registerMinimalIpc() {
     );
     ipcMain.handle('docx:recent-list', () => []);
     ipcMain.handle('docx:fonts-list', () => ['Arial', 'Microsoft YaHei']);
+    ipcMain.handle('load-agents-list', () => []);
+    ipcMain.handle('load-user-avatar', () => null);
+    ipcMain.handle('load-agent-avatar', () => null);
     ipcMain.handle('docx:choose-open', () => ({ success: false, canceled: true }));
     ipcMain.handle('scriptorium:choose-import', () =>
         ({ success: false, canceled: true })

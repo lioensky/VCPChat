@@ -24,6 +24,9 @@ function finish(exitCode) {
 function registerMinimalIpc() {
     ipcMain.handle('get-current-theme', () => nativeTheme.shouldUseDarkColors ? 'dark' : 'light');
     ipcMain.handle('docx:recent-list', () => []);
+    ipcMain.handle('load-agents-list', () => []);
+    ipcMain.handle('load-user-avatar', () => null);
+    ipcMain.handle('load-agent-avatar', () => null);
     ipcMain.handle('docx:fonts-list', () => [
         'Arial',
         'Calibri',
@@ -129,6 +132,11 @@ app.whenReady().then(async () => {
                 before.source === afterSubmit.source
                 && afterSubmit.source.includes('未命名文稿'),
             hasPendingCard: Boolean(document.querySelector('.checkpoint-item.pending')),
+            hasPendingAvatar: Boolean(
+                document.querySelector(
+                    '.checkpoint-item.pending .checkpoint-avatar.agent[role="img"]'
+                )
+            ),
             pendingCounter: document.getElementById('pending-pr-count')?.textContent
         };
     })()`);
@@ -957,6 +965,7 @@ app.whenReady().then(async () => {
         || snapshot.approvalPending.pendingStatus !== 'pending'
         || !snapshot.approvalPending.sourceUnchangedBeforeApproval
         || !snapshot.approvalPending.hasPendingCard
+        || !snapshot.approvalPending.hasPendingAvatar
         || snapshot.approvalPending.pendingCounter !== '1'
         || !snapshot.approvalResult.uiAvailable
         || !snapshot.approvalResult.success

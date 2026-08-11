@@ -85,6 +85,9 @@
         resourceResolver: null,
         mediaLocalItems: [],
         objectController: null,
+        lineageAgents: [],
+        lineageAvatarCache: new Map(),
+        lineageAvatarPending: new Map(),
     };
 
     const asyncCoordinator = asyncModule?.createCoordinator({
@@ -4384,6 +4387,100 @@ ${safeCss}
         }, 0);
     }
 
+    async function initializeLineageAvatars() {
+        if (typeof api.loadAgentsList !== 'function') return [];
+        try {
+            const agents = await api.loadAgentsList();
+            state.lineageAgents = Array.isArray(agents) ? agents : [];
+        } catch (error) {
+            state.lineageAgents = [];
+            console.warn('[Scriptorium] 无法读取 Agent 头像索引：', error);
+        }
+        return state.lineageAgents;
+    }
+
+    function lineageAuthorName(checkpoint) {
+        return String(
+            checkpoint?.author?.name
+            || checkpoint?.author?.signature
+            || checkpoint?.maid?.name
+            || (checkpoint?.source === 'agent' ? '未署名 Agent' : '人类')
+        ).trim();
+    }
+
+    function lineageAvatarFallback(checkpoint, authorName) {
+        if (checkpoint?.source === 'agent') {
+            const compactName = String(authorName || '')
+                .replace(/未署名\s*Agent/gi, '')
+                .replace(/\s*Agent\s*/gi, '')
+                .trim();
+            return compactName.slice(0, 1).toUpperCase() || 'AI';
+        }
+        return '人';
+    }
+
+    async function lineageAvatarFor(checkpoint) {
+        const source = checkpoint?.source === 'agent' ? 'agent' : 'human';
+        const authorName = lineageAuthorName(checkpoint);
+        const cacheKey = `${source}:${authorName.toLocaleLowerCase()}`;
+        if (state.lineageAvatarCache.has(cacheKey)) {
+            return state.lineageAvatarCache.get(cacheKey);
+        }
+        if (state.lineageAvatarPending.has(cacheKey)) {
+            return state.lineageAvatarPending.get(cacheKey);
+        }
+
+        const request = (async () => {
+            try {
+                let avatar = null;
+                if (source === 'human') {
+                    avatar = await api.loadUserAvatar?.();
+                } else {
+                    const normalizedAuthor = authorName.toLocaleLowerCase();
+                    const agent = state.lineageAgents.find((candidate) => {
+                        const normalizedAgent = String(candidate?.name || '').trim().toLocaleLowerCase();
+                        return normalizedAgent
+                            && (normalizedAgent.includes(normalizedAuthor)
+                                || normalizedAuthor.includes(normalizedAgent));
+                    });
+                    if (agent?.folder) avatar = await api.loadAgentAvatar?.(agent.folder);
+                }
+                const resolved = avatar || null;
+                state.lineageAvatarCache.set(cacheKey, resolved);
+                return resolved;
+            } catch (error) {
+                console.warn(`[Scriptorium] 无法读取“${authorName}”的文脉头像：`, error);
+                state.lineageAvatarCache.set(cacheKey, null);
+                return null;
+            } finally {
+                state.lineageAvatarPending.delete(cacheKey);
+            }
+        })();
+
+        state.lineageAvatarPending.set(cacheKey, request);
+        return request;
+    }
+
+    function createLineageAvatar(checkpoint) {
+        const authorName = lineageAuthorName(checkpoint);
+        const avatar = document.createElement('span');
+        avatar.className = `checkpoint-avatar ${checkpoint.source === 'agent' ? 'agent' : 'human'} loading`;
+        avatar.textContent = lineageAvatarFallback(checkpoint, authorName);
+        avatar.dataset.author = authorName;
+        avatar.setAttribute('role', 'img');
+        avatar.setAttribute('aria-label', `${authorName}的头像`);
+        avatar.title = authorName;
+
+        lineageAvatarFor(checkpoint).then((source) => {
+            if (!source || !avatar.isConnected || avatar.dataset.author !== authorName) return;
+            avatar.style.backgroundImage = `url("${String(source).replace(/["\\\r\n]/g, '\\$&')}")`;
+            avatar.textContent = '';
+            avatar.classList.add('has-avatar');
+            avatar.classList.remove('loading');
+        });
+        return avatar;
+    }
+
     function renderLineage() {
         elements['checkpoint-count'].textContent = String(state.checkpoints.length);
         const pendingCount = state.checkpoints.filter((record) => record.status === 'pending').length;
@@ -4399,11 +4496,13 @@ ${safeCss}
             item.className = `checkpoint-item ${checkpoint.source} ${status}${
                 highRisk ? ' high-risk' : ''
             }`;
-            item.innerHTML = '<div class="checkpoint-meta"><span class="checkpoint-source"></span><time></time></div><h3></h3><p></p><span class="checkpoint-status"></span>';
-            const authorName = checkpoint.author?.name || checkpoint.author?.signature || '';
+            item.innerHTML = '<div class="checkpoint-meta"><span class="checkpoint-identity"><span class="checkpoint-source"></span></span><time></time></div><h3></h3><p></p><span class="checkpoint-status"></span>';
+            const authorName = lineageAuthorName(checkpoint);
+            const identity = item.querySelector('.checkpoint-identity');
+            identity.prepend(createLineageAvatar(checkpoint));
             item.querySelector('.checkpoint-source').textContent = checkpoint.source === 'agent'
-                ? `AI 协作${authorName ? ` · ${authorName}` : ''}`
-                : `人类刻点${authorName ? ` · ${authorName}` : ''}`;
+                ? `AI 协作 · ${authorName}`
+                : `人类刻点 · ${authorName}`;
             item.querySelector('time').textContent = new Date(checkpoint.createdAt).toLocaleString('zh-CN');
             item.querySelector('h3').textContent = checkpoint.name;
             item.querySelector('p').textContent = checkpoint.summary
@@ -5152,8 +5251,14 @@ ${safeCss}
                 renderStyleLibrary();
             }
         });
-        await Promise.all([loadSystemFonts(), renderRecentDocuments()]);
+        await Promise.all([
+            loadSystemFonts(),
+            renderRecentDocuments(),
+        ]);
         renderLineage();
+        // 头像属于非阻塞易用性增强。精简测试宿主或旧主进程可能尚未注册
+        // 头像 IPC，不能因此延迟文档工作面就绪；索引到达后再刷新文脉即可。
+        initializeLineageAvatars().then(renderLineage);
         updateIdentity();
         api.windowReady({ surface: 'scriptorium', version: 2, format: core.FORMAT });
     }

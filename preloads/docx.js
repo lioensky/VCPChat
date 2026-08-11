@@ -21,6 +21,11 @@ const scriptoriumAPI = Object.freeze({
     listRecent: () => ipcRenderer.invoke('docx:recent-list'),
     listSystemFonts: (forceRefresh = false) => ipcRenderer.invoke('docx:fonts-list', forceRefresh),
 
+    // 文脉署名头像只读取现有用户与 Agent 资料，不向文档工程写入本机路径。
+    loadAgentsList: () => ipcRenderer.invoke('load-agents-list'),
+    loadUserAvatar: () => ipcRenderer.invoke('load-user-avatar'),
+    loadAgentAvatar: (folderName) => ipcRenderer.invoke('load-agent-avatar', folderName),
+
     getCurrentTheme: () => ipcRenderer.invoke('get-current-theme'),
     windowReady: (payload = {}) => ipcRenderer.send('window-lifecycle:ready', {
         appId: 'docx-editor',
