@@ -93,6 +93,10 @@
         textContextBlock: null,
         textContextRange: null,
         textContextPoint: null,
+        findQuery: '',
+        findMatches: [],
+        findIndex: -1,
+        findSourceMarks: [],
     };
 
     const asyncCoordinator = asyncModule?.createCoordinator({
@@ -195,6 +199,8 @@
             'lineage-detail-record', 'lineage-detail-change', 'lineage-snapshot-status',
             'lineage-restore-btn', 'lineage-restore-dialog', 'lineage-restore-message',
             'lineage-restore-cancel-btn', 'lineage-restore-confirm-btn',
+            'find-panel', 'find-input', 'find-scope', 'find-status',
+            'find-previous-btn', 'find-next-btn', 'find-close-btn',
         ].forEach((id) => {
             elements[id] = $(id);
         });
@@ -634,6 +640,16 @@ ${core.formatHtml(core.ensureTextNodeIds(documentSource.html))}`;
     background-color: rgba(58, 139, 120, .12) !important;
     box-shadow: 0 0 0 5px rgba(58, 139, 120, .06) !important;
 }
+::highlight(scriptorium-find-match) {
+    color: inherit;
+    background: rgba(242, 169, 0, .36);
+    text-decoration: underline rgba(184, 117, 0, .72) 1px;
+}
+::highlight(scriptorium-find-current) {
+    color: #171c1a;
+    background: #ffc94a;
+    text-decoration: underline #8b5e00 2px;
+}
 /*
  * 对象编辑装饰仅存在于编辑 ShadowRoot。对象本身的布局属性位于源码，
  * 选择框、拖拽光标和落点提示不会进入 VDOC 或导出结果。
@@ -885,6 +901,9 @@ ${surface === 'edit' ? `
             });
         }
         renderOutline();
+        if (!elements['find-panel']?.hidden && state.mode === 'render') {
+            window.requestAnimationFrame(refreshFindResults);
+        }
         elements['page-status'].textContent = isSlideDeck()
             ? `第 ${state.activeSlideIndex + 1} 页 / 共 ${state.document.source.slides.length} 页`
             : '连续编辑';
@@ -2402,8 +2421,12 @@ ${parsedDocument().html}
     }
 
     function richClipboardPayload() {
-        const blocks = selectedEditableBlocks(true);
-        const range = selectedRange(true);
+        // copy/cut 事件触发时浏览器实时选区才是用户当前意图。不能优先使用
+        // state.selectionRange：它可能是此前右键格式条或全文选择遗留的旧范围，
+        // 会让复制一个标题实际携带整份旧选区，随后“维持格式粘贴”看似丢失
+        // 标签与样式。保存选区只供点击浮动控件导致焦点离开文稿时恢复。
+        const blocks = selectedEditableBlocks(false);
+        const range = selectedRange(false);
         if (!blocks.length || !range) return null;
 
         const fullBlocks = state.explicitBlockSelection
@@ -2890,6 +2913,222 @@ ${parsedDocument().html}
         return sourceEditorController.validate();
     }
 
+    function clearFindPresentation() {
+        if (window.CSS?.highlights) {
+            CSS.highlights.delete('scriptorium-find-match');
+            CSS.highlights.delete('scriptorium-find-current');
+        }
+        state.findSourceMarks.forEach((mark) => mark.clear?.());
+        state.findSourceMarks = [];
+    }
+
+    function findSurfaceRoot() {
+        if (state.mode === 'read') return getReadRoot();
+        if (state.mode === 'render') return getRenderRoot();
+        return null;
+    }
+
+    function findScopeLabel() {
+        if (state.mode === 'html') return 'HTML 源码';
+        if (state.mode === 'css') return 'CSS 源码';
+        if (state.mode === 'read') return '预览文字';
+        return '文稿文字';
+    }
+
+    function setFindStatus(message, empty = false) {
+        elements['find-status'].textContent = message;
+        elements['find-status'].classList.toggle('empty', empty);
+        const available = state.findMatches.length > 0;
+        elements['find-previous-btn'].disabled = !available;
+        elements['find-next-btn'].disabled = !available;
+    }
+
+    function textNodesForFind(root) {
+        const runtime = root?.querySelector('.vdoc-runtime');
+        if (!runtime) return [];
+        const nodes = [];
+        const walker = document.createTreeWalker(runtime, NodeFilter.SHOW_TEXT, {
+            acceptNode(node) {
+                if (!node.nodeValue) return NodeFilter.FILTER_REJECT;
+                const parent = node.parentElement;
+                if (!parent || parent.closest(
+                    'style, script, noscript, [data-vdoc-object-resize-handle]'
+                )) {
+                    return NodeFilter.FILTER_REJECT;
+                }
+                return NodeFilter.FILTER_ACCEPT;
+            },
+        });
+        for (let node = walker.nextNode(); node; node = walker.nextNode()) nodes.push(node);
+        return nodes;
+    }
+
+    function renderedFindMatches(query) {
+        const root = findSurfaceRoot();
+        if (!root) return [];
+        if (state.mode === 'read') {
+            root.querySelectorAll('.vdoc-page[data-runtime-state="tombstone"]')
+                .forEach(activatePage);
+        }
+        const nodes = textNodesForFind(root);
+        const segments = [];
+        let text = '';
+        let previousBlock = null;
+        nodes.forEach((node) => {
+            const block = node.parentElement?.closest?.('[data-vdoc-text]') || null;
+            if (text && block !== previousBlock) text += '\n';
+            const start = text.length;
+            text += node.nodeValue;
+            segments.push({ node, start, end: text.length });
+            previousBlock = block;
+        });
+        const normalizedText = text.toLocaleLowerCase();
+        const normalizedQuery = query.toLocaleLowerCase();
+        const matches = [];
+        let offset = 0;
+        while (normalizedQuery && (offset = normalizedText.indexOf(normalizedQuery, offset)) >= 0) {
+            const endOffset = offset + normalizedQuery.length;
+            const startSegment = segments.find((segment) =>
+                offset >= segment.start && offset < segment.end
+            );
+            const endSegment = [...segments].reverse().find((segment) =>
+                endOffset > segment.start && endOffset <= segment.end
+            );
+            if (startSegment && endSegment) {
+                const range = document.createRange();
+                range.setStart(startSegment.node, offset - startSegment.start);
+                range.setEnd(endSegment.node, endOffset - endSegment.start);
+                matches.push({ type: 'rendered', range });
+            }
+            offset = Math.max(endOffset, offset + 1);
+        }
+        return matches;
+    }
+
+    function sourceFindMatches(query) {
+        const source = getSourceValue();
+        const normalizedSource = source.toLocaleLowerCase();
+        const normalizedQuery = query.toLocaleLowerCase();
+        const matches = [];
+        let offset = 0;
+        while (normalizedQuery && (offset = normalizedSource.indexOf(normalizedQuery, offset)) >= 0) {
+            matches.push({
+                type: 'source',
+                fromIndex: offset,
+                toIndex: offset + normalizedQuery.length,
+            });
+            offset = Math.max(offset + normalizedQuery.length, offset + 1);
+        }
+        return matches;
+    }
+
+    function presentRenderedFindMatches() {
+        if (!window.CSS?.highlights || typeof window.Highlight !== 'function') return;
+        const ranges = state.findMatches.map((match) => match.range);
+        const current = ranges[state.findIndex];
+        CSS.highlights.set(
+            'scriptorium-find-match',
+            new Highlight(...ranges.filter((range) => range !== current))
+        );
+        CSS.highlights.set(
+            'scriptorium-find-current',
+            new Highlight(...(current ? [current] : []))
+        );
+    }
+
+    function presentSourceFindMatches() {
+        const editor = state.sourceEditor;
+        if (!editor) return;
+        state.findSourceMarks = state.findMatches.map((match, index) =>
+            editor.markText(
+                editor.posFromIndex(match.fromIndex),
+                editor.posFromIndex(match.toIndex),
+                {
+                    className: index === state.findIndex
+                        ? 'cm-vdoc-find-current'
+                        : 'cm-vdoc-find-match',
+                }
+            )
+        );
+    }
+
+    function revealFindMatch() {
+        clearFindPresentation();
+        const match = state.findMatches[state.findIndex];
+        if (!match) return false;
+        if (match.type === 'source') {
+            presentSourceFindMatches();
+            const editor = state.sourceEditor;
+            const from = editor.posFromIndex(match.fromIndex);
+            const to = editor.posFromIndex(match.toIndex);
+            editor.setSelection(from, to);
+            editor.scrollIntoView({ from, to }, 90);
+        } else {
+            presentRenderedFindMatches();
+            const target = match.range.startContainer.parentElement;
+            target?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+        }
+        setFindStatus(`${state.findIndex + 1} / ${state.findMatches.length}`);
+        return true;
+    }
+
+    function refreshFindResults(options = {}) {
+        if (!elements['find-panel'] || elements['find-panel'].hidden) return false;
+        const query = String(elements['find-input'].value || '');
+        clearFindPresentation();
+        state.findQuery = query;
+        state.findMatches = [];
+        state.findIndex = -1;
+        elements['find-scope'].textContent = findScopeLabel();
+        elements['find-input'].placeholder =
+            state.mode === 'html' || state.mode === 'css' ? '查找源码' : '查找文字';
+        if (!query) {
+            setFindStatus('输入以查找');
+            return false;
+        }
+        state.findMatches = state.mode === 'html' || state.mode === 'css'
+            ? sourceFindMatches(query)
+            : renderedFindMatches(query);
+        if (!state.findMatches.length) {
+            setFindStatus('无匹配', true);
+            return false;
+        }
+        state.findIndex = options.preserveIndex
+            ? Math.min(Math.max(0, options.index ?? 0), state.findMatches.length - 1)
+            : 0;
+        return revealFindMatch();
+    }
+
+    function moveFindMatch(direction = 1) {
+        if (!state.findMatches.length) return refreshFindResults();
+        state.findIndex = (
+            state.findIndex + direction + state.findMatches.length
+        ) % state.findMatches.length;
+        return revealFindMatch();
+    }
+
+    function openFindPanel() {
+        if (!state.ready) return false;
+        elements['find-panel'].hidden = false;
+        elements['find-scope'].textContent = findScopeLabel();
+        elements['find-input'].placeholder =
+            state.mode === 'html' || state.mode === 'css' ? '查找源码' : '查找文字';
+        refreshFindResults();
+        elements['find-input'].focus();
+        elements['find-input'].select();
+        return true;
+    }
+
+    function closeFindPanel() {
+        if (!elements['find-panel'] || elements['find-panel'].hidden) return false;
+        clearFindPresentation();
+        elements['find-panel'].hidden = true;
+        state.findMatches = [];
+        state.findIndex = -1;
+        if (state.mode === 'html' || state.mode === 'css') state.sourceEditor?.focus();
+        return true;
+    }
+
     function refreshSourceColorMarks() {
         return sourceEditorController.refreshColorMarks();
     }
@@ -2971,6 +3210,10 @@ ${parsedDocument().html}
                 validateSource();
                 refreshSourceColorMarks();
             }, 0);
+        }
+
+        if (!elements['find-panel'].hidden) {
+            window.setTimeout(refreshFindResults, isSource ? 0 : 1);
         }
     }
 
@@ -5251,10 +5494,16 @@ ${safeCss}
             importStylePack(event.target.files?.[0]);
         });
         elements['style-export-btn'].addEventListener('click', exportStylePack);
-        elements['find-btn'].addEventListener('click', () => {
-            const query = prompt('查找文字');
-            if (query) window.find(query);
+        elements['find-btn'].addEventListener('click', openFindPanel);
+        elements['find-input'].addEventListener('input', () => refreshFindResults());
+        elements['find-input'].addEventListener('keydown', (event) => {
+            if (event.key !== 'Enter') return;
+            event.preventDefault();
+            moveFindMatch(event.shiftKey ? -1 : 1);
         });
+        elements['find-previous-btn'].addEventListener('click', () => moveFindMatch(-1));
+        elements['find-next-btn'].addEventListener('click', () => moveFindMatch(1));
+        elements['find-close-btn'].addEventListener('click', closeFindPanel);
         elements['insert-table-btn'].addEventListener('click', () => insertStructureBlock('table'));
         elements['zoom-range'].addEventListener('input', (event) => updateZoom(event.target.value));
         elements['zoom-out-btn'].addEventListener('click', () => updateZoom(state.zoom - 10));
@@ -5450,6 +5699,9 @@ ${safeCss}
                 && !formControl) {
                 event.preventDefault();
                 deleteExplicitBlockSelection();
+            } else if (modifier && key === 'f') {
+                event.preventDefault();
+                openFindPanel();
             } else if (modifier && key === 'a' && state.ready && state.mode === 'render' && !formControl) {
                 event.preventDefault();
                 selectEntireRenderedDocument();
@@ -5469,6 +5721,11 @@ ${safeCss}
                 event.preventDefault();
                 restoreHistory(1);
             } else if (event.key === 'Escape') {
+                if (!elements['find-panel'].hidden) {
+                    event.preventDefault();
+                    closeFindPanel();
+                    return;
+                }
                 if (document.body.classList.contains('focus-mode')) {
                     event.preventDefault();
                     setFocusMode(false);
@@ -5549,6 +5806,7 @@ ${safeCss}
             state.objectController?.dispose();
             state.pageObserver?.disconnect();
             state.slideThumbnailObserver?.disconnect();
+            clearFindPresentation();
             window.clearTimeout(state.paginationTimer);
             window.clearTimeout(state.renderUpdateTimer);
             window.clearTimeout(state.sourceEditorTimer);

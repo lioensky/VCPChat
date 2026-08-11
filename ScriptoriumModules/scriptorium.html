@@ -407,6 +407,33 @@
 
     <div id="toast-region" class="toast-region" aria-live="polite"></div>
 
+    <section id="find-panel" class="find-panel" role="search"
+        aria-label="在当前工作面中查找" hidden>
+        <div class="find-input-shell">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="10.5" cy="10.5" r="6.5"/>
+                <path d="m16 16 5 5"/>
+            </svg>
+            <input id="find-input" type="search" placeholder="查找文字"
+                autocomplete="off" spellcheck="false" aria-label="查找内容">
+            <span id="find-scope" class="find-scope">文字</span>
+        </div>
+        <span id="find-status" class="find-status" role="status"
+            aria-live="polite">输入以查找</span>
+        <div class="find-actions">
+            <button id="find-previous-btn" type="button" title="上一个（Shift+Enter）"
+                aria-label="上一个匹配" disabled>
+                <svg viewBox="0 0 24 24"><path d="m6 15 6-6 6 6"/></svg>
+            </button>
+            <button id="find-next-btn" type="button" title="下一个（Enter）"
+                aria-label="下一个匹配" disabled>
+                <svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>
+            </button>
+            <button id="find-close-btn" type="button" class="find-close"
+                title="关闭（Esc）" aria-label="关闭查找">×</button>
+        </div>
+    </section>
+
     <div id="selection-format-bar" class="selection-format-bar" role="toolbar" aria-label="选中文字快捷格式" hidden>
         <label class="selection-format-control selection-font-control" title="字体">
             <span class="sr-only">字体</span>
