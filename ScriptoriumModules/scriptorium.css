@@ -4163,10 +4163,11 @@ body.focus-mode .document-workspace::before {
     position: fixed;
     z-index: 1710;
     display: grid;
-    width: 238px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: min(620px, calc(100vw - 16px));
     padding: 6px;
     border: 1px solid var(--scriptorium-hairline);
-    border-radius: 10px;
+    border-radius: 12px;
     color: var(--primary-text);
     background:
         linear-gradient(145deg, var(--scriptorium-accent-soft), transparent 56%),
@@ -4176,7 +4177,22 @@ body.focus-mode .document-workspace::before {
     user-select: none;
 }
 
-.text-context-menu button {
+.text-context-menu > .selection-format-bar {
+    position: static;
+    grid-column: 1 / -1;
+    width: 100%;
+    height: auto;
+    min-height: 44px;
+    flex-wrap: wrap;
+    box-shadow: none;
+    animation: none;
+}
+
+.text-context-menu > .text-menu-separator {
+    grid-column: 1 / -1;
+}
+
+.text-context-menu > button {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
@@ -4192,14 +4208,14 @@ body.focus-mode .document-workspace::before {
     cursor: pointer;
 }
 
-.text-context-menu button:hover,
-.text-context-menu button:focus-visible {
+.text-context-menu > button:hover,
+.text-context-menu > button:focus-visible {
     outline: 0;
     color: var(--highlight-text);
     background: var(--scriptorium-accent-soft);
 }
 
-.text-context-menu button:disabled {
+.text-context-menu > button:disabled {
     opacity: .36;
     pointer-events: none;
 }
@@ -4221,6 +4237,28 @@ body.focus-mode .document-workspace::before {
     height: 1px;
     margin: 5px 4px;
     background: var(--scriptorium-hairline);
+}
+
+@media (max-width: 680px) {
+    .text-context-menu {
+        grid-template-columns: 1fr;
+        width: min(390px, calc(100vw - 16px));
+        max-height: calc(100vh - 16px);
+        overflow-y: auto;
+    }
+
+    .text-context-menu > .selection-format-bar,
+    .text-context-menu > .text-menu-separator {
+        grid-column: 1;
+    }
+
+    .text-context-menu > .selection-format-bar {
+        align-items: stretch;
+    }
+
+    .text-context-menu .selection-font-control {
+        width: min(142px, calc(100% - 70px));
+    }
 }
 
 .object-context-menu {

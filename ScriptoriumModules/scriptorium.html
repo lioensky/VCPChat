@@ -434,40 +434,6 @@
         </div>
     </section>
 
-    <div id="selection-format-bar" class="selection-format-bar" role="toolbar" aria-label="选中文字快捷格式" hidden>
-        <label class="selection-format-control selection-font-control" title="字体">
-            <span class="sr-only">字体</span>
-            <select id="selection-font-family" aria-label="快捷字体"></select>
-        </label>
-        <label class="selection-format-control selection-size-control" title="字号">
-            <span class="sr-only">字号</span>
-            <select id="selection-font-size" aria-label="快捷字号">
-                <option value="9pt">9</option>
-                <option value="10pt">10</option>
-                <option value="10.5pt">10.5</option>
-                <option value="11pt">11</option>
-                <option value="12pt" selected>12</option>
-                <option value="14pt">14</option>
-                <option value="16pt">16</option>
-                <option value="18pt">18</option>
-                <option value="22pt">22</option>
-                <option value="26pt">26</option>
-                <option value="32pt">32</option>
-                <option value="42pt">42</option>
-            </select>
-        </label>
-        <span class="selection-format-divider"></span>
-        <button type="button" data-selection-command="bold" title="粗体"><strong>B</strong></button>
-        <button type="button" data-selection-command="italic" class="quick-italic" title="斜体"><strong>I</strong></button>
-        <button type="button" data-selection-command="underline" class="quick-underline" title="下划线"><strong>U</strong></button>
-        <label class="selection-color-control" title="文字颜色">
-            <span>A</span>
-            <input id="selection-text-color" type="color" value="#1b211f" aria-label="快捷文字颜色">
-        </label>
-        <span class="selection-format-divider"></span>
-        <button id="advanced-style-btn" type="button" class="advanced-style-trigger" title="应用高级样式">高级样式</button>
-    </div>
-
     <div id="style-library-dialog" class="style-library-backdrop" role="dialog" aria-modal="true" aria-labelledby="style-library-title" hidden>
         <section class="style-library-dialog">
             <header class="style-library-header">
@@ -571,6 +537,45 @@
 
     <nav id="text-context-menu" class="text-context-menu" role="menu"
         aria-label="文字与文档操作" hidden>
+        <div id="selection-format-bar" class="selection-format-bar" role="toolbar"
+            aria-label="选中文字快捷格式" hidden>
+            <label class="selection-format-control selection-font-control" title="字体">
+                <span class="sr-only">字体</span>
+                <select id="selection-font-family" aria-label="快捷字体"></select>
+            </label>
+            <label class="selection-format-control selection-size-control" title="字号">
+                <span class="sr-only">字号</span>
+                <select id="selection-font-size" aria-label="快捷字号">
+                    <option value="9pt">9</option>
+                    <option value="10pt">10</option>
+                    <option value="10.5pt">10.5</option>
+                    <option value="11pt">11</option>
+                    <option value="12pt" selected>12</option>
+                    <option value="14pt">14</option>
+                    <option value="16pt">16</option>
+                    <option value="18pt">18</option>
+                    <option value="22pt">22</option>
+                    <option value="26pt">26</option>
+                    <option value="32pt">32</option>
+                    <option value="42pt">42</option>
+                </select>
+            </label>
+            <span class="selection-format-divider"></span>
+            <button type="button" data-selection-command="bold" title="粗体"><strong>B</strong></button>
+            <button type="button" data-selection-command="italic" class="quick-italic"
+                title="斜体"><strong>I</strong></button>
+            <button type="button" data-selection-command="underline" class="quick-underline"
+                title="下划线"><strong>U</strong></button>
+            <label class="selection-color-control" title="文字颜色">
+                <span>A</span>
+                <input id="selection-text-color" type="color" value="#1b211f"
+                    aria-label="快捷文字颜色">
+            </label>
+            <span class="selection-format-divider"></span>
+            <button id="advanced-style-btn" type="button" class="advanced-style-trigger"
+                title="应用高级样式">高级样式</button>
+        </div>
+        <span class="text-menu-separator text-format-separator" data-format-separator hidden></span>
         <button type="button" data-text-action="cut" data-requires-selection role="menuitem">
             <span>剪切</span><kbd>Ctrl+X</kbd>
         </button>

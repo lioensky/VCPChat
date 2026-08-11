@@ -1352,20 +1352,16 @@ ${parsedDocument().html}
         root.addEventListener('copy', (event) => {
             const payload = richClipboardPayload();
             if (!payload) return;
-            state.copiedRichHtml = payload.html;
-            state.copiedPlainText = payload.text;
-            event.clipboardData?.setData('text/plain', payload.text);
-            event.clipboardData?.setData('text/html', payload.html);
+            writeRichClipboardPayload(payload, event.clipboardData);
             event.preventDefault();
         }, listenerOptions);
 
         root.addEventListener('cut', (event) => {
             const payload = richClipboardPayload();
             if (!payload) return;
-            state.copiedRichHtml = payload.html;
-            state.copiedPlainText = payload.text;
-            event.clipboardData?.setData('text/plain', payload.text);
-            event.clipboardData?.setData('text/html', payload.html);
+            writeRichClipboardPayload(payload, event.clipboardData);
+            event.preventDefault();
+            deleteClipboardSelection();
         }, listenerOptions);
 
         root.addEventListener('paste', (event) => {
@@ -1400,12 +1396,7 @@ ${parsedDocument().html}
             if (event.target.closest?.('[data-vdoc-object-id]')) return;
             event.preventDefault();
             const block = event.target.closest?.('[data-vdoc-text]');
-            const hasSelection = state.explicitBlockSelection || captureCurrentSelection();
-            if (hasSelection && block) {
-                showSelectionBar(event.clientX, event.clientY);
-            } else {
-                hideSelectionBar();
-            }
+            if (!state.explicitBlockSelection) captureCurrentSelection();
             showTextContextMenu(event.clientX, event.clientY, block, event);
         }, listenerOptions);
     }
@@ -1491,6 +1482,16 @@ ${parsedDocument().html}
         range.setEndAfter(blocks[blocks.length - 1]);
         state.selectionRange = range.cloneRange();
         state.selectionText = blocks.map((block) => block.textContent || '').join('\n');
+
+        // Shift/Ctrl 多选会在 pointerdown 中 preventDefault，浏览器因此不会把
+        // 焦点移入 contenteditable。只有 Range 而没有 Shadow DOM 内焦点时，
+        // Ctrl+C 的 copy 事件会随机发往外层页面或此前控件，渲染根监听器收不到。
+        // 先稳定焦点，再安装完整 Range，确保多选复制与剪切始终进入文稿事件链。
+        try {
+            blocks[0].focus({ preventScroll: true });
+        } catch {
+            blocks[0].focus();
+        }
         const selection = currentRenderSelection();
         selection.removeAllRanges();
         selection.addRange(range);
@@ -2421,15 +2422,35 @@ ${parsedDocument().html}
     }
 
     function richClipboardPayload() {
-        // copy/cut 事件触发时浏览器实时选区才是用户当前意图。不能优先使用
-        // state.selectionRange：它可能是此前右键格式条或全文选择遗留的旧范围，
-        // 会让复制一个标题实际携带整份旧选区，随后“维持格式粘贴”看似丢失
-        // 标签与样式。保存选区只供点击浮动控件导致焦点离开文稿时恢复。
-        const blocks = selectedEditableBlocks(false);
-        const range = selectedRange(false);
-        if (!blocks.length || !range) return null;
+        // copy/cut 事件触发时浏览器实时选区才是用户当前意图。不能直接调用
+        // selectedEditableBlocks()：显式块选择状态可能在浏览器已建立新 Range 后
+        // 仍短暂残留，造成复制结果随此前是否用过全文/跨块选择而时好时坏。
+        const selection = currentRenderSelection();
+        const liveRange = selection?.rangeCount && !selection.isCollapsed
+            ? selection.getRangeAt(0)
+            : null;
+        const root = getRenderRoot();
+        const liveRangeInRoot = Boolean(
+            liveRange && root?.contains(liveRange.commonAncestorContainer)
+        );
+        const explicitBlocks = state.explicitBlockSelection ? blocksForIds() : [];
+        const explicitIds = new Set(explicitBlocks.map(blockIdentityOf).filter(Boolean));
+        const liveBlocks = liveRangeInRoot ? editableBlocksForRange(liveRange) : [];
+        const liveIds = new Set(liveBlocks.map(blockIdentityOf).filter(Boolean));
 
-        const fullBlocks = state.explicitBlockSelection
+        // Shadow DOM 的 Selection 对“节点边界到节点边界”的跨块 Range 暴露并不
+        // 稳定：焦点变化或原生 copy 分派期间，getSelection() 可能短暂折叠。
+        // 显式多选因此以 selectionBlockIds 为权威；只有实时 Range 明确覆盖了
+        // 另一组块时，才说明用户已切换到普通文字选区，不再使用旧多选。
+        const liveSelectionDiffers = liveRangeInRoot
+            && (liveIds.size !== explicitIds.size
+                || [...liveIds].some((id) => !explicitIds.has(id)));
+        const usesExplicitBlocks = explicitBlocks.length > 0 && !liveSelectionDiffers;
+        const range = usesExplicitBlocks ? state.selectionRange : liveRange;
+        const blocks = usesExplicitBlocks ? explicitBlocks : liveBlocks;
+        if (!blocks.length || (!usesExplicitBlocks && !range)) return null;
+
+        const fullBlocks = usesExplicitBlocks
             || blocks.every((block) => {
                 const blockRange = document.createRange();
                 blockRange.selectNodeContents(block);
@@ -2457,6 +2478,106 @@ ${parsedDocument().html}
             html: core.sanitizeHtml(container.innerHTML),
             text: range.toString(),
         };
+    }
+
+    function rememberRichClipboardPayload(payload) {
+        if (!payload) return false;
+        state.copiedRichHtml = String(payload.html || '');
+        state.copiedPlainText = String(payload.text || '');
+        return true;
+    }
+
+    async function writeRichClipboardPayload(payload, clipboardData = null) {
+        if (!rememberRichClipboardPayload(payload)) return false;
+        if (clipboardData) {
+            clipboardData.setData('text/plain', state.copiedPlainText);
+            clipboardData.setData('text/html', state.copiedRichHtml);
+            return true;
+        }
+
+        try {
+            if (navigator.clipboard?.write && typeof ClipboardItem === 'function') {
+                await navigator.clipboard.write([
+                    new ClipboardItem({
+                        'text/plain': new Blob(
+                            [state.copiedPlainText],
+                            { type: 'text/plain' }
+                        ),
+                        'text/html': new Blob(
+                            [state.copiedRichHtml],
+                            { type: 'text/html' }
+                        ),
+                    }),
+                ]);
+            } else if (navigator.clipboard?.writeText) {
+                await navigator.clipboard.writeText(state.copiedPlainText);
+            } else {
+                throw new Error('当前环境未提供 Clipboard API');
+            }
+            return true;
+        } catch (error) {
+            // 内部富文本剪贴板已经写入，维持格式粘贴仍然可用。系统剪贴板
+            // 失败不能反过来丢弃这份载荷，但需要明确告知用户降级状态。
+            console.warn('[Scriptorium] System clipboard write failed:', error);
+            showToast('已复制到 Scriptorium 内部剪贴板；系统剪贴板写入受限。', 'info');
+            return true;
+        }
+    }
+
+    function deleteTextRangeSelection(range = selectedRange(true)) {
+        if (!range || range.collapsed) return false;
+        const blocks = editableBlocksForRange(range);
+        if (!blocks.length) return false;
+        const selection = currentRenderSelection();
+        try {
+            range.deleteContents();
+            range.collapse(true);
+            selection.removeAllRanges();
+            selection.addRange(range);
+        } catch {
+            return false;
+        }
+
+        state.explicitBlockSelection = false;
+        state.selectionRange = range.cloneRange();
+        state.selectionText = '';
+        state.selectionBlockIds = [];
+        state.activeEditableBlock = blocks.find((block) => block.isConnected) || null;
+        blocks.filter((block) => block.isConnected).forEach((block) => {
+            queueRenderedNodeUpdate(block);
+            window.ScriptoriumPretext?.evictNode(block.dataset.vdocText);
+        });
+        updateBlockSelectionPresentation();
+        state.activeEditableBlock?.focus?.();
+        markDirty({ coalesce: true });
+        scheduleEditSnapshot();
+        return true;
+    }
+
+    function deleteClipboardSelection() {
+        if (state.explicitBlockSelection) return deleteExplicitBlockSelection();
+        return deleteTextRangeSelection();
+    }
+
+    async function runClipboardCommand(action, options = {}) {
+        if (state.mode !== 'render') return false;
+        const payload = richClipboardPayload();
+        if (!payload) {
+            if (!options.silent) showToast('当前没有可复制的文字或文本块。');
+            return false;
+        }
+        const written = await writeRichClipboardPayload(payload, options.clipboardData);
+        if (!written) return false;
+        if (action === 'cut' && !deleteClipboardSelection()) return false;
+        if (!options.silent) {
+            const count = state.explicitBlockSelection
+                ? state.selectionBlockIds.length
+                : editableBlocksForRange(selectedRange(true)).length;
+            showToast(`${action === 'cut' ? '已剪切' : '已复制'}${
+                count > 1 ? ` · ${count} 个文本块` : ''
+            }`, 'success');
+        }
+        return true;
     }
 
     function prepareRichClipboardBlocks(html) {
@@ -3814,15 +3935,19 @@ ${parsedDocument().html}
         }
     }
 
-    function showSelectionBar(x, y) {
+    function showSelectionBar() {
         const bar = elements['selection-format-bar'];
         bar.hidden = false;
-        bar.style.left = `${Math.min(innerWidth - 360, Math.max(10, x + 8))}px`;
-        bar.style.top = `${Math.min(innerHeight - 60, Math.max(10, y + 8))}px`;
+        elements['text-context-menu']
+            ?.querySelector('[data-format-separator]')
+            ?.removeAttribute('hidden');
     }
 
     function hideSelectionBar() {
         elements['selection-format-bar'].hidden = true;
+        elements['text-context-menu']
+            ?.querySelector('[data-format-separator]')
+            ?.setAttribute('hidden', '');
     }
 
     function hideTextContextMenu() {
@@ -3865,11 +3990,18 @@ ${parsedDocument().html}
         menu.querySelectorAll('[data-requires-block]').forEach((control) => {
             control.disabled = !state.textContextBlock;
         });
+        if (hasSelection) showSelectionBar();
+        else hideSelectionBar();
         menu.hidden = false;
-        const width = 246;
-        const height = 290;
-        menu.style.left = `${Math.max(8, Math.min(innerWidth - width - 8, x))}px`;
-        menu.style.top = `${Math.max(8, Math.min(innerHeight - height - 8, y))}px`;
+        menu.style.left = '8px';
+        menu.style.top = '8px';
+        const rect = menu.getBoundingClientRect();
+        menu.style.left = `${
+            Math.max(8, Math.min(innerWidth - rect.width - 8, x))
+        }px`;
+        menu.style.top = `${
+            Math.max(8, Math.min(innerHeight - rect.height - 8, y))
+        }px`;
         sourceEvent?.stopPropagation?.();
         return true;
     }
@@ -3897,9 +4029,8 @@ ${parsedDocument().html}
         hideTextContextMenu();
         const block = state.textContextBlock;
         if (action === 'copy' || action === 'cut') {
-            restoreTextContextSelection();
-            document.execCommand(action);
-            return true;
+            if (!state.explicitBlockSelection) restoreTextContextSelection();
+            return runClipboardCommand(action);
         }
         if (action === 'select-all') return selectEntireRenderedDocument();
         if (action === 'select-block' && block) {
@@ -5618,12 +5749,13 @@ ${safeCss}
                 node?.matches?.('[data-vdoc-text], [data-vdoc-object-id]')
             )) return;
             event.preventDefault();
-            hideSelectionBar();
             showTextContextMenu(event.clientX, event.clientY, null, event);
         });
         window.addEventListener('pointerdown', (event) => {
-            if (!elements['selection-format-bar'].contains(event.target)) hideSelectionBar();
-            if (!elements['text-context-menu'].contains(event.target)) hideTextContextMenu();
+            if (!elements['text-context-menu'].contains(event.target)) {
+                hideTextContextMenu();
+                hideSelectionBar();
+            }
         }, true);
     }
 
@@ -5699,6 +5831,16 @@ ${safeCss}
                 && !formControl) {
                 event.preventDefault();
                 deleteExplicitBlockSelection();
+            } else if (modifier && (key === 'c' || key === 'x')
+                && state.ready
+                && state.mode === 'render'
+                && state.explicitBlockSelection
+                && !formControl) {
+                // 跨块显式选择不能依赖 Chromium 是否把原生 copy/cut 事件
+                // 派发到 ShadowRoot。顶层快捷键直接执行同一套剪贴板事务。
+                event.preventDefault();
+                event.stopImmediatePropagation();
+                runClipboardCommand(key === 'x' ? 'cut' : 'copy');
             } else if (modifier && key === 'f') {
                 event.preventDefault();
                 openFindPanel();
