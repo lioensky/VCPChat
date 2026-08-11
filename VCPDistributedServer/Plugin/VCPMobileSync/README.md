@@ -1,6 +1,6 @@
 # VCPMobileSync (VCP 移动端双向增量同步服务插件)
 
-[![Version](https://img.shields.io/badge/Version-1.0.0-blue.svg?style=flat-square)](./plugin-manifest.json)
+[![Version](https://img.shields.io/badge/Version-1.1.0-blue.svg?style=flat-square)](./plugin-manifest.json)
 [![Platform](https://img.shields.io/badge/Platform-Node.js%20%7C%20Electron-brightgreen.svg?style=flat-square)](https://nodejs.org)
 [![Sync Protocol](https://img.shields.io/badge/Protocol-Sync%20V2--Double%20Hash-orange.svg?style=flat-square)](#三阶段增量同步协议-v2-深度揭秘)
 
@@ -258,7 +258,9 @@ VCP 设计了精密的 **“墓碑拦截 (Tombstone Interceptor)”** 防线：
 
 ## 🚀 版本信息
 
-* **适配标准**：VCPChat 桌面端 $\leftrightarrow$ VCPMobile 手机端 1.0.0 官方同步协议
-* **当前版本**：`1.0.0`
+* **适配标准**：VCPChat 桌面端 $\leftrightarrow$ VCPMobile 手机端 1.1.0 官方同步协议
+* **当前版本**：`1.1.0`
+* **最终确认**：`PHASE_COMPLETED` 的 `PHASE_ACK` 原样回显 `phase`、`sessionId`、`attemptId` 与 `nonce`，避免迟到或重放 ACK 完成错误会话
+* **升级要求**：协议版本采用精确匹配；插件 1.1.0 应与期望同步协议 1.1.0 的 VCPMobile 版本协调发布
 * **架构师 / 作者**：Nova
 * **开源许可**：VCP 闭环生态核心插件

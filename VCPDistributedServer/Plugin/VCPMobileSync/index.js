@@ -32,6 +32,7 @@ const { ingestHistoryToDb } = require("./sync/message");
 const { createCentralSyncAdapter } = require("./sync/central");
 const { isWriteLocked, sanitizeId, deleteEntity, deleteMessage } = require("./sync/entity");
 const { getLogger, resetLogger } = require("./core/logger");
+const { createPhaseAck } = require("./protocol");
 const {
   AGENT_SYNC_FIELDS,
   GROUP_SYNC_FIELDS,
@@ -154,12 +155,12 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
 
           // 所有 manifest 已在 SYNC_MANIFEST 阶段由手机端主动发送并处理完毕。
           // PHASE_START 仅作为阶段确认，不再返回冗余的 PHASE_MANIFESTS。
-          return { type: "PHASE_ACK", phase };
+          return createPhaseAck(payload);
         }
         case "PHASE_COMPLETED": {
           const phase = payload.phase || "owner_metadata";
           logger.completePhase(phase);
-          return { type: "PHASE_ACK", phase };
+          return createPhaseAck(payload, { echoFinalIdentity: true });
         }
         case "SYNC_ENTITY_UPDATE": {
           const { id, dataType, hash, ts } = payload;
