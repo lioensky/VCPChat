@@ -427,26 +427,47 @@ app.whenReady().then(async () => {
 
         const copied = headings[0];
         const target = headings[1];
+        copied.classList.add('smoke-copied-heading');
+        copied.style.letterSpacing = '0.123em';
         const copiedId = copied.dataset.vdocText;
-        const targetId = target.dataset.vdocText;
+        const copiedBlockId = copied.dataset.vdocBlock;
+        const copiedText = copied.textContent || '';
         const selection = root.getSelection ? root.getSelection() : window.getSelection();
-        const range = document.createRange();
-        range.selectNodeContents(target);
+        const copyRange = document.createRange();
+        copyRange.selectNodeContents(copied);
         selection.removeAllRanges();
-        selection.addRange(range);
+        selection.addRange(copyRange);
 
         const clipboard = new DataTransfer();
-        clipboard.setData('text/plain', copied.textContent || '');
-        clipboard.setData('text/html', copied.outerHTML);
-        target.dispatchEvent(new ClipboardEvent('paste', {
+        copied.dispatchEvent(new ClipboardEvent('copy', {
             bubbles: true,
             composed: true,
             cancelable: true,
             clipboardData: clipboard
         }));
 
-        target.appendChild(document.createTextNode(' · 可保存'));
-        target.dispatchEvent(new InputEvent('input', {
+        target.dispatchEvent(new MouseEvent('contextmenu', {
+            bubbles: true,
+            composed: true,
+            cancelable: true,
+            clientX: 500,
+            clientY: 320
+        }));
+        const textMenu = document.getElementById('text-context-menu');
+        const formattedPaste = textMenu.querySelector(
+            '[data-text-action="paste-formatted"]'
+        );
+        const menuVisible = textMenu.hidden === false;
+        formattedPaste.click();
+
+        const pasted = target.nextElementSibling;
+        if (!pasted?.matches?.('[data-vdoc-text]')) {
+            return { available: true, menuVisible, pastedElementCreated: false };
+        }
+        const pastedId = pasted.dataset.vdocText;
+        const pastedBlockId = pasted.dataset.vdocBlock;
+        pasted.appendChild(document.createTextNode(' · 可保存'));
+        pasted.dispatchEvent(new InputEvent('input', {
             bubbles: true,
             composed: true,
             inputType: 'insertText',
@@ -457,12 +478,12 @@ app.whenReady().then(async () => {
         const source = window.ScriptoriumAgent.common.getSource({
             sourceKind: 'html',
             startLine: 1,
-            endLine: 200
+            endLine: 240
         }).source;
         const sourceTemplate = document.createElement('template');
         sourceTemplate.innerHTML = source;
-        const storedTarget = sourceTemplate.content.querySelector(
-            '[data-vdoc-text="' + CSS.escape(targetId) + '"]'
+        const storedPasted = sourceTemplate.content.querySelector(
+            '[data-vdoc-text="' + CSS.escape(pastedId) + '"]'
         );
         const storedCopied = sourceTemplate.content.querySelector(
             '[data-vdoc-text="' + CSS.escape(copiedId) + '"]'
@@ -491,17 +512,23 @@ app.whenReady().then(async () => {
 
         return {
             available: true,
-            pasteDefaultPrevented: target.textContent === (copied.textContent || '') + ' · 可保存',
-            pastedIdentityNotNested: !target.querySelector(
-                '[data-vdoc-text], [data-vdoc-block], [data-vdoc-container]'
-            ),
+            menuVisible,
+            pastedElementCreated: true,
+            pastedKeepsHeadingTag: pasted.tagName === copied.tagName,
+            pastedKeepsClass: pasted.classList.contains('smoke-copied-heading'),
+            pastedKeepsInlineStyle: pasted.style.letterSpacing === '0.123em',
+            pastedUsesNewTextId: Boolean(pastedId && pastedId !== copiedId),
+            pastedUsesNewBlockId: Boolean(pastedBlockId && pastedBlockId !== copiedBlockId),
+            pastedIsSibling: pasted.parentElement === target.parentElement,
             renderedIdsRemainUnique: new Set(
                 [...root.querySelectorAll('[data-vdoc-text]')]
                     .map((node) => node.dataset.vdocText)
             ).size === root.querySelectorAll('[data-vdoc-text]').length,
             sourceIdsRemainUnique: new Set(sourceIds).size === sourceIds.length,
-            targetEditSaved: storedTarget?.textContent === (copied.textContent || '') + ' · 可保存',
-            originalHeadingUnaffected: storedCopied?.textContent === copied.textContent,
+            pastedEditSaved: storedPasted?.textContent === copiedText + ' · 可保存',
+            pastedStyleSaved: storedPasted?.classList.contains('smoke-copied-heading')
+                && storedPasted?.style.letterSpacing === '0.123em',
+            originalHeadingUnaffected: storedCopied?.textContent === copiedText,
             duplicateTextIdsReissued:
                 new Set(normalizedTextIds).size === normalizedTextIds.length,
             duplicateBlockIdsReissued:
@@ -1000,11 +1027,18 @@ app.whenReady().then(async () => {
             && snapshot.formattingInteraction.inlineToggleResults?.[command]?.removed
         )
         || !snapshot.copiedHeadingPasteInteraction.available
-        || !snapshot.copiedHeadingPasteInteraction.pasteDefaultPrevented
-        || !snapshot.copiedHeadingPasteInteraction.pastedIdentityNotNested
+        || !snapshot.copiedHeadingPasteInteraction.menuVisible
+        || !snapshot.copiedHeadingPasteInteraction.pastedElementCreated
+        || !snapshot.copiedHeadingPasteInteraction.pastedKeepsHeadingTag
+        || !snapshot.copiedHeadingPasteInteraction.pastedKeepsClass
+        || !snapshot.copiedHeadingPasteInteraction.pastedKeepsInlineStyle
+        || !snapshot.copiedHeadingPasteInteraction.pastedUsesNewTextId
+        || !snapshot.copiedHeadingPasteInteraction.pastedUsesNewBlockId
+        || !snapshot.copiedHeadingPasteInteraction.pastedIsSibling
         || !snapshot.copiedHeadingPasteInteraction.renderedIdsRemainUnique
         || !snapshot.copiedHeadingPasteInteraction.sourceIdsRemainUnique
-        || !snapshot.copiedHeadingPasteInteraction.targetEditSaved
+        || !snapshot.copiedHeadingPasteInteraction.pastedEditSaved
+        || !snapshot.copiedHeadingPasteInteraction.pastedStyleSaved
         || !snapshot.copiedHeadingPasteInteraction.originalHeadingUnaffected
         || !snapshot.copiedHeadingPasteInteraction.duplicateTextIdsReissued
         || !snapshot.copiedHeadingPasteInteraction.duplicateBlockIdsReissued
