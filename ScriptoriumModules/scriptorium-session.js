@@ -148,7 +148,8 @@
                     kind: presentation
                         ? core.PROJECT_KINDS.SLIDE_DECK
                         : undefined,
-                    source: presentation ? undefined : String(result.html || ''),
+                    source: presentation ? undefined : String(result.source ?? ''),
+                    lineEnding: presentation ? 'lf' : result.lineEnding,
                     slides: presentation ? result.slides : undefined,
                     page: presentation ? result.page : undefined,
                 });
@@ -241,6 +242,7 @@
                                     kind: result.category === 'fonts' ? 'font' : 'media',
                                     name: result.name,
                                     mime: result.mime,
+                                    sourceUrl: url,
                                     description: metadata.description,
                                     nativeWidth: metadata.nativeWidth,
                                     nativeHeight: metadata.nativeHeight,
@@ -343,10 +345,36 @@
                     }
                 }
             } else {
-                const result = await collectHtml(state.document.source.content);
-                state.document.source.content = result.source;
-                collected = result.collected;
-                retained = result.retained;
+                // Markdown-first 真源绝不因资源收纳而改写。资源清单保存
+                // sourceUrl → 内容寻址资源的旁路映射，渲染器再解析派生 HTML。
+                const source = String(state.document.source.content || '');
+                const urls = new Set();
+                source.replace(
+                    /!\[[^\]]*]\(\s*(?:<([^>]+)>|([^\s)]+))(?:\s+["'][^"']*["'])?\s*\)/g,
+                    (_match, angleUrl, plainUrl) => {
+                        const url = angleUrl || plainUrl || '';
+                        if (isCollectableExternalUrl(url)) urls.add(url);
+                        return _match;
+                    }
+                );
+                source.replace(
+                    /<(?:img|video|audio|source)\b[^>]*\bsrc\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s>]+))/gi,
+                    (_match, doubleQuoted, singleQuoted, bare) => {
+                        const url = doubleQuoted || singleQuoted || bare || '';
+                        if (isCollectableExternalUrl(url)) urls.add(url);
+                        return _match;
+                    }
+                );
+                for (const url of urls) {
+                    const outcome = await collectUrl(url);
+                    if (outcome?.reference) collected += 1;
+                    else retained += 1;
+                }
+                for (const url of fontFaceUrls(state.document.source.documentCss)) {
+                    const outcome = await collectUrl(url);
+                    if (outcome?.reference) collected += 1;
+                    else retained += 1;
+                }
             }
             if (collected) {
                 state.document.manifest.modifiedAt = new Date().toISOString();

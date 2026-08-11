@@ -25,16 +25,35 @@
             return new Proxy(document, {
                 get(target, property) {
                     if (property === 'querySelector') {
-                        return (selector) =>
-                            runtimeRoot.querySelector(selector) || target.querySelector(selector);
+                        return (selector) => {
+                            try {
+                                if (runtimeRoot.matches?.(selector)) return runtimeRoot;
+                            } catch {}
+                            return runtimeRoot.querySelector(selector)
+                                || target.querySelector(selector);
+                        };
                     }
                     if (property === 'querySelectorAll') {
-                        return (selector) => runtimeRoot.querySelectorAll(selector);
+                        return (selector) => {
+                            let descendants = [];
+                            try {
+                                descendants = [...runtimeRoot.querySelectorAll(selector)];
+                                return runtimeRoot.matches?.(selector)
+                                    ? [runtimeRoot, ...descendants]
+                                    : descendants;
+                            } catch {
+                                return descendants;
+                            }
+                        };
                     }
                     if (property === 'getElementById') {
-                        return (id) =>
-                            runtimeRoot.querySelector(`#${CSS.escape(String(id))}`)
-                            || target.getElementById(id);
+                        return (id) => {
+                            const normalized = String(id);
+                            if (runtimeRoot.id === normalized) return runtimeRoot;
+                            return runtimeRoot.querySelector(
+                                `#${CSS.escape(normalized)}`
+                            ) || target.getElementById(normalized);
+                        };
                     }
                     const value = Reflect.get(target, property, target);
                     return typeof value === 'function' ? value.bind(target) : value;
@@ -157,6 +176,58 @@
             });
         }
 
+        function createTrackedAnime(root, lifecycle) {
+            if (typeof window.anime !== 'function') return window.anime;
+            const instances = new Set();
+            const register = (instance) => {
+                if (!instance || typeof instance !== 'object') return instance;
+                if (typeof instance.pause === 'function') instances.add(instance);
+                return instance;
+            };
+            const facade = new Proxy(window.anime, {
+                apply(target, thisArgument, argumentsList) {
+                    return register(Reflect.apply(target, thisArgument, argumentsList));
+                },
+                get(target, property, receiver) {
+                    const value = Reflect.get(target, property, receiver);
+                    if (property === 'timeline' && typeof value === 'function') {
+                        return (...argumentsList) =>
+                            register(value.apply(target, argumentsList));
+                    }
+                    return typeof value === 'function' ? value.bind(target) : value;
+                },
+            });
+            const unregisterVisibility = window.ScriptoriumVisibility?.registerCanvas(
+                root,
+                {
+                    pause() {
+                        instances.forEach((instance) => {
+                            try {
+                                instance.pause();
+                            } catch {}
+                        });
+                    },
+                    resume() {
+                        instances.forEach((instance) => {
+                            try {
+                                instance.play?.();
+                            } catch {}
+                        });
+                    },
+                }
+            );
+            lifecycle.addCleanup(() => {
+                unregisterVisibility?.();
+                instances.forEach((instance) => {
+                    try {
+                        instance.pause();
+                    } catch {}
+                });
+                instances.clear();
+            });
+            return facade;
+        }
+
         function executeReviewedScript({
             source,
             root,
@@ -194,9 +265,10 @@
             });
 
             try {
+                const trackedAnime = createTrackedAnime(root, lifecycle);
                 const argumentNames = documentKind === 'pptx'
-                    ? ['scene', 'deck', 'runtime', 'document']
-                    : ['scene', 'runtime', 'document'];
+                    ? ['scene', 'deck', 'runtime', 'document', 'anime']
+                    : ['scene', 'runtime', 'document', 'anime'];
                 const execute = new Function(
                     ...argumentNames,
                     'requestAnimationFrame',
@@ -208,8 +280,8 @@
                     String(source || '')
                 );
                 const baseArguments = documentKind === 'pptx'
-                    ? [root, deck, runtime, createScopedDocument(root)]
-                    : [root, runtime, createScopedDocument(root)];
+                    ? [root, deck, runtime, createScopedDocument(root), trackedAnime]
+                    : [root, runtime, createScopedDocument(root), trackedAnime];
                 const returned = execute.call(
                     root,
                     ...baseArguments,
@@ -351,16 +423,18 @@
                 return null;
             }
 
-            const lifecycle = createTrackedLifecycle();
             const diagnostics = [];
+            const islandLifecycles = new Map();
 
             scriptElements.forEach((scriptElement, index) => {
                 const scriptId = scriptElement.id
                     || scriptElement.dataset.vdocScript
                     || `document-island-${index + 1}`;
-                const island = scriptElement.closest(
-                    '[data-vdoc-interactive], [data-vdoc-component], section, article, figure, div'
-                ) || runtimeRoot;
+                const island = scriptElement.closest('[data-vdoc-island]')
+                    || scriptElement.closest(
+                        '[data-vdoc-interactive], [data-vdoc-component], section, article, figure, div'
+                    )
+                    || runtimeRoot;
 
                 if (scriptElement.dataset.vdocLibrary) {
                     diagnostics.push({
@@ -398,6 +472,9 @@
                     return;
                 }
 
+                const lifecycle = islandLifecycles.get(island)
+                    || createTrackedLifecycle();
+                islandLifecycles.set(island, lifecycle);
                 clearBindingMarkers(island);
                 const result = executeReviewedScript({
                     source: scriptElement.textContent || '',
@@ -416,8 +493,33 @@
                 }
             });
 
+            const visibilityObserver = new IntersectionObserver((entries) => {
+                entries.forEach((entry) => {
+                    if (entry.isIntersecting) {
+                        window.ScriptoriumVisibility.resume(entry.target);
+                    } else {
+                        window.ScriptoriumVisibility.pause(entry.target);
+                    }
+                });
+            }, {
+                root: surface === 'read'
+                    ? document.getElementById('read-host')
+                    : document.getElementById('render-host'),
+                rootMargin: '100% 0px',
+                threshold: 0,
+            });
+            islandLifecycles.forEach((_lifecycle, island) => {
+                visibilityObserver.observe(island);
+            });
+
             recordDiagnostics(diagnostics);
-            state.slideRuntimeDisposer = () => lifecycle.dispose('document island');
+            state.slideRuntimeDisposer = () => {
+                visibilityObserver.disconnect();
+                islandLifecycles.forEach((lifecycle) =>
+                    lifecycle.dispose('document island')
+                );
+                islandLifecycles.clear();
+            };
             state.slideRuntimeIdentity = {
                 slideId: state.document?.manifest?.id || 'document',
                 surface,

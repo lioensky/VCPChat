@@ -6,6 +6,8 @@
             state,
             elements,
             core,
+            hybridCompiler,
+            isSlideDeck,
             getCurrentHtml,
             getCurrentCss,
         } = context;
@@ -25,14 +27,30 @@
             let valid = true;
             let message = '源码有效';
             if (state.sourceMode === 'html') {
-                const template = document.createElement('template');
-                template.innerHTML = source;
-                const blocked = template.content.querySelector('iframe,object,embed');
-                if (blocked) {
-                    valid = false;
-                    message = `禁止使用 <${blocked.tagName.toLowerCase()}>`;
-                } else if (template.content.querySelector('script')) {
-                    message = '源码有效 · 脚本将在应用时执行依赖本地化与安全审查';
+                if (isSlideDeck()) {
+                    const template = document.createElement('template');
+                    template.innerHTML = source;
+                    const blocked = template.content.querySelector('iframe,object,embed');
+                    if (blocked) {
+                        valid = false;
+                        message = `禁止使用 <${blocked.tagName.toLowerCase()}>`;
+                    } else if (template.content.querySelector('script')) {
+                        message = '源码有效 · 脚本将在应用时执行依赖本地化与安全审查';
+                    }
+                } else {
+                    const result = hybridCompiler.validate(source);
+                    const refuses = result.diagnostics.filter(
+                        (item) => item.level === 'refuse'
+                    );
+                    const warnings = result.diagnostics.filter(
+                        (item) => item.level === 'warn'
+                    );
+                    valid = refuses.length === 0;
+                    message = valid
+                        ? `混合源码有效 · ${result.islands.length} 个岛${
+                            warnings.length ? ` · ${warnings.length} 条提示` : ''
+                        }`
+                        : `${refuses[0].message}（第 ${refuses[0].line} 行）`;
                 }
             } else {
                 const opens = (source.match(/\{/g) || []).length;
@@ -108,6 +126,13 @@
         function format() {
             const source = getValue();
             if (state.sourceMode === 'html') {
+                // Markdown-first 真源禁止自动格式化。演示 Scene 仍是 HTML，
+                // 仅该独立产品范式继续使用 HTML 格式化器。
+                if (!isSlideDeck()) {
+                    validate();
+                    refreshColorMarks();
+                    return false;
+                }
                 setValue(core.formatHtml(source));
             } else {
                 setValue(core.sanitizeCss(source)
@@ -128,7 +153,7 @@
         function initialize() {
             if (!window.CodeMirror || state.sourceEditor) return state.sourceEditor;
             state.sourceEditor = window.CodeMirror.fromTextArea(elements['source-editor'], {
-                mode: 'htmlmixed',
+                mode: 'markdown',
                 theme: 'material-darker',
                 lineNumbers: true,
                 lineWrapping: true,
@@ -149,7 +174,12 @@
 
         function configureMode(mode) {
             state.sourceMode = mode;
-            state.sourceEditor?.setOption('mode', mode === 'html' ? 'htmlmixed' : 'css');
+            state.sourceEditor?.setOption(
+                'mode',
+                mode === 'html'
+                    ? (isSlideDeck() ? 'htmlmixed' : 'markdown')
+                    : 'css'
+            );
         }
 
         function refresh(options = {}) {

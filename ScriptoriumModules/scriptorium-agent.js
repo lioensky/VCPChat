@@ -299,18 +299,14 @@
         const dependencies = new Set();
 
         if (!deck) {
-            const result = reviewProgrammableHtml(payload.source, {
-                phase: 'create',
-                documentKind: 'docx',
-            });
-            result.dependencies.forEach((item) => dependencies.add(item));
-            diagnostics.push(...result.diagnostics);
+            // 流式正文是 Markdown-first 混合源码；创建工程时不得将其作为
+            // HTML 归一化。岛与脚本由混合编译器和运行时分别审查。
             return {
-                source: result.html,
+                source: String(payload.source || ''),
                 slides: undefined,
-                dependencies: [...dependencies],
-                diagnostics,
-                refused: result.refused,
+                dependencies: [],
+                diagnostics: [],
+                refused: false,
             };
         }
 
@@ -343,6 +339,8 @@
             state,
             core,
             containerModule,
+            hybridCompiler,
+            getCompiledDocument,
             getRenderRoot,
             getReadRoot,
             getCurrentHtml,
@@ -390,21 +388,23 @@
                     : [],
             };
         };
-        const sourceFor = (kind = 'html', slideIndex = null) => {
-            if (isDeck() && kind === 'deck-css') {
+        const sourceFor = (kind = null, slideIndex = null) => {
+            const sourceKind = kind || (isDeck() ? 'html' : 'markdown-hybrid');
+            if (isDeck() && sourceKind === 'deck-css') {
                 return state.document?.source?.deckCss || '';
             }
-            if (kind !== 'html') {
-                throw new Error(isDeck()
-                    ? 'PPTX 仅支持 html（单页完整源码）或 deck-css（演示全局 CSS）。'
-                    : 'DOCX 仅支持 html 完整源码。');
-            }
-            if (isDeck() && slideIndex !== null) {
-                const slide = slides()[Number(slideIndex)];
+            if (isDeck()) {
+                if (sourceKind !== 'html') {
+                    throw new Error('PPTX 仅支持 html 或 deck-css。');
+                }
+                const slide = slides()[Number(slideIndex ?? state.activeSlideIndex)];
                 if (!slide) throw new Error('指定幻灯片不存在。');
                 return String(slide.source || '');
             }
-            return getCurrentHtml();
+            if (sourceKind !== 'markdown-hybrid') {
+                throw new Error('VDOCX 仅支持 markdown-hybrid 正文源码。');
+            }
+            return String(state.document?.source?.content || '');
         };
 
         function assertReady() {
@@ -582,7 +582,7 @@
             }
             const sourceHtml = isDeck()
                 ? slides()[state.activeSlideIndex]?.source || ''
-                : state.document.source.content;
+                : getCompiledDocument().html;
             return response({
                 scope: String(options.scope || 'viewport'),
                 title: state.document.manifest.title,
@@ -706,7 +706,16 @@
                     }),
                 });
             }
-            return response({ text: textFromHtml(state.document.source.content) });
+            const compiled = getCompiledDocument();
+            return response({
+                semanticFormat: 'compiled-html',
+                compilerVersion: compiled.compilerVersion,
+                sourceRevision: revision(),
+                text: textFromHtml(compiled.html),
+                media: mediaFromHtml(compiled.html, state.document),
+                blocks: compiled.blocks,
+                diagnostics: compiled.diagnostics,
+            });
         }
 
         function outline() {
@@ -720,39 +729,55 @@
                     })),
                 });
             }
+            const compiled = getCompiledDocument();
             return response({
-                items: core.extractOutline(state.document.source.content)
-                    .filter((item) => item.kind === 'heading'),
+                items: core.extractOutline(compiled.html)
+                    .filter((item) => item.kind === 'heading')
+                    .map((item, index) => ({
+                        ...item,
+                        id: `heading-${index}`,
+                    })),
             });
         }
 
         function section(options = {}) {
             assertReady();
-            if (isDeck()) throw new Error('章节查询仅适用于 DOCX 端。');
-            const items = core.extractOutline(state.document.source.content);
-            const headings = items.filter((item) => item.kind === 'heading');
-            const heading = options.id
-                ? headings.find((item) => item.id === options.id)
-                : headings[Number(options.index) || 0];
+            if (isDeck()) throw new Error('章节查询仅适用于 VDOCX。');
+            const compiled = getCompiledDocument();
+            const template = document.createElement('template');
+            template.innerHTML = compiled.html;
+            const nodes = [...template.content.children];
+            const headings = nodes
+                .map((node, ordinal) => ({
+                    node,
+                    ordinal,
+                    level: /^H([1-6])$/.test(node.tagName)
+                        ? Number(node.tagName.slice(1))
+                        : null,
+                    text: (node.textContent || '').trim(),
+                }))
+                .filter((item) => item.level);
+            const headingIndex = Number(options.index) || 0;
+            const heading = headings[headingIndex];
             if (!heading) throw new Error('指定章节不存在。');
-            const all = [...items];
-            const start = all.findIndex((item) => item.id === heading.id);
-            let end = all.length;
-            for (let index = start + 1; index < all.length; index += 1) {
-                if (all[index].kind === 'heading' && all[index].level <= heading.level) {
-                    end = index;
+            let end = nodes.length;
+            for (const candidate of headings.slice(headingIndex + 1)) {
+                if (candidate.level <= heading.level) {
+                    end = candidate.ordinal;
                     break;
                 }
             }
-            const ids = new Set(all.slice(start, end).map((item) => item.id));
-            const template = document.createElement('template');
-            template.innerHTML = state.document.source.content;
-            const nodes = [...template.content.querySelectorAll('[data-vdoc-text]')]
-                .filter((node) => ids.has(node.dataset.vdocText));
+            const sectionNodes = nodes.slice(heading.ordinal, end);
             return response({
-                heading,
-                text: nodes.map((node) => node.textContent || '').join('\n').trim(),
-                html: nodes.map((node) => node.outerHTML).join('\n'),
+                heading: {
+                    id: `heading-${headingIndex}`,
+                    index: headingIndex,
+                    level: heading.level,
+                    text: heading.text,
+                },
+                text: sectionNodes.map((node) => node.textContent || '').join('\n').trim(),
+                html: sectionNodes.map((node) => node.outerHTML).join('\n'),
+                sourceRevision: revision(),
             });
         }
 
@@ -771,8 +796,10 @@
                     return rect.bottom >= hostRect.top && rect.top <= hostRect.bottom;
                 }).map((node) => node.dataset.vdocText).filter(Boolean)
                 : [];
-            const source = sourceFor(options.sourceKind || 'html',
-                isDeck() ? state.activeSlideIndex : null);
+            const source = sourceFor(
+                options.sourceKind || (isDeck() ? 'html' : 'markdown-hybrid'),
+                isDeck() ? state.activeSlideIndex : null
+            );
             const sourceLines = linesOf(source);
             const matchingLines = [];
             sourceLines.forEach((line, index) => {
@@ -794,11 +821,13 @@
 
         function getSource(options = {}) {
             assertReady();
-            const source = sourceFor(options.sourceKind || 'html',
+            const sourceKind = options.sourceKind
+                || (isDeck() ? 'html' : 'markdown-hybrid');
+            const source = sourceFor(sourceKind,
                 options.slideIndex === undefined ? (isDeck() ? state.activeSlideIndex : null)
                     : options.slideIndex);
             return response({
-                sourceKind: options.sourceKind || 'html',
+                sourceKind,
                 slideIndex: isDeck()
                     ? Number(options.slideIndex ?? state.activeSlideIndex)
                     : null,
@@ -810,8 +839,8 @@
         function searchSource(options = {}) {
             assertReady();
             const kinds = options.sourceKind === 'all'
-                ? (isDeck() ? ['html', 'deck-css'] : ['html'])
-                : [options.sourceKind || 'html'];
+                ? (isDeck() ? ['html', 'deck-css'] : ['markdown-hybrid'])
+                : [options.sourceKind || (isDeck() ? 'html' : 'markdown-hybrid')];
             const targets = isDeck()
                 ? (options.slideIndex === undefined
                     ? slides().map((_, index) => index)
@@ -1114,8 +1143,11 @@
         }
 
         function submitSourcePr(payload = {}) {
-            const sourceKind = payload.sourceKind || 'html';
-            const allowedKinds = isDeck() ? ['html', 'deck-css'] : ['html'];
+            const sourceKind = payload.sourceKind
+                || (isDeck() ? 'html' : 'markdown-hybrid');
+            const allowedKinds = isDeck()
+                ? ['html', 'deck-css']
+                : ['markdown-hybrid'];
             if (!allowedKinds.includes(sourceKind)) {
                 return Promise.resolve(response({
                     success: false,
@@ -1140,7 +1172,7 @@
                 diagnostics: [],
             };
 
-            if (sourceKind === 'html') {
+            if (sourceKind === 'html' && isDeck()) {
                 // 在 PR 建立前规范化 replacement 片段，使人类审阅的是最终源码：
                 // Anime/Three CDN 会变成 VDOC 内置依赖标记，其他外链变成忽略标记。
                 replacements = suppliedReplacements.map((replacement, index) => {
@@ -1205,7 +1237,7 @@
                 if (!result.success) return result;
 
                 let nextSource = result.source;
-                if (sourceKind === 'html') {
+                if (sourceKind === 'html' && isDeck()) {
                     const normalized = reviewProgrammableHtml(nextSource, {
                         phase: 'pr-apply',
                         documentKind: isDeck() ? 'pptx' : 'docx',
@@ -1220,6 +1252,15 @@
                             ...normalized.dependencies,
                         ]),
                     ];
+                } else if (!isDeck()) {
+                    const validation = hybridCompiler.validate(nextSource);
+                    programmableContent.dependencies = validation.dependencies;
+                    programmableContent.diagnostics = validation.diagnostics;
+                    programmableContent.status = validation.valid
+                        ? (validation.diagnostics.some((item) => item.level === 'warn')
+                            ? 'warn'
+                            : 'allow')
+                        : 'refuse';
                 }
                 if (isDeck() && sourceKind === 'deck-css') {
                     state.document.source.deckCss = core.sanitizeCss(nextSource);

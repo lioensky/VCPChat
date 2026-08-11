@@ -233,89 +233,52 @@ async function run() {
         assert.equal(dominantIndentParagraphs[index].paragraphFormat.textIndent, undefined);
     }
 
+    const markdownSource = `# 总论\r\n\r\n人类负责**创作**，AI 负责排版。\r\n\r\n## 数学\r\n\r\n行内公式 $E=mc^2$。\r\n\r\n$$\r\n\\int_0^1 x^2\\,dx\r\n$$\r\n\r\n| 名称 | 数值 |\r\n| --- | ---: |\r\n| 创作 | 1 |\r\n\r\n\`\`\`javascript\r\nconst answer = 42;\r\n\`\`\`\r\n`;
     const markdown = await importer.importBuffer(
         '思想.md',
-        Buffer.from(`# 总论
-
-人类负责**创作**，AI 负责排版。
-
-## 数学
-
-行内公式 $E=mc^2$。
-
-$$
-\\int_0^1 x^2\\,dx
-$$
-
-| 名称 | 数值 |
-| --- | ---: |
-| 创作 | 1 |
-
-\`\`\`javascript
-const answer = 42;
-\`\`\`
-
-\`\`\`
-plain text
-\`\`\``)
+        Buffer.from(markdownSource)
     );
     assert.equal(markdown.kind, 'markdown');
-    assert.match(markdown.html, /<h1>总论<\/h1>/);
-    assert.match(markdown.html, /<h2>数学<\/h2>/);
-    assert.match(markdown.html, /<strong>创作<\/strong>/);
-    assert.match(markdown.html, /data-vdoc-math="E%3Dmc%5E2"/);
-    assert.match(markdown.html, /data-vdoc-display="true"/);
-    assert.match(markdown.html, /<style data-vdoc-markdown-style(?:="")?>/);
-    assert.match(markdown.html, /\.vdoc-markdown-table th,/);
-    assert.match(markdown.html, /border: 1px solid currentColor/);
-    assert.match(markdown.html, /<table class="vdoc-markdown-table">/);
-    assert.match(
-        markdown.html,
-        /<pre class="vdoc-code-block" data-vdoc-code-language="javascript">/
-    );
-    assert.match(
-        markdown.html,
-        /<code class="hljs language-javascript" data-vdoc-code-language="javascript">/
-    );
-    assert.match(markdown.html, /<span class="hljs-keyword">const<\/span>/);
-    assert.match(markdown.html, /data-vdoc-code-language="plaintext"/);
+    assert.equal(markdown.source, markdownSource);
+    assert.equal(markdown.html, '');
+    assert.equal(markdown.sourceFormat, 'markdown-hybrid');
+    assert.equal(markdown.lineEnding, 'crlf');
     assert.equal(markdown.importMetadata.sourceFormat, 'markdown');
-    assert.match(markdown.importMetadata.importer, /semantic-import-v5/);
+    assert.equal(markdown.importMetadata.documentSourceFormat, 'markdown-hybrid');
+    assert.match(markdown.importMetadata.importer, /original-source-import-v6/);
 
+    const textSource = '第一段。\n仍在第一段。\n\n第二段。';
     const text = await importer.importBuffer(
         '手稿.txt',
-        Buffer.from('第一段。\n仍在第一段。\n\n第二段。')
+        Buffer.from(textSource)
     );
     assert.equal(text.kind, 'text');
-    assert.match(text.html, /<p>第一段。<br>仍在第一段。<\/p>/);
-    assert.match(text.html, /<p>第二段。<\/p>/);
+    assert.equal(text.source, textSource);
+    assert.equal(text.sourceFormat, 'markdown-hybrid');
+    assert.equal(text.html, '');
 
     const rtf = await importer.importBuffer(
         '旧稿.rtf',
         Buffer.from(String.raw`{\rtf1\ansi 标题\par 正文\u20013?内容。}`)
     );
     assert.equal(rtf.kind, 'rtf');
-    assert.match(rtf.html, /<p>标题<\/p>/);
-    assert.match(rtf.html, /正文中内容/);
+    assert.match(rtf.source, /标题/);
+    assert.match(rtf.source, /正文中内容/);
+    assert.equal(rtf.sourceFormat, 'markdown-hybrid');
+    assert.equal(rtf.html, '');
 
     const docx = await importer.importBuffer('旧文档.docx', await createMinimalDocx());
     assert.equal(docx.kind, 'docx');
-    assert.match(docx.html, /<h1 style="text-align:center">第一章 原生共笔<\/h1>/);
-    assert.match(docx.html, /<h2>设计原则<\/h2>/);
-    assert.match(docx.html, /<p style="text-indent:2em">这是从 DOCX 导入的正文。<\/p>/);
-    assert.match(docx.html, /<p style="text-indent:2em">段首 Tab 正文。<\/p>/);
-    assert.doesNotMatch(docx.html, />\t+段首 Tab 正文。/);
-    assert.match(docx.html, /<p data-vdoc-empty-line="true"><br><\/p>/);
-    assert.match(
-        docx.html,
-        /段首 Tab 正文。<\/p><p data-vdoc-empty-line="true"><br><\/p><h2>设计原则/
-    );
-    assert.match(docx.html, /<strong>人类创作<\/strong>/);
-    assert.match(
-        docx.html,
-        /<h2 data-vdoc-page-break-before="true">继承样式章节<\/h2>/
-    );
-    assert.match(docx.html, /<p>分页后的连续正文。<\/p>/);
+    assert.match(docx.source, /第一章 原生共笔/);
+    assert.match(docx.source, /## 设计原则/);
+    assert.match(docx.source, /这是从 DOCX 导入的正文。/);
+    assert.match(docx.source, /段首 Tab 正文。/);
+    assert.doesNotMatch(docx.source, /data-vdoc-(?:text|block|container)=/);
+    assert.match(docx.source, /\*\*人类创作\*\*/);
+    assert.match(docx.source, /继承样式章节/);
+    assert.match(docx.source, /分页后的连续正文。/);
+    assert.equal(docx.sourceFormat, 'markdown-hybrid');
+    assert.equal(docx.html, '');
     assert.equal(docx.importMetadata.sourceFormat, 'docx');
     assert.match(docx.importMetadata.importer, /semantic-import-v5/);
 
@@ -345,7 +308,7 @@ plain text
     assert.match(pptx.importMetadata.importer, /semantic-import-v5/);
 
     console.log('[ScriptoriumImporters] PASSED', {
-        markdownMathNodes: (markdown.html.match(/data-vdoc-math=/g) || []).length,
+        markdownBytesPreserved: markdown.source === markdownSource,
         docxWarnings: docx.importMetadata.warnings.length,
         pptxSlides: pptx.slides.length,
         pptxWarnings: pptx.importMetadata.warnings.length,

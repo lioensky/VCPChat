@@ -3,7 +3,10 @@
 (() => {
     const CONTAINER_FORMAT = 'vcp-vdoc-container';
     const CONTAINER_VERSION = 2;
-    const DOCUMENT_ENTRY = 'document.json';
+    const MANIFEST_ENTRY = 'manifest.json';
+    const DOCUMENT_SOURCE_ENTRY = 'source/document.md';
+    const DOCUMENT_STYLE_ENTRY = 'source/document.css';
+    const CHECKPOINTS_ENTRY = 'lineage/checkpoints.json';
     const RESOURCE_SCHEME = 'vdoc-resource://';
     const RESOURCE_PATTERN = /vdoc-resource:\/\/(media|fonts)\/([a-f0-9]{64})/gi;
 
@@ -38,6 +41,7 @@
             path: String(resource.path || `resources/${category}/${id}.${extension}`),
             name: String(resource.name || `${id}.${extension}`),
             mime: String(resource.mime || 'application/octet-stream'),
+            sourceUrl: String(resource.sourceUrl || ''),
             size: Math.max(0, Number(resource.size) || 0),
             sha256: String(resource.sha256 || id).toLowerCase(),
             description: String(resource.description || ''),
@@ -86,7 +90,10 @@
         model.container = {
             format: CONTAINER_FORMAT,
             version: CONTAINER_VERSION,
-            documentEntry: DOCUMENT_ENTRY,
+            manifestEntry: MANIFEST_ENTRY,
+            sourceEntry: DOCUMENT_SOURCE_ENTRY,
+            styleEntry: DOCUMENT_STYLE_ENTRY,
+            checkpointsEntry: CHECKPOINTS_ENTRY,
         };
         model.manifest.resources = (model.manifest.resources || []).map(normalizeResource);
         for (const resource of model.manifest.resources) {
@@ -100,7 +107,31 @@
                 compressionOptions: { level: 6 },
             });
         }
-        zip.file(DOCUMENT_ENTRY, JSON.stringify(model, null, 2), {
+        const checkpoints = Array.isArray(model.checkpoints) ? model.checkpoints : [];
+        const flowDocument = model.manifest?.scene?.kind !== 'slide-deck';
+        const sourceContent = flowDocument ? String(model.source?.content || '') : '';
+        const documentCss = flowDocument ? String(model.source?.documentCss || '') : '';
+        if (flowDocument) {
+            model.source.content = null;
+            model.source.documentCss = null;
+        }
+        model.checkpoints = null;
+
+        zip.file(MANIFEST_ENTRY, JSON.stringify(model, null, 2), {
+            compression: 'DEFLATE',
+            compressionOptions: { level: 6 },
+        });
+        if (flowDocument) {
+            zip.file(DOCUMENT_SOURCE_ENTRY, sourceContent, {
+                compression: 'DEFLATE',
+                compressionOptions: { level: 6 },
+            });
+            zip.file(DOCUMENT_STYLE_ENTRY, documentCss, {
+                compression: 'DEFLATE',
+                compressionOptions: { level: 6 },
+            });
+        }
+        zip.file(CHECKPOINTS_ENTRY, JSON.stringify(checkpoints, null, 2), {
             compression: 'DEFLATE',
             compressionOptions: { level: 6 },
         });
@@ -120,13 +151,32 @@
             throw new Error('这不是有效的 VDOCX / VPPTX ZIP 工程。');
         }
         const zip = await globalThis.JSZip.loadAsync(data);
-        const documentFile = zip.file(DOCUMENT_ENTRY);
-        if (!documentFile) throw new Error('工程缺少 document.json。');
-        const stored = JSON.parse(await documentFile.async('string'));
+        const manifestFile = zip.file(MANIFEST_ENTRY);
+        if (!manifestFile) throw new Error(`工程缺少 ${MANIFEST_ENTRY}。`);
+        const stored = JSON.parse(await manifestFile.async('string'));
         if (stored.container?.format !== CONTAINER_FORMAT
             || Number(stored.container?.version) !== CONTAINER_VERSION) {
             throw new Error('不支持的 VDOCX / VPPTX 容器版本。');
         }
+
+        const flowDocument = stored.manifest?.scene?.kind !== 'slide-deck';
+        if (flowDocument) {
+            const sourceFile = zip.file(DOCUMENT_SOURCE_ENTRY);
+            const styleFile = zip.file(DOCUMENT_STYLE_ENTRY);
+            if (!sourceFile || !styleFile) {
+                throw new Error('VDOCX 工程缺少 Markdown 正文或文档 CSS。');
+            }
+            stored.source = {
+                ...(stored.source || {}),
+                format: 'markdown-hybrid',
+                content: await sourceFile.async('string'),
+                documentCss: await styleFile.async('string'),
+            };
+        }
+        const checkpointsFile = zip.file(CHECKPOINTS_ENTRY);
+        stored.checkpoints = checkpointsFile
+            ? JSON.parse(await checkpointsFile.async('string'))
+            : [];
         const documentModel = core.normalizeDocument(stored);
         const resourceData = new Map();
         for (const rawResource of documentModel.manifest.resources || []) {
@@ -165,10 +215,24 @@
             objectUrls.set(id, url);
             return url;
         };
-        const resolveHtml = (html) => String(html || '').replace(
-            RESOURCE_PATTERN,
-            (_match, category, id) => urlFor(category.toLowerCase(), id.toLowerCase())
-                || _match
+        const replaceMappedSourceUrls = (source, resolver) => {
+            let output = String(source || '');
+            (documentModel?.manifest?.resources || []).forEach((resource) => {
+                if (!resource.sourceUrl) return;
+                const replacement = resolver(resource.category, resource.id);
+                if (replacement) {
+                    output = output.split(resource.sourceUrl).join(replacement);
+                }
+            });
+            return output;
+        };
+        const resolveHtml = (html) => replaceMappedSourceUrls(
+            String(html || '').replace(
+                RESOURCE_PATTERN,
+                (_match, category, id) =>
+                    urlFor(category.toLowerCase(), id.toLowerCase()) || _match
+            ),
+            urlFor
         );
         const dataUrlFor = (category, id) => {
             const resource = resourceMetadata(documentModel, id);
@@ -179,10 +243,13 @@
             }`;
         };
         const resolveExportHtml = (html) => {
-            let output = String(html || '').replace(
-                RESOURCE_PATTERN,
-                (_match, category, id) =>
-                    dataUrlFor(category.toLowerCase(), id.toLowerCase()) || _match
+            let output = replaceMappedSourceUrls(
+                String(html || '').replace(
+                    RESOURCE_PATTERN,
+                    (_match, category, id) =>
+                        dataUrlFor(category.toLowerCase(), id.toLowerCase()) || _match
+                ),
+                dataUrlFor
             );
             objectUrls.forEach((objectUrl, id) => {
                 const resource = resourceMetadata(documentModel, id);
@@ -215,7 +282,10 @@
     window.VDocContainer = Object.freeze({
         CONTAINER_FORMAT,
         CONTAINER_VERSION,
-        DOCUMENT_ENTRY,
+        MANIFEST_ENTRY,
+        DOCUMENT_SOURCE_ENTRY,
+        DOCUMENT_STYLE_ENTRY,
+        CHECKPOINTS_ENTRY,
         RESOURCE_SCHEME,
         RESOURCE_PATTERN,
         bytesToBase64,

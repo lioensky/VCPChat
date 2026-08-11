@@ -6,6 +6,7 @@ const mammoth = require('mammoth');
 const JSZip = require('jszip');
 const cheerio = require('cheerio');
 const hljs = require('../../vendor/highlight.min.js');
+const TurndownService = require('turndown');
 const scriptoriumPptxImportService = require('./scriptoriumPptxImportService');
 
 const IMPORTER_VERSION = 5;
@@ -193,6 +194,35 @@ function convertPlainText(text) {
         })
         .filter(Boolean)
         .join('\n');
+}
+
+function htmlToHybridMarkdown(html) {
+    const turndown = new TurndownService({
+        headingStyle: 'atx',
+        bulletListMarker: '-',
+        codeBlockStyle: 'fenced',
+        emDelimiter: '*',
+        strongDelimiter: '**',
+    });
+    // Markdown 无法无损表达的结构继续作为一等 HTML 源码域保留。
+    turndown.keep([
+        'table', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td',
+        'style', 'script', 'svg', 'canvas', 'video', 'audio',
+    ]);
+    turndown.addRule('preserve-styled-layout', {
+        filter(node) {
+            if (!node?.getAttribute) return false;
+            return Boolean(
+                node.getAttribute('style')
+                || node.getAttribute('class')
+                || node.getAttribute('data-vdoc-island')
+            );
+        },
+        replacement(_content, node) {
+            return `\n\n${node.outerHTML}\n\n`;
+        },
+    });
+    return turndown.turndown(String(html || ''));
 }
 
 function decodeRtfHex(source) {
@@ -665,12 +695,15 @@ async function importBuffer(filePath, buffer) {
 
     const kind = kindForExtension(extension);
     let html = '';
+    let source = '';
+    let sourceFormat = kind === 'pptx' ? 'html-scene' : 'markdown-hybrid';
+    let lineEnding = 'lf';
     let slides = [];
     let page = null;
     let warnings = [];
     if (kind === 'docx') {
         const converted = await convertDocx(buffer);
-        html = converted.html;
+        source = htmlToHybridMarkdown(converted.html);
         warnings = converted.warnings;
     } else if (kind === 'pptx') {
         const converted = await scriptoriumPptxImportService.convertPptx(buffer);
@@ -679,22 +712,38 @@ async function importBuffer(filePath, buffer) {
         warnings = converted.warnings;
     } else {
         const text = Buffer.from(buffer).toString('utf8').replace(/^\uFEFF/, '');
-        if (kind === 'markdown') html = convertMarkdown(text);
-        else if (kind === 'text') html = convertPlainText(text);
-        else if (kind === 'rtf') html = convertRtf(text);
-        else html = text;
+        lineEnding = text.includes('\r\n') ? 'crlf'
+            : text.includes('\r') ? 'cr' : 'lf';
+        if (kind === 'markdown') {
+            // 不编译、不格式化、不统一换行：解码后的 Markdown 原文直接入库。
+            source = text;
+        } else if (kind === 'text') {
+            source = String(text);
+        } else if (kind === 'rtf') {
+            source = htmlToHybridMarkdown(convertRtf(text));
+        } else {
+            // HTML 本身是 markdown-hybrid 中正式的一等源码域，无需旧格式包装。
+            source = text;
+        }
     }
 
     return {
         kind,
         html,
+        source,
+        sourceFormat,
+        lineEnding,
         slides,
         page,
         importMetadata: {
             sourceFormat: kind,
+            documentSourceFormat: sourceFormat,
             sourceName: path.basename(filePath),
             importedAt: new Date().toISOString(),
-            importer: `scriptorium-semantic-import-v${IMPORTER_VERSION}`,
+            importer: kind === 'markdown'
+                ? `scriptorium-original-source-import-v${IMPORTER_VERSION + 1}`
+                : `scriptorium-semantic-import-v${IMPORTER_VERSION}`,
+            lineEnding: kind === 'markdown' ? lineEnding : null,
             warnings,
         },
     };
@@ -709,6 +758,7 @@ module.exports = {
     normalizeMarkdownDocumentHtml,
     convertMarkdown,
     convertPlainText,
+    htmlToHybridMarkdown,
     convertRtf,
     parseDocxStyles,
     parseDocxParagraphFormat,

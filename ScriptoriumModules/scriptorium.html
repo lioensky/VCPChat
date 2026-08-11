@@ -107,7 +107,7 @@
                 <span>阅读预览</span>
             </button>
             <button id="html-mode-btn" class="deck-button surface-mode" type="button" aria-pressed="false">
-                <span>HTML 源码</span>
+                <span>混合源码</span>
             </button>
             <button id="css-mode-btn" class="deck-button surface-mode" type="button" aria-pressed="false">
                 <span>CSS 源码</span>
@@ -307,8 +307,8 @@
                 <section id="source-host" class="source-host" hidden aria-label="文档源码编辑面">
                     <header class="source-header">
                         <div>
-                            <strong id="source-title">HTML 源码</strong>
-                            <span id="source-description">AI 始终以此源码为文档真相</span>
+                            <strong id="source-title">Markdown-first 混合源码</strong>
+                            <span id="source-description">Markdown、HTML 岛、LaTeX 与 Mermaid 的唯一正文真相</span>
                         </div>
                         <div class="source-tools">
                             <span id="source-diagnostics" class="source-diagnostics">等待检查</span>
@@ -863,19 +863,23 @@
     <link rel="stylesheet" href="../node_modules/codemirror/theme/material-darker.css">
     <script src="../node_modules/codemirror/lib/codemirror.js"></script>
     <script src="../node_modules/codemirror/mode/xml/xml.js"></script>
+    <script src="../node_modules/codemirror/mode/markdown/markdown.js"></script>
     <script src="../node_modules/codemirror/mode/css/css.js"></script>
     <script src="../node_modules/codemirror/mode/javascript/javascript.js"></script>
     <script src="../node_modules/codemirror/mode/htmlmixed/htmlmixed.js"></script>
     <script src="../node_modules/codemirror/addon/edit/closebrackets.js"></script>
     <script src="../node_modules/codemirror/addon/edit/closetag.js"></script>
     <script src="../vendor/katex.min.js"></script>
+    <script src="../vendor/mermaid.min.js"></script>
     <script src="../vendor/anime.min.js"></script>
     <script src="../vendor/three.min.js"></script>
+    <script src="../node_modules/marked/lib/marked.umd.js"></script>
     <script src="../modules/renderer/pretext.bundle.js"></script>
     <script src="../node_modules/jszip/dist/jszip.min.js"></script>
     <script src="scriptorium-pretext-bridge.js"></script>
     <script src="scriptorium-programmable-content.js"></script>
     <script src="vdoc-core.js"></script>
+    <script src="vdoc-hybrid-compiler.js"></script>
     <script src="vdoc-container.js"></script>
     <script src="vdoc-style-library.js"></script>
     <script src="scriptorium-pagination.js"></script>

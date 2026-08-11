@@ -2,7 +2,11 @@
 
 (() => {
     const FORMAT = 'vcp-vdocx';
-    const VERSION = 1;
+    const VERSION = 2;
+    const SOURCE_FORMATS = Object.freeze({
+        MARKDOWN_HYBRID: 'markdown-hybrid',
+        HTML_SCENE: 'html-scene',
+    });
     const PROJECT_KINDS = Object.freeze({
         FLOW_DOCUMENT: 'flow-document',
         SLIDE_DECK: 'slide-deck',
@@ -18,6 +22,19 @@
     function createId(prefix = 'node') {
         const uuid = globalThis.crypto?.randomUUID?.();
         return `${prefix}-${uuid || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`}`;
+    }
+
+    function defaultMarkdown() {
+        return `# 未命名文稿
+
+> VCP SCRIPTORIUM
+
+人类负责思想与创作，AI 负责润色与排版。请从这里开始共同书写。
+
+## 第一章
+
+在这里落下第一段文字。
+`;
     }
 
     function defaultHtml() {
@@ -276,7 +293,9 @@ p { margin: .7em 0; text-align: justify; text-justify: inter-ideograph; text-wra
 
     function createDocument(options = {}) {
         const now = new Date().toISOString();
-        const documentSource = normalizeCompleteDocumentSource(options.source);
+        const flowSource = options.source === undefined
+            ? defaultMarkdown()
+            : String(options.source);
         return normalizeDocument({
             format: FORMAT,
             version: VERSION,
@@ -284,6 +303,9 @@ p { margin: .7em 0; text-align: justify; text-justify: inter-ideograph; text-wra
                 id: createId('document'),
                 title: options.title || '未命名文稿',
                 language: options.language || 'zh-CN',
+                sourceFormat: options.kind === PROJECT_KINDS.SLIDE_DECK
+                    ? 'html-scene'
+                    : SOURCE_FORMATS.MARKDOWN_HYBRID,
                 createdAt: now,
                 modifiedAt: now,
                 generator: 'VCP Scriptorium',
@@ -307,9 +329,16 @@ p { margin: .7em 0; text-align: justify; text-justify: inter-ideograph; text-wra
                 }),
             },
             source: {
+                format: options.kind === PROJECT_KINDS.SLIDE_DECK
+                    ? 'html-scene'
+                    : SOURCE_FORMATS.MARKDOWN_HYBRID,
                 content: options.kind === PROJECT_KINDS.SLIDE_DECK
                     ? ''
-                    : documentSource,
+                    : flowSource,
+                documentCss: options.kind === PROJECT_KINDS.SLIDE_DECK
+                    ? ''
+                    : sanitizeCss(options.documentCss || defaultCss()),
+                lineEnding: options.lineEnding || 'lf',
                 deckCss: options.kind === PROJECT_KINDS.SLIDE_DECK
                     ? sanitizeCss(options.deckCss || '')
                     : '',
@@ -487,6 +516,26 @@ p { margin: .7em 0; text-align: justify; text-justify: inter-ideograph; text-wra
         const manifest = candidate.manifest && typeof candidate.manifest === 'object'
             ? candidate.manifest
             : {};
+        const deck = manifest.scene?.kind === PROJECT_KINDS.SLIDE_DECK;
+        const storedVersion = Number(candidate.version || VERSION);
+        if (storedVersion !== VERSION) {
+            throw new Error(`不支持 VDOCX v${storedVersion}；当前内核只接受 v${VERSION}。`);
+        }
+        const expectedSourceFormat = deck
+            ? SOURCE_FORMATS.HTML_SCENE
+            : SOURCE_FORMATS.MARKDOWN_HYBRID;
+        const suppliedSourceFormat = String(
+            candidate.source?.format || manifest.sourceFormat || expectedSourceFormat
+        );
+        if (suppliedSourceFormat !== expectedSourceFormat) {
+            throw new Error(
+                `正文格式 ${suppliedSourceFormat} 不受支持；当前工程要求 ${expectedSourceFormat}。`
+            );
+        }
+        const sourceFormat = expectedSourceFormat;
+        const rawFlowSource = candidate.source?.content === undefined
+            ? defaultMarkdown()
+            : String(candidate.source.content);
         return {
             format: FORMAT,
             version: VERSION,
@@ -494,6 +543,7 @@ p { margin: .7em 0; text-align: justify; text-justify: inter-ideograph; text-wra
                 id: manifest.id || createId('document'),
                 title: String(manifest.title || '未命名文稿'),
                 language: String(manifest.language || 'zh-CN'),
+                sourceFormat,
                 createdAt: manifest.createdAt || now,
                 modifiedAt: manifest.modifiedAt || now,
                 generator: 'VCP Scriptorium',
@@ -524,16 +574,23 @@ p { margin: .7em 0; text-align: justify; text-justify: inter-ideograph; text-wra
                 import: manifest.import || null,
             },
             source: {
-                content: manifest.scene?.kind === PROJECT_KINDS.SLIDE_DECK
+                format: sourceFormat,
+                content: deck ? '' : rawFlowSource,
+                documentCss: deck
                     ? ''
-                    : normalizeCompleteDocumentSource(candidate.source?.content),
-                deckCss: manifest.scene?.kind === PROJECT_KINDS.SLIDE_DECK
+                    : sanitizeCss(candidate.source?.documentCss || defaultCss()),
+                lineEnding: ['lf', 'crlf', 'cr'].includes(candidate.source?.lineEnding)
+                    ? candidate.source.lineEnding
+                    : (rawFlowSource.includes('\r\n') ? 'crlf' : 'lf'),
+                deckCss: deck
                     ? sanitizeCss(candidate.source?.deckCss || '')
                     : '',
-                slides: manifest.scene?.kind === PROJECT_KINDS.SLIDE_DECK
+                slides: deck
                     ? normalizeSlides(candidate.source?.slides)
                     : [],
             },
+            anchors: Array.isArray(candidate.anchors) ? candidate.anchors : [],
+            islands: Array.isArray(candidate.islands) ? candidate.islands : [],
             checkpoints: Array.isArray(candidate.checkpoints) ? candidate.checkpoints : [],
         };
     }
@@ -579,6 +636,7 @@ p { margin: .7em 0; text-align: justify; text-justify: inter-ideograph; text-wra
     window.VDocCore = Object.freeze({
         FORMAT,
         VERSION,
+        SOURCE_FORMATS,
         PROJECT_KINDS,
         EDITABLE_SELECTOR,
         PRESERVED_CONTAINER_SELECTOR,
