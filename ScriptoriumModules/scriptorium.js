@@ -1989,11 +1989,23 @@ ${parsedDocument().html}
             element = document.createElement('blockquote');
         } else if (type === 'table') {
             element = document.createElement('table');
+            // 表格外观属于文档源码，而非编辑器运行时皮肤。行内声明使用户
+            // 可以在 HTML 源码模式中直接二次修改，也会自然进入保存和导出结果。
+            element.style.width = '100%';
+            element.style.margin = '1em 0';
+            element.style.border = '1px solid currentColor';
+            element.style.borderCollapse = 'collapse';
+            element.style.borderSpacing = '0';
             const tbody = document.createElement('tbody');
             for (let row = 0; row < 3; row += 1) {
                 const tr = document.createElement('tr');
                 for (let column = 0; column < 3; column += 1) {
                     const cell = document.createElement('td');
+                    cell.style.minWidth = '2em';
+                    cell.style.padding = '.45em .65em';
+                    cell.style.border = '1px solid currentColor';
+                    cell.style.textAlign = 'left';
+                    cell.style.verticalAlign = 'top';
                     cell.textContent = row === 0 ? `标题 ${column + 1}` : '';
                     tr.appendChild(cell);
                 }

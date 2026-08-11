@@ -245,7 +245,19 @@ async function run() {
 
 $$
 \\int_0^1 x^2\\,dx
-$$`)
+$$
+
+| 名称 | 数值 |
+| --- | ---: |
+| 创作 | 1 |
+
+\`\`\`javascript
+const answer = 42;
+\`\`\`
+
+\`\`\`
+plain text
+\`\`\``)
     );
     assert.equal(markdown.kind, 'markdown');
     assert.match(markdown.html, /<h1>总论<\/h1>/);
@@ -253,7 +265,22 @@ $$`)
     assert.match(markdown.html, /<strong>创作<\/strong>/);
     assert.match(markdown.html, /data-vdoc-math="E%3Dmc%5E2"/);
     assert.match(markdown.html, /data-vdoc-display="true"/);
+    assert.match(markdown.html, /<style data-vdoc-markdown-style(?:="")?>/);
+    assert.match(markdown.html, /\.vdoc-markdown-table th,/);
+    assert.match(markdown.html, /border: 1px solid currentColor/);
+    assert.match(markdown.html, /<table class="vdoc-markdown-table">/);
+    assert.match(
+        markdown.html,
+        /<pre class="vdoc-code-block" data-vdoc-code-language="javascript">/
+    );
+    assert.match(
+        markdown.html,
+        /<code class="hljs language-javascript" data-vdoc-code-language="javascript">/
+    );
+    assert.match(markdown.html, /<span class="hljs-keyword">const<\/span>/);
+    assert.match(markdown.html, /data-vdoc-code-language="plaintext"/);
     assert.equal(markdown.importMetadata.sourceFormat, 'markdown');
+    assert.match(markdown.importMetadata.importer, /semantic-import-v5/);
 
     const text = await importer.importBuffer(
         '手稿.txt',
@@ -290,7 +317,7 @@ $$`)
     );
     assert.match(docx.html, /<p>分页后的连续正文。<\/p>/);
     assert.equal(docx.importMetadata.sourceFormat, 'docx');
-    assert.match(docx.importMetadata.importer, /semantic-import-v4/);
+    assert.match(docx.importMetadata.importer, /semantic-import-v5/);
 
     const pptx = await importer.importBuffer('静态演示.pptx', await createMinimalPptx());
     assert.equal(pptx.kind, 'pptx');
@@ -315,7 +342,7 @@ $$`)
     assert.equal(pptx.importMetadata.warnings.length, 1);
     assert.equal(pptx.importMetadata.warnings[0].type, 'animation-not-translated');
     assert.equal(pptx.importMetadata.sourceFormat, 'pptx');
-    assert.match(pptx.importMetadata.importer, /semantic-import-v4/);
+    assert.match(pptx.importMetadata.importer, /semantic-import-v5/);
 
     console.log('[ScriptoriumImporters] PASSED', {
         markdownMathNodes: (markdown.html.match(/data-vdoc-math=/g) || []).length,

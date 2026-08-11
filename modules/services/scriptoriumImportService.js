@@ -5,9 +5,72 @@ const { marked } = require('marked');
 const mammoth = require('mammoth');
 const JSZip = require('jszip');
 const cheerio = require('cheerio');
+const hljs = require('../../vendor/highlight.min.js');
 const scriptoriumPptxImportService = require('./scriptoriumPptxImportService');
 
-const IMPORTER_VERSION = 4;
+const IMPORTER_VERSION = 5;
+const MARKDOWN_DOCUMENT_STYLE = `
+.vdoc-markdown-table {
+    width: 100%;
+    margin: 1em 0;
+    border: 1px solid currentColor;
+    border-collapse: collapse;
+    border-spacing: 0;
+}
+.vdoc-markdown-table th,
+.vdoc-markdown-table td {
+    min-width: 2em;
+    padding: .45em .65em;
+    border: 1px solid currentColor;
+    text-align: left;
+    vertical-align: top;
+}
+.vdoc-markdown-table th {
+    font-weight: 600;
+    background: rgba(127, 127, 127, .12);
+}
+.vdoc-code-block {
+    margin: 1em 0;
+    padding: 1em 1.15em;
+    border: 1px solid #364150;
+    border-radius: 6px;
+    overflow: auto;
+    color: #d8dee9;
+    background: #20262e;
+    font: 10.5pt/1.6 "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+    tab-size: 4;
+    white-space: pre;
+}
+.vdoc-code-block code {
+    font: inherit;
+}
+.vdoc-code-block .hljs-comment,
+.vdoc-code-block .hljs-quote { color: #8290a3; font-style: italic; }
+.vdoc-code-block .hljs-keyword,
+.vdoc-code-block .hljs-selector-tag,
+.vdoc-code-block .hljs-literal { color: #c792ea; }
+.vdoc-code-block .hljs-string,
+.vdoc-code-block .hljs-regexp,
+.vdoc-code-block .hljs-addition,
+.vdoc-code-block .hljs-attribute { color: #a3d98b; }
+.vdoc-code-block .hljs-number,
+.vdoc-code-block .hljs-symbol,
+.vdoc-code-block .hljs-bullet { color: #f2b67a; }
+.vdoc-code-block .hljs-title,
+.vdoc-code-block .hljs-section,
+.vdoc-code-block .hljs-function { color: #82cfff; }
+.vdoc-code-block .hljs-built_in,
+.vdoc-code-block .hljs-type,
+.vdoc-code-block .hljs-class .hljs-title { color: #ffd580; }
+.vdoc-code-block .hljs-variable,
+.vdoc-code-block .hljs-template-variable,
+.vdoc-code-block .hljs-params { color: #f3a6b7; }
+.vdoc-code-block .hljs-meta,
+.vdoc-code-block .hljs-doctag { color: #7fdbca; }
+.vdoc-code-block .hljs-emphasis { font-style: italic; }
+.vdoc-code-block .hljs-strong { font-weight: 700; }
+.vdoc-code-block .hljs-deletion { color: #ff8f8f; }
+`.trim();
 const SUPPORTED_EXTENSIONS = new Set([
     '.html', '.htm', '.md', '.markdown', '.txt', '.rtf', '.docx', '.pptx',
 ]);
@@ -56,6 +119,57 @@ function restoreMarkdownMath(html, placeholders) {
     return restored;
 }
 
+function normalizeMarkdownDocumentHtml(html) {
+    const $ = cheerio.load(
+        `<main data-vdoc-markdown-root>${String(html || '')}</main>`,
+        null,
+        false
+    );
+    const root = $('main[data-vdoc-markdown-root]');
+    let styledContent = false;
+
+    root.find('table').each((_index, table) => {
+        $(table).addClass('vdoc-markdown-table');
+        styledContent = true;
+    });
+
+    root.find('pre > code').each((_index, code) => {
+        const codeElement = $(code);
+        const pre = codeElement.parent();
+        const source = codeElement.text();
+        const declaredLanguage = String(
+            codeElement.attr('class')?.match(/(?:^|\s)language-([^\s]+)/)?.[1] || ''
+        ).trim().toLowerCase();
+
+        const supportedLanguage = declaredLanguage
+            && hljs.getLanguage(declaredLanguage)
+            ? declaredLanguage
+            : 'plaintext';
+        // 未声明或无法识别的围栏语言按纯文本处理。自动猜测会把普通文字
+        // 误判为 SCSS、SQL 等语言，使同一源码在高亮库升级后产生不同结果。
+        const highlighted = hljs.highlight(source, {
+            language: supportedLanguage,
+            ignoreIllegals: true,
+        });
+        const resolvedLanguage = supportedLanguage;
+        pre.addClass('vdoc-code-block');
+        pre.attr('data-vdoc-code-language', resolvedLanguage);
+        codeElement
+            .removeClass()
+            .addClass(`hljs language-${resolvedLanguage}`)
+            .attr('data-vdoc-code-language', resolvedLanguage)
+            .html(highlighted.value);
+        styledContent = true;
+    });
+
+    if (styledContent) {
+        root.prepend(
+            `<style data-vdoc-markdown-style>\n${MARKDOWN_DOCUMENT_STYLE}\n</style>`
+        );
+    }
+    return root.html() || '';
+}
+
 function convertMarkdown(markdown) {
     const { protectedText, placeholders } = protectMarkdownMath(markdown);
     const html = marked.parse(protectedText, {
@@ -63,7 +177,9 @@ function convertMarkdown(markdown) {
         breaks: false,
         async: false,
     });
-    return restoreMarkdownMath(html, placeholders);
+    return normalizeMarkdownDocumentHtml(
+        restoreMarkdownMath(html, placeholders)
+    );
 }
 
 function convertPlainText(text) {
@@ -590,6 +706,7 @@ module.exports = {
     escapeHtml,
     protectMarkdownMath,
     restoreMarkdownMath,
+    normalizeMarkdownDocumentHtml,
     convertMarkdown,
     convertPlainText,
     convertRtf,
