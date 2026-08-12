@@ -74,6 +74,11 @@ app.whenReady().then(async () => {
         );
         const level = details?.level ?? args[1];
         const message = details?.message ?? args[2] ?? 'Unknown renderer message';
+        const lineNumber = details?.lineNumber ?? args[3];
+        const sourceId = details?.sourceId ?? args[4];
+        console.log(`[ScriptoriumVPPTX Renderer:${level}] ${message} (${
+            sourceId || 'unknown'
+        }:${lineNumber || 0})`);
         if (level === 'error' || level === 3) errors.push(message);
     });
     windowRef.webContents.on('render-process-gone', (_event, details) => {
@@ -100,9 +105,7 @@ app.whenReady().then(async () => {
                 {
                     id: 'scene-stable-a',
                     name: '甲页',
-                    html: '<section class="vdoc-slide-scene"><h1>甲</h1></section>',
-                    css: '.a{color:red}',
-                    script: 'scene.dataset.ran = "true";',
+                    source: '<style>.a{color:red}</style><section class="vdoc-slide-scene"><h1>甲</h1></section><script>scene.dataset.ran = "true";</script>',
                     transition: 'fade',
                     duration: 4,
                     notes: '甲备注',
@@ -111,11 +114,12 @@ app.whenReady().then(async () => {
                 {
                     id: 'scene-stable-b',
                     name: '乙页',
-                    html: '<section class="vdoc-slide-scene"><h1>乙</h1></section>'
+                    source: '<section class="vdoc-slide-scene"><h1>乙</h1></section>'
                 }
             ]
         });
         const restored = window.VDocCore.parse(window.VDocCore.serialize(model));
+        const slideASplit = window.VDocCore.splitSlideSource(restored.source.slides[0].source);
         return {
             title: document.getElementById('document-title').textContent,
             navigatorVisible: !document.getElementById('slide-navigator').hidden,
@@ -130,7 +134,7 @@ app.whenReady().then(async () => {
             roundTrip: restored.source.slides.length === 2
                 && restored.source.slides[0].id === 'scene-stable-a'
                 && restored.source.slides[1].id === 'scene-stable-b'
-                && restored.source.slides[0].script.includes('dataset.ran')
+                && slideASplit.script.includes('dataset.ran')
                 && restored.source.slides[0].transition === 'fade'
                 && restored.source.slides[0].duration === 4
                 && restored.source.slides[0].notes === '甲备注'
@@ -270,6 +274,91 @@ app.whenReady().then(async () => {
         };
     })()`);
 
+    const sourceTruthIsolation = await windowRef.webContents.executeJavaScript(`(async () => {
+      try {
+        const waitFrames = () => new Promise((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(resolve))
+        );
+        const sourceButton = document.getElementById('html-mode-btn');
+        sourceButton.click();
+        await waitFrames();
+        const codeMirror = document.querySelector(
+            '.source-editor-shell .CodeMirror'
+        )?.CodeMirror;
+        if (!codeMirror) return { available: false };
+
+        const marker = '<span class="dot" data-test-runtime-truth="true">●</span>';
+        codeMirror.setValue(codeMirror.getValue().replace(
+            /(<\\/section>)(?![\\s\\S]*<\\/section>)/,
+            marker + '$1'
+        ));
+        document.getElementById('apply-source-btn').click();
+        document.getElementById('render-mode-btn').click();
+        await waitFrames();
+
+        let root = document.getElementById('page-stream').shadowRoot;
+        let runtime = root.querySelector('.vdoc-slide-editor-runtime');
+        const dot = runtime?.querySelector('[data-test-runtime-truth="true"]');
+        if (!dot) return { available: false, markerInserted: false };
+
+        // 等价模拟 Anime.js/第三方运行库在当前帧对既有节点所做的变异。
+        dot.style.cssText =
+            'transform: translateY(17px) scale(0.73); opacity: 0.42; border-radius: 37%;';
+        dot.classList.add('animejs-current-frame');
+        dot.dataset.runtimeFrame = '42';
+        const generated = document.createElement('i');
+        generated.dataset.vdocRuntimeGenerated = 'true';
+        generated.textContent = 'runtime-only';
+        runtime.appendChild(generated);
+
+        const api = window.ScriptoriumAgent.current();
+        api.getViewportSource({ sourceKind: 'html', radius: 200 });
+        const afterRead = api.getSource({ sourceKind: 'html' }).source;
+
+        // 结构操作仍需允许新增正文块，但同步过程必须以既有源码属性为真相。
+        document.getElementById('insert-block-btn').click();
+        const afterStructure = api.getSource({ sourceKind: 'html' }).source;
+
+        const activeIndex = window.ScriptoriumAgent.common.getDocumentInfo().activeSlideIndex;
+        const slideCount = window.ScriptoriumAgent.pptx.getSlideCount().count;
+        const otherIndex = slideCount > 1 ? (activeIndex === 0 ? 1 : 0) : activeIndex;
+        if (otherIndex !== activeIndex) {
+            window.ScriptoriumAgent.pptx.selectSlide({ slideIndex: otherIndex });
+            await waitFrames();
+            window.ScriptoriumAgent.pptx.selectSlide({ slideIndex: activeIndex });
+            await waitFrames();
+        }
+        const afterNavigation = api.getSource({
+            sourceKind: 'html',
+            slideIndex: activeIndex
+        }).source;
+
+        const remainsSourceTruth = (source) =>
+            source.includes('data-test-runtime-truth="true"')
+            && !source.includes('animejs-current-frame')
+            && !source.includes('data-runtime-frame')
+            && !source.includes('translateY(17px)')
+            && !source.includes('opacity: 0.42')
+            && !source.includes('border-radius: 37%')
+            && !source.includes('runtime-only');
+
+        return {
+            available: true,
+            markerInserted: true,
+            runtimeWasMutated: dot.hasAttribute('style'),
+            viewportReadIsPure: remainsSourceTruth(afterRead),
+            structureSyncIsIsolated: remainsSourceTruth(afterStructure),
+            structureEditSurvives: afterStructure !== afterRead,
+            navigationIsPure: remainsSourceTruth(afterNavigation)
+        };
+      } catch (error) {
+        return {
+            available: false,
+            thrown: String(error && error.stack ? error.stack : error)
+        };
+      }
+    })()`);
+
     lastExportPayload = null;
     await windowRef.webContents.executeJavaScript(
         `document.getElementById('export-flow-html-btn').click()`
@@ -329,6 +418,7 @@ app.whenReady().then(async () => {
         prependInteraction,
         pageManagement,
         reading,
+        sourceTruthIsolation,
         exportChecks,
     };
     console.log('[ScriptoriumVPPTX] Snapshot:', JSON.stringify(snapshot, null, 2));
@@ -364,6 +454,13 @@ app.whenReady().then(async () => {
         || !reading.landscape
         || !reading.sceneFillsPage
         || !/^第 \d+ 页 \/ 共 2 页$/.test(reading.status)
+        || !sourceTruthIsolation.available
+        || !sourceTruthIsolation.markerInserted
+        || !sourceTruthIsolation.runtimeWasMutated
+        || !sourceTruthIsolation.viewportReadIsPure
+        || !sourceTruthIsolation.structureSyncIsIsolated
+        || !sourceTruthIsolation.structureEditSurvives
+        || !sourceTruthIsolation.navigationIsPure
         || exportChecks.presentationFormat !== 'html-flow'
         || exportChecks.presentationPaged !== false
         || !exportChecks.presentationName.endsWith('.html')
@@ -391,6 +488,9 @@ app.whenReady().then(async () => {
 
     console.log('[ScriptoriumVPPTX] PASSED');
     app.exit(0);
+}).catch((error) => {
+    console.error('[ScriptoriumVPPTX] UNHANDLED:', error?.stack || error);
+    app.exit(1);
 });
 
 app.on('window-all-closed', () => app.quit());

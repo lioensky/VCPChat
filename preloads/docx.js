@@ -14,10 +14,17 @@ const scriptoriumAPI = Object.freeze({
     chooseOpen: () => ipcRenderer.invoke('docx:choose-open'),
     chooseImport: () => ipcRenderer.invoke('scriptorium:choose-import'),
     readPath: (filePath) => ipcRenderer.invoke('docx:read-path', filePath),
+    readExternalResource: (payload) =>
+        ipcRenderer.invoke('docx:read-external-resource', payload),
     save: (payload) => ipcRenderer.invoke('docx:save', payload),
     exportRichDocument: (payload) => ipcRenderer.invoke('scriptorium:export-rich-document', payload),
     listRecent: () => ipcRenderer.invoke('docx:recent-list'),
     listSystemFonts: (forceRefresh = false) => ipcRenderer.invoke('docx:fonts-list', forceRefresh),
+
+    // 文脉署名头像只读取现有用户与 Agent 资料，不向文档工程写入本机路径。
+    loadAgentsList: () => ipcRenderer.invoke('load-agents-list'),
+    loadUserAvatar: () => ipcRenderer.invoke('load-user-avatar'),
+    loadAgentAvatar: (folderName) => ipcRenderer.invoke('load-agent-avatar', folderName),
 
     getCurrentTheme: () => ipcRenderer.invoke('get-current-theme'),
     windowReady: (payload = {}) => ipcRenderer.send('window-lifecycle:ready', {

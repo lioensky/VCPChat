@@ -3,6 +3,9 @@
 const { BrowserWindow, ipcMain, app, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs-extra');
+const http = require('http');
+const https = require('https');
+const { fileURLToPath } = require('url');
 const { execFile } = require('child_process');
 const windowService = require('../services/windowService');
 const WINDOW_APP_IDS = require('../services/windowAppIds');
@@ -10,6 +13,9 @@ const { PRELOAD_ROLES, resolveAppPreload } = require('../services/preloadPaths')
 const scriptoriumImportService = require('../services/scriptoriumImportService');
 
 const MAX_DOCUMENT_BYTES = 100 * 1024 * 1024;
+const MAX_RESOURCE_BYTES = 80 * 1024 * 1024;
+const RESOURCE_TIMEOUT_MS = 30000;
+const MAX_RESOURCE_REDIRECTS = 5;
 const PROJECT_EXTENSIONS = new Set(['.vdocx', '.vpptx']);
 const EXPORT_FORMATS = new Set(['html-flow', 'html-paged', 'pdf']);
 const IMPORT_EXTENSIONS = new Set(scriptoriumImportService.SUPPORTED_EXTENSIONS);
@@ -230,10 +236,52 @@ async function listWindowsFonts() {
         ');',
         'foreach ($registryRoot in $registryRoots) {',
         '  try {',
+        '    $inspectInternalNames = $registryRoot -like "*HKEY_CURRENT_USER*";',
         '    $properties = Get-ItemProperty -LiteralPath $registryRoot;',
         '    $properties.PSObject.Properties | Where-Object { $_.Name -notmatch "^PS" } | ForEach-Object {',
-        '      $fontName = $_.Name -replace "\\s+\\((?:TrueType|OpenType|Variable)\\)\\s*$", "";',
-        '      if ($fontName) { [void]$names.Add($fontName.Trim()) }',
+        '      $registryName = ($_.Name -replace "\\s+\\((?:TrueType|OpenType|Variable)\\)\\s*$", "").Trim();',
+        '      $fontPath = [Environment]::ExpandEnvironmentVariables([string]$_.Value);',
+        '      if ($fontPath -and -not [IO.Path]::IsPathRooted($fontPath)) {',
+        '        $fontPath = Join-Path (Join-Path $env:WINDIR "Fonts") $fontPath;',
+        '      }',
+        '      $internalNamesFound = $false;',
+        '      $shouldInspectFile = $inspectInternalNames -or $registryName -match "[^\\x00-\\x7F]";',
+        '      if ($shouldInspectFile -and $fontPath -and [IO.File]::Exists($fontPath)) {',
+        '        try {',
+        '          $glyph = New-Object System.Windows.Media.GlyphTypeface ([Uri]$fontPath);',
+        '          $aliases = New-Object "System.Collections.Generic.List[string]";',
+        '          $preferredCultures = @(',
+        '            [System.Globalization.CultureInfo]::CurrentUICulture,',
+        '            [System.Globalization.CultureInfo]::GetCultureInfo("zh-CN"),',
+        '            [System.Globalization.CultureInfo]::GetCultureInfo("en-US")',
+        '          );',
+        '          foreach ($culture in $preferredCultures) {',
+        '            $familyName = ([string]$glyph.FamilyNames[$culture]).Trim();',
+        '            if ($familyName -and -not $aliases.Contains($familyName)) {',
+        '              $aliases.Add($familyName);',
+        '            }',
+        '          }',
+        '          $glyph.FamilyNames.Values | ForEach-Object {',
+        '            $familyName = ([string]$_).Trim();',
+        '            if ($familyName -and -not $aliases.Contains($familyName)) {',
+        '              $aliases.Add($familyName);',
+        '            }',
+        '          };',
+        '          if ($aliases.Count) {',
+        '            $cssStack = ($aliases | ForEach-Object {',
+        '              [char]34 + $_.Replace([char]34, "\\" + [char]34) + [char]34',
+        '            }) -join ", ";',
+        '            [void]$names.Add($cssStack);',
+        '            $internalNamesFound = $true;',
+        '          }',
+        '        } catch {}',
+        '      }',
+        // 注册表名称经常是 full name，例如“霞鹜文楷 Regular”，而 CSS
+        // font-family 只接受内部 family“霞鹜文楷”。这里不能把 JavaScript
+        // 注释写进 PowerShell 字符串：脚本最终拼成单行，# 会吞掉后续所有代码。
+        '      if (-not $internalNamesFound -and $registryName) {',
+        '        [void]$names.Add($registryName);',
+        '      }',
         '    }',
         '  } catch {}',
         '}',
@@ -246,7 +294,11 @@ async function listWindowsFonts() {
         '-NonInteractive',
         '-ExecutionPolicy', 'Bypass',
         '-Command', script,
-    ]);
+    ], {
+        // 首次读取 HKCU 第三方字体的 OpenType family 表会触发 WPF 字体缓存。
+        // 不能沿用普通辅助命令的 15 秒限制，否则超时后只显示七个兜底字体。
+        timeout: 60000,
+    });
     return output
         .split(/\r?\n/)
         .map((encoded) => encoded.trim())
@@ -300,9 +352,13 @@ async function getSystemFonts(forceRefresh = false) {
         console.warn('[Scriptorium] System font enumeration failed:', error.message);
     }
 
-    // Windows 枚举结果必须保持真实：不要追加可能并未安装的字体。
-    // Scriptorium 直接将该列表用于中日韩 CSS 字体栈与缺字回退诊断。
-    fontCache = normalizeFontNames(discovered.length ? discovered : [
+    if (discovered.length) {
+        fontCache = normalizeFontNames(discovered);
+        return fontCache;
+    }
+
+    // 只有本轮真实枚举失败时才使用最小兜底集；兜底结果仅保存在当前进程。
+    fontCache = normalizeFontNames([
         'Arial',
         'Calibri',
         'Cambria',
@@ -342,6 +398,247 @@ async function rememberRecentFile(filePath) {
     return next;
 }
 
+function resourceNameFromUrl(resourceUrl, headers = {}) {
+    const disposition = String(headers['content-disposition'] || '');
+    const encoded = disposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+    const plain = disposition.match(/filename\s*=\s*(?:"([^"]+)"|([^;]+))/i);
+    if (encoded) {
+        try {
+            return path.basename(decodeURIComponent(encoded));
+        } catch {}
+    }
+    if (plain?.[1] || plain?.[2]) {
+        return path.basename(String(plain[1] || plain[2]).trim());
+    }
+    try {
+        return path.basename(decodeURIComponent(new URL(resourceUrl).pathname)) || 'resource.bin';
+    } catch {
+        return 'resource.bin';
+    }
+}
+
+function classifyCollectableResource(bytes, suppliedMime = '', name = '') {
+    const data = Buffer.from(bytes || []);
+    const mime = String(suppliedMime || '').trim().toLowerCase();
+    const normalizedMime = mime.split(';', 1)[0];
+    const extension = path.extname(String(name || '')).toLowerCase();
+    const ascii = (start, length) => data.subarray(start, start + length).toString('ascii');
+    const starts = (...values) => values.every((value, index) => data[index] === value);
+    const recognizedMime = /^(?:image|audio|video|font)\//.test(normalizedMime)
+        || new Set([
+            'application/font-woff',
+            'application/font-sfnt',
+            'application/vnd.ms-fontobject',
+            'application/x-font-ttf',
+            'application/x-font-opentype',
+        ]).has(normalizedMime);
+    const htmlMime = normalizedMime === 'text/html'
+        || normalizedMime === 'application/xhtml+xml';
+    if (htmlMime) {
+        return {
+            collectable: false,
+            reason: '目标返回 HTML 网页，不作为工程资源收纳。',
+            mime: normalizedMime,
+            category: null,
+        };
+    }
+
+    let detectedMime = '';
+    if (starts(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)) {
+        detectedMime = 'image/png';
+    } else if (starts(0xff, 0xd8, 0xff)) {
+        detectedMime = 'image/jpeg';
+    } else if (ascii(0, 6) === 'GIF87a' || ascii(0, 6) === 'GIF89a') {
+        detectedMime = 'image/gif';
+    } else if (ascii(0, 4) === 'RIFF' && ascii(8, 4) === 'WEBP') {
+        detectedMime = 'image/webp';
+    } else if (ascii(0, 2) === 'BM') {
+        detectedMime = 'image/bmp';
+    } else if (starts(0x00, 0x00, 0x01, 0x00)) {
+        detectedMime = 'image/x-icon';
+    } else if (ascii(0, 4) === 'RIFF' && ascii(8, 4) === 'WAVE') {
+        detectedMime = 'audio/wav';
+    } else if (ascii(0, 4) === 'fLaC') {
+        detectedMime = 'audio/flac';
+    } else if (ascii(0, 4) === 'OggS') {
+        detectedMime = extension === '.ogv' ? 'video/ogg' : 'audio/ogg';
+    } else if (ascii(0, 3) === 'ID3'
+        || (data.length >= 2 && data[0] === 0xff && (data[1] & 0xe0) === 0xe0)) {
+        detectedMime = 'audio/mpeg';
+    } else if (ascii(4, 4) === 'ftyp') {
+        detectedMime = extension === '.m4a' ? 'audio/mp4' : 'video/mp4';
+    } else if (starts(0x1a, 0x45, 0xdf, 0xa3)) {
+        detectedMime = extension === '.weba' ? 'audio/webm' : 'video/webm';
+    } else if (ascii(0, 4) === 'wOFF') {
+        detectedMime = 'font/woff';
+    } else if (ascii(0, 4) === 'wOF2') {
+        detectedMime = 'font/woff2';
+    } else if (ascii(0, 4) === 'OTTO') {
+        detectedMime = 'font/otf';
+    } else if (starts(0x00, 0x01, 0x00, 0x00) || ascii(0, 4) === 'true') {
+        detectedMime = 'font/ttf';
+    } else {
+        const prefix = data.subarray(0, Math.min(data.length, 1024))
+            .toString('utf8')
+            .replace(/^\uFEFF/, '')
+            .trimStart();
+        if (/^<svg(?:\s|>)/i.test(prefix)
+            || /^<\?xml[\s\S]{0,400}<svg(?:\s|>)/i.test(prefix)) {
+            detectedMime = 'image/svg+xml';
+        } else if (/^(?:<!doctype\s+html|<html(?:\s|>))/i.test(prefix)) {
+            return {
+                collectable: false,
+                reason: '目标内容是 HTML 网页，不作为工程资源收纳。',
+                mime: normalizedMime || 'text/html',
+                category: null,
+            };
+        }
+    }
+
+    const effectiveMime = detectedMime || (recognizedMime ? normalizedMime : '');
+    if (!effectiveMime) {
+        return {
+            collectable: false,
+            reason: '无法确认该 URL 指向受支持的媒体或字体文件，保留为通用 URL。',
+            mime: normalizedMime || 'application/octet-stream',
+            category: null,
+        };
+    }
+    return {
+        collectable: true,
+        reason: '',
+        mime: effectiveMime,
+        category: effectiveMime.startsWith('font/')
+            || effectiveMime.startsWith('application/font')
+            || effectiveMime.includes('font-')
+            ? 'fonts'
+            : 'media',
+    };
+}
+
+function downloadExternalResource(resourceUrl, redirects = 0) {
+    return new Promise((resolve, reject) => {
+        if (redirects > MAX_RESOURCE_REDIRECTS) {
+            reject(new Error('网络资源重定向次数过多。'));
+            return;
+        }
+        const parsed = new URL(resourceUrl);
+        const transport = parsed.protocol === 'https:' ? https : http;
+        const request = transport.get(parsed, {
+            timeout: RESOURCE_TIMEOUT_MS,
+            headers: {
+                'User-Agent': 'VCP-Scriptorium/2',
+                Accept: '*/*',
+            },
+        }, (response) => {
+            const status = Number(response.statusCode) || 0;
+            if ([301, 302, 303, 307, 308].includes(status) && response.headers.location) {
+                response.resume();
+                const redirected = new URL(response.headers.location, parsed).href;
+                resolve(downloadExternalResource(redirected, redirects + 1));
+                return;
+            }
+            if (status < 200 || status >= 300) {
+                response.resume();
+                reject(new Error(`网络资源读取失败：HTTP ${status}`));
+                return;
+            }
+            const declaredLength = Number(response.headers['content-length']);
+            if (Number.isFinite(declaredLength) && declaredLength > MAX_RESOURCE_BYTES) {
+                response.resume();
+                reject(new Error('网络资源超过 80 MB 安全上限。'));
+                return;
+            }
+            const chunks = [];
+            let size = 0;
+            response.on('data', (chunk) => {
+                size += chunk.length;
+                if (size > MAX_RESOURCE_BYTES) {
+                    request.destroy(new Error('网络资源超过 80 MB 安全上限。'));
+                    return;
+                }
+                chunks.push(chunk);
+            });
+            response.on('end', () => {
+                const bytes = Buffer.concat(chunks);
+                resolve({
+                    bytes,
+                    name: resourceNameFromUrl(parsed.href, response.headers),
+                    mime: String(response.headers['content-type'] || '')
+                        .split(';', 1)[0].trim(),
+                    finalUrl: parsed.href,
+                });
+            });
+            response.on('error', reject);
+        });
+        request.on('timeout', () => request.destroy(new Error('网络资源读取超时。')));
+        request.on('error', reject);
+    });
+}
+
+async function readExternalResource(_event, payload = {}) {
+    const supplied = String(payload.url || '').trim();
+    if (!supplied) throw new Error('缺少资源 URL。');
+    let parsed;
+    try {
+        parsed = new URL(supplied);
+    } catch {
+        throw new Error('资源地址必须是完整的 file、http 或 https URL。');
+    }
+    if (!['file:', 'http:', 'https:'].includes(parsed.protocol)) {
+        throw new Error(`不允许读取 ${parsed.protocol || '未知'} 协议资源。`);
+    }
+
+    let result;
+    if (parsed.protocol === 'file:') {
+        const filePath = fileURLToPath(parsed);
+        const stat = await fs.stat(filePath);
+        if (!stat.isFile()) throw new Error('本地资源不是有效文件。');
+        if (stat.size > MAX_RESOURCE_BYTES) {
+            throw new Error('本地资源超过 80 MB 安全上限。');
+        }
+        result = {
+            bytes: await fs.readFile(filePath),
+            name: path.basename(filePath),
+            mime: '',
+            finalUrl: parsed.href,
+        };
+    } else {
+        result = await downloadExternalResource(parsed.href);
+    }
+    const classification = classifyCollectableResource(
+        result.bytes,
+        result.mime,
+        result.name
+    );
+    if (!classification.collectable) {
+        return {
+            success: true,
+            collectable: false,
+            reason: classification.reason,
+            url: supplied,
+            finalUrl: result.finalUrl,
+            name: result.name,
+            mime: classification.mime,
+            category: null,
+            size: result.bytes.length,
+            bytes: null,
+        };
+    }
+    return {
+        success: true,
+        collectable: true,
+        reason: '',
+        url: supplied,
+        finalUrl: result.finalUrl,
+        name: result.name,
+        mime: classification.mime || result.mime || 'application/octet-stream',
+        category: classification.category,
+        size: result.bytes.length,
+        bytes: Uint8Array.from(result.bytes),
+    };
+}
+
 async function readDocument(filePath) {
     const resolved = assertDocumentPath(filePath);
     const stat = await fs.stat(resolved);
@@ -372,6 +669,9 @@ async function readDocument(filePath) {
         kind: 'imported',
         importedKind: imported.kind,
         html: imported.html,
+        source: imported.source,
+        sourceFormat: imported.sourceFormat,
+        lineEnding: imported.lineEnding,
         slides: imported.slides,
         page: imported.page,
         importMetadata: imported.importMetadata,
@@ -587,7 +887,14 @@ async function inlineProgrammableDependencies(html, requestedDependencies = []) 
     if (!sources.length) return output;
     const embedded = sources.join('\n');
     if (/<\/head\s*>/i.test(output)) {
-        return output.replace(/<\/head\s*>/i, `${embedded}\n</head>`);
+        // 必须使用函数型替换。Three.js 压缩源码包含大量 `$&`、`$'`
+        // 等字符序列；若直接作为 replace 的 replacement string，
+        // JavaScript 会将其解释为匹配引用并把 `</head>` 写进库源码，
+        // 最终导致导出页面报 Unexpected token '<'。
+        return output.replace(
+            /<\/head\s*>/i,
+            () => `${embedded}\n</head>`
+        );
     }
     return `${embedded}\n${output}`;
 }
@@ -766,6 +1073,7 @@ function initialize(params) {
     ipcMain.handle('docx:choose-open', chooseAndReadDocument);
     ipcMain.handle('scriptorium:choose-import', chooseAndImportDocument);
     ipcMain.handle('docx:read-path', (_event, filePath) => readDocument(filePath));
+    ipcMain.handle('docx:read-external-resource', readExternalResource);
     ipcMain.handle('docx:save', saveDocument);
     ipcMain.handle('scriptorium:export-rich-document', exportRichDocument);
     ipcMain.handle('docx:recent-list', readRecentFiles);
@@ -776,8 +1084,8 @@ module.exports = {
     initialize,
     openDocxWindow,
     requestAgentOperation,
-    writeProjectArtifact: (filePath, serialized) =>
-        atomicWrite(filePath, Buffer.from(String(serialized || ''), 'utf8')),
+    writeProjectArtifact: (filePath, bytes) =>
+        atomicWrite(filePath, Buffer.from(bytes || [])),
     getDocxWindow: () => docxWindow,
     getSystemFonts,
 };

@@ -2,7 +2,11 @@
 
 (() => {
     const FORMAT = 'vcp-vdocx';
-    const VERSION = 1;
+    const VERSION = 2;
+    const SOURCE_FORMATS = Object.freeze({
+        MARKDOWN_HYBRID: 'markdown-hybrid',
+        HTML_SCENE: 'html-scene',
+    });
     const PROJECT_KINDS = Object.freeze({
         FLOW_DOCUMENT: 'flow-document',
         SLIDE_DECK: 'slide-deck',
@@ -13,10 +17,24 @@
     // 这里只移除可建立独立浏览上下文或插件执行环境的危险宿主元素。
     const BLOCKED_ELEMENTS = 'iframe,object,embed,applet,base,meta[http-equiv],link[rel="import"]';
     const URL_ATTRIBUTES = ['href', 'src', 'poster', 'action', 'formaction', 'xlink:href'];
+    const FILE_SOURCE_ELEMENTS = new Set(['IMG', 'VIDEO', 'AUDIO', 'SOURCE', 'TRACK']);
 
     function createId(prefix = 'node') {
         const uuid = globalThis.crypto?.randomUUID?.();
         return `${prefix}-${uuid || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`}`;
+    }
+
+    function defaultMarkdown() {
+        return `# 未命名文稿
+
+> VCP SCRIPTORIUM
+
+人类负责思想与创作，AI 负责润色与排版。请从这里开始共同书写。
+
+## 第一章
+
+在这里落下第一段文字。
+`;
     }
 
     function defaultHtml() {
@@ -97,14 +115,82 @@
         };
     }
 
+    function splitSlideSource(source) {
+        const template = document.createElement('template');
+        template.innerHTML = sanitizeHtml(source);
+        const inlineScripts = [];
+        const inlineStyles = [];
+        template.content.querySelectorAll('style').forEach((style) => {
+            inlineStyles.push(style.textContent || '');
+            style.remove();
+        });
+        template.content.querySelectorAll('script').forEach((script) => {
+            // src 依赖声明必须留在页面结构中，供本地化、审计和单文件导出使用；
+            // 无 src 的脚本则交给 Scriptorium 受控生命周期运行时执行。
+            if (script.getAttribute('src')
+                || script.dataset.vdocLibrary
+                || script.dataset.vdocIgnoredSrc
+                || script.type === 'application/x-vdoc-ignored-external') {
+                return;
+            }
+            inlineScripts.push(script.textContent || '');
+            script.remove();
+        });
+        return {
+            html: template.innerHTML,
+            css: sanitizeCss(inlineStyles.join('\n\n')),
+            script: inlineScripts.join('\n\n'),
+            hadInlineStyle: inlineStyles.length > 0,
+            hadInlineScript: inlineScripts.length > 0,
+        };
+    }
+
+    function composeSlideSource(slide = {}) {
+        return String(slide.source || '');
+    }
+
+    function normalizeCompleteSource(value, fallback) {
+        // 完整源码本身就是唯一文档真相。仅做安全清理、编辑节点标记和
+        // 可读格式化；绝不能抽取并重组 style/script，否则会改变标签属性、
+        // 执行顺序、DOM 归属以及人类在源码面看到的内容。
+        return formatHtml(ensureTextNodeIds(sanitizeHtml(value || fallback)));
+    }
+
+    function normalizeCompleteSlideSource(value) {
+        return normalizeCompleteSource(value, defaultSlideHtml());
+    }
+
+    function normalizeCompleteDocumentSource(value) {
+        return normalizeCompleteSource(value, `<style data-vdoc-document-style>
+${defaultCss()}
+</style>
+${defaultHtml()}`);
+    }
+
     function createSlide(input = {}, index = 0) {
         const candidate = input && typeof input === 'object' ? input : {};
+        const runtimeTextOverrides = Array.isArray(candidate.runtimeTextOverrides)
+            ? candidate.runtimeTextOverrides
+                .filter((override) =>
+                    override
+                    && Array.isArray(override.path)
+                    && override.path.every((part) =>
+                        Number.isInteger(Number(part)) && Number(part) >= 0
+                    )
+                    && Number.isInteger(Number(override.textNodeIndex))
+                    && Number(override.textNodeIndex) >= 0
+                )
+                .map((override) => ({
+                    path: override.path.map(Number),
+                    textNodeIndex: Number(override.textNodeIndex),
+                    previousText: String(override.previousText ?? ''),
+                    text: String(override.text ?? ''),
+                }))
+            : [];
         return {
             id: String(candidate.id || createId('slide')),
             name: String(candidate.name || `第 ${index + 1} 页`),
-            html: formatHtml(ensureTextNodeIds(candidate.html || defaultSlideHtml())),
-            css: sanitizeCss(candidate.css || ''),
-            script: String(candidate.script || ''),
+            source: normalizeCompleteSlideSource(candidate.source),
             transition: normalizeTransition(candidate.transition),
             duration: Number.isFinite(Number(candidate.duration))
                 ? Math.max(0, Number(candidate.duration))
@@ -113,6 +199,9 @@
             resources: Array.isArray(candidate.resources)
                 ? [...new Set(candidate.resources.map(String))]
                 : [],
+            // 脚本生成文字若无法安全反向定位源码，则以渲染路径覆盖持久化。
+            // 该字段属于正式页模型，必须穿过 normalize/parse/serialize。
+            runtimeTextOverrides,
             import: candidate.import && typeof candidate.import === 'object'
                 ? candidate.import
                 : null,
@@ -122,6 +211,18 @@
     function normalizeSlides(input) {
         const slides = Array.isArray(input) ? input : [];
         return (slides.length ? slides : [{}]).map(createSlide);
+    }
+
+    function splitDocumentSource(source) {
+        const template = document.createElement('template');
+        template.innerHTML = sanitizeHtml(source);
+        return {
+            html: template.innerHTML,
+        };
+    }
+
+    function composeDocumentSource(documentModel = {}) {
+        return String(documentModel.source?.content || '');
     }
 
     function defaultCss() {
@@ -213,6 +314,9 @@ p { margin: .7em 0; text-align: justify; text-justify: inter-ideograph; text-wra
 
     function createDocument(options = {}) {
         const now = new Date().toISOString();
+        const flowSource = options.source === undefined
+            ? defaultMarkdown()
+            : String(options.source);
         return normalizeDocument({
             format: FORMAT,
             version: VERSION,
@@ -220,6 +324,9 @@ p { margin: .7em 0; text-align: justify; text-justify: inter-ideograph; text-wra
                 id: createId('document'),
                 title: options.title || '未命名文稿',
                 language: options.language || 'zh-CN',
+                sourceFormat: options.kind === PROJECT_KINDS.SLIDE_DECK
+                    ? 'html-scene'
+                    : SOURCE_FORMATS.MARKDOWN_HYBRID,
                 createdAt: now,
                 modifiedAt: now,
                 generator: 'VCP Scriptorium',
@@ -243,19 +350,30 @@ p { margin: .7em 0; text-align: justify; text-justify: inter-ideograph; text-wra
                 }),
             },
             source: {
-                html: options.kind === PROJECT_KINDS.SLIDE_DECK
+                format: options.kind === PROJECT_KINDS.SLIDE_DECK
+                    ? 'html-scene'
+                    : SOURCE_FORMATS.MARKDOWN_HYBRID,
+                content: options.kind === PROJECT_KINDS.SLIDE_DECK
                     ? ''
-                    : options.html || defaultHtml(),
-                css: options.css || defaultCss(),
+                    : flowSource,
+                documentCss: options.kind === PROJECT_KINDS.SLIDE_DECK
+                    ? ''
+                    : sanitizeCss(options.documentCss || defaultCss()),
+                lineEnding: options.lineEnding || 'lf',
+                deckCss: options.kind === PROJECT_KINDS.SLIDE_DECK
+                    ? sanitizeCss(options.deckCss || '')
+                    : '',
                 slides: options.kind === PROJECT_KINDS.SLIDE_DECK
-                    ? normalizeSlides(options.slides || (options.html ? [{
-                        html: options.html,
-                        name: '第 1 页',
-                    }] : null))
+                    ? normalizeSlides(options.slides)
                     : [],
             },
             checkpoints: [],
         });
+    }
+
+    function allowsFileUrl(element, attributeName) {
+        if (attributeName === 'poster') return element.tagName === 'VIDEO';
+        return attributeName === 'src' && FILE_SOURCE_ELEMENTS.has(element.tagName);
     }
 
     function sanitizeHtml(html) {
@@ -271,7 +389,9 @@ p { margin: .7em 0; text-align: justify; text-justify: inter-ideograph; text-wra
                     element.removeAttribute(attribute.name);
                     continue;
                 }
-                if (URL_ATTRIBUTES.includes(name) && /^(?:javascript|vbscript|file):/i.test(value)) {
+                if (!URL_ATTRIBUTES.includes(name)) continue;
+                if (/^(?:javascript|vbscript):/i.test(value)
+                    || (/^file:/i.test(value) && !allowsFileUrl(element, name))) {
                     element.removeAttribute(attribute.name);
                 }
             }
@@ -282,26 +402,45 @@ p { margin: .7em 0; text-align: justify; text-justify: inter-ideograph; text-wra
     function sanitizeCss(css) {
         return String(css || '')
             .replace(/@import\s+[^;]+;?/gi, '')
-            .replace(/url\(\s*(['"]?)\s*(?:javascript|vbscript|file):[\s\S]*?\1\s*\)/gi, 'none')
+            .replace(/url\(\s*(['"]?)\s*(?:javascript|vbscript):[\s\S]*?\1\s*\)/gi, 'none')
             .replace(/expression\s*\([\s\S]*?\)/gi, '');
     }
 
     function ensureTextNodeIds(html) {
         const template = document.createElement('template');
         template.innerHTML = sanitizeHtml(html);
-        template.content.querySelectorAll(PRESERVED_CONTAINER_SELECTOR).forEach((element) => {
-            if (!element.hasAttribute('data-vdoc-container')) {
-                element.setAttribute('data-vdoc-container', createId('container'));
-            }
+
+        // data-vdoc-* 是渲染树定向回写源码的主键，不只是展示元数据。
+        // 粘贴 HTML、手工复制源码或旧版导入都可能留下重复值；querySelector
+        // 随后只会命中第一个节点，使另一个节点的编辑看似成功却无法保存。
+        // 因此归一化既补齐缺失身份，也为重复身份重新签发 ID。
+        const ensureUniqueAttribute = (elements, attribute, prefix) => {
+            const seen = new Set();
+            elements.forEach((element) => {
+                const candidate = String(element.getAttribute(attribute) || '').trim();
+                let identity = candidate;
+                if (!identity || seen.has(identity)) {
+                    do {
+                        identity = createId(prefix);
+                    } while (seen.has(identity));
+                    element.setAttribute(attribute, identity);
+                }
+                seen.add(identity);
+            });
+        };
+
+        const containers = [
+            ...template.content.querySelectorAll(PRESERVED_CONTAINER_SELECTOR),
+        ];
+        ensureUniqueAttribute(containers, 'data-vdoc-container', 'container');
+        containers.forEach((element) => {
             element.setAttribute('data-vdoc-preserve', 'true');
         });
-        template.content.querySelectorAll(EDITABLE_SELECTOR).forEach((element) => {
-            if (!element.hasAttribute('data-vdoc-text')) {
-                element.setAttribute('data-vdoc-text', createId('text'));
-            }
-            if (!element.hasAttribute('data-vdoc-block')) {
-                element.setAttribute('data-vdoc-block', createId('block'));
-            }
+
+        const editables = [...template.content.querySelectorAll(EDITABLE_SELECTOR)];
+        ensureUniqueAttribute(editables, 'data-vdoc-text', 'text');
+        ensureUniqueAttribute(editables, 'data-vdoc-block', 'block');
+        editables.forEach((element) => {
             element.setAttribute('data-vdoc-removable', 'true');
         });
         return template.innerHTML;
@@ -398,6 +537,26 @@ p { margin: .7em 0; text-align: justify; text-justify: inter-ideograph; text-wra
         const manifest = candidate.manifest && typeof candidate.manifest === 'object'
             ? candidate.manifest
             : {};
+        const deck = manifest.scene?.kind === PROJECT_KINDS.SLIDE_DECK;
+        const storedVersion = Number(candidate.version || VERSION);
+        if (storedVersion !== VERSION) {
+            throw new Error(`不支持 VDOCX v${storedVersion}；当前内核只接受 v${VERSION}。`);
+        }
+        const expectedSourceFormat = deck
+            ? SOURCE_FORMATS.HTML_SCENE
+            : SOURCE_FORMATS.MARKDOWN_HYBRID;
+        const suppliedSourceFormat = String(
+            candidate.source?.format || manifest.sourceFormat || expectedSourceFormat
+        );
+        if (suppliedSourceFormat !== expectedSourceFormat) {
+            throw new Error(
+                `正文格式 ${suppliedSourceFormat} 不受支持；当前工程要求 ${expectedSourceFormat}。`
+            );
+        }
+        const sourceFormat = expectedSourceFormat;
+        const rawFlowSource = candidate.source?.content === undefined
+            ? defaultMarkdown()
+            : String(candidate.source.content);
         return {
             format: FORMAT,
             version: VERSION,
@@ -405,6 +564,7 @@ p { margin: .7em 0; text-align: justify; text-justify: inter-ideograph; text-wra
                 id: manifest.id || createId('document'),
                 title: String(manifest.title || '未命名文稿'),
                 language: String(manifest.language || 'zh-CN'),
+                sourceFormat,
                 createdAt: manifest.createdAt || now,
                 modifiedAt: manifest.modifiedAt || now,
                 generator: 'VCP Scriptorium',
@@ -435,20 +595,23 @@ p { margin: .7em 0; text-align: justify; text-justify: inter-ideograph; text-wra
                 import: manifest.import || null,
             },
             source: {
-                html: manifest.scene?.kind === PROJECT_KINDS.SLIDE_DECK
+                format: sourceFormat,
+                content: deck ? '' : rawFlowSource,
+                documentCss: deck
                     ? ''
-                    : formatHtml(ensureTextNodeIds(candidate.source?.html || defaultHtml())),
-                css: sanitizeCss(candidate.source?.css || defaultCss()),
-                slides: manifest.scene?.kind === PROJECT_KINDS.SLIDE_DECK
-                    ? normalizeSlides(
-                        candidate.source?.slides
-                        || (candidate.source?.html ? [{
-                            html: candidate.source.html,
-                            name: '第 1 页',
-                        }] : null)
-                    )
+                    : sanitizeCss(candidate.source?.documentCss || defaultCss()),
+                lineEnding: ['lf', 'crlf', 'cr'].includes(candidate.source?.lineEnding)
+                    ? candidate.source.lineEnding
+                    : (rawFlowSource.includes('\r\n') ? 'crlf' : 'lf'),
+                deckCss: deck
+                    ? sanitizeCss(candidate.source?.deckCss || '')
+                    : '',
+                slides: deck
+                    ? normalizeSlides(candidate.source?.slides)
                     : [],
             },
+            anchors: Array.isArray(candidate.anchors) ? candidate.anchors : [],
+            islands: Array.isArray(candidate.islands) ? candidate.islands : [],
             checkpoints: Array.isArray(candidate.checkpoints) ? candidate.checkpoints : [],
         };
     }
@@ -494,10 +657,18 @@ p { margin: .7em 0; text-align: justify; text-justify: inter-ideograph; text-wra
     window.VDocCore = Object.freeze({
         FORMAT,
         VERSION,
+        SOURCE_FORMATS,
         PROJECT_KINDS,
         EDITABLE_SELECTOR,
         PRESERVED_CONTAINER_SELECTOR,
         createSceneConfig,
+        splitDocumentSource,
+        composeDocumentSource,
+        splitSlideSource,
+        composeSlideSource,
+        normalizeCompleteSource,
+        normalizeCompleteSlideSource,
+        normalizeCompleteDocumentSource,
         createSlide,
         normalizeSlides,
         normalizeTransition,

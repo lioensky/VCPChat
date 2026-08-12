@@ -1,0 +1,65 @@
+[
+  {
+    "font": "方正舒体 (TrueType)",
+    "file": "C:\\WINDOWS\\Fonts\\FZSTK.TTF",
+    "fsType": 8,
+    "embedding": "Editable embedding",
+    "outline": "TrueType glyf",
+    "hasName": true,
+    "hasUnicodeCmap": true
+  },
+  {
+    "font": "方正姚体 (TrueType)",
+    "file": "C:\\WINDOWS\\Fonts\\FZYTK.TTF",
+    "fsType": 8,
+    "embedding": "Editable embedding",
+    "outline": "TrueType glyf",
+    "hasName": true,
+    "hasUnicodeCmap": true
+  },
+  {
+    "font": "方正粗黑宋简体 (TrueType)",
+    "file": "C:\\Users\\Administrator\\AppData\\Local\\Microsoft\\Windows\\Fonts\\方正粗黑宋简体.TTF",
+    "fsType": 8,
+    "embedding": "Editable embedding",
+    "outline": "TrueType glyf",
+    "hasName": true,
+    "hasUnicodeCmap": true
+  },
+  {
+    "font": "方正清刻本悦宋简体 (TrueType)",
+    "file": "C:\\Users\\Administrator\\AppData\\Local\\Microsoft\\Windows\\Fonts\\方正清刻本悦宋简体.TTF",
+    "fsType": 8,
+    "embedding": "Editable embedding",
+    "outline": "TrueType glyf",
+    "hasName": true,
+    "hasUnicodeCmap": true
+  },
+  {
+    "font": "方正宋刻本秀楷简体 (TrueType)",
+    "file": "C:\\Users\\Administrator\\AppData\\Local\\Microsoft\\Windows\\Fonts\\方正宋刻本秀楷简体.ttf",
+    "fsType": 8,
+    "embedding": "Editable embedding",
+    "outline": "TrueType glyf",
+    "hasName": true,
+    "hasUnicodeCmap": true
+  },
+  {
+    "font": "方正隶变简体 (TrueType)",
+    "file": "C:\\Users\\Administrator\\AppData\\Local\\Microsoft\\Windows\\Fonts\\FZLBJW.TTF",
+    "fsType": 8,
+    "embedding": "Editable embedding",
+    "outline": "TrueType glyf",
+    "hasName": true,
+    "hasUnicodeCmap": true
+  },
+  {
+    "font": "方正粗雅宋_GBK (TrueType)",
+    "file": "C:\\Users\\Administrator\\AppData\\Local\\Microsoft\\Windows\\Fonts\\方正粗雅宋_GBK.TTF",
+    "fsType": 8,
+    "embedding": "Editable embedding",
+    "outline": "TrueType glyf",
+    "hasName": true,
+    "hasUnicodeCmap": true
+  }
+]

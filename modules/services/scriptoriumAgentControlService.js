@@ -25,6 +25,28 @@ const DEFAULT_SCREENSHOT_OPTIONS = Object.freeze({
     quality: 85,
 });
 
+const CJK_FONT_PATTERN = /[\u3400-\u9fff\uf900-\ufaff]|(?:cjk|source\s*han|noto\s+(?:sans|serif)\s+(?:sc|tc|hk|jp|kr)|yahei|simsun|simhei|kaiti|fangsong|dengxian|songti|heiti|pingfang|hiragino|meiryo|yu\s+(?:gothic|mincho)|malgun|batang|gulim|mingliu|jhenghei|ms\s+(?:gothic|mincho))/i;
+
+function normalizeFontLanguage(value) {
+    const normalized = String(value || 'all').trim().toLowerCase();
+    if (['all', '*', 'any'].includes(normalized)) return 'all';
+    if (['zh', 'zh-cn', 'zh-hans', 'chinese', 'cn', '中文'].includes(normalized)) {
+        return 'zh-CN';
+    }
+    if (['en', 'en-us', 'en-gb', 'english', 'latin', '英文'].includes(normalized)) {
+        return 'en';
+    }
+    const error = new Error('字体 language 仅支持 all、zh-CN（中文）或 en（英文/拉丁）。');
+    error.code = 'INVALID_FONT_LANGUAGE';
+    throw error;
+}
+
+function fontMatchesLanguage(font, language) {
+    if (language === 'all') return true;
+    const cjk = CJK_FONT_PATTERN.test(String(font || ''));
+    return language === 'zh-CN' ? cjk : !cjk;
+}
+
 function normalizeMaid(value) {
     if (typeof value === 'string') {
         const name = value.trim();
@@ -145,6 +167,18 @@ class ScriptoriumAgentControlService {
         return this.documentHandlers.requestAgentOperation(request);
     }
 
+    async listFonts(options = {}) {
+        this.assertReady();
+        const language = normalizeFontLanguage(options.language);
+        const fonts = await this.documentHandlers.getSystemFonts(
+            options.forceRefresh === true
+        );
+        return {
+            language,
+            fonts: fonts.filter((font) => fontMatchesLanguage(font, language)),
+        };
+    }
+
     async captureVisualContext(request = {}) {
         const win = await this.ensureWindow();
         const semantic = await this.call({
@@ -252,9 +286,12 @@ class ScriptoriumAgentControlService {
                 requestId,
                 projectType,
                 title: payload.title,
-                html: payload.html,
-                css: payload.css,
-                slides: payload.slides,
+                source: projectType === 'docx' ? payload.source : undefined,
+                documentCss: projectType === 'docx'
+                    ? payload.documentCss
+                    : undefined,
+                deckCss: projectType === 'pptx' ? payload.deckCss : undefined,
+                slides: projectType === 'pptx' ? payload.slides : undefined,
                 page: payload.page,
                 presentation: payload.presentation,
                 maid,
@@ -292,15 +329,17 @@ class ScriptoriumAgentControlService {
             }
             throw new Error(normalized?.message || 'Scriptorium 工程规范化失败。');
         }
-        if (!normalized.serialized) {
-            throw new Error('Scriptorium 工程规范化未返回序列化内容。');
+        if (!normalized.bytes) {
+            throw new Error('Scriptorium 工程规范化未返回 ZIP 字节。');
         }
 
-        const serialized = String(normalized.serialized);
+        const artifactBytes = Buffer.from(normalized.bytes);
         const maximumBytes = 100 * 1024 * 1024;
-        if (!Buffer.byteLength(serialized, 'utf8')
-            || Buffer.byteLength(serialized, 'utf8') > maximumBytes) {
-            throw new Error('规范化后的工程为空或超过 100 MB 安全上限。');
+        if (!artifactBytes.length || artifactBytes.length > maximumBytes) {
+            throw new Error('规范化后的 ZIP 工程为空或超过 100 MB 安全上限。');
+        }
+        if (artifactBytes[0] !== 0x50 || artifactBytes[1] !== 0x4b) {
+            throw new Error('Scriptorium 工程规范化结果不是有效 ZIP 容器。');
         }
         const targetPath = await this.resolveTargetPath(
             payload.fileName || normalized.suggestedName || payload.title,
@@ -310,12 +349,12 @@ class ScriptoriumAgentControlService {
         );
         const writeResult = await this.documentHandlers.writeProjectArtifact(
             targetPath,
-            serialized
+            artifactBytes
         );
         if (!writeResult?.success) {
             throw new Error(writeResult?.message || 'Scriptorium 工程写入失败。');
         }
-        const fileHash = sha256(serialized);
+        const fileHash = sha256(artifactBytes);
         const stats = await fs.stat(targetPath);
 
         const openRequested = payload.openAfterCreate === true;
@@ -383,6 +422,8 @@ class ScriptoriumAgentControlService {
 module.exports = {
     ScriptoriumAgentControlService,
     PROJECT_TYPES,
+    normalizeFontLanguage,
+    fontMatchesLanguage,
     normalizeMaid,
     normalizeProjectType,
     normalizeFileName,

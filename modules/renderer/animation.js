@@ -275,16 +275,79 @@ function processScripts(containerElement) {
                                 return virtualCurrentScript;
                             }
 
+                            // 消息内脚本默认只能命中当前消息中的节点，避免多个消息包含
+                            // 相同 id / data-vdoc-island 时 document.querySelector 总是选中
+                            // 页面里的第一个副本。当前消息没有匹配项时才回退到真实 document，
+                            // 以兼容脚本查询 body、head 或应用级全局节点。
+                            if (prop === 'querySelector') {
+                                return function(selector) {
+                                    try {
+                                        if (containerElement.matches?.(selector)) {
+                                            return containerElement;
+                                        }
+
+                                        const localMatch = containerElement.querySelector(selector);
+                                        if (localMatch) {
+                                            return localMatch;
+                                        }
+                                    } catch (error) {
+                                        // 让原生 document 重新处理并抛出非法选择器异常。
+                                    }
+
+                                    return target.querySelector(selector);
+                                };
+                            }
+
+                            if (prop === 'querySelectorAll') {
+                                return function(selector) {
+                                    try {
+                                        const localMatches = Array.from(containerElement.querySelectorAll(selector));
+                                        if (containerElement.matches?.(selector)) {
+                                            localMatches.unshift(containerElement);
+                                        }
+
+                                        if (localMatches.length > 0) {
+                                            localMatches.item = (index) => localMatches[index] || null;
+                                            return localMatches;
+                                        }
+                                    } catch (error) {
+                                        // 让原生 document 重新处理并抛出非法选择器异常。
+                                    }
+
+                                    return target.querySelectorAll(selector);
+                                };
+                            }
+
+                            if (prop === 'getElementById') {
+                                return function(id) {
+                                    const escapedId = window.CSS?.escape
+                                        ? window.CSS.escape(String(id))
+                                        : String(id).replace(/(["\\])/g, '\\$1');
+                                    const localMatch = containerElement.querySelector(`#${escapedId}`);
+                                    return localMatch || target.getElementById(id);
+                                };
+                            }
+
                             if (prop === 'getElementsByTagName') {
                                 return function(tagName) {
-                                    const elements = Array.from(target.getElementsByTagName(tagName));
-                                    if (String(tagName).toLowerCase() === 'script') {
+                                    const normalizedTagName = String(tagName).toLowerCase();
+
+                                    // script 查询保留原有兼容行为，库代码可能依赖 currentScript
+                                    // 或通过最后一个 script 标签寻找自身。
+                                    if (normalizedTagName === 'script') {
+                                        const elements = Array.from(target.getElementsByTagName(tagName));
                                         const scripts = [...elements, virtualCurrentScript];
                                         scripts.item = (index) => scripts[index] || null;
                                         return scripts;
                                     }
-                                    elements.item = (index) => elements[index] || null;
-                                    return elements;
+
+                                    const localElements = Array.from(containerElement.getElementsByTagName(tagName));
+                                    if (localElements.length > 0) {
+                                        localElements.item = (index) => localElements[index] || null;
+                                        return localElements;
+                                    }
+
+                                    return target.getElementsByTagName(tagName);
                                 };
                             }
 

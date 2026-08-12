@@ -1,6 +1,8 @@
 'use strict';
 
 (() => {
+    let reviewEnabled = true;
+
     const LOCAL_LIBRARIES = Object.freeze({
         anime: '../vendor/anime.min.js',
         three: '../vendor/three.min.js',
@@ -10,20 +12,27 @@
         {
             library: 'three',
             patterns: [
-                /^https?:\/\/cdnjs\.cloudflare\.com\/ajax\/libs\/three\.js(?:\/|$)/i,
-                /^https?:\/\/cdn\.jsdelivr\.net\/npm\/three(?:@[^/]+)?(?:\/|$)/i,
-                /^https?:\/\/unpkg\.com\/three(?:@[^/]+)?(?:\/|$)/i,
+                /^(?:https?:)?\/\/cdnjs\.cloudflare\.com\/ajax\/libs\/three\.js(?:\/|$)/i,
+                /^(?:https?:)?\/\/cdn\.jsdelivr\.net\/npm\/three(?:@[^/]+)?(?:\/|$)/i,
+                /^(?:https?:)?\/\/unpkg\.com\/three(?:@[^/]+)?(?:\/|$)/i,
+                /^(?:https?:)?\/\/esm\.sh\/three(?:@[^/?#]+)?(?:[/?#]|$)/i,
+                /^(?:https?:)?\/\/cdn\.skypack\.dev\/three(?:@[^/?#]+)?(?:[/?#]|$)/i,
             ],
         },
         {
             library: 'anime',
             patterns: [
-                /^https?:\/\/cdnjs\.cloudflare\.com\/ajax\/libs\/animejs(?:\/|$)/i,
-                /^https?:\/\/cdn\.jsdelivr\.net\/npm\/animejs(?:@[^/]+)?(?:\/|$)/i,
-                /^https?:\/\/unpkg\.com\/animejs(?:@[^/]+)?(?:\/|$)/i,
+                /^(?:https?:)?\/\/cdnjs\.cloudflare\.com\/ajax\/libs\/animejs(?:\/|$)/i,
+                /^(?:https?:)?\/\/cdn\.jsdelivr\.net\/npm\/animejs(?:@[^/]+)?(?:\/|$)/i,
+                /^(?:https?:)?\/\/unpkg\.com\/animejs(?:@[^/]+)?(?:\/|$)/i,
+                /^(?:https?:)?\/\/esm\.sh\/animejs(?:@[^/?#]+)?(?:[/?#]|$)/i,
+                /^(?:https?:)?\/\/cdn\.skypack\.dev\/animejs(?:@[^/?#]+)?(?:[/?#]|$)/i,
             ],
         },
     ]);
+
+    const JAVASCRIPT_URL_PATTERN =
+        /(?:https?:)?\/\/[^\s'"`\\)]+|(?:\.\.?\/|\/)?vendor\/(?:anime|three)(?:\.min)?\.js(?:[?#][^\s'"`\\)]*)?/gi;
 
     const REFUSE_RULES = Object.freeze([
         {
@@ -73,8 +82,12 @@
         },
         {
             id: 'privileged-navigation',
-            pattern: /\b(?:window\.)?(?:top|parent|opener)\b|\blocation\s*\.\s*(?:assign|replace)\s*\(/,
-            message: '禁止控制宿主窗口、父窗口或外部导航。',
+            // 只拒绝对特权窗口引用的实际成员访问，以及明确的导航调用。
+            // 裸单词 top/parent/opener 可能合法出现在局部变量、注释和文案中；
+            // globalThis.THREE/anime/devicePixelRatio 也是本地依赖常见读取方式，
+            // 均不应仅因接触全局命名空间而被误判为宿主导航。
+            pattern: /\b(?:window|globalThis)\s*(?:\.\s*(?:top|parent|opener)\b|\[\s*['"](?:top|parent|opener)['"]\s*\])|\b(?:top|parent|opener)\s*(?:\.|\[)|\b(?:(?:window|globalThis)\s*\.\s*)?location\s*\.\s*(?:assign|replace)\s*\(/,
+            message: '禁止访问特权窗口引用或控制宿主导航。',
         },
     ]);
 
@@ -154,17 +167,66 @@
         };
     }
 
+    function normalizeJavaScriptDependencies(source, context = {}) {
+        const code = String(source || '');
+        const diagnostics = [];
+        const dependencies = new Set();
+        const normalizedSource = code.replace(JAVASCRIPT_URL_PATTERN, (url) => {
+            const dependency = dependencyForUrl(url);
+            if (dependency.action !== 'local' || !dependency.library) return url;
+            dependencies.add(dependency.library);
+            diagnostics.push({
+                level: 'info',
+                ruleId: 'javascript-cdn-localized',
+                library: dependency.library,
+                source: url,
+                localUrl: dependency.localUrl,
+                message: `${dependency.library} JavaScript 中的 CDN URL 已转换为 Scriptorium 本地链接。`,
+                context,
+            });
+            return dependency.localUrl;
+        });
+        return {
+            source: normalizedSource,
+            dependencies: [...dependencies],
+            diagnostics,
+            changed: normalizedSource !== code,
+        };
+    }
+
     function dependenciesForJavaScript(source) {
         const code = String(source || '');
-        const dependencies = [];
-        if (/\bTHREE\s*\.|\bnew\s+THREE\b/.test(code)) dependencies.push('three');
-        if (/\banime\s*\(|\banime\s*\./.test(code)) dependencies.push('anime');
-        return dependencies;
+        const dependencies = new Set(
+            normalizeJavaScriptDependencies(code).dependencies
+        );
+        if (/\bTHREE\s*\.|\bnew\s+THREE\b/.test(code)) dependencies.add('three');
+        if (/\banime\s*\(|\banime\s*\./.test(code)) dependencies.add('anime');
+        return [...dependencies];
     }
 
     function reviewJavaScript(source, context = {}) {
         const code = String(source || '');
         const findings = [];
+
+        if (!reviewEnabled) {
+            return {
+                allowed: true,
+                level: 'allow',
+                context: {
+                    ...context,
+                    documentKind: context.documentKind || 'unknown',
+                    surface: context.surface || 'unknown',
+                    scriptId: context.scriptId || null,
+                },
+                dependencies: dependenciesForJavaScript(code),
+                findings: [{
+                    level: 'info',
+                    ruleId: 'security-review-disabled',
+                    message: '人类已在本机关闭可编程内容安全审查；脚本未执行 warn/refuse 规则扫描。',
+                }],
+                reviewDisabled: true,
+            };
+        }
 
         for (const rule of REFUSE_RULES) {
             if (rule.pattern.test(code)) {
@@ -235,7 +297,33 @@
         const dependencies = new Set();
 
         [...template.content.querySelectorAll('script')].forEach((script, index) => {
-            const source = script.getAttribute('src');
+            const markedLibrary = String(script.dataset.vdocLibrary || '').toLowerCase();
+            let source = script.getAttribute('src');
+
+            // 兼容早期工程中的不可执行依赖占位节点。重新经过规范化时，
+            // 将其升级为明确指向 Scriptorium vendor 的本地可执行脚本标签。
+            if (!source && LOCAL_LIBRARIES[markedLibrary]) {
+                source = script.dataset.vdocOriginalSrc || LOCAL_LIBRARIES[markedLibrary];
+                script.setAttribute('src', LOCAL_LIBRARIES[markedLibrary]);
+                if (script.type === 'application/x-vdoc-library') {
+                    script.removeAttribute('type');
+                }
+                dependencies.add(markedLibrary);
+                diagnostics.push({
+                    level: 'info',
+                    ruleId: 'local-library-marker-upgraded',
+                    scriptId: script.id
+                        || script.dataset.vdocScript
+                        || `external-${index + 1}`,
+                    library: markedLibrary,
+                    source,
+                    localUrl: LOCAL_LIBRARIES[markedLibrary],
+                    message: `${markedLibrary} 旧依赖占位节点已升级为本地可执行脚本链接。`,
+                    context,
+                });
+                return;
+            }
+
             if (!source) {
                 dependenciesForJavaScript(script.textContent)
                     .forEach((library) => dependencies.add(library));
@@ -259,20 +347,23 @@
 
             if (dependency.action === 'local' && dependency.library) {
                 dependencies.add(dependency.library);
-                script.removeAttribute('src');
+                script.setAttribute('src', dependency.localUrl);
                 script.removeAttribute('integrity');
                 script.removeAttribute('crossorigin');
                 script.removeAttribute('referrerpolicy');
                 script.dataset.vdocLibrary = dependency.library;
-                script.dataset.vdocOriginalSrc = source;
-                script.type = 'application/x-vdoc-library';
+                script.dataset.vdocOriginalSrc = script.dataset.vdocOriginalSrc || source;
+                if (script.type === 'application/x-vdoc-library') {
+                    script.removeAttribute('type');
+                }
                 diagnostics.push({
                     level: 'info',
                     ruleId: 'cdn-localized',
                     scriptId,
                     library: dependency.library,
                     source,
-                    message: `${dependency.library} CDN 依赖已在源码进入审批前转换为 VDOC 内置依赖标记。`,
+                    localUrl: dependency.localUrl,
+                    message: `${dependency.library} CDN 依赖已在源码进入审批前发布为 Scriptorium 本地脚本链接。`,
                     context,
                 });
                 return;
@@ -307,9 +398,15 @@
     window.ScriptoriumProgrammableContent = Object.freeze({
         LOCAL_LIBRARIES,
         dependencyForUrl,
+        normalizeJavaScriptDependencies,
         dependenciesForJavaScript,
         reviewJavaScript,
         reviewScriptsInHtml,
         normalizeHtmlDependencies,
+        isReviewEnabled: () => reviewEnabled,
+        setReviewEnabled(value) {
+            reviewEnabled = value !== false;
+            return reviewEnabled;
+        },
     });
 })();
