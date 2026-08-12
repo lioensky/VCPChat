@@ -337,16 +337,6 @@
                     if (elements['welcome-state']) {
                         elements['welcome-state'].hidden = false;
                     }
-                    // 首页是会话导航状态，不应为清标题而销毁当前文档模型；
-                    // 仅清空导航身份展示。下次新建或打开文档时，
-                    // DocumentStore 的状态事件会由 Shell 自动恢复标题。
-                    if (elements['document-title']) {
-                        elements['document-title'].textContent = '';
-                        elements['document-title'].title = '';
-                    }
-                    if (elements['focus-document-title']) {
-                        elements['focus-document-title'].textContent = '';
-                    }
                     await renderRecent();
                     return true;
                 }
