@@ -66,6 +66,31 @@ assert.match(
     'Next composer inline SVG controls must retain the same 16px icon geometry as Classic'
 );
 
+const nextNotificationsCss = fs.readFileSync(
+    path.join(root, 'styles', 'ui-system', 'notifications.css'),
+    'utf8'
+);
+assert.match(
+    nextNotificationsCss,
+    /notifications-sidebar\s*>\s*\.section-divider\s*\{[\s\S]*?display:\s*block;[\s\S]*?height:\s*1px;/,
+    'Next app tray must retain a visible divider above its controls'
+);
+assert.match(
+    nextNotificationsCss,
+    /#vchatAppTray\s*:is\(\.capsule-button,\s*\.app-tray-more-btn\)\s*\{[\s\S]*?border:\s*0;[\s\S]*?background:\s*transparent;/,
+    'Next app tray controls must use separate borderless button surfaces'
+);
+assert.match(
+    nextNotificationsCss,
+    /#appTrayPinnedApps\s+\.notes-button-label\s*\{[\s\S]*?display:\s*none;/,
+    'Next pinned app tray must use icon-only controls instead of truncated text labels'
+);
+assert.match(
+    nextNotificationsCss,
+    /#appTrayDrawerGrid\s+\.notes-button-label\s*\{[\s\S]*?display:\s*block;/,
+    'Next all-apps drawer must retain visible application labels'
+);
+
 assert.match(wallpaperPlugin, /const icons = \{[\s\S]*?movie:\s*'<svg/, 'Classic wallpaper entry must provide an inline SVG icon');
 assert.doesNotMatch(
     wallpaperPlugin,
