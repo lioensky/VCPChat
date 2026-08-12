@@ -142,23 +142,133 @@ ${String(css).replace(/<\/style/gi, '<\\/style')}
             host.replaceChildren(canvases);
         }
 
-        function render(checkpoint) {
+        function stateSource(state, proposal = {}) {
+            if (!state || typeof state !== 'object') return '';
+            const sourceKind = String(proposal.sourceKind || '');
+            if (sourceKind === 'document-css') {
+                return String(state.documentCss || '');
+            }
+            if (sourceKind === 'deck-css') return String(state.deckCss || '');
+            if (Array.isArray(state.slides)) {
+                const index = Number(proposal.slideIndex);
+                const slide = state.slides[
+                    Number.isInteger(index) ? index : 0
+                ];
+                return String(slide?.source || '');
+            }
+            return String(state.source || '');
+        }
+
+        function renderSemanticFallback(visualHost, sourceHost, checkpoint) {
+            const status = String(checkpoint?.status || 'applied');
+            const author = checkpoint?.author?.name
+                || checkpoint?.author?.signature
+                || '未知作者';
+            const descriptions = {
+                conflict:
+                    '该提案因修订冲突未应用，文档内容没有发生变化。',
+                rejected:
+                    '该提案已被拒绝，文档内容没有发生变化。',
+                failed:
+                    '该提案应用失败，文档内容没有发生变化。',
+                applied:
+                    checkpoint?.operation?.type === 'project-create'
+                        ? `文档由 ${author} 创建。`
+                        : '该节点记录了一次结构或状态变更。',
+            };
+            visualHost.replaceChildren();
+            const notice = document.createElement('div');
+            notice.className = `pr-render-fallback ${status}`;
+            notice.textContent = descriptions[status]
+                || checkpoint?.summary
+                || checkpoint?.name
+                || '此节点没有可渲染的文本差异。';
+            visualHost.appendChild(notice);
+            sourceHost.replaceChildren();
+            appendLine(
+                sourceHost,
+                'hunk',
+                `@@ ${checkpoint?.name || '文脉节点'} @@`
+            );
+            appendLine(
+                sourceHost,
+                'context',
+                checkpoint?.receipt?.message
+                    || checkpoint?.summary
+                    || '无源码变更'
+            );
+            return false;
+        }
+
+        function render(checkpoint, targetElements = {}) {
             const proposal = checkpoint?.proposal || {};
             const replacements = Array.isArray(proposal.replacements)
                 ? proposal.replacements
                 : [];
-            const sourceHost = elements['pr-source-diff'];
-            const visualHost = elements['pr-render-diff'];
+            const sourceHost = targetElements.sourceHost
+                || elements['pr-source-diff'];
+            const visualHost = targetElements.visualHost
+                || elements['pr-render-diff'];
+            if (!sourceHost || !visualHost) return false;
+
+            const historicalBefore = stateSource(
+                checkpoint?.changeSet?.before,
+                proposal
+            );
+            const historicalAfter = stateSource(
+                checkpoint?.changeSet?.after,
+                proposal
+            );
+            if (historicalBefore || historicalAfter) {
+                if (replacements.length) renderSource(sourceHost, replacements);
+                else {
+                    sourceHost.replaceChildren();
+                    appendLine(sourceHost, 'hunk', '@@ 历史状态变更 @@');
+                    String(historicalBefore).split(/\r?\n/)
+                        .forEach((line) =>
+                            appendLine(sourceHost, 'removed', `− ${line}`)
+                        );
+                    String(historicalAfter).split(/\r?\n/)
+                        .forEach((line) =>
+                            appendLine(sourceHost, 'added', `+ ${line}`)
+                        );
+                }
+                renderVisual(
+                    visualHost,
+                    historicalBefore,
+                    historicalAfter,
+                    proposal
+                );
+                return true;
+            }
+
             if (!replacements.length) {
-                sourceHost.textContent = JSON.stringify(proposal, null, 2);
-                visualHost.textContent = proposal.type || '结构变更';
-                return false;
+                return renderSemanticFallback(
+                    visualHost,
+                    sourceHost,
+                    checkpoint
+                );
             }
             renderSource(sourceHost, replacements);
             const before = currentAdapter().proposalSource?.(proposal)
                 || currentAdapter().currentSource();
             const result = applyReplacements(before, replacements);
             if (!result.success) {
+                // conflict/rejected 的 target 可能已不在当前修订中，但原提案
+                // 仍应可读；使用 target/replace 本身构造隔离对照。
+                if (['conflict', 'rejected', 'failed'].includes(
+                    checkpoint?.status
+                )) {
+                    renderVisual(
+                        visualHost,
+                        replacements.map((item) => item.target || '').join('\n'),
+                        replacements.map((item) =>
+                            item.replace ?? item.replacement ?? ''
+                        ).join('\n'),
+                        proposal
+                    );
+                    return true;
+                }
                 visualHost.textContent = result.message;
                 return false;
             }

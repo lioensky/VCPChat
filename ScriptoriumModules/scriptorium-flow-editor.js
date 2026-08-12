@@ -1364,10 +1364,54 @@
         }
 
         function insertionOffset() {
-            const selection = sourceSelection();
-            if (selection) return selection.sourceEnd;
-            const sessionRegion = state.activeSession?.shell?.isConnected
-                ? regionForShell(state.activeSession.shell)
+            const session = state.activeSession;
+            if (session?.editable?.isConnected
+                && session.shell?.isConnected) {
+                const offsets = editorSelectionOffsets(session.editable);
+                const region = regionForShell(session.shell) || session.region;
+                if (offsets && region
+                    && region.flowKind !== 'stable-atomic') {
+                    return Math.max(
+                        region.sourceRange.start,
+                        Math.min(
+                            region.sourceRange.end,
+                            region.sourceRange.start + offsets.end
+                        )
+                    );
+                }
+            }
+
+            // sourceSelection() 有意只接受展开选区；图形插入还必须支持
+            // 被工具栏夺走焦点前保存下来的折叠光标。
+            const range = selectionPrimitives.cloneLiveRange(state.root) || (
+                state.selectionRange?.startContainer?.isConnected
+                    ? state.selectionRange.cloneRange()
+                    : null
+            );
+            if (range) {
+                const startElement = selectionPrimitives.elementOf(
+                    range.startContainer
+                );
+                const endElement = selectionPrimitives.elementOf(
+                    range.endContainer
+                );
+                const shell = startElement?.closest?.('[data-vdoc-edit-key]');
+                if (shell
+                    && endElement?.closest?.('[data-vdoc-edit-key]') === shell) {
+                    const region = regionForShell(shell);
+                    const offset = region?.flowKind !== 'stable-atomic'
+                        ? sourceEndpoint(
+                            shell,
+                            range.endContainer,
+                            range.endOffset
+                        )
+                        : null;
+                    if (Number.isFinite(offset)) return offset;
+                }
+            }
+
+            const sessionRegion = session?.shell?.isConnected
+                ? regionForShell(session.shell)
                 : null;
             return sessionRegion?.sourceRange?.end
                 ?? adapter.currentSource().length;
@@ -1964,6 +2008,7 @@
             deactivateSession,
             transact,
             sourceSelection,
+            insertionOffset,
             clipboardSourceSelection,
             captureSelection,
             selectionState,

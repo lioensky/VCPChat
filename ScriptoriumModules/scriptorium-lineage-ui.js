@@ -346,9 +346,31 @@
             };
         }
 
+        function setDetailView(view = 'review') {
+            const technical = view === 'technical';
+            if (elements['lineage-review-view']) {
+                elements['lineage-review-view'].hidden = technical;
+            }
+            if (elements['lineage-technical-view']) {
+                elements['lineage-technical-view'].hidden = !technical;
+            }
+            [
+                ['lineage-review-tab', !technical],
+                ['lineage-technical-tab', technical],
+            ].forEach(([key, active]) => {
+                elements[key]?.classList.toggle('active', active);
+                elements[key]?.setAttribute(
+                    'aria-selected',
+                    String(active)
+                );
+            });
+            return !technical;
+        }
+
         function openDetail(record) {
             if (!record) return false;
             activeRecordId = record.id;
+            setDetailView('review');
             if (elements['lineage-detail-title']) {
                 elements['lineage-detail-title'].textContent =
                     record.name || '未命名文脉节点';
@@ -365,6 +387,11 @@
                         : null,
                 ].filter(Boolean).join(' · ');
             }
+            context.prDiffPort?.setAdapter?.(currentAdapter());
+            context.prDiffPort?.render?.(record, {
+                visualHost: elements['lineage-render-diff'],
+                sourceHost: elements['lineage-source-diff'],
+            });
             if (elements['lineage-detail-record']) {
                 elements['lineage-detail-record'].textContent =
                     JSON.stringify(detailRecord(record), null, 2);
@@ -595,6 +622,16 @@
                 closeDetail,
                 options
             );
+            elements['lineage-review-tab']?.addEventListener(
+                'click',
+                () => setDetailView('review'),
+                options
+            );
+            elements['lineage-technical-tab']?.addEventListener(
+                'click',
+                () => setDetailView('technical'),
+                options
+            );
             elements['lineage-restore-btn']?.addEventListener(
                 'click',
                 () => requestRestore(),
@@ -680,6 +717,7 @@
             render,
             openDetail,
             closeDetail,
+            setDetailView,
             openReview,
             closeReview,
             decideReview,

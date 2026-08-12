@@ -1587,6 +1587,9 @@ body.lineage-collapsed .lineage-panel {
 .checkpoint-avatar.has-avatar {
     opacity: 1;
     color: transparent;
+    background-position: center;
+    background-size: cover;
+    background-repeat: no-repeat;
 }
 
 .checkpoint-source {
@@ -4014,6 +4017,73 @@ body.focus-mode .document-workspace::before {
     cursor: pointer;
 }
 
+.lineage-detail-tabs {
+    display: flex;
+    gap: 4px;
+    padding: 8px 16px 0;
+    border-bottom: 1px solid var(--scriptorium-hairline);
+    background: color-mix(in srgb, var(--input-bg) 34%, transparent);
+}
+
+.lineage-detail-tabs button {
+    min-width: 96px;
+    height: 34px;
+    padding: 0 13px;
+    border: 1px solid transparent;
+    border-bottom: 0;
+    border-radius: 8px 8px 0 0;
+    color: var(--secondary-text);
+    background: transparent;
+    font-size: 9px;
+    font-weight: 750;
+    cursor: pointer;
+}
+
+.lineage-detail-tabs button:hover,
+.lineage-detail-tabs button.active {
+    border-color: var(--scriptorium-hairline);
+    color: var(--highlight-text);
+    background: var(--scriptorium-accent-soft);
+}
+
+.lineage-detail-review {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    min-width: 0;
+    min-height: 0;
+}
+
+.lineage-detail-review[hidden],
+.lineage-detail-body[hidden] {
+    display: none;
+}
+
+.lineage-review-pane {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    min-width: 0;
+    min-height: 0;
+    padding: 15px;
+}
+
+.lineage-review-pane + .lineage-review-pane {
+    border-left: 1px solid var(--scriptorium-hairline);
+}
+
+.lineage-review-pane h3 {
+    margin: 0 0 10px;
+    color: var(--secondary-text);
+    font-size: 10px;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+}
+
+.lineage-detail-review .pr-render-diff,
+.lineage-detail-review .pr-source-diff {
+    min-height: 0;
+    height: 100%;
+}
+
 .lineage-detail-body {
     display: grid;
     grid-template-columns: .8fr 1.2fr;
@@ -4115,9 +4185,20 @@ body.focus-mode .document-workspace::before {
         height: calc(100vh - 24px);
     }
 
+    .lineage-detail-review,
     .lineage-detail-body {
         grid-template-columns: 1fr;
         overflow: auto;
+    }
+
+    .lineage-review-pane,
+    .lineage-detail-body > section {
+        min-height: 280px;
+    }
+
+    .lineage-review-pane + .lineage-review-pane {
+        border-top: 1px solid var(--scriptorium-hairline);
+        border-left: 0;
     }
 
     .lineage-detail-body > section {

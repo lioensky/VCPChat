@@ -619,6 +619,22 @@
             const replacements = Array.isArray(payload.replacements)
                 ? payload.replacements
                 : [payload];
+            const proposal = {
+                type: 'source-replace',
+                sourceKind,
+                slideIndex,
+                replacements,
+            };
+            const expectedRevision = Number(payload.expectedRevision);
+            if (Number.isFinite(expectedRevision)
+                && expectedRevision !== status().revision) {
+                // Revision 是乐观并发的首要裁决条件。旧修订请求不得继续
+                // 定位 target，否则会以 TARGET_NOT_FOUND 掩盖真实冲突。
+                return queueProposal(payload, proposal, () => ({
+                    success: false,
+                    code: 'DOCUMENT_REVISION_CONFLICT',
+                }));
+            }
             const preliminary = diff.applyReplacements(
                 sourceFor(sourceKind, slideIndex),
                 replacements
@@ -640,12 +656,7 @@
                     }));
                 }
             }
-            return queueProposal(payload, {
-                type: 'source-replace',
-                sourceKind,
-                slideIndex,
-                replacements,
-            }, () => {
+            return queueProposal(payload, proposal, () => {
                 const active = adapter();
                 const result = diff.applyReplacements(
                     sourceFor(sourceKind, slideIndex),

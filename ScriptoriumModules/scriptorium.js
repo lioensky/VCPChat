@@ -379,8 +379,12 @@
             node,
             activeAdapter.kind === 'deck'
         );
+        const offset = activeAdapter.kind === 'flow'
+            ? activeEditor?.insertionOffset?.()
+            : undefined;
         const inserted = activeAdapter.insertContent(node.outerHTML, {
             reason: 'object-inserted',
+            ...(Number.isFinite(offset) ? { offset } : {}),
         });
         if (!inserted) return false;
         historyPort.capture({ reason: 'object-inserted' });

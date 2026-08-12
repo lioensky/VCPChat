@@ -850,7 +850,27 @@
                 </div>
                 <button id="lineage-detail-close-btn" type="button" aria-label="关闭">×</button>
             </header>
-            <div class="lineage-detail-body">
+            <nav class="lineage-detail-tabs" role="tablist" aria-label="文脉复核视图">
+                <button id="lineage-review-tab" class="active" type="button"
+                    role="tab" aria-selected="true"
+                    aria-controls="lineage-review-view">人类复核</button>
+                <button id="lineage-technical-tab" type="button"
+                    role="tab" aria-selected="false"
+                    aria-controls="lineage-technical-view">技术记录</button>
+            </nav>
+            <div id="lineage-review-view" class="lineage-detail-review"
+                role="tabpanel" aria-labelledby="lineage-review-tab">
+                <section class="lineage-review-pane">
+                    <h3>渲染差异</h3>
+                    <div id="lineage-render-diff" class="pr-render-diff"></div>
+                </section>
+                <section class="lineage-review-pane">
+                    <h3>源码差异</h3>
+                    <pre id="lineage-source-diff" class="pr-source-diff"></pre>
+                </section>
+            </div>
+            <div id="lineage-technical-view" class="lineage-detail-body"
+                role="tabpanel" aria-labelledby="lineage-technical-tab" hidden>
                 <section>
                     <h3>提交记录与审批</h3>
                     <pre id="lineage-detail-record" class="lineage-detail-record"></pre>
