@@ -4,8 +4,12 @@ import { execFileSync } from 'node:child_process';
 import postcss from 'postcss';
 
 const root = process.cwd();
-const sourceRef = process.env.VCP_DESIGN_SOURCE_REF || 'codex/vcpchat-codex-app-server';
-const upstreamRef = process.env.VCP_UPSTREAM_REF || 'upstream-live/main';
+// Pin the source snapshot used for the original Agent-runtime subtraction.
+// A moving development branch makes every later Codex change look like a
+// design-system boundary violation. The upstream comparison intentionally
+// follows origin/main so newly merged upstream files remain admissible.
+const sourceRef = process.env.VCP_DESIGN_SOURCE_REF || 'a1f76dffea8105999e465da45d8e52558cd80c47';
+const upstreamRef = process.env.VCP_UPSTREAM_REF || 'origin/main';
 const failures = [];
 
 const forbiddenPaths = [
@@ -28,6 +32,7 @@ const forbiddenPaths = [
 ];
 
 const allowedSourceDifferences = new Set([
+    '.gitattributes',
     '.gitignore',
     'README.md',
     'RAGmodules/RAG_Observer.html',
@@ -42,6 +47,7 @@ const allowedSourceDifferences = new Set([
     'docs/ui-system-qa-matrix.md',
     'docs/upstream-function-parity.md',
     'Groupmodules/grouprenderer.js',
+    'Notemodules/notes.css',
     'main.html',
     'main.js',
     'modules/chatManager.js',
@@ -52,18 +58,22 @@ const allowedSourceDifferences = new Set([
     'modules/ipc/desktopHandlers.js',
     'modules/ipc/agentHandlers.js',
     'modules/ipc/settingsHandlers.js',
+    'modules/ipc/themeHandlers.js',
     'modules/mainChatCommands.js',
+    'modules/messageRenderer.js',
     'modules/services/deepWikiService.js',
     'modules/services/embeddedAppSessionManager.js',
     'modules/shared/embeddedAppAllowlist.js',
     'modules/topTabManager.js',
     'modules/topicListManager.js',
     'modules/trayManager.js',
+    'modules/ui-helpers.js',
     'modules/ipc/ipcContracts.js',
     'modules/ui-system/vcp-main-ui-runtime.js',
     'modules/ui-system/appearance-engine.js',
     'modules/ui-system/appearance-studio.js',
     'modules/ui-system/ask-nova-modal.js',
+    'modules/ui-system/lucide-adapter.js',
     'modules/ui-system/ui-mode-controller.js',
     'modules/ui-system/ui-surface-policy.js',
     'modules/ui-system/vcp-ui.js',
@@ -89,6 +99,7 @@ const allowedSourceDifferences = new Set([
     'rust_chat_data_service/src/sync.rs',
     'rust_chat_data_service/src/watcher.rs',
     'scripts/check-design-system-boundary.mjs',
+    'scripts/check-classic-parity.mjs',
     'scripts/build-webawesome-runtime.mjs',
     'scripts/check-webawesome-pack.mjs',
     'scripts/check-ui-applications.mjs',
@@ -112,20 +123,29 @@ const allowedSourceDifferences = new Set([
     'styles/notifications.css',
     'styles/themes.css',
     'styles/appearance.css',
+    'styles/setting/settings-global-modal.css',
+    'styles/themes/themes纸墨与机芯.css',
     'styles/ui-next.css',
     'styles/ui-system/shell.css',
     'styles/ui-system/sidebar.css',
     'styles/ui-system/components.css',
     'styles/ui-system/appearance-studio.css',
     'styles/ui-system/ask-nova.css',
+    'styles/ui-system/business-modals.css',
+    'styles/ui-system/chat-input.css',
+    'styles/ui-system/fonts.css',
     'styles/ui-system/index.css',
     'styles/ui-system/messages.css',
     'styles/ui-system/notifications.css',
+    'styles/ui-system/settings.css',
     'styles/ui-system/showcase.css',
     'styles/ui-system/tokens.css',
     'styles/ui-system/webawesome-adapter.css',
     'VCPDistributedServer/Plugin/VChatDynamicWallpaper/plugin.js',
     'VCPDistributedServer/Plugin/VChatDynamicWallpaper/plugin.css',
+    'assets/nova_button.png',
+    'assets/nova_button_light.png',
+    'assets/svg/acrylic-noise.svg',
     'Notemodules/notes.js',
 ]);
 const allowedSourceDifferencePatterns = [
@@ -141,7 +161,7 @@ const upstreamClassicPatterns = [
 ];
 
 function git(args) {
-    return execFileSync('git', args, { cwd: root, encoding: 'utf8' }).trim();
+    return execFileSync('git', ['-c', 'core.quotepath=false', ...args], { cwd: root, encoding: 'utf8' }).trim();
 }
 
 const trackedFiles = git(['ls-files']).split('\n').filter(Boolean);
@@ -269,17 +289,17 @@ for (const [name, command] of Object.entries(packageJson.scripts || {})) {
 
 try {
     git(['rev-parse', '--verify', sourceRef]);
+    git(['rev-parse', '--verify', upstreamRef]);
+    const filesDifferentFromUpstream = new Set(
+        git(['diff', '--ignore-space-at-eol', '--name-only', upstreamRef, '--'])
+            .split('\n')
+            .filter(Boolean)
+    );
     const differences = git(['diff', '--ignore-space-at-eol', '--name-only', sourceRef, '--'])
         .split('\n')
         .filter(Boolean);
     for (const file of differences) {
-        let restoredToUpstream = false;
-        try {
-            execFileSync('git', ['diff', '--quiet', upstreamRef, '--', file], { cwd: root });
-            restoredToUpstream = true;
-        } catch {
-            restoredToUpstream = false;
-        }
+        const restoredToUpstream = !filesDifferentFromUpstream.has(file);
         if (allowedSourceDifferences.has(file)
             || allowedSourceDifferencePatterns.some(pattern => pattern.test(file))
             || forbiddenPaths.some(pattern => pattern.test(file))

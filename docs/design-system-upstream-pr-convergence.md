@@ -1,7 +1,8 @@
 # 设计系统上游 PR 架构收敛
 
 > 状态：Classic/Next 功能对等整改中，完成本节门禁前不得重新提交上游审阅
-> 基线：`upstream-review/main`
+> 上游基线：`origin/main`
+> 减法源快照：`a1f76dffea8105999e465da45d8e52558cd80c47`
 > 原则：只修复本设计分支新增或显著放大的问题，不借设计 PR 重构上游 Classic。
 
 默认策略：首次启动、缺失 `uiMode` 或设置读取失败时进入 Classic。Next 是用户主动选择并保存的可选布局；已经保存为 Next 的用户保持原偏好。
@@ -218,3 +219,15 @@ Memo、Forum、Log、Plugin Manager、Task、Human ToolBox、VchatManager、RAG 
 - `npm run pack:check` 及模拟干净归档的 Web Awesome pack check 通过。
 - 完整 subtraction guard 仅被用户本地、明确不纳入本轮的 `styles/themes.css` 修改阻塞；排除该用户文件后没有其他设计边界失败。
 - 最新上游自身的 Scriptorium CDN 本地化冒烟仍超时，`tests/test-export-inline.cjs` 也可在与上游相同字节的测试及 `vendor/three.min.js` 上复现失败。二者属于上游基线，不计入本 PR 引入问题。
+
+## 2026-08-12 上游同步与 PR 门禁复验
+
+- 已合并 `origin/main` `856c1db0`；相对最新上游为 `0 behind`，合并仅产生 `.gitignore` 一处文本冲突，双方规则均已保留。
+- `package-lock.json` 已补齐 `encoding@0.1.13`；独立临时目录执行 `npm ci --ignore-scripts --no-audit --no-fund` 成功安装 962 个包。
+- `vendor/webawesome-runtime/**` 通过 `.gitattributes` 固定为原始字节，避免 Windows 行尾转换破坏 manifest 哈希。
+- `npm run pack:check` 通过；从 `git archive HEAD vendor/webawesome-runtime` 解包后，manifest 中 101 个文件的 SHA-256 全部匹配。
+- subtraction guard 固定使用 Agent 减法源快照 `a1f76dffea8105999e465da45d8e52558cd80c47`，上游基线使用 `origin/main`；中文路径不再被 Git quote 转义误判，差异检查由逐文件子进程改为集合比较。
+- `npm run check:ui-system` 通过。
+- `npm run test:electron-ui-apps`：20/20 通过。
+- `node --test tests/frontend-plugins.test.js`：6/6 通过。
+- 最终 PR 三点 diff 为 342 个文件：109 个设计资产、102 个 Web Awesome vendor 文件，其余为 UI 源码、样式、测试、文档和窄 preload/IPC 集成。未发现 Agent/Codex/Rust runtime、生成截图、数据库、日志、原生二进制或构建目录。
