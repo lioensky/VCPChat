@@ -19,6 +19,8 @@ chatPresentationMode
 
 The three settings are intentionally separate. Changing message presentation must not silently change the shell, and changing radius must not mount or tear down Next runtime. Appearance Studio owns the user-facing home-layout choice; `uiMode` remains its compatibility storage field.
 
+New installations and settings files without `uiMode` start in `classic`. A user enters Next only after explicitly selecting and saving it; an existing saved `next` preference remains unchanged.
+
 ## Current Schema
 
 ```js
@@ -45,7 +47,7 @@ data-vcp-content-width
 data-vcp-surface
 ```
 
-`modules/ui-system/appearance-engine.js` validates values, applies attributes, updates VCPUI density scopes and emits `vcp-appearance-changed`. `styles/appearance.css` is a separate cross-mode layer that maps those attributes to semantic tokens; it deliberately does not live under the Next-only `styles/ui-system/` boundary.
+`modules/ui-system/appearance-engine.js` validates values, applies attributes, updates VCPUI density scopes and emits `vcp-appearance-changed`. `styles/appearance.css` maps those attributes to semantic tokens only under `html[data-ui-mode="next"]`; Classic remains owned by the upstream stylesheets.
 
 ## Compatibility Presets
 
@@ -114,7 +116,7 @@ At that point `uiMode` becomes an internal compatibility profile rather than a u
 - It provides system presets plus independent theme, profile and chat-presentation overrides.
 - Preview is transactional: cancel restores the opening snapshot and save writes through Main.
 - Theme Store, dynamic wallpaper and the complete settings dialog remain separate authorities reached from the drawer.
-- Global Settings always mounts the Next SettingsShell in both Classic and Next home layouts. Its category navigation, search and save behavior no longer depend on `uiMode`.
+- Global Settings mounts SettingsShell only in Next. Classic keeps the upstream modal DOM, controls and navigation behavior.
 - Global Settings exposes a dedicated “界面与外观” category for appearance profile, typography and chat presentation; the former standalone UI-version switch is now a hidden compatibility field synchronized by the drawer.
 - The category presents a live appearance summary and opens Appearance Studio with the current form draft; applying in the studio synchronizes the legacy form controls and their visual proxies.
 - Support import/export only after schema versioning exists.

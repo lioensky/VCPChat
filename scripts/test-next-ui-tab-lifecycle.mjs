@@ -61,6 +61,33 @@ window.dispatchEvent(new window.CustomEvent('ui-mode-changed', { detail: { mode:
 await new Promise(resolve => setTimeout(resolve, 10));
 assert.equal(window.topTabManager.isMounted(), true, 'Next must mount the tab host');
 assert.equal(creates, 1, 'Next may restore the saved embedded session once');
+const restoredTab = window.document.querySelector('#nextUiDynamicTabs [role="tab"]');
+assert.equal(restoredTab?.tagName, 'DIV', 'dynamic tab hosts must not be nested buttons');
+assert.equal(restoredTab?.querySelector('.next-ui-tab-close')?.tagName, 'BUTTON', 'tab close must remain a native button');
+assert.equal(restoredTab?.getAttribute('aria-selected'), 'true');
+assert.equal(restoredTab?.tabIndex, 0);
+const activationsBeforeKeyboard = activates;
+restoredTab.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+await new Promise(resolve => setTimeout(resolve, 0));
+assert.ok(activates > activationsBeforeKeyboard, 'Enter must activate a focused dynamic tab');
+
+const closesBeforePreview = closes;
+window.document.documentElement.dataset.uiMode = 'classic';
+window.dispatchEvent(new window.CustomEvent('ui-mode-changed', {
+    detail: { mode: 'classic', previousMode: 'next', preview: true }
+}));
+await new Promise(resolve => setTimeout(resolve, 0));
+assert.equal(window.topTabManager.isMounted(), true, 'Classic preview must preserve the mounted Next tab host');
+assert.equal(closes, closesBeforePreview, 'Classic preview must not close native embedded sessions');
+assert.equal(lifecycleEvents.at(-1), 'activate:none', 'Classic preview must only hide the active native view');
+
+window.document.documentElement.dataset.uiMode = 'next';
+window.dispatchEvent(new window.CustomEvent('ui-mode-changed', {
+    detail: { mode: 'next', previousMode: 'classic', preview: true }
+}));
+await new Promise(resolve => setTimeout(resolve, 0));
+assert.equal(window.topTabManager.isMounted(), true, 'Returning from preview must reuse the existing tab host');
+assert.equal(creates, 1, 'Returning from preview must not recreate the embedded session');
 
 window.document.documentElement.dataset.uiMode = 'classic';
 window.dispatchEvent(new window.CustomEvent('ui-mode-changed', { detail: { mode: 'classic', previousMode: 'next' } }));

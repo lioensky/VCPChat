@@ -1,5 +1,5 @@
 // test-settings-wa — hermetic per-category persistence regression for the
-// global settings modal (the shared Next SettingsShell in either home layout).
+// global settings modal (the Next SettingsShell while Next is active).
 //
 // Uses the REAL `globalSettingsModalTemplate` from main.html and the REAL
 // `handleSaveGlobalSettings` from modules/global-settings-manager.js. For each
@@ -7,7 +7,7 @@
 // (the saved payload carries the expected key/value), simulated save failure
 // (the form reports vcp-settings-save-result success:false), and reopen-restore
 // (the form re-populates the saved value). Also verifies the Next-UI
-// SettingsShell interactions: Classic/Next mode independence, modal host
+// SettingsShell interactions: Classic isolation, modal host
 // visibility, category switching, unsaved values and category search.
 //
 // Usage: node scripts/test-settings-wa.mjs
@@ -48,7 +48,7 @@ const modal = document.importNode(template.content, true);
 document.getElementById('modal-container').appendChild(modal);
 
 // Load the design system + settings bridge from the Classic home layout. The
-// global dialog must still mount the shared Next SettingsShell.
+// global dialog must preserve the upstream presentation until Next is selected.
 await import(`${pathToFileURL(`${root}/modules/ui-system/vcp-ui.js`).href}?settings-wa=1`);
 await import(`${pathToFileURL(`${root}/modules/ui-system/settings-bridge.js`).href}?settings-wa=1`);
 
@@ -172,15 +172,15 @@ assert.ok(document.getElementById('appearanceSidebarAvatarSize'), 'sidebar avata
 assert.ok(document.getElementById('appearanceSidebarRadius'), 'sidebar item radius control exists');
 assert.ok(document.getElementById('appearanceCustomRadius'), 'custom radius range exists');
 
-// ---- 0. SettingsShell build (Classic and Next home layouts) ----
+// ---- 0. Classic isolation and explicit Next SettingsShell build ----
+const originalClassicNavItems = [...document.querySelectorAll('#globalSettingsModal .settings-nav-item')];
+let restoredClassicNavClicks = 0;
+originalClassicNavItems[1].addEventListener('click', () => { restoredClassicNavClicks += 1; });
 window.VCPUISettingsBridge.refresh();
 await new Promise(resolve => setTimeout(resolve, 0));
 assert.ok(document.getElementById('globalSettingsModal').classList.contains('vcp-ui-scope'), 'modal scope');
-assert.ok(document.getElementById('globalSettingsModal').classList.contains('vcp-global-settings-next'), 'global settings is marked as the shared Next shell');
-assert.ok(document.querySelector('#globalSettingsModal .vcp-ui-settings-shell'), 'SettingsShell layout class applied');
-assert.equal(document.querySelectorAll('#globalSettingsModal .vcp-ui-list-item').length, 8, '8 categories in VCPUI List nav');
-assert.ok(document.querySelector('#globalSettingsModal .vcp-ui-settings-search input[type="search"]'), 'search field injected in the left rail');
-assert.ok(document.querySelector('#globalSettingsModal .vcp-ui-settings-search input').classList.contains('vcp-ui-native-input'), 'search input is VCPUI-enhanced');
+assert.ok(!document.getElementById('globalSettingsModal').classList.contains('vcp-global-settings-next'), 'Classic does not use the Next modal marker');
+assert.equal(document.querySelector('#globalSettingsModal .vcp-ui-settings-shell'), null, 'Classic keeps the upstream settings layout');
 
 const globalSettingsModal = document.getElementById('globalSettingsModal');
 globalSettingsModal.classList.add('active');
@@ -188,7 +188,7 @@ document.dispatchEvent(new CustomEvent('modal-visibility-changed', {
     detail: { modalId: 'globalSettingsModal', active: true },
 }));
 await new Promise(resolve => setTimeout(resolve, 0));
-assert.ok(document.documentElement.classList.contains('vcp-global-settings-host'), 'active modal enables the cross-mode settings host');
+assert.ok(!document.documentElement.classList.contains('vcp-global-settings-host'), 'Classic modal does not enable the Next settings host');
 
 globalSettingsModal.classList.remove('active');
 document.dispatchEvent(new CustomEvent('modal-visibility-changed', {
@@ -200,12 +200,40 @@ assert.ok(!document.documentElement.classList.contains('vcp-global-settings-host
 document.documentElement.dataset.uiMode = 'next';
 window.dispatchEvent(new Event('ui-mode-changed'));
 await new Promise(resolve => setTimeout(resolve, 0));
-assert.ok(document.querySelector('#globalSettingsModal .vcp-ui-settings-shell'), 'SettingsShell survives switching the home layout to Next');
+assert.ok(document.getElementById('globalSettingsModal').classList.contains('vcp-global-settings-next'), 'Next marks the enhanced global settings modal');
+assert.ok(document.querySelector('#globalSettingsModal .vcp-ui-settings-shell'), 'Next mounts the SettingsShell layout');
+assert.equal(document.querySelectorAll('#globalSettingsModal .vcp-ui-list-item').length, 8, '8 categories in VCPUI List nav');
+assert.ok(document.querySelector('#globalSettingsModal .vcp-ui-settings-search input[type="search"]'), 'search field injected in the left rail');
+assert.ok(document.querySelector('#globalSettingsModal .vcp-ui-settings-search input').classList.contains('vcp-ui-native-input'), 'search input is VCPUI-enhanced');
 
+globalSettingsModal.classList.add('active');
+document.dispatchEvent(new CustomEvent('modal-visibility-changed', {
+    detail: { modalId: 'globalSettingsModal', active: true },
+}));
+await new Promise(resolve => setTimeout(resolve, 0));
+assert.ok(document.documentElement.classList.contains('vcp-global-settings-host'), 'active Next modal enables the settings host');
+globalSettingsModal.classList.remove('active');
+document.dispatchEvent(new CustomEvent('modal-visibility-changed', {
+    detail: { modalId: 'globalSettingsModal', active: false },
+}));
+await new Promise(resolve => setTimeout(resolve, 0));
+
+document.querySelectorAll('#globalSettingsModal .vcp-ui-list-item')[1].click();
+assert.equal(document.querySelector('#globalSettingsModal .settings-section.active')?.id, 'section-server-connection', 'Next category selection updates the shared section state');
 document.documentElement.dataset.uiMode = 'classic';
 window.dispatchEvent(new Event('ui-mode-changed'));
 await new Promise(resolve => setTimeout(resolve, 0));
-assert.ok(document.querySelector('#globalSettingsModal .vcp-ui-settings-shell'), 'SettingsShell rebuilds after switching the home layout back to Classic');
+assert.equal(document.querySelector('#globalSettingsModal .vcp-ui-settings-shell'), null, 'switching back to Classic tears down SettingsShell');
+const restoredClassicNavItems = [...document.querySelectorAll('#globalSettingsModal .settings-nav-item')];
+assert.equal(restoredClassicNavItems[1], originalClassicNavItems[1], 'Classic restores the original navigation nodes');
+assert.ok(restoredClassicNavItems[1].classList.contains('active'), 'Classic navigation selection matches the active settings section');
+restoredClassicNavItems[1].click();
+assert.equal(restoredClassicNavClicks, 1, 'Classic navigation listeners survive a Next round-trip');
+
+document.documentElement.dataset.uiMode = 'next';
+window.dispatchEvent(new Event('ui-mode-changed'));
+await new Promise(resolve => setTimeout(resolve, 0));
+assert.ok(document.querySelector('#globalSettingsModal .vcp-ui-settings-shell'), 'Next can remount SettingsShell after Classic teardown');
 
 // ---- Shell interactions ----
 const setField = (id, value) => {

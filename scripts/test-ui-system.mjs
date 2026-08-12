@@ -21,6 +21,13 @@ const activeThemeSource = fs.readFileSync('styles/themes.css', 'utf8');
 if (activeThemeSource.includes(':focus-visible')) {
     assert.match(activeThemeSource, composerSafeFocusSelector, 'the active theme must preserve the composer focus contract');
 }
+const mainHtmlSource = fs.readFileSync('main.html', 'utf8');
+const mainDomForComposer = new JSDOM(mainHtmlSource);
+['quickNewTopicBtn', 'attachFileBtn', 'emoticonTriggerBtn'].forEach(id => {
+    const button = mainDomForComposer.window.document.getElementById(id);
+    assert.ok(button?.querySelector('svg'), `${id} must use an inline SVG icon in both UI modes`);
+    assert.equal(button?.querySelector('.material-symbols-outlined'), null, `${id} must not depend on a mode-specific icon font`);
+});
 assert.match(
     componentStyles,
     /\.vcp-ui-toast > :is\(button, wa-button\)\s*\{\s*pointer-events:\s*auto/s,
@@ -439,11 +446,20 @@ document.getElementById('globalUserName').dispatchEvent(new Event('input', { bub
 assert.equal(globalFooter.dataset.state, 'dirty', 'global save bar tracks dirty state');
 document.getElementById('globalSettingsForm').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
 assert.equal(globalFooter.dataset.state, 'saving', 'global save bar tracks saving state');
+document.documentElement.dataset.uiMode = 'classic';
+window.dispatchEvent(new CustomEvent('ui-mode-changed', { detail: { mode: 'classic', previousMode: 'next' } }));
+await new Promise(resolve => setTimeout(resolve, 0));
+assert.ok(!document.getElementById('globalUserName').classList.contains('vcp-ui-native-input'),
+    'Classic global settings must restore the upstream input');
+assert.ok(!globalModal.classList.contains('vcp-global-settings-next'),
+    'Classic global settings must not keep the Next modal marker');
+assert.equal(globalModal.querySelector('.vcp-ui-settings-search'), null,
+    'Classic global settings must remove the injected SettingsShell search');
+assert.equal(document.documentElement.classList.contains('vcp-global-settings-host'), false,
+    'Classic must not retain the Next global-settings host state');
 window.VCPUISettingsBridge.destroy();
 modalContainer.remove();
 
-document.documentElement.dataset.uiMode = 'classic';
-window.dispatchEvent(new CustomEvent('ui-mode-changed'));
 assert.ok(!document.getElementById('bridgeInput').classList.contains('vcp-ui-native-input'));
 window.VCPUISettingsBridge.destroy();
 settingsHost.remove();
@@ -510,6 +526,7 @@ const eventListenersSource = fs.readFileSync(new URL('../modules/event-listeners
 const rendererSource = fs.readFileSync(new URL('../renderer.js', import.meta.url), 'utf8');
 const topTabManagerSource = fs.readFileSync(new URL('../modules/topTabManager.js', import.meta.url), 'utf8');
 const agentHandlersSource = fs.readFileSync(new URL('../modules/ipc/agentHandlers.js', import.meta.url), 'utf8');
+const settingsHandlersSource = fs.readFileSync(new URL('../modules/ipc/settingsHandlers.js', import.meta.url), 'utf8');
 const appearanceStyles = fs.readFileSync(new URL('../styles/appearance.css', import.meta.url), 'utf8');
 const messageRendererStyles = fs.readFileSync(new URL('../styles/messageRenderer.css', import.meta.url), 'utf8');
 assert.match(mainHtml, /id="nextUiPresentationBtn"[\s\S]*id="nextUiThemeStoreBtn"[\s\S]*id="nextUiThemeBtn"/,
@@ -520,6 +537,19 @@ assert.match(mainHtml, /id="nextUiMinimizeToTrayBtn"[^>]*aria-label="最小化�
     'Next must expose a distinct minimize-to-tray control');
 assert.match(mainChatCommandsSource, /function minimizeToTray\(\)[\s\S]*minimizeToTray\?\.\(\)/,
     'minimize-to-tray must route through the existing preload API');
+assert.match(mainChatCommandsSource, /onWindowMaximized[\s\S]*maximized = true[\s\S]*syncMaximizeControl/,
+    'Next window controls must subscribe to the real maximized state');
+assert.match(mainChatCommandsSource, /maximized \? 'filter_none' : 'crop_square'/,
+    'Next maximize control must expose a restore icon when maximized');
+assert.match(mainHtml, /id="nextUiDynamicTabs"[^>]*role="tablist"/,
+    'the dynamic application strip must expose tablist semantics');
+assert.match(topTabManagerSource, /createElement\('div'\)[\s\S]*setAttribute\('role', 'tab'\)[\s\S]*createElement\('button'\)[\s\S]*next-ui-tab-close/,
+    'dynamic tabs must avoid nested buttons and use a real close button');
+const saveSettingsHandler = settingsHandlersSource.match(/ipcMain\.handle\('save-settings',[\s\S]*?\n\s*}\);/)?.[0] || '';
+assert.match(saveSettingsHandler, /'flowlockContinueDelay' in settingsToSave/,
+    'partial settings patches may validate flowlock delay only when supplied');
+assert.doesNotMatch(saveSettingsHandler, /enableDistributedServerLogs\s*=/,
+    'partial settings patches must not synthesize unrelated distributed-log settings');
 assert.doesNotMatch(appearanceStyles, /html\[data-vcp-/,
     'appearance selectors must never affect Classic without an explicit next-mode gate');
 assert.match(appearanceStyles, /html\[data-ui-mode="next"\] body\s*\{[^}]*font-family:[^}]*font-size:/s,
@@ -567,22 +597,44 @@ assert.match(mainHtml, /id="appTrayPinnedApps"[\s\S]*id="appTrayMoreBtn"[\s\S]*i
 assert.match(trayManagerSource, /localStorage\.setItem\('vcp-tray-pinned-apps'/,
     'the app tray must retain the upstream pinned-app persistence contract');
 
-const commandDom = new JSDOM('<!doctype html><html><body><ul id="notificationsList"></ul></body></html>', {
+const commandDom = new JSDOM(`<!doctype html><html><body>
+    <button id="nextUiMaximizeBtn"><span class="vcp-ui-icon">crop_square</span></button>
+    <ul id="notificationsList"></ul>
+</body></html>`, {
     url: 'https://vcpchat.local/',
     runScripts: 'outside-only'
 });
 const creationCalls = [];
+const commandWindowCalls = { maximize: 0, unmaximize: 0 };
+let emitMaximized;
+let emitUnmaximized;
 commandDom.window.chatAPI = {
     createAgent: async (...args) => {
         creationCalls.push(args);
         return { success: true, agentId: 'agent-1', agentName: args[0], config: { model: args[1]?.model } };
     },
+    maximizeWindow: () => { commandWindowCalls.maximize += 1; },
+    unmaximizeWindow: () => { commandWindowCalls.unmaximize += 1; },
+    onWindowMaximized: callback => { emitMaximized = callback; },
+    onWindowUnmaximized: callback => { emitUnmaximized = callback; },
 };
 commandDom.window.itemListManager = {
     loadItems: async () => { throw new Error('list refresh failed'); }
 };
 commandDom.window.uiHelperFunctions = { showToastNotification() {} };
 commandDom.window.eval(mainChatCommandsSource);
+const commandMaximizeButton = commandDom.window.document.getElementById('nextUiMaximizeBtn');
+commandDom.window.MainChatCommands.toggleMaximize();
+assert.equal(commandWindowCalls.maximize, 1);
+emitMaximized();
+assert.equal(commandMaximizeButton.getAttribute('aria-pressed'), 'true');
+assert.equal(commandMaximizeButton.getAttribute('aria-label'), '还原窗口');
+assert.equal(commandMaximizeButton.querySelector('.vcp-ui-icon').textContent, 'filter_none');
+commandDom.window.MainChatCommands.toggleMaximize();
+assert.equal(commandWindowCalls.unmaximize, 1);
+emitUnmaximized();
+assert.equal(commandMaximizeButton.getAttribute('aria-pressed'), 'false');
+assert.equal(commandMaximizeButton.getAttribute('aria-label'), '最大化窗口');
 const partialCreation = await commandDom.window.MainChatCommands.createAgent({ name: 'Nova', model: 'model-next' });
 assert.equal(JSON.stringify(creationCalls[0]), JSON.stringify(['Nova', { model: 'model-next' }]),
     'renderer creation must pass only the model override to the main process');

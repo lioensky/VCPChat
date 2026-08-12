@@ -51,6 +51,7 @@ const allowedSourceDifferences = new Set([
     'modules/ipc/deepWikiHandlers.js',
     'modules/ipc/desktopHandlers.js',
     'modules/ipc/agentHandlers.js',
+    'modules/ipc/settingsHandlers.js',
     'modules/mainChatCommands.js',
     'modules/services/deepWikiService.js',
     'modules/services/embeddedAppSessionManager.js',
@@ -106,6 +107,7 @@ const allowedSourceDifferences = new Set([
     'scripts/test-vcp-ui-select-proxy.mjs',
     'scripts/test-electron-ui-apps-smoke.mjs',
     'scripts/test-settings-wa-electron.mjs',
+    'tests/frontend-plugins.test.js',
     'style.css',
     'styles/notifications.css',
     'styles/themes.css',
@@ -123,6 +125,7 @@ const allowedSourceDifferences = new Set([
     'styles/ui-system/tokens.css',
     'styles/ui-system/webawesome-adapter.css',
     'VCPDistributedServer/Plugin/VChatDynamicWallpaper/plugin.js',
+    'VCPDistributedServer/Plugin/VChatDynamicWallpaper/plugin.css',
     'Notemodules/notes.js',
 ]);
 const allowedSourceDifferencePatterns = [

@@ -11,7 +11,7 @@ const freshDom = new JSDOM('<!doctype html><html><body></body></html>', {
     runScripts: 'outside-only'
 });
 freshDom.window.eval(source);
-assert.equal(freshDom.window.document.documentElement.dataset.uiMode, 'next', 'missing boot cache must default to Next');
+assert.equal(freshDom.window.document.documentElement.dataset.uiMode, 'classic', 'missing boot cache must default to Classic');
 
 const classicDom = new JSDOM('<!doctype html><html><body></body></html>', {
     url: 'https://vcpchat.local/',
@@ -23,8 +23,11 @@ assert.equal(classicDom.window.document.documentElement.dataset.uiMode, 'classic
 
 const rendererSource = fs.readFileSync(path.join(root, 'renderer.js'), 'utf8');
 const settingsSource = fs.readFileSync(path.join(root, 'modules', 'utils', 'appSettingsManager.js'), 'utf8');
-assert.match(rendererSource, /let globalSettings = \{[\s\S]*?uiMode:\s*'next'/, 'renderer boot state must default to Next');
-assert.match(settingsSource, /this\.defaultSettings = \{[\s\S]*?uiMode:\s*'next'/, 'new settings files must default to Next');
+const embeddedSource = fs.readFileSync(path.join(root, 'modules', 'services', 'embeddedAppSessionManager.js'), 'utf8');
+assert.match(rendererSource, /let globalSettings = \{[\s\S]*?uiMode:\s*'classic'/, 'renderer boot state must default to Classic');
+assert.match(settingsSource, /this\.defaultSettings = \{[\s\S]*?uiMode:\s*'classic'/, 'new settings files must default to Classic');
+assert.match(embeddedSource, /settings\?\.uiMode === 'next' \? 'next' : 'classic'/,
+    'embedded applications must enter Next only from an explicit saved preference');
 
 const dom = new JSDOM('<!doctype html><html><body></body></html>', {
     url: 'https://vcpchat.local/',

@@ -878,10 +878,99 @@ try {
     const classicMainStyle = await page.evaluate(() => ({
         fontSize: getComputedStyle(document.body).fontSize,
         materialOpticsPresent: Boolean(document.getElementById('vcpMaterialOptics')),
+        classicTitlebarVisible: getComputedStyle(document.querySelector('.title-bar')).display !== 'none',
+        nextTopbarHidden: getComputedStyle(document.getElementById('nextUiTopbar')).display === 'none',
+        nextSettingsShellPresent: Boolean(document.querySelector('#globalSettingsModal .vcp-ui-settings-shell')),
+        webAwesomeElementCount: document.querySelectorAll('wa-button, wa-input, wa-textarea, wa-select, wa-switch, wa-checkbox').length,
+        composerButtons: ['quickNewTopicBtn', 'attachFileBtn', 'emoticonTriggerBtn', 'sendMessageBtn'].map(id => {
+            const button = document.getElementById(id);
+            const style = getComputedStyle(button);
+            return {
+                id,
+                hasSvg: Boolean(button?.querySelector('svg')),
+                leakedText: [...button?.childNodes || []]
+                    .filter(node => node.nodeType === Node.TEXT_NODE)
+                    .map(node => node.textContent.trim())
+                    .filter(Boolean),
+                width: style.width,
+                height: style.height,
+            };
+        }),
+        classicNotificationControls: ['openForumBtn', 'doNotDisturbBtn', 'clearNotificationsBtn']
+            .map(id => ({ id, present: Boolean(document.getElementById(id)) })),
+        wallpaperControlPresent: Boolean(document.getElementById('vchat-dynamic-wallpaper-panel')),
+        wallpaperControlHasSvg: Boolean(document.querySelector('#vchat-dynamic-wallpaper-panel .vchat-wallpaper-toggle svg')),
+        wallpaperControlLeakedText: [...document.querySelector('#vchat-dynamic-wallpaper-panel .vchat-wallpaper-toggle')?.childNodes || []]
+            .filter(node => node.nodeType === Node.TEXT_NODE)
+            .map(node => node.textContent.trim())
+            .filter(Boolean),
     }));
     assert.equal(classicMainStyle.fontSize, '15px', `Classic body typography was changed by Next Appearance: ${JSON.stringify(classicMainStyle)}`);
     assert.equal(classicMainStyle.materialOpticsPresent, false, `Classic retained Next material runtime DOM: ${JSON.stringify(classicMainStyle)}`);
-    summary.push({ surface: '全局设置', mode: 'classic', pass: true, lucide: 0, note: 'next 表面已拆除' });
+    assert.equal(classicMainStyle.classicTitlebarVisible, true, `Classic title bar is not visible: ${JSON.stringify(classicMainStyle)}`);
+    assert.equal(classicMainStyle.nextTopbarHidden, true, `Next top bar leaked into Classic: ${JSON.stringify(classicMainStyle)}`);
+    assert.equal(classicMainStyle.nextSettingsShellPresent, false, `Next SettingsShell leaked into Classic: ${JSON.stringify(classicMainStyle)}`);
+    assert.equal(classicMainStyle.webAwesomeElementCount, 0, `Web Awesome controls leaked into Classic main DOM: ${JSON.stringify(classicMainStyle)}`);
+    classicMainStyle.composerButtons.forEach(button => {
+        assert.equal(button.hasSvg, true, `Classic composer button lost its SVG icon: ${JSON.stringify(button)}`);
+        assert.deepEqual(button.leakedText, [], `Classic composer button exposed icon text: ${JSON.stringify(button)}`);
+        assert.notEqual(button.width, 'auto', `Classic composer button has unstable width: ${JSON.stringify(button)}`);
+        assert.notEqual(button.height, 'auto', `Classic composer button has unstable height: ${JSON.stringify(button)}`);
+    });
+    classicMainStyle.classicNotificationControls.forEach(control => {
+        assert.equal(control.present, true, `Classic notification shortcut is missing: ${JSON.stringify(control)}`);
+    });
+    assert.equal(classicMainStyle.wallpaperControlPresent, true, `Classic video wallpaper control is missing: ${JSON.stringify(classicMainStyle)}`);
+    assert.equal(classicMainStyle.wallpaperControlHasSvg, true, `Classic video wallpaper control lost its SVG icon: ${JSON.stringify(classicMainStyle)}`);
+    assert.deepEqual(classicMainStyle.wallpaperControlLeakedText, [], `Classic video wallpaper control exposed icon text: ${JSON.stringify(classicMainStyle)}`);
+
+    await page.evaluate(() => window.uiHelperFunctions.openModal('globalSettingsModal'));
+    await page.waitForFunction(() => document.getElementById('globalSettingsModal')?.classList.contains('active'), { timeout: timeoutMs });
+    const classicSettingsNavigation = await page.evaluate(async () => {
+        const modal = document.getElementById('globalSettingsModal');
+        const navItems = [...modal.querySelectorAll('.settings-nav-item')];
+        const target = navItems.find(item => item.dataset.section === 'server-connection');
+        target?.click();
+        await new Promise(resolve => setTimeout(resolve, 220));
+        return {
+            navCount: navItems.length,
+            activeNav: modal.querySelector('.settings-nav-item.active')?.dataset.section || '',
+            activeSection: modal.querySelector('.settings-section.active')?.id || '',
+            nextShell: Boolean(modal.querySelector('.vcp-ui-settings-shell')),
+        };
+    });
+    assert.equal(classicSettingsNavigation.navCount, 8, `Classic settings category count changed: ${JSON.stringify(classicSettingsNavigation)}`);
+    assert.equal(classicSettingsNavigation.activeNav, 'server-connection', `Classic settings navigation click failed: ${JSON.stringify(classicSettingsNavigation)}`);
+    assert.equal(classicSettingsNavigation.activeSection, 'section-server-connection', `Classic settings content did not follow navigation: ${JSON.stringify(classicSettingsNavigation)}`);
+    assert.equal(classicSettingsNavigation.nextShell, false, `Next SettingsShell mounted during Classic settings navigation: ${JSON.stringify(classicSettingsNavigation)}`);
+    const classicAppearanceSettings = await page.evaluate(async () => {
+        const modal = document.getElementById('globalSettingsModal');
+        const appearanceNav = [...modal.querySelectorAll('.settings-nav-item')]
+            .find(item => item.dataset.section === 'appearance-settings');
+        appearanceNav?.click();
+        await new Promise(resolve => setTimeout(resolve, 220));
+        const workbench = modal.querySelector('.appearance-workbench-card');
+        const layoutSelector = modal.querySelector('.appearance-layout-selector');
+        const layoutOption = modal.querySelector('.appearance-layout-option');
+        const homeVisual = modal.querySelector('.appearance-home-visual-setting');
+        return {
+            activeSection: modal.querySelector('.settings-section.active')?.id || '',
+            workbenchDisplay: workbench ? getComputedStyle(workbench).display : '',
+            workbenchColumns: workbench ? getComputedStyle(workbench).gridTemplateColumns : '',
+            layoutBorder: layoutSelector ? getComputedStyle(layoutSelector).borderTopStyle : '',
+            layoutRadius: layoutOption ? getComputedStyle(layoutOption).borderTopLeftRadius : '',
+            homeVisualDisplay: homeVisual ? getComputedStyle(homeVisual).display : '',
+        };
+    });
+    assert.equal(classicAppearanceSettings.activeSection, 'section-appearance-settings', `Classic appearance section did not open: ${JSON.stringify(classicAppearanceSettings)}`);
+    assert.equal(classicAppearanceSettings.workbenchDisplay, 'grid', `Classic appearance workbench fell back to unstyled flow: ${JSON.stringify(classicAppearanceSettings)}`);
+    assert.notEqual(classicAppearanceSettings.workbenchColumns, 'none', `Classic appearance workbench columns are missing: ${JSON.stringify(classicAppearanceSettings)}`);
+    assert.equal(classicAppearanceSettings.layoutBorder, 'solid', `Classic layout selector retained native fieldset styling: ${JSON.stringify(classicAppearanceSettings)}`);
+    assert.notEqual(classicAppearanceSettings.layoutRadius, '0px', `Classic layout options retained native radio rows: ${JSON.stringify(classicAppearanceSettings)}`);
+    assert.equal(classicAppearanceSettings.homeVisualDisplay, 'flex', `Classic home visual controls are not aligned: ${JSON.stringify(classicAppearanceSettings)}`);
+    await capture(page, 'main-settings-classic.png');
+    await page.evaluate(() => window.uiHelperFunctions.closeModal('globalSettingsModal'));
+    summary.push({ surface: '主窗口与全局设置', mode: 'classic', pass: true, lucide: 0, note: '上游标题栏、输入按钮、通知、壁纸与设置导航保持可用' });
 
     console.log('Electron UI apps smoke passed (boot WA gate, showcase, global settings, 2 active child Next surfaces, upstream-Classic host integration, classic regression).');
 } catch (error) {

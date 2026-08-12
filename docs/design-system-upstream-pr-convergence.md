@@ -4,6 +4,8 @@
 > 基线：`upstream-review/main`
 > 原则：只修复本设计分支新增或显著放大的问题，不借设计 PR 重构上游 Classic。
 
+默认策略：首次启动、缺失 `uiMode` 或设置读取失败时进入 Classic。Next 是用户主动选择并保存的可选布局；已经保存为 Next 的用户保持原偏好。
+
 ## 责任边界
 
 审查结论必须先与 `upstream-review/main` 比较，再决定是否进入整改范围。
@@ -159,3 +161,60 @@ Memo、Forum、Log、Plugin Manager、Task、Human ToolBox、VchatManager、RAG 
 - command 成功但后续列表刷新或选中失败时，结果必须保留 `success: true` 并带 `navigationSuccess: false`。
 - DOM 就绪前发生 Next → Classic 切换时，Classic 不得挂载 Next 材质 SVG 或其他延迟视觉资源。
 - 900px 最小窗口、多个动态标签和通知栏展开组合必须完成截图与像素级无重叠检查。
+
+## 2026-08-10 第二轮对抗审查：PR 阻塞项
+
+以下问题均由设计分支新增的入口、运行时或资源布局引入，不归入上游既有技术债。在全部关闭前，分支不得重新提交上游 PR。
+
+1. vendored Web Awesome 的 `package.json` 被上游通用 ignore 规则吞掉，导致干净 clone 和打包门禁失败。
+2. Appearance Studio 使用部分对象调用通用 `save-settings`，触发 IPC 对缺失字段补默认值，可能重置续写延迟和分布式日志开关。
+3. 视频壁纸完整控制只注入 Next 账户菜单，Classic 丢失上游原有的目录、播放、模式和音量入口。
+4. 布局预览真实切换 UI mode，离开 Next 时会关闭内嵌 WebContentsView，只恢复标签 ID，无法保证未保存页面状态。
+5. 全局设置在 Classic 下仍被强制重建为 Next SettingsShell，违反 Classic 上游基线约束。
+6. Appearance Studio 先持久化再应用本地状态；后续应用失败时只回滚界面，磁盘与当前界面可能分叉。
+7. Next 最大化按钮没有同步最大化/还原图标、标题和无障碍状态。
+8. Next 动态标签关闭按钮使用嵌套交互元素，缺少有效键盘关闭路径和 tab 语义。
+
+### 修复策略
+
+- `save-settings` 明确支持 patch 语义：只规范调用方实际传入的字段，不为缺失字段写默认值。完整全局设置表单继续提交完整对象。
+- Appearance Studio 的保存必须成为可恢复事务；持久化成功后若本地应用失败，要把原持久化字段写回磁盘。
+- UI mode 预览不得销毁内嵌应用。预览只切换 presentation，持久化提交或明确离开 Next 时才允许执行原生 view teardown。
+- Classic 全局设置只保留上游 DOM 与样式；布局切换字段仍可存在，但 VCPUI SettingsShell 仅在 Next 挂载。
+- 动态壁纸共享一个播放状态层，Classic 标题栏和 Next 账户菜单分别提供 presentation，切换模式不重置播放或目录配置。
+- 所有新 vendor 文件必须能从 `git archive HEAD` 重建并通过离线资源门禁。
+- 窗口按钮和动态标签必须具备状态同步、合法 DOM 语义和完整键盘路径。
+
+### 新增验收门禁
+
+- 从 `git archive HEAD` 解包后运行 Web Awesome pack check 必须通过。
+- 用部分外观 patch 保存时，未包含的设置字段逐项保持原值。
+- Classic/Next 来回切换后，视频壁纸两套入口均可操作同一播放状态。
+- Appearance Studio 预览 Classic 后取消，已打开的内嵌页面实例和未保存状态保持不变。
+- Classic 打开全局设置时不得出现 `.vcp-ui-settings-shell`、Web Awesome proxy 或 `vcp-global-settings-next`。
+- 模拟“磁盘保存成功、本地应用失败”时，磁盘设置必须恢复到保存前快照。
+- 最大化/还原状态和动态标签关闭操作必须通过鼠标与键盘测试。
+
+### 2026-08-10 整改结果
+
+上述八项阻塞问题均已关闭：
+
+1. `.gitignore` 明确放行 `vendor/webawesome-runtime/package.json`；模拟干净归档补入该文件后离线 pack check 通过。
+2. `save-settings` 已改为真正的 patch 语义，缺失的续写延迟和分布式日志字段不会被补默认值。
+3. 动态壁纸保留单一播放状态；Next 仅挂载账户菜单入口，Classic 仅挂载标题栏控制，模式切换会恢复原始标题 DOM，不在隐藏 presentation 中保留包装节点。
+4. Next → Classic 的外观预览只隐藏原生 view，不关闭 WebContentsView 或销毁标签；返回 Next 时复用原实例。
+5. Classic 全局设置不挂载 SettingsShell、VCPUI proxy 或 Next host class，teardown 后重新绑定上游导航。
+6. Appearance Studio 保存失败会同时补偿回写磁盘与 `window.globalSettings`，随后恢复界面快照，避免三份状态分叉。
+7. Next 最大化按钮订阅真实窗口状态，切换最大化/还原图标、名称和 `aria-pressed`。
+8. 动态标签使用 `div[role=tab]`、roving tabindex 和原生关闭按钮；Enter/Space 可激活标签，不再嵌套交互元素。
+
+最新上游已刷新至 `b735b3ff`。新增的 8 个提交仅涉及 Scriptorium 的 14 个文件，与设计系统整改没有重叠；当前工作文件树已接收这些文件，后续提交时应单独整理为上游同步提交。
+
+验证结果：
+
+- 设计系统测试链、Appearance、UI mode、标签生命周期和 Web Awesome adapter 全部通过。
+- `npm run test:electron-ui-apps`：20/20 通过。
+- `node --test tests/frontend-plugins.test.js`：6/6 通过。
+- `npm run pack:check` 及模拟干净归档的 Web Awesome pack check 通过。
+- 完整 subtraction guard 仅被用户本地、明确不纳入本轮的 `styles/themes.css` 修改阻塞；排除该用户文件后没有其他设计边界失败。
+- 最新上游自身的 Scriptorium CDN 本地化冒烟仍超时，`tests/test-export-inline.cjs` 也可在与上游相同字节的测试及 `vendor/three.min.js` 上复现失败。二者属于上游基线，不计入本 PR 引入问题。

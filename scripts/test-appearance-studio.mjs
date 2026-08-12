@@ -350,7 +350,7 @@ drawer.querySelector('[data-appearance-key="homeTagline"][data-appearance-value=
 await new Promise(resolve => setImmediate(resolve));
 drawer.querySelector('[data-reset-section="layout"]').click();
 await new Promise(resolve => setImmediate(resolve));
-assert.equal(document.documentElement.dataset.uiMode, 'next');
+assert.equal(document.documentElement.dataset.uiMode, 'classic', 'layout reset must use the first-run Classic default');
 assert.equal(document.documentElement.dataset.vcpContentWidth, 'full');
 assert.equal(document.body.classList.contains('chat-wide-layout'), false);
 assert.equal(document.documentElement.dataset.vcpHomeVisual, 'shown');
@@ -361,6 +361,8 @@ assert.equal(document.documentElement.dataset.vcpRadius, 'medium');
 drawer.querySelector('[data-reset-all]').click();
 assert.equal(document.documentElement.dataset.vcpTypography, 'humanist');
 assert.equal(document.body.classList.contains('chat-presentation-bubble'), true);
+drawer.querySelector('[data-appearance-key="uiMode"][data-appearance-value="next"]').click();
+await new Promise(resolve => setImmediate(resolve));
 drawer.querySelector('[data-appearance-preset="reading"]').click();
 await new Promise(resolve => setImmediate(resolve));
 drawer.querySelector('[data-appearance-key="messageWidth"][data-appearance-value="wide"]').click();
@@ -459,6 +461,44 @@ await new Promise(resolve => setImmediate(resolve));
 assert.equal(studio.isOpen(), false, 'save and close persists changes before closing');
 assert.equal(window.globalSettings.appearanceProfile.density, 'compact');
 assert.equal(window.chatAPI.saved.length, 2);
+
+const originalApplyAsync = window.uiModeManager.applyAsync
+    ? window.uiModeManager.applyAsync.bind(window.uiModeManager)
+    : async (mode, options = {}) => window.uiModeManager.apply(mode, options);
+const savedBeforeFailedApply = window.chatAPI.saved.length;
+const persistedBeforeFailedApply = {
+    uiMode: window.globalSettings.uiMode,
+    appearanceProfile: structuredClone(window.globalSettings.appearanceProfile),
+    chatPresentationMode: window.globalSettings.chatPresentationMode,
+    enableWideChatLayout: window.globalSettings.enableWideChatLayout,
+    showHomeVisualBrand: window.globalSettings.showHomeVisualBrand,
+    showHomeVisualTagline: window.globalSettings.showHomeVisualTagline,
+    homeVisualTagline: window.globalSettings.homeVisualTagline,
+    currentThemeMode: window.globalSettings.currentThemeMode
+};
+let failCommittedModeApply = true;
+window.uiModeManager.applyAsync = async (mode, options = {}) => {
+    if (options.cache === true && failCommittedModeApply) {
+        failCommittedModeApply = false;
+        throw new Error('simulated committed mode failure');
+    }
+    return originalApplyAsync(mode, options);
+};
+studio.open();
+drawer.querySelector('[data-appearance-key="density"][data-appearance-value="comfortable"]').click();
+await new Promise(resolve => setImmediate(resolve));
+drawer.querySelector('[data-studio-save]').click();
+await new Promise(resolve => setImmediate(resolve));
+await new Promise(resolve => setImmediate(resolve));
+assert.equal(window.chatAPI.saved.length, savedBeforeFailedApply + 2,
+    'a local apply failure after persistence must issue a compensating settings write');
+assert.equal(JSON.stringify(window.chatAPI.saved.at(-1)), JSON.stringify(persistedBeforeFailedApply),
+    'the compensating write must restore the complete persisted appearance snapshot');
+assert.equal(document.documentElement.dataset.vcpDensity, 'compact',
+    'failed local apply must restore the in-memory appearance snapshot');
+assert.equal(studio.isOpen(), true, 'failed save keeps the studio open for correction');
+await studio.close({ rollback: true });
+delete window.uiModeManager.applyAsync;
 
 let releasePendingPreview;
 let asyncModeCall = 0;
