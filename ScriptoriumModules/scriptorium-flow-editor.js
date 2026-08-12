@@ -25,6 +25,7 @@
             composing: false,
             compositionSession: null,
             compositionOffsets: null,
+            skipNextCompositionInput: false,
             disposed: false,
         };
 
@@ -223,19 +224,48 @@
             );
         }
 
+        function editableDomText(root) {
+            if (!root) return '';
+            const blockTags = new Set([
+                'ADDRESS', 'ARTICLE', 'ASIDE', 'BLOCKQUOTE', 'DIV',
+                'FOOTER', 'HEADER', 'H1', 'H2', 'H3', 'H4', 'H5',
+                'H6', 'LI', 'MAIN', 'P', 'SECTION',
+            ]);
+            let output = '';
+            const visit = (node) => {
+                if (node.nodeType === Node.TEXT_NODE) {
+                    output += String(node.nodeValue || '');
+                    return;
+                }
+                if (node.nodeType !== Node.ELEMENT_NODE) return;
+                if (node.tagName === 'BR') {
+                    output += '\n';
+                    return;
+                }
+                const block = blockTags.has(node.tagName);
+                if (block && output && !output.endsWith('\n')) output += '\n';
+                node.childNodes.forEach(visit);
+                if (block && output && !output.endsWith('\n')) output += '\n';
+            };
+            root.childNodes.forEach(visit);
+            return output.replace(/\n$/, '');
+        }
+
         function editableSourceText(editable) {
             if (!editable) return '';
             if (!editable.classList?.contains('vdoc-md-live-preview-run')) {
-                return String(editable.textContent || '');
+                return editableDomText(editable);
             }
 
             const lines = [...editable.children].filter((child) =>
                 child.classList?.contains('vdoc-md-live-preview-line')
             );
-            if (!lines.length) return String(editable.textContent || '');
-            return lines.map((line) =>
-                String(line.textContent || '')
-            ).join('\n');
+            if (!lines.length) return editableDomText(editable);
+            return lines.map((line) => editableDomText(line)).join('\n');
+        }
+
+        function pastedMarkdownText(value) {
+            return String(value || '').replace(/\r\n?/g, '\n');
         }
 
         function refreshLocalMarkers(session, sourceStart, sourceEnd = sourceStart) {
@@ -1428,10 +1458,11 @@
                 reason,
             });
             if (!transaction) return false;
-            if (!refreshSessionRegion(session, transaction, {
+            const refreshed = refreshSessionRegion(session, transaction, {
                 start: caret,
                 end: caret,
-            })) {
+            });
+            if (!refreshed) {
                 state.activeSession = null;
                 context.renderPort?.invalidate?.(
                     'flow-edit-region-structure-changed'
@@ -1505,9 +1536,9 @@
                 // 硬换行直接提交到文档模型。beforeinput 保留为平台差异兜底。
                 return commitSessionInsertion(
                     session,
-                    '  \n',
+                    '\n',
                     offsets,
-                    'flow-keydown-hard-line-break'
+                    'flow-keydown-line-break'
                 );
             }
             return false;
@@ -1607,6 +1638,30 @@
                 event.preventDefault();
             }, options);
 
+            root.addEventListener('paste', (event) => {
+                const editable = event.target.closest?.(
+                    '[data-vdoc-flow-source-editor="true"]'
+                );
+                const shell = event.target.closest?.('[data-vdoc-edit-key]');
+                if (!editable || !shell) return;
+                const session = state.activeSession?.editable === editable
+                    ? state.activeSession
+                    : beginSession(shell, editable);
+                if (!session || session.region.type !== 'markdown') return;
+                const offsets =
+                    selectionPrimitives.currentOffsets(editable);
+                if (!offsets) return;
+                const text = event.clipboardData?.getData('text/plain');
+                if (text === undefined || text === null) return;
+                event.preventDefault();
+                commitSessionInsertion(
+                    session,
+                    pastedMarkdownText(text),
+                    offsets,
+                    'flow-paste-plain-text'
+                );
+            }, options);
+
             root.addEventListener('contextmenu', (event) => {
                 if (event.target.closest?.('[data-vdoc-object-id]')) return;
                 captureSelection();
@@ -1659,9 +1714,9 @@
                     // contenteditable DOM，避免出现“UI 换行、源码没变”。
                     commitSessionInsertion(
                         session,
-                        '  \n',
+                        '\n',
                         offsets,
-                        'flow-beforeinput-hard-line-break'
+                        'flow-beforeinput-line-break'
                     );
                     return;
                 }
@@ -1681,6 +1736,10 @@
 
             root.addEventListener('input', (event) => {
                 if (event.isComposing || state.composing) return;
+                if (state.skipNextCompositionInput) {
+                    state.skipNextCompositionInput = false;
+                    return;
+                }
                 const editable = event.target.closest?.(
                     '[data-vdoc-flow-source-editor="true"]'
                 );
@@ -1693,6 +1752,7 @@
             }, options);
 
             root.addEventListener('compositionstart', (event) => {
+                state.skipNextCompositionInput = false;
                 const editable = event.target.closest?.(
                     '[data-vdoc-flow-source-editor="true"]'
                 );
@@ -1715,14 +1775,15 @@
                 state.compositionOffsets = null;
                 if (!session || !offsets
                     || session.region.type !== 'markdown') {
+                    state.skipNextCompositionInput = false;
                     return;
                 }
-                commitSessionInsertion(
+                state.skipNextCompositionInput = commitSessionInsertion(
                     session,
                     event.data || '',
                     offsets,
                     'flow-composition-insert-text'
-                );
+                ) === true;
             }, options);
 
             root.addEventListener('focusout', (event) => {
@@ -1788,6 +1849,7 @@
             state.selectionText = '';
             state.compositionSession = null;
             state.compositionOffsets = null;
+            state.skipNextCompositionInput = false;
             state.domSourceMap = new WeakMap();
             state.textSourceMap = new WeakMap();
         }
