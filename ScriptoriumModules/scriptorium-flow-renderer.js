@@ -156,11 +156,21 @@ ${primitives.editDecorationsCss()}
             primitives.renderMath(root);
             primitives.renderMermaid(root);
             primitives.updateZoomLayout(root, options.zoom);
+            context.visibilityPort?.observe?.(
+                root,
+                options.scrollHost,
+                {
+                    selector: '[data-vdoc-island]',
+                    rootMargin: '0px',
+                    viewportRoot: true,
+                }
+            );
             activatePlugins(root, 'edit', adapter);
             return Object.freeze({
                 root,
                 runtime,
                 dispose() {
+                    context.visibilityPort?.disconnect?.(root);
                     context.editorPort?.disposeSurface?.();
                     context.objectPort?.clearSelection?.();
                     context.renderedTextPort?.disposeSurface?.();
@@ -188,7 +198,15 @@ ${primitives.editDecorationsCss()}
             primitives.renderMath(root);
             primitives.renderMermaid(root);
             primitives.updateZoomLayout(root, options.zoom);
-            context.visibilityPort?.observe?.(root, options.scrollHost);
+            context.visibilityPort?.observe?.(
+                root,
+                options.scrollHost,
+                {
+                    selector: '[data-vdoc-island]',
+                    rootMargin: '0px',
+                    viewportRoot: true,
+                }
+            );
             activatePlugins(root, 'read', adapter);
             return Object.freeze({
                 root,

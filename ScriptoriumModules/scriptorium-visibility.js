@@ -2,6 +2,8 @@
 
 (() => {
     const DEFAULT_MARGIN = '120% 0px';
+    const PAUSE_EVENT = 'vdoc-runtime-pause';
+    const RESUME_EVENT = 'vdoc-runtime-resume';
     const surfaceStates = new WeakMap();
 
     function createState(surface) {
@@ -63,6 +65,7 @@
         });
         state.timers.forEach((timer) => timer.pause());
         state.paused = true;
+        surface.dispatchEvent(new Event(PAUSE_EVENT));
     }
 
     function resume(surface) {
@@ -94,6 +97,7 @@
             context.resume?.();
         });
         state.timers.forEach((timer) => timer.resume());
+        surface.dispatchEvent(new Event(RESUME_EVENT));
 
         const callbacks = state.pausedRafCallbacks.splice(0);
         callbacks.forEach((callback) => {
@@ -196,22 +200,36 @@
     }
 
     function observePages(root, host, options = {}) {
-        if (!root || !host) return { disconnect() {} };
+        const viewportRoot = options.viewportRoot === true;
+        if (!root || (!host && !viewportRoot)) {
+            return { disconnect() {} };
+        }
+        const targets = [
+            ...root.querySelectorAll(options.selector || '.vdoc-page'),
+        ];
         const observer = new IntersectionObserver((entries) => {
             entries.forEach((entry) => {
                 if (entry.isIntersecting) resume(entry.target);
                 else pause(entry.target);
             });
         }, {
-            root: host,
-            rootMargin: options.rootMargin || DEFAULT_MARGIN,
+            // Shadow Root 中的岛并非普通 DOM contains() 意义下的 host
+            // 后代。逐岛观察使用顶层视口作为根，所有滚动/overflow
+            // 祖先仍会参与浏览器的相交裁剪。
+            root: viewportRoot ? null : host,
+            rootMargin: options.rootMargin ?? DEFAULT_MARGIN,
             threshold: 0,
         });
-        root.querySelectorAll(options.selector || '.vdoc-page').forEach((page) => {
-            stateFor(page);
-            observer.observe(page);
+        targets.forEach((target) => {
+            stateFor(target);
+            observer.observe(target);
         });
-        return observer;
+        return Object.freeze({
+            disconnect() {
+                observer.disconnect();
+                targets.forEach(disposeSurface);
+            },
+        });
     }
 
     function disposeSurface(surface) {

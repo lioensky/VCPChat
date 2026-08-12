@@ -182,11 +182,41 @@
         function trackedAnime(root, lifecycle) {
             if (typeof window.anime !== 'function') return window.anime;
             const instances = new Set();
+            const visibilityPaused = new Set();
             const register = (instance) => {
                 if (instance?.pause) instances.add(instance);
                 return instance;
             };
+            const pauseForVisibility = () => {
+                instances.forEach((instance) => {
+                    try {
+                        if (!instance.paused) {
+                            visibilityPaused.add(instance);
+                            instance.pause();
+                        }
+                    } catch {}
+                });
+            };
+            const resumeForVisibility = () => {
+                [...visibilityPaused].forEach((instance) => {
+                    try {
+                        instance.play?.();
+                    } catch {}
+                });
+                visibilityPaused.clear();
+            };
+            root.addEventListener('vdoc-runtime-pause', pauseForVisibility);
+            root.addEventListener('vdoc-runtime-resume', resumeForVisibility);
             lifecycle.addCleanup(() => {
+                root.removeEventListener(
+                    'vdoc-runtime-pause',
+                    pauseForVisibility
+                );
+                root.removeEventListener(
+                    'vdoc-runtime-resume',
+                    resumeForVisibility
+                );
+                visibilityPaused.clear();
                 instances.forEach((instance) => {
                     try {
                         instance.pause();

@@ -103,6 +103,7 @@
     let prDiffPort = null;
     let agentPort = null;
     let objectPort = null;
+    let shell = null;
     let pathRequestDisposer = null;
     let agentRequestDisposer = null;
     let agentCheckpointDisposer = null;
@@ -111,6 +112,10 @@
 
     const editorResolver = () => activeEditor;
     const adapterResolver = () => activeAdapter;
+    const notificationFacade = Object.freeze({
+        show: (...args) =>
+            shell?.notificationPort?.show?.(...args),
+    });
 
     const renderFacade = Object.freeze({
         setAdapter: (...args) => renderPort?.setAdapter(...args),
@@ -150,10 +155,7 @@
     const renderedTextPort =
         window.ScriptoriumRenderedText.createRenderedTextController({
             historyPort,
-            notificationPort: {
-                show: (...args) =>
-                    shell.notificationPort.show(...args),
-            },
+            notificationPort: notificationFacade,
         });
 
     const runtimePort =
@@ -163,12 +165,13 @@
 
     const visibilityObservers = new Map();
     const visibilityPort = Object.freeze({
-        observe(root, host) {
+        observe(root, host, options = {}) {
             const previous = visibilityObservers.get(root);
             previous?.disconnect?.();
             const observer = window.ScriptoriumVisibility.observePages(
                 root,
-                host
+                host,
+                options
             );
             visibilityObservers.set(root, observer);
             return observer;
@@ -230,10 +233,7 @@
             mediaPort: {
                 open: () => mediaPort?.open?.(),
             },
-            notificationPort: {
-                show: (...args) =>
-                    shell.notificationPort.show(...args),
-            },
+            notificationPort: notificationFacade,
             onSelectionChange: () =>
                 formattingPort?.scheduleSync?.(),
         });
@@ -245,10 +245,7 @@
             selectionPrimitives: window.ScriptoriumDomSelection,
             core,
             historyPort,
-            notificationPort: {
-                show: (...args) =>
-                    shell.notificationPort.show(...args),
-            },
+            notificationPort: notificationFacade,
             restoreSemantics: primitives.restoreMathSemantics,
             mediaPort: {
                 open: () => mediaPort?.open?.(),
@@ -408,7 +405,7 @@
         close: (...args) => stylePort?.close(...args),
     });
 
-    const shell = window.ScriptoriumShell.createShell({
+    shell = window.ScriptoriumShell.createShell({
         core,
         documentPort,
         persistencePort,

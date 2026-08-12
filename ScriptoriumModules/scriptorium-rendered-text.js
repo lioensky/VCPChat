@@ -386,7 +386,9 @@
 
         function disposeSurface() {
             registration?.abortController.abort();
-            if (registration?.root) controller.dispose(registration.root);
+            registration?.scopes?.forEach((scope) =>
+                controller.dispose(scope)
+            );
             registration = null;
         }
 
@@ -463,17 +465,25 @@
 
             const abortController = new AbortController();
             const hostRecords = new WeakMap();
-            const scanOptions = {
-                editable: true,
-                acceptHost: (host, node) =>
-                    editableIslandHost(host, node, root),
-                onRecord(record) {
-                    if (record.host) hostRecords.set(record.host, record);
-                },
-            };
-            controller.scan(root, scanOptions);
+            const scopes = [
+                ...root.querySelectorAll(
+                    '[data-vdoc-edit-key][data-vdoc-edit-type="island"] '
+                    + '[data-vdoc-island]'
+                ),
+            ];
+            scopes.forEach((scope) => {
+                controller.scan(scope, {
+                    editable: true,
+                    acceptHost: (host, node) =>
+                        editableIslandHost(host, node, root),
+                    onRecord(record) {
+                        if (record.host) hostRecords.set(record.host, record);
+                    },
+                });
+            });
             registration = {
                 root,
+                scopes,
                 adapter,
                 abortController,
                 hostRecords,

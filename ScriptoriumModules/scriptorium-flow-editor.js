@@ -181,13 +181,14 @@
         }
 
         function activateShell(shell, point = null) {
-            const region = regionForShell(shell);
-            if (!region || region.flowKind === 'stable-atomic') return null;
             const current = state.activeSession;
             if (current?.shell === shell && current.editable?.isConnected) {
                 return current;
             }
-            if (current) flushSession(current);
+            if (current) deactivateSession(current);
+
+            const region = regionForShell(shell);
+            if (!region || region.flowKind === 'stable-atomic') return null;
 
             let sourceOffset = region.sourceRange.start;
             if (point) {
