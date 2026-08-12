@@ -35,6 +35,32 @@ function run() {
     );
     assert.equal((compiled.html.match(/data-vdoc-math=/g) || []).length, 3);
     assert.equal((compiled.html.match(/data-vdoc-mermaid=/g) || []).length, 1);
+
+    const styleRegions = compiled.editRegions.filter((region) =>
+        region.type === 'style'
+    );
+    assert.equal(
+        styleRegions.length,
+        1,
+        'the complete top-level style element must remain one atomic edit region'
+    );
+    const styleSource = source.slice(
+        styleRegions[0].sourceRange.start,
+        styleRegions[0].sourceRange.end
+    );
+    assert.match(styleSource, /^<style>[\s\S]*<\/style>$/);
+    assert.match(styleSource, /#ultimate-test-title/);
+    assert.match(styleSource, /\.vdoc-test-signature/);
+    assert.match(
+        compiled.previewHtml,
+        /data-vdoc-edit-type="style"><style>[\s\S]*#ultimate-test-title[\s\S]*\.vdoc-test-signature[\s\S]*<\/style><\/div>/
+    );
+    assert.doesNotMatch(
+        compiled.previewHtml,
+        /data-vdoc-edit-type="markdown"><p>#ultimate-test-title/,
+        'CSS rules must not leak into visible Markdown paragraphs'
+    );
+
     assert.match(compiled.html, /<h2>8\. 最后一段 Markdown<\/h2>/);
     assert.match(
         compiled.html,
@@ -176,6 +202,67 @@ function run() {
             );
         }
     });
+
+    const livePreviewSource = [
+        '## 标题',
+        '> 引用',
+        '- 列表',
+        '1. 有序列表',
+        '- [x] 已完成任务',
+        '',
+        '**粗体**、*斜体*、~~删除线~~、`**代码内星号**`。',
+        String.raw`\*转义星号\*`,
+    ].join('\n');
+    const liveMarkers = compiler.markdownLiveMarkerRanges(livePreviewSource);
+    const markersByKind = (kind) => liveMarkers.filter((marker) =>
+        marker.kind === kind
+    );
+    assert.equal(markersByKind('heading').length, 1);
+    assert.equal(markersByKind('quote').length, 1);
+    assert.equal(markersByKind('list').length, 2);
+    assert.equal(markersByKind('task-list').length, 1);
+    assert.equal(markersByKind('strong').length, 2);
+    assert.equal(markersByKind('emphasis').length, 2);
+    assert.equal(markersByKind('strikethrough').length, 2);
+    assert.equal(markersByKind('code').length, 2);
+    liveMarkers.forEach((marker, index) => {
+        assert(marker.end > marker.start);
+        assert.equal(
+            marker.delimiter,
+            livePreviewSource.slice(marker.start, marker.end),
+            'Live Preview markers must reference exact source characters'
+        );
+        if (index) {
+            assert(
+                marker.start >= liveMarkers[index - 1].end,
+                'Live Preview marker ranges must be ordered and non-overlapping'
+            );
+        }
+    });
+    const codeLiteralStart = livePreviewSource.indexOf('**代码内星号**');
+    const codeLiteralEnd = codeLiteralStart + '**代码内星号**'.length;
+    assert.equal(
+        liveMarkers.some((marker) =>
+            marker.kind === 'strong'
+            && marker.start >= codeLiteralStart
+            && marker.end <= codeLiteralEnd
+        ),
+        false,
+        'inline code content must not expose nested emphasis markers'
+    );
+    const escapedStart = livePreviewSource.indexOf(String.raw`\*转义星号\*`);
+    assert.equal(
+        liveMarkers.some((marker) =>
+            marker.kind === 'emphasis' && marker.start >= escapedStart
+        ),
+        false,
+        'escaped delimiters must remain ordinary source characters'
+    );
+    assert.doesNotMatch(
+        compiler.compile(livePreviewSource).previewHtml,
+        /vdoc-md-marker/,
+        'Live Preview decoration must never leak into compiled preview HTML'
+    );
 
     const duplicated = compiler.validate([
         '<div data-vdoc-island="same"></div>',

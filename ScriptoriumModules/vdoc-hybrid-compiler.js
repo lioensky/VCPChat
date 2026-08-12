@@ -127,6 +127,25 @@
         return -1;
     }
 
+    function scanStyleBlocks(source, excludedRegions = []) {
+        const regions = [];
+        const pattern = /<style\b[^>]*>[\s\S]*?<\/style\s*>/gi;
+        let match;
+        while ((match = pattern.exec(source))) {
+            const start = match.index;
+            const end = start + match[0].length;
+            if (overlapsRegion(start, end, excludedRegions)) continue;
+            regions.push({
+                type: 'style',
+                start,
+                end,
+                source: match[0],
+                closed: true,
+            });
+        }
+        return regions;
+    }
+
     function scanIslands(source, excludedRegions, diagnostics) {
         const islands = [];
         const seenIds = new Set();
@@ -244,6 +263,106 @@
         return regions.some((region) => start < region.end && end > region.start);
     }
 
+    function markdownLiveMarkerRanges(raw) {
+        const source = String(raw || '');
+        const markers = [];
+        const markerRegions = [];
+        const codeContentRegions = [];
+        const add = (start, end, kind) => {
+            if (end <= start || overlapsRegion(start, end, markerRegions)) return false;
+            markers.push({
+                start,
+                end,
+                kind,
+                delimiter: source.slice(start, end),
+            });
+            markerRegions.push({ start, end });
+            return true;
+        };
+
+        // 块级前缀保持源码字符本身，只附加编辑态着色信息。
+        const linePattern = /^(?: {0,3})(#{1,6}(?=\s)|>\s?|(?:[-+*]|\d+\.)\s+(?:\[[ xX]\]\s*)?)/gm;
+        let match;
+        while ((match = linePattern.exec(source))) {
+            const delimiter = match[1];
+            const start = match.index + match[0].indexOf(delimiter);
+            const kind = delimiter.trimStart().startsWith('#')
+                ? 'heading'
+                : delimiter.trimStart().startsWith('>')
+                    ? 'quote'
+                    : /\[[ xX]\]/.test(delimiter)
+                        ? 'task-list'
+                        : 'list';
+            add(start, start + delimiter.length, kind);
+        }
+
+        // 代码跨度优先于其它行内语法。只装饰两端反引号，并保护中间内容，
+        // 因此 `**literal**` 中的星号不会被误标为粗体分隔符。
+        const codeOpenPattern = /(`+)/g;
+        while ((match = codeOpenPattern.exec(source))) {
+            const delimiter = match[1];
+            const start = match.index;
+            if (start > 0 && source[start - 1] === '\\') continue;
+            let closeStart = source.indexOf(
+                delimiter,
+                start + delimiter.length
+            );
+            while (closeStart >= 0 && (
+                source[closeStart - 1] === '`'
+                || source[closeStart + delimiter.length] === '`'
+                || source[closeStart - 1] === '\\'
+            )) {
+                closeStart = source.indexOf(
+                    delimiter,
+                    closeStart + delimiter.length
+                );
+            }
+            if (closeStart < 0) {
+                add(start, start + delimiter.length, 'code');
+                continue;
+            }
+            add(start, start + delimiter.length, 'code');
+            add(closeStart, closeStart + delimiter.length, 'code');
+            codeContentRegions.push({
+                start: start + delimiter.length,
+                end: closeStart,
+            });
+            codeOpenPattern.lastIndex = closeStart + delimiter.length;
+        }
+
+        const delimiterPattern = /(\*\*|__|~~|\*|_)/g;
+        const stacks = new Map();
+        const inline = [];
+        while ((match = delimiterPattern.exec(source))) {
+            const delimiter = match[0];
+            const start = match.index;
+            const end = start + delimiter.length;
+            if ((start > 0 && source[start - 1] === '\\')
+                || overlapsRegion(start, end, markerRegions)
+                || overlapsRegion(start, end, codeContentRegions)) {
+                continue;
+            }
+            const record = {
+                start,
+                end,
+                kind: delimiter === '~~'
+                    ? 'strikethrough'
+                    : delimiter.length === 2
+                        ? 'strong'
+                        : 'emphasis',
+            };
+            const stack = stacks.get(delimiter) || [];
+            if (stack.length) inline.push(stack.pop(), record);
+            else stack.push(record);
+            stacks.set(delimiter, stack);
+        }
+        stacks.forEach((stack) => inline.push(...stack));
+        inline.sort((left, right) => left.start - right.start)
+            .forEach((record) => add(record.start, record.end, record.kind));
+
+        return markers.sort((left, right) => left.start - right.start);
+    }
+
     function scanMathRegions(source, excludedRegions = []) {
         const regions = [];
         const inlineCodeRegions = [];
@@ -306,7 +425,7 @@
         [...regions].sort((left, right) => left.start - right.start).forEach((region) => {
             if (region.start < cursor) return;
             output += source.slice(cursor, region.start);
-            if (region.type === 'island') {
+            if (region.type === 'island' || region.type === 'style') {
                 output += `\n\n${reserve(registry, region, region.source)}\n\n`;
             } else if (region.type === 'mermaid') {
                 output += `\n\n${reserve(registry, region, mermaidMarkup(region))}\n\n`;
@@ -530,7 +649,7 @@
 
     function renderEditRegion(source, region, parse, diagnostics) {
         const raw = source.slice(region.sourceRange.start, region.sourceRange.end);
-        if (region.type === 'island') return raw;
+        if (region.type === 'island' || region.type === 'style') return raw;
         if (region.type === 'mermaid' || region.type === 'code') {
             const fence = scanFences(raw)[0];
             return fence
@@ -632,8 +751,13 @@
             ));
         });
         const islands = scanIslands(source, fences, diagnostics);
+        const styleBlocks = scanStyleBlocks(source, [
+            ...fences,
+            ...islands,
+        ]);
         const structuralRegions = [
             ...islands,
+            ...styleBlocks,
             ...fences,
         ].sort((left, right) => left.start - right.start);
         const mathRegions = scanMathRegions(source, structuralRegions);
@@ -736,6 +860,7 @@
         ISLAND_ATTRIBUTE,
         compile,
         lineEndingOf,
+        markdownLiveMarkerRanges,
         scanFences,
         simpleHash,
         validate,

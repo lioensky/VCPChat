@@ -102,6 +102,7 @@
         findSourceMarks: [],
         mermaidRenderSequence: 0,
         activeHybridTextEdit: null,
+        markdownLivePreview: null,
         hybridDomSourceMap: new WeakMap(),
         hybridTextSourceMap: new WeakMap(),
         hybridEditSessions: new WeakMap(),
@@ -833,17 +834,88 @@ ${surface === 'edit' ? `
  * 岛内文字编辑保障必须位于作者 CSS 之后。可编程岛经常使用绝对定位、
  * 3D transform、透明深度层或 user-select:none；这些视觉规则不能阻止
  * 已建立源码映射的静态文字和运行态表格文字获得原生光标。
- */
-.vdoc-edit-region[data-vdoc-edit-type="island"] [contenteditable="true"] {
-    position: relative !important;
-    z-index: 2147482000 !important;
-    pointer-events: auto !important;
-    user-select: text !important;
-    -webkit-user-select: text !important;
-    caret-color: currentColor !important;
-    cursor: text !important;
-    touch-action: manipulation !important;
-}
+ .vdoc-edit-region[data-vdoc-edit-type="markdown"][data-vdoc-edit-active="true"] {
+     /*
+      * Live Preview 必须留在原排版流中。活动态不建立输入框外观，也不改变
+      * 壳的盒模型；标题、段落、引用和列表继续使用文档自身的布局。
+      */
+     margin: inherit !important;
+     padding: 0 !important;
+     border: 0 !important;
+     background: transparent !important;
+     box-shadow: none !important;
+     outline: 0 !important;
+ }
+ .vdoc-md-live-preview {
+     min-width: 0 !important;
+     min-height: 1em !important;
+     border: 0 !important;
+     outline: 0 !important;
+     color: inherit !important;
+     background: transparent !important;
+     white-space: pre-wrap !important;
+     overflow-wrap: anywhere !important;
+     tab-size: 4 !important;
+     caret-color: #3a8b78 !important;
+     cursor: text !important;
+     user-select: text !important;
+     -webkit-user-select: text !important;
+ }
+ }
+ .vdoc-md-live-preview:empty::before {
+     content: "输入 Markdown…" !important;
+     color: color-mix(in srgb, currentColor 38%, transparent) !important;
+     pointer-events: none !important;
+ .vdoc-md-marker {
+     display: inline !important;
+     margin: 0 !important;
+     padding: 0 !important;
+     border: 0 !important;
+     color: color-mix(in srgb, currentColor 48%, #d97745) !important;
+     background: transparent !important;
+     font-family: Consolas, "Maple Mono", monospace !important;
+     font-size: .72em !important;
+     font-style: normal !important;
+     font-weight: 600 !important;
+     line-height: inherit !important;
+     text-decoration: none !important;
+     vertical-align: .06em !important;
+     opacity: .72 !important;
+ }
+ .vdoc-md-marker-heading {
+     color: color-mix(in srgb, currentColor 48%, #3a8b78) !important;
+ }
+ .vdoc-md-marker-quote {
+     color: color-mix(in srgb, currentColor 48%, #8b6cab) !important;
+ }
+ .vdoc-md-marker-list,
+ .vdoc-md-marker-task-list {
+     color: color-mix(in srgb, currentColor 48%, #b87828) !important;
+ }
+ }
+ .vdoc-md-marker-strong {
+     font-weight: 850 !important;
+ }
+ .vdoc-md-marker-emphasis {
+     font-style: italic !important;
+ }
+ .vdoc-md-marker-strikethrough {
+     text-decoration: line-through !important;
+ }
+ .vdoc-md-marker-code {
+     color: #337ca0 !important;
+     background: rgba(51, 124, 160, .13) !important;
+ }
+ .vdoc-edit-region[data-vdoc-edit-type="island"] [contenteditable="true"] {
+     position: relative !important;
+     z-index: 2147482000 !important;
+     pointer-events: auto !important;
+     user-select: text !important;
+     -webkit-user-select: text !important;
+     caret-color: currentColor !important;
+     cursor: text !important;
+     touch-action: manipulation !important;
+ }
 .vdoc-edit-region[data-vdoc-edit-type="island"] [contenteditable="true"]:focus {
     outline: 1px solid rgba(58, 139, 120, .72) !important;
     outline-offset: 2px !important;
@@ -1394,7 +1466,7 @@ ${compiled.html}
                 }
                 if (node.parentElement?.closest(
                     'script,style,noscript,canvas,svg,video,audio,input,textarea,select,'
-                    + '[data-vdoc-math],[data-vdoc-mermaid]'
+                    + '[data-vdoc-math],[data-vdoc-mermaid],[data-vdoc-md-live-preview]'
                 )) {
                     return NodeFilter.FILTER_REJECT;
                 }
@@ -1405,6 +1477,211 @@ ${compiled.html}
             nodes.push(node);
         }
         return nodes;
+    }
+
+    function markdownLiveMarkerRanges(raw) {
+        return hybridCompiler.markdownLiveMarkerRanges(String(raw || ''));
+    }
+
+    function createMarkdownLivePreviewFragment(raw) {
+        const source = String(raw || '');
+        const fragment = document.createDocumentFragment();
+        const ranges = markdownLiveMarkerRanges(source);
+        let offset = 0;
+        ranges.forEach((marker) => {
+            if (marker.start > offset) {
+                fragment.appendChild(document.createTextNode(
+                    source.slice(offset, marker.start)
+                ));
+            }
+            const span = document.createElement('span');
+            span.className = `vdoc-md-marker vdoc-md-marker-${marker.kind}`;
+            span.dataset.vdocMdMarker = marker.kind;
+            span.textContent = source.slice(marker.start, marker.end);
+            fragment.appendChild(span);
+            offset = marker.end;
+        });
+        if (offset < source.length || !fragment.childNodes.length) {
+            fragment.appendChild(document.createTextNode(source.slice(offset)));
+        }
+        return fragment;
+    }
+
+    function markdownLivePreviewText(editor) {
+        if (!editor) return '';
+        // 所有受支持换行均由 beforeinput 写入文本节点，因此 textContent 是
+        // 精确源码镜像，不会把装饰 span 或浏览器生成的 HTML 写回 Markdown。
+        return String(editor.textContent || '').replace(/\r\n?/g, '\n');
+    }
+
+    function setMarkdownLivePreviewCaret(editor, wantedOffset) {
+        if (!editor) return false;
+        const point = renderedTextPoint(editor, wantedOffset);
+        try {
+            const range = document.createRange();
+            range.setStart(point.node, point.offset);
+            range.collapse(true);
+            const selection = currentRenderSelection();
+            selection.removeAllRanges();
+            selection.addRange(range);
+            return true;
+        } catch {
+            return false;
+        }
+    }
+
+    function insertMarkdownLivePreviewText(editor, text) {
+        const selection = currentRenderSelection();
+        const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
+        if (!editor || !range || !editor.contains(range.commonAncestorContainer)) {
+            return false;
+        }
+        const normalized = String(text ?? '').replace(/\r\n?/g, '\n');
+        range.deleteContents();
+        const node = document.createTextNode(normalized);
+        range.insertNode(node);
+        range.setStart(node, node.nodeValue.length);
+        range.collapse(true);
+        selection.removeAllRanges();
+        selection.addRange(range);
+        editor.normalize();
+        return true;
+    }
+
+    function markdownLivePreviewSelection(editor) {
+        const selection = currentRenderSelection();
+        const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
+        return editor && range && !range.collapsed
+            && editor.contains(range.commonAncestorContainer)
+            ? { selection, range }
+            : null;
+    }
+
+    function patchMarkdownLivePreviewSource(session) {
+        if (!session?.shell?.isConnected || !session.editor?.isConnected) return false;
+        const nextRaw = markdownLivePreviewText(session.editor);
+        if (nextRaw === session.raw) return false;
+        const source = currentSourceHtml();
+        const currentRaw = source.slice(session.start, session.end);
+        if (currentRaw !== session.raw) {
+            showToast('当前 Markdown 区域源码映射已过期，已重新渲染。', 'error');
+            renderDocument();
+            return false;
+        }
+        setCurrentSourceHtml(
+            source.slice(0, session.start) + nextRaw + source.slice(session.end)
+        );
+        session.end = session.start + nextRaw.length;
+        session.raw = nextRaw;
+        state.document.manifest.modifiedAt = new Date().toISOString();
+        markDirty({ coalesce: true });
+        scheduleEditSnapshot();
+        return true;
+    }
+
+    function commitMarkdownLivePreview(session, rerender = true) {
+        if (!session) return false;
+        patchMarkdownLivePreviewSource(session);
+        if (state.markdownLivePreview === session) {
+            state.markdownLivePreview = null;
+        }
+        if (!rerender || !session.shell?.isConnected) return true;
+        if (!patchHybridShellFromCompilation(session.shell, session.ordinal)) {
+            renderDocument();
+            return true;
+        }
+        const region = parsedDocument().editRegions[session.ordinal];
+        if (region) restoreHybridEditableState(session.shell, region);
+        return true;
+    }
+
+    function activateMarkdownLivePreview(shell, pointer = null) {
+        const region = hybridEditRegionByKey(shell?.dataset?.vdocEditKey);
+        if (!shell || region?.type !== 'markdown') return null;
+        const current = state.markdownLivePreview;
+        if (current?.shell === shell && current.editor?.isConnected) return current;
+        if (current) commitMarkdownLivePreview(current);
+
+        let caretOffset = 0;
+        if (pointer) {
+            const target = pointerTextTarget(shell, pointer);
+            const mapping = target?.node
+                ? state.hybridTextSourceMap.get(target.node)
+                : null;
+            if (mapping?.shell === shell && mapping.sourceRange) {
+                caretOffset = Math.max(
+                    0,
+                    mapping.sourceRange.start - region.sourceRange.start
+                        + (target.offset || 0)
+                );
+            }
+        }
+
+        const source = currentSourceHtml();
+        const raw = source.slice(region.sourceRange.start, region.sourceRange.end);
+        // 复用原渲染块的元素类型与作者属性，而不是创建通用 div 输入框。
+        // 例如二级标题仍是 h2，因此字号、字重、margin 和文档自定义 CSS
+        // 全部保持不变；Live Preview 只把真源标记字符插回原文字位置。
+        const renderedBlock = shell.firstElementChild;
+        const editor = renderedBlock?.cloneNode?.(false)
+            || document.createElement('p');
+        editor.classList.add('vdoc-md-live-preview');
+        editor.dataset.vdocMdLivePreview = 'true';
+        editor.removeAttribute('contenteditable');
+        editor.removeAttribute('spellcheck');
+        editor.contentEditable = 'true';
+        editor.spellcheck = false;
+        editor.setAttribute('role', 'textbox');
+        editor.setAttribute('aria-multiline', 'true');
+        editor.setAttribute('aria-label', 'Markdown Live Preview 编辑区');
+        editor.replaceChildren(createMarkdownLivePreviewFragment(raw));
+        shell.replaceChildren(editor);
+        shell.dataset.vdocEditActive = 'true';
+
+        const session = {
+            shell,
+            editor,
+            ordinal: region.ordinal,
+            start: region.sourceRange.start,
+            end: region.sourceRange.end,
+            raw,
+        };
+        state.markdownLivePreview = session;
+        state.activeHybridTextEdit = null;
+        state.activeEditableBlock = editor;
+        try {
+            editor.focus({ preventScroll: true });
+        } catch {
+            editor.focus();
+        }
+        setMarkdownLivePreviewCaret(editor, Math.min(caretOffset, raw.length));
+        return session;
+    }
+
+    function insertMarkdownParagraphAfterLivePreview(session) {
+        if (!session?.shell?.isConnected) return false;
+        patchMarkdownLivePreviewSource(session);
+        const source = currentSourceHtml();
+        const insertion = '\n\n新段落\n\n';
+        const offset = session.end;
+        const prefix = offset > 0 && !/[\r\n]$/.test(source.slice(0, offset))
+            ? '\n'
+            : '';
+        setCurrentSourceHtml(
+            source.slice(0, offset) + prefix + insertion + source.slice(offset)
+        );
+        state.document.manifest.modifiedAt = new Date().toISOString();
+        state.markdownLivePreview = null;
+        markDirty();
+        captureSnapshot();
+        const nextOrdinal = session.ordinal + 1;
+        renderDocument();
+        window.requestAnimationFrame(() => {
+            if (state.mode === 'render') {
+                focusHybridRegionByOrdinal(nextOrdinal, true);
+            }
+        });
+        return true;
     }
 
     function mapHybridShellTextNodes(shell, region) {
@@ -1731,6 +2008,7 @@ ${compiled.html}
         state.hybridTextSourceMap = new WeakMap();
         state.hybridEditSessions = new WeakMap();
         state.activeHybridTextEdit = null;
+        state.markdownLivePreview = null;
 
         root.querySelectorAll('[data-vdoc-edit-key]').forEach((shell) => {
             const region = hybridEditRegionByKey(shell.dataset.vdocEditKey);
@@ -2507,6 +2785,73 @@ ${compiled.html}
         return true;
     }
 
+    function focusHybridRegionByOrdinal(ordinal, selectContents = false) {
+        const shell = getRenderRoot()?.querySelectorAll(
+            '[data-vdoc-edit-key]'
+        )?.[ordinal];
+        if (!shell) return false;
+        const editable = shell.querySelector('[contenteditable="true"]');
+        if (!editable) return false;
+
+        try {
+            editable.focus({ preventScroll: true });
+        } catch {
+            editable.focus();
+        }
+        if (selectContents) {
+            const range = document.createRange();
+            range.selectNodeContents(editable);
+            const selection = currentRenderSelection();
+            selection.removeAllRanges();
+            selection.addRange(range);
+            state.selectionRange = range.cloneRange();
+            state.selectionText = range.toString();
+        }
+        beginHybridDomSession(shell, editable);
+        state.activeEditableBlock = editable;
+        scheduleFormattingControls(editable);
+        return true;
+    }
+
+    function insertHybridParagraphAfterSession(session) {
+        if (!session?.shell?.isConnected) return false;
+        patchHybridSourceFromDom(session);
+        const region = hybridEditRegionByKey(
+            session.shell.dataset.vdocEditKey
+        );
+        if (!region) return false;
+        const nextOrdinal = region.ordinal + 1;
+        if (!insertHybridSourceFragment('新段落', { afterRegion: true })) {
+            return false;
+        }
+        window.requestAnimationFrame(() => {
+            if (state.mode === 'render') {
+                focusHybridRegionByOrdinal(nextOrdinal, true);
+            }
+        });
+        return true;
+    }
+
+    function commitHybridRegionPresentation(shell) {
+        if (!shell?.isConnected) return false;
+        const livePreview = state.markdownLivePreview;
+        if (livePreview?.shell === shell) {
+            return commitMarkdownLivePreview(livePreview);
+        }
+        const session = state.hybridEditSessions.get(shell);
+        if (session) patchHybridSourceFromDom(session);
+        const region = hybridEditRegionByKey(shell.dataset.vdocEditKey);
+        if (!region || region.type !== 'markdown') return false;
+
+        // 行首补入 ##、>、- 等结构语法后，即使浏览器的 input 差分没有
+        // 触发即时结构替换，离开输入区时也必须以 Markdown 真源重新生成 DOM。
+        // 仅替换当前编辑壳，避免整篇重渲染和无关动画岛重新启动。
+        if (!patchHybridShellFromCompilation(shell, region.ordinal)) return false;
+        const nextRegion = parsedDocument().editRegions[region.ordinal];
+        if (nextRegion) restoreHybridEditableState(shell, nextRegion);
+        return true;
+    }
+
     function bindHybridRenderSurface(root) {
         state.renderSurfaceAbortController?.abort();
         const controller = new AbortController();
@@ -2522,7 +2867,17 @@ ${compiled.html}
             const interactive = event.target.closest?.(
                 'a,button,input,select,textarea,audio,video,[role="button"]'
             );
-            if (interactive) return;
+            if (interactive && !event.target.closest?.('[data-vdoc-md-live-preview]')) {
+                return;
+            }
+
+            if (region.type === 'markdown'
+                && !event.target.closest?.('[data-vdoc-md-live-preview]')) {
+                event.preventDefault();
+                const session = activateMarkdownLivePreview(shell, event);
+                if (session) scheduleFormattingControls(session.editor);
+                return;
+            }
 
             let editable = event.target.closest?.('[contenteditable]');
             let target = null;
@@ -2555,6 +2910,10 @@ ${compiled.html}
                 selection.addRange(range);
             }
             if (!editable || !shell.contains(editable)) return;
+            if (editable.matches('[data-vdoc-md-live-preview]')) {
+                state.activeEditableBlock = editable;
+                return;
+            }
             const session = beginHybridDomSession(
                 shell,
                 editable,
@@ -2575,15 +2934,76 @@ ${compiled.html}
             const shell = event.target.closest?.('[data-vdoc-edit-key]');
             if (!shell || !event.target.closest?.('[contenteditable]')) return;
             const editable = event.target.closest('[contenteditable]');
+            if (editable.matches('[data-vdoc-md-live-preview]')) {
+                state.activeEditableBlock = editable;
+                scheduleFormattingControls(event.target);
+                return;
+            }
             beginHybridDomSession(shell, editable);
             state.activeEditableBlock = editable;
             scheduleFormattingControls(event.target);
+        }, options);
+
+        root.addEventListener('beforeinput', (event) => {
+            const editor = event.target.closest?.('[data-vdoc-md-live-preview]');
+            if (!editor || !['insertParagraph', 'insertLineBreak'].includes(event.inputType)) {
+                return;
+            }
+            event.preventDefault();
+            if (insertMarkdownLivePreviewText(editor, '\n')) {
+                patchMarkdownLivePreviewSource(state.markdownLivePreview);
+            }
+        }, options);
+
+        root.addEventListener('paste', (event) => {
+            const editor = event.target.closest?.('[data-vdoc-md-live-preview]');
+            if (!editor) return;
+            event.preventDefault();
+            const text = (event.clipboardData || window.clipboardData)
+                ?.getData?.('text/plain') || '';
+            if (insertMarkdownLivePreviewText(editor, text)) {
+                patchMarkdownLivePreviewSource(state.markdownLivePreview);
+            }
+        }, options);
+
+        root.addEventListener('copy', (event) => {
+            const editor = event.target.closest?.('[data-vdoc-md-live-preview]');
+            const context = markdownLivePreviewSelection(editor);
+            if (!context) return;
+            const text = context.range.toString();
+            event.clipboardData?.setData('text/plain', text);
+            event.clipboardData?.setData('text/html', escapeHtml(text));
+            event.preventDefault();
+        }, options);
+
+        root.addEventListener('cut', (event) => {
+            const editor = event.target.closest?.('[data-vdoc-md-live-preview]');
+            const context = markdownLivePreviewSelection(editor);
+            if (!context) return;
+            const text = context.range.toString();
+            event.clipboardData?.setData('text/plain', text);
+            event.clipboardData?.setData('text/html', escapeHtml(text));
+            event.preventDefault();
+            context.range.deleteContents();
+            context.range.collapse(true);
+            context.selection.removeAllRanges();
+            context.selection.addRange(context.range);
+            editor.normalize();
+            patchMarkdownLivePreviewSource(state.markdownLivePreview);
         }, options);
 
         root.addEventListener('input', (event) => {
             const shell = event.target.closest?.('[data-vdoc-edit-key]');
             if (!shell || !event.target.closest?.('[contenteditable]')) return;
             const editable = event.target.closest('[contenteditable]');
+            if (editable.matches('[data-vdoc-md-live-preview]')) {
+                const session = state.markdownLivePreview;
+                if (session?.editor === editable) {
+                    patchMarkdownLivePreviewSource(session);
+                    state.selectionText = currentRenderSelection()?.toString() || '';
+                }
+                return;
+            }
             const existing = state.hybridEditSessions.get(shell);
             const session = existing?.editable === editable
                 ? existing
@@ -2592,6 +3012,45 @@ ${compiled.html}
             patchHybridSourceFromDom(session);
             state.selectionText = currentRenderSelection()?.toString() || '';
             scheduleFormattingControls(event.target);
+        }, options);
+
+        root.addEventListener('keydown', (event) => {
+            if (event.key !== 'Enter' || !event.shiftKey
+                || event.isComposing || event.keyCode === 229) {
+                return;
+            }
+            const shell = event.target.closest?.('[data-vdoc-edit-key]');
+            const editable = event.target.closest?.('[contenteditable]');
+            if (!shell || !editable) return;
+            if (editable.matches('[data-vdoc-md-live-preview]')) {
+                const livePreview = state.markdownLivePreview;
+                if (!livePreview || livePreview.editor !== editable) return;
+                event.preventDefault();
+                event.stopPropagation();
+                insertMarkdownParagraphAfterLivePreview(livePreview);
+                return;
+            }
+            const region = hybridEditRegionByKey(shell.dataset.vdocEditKey);
+            if (!region || hybridEditableDomain(region) === 'atomic') return;
+            const existing = state.hybridEditSessions.get(shell);
+            const session = existing?.editable === editable
+                ? existing
+                : beginHybridDomSession(shell, editable);
+            if (!session) return;
+            event.preventDefault();
+            event.stopPropagation();
+            insertHybridParagraphAfterSession(session);
+        }, options);
+
+        root.addEventListener('focusout', (event) => {
+            const shell = event.target.closest?.('[data-vdoc-edit-key]');
+            if (!shell) return;
+            window.requestAnimationFrame(() => {
+                if (!shell.isConnected) return;
+                const active = root.activeElement;
+                if (active && shell.contains(active)) return;
+                commitHybridRegionPresentation(shell);
+            });
         }, options);
 
         root.addEventListener('mouseup', () => {
@@ -4635,7 +5094,8 @@ ${compiled.html}
                 if (!node.nodeValue) return NodeFilter.FILTER_REJECT;
                 const parent = node.parentElement;
                 if (!parent || parent.closest(
-                    'style, script, noscript, [data-vdoc-object-resize-handle]'
+                    'style, script, noscript, [data-vdoc-object-resize-handle],'
+                    + '[data-vdoc-md-live-preview]'
                 )) {
                     return NodeFilter.FILTER_REJECT;
                 }
