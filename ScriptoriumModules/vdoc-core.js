@@ -169,6 +169,24 @@ ${defaultHtml()}`);
 
     function createSlide(input = {}, index = 0) {
         const candidate = input && typeof input === 'object' ? input : {};
+        const runtimeTextOverrides = Array.isArray(candidate.runtimeTextOverrides)
+            ? candidate.runtimeTextOverrides
+                .filter((override) =>
+                    override
+                    && Array.isArray(override.path)
+                    && override.path.every((part) =>
+                        Number.isInteger(Number(part)) && Number(part) >= 0
+                    )
+                    && Number.isInteger(Number(override.textNodeIndex))
+                    && Number(override.textNodeIndex) >= 0
+                )
+                .map((override) => ({
+                    path: override.path.map(Number),
+                    textNodeIndex: Number(override.textNodeIndex),
+                    previousText: String(override.previousText ?? ''),
+                    text: String(override.text ?? ''),
+                }))
+            : [];
         return {
             id: String(candidate.id || createId('slide')),
             name: String(candidate.name || `第 ${index + 1} 页`),
@@ -181,6 +199,9 @@ ${defaultHtml()}`);
             resources: Array.isArray(candidate.resources)
                 ? [...new Set(candidate.resources.map(String))]
                 : [],
+            // 脚本生成文字若无法安全反向定位源码，则以渲染路径覆盖持久化。
+            // 该字段属于正式页模型，必须穿过 normalize/parse/serialize。
+            runtimeTextOverrides,
             import: candidate.import && typeof candidate.import === 'object'
                 ? candidate.import
                 : null,

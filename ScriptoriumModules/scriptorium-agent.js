@@ -382,7 +382,10 @@
                         duration: slide.duration ?? null,
                         notes: String(slide.notes || ''),
                         resources: Array.isArray(slide.resources)
-                            ? [...slide.resources]
+                            ? JSON.parse(JSON.stringify(slide.resources))
+                            : [],
+                        runtimeTextOverrides: Array.isArray(slide.runtimeTextOverrides)
+                            ? JSON.parse(JSON.stringify(slide.runtimeTextOverrides))
                             : [],
                     }))
                     : [],
