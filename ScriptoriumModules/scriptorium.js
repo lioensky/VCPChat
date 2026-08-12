@@ -559,6 +559,8 @@
                 sourcePort,
                 historyPort,
                 lineagePort,
+                navigationPort,
+                lineageUiPort,
                 editorResolver,
                 getAdapter: adapterResolver,
                 resolveAdapter,

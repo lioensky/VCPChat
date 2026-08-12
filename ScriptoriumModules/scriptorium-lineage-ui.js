@@ -40,6 +40,40 @@
             return adapter;
         }
 
+        function clear() {
+            if (disposed) return false;
+            automaticApprovalTimers.forEach((timer) =>
+                window.clearTimeout(timer)
+            );
+            automaticApprovalTimers.clear();
+            closeDetail();
+            closeReview();
+            cancelRestore();
+            adapter = null;
+            if (elements['checkpoint-count']) {
+                elements['checkpoint-count'].textContent = '0';
+            }
+            if (elements['pending-pr-count']) {
+                elements['pending-pr-count'].textContent = '0';
+            }
+            if (elements['create-checkpoint-btn']) {
+                elements['create-checkpoint-btn'].disabled = true;
+            }
+            const host = elements['lineage-flow'];
+            if (host) {
+                const empty = document.createElement('div');
+                empty.className = 'lineage-empty';
+                const title = document.createElement('strong');
+                title.textContent = '文脉尚未开始';
+                const message = document.createElement('p');
+                message.textContent =
+                    '打开或新建文档后，创作轨迹会显示在这里。';
+                empty.append(title, message);
+                host.replaceChildren(empty);
+            }
+            return true;
+        }
+
         function currentAdapter() {
             const resolved = adapter || context.getAdapter?.();
             if (!resolved) {
@@ -299,6 +333,7 @@
 
         function render() {
             if (disposed) return false;
+            if (!adapter) return clear();
             const records = lineagePort.list();
             if (elements['checkpoint-count']) {
                 elements['checkpoint-count'].textContent =
@@ -714,6 +749,7 @@
         const api = Object.freeze({
             setElements,
             setAdapter,
+            clear,
             render,
             openDetail,
             closeDetail,

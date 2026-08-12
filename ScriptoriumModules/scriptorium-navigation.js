@@ -25,6 +25,39 @@
             return adapter;
         }
 
+        function clear() {
+            assertActive();
+            adapter = null;
+            strategy = null;
+            elements['outline-tree']?.replaceChildren();
+            elements['paragraph-index']?.replaceChildren();
+            elements['slide-navigator']?.replaceChildren();
+            if (elements['outline-count']) {
+                elements['outline-count'].textContent = '0 节';
+            }
+            if (elements['slide-count']) {
+                elements['slide-count'].textContent = '0 页';
+            }
+            if (elements['slide-navigator-header']) {
+                elements['slide-navigator-header'].hidden = true;
+            }
+            if (elements['slide-navigator']) {
+                elements['slide-navigator'].hidden = true;
+            }
+            document.querySelector('.outline-tabs')
+                ?.removeAttribute('hidden');
+            if (elements['outline-headings-view']) {
+                elements['outline-headings-view'].hidden = false;
+            }
+            if (elements['outline-paragraphs-view']) {
+                elements['outline-paragraphs-view'].hidden = true;
+            }
+            if (elements['outline-empty']) {
+                elements['outline-empty'].hidden = false;
+            }
+            return true;
+        }
+
         function currentAdapter() {
             return adapter || context.getAdapter?.() || null;
         }
@@ -112,6 +145,7 @@
 
         const api = Object.freeze({
             setAdapter,
+            clear,
             render,
             navigate,
             bind,

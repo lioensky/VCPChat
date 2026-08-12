@@ -328,6 +328,8 @@
                 async () => {
                     context.editorResolver?.()?.flush?.();
                     context.historyPort.finalize();
+                    context.navigationPort?.clear?.();
+                    context.lineageUiPort?.clear?.();
                     if (elements['document-title']) {
                         elements['document-title'].textContent = '';
                         elements['document-title'].title = '';
