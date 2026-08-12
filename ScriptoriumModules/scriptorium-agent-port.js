@@ -201,6 +201,78 @@
             });
         }
 
+        function reviewProgrammableHtml(html, reviewContext = {}) {
+            if (!programmableContent?.normalizeHtmlDependencies
+                || !programmableContent?.reviewScriptsInHtml) {
+                return {
+                    html: String(html || ''),
+                    dependencies: [],
+                    diagnostics: [{
+                        level: 'refuse',
+                        ruleId: 'review-engine-unavailable',
+                        message: '可编程内容审查器未加载。',
+                        context: reviewContext,
+                    }],
+                    refused: true,
+                };
+            }
+
+            const normalized = programmableContent.normalizeHtmlDependencies(
+                html,
+                reviewContext
+            );
+            const diagnostics = [...(normalized.diagnostics || [])];
+            programmableContent.reviewScriptsInHtml(
+                normalized.html,
+                reviewContext
+            ).forEach((entry) => {
+                if (entry.kind !== 'inline' || !entry.review) return;
+                (entry.review.findings || []).forEach((finding) =>
+                    diagnostics.push({
+                        ...finding,
+                        scriptId: entry.scriptId,
+                        context: entry.review.context,
+                    })
+                );
+            });
+            return {
+                ...normalized,
+                diagnostics,
+                refused: diagnostics.some((item) => item.level === 'refuse'),
+            };
+        }
+
+        function programmableStatus(dependencies = [], diagnostics = []) {
+            return {
+                status: diagnostics.some((item) => item.level === 'refuse')
+                    ? 'refuse'
+                    : diagnostics.some((item) => item.level === 'warn')
+                        ? 'warn'
+                        : 'allow',
+                dependencies: [...new Set(dependencies)],
+                diagnostics,
+            };
+        }
+
+        function registerProgrammableDependencies(dependencies = []) {
+            const additions = [...new Set(dependencies)]
+                .filter((dependency) =>
+                    ['anime', 'three'].includes(dependency)
+                );
+            if (!additions.length) return false;
+            const model = documentPort.document();
+            const current = model?.manifest?.programmableDependencies || [];
+            const next = [...new Set([...current, ...additions])];
+            if (next.length === current.length) return false;
+            return documentPort.mutate((documentModel) => {
+                documentModel.manifest.programmableDependencies = next;
+            }, {
+                reason: 'programmable-dependencies-registered',
+                dirty: false,
+                derived: true,
+            });
+        }
+
         function markdownHeadingIndex(sourceValue) {
             const source = String(sourceValue || '');
             const lines = source.split(/\r\n?|\n/);
@@ -616,14 +688,58 @@
                     payload.slideIndex ?? current.activeSlideIndex()
                 )
                 : null;
-            const replacements = Array.isArray(payload.replacements)
+            const suppliedReplacements = Array.isArray(payload.replacements)
                 ? payload.replacements
                 : [payload];
+            let replacements = suppliedReplacements;
+            let programmable = programmableStatus();
+
+            if (current.kind === 'deck' && sourceKind === 'html') {
+                const dependencies = [];
+                const diagnostics = [];
+                replacements = suppliedReplacements.map((replacement, index) => {
+                    const normalized = reviewProgrammableHtml(
+                        replacement?.replace ?? replacement?.replacement ?? '',
+                        {
+                            phase: 'agent-pr-replacement',
+                            documentKind: 'pptx',
+                            slideIndex,
+                            replacementIndex: index,
+                        }
+                    );
+                    dependencies.push(...(normalized.dependencies || []));
+                    diagnostics.push(...(normalized.diagnostics || []));
+                    return {
+                        ...replacement,
+                        replace: normalized.html,
+                    };
+                });
+                const candidate = diff.applyReplacements(
+                    sourceFor(sourceKind, slideIndex),
+                    replacements
+                );
+                if (!candidate.success) {
+                    return Promise.resolve(response(candidate));
+                }
+                const candidateReview = reviewProgrammableHtml(
+                    candidate.source,
+                    {
+                        phase: 'agent-pr-candidate',
+                        documentKind: 'pptx',
+                        slideIndex,
+                    }
+                );
+                dependencies.push(...(candidateReview.dependencies || []));
+                diagnostics.push(...(candidateReview.diagnostics || []));
+                programmable = programmableStatus(dependencies, diagnostics);
+            }
+
             const proposal = {
                 type: 'source-replace',
                 sourceKind,
                 slideIndex,
                 replacements,
+                programmableContent: programmable,
             };
             const expectedRevision = Number(payload.expectedRevision);
             if (Number.isFinite(expectedRevision)
@@ -663,19 +779,35 @@
                     replacements
                 );
                 if (!result.success) return result;
+                let nextSource = result.source;
+                if (active.kind === 'deck' && sourceKind === 'html') {
+                    const normalized = reviewProgrammableHtml(nextSource, {
+                        phase: 'agent-pr-apply',
+                        documentKind: 'pptx',
+                        slideIndex,
+                    });
+                    nextSource = normalized.html;
+                    programmable = programmableStatus(
+                        normalized.dependencies,
+                        normalized.diagnostics
+                    );
+                    registerProgrammableDependencies(
+                        normalized.dependencies
+                    );
+                }
                 const changed = sourceKind === 'deck-css'
                     || sourceKind === 'document-css'
-                    ? active.replaceCurrentCss(result.source, {
+                    ? active.replaceCurrentCss(nextSource, {
                         reason: 'agent-source-pr',
                     })
                     : (
                         active.kind === 'deck'
                             ? active.replaceSlideSource(
                                 slideIndex,
-                                result.source,
+                                nextSource,
                                 { reason: 'agent-source-pr' }
                             )
-                            : active.replaceCurrentSource(result.source, {
+                            : active.replaceCurrentSource(nextSource, {
                                 reason: 'agent-source-pr',
                             })
                     );
@@ -686,7 +818,9 @@
                         sourceKind,
                         slideIndex,
                         replacements: result.applied,
+                        programmableContent: programmable,
                     },
+                    programmableContent: programmable,
                 };
             });
         }
@@ -700,17 +834,52 @@
                     message: '幻灯片操作仅适用于 VPPTX。',
                 });
             }
+            let normalizedPayload = payload;
+            let programmable = programmableStatus();
+            if (type !== 'delete') {
+                if (!String(payload.source || '').trim()) {
+                    return Promise.resolve(response({
+                        success: false,
+                        code: 'SLIDE_SOURCE_REQUIRED',
+                        message: '新增或插入页面必须提供完整 source。',
+                    }));
+                }
+                const insertionIndex = type === 'insert'
+                    ? Math.max(
+                        0,
+                        Math.min(
+                            current.slides().length,
+                            Number(payload.slideIndex) || 0
+                        )
+                    )
+                    : current.slides().length;
+                const normalized = reviewProgrammableHtml(payload.source, {
+                    phase: 'agent-slide',
+                    documentKind: 'pptx',
+                    slideIndex: insertionIndex,
+                });
+                normalizedPayload = {
+                    ...payload,
+                    source: normalized.html,
+                };
+                programmable = programmableStatus(
+                    normalized.dependencies,
+                    normalized.diagnostics
+                );
+            }
             const proposal = {
                 type: `slide-${type}`,
-                slideIndex: payload.slideIndex,
-                name: payload.name,
-                source: payload.source,
-                notes: payload.notes,
+                slideIndex: normalizedPayload.slideIndex,
+                name: normalizedPayload.name,
+                source: normalizedPayload.source,
+                notes: normalizedPayload.notes,
+                programmableContent: programmable,
             };
-            return queueProposal(payload, proposal, () => {
+            return queueProposal(normalizedPayload, proposal, () => {
                 if (type === 'delete') {
                     const removed = current.deleteSlide(
-                        payload.slideIndex ?? current.activeSlideIndex(),
+                        normalizedPayload.slideIndex
+                            ?? current.activeSlideIndex(),
                         { reason: 'agent-slide-delete' }
                     );
                     return {
@@ -722,23 +891,30 @@
                     };
                 }
                 const created = current.addSlide({
-                    name: payload.name,
-                    source: payload.source,
-                    notes: payload.notes,
-                    transition: payload.transition,
-                    resources: payload.resources,
+                    name: normalizedPayload.name,
+                    source: normalizedPayload.source,
+                    notes: normalizedPayload.notes,
+                    transition: normalizedPayload.transition,
+                    resources: normalizedPayload.resources,
                 }, {
                     index: type === 'insert'
-                        ? payload.slideIndex
+                        ? normalizedPayload.slideIndex
                         : undefined,
                     reason: `agent-slide-${type}`,
                 });
+                if (created) {
+                    registerProgrammableDependencies(
+                        programmable.dependencies
+                    );
+                }
                 return {
                     success: Boolean(created),
                     operation: {
                         type: `slide-${type}`,
                         slideId: created?.id,
+                        programmableContent: programmable,
                     },
+                    programmableContent: programmable,
                 };
             });
         }
@@ -846,13 +1022,33 @@
                 throw new Error('VPPTX slides 必须包含至少一页完整 source。');
             }
 
-            const sources = deck
-                ? slides.map((slide) => String(slide.source || ''))
-                : [source];
-            const review = programmableReview(
-                sources,
-                deck ? 'pptx' : 'docx'
-            );
+            const normalizedSlides = deck
+                ? slides.map((slide, index) => {
+                    const normalized = reviewProgrammableHtml(
+                        slide?.source,
+                        {
+                            phase: 'agent-project-create',
+                            documentKind: 'pptx',
+                            slideIndex: index,
+                        }
+                    );
+                    return {
+                        ...(slide && typeof slide === 'object' ? slide : {}),
+                        source: normalized.html,
+                        programmableContent: normalized,
+                    };
+                })
+                : [];
+            const review = deck
+                ? programmableStatus(
+                    normalizedSlides.flatMap((slide) =>
+                        slide.programmableContent.dependencies || []
+                    ),
+                    normalizedSlides.flatMap((slide) =>
+                        slide.programmableContent.diagnostics || []
+                    )
+                )
+                : programmableReview([source], 'docx');
             if (review.status === 'refuse') {
                 return {
                     success: false,
@@ -888,7 +1084,11 @@
                 source: deck ? undefined : source,
                 documentCss: deck ? undefined : payload.documentCss,
                 deckCss: deck ? payload.deckCss : undefined,
-                slides: deck ? slides : undefined,
+                slides: deck
+                    ? normalizedSlides.map(
+                        ({ programmableContent: _review, ...slide }) => slide
+                    )
+                    : undefined,
                 page: payload.page,
                 presentation: payload.presentation,
             });
