@@ -217,12 +217,9 @@
             const status = documentPort.status();
             if (!status.ready || status.saving) return false;
             context.editorResolver?.()?.flush?.();
+            // 渲染编辑器与源码编辑器均实时写入同一个文档模型。保存只需
+            // 结束当前历史输入脉冲，不再从源码面板提交第二份草稿。
             context.historyPort.finalize();
-            if (context.sourcePort?.isOpen?.()) {
-                if (!context.sourcePort.apply({ showSuccess: false })) {
-                    return false;
-                }
-            }
 
             const operationContext = documentPort.captureContext();
             documentPort.setActivity({

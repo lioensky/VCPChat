@@ -2825,6 +2825,39 @@ body.focus-mode .chamber-aura {
     color: #e07474;
 }
 
+.source-tools .source-live-sync {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 30px;
+    margin-top: 0;
+    padding: 0 10px;
+    border: 1px solid color-mix(
+        in srgb,
+        var(--success-color) 46%,
+        var(--scriptorium-hairline)
+    );
+    border-radius: 999px;
+    color: var(--success-color);
+    background: color-mix(
+        in srgb,
+        var(--success-color) 9%,
+        transparent
+    );
+    font-size: 9px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.source-tools .source-live-sync::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+    box-shadow: 0 0 8px currentColor;
+}
+
 .source-color-tool {
     position: relative;
     display: grid;

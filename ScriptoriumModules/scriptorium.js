@@ -448,6 +448,7 @@
             window.ScriptoriumSourceEditor.createSourceEditorController({
                 core,
                 hybridCompiler,
+                documentPort,
                 elements,
                 notificationPort,
                 historyPort,

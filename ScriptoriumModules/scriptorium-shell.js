@@ -188,7 +188,6 @@
             click('read-mode-btn', () => switchMode('read'));
             click('html-mode-btn', () => switchMode('source-html'));
             click('css-mode-btn', () => switchMode('source-css'));
-            click('apply-source-btn', () => context.sourcePort?.apply?.());
             click('format-source-btn', () => context.sourcePort?.format?.());
             click('insert-block-btn', () =>
                 context.editorResolver?.()?.insertStructure?.(

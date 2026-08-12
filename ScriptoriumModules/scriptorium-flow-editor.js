@@ -23,6 +23,8 @@
             domSourceMap: new WeakMap(),
             textSourceMap: new WeakMap(),
             composing: false,
+            compositionSession: null,
+            compositionOffsets: null,
             disposed: false,
         };
 
@@ -221,9 +223,24 @@
             );
         }
 
+        function editableSourceText(editable) {
+            if (!editable) return '';
+            if (!editable.classList?.contains('vdoc-md-live-preview-run')) {
+                return String(editable.textContent || '');
+            }
+
+            const lines = [...editable.children].filter((child) =>
+                child.classList?.contains('vdoc-md-live-preview-line')
+            );
+            if (!lines.length) return String(editable.textContent || '');
+            return lines.map((line) =>
+                String(line.textContent || '')
+            ).join('\n');
+        }
+
         function refreshLocalMarkers(session, sourceStart, sourceEnd = sourceStart) {
             if (!session?.editable?.isConnected) return false;
-            const raw = String(session.editable.textContent || '');
+            const raw = editableSourceText(session.editable);
             const start = Math.max(0, Math.min(raw.length, Number(sourceStart) || 0));
             const end = Math.max(
                 start,
@@ -542,10 +559,18 @@
             }
             return 'paragraph';
         }
-
         function renderedLineCandidates(shell) {
             const candidates = [];
             [...(shell?.children || [])].forEach((child) => {
+                if (child.matches('[data-vdoc-md-line-separator]')) return;
+                if (child.matches(
+                    '[data-vdoc-flow-source-editor="true"].vdoc-md-live-preview-run'
+                )) {
+                    candidates.push(...[...child.children].filter((line) =>
+                        line.matches('.vdoc-md-live-preview-line')
+                    ));
+                    return;
+                }
                 if (child.matches('ul,ol')) {
                     candidates.push(...child.querySelectorAll(':scope > li'));
                     return;
@@ -579,8 +604,12 @@
                     ? rendered.cloneNode(false)
                     : document.createElement('div');
             } else {
-                element = rendered
-                    && !rendered.matches('ul,ol,table,thead,tbody,tr')
+                // 普通文本行只能复用块级文本容器。行间 separator 是 span；
+                // 若把它克隆成下一行，第二次输入后该行会退化为 inline，
+                // 视觉上与上一行重新合并。
+                element = rendered?.matches(
+                    'address,article,aside,div,footer,header,main,p,section'
+                )
                     ? rendered.cloneNode(false)
                     : document.createElement('div');
             }
@@ -611,7 +640,12 @@
             let renderedIndex = 0;
             lines.forEach((line, lineIndex) => {
                 if (lineIndex) {
-                    editor.appendChild(document.createTextNode('\n'));
+                    const separator = document.createElement('span');
+                    separator.dataset.vdocMdLineSeparator = 'true';
+                    separator.contentEditable = 'false';
+                    separator.setAttribute('aria-hidden', 'true');
+                    separator.textContent = '\n';
+                    editor.appendChild(separator);
                     sourceOffset += 1;
                 }
                 const lineElement = markdownLineElement(
@@ -725,7 +759,7 @@
                 region
             );
             if (region.type !== 'markdown') editor.textContent = raw;
-            if (String(editor.textContent || '') !== raw) {
+            if (editableSourceText(editor) !== raw) {
                 notificationPort.show?.(
                     '当前 Markdown 无法建立无损渲染态编辑映射。',
                     'error'
@@ -1278,7 +1312,7 @@
                 editable,
                 region: { ...region },
                 raw: sourceForRegion(region),
-                previousText: String(editable.textContent || ''),
+                previousText: editableSourceText(editable),
                 revision: documentPort.status().revision,
             };
             state.activeSession = session;
@@ -1310,7 +1344,7 @@
             if (nextRegion.type !== 'markdown') {
                 nextEditable.textContent = nextRaw;
             }
-            if (String(nextEditable.textContent || '') !== nextRaw) {
+            if (editableSourceText(nextEditable) !== nextRaw) {
                 return false;
             }
 
@@ -1361,31 +1395,62 @@
             return true;
         }
 
-        function replaceActiveSelection(session, insertion, reason) {
+        function commitSessionInsertion(
+            session,
+            insertion,
+            offsets,
+            reason
+        ) {
             if (!session?.editable?.isConnected
-                || session.region?.type !== 'markdown') {
+                || session.region?.type !== 'markdown'
+                || !offsets) {
                 return false;
             }
-            const offsets = selectionPrimitives.currentOffsets(
-                session.editable
+            const currentRaw = sourceForRegion(session.region);
+            const start = Math.max(
+                0,
+                Math.min(currentRaw.length, Number(offsets.start) || 0)
             );
-            if (!offsets) return false;
-
-            const currentText = String(session.editable.textContent || '');
-            const nextText = currentText.slice(0, offsets.start)
-                + String(insertion || '')
-                + currentText.slice(offsets.end);
-            const caret = offsets.start + String(insertion || '').length;
-
-            // 直接把键盘语义落实为纯文本，再由统一事务重新构建带 Markdown
-            // 装饰的编辑树；不依赖各 Chromium 版本生成不同的 div/br DOM。
-            session.editable.textContent = nextText;
-            restoreEditorOffsets(
-                session.editable,
-                nextText,
-                caret
+            const end = Math.max(
+                start,
+                Math.min(currentRaw.length, Number(offsets.end) || start)
             );
-            return flushSession(session, reason);
+            const inserted = String(insertion || '');
+            const nextRaw = currentRaw.slice(0, start)
+                + inserted
+                + currentRaw.slice(end);
+            const caret = start + inserted.length;
+            const transaction = transact({
+                from: session.region.sourceRange.start,
+                to: session.region.sourceRange.end,
+                expected: currentRaw,
+                insert: nextRaw,
+                reason,
+            });
+            if (!transaction) return false;
+            if (!refreshSessionRegion(session, transaction, {
+                start: caret,
+                end: caret,
+            })) {
+                state.activeSession = null;
+                context.renderPort?.invalidate?.(
+                    'flow-edit-region-structure-changed'
+                );
+                context.renderPort?.renderEdit?.({ force: true });
+            }
+            return true;
+        }
+
+        function replaceActiveSelection(session, insertion, reason) {
+            const offsets = session?.editable?.isConnected
+                ? selectionPrimitives.currentOffsets(session.editable)
+                : null;
+            return commitSessionInsertion(
+                session,
+                insertion,
+                offsets,
+                reason
+            );
         }
 
         function handleEditorKeydown(event) {
@@ -1409,7 +1474,7 @@
 
             const offsets = selectionPrimitives.currentOffsets(editable);
             if (!offsets || !offsets.collapsed) return false;
-            const text = String(editable.textContent || '');
+            const text = editableSourceText(editable);
 
             if (event.key === 'Tab' && !event.shiftKey) {
                 const lineStart = text.lastIndexOf(
@@ -1433,16 +1498,16 @@
                 );
             }
 
-            if (event.key === 'Enter'
-                && !event.shiftKey
-                && offsets.start === text.length) {
+            if (event.key === 'Enter') {
                 event.preventDefault();
-                // Markdown 的两个行尾半角空格加换行会稳定编译成 <br>，
-                // 是“真换行”；单独 \n 只属于源码软换行，渲染时会折叠。
-                return replaceActiveSelection(
+                // keydown 是 Electron 中最稳定的 Enter 入口。只要处于 Markdown
+                // 编辑会话，就禁止浏览器原生修改 contenteditable DOM，并将
+                // 硬换行直接提交到文档模型。beforeinput 保留为平台差异兜底。
+                return commitSessionInsertion(
                     session,
                     '  \n',
-                    'flow-keyboard-hard-line-break'
+                    offsets,
+                    'flow-keydown-hard-line-break'
                 );
             }
             return false;
@@ -1456,7 +1521,7 @@
                 || !session.editable?.isConnected) {
                 return false;
             }
-            const nextText = String(session.editable.textContent || '');
+            const nextText = editableSourceText(session.editable);
             if (nextText === session.previousText) return false;
             const selectionOffsets =
                 selectionPrimitives.currentOffsets(session.editable);
@@ -1568,6 +1633,52 @@
 
             root.addEventListener('keydown', handleEditorKeydown, options);
 
+            root.addEventListener('beforeinput', (event) => {
+                if (event.defaultPrevented
+                    || event.isComposing
+                    || state.composing) {
+                    return;
+                }
+                const editable = event.target.closest?.(
+                    '[data-vdoc-flow-source-editor="true"]'
+                );
+                const shell = event.target.closest?.('[data-vdoc-edit-key]');
+                if (!editable || !shell) return;
+                const session = state.activeSession?.editable === editable
+                    ? state.activeSession
+                    : beginSession(shell, editable);
+                if (!session || session.region.type !== 'markdown') return;
+                const offsets =
+                    selectionPrimitives.currentOffsets(editable);
+                if (!offsets) return;
+
+                if (event.inputType === 'insertParagraph'
+                    || event.inputType === 'insertLineBreak') {
+                    event.preventDefault();
+                    // Markdown 硬换行直接进入文档模型；禁止浏览器仅修改
+                    // contenteditable DOM，避免出现“UI 换行、源码没变”。
+                    commitSessionInsertion(
+                        session,
+                        '  \n',
+                        offsets,
+                        'flow-beforeinput-hard-line-break'
+                    );
+                    return;
+                }
+
+                if (event.inputType !== 'insertText'
+                    || event.data === null) {
+                    return;
+                }
+                event.preventDefault();
+                commitSessionInsertion(
+                    session,
+                    event.data,
+                    offsets,
+                    'flow-beforeinput-insert-text'
+                );
+            }, options);
+
             root.addEventListener('input', (event) => {
                 if (event.isComposing || state.composing) return;
                 const editable = event.target.closest?.(
@@ -1581,20 +1692,36 @@
                 flushSession(session);
             }, options);
 
-            root.addEventListener('compositionstart', () => {
-                state.composing = true;
-            }, options);
-            root.addEventListener('compositionend', (event) => {
-                state.composing = false;
+            root.addEventListener('compositionstart', (event) => {
                 const editable = event.target.closest?.(
                     '[data-vdoc-flow-source-editor="true"]'
                 );
                 const shell = event.target.closest?.('[data-vdoc-edit-key]');
-                if (!editable || !shell) return;
-                flushSession(
-                    state.activeSession?.editable === editable
+                state.composing = true;
+                state.compositionSession = editable && shell
+                    ? (state.activeSession?.editable === editable
                         ? state.activeSession
-                        : beginSession(shell, editable)
+                        : beginSession(shell, editable))
+                    : null;
+                state.compositionOffsets = state.compositionSession
+                    ? selectionPrimitives.currentOffsets(editable)
+                    : null;
+            }, options);
+            root.addEventListener('compositionend', (event) => {
+                const session = state.compositionSession;
+                const offsets = state.compositionOffsets;
+                state.composing = false;
+                state.compositionSession = null;
+                state.compositionOffsets = null;
+                if (!session || !offsets
+                    || session.region.type !== 'markdown') {
+                    return;
+                }
+                commitSessionInsertion(
+                    session,
+                    event.data || '',
+                    offsets,
+                    'flow-composition-insert-text'
                 );
             }, options);
 
@@ -1659,6 +1786,8 @@
             state.activeSession = null;
             state.selectionRange = null;
             state.selectionText = '';
+            state.compositionSession = null;
+            state.compositionOffsets = null;
             state.domSourceMap = new WeakMap();
             state.textSourceMap = new WeakMap();
         }

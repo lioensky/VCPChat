@@ -11,6 +11,8 @@
         let sourceMode = 'html';
         let colorMarks = [];
         let colorTimer = null;
+        let documentDisposer = null;
+        let syncingEditor = false;
         let disposed = false;
 
         function setElements(nextElements) {
@@ -41,12 +43,59 @@
                 ?? '';
         }
 
-        function setValue(value) {
+        function setValue(value, options = {}) {
             const normalized = String(value || '');
-            if (editor) editor.setValue(normalized);
-            else if (elements['source-editor']) {
-                elements['source-editor'].value = normalized;
+            if (normalized === getValue()) return false;
+            syncingEditor = true;
+            try {
+                if (editor) {
+                    const cursor = options.preserveCursor === true
+                        ? editor.getCursor()
+                        : null;
+                    editor.setValue(normalized);
+                    if (cursor) {
+                        editor.setCursor({
+                            line: Math.min(
+                                cursor.line,
+                                Math.max(0, editor.lineCount() - 1)
+                            ),
+                            ch: cursor.ch,
+                        });
+                    }
+                } else if (elements['source-editor']) {
+                    elements['source-editor'].value = normalized;
+                }
+            } finally {
+                syncingEditor = false;
             }
+            return true;
+        }
+
+        function modelValue() {
+            const activeAdapter = currentAdapter();
+            return sourceMode === 'html'
+                ? activeAdapter.currentSource()
+                : activeAdapter.currentCss();
+        }
+
+        function commitEditorValue(reason = 'source-editor-input') {
+            if (syncingEditor || disposed) return false;
+            const activeAdapter = currentAdapter();
+            const value = getValue();
+            const changed = sourceMode === 'html'
+                ? activeAdapter.replaceCurrentSource(value, { reason })
+                : activeAdapter.replaceCurrentCss(value, { reason });
+            if (!changed) return false;
+            context.historyPort?.schedule?.({ reason });
+            context.renderPort?.invalidate?.(reason);
+            return true;
+        }
+
+        function syncFromModel(options = {}) {
+            if (!adapter && !context.getAdapter?.()) return false;
+            return setValue(modelValue(), {
+                preserveCursor: options.preserveCursor === true,
+            });
         }
 
         function clearColorMarks() {
@@ -172,31 +221,21 @@
         }
 
         function apply(options = {}) {
-            if (!validate()) {
-                notificationPort.show?.(
-                    '源码检查未通过，请修正后再应用。',
-                    'error'
-                );
-                return false;
-            }
-            const activeAdapter = currentAdapter();
-            const changed = sourceMode === 'html'
-                ? activeAdapter.replaceCurrentSource(getValue(), {
-                    reason: 'human-source-apply',
-                })
-                : activeAdapter.replaceCurrentCss(getValue(), {
-                    reason: 'human-css-apply',
-                });
-            if (!changed) return true;
-            context.historyPort?.capture?.({
-                reason: 'source-applied',
+            // 兼容旧调用：源码编辑已实时写入文档模型，这里只负责最终校验、
+            // 合并历史输入脉冲并按需刷新渲染面，不再提交第二份草稿。
+            commitEditorValue('source-editor-explicit-sync');
+            const valid = validate();
+            context.historyPort?.finalize?.({
+                reason: 'source-editor-explicit-sync',
             });
-            context.renderPort?.invalidate?.('source-applied');
-            context.renderPort?.renderEdit?.({ force: true });
+            context.renderPort?.invalidate?.('source-editor-explicit-sync');
+            if (options.render !== false) {
+                context.renderPort?.renderEdit?.({ force: true });
+            }
             if (options.showSuccess !== false) {
                 notificationPort.show?.(
-                    '源码已应用到渲染页面',
-                    'success'
+                    valid ? '源码与文档模型已同步' : '源码已同步，当前存在检查提示',
+                    valid ? 'success' : 'info'
                 );
             }
             return true;
@@ -217,6 +256,7 @@
                     .replace(/\s*\}\s*/g, '\n}\n')
                     .replace(/[ \t]+\n/g, '\n'));
             }
+            commitEditorValue('source-editor-format');
             validate();
             refreshColorMarks();
             return true;
@@ -271,9 +311,30 @@
                 }
             );
             editor.on('change', () => {
+                if (!syncingEditor) {
+                    commitEditorValue('source-editor-live-input');
+                }
                 validate();
                 scheduleColorMarks();
             });
+            documentDisposer?.();
+            if (typeof context.documentPort?.subscribe === 'function') {
+                documentDisposer = context.documentPort.subscribe(
+                    context.documentPort.EVENTS?.DOCUMENT_MUTATED
+                        || 'document-mutated',
+                    (event) => {
+                        if (!isOpen()
+                            || syncingEditor
+                            || event.reason === 'source-editor-live-input'
+                            || event.reason === 'source-editor-explicit-sync') {
+                            return;
+                        }
+                        syncFromModel({ preserveCursor: true });
+                        validate();
+                        scheduleColorMarks();
+                    }
+                );
+            }
             return editor;
         }
 
@@ -293,6 +354,8 @@
         function dispose() {
             if (disposed) return;
             window.clearTimeout(colorTimer);
+            documentDisposer?.();
+            documentDisposer = null;
             clearColorMarks();
             adapter = null;
             editor = null;
@@ -306,6 +369,9 @@
             editor: () => editor,
             getValue,
             setValue,
+            modelValue,
+            commitEditorValue,
+            syncFromModel,
             configureMode,
             isOpen,
             open,
