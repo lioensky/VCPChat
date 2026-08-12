@@ -1507,7 +1507,12 @@ ${compiled.html}
         const mappedValue = mappedText?.node?.nodeValue || '';
         const session = {
             shell,
-            editable: mappedText ? editable : shell,
+
+            // 会话必须记录实际触发 input 的 contenteditable。Markdown 的差分
+            // 仍以整个 shell.textContent 计算，但若这里保存 shell，input 事件
+            // 随后拿到 h1/p 等实际 editable 时会误判为另一场会话，并在 DOM
+            // 已经变化后重建 previousText，最终得到“文字没有变化”而不写源码。
+            editable: editable || shell,
             mappedTextNode: mappedText?.node || null,
             mappedSourceRange,
             runtimeMapping,
@@ -4859,7 +4864,14 @@ ${compiled.html}
             });
         } else if (isRender) {
             window.requestAnimationFrame(() => {
-                if (state.mode === 'render') activateProgrammableContent('render');
+                if (state.mode !== 'render') return;
+                activateProgrammableContent('render');
+
+                // 从源码模式返回时，applySourceChanges() 会在 state.mode 仍为
+                // html/css 的阶段重建渲染树，因此 renderDocument() 不会执行
+                // 仅限 render 模式的运行态岛文字映射。岛脚本在这里重新生成
+                // 动态表格后，必须再次为这些新节点建立映射和编辑能力。
+                installRuntimeIslandTextEditing(getRenderRoot());
             });
             state.pageObserver?.disconnect();
             elements['page-status'].textContent = isSlideDeck()

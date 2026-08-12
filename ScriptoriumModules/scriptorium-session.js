@@ -67,6 +67,14 @@
 
                 state.checkpoints = [...state.document.checkpoints];
                 state.documentRevision = 0;
+
+                // 编译缓存的 revision 只在单一文档会话内有意义。打开另一份
+                // 文档时 documentRevision 会重新从 0 开始；若保留上一份文档
+                // 同为 revision 0 的 compiledDocument，parsedDocument() 会误判
+                // 缓存命中，使初次渲染显示旧产物。进入源码模式会顺带清缓存，
+                // 因而此前表现为“源码往返后才恢复”的时序型故障。
+                state.compiledRevision = -1;
+                state.compiledDocument = null;
                 state.previewRevision = -1;
                 state.previewResult = null;
 

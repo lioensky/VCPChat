@@ -414,9 +414,29 @@
         }
 
         function runDocument(runtimeRoot, surface = 'edit') {
-            dispose();
-            if (!runtimeRoot?.isConnected) return null;
+            if (!runtimeRoot?.isConnected) {
+                dispose();
+                return null;
+            }
 
+            // renderDocument() 与紧随其后的 switchMode('render') 都可能在下一帧
+            // 请求激活同一个文档根。第二次激活若先 dispose，第一次建立的 Anime、
+            // RAF 和定时器会被停止；岛源码中的 vdocInitialized 又会阻止脚本
+            // 重新初始化，最终形成“初始未渲染区域”。相同文档、surface 和根节点
+            // 已经激活时必须直接复用；源码重建会产生新根节点，仍会正常重启。
+            const documentId = state.document?.manifest?.id || 'document';
+            const current = state.slideRuntimeIdentity;
+            if (
+                current
+                && current.slideId === documentId
+                && current.surface === surface
+                && current.root === runtimeRoot
+                && runtimeRoot.isConnected
+            ) {
+                return current.runtime || null;
+            }
+
+            dispose();
             const scriptElements = [...runtimeRoot.querySelectorAll('script')];
             if (!scriptElements.length) {
                 recordDiagnostics([]);
@@ -520,13 +540,14 @@
                 );
                 islandLifecycles.clear();
             };
+            const runtime = { diagnostics };
             state.slideRuntimeIdentity = {
-                slideId: state.document?.manifest?.id || 'document',
+                slideId: documentId,
                 surface,
                 root: runtimeRoot,
-                runtime: { diagnostics },
+                runtime,
             };
-            return { diagnostics };
+            return runtime;
         }
 
         function activate(surface = state.mode) {
