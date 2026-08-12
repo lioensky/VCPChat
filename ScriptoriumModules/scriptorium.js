@@ -853,7 +853,12 @@ ${surface === 'edit' ? `
      outline: 0 !important;
      color: inherit !important;
      background: transparent !important;
-     white-space: pre-wrap !important;
+     /*
+      * 编辑态保留 textContent 中的真实换行，但视觉上按普通空白折叠为一个
+      * 空格。退出 Live Preview 后重新编译 Markdown，行尾双空格与换行仍
+      * 会恢复为正式的 <br>，因此这里只改变临时呈现，不改写正文真源。
+      */
+     white-space: normal !important;
      overflow-wrap: anywhere !important;
      tab-size: 4 !important;
      caret-color: #3a8b78 !important;
@@ -881,6 +886,9 @@ ${surface === 'edit' ? `
      text-decoration: none !important;
      vertical-align: .06em !important;
      opacity: .72 !important;
+ }
+ .vdoc-md-marker-concealed {
+     display: none !important;
  }
  .vdoc-md-marker-heading {
      color: color-mix(in srgb, currentColor 48%, #3a8b78) !important;
@@ -1483,12 +1491,119 @@ ${compiled.html}
         return hybridCompiler.markdownLiveMarkerRanges(String(raw || ''));
     }
 
-    function createMarkdownLivePreviewFragment(raw) {
+    function markdownInlineMarkerKindsForElement(element, shell) {
+        if (!element || !shell?.contains(element)) return [];
+        const kinds = [];
+        const closestWithinShell = (selector) => {
+            const match = element.closest?.(selector);
+            return match && shell.contains(match) ? match : null;
+        };
+        if (closestWithinShell('strong,b')) kinds.push('strong');
+        if (closestWithinShell('em,i')) kinds.push('emphasis');
+        if (closestWithinShell('del,s,strike')) kinds.push('strikethrough');
+        if (closestWithinShell('code')) kinds.push('code');
+        return kinds;
+    }
+
+    function markdownLiveInlineMarkerPairs(raw, ranges) {
+        const source = String(raw || '');
+        const inlineKinds = new Set([
+            'strong',
+            'emphasis',
+            'italic',
+            'strikethrough',
+            'code',
+        ]);
+        const groups = new Map();
+        ranges.forEach((marker, index) => {
+            if (!inlineKinds.has(marker.kind)) return;
+            const delimiter = source.slice(marker.start, marker.end);
+            const key = `${marker.kind}\u0000${delimiter}`;
+            const group = groups.get(key) || [];
+            group.push({ ...marker, index, delimiter });
+            groups.set(key, group);
+        });
+        return [...groups.values()].flatMap((group) => {
+            const pairs = [];
+            for (let index = 0; index + 1 < group.length; index += 2) {
+                pairs.push({
+                    kind: group[index].kind,
+                    open: group[index],
+                    close: group[index + 1],
+                });
+            }
+            return pairs;
+        });
+    }
+
+    function markdownLiveVisibleMarkerIndexes(raw, ranges, click = {}) {
+        const source = String(raw || '');
+        const visible = new Set();
+        const inlineKinds = new Set([
+            'strong',
+            'emphasis',
+            'italic',
+            'strikethrough',
+            'code',
+        ]);
+        const sourceOffset = Math.max(
+            0,
+            Math.min(source.length, Number(click.sourceOffset) || 0)
+        );
+        const lineStart = source.lastIndexOf('\n', Math.max(0, sourceOffset - 1)) + 1;
+        const nextBreak = source.indexOf('\n', sourceOffset);
+        const lineEnd = nextBreak < 0 ? source.length : nextBreak;
+
+        // 标题、引用、列表、任务项和表格等块级界定符只恢复实际点击行。
+        // 即使一个编辑 region 包含整个列表或多行表格，也不会把相邻行一起展开。
+        ranges.forEach((marker, index) => {
+            if (!inlineKinds.has(marker.kind)
+                && marker.start >= lineStart
+                && marker.start <= lineEnd) {
+                visible.add(index);
+            }
+        });
+
+        const targetStart = Number.isFinite(click.sourceStart)
+            ? click.sourceStart
+            : sourceOffset;
+        const targetEnd = Number.isFinite(click.sourceEnd)
+            ? click.sourceEnd
+            : targetStart;
+        const pairs = markdownLiveInlineMarkerPairs(source, ranges);
+        const requestedKinds = new Set(click.inlineKinds || []);
+        const matchingPairs = pairs.filter((pair) => {
+            const kindMatches = requestedKinds.size
+                ? requestedKinds.has(pair.kind)
+                    || (requestedKinds.has('emphasis') && pair.kind === 'italic')
+                : true;
+            return kindMatches
+                && pair.open.end <= targetStart
+                && pair.close.start >= targetEnd;
+        }).sort((left, right) =>
+            (left.close.end - left.open.start)
+            - (right.close.end - right.open.start)
+        );
+
+        // 初次点击可从渲染 DOM 得知 strong/em/code 等语义；编辑态内部再次
+        // 点击时 DOM 已是平铺源码，此时只展开实际包围点击点的最小界定符对。
+        const bestPair = matchingPairs[0];
+        if (bestPair) {
+            visible.add(bestPair.open.index);
+            visible.add(bestPair.close.index);
+        }
+        return visible;
+    }
+
+    function createMarkdownLivePreviewFragment(raw, options = {}) {
         const source = String(raw || '');
         const fragment = document.createDocumentFragment();
         const ranges = markdownLiveMarkerRanges(source);
+        const visibleMarkers = options.visibleMarkers instanceof Set
+            ? options.visibleMarkers
+            : new Set();
         let offset = 0;
-        ranges.forEach((marker) => {
+        ranges.forEach((marker, index) => {
             if (marker.start > offset) {
                 fragment.appendChild(document.createTextNode(
                     source.slice(offset, marker.start)
@@ -1496,6 +1611,13 @@ ${compiled.html}
             }
             const span = document.createElement('span');
             span.className = `vdoc-md-marker vdoc-md-marker-${marker.kind}`;
+            const visible = visibleMarkers.has(index);
+            span.classList.toggle('vdoc-md-marker-concealed', !visible);
+            span.style.setProperty(
+                'display',
+                visible ? 'inline' : 'none',
+                'important'
+            );
             span.dataset.vdocMdMarker = marker.kind;
             span.textContent = source.slice(marker.start, marker.end);
             fragment.appendChild(span);
@@ -1512,6 +1634,67 @@ ${compiled.html}
         // 所有受支持换行均由 beforeinput 写入文本节点，因此 textContent 是
         // 精确源码镜像，不会把装饰 span 或浏览器生成的 HTML 写回 Markdown。
         return String(editor.textContent || '').replace(/\r\n?/g, '\n');
+    }
+
+    function refreshMarkdownLivePreviewMarkers(session) {
+        if (!session?.editor?.isConnected) return false;
+        const selection = currentRenderSelection();
+        const node = selection?.focusNode || selection?.anchorNode;
+        const offset = selection?.focusNode
+            ? selection.focusOffset
+            : selection?.anchorOffset;
+        if (!node || !session.editor.contains(node)) return false;
+
+        const sourceOffset = renderedOffsetWithin(
+            session.editor,
+            node,
+            offset
+        );
+        if (!Number.isFinite(sourceOffset)) return false;
+
+        const raw = markdownLivePreviewText(session.editor);
+        const ranges = markdownLiveMarkerRanges(raw);
+        const visibleMarkers = markdownLiveVisibleMarkerIndexes(raw, ranges, {
+            sourceOffset,
+            sourceStart: sourceOffset,
+            sourceEnd: sourceOffset,
+        });
+        const markerNodes = session.editor.querySelectorAll(
+            '[data-vdoc-md-marker]'
+        );
+        if (markerNodes.length !== ranges.length) return false;
+
+        // 只切换现有装饰节点的可见性。禁止 replaceChildren、focus 或重设
+        // Selection，否则 Chromium 刚建立的原生光标会被销毁或跳回旧位置。
+        markerNodes.forEach((marker, index) => {
+            const visible = visibleMarkers.has(index);
+            marker.classList.toggle('vdoc-md-marker-concealed', !visible);
+            marker.style.setProperty(
+                'display',
+                visible ? 'inline' : 'none',
+                'important'
+            );
+        });
+        return true;
+    }
+
+    function setMarkdownLivePreviewCaretFromPointer(editor, pointer) {
+        if (!editor?.isConnected || !pointer) return false;
+        const target = pointerTextTarget(editor, pointer);
+        if (!target?.node || !editor.contains(target.node)) return false;
+        try {
+            const range = document.createRange();
+            range.setStart(target.node, target.offset);
+            range.collapse(true);
+            const selection = currentRenderSelection();
+            selection.removeAllRanges();
+            selection.addRange(range);
+            state.selectionRange = range.cloneRange();
+            state.selectionText = '';
+            return true;
+        } catch {
+            return false;
+        }
     }
 
     function setMarkdownLivePreviewCaret(editor, wantedOffset) {
@@ -1603,22 +1786,45 @@ ${compiled.html}
         if (current) commitMarkdownLivePreview(current);
 
         let caretOffset = 0;
+        let pointerTarget = null;
+        let pointerMapping = null;
         if (pointer) {
-            const target = pointerTextTarget(shell, pointer);
-            const mapping = target?.node
-                ? state.hybridTextSourceMap.get(target.node)
+            pointerTarget = pointerTextTarget(shell, pointer);
+            pointerMapping = pointerTarget?.node
+                ? state.hybridTextSourceMap.get(pointerTarget.node)
                 : null;
-            if (mapping?.shell === shell && mapping.sourceRange) {
+            if (pointerMapping?.shell === shell && pointerMapping.sourceRange) {
                 caretOffset = Math.max(
                     0,
-                    mapping.sourceRange.start - region.sourceRange.start
-                        + (target.offset || 0)
+                    pointerMapping.sourceRange.start - region.sourceRange.start
+                        + (pointerTarget.offset || 0)
                 );
             }
         }
 
         const source = currentSourceHtml();
         const raw = source.slice(region.sourceRange.start, region.sourceRange.end);
+        const markerRanges = markdownLiveMarkerRanges(raw);
+        const pointerElement = pointerTarget?.parent || pointer?.target;
+        const localSourceStart = pointerMapping?.sourceRange
+            ? pointerMapping.sourceRange.start - region.sourceRange.start
+            : caretOffset;
+        const localSourceEnd = pointerMapping?.sourceRange
+            ? pointerMapping.sourceRange.end - region.sourceRange.start
+            : caretOffset;
+        const visibleMarkers = markdownLiveVisibleMarkerIndexes(
+            raw,
+            markerRanges,
+            {
+                sourceOffset: caretOffset,
+                sourceStart: localSourceStart,
+                sourceEnd: localSourceEnd,
+                inlineKinds: markdownInlineMarkerKindsForElement(
+                    pointerElement,
+                    shell
+                ),
+            }
+        );
         // 复用原渲染块的元素类型与作者属性，而不是创建通用 div 输入框。
         // 例如二级标题仍是 h2，因此字号、字重、margin 和文档自定义 CSS
         // 全部保持不变；Live Preview 只把真源标记字符插回原文字位置。
@@ -1634,7 +1840,9 @@ ${compiled.html}
         editor.setAttribute('role', 'textbox');
         editor.setAttribute('aria-multiline', 'true');
         editor.setAttribute('aria-label', 'Markdown Live Preview 编辑区');
-        editor.replaceChildren(createMarkdownLivePreviewFragment(raw));
+        editor.replaceChildren(createMarkdownLivePreviewFragment(raw, {
+            visibleMarkers,
+        }));
         shell.replaceChildren(editor);
         shell.dataset.vdocEditActive = 'true';
 
@@ -1654,31 +1862,65 @@ ${compiled.html}
         } catch {
             editor.focus();
         }
-        setMarkdownLivePreviewCaret(editor, Math.min(caretOffset, raw.length));
+        if (pointer) {
+            const clickPoint = {
+                clientX: pointer.clientX,
+                clientY: pointer.clientY,
+                target: editor,
+                composedPath: () => [editor],
+            };
+            // 标识符显隐会改变行内宽度。等待新编辑 DOM 完成布局后，
+            // 按首次点击的屏幕坐标重新命中，避免依赖源码字符偏移。
+            window.requestAnimationFrame(() => {
+                if (state.markdownLivePreview !== session
+                    || !setMarkdownLivePreviewCaretFromPointer(editor, clickPoint)) {
+                    setMarkdownLivePreviewCaret(
+                        editor,
+                        Math.min(caretOffset, raw.length)
+                    );
+                }
+            });
+        } else {
+            setMarkdownLivePreviewCaret(editor, Math.min(caretOffset, raw.length));
+        }
         return session;
     }
 
-    function insertMarkdownParagraphAfterLivePreview(session) {
+    function emptyMarkdownParagraphSource() {
+        // Markdown 编译器会丢弃纯空白段。零宽空格只负责让空段拥有稳定的
+        // 源码范围和可聚焦 DOM；它不可见，也不是向用户展示的预制文本。
+        return '\u200B';
+    }
+
+    function insertMarkdownParagraphRelativeToLivePreview(session, before = false) {
         if (!session?.shell?.isConnected) return false;
         patchMarkdownLivePreviewSource(session);
         const source = currentSourceHtml();
-        const insertion = '\n\n新段落\n\n';
-        const offset = session.end;
-        const prefix = offset > 0 && !/[\r\n]$/.test(source.slice(0, offset))
-            ? '\n'
-            : '';
+        const offset = before ? session.start : session.end;
+        const leading = source.slice(0, offset);
+        const trailing = source.slice(offset);
+        const prefix = !leading
+            ? ''
+            : /(?:\r?\n){2}$/.test(leading)
+                ? ''
+                : /[\r\n]$/.test(leading) ? '\n' : '\n\n';
+        const suffix = !trailing
+            ? ''
+            : /^(?:\r?\n){2}/.test(trailing)
+                ? ''
+                : /^[\r\n]/.test(trailing) ? '\n' : '\n\n';
         setCurrentSourceHtml(
-            source.slice(0, offset) + prefix + insertion + source.slice(offset)
+            leading + prefix + emptyMarkdownParagraphSource() + suffix + trailing
         );
         state.document.manifest.modifiedAt = new Date().toISOString();
         state.markdownLivePreview = null;
         markDirty();
         captureSnapshot();
-        const nextOrdinal = session.ordinal + 1;
+        const nextOrdinal = session.ordinal + (before ? 0 : 1);
         renderDocument();
         window.requestAnimationFrame(() => {
             if (state.mode === 'render') {
-                focusHybridRegionByOrdinal(nextOrdinal, true);
+                focusHybridRegionByOrdinal(nextOrdinal);
             }
         });
         return true;
@@ -2483,6 +2725,38 @@ ${compiled.html}
         };
     }
 
+    function insertHybridShellFromCompilation(anchorShell, ordinal, before = false) {
+        if (!anchorShell?.isConnected || !Number.isInteger(ordinal)) return null;
+        const compiled = parsedDocument(true);
+        const template = document.createElement('template');
+        template.innerHTML = compiled.previewHtml;
+        const replacement = template.content.querySelectorAll(
+            '[data-vdoc-edit-key]'
+        )[ordinal];
+        if (!replacement) return null;
+
+        const insertedShell = replacement.cloneNode(true);
+        if (before) anchorShell.before(insertedShell);
+        else anchorShell.after(insertedShell);
+        renderMathNodes(insertedShell);
+        renderMermaidNodes(insertedShell);
+
+        // 保留全部既有壳的 DOM 实例，仅同步编译后发生位移的区域身份与映射。
+        const shells = [...getRenderRoot().querySelectorAll('[data-vdoc-edit-key]')];
+        if (shells.length !== compiled.editRegions.length) {
+            insertedShell.remove();
+            return null;
+        }
+        shells.forEach((shell, index) => {
+            const region = compiled.editRegions[index];
+            if (!region) return;
+            shell.dataset.vdocEditKey = region.key;
+            shell.dataset.vdocEditType = region.type;
+            restoreHybridEditableState(shell, region);
+        });
+        return insertedShell;
+    }
+
     function patchHybridShellFromCompilation(shell, ordinal) {
         if (!shell?.isConnected || !Number.isInteger(ordinal)) return false;
         const compiled = parsedDocument(true);
@@ -2497,6 +2771,49 @@ ${compiled.html}
         renderMathNodes(shell);
         renderMermaidNodes(shell);
         return true;
+    }
+
+    function nearestTextOffsetFromPoint(node, pointer) {
+        const text = String(node?.nodeValue || '');
+        if (!text || !pointer) return 0;
+        const probe = document.createRange();
+        let nearestOffset = 0;
+        let nearestDistance = Infinity;
+        for (let offset = 0; offset <= text.length; offset += 1) {
+            try {
+                probe.setStart(node, offset);
+                probe.setEnd(node, Math.min(text.length, offset + 1));
+                const rect = probe.getBoundingClientRect();
+                if (!rect.width && !rect.height) continue;
+                const boundaryX = offset < text.length ? rect.left : rect.right;
+                const boundaryY = Math.max(rect.top, Math.min(rect.bottom, pointer.clientY));
+                const distance = Math.hypot(
+                    boundaryX - pointer.clientX,
+                    boundaryY - pointer.clientY
+                );
+                if (distance < nearestDistance) {
+                    nearestDistance = distance;
+                    nearestOffset = offset;
+                }
+                if (offset === text.length - 1) {
+                    const endDistance = Math.hypot(
+                        rect.right - pointer.clientX,
+                        boundaryY - pointer.clientY
+                    );
+                    if (endDistance < nearestDistance) {
+                        nearestDistance = endDistance;
+                        nearestOffset = text.length;
+                    }
+                }
+            } catch {
+                break;
+            }
+        }
+        if (nearestDistance < Infinity) return nearestOffset;
+        const rect = node.parentElement?.getBoundingClientRect?.();
+        return rect && pointer.clientX <= rect.left + rect.width / 2
+            ? 0
+            : text.length;
     }
 
     function pointerTextTarget(shell, pointer) {
@@ -2551,7 +2868,8 @@ ${compiled.html}
         }
 
         // ShadowRoot 的坐标光标 API 在 Chromium 中可能返回宿主元素。
-        // 从实际事件目标向上寻找最近的文字宿主，再选择其首个可见文本节点。
+        // 从实际事件目标向上寻找最近的文字宿主，并按点击坐标计算最近字符
+        // 边界。禁止再无条件回退到文本末尾，否则段首永远无法放置光标。
         for (
             let element = eventElement;
             element && element !== shell.parentElement;
@@ -2578,7 +2896,7 @@ ${compiled.html}
                 return {
                     node,
                     parent: node.parentElement,
-                    offset: (node.nodeValue || '').length,
+                    offset: nearestTextOffsetFromPoint(node, pointer),
                 };
             }
             if (element === shell) break;
@@ -2798,35 +3116,37 @@ ${compiled.html}
         } catch {
             editable.focus();
         }
-        if (selectContents) {
-            const range = document.createRange();
-            range.selectNodeContents(editable);
-            const selection = currentRenderSelection();
-            selection.removeAllRanges();
-            selection.addRange(range);
-            state.selectionRange = range.cloneRange();
-            state.selectionText = range.toString();
-        }
+        const range = document.createRange();
+        range.selectNodeContents(editable);
+        range.collapse(!selectContents);
+        const selection = currentRenderSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+        state.selectionRange = range.cloneRange();
+        state.selectionText = range.toString();
         beginHybridDomSession(shell, editable);
         state.activeEditableBlock = editable;
         scheduleFormattingControls(editable);
         return true;
     }
 
-    function insertHybridParagraphAfterSession(session) {
+    function insertHybridParagraphRelativeToSession(session, before = false) {
         if (!session?.shell?.isConnected) return false;
         patchHybridSourceFromDom(session);
         const region = hybridEditRegionByKey(
             session.shell.dataset.vdocEditKey
         );
         if (!region) return false;
-        const nextOrdinal = region.ordinal + 1;
-        if (!insertHybridSourceFragment('新段落', { afterRegion: true })) {
+        const nextOrdinal = region.ordinal + (before ? 0 : 1);
+        if (!insertHybridSourceFragment(
+            emptyMarkdownParagraphSource(),
+            { afterRegion: !before }
+        )) {
             return false;
         }
         window.requestAnimationFrame(() => {
             if (state.mode === 'render') {
-                focusHybridRegionByOrdinal(nextOrdinal, true);
+                focusHybridRegionByOrdinal(nextOrdinal);
             }
         });
         return true;
@@ -2871,8 +3191,23 @@ ${compiled.html}
                 return;
             }
 
-            if (region.type === 'markdown'
-                && !event.target.closest?.('[data-vdoc-md-live-preview]')) {
+            const livePreviewEditor = event.target.closest?.(
+                '[data-vdoc-md-live-preview]'
+            );
+            if (region.type === 'markdown' && livePreviewEditor) {
+                const session = state.markdownLivePreview;
+                if (session?.editor === livePreviewEditor) {
+                    // 不拦截 pointerdown，让浏览器先按点击坐标建立原生光标。
+                    // 下一帧仅更新 marker 的显示状态，不替换任何编辑节点。
+                    window.requestAnimationFrame(() => {
+                        if (state.markdownLivePreview !== session) return;
+                        refreshMarkdownLivePreviewMarkers(session);
+                        scheduleFormattingControls(session.editor);
+                    });
+                }
+                return;
+            }
+            if (region.type === 'markdown') {
                 event.preventDefault();
                 const session = activateMarkdownLivePreview(shell, event);
                 if (session) scheduleFormattingControls(session.editor);
@@ -2944,17 +3279,6 @@ ${compiled.html}
             scheduleFormattingControls(event.target);
         }, options);
 
-        root.addEventListener('beforeinput', (event) => {
-            const editor = event.target.closest?.('[data-vdoc-md-live-preview]');
-            if (!editor || !['insertParagraph', 'insertLineBreak'].includes(event.inputType)) {
-                return;
-            }
-            event.preventDefault();
-            if (insertMarkdownLivePreviewText(editor, '\n')) {
-                patchMarkdownLivePreviewSource(state.markdownLivePreview);
-            }
-        }, options);
-
         root.addEventListener('paste', (event) => {
             const editor = event.target.closest?.('[data-vdoc-md-live-preview]');
             if (!editor) return;
@@ -3015,19 +3339,52 @@ ${compiled.html}
         }, options);
 
         root.addEventListener('keydown', (event) => {
-            if (event.key !== 'Enter' || !event.shiftKey
-                || event.isComposing || event.keyCode === 229) {
-                return;
-            }
+            if (event.isComposing || event.keyCode === 229) return;
+            const isEnter = event.key === 'Enter';
+            const isShiftEnter = isEnter && event.shiftKey;
+            const isTab = event.key === 'Tab' && !event.ctrlKey
+                && !event.metaKey && !event.altKey;
+            if (!isEnter && !isTab) return;
+
             const shell = event.target.closest?.('[data-vdoc-edit-key]');
             const editable = event.target.closest?.('[contenteditable]');
             if (!shell || !editable) return;
+
+            if (isTab || (isEnter && !isShiftEnter)) {
+                event.preventDefault();
+                event.stopPropagation();
+                // Markdown 中单个源码换行会被解析为空格。普通 Enter 必须写入
+                // “两个行尾空格 + 换行”才能在渲染与重新打开后保持段内换行。
+                // Shift+Enter 不经过这里，而是创建独立的空文本段。
+                const inserted = isTab
+                    ? '\u3000\u3000'
+                    : editable.matches('[data-vdoc-md-live-preview]')
+                        ? '  \n'
+                        : '\n';
+                if (insertMarkdownLivePreviewText(editable, inserted)) {
+                    if (editable.matches('[data-vdoc-md-live-preview]')) {
+                        patchMarkdownLivePreviewSource(state.markdownLivePreview);
+                    } else {
+                        const existing = state.hybridEditSessions.get(shell);
+                        const session = existing?.editable === editable
+                            ? existing
+                            : beginHybridDomSession(shell, editable);
+                        if (session) patchHybridSourceFromDom(session);
+                    }
+                }
+                return;
+            }
+
+            const atStart = caretIsAtBlockStart(
+                currentRenderSelection(),
+                editable
+            );
             if (editable.matches('[data-vdoc-md-live-preview]')) {
                 const livePreview = state.markdownLivePreview;
                 if (!livePreview || livePreview.editor !== editable) return;
                 event.preventDefault();
                 event.stopPropagation();
-                insertMarkdownParagraphAfterLivePreview(livePreview);
+                insertMarkdownParagraphRelativeToLivePreview(livePreview, atStart);
                 return;
             }
             const region = hybridEditRegionByKey(shell.dataset.vdocEditKey);
@@ -3039,7 +3396,7 @@ ${compiled.html}
             if (!session) return;
             event.preventDefault();
             event.stopPropagation();
-            insertHybridParagraphAfterSession(session);
+            insertHybridParagraphRelativeToSession(session, atStart);
         }, options);
 
         root.addEventListener('focusout', (event) => {
@@ -5288,8 +5645,41 @@ ${compiled.html}
         return sourceEditorController.initialize();
     }
 
+    function safelyCaptureModeViewportAnchor(mode) {
+        try {
+            return typeof captureModeViewportAnchor === 'function'
+                ? captureModeViewportAnchor(mode)
+                : null;
+        } catch (error) {
+            console.warn(
+                '[Scriptorium] 视口语义锚点捕获失败，模式切换将不恢复位置：',
+                error
+            );
+            return null;
+        }
+    }
+
+    function safelyRestoreModeViewportAnchor(mode, anchor) {
+        if (!anchor) return false;
+        try {
+            return typeof restoreModeViewportAnchor === 'function'
+                ? restoreModeViewportAnchor(mode, anchor)
+                : false;
+        } catch (error) {
+            console.warn(
+                '[Scriptorium] 视口语义锚点恢复失败，已保留目标模式：',
+                error
+            );
+            return false;
+        }
+    }
+
     function switchMode(mode) {
         if (!state.ready) return;
+        const previousMode = state.mode;
+        // 位置同步是非关键增强。任何锚点算法异常都不得阻断模式切换、
+        // 源码缓冲区初始化、编辑器刷新或可编程内容生命周期。
+        const viewportAnchor = safelyCaptureModeViewportAnchor(previousMode);
         if (state.mode === 'render' && mode !== 'render') {
             state.objectController?.closeInspector(true);
             state.objectController?.clearSelection();
@@ -5317,6 +5707,7 @@ ${compiled.html}
         if (isRead) {
             renderReadingPreview();
             window.requestAnimationFrame(() => {
+                safelyRestoreModeViewportAnchor('read', viewportAnchor);
                 updateCurrentPage(getReadRoot(), elements['read-host']);
                 if (state.mode === 'read') {
                     activateProgrammableContent('read');
@@ -5325,6 +5716,7 @@ ${compiled.html}
         } else if (isRender) {
             window.requestAnimationFrame(() => {
                 if (state.mode !== 'render') return;
+                safelyRestoreModeViewportAnchor('render', viewportAnchor);
                 activateProgrammableContent('render');
 
                 // 从源码模式返回时，applySourceChanges() 会在 state.mode 仍为
@@ -5359,6 +5751,12 @@ ${compiled.html}
                 state.sourceEditor?.focus();
                 validateSource();
                 refreshSourceColorMarks();
+                // focus 会把旧光标主动滚入视口，因此语义位置必须作为布局与
+                // 聚焦完成后的最后一步恢复，不能在 focus 之前执行。
+                window.requestAnimationFrame(() => {
+                    if (state.mode !== mode) return;
+                    safelyRestoreModeViewportAnchor(mode, viewportAnchor);
+                });
             }, 0);
         }
 
