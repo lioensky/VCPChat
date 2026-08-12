@@ -614,16 +614,19 @@
                     editor.appendChild(document.createTextNode('\n'));
                     sourceOffset += 1;
                 }
-                if (!line.length) return;
                 const lineElement = markdownLineElement(
                     line,
-                    renderedLines[renderedIndex] || null
+                    line.length
+                        ? renderedLines[renderedIndex] || null
+                        : null
                 );
-                renderedIndex += 1;
-                lineElement.replaceChildren(inlineHtmlSourceFragment(
-                    line,
-                    sourceOffset
-                ));
+                if (line.length) {
+                    renderedIndex += 1;
+                    lineElement.replaceChildren(inlineHtmlSourceFragment(
+                        line,
+                        sourceOffset
+                    ));
+                }
                 editor.appendChild(lineElement);
                 sourceOffset += line.length;
             });
@@ -1316,7 +1319,96 @@
             return true;
         }
 
-        function flushSession(session = state.activeSession) {
+        function replaceActiveSelection(session, insertion, reason) {
+            if (!session?.editable?.isConnected
+                || session.region?.type !== 'markdown') {
+                return false;
+            }
+            const offsets = selectionPrimitives.currentOffsets(
+                session.editable
+            );
+            if (!offsets) return false;
+
+            const currentText = String(session.editable.textContent || '');
+            const nextText = currentText.slice(0, offsets.start)
+                + String(insertion || '')
+                + currentText.slice(offsets.end);
+            const caret = offsets.start + String(insertion || '').length;
+
+            // 直接把键盘语义落实为纯文本，再由统一事务重新构建带 Markdown
+            // 装饰的编辑树；不依赖各 Chromium 版本生成不同的 div/br DOM。
+            session.editable.textContent = nextText;
+            selectionPrimitives.restoreOffsets(
+                session.editable,
+                caret
+            );
+            return flushSession(session, reason);
+        }
+
+        function handleEditorKeydown(event) {
+            if (event.defaultPrevented
+                || event.isComposing
+                || state.composing
+                || event.ctrlKey
+                || event.metaKey
+                || event.altKey) {
+                return false;
+            }
+            const editable = event.target.closest?.(
+                '[data-vdoc-flow-source-editor="true"]'
+            );
+            const shell = event.target.closest?.('[data-vdoc-edit-key]');
+            if (!editable || !shell) return false;
+            const session = state.activeSession?.editable === editable
+                ? state.activeSession
+                : beginSession(shell, editable);
+            if (!session || session.region.type !== 'markdown') return false;
+
+            const offsets = selectionPrimitives.currentOffsets(editable);
+            if (!offsets || !offsets.collapsed) return false;
+            const text = String(editable.textContent || '');
+
+            if (event.key === 'Tab' && !event.shiftKey) {
+                const lineStart = text.lastIndexOf(
+                    '\n',
+                    Math.max(0, offsets.start - 1)
+                ) + 1;
+                const lineBreak = text.indexOf('\n', lineStart);
+                const line = text.slice(
+                    lineStart,
+                    lineBreak < 0 ? text.length : lineBreak
+                );
+                if (offsets.start !== lineStart
+                    || markdownLineKind(line) !== 'paragraph') {
+                    return false;
+                }
+                event.preventDefault();
+                return replaceActiveSelection(
+                    session,
+                    '　　',
+                    'flow-keyboard-first-line-indent'
+                );
+            }
+
+            if (event.key === 'Enter'
+                && !event.shiftKey
+                && offsets.start === text.length) {
+                event.preventDefault();
+                // Markdown 的两个行尾半角空格加换行会稳定编译成 <br>，
+                // 是“真换行”；单独 \n 只属于源码软换行，渲染时会折叠。
+                return replaceActiveSelection(
+                    session,
+                    '  \n',
+                    'flow-keyboard-hard-line-break'
+                );
+            }
+            return false;
+        }
+
+        function flushSession(
+            session = state.activeSession,
+            reason = 'flow-text-input'
+        ) {
             if (!session?.shell?.isConnected
                 || !session.editable?.isConnected) {
                 return false;
@@ -1337,7 +1429,7 @@
                 to: session.region.sourceRange.end,
                 expected: session.raw,
                 insert: nextText,
-                reason: 'flow-text-input',
+                reason,
             });
             if (!transaction) return false;
             if (!refreshSessionRegion(
@@ -1430,6 +1522,8 @@
                     beginSession(shell, editable);
                 }
             }, options);
+
+            root.addEventListener('keydown', handleEditorKeydown, options);
 
             root.addEventListener('input', (event) => {
                 if (event.isComposing || state.composing) return;

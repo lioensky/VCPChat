@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict');
 const JSZip = require('jszip');
-const importer = require('../modules/services/scriptoriumImportService');
+const importer = require('../../modules/services/scriptoriumImportService');
 
 async function createMinimalDocx() {
     const zip = new JSZip();
@@ -171,6 +171,22 @@ async function run() {
         true
     );
 
+    const normalizedIndentedSource = importer.htmlToHybridMarkdown([
+        '<p style="text-indent:2em">两字符<strong>粗体</strong>正文。</p>',
+        '<p style="text-indent:21pt">磅值<strong>粗体</strong>正文。</p>',
+    ].join(''));
+    assert.match(normalizedIndentedSource, /　　两字符\*\*粗体\*\*正文。/);
+    assert.match(normalizedIndentedSource, /　　磅值\*\*粗体\*\*正文。/);
+    assert.doesNotMatch(normalizedIndentedSource, /<p\b|<strong\b|text-indent/);
+
+    const compositeStyledSource = importer.htmlToHybridMarkdown(
+        '<p style="text-indent:2em;text-align:justify">保真<strong>粗体</strong>正文。</p>'
+    );
+    assert.match(
+        compositeStyledSource,
+        /<p style="text-indent:2em;text-align:justify">保真<strong>粗体<\/strong>正文。<\/p>/
+    );
+
     const dominantIndentParagraphs = [
         ...Array.from({ length: 3 }, (_, index) => ({
             text: `已有缩进正文 ${index}`,
@@ -271,8 +287,9 @@ async function run() {
     assert.equal(docx.kind, 'docx');
     assert.match(docx.source, /第一章 原生共笔/);
     assert.match(docx.source, /## 设计原则/);
-    assert.match(docx.source, /这是从 DOCX 导入的正文。/);
-    assert.match(docx.source, /段首 Tab 正文。/);
+    assert.match(docx.source, /　　这是从 DOCX 导入的正文。/);
+    assert.match(docx.source, /　　段首 Tab 正文。/);
+    assert.doesNotMatch(docx.source, /<p style="text-indent:(?:2em|21pt)"/);
     assert.doesNotMatch(docx.source, /data-vdoc-(?:text|block|container)=/);
     assert.match(docx.source, /\*\*人类创作\*\*/);
     assert.match(docx.source, /继承样式章节/);

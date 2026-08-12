@@ -196,6 +196,37 @@ function convertPlainText(text) {
         .join('\n');
 }
 
+function normalizeDocxIndentForMarkdown(html) {
+    const $ = cheerio.load(
+        `<main data-vdoc-indent-root>${String(html || '')}</main>`,
+        null,
+        false
+    );
+    const root = $('main[data-vdoc-indent-root]');
+
+    root.find('p[style]').each((_index, paragraph) => {
+        const element = $(paragraph);
+        const declarations = String(element.attr('style') || '')
+            .split(';')
+            .map((declaration) => declaration.trim())
+            .filter(Boolean);
+        if (declarations.length !== 1) return;
+
+        const indent = declarations[0].match(
+            /^text-indent\s*:\s*([+]?(?:\d+(?:\.\d+)?|\.\d+))(em|pt)$/i
+        );
+        if (!indent || Number(indent[1]) <= 0) return;
+
+        // Markdown 行首四个 ASCII 空格表示代码块，不能用来模拟段落缩进。
+        // 两个全角空格既能表达中文正文约两字符首行缩进，又允许 Turndown
+        // 继续把段内 strong/em 等纯语义标签转换为 Markdown 标记。
+        element.removeAttr('style');
+        element.prepend('　　');
+    });
+
+    return root.html() || '';
+}
+
 function htmlToHybridMarkdown(html) {
     const turndown = new TurndownService({
         headingStyle: 'atx',
@@ -222,7 +253,7 @@ function htmlToHybridMarkdown(html) {
             return `\n\n${node.outerHTML}\n\n`;
         },
     });
-    return turndown.turndown(String(html || ''));
+    return turndown.turndown(normalizeDocxIndentForMarkdown(html));
 }
 
 function decodeRtfHex(source) {
@@ -758,6 +789,7 @@ module.exports = {
     normalizeMarkdownDocumentHtml,
     convertMarkdown,
     convertPlainText,
+    normalizeDocxIndentForMarkdown,
     htmlToHybridMarkdown,
     convertRtf,
     parseDocxStyles,
