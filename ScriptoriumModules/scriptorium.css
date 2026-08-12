@@ -2897,7 +2897,7 @@ body.light-theme .source-editor-shell .cm-s-material-darker .CodeMirror-gutters 
 }
 
 body.light-theme .source-editor-shell .CodeMirror-linenumber {
-    color: #999083;
+    color: #716a60;
 }
 
 body.light-theme .source-editor-shell .CodeMirror-cursor {
@@ -2913,35 +2913,108 @@ body.light-theme .source-editor-shell .CodeMirror-activeline-background {
     background: rgba(75, 125, 107, .07);
 }
 
+/*
+ * material-darker 的默认 token 为深色画布设计。浅色主题必须完整覆盖
+ * CodeMirror 可能产生的全部主要 token；任何遗漏都会继承低对比度的灰色、
+ * 青色或紫色，在米白纸面上近乎不可见。
+ */
 body.light-theme .source-editor-shell .cm-s-material-darker .cm-tag,
 body.light-theme .source-editor-shell .cm-s-material-darker .cm-keyword {
-    color: #8f3f52;
+    color: #8a2945;
+    font-weight: 650;
 }
 
-body.light-theme .source-editor-shell .cm-s-material-darker .cm-attribute,
-body.light-theme .source-editor-shell .cm-s-material-darker .cm-property {
-    color: #7a5b20;
+body.light-theme .source-editor-shell .cm-s-material-darker .cm-def,
+body.light-theme .source-editor-shell .cm-s-material-darker .cm-variable-2,
+body.light-theme .source-editor-shell .cm-s-material-darker .cm-variable-3 {
+    color: #165f73;
+}
+
+body.light-theme .source-editor-shell .cm-s-material-darker .cm-variable {
+    color: #303a35;
+}
+
+body.light-theme .source-editor-shell .cm-s-material-darker .cm-property,
+body.light-theme .source-editor-shell .cm-s-material-darker .cm-attribute {
+    color: #74510d;
 }
 
 body.light-theme .source-editor-shell .cm-s-material-darker .cm-string,
 body.light-theme .source-editor-shell .cm-s-material-darker .cm-string-2 {
-    color: #28705d;
+    color: #17634f;
 }
 
 body.light-theme .source-editor-shell .cm-s-material-darker .cm-number,
 body.light-theme .source-editor-shell .cm-s-material-darker .cm-atom {
-    color: #7652a1;
+    color: #67408f;
+}
+
+body.light-theme .source-editor-shell .cm-s-material-darker .cm-operator {
+    color: #354c67;
+    font-weight: 600;
+}
+
+body.light-theme .source-editor-shell .cm-s-material-darker .cm-builtin {
+    color: #28588a;
 }
 
 body.light-theme .source-editor-shell .cm-s-material-darker .cm-comment {
-    color: #8b8477;
+    color: #625d54;
     font-style: italic;
 }
 
 body.light-theme .source-editor-shell .cm-s-material-darker .cm-bracket,
 body.light-theme .source-editor-shell .cm-s-material-darker .cm-meta,
 body.light-theme .source-editor-shell .cm-s-material-darker .cm-qualifier {
-    color: #52635c;
+    color: #465b52;
+}
+
+body.light-theme .source-editor-shell .cm-s-material-darker .cm-header {
+    color: #244f45;
+    font-weight: 750;
+}
+
+body.light-theme .source-editor-shell .cm-s-material-darker .cm-quote {
+    color: #5f5143;
+}
+
+body.light-theme .source-editor-shell .cm-s-material-darker .cm-link,
+body.light-theme .source-editor-shell .cm-s-material-darker .cm-url {
+    color: #245d8a;
+    text-decoration-color: rgba(36, 93, 138, .48);
+}
+
+body.light-theme .source-editor-shell .cm-s-material-darker .cm-strong {
+    color: #29342f;
+    font-weight: 800;
+}
+
+body.light-theme .source-editor-shell .cm-s-material-darker .cm-em {
+    color: #4b4540;
+}
+
+body.light-theme .source-editor-shell .cm-s-material-darker .cm-hr {
+    color: #696258;
+}
+
+body.light-theme .source-editor-shell .cm-s-material-darker .cm-error,
+body.light-theme .source-editor-shell .cm-s-material-darker .cm-negative {
+    color: #a12626;
+}
+
+body.light-theme .source-editor-shell .cm-s-material-darker .cm-positive {
+    color: #17633d;
+}
+
+body.light-theme .source-editor-shell .CodeMirror-matchingbracket {
+    color: #153f35 !important;
+    background: rgba(54, 132, 109, .2);
+    outline: 1px solid rgba(38, 105, 87, .36);
+}
+
+body.light-theme .source-editor-shell .CodeMirror-nonmatchingbracket {
+    color: #a12626 !important;
+    background: rgba(177, 39, 39, .13);
 }
 
 .source-editor-shell .cm-vdoc-color {
