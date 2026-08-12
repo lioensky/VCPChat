@@ -328,6 +328,14 @@
                 async () => {
                     context.editorResolver?.()?.flush?.();
                     context.historyPort.finalize();
+                    if (elements['document-title']) {
+                        elements['document-title'].textContent = '';
+                        elements['document-title'].title = '';
+                    }
+                    if (elements['focus-document-title']) {
+                        elements['focus-document-title'].textContent = '';
+                        elements['focus-document-title'].title = '';
+                    }
                     if (elements['document-workspace']) {
                         elements['document-workspace'].hidden = true;
                     }

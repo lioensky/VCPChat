@@ -27,7 +27,9 @@
             const editCss = surface === 'edit'
                 ? `
 .vdoc-flow-runtime {
+    box-sizing: border-box;
     width: min(calc(100% - 48px), 1440px);
+    max-width: calc(100% - 48px);
     min-height: calc(100% - 64px);
     margin: 0 auto;
     padding: clamp(28px, 4vw, 64px) clamp(22px, 5vw, 72px) 96px;
@@ -37,6 +39,8 @@
 }
 .vdoc-edit-region {
     position: relative;
+    width: 100%;
+    max-width: 100%;
     min-width: 0;
 }
 .vdoc-edit-region[data-vdoc-edit-type="island"]:hover {
@@ -45,8 +49,11 @@
 }
 .vdoc-md-flow-surface {
     display: flow-root;
+    box-sizing: border-box;
     width: 100%;
+    max-width: 100%;
     min-width: 0;
+    overflow-x: hidden;
     margin: 0;
     padding: 0;
     border: 0;
@@ -93,6 +100,8 @@
     background: transparent;
 }
 .vdoc-md-live-preview-run > .vdoc-md-live-preview-line {
+    box-sizing: border-box;
+    width: 100%;
     min-width: 0;
     max-width: 100%;
     white-space: normal;

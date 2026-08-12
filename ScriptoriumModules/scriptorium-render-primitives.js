@@ -39,7 +39,9 @@
         function markdownBaseCss(scope = '.vdoc-runtime') {
             return `
 ${scope} table {
+    box-sizing: border-box;
     width: 100%;
+    max-width: 100% !important;
     margin: 1.25em 0;
     overflow: hidden;
     border: 1px solid color-mix(in srgb, currentColor 28%, transparent);
@@ -47,11 +49,16 @@ ${scope} table {
     border-spacing: 0;
     border-radius: 10px;
     background: color-mix(in srgb, currentColor 3%, transparent);
+    table-layout: fixed;
 }
 ${scope} th,
 ${scope} td {
-    min-width: 3em;
+    box-sizing: border-box;
+    min-width: 0;
+    max-width: 100%;
     padding: .62em .78em;
+    overflow-wrap: anywhere;
+    word-break: break-word;
     border-right: 1px solid color-mix(in srgb, currentColor 20%, transparent);
     border-bottom: 1px solid color-mix(in srgb, currentColor 20%, transparent);
     text-align: left;
@@ -66,7 +73,11 @@ ${scope} tbody tr:last-child > td { border-bottom: 0; }
 ${scope} tbody tr:nth-child(even) {
     background: color-mix(in srgb, currentColor 3.5%, transparent);
 }
-${scope} table code { white-space: nowrap; }
+${scope} table code {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
 `;
         }
 

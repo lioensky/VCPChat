@@ -149,14 +149,27 @@ ${String(css).replace(/<\/style/gi, '<\\/style')}
                 return String(state.documentCss || '');
             }
             if (sourceKind === 'deck-css') return String(state.deckCss || '');
-            if (Array.isArray(state.slides)) {
-                const index = Number(proposal.slideIndex);
+            const index = Number(proposal.slideIndex);
+            const targetsSlide = sourceKind === 'slide'
+                || sourceKind === 'slide-source'
+                || Number.isInteger(index);
+            if (targetsSlide && Array.isArray(state.slides)) {
                 const slide = state.slides[
                     Number.isInteger(index) ? index : 0
                 ];
                 return String(slide?.source || '');
             }
             return String(state.source || '');
+        }
+
+        function hasHistoricalState(checkpoint) {
+            const changeSet = checkpoint?.changeSet;
+            return Boolean(
+                changeSet
+                && typeof changeSet === 'object'
+                && Object.prototype.hasOwnProperty.call(changeSet, 'before')
+                && Object.prototype.hasOwnProperty.call(changeSet, 'after')
+            );
         }
 
         function renderSemanticFallback(visualHost, sourceHost, checkpoint) {
@@ -219,7 +232,7 @@ ${String(css).replace(/<\/style/gi, '<\\/style')}
                 checkpoint?.changeSet?.after,
                 proposal
             );
-            if (historicalBefore || historicalAfter) {
+            if (hasHistoricalState(checkpoint)) {
                 if (replacements.length) renderSource(sourceHost, replacements);
                 else {
                     sourceHost.replaceChildren();

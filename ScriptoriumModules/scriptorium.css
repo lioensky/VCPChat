@@ -3974,7 +3974,9 @@ body.focus-mode .document-workspace::before {
 
 .lineage-detail-dialog {
     display: grid;
-    grid-template-rows: auto minmax(0, 1fr) auto;
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
+    min-width: 0;
+    min-height: 0;
     width: min(1060px, calc(100vw - 54px));
     height: min(740px, calc(100vh - 54px));
     overflow: hidden;
@@ -4086,8 +4088,10 @@ body.focus-mode .document-workspace::before {
 
 .lineage-detail-body {
     display: grid;
-    grid-template-columns: .8fr 1.2fr;
+    grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr);
+    min-width: 0;
     min-height: 0;
+    overflow: hidden;
 }
 
 .lineage-detail-body > section {
@@ -4111,7 +4115,9 @@ body.focus-mode .document-workspace::before {
 }
 
 .lineage-detail-record {
+    min-width: 0;
     min-height: 0;
+    max-width: 100%;
     margin: 0;
     padding: 13px;
     overflow: auto;

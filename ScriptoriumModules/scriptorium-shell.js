@@ -42,14 +42,20 @@
 
         function updateIdentity() {
             const status = context.documentPort.status();
-            const name = status.currentName || '未命名文稿.vdocx';
+            const homeVisible = elements['welcome-state']?.hidden === false;
+            const name = homeVisible
+                ? ''
+                : status.currentName || '未命名文稿.vdocx';
+            const location = homeVisible
+                ? ''
+                : status.currentPath || '尚未保存到磁盘';
             if (elements['document-title']) {
                 elements['document-title'].textContent = name;
-                elements['document-title'].title =
-                    status.currentPath || '尚未保存到磁盘';
+                elements['document-title'].title = location;
             }
             if (elements['focus-document-title']) {
                 elements['focus-document-title'].textContent = name;
+                elements['focus-document-title'].title = location;
             }
             if (elements['save-state']) {
                 elements['save-state'].textContent = status.loading
