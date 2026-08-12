@@ -104,6 +104,8 @@
         activeHybridTextEdit: null,
         markdownLivePreview: null,
         markdownFlowSurfaces: [],
+        markdownFlowPointerGesture: null,
+        hybridHtmlPointerGesture: null,
         hybridDomSourceMap: new WeakMap(),
         hybridTextSourceMap: new WeakMap(),
         hybridEditSessions: new WeakMap(),
@@ -853,6 +855,18 @@ ${surface === 'edit' ? `
     border: 0 !important;
     outline: 0 !important;
     background: transparent !important;
+    cursor: text !important;
+    user-select: text !important;
+    -webkit-user-select: text !important;
+}
+.vdoc-md-flow-surface [data-vdoc-flow-surface-member="true"] {
+    user-select: text !important;
+    -webkit-user-select: text !important;
+}
+.vdoc-edit-region[data-vdoc-flow-kind="html-block"],
+.vdoc-edit-region[data-vdoc-flow-kind="html-block"] * {
+    user-select: text !important;
+    -webkit-user-select: text !important;
 }
 .vdoc-md-flow-surface[data-vdoc-flow-active="true"] {
     caret-color: #3a8b78 !important;
@@ -4529,6 +4543,50 @@ function reconcileMarkdownTransactionPresentation(
         return true;
     }
 
+    function activateMappedHybridHtmlAtPointer(shell, event) {
+        const region = hybridEditRegionByKey(shell?.dataset?.vdocEditKey);
+        if (!shell || !event
+            || (region?.type !== 'html' && region?.type !== 'island')) {
+            return null;
+        }
+        const target = pointerTextTarget(shell, event);
+        const mapped = target?.node
+            ? state.hybridTextSourceMap.get(target.node)
+            : null;
+        if (!target || mapped?.shell !== shell) return null;
+
+        const editable = target.parent;
+        if (!editable || !shell.contains(editable)) return null;
+        editable.contentEditable = 'true';
+        editable.spellcheck = false;
+        try {
+            editable.focus({ preventScroll: true });
+        } catch {
+            editable.focus();
+        }
+
+        const range = document.createRange();
+        range.setStart(target.node, target.offset);
+        range.collapse(true);
+        const selection = currentRenderSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+
+        const session = beginHybridDomSession(
+            shell,
+            editable,
+            target.node
+        );
+        if (!session) {
+            editable.removeAttribute('contenteditable');
+            editable.removeAttribute('spellcheck');
+            return null;
+        }
+        state.activeEditableBlock = editable;
+        scheduleFormattingControls(editable);
+        return session;
+    }
+
     function bindHybridRenderSurface(root) {
         state.renderSurfaceAbortController?.abort();
         const controller = new AbortController();
@@ -4546,6 +4604,13 @@ function reconcileMarkdownTransactionPresentation(
                 : null;
 
             if (flowSurface) {
+                state.markdownFlowPointerGesture = {
+                    pointerId: event.pointerId,
+                    surface: flowSurface,
+                    startX: event.clientX,
+                    startY: event.clientY,
+                    moved: false,
+                };
                 const aggregateEditor = event.target.closest?.(
                     '[data-vdoc-md-aggregate-editor="true"]'
                 );
@@ -4565,6 +4630,7 @@ function reconcileMarkdownTransactionPresentation(
                 // 取消。折叠点击稍后由 click 委托激活；非折叠拖选始终保留。
                 return;
             }
+            state.markdownFlowPointerGesture = null;
 
             if (!shell || !region
                 || hybridEditableDomain(region) === 'atomic') {
@@ -4598,73 +4664,139 @@ function reconcileMarkdownTransactionPresentation(
                 return;
             }
 
-            let editable = event.target.closest?.('[contenteditable]');
-            let target = null;
-            if (region.type === 'html' || region.type === 'island') {
-                target = pointerTextTarget(shell, event);
+            if (region.type === 'html') {
+                // 普通块级 HTML 与被动 Markdown 一样，pointerdown 只开始原生
+                // 选择手势。不能在这里 focus 或折叠 Selection，否则标题、署名
+                // 等静态 HTML 永远无法拖选。无位移 click 再进入映射编辑。
+                state.hybridHtmlPointerGesture = {
+                    pointerId: event.pointerId,
+                    shell,
+                    startX: event.clientX,
+                    startY: event.clientY,
+                    moved: false,
+                };
+                return;
+            }
+            state.hybridHtmlPointerGesture = null;
+
+            if (region.type === 'island') {
+                // 岛脚本可以用 replaceChildren() 重建动态表格等运行态 DOM。
+                // 每次命中岛时先为当前实例增量补齐文字映射，使翻页后新建的
+                // 单元格获得与初始页相同的选择、编辑和保存能力。
+                installRuntimeIslandTextEditing(root);
+
+                const target = pointerTextTarget(shell, event);
                 const mapped = target?.node
                     ? state.hybridTextSourceMap.get(target.node)
                     : null;
-                if (!target || mapped?.shell !== shell) return;
-
-                // 始终以坐标命中的映射文本节点为会话目标，不能使用某个祖先上
-                // 遗留的 contenteditable；否则同一 HTML 宿主内的第二段文字会
-                // 错写到第一段的源码范围。
-                editable = target.parent;
-                if (!editable || !shell.contains(editable)) return;
-
-                // 岛内经常存在绝对定位的装饰层，例如 3D 卡片的 depth 覆盖层。
-                // 浏览器原生点击会命中装饰层而不是其下方的可编辑标题，所以即使
-                // editable 已经启用，也必须始终把焦点和光标重定向到映射文字。
-                event.preventDefault();
-                editable.contentEditable = 'true';
-                editable.spellcheck = false;
-                editable.focus({ preventScroll: true });
-
-                const range = document.createRange();
-                range.setStart(target.node, target.offset);
-                range.collapse(true);
-                const selection = currentRenderSelection();
-                selection.removeAllRanges();
-                selection.addRange(range);
-            }
-            if (!editable || !shell.contains(editable)) return;
-            if (editable.matches('[data-vdoc-md-live-preview]')) {
-                state.activeEditableBlock = editable;
-                return;
-            }
-            const session = beginHybridDomSession(
-                shell,
-                editable,
-                target?.node || null
-            );
-            if (!session) {
-                if (region.type === 'html' || region.type === 'island') {
-                    editable.removeAttribute('contenteditable');
-                    editable.removeAttribute('spellcheck');
+                const nativeEditable = event.target.closest?.(
+                    '[contenteditable="true"]'
+                );
+                const directlyHitMappedText = Boolean(
+                    mapped?.shell === shell
+                    && nativeEditable
+                    && (
+                        nativeEditable === target.parent
+                        || nativeEditable.contains(target.node)
+                    )
+                );
+                if (directlyHitMappedText) {
+                    // 表格单元格、标题和正文等真实文字宿主已经可编辑。保留
+                    // 浏览器原生 pointerdown，才能拖选文字；focusin/input 会
+                    // 自动建立会话并定向回写，不需要再次折叠 Selection。
+                    return;
                 }
-                return;
+
+                // 只有实际命中 3D depth 等非文字覆盖层时才强制重定向。
+                // 这保留装饰层穿透能力，同时不再吞掉正常文字的拖选手势。
+                if (mapped?.shell === shell) {
+                    event.preventDefault();
+                    activateMappedHybridHtmlAtPointer(shell, event);
+                }
             }
-            state.activeEditableBlock = editable;
-            scheduleFormattingControls(editable);
+        }, options);
+
+        root.addEventListener('pointermove', (event) => {
+            [
+                state.markdownFlowPointerGesture,
+                state.hybridHtmlPointerGesture,
+            ].forEach((gesture) => {
+                if (!gesture || gesture.pointerId !== event.pointerId
+                    || gesture.moved || !(event.buttons & 1)) {
+                    return;
+                }
+                if (Math.hypot(
+                    event.clientX - gesture.startX,
+                    event.clientY - gesture.startY
+                ) >= 3) {
+                    gesture.moved = true;
+                }
+            });
         }, options);
 
         root.addEventListener('click', (event) => {
             if (event.button !== 0 || event.defaultPrevented) return;
+
             const flowSurface = event.target.closest?.(
                 '[data-vdoc-md-flow-surface="true"]'
             );
+            const candidateHtmlShell = event.target.closest?.(
+                '[data-vdoc-edit-type="html"][data-vdoc-flow-kind="html-block"]'
+                + '[data-vdoc-edit-key]'
+            );
+            const htmlShell = flowSurface ? null : candidateHtmlShell;
+            if (htmlShell) {
+                const gesture = state.hybridHtmlPointerGesture;
+                const wasSelectionGesture = Boolean(
+                    gesture?.shell === htmlShell && gesture.moved
+                );
+                state.hybridHtmlPointerGesture = null;
+                const selection = currentRenderSelection();
+                const range = selection?.rangeCount
+                    ? selection.getRangeAt(0)
+                    : null;
+                const selectionInsideShell = Boolean(
+                    range
+                    && !range.collapsed
+                    && htmlShell.contains(range.startContainer)
+                    && htmlShell.contains(range.endContainer)
+                );
+                if (wasSelectionGesture || selectionInsideShell) {
+                    captureCurrentSelection();
+                    scheduleFormattingFromCurrentSelection();
+                    return;
+                }
+
+                event.preventDefault();
+                activateMappedHybridHtmlAtPointer(htmlShell, event);
+                return;
+            }
+            state.hybridHtmlPointerGesture = null;
+
             if (!flowSurface
                 || flowSurface.dataset.vdocFlowActive === 'true') {
+                state.markdownFlowPointerGesture = null;
                 return;
             }
 
+            const gesture = state.markdownFlowPointerGesture;
+            const wasSelectionGesture = Boolean(
+                gesture?.surface === flowSurface && gesture.moved
+            );
+            state.markdownFlowPointerGesture = null;
+
             const selection = currentRenderSelection();
             const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
-            if (range && !range.collapsed
-                && flowSurface.contains(range.commonAncestorContainer)) {
-                // 用户意图是选择文档文字，不把已经建立的原生 Selection
-                // 销毁为编辑光标。
+            const selectionInsideSurface = Boolean(
+                range
+                && !range.collapsed
+                && flowSurface.contains(range.startContainer)
+                && flowSurface.contains(range.endContainer)
+            );
+            if (wasSelectionGesture || selectionInsideSurface) {
+                // 拖选事实由指针位移独立记录，不能只依赖 click 阶段的
+                // ShadowRoot Selection。Chromium 在复杂岛边界附近可能暂时把
+                // 刚完成的非折叠选区报告为折叠；此时切换编辑 DOM 会销毁选区。
                 captureCurrentSelection();
                 scheduleFormattingFromCurrentSelection();
                 return;
