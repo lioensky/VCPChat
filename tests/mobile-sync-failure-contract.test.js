@@ -9,6 +9,20 @@ const { test } = require("node:test");
 const {
   resolveCentralIndexPreference,
 } = require("../VCPDistributedServer/Plugin/VCPMobileSync/config/defaults");
+const entityDatabase = require("../VCPDistributedServer/Plugin/VCPMobileSync/core/db");
+const issue20EntityIndex = new Map();
+entityDatabase.getDb = () => ({});
+entityDatabase.getEntityIndex = (id, type) =>
+  issue20EntityIndex.get(`${type}:${id}`) || null;
+entityDatabase.upsertEntityIndex = (id, type, filePath, hash) => {
+  issue20EntityIndex.set(`${type}:${id}`, {
+    id,
+    type,
+    file_path: filePath,
+    hash,
+    deleted_at: null,
+  });
+};
 const {
   handleSyncTopicHashBatch,
   handleSyncTopicHashBatchV2,
@@ -29,6 +43,9 @@ const {
   handleSyncManifest,
   handleMessageManifest,
 } = require("../VCPDistributedServer/Plugin/VCPMobileSync/sync/manifest");
+const {
+  uploadEntity,
+} = require("../VCPDistributedServer/Plugin/VCPMobileSync/sync/entity");
 
 function fakeDiffDatabase({ topics = {}, messages = {}, fail = false } = {}) {
   return {
@@ -191,6 +208,73 @@ test("Phase 2.5 topic hash 对错误类型和超预算 fail closed", () => {
   assert.throws(
     () => handleSyncTopicHashBatch({ hashes }),
     (error) => error.code === "SYNC_BUDGET_EXCEEDED",
+  );
+});
+
+test("issue #20: 未初始化数据库不会伪装成无变化 topic", () => {
+  const hash = "a".repeat(64);
+  assert.throws(
+    () =>
+      handleSyncTopicHashBatchV2(
+        {
+          hashes: {
+            "topic-issue-20": { configHash: hash, contentHash: hash },
+          },
+          topics: [
+            {
+              topicId: "topic-issue-20",
+              ownerType: "agent",
+              ownerId: "agent-issue-20",
+              configHash: hash,
+              contentHash: hash,
+            },
+          ],
+        },
+        null,
+      ),
+    (error) => error.code === "SYNC_DB_UNAVAILABLE",
+  );
+});
+
+test("issue #20: 手机新建 Agent/Group 时先创建桌面目标目录", async (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "vcp-sync-issue-20-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  issue20EntityIndex.clear();
+
+  const agentId = "agent_issue_20";
+  const groupId = "group_issue_20";
+  const agentResult = await uploadEntity({
+    id: agentId,
+    type: "agent",
+    data: { name: "Mobile Agent" },
+    appDataPath: directory,
+  });
+  const groupResult = await uploadEntity({
+    id: groupId,
+    type: "group",
+    data: { name: "Mobile Group", members: [] },
+    appDataPath: directory,
+  });
+
+  assert.deepEqual(agentResult, { success: true, id: agentId });
+  assert.deepEqual(groupResult, { success: true, id: groupId });
+  assert.equal(
+    JSON.parse(
+      fs.readFileSync(
+        path.join(directory, "Agents", agentId, "config.json"),
+        "utf8",
+      ),
+    ).name,
+    "Mobile Agent",
+  );
+  assert.equal(
+    JSON.parse(
+      fs.readFileSync(
+        path.join(directory, "AgentGroups", groupId, "config.json"),
+        "utf8",
+      ),
+    ).name,
+    "Mobile Group",
   );
 });
 
