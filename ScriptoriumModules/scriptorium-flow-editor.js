@@ -633,6 +633,47 @@
             return editor;
         }
 
+        function restoreEditorOffsets(
+            editor,
+            raw,
+            start,
+            end = start
+        ) {
+            const source = String(raw || '');
+            const selectionStart = Math.max(
+                0,
+                Math.min(source.length, Number(start) || 0)
+            );
+            const selectionEnd = Math.max(
+                selectionStart,
+                Math.min(source.length, Number(end) || selectionStart)
+            );
+
+            // textPointAt() 会把 “源码末尾换行之后” 定位到换行文本节点末端，
+            // 而不是末尾空行内部。浏览器随后输入的文字会落在两个块之间，
+            // 导致下一轮可视编辑树重建时重新并回上一行。
+            if (selectionStart === source.length
+                && selectionEnd === source.length
+                && source.endsWith('\n')) {
+                const trailingLine = editor.querySelector(
+                    '.vdoc-md-live-preview-line:last-child'
+                );
+                if (trailingLine
+                    && !String(trailingLine.textContent || '').length) {
+                    return selectionPrimitives.selectNodeContents(
+                        trailingLine,
+                        { collapse: 'start' }
+                    );
+                }
+            }
+
+            return selectionPrimitives.restoreOffsets(
+                editor,
+                selectionStart,
+                selectionEnd
+            );
+        }
+
         function configureSourceEditor(editor, region) {
             editor.classList.add('vdoc-md-live-preview');
             editor.dataset.vdocFlowSourceEditor = 'true';
@@ -706,7 +747,7 @@
             } catch {
                 editor.focus();
             }
-            selectionPrimitives.restoreOffsets(editor, localOffset);
+            restoreEditorOffsets(editor, raw, localOffset);
             installMappings(state.root);
 
             if (point) {
@@ -1309,8 +1350,9 @@
             } catch {
                 nextEditable.focus();
             }
-            selectionPrimitives.restoreOffsets(
+            restoreEditorOffsets(
                 nextEditable,
+                nextRaw,
                 selectionStart,
                 selectionEnd
             );
@@ -1338,8 +1380,9 @@
             // 直接把键盘语义落实为纯文本，再由统一事务重新构建带 Markdown
             // 装饰的编辑树；不依赖各 Chromium 版本生成不同的 div/br DOM。
             session.editable.textContent = nextText;
-            selectionPrimitives.restoreOffsets(
+            restoreEditorOffsets(
                 session.editable,
+                nextText,
                 caret
             );
             return flushSession(session, reason);
