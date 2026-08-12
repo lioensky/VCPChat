@@ -515,8 +515,12 @@
             if (to <= from) return;
             const raw = segment.slice(from, to);
             if (!raw.trim()) return;
+            const type = /^\s*</.test(raw) ? 'html' : 'markdown';
             regions.push({
-                type: /^\s*</.test(raw) ? 'html' : 'markdown',
+                type,
+                flowKind: type === 'html'
+                    ? htmlEditFlowKind(raw)
+                    : 'text-flow',
                 start: start + from,
                 end: start + to,
                 source: raw,
@@ -534,6 +538,32 @@
         return token?.type === 'html' || /^\s*</.test(raw)
             ? 'html'
             : 'markdown';
+    }
+
+    function htmlEditFlowKind(raw) {
+        const source = String(raw || '').trim();
+        if (!source) return 'text-flow';
+
+        // 这些标签建立独立块级布局，不能因为源码以 “<” 开头就冒充
+        // Markdown 行内文字；但它们仍与拥有脚本生命周期的 stable 岛不同。
+        const blockTag = source.match(
+            /^<\/?(address|article|aside|blockquote|details|dialog|div|dl|fieldset|figure|footer|form|header|hgroup|hr|main|menu|nav|ol|p|pre|section|summary|table|ul)\b/i
+        );
+        return blockTag ? 'html-block' : 'text-flow';
+    }
+
+    function editFlowKind(region) {
+        if (region?.flowKind) return region.flowKind;
+        if (region?.type === 'markdown') return 'text-flow';
+        if (region?.type === 'html') return htmlEditFlowKind(region.source);
+        if (region?.type === 'island'
+            || region?.type === 'style'
+            || region?.type === 'code'
+            || region?.type === 'mermaid'
+            || region?.type === 'math-display') {
+            return 'stable-atomic';
+        }
+        return 'stable-atomic';
     }
 
     function splitMarkdownEditRegions(
@@ -561,8 +591,12 @@
                 if (to <= from) return;
                 const raw = segment.slice(from, to);
                 if (!raw.trim()) return;
+                const type = tokenEditType(token, raw);
                 regions.push({
-                    type: tokenEditType(token, raw),
+                    type,
+                    flowKind: type === 'html'
+                        ? htmlEditFlowKind(raw)
+                        : 'text-flow',
                     start: start + from,
                     end: start + to,
                     source: raw,
@@ -622,6 +656,7 @@
             ));
             regions.push({
                 type: region.type,
+                flowKind: 'stable-atomic',
                 start: region.start,
                 end: region.end,
                 source: region.source,
@@ -640,6 +675,7 @@
             key: `edit-${ordinal + 1}-${simpleHash(region.source)}`,
             ordinal,
             type: region.type,
+            flowKind: editFlowKind(region),
             markdownTokenType: region.markdownTokenType || null,
             sourceRange: { start: region.start, end: region.end },
             sourceHash: simpleHash(region.source),
@@ -694,9 +730,9 @@
             const content = renderEditRegion(source, region, parse, diagnostics);
             return `<div class="vdoc-edit-region" data-vdoc-edit-key="${
                 escapeHtml(region.key)
-            }" data-vdoc-edit-type="${escapeHtml(region.type)}">${
-                content
-            }</div>`;
+            }" data-vdoc-edit-type="${escapeHtml(region.type)}" data-vdoc-flow-kind="${
+                escapeHtml(region.flowKind || 'stable-atomic')
+            }">${content}</div>`;
         }).join('\n');
     }
 
