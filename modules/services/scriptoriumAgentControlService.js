@@ -287,6 +287,9 @@ class ScriptoriumAgentControlService {
                 projectType,
                 title: payload.title,
                 source: projectType === 'docx' ? payload.source : undefined,
+                documentCss: projectType === 'docx'
+                    ? payload.documentCss
+                    : undefined,
                 deckCss: projectType === 'pptx' ? payload.deckCss : undefined,
                 slides: projectType === 'pptx' ? payload.slides : undefined,
                 page: payload.page,

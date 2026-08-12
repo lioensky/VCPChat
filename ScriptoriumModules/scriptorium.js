@@ -588,9 +588,13 @@
                 documentPort,
                 lineagePort,
                 core,
+                containerModule,
+                hybridCompiler,
+                programmableContent: window.ScriptoriumProgrammableContent,
                 prDiff: window.ScriptoriumPrDiff,
                 historyPort,
                 renderPort: renderFacade,
+                surfacePort: shell.surfacePort,
                 getAdapter: adapterResolver,
                 persist: (reason) =>
                     sessionPort.persistCheckpoint(reason),

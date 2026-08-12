@@ -206,6 +206,7 @@ const MARKDOWN_FIELD_LABELS = Object.freeze({
     totalLines: '总行数',
     source: '源码',
     html: 'HTML',
+    documentCss: '文档 CSS',
     deckCss: '演示共享 CSS',
     context: '上下文源码',
     target: '目标源码',
@@ -241,6 +242,7 @@ const MARKDOWN_FIELD_LABELS = Object.freeze({
 const MARKDOWN_CODE_FIELDS = new Set([
     'source',
     'html',
+    'documentCss',
     'deckCss',
     'context',
     'target',
@@ -278,10 +280,11 @@ function markdownFence(content, language = 'text') {
 }
 
 function codeLanguage(key, parent = {}) {
-    if (key === 'deckCss') return 'css';
+    if (key === 'deckCss' || key === 'documentCss') return 'css';
     if (key === 'html') return 'html';
     const sourceKind = String(parent.sourceKind || '').toLowerCase();
-    if (sourceKind === 'deck-css') return 'css';
+    if (['deck-css', 'document-css'].includes(sourceKind)) return 'css';
+    if (sourceKind === 'markdown-hybrid') return 'markdown';
     if (['source', 'context', 'target', 'replace', 'replacement'].includes(key)) {
         return sourceKind === 'html' || /<\/?[a-z][\s\S]*>/i.test(String(parent[key] || ''))
             ? 'html'
@@ -435,9 +438,17 @@ async function getSection(args) {
     }, 'docx');
 }
 
+function defaultSourceKind(args = {}) {
+    const endpoint = endpointFor(args);
+    if (endpoint === 'docx') return 'markdown-hybrid';
+    if (endpoint === 'pptx') return 'html';
+    // 未指定端点时不强加旧范式，让窗口端口按当前文档类型选择真源。
+    return undefined;
+}
+
 async function getSource(args) {
     return call(args, 'getSource', {
-        sourceKind: args.sourceKind || 'html',
+        sourceKind: args.sourceKind || defaultSourceKind(args),
         slideIndex: args.slideIndex,
         startLine: args.startLine,
         endLine: args.endLine,
@@ -459,7 +470,7 @@ async function searchSource(args) {
 
 async function getViewportSource(args) {
     return call(args, 'getViewportSource', {
-        sourceKind: args.sourceKind || 'html',
+        sourceKind: args.sourceKind || defaultSourceKind(args),
         radius: args.radius,
     });
 }
@@ -498,7 +509,7 @@ async function submitSourcePr(args, executionContext = {}) {
     const maid = authorFromMaid(args, executionContext);
     return call(args, 'submitSourcePr', {
         requestId: requestIdOf(args, executionContext),
-        sourceKind: args.sourceKind || 'html',
+        sourceKind: args.sourceKind || defaultSourceKind(args),
         slideIndex: args.slideIndex,
         replacements,
         expectedRevision: args.expectedRevision,
@@ -589,7 +600,7 @@ async function createProject(args, executionContext = {}) {
 
     if (!deck && !source.trim()) {
         throw new Error(
-            '[ScriptoriumCollaborator] 创建 DOCX 必须通过 source 一次提交包含 <style>、完整正文 HTML、依赖声明和内联 <script> 的唯一完整源码。'
+            '[ScriptoriumCollaborator] 创建 VDOCX 必须通过 source 提交非空 Markdown-first 混合源码；文档级样式请使用 documentCss。'
         );
     }
     if (deck && (!slides.length || slides.some((slide) =>
@@ -606,6 +617,7 @@ async function createProject(args, executionContext = {}) {
         fileName: args.fileName,
         title: args.title,
         source: deck ? undefined : source,
+        documentCss: deck ? undefined : String(args.documentCss || ''),
         deckCss: deck ? String(args.deckCss || '') : undefined,
         slides: deck ? slides : undefined,
         page: config.page,
@@ -811,6 +823,7 @@ module.exports = {
         parseArray,
         booleanOf,
         presentationConfigFromArgs,
+        defaultSourceKind,
         authorFromMaid,
         endpointFor,
         resetForTests,

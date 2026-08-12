@@ -67,6 +67,8 @@
         const lineagePort = context.lineagePort;
         const core = context.core;
         const diff = context.prDiff;
+        const containerModule = context.containerModule;
+        const programmableContent = context.programmableContent;
         if (!documentPort || !lineagePort || !core || !diff) {
             throw new TypeError(
                 'Agent controller requires DocumentPort, LineagePort, VDocCore and PR diff.'
@@ -106,10 +108,11 @@
         function sourceFor(sourceKind, slideIndex = null) {
             const current = adapter();
             if (current.kind === 'flow') {
-                if (sourceKind && sourceKind !== 'markdown-hybrid') {
-                    throw new Error('VDOCX 仅支持 markdown-hybrid。');
+                if (!sourceKind || sourceKind === 'markdown-hybrid') {
+                    return current.currentSource();
                 }
-                return current.currentSource();
+                if (sourceKind === 'document-css') return current.currentCss();
+                throw new Error('VDOCX 仅支持 markdown-hybrid 或 document-css。');
             }
             if (sourceKind === 'deck-css') return current.currentCss();
             const index = slideIndex === null || slideIndex === undefined
@@ -198,8 +201,124 @@
             });
         }
 
+        function markdownHeadingIndex(sourceValue) {
+            const source = String(sourceValue || '');
+            const lines = source.split(/\r\n?|\n/);
+            const offsets = [];
+            let offset = 0;
+            lines.forEach((line) => {
+                offsets.push(offset);
+                offset += line.length + 1;
+            });
+
+            const headings = [];
+            let fence = null;
+            lines.forEach((line, lineIndex) => {
+                const fenceMatch = line.match(/^ {0,3}(`{3,}|~{3,})/);
+                if (fenceMatch) {
+                    if (!fence) fence = fenceMatch[1][0];
+                    else if (fence === fenceMatch[1][0]) fence = null;
+                    return;
+                }
+                if (fence) return;
+
+                const atx = line.match(/^ {0,3}(#{1,6})[ \t]+(.+?)[ \t]*#*[ \t]*$/);
+                const setext = lineIndex + 1 < lines.length
+                    ? lines[lineIndex + 1].match(/^ {0,3}(=+|-+)[ \t]*$/)
+                    : null;
+                const text = atx
+                    ? atx[2].trim()
+                    : setext && line.trim()
+                        ? line.trim()
+                        : '';
+                if (!text) return;
+                const level = atx ? atx[1].length : (setext[1][0] === '=' ? 1 : 2);
+                const start = offsets[lineIndex];
+                headings.push({
+                    id: `heading-${start}-${simpleHash(text)}`,
+                    index: headings.length,
+                    kind: 'heading',
+                    level,
+                    text,
+                    start,
+                    startLine: lineIndex + 1,
+                    headingEndLine: lineIndex + (atx ? 1 : 2),
+                });
+            });
+            headings.forEach((heading, index) => {
+                const next = headings.slice(index + 1)
+                    .find((candidate) => candidate.level <= heading.level);
+                heading.end = next ? next.start : source.length;
+                heading.endLine = next
+                    ? Math.max(heading.startLine, next.startLine - 1)
+                    : lines.length;
+            });
+            return headings;
+        }
+
+        function simpleHash(value) {
+            const source = String(value || '');
+            let hash = 0x811c9dc5;
+            for (let index = 0; index < source.length; index += 1) {
+                hash ^= source.charCodeAt(index);
+                hash = Math.imul(hash, 0x01000193);
+            }
+            return (hash >>> 0).toString(16).padStart(8, '0');
+        }
+
         function outline() {
-            return response({ items: adapter().outline() });
+            const current = adapter();
+            if (current.kind === 'flow') {
+                const headings = markdownHeadingIndex(current.currentSource());
+                return response({
+                    sourceKind: 'markdown-hybrid',
+                    items: headings.map(({ start, end, ...heading }) => ({
+                        ...heading,
+                        sourceRange: { start, end },
+                    })),
+                });
+            }
+            return response({ items: current.outline() });
+        }
+
+        function section(options = {}) {
+            const current = adapter();
+            if (current.kind !== 'flow') {
+                throw new Error('GetSection 仅适用于 VDOCX。');
+            }
+            const source = current.currentSource();
+            const headings = markdownHeadingIndex(source);
+            const requestedId = String(options.id || '');
+            const requestedIndex = Number(options.index);
+            const heading = requestedId
+                ? headings.find((item) => item.id === requestedId)
+                : headings[Number.isInteger(requestedIndex) ? requestedIndex : -1];
+            if (!heading) throw new Error('指定章节不存在。请先调用 GetOutline 获取章节 ID 或索引。');
+            const sectionSource = source.slice(heading.start, heading.end)
+                .replace(/\s+$/, '');
+            const compiled = context.hybridCompiler?.compile?.(sectionSource, {
+                sanitizeHtml: core.sanitizeHtml,
+            });
+            return response({
+                sourceKind: 'markdown-hybrid',
+                heading: {
+                    id: heading.id,
+                    index: heading.index,
+                    text: heading.text,
+                    level: heading.level,
+                },
+                startLine: heading.startLine,
+                endLine: heading.endLine,
+                sourceRange: {
+                    start: heading.start,
+                    end: heading.end,
+                },
+                source: sectionSource,
+                renderedText: compiled
+                    ? textFromHtml(compiled.html)
+                    : sectionSource,
+                diagnostics: compiled?.diagnostics || [],
+            });
         }
 
         function searchSource(options = {}) {
@@ -208,7 +327,7 @@
                 ? (
                     current.kind === 'deck'
                         ? ['html', 'deck-css']
-                        : ['markdown-hybrid']
+                        : ['markdown-hybrid', 'document-css']
                 )
                 : [
                     options.sourceKind
@@ -236,6 +355,119 @@
             return response({
                 query: options.query,
                 results: results.slice(0, 200),
+            });
+        }
+
+        function viewportSource(options = {}) {
+            const current = adapter();
+            const kind = options.sourceKind
+                || (current.kind === 'deck' ? 'html' : 'markdown-hybrid');
+            const source = sourceFor(kind);
+            if (kind === 'deck-css' || kind === 'document-css') {
+                return getSource({
+                    sourceKind: kind,
+                    startLine: options.startLine,
+                    endLine: options.endLine,
+                });
+            }
+
+            const root = context.surfacePort?.activeRoot?.()
+                || context.surfacePort?.editRoot?.()
+                || null;
+            const shells = root
+                ? [...root.querySelectorAll('[data-vdoc-edit-key]')]
+                : [];
+            const visible = shells.filter((node) => {
+                const rect = node.getBoundingClientRect();
+                return rect.bottom >= 0
+                    && rect.top <= window.innerHeight
+                    && rect.right >= 0
+                    && rect.left <= window.innerWidth;
+            });
+            const compiled = current.kind === 'flow' ? current.compile() : null;
+            const visibleKeys = visible.map((node) =>
+                String(node.dataset.vdocEditKey || '')
+            ).filter(Boolean);
+            const visibleRegions = compiled
+                ? compiled.editRegions.filter((region) =>
+                    visibleKeys.includes(region.key)
+                )
+                : [];
+            const sourceStart = visibleRegions.length
+                ? Math.min(...visibleRegions.map((region) => region.sourceRange.start))
+                : 0;
+            const sourceEnd = visibleRegions.length
+                ? Math.max(...visibleRegions.map((region) => region.sourceRange.end))
+                : source.length;
+            const lines = source.replace(/\r\n?/g, '\n').split('\n');
+            const firstLine = source.slice(0, sourceStart).replace(/\r\n?/g, '\n')
+                .split('\n').length;
+            const lastLine = source.slice(0, sourceEnd).replace(/\r\n?/g, '\n')
+                .split('\n').length;
+            const radius = Math.max(1, Math.min(200, Number(options.radius) || 40));
+            const startLine = Math.max(1, firstLine - radius);
+            const endLine = Math.min(lines.length, lastLine + radius);
+            return response({
+                sourceKind: kind,
+                slideIndex: current.kind === 'deck'
+                    ? current.activeSlideIndex()
+                    : null,
+                startLine,
+                endLine,
+                totalLines: lines.length,
+                visibleBlockIds: visibleKeys,
+                source: lines.slice(startLine - 1, endLine).join('\n'),
+            });
+        }
+
+        async function visualContext(options = {}) {
+            const current = adapter();
+            if (current.kind === 'deck' && options.slideIndex !== undefined) {
+                current.selectSlide(Number(options.slideIndex));
+            }
+            const stabilizationMs = Math.max(
+                0,
+                Math.min(30000, Number(options.stabilizationMs) || 0)
+            );
+            if (stabilizationMs) {
+                await new Promise((resolve) =>
+                    window.setTimeout(resolve, stabilizationMs)
+                );
+            }
+            await new Promise((resolve) =>
+                requestAnimationFrame(() => requestAnimationFrame(resolve))
+            );
+            const root = context.surfacePort?.activeRoot?.()
+                || context.surfacePort?.editRoot?.();
+            const host = root?.host;
+            const rect = host?.getBoundingClientRect?.();
+            const semantic = renderedText({
+                slideIndex: current.kind === 'deck'
+                    ? current.activeSlideIndex()
+                    : undefined,
+            });
+            return response({
+                title: documentPort.document()?.manifest?.title || '',
+                scope: options.scope || (
+                    current.kind === 'deck' ? 'slide' : 'viewport'
+                ),
+                activeSlideIndex: current.kind === 'deck'
+                    ? current.activeSlideIndex()
+                    : null,
+                renderedText: current.kind === 'deck'
+                    ? semantic.pages?.[0]?.text || ''
+                    : semantic.text || '',
+                captureRect: rect ? {
+                    x: rect.x,
+                    y: rect.y,
+                    width: rect.width,
+                    height: rect.height,
+                } : null,
+                visualStability: {
+                    stabilizationMs,
+                    slideChanged: current.kind === 'deck'
+                        && options.slideIndex !== undefined,
+                },
             });
         }
 
@@ -333,6 +565,20 @@
             if (!preliminary.success) {
                 return Promise.resolve(response(preliminary));
             }
+            if (current.kind === 'flow' && sourceKind === 'markdown-hybrid') {
+                const validation = context.hybridCompiler?.validate?.(
+                    preliminary.source
+                );
+                if (validation && !validation.valid) {
+                    return Promise.resolve(response({
+                        success: false,
+                        code: 'HYBRID_SOURCE_INVALID',
+                        message: '提案会产生无效的 Markdown-first 混合源码，已拒绝进入审批。',
+                        diagnostics: validation.diagnostics,
+                        islands: validation.islands,
+                    }));
+                }
+            }
             return queueProposal(payload, {
                 type: 'source-replace',
                 sourceKind,
@@ -346,6 +592,7 @@
                 );
                 if (!result.success) return result;
                 const changed = sourceKind === 'deck-css'
+                    || sourceKind === 'document-css'
                     ? active.replaceCurrentCss(result.source, {
                         reason: 'agent-source-pr',
                     })
@@ -424,6 +671,170 @@
             });
         }
 
+        function updatePresentationConfig(payload = {}) {
+            const current = adapter();
+            if (current.kind !== 'deck') {
+                return Promise.resolve({
+                    success: false,
+                    code: 'PPTX_REQUIRED',
+                    message: '演示配置仅适用于 VPPTX。',
+                });
+            }
+            const currentScene = core.createSceneConfig(
+                documentPort.document().manifest.scene
+            );
+            const proposalScene = core.createSceneConfig({
+                ...currentScene,
+                kind: core.PROJECT_KINDS.SLIDE_DECK,
+                page: {
+                    ...currentScene.page,
+                    ...(payload.page || {}),
+                },
+                presentation: {
+                    ...currentScene.presentation,
+                    ...(payload.presentation || {}),
+                },
+            });
+            return queueProposal(payload, {
+                type: 'presentation-config',
+                scene: proposalScene,
+            }, () => ({
+                success: current.updateScene(proposalScene, {
+                    reason: 'agent-presentation-config',
+                }) !== false,
+                operation: {
+                    type: 'presentation-config',
+                    scene: proposalScene,
+                },
+            }));
+        }
+
+        function programmableReview(sources, documentKind) {
+            const diagnostics = [];
+            const dependencies = new Set();
+            (sources || []).forEach((source, sourceIndex) => {
+                programmableContent?.reviewScriptsInHtml?.(source, {
+                    documentKind,
+                    surface: 'project-artifact',
+                    sourceIndex,
+                }).forEach((entry) => {
+                    if (entry.dependency?.library) {
+                        dependencies.add(entry.dependency.library);
+                    }
+                    if (entry.review) {
+                        entry.review.dependencies?.forEach((dependency) =>
+                            dependencies.add(dependency)
+                        );
+                        entry.review.findings?.forEach((finding) =>
+                            diagnostics.push({
+                                ...finding,
+                                sourceIndex,
+                                scriptId: entry.scriptId,
+                            })
+                        );
+                    }
+                    if (entry.dependency?.level) {
+                        diagnostics.push({
+                            level: entry.dependency.level,
+                            ruleId: entry.dependency.code || 'script-dependency',
+                            message: entry.dependency.message,
+                            sourceIndex,
+                            scriptId: entry.scriptId,
+                        });
+                    }
+                });
+            });
+            const refused = diagnostics.some((item) => item.level === 'refuse');
+            return {
+                status: refused
+                    ? 'refuse'
+                    : diagnostics.some((item) => item.level === 'warn')
+                        ? 'warn'
+                        : 'allow',
+                dependencies: [...dependencies],
+                diagnostics,
+            };
+        }
+
+        async function buildProjectArtifact(payload = {}) {
+            if (!containerModule?.pack) {
+                throw new Error('Scriptorium 工程容器模块不可用。');
+            }
+            const projectType = String(payload.projectType || '').toLowerCase();
+            const deck = ['pptx', 'vpptx'].includes(projectType);
+            if (!deck && !['docx', 'vdocx'].includes(projectType)) {
+                throw new Error('projectType 必须为 docx 或 pptx。');
+            }
+            const source = String(payload.source || '');
+            const slides = Array.isArray(payload.slides) ? payload.slides : [];
+            if (!deck && !source.trim()) throw new Error('VDOCX source 不能为空。');
+            if (deck && (!slides.length || slides.some((slide) =>
+                !String(slide?.source || '').trim()
+            ))) {
+                throw new Error('VPPTX slides 必须包含至少一页完整 source。');
+            }
+
+            const sources = deck
+                ? slides.map((slide) => String(slide.source || ''))
+                : [source];
+            const review = programmableReview(
+                sources,
+                deck ? 'pptx' : 'docx'
+            );
+            if (review.status === 'refuse') {
+                return {
+                    success: false,
+                    code: 'PROGRAMMABLE_CONTENT_REFUSED',
+                    message: '可编程内容未通过安全审查。',
+                    programmableContent: review,
+                };
+            }
+            if (!deck) {
+                const validation = context.hybridCompiler?.validate?.(source);
+                if (validation && !validation.valid) {
+                    return {
+                        success: false,
+                        code: 'HYBRID_SOURCE_INVALID',
+                        message: 'Markdown-first 混合源码未通过校验。',
+                        programmableContent: {
+                            ...review,
+                            status: 'refuse',
+                            diagnostics: [
+                                ...review.diagnostics,
+                                ...validation.diagnostics,
+                            ],
+                        },
+                    };
+                }
+            }
+
+            const model = core.createDocument({
+                title: payload.title || (deck ? '未命名演示' : '未命名文稿'),
+                kind: deck
+                    ? core.PROJECT_KINDS.SLIDE_DECK
+                    : core.PROJECT_KINDS.FLOW_DOCUMENT,
+                source: deck ? undefined : source,
+                documentCss: deck ? undefined : payload.documentCss,
+                deckCss: deck ? payload.deckCss : undefined,
+                slides: deck ? slides : undefined,
+                page: payload.page,
+                presentation: payload.presentation,
+            });
+            model.manifest.programmableDependencies = review.dependencies
+                .filter((dependency) => ['anime', 'three'].includes(dependency));
+            const bytes = await containerModule.pack(model, new Map());
+            return {
+                success: true,
+                documentId: model.manifest.id,
+                title: model.manifest.title,
+                suggestedName: `${
+                    model.manifest.title || (deck ? '未命名演示' : '未命名文稿')
+                }${deck ? '.vpptx' : '.vdocx'}`,
+                bytes,
+                programmableContent: review,
+            };
+        }
+
         function approvePr(prId, options = {}) {
             const entry = pending.get(String(prId || ''));
             if (!entry) {
@@ -445,7 +856,8 @@
             pending.delete(entry.record.id);
             const receipt = createReceipt('approved', options);
             const task = mutationQueue.then(async () => {
-                if (entry.documentId !== status().documentId) {
+                const activeStatus = status();
+                if (entry.documentId !== activeStatus.documentId) {
                     lineagePort.update(entry.record.id, {
                         status: 'conflict',
                         reviewedAt: Date.now(),
@@ -458,6 +870,26 @@
                         success: false,
                         code: 'DOCUMENT_CONTEXT_CHANGED',
                         message: '当前窗口已切换到另一份文档。',
+                    };
+                    entry.resolve(conflict);
+                    return conflict;
+                }
+                if (Number(entry.record.baseRevision) !== activeStatus.revision) {
+                    lineagePort.update(entry.record.id, {
+                        status: 'conflict',
+                        reviewedAt: Date.now(),
+                        receipt: {
+                            ...receipt,
+                            decision: 'conflict',
+                            message: `文档修订已从 ${entry.record.baseRevision} 变为 ${activeStatus.revision}，提案未应用。`,
+                        },
+                    });
+                    const conflict = {
+                        success: false,
+                        code: 'DOCUMENT_REVISION_CONFLICT',
+                        message: '提案基础修订与当前文档修订不一致，请重新读取源码后提交。',
+                        expectedRevision: entry.record.baseRevision,
+                        actualRevision: activeStatus.revision,
                     };
                     entry.resolve(conflict);
                     return conflict;
@@ -551,12 +983,16 @@
             getOutline: outline,
             getSource,
             searchSource,
+            getViewportSource: viewportSource,
+            getVisualContext: visualContext,
             getPrHistory: history,
             submitSourcePr,
+            buildProjectArtifact,
         });
         const docx = Object.freeze({
             ...common,
             getFullText: renderedText,
+            getSection: section,
         });
         const pptx = Object.freeze({
             ...common,
@@ -576,6 +1012,8 @@
             addSlide: (payload) => mutateSlides(payload, 'add'),
             insertSlide: (payload) => mutateSlides(payload, 'insert'),
             deleteSlide: (payload) => mutateSlides(payload, 'delete'),
+            updatePresentationConfig,
+            updateSceneConfig: updatePresentationConfig,
         });
 
         function dispose() {
