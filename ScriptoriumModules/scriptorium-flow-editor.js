@@ -264,8 +264,55 @@
             return lines.map((line) => editableDomText(line)).join('\n');
         }
 
+        function editorSelectionOffsets(editable) {
+            const range = selectionPrimitives.cloneLiveRange(
+                editable?.getRootNode?.() || state.root
+            );
+            if (!range || !editable?.contains(range.startContainer)
+                || !editable.contains(range.endContainer)) {
+                return null;
+            }
+            if (!editable.classList?.contains('vdoc-md-live-preview-run')) {
+                return selectionPrimitives.rangeOffsetsWithin(editable, range);
+            }
+
+            const lines = [...editable.children].filter((child) =>
+                child.classList?.contains('vdoc-md-live-preview-line')
+            );
+            const endpoint = (node, offset) => {
+                const element = selectionPrimitives.elementOf(node);
+                const line = element?.closest?.('.vdoc-md-live-preview-line');
+                const lineIndex = lines.indexOf(line);
+                if (lineIndex < 0) return null;
+                const local = selectionPrimitives.textOffsetWithin(
+                    line,
+                    node,
+                    offset
+                );
+                if (!Number.isFinite(local)) return null;
+                const prefix = lines.slice(0, lineIndex)
+                    .reduce((length, candidate) =>
+                        length + editableDomText(candidate).length + 1,
+                    0);
+                return prefix + Math.min(
+                    editableDomText(line).length,
+                    local
+                );
+            };
+            const start = endpoint(range.startContainer, range.startOffset);
+            const end = endpoint(range.endContainer, range.endOffset);
+            if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
+            return Object.freeze({
+                start: Math.min(start, end),
+                end: Math.max(start, end),
+                collapsed: range.collapsed,
+            });
+        }
+
         function pastedMarkdownText(value) {
-            return String(value || '').replace(/\r\n?/g, '\n');
+            return String(value || '')
+                .replace(/\r\n?/g, '\n')
+                .replace(/\n/g, '  \n\u200B');
         }
 
         function refreshLocalMarkers(session, sourceStart, sourceEnd = sourceStart) {
@@ -713,20 +760,30 @@
                 Math.min(source.length, Number(end) || selectionStart)
             );
 
-            // textPointAt() 会把 “源码末尾换行之后” 定位到换行文本节点末端，
-            // 而不是末尾空行内部。浏览器随后输入的文字会落在两个块之间，
-            // 导致下一轮可视编辑树重建时重新并回上一行。
-            if (selectionStart === source.length
-                && selectionEnd === source.length
-                && source.endsWith('\n')) {
-                const trailingLine = editor.querySelector(
-                    '.vdoc-md-live-preview-line:last-child'
-                );
-                if (trailingLine
-                    && !String(trailingLine.textContent || '').length) {
-                    return selectionPrimitives.selectNodeContents(
-                        trailingLine,
-                        { collapse: 'start' }
+            const lines = editor.classList?.contains(
+                'vdoc-md-live-preview-run'
+            )
+                ? [...editor.children].filter((child) =>
+                    child.classList?.contains('vdoc-md-live-preview-line')
+                )
+                : [];
+            if (lines.length) {
+                const pointForOffset = (offset) => {
+                    const before = source.slice(0, offset);
+                    const lineIndex = (before.match(/\n/g) || []).length;
+                    const lineStart = before.lastIndexOf('\n') + 1;
+                    return {
+                        line: lines[Math.min(lineIndex, lines.length - 1)],
+                        offset: offset - lineStart,
+                    };
+                };
+                const startPoint = pointForOffset(selectionStart);
+                const endPoint = pointForOffset(selectionEnd);
+                if (startPoint.line === endPoint.line && startPoint.line) {
+                    return selectionPrimitives.restoreOffsets(
+                        startPoint.line,
+                        startPoint.offset,
+                        endPoint.offset
                     );
                 }
             }
@@ -840,8 +897,7 @@
                     if (!placed) {
                         selectionPrimitives.restoreOffsets(editor, localOffset);
                     }
-                    const offsets =
-                        selectionPrimitives.currentOffsets(editor);
+                    const offsets = editorSelectionOffsets(editor);
                     refreshLocalMarkers(
                         session,
                         offsets?.start ?? localOffset,
@@ -858,8 +914,7 @@
                             clickPoint,
                             { scope: editor }
                         );
-                        const settled =
-                            selectionPrimitives.currentOffsets(editor);
+                        const settled = editorSelectionOffsets(editor);
                         refreshLocalMarkers(
                             session,
                             settled?.start ?? offsets?.start ?? localOffset,
@@ -1474,7 +1529,7 @@
 
         function replaceActiveSelection(session, insertion, reason) {
             const offsets = session?.editable?.isConnected
-                ? selectionPrimitives.currentOffsets(session.editable)
+                ? editorSelectionOffsets(session.editable)
                 : null;
             return commitSessionInsertion(
                 session,
@@ -1503,7 +1558,7 @@
                 : beginSession(shell, editable);
             if (!session || session.region.type !== 'markdown') return false;
 
-            const offsets = selectionPrimitives.currentOffsets(editable);
+            const offsets = editorSelectionOffsets(editable);
             if (!offsets || !offsets.collapsed) return false;
             const text = editableSourceText(editable);
 
@@ -1536,9 +1591,9 @@
                 // 硬换行直接提交到文档模型。beforeinput 保留为平台差异兜底。
                 return commitSessionInsertion(
                     session,
-                    '\n',
+                    '  \n\u200B',
                     offsets,
-                    'flow-keydown-line-break'
+                    'flow-keydown-hard-line-break'
                 );
             }
             return false;
@@ -1555,7 +1610,7 @@
             const nextText = editableSourceText(session.editable);
             if (nextText === session.previousText) return false;
             const selectionOffsets =
-                selectionPrimitives.currentOffsets(session.editable);
+                editorSelectionOffsets(session.editable);
             if (!sourceHashValid(session.region)) {
                 notificationPort.show?.(
                     '当前编辑区源码映射已过期，输入未写入源码。',
@@ -1648,8 +1703,7 @@
                     ? state.activeSession
                     : beginSession(shell, editable);
                 if (!session || session.region.type !== 'markdown') return;
-                const offsets =
-                    selectionPrimitives.currentOffsets(editable);
+                const offsets = editorSelectionOffsets(editable);
                 if (!offsets) return;
                 const text = event.clipboardData?.getData('text/plain');
                 if (text === undefined || text === null) return;
@@ -1703,8 +1757,7 @@
                     ? state.activeSession
                     : beginSession(shell, editable);
                 if (!session || session.region.type !== 'markdown') return;
-                const offsets =
-                    selectionPrimitives.currentOffsets(editable);
+                const offsets = editorSelectionOffsets(editable);
                 if (!offsets) return;
 
                 if (event.inputType === 'insertParagraph'
@@ -1714,9 +1767,9 @@
                     // contenteditable DOM，避免出现“UI 换行、源码没变”。
                     commitSessionInsertion(
                         session,
-                        '\n',
+                        '  \n\u200B',
                         offsets,
-                        'flow-beforeinput-line-break'
+                        'flow-beforeinput-hard-line-break'
                     );
                     return;
                 }
@@ -1764,7 +1817,7 @@
                         : beginSession(shell, editable))
                     : null;
                 state.compositionOffsets = state.compositionSession
-                    ? selectionPrimitives.currentOffsets(editable)
+                    ? editorSelectionOffsets(editable)
                     : null;
             }, options);
             root.addEventListener('compositionend', (event) => {
@@ -1812,7 +1865,7 @@
                 }
                 const session = state.activeSession;
                 const offsets = session?.editable?.isConnected
-                    ? selectionPrimitives.currentOffsets(session.editable)
+                    ? editorSelectionOffsets(session.editable)
                     : null;
                 if (offsets) {
                     refreshLocalMarkers(
