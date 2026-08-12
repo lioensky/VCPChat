@@ -394,10 +394,16 @@
                     const islandLifecycle = islandLifecycles.get(island)
                         || createLifecycle();
                     islandLifecycles.set(island, islandLifecycle);
+                    // 生命周期一旦被释放，旧初始化哨兵不得阻止新运行时
+                    // 在当前 DOM 岛上重新建立动画、事件及清理句柄。
                     island.removeAttribute('data-bound');
-                    island.querySelectorAll('[data-bound]').forEach((node) =>
-                        node.removeAttribute('data-bound')
-                    );
+                    island.removeAttribute('data-vdoc-initialized');
+                    island.querySelectorAll(
+                        '[data-bound], [data-vdoc-initialized]'
+                    ).forEach((node) => {
+                        node.removeAttribute('data-bound');
+                        node.removeAttribute('data-vdoc-initialized');
+                    });
                     markGeneratedNodes(island, islandLifecycle);
                     findings.push(...executeScript({
                         source: scriptElement.textContent || '',
@@ -419,7 +425,10 @@
                     }
                 });
             }, {
-                root: input.scrollHost || null,
+                // 岛位于 ShadowRoot 内，外层滚动容器不是标准 DOM
+                // contains() 意义下的祖先。使用顶层视口观察，由浏览器
+                // 自动把全部滚动及 overflow 祖先纳入相交裁剪。
+                root: null,
                 rootMargin: '100% 0px',
                 threshold: 0,
             });
@@ -476,7 +485,7 @@
             const status = documentPort.status();
             const identity = [
                 status.generation,
-                status.revision,
+                status.documentId || 'document',
                 input.adapter.kind,
                 surface,
             ].join(':');

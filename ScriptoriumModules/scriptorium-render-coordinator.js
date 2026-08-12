@@ -93,15 +93,28 @@
             }
 
             state.editSurface?.dispose?.();
+            const scrollHost =
+                options.scrollHost || context.editScrollHost;
             state.editSurface = adapter.renderEditSurface(target, {
                 ...options,
                 zoom: state.zoom,
-                scrollHost: options.scrollHost || context.editScrollHost,
+                scrollHost,
             });
             const status = documentPort.status();
             state.editRevision = status.revision;
             state.editDocumentId = status.documentId;
             state.mode = 'edit';
+
+            // 首次脚本激活必须发生在 coordinator 已正式接管 surface 之后。
+            // renderer 内部的下一帧仍作为布局完成后的幂等兜底，但动画岛
+            // 不再依赖一个可能在 surface 交接期间被取消的悬空 RAF 才能启动。
+            context.runtimePort?.activate?.({
+                kind: adapter.kind,
+                surface: 'edit',
+                root: state.editSurface.root,
+                adapter,
+                scrollHost,
+            });
             context.onRendered?.({
                 surface: 'edit',
                 adapter,
@@ -120,15 +133,24 @@
             }
 
             state.readSurface?.dispose?.();
+            const scrollHost =
+                options.scrollHost || context.readScrollHost;
             state.readSurface = adapter.renderReadSurface(target, {
                 ...options,
                 zoom: state.zoom,
-                scrollHost: options.scrollHost || context.readScrollHost,
+                scrollHost,
             });
             const status = documentPort.status();
             state.readRevision = status.revision;
             state.readDocumentId = status.documentId;
             state.mode = 'read';
+            context.runtimePort?.activate?.({
+                kind: adapter.kind,
+                surface: 'read',
+                root: state.readSurface.root,
+                adapter,
+                scrollHost,
+            });
             context.onRendered?.({
                 surface: 'read',
                 adapter,
@@ -188,9 +210,14 @@
         }
 
         function disposeSurfaces() {
+            // Surface 重建、文档替换与 adapter 切换都只是运行时会话边界，
+            // 不能永久销毁由应用级组合根持有的 RuntimeController。
+            // 各 renderer surface 的 dispose() 会释放对应运行时；这里再显式
+            // 清理一次可覆盖 surface 尚未完整建立或已提前丢失的情况。
             disposeSurface('edit');
             disposeSurface('read');
-            context.runtimePort?.dispose?.();
+            context.runtimePort?.disposeSurface?.('edit');
+            context.runtimePort?.disposeSurface?.('read');
         }
 
         function status() {
@@ -223,6 +250,8 @@
         function dispose() {
             if (state.disposed) return;
             disposeSurfaces();
+            // 只有 RenderCoordinator 自身退出时，才结束应用级运行时控制器。
+            context.runtimePort?.dispose?.();
             state.adapter = null;
             disposers.splice(0).forEach((disposeSubscription) => {
                 try {

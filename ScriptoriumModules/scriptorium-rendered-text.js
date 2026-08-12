@@ -385,6 +385,7 @@
         let registration = null;
 
         function disposeSurface() {
+            registration?.observer?.disconnect();
             registration?.abortController.abort();
             registration?.scopes?.forEach((scope) =>
                 controller.dispose(scope)
@@ -396,11 +397,11 @@
             const shell = host.closest?.(
                 '[data-vdoc-edit-key][data-vdoc-edit-type="island"]'
             );
-            return Boolean(
-                shell
-                && root.contains(shell)
-                && !host.closest('[data-vdoc-runtime-generated="true"]')
-            );
+            // data-vdoc-runtime-generated 只表示节点由岛脚本建立，用于区分
+            // 运行态 DOM 与持久源码结构；它不是禁止选择或编辑的安全边界。
+            // 动态表格、图例和数据卡片中的文字仍需通过源码文本匹配或
+            // 上下文/相对位置回退写回岛内脚本源码。
+            return Boolean(shell && root.contains(shell));
         }
 
         function islandSource(adapter, host) {
@@ -471,38 +472,136 @@
                     + '[data-vdoc-island]'
                 ),
             ];
-            scopes.forEach((scope) => {
-                controller.scan(scope, {
-                    editable: true,
-                    acceptHost: (host, node) =>
-                        editableIslandHost(host, node, root),
-                    onRecord(record) {
-                        if (record.host) hostRecords.set(record.host, record);
-                    },
+            const scanOptions = {
+                editable: false,
+                acceptHost: (host, node) =>
+                    editableIslandHost(host, node, root),
+            };
+            const scanScope = (scope) => {
+                if (!scope?.isConnected || !root.contains(scope)) return [];
+                const scoped = islandSource(adapter, scope);
+                if (!scoped) return [];
+                const records = controller.scan(scope, scanOptions);
+                const textNodeCount = records.length;
+                records.forEach((record) => {
+                    const host = editableHostFor(
+                        record.node,
+                        scope,
+                        scanOptions
+                    );
+                    if (!host) return;
+
+                    // contenteditable 作用于元素而非 Text 节点。只有当前元素的
+                    // 完整可见文字正好由该最小文本节点承担时，才直接开放编辑；
+                    // 避免把“第 <span>3</span> 页”整个混合父元素错误视为一个
+                    // 字符串。span、td、标签和数据卡片等叶子宿主仍可独立编辑。
+                    if (normalizedText(host.textContent)
+                        !== normalizedText(record.node.nodeValue)) {
+                        return;
+                    }
+                    const range = controller.resolveSourceRange(
+                        scoped.source,
+                        record.snapshot,
+                        { textNodeCount }
+                    );
+                    if (!range) {
+                        // 占位符或纯计算结果仍可参与浏览器原生选择，但不会进入
+                        // 输入态；“可见文字”与“可可靠写回源码”在这里明确解耦。
+                        return;
+                    }
+                    record.sourceRange = range;
+                    record.host = makeEditable(
+                        record.node,
+                        scope,
+                        scanOptions
+                    );
+                    if (record.host) hostRecords.set(record.host, record);
                 });
+                return records;
+            };
+            scopes.forEach(scanScope);
+
+            // 岛脚本通常在静态 Surface 建立后才生成表格行、图例或数据卡片。
+            // 监听子树结构变化，为后插入文字增量建立可编辑宿主和双重源码定位
+            // 快照。只观察 childList，避免用户输入文字时刷新正在提交的快照。
+            const observer = new MutationObserver((records) => {
+                const changedScopes = new Set();
+                records.forEach((record) => {
+                    const scope = record.target?.closest?.('[data-vdoc-island]');
+                    if (scope && scopes.includes(scope)) {
+                        changedScopes.add(scope);
+                    }
+                });
+                changedScopes.forEach(scanScope);
             });
+            scopes.forEach((scope) => observer.observe(scope, {
+                childList: true,
+                subtree: true,
+            }));
+
             registration = {
                 root,
                 scopes,
                 adapter,
                 abortController,
                 hostRecords,
+                observer,
             };
 
-            root.addEventListener('input', (event) => {
+            // MutationObserver 在当前任务结束后运行。用户若恰好在动态节点刚
+            // 插入的同一帧点击，必须在浏览器建立默认 Selection 前同步补扫。
+            root.addEventListener('pointerdown', (event) => {
+                if (event.button !== 0) return;
+                const scope = event.target.closest?.('[data-vdoc-island]');
+                if (!scope || !scopes.includes(scope)) return;
+                scanScope(scope);
+            }, {
+                capture: true,
+                signal: abortController.signal,
+            });
+
+            const sessions = new WeakMap();
+            root.addEventListener('focusin', (event) => {
                 const host = event.target.closest?.(
                     '[data-vdoc-rendered-text-editable="true"]'
                 );
                 if (!host || !root.contains(host)) return;
                 const record = hostRecords.get(host);
                 if (!record) return;
+                sessions.set(host, {
+                    record,
+                    previousText: normalizedText(host.textContent),
+                });
+            }, { signal: abortController.signal });
+
+            // 输入期间只允许浏览器修改当前最小 DOM 宿主。源码提交推迟到
+            // focusout，避免每次按键都改变 revision、重编译岛并重启脚本。
+            root.addEventListener('focusout', (event) => {
+                const host = event.target.closest?.(
+                    '[data-vdoc-rendered-text-editable="true"]'
+                );
+                if (!host || !root.contains(host)) return;
+                const session = sessions.get(host);
+                sessions.delete(host);
+                if (!session) return;
                 const nextText = normalizedText(host.textContent);
-                if (applyFlowInput(adapter, host, record, nextText)) {
-                    record.snapshot = {
-                        ...record.snapshot,
+                if (nextText === session.previousText) return;
+                if (applyFlowInput(
+                    adapter,
+                    host,
+                    session.record,
+                    nextText
+                )) {
+                    session.record.snapshot = {
+                        ...session.record.snapshot,
                         text: nextText,
                     };
+                    return;
                 }
+
+                // 映射在编辑期间因外部源码变化而失效时，不留下“看似改好但
+                // 无法保存”的运行态假象；恢复进入编辑前的可持久文本。
+                host.textContent = session.previousText;
             }, { signal: abortController.signal });
 
             return true;
