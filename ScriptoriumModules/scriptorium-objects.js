@@ -658,6 +658,7 @@
             selectedNode: null,
             drag: null,
             rootAbort: null,
+            uiAbort: null,
             draftOriginal: null,
         };
 
@@ -665,8 +666,8 @@
             return context.getRoot?.() || null;
         }
 
-        function deck() {
-            return context.isSlideDeck?.() === true;
+        function freeCanvas() {
+            return context.layoutPort?.mode?.() === 'free-canvas';
         }
 
         function selected() {
@@ -741,10 +742,10 @@
             const node = selected();
             if (!menu || !node) return;
             menu.querySelectorAll('[data-object-deck-only]').forEach((control) => {
-                control.hidden = !deck();
+                control.hidden = !freeCanvas();
             });
             menu.querySelectorAll('[data-object-flow-only]').forEach((control) => {
-                control.hidden = deck();
+                control.hidden = freeCanvas();
             });
             menu.hidden = false;
             const width = 210;
@@ -832,7 +833,7 @@
 
                 drag.object.style.width = `${Math.round(width * 10) / 10}px`;
                 drag.object.style.height = `${Math.round(height * 10) / 10}px`;
-                if (deck()) {
+                if (freeCanvas()) {
                     if (west) {
                         drag.object.style.left =
                             `${Math.round((drag.originalLeft + drag.originalWidth - width) * 10) / 10}px`;
@@ -842,7 +843,7 @@
                             `${Math.round((drag.originalTop + drag.originalHeight - height) * 10) / 10}px`;
                     }
                 }
-            } else if (deck()) {
+            } else if (freeCanvas()) {
                 drag.object.style.left = `${Math.round((drag.originalLeft + dx / scale) * 10) / 10}px`;
                 drag.object.style.top = `${Math.round((drag.originalTop + dy / scale) * 10) / 10}px`;
             } else {
@@ -879,8 +880,8 @@
             };
             if (!drag.moved || cancelled) {
                 if (cancelled) {
-                    drag.object.style.left = deck() ? `${drag.originalLeft}px` : '';
-                    drag.object.style.top = deck() ? `${drag.originalTop}px` : '';
+                    drag.object.style.left = freeCanvas() ? `${drag.originalLeft}px` : '';
+                    drag.object.style.top = freeCanvas() ? `${drag.originalTop}px` : '';
                     if (drag.mode === 'resize') {
                         drag.object.style.width = `${drag.originalWidth}px`;
                         drag.object.style.height = `${drag.originalHeight}px`;
@@ -893,7 +894,7 @@
                     width: drag.object.style.width,
                     height: drag.object.style.height,
                 };
-                if (deck()) {
+                if (freeCanvas()) {
                     styles.left = drag.object.style.left;
                     styles.top = drag.object.style.top;
                 }
@@ -901,11 +902,11 @@
                     type: 'geometry',
                     objectId: drag.object.dataset.vdocObjectId,
                     styles,
-                    impact: deck() ? 'geometry' : 'flow',
+                    impact: freeCanvas() ? 'geometry' : 'flow',
                 });
                 return true;
             }
-            if (deck()) {
+            if (freeCanvas()) {
                 commitAfterPointer({
                     type: 'geometry',
                     objectId: drag.object.dataset.vdocObjectId,
@@ -948,7 +949,7 @@
             ui['object-rotation-input'].value =
                 node.dataset.vdocObjectRotation || '0';
             ui['object-layout-select'].value =
-                node.dataset.vdocObjectLayout || (deck() ? 'free' : 'block');
+                node.dataset.vdocObjectLayout || (freeCanvas() ? 'free' : 'block');
             ui['object-fill-input'].value = safeColor(
                 node.dataset.vdocShapeFill,
                 '#4f8f80'
@@ -971,8 +972,8 @@
                     : '';
             ui['object-css-source-input'].value = objectCssSource(node);
             ui['object-shape-fields'].hidden = !node.matches(SHAPE_SELECTOR);
-            ui['object-layout-field'].hidden = deck();
-            ui['object-rotation-field'].hidden = !deck();
+            ui['object-layout-field'].hidden = freeCanvas();
+            ui['object-rotation-field'].hidden = !freeCanvas();
             refreshSourcePreview();
         }
 
@@ -1101,7 +1102,7 @@ ${safeCss}
         function previewInspector() {
             const node = selected();
             if (!node || !refreshSourcePreview()) return;
-            applyObjectPatch(node, inspectorPatch(), deck());
+            applyObjectPatch(node, inspectorPatch(), freeCanvas());
         }
 
         function closeInspector(cancel = false) {
@@ -1126,12 +1127,12 @@ ${safeCss}
             const node = selected();
             if (!node || !refreshSourcePreview()) return false;
             const patch = inspectorPatch();
-            applyObjectPatch(node, patch, deck());
+            applyObjectPatch(node, patch, freeCanvas());
             context.commitMutation?.({
                 type: 'update',
                 objectId: node.dataset.vdocObjectId,
                 patch,
-                impact: deck() ? 'geometry' : 'flow',
+                impact: freeCanvas() ? 'geometry' : 'flow',
             });
             closeInspector(false);
             return true;
@@ -1146,7 +1147,7 @@ ${safeCss}
                 context.commitMutation?.({
                     type: 'delete',
                     objectId: node.dataset.vdocObjectId,
-                    impact: deck() ? 'geometry' : 'flow',
+                    impact: freeCanvas() ? 'geometry' : 'flow',
                 });
                 clearSelection();
                 return true;
@@ -1240,35 +1241,45 @@ ${safeCss}
             nextRoot.querySelectorAll(`${OBJECT_SELECTOR}, .vdoc-media, .vdoc-media-batch`)
                 .forEach((node) => {
                     if (node.parentElement?.closest(OBJECT_SELECTOR)) return;
-                    normalizeObjectNode(node, deck());
+                    normalizeObjectNode(node, freeCanvas());
                 });
         }
 
         function bindUi() {
+            state.uiAbort?.abort();
+            state.uiAbort = new AbortController();
+            const options = { signal: state.uiAbort.signal };
             ui['insert-shape-btn']?.addEventListener('click', () => {
                 if (!context.canInsert?.()) return;
                 const kind = ui['shape-kind-select']?.value || 'rectangle';
-                const node = createShape(kind, { deck: deck() });
+                const node = createShape(kind, { deck: freeCanvas() });
                 context.insertObject?.(node);
-            });
+            }, options);
             ui['object-context-menu']?.addEventListener('click', (event) => {
                 const action = event.target.closest('[data-object-action]')?.dataset.objectAction;
                 if (action) runAction(action);
-            });
-            ui['object-inspector-form']?.addEventListener('input', previewInspector);
+            }, options);
+            ui['object-inspector-form']?.addEventListener(
+                'input',
+                previewInspector,
+                options
+            );
             ui['object-inspector-form']?.addEventListener('submit', (event) => {
                 event.preventDefault();
                 applyInspector();
-            });
+            }, options);
             ui['object-inspector-cancel-btn']?.addEventListener('click', () =>
                 closeInspector(true)
-            );
+            , options);
             ui['object-inspector-dialog']?.addEventListener('click', (event) => {
                 if (event.target === ui['object-inspector-dialog']) closeInspector(true);
-            });
+            }, options);
             window.addEventListener('pointerdown', (event) => {
                 if (!ui['object-context-menu']?.contains(event.target)) hideMenu();
-            }, true);
+            }, {
+                capture: true,
+                signal: state.uiAbort.signal,
+            });
         }
 
         function handleKeydown(event) {
@@ -1288,7 +1299,8 @@ ${safeCss}
                 runAction('delete');
                 return true;
             }
-            if (deck() && selected() && /^Arrow(?:Left|Right|Up|Down)$/.test(event.key)) {
+            if (freeCanvas() && selected()
+                && /^Arrow(?:Left|Right|Up|Down)$/.test(event.key)) {
                 event.preventDefault();
                 const node = selected();
                 const step = event.shiftKey ? 10 : 1;
@@ -1320,6 +1332,9 @@ ${safeCss}
             handleKeydown,
             dispose() {
                 state.rootAbort?.abort();
+                state.uiAbort?.abort();
+                state.rootAbort = null;
+                state.uiAbort = null;
                 clearSelection();
             },
         });

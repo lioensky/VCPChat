@@ -378,8 +378,141 @@
         });
     }
 
+    function createRenderedTextController(context = {}) {
+        const historyPort = context.historyPort;
+        const notificationPort = context.notificationPort || {};
+        const controller = createController();
+        let registration = null;
+
+        function disposeSurface() {
+            registration?.abortController.abort();
+            if (registration?.root) controller.dispose(registration.root);
+            registration = null;
+        }
+
+        function editableIslandHost(host, _node, root) {
+            const shell = host.closest?.(
+                '[data-vdoc-edit-key][data-vdoc-edit-type="island"]'
+            );
+            return Boolean(
+                shell
+                && root.contains(shell)
+                && !host.closest('[data-vdoc-runtime-generated="true"]')
+            );
+        }
+
+        function islandSource(adapter, host) {
+            const island = host.closest?.('[data-vdoc-island]');
+            const islandId = String(island?.dataset.vdocIsland || '');
+            if (!islandId || adapter?.kind !== 'flow') return null;
+            const compiled = adapter.compile();
+            const region = compiled.editRegions.find((candidate) =>
+                candidate.type === 'island'
+                && candidate.islandId === islandId
+            );
+            if (!region) return null;
+            return {
+                island,
+                islandId,
+                region,
+                source: adapter.currentSource().slice(
+                    region.sourceRange.start,
+                    region.sourceRange.end
+                ),
+            };
+        }
+
+        function applyFlowInput(adapter, host, record, nextText) {
+            const scoped = islandSource(adapter, host);
+            if (!scoped) return false;
+            const patch = controller.sourcePatch(
+                scoped.source,
+                record,
+                nextText,
+                {
+                    textNodeCount: textNodes(scoped.island, {
+                        requireLayout: false,
+                    }).length,
+                }
+            );
+            if (!patch) {
+                notificationPort.show?.(
+                    '无法唯一定位岛内文字，本次输入未写入源码。',
+                    'error'
+                );
+                return false;
+            }
+            const start = scoped.region.sourceRange.start;
+            const source = adapter.currentSource();
+            const nextSource = source.slice(0, start + patch.start)
+                + patch.nextText
+                + source.slice(start + patch.end);
+            if (!adapter.replaceCurrentSource(nextSource, {
+                reason: 'rendered-island-text-input',
+            })) {
+                return false;
+            }
+            historyPort?.schedule?.();
+            return true;
+        }
+
+        function activate(input = {}) {
+            disposeSurface();
+            const { root, adapter } = input;
+            if (!root || !adapter || input.kind !== 'flow') return false;
+
+            const abortController = new AbortController();
+            const hostRecords = new WeakMap();
+            const scanOptions = {
+                editable: true,
+                acceptHost: (host, node) =>
+                    editableIslandHost(host, node, root),
+                onRecord(record) {
+                    if (record.host) hostRecords.set(record.host, record);
+                },
+            };
+            controller.scan(root, scanOptions);
+            registration = {
+                root,
+                adapter,
+                abortController,
+                hostRecords,
+            };
+
+            root.addEventListener('input', (event) => {
+                const host = event.target.closest?.(
+                    '[data-vdoc-rendered-text-editable="true"]'
+                );
+                if (!host || !root.contains(host)) return;
+                const record = hostRecords.get(host);
+                if (!record) return;
+                const nextText = normalizedText(host.textContent);
+                if (applyFlowInput(adapter, host, record, nextText)) {
+                    record.snapshot = {
+                        ...record.snapshot,
+                        text: nextText,
+                    };
+                }
+            }, { signal: abortController.signal });
+
+            return true;
+        }
+
+        function dispose() {
+            disposeSurface();
+            controller.dispose();
+        }
+
+        return Object.freeze({
+            activate,
+            disposeSurface,
+            dispose,
+        });
+    }
+
     window.ScriptoriumRenderedText = Object.freeze({
         createController,
+        createRenderedTextController,
         textNodes,
         fingerprint,
         diffText,
