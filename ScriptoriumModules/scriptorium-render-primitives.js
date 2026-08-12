@@ -85,7 +85,15 @@ ${scope} table code { white-space: nowrap; }
     --vdoc-page-padding-inline: 22mm;
     --vdoc-zoom: ${zoom / 100};
 }
-.vdoc-runtime { display: block; }
+.vdoc-runtime {
+    display: block;
+    user-select: text;
+    -webkit-user-select: text;
+}
+.vdoc-runtime [data-vdoc-island] {
+    user-select: text;
+    -webkit-user-select: text;
+}
 .vdoc-runtime-paused *,
 .vdoc-runtime-paused *::before,
 .vdoc-runtime-paused *::after {

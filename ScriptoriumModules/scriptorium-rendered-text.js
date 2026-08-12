@@ -428,10 +428,19 @@
         function applyFlowInput(adapter, host, record, nextText) {
             const scoped = islandSource(adapter, host);
             if (!scoped) return false;
+            const sourceRecord = record.sourceSnapshot
+                ? {
+                    ...record,
+                    snapshot: record.sourceSnapshot,
+                }
+                : record;
+            const replacement = record.projectEditedText
+                ? record.projectEditedText(nextText)
+                : nextText;
             const patch = controller.sourcePatch(
                 scoped.source,
-                record,
-                nextText,
+                sourceRecord,
+                replacement,
                 {
                     textNodeCount: textNodes(scoped.island, {
                         requireLayout: false,
@@ -491,24 +500,50 @@
                     );
                     if (!host) return;
 
-                    // contenteditable 作用于元素而非 Text 节点。只有当前元素的
-                    // 完整可见文字正好由该最小文本节点承担时，才直接开放编辑；
-                    // 避免把“第 <span>3</span> 页”整个混合父元素错误视为一个
-                    // 字符串。span、td、标签和数据卡片等叶子宿主仍可独立编辑。
-                    if (normalizedText(host.textContent)
-                        !== normalizedText(record.node.nodeValue)) {
-                        return;
-                    }
-                    const range = controller.resolveSourceRange(
+                    // contenteditable 作用于元素而非 Text 节点。仅在宿主的全部
+                    // 文本都由当前节点承担时开放输入，避免把含多个行内 span 的
+                    // 混合父元素整体改写；各 span 叶子仍会分别参与后续扫描。
+                    const nodeText = normalizedText(record.node.nodeValue);
+                    if (normalizedText(host.textContent) !== nodeText) return;
+
+                    // 第一层：保留原始空白的节点级匹配。第二层：HTML 解析可能
+                    // 将 CRLF、缩进或标签外围换行规范化，此时改用核心可见文本
+                    // 匹配，并在提交时只投影用户编辑后的核心文字，保留源码排版。
+                    let sourceSnapshot = record.snapshot;
+                    let range = controller.resolveSourceRange(
                         scoped.source,
-                        record.snapshot,
+                        sourceSnapshot,
                         { textNodeCount }
                     );
+                    if (!range) {
+                        const coreText = nodeText.trim();
+                        if (!coreText) return;
+                        sourceSnapshot = {
+                            ...record.snapshot,
+                            text: coreText,
+                            previousText: normalizedText(
+                                record.snapshot.previousText
+                            ).trim(),
+                            nextText: normalizedText(
+                                record.snapshot.nextText
+                            ).trim(),
+                        };
+                        range = controller.resolveSourceRange(
+                            scoped.source,
+                            sourceSnapshot,
+                            { textNodeCount }
+                        );
+                        if (range) {
+                            record.projectEditedText = (value) =>
+                                normalizedText(value).trim();
+                        }
+                    }
                     if (!range) {
                         // 占位符或纯计算结果仍可参与浏览器原生选择，但不会进入
                         // 输入态；“可见文字”与“可可靠写回源码”在这里明确解耦。
                         return;
                     }
+                    record.sourceSnapshot = sourceSnapshot;
                     record.sourceRange = range;
                     record.host = makeEditable(
                         record.node,
