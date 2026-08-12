@@ -496,7 +496,6 @@
         }
 
         function queueProposal(payload, proposal, operation) {
-            status();
             const author = normalizeAuthor(payload.author || payload.maid);
             const summary = String(payload.summary || '').trim();
             if (!author || !summary) {
@@ -513,6 +512,68 @@
             );
             if (handled.has(requestId)) return handled.get(requestId);
             const current = status();
+            const expectedRevision = Number(payload.expectedRevision);
+            if (Number.isFinite(expectedRevision)
+                && expectedRevision !== current.revision) {
+                const message =
+                    `提案基于 revision ${expectedRevision}，当前文档为 revision ${
+                        current.revision
+                    }；提案未应用，文档未发生变化。`;
+                const receipt = {
+                    decision: 'conflict',
+                    message,
+                    reviewer: {
+                        id: 'scriptorium-revision-guard',
+                        name: 'Scriptorium 修订保护',
+                        type: 'human',
+                    },
+                    createdAt: Date.now(),
+                    automatic: true,
+                    policy: {
+                        source: 'revision-preflight',
+                        expectedRevision,
+                        actualRevision: current.revision,
+                    },
+                };
+                const record = lineagePort.add({
+                    id: payload.prId || `pr-${crypto.randomUUID()}`,
+                    source: 'agent',
+                    author,
+                    name: payload.name || 'Agent 源码变更',
+                    summary,
+                    note: payload.note || '',
+                    baseRevision: expectedRevision,
+                    revision: current.revision,
+                    proposal,
+                    operation: null,
+                    changeSet: null,
+                    status: 'conflict',
+                    reviewedAt: Date.now(),
+                    receipt,
+                }, { snapshot: false });
+                const conflict = {
+                    success: false,
+                    code: 'DOCUMENT_REVISION_CONFLICT',
+                    message:
+                        '提案基础修订与当前文档修订不一致，请重新读取源码后提交。',
+                    expectedRevision,
+                    actualRevision: current.revision,
+                    requestId,
+                    pending: false,
+                    terminal: true,
+                    pr: publicRecord(record),
+                    receipt,
+                };
+                const task = Promise.resolve(
+                    context.persist?.('AI 提案预检冲突') || true
+                ).then(() => conflict);
+                handled.set(requestId, task);
+                window.dispatchEvent(new CustomEvent(
+                    'scriptorium:pr-completed',
+                    { detail: conflict }
+                ));
+                return task;
+            }
             const record = lineagePort.add({
                 id: payload.prId || `pr-${crypto.randomUUID()}`,
                 source: 'agent',
@@ -820,6 +881,44 @@
                 page: payload.page,
                 presentation: payload.presentation,
             });
+            const creator = normalizeAuthor(payload.maid || payload.author);
+            if (!creator) {
+                return {
+                    success: false,
+                    code: 'AUTHOR_REQUIRED',
+                    message: 'Agent 创建工程必须提供有效 maid 署名。',
+                };
+            }
+            const createdAt = Date.parse(model.manifest.createdAt) || Date.now();
+            model.checkpoints = [{
+                id: `lineage-create-${model.manifest.id}`,
+                source: 'agent',
+                author: creator,
+                name: 'Agent 创建文档',
+                summary: String(
+                    payload.summary || `由 ${creator.name} 创建完整文档工程。`
+                ).trim(),
+                note: '',
+                createdAt,
+                baseRevision: null,
+                revision: 0,
+                operation: {
+                    type: 'project-create',
+                    documentKind: deck ? 'pptx' : 'docx',
+                },
+                proposal: null,
+                changeSet: null,
+                status: 'applied',
+                receipt: {
+                    decision: 'created',
+                    message: `文档由 ${creator.name} 创建。`,
+                    reviewer: creator,
+                    createdAt,
+                    automatic: true,
+                    policy: { source: 'agent-project-creation' },
+                },
+                snapshot: '',
+            }];
             model.manifest.programmableDependencies = review.dependencies
                 .filter((dependency) => ['anime', 'three'].includes(dependency));
             const bytes = await containerModule.pack(model, new Map());
@@ -858,40 +957,69 @@
             const task = mutationQueue.then(async () => {
                 const activeStatus = status();
                 if (entry.documentId !== activeStatus.documentId) {
+                    const conflictReceipt = {
+                        ...receipt,
+                        decision: 'conflict',
+                        message: '当前窗口已切换到另一份文档，提案未应用。',
+                    };
                     lineagePort.update(entry.record.id, {
                         status: 'conflict',
                         reviewedAt: Date.now(),
-                        receipt: {
-                            ...receipt,
-                            decision: 'conflict',
-                        },
+                        operation: null,
+                        changeSet: null,
+                        receipt: conflictReceipt,
                     });
+                    await context.persist?.('AI 提案文档上下文冲突');
                     const conflict = {
                         success: false,
                         code: 'DOCUMENT_CONTEXT_CHANGED',
-                        message: '当前窗口已切换到另一份文档。',
+                        message: conflictReceipt.message,
+                        pending: false,
+                        terminal: true,
+                        pr: publicRecord(entry.record),
+                        receipt: conflictReceipt,
                     };
                     entry.resolve(conflict);
+                    window.dispatchEvent(new CustomEvent(
+                        'scriptorium:pr-completed',
+                        { detail: conflict }
+                    ));
                     return conflict;
                 }
                 if (Number(entry.record.baseRevision) !== activeStatus.revision) {
+                    const conflictReceipt = {
+                        ...receipt,
+                        decision: 'conflict',
+                        message: `文档修订已从 ${
+                            entry.record.baseRevision
+                        } 变为 ${activeStatus.revision}，提案未应用。`,
+                    };
                     lineagePort.update(entry.record.id, {
                         status: 'conflict',
                         reviewedAt: Date.now(),
-                        receipt: {
-                            ...receipt,
-                            decision: 'conflict',
-                            message: `文档修订已从 ${entry.record.baseRevision} 变为 ${activeStatus.revision}，提案未应用。`,
-                        },
+                        revision: activeStatus.revision,
+                        operation: null,
+                        changeSet: null,
+                        receipt: conflictReceipt,
                     });
+                    await context.persist?.('AI 提案应用冲突');
                     const conflict = {
                         success: false,
                         code: 'DOCUMENT_REVISION_CONFLICT',
-                        message: '提案基础修订与当前文档修订不一致，请重新读取源码后提交。',
+                        message:
+                            '提案基础修订与当前文档修订不一致，请重新读取源码后提交。',
                         expectedRevision: entry.record.baseRevision,
                         actualRevision: activeStatus.revision,
+                        pending: false,
+                        terminal: true,
+                        pr: publicRecord(entry.record),
+                        receipt: conflictReceipt,
                     };
                     entry.resolve(conflict);
+                    window.dispatchEvent(new CustomEvent(
+                        'scriptorium:pr-completed',
+                        { detail: conflict }
+                    ));
                     return conflict;
                 }
                 const before = adapter().sourceState();

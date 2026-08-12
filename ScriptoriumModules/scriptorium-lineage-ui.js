@@ -19,6 +19,8 @@
         let abortController = null;
         let storeDisposer = null;
         const automaticApprovalTimers = new Map();
+        const avatarCache = new Map();
+        let agentDirectoryPromise = null;
         let disposed = false;
 
         function setElements(nextElements) {
@@ -63,10 +65,63 @@
                     ? '自动允许并已合并'
                     : '已应用',
                 rejected: '已拒绝',
-                conflict: '修订冲突',
+                conflict: '修订冲突 · 未应用',
                 failed: '应用失败',
             };
             return labels[record.status] || record.status || '已应用';
+        }
+
+        async function agentDirectory() {
+            if (!agentDirectoryPromise) {
+                agentDirectoryPromise = Promise.resolve(
+                    context.identityPort?.loadAgentsList?.() || []
+                ).then((agents) => Array.isArray(agents) ? agents : [])
+                    .catch(() => []);
+            }
+            return agentDirectoryPromise;
+        }
+
+        async function avatarUrlFor(record) {
+            const author = record?.author || {};
+            const key = `${record?.source || 'human'}:${
+                author.id || author.name || ''
+            }`;
+            if (avatarCache.has(key)) return avatarCache.get(key);
+            const task = (async () => {
+                if (record?.source !== 'agent') {
+                    return context.identityPort?.loadUserAvatar?.() || null;
+                }
+                const agents = await agentDirectory();
+                const authorId = String(author.id || '').trim();
+                const name = authorName(record).toLocaleLowerCase('zh-CN');
+                const matched = agents.find((agent) =>
+                    (authorId && String(
+                        agent.folder || agent.id || ''
+                    ) === authorId)
+                    || String(agent.name || '')
+                        .toLocaleLowerCase('zh-CN') === name
+                );
+                const folder = matched?.folder || matched?.id || authorId;
+                return folder
+                    ? context.identityPort?.loadAgentAvatar?.(folder) || null
+                    : null;
+            })().catch(() => null);
+            avatarCache.set(key, task);
+            return task;
+        }
+
+        function hydrateAvatar(avatar, record) {
+            avatarUrlFor(record).then((url) => {
+                if (!url || !avatar.isConnected) return;
+                avatar.style.backgroundImage = `url("${String(url)
+                    .replace(/["\\]/g, '\\$&')}")`;
+                avatar.classList.add('has-avatar');
+                avatar.setAttribute(
+                    'aria-label',
+                    `${authorName(record)} 的头像`
+                );
+                avatar.setAttribute('role', 'img');
+            });
         }
 
         function createRecordItem(record) {
@@ -88,6 +143,7 @@
             avatar.textContent = record.source === 'agent'
                 ? authorName(record).slice(0, 1).toUpperCase() || 'AI'
                 : '人';
+            hydrateAvatar(avatar, record);
             const source = document.createElement('span');
             source.className = 'checkpoint-source';
             source.textContent = record.source === 'agent'
@@ -122,6 +178,18 @@
                     context.reviewPort?.open?.(record);
                 });
                 actions.appendChild(review);
+                item.appendChild(actions);
+            } else if (record.status === 'conflict') {
+                const actions = document.createElement('div');
+                actions.className = 'pr-card-actions conflict-actions';
+                const inspect = document.createElement('button');
+                inspect.type = 'button';
+                inspect.textContent = '查看冲突';
+                inspect.addEventListener('click', (event) => {
+                    event.stopPropagation();
+                    openDetail(record);
+                });
+                actions.appendChild(inspect);
                 item.appendChild(actions);
             }
 
@@ -597,6 +665,8 @@
                 window.clearTimeout(timer)
             );
             automaticApprovalTimers.clear();
+            avatarCache.clear();
+            agentDirectoryPromise = null;
             closeDetail();
             closeReview();
             cancelRestore();

@@ -65,6 +65,10 @@
             nativeApi.exportRichDocument(payload),
         listRecent: () => nativeApi.listRecent(),
         listSystemFonts: (force) => nativeApi.listSystemFonts(force),
+        loadAgentsList: () => nativeApi.loadAgentsList?.() || [],
+        loadUserAvatar: () => nativeApi.loadUserAvatar?.() || null,
+        loadAgentAvatar: (folderName) =>
+            nativeApi.loadAgentAvatar?.(folderName) || null,
         getCurrentTheme: () => nativeApi.getCurrentTheme(),
         onThemeUpdated: (listener) =>
             nativeApi.onThemeUpdated(listener),
@@ -572,6 +576,14 @@
                 lineagePort,
                 documentPort,
                 notificationPort,
+                identityPort: {
+                    loadAgentsList: () =>
+                        persistencePort.loadAgentsList(),
+                    loadUserAvatar: () =>
+                        persistencePort.loadUserAvatar(),
+                    loadAgentAvatar: (folderName) =>
+                        persistencePort.loadAgentAvatar(folderName),
+                },
                 historyPort,
                 renderPort: renderFacade,
                 editorResolver,
