@@ -692,16 +692,13 @@ if (!gotTheLock) {
                     enabled: true,
                     notifyEnabled: cdsSettings.ChatDataServiceNotifyEnabled !== false,
                     tantivyEnabled: cdsSettings.ChatDataServiceTantivyEnabled !== false,
-                    mobileSyncUseCentralIndex: cdsSettings.MobileSyncUseCentralIndex === true,
+                    mobileSyncUseCentralIndex: cdsSettings.MobileSyncUseCentralIndex !== false,
                     logger: console
                 });
-                // 同步消费者依赖 CDS 在分布式插件初始化前 READY；中央迁移启用时
-                // 等待握手，旁路模式仍保持后台启动、不阻塞窗口。
-                if (cdsSettings.MobileSyncUseCentralIndex === true) {
-                    await chatDataService.startShadowMode();
-                } else {
-                    void chatDataService.startShadowMode();
-                }
+                // CDS health must never delay the normal Chat window. The
+                // MobileSync plugin awaits this same idempotent start promise
+                // only when a new central-sync session is opened.
+                void chatDataService.startShadowMode();
             }
         } catch (error) {
             chatDataService = null;

@@ -1,12 +1,15 @@
 # VCPMobileSync (VCP 移动端双向增量同步服务插件)
 
-[![Version](https://img.shields.io/badge/Version-1.0.0-blue.svg?style=flat-square)](./plugin-manifest.json)
+[![Version](https://img.shields.io/badge/Version-1.1.0-blue.svg?style=flat-square)](./plugin-manifest.json)
 [![Platform](https://img.shields.io/badge/Platform-Node.js%20%7C%20Electron-brightgreen.svg?style=flat-square)](https://nodejs.org)
-[![Sync Protocol](https://img.shields.io/badge/Protocol-Sync%20V2--Double%20Hash-orange.svg?style=flat-square)](#三阶段增量同步协议-v2-深度揭秘)
+[![Sync Protocol](https://img.shields.io/badge/Wire%20Protocol-1.1-orange.svg?style=flat-square)](#协议-11-硬切与兼容边界)
 
-**让 VCPChat 桌面端和 VCPMobile 手机端的数据保持安全、低延迟、强一致的物理双向同步。**
+**让 VCPChat 桌面端和 VCPMobile 手机端的数据进行可诊断、失败即停的双向增量同步。**
 
 VCPMobileSync 是 VCPChat 桌面端的专属分布式服务插件，采用 **Double-Track 3-Tier（双轨三层）** 同步架构。它不仅为普通用户提供直观的一键双向数据合并能力，其底层更设计了严苛的多层级 Merkle 聚合指纹算法与 NDJSON 流式吞吐防线，保障海量聊天数据与大文件附件在局域网内以极低延迟、强事务安全性进行无损传输。
+
+> [!IMPORTANT]
+> 本版本只修改 MobileSync 插件、VCP-CDS 同步接口及其启动/打包接线，不修改模型调用、提示词、消息渲染或普通聊天保存逻辑。中央模式的 Mobile→Desktop 消息同步本来就会投影并写入 `history.json`；1.1 对这条既有同步写入增加严格解析、来源 hash 校验、原子替换和失败传播，但不会回写桌面旧消息的附件结构。
 
 ---
 
@@ -39,7 +42,7 @@ VCPMobileSync 是 VCPChat 桌面端的专属分布式服务插件，采用 **Dou
 | 👥 **群组 (Group)** | 群成员列表、群发言策略、群系统提示词、活跃配置等 | `AgentGroups/{id}/config.json` |
 | 💬 **话题 (Topic)** | 挂载于智能体或群组之下的独立子话题元数据 | `Agents|groups` 下的 topics 数组 |
 | ✉️ **消息历史 (Message)** | 包含思维链 (Thinking) 节点、Markdown 文本及元数据的完整聊天链路 | `UserData/{parentId}/topics/{topicId}/history.json` |
-| 📎 **附件 (Attachment)** | 聊天中传输的图片、文档、音频等实体文件**（实际上不能同步）** | `UserData/attachments/{hash}.{ext}` |
+| 📎 **附件 (Attachment)** | Mobile→Desktop 可按 hash 上传二进制；Desktop→Mobile 只同步合法元数据，手机缺文件时显示桌面专用占位 | `UserData/attachments/{hash}.{ext}` |
 | 🖼️ **自定义头像 (Avatar)** | 智能体、群组及用户本身的个性化头像二进制数据 | `Agents|groups/{id}/avatar.png` 及 `user_avatar.png` |
 
 > [!NOTE]
@@ -89,14 +92,38 @@ pnpm exec electron-rebuild --only better-sqlite3
 1. **启动服务**：
    打开 VCPChat 桌面端 $\rightarrow$ **全局设置** $\rightarrow$ **高级功能** $\rightarrow$ 开启「VCP分布式服务器」 $\rightarrow$ **重启客户端**。
 2. **首次同步**：
-   * 插件在初次加载时，会对桌面端所有 AppData 执行轻量级物理扫描建立索引数据库 `sync_state.db`。数据规模大时可能耗时 1~3 秒。
-   * 等待日志输出 `[VCPMobileSync] 数据库初始化完成` 及物理服务器就绪后，在手机端点击「立即同步」即可开始全量传输。
+   * 中央索引默认开启，由 VCP-CDS 扫描 `history.json` 并维护 `AppData/databases/chat_data.sqlite3`。显式设置 `MobileSyncUseCentralIndex=false` 后，只有重启后的新同步 session 才切换到旧 `sync_state.db` 路径。
+   * 等待 VCP-CDS 与 MobileSync 服务就绪后，在手机端点击「立即同步」即可开始全量传输。
 3. **日常静默**：
    * 只要桌面端服务器开启，手机端会利用高稳定性通道在后台保持实时或手动的增量数据对齐，仅同步变化内容（每次通常仅需几十 KB 流量）。
 
 ---
 
-## 🛡️ 三阶段增量同步协议 V2 深度揭秘
+## 协议 1.1 硬切与兼容边界
+
+公开握手固定为：
+
+```text
+VERSION_CHECK { mobileVersion, protocolVersion: "1.1" }
+VERSION_ACK   { pluginVersion: "1.1.0", protocolVersion: "1.1" }
+```
+
+Phase 3 每个 Topic 的 decision 必须是以下判别联合之一；缺字段、错类型、重复 Topic、`ok:false` 或未知帧都会终止当前 attempt，不能进入完成态：
+
+```text
+{ ok: true, toPull: string[], toPush: boolean }
+{ ok: false, error: { code: string, message: string } }
+```
+
+Wire 1.1 与 1.0 不支持混跑。插件 1.1.0、VCP-CDS internal protocol 2 和 VCPMobile 1.1.4 必须作为同一兼容批次发布或回滚。
+
+本次桌面批次配对的 Mobile 本地提交为 `b52d887aeb589a515a3c34ab5969919a6889ca07`；发布时必须以该提交或其无语义差异后继提交构建 APK。
+
+消息在唯一 canonicalizer 边界转换为 wire DTO：附件 hash 只接受顶层或 `_fileManagerData.hash` 中一致的 64 位十六进制值，并转为小写；缺失、非法或冲突附件只产生有界 warning，消息本身保留。桌面路径及 `_fileManagerData` 不会穿过 wire，最终 `contentHash` 仅按规范化消息计算。
+
+Topic manifest 与消息流都使用 `ownerType + ownerId + topicId` 复合身份。协议 1.1 不再通过 `LIKE`、目录前缀或同名 Topic 猜 Owner；缺失身份、Owner 冲突或重复 Topic 会直接终止 attempt。
+
+## 🛡️ 三阶段增量同步协议
 
 VCP 采用极其先进的 **三阶段增量同步协议 V2 (Three-Stage Incremental Sync V2)**，整个同步生命周期由三个环环相扣的物理阶段组成：
 
@@ -128,13 +155,14 @@ graph TD
 
 为此，VCP V2 引入了 **NDJSON 流式吞吐系统 (Newline-Delimited JSON)**：
 * **流式 Pull**：桌面端提供 `downloadMessagesStreamRaw` 接口，使用 `Transfer-Encoding: chunked` 和 `application/x-ndjson`，以**分帧换行符**逐话题流式写出，手机端边下载边解析消费，**双方内存消耗恒定在极小区间**。
-* **流式 Push**：桌面端提供 `uploadMessagesBatchRaw` 接口，基于 `readline` 模块对接收的流式数据逐行块（Chunk）消费、反序列化，实现无损高并发写入。
+* **流式 Push**：桌面端提供 `uploadMessagesBatchRaw` 接口，逐行消费并逐 Topic 投影、提交和返回结果，不先累计完整批次。
+* **固定预算**：单 NDJSON 帧最多 32 MiB；单次传输最多 256 MiB、10,000 Topic、100,000 Message。响应写入等待 `drain`，避免绕过 Node 背压。
 
 ---
 
 ## 📐 硬核数据模型与表结构
 
-插件内置 SQLite 数据库 `sync_state.db`，由以下 5 个高度解耦的实体/关联表组成：
+默认中央模式的 Owner、Topic、Message、附件关系、Tombstone、Change Feed 与 history source 状态由 VCP-CDS 的 `chat_data.sqlite3` 管理。以下 `sync_state.db` 表仅用于显式关闭中央索引后的 legacy 路径：
 
 ### 1. 实体索引表 (`entity_index`)
 负责缓存智能体、群组以及子话题的元数据与聚合哈希。
@@ -218,16 +246,19 @@ VCP 引入了特殊的 `stableStringify` 数据规整库解决该隐患：
 在双向数据同步的生命周期中，一端删除的数据极易在同步时被另一端误判为“本端缺失的新数据”而重新同步回来，产生所谓的“幽灵数据回流”现象。
 
 VCP 设计了精密的 **“墓碑拦截 (Tombstone Interceptor)”** 防线：
-1. 当在一端删除某个消息或话题时，系统并不进行物理擦除，而是将其 `deleted_at` 标记为当前删除时间戳（即设立“墓碑”）。
-2. 在比对阶段，若手机端检测到墓碑并发送含有 `"DELETED"` 标识的消息指纹，桌面端会立即触发墓碑拦截。
-3. 桌面端自动将 `message_index` 的 `deleted_at` 标为墓碑，并立即调用 `pruneMessageFromPhysicalHistory` 从物理文件 `history.json` 中物理切除该条消息，**绝对阻止其向上层比对队列回流**。
-4. **垃圾自动清理**：通过 `cleanupOldDeletedRecords()` 机制，每小时或在插件启动时，系统会自动在 SQLite 中物理删除超过 **30 天** 的过期软删除墓碑记录，确保存储数据库始终维持在极佳的轻量状态。
+1. 删除消息携带明确的 `topicId`、`msgId` 与非负安全整数 `deletedAt`，不能靠“上传列表里缺少该消息”猜测删除。
+2. 中央路径先从桌面原生历史中移除消息并严格摄取，再在同一复合 Owner/Topic 身份下写入显式 CDS Tombstone；本机从未见过的消息也会留下墓碑。
+3. 重试不会改写墓碑时间，重复通知保留最早的已提交 `deletedAt`；缺失或错误的逐项结果会让相关 Topic 失败。
+4. legacy 路径继续使用旧索引墓碑，但同样会原子裁剪 `history.json` 并严格重建索引。
 
 ### 并发读写锁与原子写入防线
 由于文件监听器（`chokidar`）、HTTP 路由及 WebSocket 消息收发在 Node.js 中全部是异步并发处理的，在进行大批量写入 `history.json` 时，多个线程同时写入极易导致文件读写冲突或物理文件损坏破损。
-* **排他互斥锁 (Mutex Locks)**：对于每一个 `history.json` 的物理操作，系统均采用 `acquireLock` 文件排他锁防线，确保同一时间只有一个物理写流可以操作该文件。
-* **临时文件原子覆盖 (Atomic Write & Rename)**：在写入文件时，系统会首先将内容写入到带有随机前缀的临时文件（`${historyPath}.tmp_xxxx`）中。当且仅当该临时文件完整、安全写入完成之后，才通过 Node 原生 `fs.rename` 进行操作系统底层的原子级覆盖，**从物理层面杜绝了写入中断导致 JSON 文件损坏的可能**。
+* **同步内排他锁**：同一插件进程内对相同 `history.json` 的同步操作使用路径锁串行化。
+* **来源校验与原子替换**：严格读取历史快照并记录来源 SHA-256；提交前再次校验，写入唯一临时文件、同步落盘后原子替换。文件不存在可视为空，空文件、JSON 错误、根结构错误与普通 I/O 错误均失败。
 * **写意图拦截 (Write Intent Lock)**：在大批量拉取写入时，系统将相关话题 ID 录入 `writeIntentLock` 集合。文件系统监听器（Watcher）在捕获到文件变更事件后，若发现其处于意图锁锁定状态，则主动拦截跳过，**消除了“写入时 Watcher 触发 reconcile 导致无限死循环”的并发竞态问题**。
+
+> [!WARNING]
+> 普通 Chat 保存逻辑不使用 MobileSync 的进程内锁。来源 hash 校验能检测大多数并发修改并让同步失败重试，但“最终校验到原子替换”仍有极窄竞态窗口；本轮没有扩张到 Chat 核心去引入全局单写者协议。
 
 ### 最新 Session-Phase-Operation 日志轮转系统
 插件内置了高清晰度的 **3-Tier（三层）日志诊断链路**：
@@ -258,7 +289,9 @@ VCP 设计了精密的 **“墓碑拦截 (Tombstone Interceptor)”** 防线：
 
 ## 🚀 版本信息
 
-* **适配标准**：VCPChat 桌面端 $\leftrightarrow$ VCPMobile 手机端 1.0.0 官方同步协议
-* **当前版本**：`1.0.0`
+* **适配标准**：VCPChat 桌面插件 1.1.0 / wire protocol 1.1 / VCP-CDS internal protocol 2 / VCPMobile 1.1.4
+* **当前版本**：`1.1.0`
+* **最终确认**：`PHASE_COMPLETED` 的 `PHASE_ACK` 原样回显 `phase`、`sessionId`、`attemptId` 与 `nonce`，避免迟到或重放 ACK 完成错误会话
+* **升级要求**：协议版本采用精确匹配，不支持 1.0/1.1 混跑；桌面和 Mobile 必须成对升级、成对回滚
 * **架构师 / 作者**：Nova
 * **开源许可**：VCP 闭环生态核心插件

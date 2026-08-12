@@ -49,7 +49,7 @@ function buildAndDeploy() {
     );
     const cargo = spawnSync(
         'cargo',
-        ['build', '--release', '--manifest-path', manifestPath],
+        ['build', '--release', '--locked', '--manifest-path', manifestPath],
         {
             cwd: rustRoot,
             env: process.env,

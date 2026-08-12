@@ -23,7 +23,7 @@ const {
   downloadMessagesStreamRaw,
   uploadMessagesBatchRaw,
   downloadAttachment,
-  uploadAttachment,
+  uploadAttachmentStream,
 } = require("../sync/message");
 const { getLogger } = require("../core/logger");
 
@@ -92,6 +92,9 @@ function registerRoutes(app, { syncToken, appDataPath, centralSync = null }) {
   // 1.1 批量下载实体
   router.post("/download-entities", express.json(), async (req, res) => {
     const { requests } = req.body;
+    if (!Array.isArray(requests) || requests.length > 10_000) {
+      return res.status(400).json({ error: "requests must be an array of at most 10000 items" });
+    }
 
     try {
       const results = await downloadEntities(requests);
@@ -107,18 +110,23 @@ function registerRoutes(app, { syncToken, appDataPath, centralSync = null }) {
     express.json({ limit: "5mb" }),
     async (req, res) => {
       const opId = req.headers["x-idempotency-key"];
-      const { duplicate, result: prevResult } = checkIdempotency(opId);
+      const {
+        duplicate,
+        result: prevResult,
+        statusCode: previousStatus = 200,
+      } = checkIdempotency(opId);
       if (duplicate) {
         logger.logOperation("http", "idempotency", "upload-entity", "warn", `duplicate detected: ${opId}`);
-        return res.json(prevResult);
+        return res.status(previousStatus).json(prevResult);
       }
 
       const { id, type, data } = req.body;
 
       try {
         const result = await uploadEntity({ id, type, data, appDataPath });
-        recordOperation(opId, result);
-        res.json(result);
+        const statusCode = result?.success === true ? 200 : 409;
+        recordOperation(opId, result, statusCode);
+        res.status(statusCode).json(result);
       } catch (e) {
         res.status(500).json({ error: e.message });
       }
@@ -134,10 +142,16 @@ function registerRoutes(app, { syncToken, appDataPath, centralSync = null }) {
       if (!Array.isArray(items)) {
         return res.status(400).json({ error: "items must be an array" });
       }
+      if (items.length > 10_000) {
+        return res.status(413).json({ error: "items exceed the 10000 item budget" });
+      }
 
       try {
         const results = await uploadEntitiesBatch(items, appDataPath);
-        res.json({ success: true, results });
+        const success =
+          results.length === items.length &&
+          results.every((result) => result?.success === true);
+        res.json({ success, results });
       } catch (e) {
         res.status(500).json({ error: e.message });
       }
@@ -192,16 +206,20 @@ function registerRoutes(app, { syncToken, appDataPath, centralSync = null }) {
   // 5. 上传附件
   router.post(
     "/upload-attachment",
-    express.raw({ type: "*/*", limit: "100mb" }),
-
     async (req, res) => {
       const { hash, name, type } = req.query;
       if (!hash) return res.status(400).send("Missing hash");
 
+      const rawLength = req.headers["content-length"];
+      const declaredLength = rawLength === undefined
+        ? undefined
+        : Number(rawLength);
+
       try {
-        const result = await uploadAttachment({
+        const result = await uploadAttachmentStream({
           hash,
-          data: req.body,
+          input: req,
+          declaredLength,
           name,
           type,
           appDataPath,
@@ -247,7 +265,7 @@ function registerRoutes(app, { syncToken, appDataPath, centralSync = null }) {
   // 8. 上传头像
   router.post(
     "/upload-avatar",
-    express.raw({ type: "*/*", limit: "10mb" }),
+    express.raw({ type: "*/*", limit: "20mb" }),
     async (req, res) => {
       const { id, type } = req.query;
 
@@ -267,20 +285,36 @@ function registerRoutes(app, { syncToken, appDataPath, centralSync = null }) {
 
   // 9. 删除实体
   router.post("/delete-entity", express.json(), async (req, res) => {
-    const { id, type, deletedAt } = req.body;
+    const { id, type, ownerType = null, deletedAt } = req.body;
+    const allowedTypes = new Set([
+      "agent",
+      "group",
+      "topic",
+      "agent_topic",
+      "group_topic",
+      "avatar",
+    ]);
 
-    if (!id || !type || !deletedAt) {
-      return res.status(400).json({ error: "Missing required fields" });
+    if (
+      typeof id !== "string" ||
+      id.length === 0 ||
+      !allowedTypes.has(type) ||
+      !Number.isSafeInteger(deletedAt) ||
+      deletedAt < 0 ||
+      (type === "avatar" && !["agent", "group", "user"].includes(ownerType))
+    ) {
+      return res.status(400).json({ error: "Invalid delete entity fields" });
     }
 
     try {
       const result = await deleteEntity({
         id,
         type,
+        ownerType,
         deletedAt,
         appDataPath,
       });
-      res.json(result);
+      res.status(result?.success === true ? 200 : 409).json(result);
     } catch (e) {
       res.status(500).json({ error: e.message });
     }
@@ -289,32 +323,32 @@ function registerRoutes(app, { syncToken, appDataPath, centralSync = null }) {
   // 10. 删除消息。中央模式通过 Push 的 deletedMessageIds 原子投影，
   // 避免旧私有墓碑与 CDS 墓碑发生双写。
   router.post("/delete-message", express.json(), async (req, res) => {
-    const { msgId, deletedAt, topicId, ownerType, ownerId } = req.body;
+    const { msgId, deletedAt, topicId } = req.body;
 
-    if (!msgId || !deletedAt) {
+    if (
+      typeof msgId !== "string" ||
+      msgId.length === 0 ||
+      typeof topicId !== "string" ||
+      topicId.length === 0 ||
+      !Number.isSafeInteger(deletedAt) ||
+      deletedAt < 0
+    ) {
       return res.status(400).json({ error: "Missing required fields" });
     }
 
     try {
       if (centralSync) {
-        if (!topicId || !ownerType || !ownerId) {
-          return res.status(400).json({
-            error: "Central delete requires topicId, ownerType and ownerId",
-          });
-        }
-        const result = await centralSync.requireClient().syncMessagesPush({
-          topics: [{
-            topicId,
-            ownerType,
-            ownerId,
-            messages: [],
-            deletedMessageIds: [msgId],
-          }],
-        });
-        return res.json(result.results?.[0] || { success: false });
+        return res.json(
+          await centralSync.deleteMessage({ topicId, msgId, deletedAt }),
+        );
       }
-      const result = await deleteMessage({ msgId, deletedAt, topicId });
-      res.json(result);
+      const result = await deleteMessage({
+        msgId,
+        deletedAt,
+        topicId,
+        appDataPath,
+      });
+      res.status(result?.success === true ? 200 : 409).json(result);
     } catch (e) {
       res.status(500).json({ error: e.message });
     }

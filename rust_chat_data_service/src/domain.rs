@@ -58,6 +58,7 @@ pub struct TopicKey {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
 pub struct MessageKey {
     pub owner_type: OwnerType,
     pub owner_id: String,

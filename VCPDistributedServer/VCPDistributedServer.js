@@ -62,8 +62,20 @@ class DistributedServer {
         this.app = express(); // 创建 Express 应用
         this.server = http.createServer(this.app); // 创建 HTTP 服务器
         this.reconnectInterval = 5000;
-        this.app.use(express.json({ limit: '2mb' }));
-        this.app.use(express.urlencoded({ extended: false, limit: '2mb' }));
+        const defaultJsonParser = express.json({ limit: '2mb' });
+        const defaultUrlencodedParser = express.urlencoded({ extended: false, limit: '2mb' });
+        const isMobileSyncPath = req => req.path === '/api/mobile-sync'
+            || req.path.startsWith('/api/mobile-sync/');
+        // MobileSync owns strict per-route parsers and NDJSON/raw streaming
+        // budgets. Bypassing the generic parser here prevents it from
+        // buffering or rejecting the sync body before the plugin can apply
+        // those limits; every other Chat route keeps the existing 2 MiB cap.
+        this.app.use((req, res, next) => isMobileSyncPath(req)
+            ? next()
+            : defaultJsonParser(req, res, next));
+        this.app.use((req, res, next) => isMobileSyncPath(req)
+            ? next()
+            : defaultUrlencodedParser(req, res, next));
         this.maxReconnectInterval = 60000;
         this.reconnectTimeoutId = null; // To keep track of the reconnect timeout
         this.stopped = false; // Flag to prevent reconnection when stopped manually
