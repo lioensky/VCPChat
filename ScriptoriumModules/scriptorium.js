@@ -236,6 +236,10 @@
             notificationPort: notificationFacade,
             onSelectionChange: () =>
                 formattingPort?.scheduleSync?.(),
+            onContextMenu: (input) =>
+                formattingPort?.openContextMenu?.(input),
+            isContextMenuOpen: () =>
+                formattingPort?.contextMenuOpen?.() === true,
         });
 
     const deckEditor =

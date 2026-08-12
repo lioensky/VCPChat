@@ -131,46 +131,62 @@
         }
     }
 
-    function nearestTextOffsetFromPoint(node, point) {
-        const text = String(node?.nodeValue || '');
-        if (!text || !point) return 0;
+    function nearestTextPointFromPoint(nodes, point) {
         const probe = document.createRange();
-        let nearestOffset = 0;
-        let nearestDistance = Infinity;
-        for (let offset = 0; offset <= text.length; offset += 1) {
-            try {
-                probe.setStart(node, offset);
-                probe.setEnd(node, Math.min(text.length, offset + 1));
-                const rect = probe.getBoundingClientRect();
-                if (!rect.width && !rect.height) continue;
-                const boundaryX = offset < text.length ? rect.left : rect.right;
-                const boundaryY = Math.max(
-                    rect.top,
-                    Math.min(rect.bottom, Number(point.clientY) || 0)
-                );
-                const distance = Math.hypot(
-                    boundaryX - (Number(point.clientX) || 0),
-                    boundaryY - (Number(point.clientY) || 0)
-                );
-                if (distance < nearestDistance) {
-                    nearestDistance = distance;
-                    nearestOffset = offset;
-                }
-                if (offset === text.length - 1) {
-                    const endDistance = Math.hypot(
-                        rect.right - (Number(point.clientX) || 0),
+        let nearest = null;
+        [...(nodes || [])].forEach((node) => {
+            const text = String(node?.nodeValue || '');
+            if (!text) return;
+            for (let offset = 0; offset <= text.length; offset += 1) {
+                try {
+                    const characterOffset = Math.min(
+                        Math.max(0, text.length - 1),
+                        offset
+                    );
+                    probe.setStart(node, characterOffset);
+                    probe.setEnd(node, Math.min(
+                        text.length,
+                        characterOffset + 1
+                    ));
+                    const rects = [...probe.getClientRects()];
+                    const rect = rects.find((candidate) =>
+                        candidate.width || candidate.height
+                    ) || probe.getBoundingClientRect();
+                    if (!rect.width && !rect.height) continue;
+                    const boundaryX = offset < text.length
+                        ? rect.left
+                        : rect.right;
+                    const boundaryY = Math.max(
+                        rect.top,
+                        Math.min(rect.bottom, Number(point.clientY) || 0)
+                    );
+                    const distance = Math.hypot(
+                        boundaryX - (Number(point.clientX) || 0),
                         boundaryY - (Number(point.clientY) || 0)
                     );
-                    if (endDistance < nearestDistance) {
-                        nearestDistance = endDistance;
-                        nearestOffset = text.length;
+                    if (!nearest || distance < nearest.distance) {
+                        nearest = {
+                            node,
+                            offset,
+                            distance,
+                        };
                     }
+                } catch {
+                    break;
                 }
-            } catch {
-                break;
             }
-        }
-        return nearestOffset;
+        });
+        return nearest
+            ? Object.freeze({
+                node: nearest.node,
+                offset: nearest.offset,
+                distance: nearest.distance,
+            })
+            : null;
+    }
+
+    function nearestTextOffsetFromPoint(node, point) {
+        return nearestTextPointFromPoint([node], point)?.offset || 0;
     }
 
     function caretFromPoint(root, point, options = {}) {
@@ -212,18 +228,27 @@
             candidate?.nodeType === Node.ELEMENT_NODE
             && scope.contains(candidate)
         ) || point.target;
-        let candidate = elementOf(node) || eventTarget;
+        let candidate = elementOf(node);
+        if (!candidate || !scope.contains(candidate)) {
+            candidate = scope.contains(eventTarget) ? eventTarget : scope;
+        }
         while (candidate && scope.contains(candidate)) {
             if (!candidate.matches?.(forbiddenSelector)) {
-                const candidateNode = textNodes(candidate, {
+                const candidateNodes = textNodes(candidate, {
                     excludeSelector: forbiddenSelector,
                     acceptNode: options.acceptNode,
-                }).find((textNode) => String(textNode.nodeValue || '').trim());
-                if (candidateNode) {
+                }).filter((textNode) =>
+                    String(textNode.nodeValue || '').length > 0
+                );
+                const nearest = nearestTextPointFromPoint(
+                    candidateNodes,
+                    point
+                );
+                if (nearest) {
                     return Object.freeze({
-                        node: candidateNode,
-                        parent: candidateNode.parentElement,
-                        offset: nearestTextOffsetFromPoint(candidateNode, point),
+                        node: nearest.node,
+                        parent: nearest.node.parentElement,
+                        offset: nearest.offset,
                     });
                 }
             }
@@ -294,6 +319,7 @@
         selectNodeContents,
         caretFromPoint,
         placeCaretFromPoint,
+        nearestTextPointFromPoint,
         nearestTextOffsetFromPoint,
         intersectsNode,
         rangeWithinNode,

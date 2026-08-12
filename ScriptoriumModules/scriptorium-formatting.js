@@ -17,6 +17,80 @@
         let abortController = null;
         let disposed = false;
 
+        function contextMenu() {
+            return elements['text-context-menu'] || null;
+        }
+
+        function contextMenuOpen() {
+            const menu = contextMenu();
+            return Boolean(menu && !menu.hidden);
+        }
+
+        function hideContextMenu() {
+            const menu = contextMenu();
+            if (menu) menu.hidden = true;
+            return true;
+        }
+
+        function positionContextMenu(menu, x, y) {
+            menu.hidden = false;
+            menu.style.left = '0px';
+            menu.style.top = '0px';
+            const rect = menu.getBoundingClientRect();
+            const margin = 10;
+            const left = Math.max(
+                margin,
+                Math.min(window.innerWidth - rect.width - margin, Number(x) || 0)
+            );
+            const top = Math.max(
+                margin,
+                Math.min(window.innerHeight - rect.height - margin, Number(y) || 0)
+            );
+            menu.style.left = `${left}px`;
+            menu.style.top = `${top}px`;
+        }
+
+        function openContextMenu(input = {}) {
+            const menu = contextMenu();
+            const selection = input.selection || {};
+            if (!menu || !selection.text || !selection.range) return false;
+            const formatBar = elements['selection-format-bar'];
+            if (formatBar) formatBar.hidden = false;
+            menu.querySelector('[data-format-separator]')?.removeAttribute(
+                'hidden'
+            );
+            menu.querySelectorAll('[data-requires-selection]').forEach(
+                (control) => {
+                    control.disabled = false;
+                }
+            );
+            pendingTarget = input.event?.target || null;
+            sync(pendingTarget);
+            positionContextMenu(
+                menu,
+                input.event?.clientX,
+                input.event?.clientY
+            );
+            return true;
+        }
+
+        function runTextAction(action) {
+            const editor = currentEditor();
+            if (action === 'copy' || action === 'cut') {
+                document.execCommand(action);
+                return true;
+            }
+            if (action === 'select-all') {
+                document.execCommand('selectAll');
+                editor?.captureSelection?.();
+                return true;
+            }
+            if (action === 'insert-paragraph') {
+                return editor?.insertStructure?.('paragraph') ?? false;
+            }
+            return false;
+        }
+
         function assertActive() {
             if (disposed) throw new Error('Formatting controller has been disposed.');
         }
@@ -68,18 +142,49 @@
             });
         }
 
+        function normalizedFontNames(value) {
+            return String(value || '')
+                .split(',')
+                .map((name) => name.trim()
+                    .replace(/^["']|["']$/g, '')
+                    .toLocaleLowerCase()
+                )
+                .filter(Boolean);
+        }
+
         function optionByValue(select, value) {
             if (!select || !value) return null;
-            return [...select.options].find((option) => option.value === value) || null;
+            const exact = [...select.options].find((option) =>
+                option.value === value
+            );
+            if (exact) return exact;
+            const wantedFonts = normalizedFontNames(value);
+            return [...select.options].find((option) => {
+                const optionFonts = normalizedFontNames(option.value);
+                return optionFonts.some((font) => wantedFonts.includes(font));
+            }) || null;
+        }
+
+        function cssLengthInPoints(value) {
+            const numeric = Number.parseFloat(value);
+            if (!Number.isFinite(numeric)) return null;
+            const unit = String(value || '').trim().match(
+                /[a-z%]+$/i
+            )?.[0]?.toLowerCase() || '';
+            if (unit === 'px') return numeric * 72 / 96;
+            if (unit === 'pt' || !unit) return numeric;
+            return null;
         }
 
         function closestNumericOption(select, value) {
-            const numeric = Number.parseFloat(value);
+            const numeric = cssLengthInPoints(value);
             if (!select || !Number.isFinite(numeric)) return null;
             return [...select.options]
                 .map((option) => ({
                     option,
-                    distance: Math.abs(Number.parseFloat(option.value) - numeric),
+                    distance: Math.abs(
+                        (cssLengthInPoints(option.value) ?? Infinity) - numeric
+                    ),
                 }))
                 .filter((item) => Number.isFinite(item.distance))
                 .sort((left, right) => left.distance - right.distance)[0]?.option || null;
@@ -187,6 +292,27 @@
             abortController?.abort();
             abortController = new AbortController();
             const options = { signal: abortController.signal };
+            const menu = contextMenu();
+
+            menu?.addEventListener('mousedown', (event) => {
+                // 按钮不能夺走正文选区；原生 select/input 必须获得焦点，
+                // 否则 Chromium 不会打开字体、字号和颜色选择器。
+                if (!event.target.closest?.('select,input,option,label')) {
+                    event.preventDefault();
+                }
+            }, options);
+            menu?.addEventListener('click', (event) => {
+                const action = event.target.closest?.(
+                    '[data-text-action]'
+                )?.dataset.textAction;
+                if (!action) return;
+                runTextAction(action);
+                hideContextMenu();
+            }, options);
+            window.addEventListener('pointerdown', (event) => {
+                if (!menu?.contains(event.target)) hideContextMenu();
+            }, options);
+            window.addEventListener('blur', hideContextMenu, options);
 
             document.querySelectorAll('[data-command]').forEach((control) => {
                 control.addEventListener('mousedown', (event) => {
@@ -253,6 +379,9 @@
             sync,
             scheduleSync,
             present,
+            openContextMenu,
+            contextMenuOpen,
+            hideContextMenu,
             bind,
             dispose,
         });
