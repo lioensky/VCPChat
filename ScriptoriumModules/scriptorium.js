@@ -1783,22 +1783,25 @@ ${compiled.html}
         return records;
     }
 
-    function createInlineHtmlSourceFragment(raw, caretOffset = 0) {
+    function createInlineHtmlSourceFragment(raw, caretOffset = null) {
         const source = String(raw || '');
         const fragment = document.createDocumentFragment();
         const records = inlineHtmlTagRecords(source);
+        const hasCaret = Number.isFinite(caretOffset);
         if (!records.length) {
             const ranges = markdownLiveMarkerRanges(source);
             fragment.appendChild(createMarkdownLivePreviewFragment(source, {
-                visibleMarkers: markdownLiveVisibleMarkerIndexes(
-                    source,
-                    ranges,
-                    {
-                        sourceOffset: caretOffset,
-                        sourceStart: caretOffset,
-                        sourceEnd: caretOffset,
-                    }
-                ),
+                visibleMarkers: hasCaret
+                    ? markdownLiveVisibleMarkerIndexes(
+                        source,
+                        ranges,
+                        {
+                            sourceOffset: caretOffset,
+                            sourceStart: caretOffset,
+                            sourceEnd: caretOffset,
+                        }
+                    )
+                    : new Set(),
             }));
             return fragment;
         }
@@ -1806,13 +1809,14 @@ ${compiled.html}
         const appendDecoratedText = (container, start, end) => {
             if (end <= start) return;
             const segment = source.slice(start, end);
-            const localCaret = Math.max(
-                0,
-                Math.min(segment.length, caretOffset - start)
-            );
+            const localCaret = hasCaret
+                ? Math.max(0, Math.min(segment.length, caretOffset - start))
+                : null;
             const ranges = markdownLiveMarkerRanges(segment);
             container.appendChild(createMarkdownLivePreviewFragment(segment, {
-                visibleMarkers: caretOffset >= start && caretOffset <= end
+                visibleMarkers: hasCaret
+                    && caretOffset >= start
+                    && caretOffset <= end
                     ? markdownLiveVisibleMarkerIndexes(segment, ranges, {
                         sourceOffset: localCaret,
                         sourceStart: localCaret,
@@ -1945,9 +1949,10 @@ ${compiled.html}
         return element;
     }
 
-    function createMarkdownLivePreviewEditor(shell, raw, caretOffset = 0) {
+    function createMarkdownLivePreviewEditor(shell, raw, caretOffset = null) {
         const source = String(raw || '');
         const lines = source.split('\n');
+        const hasCaret = Number.isFinite(caretOffset);
         const renderedBlocks = [...(shell?.children || [])].filter((block) =>
             !block.matches(
                 'pre,figure,[data-vdoc-island],[data-vdoc-math],'
@@ -1962,15 +1967,17 @@ ${compiled.html}
             );
             const markerRanges = markdownLiveMarkerRanges(source);
             editor.replaceChildren(createMarkdownLivePreviewFragment(source, {
-                visibleMarkers: markdownLiveVisibleMarkerIndexes(
-                    source,
-                    markerRanges,
-                    {
-                        sourceOffset: caretOffset,
-                        sourceStart: caretOffset,
-                        sourceEnd: caretOffset,
-                    }
-                ),
+                visibleMarkers: hasCaret
+                    ? markdownLiveVisibleMarkerIndexes(
+                        source,
+                        markerRanges,
+                        {
+                            sourceOffset: caretOffset,
+                            sourceStart: caretOffset,
+                            sourceEnd: caretOffset,
+                        }
+                    )
+                    : new Set(),
             }));
             return editor;
         }
@@ -1995,13 +2002,13 @@ ${compiled.html}
             lineBlock.removeAttribute('contenteditable');
             lineBlock.removeAttribute('spellcheck');
             lineBlock.classList.add('vdoc-md-live-preview-line');
-            const lineCaret = Math.max(
-                0,
-                Math.min(line.length, caretOffset - consumed)
-            );
+            const lineCaret = hasCaret
+                ? Math.max(0, Math.min(line.length, caretOffset - consumed))
+                : null;
             const ranges = markdownLiveMarkerRanges(line);
             lineBlock.replaceChildren(createMarkdownLivePreviewFragment(line, {
-                visibleMarkers: caretOffset >= consumed
+                visibleMarkers: hasCaret
+                    && caretOffset >= consumed
                     && caretOffset <= consumed + line.length
                     ? markdownLiveVisibleMarkerIndexes(line, ranges, {
                         sourceOffset: lineCaret,
@@ -2019,7 +2026,7 @@ ${compiled.html}
     function createMarkdownAggregateEditor(
         compiled,
         run,
-        caretSourceOffset = run.start
+        caretSourceOffset = null
     ) {
         const source = currentSourceHtml();
         const template = document.createElement('template');
@@ -2029,6 +2036,17 @@ ${compiled.html}
         )];
         const editor = document.createElement('div');
         editor.className = 'vdoc-md-live-preview-run';
+        const hasCaret = Number.isFinite(caretSourceOffset);
+        const activeRegion = hasCaret
+            ? run.regions.find((region, index) =>
+                caretSourceOffset >= region.sourceRange.start
+                && (
+                    caretSourceOffset < region.sourceRange.end
+                    || (index === run.regions.length - 1
+                        && caretSourceOffset === region.sourceRange.end)
+                )
+            ) || null
+            : null;
         let cursor = run.start;
 
         run.regions.forEach((region) => {
@@ -2042,10 +2060,18 @@ ${compiled.html}
                 region.sourceRange.start,
                 region.sourceRange.end
             );
-            const localCaret = Math.max(
-                0,
-                Math.min(raw.length, caretSourceOffset - region.sourceRange.start)
-            );
+            // 只有实际包含绝对光标的 region 才允许展开语法。此前把光标
+            // 强制夹入每个 region，会使全文所有标题/引用/行内 HTML 同时
+            // 得到一个伪造的段首或段尾光标，造成大范围布局跳动。
+            const localCaret = region === activeRegion
+                ? Math.max(
+                    0,
+                    Math.min(
+                        raw.length,
+                        caretSourceOffset - region.sourceRange.start
+                    )
+                )
+                : null;
             const shell = compiledShells[region.ordinal];
 
             if (region.flowKind === 'text-flow'
@@ -2201,8 +2227,26 @@ ${compiled.html}
         );
         if (!run) return null;
 
+        const existingEditor = surface.querySelector(
+            ':scope > [data-vdoc-md-aggregate-editor="true"]'
+        );
         let caretSourceOffset = run.start;
-        if (pointer) {
+        if (pointer && existingEditor) {
+            const target = pointerTextTarget(existingEditor, pointer);
+            const localOffset = target?.node
+                ? renderedOffsetWithin(
+                    existingEditor,
+                    target.node,
+                    target.offset || 0
+                )
+                : null;
+            if (Number.isFinite(localOffset)) {
+                caretSourceOffset = Math.max(
+                    run.start,
+                    Math.min(run.end, run.start + localOffset)
+                );
+            }
+        } else if (pointer) {
             const memberShell = pointer.target.closest?.('[data-vdoc-edit-key]');
             const target = memberShell
                 ? pointerTextTarget(memberShell, pointer)
@@ -2223,18 +2267,20 @@ ${compiled.html}
 
         const source = currentSourceHtml();
         const raw = source.slice(run.start, run.end);
-        const editor = configureMarkdownFlowEditor(
-            createMarkdownAggregateEditor(
-                compiled,
-                run,
-                caretSourceOffset
-            )
-        );
+        const editor = existingEditor
+            ? configureMarkdownFlowEditor(existingEditor)
+            : configureMarkdownFlowEditor(
+                createMarkdownAggregateEditor(
+                    compiled,
+                    run,
+                    caretSourceOffset
+                )
+            );
         if (markdownLivePreviewText(editor) !== raw) {
             showToast('连续文本流无法建立无损源码镜像，已保留原渲染内容。', 'error');
             return null;
         }
-        surface.replaceChildren(editor);
+        if (!existingEditor) surface.replaceChildren(editor);
         surface.dataset.vdocFlowActive = 'true';
         updateMarkdownFlowSurfaceIdentity(surface, run);
 
@@ -2258,31 +2304,17 @@ ${compiled.html}
             editor.focus();
         }
 
-        if (pointer) {
-            const clickPoint = {
-                clientX: pointer.clientX,
-                clientY: pointer.clientY,
-                target: editor,
-                composedPath: () => [editor, surface],
-            };
-            window.requestAnimationFrame(() => {
-                if (state.markdownLivePreview !== session
-                    || !setMarkdownLivePreviewCaretFromPointer(
-                        editor,
-                        clickPoint
-                    )) {
-                    setMarkdownLivePreviewCaret(
-                        editor,
-                        caretSourceOffset - run.start
-                    );
-                }
-            });
-        } else {
-            setMarkdownLivePreviewCaret(
-                editor,
-                caretSourceOffset - run.start
-            );
-        }
+        // pointer 坐标属于替换前的被动渲染 DOM。surface.replaceChildren()
+        // 之后布局已经变化，若再次按旧坐标命中新 aggregate editor，通常会
+        // 错落到文本流首节点。前面已从被点击 shell 的源码映射得到绝对
+        // caretSourceOffset，因此这里始终按同一源码坐标恢复光标。
+        setMarkdownLivePreviewCaret(
+            editor,
+            Math.max(
+                0,
+                Math.min(raw.length, caretSourceOffset - run.start)
+            )
+        );
         window.requestAnimationFrame(() => {
             if (state.markdownLivePreview === session) {
                 refreshMarkdownLivePreviewMarkers(session);
@@ -2307,9 +2339,10 @@ ${compiled.html}
 
     function markdownLivePreviewText(editor) {
         if (!editor) return '';
-        // 所有受支持换行均由 beforeinput 写入文本节点，因此 textContent 是
-        // 精确源码镜像，不会把装饰 span 或浏览器生成的 HTML 写回 Markdown。
-        return String(editor.textContent || '').replace(/\r\n?/g, '\n');
+        // 聚合编辑器中的文本节点逐字符镜像 Source Buffer。这里不能归一化
+        // CRLF：删除其中的 \r 会让无损校验必然失败，也会使后续所有源码
+        // Selection 偏移在每个 Windows 换行后累计少一个字符。
+        return String(editor.textContent || '');
     }
 
     function refreshMarkdownLivePreviewMarkers(session) {
@@ -2455,33 +2488,120 @@ ${compiled.html}
 
     function presentPassiveMarkdownFlowSurface(surface, compiled, run) {
         if (!surface?.isConnected || !run) return false;
-        const template = document.createElement('template');
-        template.innerHTML = compiled.previewHtml;
-        const compiledShells = [...template.content.querySelectorAll(
-            '[data-vdoc-edit-key]'
-        )];
-        const members = run.regions.map((region) =>
-            compiledShells[region.ordinal]?.cloneNode(true)
-        );
-        if (members.some((member) => !member)) return false;
 
-        surface.replaceChildren(...members);
-        surface.removeAttribute('data-vdoc-flow-active');
-        updateMarkdownFlowSurfaceIdentity(surface, run);
-        members.forEach((shell, index) => {
+        const currentEditor = surface.querySelector(
+            ':scope > [data-vdoc-md-aggregate-editor="true"]'
+        );
+        const currentShells = [...surface.children].filter((child) =>
+            child.matches?.('[data-vdoc-edit-key]')
+        );
+        const semanticProjectionExpired = currentEditor
+            || currentShells.length !== run.regions.length
+            || currentShells.some((shell, index) =>
+                shell.dataset.vdocEditKey !== run.regions[index]?.key
+            );
+        if (semanticProjectionExpired) {
+            // 被动阅读面必须使用编译器生成的语义 DOM。源码字符 aggregate
+            // 无法凭隐藏分隔符恢复图片、链接和完整行内 Markdown，因而不能
+            // 充当静态渲染结果。只在退出编辑或结构变化后重建这段 text-flow；
+            // surface 外部的岛、公式、Mermaid 与媒体实例完全不受影响。
+            const template = document.createElement('template');
+            template.innerHTML = compiled.previewHtml;
+            const compiledShells = [...template.content.querySelectorAll(
+                '[data-vdoc-edit-key]'
+            )];
+            const shells = run.regions.map((region) =>
+                compiledShells[region.ordinal]?.cloneNode(true) || null
+            );
+            if (shells.some((shell) => !shell)) return false;
+            surface.replaceChildren(...shells);
+        }
+
+        const passiveShells = [...surface.children].filter((child) =>
+            child.matches?.('[data-vdoc-edit-key]')
+        );
+        if (passiveShells.length !== run.regions.length) return false;
+        passiveShells.forEach((shell, index) => {
             const region = run.regions[index];
             shell.dataset.vdocFlowSurfaceMember = 'true';
-            shell.dataset.vdocFlowKind = region.flowKind;
-            mapHybridShellTextNodes(shell, region);
-            renderMathNodes(shell);
-            renderMermaidNodes(shell);
+            shell.dataset.vdocFlowKind = region.flowKind || 'text-flow';
+            shell.dataset.vdocEditKey = region.key;
+            shell.dataset.vdocEditType = region.type;
+            restoreHybridEditableState(shell, region);
         });
+
+        surface.removeAttribute('data-vdoc-flow-active');
+        updateMarkdownFlowSurfaceIdentity(surface, run);
+        return true;
+    }
+
+    function markdownFlowReconcileNodeKey(node) {
+        if (node?.nodeType === Node.TEXT_NODE) {
+            return `text\u0000${node.nodeValue || ''}`;
+        }
+        if (node?.nodeType !== Node.ELEMENT_NODE) return '';
+        return [
+            'element',
+            node.tagName,
+            node.dataset.vdocMdLineKind || '',
+            node.matches?.('.vdoc-md-inline-html-source') ? 'inline-html' : '',
+            node.matches?.('.vdoc-md-live-preview-run') ? 'line-run' : '',
+            node.textContent || '',
+        ].join('\u0000');
+    }
+
+    function reconcileMarkdownAggregateEditor(editor, stagingEditor) {
+        if (!editor?.isConnected || !stagingEditor) return false;
+        const currentNodes = [...editor.childNodes];
+        const stagedNodes = [...stagingEditor.childNodes];
+        let prefix = 0;
+        while (
+            prefix < currentNodes.length
+            && prefix < stagedNodes.length
+            && markdownFlowReconcileNodeKey(currentNodes[prefix])
+                === markdownFlowReconcileNodeKey(stagedNodes[prefix])
+        ) {
+            prefix += 1;
+        }
+
+        let suffix = 0;
+        while (
+            suffix < currentNodes.length - prefix
+            && suffix < stagedNodes.length - prefix
+            && markdownFlowReconcileNodeKey(
+                currentNodes[currentNodes.length - suffix - 1]
+            ) === markdownFlowReconcileNodeKey(
+                stagedNodes[stagedNodes.length - suffix - 1]
+            )
+        ) {
+            suffix += 1;
+        }
+
+        // 相同前缀与后缀继续使用原 DOM 实例。Enter 拆分标题时通常只会
+        // 替换光标所在标题及紧邻的新段落；其它标题、段落和行内 HTML
+        // 装饰均不离开文档，因此其盒模型、滚动位置和 Selection 邻域稳定。
+        const retainedSuffix = suffix
+            ? currentNodes[currentNodes.length - suffix]
+            : null;
+        currentNodes
+            .slice(prefix, currentNodes.length - suffix)
+            .forEach((node) => node.remove());
+
+        const changedFragment = document.createDocumentFragment();
+        stagedNodes
+            .slice(prefix, stagedNodes.length - suffix)
+            .forEach((node) => changedFragment.appendChild(node));
+        editor.insertBefore(changedFragment, retainedSuffix);
         return true;
     }
 
     function rebuildActiveMarkdownFlowSurface(session, caretSourceOffset) {
         const surface = session?.flowSurface;
-        if (!surface?.isConnected) return false;
+        const editor = session?.editor;
+        if (!surface?.isConnected || !editor?.isConnected
+            || editor.parentElement !== surface) {
+            return false;
+        }
         const compiled = parsedDocument(true);
         const run = markdownFlowRunAtOffset(
             compiled,
@@ -2492,15 +2612,20 @@ ${compiled.html}
 
         const source = currentSourceHtml();
         const raw = source.slice(run.start, run.end);
-        const editor = configureMarkdownFlowEditor(
+        const stagingEditor = configureMarkdownFlowEditor(
             createMarkdownAggregateEditor(
                 compiled,
                 run,
                 caretSourceOffset
             )
         );
-        if (markdownLivePreviewText(editor) !== raw) return false;
-        surface.replaceChildren(editor);
+        if (markdownLivePreviewText(stagingEditor) !== raw) return false;
+        if (!reconcileMarkdownAggregateEditor(editor, stagingEditor)
+            || markdownLivePreviewText(editor) !== raw) {
+            return false;
+        }
+
+        configureMarkdownFlowEditor(editor);
         surface.dataset.vdocFlowActive = 'true';
         updateMarkdownFlowSurfaceIdentity(surface, run);
 
@@ -3252,7 +3377,12 @@ function reconcileMarkdownTransactionPresentation(
             : null;
         const nextText = mappedNode
             ? (mappedNode.nodeValue || '')
-            : (session.shell.textContent || '');
+            : session.mappedSourceRange || session.runtimeMapping
+                // 删除最后一个字符时 Chromium 可能移除原文本节点并留下 BR。
+                // 此时必须读取当前映射宿主，而不是整个岛 shell；否则同一个
+                // 源码文本范围会被错误替换成整座 div 岛的全部可见文字。
+                ? (session.editable?.textContent || '')
+                : (session.shell.textContent || '');
         const previousText = session.previousText;
         if (nextText === previousText) return false;
 
@@ -3428,6 +3558,19 @@ function reconcileMarkdownTransactionPresentation(
                 shell.dataset.vdocFlowSurfaceMember = 'true';
                 surface.appendChild(shell);
             });
+
+            // 连续源码镜像在初次渲染时建立，而不是等点击后再整段换树。
+            // 被动状态和编辑状态复用同一 DOM；点击只改变 contenteditable、
+            // Selection 与当前最小语法 marker 的显隐，因此不会触发布局跳变。
+            const compiled = parsedDocument();
+            const run = {
+                first: regions[0].ordinal,
+                last: regions[regions.length - 1].ordinal,
+                regions,
+                start: regions[0].sourceRange.start,
+                end: regions[regions.length - 1].sourceRange.end,
+            };
+            presentPassiveMarkdownFlowSurface(surface, compiled, run);
             state.markdownFlowSurfaces.push(surface);
             pending = [];
         };
@@ -4402,14 +4545,12 @@ function reconcileMarkdownTransactionPresentation(
                 ? hybridEditRegionByKey(shell.dataset.vdocEditKey)
                 : null;
 
-            if (flowSurface && (
-                flowSurface.dataset.vdocFlowActive === 'true'
-                || region?.flowKind === 'text-flow'
-            )) {
+            if (flowSurface) {
                 const aggregateEditor = event.target.closest?.(
                     '[data-vdoc-md-aggregate-editor="true"]'
                 );
-                if (aggregateEditor) {
+                if (aggregateEditor
+                    && flowSurface.dataset.vdocFlowActive === 'true') {
                     const session = state.markdownLivePreview;
                     window.requestAnimationFrame(() => {
                         if (state.markdownLivePreview !== session) return;
@@ -4418,12 +4559,10 @@ function reconcileMarkdownTransactionPresentation(
                     });
                     return;
                 }
-                event.preventDefault();
-                const session = activateMarkdownFlowSurface(
-                    flowSurface,
-                    event
-                );
-                if (session) scheduleFormattingControls(session.editor);
+
+                // 被动面保留编译后的完整 Markdown 语义 DOM。这里不能在
+                // pointerdown 阶段 preventDefault 或换树，否则第一次拖选会被
+                // 取消。折叠点击稍后由 click 委托激活；非折叠拖选始终保留。
                 return;
             }
 
@@ -4508,6 +4647,32 @@ function reconcileMarkdownTransactionPresentation(
             }
             state.activeEditableBlock = editable;
             scheduleFormattingControls(editable);
+        }, options);
+
+        root.addEventListener('click', (event) => {
+            if (event.button !== 0 || event.defaultPrevented) return;
+            const flowSurface = event.target.closest?.(
+                '[data-vdoc-md-flow-surface="true"]'
+            );
+            if (!flowSurface
+                || flowSurface.dataset.vdocFlowActive === 'true') {
+                return;
+            }
+
+            const selection = currentRenderSelection();
+            const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
+            if (range && !range.collapsed
+                && flowSurface.contains(range.commonAncestorContainer)) {
+                // 用户意图是选择文档文字，不把已经建立的原生 Selection
+                // 销毁为编辑光标。
+                captureCurrentSelection();
+                scheduleFormattingFromCurrentSelection();
+                return;
+            }
+
+            event.preventDefault();
+            const session = activateMarkdownFlowSurface(flowSurface, event);
+            if (session) scheduleFormattingControls(session.editor);
         }, options);
 
         root.addEventListener('focusin', (event) => {
@@ -4717,6 +4882,14 @@ function reconcileMarkdownTransactionPresentation(
                         deleteMarkdownLivePreviewForward(markdownSession);
                     }
                 }
+                return;
+            }
+
+            // HTML 与 div 岛的文字宿主使用原生 contenteditable 删除，并由
+            // 后续 input 事件将实际文本差异定向写回映射源码。删除键不能继续
+            // 落入下方结构插入分支，否则 preventDefault 会使 Backspace 和
+            // Delete 看似完全失效。stable 原子边界本身仍不会被此路径删除。
+            if ((isBackwardDelete || isForwardDelete) && !markdownEditor) {
                 return;
             }
 

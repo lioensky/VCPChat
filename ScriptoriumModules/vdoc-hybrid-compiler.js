@@ -546,8 +546,10 @@
 
         // 这些标签建立独立块级布局，不能因为源码以 “<” 开头就冒充
         // Markdown 行内文字；但它们仍与拥有脚本生命周期的 stable 岛不同。
+        // HTML 标题同样拥有独立盒模型。若遗漏 h1-h6，文档开头的特效标题
+        // 会被错误聚合进后续 Markdown，并在点击正文时一并展开。
         const blockTag = source.match(
-            /^<\/?(address|article|aside|blockquote|details|dialog|div|dl|fieldset|figure|footer|form|header|hgroup|hr|main|menu|nav|ol|p|pre|section|summary|table|ul)\b/i
+            /^<\/?(address|article|aside|blockquote|details|dialog|div|dl|fieldset|figure|footer|form|h[1-6]|header|hgroup|hr|main|menu|nav|ol|p|pre|section|summary|table|ul)\b/i
         );
         return blockTag ? 'html-block' : 'text-flow';
     }
