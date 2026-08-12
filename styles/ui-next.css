@@ -408,6 +408,11 @@ html[data-ui-mode="next"] .next-ui-topbar-actions {
     align-self: stretch;
 }
 
+html[data-ui-mode="next"] .next-ui-topbar-actions > .next-ui-presentation-switcher,
+html[data-ui-mode="next"] .next-ui-topbar-actions > #nextUiThemeStoreBtn {
+    margin-right: 6px;
+}
+
 html[data-ui-mode="next"] .next-ui-window-button:hover {
     color: var(--next-text);
     background: color-mix(in srgb, var(--next-text) 15%, transparent);

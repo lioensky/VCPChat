@@ -2,8 +2,32 @@
     const api = () => window.chatAPI || window.electronAPI;
     let maximized = false;
 
-    api()?.onWindowMaximized?.(() => { maximized = true; });
-    api()?.onWindowUnmaximized?.(() => { maximized = false; });
+    function syncMaximizeControl() {
+        const button = document.getElementById('nextUiMaximizeBtn');
+        const icon = button?.querySelector('.vcp-ui-icon');
+        const label = maximized ? '还原窗口' : '最大化窗口';
+        if (icon) {
+            if (window.VCPIcons?.set) window.VCPIcons.set(icon, maximized ? 'filter_none' : 'crop_square');
+            else icon.textContent = maximized ? 'filter_none' : 'crop_square';
+        }
+        button?.setAttribute('title', label);
+        button?.setAttribute('aria-label', label);
+        button?.setAttribute('aria-pressed', String(maximized));
+    }
+
+    api()?.onWindowMaximized?.(() => {
+        maximized = true;
+        syncMaximizeControl();
+    });
+    api()?.onWindowUnmaximized?.(() => {
+        maximized = false;
+        syncMaximizeControl();
+    });
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', syncMaximizeControl, { once: true });
+    } else {
+        syncMaximizeControl();
+    }
 
     function minimize() {
         api()?.minimizeWindow?.();

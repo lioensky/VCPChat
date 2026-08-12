@@ -59,7 +59,7 @@
         return mode === 'next' ? 'next' : 'classic';
     }
 
-    function normalize(profile, uiMode = 'next') {
+    function normalize(profile, uiMode = 'classic') {
         const preset = PRESETS[normalizeUiMode(uiMode)];
         const source = profile && typeof profile === 'object' ? profile : {};
         const options = Object.fromEntries(Object.entries(OPTION_SETS).map(([key, allowed]) => {
@@ -188,7 +188,7 @@
     }
 
     function apply(profile, options = {}) {
-        const uiMode = options.uiMode || document.documentElement.dataset.uiMode || 'next';
+        const uiMode = options.uiMode || document.documentElement.dataset.uiMode || 'classic';
         const resolved = normalize(profile, uiMode);
         const root = document.documentElement;
         root.dataset.vcpDensity = resolved.density;
@@ -226,7 +226,7 @@
         return revision;
     }
 
-    function readCache(uiMode = 'next') {
+    function readCache(uiMode = 'classic') {
         try {
             return normalize(JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null'), uiMode);
         } catch {
@@ -234,7 +234,7 @@
         }
     }
 
-    const bootMode = document.documentElement.dataset.uiMode || 'next';
+    const bootMode = document.documentElement.dataset.uiMode || 'classic';
     apply(readCache(bootMode), { uiMode: bootMode, source: 'boot-cache' });
     window.addEventListener('ui-mode-changed', event => {
         syncMaterialOptics(event.detail?.mode || document.documentElement.dataset.uiMode);

@@ -43,6 +43,154 @@ html[data-ui-mode="next"] body.vchat-dynamic-wallpaper-visible .notifications-si
     ) !important;
 }
 
+html:not([data-ui-mode="next"]) #vchat-wallpaper-title-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    flex: 1 1 auto;
+    overflow: hidden;
+}
+
+html:not([data-ui-mode="next"]) #vchat-wallpaper-title-group #currentChatAgentName {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+html:not([data-ui-mode="next"]) #vchat-dynamic-wallpaper-panel {
+    display: flex;
+    align-items: center;
+    height: 32px;
+    padding: 4px 12px 4px 4px;
+    margin-left: 10px;
+    color: var(--secondary-text);
+    background: rgba(30, 30, 35, .6);
+    border: 1px solid rgba(255, 255, 255, .1);
+    border-radius: 20px;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    box-shadow: 0 4px 6px rgba(0, 0, 0, .1);
+    box-sizing: border-box;
+    overflow: hidden;
+    transition: all .3s cubic-bezier(.4, 0, .2, 1);
+}
+
+html:not([data-ui-mode="next"]) body.light-theme #vchat-dynamic-wallpaper-panel {
+    background: rgba(240, 240, 245, .6);
+    border-color: rgba(0, 0, 0, .05);
+}
+
+html:not([data-ui-mode="next"]) #vchat-dynamic-wallpaper-panel.collapsed {
+    width: 32px;
+    padding: 4px;
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
+html:not([data-ui-mode="next"]) #vchat-dynamic-wallpaper-panel svg[style*="display: none"] {
+    display: none;
+}
+
+html:not([data-ui-mode="next"]) .vchat-wallpaper-toggle {
+    width: 24px;
+    height: 24px;
+    padding: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    color: var(--secondary-text);
+    background: transparent;
+    border: 0;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+html:not([data-ui-mode="next"]) #vchat-dynamic-wallpaper-panel .vchat-wallpaper-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: 4px;
+    opacity: 1;
+    white-space: nowrap;
+    transition: opacity .2s ease-in;
+}
+
+html:not([data-ui-mode="next"]) #vchat-dynamic-wallpaper-panel.collapsed .vchat-wallpaper-controls {
+    width: 0;
+    margin: 0;
+    opacity: 0;
+    pointer-events: none;
+}
+
+html:not([data-ui-mode="next"]) #vchat-dynamic-wallpaper-panel .vchat-wallpaper-visible {
+    width: 16px;
+    height: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0;
+}
+
+html:not([data-ui-mode="next"]) #vchat-dynamic-wallpaper-panel .vchat-wallpaper-visible input {
+    width: 14px;
+    height: 14px;
+    margin: 0;
+    accent-color: var(--highlight-text);
+}
+
+html:not([data-ui-mode="next"]) #vchat-dynamic-wallpaper-panel .vchat-wallpaper-group {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+}
+
+html:not([data-ui-mode="next"]) #vchat-dynamic-wallpaper-panel .vchat-wallpaper-divider {
+    width: 1px;
+    height: 16px;
+    margin: 0 4px;
+    background: var(--border-color);
+    opacity: .5;
+}
+
+html:not([data-ui-mode="next"]) #vchat-dynamic-wallpaper-panel .vchat-wallpaper-control {
+    border-radius: 50%;
+}
+
+html:not([data-ui-mode="next"]) #vchat-dynamic-wallpaper-panel .vchat-wallpaper-volume {
+    padding: 0;
+    gap: 4px;
+}
+
+html:not([data-ui-mode="next"]) #vchat-dynamic-wallpaper-panel .vchat-wallpaper-volume-slider {
+    width: 0;
+    flex: none;
+    margin-left: 0;
+    overflow: visible;
+    opacity: 0;
+    pointer-events: none;
+    transition: width .3s ease, opacity .3s ease, margin-left .3s ease;
+}
+
+html:not([data-ui-mode="next"]) #vchat-dynamic-wallpaper-panel .vchat-wallpaper-volume:hover .vchat-wallpaper-volume-slider,
+html:not([data-ui-mode="next"]) #vchat-dynamic-wallpaper-panel .vchat-wallpaper-volume-slider:hover {
+    width: 70px;
+    margin-left: 4px;
+    opacity: 1;
+    pointer-events: auto;
+}
+
+html:not([data-ui-mode="next"]) #vchat-dynamic-wallpaper-panel .vchat-wallpaper-volume-slider input {
+    width: 60px;
+    margin: 0 5px;
+}
+
 .vchat-wallpaper-menu {
     min-width: 0;
     padding-right: 0;

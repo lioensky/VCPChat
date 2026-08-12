@@ -106,7 +106,7 @@
                     <span>VCPChat</span>
                 </button>
             </div>
-            <div id="nextUiDynamicTabs" class="next-ui-dynamic-tabs"></div>
+            <div id="nextUiDynamicTabs" class="next-ui-dynamic-tabs" role="tablist" aria-label="已打开应用"></div>
             <button id="nextUiAddTabBtn" class="next-ui-add-tab" type="button" title="打开应用" aria-label="打开应用"
                 aria-selected="false" aria-expanded="false" aria-controls="nextUiLaunchpad">
                 <span class="vcp-ui-icon" aria-hidden="true">add</span>
@@ -145,7 +145,7 @@
             <button id="nextUiMinimizeBtn" class="next-ui-window-button" type="button" title="最小化" aria-label="最小化">
                 <span class="vcp-ui-icon" aria-hidden="true">remove</span>
             </button>
-            <button id="nextUiMaximizeBtn" class="next-ui-window-button" type="button" title="最大化或还原" aria-label="最大化或还原">
+            <button id="nextUiMaximizeBtn" class="next-ui-window-button" type="button" title="最大化窗口" aria-label="最大化窗口" aria-pressed="false">
                 <span class="vcp-ui-icon" aria-hidden="true">crop_square</span>
             </button>
             <button id="nextUiCloseBtn" class="next-ui-window-button next-ui-close-button" type="button" title="关闭" aria-label="关闭">
@@ -917,13 +917,37 @@
                     <textarea id="messageInput" placeholder="输入消息... (Shift+Enter 换行)" rows="1" disabled></textarea>
                     <div class="chat-input-actions">
                         <button id="quickNewTopicBtn" title="新建聊天话题" aria-label="新建聊天话题" disabled>
-                            <span class="material-symbols-outlined vcp-ui-icon" aria-hidden="true">add_comment</span>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+                                fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                stroke-linejoin="round" aria-hidden="true">
+                                <path
+                                    d="M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z">
+                                </path>
+                                <path d="M12 8v6"></path>
+                                <path d="M9 11h6"></path>
+                            </svg>
                         </button>
                         <button id="attachFileBtn" title="发送文件" aria-label="发送文件" disabled>
-                            <span class="material-symbols-outlined vcp-ui-icon" aria-hidden="true">attach_file</span>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+                                fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                stroke-linejoin="round" class="lucide lucide-paperclip-icon lucide-paperclip"
+                                aria-hidden="true">
+                                <path
+                                    d="m16 6-8.414 8.586a2 2 0 0 0 2.829 2.829l8.414-8.586a4 4 0 1 0-5.657-5.657l-8.379 8.551a6 6 0 1 0 8.485 8.485l8.379-8.551" />
+                            </svg>
                         </button>
                         <button id="emoticonTriggerBtn" title="打开表情包" aria-label="打开表情包" disabled>
-                            <span class="material-symbols-outlined vcp-ui-icon" aria-hidden="true">sentiment_satisfied</span>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+                                fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                stroke-linejoin="round" class="lucide lucide-sticker-icon lucide-sticker"
+                                aria-hidden="true">
+                                <path
+                                    d="M21 9a2.4 2.4 0 0 0-.706-1.706l-3.588-3.588A2.4 2.4 0 0 0 15 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2z" />
+                                <path d="M15 3v5a1 1 0 0 0 1 1h5" />
+                                <path d="M8 13h.01" />
+                                <path d="M16 13h.01" />
+                                <path d="M10 16s.8 1 2 1c1.3 0 2-1 2-1" />
+                            </svg>
                         </button>
                         <button id="sendMessageBtn" title="发送消息/右键高级回复" aria-label="发送消息" disabled>
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"

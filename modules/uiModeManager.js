@@ -24,7 +24,11 @@
 
         if (previousMode && previousMode !== normalizedMode) {
             window.dispatchEvent(new CustomEvent('ui-mode-changed', {
-                detail: { mode: normalizedMode, previousMode }
+                detail: {
+                    mode: normalizedMode,
+                    previousMode,
+                    preview: options.preview === true
+                }
             }));
         }
 
@@ -38,16 +42,16 @@
     async function applyAsync(mode, options = {}) {
         const normalizedMode = normalize(mode);
         const generation = ++transitionGeneration;
-        await window.topTabManager?.prepareForMode?.(normalizedMode);
+        await window.topTabManager?.prepareForMode?.(normalizedMode, options);
         if (generation !== transitionGeneration) return getCurrentMode();
         const appliedMode = apply(normalizedMode, options);
-        await window.topTabManager?.syncMode?.(appliedMode);
+        await window.topTabManager?.syncMode?.(appliedMode, options);
         return appliedMode;
     }
 
     // The cache never writes back by itself. `loadAndApplyGlobalSettings()`
     // will reconcile it with the authoritative settings file.
-    const cachedMode = localStorage.getItem(STORAGE_KEY) ?? NEXT_MODE;
+    const cachedMode = localStorage.getItem(STORAGE_KEY) ?? CLASSIC_MODE;
     apply(cachedMode, { cache: false });
 
     window.uiModeManager = Object.freeze({

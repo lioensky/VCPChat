@@ -24,6 +24,10 @@
 
     let video;
     let panel;
+    let classicPanel;
+    let classicTitleGroup;
+    let classicVisibleInput;
+    let classicVolumeSlider;
     let accountMenu;
     let menuButton;
     let menuEnabledInput;
@@ -43,8 +47,11 @@
     let settingsObserver;
     let accountMenuObserver;
     let accountMenuClickHandler;
+    let uiModeChangeHandler;
+    let beforeUnloadHandler;
 
     const icons = {
+        movie: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M7 4v16M17 4v16M2 9h5M2 15h5M17 9h5M17 15h5"/></svg>',
         prev: '<svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M15.75 19.5 8.25 12l7.5-7.5v15z"/></svg>',
         play: '<svg data-icon="play" viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M8 5v14l11-7z"/></svg>',
         pause: '<svg data-icon="pause" viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>',
@@ -101,6 +108,7 @@
         if (globalEnabledInput) globalEnabledInput.checked = state.enabled;
         if (menuEnabledInput) menuEnabledInput.checked = state.enabled;
         if (wallpaperVisibleInput) wallpaperVisibleInput.checked = state.wallpaperVisible;
+        if (classicVisibleInput) classicVisibleInput.checked = state.wallpaperVisible;
         if (!video) return;
         const visible = Boolean(state.enabled && state.wallpaperVisible && state.files.length);
         video.style.display = visible ? 'block' : 'none';
@@ -136,6 +144,30 @@
                     : state.mode === 'loop' ? '单曲循环' : '顺序播放';
             }
         }
+        if (classicPanel) {
+            const setClassicIcon = (name, visible) => {
+                const icon = classicPanel.querySelector(`[data-icon="${name}"]`);
+                if (icon) icon.style.display = visible ? '' : 'none';
+            };
+            setClassicIcon('play', !playing);
+            setClassicIcon('pause', playing);
+            setClassicIcon('sequence', state.mode === 'sequence');
+            setClassicIcon('random', state.mode === 'random');
+            setClassicIcon('loop', state.mode === 'loop');
+            setClassicIcon('volume', !state.muted && state.volume > 0);
+            setClassicIcon('mute', state.muted || state.volume === 0);
+            if (classicVolumeSlider) {
+                classicVolumeSlider.value = String(state.volume);
+                classicVolumeSlider.style.backgroundSize = `${state.volume * 100}% 100%`;
+            }
+            classicPanel.querySelectorAll('[data-requires-files]').forEach(control => {
+                control.disabled = !state.files.length;
+            });
+            classicPanel.querySelectorAll('[data-requires-visible]').forEach(control => {
+                control.disabled = !state.enabled || !state.wallpaperVisible || !state.files.length;
+            });
+            if (classicVisibleInput) classicVisibleInput.disabled = !state.enabled;
+        }
         if (menuValue) {
             menuValue.textContent = !state.enabled ? '已禁用'
                 : !state.files.length ? '未选择'
@@ -157,6 +189,47 @@
         if (!panel || !menuButton) return;
         panel.hidden = !expanded;
         menuButton.setAttribute('aria-expanded', String(expanded));
+    }
+
+    function handlePanelAction(action) {
+        if (action === 'select-folder') {
+            selectFolder();
+        } else if (action === 'prev') {
+            playAt(state.index - 1);
+        } else if (action === 'next') {
+            next(true);
+        } else if (action === 'play') {
+            if (!state.enabled || !state.wallpaperVisible) return;
+            state.playing = video.paused;
+            saveSettings();
+            if (state.playing) {
+                video.play().catch(() => {
+                    state.playing = false;
+                    saveSettings();
+                });
+            } else {
+                video.pause();
+            }
+        } else if (action === 'mode') {
+            state.mode = state.mode === 'sequence' ? 'random' : state.mode === 'random' ? 'loop' : 'sequence';
+            video.loop = state.mode === 'loop';
+            saveSettings();
+            updateIcons();
+        } else if (action === 'mute') {
+            state.muted = !state.muted;
+            video.muted = state.muted;
+            saveSettings();
+            updateIcons();
+        }
+    }
+
+    function updateVolume(value) {
+        state.volume = Math.max(0, Math.min(1, Number(value)));
+        video.volume = state.volume;
+        state.muted = state.volume === 0;
+        video.muted = state.muted;
+        saveSettings();
+        updateIcons();
     }
 
     async function playAt(index, { autoplay = true, startTime = 0, resetFailures = true } = {}) {
@@ -394,35 +467,7 @@
 
         panel.addEventListener('click', (event) => {
             const action = event.target.closest('[data-action]')?.dataset.action;
-            if (action === 'select-folder') {
-                selectFolder();
-            } else if (action === 'prev') {
-                playAt(state.index - 1);
-            } else if (action === 'next') {
-                next(true);
-            } else if (action === 'play') {
-                if (!state.enabled || !state.wallpaperVisible) return;
-                state.playing = video.paused;
-                saveSettings();
-                if (state.playing) {
-                    video.play().catch(() => {
-                        state.playing = false;
-                        saveSettings();
-                    });
-                } else {
-                    video.pause();
-                }
-            } else if (action === 'mode') {
-                state.mode = state.mode === 'sequence' ? 'random' : state.mode === 'random' ? 'loop' : 'sequence';
-                video.loop = state.mode === 'loop';
-                saveSettings();
-                updateIcons();
-            } else if (action === 'mute') {
-                state.muted = !state.muted;
-                video.muted = state.muted;
-                saveSettings();
-                updateIcons();
-            }
+            handlePanelAction(action);
         });
         menuEnabledInput.addEventListener('change', () => setEnabled(menuEnabledInput.checked));
         wallpaperVisibleInput.addEventListener('change', () => {
@@ -433,21 +478,92 @@
             updateIcons();
         });
         volumeSlider.addEventListener('input', (event) => {
-            state.volume = Number(event.target.value);
-            video.volume = state.volume;
-            state.muted = state.volume === 0;
-            video.muted = state.muted;
-            saveSettings();
-            updateIcons();
+            updateVolume(event.target.value);
         });
         panel.querySelector('.vchat-wallpaper-volume').addEventListener('wheel', (event) => {
             event.preventDefault();
-            state.volume = Math.max(0, Math.min(1, state.volume + (event.deltaY > 0 ? -0.05 : 0.05)));
-            video.volume = state.volume;
-            state.muted = state.volume === 0;
-            video.muted = state.muted;
+            updateVolume(state.volume + (event.deltaY > 0 ? -0.05 : 0.05));
+        }, { passive: false });
+        updateIcons();
+    }
+
+    function removeClassicControls() {
+        if (!classicTitleGroup) return;
+        const title = classicTitleGroup.querySelector('#currentChatAgentName');
+        if (title) classicTitleGroup.replaceWith(title);
+        else classicTitleGroup.remove();
+        classicPanel = null;
+        classicTitleGroup = null;
+        classicVisibleInput = null;
+        classicVolumeSlider = null;
+    }
+
+    function injectClassicControls() {
+        if (document.documentElement.dataset.uiMode === 'next') {
+            removeClassicControls();
+            return;
+        }
+        if (classicPanel) return;
+        const header = document.querySelector('.chat-header');
+        const title = document.getElementById('currentChatAgentName');
+        if (!header || !title) return;
+
+        classicTitleGroup = document.createElement('div');
+        classicTitleGroup.id = 'vchat-wallpaper-title-group';
+        header.insertBefore(classicTitleGroup, title);
+        classicTitleGroup.append(title);
+
+        classicPanel = document.createElement('div');
+        classicPanel.id = 'vchat-dynamic-wallpaper-panel';
+        classicPanel.className = state.collapsed ? 'collapsed' : '';
+        classicPanel.innerHTML = `
+            <button type="button" class="vchat-wallpaper-toggle" data-action="collapse"
+                title="视频壁纸控制（右键选择文件夹）" aria-label="展开或收起视频壁纸控制">
+                ${icons.movie}
+            </button>
+            <div class="vchat-wallpaper-controls">
+                <label class="vchat-wallpaper-visible" title="显示动态壁纸"><input type="checkbox" aria-label="显示动态壁纸"></label>
+                <div class="vchat-wallpaper-group">
+                    <button type="button" class="vchat-wallpaper-control" data-action="prev" data-requires-visible title="上一个" aria-label="上一个">${icons.prev}</button>
+                    <button type="button" class="vchat-wallpaper-control" data-action="play" data-requires-visible title="暂停或播放" aria-label="暂停或播放">${icons.pause}${icons.play}</button>
+                    <button type="button" class="vchat-wallpaper-control" data-action="next" data-requires-visible title="下一个" aria-label="下一个">${icons.next}</button>
+                </div>
+                <span class="vchat-wallpaper-divider"></span>
+                <button type="button" class="vchat-wallpaper-control" data-action="mode" data-requires-files title="切换播放模式" aria-label="切换播放模式">${icons.sequence}${icons.random}${icons.loop}</button>
+                <div class="vchat-wallpaper-volume">
+                    <button type="button" class="vchat-wallpaper-control" data-action="mute" data-requires-files title="静音或取消静音" aria-label="静音或取消静音">${icons.volume}${icons.mute}</button>
+                    <div class="vchat-wallpaper-volume-slider"><input type="range" min="0" max="1" step="0.05" value="${state.volume}" data-requires-files aria-label="视频壁纸音量"></div>
+                </div>
+            </div>`;
+        classicTitleGroup.append(classicPanel);
+        classicVisibleInput = classicPanel.querySelector('.vchat-wallpaper-visible input');
+        classicVolumeSlider = classicPanel.querySelector('input[type="range"]');
+
+        classicPanel.addEventListener('click', event => {
+            const action = event.target.closest('[data-action]')?.dataset.action;
+            if (action === 'collapse') {
+                state.collapsed = !state.collapsed;
+                classicPanel.classList.toggle('collapsed', state.collapsed);
+                saveSettings();
+                return;
+            }
+            handlePanelAction(action);
+        });
+        classicPanel.querySelector('[data-action="collapse"]').addEventListener('contextmenu', event => {
+            event.preventDefault();
+            selectFolder();
+        });
+        classicVisibleInput.addEventListener('change', () => {
+            capturePlayback();
+            state.wallpaperVisible = classicVisibleInput.checked;
+            applyVisibility({ resume: state.wallpaperVisible });
             saveSettings();
             updateIcons();
+        });
+        classicVolumeSlider.addEventListener('input', event => updateVolume(event.target.value));
+        classicPanel.querySelector('.vchat-wallpaper-volume').addEventListener('wheel', event => {
+            event.preventDefault();
+            updateVolume(state.volume + (event.deltaY > 0 ? -0.05 : 0.05));
         }, { passive: false });
         updateIcons();
     }
@@ -455,9 +571,11 @@
     function observeUiMounts() {
         injectGlobalControl();
         injectAccountMenu();
+        injectClassicControls();
         settingsObserver = new MutationObserver(() => {
             injectGlobalControl();
             injectAccountMenu();
+            injectClassicControls();
         });
         settingsObserver.observe(document.body, { childList: true, subtree: true });
     }
@@ -505,10 +623,13 @@
             setTimeout(() => playAt(candidate, { resetFailures: false }), 800);
         });
         video.loop = state.mode === 'loop';
-        window.addEventListener('beforeunload', () => {
+        uiModeChangeHandler = () => injectClassicControls();
+        window.addEventListener('ui-mode-changed', uiModeChangeHandler);
+        beforeUnloadHandler = () => {
             capturePlayback();
             saveSettings();
-        });
+        };
+        window.addEventListener('beforeunload', beforeUnloadHandler);
         observeUiMounts();
         updateIcons();
     }
@@ -516,11 +637,14 @@
     function destroy() {
         settingsObserver?.disconnect();
         accountMenuObserver?.disconnect();
+        if (uiModeChangeHandler) window.removeEventListener('ui-mode-changed', uiModeChangeHandler);
+        if (beforeUnloadHandler) window.removeEventListener('beforeunload', beforeUnloadHandler);
         if (accountMenu && accountMenuClickHandler) accountMenu.removeEventListener('click', accountMenuClickHandler);
         document.body.classList.remove('vchat-dynamic-wallpaper-visible');
         releaseUrl();
         video?.remove();
         panel?.remove();
+        removeClassicControls();
         menuButton?.remove();
         globalControl?.remove();
     }

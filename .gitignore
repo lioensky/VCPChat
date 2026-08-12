@@ -37,6 +37,7 @@ modules/itemListManager.js
 modules/settingsManager.js
 package-lock.json
 package.json
+!vendor/webawesome-runtime/package.json
 styles/themes.css
 
 # LibreHardwareMonitor 官方二进制由开发者本地自行准备，不进入仓库

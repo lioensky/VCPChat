@@ -4,11 +4,11 @@
 // their original business DOM, form ids, defaults and IPC; this module only
 // layers the VCPUI presentation on top when the mode resolves to next.
 //
-// Global settings (R5.1): the modal is always rebuilt into a
+// Global settings (R5.1): in Next, the modal is rebuilt into a
 // SettingsShell-style layout — left rail with a VCPUI-enhanced search field and
 // a VCPUI List category navigation, the original form as the content area, and
-// the existing footer as the fixed save bar. Its host is independent from the
-// home layout, so Classic and Next use the same settings experience.
+// the existing footer as the fixed save bar. Classic keeps the upstream modal
+// DOM and controls untouched.
 
 const controllers = new Set();
 const injectedNodes = new Set();
@@ -30,16 +30,16 @@ function isNextUi() {
 }
 
 function isGlobalSettingsNextUi() {
-    // Global settings is the shared settings surface for both home layouts.
-    // It must expose the layout selector while Classic is active as well.
-    return Boolean(document.getElementById('globalSettingsModal'));
+    return document.documentElement.dataset.uiMode === 'next'
+        && Boolean(document.getElementById('globalSettingsModal'));
 }
 
 function syncGlobalSettingsHost() {
     const modal = document.getElementById('globalSettingsModal');
-    const active = Boolean(modal?.classList.contains('active'));
+    const isNext = document.documentElement.dataset.uiMode === 'next';
+    const active = isNext && Boolean(modal?.classList.contains('active'));
     document.documentElement.classList.toggle('vcp-global-settings-host', active);
-    modal?.classList.add('vcp-global-settings-next');
+    modal?.classList.toggle('vcp-global-settings-next', isNext);
     return modal;
 }
 
@@ -167,7 +167,10 @@ function mountSettingsShell(root) {
         layout,
         nav,
         listHost,
-        originalNavHtml: listHost.innerHTML,
+        // Keep the original Classic nodes alive instead of rebuilding them
+        // from HTML on teardown. Their event listeners are owned by the
+        // Classic settings controller and must survive a Next preview.
+        originalNavNodes: [...listHost.childNodes],
         meta,
         active: initial,
         query: '',
@@ -315,11 +318,19 @@ function teardown() {
         if (!state) return;
         state.layout.classList.remove('vcp-ui-settings-shell');
         state.list?.destroy();
-        state.listHost.innerHTML = state.originalNavHtml;
+        const activeSection = state.active || root.querySelector('.settings-section.active')?.id?.replace(/^section-/, '');
+        state.originalNavNodes
+            .filter(node => node.nodeType === 1 && node.matches('.settings-nav-item'))
+            .forEach(node => node.classList.toggle('active', node.dataset.section === activeSection));
+        state.listHost.replaceChildren(...state.originalNavNodes);
         shellState.delete(root);
+        document.dispatchEvent(new CustomEvent('vcp-settings-navigation-restored', {
+            detail: { root }
+        }));
     });
     shellRoots.clear();
     document.querySelectorAll('#globalSettingsModal[data-vcp-settings-icons-normalized]').forEach(restoreFormIcons);
+    document.getElementById('globalSettingsModal')?.classList.remove('vcp-global-settings-next');
     document.documentElement.classList.remove('vcp-global-settings-host');
 }
 

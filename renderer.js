@@ -1,7 +1,7 @@
 // --- Globals ---
 let globalSettings = {
     sidebarWidth: 260,
-    uiMode: 'next',
+    uiMode: 'classic',
     showHomeVisualBrand: true,
     showHomeVisualTagline: true,
     homeVisualTagline: '语义级打穿 AI、UI/UX、APP 与人类想象力的边界',

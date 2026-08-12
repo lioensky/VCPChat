@@ -137,7 +137,7 @@
     });
 
     const DEFAULT_STATE = Object.freeze({
-        uiMode: 'next',
+        uiMode: 'classic',
         themeMode: 'system',
         themeFileName: null,
         presentation: 'bubble',
@@ -220,7 +220,7 @@
 
     const clone = value => JSON.parse(JSON.stringify(value));
     const api = () => window.chatAPI || window.electronAPI;
-    const currentUiMode = () => document.documentElement.dataset.uiMode || 'next';
+    const currentUiMode = () => document.documentElement.dataset.uiMode || 'classic';
     function normalizeHomeTaglineText(value, fallback = DEFAULT_HOME_TAGLINE) {
         const normalized = typeof value === 'string' ? value.trim().slice(0, 120) : '';
         return normalized || fallback;
@@ -1007,8 +1007,12 @@
     async function preview(options = {}) {
         if (!draft) return;
         const generation = ++previewGeneration;
+        const preserveNextSession = snapshot?.uiMode === 'next';
         if (window.uiModeManager?.applyAsync) {
-            await window.uiModeManager.applyAsync(draft.uiMode, { cache: false });
+            await window.uiModeManager.applyAsync(draft.uiMode, {
+                cache: false,
+                preview: preserveNextSession
+            });
         } else {
             window.uiModeManager?.apply(draft.uiMode, { cache: false });
         }
@@ -1042,8 +1046,12 @@
         previewGeneration += 1;
         if ((window.VCPAppearance?.getRevision?.() || 0) !== snapshotRevision) return;
         removeThemePreview();
+        const preserveNextSession = snapshot.uiMode === 'next';
         if (window.uiModeManager?.applyAsync) {
-            await window.uiModeManager.applyAsync(snapshot.uiMode, { cache: false });
+            await window.uiModeManager.applyAsync(snapshot.uiMode, {
+                cache: false,
+                preview: preserveNextSession
+            });
         } else {
             window.uiModeManager?.apply(snapshot.uiMode, { cache: false });
         }
@@ -1107,6 +1115,17 @@
         setBusy(true);
         previewGeneration += 1;
         const nextState = clone(draft);
+        const persistedSnapshot = snapshot ? {
+            uiMode: snapshot.uiMode,
+            appearanceProfile: snapshot.profile,
+            chatPresentationMode: snapshot.presentation,
+            enableWideChatLayout: snapshot.messageWidth === 'wide',
+            showHomeVisualBrand: snapshot.homeVisual !== 'hidden',
+            showHomeVisualTagline: snapshot.homeTagline !== 'hidden',
+            homeVisualTagline: snapshot.homeTaglineText,
+            currentThemeMode: snapshot.themeMode
+        } : null;
+        let settingsPersisted = false;
         try {
             const result = await api()?.saveSettings?.({
                 uiMode: nextState.uiMode,
@@ -1119,6 +1138,7 @@
                 currentThemeMode: nextState.themeMode
             });
             if (!result?.success) throw new Error(result?.error || '设置保存失败');
+            settingsPersisted = true;
 
             Object.assign(window.globalSettings || {}, {
                 uiMode: nextState.uiMode,
@@ -1165,6 +1185,22 @@
             window.uiHelperFunctions?.showToastNotification?.('外观与布局已应用。', 'success');
             await close({ rollback: false });
         } catch (error) {
+            if (settingsPersisted && persistedSnapshot) {
+                try {
+                    const rollbackResult = await api()?.saveSettings?.(persistedSnapshot);
+                    if (!rollbackResult?.success) throw new Error(rollbackResult?.error || '设置回写失败');
+                } catch (rollbackError) {
+                    console.error('[AppearanceStudio] Failed to restore persisted settings:', rollbackError);
+                    window.uiHelperFunctions?.showToastNotification?.(
+                        `外观保存失败，且磁盘设置恢复失败：${rollbackError.message}`,
+                        'error'
+                    );
+                }
+                Object.assign(window.globalSettings || {}, {
+                    ...persistedSnapshot,
+                    appearanceProfile: clone(persistedSnapshot.appearanceProfile)
+                });
+            }
             await restoreSnapshot();
             draft = clone(snapshot);
             syncControls();

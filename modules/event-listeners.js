@@ -589,6 +589,8 @@ export function setupEventListeners(deps) {
         let isAnimating = false;
 
         navItems.forEach(item => {
+            if (item.dataset.globalSettingsNavBound) return;
+            item.dataset.globalSettingsNavBound = 'true';
             item.addEventListener('click', () => {
                 // 防止动画过程中重复点击
                 if (isAnimating) return;
@@ -649,6 +651,7 @@ export function setupEventListeners(deps) {
             });
         });
     }
+    document.addEventListener('vcp-settings-navigation-restored', setupGlobalSettingsNavigation);
 
     function setupUserAvatarListener(input) {
         input.addEventListener('change', (event) => {

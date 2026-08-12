@@ -16,6 +16,7 @@
     let pendingTabRestore = null;
     let teardownPromise = null;
     let modeRequestGeneration = 0;
+    let previewSuspended = false;
     const suppressedTabClicks = new Set();
 
     function listen(target, type, handler, options = {}) {
@@ -75,11 +76,12 @@
     }
 
     function createTab({ id, title, icon, iconSvg, closeLabel }) {
-        const tab = document.createElement('button');
-        tab.type = 'button';
+        const tab = document.createElement('div');
         tab.className = 'next-ui-tab';
         tab.dataset.viewId = id;
+        tab.setAttribute('role', 'tab');
         tab.setAttribute('aria-selected', 'false');
+        tab.tabIndex = -1;
         const label = document.createElement('span');
         label.className = 'next-ui-tab-label vcp-ui-scope';
         if (icon) {
@@ -98,9 +100,9 @@
         const text = document.createElement('span');
         text.textContent = title;
         label.append(text);
-        const close = document.createElement('span');
+        const close = document.createElement('button');
+        close.type = 'button';
         close.className = 'next-ui-tab-close';
-        close.setAttribute('role', 'button');
         close.setAttribute('aria-label', closeLabel || `关闭${title}标签`);
         close.title = '关闭标签';
         close.innerHTML = '<span class="vcp-ui-icon" aria-hidden="true">close</span>';
@@ -114,6 +116,12 @@
                 event.stopPropagation();
                 closeView(id);
             } else setView(id);
+        });
+        tab.addEventListener('keydown', event => {
+            if (event.target.closest('.next-ui-tab-close')) return;
+            if (event.key !== 'Enter' && event.key !== ' ') return;
+            event.preventDefault();
+            setView(id);
         });
         document.getElementById('nextUiDynamicTabs')?.append(tab);
         return tab;
@@ -183,6 +191,7 @@
             const active = id === activeViewId;
             view.tab.classList.toggle('active', active);
             view.tab.setAttribute('aria-selected', String(active));
+            view.tab.tabIndex = active ? 0 : -1;
             view.container.hidden = !active;
         });
         syncEmbeddedActivation();
@@ -534,13 +543,14 @@
             window.VCPAppearanceStudio?.syncAccountMenuValue?.();
             const isDark = document.body.classList.contains('dark-theme');
             const nextThemeLabel = isDark ? '切换为浅色模式' : '切换为深色模式';
-            if (themeIcon) window.VCPIcons?.set(themeIcon, isDark ? 'light_mode' : 'dark_mode');
+            const currentThemeIcon = isDark ? 'dark_mode' : 'light_mode';
+            if (themeIcon) window.VCPIcons?.set(themeIcon, currentThemeIcon);
             if (themeLabel) themeLabel.textContent = nextThemeLabel;
             themeToggleButton?.setAttribute('aria-label', nextThemeLabel);
             themeToggleButton?.setAttribute('aria-pressed', String(isDark));
             if (topbarThemeIcon) {
-                if (window.VCPIcons?.set) window.VCPIcons.set(topbarThemeIcon, isDark ? 'light_mode' : 'dark_mode');
-                else topbarThemeIcon.textContent = isDark ? 'light_mode' : 'dark_mode';
+                if (window.VCPIcons?.set) window.VCPIcons.set(topbarThemeIcon, currentThemeIcon);
+                else topbarThemeIcon.textContent = currentThemeIcon;
             }
             topbarThemeButton?.setAttribute('aria-label', nextThemeLabel);
             topbarThemeButton?.setAttribute('title', nextThemeLabel);
@@ -875,6 +885,7 @@
     function unmount() {
         if (!mounted) return teardownPromise || Promise.resolve();
         mounted = false;
+        previewSuspended = false;
         mountGeneration += 1;
         mountAbortController?.abort();
         mountAbortController = null;
@@ -897,7 +908,29 @@
         return wrapped;
     }
 
-    async function prepareForMode(mode) {
+    async function suspendForPreview() {
+        if (!mounted || previewSuspended) return;
+        previewSuspended = true;
+        const host = document.getElementById('nextUiInternalAppHost');
+        if (host) host.hidden = true;
+        try {
+            await getDesktopApi()?.desktopActivateEmbeddedVchatApp?.(null);
+        } catch (error) {
+            console.warn('[NextUI] Failed to suspend embedded app preview:', error);
+        }
+    }
+
+    function resumeFromPreview() {
+        if (!previewSuspended) return;
+        previewSuspended = false;
+        updateVisibility();
+    }
+
+    async function prepareForMode(mode, options = {}) {
+        if (mode !== 'next' && options.preview === true) {
+            await suspendForPreview();
+            return;
+        }
         if (mode !== 'next') {
             await unmount();
             return;
@@ -905,23 +938,30 @@
         if (teardownPromise) await teardownPromise;
     }
 
-    async function syncMode(mode) {
+    async function syncMode(mode, options = {}) {
         const normalizedMode = mode === 'next' ? 'next' : 'classic';
         const generation = ++modeRequestGeneration;
         if (normalizedMode !== 'next') {
+            if (options.preview === true) {
+                await suspendForPreview();
+                return;
+            }
             await unmount();
             return;
         }
         if (teardownPromise) await teardownPromise;
         if (generation !== modeRequestGeneration) return;
-        if (document.documentElement.dataset.uiMode === 'next') mount();
+        if (document.documentElement.dataset.uiMode === 'next') {
+            if (previewSuspended) resumeFromPreview();
+            else mount();
+        }
     }
 
     function init() {
         if (initialized) return;
         initialized = true;
         window.addEventListener('ui-mode-changed', event => {
-            void syncMode(event.detail?.mode);
+            void syncMode(event.detail?.mode, { preview: event.detail?.preview === true });
         });
         void syncMode(document.documentElement.dataset.uiMode);
     }
