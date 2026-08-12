@@ -47,32 +47,66 @@
     display: flow-root;
     width: 100%;
     min-width: 0;
-    cursor: text;
-    user-select: text;
-}
-.vdoc-md-live-preview {
-    display: block;
-    width: 100%;
-    min-width: 0;
-    min-height: 1em;
     margin: 0;
     padding: 0;
     border: 0;
     outline: 0;
+    background: transparent;
+    cursor: text;
+    user-select: text;
+    -webkit-user-select: text;
+}
+.vdoc-edit-region[data-vdoc-edit-active="true"] {
+    z-index: 1;
+}
+.vdoc-edit-region[data-vdoc-edit-type="markdown"][data-vdoc-edit-active="true"] {
+    margin: inherit;
+    padding: 0;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    box-shadow: none;
+}
+.vdoc-md-live-preview {
+    min-width: 0;
+    min-height: 1em;
+    border: 0;
+    outline: 0;
     color: inherit;
     background: transparent;
-    white-space: pre-wrap;
+    white-space: normal;
     overflow-wrap: anywhere;
     tab-size: 4;
     caret-color: #3a8b78;
     cursor: text;
+    user-select: text;
+    -webkit-user-select: text;
+}
+.vdoc-md-live-preview:empty::before {
+    content: "输入 Markdown…";
+    color: color-mix(in srgb, currentColor 38%, transparent);
+    pointer-events: none;
 }
 .vdoc-md-marker {
+    display: inline;
+    margin: 0;
+    padding: 0;
+    border: 0;
     color: color-mix(in srgb, currentColor 48%, #d97745);
+    background: transparent;
     font-family: Consolas, "Maple Mono", monospace;
     font-size: .72em;
+    font-style: normal;
+    font-weight: 600;
+    line-height: inherit;
+    text-decoration: none;
+    vertical-align: .06em;
+    opacity: .72;
 }
 .vdoc-md-marker-concealed { display: none !important; }
+[data-vdoc-inline-html-decoration="true"] {
+    max-width: 100%;
+}
 ${primitives.editDecorationsCss()}
 `
                 : `
@@ -123,22 +157,37 @@ ${primitives.editDecorationsCss()}
             return { root, runtime };
         }
 
-        function activatePlugins(root, surface, adapter) {
-            if (surface === 'edit') {
-                context.editorPort?.bindSurface?.(root);
-                context.objectPort?.bindRoot?.(root);
-                context.renderedTextPort?.activate?.({
-                    kind: 'flow',
-                    root,
-                    adapter,
-                });
-            }
-            context.runtimePort?.activate?.({
+        function activateEditPlugins(root, adapter) {
+            context.editorPort?.bindSurface?.(root);
+            context.objectPort?.bindRoot?.(root);
+            context.renderedTextPort?.activate?.({
                 kind: 'flow',
-                surface,
                 root,
                 adapter,
             });
+        }
+
+        function scheduleRuntimeActivation(
+            root,
+            surface,
+            adapter,
+            scrollHost
+        ) {
+            let canceled = false;
+            const frame = window.requestAnimationFrame(() => {
+                if (canceled || !root.host?.isConnected) return;
+                context.runtimePort?.activate?.({
+                    kind: 'flow',
+                    surface,
+                    root,
+                    adapter,
+                    scrollHost,
+                });
+            });
+            return () => {
+                canceled = true;
+                window.cancelAnimationFrame(frame);
+            };
         }
 
         function renderEdit(options = {}) {
@@ -156,21 +205,18 @@ ${primitives.editDecorationsCss()}
             primitives.renderMath(root);
             primitives.renderMermaid(root);
             primitives.updateZoomLayout(root, options.zoom);
-            context.visibilityPort?.observe?.(
+            activateEditPlugins(root, adapter);
+            const cancelRuntimeActivation = scheduleRuntimeActivation(
                 root,
-                options.scrollHost,
-                {
-                    selector: '[data-vdoc-island]',
-                    rootMargin: '0px',
-                    viewportRoot: true,
-                }
+                'edit',
+                adapter,
+                options.scrollHost
             );
-            activatePlugins(root, 'edit', adapter);
             return Object.freeze({
                 root,
                 runtime,
                 dispose() {
-                    context.visibilityPort?.disconnect?.(root);
+                    cancelRuntimeActivation();
                     context.editorPort?.disposeSurface?.();
                     context.objectPort?.clearSelection?.();
                     context.renderedTextPort?.disposeSurface?.();
@@ -198,22 +244,18 @@ ${primitives.editDecorationsCss()}
             primitives.renderMath(root);
             primitives.renderMermaid(root);
             primitives.updateZoomLayout(root, options.zoom);
-            context.visibilityPort?.observe?.(
+            const cancelRuntimeActivation = scheduleRuntimeActivation(
                 root,
-                options.scrollHost,
-                {
-                    selector: '[data-vdoc-island]',
-                    rootMargin: '0px',
-                    viewportRoot: true,
-                }
+                'read',
+                adapter,
+                options.scrollHost
             );
-            activatePlugins(root, 'read', adapter);
             return Object.freeze({
                 root,
                 runtime,
                 result,
                 dispose() {
-                    context.visibilityPort?.disconnect?.(root);
+                    cancelRuntimeActivation();
                     context.runtimePort?.disposeSurface?.('read');
                 },
             });

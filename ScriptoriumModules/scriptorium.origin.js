@@ -13,6 +13,7 @@
     const sourceEditorModule = window.ScriptoriumSourceEditor;
     const sessionModule = window.ScriptoriumSession;
     const objectModule = window.ScriptoriumObjects;
+    const renderedTextModule = window.ScriptoriumRenderedText;
     const state = {
         document: null,
         currentPath: null,
@@ -109,6 +110,8 @@
         hybridDomSourceMap: new WeakMap(),
         hybridTextSourceMap: new WeakMap(),
         hybridEditSessions: new WeakMap(),
+        renderedTextController: null,
+        renderedTextSessions: new WeakMap(),
     };
 
     const asyncCoordinator = asyncModule?.createCoordinator({
@@ -314,6 +317,9 @@
                     notes: String(slide.notes || ''),
                     resources: Array.isArray(slide.resources)
                         ? JSON.parse(JSON.stringify(slide.resources))
+                        : [],
+                    runtimeTextOverrides: Array.isArray(slide.runtimeTextOverrides)
+                        ? JSON.parse(JSON.stringify(slide.runtimeTextOverrides))
                         : [],
                 }))
                 : [],
@@ -1203,9 +1209,9 @@ ${surface === 'edit' ? `
                 if (state.mode !== 'render') return;
                 activateProgrammableContent('render');
 
-                // 岛脚本是同步激活的。动态表格等运行态 DOM 只有脚本执行后才
-                // 存在，因此必须在激活完成后再建立第二层岛文本编辑映射。
-                installRuntimeIslandTextEditing(root);
+                // 脚本同步激活后，统一扫描 DOC 岛或 PPT 页中新出现的可见文字。
+                // 精确映射优先，其余文字进入上下文源码匹配或运行态覆盖层。
+                installRenderedTextEditing(root);
             });
         }
         renderOutline();
@@ -1566,26 +1572,14 @@ ${compiled.html}
     }
 
     function hybridTextNodes(root) {
-        if (!root) return [];
-        const nodes = [];
-        const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
-            acceptNode(node) {
-                if (!node.nodeValue || !node.nodeValue.trim()) {
-                    return NodeFilter.FILTER_REJECT;
-                }
-                if (node.parentElement?.closest(
-                    'script,style,noscript,canvas,svg,video,audio,input,textarea,select,'
-                    + '[data-vdoc-math],[data-vdoc-mermaid],[data-vdoc-md-live-preview]'
-                )) {
-                    return NodeFilter.FILTER_REJECT;
-                }
-                return NodeFilter.FILTER_ACCEPT;
-            },
-        });
-        for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-            nodes.push(node);
-        }
-        return nodes;
+        return state.renderedTextController?.textNodes(root, {
+            requireLayout: false,
+            excludedSelector: [
+                renderedTextModule.DEFAULT_EXCLUDED_SELECTOR,
+                '[data-vdoc-math]',
+                '[data-vdoc-mermaid]',
+            ].join(','),
+        }) || [];
     }
 
     function markdownLiveMarkerRanges(raw) {
@@ -2129,9 +2123,15 @@ ${compiled.html}
     function markdownFlowRunAtOffset(compiled, sourceOffset, fallbackOrdinal = 0) {
         const regions = compiled?.editRegions || [];
         if (!regions.length) return null;
-        let index = regions.findIndex((region) =>
+        let index = regions.findIndex((region, regionIndex) =>
             sourceOffset >= region.sourceRange.start
-            && sourceOffset <= region.sourceRange.end
+            && (
+                sourceOffset < region.sourceRange.end
+                || (
+                    regionIndex === regions.length - 1
+                    && sourceOffset === region.sourceRange.end
+                )
+            )
         );
         if (index < 0) {
             index = Math.max(
@@ -3001,10 +3001,16 @@ function reconcileMarkdownTransactionPresentation(
 
     state.markdownLivePreview = null;
     state.activeHybridTextEdit = null;
-    const targetOrdinal = regions.findIndex((region) =>
+    const targetOrdinal = regions.findIndex((region, regionIndex) =>
         region.type === 'markdown'
         && caretSourceOffset >= region.sourceRange.start
-        && caretSourceOffset <= region.sourceRange.end
+        && (
+            caretSourceOffset < region.sourceRange.end
+            || (
+                regionIndex === regions.length - 1
+                && caretSourceOffset === region.sourceRange.end
+            )
+        )
     );
     const resolvedOrdinal = targetOrdinal >= 0 ? targetOrdinal : ordinal;
     const targetShell = nextShells[resolvedOrdinal];
@@ -3232,7 +3238,10 @@ function reconcileMarkdownTransactionPresentation(
                     const island = shell.querySelector(
                         `[data-vdoc-island="${CSS.escape(region.islandId || '')}"]`
                     );
-                    const path = islandElementPath(island, node.parentElement);
+                    const path = state.renderedTextController?.elementPath(
+                        island,
+                        node.parentElement
+                    );
                     const textNodeIndex = [...(node.parentElement?.childNodes || [])]
                         .indexOf(node);
                     return island && path && textNodeIndex >= 0
@@ -4252,30 +4261,6 @@ function reconcileMarkdownTransactionPresentation(
         return null;
     }
 
-    function islandElementPath(island, element) {
-        if (!island || !element || !island.contains(element)) return null;
-        const path = [];
-        for (
-            let current = element;
-            current && current !== island;
-            current = current.parentElement
-        ) {
-            const parent = current.parentElement;
-            if (!parent) return null;
-            path.unshift([...parent.children].indexOf(current));
-        }
-        return path;
-    }
-
-    function elementAtIslandPath(island, path) {
-        let current = island;
-        for (const index of path || []) {
-            current = current?.children?.[index] || null;
-            if (!current) return null;
-        }
-        return current;
-    }
-
     function sourceTextRangeFromIslandPath(
         raw,
         islandId,
@@ -4288,7 +4273,10 @@ function reconcileMarkdownTransactionPresentation(
         const sourceIsland = template.content.querySelector(
             `[data-vdoc-island="${CSS.escape(String(islandId || ''))}"]`
         );
-        const sourceElement = elementAtIslandPath(sourceIsland, path);
+        const sourceElement = state.renderedTextController?.elementAtPath(
+            sourceIsland,
+            path
+        );
         const sourceNode = sourceElement?.childNodes?.[textNodeIndex] || null;
         if (sourceNode?.nodeType !== Node.TEXT_NODE) return null;
 
@@ -4366,89 +4354,258 @@ function reconcileMarkdownTransactionPresentation(
 
     function applyRuntimeIslandTextOverrides(islandRoot, islandRecord) {
         (islandRecord?.runtimeTextOverrides || []).forEach((override) => {
-            const element = elementAtIslandPath(islandRoot, override.path);
-            const node = element?.childNodes?.[override.textNodeIndex] || null;
-            if (node?.nodeType === Node.TEXT_NODE) {
+            const node = state.renderedTextController?.textNodeAtPath(
+                islandRoot,
+                override.path,
+                override.textNodeIndex
+            );
+            if (node) node.nodeValue = String(override.text ?? '');
+        });
+    }
+
+    function slideRenderedTextOverrides(slide = activeSlide()) {
+        if (!slide) return [];
+        slide.runtimeTextOverrides = Array.isArray(slide.runtimeTextOverrides)
+            ? slide.runtimeTextOverrides
+            : [];
+        return slide.runtimeTextOverrides;
+    }
+
+    function setSlideRenderedTextOverride(record, text) {
+        const slide = activeSlide();
+        if (!slide || !Array.isArray(record?.snapshot?.path)
+            || !Number.isInteger(record.snapshot.textNodeIndex)) {
+            return false;
+        }
+        const overrides = slideRenderedTextOverrides(slide);
+        const key = runtimeOverrideKey(
+            record.snapshot.path,
+            record.snapshot.textNodeIndex
+        );
+        const existing = overrides.find((item) =>
+            runtimeOverrideKey(item.path, item.textNodeIndex) === key
+        );
+        const override = {
+            path: [...record.snapshot.path],
+            textNodeIndex: record.snapshot.textNodeIndex,
+            // 已有覆盖必须保留脚本首次生成的原文字。若每次编辑都把它改成
+            // 上一轮覆盖值，下次脚本重新生成初始 DOM 时覆盖将无法恢复。
+            previousText: existing?.previousText ?? record.snapshot.text,
+            text: String(text ?? ''),
+        };
+        if (existing) Object.assign(existing, override);
+        else overrides.push(override);
+        return true;
+    }
+
+    function applySlideRenderedTextOverrides(runtime) {
+        slideRenderedTextOverrides().forEach((override) => {
+            const node = state.renderedTextController?.textNodeAtPath(
+                runtime,
+                override.path,
+                override.textNodeIndex
+            );
+            if (!node) return;
+            const current = String(node.nodeValue || '');
+            if (current === String(override.previousText ?? '')
+                || current === String(override.text ?? '')) {
                 node.nodeValue = String(override.text ?? '');
             }
         });
     }
 
-    function installRuntimeIslandTextEditing(root = getRenderRoot()) {
-        if (!root || isSlideDeck()) return false;
+    function installDocumentRenderedTextEditing(root) {
         root.querySelectorAll(
-            '[data-vdoc-edit-type="island"][data-vdoc-edit-key]'
+            '[data-vdoc-edit-type="island"][data-vdoc-edit-key],'
+            + '[data-vdoc-edit-type="html"][data-vdoc-flow-kind="html-block"]'
+            + '[data-vdoc-edit-key]'
         ).forEach((shell) => {
             const region = hybridEditRegionByKey(shell.dataset.vdocEditKey);
-            const islandRoot = region?.islandId
+            if (!region) return;
+
+            const islandRoot = region.type === 'island' && region.islandId
                 ? shell.querySelector(
                     `[data-vdoc-island="${CSS.escape(region.islandId)}"]`
                 )
                 : null;
-            const islandRecord = islandRecordById(region?.islandId);
-            if (!region || !islandRoot || !islandRecord) return;
+            const islandRecord = islandRoot
+                ? islandRecordById(region.islandId)
+                : null;
+            const scope = islandRoot || shell;
+            if (region.type === 'island' && (!islandRoot || !islandRecord)) return;
 
-            applyRuntimeIslandTextOverrides(islandRoot, islandRecord);
-            const islandSource = currentSourceHtml().slice(
+            if (islandRoot) {
+                applyRuntimeIslandTextOverrides(islandRoot, islandRecord);
+            }
+            const regionSource = currentSourceHtml().slice(
                 region.sourceRange.start,
                 region.sourceRange.end
             );
+            const scanOptions = {
+                requireLayout: false,
+                // 必须先建立可持久化映射，再开放原生编辑。普通 HTML 不允许
+                // 产生脱离源码的视觉覆盖，避免出现能输入却无法保存的伪编辑。
+                editable: false,
+                acceptHost: (host) =>
+                    host !== scope
+                    && (!islandRoot || !host.matches('[data-vdoc-island]')),
+            };
+            const records = state.renderedTextController.scan(scope, scanOptions);
 
-            hybridTextNodes(islandRoot).forEach((node) => {
+            records.forEach((record) => {
+                const node = record.node;
                 let mapping = state.hybridTextSourceMap.get(node);
                 if (!mapping) {
-                    const path = islandElementPath(islandRoot, node.parentElement);
-                    const textNodeIndex = [...(node.parentElement?.childNodes || [])]
-                        .indexOf(node);
-                    if (!path || textNodeIndex < 0) return;
-
-                    // 动态 DOM 的可见值可能仍来自岛脚本中的静态数据，例如
-                    // test.md 表格的 rows 数组。若该文字在岛源码中唯一出现，
-                    // 直接建立源码映射，使渲染后编辑真正修改脚本数据，而不是
-                    // 仅保存一份与脚本分离的视觉覆盖。
-                    const sourceRange = sourceTextRange(
-                        islandSource,
-                        node.nodeValue || ''
+                    const resolved = state.renderedTextController.resolveSourceRange(
+                        regionSource,
+                        record.snapshot,
+                        { textNodeCount: records.length }
                     );
-                    mapping = sourceRange
+                    const path = record.snapshot.path;
+                    const textNodeIndex = record.snapshot.textNodeIndex;
+                    if (!path || textNodeIndex < 0) return;
+                    mapping = resolved
                         ? {
                             kind: 'source',
                             shell,
                             regionKey: region.key,
                             domain: 'html',
-                            islandId: region.islandId,
+                            islandId: region.islandId || null,
                             path,
                             textNodeIndex,
+                            confidence: resolved.confidence,
                             sourceRange: {
-                                start: region.sourceRange.start + sourceRange.start,
-                                end: region.sourceRange.start + sourceRange.end,
+                                start: region.sourceRange.start + resolved.start,
+                                end: region.sourceRange.start + resolved.end,
                             },
                         }
-                        : {
-                            kind: 'runtime',
-                            shell,
-                            regionKey: region.key,
-                            domain: 'html',
-                            islandId: region.islandId,
-                            path,
-                            textNodeIndex,
-                            sourceRange: null,
-                        };
-                    state.hybridTextSourceMap.set(node, mapping);
+                        : islandRoot
+                            ? {
+                                kind: 'runtime',
+                                shell,
+                                regionKey: region.key,
+                                domain: 'html',
+                                islandId: region.islandId,
+                                path,
+                                textNodeIndex,
+                                sourceRange: null,
+                            }
+                            : null;
+                    if (mapping) state.hybridTextSourceMap.set(node, mapping);
                 }
+                if (!mapping) return;
 
-                const host = node.parentElement;
-                const interactive = host?.closest(
-                    'a,button,input,select,textarea,audio,video,[role="button"]'
-                );
-                if (host && !interactive
-                    && !host.matches('[data-vdoc-island]')) {
-                    host.contentEditable = 'true';
-                    host.spellcheck = false;
+                // 可编程岛中的运行态节点可能被脚本覆盖层遮挡，并且旧路径依赖
+                // 原生拖选，因此继续预开放独立文字宿主。普通块级 HTML 只预建
+                // 源码映射，等无位移 click 命中具体文本后再开放唯一宿主。
+                // 这避免 test.md 署名的外层 div 与内层 span 同时成为嵌套
+                // contenteditable，导致内层 input 被外层宿主接收并回写错节点。
+                if (islandRoot) {
+                    record.host = renderedTextModule.makeEditable(
+                        node,
+                        scope,
+                        scanOptions
+                    );
                 }
             });
         });
         return true;
+    }
+
+    function installSlideRenderedTextEditing(root) {
+        const runtime = root.querySelector('.vdoc-slide-editor-runtime');
+        if (!runtime) return false;
+        applySlideRenderedTextOverrides(runtime);
+        const records = state.renderedTextController.scan(runtime, {
+            requireLayout: false,
+            editable: true,
+            acceptHost: (host) =>
+                host !== runtime
+                && !host.closest('[data-vdoc-text]')
+                && !host.closest('[data-vdoc-object-resize-handle]'),
+        });
+        const recordsByHost = new Map();
+        records.forEach((record) => {
+            if (!record.host) return;
+            const hosted = recordsByHost.get(record.host) || [];
+            hosted.push(record);
+            recordsByHost.set(record.host, hosted);
+        });
+        recordsByHost.forEach((hostedRecords, host) => {
+            state.renderedTextSessions.set(host, {
+                records: hostedRecords,
+                host,
+                revision: state.documentRevision,
+            });
+        });
+        return true;
+    }
+
+    function commitSlideRenderedTextSession(session) {
+        if (!session?.host?.isConnected || !isSlideDeck()) return false;
+        const initialSource = currentSourceHtml();
+        let source = initialSource;
+        const stagedOverrides = [];
+        const stagedSnapshots = [];
+
+        // 第一阶段只计算源码补丁并验证覆盖位置，不改变文档模型。一个宿主可能
+        // 同时包含多个文本节点；其中任意节点无法建立持久位置时，整场输入事务
+        // 都必须拒绝，不能留下部分源码修改或部分运行态覆盖。
+        for (const record of session.records) {
+            const liveNode = record.node?.isConnected ? record.node : null;
+            const nextText = liveNode
+                ? String(liveNode.nodeValue || '')
+                : session.records.length === 1
+                    ? String(session.host.textContent || '')
+                    : record.snapshot.text;
+            if (nextText === record.snapshot.text) continue;
+
+            const patch = state.renderedTextController.sourcePatch(
+                source,
+                record,
+                nextText
+            );
+            if (patch) {
+                source = patch.source;
+            } else {
+                const snapshot = record?.snapshot;
+                if (!Array.isArray(snapshot?.path)
+                    || !Number.isInteger(snapshot.textNodeIndex)) {
+                    showToast('当前富渲染文字无法建立稳定保存位置。', 'error');
+                    return false;
+                }
+                stagedOverrides.push({ record, nextText });
+            }
+            stagedSnapshots.push({ record, nextText });
+        }
+
+        if (!stagedSnapshots.length) return false;
+
+        // 第二阶段一次性提交。源码真源与路径覆盖都已在上方完成预检，因此这里
+        // 不再存在“前半部分成功、后半部分失败”的可观察中间状态。
+        if (source !== initialSource) setCurrentSourceHtml(source);
+        for (const { record, nextText } of stagedOverrides) {
+            if (!setSlideRenderedTextOverride(record, nextText)) {
+                // 预检与提交处于同一同步任务；此分支只防御外部模型被异常改写。
+                if (source !== initialSource) setCurrentSourceHtml(initialSource);
+                showToast('当前富渲染文字保存事务已安全回滚。', 'error');
+                return false;
+            }
+        }
+        stagedSnapshots.forEach(({ record, nextText }) => {
+            record.snapshot.text = nextText;
+        });
+        state.document.manifest.modifiedAt = new Date().toISOString();
+        markDirty({ coalesce: true });
+        scheduleEditSnapshot();
+        return true;
+    }
+
+    function installRenderedTextEditing(root = getRenderRoot()) {
+        if (!root) return false;
+        return isSlideDeck()
+            ? installSlideRenderedTextEditing(root)
+            : installDocumentRenderedTextEditing(root);
     }
 
     function focusHybridRegionByOrdinal(ordinal, selectContents = false) {
@@ -4557,8 +4714,23 @@ function reconcileMarkdownTransactionPresentation(
 
         const editable = target.parent;
         if (!editable || !shell.contains(editable)) return null;
+
+        if (region.type === 'html') {
+            // 普通 HTML 每次只允许一个实际编辑宿主。尤其是“div 直接文字 +
+            // 内层 span”结构，若祖先和后代同时 contenteditable，Chromium
+            // 可能把内层输入派发到祖先，造成会话绑定到错误文本节点。
+            shell.querySelectorAll(
+                '[data-vdoc-rendered-text-editable="true"]'
+            ).forEach((host) => {
+                if (host === editable) return;
+                host.removeAttribute('contenteditable');
+                host.removeAttribute('spellcheck');
+                host.removeAttribute('data-vdoc-rendered-text-editable');
+            });
+        }
         editable.contentEditable = 'true';
         editable.spellcheck = false;
+        editable.dataset.vdocRenderedTextEditable = 'true';
         try {
             editable.focus({ preventScroll: true });
         } catch {
@@ -4681,9 +4853,8 @@ function reconcileMarkdownTransactionPresentation(
 
             if (region.type === 'island') {
                 // 岛脚本可以用 replaceChildren() 重建动态表格等运行态 DOM。
-                // 每次命中岛时先为当前实例增量补齐文字映射，使翻页后新建的
-                // 单元格获得与初始页相同的选择、编辑和保存能力。
-                installRuntimeIslandTextEditing(root);
+                // 每次命中岛时通过统一渲染文字控制器增量补齐编辑与持久化映射。
+                installRenderedTextEditing(root);
 
                 const target = pointerTextTarget(shell, event);
                 const mapped = target?.node
@@ -5141,7 +5312,11 @@ function reconcileMarkdownTransactionPresentation(
                 activatePage(page);
             }
             const block = event.target.closest?.('[data-vdoc-block]');
+            const renderedTextHost = event.target.closest?.(
+                '[data-vdoc-rendered-text-editable="true"]'
+            );
             if (block) state.activeEditableBlock = block;
+            else if (renderedTextHost) state.activeEditableBlock = renderedTextHost;
             scheduleFormattingControls(event.target);
         }, listenerOptions);
 
@@ -5269,10 +5444,20 @@ function reconcileMarkdownTransactionPresentation(
 
         root.addEventListener('input', (event) => {
             const editable = event.target.closest?.('[data-vdoc-text]');
-            if (!editable) return;
-            queueRenderedNodeUpdate(editable);
-            window.ScriptoriumPretext?.evictNode(editable.dataset.vdocText);
-            markDirty({ coalesce: true });
+            if (editable) {
+                queueRenderedNodeUpdate(editable);
+                window.ScriptoriumPretext?.evictNode(editable.dataset.vdocText);
+                markDirty({ coalesce: true });
+                return;
+            }
+
+            const renderedTextHost = event.target.closest?.(
+                '[data-vdoc-rendered-text-editable="true"]'
+            );
+            const session = renderedTextHost
+                ? state.renderedTextSessions.get(renderedTextHost)
+                : null;
+            if (session) commitSlideRenderedTextSession(session);
         }, listenerOptions);
 
         root.addEventListener('contextmenu', (event) => {
@@ -7427,11 +7612,9 @@ function reconcileMarkdownTransactionPresentation(
                 safelyRestoreModeViewportAnchor('render', viewportAnchor);
                 activateProgrammableContent('render');
 
-                // 从源码模式返回时，applySourceChanges() 会在 state.mode 仍为
-                // html/css 的阶段重建渲染树，因此 renderDocument() 不会执行
-                // 仅限 render 模式的运行态岛文字映射。岛脚本在这里重新生成
-                // 动态表格后，必须再次为这些新节点建立映射和编辑能力。
-                installRuntimeIslandTextEditing(getRenderRoot());
+                // 从源码模式返回后，脚本可能已经重建动态 DOM；统一控制器再次
+                // 扫描当前渲染面，使 DOC 岛与 PPT 富渲染文字使用同一编辑范式。
+                installRenderedTextEditing(getRenderRoot());
             });
             state.pageObserver?.disconnect();
             elements['page-status'].textContent = isSlideDeck()
@@ -10235,6 +10418,7 @@ ${safeCss}
             state.resourceResolver?.revoke();
             state.resourceResolver = null;
             state.renderSurfaceAbortController?.abort();
+            state.renderedTextController?.dispose();
             if (state.compositionEnterFrame !== null) {
                 window.cancelAnimationFrame(state.compositionEnterFrame);
             }
@@ -10262,11 +10446,12 @@ ${safeCss}
         if (!api || !core || !containerModule || !hybridCompiler || !window.JSZip
             || !styleLibrary || !pagination || !asyncModule || !exportResourcesModule
             || !runtimeModule || !sourceEditorModule || !sessionModule || !objectModule
-            || !sourceEditorController || !sessionController
+            || !renderedTextModule || !sourceEditorController || !sessionController
             || !window.ScriptoriumVisibility || !window.ScriptoriumAgentModule) {
             throw new Error('Scriptorium 原生文档内核或模块未载入。');
         }
         cacheElements();
+        state.renderedTextController = renderedTextModule.createController();
         state.objectController = objectModule.createObjectController({
             elements,
             getRoot: getRenderRoot,

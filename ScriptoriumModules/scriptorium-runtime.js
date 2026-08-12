@@ -182,41 +182,32 @@
         function trackedAnime(root, lifecycle) {
             if (typeof window.anime !== 'function') return window.anime;
             const instances = new Set();
-            const visibilityPaused = new Set();
             const register = (instance) => {
                 if (instance?.pause) instances.add(instance);
                 return instance;
             };
-            const pauseForVisibility = () => {
-                instances.forEach((instance) => {
-                    try {
-                        if (!instance.paused) {
-                            visibilityPaused.add(instance);
-                            instance.pause();
-                        }
-                    } catch {}
-                });
-            };
-            const resumeForVisibility = () => {
-                [...visibilityPaused].forEach((instance) => {
-                    try {
-                        instance.play?.();
-                    } catch {}
-                });
-                visibilityPaused.clear();
-            };
-            root.addEventListener('vdoc-runtime-pause', pauseForVisibility);
-            root.addEventListener('vdoc-runtime-resume', resumeForVisibility);
+            const unregisterVisibility =
+                window.ScriptoriumVisibility?.registerCanvas?.(
+                    root,
+                    {
+                        pause() {
+                            instances.forEach((instance) => {
+                                try {
+                                    instance.pause();
+                                } catch {}
+                            });
+                        },
+                        resume() {
+                            instances.forEach((instance) => {
+                                try {
+                                    instance.play?.();
+                                } catch {}
+                            });
+                        },
+                    }
+                );
             lifecycle.addCleanup(() => {
-                root.removeEventListener(
-                    'vdoc-runtime-pause',
-                    pauseForVisibility
-                );
-                root.removeEventListener(
-                    'vdoc-runtime-resume',
-                    resumeForVisibility
-                );
-                visibilityPaused.clear();
+                unregisterVisibility?.();
                 instances.forEach((instance) => {
                     try {
                         instance.pause();
@@ -374,8 +365,11 @@
             );
             if (!runtimeRoot) return [];
             const findings = [];
+            const islandLifecycles = new Map();
+
             runtimeRoot.querySelectorAll('script').forEach(
                 (scriptElement, index) => {
+                    if (scriptElement.dataset.vdocLibrary) return;
                     if (scriptElement.src
                         || scriptElement.getAttribute('src')) {
                         findings.push({
@@ -397,17 +391,48 @@
                     const scriptId = scriptElement.id
                         || scriptElement.dataset.vdocScript
                         || `document-island-${index + 1}`;
-                    markGeneratedNodes(island, lifecycle);
+                    const islandLifecycle = islandLifecycles.get(island)
+                        || createLifecycle();
+                    islandLifecycles.set(island, islandLifecycle);
+                    island.removeAttribute('data-bound');
+                    island.querySelectorAll('[data-bound]').forEach((node) =>
+                        node.removeAttribute('data-bound')
+                    );
+                    markGeneratedNodes(island, islandLifecycle);
                     findings.push(...executeScript({
                         source: scriptElement.textContent || '',
                         root: island,
                         kind: 'flow',
                         surface: input.surface,
                         scriptId,
-                        lifecycle,
+                        lifecycle: islandLifecycle,
                     }).findings);
                 }
             );
+
+            const visibilityObserver = new IntersectionObserver((entries) => {
+                entries.forEach((entry) => {
+                    if (entry.isIntersecting) {
+                        window.ScriptoriumVisibility.resume(entry.target);
+                    } else {
+                        window.ScriptoriumVisibility.pause(entry.target);
+                    }
+                });
+            }, {
+                root: input.scrollHost || null,
+                rootMargin: '100% 0px',
+                threshold: 0,
+            });
+            islandLifecycles.forEach((_islandLifecycle, island) =>
+                visibilityObserver.observe(island)
+            );
+            lifecycle.addCleanup(() => {
+                visibilityObserver.disconnect();
+                islandLifecycles.forEach((islandLifecycle) =>
+                    islandLifecycle.dispose()
+                );
+                islandLifecycles.clear();
+            });
             return findings;
         }
 
@@ -418,6 +443,27 @@
             entry.lifecycle.dispose();
             surfaces.delete(key);
             return true;
+        }
+
+        function activationRoot(input) {
+            if (input.adapter?.kind === 'deck') {
+                if (input.surface === 'read') {
+                    const slide = input.adapter.activeSlide?.();
+                    return input.root.querySelector(
+                        `[data-vdoc-slide-id="${
+                            CSS.escape(slide?.id || '')
+                        }"]`
+                    );
+                }
+                return input.root.querySelector(
+                    '.vdoc-slide-editor-runtime'
+                );
+            }
+            return input.root.querySelector(
+                input.surface === 'read'
+                    ? '.vdoc-paged-runtime'
+                    : '.vdoc-flow-runtime'
+            );
         }
 
         function activate(input = {}) {
@@ -434,9 +480,14 @@
                 input.adapter.kind,
                 surface,
             ].join(':');
+            const contentRoot = activationRoot({
+                ...input,
+                surface,
+            });
             const current = surfaces.get(surface);
             if (current?.identity === identity
-                && current.root === input.root) {
+                && current.root === input.root
+                && current.contentRoot === contentRoot) {
                 return current.runtime;
             }
 
@@ -456,6 +507,7 @@
             surfaces.set(surface, {
                 identity,
                 root: input.root,
+                contentRoot,
                 lifecycle,
                 runtime,
             });

@@ -161,20 +161,234 @@
             return true;
         }
 
+        function inlineHtmlTagRecords(raw) {
+            const source = String(raw || '');
+            const allowed = new Set([
+                'a', 'abbr', 'b', 'bdi', 'bdo', 'big', 'cite', 'code',
+                'del', 'em', 'font', 'i', 'ins', 'kbd', 'mark', 'q',
+                's', 'samp', 'small', 'span', 'strike', 'strong',
+                'sub', 'sup', 'time', 'tt', 'u', 'var', 'br', 'wbr',
+            ]);
+            const voidTags = new Set(['br', 'wbr']);
+            const records = [];
+            const pattern = /<\/?([a-z][\w:-]*)\b[^>]*>/gi;
+            let match;
+            while ((match = pattern.exec(source))) {
+                const tag = String(match[1] || '').toLowerCase();
+                if (!allowed.has(tag)) continue;
+                records.push({
+                    start: match.index,
+                    end: match.index + match[0].length,
+                    source: match[0],
+                    tag,
+                    closing: /^<\//.test(match[0]),
+                    selfClosing: voidTags.has(tag) || /\/\s*>$/.test(match[0]),
+                });
+            }
+            return records;
+        }
+
+        function concealedMarker(text, kind = 'source') {
+            const marker = document.createElement('span');
+            marker.className =
+                `vdoc-md-marker vdoc-md-marker-${kind} vdoc-md-marker-concealed`;
+            marker.dataset.vdocMdMarker = kind;
+            marker.textContent = String(text || '');
+            return marker;
+        }
+
+        function markdownSourceFragment(raw) {
+            const source = String(raw || '');
+            const fragment = document.createDocumentFragment();
+            const ranges = compiler.markdownLiveMarkerRanges(source)
+                .map((range, index) => ({
+                    ...range,
+                    index,
+                    delimiter: source.slice(range.start, range.end),
+                }));
+            const inlineKinds = new Set([
+                'strong',
+                'emphasis',
+                'italic',
+                'strikethrough',
+                'code',
+            ]);
+            const grouped = new Map();
+            ranges.forEach((range) => {
+                if (!inlineKinds.has(range.kind)) return;
+                const key = `${range.kind}\u0000${range.delimiter}`;
+                const group = grouped.get(key) || [];
+                group.push(range);
+                grouped.set(key, group);
+            });
+
+            const pairsByOpen = new Map();
+            const pairedIndexes = new Set();
+            grouped.forEach((group) => {
+                for (let index = 0; index + 1 < group.length; index += 2) {
+                    const open = group[index];
+                    const close = group[index + 1];
+                    pairsByOpen.set(open.index, { open, close });
+                    pairedIndexes.add(open.index);
+                    pairedIndexes.add(close.index);
+                }
+            });
+
+            const semanticTag = {
+                strong: 'strong',
+                emphasis: 'em',
+                italic: 'em',
+                strikethrough: 'del',
+                code: 'code',
+            };
+            const appendRange = (container, start, end, candidates) => {
+                let offset = start;
+                for (let index = 0; index < candidates.length; index += 1) {
+                    const range = candidates[index];
+                    if (range.start < offset || range.start >= end) continue;
+                    if (range.start > offset) {
+                        container.appendChild(document.createTextNode(
+                            source.slice(offset, range.start)
+                        ));
+                    }
+
+                    const pair = pairsByOpen.get(range.index);
+                    if (pair && pair.close.start < end) {
+                        container.appendChild(concealedMarker(
+                            pair.open.delimiter,
+                            pair.open.kind
+                        ));
+                        const decoration = document.createElement(
+                            semanticTag[pair.open.kind] || 'span'
+                        );
+                        decoration.dataset.vdocMarkdownDecoration =
+                            pair.open.kind;
+                        appendRange(
+                            decoration,
+                            pair.open.end,
+                            pair.close.start,
+                            candidates.filter((candidate) =>
+                                candidate.start >= pair.open.end
+                                && candidate.end <= pair.close.start
+                            )
+                        );
+                        container.appendChild(decoration);
+                        container.appendChild(concealedMarker(
+                            pair.close.delimiter,
+                            pair.close.kind
+                        ));
+                        offset = pair.close.end;
+                        continue;
+                    }
+
+                    if (pairedIndexes.has(range.index)) continue;
+                    container.appendChild(concealedMarker(
+                        range.delimiter,
+                        range.kind
+                    ));
+                    offset = range.end;
+                }
+                if (offset < end) {
+                    container.appendChild(document.createTextNode(
+                        source.slice(offset, end)
+                    ));
+                }
+            };
+
+            appendRange(fragment, 0, source.length, ranges);
+            if (!fragment.childNodes.length) {
+                fragment.appendChild(document.createTextNode(source));
+            }
+            return fragment;
+        }
+
+        function inlineHtmlSourceFragment(raw) {
+            const source = String(raw || '');
+            const records = inlineHtmlTagRecords(source);
+            if (!records.length) return markdownSourceFragment(source);
+
+            const fragment = document.createDocumentFragment();
+            const stack = [{ tag: null, container: fragment }];
+            const current = () => stack[stack.length - 1].container;
+            let offset = 0;
+
+            records.forEach((record) => {
+                if (record.start > offset) {
+                    current().appendChild(markdownSourceFragment(
+                        source.slice(offset, record.start)
+                    ));
+                }
+
+                if (record.closing) {
+                    let matchingIndex = stack.length - 1;
+                    while (matchingIndex > 0
+                        && stack[matchingIndex].tag !== record.tag) {
+                        matchingIndex -= 1;
+                    }
+                    if (matchingIndex > 0) stack.splice(matchingIndex);
+                    current().appendChild(concealedMarker(
+                        record.source,
+                        'html-tag'
+                    ));
+                    offset = record.end;
+                    return;
+                }
+
+                current().appendChild(concealedMarker(
+                    record.source,
+                    'html-tag'
+                ));
+                const template = document.createElement('template');
+                template.innerHTML = record.source;
+                const decoration = template.content.firstElementChild;
+                if (decoration) {
+                    decoration.removeAttribute('contenteditable');
+                    decoration.removeAttribute('spellcheck');
+                    decoration.dataset.vdocInlineHtmlDecoration = 'true';
+                    current().appendChild(decoration);
+                    if (!record.selfClosing) {
+                        stack.push({
+                            tag: record.tag,
+                            container: decoration,
+                        });
+                    }
+                }
+                offset = record.end;
+            });
+
+            if (offset < source.length) {
+                current().appendChild(markdownSourceFragment(
+                    source.slice(offset)
+                ));
+            }
+            return fragment;
+        }
+
+        function createMarkdownVisualEditor(shell, raw) {
+            const rendered = shell.firstElementChild;
+            const editor = rendered?.cloneNode?.(false)
+                || document.createElement('div');
+            editor.removeAttribute('contenteditable');
+            editor.removeAttribute('spellcheck');
+            editor.replaceChildren(inlineHtmlSourceFragment(raw));
+            return editor;
+        }
+
         function configureSourceEditor(editor, region) {
-            editor.className = 'vdoc-md-live-preview';
+            editor.classList.add('vdoc-md-live-preview');
             editor.dataset.vdocFlowSourceEditor = 'true';
             editor.dataset.vdocFlowDomain = region.type === 'markdown'
                 ? 'markdown'
                 : 'html';
-            editor.contentEditable = 'plaintext-only';
+            editor.removeAttribute('contenteditable');
+            editor.contentEditable = 'true';
             editor.spellcheck = false;
             editor.setAttribute('role', 'textbox');
             editor.setAttribute('aria-multiline', 'true');
             editor.setAttribute(
                 'aria-label',
                 region.type === 'markdown'
-                    ? 'Markdown 源码编辑区'
+                    ? 'Markdown 渲染态编辑区'
                     : 'HTML 源码编辑区'
             );
             return editor;
@@ -205,10 +419,19 @@
 
             const raw = sourceForRegion(region);
             const editor = configureSourceEditor(
-                document.createElement('div'),
+                region.type === 'markdown'
+                    ? createMarkdownVisualEditor(shell, raw)
+                    : document.createElement('div'),
                 region
             );
-            editor.textContent = raw;
+            if (region.type !== 'markdown') editor.textContent = raw;
+            if (String(editor.textContent || '') !== raw) {
+                notificationPort.show?.(
+                    '当前 Markdown 无法建立无损渲染态编辑映射。',
+                    'error'
+                );
+                return null;
+            }
             shell.replaceChildren(editor);
             shell.dataset.vdocEditActive = 'true';
             const session = beginSession(shell, editor);
