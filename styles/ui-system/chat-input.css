@@ -45,6 +45,24 @@
         font-size: var(--vcp-ui-icon-md);
     }
 
+    /* The shared composer uses inline SVGs so Classic does not depend on the
+       Next icon runtime. Keep their rendered size aligned with Classic; the
+       width/height attributes in main.html are only intrinsic fallbacks. */
+    html[data-ui-mode="next"] .vcp-ui-scope :is(
+        #attachFileBtn,
+        #quickNewTopicBtn,
+        #emoticonTriggerBtn,
+        .chat-attach-button,
+        .chat-quick-new-button,
+        .chat-emoticon-button
+    ) svg {
+        width: 16px;
+        height: 16px;
+        fill: none;
+        stroke: currentColor;
+        flex: 0 0 auto;
+    }
+
     html[data-ui-mode="next"] .vcp-ui-scope :is(#sendMessageBtn, .chat-send-button) svg {
         width: var(--vcp-ui-send-icon-size);
         height: var(--vcp-ui-send-icon-size);

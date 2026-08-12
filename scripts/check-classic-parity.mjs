@@ -55,6 +55,17 @@ const wallpaperPlugin = fs.readFileSync(
     path.join(root, 'VCPDistributedServer', 'Plugin', 'VChatDynamicWallpaper', 'plugin.js'),
     'utf8'
 );
+
+const nextComposerCss = fs.readFileSync(
+    path.join(root, 'styles', 'ui-system', 'chat-input.css'),
+    'utf8'
+);
+assert.match(
+    nextComposerCss,
+    /:is\([\s\S]*?#attachFileBtn[\s\S]*?#quickNewTopicBtn[\s\S]*?#emoticonTriggerBtn[\s\S]*?\) svg\s*\{[\s\S]*?width:\s*16px;[\s\S]*?height:\s*16px;/,
+    'Next composer inline SVG controls must retain the same 16px icon geometry as Classic'
+);
+
 assert.match(wallpaperPlugin, /const icons = \{[\s\S]*?movie:\s*'<svg/, 'Classic wallpaper entry must provide an inline SVG icon');
 assert.doesNotMatch(
     wallpaperPlugin,
