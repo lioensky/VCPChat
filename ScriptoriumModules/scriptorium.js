@@ -388,6 +388,7 @@
     const sessionFacade = Object.freeze({
         create: (...args) => sessionPort?.create(...args),
         createDeck: (...args) => sessionPort?.createDeck(...args),
+        showHome: (...args) => sessionPort?.showHome(...args),
         open: (...args) => sessionPort?.open(...args),
         import: (...args) => sessionPort?.import(...args),
         save: (...args) => sessionPort?.save(...args),

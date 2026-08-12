@@ -167,12 +167,22 @@
         function inlineHtmlTagRecords(raw) {
             const source = String(raw || '');
             const allowed = new Set([
-                'a', 'abbr', 'b', 'bdi', 'bdo', 'big', 'cite', 'code',
-                'del', 'em', 'font', 'i', 'ins', 'kbd', 'mark', 'q',
-                's', 'samp', 'small', 'span', 'strike', 'strong',
-                'sub', 'sup', 'time', 'tt', 'u', 'var', 'br', 'wbr',
+                // 行内 HTML 与静态块级 HTML 共用同一套无损标签骨架。
+                // script/style 以及媒体、表单控件不在此开放：它们要么拥有
+                // 独立原子区域，要么不应被普通文字输入会话接管。
+                'a', 'abbr', 'address', 'article', 'aside', 'b', 'bdi',
+                'bdo', 'big', 'blockquote', 'br', 'caption', 'cite',
+                'code', 'col', 'colgroup', 'dd', 'del', 'details', 'dfn',
+                'div', 'dl', 'dt', 'em', 'figcaption', 'figure', 'font',
+                'footer', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'header',
+                'hgroup', 'hr', 'i', 'ins', 'kbd', 'li', 'main', 'mark',
+                'menu', 'nav', 'ol', 'p', 'pre', 'q', 'rp', 'rt', 'ruby',
+                's', 'samp', 'section', 'small', 'span', 'strike',
+                'strong', 'sub', 'summary', 'sup', 'table', 'tbody', 'td',
+                'tfoot', 'th', 'thead', 'time', 'tr', 'tt', 'u', 'ul',
+                'var', 'wbr',
             ]);
-            const voidTags = new Set(['br', 'wbr']);
+            const voidTags = new Set(['br', 'col', 'hr', 'wbr']);
             const records = [];
             const pattern = /<\/?([a-z][\w:-]*)\b[^>]*>/gi;
             let match;
@@ -253,6 +263,12 @@
 
         function editableSourceText(editable) {
             if (!editable) return '';
+            if (editable.dataset?.vdocFlowDomain === 'html') {
+                // 静态 HTML 编辑树把标签源码放在隐藏 marker 中，把可见文字
+                // 放在对应的语义元素中。textContent 按 DOM 顺序连接二者，恰好
+                // 还原原始 HTML；不能在这里按块元素注入视觉换行。
+                return String(editable.textContent || '');
+            }
             if (!editable.classList?.contains('vdoc-md-live-preview-run')) {
                 return editableDomText(editable);
             }
@@ -317,6 +333,14 @@
 
         function refreshLocalMarkers(session, sourceStart, sourceEnd = sourceStart) {
             if (!session?.editable?.isConnected) return false;
+            if (session.region?.type === 'html') {
+                // 静态 HTML 的标签 marker 是无损序列化骨架，不是面向用户的
+                // Markdown 语法提示。即使光标位于标签包围的文字内，也始终
+                // 保持隐藏，避免渲染态文字编辑退化成 HTML 源码编辑。
+                session.editable.querySelectorAll('[data-vdoc-md-marker]')
+                    .forEach((marker) => setMarkerVisible(marker, false));
+                return true;
+            }
             const raw = editableSourceText(session.editable);
             const start = Math.max(0, Math.min(raw.length, Number(sourceStart) || 0));
             const end = Math.max(
@@ -549,11 +573,21 @@
             return fragment;
         }
 
-        function inlineHtmlSourceFragment(raw, baseOffset = 0) {
+        function inlineHtmlSourceFragment(
+            raw,
+            baseOffset = 0,
+            options = {}
+        ) {
             const source = String(raw || '');
+            const sourceFragment = (value, offset) =>
+                options.markdown === false
+                    ? document.createTextNode(value)
+                    : markdownSourceFragment(value, offset);
             const records = inlineHtmlTagRecords(source);
             if (!records.length) {
-                return markdownSourceFragment(source, baseOffset);
+                const fragment = document.createDocumentFragment();
+                fragment.appendChild(sourceFragment(source, baseOffset));
+                return fragment;
             }
 
             const fragment = document.createDocumentFragment();
@@ -563,7 +597,7 @@
 
             records.forEach((record) => {
                 if (record.start > offset) {
-                    current().appendChild(markdownSourceFragment(
+                    current().appendChild(sourceFragment(
                         source.slice(offset, record.start),
                         baseOffset + offset
                     ));
@@ -613,12 +647,29 @@
             });
 
             if (offset < source.length) {
-                current().appendChild(markdownSourceFragment(
+                current().appendChild(sourceFragment(
                     source.slice(offset),
                     baseOffset + offset
                 ));
             }
             return fragment;
+        }
+
+        function createStaticHtmlVisualEditor(raw) {
+            const editor = document.createElement('div');
+            editor.className = 'vdoc-html-live-preview';
+            editor.replaceChildren(inlineHtmlSourceFragment(
+                raw,
+                0,
+                { markdown: false }
+            ));
+            return editor;
+        }
+
+        function visualEditorForRegion(shell, region, raw) {
+            return region.type === 'markdown'
+                ? createMarkdownVisualEditor(shell, raw)
+                : createStaticHtmlVisualEditor(raw);
         }
 
         function markdownLineKind(line) {
@@ -810,7 +861,7 @@
                 'aria-label',
                 region.type === 'markdown'
                     ? 'Markdown 渲染态编辑区'
-                    : 'HTML 源码编辑区'
+                    : 'HTML 渲染态文字编辑区'
             );
             return editor;
         }
@@ -840,15 +891,12 @@
 
             const raw = sourceForRegion(region);
             const editor = configureSourceEditor(
-                region.type === 'markdown'
-                    ? createMarkdownVisualEditor(shell, raw)
-                    : document.createElement('div'),
+                visualEditorForRegion(shell, region, raw),
                 region
             );
-            if (region.type !== 'markdown') editor.textContent = raw;
             if (editableSourceText(editor) !== raw) {
                 notificationPort.show?.(
-                    '当前 Markdown 无法建立无损渲染态编辑映射。',
+                    '当前内容无法建立无损渲染态编辑映射。',
                     'error'
                 );
                 return null;
@@ -1421,14 +1469,9 @@
 
             const nextRaw = sourceForRegion(nextRegion);
             const nextEditable = configureSourceEditor(
-                nextRegion.type === 'markdown'
-                    ? createMarkdownVisualEditor(session.shell, nextRaw)
-                    : document.createElement('div'),
+                visualEditorForRegion(session.shell, nextRegion, nextRaw),
                 nextRegion
             );
-            if (nextRegion.type !== 'markdown') {
-                nextEditable.textContent = nextRaw;
-            }
             if (editableSourceText(nextEditable) !== nextRaw) {
                 return false;
             }

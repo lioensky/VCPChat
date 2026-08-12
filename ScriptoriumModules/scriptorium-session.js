@@ -322,6 +322,27 @@
             resolve(decision);
         }
 
+        async function showHome() {
+            return runAfterUnsavedDecision(
+                '回到首页前，可以保存当前修改，或舍弃这些修改。',
+                async () => {
+                    context.editorResolver?.()?.flush?.();
+                    context.historyPort.finalize();
+                    if (elements['document-workspace']) {
+                        elements['document-workspace'].hidden = true;
+                    }
+                    if (elements['loading-state']) {
+                        elements['loading-state'].hidden = true;
+                    }
+                    if (elements['welcome-state']) {
+                        elements['welcome-state'].hidden = false;
+                    }
+                    await renderRecent();
+                    return true;
+                }
+            );
+        }
+
         async function close() {
             return runAfterUnsavedDecision(
                 '关闭 Scriptorium 前，可以保存当前修改。',
@@ -375,6 +396,7 @@
             activateDocument,
             create,
             createDeck,
+            showHome,
             open,
             import: importDocument,
             openPath,

@@ -388,6 +388,128 @@ svg {
     background: var(--scriptorium-accent-soft);
 }
 
+/* ── Start menu ──────────────────────────────────────────── */
+.start-menu {
+    position: relative;
+    flex: 0 0 auto;
+}
+
+.start-menu-trigger {
+    min-width: 92px;
+}
+
+.start-menu-trigger .start-menu-chevron {
+    width: 13px;
+    height: 13px;
+    margin-left: 1px;
+    transition: transform .18s ease;
+}
+
+.start-menu.open .start-menu-trigger {
+    border-color: var(--highlight-text);
+    box-shadow:
+        inset 0 -2px 0 var(--scriptorium-accent-mid),
+        0 6px 18px color-mix(in srgb, var(--highlight-text) 12%, transparent);
+}
+
+.start-menu.open .start-menu-chevron {
+    transform: rotate(180deg);
+}
+
+.start-menu-dropdown {
+    position: fixed;
+    z-index: 220;
+    top: calc(var(--scriptorium-titlebar-height) + var(--scriptorium-deck-height) - 10px);
+    left: 14px;
+    display: grid;
+    width: 184px;
+    padding: 6px;
+    border: 1px solid var(--scriptorium-hairline);
+    border-radius: 4px 15px 4px 15px;
+    color: var(--primary-text);
+    background:
+        radial-gradient(circle at 12% 0, var(--scriptorium-accent-soft), transparent 46%),
+        var(--scriptorium-glass-solid);
+    box-shadow: 0 18px 52px rgba(0, 0, 0, .38);
+    backdrop-filter: blur(24px) saturate(145%);
+    -webkit-backdrop-filter: blur(24px) saturate(145%);
+    animation: startMenuReveal .16s cubic-bezier(.22, 1, .36, 1);
+}
+
+.start-menu-dropdown > button {
+    display: grid;
+    grid-template-columns: 32px minmax(0, 1fr);
+    align-items: center;
+    gap: 8px;
+    min-height: 48px;
+    padding: 6px 7px;
+    border: 1px solid transparent;
+    border-radius: 3px 10px 3px 10px;
+    color: var(--secondary-text);
+    background: transparent;
+    text-align: left;
+    cursor: pointer;
+    transition:
+        color .15s ease,
+        border-color .15s ease,
+        background .15s ease,
+        transform .15s ease;
+}
+
+.start-menu-dropdown > button:hover,
+.start-menu-dropdown > button:focus-visible {
+    border-color: var(--scriptorium-hairline);
+    outline: 0;
+    color: var(--highlight-text);
+    background: var(--scriptorium-accent-soft);
+    transform: translateX(2px);
+}
+
+.start-menu-dropdown > button > span:last-child {
+    display: grid;
+    min-width: 0;
+    gap: 3px;
+}
+
+.start-menu-dropdown strong {
+    color: var(--primary-text);
+    font: 650 11px/1.2 var(--scriptorium-ui);
+}
+
+.start-menu-dropdown small {
+    color: var(--secondary-text);
+    font: 8px/1.2 var(--scriptorium-ui);
+}
+
+.start-menu-icon {
+    display: grid;
+    width: 30px;
+    height: 30px;
+    place-items: center;
+    border: 1px solid var(--scriptorium-accent-mid);
+    border-radius: 3px 9px 3px 9px;
+    color: var(--highlight-text);
+    background: var(--scriptorium-accent-soft);
+}
+
+.start-menu-icon svg {
+    width: 16px;
+    height: 16px;
+}
+
+.start-menu-separator {
+    height: 1px;
+    margin: 5px 7px;
+    background: var(--scriptorium-hairline);
+}
+
+@keyframes startMenuReveal {
+    from {
+        opacity: 0;
+        transform: translateY(-7px) scale(.975);
+    }
+}
+
 .format-button {
     width: 35px;
     padding: 0;
@@ -2342,9 +2464,21 @@ body.focus-mode .chamber-aura {
         --scriptorium-lineage-width: 270px;
     }
 
-    .deck-button span,
-    .resource-collection-toggle span {
+    .deck-button > span,
+    .resource-collection-toggle > span {
         display: none;
+    }
+
+    .start-menu-trigger {
+        min-width: 38px;
+    }
+
+    .start-menu-trigger .start-menu-chevron {
+        display: none;
+    }
+
+    .start-menu-dropdown span {
+        display: grid;
     }
 
     .resource-collection-toggle {
