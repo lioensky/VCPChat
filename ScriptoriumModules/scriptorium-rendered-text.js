@@ -273,6 +273,8 @@
         host.contentEditable = 'true';
         host.spellcheck = false;
         host.dataset.vdocRenderedTextEditable = 'true';
+        host.setAttribute('role', 'textbox');
+        host.setAttribute('aria-multiline', 'false');
         return host;
     }
 
@@ -596,31 +598,20 @@
             });
 
             const sessions = new WeakMap();
-            root.addEventListener('focusin', (event) => {
-                const host = event.target.closest?.(
-                    '[data-vdoc-rendered-text-editable="true"]'
-                );
-                if (!host || !root.contains(host)) return;
-                const record = hostRecords.get(host);
-                if (!record) return;
-                sessions.set(host, {
-                    record,
-                    previousText: normalizedText(host.textContent),
-                });
-            }, { signal: abortController.signal });
 
-            // 输入期间只允许浏览器修改当前最小 DOM 宿主。源码提交推迟到
-            // focusout，避免每次按键都改变 revision、重编译岛并重启脚本。
-            root.addEventListener('focusout', (event) => {
-                const host = event.target.closest?.(
+            function renderedTextHost(target) {
+                const host = target?.closest?.(
                     '[data-vdoc-rendered-text-editable="true"]'
                 );
-                if (!host || !root.contains(host)) return;
+                return host && root.contains(host) ? host : null;
+            }
+
+            function commitHost(host) {
                 const session = sessions.get(host);
                 sessions.delete(host);
-                if (!session) return;
+                if (!session) return true;
                 const nextText = normalizedText(host.textContent);
-                if (nextText === session.previousText) return;
+                if (nextText === session.previousText) return true;
                 if (applyFlowInput(
                     adapter,
                     host,
@@ -631,12 +622,96 @@
                         ...session.record.snapshot,
                         text: nextText,
                     };
-                    return;
+                    return true;
                 }
 
                 // 映射在编辑期间因外部源码变化而失效时，不留下“看似改好但
                 // 无法保存”的运行态假象；恢复进入编辑前的可持久文本。
                 host.textContent = session.previousText;
+                return false;
+            }
+
+            function adjacentEditableHost(host, backwards = false) {
+                const hosts = [
+                    ...root.querySelectorAll(
+                        '[data-vdoc-rendered-text-editable="true"]'
+                    ),
+                ].filter((candidate) =>
+                    candidate.isConnected
+                    && candidate.contentEditable === 'true'
+                );
+                const index = hosts.indexOf(host);
+                if (index < 0) return null;
+                return hosts[index + (backwards ? -1 : 1)] || null;
+            }
+
+            function finishHostEditing(host, nextHost = null) {
+                commitHost(host);
+                if (nextHost?.isConnected) {
+                    try {
+                        nextHost.focus({ preventScroll: true });
+                    } catch {
+                        nextHost.focus();
+                    }
+                    return;
+                }
+                host.blur();
+            }
+
+            root.addEventListener('focusin', (event) => {
+                const host = renderedTextHost(event.target);
+                if (!host) return;
+                const record = hostRecords.get(host);
+                if (!record) return;
+                sessions.set(host, {
+                    record,
+                    previousText: normalizedText(host.textContent),
+                });
+            }, { signal: abortController.signal });
+
+            // 独立 HTML 岛文本采用单行提交语义。Enter 固化并退出；Tab
+            // 固化后顺序切换宿主，绝不让浏览器向岛内插入换行或缩进。
+            root.addEventListener('keydown', (event) => {
+                if (event.defaultPrevented
+                    || event.isComposing
+                    || event.keyCode === 229
+                    || event.ctrlKey
+                    || event.metaKey
+                    || event.altKey) {
+                    return;
+                }
+                const host = renderedTextHost(event.target);
+                if (!host || (event.key !== 'Enter' && event.key !== 'Tab')) {
+                    return;
+                }
+                event.preventDefault();
+                event.stopPropagation();
+                const nextHost = event.key === 'Tab'
+                    ? adjacentEditableHost(host, event.shiftKey)
+                    : null;
+                finishHostEditing(host, nextHost);
+            }, { signal: abortController.signal });
+
+            // 虚拟键盘、辅助输入设备及部分输入法可能不派发普通 keydown。
+            // 在 beforeinput 再次封锁段落/换行，保持 HTML 岛单行不变量。
+            root.addEventListener('beforeinput', (event) => {
+                if (event.defaultPrevented || event.isComposing) return;
+                if (event.inputType !== 'insertParagraph'
+                    && event.inputType !== 'insertLineBreak') {
+                    return;
+                }
+                const host = renderedTextHost(event.target);
+                if (!host) return;
+                event.preventDefault();
+                finishHostEditing(host);
+            }, { signal: abortController.signal });
+
+            // 普通点击离开仍沿用 focusout 提交；显式 Enter/Tab 已删除会话，
+            // 因此这里不会重复写入源码或重复创建历史记录。
+            root.addEventListener('focusout', (event) => {
+                const host = renderedTextHost(event.target);
+                if (!host) return;
+                commitHost(host);
             }, { signal: abortController.signal });
 
             return true;

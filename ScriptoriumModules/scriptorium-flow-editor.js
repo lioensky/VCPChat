@@ -1626,6 +1626,25 @@
             );
         }
 
+        function adjacentEditableShell(shell, backwards = false) {
+            const shells = [
+                ...state.root.querySelectorAll('[data-vdoc-edit-key]'),
+            ].filter((candidate) => {
+                const region = regionForShell(candidate);
+                return region && region.flowKind !== 'stable-atomic';
+            });
+            const index = shells.indexOf(shell);
+            if (index < 0) return null;
+            return shells[index + (backwards ? -1 : 1)] || null;
+        }
+
+        function finishHtmlSession(session, nextShell = null) {
+            if (!session || session.region.type !== 'html') return false;
+            deactivateSession(session);
+            if (nextShell?.isConnected) activateShell(nextShell);
+            return true;
+        }
+
         function handleEditorKeydown(event) {
             if (event.defaultPrevented
                 || event.isComposing
@@ -1643,7 +1662,20 @@
             const session = state.activeSession?.editable === editable
                 ? state.activeSession
                 : beginSession(shell, editable);
-            if (!session || session.region.type !== 'markdown') return false;
+            if (!session) return false;
+
+            // 独立 HTML 块采用单行提交语义。Enter 固化当前输入并退出；
+            // Tab/Shift+Tab 固化后切换到相邻可编辑文本区，不创建换行或缩进。
+            if (session.region.type === 'html'
+                && (event.key === 'Enter' || event.key === 'Tab')) {
+                event.preventDefault();
+                event.stopPropagation();
+                const nextShell = event.key === 'Tab'
+                    ? adjacentEditableShell(shell, event.shiftKey)
+                    : null;
+                return finishHtmlSession(session, nextShell);
+            }
+            if (session.region.type !== 'markdown') return false;
 
             const offsets = editorSelectionOffsets(editable);
             if (!offsets || !offsets.collapsed) return false;
@@ -1843,13 +1875,20 @@
                 const session = state.activeSession?.editable === editable
                     ? state.activeSession
                     : beginSession(shell, editable);
-                if (!session || session.region.type !== 'markdown') return;
-                const offsets = editorSelectionOffsets(editable);
-                if (!offsets) return;
+                if (!session) return;
 
                 if (event.inputType === 'insertParagraph'
                     || event.inputType === 'insertLineBreak') {
                     event.preventDefault();
+                    if (session.region.type === 'html') {
+                        // 虚拟键盘及辅助输入设备可能绕过 keydown；HTML 块仍须
+                        // 保持单行，并把换行意图解释为“提交并退出编辑”。
+                        finishHtmlSession(session);
+                        return;
+                    }
+                    if (session.region.type !== 'markdown') return;
+                    const offsets = editorSelectionOffsets(editable);
+                    if (!offsets) return;
                     // Markdown 硬换行直接进入文档模型；禁止浏览器仅修改
                     // contenteditable DOM，避免出现“UI 换行、源码没变”。
                     commitSessionInsertion(
@@ -1861,6 +1900,9 @@
                     return;
                 }
 
+                if (session.region.type !== 'markdown') return;
+                const offsets = editorSelectionOffsets(editable);
+                if (!offsets) return;
                 if (event.inputType !== 'insertText'
                     || event.data === null) {
                     return;
