@@ -6,6 +6,10 @@
 const { getDb } = require("../core/db");
 const { getLogger } = require("../core/logger");
 const { assertHistoryTopicHealthy } = require("./message");
+const {
+  normalizeSyncError,
+  withSyncErrorContext,
+} = require("../error-contract");
 
 const CONTENT_HASH_PATTERN = /^(?:|[a-f0-9]{64})$/;
 
@@ -141,10 +145,11 @@ function handleSyncTopicHashBatch(payload, database = getDb()) {
       }
       changedTopics.push(topicId);
     } catch (e) {
-      throw Object.assign(
-        new Error(`Topic hash lookup failed for ${topicId}: ${e.message}`),
-        { code: "SYNC_DB_QUERY_FAILED" },
-      );
+      throw withSyncErrorContext(e, {
+        code: "SYNC_DB_QUERY_FAILED",
+        stage: "topic_validation",
+        failedTopicIds: [topicId],
+      });
     }
   }
 
@@ -214,10 +219,11 @@ function handleSyncTopicHashBatchV2(payload, database = getDb()) {
         changedTopics.push(topicId);
       }
     } catch (e) {
-      throw Object.assign(
-        new Error(`Topic hash lookup failed for ${topicId}: ${e.message}`),
-        { code: "SYNC_DB_QUERY_FAILED" },
-      );
+      throw withSyncErrorContext(e, {
+        code: "SYNC_DB_QUERY_FAILED",
+        stage: "topic_validation",
+        failedTopicIds: [topicId],
+      });
     }
   }
 
@@ -315,10 +321,14 @@ function handleSyncMessageDiffBatch(payload, database = getDb()) {
       if (!topicRow) {
         results[topicId] = {
           ok: false,
-          error: {
-            code: "TOPIC_NOT_FOUND",
-            message: `Topic ${topicId} was not found in the desktop index`,
-          },
+          error: normalizeSyncError(
+            `Topic ${topicId} was not found in the desktop index`,
+            {
+              code: "TOPIC_NOT_FOUND",
+              stage: "messages",
+              failedTopicIds: [topicId],
+            },
+          ),
         };
         continue;
       }
@@ -379,10 +389,11 @@ function handleSyncMessageDiffBatch(payload, database = getDb()) {
       logger.logOperation("messages", "diff", topicId, "error", e.message);
       results[topicId] = {
         ok: false,
-        error: {
+        error: normalizeSyncError(e, {
           code: "MESSAGE_DIFF_FAILED",
-          message: e.message,
-        },
+          stage: "messages",
+          failedTopicIds: [topicId],
+        }),
       };
     }
   }

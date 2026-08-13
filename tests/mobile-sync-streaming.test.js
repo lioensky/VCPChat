@@ -165,6 +165,49 @@ test("中央 pull 拒绝 CDS 返回的 Owner 身份漂移", async () => {
   );
 });
 
+test("中央 pull 将 CDS 字符串错误补全为 Wire 1.2 对象", async () => {
+  const adapter = createCentralSyncAdapter({
+    client: {
+      async *syncMessagesPullStream() {
+        yield {
+          topicId: "topic-a",
+          ownerType: "agent",
+          ownerId: "agent-a",
+          messages: [],
+          _error: "CDS message query failed",
+        };
+      },
+    },
+  });
+  const response = new FakeResponse();
+
+  await adapter.downloadMessagesStreamRaw(
+    [{
+      topicId: "topic-a",
+      ownerType: "agent",
+      ownerId: "agent-a",
+      msgIds: [],
+    }],
+    response,
+  );
+
+  assert.deepEqual(response.frames(), [{
+    topicId: "topic-a",
+    ownerType: "agent",
+    ownerId: "agent-a",
+    messages: [],
+    _error: {
+      code: "SYNC_MESSAGE_READ_FAILED",
+      origin: "desktop_cds",
+      stage: "messages",
+      kind: "storage",
+      retry: "manual",
+      message: "CDS message query failed",
+      failedTopicIds: ["topic-a"],
+    },
+  }]);
+});
+
 test("中央 push 逐 topic 投影为 VCPChat 原生附件并回传 needed hash", async (t) => {
   const appDataPath = fs.mkdtempSync(path.join(os.tmpdir(), "vcp-sync-central-"));
   t.after(() => fs.rmSync(appDataPath, { recursive: true, force: true }));
@@ -239,6 +282,54 @@ test("中央 push 逐 topic 投影为 VCPChat 原生附件并回传 needed hash"
     desktopAttachment._fileManagerData.internalPath,
     `file://${path.join(appDataPath, "UserData", "attachments", `${hash}.txt`)}`,
   );
+});
+
+test("中央 push 将 CDS 字符串错误补全为统一 NDJSON 错误对象", async (t) => {
+  const appDataPath = fs.mkdtempSync(path.join(os.tmpdir(), "vcp-sync-error-"));
+  t.after(() => fs.rmSync(appDataPath, { recursive: true, force: true }));
+  const client = {
+    async syncTopicIdentity({ topicId }) {
+      return { topicId, ownerType: "agent", ownerId: "agent-a" };
+    },
+    async syncMessagesPushTopic({ topicId }) {
+      return {
+        topicId,
+        success: false,
+        error: "CDS write transaction failed",
+      };
+    },
+  };
+  const adapter = createCentralSyncAdapter({
+    chatDataService: { client },
+    appDataPath,
+    compatibilityDb: { prepare: () => ({ get: () => undefined }) },
+  });
+  const request = Readable.from([
+    `${JSON.stringify({
+      topicId: "topic-a",
+      ownerType: "agent",
+      ownerId: "agent-a",
+      messages: [],
+    })}\n`,
+  ]);
+  const response = new FakeResponse();
+
+  await adapter.uploadMessagesBatchRaw(request, response);
+
+  assert.deepEqual(response.frames(), [{
+    topicId: "topic-a",
+    success: false,
+    neededAttachmentHashes: [],
+    error: {
+      code: "SYNC_MESSAGE_WRITE_FAILED",
+      origin: "desktop_cds",
+      stage: "messages",
+      kind: "storage",
+      retry: "manual",
+      message: "CDS write transaction failed",
+      failedTopicIds: ["topic-a"],
+    },
+  }]);
 });
 
 test("中央消息删除把稳定 deletedAt 作为逐消息墓碑交给 CDS", async () => {
