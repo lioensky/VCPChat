@@ -69,9 +69,9 @@ ${parsed.html}
                 const parsed = adapter.parsedSlide(slide);
                 if (!parsed.script) return '';
                 const safeSlideId = String(slide.id).replace(/['\\\r\n]/g, '');
-                return `(() => {
+                return `window.__VCPRegisterScene(${index}, (lifecycle) => {
     const slide = document.querySelector('[data-slide-index="${index}"]');
-    if (!slide) return;
+    if (!slide) return null;
     const scene = slide.matches('.vdoc-slide-scene,[data-vdoc-slide]')
         ? slide
         : slide.querySelector('.vdoc-slide-scene,[data-vdoc-slide]')
@@ -125,17 +125,49 @@ ${parsed.html}
         const run = new Function(
             'scene',
             'deck',
+            'runtime',
             'document',
+            'anime',
+            'requestAnimationFrame',
+            'cancelAnimationFrame',
+            'setTimeout',
+            'clearTimeout',
+            'setInterval',
+            'clearInterval',
             ${inlineScriptLiteral(parsed.script)}
         );
-        run.call(scene, scene, window.VCPDeck, scopedDocument);
+        const returned = run.call(
+            scene,
+            scene,
+            window.VCPDeck,
+            lifecycle.runtime,
+            scopedDocument,
+            lifecycle.anime,
+            lifecycle.requestAnimationFrame,
+            lifecycle.cancelAnimationFrame,
+            lifecycle.setTimeout,
+            lifecycle.clearTimeout,
+            lifecycle.setInterval,
+            lifecycle.clearInterval
+        );
+        if (typeof returned === 'function') lifecycle.addCleanup(returned);
+        else if (returned?.dispose) {
+            lifecycle.addCleanup(() => returned.dispose());
+        }
+        if (typeof scene.__vcpCleanup === 'function') {
+            lifecycle.addCleanup(() => {
+                scene.__vcpCleanup?.();
+                delete scene.__vcpCleanup;
+            });
+        }
     } catch (error) {
         console.error(
             '[VCPDeck] Scene ${safeSlideId} script failed:',
             error
         );
     }
-})();`;
+    return lifecycle.dispose;
+});`;
             }).filter(Boolean).join('\n');
 
             return `<!doctype html>
@@ -270,21 +302,178 @@ ${slideMarkup}
 (() => {
     const slides = [...document.querySelectorAll('.vcp-slide')];
     const status = document.querySelector('.vcp-deck-status');
+    const sceneFactories = new Map();
+    let activeDispose = null;
+    let activationToken = 0;
     let index = 0;
+
+    const createLifecycle = (slide, scene) => {
+        const pristineScene = scene.cloneNode(true);
+        const frames = new Set();
+        const timeouts = new Set();
+        const intervals = new Set();
+        const cleanups = [];
+        const animeInstances = new Set();
+        let disposed = false;
+        const requestFrame = (callback) => {
+            if (disposed) return 0;
+            const id = window.requestAnimationFrame((timestamp) => {
+                frames.delete(id);
+                if (!disposed) callback(timestamp);
+            });
+            frames.add(id);
+            return id;
+        };
+        const cancelFrame = (id) => {
+            frames.delete(id);
+            window.cancelAnimationFrame(id);
+        };
+        const setTimeoutTracked = (callback, wait, ...args) => {
+            if (disposed) return 0;
+            const id = window.setTimeout(() => {
+                timeouts.delete(id);
+                if (!disposed) callback(...args);
+            }, wait);
+            timeouts.add(id);
+            return id;
+        };
+        const clearTimeoutTracked = (id) => {
+            timeouts.delete(id);
+            window.clearTimeout(id);
+        };
+        const setIntervalTracked = (callback, wait, ...args) => {
+            if (disposed) return 0;
+            const id = window.setInterval(() => {
+                if (!disposed) callback(...args);
+            }, wait);
+            intervals.add(id);
+            return id;
+        };
+        const clearIntervalTracked = (id) => {
+            intervals.delete(id);
+            window.clearInterval(id);
+        };
+        const addCleanup = (cleanup) => {
+            if (typeof cleanup === 'function') cleanups.push(cleanup);
+            return cleanup;
+        };
+        const trackAnime = (instance) => {
+            if (instance?.pause) animeInstances.add(instance);
+            return instance;
+        };
+        const scopedAnime = typeof window.anime === 'function'
+            ? new Proxy(window.anime, {
+                apply(target, thisArg, args) {
+                    return trackAnime(Reflect.apply(target, thisArg, args));
+                },
+                get(target, property, receiver) {
+                    const value = Reflect.get(target, property, receiver);
+                    if (property === 'timeline' && typeof value === 'function') {
+                        return (...args) => trackAnime(value.apply(target, args));
+                    }
+                    return typeof value === 'function'
+                        ? value.bind(target)
+                        : value;
+                },
+            })
+            : window.anime;
+        const dispose = () => {
+            if (disposed) return;
+            disposed = true;
+            frames.forEach(window.cancelAnimationFrame);
+            timeouts.forEach(window.clearTimeout);
+            intervals.forEach(window.clearInterval);
+            animeInstances.forEach((instance) => {
+                try { instance.pause(); } catch {}
+            });
+            [...cleanups].reverse().forEach((cleanup) => {
+                try { cleanup(); } catch (error) {
+                    console.error('[VCPDeck] Scene cleanup failed:', error);
+                }
+            });
+            frames.clear();
+            timeouts.clear();
+            intervals.clear();
+            animeInstances.clear();
+            cleanups.length = 0;
+            if (scene === slide) {
+                [...slide.attributes].forEach((attribute) => {
+                    if (!['class', 'data-slide-index', 'data-slide-id',
+                        'data-transition', 'aria-hidden'].includes(attribute.name)) {
+                        slide.removeAttribute(attribute.name);
+                    }
+                });
+                slide.innerHTML = pristineScene.innerHTML;
+            } else if (scene.isConnected && scene.parentNode) {
+                scene.parentNode.replaceChild(
+                    pristineScene.cloneNode(true),
+                    scene
+                );
+            }
+        };
+        return Object.freeze({
+            runtime: Object.freeze({
+                root: scene,
+                addCleanup,
+                requestAnimationFrame: requestFrame,
+                cancelAnimationFrame: cancelFrame,
+                setTimeout: setTimeoutTracked,
+                clearTimeout: clearTimeoutTracked,
+                setInterval: setIntervalTracked,
+                clearInterval: clearIntervalTracked,
+            }),
+            anime: scopedAnime,
+            addCleanup,
+            requestAnimationFrame: requestFrame,
+            cancelAnimationFrame: cancelFrame,
+            setTimeout: setTimeoutTracked,
+            clearTimeout: clearTimeoutTracked,
+            setInterval: setIntervalTracked,
+            clearInterval: clearIntervalTracked,
+            dispose,
+        });
+    };
+
+    window.__VCPRegisterScene = (slideIndex, factory) => {
+        if (typeof factory === 'function') {
+            sceneFactories.set(Number(slideIndex), factory);
+        }
+    };
+
+    const activate = (slideIndex, token) => {
+        if (token !== activationToken) return;
+        const slide = slides[slideIndex];
+        const factory = sceneFactories.get(slideIndex);
+        if (!slide || !factory) return;
+        const scene = slide.querySelector(
+            '.vdoc-slide-scene,[data-vdoc-slide]'
+        ) || slide;
+        const lifecycle = createLifecycle(slide, scene);
+        const returned = factory(lifecycle);
+        activeDispose = typeof returned === 'function'
+            ? returned
+            : lifecycle.dispose;
+    };
+
     const show = (nextIndex) => {
         const normalized = Math.max(
             0,
             Math.min(slides.length - 1, Number(nextIndex) || 0)
         );
+        activationToken += 1;
+        activeDispose?.();
+        activeDispose = null;
         slides.forEach((slide, slideIndex) => {
             const active = slideIndex === normalized;
             slide.classList.toggle('active', active);
             slide.setAttribute('aria-hidden', String(!active));
             slide.style.animation = 'none';
             if (active) {
-                requestAnimationFrame(() =>
-                    slide.style.removeProperty('animation')
-                );
+                const token = activationToken;
+                requestAnimationFrame(() => {
+                    slide.style.removeProperty('animation');
+                    activate(normalized, token);
+                });
             }
         });
         index = normalized;
@@ -329,11 +518,11 @@ ${slideMarkup}
             show(slides.length - 1);
         }
     });
-    const initial =
-        Number(location.hash.match(/slide-(\\d+)/)?.[1] || 1) - 1;
-    show(initial);
 })();
 ${slideScripts}
+const initialSlide =
+    Number(location.hash.match(/slide-(\\d+)/)?.[1] || 1) - 1;
+window.VCPDeck.goTo(initialSlide);
 </script>
 </body>
 </html>`;
