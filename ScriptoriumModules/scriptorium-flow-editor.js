@@ -1011,22 +1011,48 @@
         }
 
         function sourceSelection() {
-            const range = selectionPrimitives.cloneLiveRange(
+            const liveRange = selectionPrimitives.cloneLiveRange(
                 state.root,
                 { expanded: true }
             ) || (
                 state.selectionRange?.startContainer?.isConnected
-                ? state.selectionRange.cloneRange()
-                : null
+                    ? state.selectionRange.cloneRange()
+                    : null
             );
-            if (!range || range.collapsed) return null;
-            const startElement = selectionPrimitives.elementOf(range.startContainer);
-            const endElement = selectionPrimitives.elementOf(range.endContainer);
-            const shell = startElement?.closest?.('[data-vdoc-edit-key]');
+            if (!liveRange || liveRange.collapsed) return null;
+
+            const startElement = selectionPrimitives.elementOf(
+                liveRange.startContainer
+            );
+            const endElement = selectionPrimitives.elementOf(
+                liveRange.endContainer
+            );
+            let shell = startElement?.closest?.('[data-vdoc-edit-key]');
+            let range = liveRange;
+
             if (!shell
                 || endElement?.closest?.('[data-vdoc-edit-key]') !== shell) {
-                return null;
+                // 浏览器在整段拖选、三击选段或从行尾向下拖动时，常把
+                // Selection 终点放在下一块的起始边界。只要裁剪后真正
+                // 含有可见文字的编辑块仍然只有一个，就应视为单块选区，
+                // 而不是因为无文本的边界溢出拒绝段落格式化。
+                const covered = [
+                    ...state.root.querySelectorAll('[data-vdoc-edit-key]'),
+                ].map((candidate) => ({
+                    shell: candidate,
+                    range: selectionPrimitives.rangeWithinNode(
+                        liveRange,
+                        candidate
+                    ),
+                })).filter((candidate) =>
+                    candidate.range
+                    && !candidate.range.collapsed
+                    && candidate.range.toString().length > 0
+                );
+                if (covered.length !== 1) return null;
+                [{ shell, range }] = covered;
             }
+
             const region = regionForShell(shell);
             if (!region || region.flowKind === 'stable-atomic') return null;
             const sourceStart = sourceEndpoint(
@@ -1268,19 +1294,44 @@
                     .replace(/[^a-zA-Z0-9_-]/g, '');
                 const styleId = String(value?.id || '')
                     .replace(/["<>&]/g, '');
+                const targets = Array.isArray(value?.targets)
+                    ? value.targets.map((target) => String(target))
+                    : [];
                 if (!className || !styleId) return false;
-                const source = adapter.currentSource();
-                const selectedSource = source.slice(
-                    selection.sourceStart,
-                    selection.sourceEnd
+
+                const selectedElement = selectionPrimitives.elementOf(
+                    selection.range.startContainer
                 );
+                const paragraphStyle = targets.includes('paragraph')
+                    && Boolean(selectedElement?.closest?.(
+                        'p,[data-vdoc-md-line-kind="paragraph"]'
+                    ));
+                const source = adapter.currentSource();
+                let from = selection.sourceStart;
+                let to = selection.sourceEnd;
+
+                if (paragraphStyle
+                    && selection.region.type === 'markdown'
+                    && selection.region.markdownTokenType === 'paragraph') {
+                    const regionSource = sourceForRegion(selection.region);
+                    const leading = regionSource.match(/^\s*/)?.[0].length || 0;
+                    const trailing = regionSource.match(/\s*$/)?.[0].length || 0;
+                    from = selection.region.sourceRange.start + leading;
+                    to = selection.region.sourceRange.end - trailing;
+                }
+
+                const selectedSource = source.slice(from, to);
+                if (!selectedSource) return false;
+                const targetAttribute = paragraphStyle
+                    ? ' data-vdoc-style-target="paragraph"'
+                    : '';
                 const transaction = transact({
-                    from: selection.sourceStart,
-                    to: selection.sourceEnd,
+                    from,
+                    to,
                     expected: selectedSource,
-                    insert: `<span class="${className}" data-vdoc-style="${styleId}">${
-                        selectedSource
-                    }</span>`,
+                    insert: `<span class="${className}" data-vdoc-style="${styleId}"${
+                        targetAttribute
+                    }>${selectedSource}</span>`,
                     reason: 'flow-advanced-style',
                 });
                 if (!transaction) return false;
@@ -1476,9 +1527,15 @@
                 textColor: context.colorToHex?.(computed.color) || '',
                 lineHeight: computed.lineHeight,
                 activeCommands,
-                selectionTarget: /^H[1-6]$/.test(element.tagName)
+                selectionTarget: /^H[1-6]$/.test(
+                    element.closest?.('h1,h2,h3,h4,h5,h6')?.tagName || ''
+                )
                     ? 'heading'
-                    : 'inline',
+                    : element.closest?.(
+                        'p,[data-vdoc-md-line-kind="paragraph"]'
+                    )
+                        ? 'paragraph'
+                        : 'inline',
             };
         }
 

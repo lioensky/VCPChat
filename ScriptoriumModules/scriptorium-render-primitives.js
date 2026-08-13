@@ -105,6 +105,9 @@ ${scope} table code {
     user-select: text;
     -webkit-user-select: text;
 }
+.vdoc-runtime [data-vdoc-style-target="paragraph"] {
+    display: block;
+}
 .vdoc-runtime-paused *,
 .vdoc-runtime-paused *::before,
 .vdoc-runtime-paused *::after {
