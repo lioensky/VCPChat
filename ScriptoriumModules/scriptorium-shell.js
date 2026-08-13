@@ -9,6 +9,7 @@
         let themeDisposer = null;
         let mode = 'edit';
         let zoom = 100;
+        let focusMode = false;
         let disposed = false;
 
         function cacheElements() {
@@ -88,6 +89,55 @@
                     elements[id].disabled = !status.ready || status.saving;
                 }
             });
+            syncFocusModeControls();
+        }
+
+        function canUseFocusMode() {
+            const status = context.documentPort.status();
+            const documentModel = context.documentPort.document?.();
+            const isDeck = documentModel?.manifest?.scene?.kind
+                === context.core.PROJECT_KINDS.SLIDE_DECK;
+            const workspaceVisible =
+                elements['document-workspace']?.hidden === false;
+            return status.ready
+                && workspaceVisible
+                && !isDeck
+                && (mode === 'edit' || mode === 'read');
+        }
+
+        function setFocusMode(active, options = {}) {
+            const next = active === true && canUseFocusMode();
+            focusMode = next;
+            document.body.classList.toggle('focus-mode', next);
+            elements['focus-mode-btn']?.setAttribute(
+                'aria-pressed',
+                String(next)
+            );
+            if (elements['focus-mode-dock']) {
+                elements['focus-mode-dock'].hidden = !next;
+            }
+            if (next && options.focusDock !== false) {
+                elements['focus-exit-btn']?.focus({ preventScroll: true });
+            }
+            return next;
+        }
+
+        function syncFocusModeControls() {
+            const available = canUseFocusMode();
+            if (!available && focusMode) {
+                setFocusMode(false, { focusDock: false });
+            }
+            if (elements['focus-mode-btn']) {
+                elements['focus-mode-btn'].hidden = !available;
+                elements['focus-mode-btn'].setAttribute(
+                    'aria-pressed',
+                    String(focusMode)
+                );
+            }
+            if (elements['focus-mode-dock']) {
+                elements['focus-mode-dock'].hidden = !focusMode;
+            }
+            return available;
         }
 
         function surfaceMode() {
@@ -107,6 +157,8 @@
             readRoot: () => elements['read-page-stream']?.shadowRoot,
             sourceEditor: () => context.sourcePort?.editor?.() || null,
             switchMode: (nextMode, options) => switchMode(nextMode, options),
+            setFocusMode,
+            refreshControls: syncFocusModeControls,
             renderRead: (options) =>
                 context.renderPort.renderRead(options),
             disposeRead: () =>
@@ -151,6 +203,7 @@
             else context.sourcePort?.open?.(
                 normalized === 'source-html' ? 'html' : 'css'
             );
+            syncFocusModeControls();
             context.findPort?.refresh?.();
             return true;
         }
@@ -280,6 +333,8 @@
             click('lineage-toggle-btn', () =>
                 document.body.classList.toggle('lineage-collapsed')
             );
+            click('focus-mode-btn', () => setFocusMode(true));
+            click('focus-exit-btn', () => setFocusMode(false));
 
             window.addEventListener('keydown', (event) => {
                 const modifier = event.ctrlKey || event.metaKey;
@@ -303,6 +358,10 @@
                     event.preventDefault();
                     context.findPort?.open?.();
                 } else if (event.key === 'Escape') {
+                    if (focusMode) {
+                        event.preventDefault();
+                        setFocusMode(false);
+                    }
                     setStartMenuOpen(false);
                     context.findPort?.close?.();
                     context.mediaPort?.close?.();
@@ -322,6 +381,7 @@
                 updateIdentity
             ) || null;
             updateIdentity();
+            syncFocusModeControls();
             try {
                 document.body.classList.toggle(
                     'light-theme',
@@ -367,6 +427,8 @@
             cacheElements,
             updateIdentity,
             switchMode,
+            setFocusMode,
+            syncFocusModeControls,
             updateZoom,
             initialize,
             dispose,
