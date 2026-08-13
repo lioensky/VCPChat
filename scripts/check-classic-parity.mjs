@@ -25,6 +25,25 @@ assert.ok(document.getElementById('clearNotificationsBtn'), 'Classic notificatio
 
 const settingsTemplate = document.getElementById('globalSettingsModalTemplate');
 assert.ok(settingsTemplate, 'Classic global settings template must remain in main.html');
+const classicSettingsTemplates = [
+    settingsTemplate,
+    document.getElementById('agentSettingsModalTemplate'),
+    document.getElementById('groupSettingsModalTemplate'),
+].filter(Boolean);
+classicSettingsTemplates.forEach(template => {
+    const leakedMaterialTokens = [...template.content.querySelectorAll('.vcp-ui-icon')]
+        .filter(icon => icon.textContent.trim());
+    assert.deepEqual(
+        leakedMaterialTokens.map(icon => icon.textContent.trim()),
+        [],
+        'Classic shared settings templates must not expose Material Symbols text tokens',
+    );
+});
+settingsTemplate.content.querySelectorAll('.appearance-layout-option').forEach(option => {
+    const check = option.querySelector('.appearance-layout-check');
+    assert.equal(check?.tagName, 'svg', 'Classic layout selection must use a mode-independent SVG checkmark');
+    assert.equal(check?.classList.contains('vcp-ui-icon'), false, 'Classic layout selection must not expose a Material Symbols text token');
+});
 const navItems = [...settingsTemplate.content.querySelectorAll('.settings-nav-item')];
 assert.equal(navItems.length, 8, 'Classic global settings must retain all eight upstream categories');
 navItems.forEach(item => assert.ok(item.dataset.section, 'Classic settings category must retain its section target'));

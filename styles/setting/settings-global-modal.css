@@ -981,8 +981,15 @@ html:not([data-ui-mode="next"]) #globalSettingsModal .appearance-layout-helper {
 }
 
 html:not([data-ui-mode="next"]) #globalSettingsModal .appearance-layout-check {
+    width: 18px;
+    height: 18px;
     color: transparent;
-    font-size: 18px;
+}
+
+html:not([data-ui-mode="next"]) #globalSettingsModal .appearance-workbench-open-icon {
+    width: 18px;
+    height: 18px;
+    flex: 0 0 auto;
 }
 
 html:not([data-ui-mode="next"]) #globalSettingsModal .appearance-layout-option:has(input:checked) .appearance-layout-check {

@@ -1252,7 +1252,8 @@
         font-size: var(--vcp-ui-font-caption);
         line-height: var(--vcp-ui-line-body);
     }
-    :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope .appearance-layout-check { color: transparent; font-size: var(--vcp-ui-icon-sm); }
+    :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope .appearance-layout-check { width: var(--vcp-ui-icon-sm); height: var(--vcp-ui-icon-sm); color: transparent; }
+    :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope .appearance-workbench-open-icon { width: var(--vcp-ui-icon-sm); height: var(--vcp-ui-icon-sm); flex: 0 0 auto; }
     :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope .appearance-layout-option:has(input:checked) .appearance-layout-check { color: var(--vcp-ui-accent); }
     :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope .appearance-layout-helper { margin: var(--vcp-ui-space-3) 0 0; }
     :is(html[data-ui-mode="next"], html.vcp-global-settings-host) .vcp-ui-scope .appearance-home-visual-setting {
