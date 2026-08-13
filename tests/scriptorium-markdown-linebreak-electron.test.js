@@ -173,6 +173,55 @@ app.whenReady().then(async () => {
 
         const firstEnter = await dispatchEnter();
         const afterEnter = source();
+
+        // P0 最短复现：Enter → 退格 → Enter。退格可能把多行编辑器
+        // 收回单行编辑器，但新编辑器必须继续持有焦点和有效光标。
+        const firstCycleEditor = root.querySelector(
+            '[data-vdoc-flow-source-editor="true"]'
+        );
+        const firstCycleBackspace = new InputEvent('beforeinput', {
+            inputType: 'deleteContentBackward',
+            bubbles: true,
+            composed: true,
+            cancelable: true
+        });
+        firstCycleEditor?.dispatchEvent(firstCycleBackspace);
+        await new Promise((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(resolve))
+        );
+        const afterFirstCycleBackspace = source();
+        const firstCycleEditorAfterBackspace = root.querySelector(
+            '[data-vdoc-flow-source-editor="true"]'
+        );
+        const firstCycleSelection = root.getSelection
+            ? root.getSelection()
+            : window.getSelection();
+        const firstCycleShellAfterBackspace =
+            firstCycleEditorAfterBackspace?.closest('[data-vdoc-edit-key]');
+        const firstCycleBackspaceState = {
+            handled: firstCycleBackspace.defaultPrevented,
+            editorConnected: Boolean(firstCycleEditorAfterBackspace),
+            editorFocused: root.activeElement === firstCycleEditorAfterBackspace,
+            editorDomain:
+                firstCycleEditorAfterBackspace?.dataset.vdocFlowDomain || null,
+            shellKey:
+                firstCycleShellAfterBackspace?.dataset.vdocEditKey || null,
+            shellType:
+                firstCycleShellAfterBackspace?.dataset.vdocEditType || null,
+            shellFlowKind:
+                firstCycleShellAfterBackspace?.dataset.vdocFlowKind || null,
+            caretInEditor: Boolean(
+                firstCycleEditorAfterBackspace
+                && firstCycleSelection?.anchorNode
+                && firstCycleEditorAfterBackspace.contains(
+                    firstCycleSelection.anchorNode
+                )
+            ),
+            sourceRestored: afterFirstCycleBackspace === before
+        };
+        const firstCycleRetryEnter = await dispatchEnter();
+        const afterFirstCycleRetryEnter = source();
+
         const secondEnter = await dispatchEnter();
         const thirdEnter = await dispatchEnter();
         const afterThreeEnters = source();
@@ -244,6 +293,39 @@ app.whenReady().then(async () => {
             requestAnimationFrame(() => requestAnimationFrame(resolve))
         );
         const afterBackspace = source();
+        const editorAfterBackspace = root.querySelector(
+            '[data-vdoc-flow-source-editor="true"]'
+        );
+        let enterAfterBackspace = null;
+        if (editorAfterBackspace) {
+            const retryEnterEvent = new KeyboardEvent('keydown', {
+                key: 'Enter',
+                bubbles: true,
+                composed: true,
+                cancelable: true
+            });
+            editorAfterBackspace.dispatchEvent(retryEnterEvent);
+            await new Promise((resolve) =>
+                requestAnimationFrame(() => requestAnimationFrame(resolve))
+            );
+            const editorAfterRetry = root.querySelector(
+                '[data-vdoc-flow-source-editor="true"]'
+            );
+            const selectionAfterRetry = root.getSelection
+                ? root.getSelection()
+                : window.getSelection();
+            enterAfterBackspace = {
+                handled: retryEnterEvent.defaultPrevented,
+                editorConnected: Boolean(editorAfterRetry?.isConnected),
+                editorFocused: root.activeElement === editorAfterRetry,
+                caretInEditor: Boolean(
+                    editorAfterRetry
+                    && selectionAfterRetry?.anchorNode
+                    && editorAfterRetry.contains(selectionAfterRetry.anchorNode)
+                ),
+                sourceChanged: source() !== afterBackspace
+            };
+        }
 
         return {
             available: true,
@@ -263,11 +345,28 @@ app.whenReady().then(async () => {
                 && firstEnter?.caretInEditor === true
                 && secondEnter?.caretInEditor === true
                 && thirdEnter?.caretInEditor === true,
+            enterBackspaceEnterWorks:
+                firstCycleBackspaceState.handled === true
+                && firstCycleBackspaceState.editorConnected === true
+                && firstCycleBackspaceState.editorFocused === true
+                && firstCycleBackspaceState.caretInEditor === true
+                && firstCycleBackspaceState.sourceRestored === true
+                && firstCycleRetryEnter?.handled === true
+                && firstCycleRetryEnter?.editorConnected === true
+                && firstCycleRetryEnter?.caretInEditor === true
+                && afterFirstCycleRetryEnter === afterEnter,
             protectedEmptyLinesRendered: protectedBreakCount === 2,
             backspaceWasHandled: backspaceEvent.defaultPrevented,
             oneBackspaceRemovesLastProtectedLine:
                 afterBackspace.length
                 === afterThreeEnters.length - '\\u200B  \\n'.length,
+            editorSurvivesBackspace:
+                Boolean(editorAfterBackspace?.isConnected),
+            enterAfterBackspaceWorks:
+                enterAfterBackspace?.handled === true
+                && enterAfterBackspace?.editorConnected === true
+                && enterAfterBackspace?.caretInEditor === true
+                && enterAfterBackspace?.sourceChanged === true,
             diagnostic: {
                 inputType: backspaceEvent.inputType,
                 editorConnected: editor.isConnected,
@@ -279,8 +378,11 @@ app.whenReady().then(async () => {
                 editorLineRects,
                 editorLineSteps,
                 firstEnter,
+                firstCycleBackspaceState,
+                firstCycleRetryEnter,
                 secondEnter,
-                thirdEnter
+                thirdEnter,
+                enterAfterBackspace
             }
         };
     })()`);

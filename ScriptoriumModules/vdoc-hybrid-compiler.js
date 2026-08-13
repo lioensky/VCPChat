@@ -591,8 +591,22 @@
             let cursor = 0;
             const add = (from, to, token = null) => {
                 if (to <= from) return;
-                const raw = segment.slice(from, to);
-                if (!raw.trim()) return;
+                let regionEnd = to;
+                let raw = segment.slice(from, regionEnd);
+
+                // Marked 会把块后的空白分隔（通常 \n\n）纳入 token.raw。
+                // 分隔空行不是前一个块的可编辑内容；若保留在 region 内，
+                // 段尾 Enter 或 HTML 边界插入会改变下次编译的区域范围，
+                // 造成活动会话、光标及后续 shell key 全部失配。
+                //
+                // 这里只剥离两个及以上的普通尾换行。Markdown 硬换行
+                // “两个空格 + 单换行”和受保护可见空行仍完整保留。
+                const separator = raw.match(/(?:\r?\n){2,}$/)?.[0] || '';
+                if (separator) {
+                    regionEnd -= separator.length;
+                    raw = segment.slice(from, regionEnd);
+                }
+                if (regionEnd <= from || !raw.trim()) return;
                 const type = tokenEditType(token, raw);
                 regions.push({
                     type,
@@ -600,7 +614,7 @@
                         ? htmlEditFlowKind(raw)
                         : 'text-flow',
                     start: start + from,
-                    end: start + to,
+                    end: start + regionEnd,
                     source: raw,
                     markdownTokenType: token?.type || null,
                 });

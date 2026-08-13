@@ -347,6 +347,47 @@
             });
         }
 
+        function resilientEditorSelectionOffsets(editable) {
+            const strict = editorSelectionOffsets(editable);
+            if (strict) return strict;
+            if (!editable?.isConnected
+                || editable.getRootNode()?.activeElement !== editable) {
+                return null;
+            }
+
+            // Chromium 在 contenteditable DOM 被同步重建后，可能短暂保留
+            // “一个端点在新树、另一个端点在旧树”的 Selection。此时界面
+            // 仍显示光标，但 cloneLiveRange() 会正确拒绝该跨树 Range。
+            // 对已聚焦编辑器只采用仍连接的有效端点，恢复为折叠光标。
+            const selection = selectionPrimitives.selectionFor(
+                editable.getRootNode()
+            );
+            const candidates = [
+                [selection?.focusNode, selection?.focusOffset],
+                [selection?.anchorNode, selection?.anchorOffset],
+            ];
+            for (const [node, offset] of candidates) {
+                if (!node || (node !== editable && !editable.contains(node))) {
+                    continue;
+                }
+                const textOffset = selectionPrimitives.textOffsetWithin(
+                    editable,
+                    node,
+                    offset
+                );
+                if (!Number.isFinite(textOffset)) continue;
+                const length = editableSourceText(editable).length;
+                const caret = Math.max(0, Math.min(length, textOffset));
+                selectionPrimitives.restoreOffsets(editable, caret);
+                return Object.freeze({
+                    start: caret,
+                    end: caret,
+                    collapsed: true,
+                });
+            }
+            return null;
+        }
+
         function pastedMarkdownText(value) {
             return String(value || '')
                 .replace(/\r\n?/g, '\n')
@@ -1810,6 +1851,40 @@
             return true;
         }
 
+        function insertHtmlBoundaryBlankLine(session, editable) {
+            if (!session || session.region.type !== 'html') return false;
+            const raw = sourceForRegion(session.region);
+            const offsets = editorSelectionOffsets(editable);
+            if (!offsets) return false;
+
+            // HTML 标签源码由隐藏 marker 和可见文字共同构成。用源码光标
+            // 相对区域中点决定插入到块前或块后，符合标题开头/末尾操作习惯。
+            const before = offsets.start <= raw.length / 2;
+            const boundary = before
+                ? session.region.sourceRange.start
+                : session.region.sourceRange.end;
+            const insertion = before
+                ? '\u200B  \n\n'
+                : '\n\n\u200B';
+            const transaction = transact({
+                from: boundary,
+                to: boundary,
+                expected: '',
+                insert: insertion,
+                reason: before
+                    ? 'flow-html-blank-line-before'
+                    : 'flow-html-blank-line-after',
+            });
+            if (!transaction) return false;
+
+            // 插入新 Markdown 区域会改变编译器分区，不能继续复用旧 HTML
+            // 会话。强制重渲染后由新空白行承担后续编辑。
+            state.activeSession = null;
+            context.renderPort?.invalidate?.('flow-html-boundary-blank-line');
+            context.renderPort?.renderEdit?.({ force: true });
+            return true;
+        }
+
         function markdownLineBreakInsertion(editable, offsets) {
             const raw = editableSourceText(editable);
             const before = raw.slice(0, offsets?.start || 0);
@@ -1839,9 +1914,16 @@
                 ? state.activeSession
                 : beginSession(shell, editable);
             if (!session) return false;
-
-            // 独立 HTML 块采用单行提交语义。Enter 固化当前输入并退出；
-            // Tab/Shift+Tab 固化后切换到相邻可编辑文本区，不创建换行或缩进。
+            // HTML 块内部不能直接插入浏览器原生换行。Shift+Enter 明确表示
+            // 在当前元素边界创建一个可见空白 Markdown 行；普通 Enter 仍然
+            // 提交并退出，Tab/Shift+Tab 切换相邻编辑区。
+            if (session.region.type === 'html'
+                && event.key === 'Enter'
+                && event.shiftKey) {
+                event.preventDefault();
+                event.stopPropagation();
+                return insertHtmlBoundaryBlankLine(session, editable);
+            }
             if (session.region.type === 'html'
                 && (event.key === 'Enter' || event.key === 'Tab')) {
                 event.preventDefault();
@@ -1853,11 +1935,13 @@
             }
             if (session.region.type !== 'markdown') return false;
 
-            const offsets = editorSelectionOffsets(editable);
-            if (!offsets || !offsets.collapsed) return false;
+            const offsets = resilientEditorSelectionOffsets(editable);
+            if (!offsets) return false;
             const text = editableSourceText(editable);
 
-            if (event.key === 'Tab' && !event.shiftKey) {
+            if (event.key === 'Tab'
+                && !event.shiftKey
+                && offsets.collapsed) {
                 const lineStart = text.lastIndexOf(
                     '\n',
                     Math.max(0, offsets.start - 1)
@@ -2067,7 +2151,7 @@
                         return;
                     }
                     if (session.region.type !== 'markdown') return;
-                    const offsets = editorSelectionOffsets(editable);
+                    const offsets = resilientEditorSelectionOffsets(editable);
                     if (!offsets) return;
                     // Markdown 硬换行直接进入文档模型；禁止浏览器仅修改
                     // contenteditable DOM，避免出现“UI 换行、源码没变”。
@@ -2081,7 +2165,7 @@
                 }
 
                 if (session.region.type !== 'markdown') return;
-                const offsets = editorSelectionOffsets(editable);
+                const offsets = resilientEditorSelectionOffsets(editable);
                 if (!offsets) return;
 
                 if (event.inputType === 'deleteContentBackward') {
