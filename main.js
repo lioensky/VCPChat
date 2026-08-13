@@ -115,6 +115,7 @@ const docxHandlers = {
 };
 const loomManagerModule = require('./modules/loom/VCPLoomManager');
 const { PRELOAD_ROLES, resolveProjectPreload } = require('./modules/services/preloadPaths');
+const { createEmbeddedAppSessionManager } = require('./modules/services/embeddedAppSessionManager');
 const { ChatDataServiceFacade } = require('./modules/services/chatDataService');
 // chokidar is now lazy-loaded
 
