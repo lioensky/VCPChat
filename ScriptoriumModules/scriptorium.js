@@ -65,6 +65,10 @@
             nativeApi.exportRichDocument(payload),
         listRecent: () => nativeApi.listRecent(),
         listSystemFonts: (force) => nativeApi.listSystemFonts(force),
+        loadAgentsList: () => nativeApi.loadAgentsList?.() || [],
+        loadUserAvatar: () => nativeApi.loadUserAvatar?.() || null,
+        loadAgentAvatar: (folderName) =>
+            nativeApi.loadAgentAvatar?.(folderName) || null,
         getCurrentTheme: () => nativeApi.getCurrentTheme(),
         onThemeUpdated: (listener) =>
             nativeApi.onThemeUpdated(listener),
@@ -124,6 +128,7 @@
         renderEdit: (...args) => renderPort?.renderEdit(...args),
         renderRead: (...args) => renderPort?.renderRead(...args),
         renderCurrent: (...args) => renderPort?.renderCurrent(...args),
+        disposeSurface: (...args) => renderPort?.disposeSurface(...args),
         patchRegion: (...args) =>
             activeAdapter?.kind === 'flow'
                 ? flowRenderer?.patchRegion?.(...args)
@@ -375,8 +380,12 @@
             node,
             activeAdapter.kind === 'deck'
         );
+        const offset = activeAdapter.kind === 'flow'
+            ? activeEditor?.insertionOffset?.()
+            : undefined;
         const inserted = activeAdapter.insertContent(node.outerHTML, {
             reason: 'object-inserted',
+            ...(Number.isFinite(offset) ? { offset } : {}),
         });
         if (!inserted) return false;
         historyPort.capture({ reason: 'object-inserted' });
@@ -388,6 +397,7 @@
     const sessionFacade = Object.freeze({
         create: (...args) => sessionPort?.create(...args),
         createDeck: (...args) => sessionPort?.createDeck(...args),
+        showHome: (...args) => sessionPort?.showHome(...args),
         open: (...args) => sessionPort?.open(...args),
         import: (...args) => sessionPort?.import(...args),
         save: (...args) => sessionPort?.save(...args),
@@ -448,6 +458,7 @@
             window.ScriptoriumSourceEditor.createSourceEditorController({
                 core,
                 hybridCompiler,
+                documentPort,
                 elements,
                 notificationPort,
                 historyPort,
@@ -533,6 +544,12 @@
                             .map((id) => styleLibrary.get(id))
                             .filter(Boolean);
                     }, { reason: 'advanced-style-used' });
+
+                    // 局部文字补丁只会更新内容节点，不会重建 Shadow DOM
+                    // 中的样式表。样式依赖写入后强制刷新编辑面，确保首次
+                    // 使用的高级样式无需手动刷新即可立即获得对应 CSS。
+                    renderFacade.invalidate('advanced-style-used');
+                    renderFacade.renderEdit({ force: true });
                 },
             });
 
@@ -549,6 +566,8 @@
                 sourcePort,
                 historyPort,
                 lineagePort,
+                navigationPort,
+                lineageUiPort,
                 editorResolver,
                 getAdapter: adapterResolver,
                 resolveAdapter,
@@ -570,6 +589,14 @@
                 lineagePort,
                 documentPort,
                 notificationPort,
+                identityPort: {
+                    loadAgentsList: () =>
+                        persistencePort.loadAgentsList(),
+                    loadUserAvatar: () =>
+                        persistencePort.loadUserAvatar(),
+                    loadAgentAvatar: (folderName) =>
+                        persistencePort.loadAgentAvatar(folderName),
+                },
                 historyPort,
                 renderPort: renderFacade,
                 editorResolver,
@@ -590,6 +617,7 @@
                 core,
                 containerModule,
                 hybridCompiler,
+                styleLibrary,
                 programmableContent: window.ScriptoriumProgrammableContent,
                 prDiff: window.ScriptoriumPrDiff,
                 historyPort,
@@ -598,6 +626,10 @@
                 getAdapter: adapterResolver,
                 persist: (reason) =>
                     sessionPort.persistCheckpoint(reason),
+                onStyleLibraryChange: () => {
+                    renderFacade.invalidate('style-library-changed');
+                    renderFacade.renderCurrent({ force: true });
+                },
             });
         window.ScriptoriumAgent = agentPort;
 

@@ -7,6 +7,7 @@ mod protocol;
 mod search;
 mod storage;
 mod sync;
+mod sync_wire;
 mod watcher;
 
 use std::{

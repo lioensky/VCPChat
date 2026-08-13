@@ -127,8 +127,23 @@
             const matchesRoot = (selector) =>
                 root?.nodeType === Node.ELEMENT_NODE
                 && root.matches?.(selector);
+            // 文档源码中的内联脚本会被抽取后交给受控 Runtime 执行，
+            // 因而浏览器原生 document.currentScript 必然为 null。
+            // 提供只读兼容锚点，让既有脚本仍可通过 closest() 找到场景；
+            // previousElementSibling 兼容“脚本紧跟场景节点”的常见写法。
+            const currentScript = Object.freeze({
+                dataset: Object.freeze({ vdocRuntimeScript: 'true' }),
+                parentElement: root,
+                previousElementSibling: root,
+                closest(selector) {
+                    if (matchesRoot(selector)) return root;
+                    return root?.closest?.(selector) || null;
+                },
+                getRootNode: () => root?.getRootNode?.() || document,
+            });
             return new Proxy(document, {
                 get(target, property) {
+                    if (property === 'currentScript') return currentScript;
                     if (property === 'querySelector') {
                         return (selector) =>
                             (matchesRoot(selector) ? root : null)
@@ -345,10 +360,15 @@
                 )
                 : input.root.querySelector('.vdoc-slide-editor-runtime');
             if (!runtimeRoot || !parsed.script) return [];
-            markGeneratedNodes(runtimeRoot, lifecycle);
+            const sceneRoot = runtimeRoot.matches?.('.vdoc-slide-scene')
+                ? runtimeRoot
+                : runtimeRoot.querySelector('.vdoc-slide-scene')
+                    || runtimeRoot.querySelector('[data-vdoc-slide]')
+                    || runtimeRoot;
+            markGeneratedNodes(sceneRoot, lifecycle);
             return executeScript({
                 source: parsed.script,
-                root: runtimeRoot,
+                root: sceneRoot,
                 kind: 'deck',
                 surface: input.surface,
                 scriptId: slide.id,

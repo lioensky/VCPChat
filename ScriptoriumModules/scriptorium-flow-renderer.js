@@ -27,7 +27,9 @@
             const editCss = surface === 'edit'
                 ? `
 .vdoc-flow-runtime {
+    box-sizing: border-box;
     width: min(calc(100% - 48px), 1440px);
+    max-width: calc(100% - 48px);
     min-height: calc(100% - 64px);
     margin: 0 auto;
     padding: clamp(28px, 4vw, 64px) clamp(22px, 5vw, 72px) 96px;
@@ -37,6 +39,8 @@
 }
 .vdoc-edit-region {
     position: relative;
+    width: 100%;
+    max-width: 100%;
     min-width: 0;
 }
 .vdoc-edit-region[data-vdoc-edit-type="island"]:hover {
@@ -45,8 +49,11 @@
 }
 .vdoc-md-flow-surface {
     display: flow-root;
+    box-sizing: border-box;
     width: 100%;
+    max-width: 100%;
     min-width: 0;
+    overflow-x: hidden;
     margin: 0;
     padding: 0;
     border: 0;
@@ -93,6 +100,8 @@
     background: transparent;
 }
 .vdoc-md-live-preview-run > .vdoc-md-live-preview-line {
+    box-sizing: border-box;
+    width: 100%;
     min-width: 0;
     max-width: 100%;
     white-space: normal;
@@ -213,8 +222,60 @@ ${primitives.editDecorationsCss()}
     box-sizing: border-box;
     width: 100%;
     height: 100%;
-    padding: var(--vdoc-page-padding-block) var(--vdoc-page-padding-inline);
+    min-width: 0;
+    padding-block: var(--vdoc-page-padding-block);
+    padding-inline: var(--vdoc-page-padding-inline);
     overflow: hidden;
+}
+.vdoc-page-body {
+    display: flow-root;
+    box-sizing: border-box;
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    overflow: visible;
+}
+.vdoc-page-content .vdoc-pagination-shell {
+    display: flow-root;
+    min-width: 0;
+    max-width: 100%;
+}
+.vdoc-page-content img,
+.vdoc-page-content svg,
+.vdoc-page-content video,
+.vdoc-page-content canvas,
+.vdoc-page-content iframe,
+.vdoc-page-content object,
+.vdoc-page-content embed {
+    box-sizing: border-box;
+    max-width: 100% !important;
+}
+.vdoc-page-content img,
+.vdoc-page-content svg,
+.vdoc-page-content video {
+    width: auto;
+    height: auto;
+    max-height: calc(
+        var(--vdoc-page-height) - 50mm
+    ) !important;
+    object-fit: contain;
+}
+.vdoc-page-content figure {
+    box-sizing: border-box;
+    max-width: 100%;
+    margin-inline: 0;
+}
+.vdoc-page-content figure > img,
+.vdoc-page-content figure > svg,
+.vdoc-page-content figure > video {
+    display: block;
+    margin-inline: auto;
+}
+.vdoc-page-content [data-vdoc-island],
+.vdoc-page-content [data-vdoc-interactive],
+.vdoc-page-content [data-vdoc-component] {
+    box-sizing: border-box;
+    max-width: 100%;
 }
 `;
             return [
@@ -317,8 +378,10 @@ ${primitives.editDecorationsCss()}
                 'read',
                 options
             );
-            const result = pagination.paginate(
-                primitives.resolveResources(compiled.html),
+            const resolvedHtml = primitives.resolveResources(compiled.html);
+            let paginationHtml = resolvedHtml;
+            const paginate = () => pagination.paginate(
+                paginationHtml,
                 runtime,
                 {
                     ensureIds: (html) => html,
@@ -326,21 +389,167 @@ ${primitives.editDecorationsCss()}
                     zoom: options.zoom,
                 }
             );
+            let result = paginate();
             primitives.renderMath(root);
-            primitives.renderMermaid(root);
+            const mermaidReady = Promise.resolve(
+                primitives.renderMermaid(root)
+            ).catch(() => []);
             primitives.updateZoomLayout(root, options.zoom);
-            const cancelRuntimeActivation = scheduleRuntimeActivation(
+            let disposed = false;
+            let activationFrame = 0;
+            let settleFrame = 0;
+            let resolveActivation = null;
+            let resolveSettle = null;
+
+            const activateRuntime = () => context.runtimePort?.activate?.({
+                kind: 'flow',
+                surface: 'read',
                 root,
-                'read',
                 adapter,
-                options.scrollHost
+                scrollHost: options.scrollHost,
+            });
+
+            const activateRuntimeOnFrame = () => new Promise((resolve) => {
+                resolveActivation = resolve;
+                activationFrame = window.requestAnimationFrame(() => {
+                    activationFrame = 0;
+                    resolveActivation = null;
+                    if (disposed || !root.host?.isConnected) {
+                        resolve(false);
+                        return;
+                    }
+                    activateRuntime();
+                    resolve(true);
+                });
+            });
+
+            const waitForLayoutFrame = () => new Promise((resolve) => {
+                resolveSettle = resolve;
+                settleFrame = window.requestAnimationFrame(() => {
+                    settleFrame = 0;
+                    resolveSettle = null;
+                    resolve();
+                });
+            });
+
+            const waitForImages = () => {
+                const pending = [...root.querySelectorAll('img')]
+                    .filter((image) => !image.complete);
+                if (!pending.length) return Promise.resolve();
+                return Promise.allSettled(pending.map((image) =>
+                    new Promise((resolve) => {
+                        image.addEventListener('load', resolve, { once: true });
+                        image.addEventListener('error', resolve, { once: true });
+                    })
+                ));
+            };
+
+            const snapshotRenderedIslands = (sourceHtml) => {
+                const selector = [
+                    '[data-vdoc-island]',
+                    '[data-vdoc-interactive]',
+                    '[data-vdoc-component]',
+                ].join(',');
+                const template = document.createElement('template');
+                template.innerHTML = sourceHtml;
+                const sourceIslands = [...template.content.querySelectorAll(
+                    selector
+                )];
+                const renderedIslands = [...root.querySelectorAll(selector)];
+                const sourceByIslandId = new Map(
+                    sourceIslands
+                        .filter((island) => island.dataset.vdocIsland)
+                        .map((island) => [
+                            island.dataset.vdocIsland,
+                            island,
+                        ])
+                );
+                renderedIslands.forEach((renderedIsland, index) => {
+                    const islandId = renderedIsland.dataset.vdocIsland;
+                    const sourceIsland = (
+                        islandId
+                            ? sourceByIslandId.get(islandId)
+                            : sourceIslands[index]
+                    );
+                    if (sourceIsland) {
+                        sourceIsland.replaceWith(
+                            renderedIsland.cloneNode(true)
+                        );
+                    }
+                });
+                return template.innerHTML;
+            };
+
+            const removeRuntimeGeneratedNodes = () => {
+                root.querySelectorAll(
+                    '[data-vdoc-runtime-generated="true"]'
+                ).forEach((node) => node.remove());
+            };
+
+            const timeout = (wait) => new Promise((resolve) =>
+                window.setTimeout(resolve, wait)
             );
+            const initialRuntimeReady = activateRuntimeOnFrame();
+            const assetsReady = Promise.race([
+                Promise.allSettled([
+                    document.fonts?.ready || Promise.resolve(),
+                    waitForImages(),
+                    mermaidReady,
+                ]),
+                timeout(1800),
+            ]);
+            const ready = Promise.all([
+                initialRuntimeReady,
+                assetsReady,
+            ]).then(async () => {
+                if (disposed || !root.host?.isConnected) return result;
+
+                // 岛脚本可能在首帧同步创建内容，并在紧随其后的帧中完成
+                // 尺寸写入。二次等待图片和两个布局帧，确保快照反映最终高度。
+                await waitForImages();
+                await waitForLayoutFrame();
+                await waitForLayoutFrame();
+                if (disposed || !root.host?.isConnected) return result;
+
+                paginationHtml = snapshotRenderedIslands(resolvedHtml);
+                context.runtimePort?.disposeSurface?.('read');
+                result = paginate();
+
+                // 运行态快照只负责给分页器提供真实几何。最终页面重新执行
+                // 原始岛脚本前移除其生成节点，避免表格行、画布等被重复创建。
+                removeRuntimeGeneratedNodes();
+                primitives.renderMath(root);
+                await Promise.resolve(
+                    primitives.renderMermaid(root)
+                ).catch(() => []);
+                primitives.updateZoomLayout(root, options.zoom);
+                if (!disposed && root.host?.isConnected) {
+                    activateRuntime();
+                }
+                return result;
+            });
+
             return Object.freeze({
                 root,
                 runtime,
-                result,
+                get result() {
+                    return result;
+                },
+                ready,
                 dispose() {
-                    cancelRuntimeActivation();
+                    disposed = true;
+                    if (activationFrame) {
+                        window.cancelAnimationFrame(activationFrame);
+                        activationFrame = 0;
+                        resolveActivation?.(false);
+                        resolveActivation = null;
+                    }
+                    if (settleFrame) {
+                        window.cancelAnimationFrame(settleFrame);
+                        settleFrame = 0;
+                        resolveSettle?.();
+                        resolveSettle = null;
+                    }
                     context.runtimePort?.disposeSurface?.('read');
                 },
             });

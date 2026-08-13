@@ -2,9 +2,99 @@
  * 清单生成与比对逻辑
  */
 
-const crypto = require("crypto");
-const { getDb, getEntitiesByType, getMessagesByTopic } = require("../core/db");
+const { getDb } = require("../core/db");
 const { getLogger } = require("../core/logger");
+const { assertHistoryTopicHealthy } = require("./message");
+
+const MAX_MANIFEST_ITEMS = 10_000;
+const HASH_PATTERN = /^[a-f0-9]{64}$/;
+const CONTENT_HASH_PATTERN = /^(?:|[a-f0-9]{64})$/;
+
+function syncContractError(message, code = "SYNC_PROTOCOL_INVALID") {
+  return Object.assign(new Error(message), { code });
+}
+
+function requireNonEmptyString(value, label) {
+  if (typeof value !== "string" || value.length === 0) {
+    throw syncContractError(`${label} must be a non-empty string`);
+  }
+  return value;
+}
+
+function requireTimestamp(value, label) {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw syncContractError(`${label} must be a non-negative safe integer`);
+  }
+  return value;
+}
+
+function requireOptionalTombstone(value, label) {
+  if (value === null || value === undefined) return null;
+  return requireTimestamp(value, label);
+}
+
+function requireHash(value, label, { allowEmpty = false } = {}) {
+  const pattern = allowEmpty ? CONTENT_HASH_PATTERN : HASH_PATTERN;
+  if (typeof value !== "string" || !pattern.test(value)) {
+    throw syncContractError(`${label} must be ${allowEmpty ? "empty or " : ""}a lowercase SHA-256 hash`);
+  }
+  return value;
+}
+
+function requireTargetedOwners(dataType, targetedOwners) {
+  if (targetedOwners == null) return null;
+  if (dataType !== "topic" || !Array.isArray(targetedOwners)) {
+    throw syncContractError("targetedOwners is only valid for topic manifests");
+  }
+  if (targetedOwners.length > MAX_MANIFEST_ITEMS) {
+    throw syncContractError("targetedOwners exceeds 10000 owners", "SYNC_BUDGET_EXCEEDED");
+  }
+  const owners = targetedOwners.map((ownerId, index) =>
+    requireNonEmptyString(ownerId, `targetedOwners[${index}]`),
+  );
+  if (new Set(owners).size !== owners.length) {
+    throw syncContractError("targetedOwners contains duplicate owner IDs");
+  }
+  return new Set(owners);
+}
+
+function topicOwnerFromPath(filePath) {
+  requireNonEmptyString(filePath, "topic file_path");
+  const normalized = filePath.replace(/\\/g, "/");
+  const parts = normalized.split("/").filter(Boolean);
+  const ownerId = parts.at(-2);
+  if (!ownerId) {
+    throw syncContractError("Topic index has no owner directory", "SYNC_INDEX_INVALID");
+  }
+  const ownerType = parts.includes("AgentGroups")
+    ? "group"
+    : parts.includes("Agents")
+      ? "agent"
+      : null;
+  if (!ownerType) {
+    throw syncContractError(
+      `Topic ${ownerId} has a file path outside Agents/AgentGroups`,
+      "SYNC_INDEX_INVALID",
+    );
+  }
+  return { ownerId, ownerType };
+}
+
+function requireAvatarOwner(id) {
+  const separator = id.indexOf(":");
+  if (separator <= 0 || separator === id.length - 1) {
+    throw syncContractError(`Avatar manifest id ${id} is invalid`);
+  }
+  const ownerType = id.slice(0, separator);
+  const ownerId = id.slice(separator + 1);
+  if (
+    !["agent", "group", "user"].includes(ownerType) ||
+    (ownerType === "user" && ownerId !== "user_avatar")
+  ) {
+    throw syncContractError(`Avatar manifest owner ${id} is invalid`);
+  }
+  return { ownerType, ownerId };
+}
 
 
 /**
@@ -13,9 +103,15 @@ const { getLogger } = require("../core/logger");
  * @param {string[]} targetedOwners - 仅针对特定所有者的过滤列表 (V2)
  * @returns {object[]} 本地实体列表
  */
-function getLocalManifest(dataType, targetedOwners = null) {
-  const db = getDb();
-  if (!db) return [];
+function getLocalManifest(dataType, targetedOwners = null, database = getDb()) {
+  const db = database;
+  if (!db) {
+    throw syncContractError("Database not initialized", "SYNC_DB_UNAVAILABLE");
+  }
+  if (!["agent", "group", "topic", "avatar"].includes(dataType)) {
+    throw syncContractError(`Unsupported manifest dataType ${dataType}`);
+  }
+  const ownerFilter = requireTargetedOwners(dataType, targetedOwners);
 
   if (dataType === "avatar") {
     const rows = db
@@ -23,61 +119,77 @@ function getLocalManifest(dataType, targetedOwners = null) {
         "SELECT owner_id, owner_type, hash, updated_at, deleted_at FROM avatar_index",
       )
       .all();
-    return rows.map((r) => ({
-      id: `${r.owner_type}:${r.owner_id}`,
-      hash: r.hash,
-      ts: r.updated_at,
-      deletedAt: r.deleted_at,
-    }));
+    if (rows.length > MAX_MANIFEST_ITEMS) {
+      throw syncContractError("Avatar manifest exceeds 10000 items", "SYNC_BUDGET_EXCEEDED");
+    }
+    return rows.map((row) => {
+      const id = `${row.owner_type}:${row.owner_id}`;
+      requireAvatarOwner(id);
+      return {
+        id,
+        hash: requireHash(row.hash, `Avatar ${id} hash`),
+        ts: requireTimestamp(row.updated_at, `Avatar ${id} timestamp`),
+        deletedAt: requireOptionalTombstone(
+          row.deleted_at,
+          `Avatar ${id} deletedAt`,
+        ),
+      };
+    });
   }
 
-  let rows;
-  if (dataType === "topic" && Array.isArray(targetedOwners) && targetedOwners.length > 0) {
-    // 修复：使用更精确的路径匹配模式，防止 prefix 冲突 (例如 agent_1 匹配到 agent_11)
-    // 路径结构通常为 .../Agents/owner_id/config.json
-    // 使用 % 作为分隔符以对齐 Windows (\) 和 Unix (/)
-    const likeClauses = targetedOwners.map(() => "(file_path LIKE ? OR file_path LIKE ?)").join(" OR ");
-    const params = [];
-    targetedOwners.forEach(id => {
-      params.push(`%Agents%${id}%config.json`);
-      params.push(`%AgentGroups%${id}%config.json`);
-    });
-    
-    rows = db
-      .prepare(
-        `SELECT * FROM entity_index WHERE (type = 'topic' OR type = 'agent_topic' OR type = 'group_topic') AND (${likeClauses})`,
-      )
-      .all(...params);
-  } else {
-    rows = getEntitiesByType(dataType);
+  const rows = dataType === "topic"
+    ? db
+        .prepare(
+          "SELECT * FROM entity_index WHERE type = 'topic' OR type = 'agent_topic' OR type = 'group_topic'",
+        )
+        .all()
+    : db.prepare("SELECT * FROM entity_index WHERE type = ?").all(dataType);
+
+  const filteredRows = dataType === "topic" && ownerFilter
+    ? rows.filter((row) => ownerFilter.has(topicOwnerFromPath(row.file_path).ownerId))
+    : rows;
+  if (filteredRows.length > MAX_MANIFEST_ITEMS) {
+    throw syncContractError(
+      `${dataType} manifest exceeds 10000 items`,
+      "SYNC_BUDGET_EXCEEDED",
+    );
   }
 
   if (dataType === "topic" || dataType === "agent" || dataType === "group") {
-    return rows.map((r) => {
+    const seen = new Set();
+    return filteredRows.map((row) => {
+      const id = requireNonEmptyString(row.id, `${dataType} manifest id`);
+      if (!seen.add(id)) {
+        throw syncContractError(
+          `${dataType} manifest contains duplicate id ${id}`,
+          "SYNC_INDEX_INVALID",
+        );
+      }
       const result = {
-        id: r.id,
-        hash: r.hash, // 兼容旧版
-        configHash: r.hash,
-        contentHash: r.aggregated_hash || "",
-        ts: r.updated_at,
-        deletedAt: r.deleted_at,
+        id,
+        hash: requireHash(row.hash, `${dataType} ${id} hash`),
+        configHash: requireHash(row.hash, `${dataType} ${id} configHash`),
+        contentHash: requireHash(
+          row.aggregated_hash ?? "",
+          `${dataType} ${id} contentHash`,
+          { allowEmpty: true },
+        ),
+        ts: requireTimestamp(row.updated_at, `${dataType} ${id} timestamp`),
+        deletedAt: requireOptionalTombstone(
+          row.deleted_at,
+          `${dataType} ${id} deletedAt`,
+        ),
       };
-      // Add ownerType for topics (derived from file_path)
-      if (dataType === "topic" && r.file_path) {
-        result.ownerType = r.file_path.includes("AgentGroups")
-          ? "group"
-          : "agent";
+      if (dataType === "topic") {
+        const owner = topicOwnerFromPath(row.file_path);
+        result.ownerType = owner.ownerType;
+        result.ownerId = owner.ownerId;
       }
       return result;
     });
   }
 
-  return rows.map((r) => ({
-    id: r.id,
-    hash: r.hash,
-    ts: r.updated_at,
-    deletedAt: r.deleted_at,
-  }));
+  return [];
 }
 
 /**
@@ -85,7 +197,71 @@ function getLocalManifest(dataType, targetedOwners = null) {
  * @param {object} payload - 消息载荷
  * @returns {object} 差异结果
  */
-function handleSyncManifest(payload) {
+function normalizeRemoteManifestItem(item, dataType, index) {
+  if (!item || typeof item !== "object" || Array.isArray(item)) {
+    throw syncContractError(`Manifest item ${index} must be an object`);
+  }
+  const id = requireNonEmptyString(item.id, `Manifest item ${index} id`);
+  const normalized = {
+    id,
+    hash: requireHash(item.hash, `Manifest item ${id} hash`),
+    ts: requireTimestamp(item.ts, `Manifest item ${id} timestamp`),
+    deletedAt: requireOptionalTombstone(
+      item.deletedAt,
+      `Manifest item ${id} deletedAt`,
+    ),
+  };
+
+  if (dataType === "avatar") {
+    requireAvatarOwner(id);
+    return normalized;
+  }
+
+  normalized.configHash = requireHash(
+    item.configHash,
+    `Manifest item ${id} configHash`,
+  );
+  normalized.contentHash = requireHash(
+    item.contentHash,
+    `Manifest item ${id} contentHash`,
+    { allowEmpty: true },
+  );
+  if (dataType === "topic") {
+    if (!matchesTopicOwnerType(item.ownerType)) {
+      throw syncContractError(`Topic manifest ${id} requires agent/group ownerType`);
+    }
+    normalized.ownerType = item.ownerType;
+    normalized.ownerId = requireNonEmptyString(
+      item.ownerId,
+      `Topic manifest ${id} ownerId`,
+    );
+  }
+  return normalized;
+}
+
+function matchesTopicOwnerType(value) {
+  return value === "agent" || value === "group";
+}
+
+function assertSameTopicOwner(remote, local) {
+  if (
+    remote.ownerType !== local.ownerType ||
+    remote.ownerId !== local.ownerId
+  ) {
+    throw syncContractError(
+      `Topic ${remote.id} owner conflicts with the desktop index`,
+      "SYNC_OWNER_CONFLICT",
+    );
+  }
+}
+
+function actionIdentity(item, dataType) {
+  return dataType === "topic"
+    ? { ownerType: item.ownerType, ownerId: item.ownerId }
+    : {};
+}
+
+function handleSyncManifest(payload, database = getDb()) {
   const { dataType, data: remoteItems, targetedOwners } = payload;
   const logger = getLogger();
   const phase = (dataType === "topic") ? "topic_metadata" : "owner_metadata";
@@ -96,40 +272,75 @@ function handleSyncManifest(payload) {
     dataType !== "avatar" &&
     dataType !== "topic"
   ) {
-    logger.logOperation(phase, "manifest", dataType, "warn", "invalid dataType ignored");
-    return null;
+    throw syncContractError(`Unsupported manifest dataType ${dataType}`);
   }
 
   if (!Array.isArray(remoteItems)) {
-    logger.logOperation(phase, "manifest", dataType, "error", "payload.data is not an array");
-    return null;
+    throw syncContractError("SYNC_MANIFEST.data must be an array");
+  }
+  if (remoteItems.length > MAX_MANIFEST_ITEMS) {
+    throw syncContractError(
+      `${dataType} manifest exceeds 10000 items`,
+      "SYNC_BUDGET_EXCEEDED",
+    );
+  }
+  const expectedPhase = dataType === "topic" ? 2 : 1;
+  if (payload.phase !== expectedPhase) {
+    throw syncContractError(
+      `${dataType} manifest phase must be ${expectedPhase}`,
+    );
   }
 
-  const localItems = getLocalManifest(dataType, targetedOwners);
+  const ownerFilter = requireTargetedOwners(dataType, targetedOwners);
+  if (dataType === "topic" && ownerFilter === null) {
+    throw syncContractError("Topic manifest requires targetedOwners");
+  }
+  const normalizedRemoteItems = remoteItems.map((item, index) =>
+    normalizeRemoteManifestItem(item, dataType, index),
+  );
+  const remoteById = new Map();
+  for (const item of normalizedRemoteItems) {
+    if (remoteById.has(item.id)) {
+      throw syncContractError(`${dataType} manifest contains duplicate id ${item.id}`);
+    }
+    remoteById.set(item.id, item);
+  }
+
+  const localItems = getLocalManifest(dataType, targetedOwners, database);
+  const localById = new Map(localItems.map((item) => [item.id, item]));
   const results = [];
   const processedIds = new Set();
 
-  for (const remote of remoteItems) {
-    const local = localItems.find((it) => it.id === remote.id);
-    const remoteDeletedAt = remote.deletedAt || null;
+  for (const remote of normalizedRemoteItems) {
+    const local = localById.get(remote.id);
+    const remoteDeletedAt = remote.deletedAt;
+    if (dataType === "topic" && local) {
+      assertSameTopicOwner(remote, local);
+    }
 
-    if (remoteDeletedAt) {
-      if (!local || !local.deletedAt) {
+    if (remoteDeletedAt !== null) {
+      if (!local || local.deletedAt === null) {
         results.push({
           id: remote.id,
           action: "DELETE",
           deletedAt: remoteDeletedAt,
+          ...actionIdentity(remote, dataType),
         });
       }
       processedIds.add(remote.id);
     } else if (!local) {
-      results.push({ id: remote.id, action: "PUSH", ownerType: remote.ownerType });
-    } else if (local.deletedAt && !remoteDeletedAt) {
+      results.push({
+        id: remote.id,
+        action: "PUSH",
+        ...actionIdentity(remote, dataType),
+      });
+      processedIds.add(remote.id);
+    } else if (local.deletedAt !== null) {
       results.push({
         id: local.id,
         action: "PUSH_DELETE",
         deletedAt: local.deletedAt,
-        ownerType: local.ownerType,
+        ...actionIdentity(local, dataType),
       });
       processedIds.add(local.id);
     } else {
@@ -139,16 +350,21 @@ function handleSyncManifest(payload) {
       const localConfig = local.configHash || local.hash;
       const localContent = local.contentHash || "";
 
-      let itemChanged = false;
-
       // 1. 比较配置
       if (localConfig !== remoteConfig) {
         if (remote.ts > local.ts) {
-          results.push({ id: remote.id, action: "PUSH", ownerType: remote.ownerType });
+          results.push({
+            id: remote.id,
+            action: "PUSH",
+            ...actionIdentity(remote, dataType),
+          });
         } else {
-          results.push({ id: local.id, action: "PULL", ownerType: local.ownerType });
+          results.push({
+            id: local.id,
+            action: "PULL",
+            ...actionIdentity(local, dataType),
+          });
         }
-        itemChanged = true;
       }
 
       // 2. 比较内容 (仅 Agent/Group)
@@ -158,7 +374,7 @@ function handleSyncManifest(payload) {
         if (existingResult) {
           existingResult.mismatchedContent = true;
         } else {
-          results.push({ id: remote.id, action: "SKIP", mismatchedContent: true, ownerType: remote.ownerType });
+          results.push({ id: remote.id, action: "SKIP", mismatchedContent: true });
         }
       }
       
@@ -169,17 +385,21 @@ function handleSyncManifest(payload) {
   for (const local of localItems) {
     if (
       !processedIds.has(local.id) &&
-      !remoteItems.find((r) => r.id === local.id)
+      !remoteById.has(local.id)
     ) {
-      if (local.deletedAt) {
+      if (local.deletedAt !== null) {
         results.push({
           id: local.id,
           action: "PUSH_DELETE",
           deletedAt: local.deletedAt,
-          ownerType: local.ownerType,
+          ...actionIdentity(local, dataType),
         });
       } else {
-        results.push({ id: local.id, action: "PULL", ownerType: local.ownerType });
+        results.push({
+          id: local.id,
+          action: "PULL",
+          ...actionIdentity(local, dataType),
+        });
       }
     }
   }
@@ -187,9 +407,9 @@ function handleSyncManifest(payload) {
   const pushCount = results.filter((r) => r.action === "PUSH").length;
   const pullCount = results.filter((r) => r.action === "PULL").length;
   const deleteCount = results.filter((r) => r.action === "DELETE").length;
-  const skipCount = remoteItems.filter((remote) => {
-    const local = localItems.find((it) => it.id === remote.id);
-    return local && !local.deletedAt && !remote.deletedAt && local.hash === remote.hash;
+  const skipCount = normalizedRemoteItems.filter((remote) => {
+    const local = localById.get(remote.id);
+    return local && local.deletedAt === null && remote.deletedAt === null && local.hash === remote.hash;
   }).length;
 
   logger.logOperation(phase, "diff", dataType, "success", `push=${pushCount} pull=${pullCount} delete=${deleteCount} skip=${skipCount}`);
@@ -198,7 +418,7 @@ function handleSyncManifest(payload) {
     type: "SYNC_DIFF_RESULTS",
     data: results,
     dataType,
-    phase: payload.phase || 0,
+    phase: payload.phase,
   };
 }
 
@@ -207,25 +427,65 @@ function handleSyncManifest(payload) {
  * @param {object} payload - 消息载荷
  * @returns {object} 消息清单
  */
-function handleMessageManifest(payload) {
-  const db = getDb();
-  if (!db) return null;
+function handleMessageManifest(payload, database = getDb()) {
+  const db = database;
+  if (!db) {
+    throw syncContractError("Database not initialized", "SYNC_DB_UNAVAILABLE");
+  }
 
   const logger = getLogger();
   const topicId = sanitizeId(payload.topicId);
+  if (!topicId || topicId !== payload.topicId) {
+    throw syncContractError("GET_MESSAGE_MANIFEST.topicId is invalid");
+  }
+  assertHistoryTopicHealthy(topicId);
 
   const rows = db
     .prepare(
-      "SELECT msg_id, hash as content_hash, updated_at FROM message_index WHERE topic_id = ?",
+      "SELECT msg_id, hash as content_hash, updated_at, deleted_at FROM message_index WHERE topic_id = ?",
     )
     .all(topicId);
+  if (rows.length > MAX_MANIFEST_ITEMS) {
+    throw syncContractError(
+      `Message manifest ${topicId} exceeds 10000 messages`,
+      "SYNC_BUDGET_EXCEEDED",
+    );
+  }
+  const seen = new Set();
+  const messages = rows.map((row, index) => {
+    const msgId = requireNonEmptyString(
+      row.msg_id,
+      `Message manifest ${topicId}[${index}] msg_id`,
+    );
+    if (!seen.add(msgId)) {
+      throw syncContractError(
+        `Message manifest ${topicId} contains duplicate message ${msgId}`,
+        "SYNC_INDEX_INVALID",
+      );
+    }
+    return {
+      msg_id: msgId,
+      content_hash: requireHash(
+        row.content_hash,
+        `Message manifest ${topicId}/${msgId} content_hash`,
+      ),
+      updated_at: requireTimestamp(
+        row.updated_at,
+        `Message manifest ${topicId}/${msgId} updated_at`,
+      ),
+      deleted_at: requireOptionalTombstone(
+        row.deleted_at,
+        `Message manifest ${topicId}/${msgId} deleted_at`,
+      ),
+    };
+  });
 
-  logger.logOperation("messages", "manifest", topicId, "success", `messages=${rows.length}`);
+  logger.logOperation("messages", "manifest", topicId, "success", `messages=${messages.length}`);
 
   return {
     type: "MESSAGE_MANIFEST_RESULTS",
     topicId,
-    messages: rows,
+    messages,
   };
 }
 

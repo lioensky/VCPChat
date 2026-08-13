@@ -42,13 +42,15 @@
 
         function replaceCurrentSource(source, options = {}) {
             const nextSource = String(source ?? '');
-            if (nextSource === currentSource()) return false;
+            const previousSource = currentSource();
+            if (nextSource === previousSource) return false;
+            const reason = options.reason || 'flow-source-replaced';
             const result = documentPort.mutate((model) => {
                 model.source.content = nextSource;
                 model.source.format = core.SOURCE_FORMATS.MARKDOWN_HYBRID;
                 model.manifest.sourceFormat = core.SOURCE_FORMATS.MARKDOWN_HYBRID;
             }, {
-                reason: options.reason || 'flow-source-replaced',
+                reason,
                 dirty: options.dirty !== false,
             });
             invalidate();

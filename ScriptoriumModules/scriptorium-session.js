@@ -217,12 +217,9 @@
             const status = documentPort.status();
             if (!status.ready || status.saving) return false;
             context.editorResolver?.()?.flush?.();
+            // 渲染编辑器与源码编辑器均实时写入同一个文档模型。保存只需
+            // 结束当前历史输入脉冲，不再从源码面板提交第二份草稿。
             context.historyPort.finalize();
-            if (context.sourcePort?.isOpen?.()) {
-                if (!context.sourcePort.apply({ showSuccess: false })) {
-                    return false;
-                }
-            }
 
             const operationContext = documentPort.captureContext();
             documentPort.setActivity({
@@ -325,6 +322,37 @@
             resolve(decision);
         }
 
+        async function showHome() {
+            return runAfterUnsavedDecision(
+                '回到首页前，可以保存当前修改，或舍弃这些修改。',
+                async () => {
+                    context.editorResolver?.()?.flush?.();
+                    context.historyPort.finalize();
+                    context.navigationPort?.clear?.();
+                    context.lineageUiPort?.clear?.();
+                    if (elements['document-title']) {
+                        elements['document-title'].textContent = '';
+                        elements['document-title'].title = '';
+                    }
+                    if (elements['focus-document-title']) {
+                        elements['focus-document-title'].textContent = '';
+                        elements['focus-document-title'].title = '';
+                    }
+                    if (elements['document-workspace']) {
+                        elements['document-workspace'].hidden = true;
+                    }
+                    if (elements['loading-state']) {
+                        elements['loading-state'].hidden = true;
+                    }
+                    if (elements['welcome-state']) {
+                        elements['welcome-state'].hidden = false;
+                    }
+                    await renderRecent();
+                    return true;
+                }
+            );
+        }
+
         async function close() {
             return runAfterUnsavedDecision(
                 '关闭 Scriptorium 前，可以保存当前修改。',
@@ -378,6 +406,7 @@
             activateDocument,
             create,
             createDeck,
+            showHome,
             open,
             import: importDocument,
             openPath,

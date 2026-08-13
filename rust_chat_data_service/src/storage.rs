@@ -601,6 +601,146 @@ impl Database {
         }))
     }
 
+    /// Reconciles deletion timestamps supplied by the sync wire after the
+    /// corresponding native history projection has been durably ingested.
+    ///
+    /// A missing message is still recorded as a tombstone so an offline delete
+    /// cannot be lost merely because this desktop never ingested the live row.
+    /// Replays preserve the earliest durable deletion timestamp.
+    pub fn apply_explicit_message_tombstones(
+        &self,
+        key: &TopicKey,
+        tombstones: &[(String, i64)],
+        origin: &str,
+    ) -> Result<Option<i64>> {
+        if tombstones.is_empty() {
+            return Ok(None);
+        }
+
+        let mut seen = HashSet::with_capacity(tombstones.len());
+        for (msg_id, deleted_at) in tombstones {
+            anyhow::ensure!(
+                !msg_id.is_empty() && seen.insert(msg_id.as_str()),
+                "explicit message tombstones must have non-empty unique ids"
+            );
+            anyhow::ensure!(
+                (0..=9_007_199_254_740_991).contains(deleted_at),
+                "explicit message tombstone timestamp must be a non-negative safe integer"
+            );
+        }
+
+        let now = now_ms();
+        let mut connection = self.connection.lock();
+        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let topic_exists = transaction
+            .query_row(
+                "SELECT 1 FROM topics
+                 WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3
+                   AND deleted_at IS NULL",
+                params![key.owner_type.as_str(), key.owner_id, key.topic_id],
+                |_| Ok(()),
+            )
+            .optional()?
+            .is_some();
+        anyhow::ensure!(
+            topic_exists,
+            "explicit message tombstone topic is missing or deleted"
+        );
+
+        let mut updates = Vec::with_capacity(tombstones.len());
+        for (msg_id, requested_at) in tombstones {
+            let message_state: Option<Option<i64>> = transaction
+                .query_row(
+                    "SELECT deleted_at FROM messages
+                     WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3 AND msg_id=?4",
+                    params![key.owner_type.as_str(), key.owner_id, key.topic_id, msg_id],
+                    |row| row.get(0),
+                )
+                .optional()?;
+            anyhow::ensure!(
+                !matches!(message_state, Some(None)),
+                "explicit message tombstone {msg_id} still has a live message row"
+            );
+            let message_deleted_at = message_state.flatten();
+            let stored_deleted_at: Option<i64> = transaction
+                .query_row(
+                    "SELECT deleted_at FROM tombstones
+                     WHERE entity_type='message' AND owner_type=?1 AND owner_id=?2
+                       AND topic_id=?3 AND entity_id=?4",
+                    params![key.owner_type.as_str(), key.owner_id, key.topic_id, msg_id],
+                    |row| row.get(0),
+                )
+                .optional()?;
+            let effective_at = stored_deleted_at
+                .into_iter()
+                .chain(message_deleted_at)
+                .fold(*requested_at, i64::min);
+            let needs_update = stored_deleted_at != Some(effective_at)
+                || (message_state.is_some() && message_deleted_at != Some(effective_at));
+            if needs_update {
+                updates.push((msg_id.clone(), effective_at, message_state.is_some()));
+            }
+        }
+
+        if updates.is_empty() {
+            transaction.commit()?;
+            return Ok(None);
+        }
+
+        let revision = next_global_revision(&transaction)?;
+        for (msg_id, deleted_at, message_exists) in updates {
+            if message_exists {
+                let changed = transaction.execute(
+                    "UPDATE messages SET deleted_at=?5, updated_at=?6
+                     WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3 AND msg_id=?4
+                       AND deleted_at IS NOT NULL",
+                    params![
+                        key.owner_type.as_str(),
+                        key.owner_id,
+                        key.topic_id,
+                        msg_id,
+                        deleted_at,
+                        now,
+                    ],
+                )?;
+                anyhow::ensure!(
+                    changed == 1,
+                    "explicit message tombstone {msg_id} did not update exactly one deleted row"
+                );
+            }
+            upsert_message_tombstone(&transaction, key, &msg_id, origin, deleted_at)?;
+            append_change(
+                &transaction,
+                "message",
+                "delete",
+                key,
+                Some(&msg_id),
+                revision,
+                origin,
+                deleted_at,
+                Some(r#"{"reason":"explicit_mobile_sync"}"#),
+            )?;
+        }
+        let changed = transaction.execute(
+            "UPDATE topics SET content_revision=?4, updated_at=?5
+             WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3
+               AND deleted_at IS NULL",
+            params![
+                key.owner_type.as_str(),
+                key.owner_id,
+                key.topic_id,
+                revision,
+                now,
+            ],
+        )?;
+        anyhow::ensure!(
+            changed == 1,
+            "explicit message tombstones did not update exactly one live topic"
+        );
+        transaction.commit()?;
+        Ok(Some(revision))
+    }
+
     pub fn mark_source_invalid(&self, source: &TopicSource, error: &str) -> Result<()> {
         let connection = self.connection.lock();
         connection.execute(
@@ -663,8 +803,20 @@ impl Database {
                     now
                 ],
             )?;
+            let revision = transaction
+                .query_row(
+                    "SELECT content_revision FROM topics
+                     WHERE owner_type=?1 AND owner_id=?2 AND topic_id=?3",
+                    params![
+                        source.key.owner_type.as_str(),
+                        source.key.owner_id,
+                        source.key.topic_id,
+                    ],
+                    |row| row.get(0),
+                )
+                .optional()?
+                .unwrap_or(0);
             transaction.commit()?;
-            let revision = self.topic_revision(&source.key)?.unwrap_or(0);
             return Ok(IngestCommit {
                 topic: source.key.clone(),
                 revision,

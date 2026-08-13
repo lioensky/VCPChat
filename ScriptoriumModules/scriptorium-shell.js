@@ -42,14 +42,20 @@
 
         function updateIdentity() {
             const status = context.documentPort.status();
-            const name = status.currentName || '未命名文稿.vdocx';
+            const homeVisible = elements['welcome-state']?.hidden === false;
+            const name = homeVisible
+                ? ''
+                : status.currentName || '未命名文稿.vdocx';
+            const location = homeVisible
+                ? ''
+                : status.currentPath || '尚未保存到磁盘';
             if (elements['document-title']) {
                 elements['document-title'].textContent = name;
-                elements['document-title'].title =
-                    status.currentPath || '尚未保存到磁盘';
+                elements['document-title'].title = location;
             }
             if (elements['focus-document-title']) {
                 elements['focus-document-title'].textContent = name;
+                elements['focus-document-title'].title = location;
             }
             if (elements['save-state']) {
                 elements['save-state'].textContent = status.loading
@@ -103,6 +109,8 @@
             switchMode: (nextMode, options) => switchMode(nextMode, options),
             renderRead: (options) =>
                 context.renderPort.renderRead(options),
+            disposeRead: () =>
+                context.renderPort.disposeSurface('read'),
         });
 
         function switchMode(nextMode, options = {}) {
@@ -163,12 +171,73 @@
             const options = { signal: abortController.signal };
             const click = (id, handler) =>
                 elements[id]?.addEventListener('click', handler, options);
+            const startMenu = elements['start-menu'];
+            const startMenuButton = elements['start-menu-btn'];
+            const startMenuDropdown = elements['start-menu-dropdown'];
+            let startMenuCloseTimer = null;
+
+            const setStartMenuOpen = (open) => {
+                window.clearTimeout(startMenuCloseTimer);
+                startMenu?.classList.toggle('open', open);
+                if (startMenuDropdown) startMenuDropdown.hidden = !open;
+                startMenuButton?.setAttribute('aria-expanded', String(open));
+            };
+            const scheduleStartMenuClose = () => {
+                window.clearTimeout(startMenuCloseTimer);
+                startMenuCloseTimer = window.setTimeout(
+                    () => setStartMenuOpen(false),
+                    180
+                );
+            };
+            const runStartMenuAction = (action) => {
+                setStartMenuOpen(false);
+                return action();
+            };
+
+            startMenu?.addEventListener(
+                'mouseenter',
+                () => setStartMenuOpen(true),
+                options
+            );
+            startMenu?.addEventListener(
+                'mouseleave',
+                scheduleStartMenuClose,
+                options
+            );
+            startMenuDropdown?.addEventListener(
+                'mouseenter',
+                () => setStartMenuOpen(true),
+                options
+            );
+            startMenuDropdown?.addEventListener(
+                'mouseleave',
+                scheduleStartMenuClose,
+                options
+            );
+            startMenuButton?.addEventListener('click', (event) => {
+                event.stopPropagation();
+                setStartMenuOpen(!startMenu?.classList.contains('open'));
+            }, options);
+            document.addEventListener('click', (event) => {
+                const target = event.target;
+                if (!startMenu?.contains(target)
+                    && !startMenuDropdown?.contains(target)) {
+                    setStartMenuOpen(false);
+                }
+            }, options);
 
             click('minimize-btn', context.persistencePort.minimizeWindow);
             click('maximize-btn', context.persistencePort.maximizeWindow);
             click('close-btn', () => context.sessionPort.close());
-            click('new-btn', () => context.sessionPort.create());
-            click('new-deck-btn', () => context.sessionPort.createDeck());
+            click('new-btn', () =>
+                runStartMenuAction(() => context.sessionPort.create())
+            );
+            click('new-deck-btn', () =>
+                runStartMenuAction(() => context.sessionPort.createDeck())
+            );
+            click('home-btn', () =>
+                runStartMenuAction(() => context.sessionPort.showHome())
+            );
             click('welcome-new-btn', () => context.sessionPort.create());
             click('open-btn', () => context.sessionPort.open());
             click('welcome-open-btn', () => context.sessionPort.open());
@@ -188,7 +257,6 @@
             click('read-mode-btn', () => switchMode('read'));
             click('html-mode-btn', () => switchMode('source-html'));
             click('css-mode-btn', () => switchMode('source-css'));
-            click('apply-source-btn', () => context.sourcePort?.apply?.());
             click('format-source-btn', () => context.sourcePort?.format?.());
             click('insert-block-btn', () =>
                 context.editorResolver?.()?.insertStructure?.(
@@ -234,6 +302,7 @@
                     event.preventDefault();
                     context.findPort?.open?.();
                 } else if (event.key === 'Escape') {
+                    setStartMenuOpen(false);
                     context.findPort?.close?.();
                     context.mediaPort?.close?.();
                     context.stylePort?.close?.();

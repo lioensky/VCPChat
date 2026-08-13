@@ -3,9 +3,11 @@
 (() => {
     const PACK_FORMAT = 'vcp-vdoc-style-pack';
     const PACK_VERSION = 1;
+    const BUILTIN_PACK_ID = 'vcp.scriptorium.classics';
     const STYLE_ID_PATTERN = /^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/i;
     const ALLOWED_TARGETS = new Set(['inline', 'block', 'heading', 'paragraph']);
     const registry = new Map();
+    const packRegistry = new Map();
     const listeners = new Set();
 
     const BUILTIN_PACK = {
@@ -259,11 +261,28 @@
         });
     }
 
+    function assertPackMutable(packId, options = {}) {
+        if (packId === BUILTIN_PACK_ID && options.internal !== true) {
+            throw new Error('Scriptorium 内置经典样式包是只读的。');
+        }
+    }
+
     function register(styleInput, options = {}) {
         const style = normalizeStyle(styleInput, options.packId);
         const existing = registry.get(style.id);
+        if (existing?.packId === BUILTIN_PACK_ID && options.internal !== true) {
+            throw new Error(`内置高级样式 ${style.id} 是只读的。`);
+        }
+        if (existing && existing.packId !== style.packId) {
+            throw new Error(
+                `高级样式 ${style.id} 已属于样式包 ${existing.packId}。`
+            );
+        }
         if (existing && options.conflict !== 'replace') {
-            if (options.conflict === 'keep' || existing.version >= style.version) return existing;
+            if (options.conflict === 'keep'
+                || existing.version >= style.version) {
+                return existing;
+            }
             throw new Error(`高级样式 ${style.id} 已存在。`);
         }
         registry.set(style.id, style);
@@ -273,22 +292,130 @@
 
     function registerPack(packInput, options = {}) {
         const pack = validatePack(packInput);
-        const registered = [];
+        const packId = pack.manifest.id;
+        assertPackMutable(packId, options);
+        const previous = packRegistry.get(packId);
+        const conflict = options.conflict || 'keep';
+        if (previous && conflict !== 'replace') {
+            if (conflict === 'keep') return getPack(packId);
+            throw new Error(`高级样式包 ${packId} 已存在。`);
+        }
+
+        // 先完成整包冲突检查，再修改注册表，避免批量生成过程中只写入半包。
         pack.styles.forEach((style) => {
-            registered.push(register(style, {
-                packId: pack.manifest.id,
-                conflict: options.conflict || 'keep',
-            }));
+            const existing = registry.get(style.id);
+            if (existing?.packId === BUILTIN_PACK_ID
+                && options.internal !== true) {
+                throw new Error(`内置高级样式 ${style.id} 是只读的。`);
+            }
+            if (existing && existing.packId !== packId) {
+                throw new Error(
+                    `高级样式 ${style.id} 已属于样式包 ${existing.packId}。`
+                );
+            }
         });
-        emit('pack-register', { manifest: pack.manifest, count: registered.length });
-        return { manifest: pack.manifest, styles: registered };
+
+        const nextIds = new Set(pack.styles.map((style) => style.id));
+        (previous?.styleIds || []).forEach((styleId) => {
+            if (!nextIds.has(styleId)) registry.delete(styleId);
+        });
+        const registered = pack.styles.map((style) =>
+            register(style, {
+                packId,
+                conflict: 'replace',
+                internal: options.internal,
+            })
+        );
+        packRegistry.set(packId, Object.freeze({
+            manifest: Object.freeze({ ...pack.manifest }),
+            styleIds: Object.freeze(registered.map((style) => style.id)),
+            builtin: packId === BUILTIN_PACK_ID,
+        }));
+        emit(previous ? 'pack-replace' : 'pack-register', {
+            manifest: pack.manifest,
+            count: registered.length,
+        });
+        return getPack(packId);
     }
 
-    function unregister(styleId) {
+    function unregister(styleId, options = {}) {
         const style = registry.get(styleId);
         if (!style) return false;
+        assertPackMutable(style.packId, options);
         registry.delete(styleId);
+        const pack = packRegistry.get(style.packId);
+        if (pack) {
+            packRegistry.set(style.packId, Object.freeze({
+                ...pack,
+                styleIds: Object.freeze(
+                    pack.styleIds.filter((id) => id !== style.id)
+                ),
+            }));
+        }
         emit('unregister', style);
+        return true;
+    }
+
+    function getPack(packId) {
+        const record = packRegistry.get(String(packId));
+        if (!record) return null;
+        return clone({
+            format: PACK_FORMAT,
+            version: PACK_VERSION,
+            manifest: record.manifest,
+            builtin: record.builtin,
+            editable: !record.builtin,
+            styles: record.styleIds.map((styleId) => registry.get(styleId))
+                .filter(Boolean)
+                .map((style) => {
+                    const output = { ...style };
+                    delete output.packId;
+                    return output;
+                }),
+        });
+    }
+
+    function listPacks() {
+        return [...packRegistry.keys()].map((packId) => {
+            const pack = getPack(packId);
+            return {
+                format: pack.format,
+                version: pack.version,
+                manifest: pack.manifest,
+                builtin: pack.builtin,
+                editable: pack.editable,
+                styleCount: pack.styles.length,
+                styles: pack.styles.map((style) => ({
+                    id: style.id,
+                    version: style.version,
+                    name: style.name,
+                    description: style.description,
+                    category: style.category,
+                    tags: style.tags,
+                    targets: style.targets,
+                    className: style.className,
+                })),
+            };
+        }).sort((left, right) =>
+            Number(right.builtin) - Number(left.builtin)
+            || left.manifest.name.localeCompare(
+                right.manifest.name,
+                'zh-CN'
+            )
+        );
+    }
+
+    function unregisterPack(packId, options = {}) {
+        const id = String(packId || '');
+        const pack = packRegistry.get(id);
+        if (!pack) return false;
+        assertPackMutable(id, options);
+        pack.styleIds.forEach((styleId) => registry.delete(styleId));
+        packRegistry.delete(id);
+        emit('pack-unregister', {
+            manifest: pack.manifest,
+            count: pack.styleIds.length,
+        });
         return true;
     }
 
@@ -386,16 +513,23 @@
         return () => listeners.delete(listener);
     }
 
-    registerPack(BUILTIN_PACK, { conflict: 'replace' });
+    registerPack(BUILTIN_PACK, {
+        conflict: 'replace',
+        internal: true,
+    });
 
     window.VDocStyleLibrary = Object.freeze({
         PACK_FORMAT,
         PACK_VERSION,
+        BUILTIN_PACK_ID,
         validatePack,
         normalizeStyle,
         register,
         registerPack,
         unregister,
+        getPack,
+        listPacks,
+        unregisterPack,
         get,
         list,
         categories,

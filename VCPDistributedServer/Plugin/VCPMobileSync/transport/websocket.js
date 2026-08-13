@@ -3,6 +3,8 @@
  */
 
 const { getLogger, setWss } = require("../core/logger");
+const { parseJsonWithoutDuplicateKeys } = require("../protocol");
+const { TextDecoder } = require("node:util");
 
 let WebSocket;
 try {
@@ -38,7 +40,11 @@ function startWsServer({ port, syncToken, onMessage }) {
     wsServerPort = null;
   }
 
-  wss = new WebSocket.Server({ host: "0.0.0.0", port });
+  wss = new WebSocket.Server({
+    host: "0.0.0.0",
+    port,
+    maxPayload: 32 * 1024 * 1024,
+  });
   wsServerPort = port;
   setWss(wss);
 
@@ -92,13 +98,49 @@ function startWsServer({ port, syncToken, onMessage }) {
       `token=ok, path=${pathname}`,
     );
 
-    ws.on("message", async (message) => {
+    let versionAccepted = false;
+    let terminated = false;
+    let messageChain = Promise.resolve();
+    const utf8Decoder = new TextDecoder("utf-8", { fatal: true });
+
+    const handleMessage = async (message) => {
+      if (terminated) return;
       try {
         const text =
-          typeof message === "string" ? message : message.toString("utf8");
-        const payload = JSON.parse(text);
+          typeof message === "string" ? message : utf8Decoder.decode(message);
+        const payload = parseJsonWithoutDuplicateKeys(text);
+        if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+          const error = new Error("WebSocket payload must be an object");
+          error.code = "PROTOCOL_INVALID";
+          throw error;
+        }
+        if (!versionAccepted && payload.type !== "VERSION_CHECK") {
+          const error = new Error("VERSION_CHECK must be the first business frame");
+          error.code = "VERSION_CHECK_REQUIRED";
+          throw error;
+        }
+        if (versionAccepted && payload.type === "VERSION_CHECK") {
+          const error = new Error("VERSION_CHECK may only appear once per connection");
+          error.code = "VERSION_CHECK_DUPLICATE";
+          throw error;
+        }
+        if (payload.type === "SYNC_ERROR") {
+          const code = payload.error?.code;
+          const message = payload.error?.message;
+          const error = new Error(
+            typeof message === "string" && message.length > 0
+              ? message
+              : "Mobile reported a sync failure",
+          );
+          error.code =
+            typeof code === "string" && code.length > 0
+              ? code
+              : "MOBILE_SYNC_ERROR";
+          throw error;
+        }
 
         const response = await onMessage(payload);
+        if (payload.type === "VERSION_CHECK") versionAccepted = true;
         if (response) {
           const responseText = JSON.stringify(response);
           const logger = getLogger();
@@ -110,15 +152,36 @@ function startWsServer({ port, syncToken, onMessage }) {
           } else {
             logger.logInfo("websocket", `→ 发送 ${response.type || "unknown"}: bytes=${responseText.length}`);
           }
-          ws.send(responseText);
+          await new Promise((resolve, reject) => {
+            ws.send(responseText, (error) => (error ? reject(error) : resolve()));
+          });
         }
       } catch (e) {
+        terminated = true;
         const logger = getLogger();
         logger.logOperation("websocket", "message_handler", "error", "error", e.message);
+        if (ws.readyState === WebSocket.OPEN) {
+          const frame = JSON.stringify({
+            type: "SYNC_ERROR",
+            error: {
+              code: e.code || "SYNC_ATTEMPT_FAILED",
+              message: e.message || "Desktop sync failed",
+            },
+          });
+          try {
+            await new Promise((resolve) => ws.send(frame, resolve));
+          } catch {}
+          ws.close(1002, "Sync protocol failure");
+        }
       }
+    };
+
+    ws.on("message", (message) => {
+      messageChain = messageChain.then(() => handleMessage(message));
     });
 
     ws.on("close", (code, reason) => {
+      terminated = true;
       const logger = getLogger();
       logger.logOperation("websocket", "disconnection", req.socket?.remoteAddress || "unknown", "info", `code=${code}`);
       logger.endSession();

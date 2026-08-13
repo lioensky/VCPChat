@@ -185,7 +185,7 @@ const MARKDOWN_FIELD_LABELS = Object.freeze({
     title: '标题',
     name: '名称',
     dirty: '存在未保存修改',
-    activeSlideIndex: '当前幻灯片索引',
+    activeSlideIndex: '当前幻灯片页码',
     slideCount: '幻灯片总数',
     scene: '场景配置',
     programmableContent: '可编程内容',
@@ -200,7 +200,7 @@ const MARKDOWN_FIELD_LABELS = Object.freeze({
     results: '检索结果',
     query: '检索词',
     sourceKind: '源码类型',
-    slideIndex: '幻灯片索引',
+    slideIndex: '幻灯片页码',
     startLine: '起始行',
     endLine: '结束行',
     totalLines: '总行数',
@@ -218,6 +218,16 @@ const MARKDOWN_FIELD_LABELS = Object.freeze({
     notes: '备注',
     note: '备注',
     summary: '摘要',
+    packs: '样式主题包',
+    pack: '样式主题包',
+    packId: '样式主题包 ID',
+    styleCount: '样式数量',
+    deletedStyleCount: '已删除样式数量',
+    builtin: '内置只读',
+    editable: '允许编辑',
+    builtinPackId: '内置样式包 ID',
+    format: '格式',
+    version: '版本',
     maid: 'Maid 署名',
     author: '作者',
     reviewer: '审阅者',
@@ -376,6 +386,61 @@ function resultText(title, result) {
     };
 }
 
+function internalSlideIndex(value, fieldName = 'slideIndex') {
+    if (value === undefined || value === null || value === '') return undefined;
+    const pageNumber = Number(value);
+    if (!Number.isInteger(pageNumber) || pageNumber < 1) {
+        throw new Error(
+            `[ScriptoriumCollaborator] ${fieldName} 必须是从 1 开始的整数页码。`
+        );
+    }
+    return pageNumber - 1;
+}
+
+function internalizePagePayload(payload = {}, endpoint = 'common') {
+    if (endpoint === 'docx'
+        || !Object.prototype.hasOwnProperty.call(payload, 'slideIndex')) {
+        return payload;
+    }
+    return {
+        ...payload,
+        slideIndex: internalSlideIndex(payload.slideIndex),
+    };
+}
+
+function externalizePageNumbers(value, context = {}) {
+    if (Array.isArray(value)) {
+        return value.map((item) => externalizePageNumbers(item, context));
+    }
+    if (!value || typeof value !== 'object') return value;
+
+    const deck = context.deck || value.documentKind === 'pptx';
+    const result = {};
+    for (const [key, fieldValue] of Object.entries(value)) {
+        const numberedIndex = deck
+            && Number.isInteger(fieldValue)
+            && (
+                key === 'slideIndex'
+                || key === 'activeSlideIndex'
+                || (
+                    key === 'index'
+                    && (
+                        context.collection === 'pages'
+                        || context.collection === 'items'
+                        || Object.prototype.hasOwnProperty.call(value, 'slideId')
+                    )
+                )
+            );
+        result[key] = numberedIndex
+            ? fieldValue + 1
+            : externalizePageNumbers(fieldValue, {
+                deck,
+                collection: Array.isArray(fieldValue) ? key : context.collection,
+            });
+    }
+    return result;
+}
+
 async function call(
     args,
     method,
@@ -387,9 +452,14 @@ async function call(
         requestId: requestIdOf(args, executionContext),
         endpoint,
         method,
-        payload,
+        payload: internalizePagePayload(payload, endpoint),
     });
-    return resultText(`Scriptorium · ${method}`, result);
+    return resultText(
+        `Scriptorium · ${method}`,
+        externalizePageNumbers(result, {
+            deck: endpoint === 'pptx' || result?.documentKind === 'pptx',
+        })
+    );
 }
 
 async function listFonts(args = {}) {
@@ -476,11 +546,14 @@ async function getViewportSource(args) {
 }
 
 async function getVisualContext(args, executionContext = {}) {
-    return requireControl().captureVisualContext({
+    const endpoint = endpointFor(args);
+    const result = await requireControl().captureVisualContext({
         requestId: requestIdOf(args, executionContext),
-        endpoint: endpointFor(args),
+        endpoint,
         scope: args.scope || 'viewport',
-        slideIndex: args.slideIndex,
+        slideIndex: endpoint === 'docx'
+            ? args.slideIndex
+            : internalSlideIndex(args.slideIndex),
         format: args.format || args.imageFormat,
         quality: args.quality,
         stabilizationMs: args.stabilizationMs
@@ -489,6 +562,10 @@ async function getVisualContext(args, executionContext = {}) {
             ?? args.captureDelayMs
             ?? args.screenshotDelayMs,
     });
+    return externalizePageNumbers(result, {
+        deck: endpoint === 'pptx'
+            || result?.details?.documentKind === 'pptx',
+    });
 }
 
 async function getPrHistory(args) {
@@ -496,6 +573,56 @@ async function getPrHistory(args) {
         limit: args.limit,
         status: args.status,
     });
+}
+
+async function listStylePacks(args) {
+    return call(args, 'listStylePacks', {
+        query: args.query,
+        editableOnly: booleanOf(args.editableOnly, false),
+    }, 'common');
+}
+
+async function getStylePack(args) {
+    const packId = String(args.packId || args.id || '').trim();
+    if (!packId) {
+        throw new Error('[ScriptoriumCollaborator] GetStylePack 缺少 packId。');
+    }
+    return call(args, 'getStylePack', { packId }, 'common');
+}
+
+async function upsertStylePack(args, executionContext = {}) {
+    const supplied = args.pack ?? args.source;
+    if (supplied === undefined || supplied === null || supplied === '') {
+        throw new Error(
+            '[ScriptoriumCollaborator] UpsertStylePack 缺少 pack 或 source。'
+        );
+    }
+    const pack = typeof supplied === 'object'
+        ? parseObject(supplied, 'pack')
+        : parseObject(String(supplied), 'source');
+    const maid = authorFromMaid(args, executionContext);
+    return call(args, 'upsertStylePack', {
+        requestId: requestIdOf(args, executionContext),
+        pack,
+        maid,
+        author: maid,
+    }, 'common', executionContext);
+}
+
+async function deleteStylePack(args, executionContext = {}) {
+    const packId = String(args.packId || args.id || '').trim();
+    if (!packId) {
+        throw new Error(
+            '[ScriptoriumCollaborator] DeleteStylePack 缺少 packId。'
+        );
+    }
+    const maid = authorFromMaid(args, executionContext);
+    return call(args, 'deleteStylePack', {
+        requestId: requestIdOf(args, executionContext),
+        packId,
+        maid,
+        author: maid,
+    }, 'common', executionContext);
 }
 
 async function submitSourcePr(args, executionContext = {}) {
@@ -656,6 +783,17 @@ async function processSingleToolCall(args, executionContext = {}) {
             return getVisualContext(args, executionContext);
         case 'getprhistory':
             return getPrHistory(args);
+        case 'liststylepacks':
+        case 'liststyles':
+            return listStylePacks(args);
+        case 'getstylepack':
+        case 'getstylesource':
+            return getStylePack(args);
+        case 'upsertstylepack':
+        case 'savestylepack':
+            return upsertStylePack(args, executionContext);
+        case 'deletestylepack':
+            return deleteStylePack(args, executionContext);
         case 'submitsourcepr':
             return submitSourcePr(args, executionContext);
         case 'addslide':
@@ -678,7 +816,7 @@ async function processSingleToolCall(args, executionContext = {}) {
             );
         default:
             throw new Error(
-                '[ScriptoriumCollaborator] 不支持的 command。可用值：ListFonts、GetDocumentInfo、GetRenderedText、GetOutline、GetSection、GetSource、SearchSource、GetViewportSource、GetVisualContext、GetPrHistory、SubmitSourcePr、AddSlide、InsertSlide、DeleteSlide、UpdatePresentationConfig、CreateProject、GetStorageInfo。'
+                '[ScriptoriumCollaborator] 不支持的 command。可用值：ListFonts、GetDocumentInfo、GetRenderedText、GetOutline、GetSection、GetSource、SearchSource、GetViewportSource、GetVisualContext、GetPrHistory、ListStylePacks、GetStylePack、UpsertStylePack、DeleteStylePack、SubmitSourcePr、AddSlide、InsertSlide、DeleteSlide、UpdatePresentationConfig、CreateProject、GetStorageInfo。'
             );
     }
 }
@@ -811,6 +949,9 @@ module.exports = {
     processToolCall,
     _test: {
         commandOf,
+        internalSlideIndex,
+        internalizePagePayload,
+        externalizePageNumbers,
         markdownFence,
         markdownObject,
         resultText,

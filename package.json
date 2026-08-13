@@ -25,7 +25,11 @@
     "test:vcp-ui-select-proxy": "node scripts/test-vcp-ui-select-proxy.mjs",
     "test:electron-ui-apps": "node scripts/test-electron-ui-apps-smoke.mjs",
     "pack": "npm run build && electron-builder --dir",
-    "dist": "npm run build && electron-builder"
+    "dist": "npm run build && electron-builder",
+    "test:mobile-sync": "node --test tests/mobile-sync-protocol.test.js tests/mobile-sync-central-adapter.test.js tests/mobile-sync-canonical.test.js tests/mobile-sync-failure-contract.test.js tests/mobile-sync-streaming.test.js tests/mobile-sync-package.test.js",
+    "test:cds": "cargo test --manifest-path rust_chat_data_service/Cargo.toml --locked",
+    "check:cds:fmt": "cargo fmt --manifest-path rust_chat_data_service/Cargo.toml -- --check",
+    "check:cds:clippy": "cargo clippy --manifest-path rust_chat_data_service/Cargo.toml --locked --all-targets -- -D warnings"
   },
   "keywords": [
     "VCP",
@@ -115,7 +119,10 @@
       "text-viewer.html",
       "style.css",
       "styles/**/*",
+      "VCPDistributedServer/VCPDistributedServer.js",
+      "VCPDistributedServer/Plugin.js",
       "VCPDistributedServer/frontend-plugin-loader.js",
+      "VCPDistributedServer/Plugin/VCPMobileSync/**/*",
       "VCPDistributedServer/Plugin/VChatDynamicWallpaper/**/*",
       "VCPDistributedServer/Plugin/VChatAutoTTS/**/*",
       "assets/",

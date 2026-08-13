@@ -58,7 +58,12 @@ function getExtensionFromType(type) {
   const parts = normalizedType.split("/");
   if (parts.length === 2 && parts[1]) {
     const subtype = parts[1].split("+")[0];
-    if (subtype && subtype !== "octet-stream") {
+    if (
+      subtype &&
+      subtype !== "octet-stream" &&
+      /^[a-z0-9][a-z0-9.-]{0,31}$/.test(subtype) &&
+      !subtype.includes("..")
+    ) {
       return "." + subtype;
     }
   }

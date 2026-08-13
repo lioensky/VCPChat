@@ -19,6 +19,8 @@
         let abortController = null;
         let storeDisposer = null;
         const automaticApprovalTimers = new Map();
+        const avatarCache = new Map();
+        let agentDirectoryPromise = null;
         let disposed = false;
 
         function setElements(nextElements) {
@@ -36,6 +38,40 @@
             adapter = nextAdapter;
             render();
             return adapter;
+        }
+
+        function clear() {
+            if (disposed) return false;
+            automaticApprovalTimers.forEach((timer) =>
+                window.clearTimeout(timer)
+            );
+            automaticApprovalTimers.clear();
+            closeDetail();
+            closeReview();
+            cancelRestore();
+            adapter = null;
+            if (elements['checkpoint-count']) {
+                elements['checkpoint-count'].textContent = '0';
+            }
+            if (elements['pending-pr-count']) {
+                elements['pending-pr-count'].textContent = '0';
+            }
+            if (elements['create-checkpoint-btn']) {
+                elements['create-checkpoint-btn'].disabled = true;
+            }
+            const host = elements['lineage-flow'];
+            if (host) {
+                const empty = document.createElement('div');
+                empty.className = 'lineage-empty';
+                const title = document.createElement('strong');
+                title.textContent = '文脉尚未开始';
+                const message = document.createElement('p');
+                message.textContent =
+                    '打开或新建文档后，创作轨迹会显示在这里。';
+                empty.append(title, message);
+                host.replaceChildren(empty);
+            }
+            return true;
         }
 
         function currentAdapter() {
@@ -63,10 +99,63 @@
                     ? '自动允许并已合并'
                     : '已应用',
                 rejected: '已拒绝',
-                conflict: '修订冲突',
+                conflict: '修订冲突 · 未应用',
                 failed: '应用失败',
             };
             return labels[record.status] || record.status || '已应用';
+        }
+
+        async function agentDirectory() {
+            if (!agentDirectoryPromise) {
+                agentDirectoryPromise = Promise.resolve(
+                    context.identityPort?.loadAgentsList?.() || []
+                ).then((agents) => Array.isArray(agents) ? agents : [])
+                    .catch(() => []);
+            }
+            return agentDirectoryPromise;
+        }
+
+        async function avatarUrlFor(record) {
+            const author = record?.author || {};
+            const key = `${record?.source || 'human'}:${
+                author.id || author.name || ''
+            }`;
+            if (avatarCache.has(key)) return avatarCache.get(key);
+            const task = (async () => {
+                if (record?.source !== 'agent') {
+                    return context.identityPort?.loadUserAvatar?.() || null;
+                }
+                const agents = await agentDirectory();
+                const authorId = String(author.id || '').trim();
+                const name = authorName(record).toLocaleLowerCase('zh-CN');
+                const matched = agents.find((agent) =>
+                    (authorId && String(
+                        agent.folder || agent.id || ''
+                    ) === authorId)
+                    || String(agent.name || '')
+                        .toLocaleLowerCase('zh-CN') === name
+                );
+                const folder = matched?.folder || matched?.id || authorId;
+                return folder
+                    ? context.identityPort?.loadAgentAvatar?.(folder) || null
+                    : null;
+            })().catch(() => null);
+            avatarCache.set(key, task);
+            return task;
+        }
+
+        function hydrateAvatar(avatar, record) {
+            avatarUrlFor(record).then((url) => {
+                if (!url || !avatar.isConnected) return;
+                avatar.style.backgroundImage = `url("${String(url)
+                    .replace(/["\\]/g, '\\$&')}")`;
+                avatar.classList.add('has-avatar');
+                avatar.setAttribute(
+                    'aria-label',
+                    `${authorName(record)} 的头像`
+                );
+                avatar.setAttribute('role', 'img');
+            });
         }
 
         function createRecordItem(record) {
@@ -88,6 +177,7 @@
             avatar.textContent = record.source === 'agent'
                 ? authorName(record).slice(0, 1).toUpperCase() || 'AI'
                 : '人';
+            hydrateAvatar(avatar, record);
             const source = document.createElement('span');
             source.className = 'checkpoint-source';
             source.textContent = record.source === 'agent'
@@ -122,6 +212,18 @@
                     context.reviewPort?.open?.(record);
                 });
                 actions.appendChild(review);
+                item.appendChild(actions);
+            } else if (record.status === 'conflict') {
+                const actions = document.createElement('div');
+                actions.className = 'pr-card-actions conflict-actions';
+                const inspect = document.createElement('button');
+                inspect.type = 'button';
+                inspect.textContent = '查看冲突';
+                inspect.addEventListener('click', (event) => {
+                    event.stopPropagation();
+                    openDetail(record);
+                });
+                actions.appendChild(inspect);
                 item.appendChild(actions);
             }
 
@@ -231,6 +333,7 @@
 
         function render() {
             if (disposed) return false;
+            if (!adapter) return clear();
             const records = lineagePort.list();
             if (elements['checkpoint-count']) {
                 elements['checkpoint-count'].textContent =
@@ -278,9 +381,31 @@
             };
         }
 
+        function setDetailView(view = 'review') {
+            const technical = view === 'technical';
+            if (elements['lineage-review-view']) {
+                elements['lineage-review-view'].hidden = technical;
+            }
+            if (elements['lineage-technical-view']) {
+                elements['lineage-technical-view'].hidden = !technical;
+            }
+            [
+                ['lineage-review-tab', !technical],
+                ['lineage-technical-tab', technical],
+            ].forEach(([key, active]) => {
+                elements[key]?.classList.toggle('active', active);
+                elements[key]?.setAttribute(
+                    'aria-selected',
+                    String(active)
+                );
+            });
+            return !technical;
+        }
+
         function openDetail(record) {
             if (!record) return false;
             activeRecordId = record.id;
+            setDetailView('review');
             if (elements['lineage-detail-title']) {
                 elements['lineage-detail-title'].textContent =
                     record.name || '未命名文脉节点';
@@ -297,6 +422,11 @@
                         : null,
                 ].filter(Boolean).join(' · ');
             }
+            context.prDiffPort?.setAdapter?.(currentAdapter());
+            context.prDiffPort?.render?.(record, {
+                visualHost: elements['lineage-render-diff'],
+                sourceHost: elements['lineage-source-diff'],
+            });
             if (elements['lineage-detail-record']) {
                 elements['lineage-detail-record'].textContent =
                     JSON.stringify(detailRecord(record), null, 2);
@@ -527,6 +657,16 @@
                 closeDetail,
                 options
             );
+            elements['lineage-review-tab']?.addEventListener(
+                'click',
+                () => setDetailView('review'),
+                options
+            );
+            elements['lineage-technical-tab']?.addEventListener(
+                'click',
+                () => setDetailView('technical'),
+                options
+            );
             elements['lineage-restore-btn']?.addEventListener(
                 'click',
                 () => requestRestore(),
@@ -597,6 +737,8 @@
                 window.clearTimeout(timer)
             );
             automaticApprovalTimers.clear();
+            avatarCache.clear();
+            agentDirectoryPromise = null;
             closeDetail();
             closeReview();
             cancelRestore();
@@ -607,9 +749,11 @@
         const api = Object.freeze({
             setElements,
             setAdapter,
+            clear,
             render,
             openDetail,
             closeDetail,
+            setDetailView,
             openReview,
             closeReview,
             decideReview,

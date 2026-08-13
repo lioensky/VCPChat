@@ -711,7 +711,9 @@
         try {
             return restoreProtectedHtml(parse(protectedSource, {
                 gfm: true,
-                breaks: false,
+                // Scriptorium 是所见即所得的文稿编辑器：源码中的单换行
+                // 必须在静态渲染和展开编辑态中拥有一致的可见语义。
+                breaks: true,
                 async: false,
             }), registry);
         } catch (error) {
@@ -826,7 +828,9 @@
             try {
                 html = parse(protectedSource, {
                     gfm: true,
-                    breaks: false,
+                    // 与渲染态编辑器统一：单个源码换行编译为 <br>，
+                    // 避免收起编辑区后被 Markdown 折叠成普通空格。
+                    breaks: true,
                     async: false,
                 });
             } catch (error) {

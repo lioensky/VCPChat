@@ -58,14 +58,15 @@
 
     <section class="command-deck" aria-label="文档工具">
         <div class="command-cluster file-cluster">
-            <button id="new-btn" class="deck-button emphasized" title="新建连续流文稿">
-                <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
-                <span>新稿</span>
-            </button>
-            <button id="new-deck-btn" class="deck-button" title="新建 AI-native VPPTX 演示">
-                <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="14" rx="1"/><path d="M8 22h8M12 18v4M8 9h8M8 13h5"/></svg>
-                <span>新演示</span>
-            </button>
+            <div id="start-menu" class="start-menu">
+                <button id="start-menu-btn" class="deck-button emphasized start-menu-trigger"
+                    type="button" title="开始创作" aria-haspopup="menu"
+                    aria-expanded="false" aria-controls="start-menu-dropdown">
+                    <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+                    <span>开始</span>
+                    <svg class="start-menu-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg>
+                </button>
+            </div>
             <button id="open-btn" class="deck-button" title="打开 VDOCX 或 VPPTX 工程">
                 <svg viewBox="0 0 24 24"><path d="M3 7h6l2 2h10v10H3z"/><path d="m3 19 3-7h15"/></svg>
                 <span>打开</span>
@@ -243,6 +244,29 @@
         </div>
     </section>
 
+    <div id="start-menu-dropdown" class="start-menu-dropdown" role="menu"
+        aria-label="开始创作" hidden>
+        <button id="new-btn" type="button" role="menuitem" title="新建连续流文稿">
+            <span class="start-menu-icon">
+                <svg viewBox="0 0 24 24"><path d="M6 3h9l3 3v15H6z"/><path d="M15 3v4h4M9 12h6M9 16h6"/></svg>
+            </span>
+            <span><strong>新文档</strong><small>连续流文稿</small></span>
+        </button>
+        <button id="new-deck-btn" type="button" role="menuitem" title="新建 AI-native VPPTX 演示">
+            <span class="start-menu-icon">
+                <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="14" rx="1"/><path d="M8 22h8M12 18v4M8 9h8M8 13h5"/></svg>
+            </span>
+            <span><strong>新演示</strong><small>VPPTX 演示</small></span>
+        </button>
+        <span class="start-menu-separator" aria-hidden="true"></span>
+        <button id="home-btn" type="button" role="menuitem" title="回到 Scriptorium 首页">
+            <span class="start-menu-icon">
+                <svg viewBox="0 0 24 24"><path d="m3 11 9-8 9 8"/><path d="M5 10v10h14V10M9 20v-6h6v6"/></svg>
+            </span>
+            <span><strong>回到首页</strong><small>起始与最近文档</small></span>
+        </button>
+    </div>
+
     <main class="scriptorium-stage">
         <aside id="outline-panel" class="outline-panel" aria-label="文档篇章导航">
             <div class="outline-header">
@@ -308,7 +332,7 @@
                     <header class="source-header">
                         <div>
                             <strong id="source-title">Markdown-first 混合源码</strong>
-                            <span id="source-description">Markdown、HTML 岛、LaTeX 与 Mermaid 的唯一正文真相</span>
+                            <span id="source-description">实时连接唯一文档源码；修改立即进入渲染模型</span>
                         </div>
                         <div class="source-tools">
                             <span id="source-diagnostics" class="source-diagnostics">等待检查</span>
@@ -321,7 +345,7 @@
                                 <input id="source-color-input" type="color" value="#8b5e34" aria-label="源码颜色选择器">
                             </label>
                             <button id="format-source-btn" type="button">格式化</button>
-                            <button id="apply-source-btn" type="button">应用到渲染</button>
+                            <span class="source-live-sync" role="status">实时同步</span>
                         </div>
                     </header>
                     <div class="source-editor-shell">
@@ -826,7 +850,27 @@
                 </div>
                 <button id="lineage-detail-close-btn" type="button" aria-label="关闭">×</button>
             </header>
-            <div class="lineage-detail-body">
+            <nav class="lineage-detail-tabs" role="tablist" aria-label="文脉复核视图">
+                <button id="lineage-review-tab" class="active" type="button"
+                    role="tab" aria-selected="true"
+                    aria-controls="lineage-review-view">人类复核</button>
+                <button id="lineage-technical-tab" type="button"
+                    role="tab" aria-selected="false"
+                    aria-controls="lineage-technical-view">技术记录</button>
+            </nav>
+            <div id="lineage-review-view" class="lineage-detail-review"
+                role="tabpanel" aria-labelledby="lineage-review-tab">
+                <section class="lineage-review-pane">
+                    <h3>渲染差异</h3>
+                    <div id="lineage-render-diff" class="pr-render-diff"></div>
+                </section>
+                <section class="lineage-review-pane">
+                    <h3>源码差异</h3>
+                    <pre id="lineage-source-diff" class="pr-source-diff"></pre>
+                </section>
+            </div>
+            <div id="lineage-technical-view" class="lineage-detail-body"
+                role="tabpanel" aria-labelledby="lineage-technical-tab" hidden>
                 <section>
                     <h3>提交记录与审批</h3>
                     <pre id="lineage-detail-record" class="lineage-detail-record"></pre>
