@@ -19,6 +19,10 @@ const scriptoriumAPI = Object.freeze({
     save: (payload) => ipcRenderer.invoke('docx:save', payload),
     exportRichDocument: (payload) => ipcRenderer.invoke('scriptorium:export-rich-document', payload),
     listRecent: () => ipcRenderer.invoke('docx:recent-list'),
+    loadStylePacks: () =>
+        ipcRenderer.invoke('scriptorium:style-packs-load'),
+    saveStylePacks: (packs) =>
+        ipcRenderer.invoke('scriptorium:style-packs-save', packs),
     loadSvgAssetPacks: () =>
         ipcRenderer.invoke('scriptorium:svg-assets-load'),
     saveSvgAssetPacks: (packs) =>

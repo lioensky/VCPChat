@@ -10,6 +10,7 @@
     function createStyleUiController(context = {}) {
         const elements = context.elements || {};
         const styleLibrary = context.styleLibrary;
+        const persistencePort = context.persistencePort || {};
         const notificationPort = context.notificationPort || {};
         if (!styleLibrary) {
             throw new TypeError('Style UI requires VDocStyleLibrary.');
@@ -20,6 +21,37 @@
         let abortController = null;
         let libraryDisposer = null;
         let disposed = false;
+        let initialized = false;
+        let initializationPromise = null;
+
+        function persist() {
+            return persistencePort.saveStylePacks?.(
+                styleLibrary.exportUserPacks()
+            );
+        }
+
+        function initialize() {
+            if (initialized) return Promise.resolve(true);
+            if (initializationPromise) return initializationPromise;
+            initializationPromise = (async () => {
+                try {
+                    const packs =
+                        await persistencePort.loadStylePacks?.() || [];
+                    styleLibrary.replaceUserPacks(packs);
+                } catch (error) {
+                    notificationPort.show?.(
+                        `高级样式库载入失败：${error.message}`,
+                        'error',
+                        5000
+                    );
+                }
+                initialized = true;
+                populateCategories();
+                renderList();
+                return true;
+            })();
+            return initializationPromise;
+        }
 
         function currentEditor() {
             return editorPort || context.getEditorPort?.() || null;
@@ -243,6 +275,7 @@ ${product.css}
                 const result = styleLibrary.registerPack(pack, {
                     conflict: 'replace',
                 });
+                await persist();
                 populateCategories();
                 renderList();
                 notificationPort.show?.(
@@ -348,6 +381,7 @@ ${product.css}
                     renderList();
                 }
             });
+            initialize();
             return api;
         }
 
@@ -361,6 +395,8 @@ ${product.css}
         }
 
         const api = Object.freeze({
+            initialize,
+            persist,
             setEditorPort,
             open,
             close,

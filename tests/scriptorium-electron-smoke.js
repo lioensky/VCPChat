@@ -6,6 +6,24 @@ const path = require('path');
 const projectRoot = path.resolve(__dirname, '..');
 const TIMEOUT_MS = 60000;
 let watchdog = null;
+let persistedStylePacks = [{
+    format: 'vcp-vdoc-style-pack',
+    version: 1,
+    manifest: {
+        id: 'vcp.test.persisted-style',
+        name: '持久化预置样式',
+        author: 'Smoke Test',
+    },
+    styles: [{
+        id: 'vcp.test.persisted-style.accent',
+        version: 1,
+        name: '持久化强调',
+        category: '自动化测试',
+        targets: ['inline'],
+        className: 'vds-persisted-accent',
+        css: '.vds-persisted-accent{color:#135724}',
+    }],
+}];
 
 function registerMinimalIpc() {
     ipcMain.handle(
@@ -41,6 +59,20 @@ function registerMinimalIpc() {
         success: false,
         canceled: true,
     }));
+    ipcMain.handle('scriptorium:style-packs-load', () =>
+        persistedStylePacks
+    );
+    ipcMain.handle(
+        'scriptorium:style-packs-save',
+        (_event, packs = []) => {
+            persistedStylePacks = JSON.parse(JSON.stringify(packs));
+            return {
+                success: true,
+                count: packs.length,
+                size: JSON.stringify(packs).length,
+            };
+        }
+    );
     ipcMain.handle('scriptorium:svg-assets-load', () => []);
     ipcMain.handle('scriptorium:svg-assets-save', (_event, packs = []) => ({
         success: true,
@@ -281,6 +313,48 @@ app.whenReady().then(async () => {
                 afterMedia.includes('data-vdoc-object="media"')
         };
 
+        const restoredStylePack = current.getStylePack({
+            packId: 'vcp.test.persisted-style'
+        });
+        const createdStylePack = await current.upsertStylePack({
+            requestId: 'smoke-style-pack-create',
+            maid: {
+                id: 'smoke-agent',
+                name: '冒烟测试 Agent',
+                type: 'agent'
+            },
+            pack: {
+                format: 'vcp-vdoc-style-pack',
+                version: 1,
+                manifest: {
+                    id: 'vcp.test.agent-persisted-style',
+                    name: 'Agent 持久化样式',
+                    author: '冒烟测试 Agent'
+                },
+                styles: [{
+                    id: 'vcp.test.agent-persisted-style.accent',
+                    version: 1,
+                    name: 'Agent 强调',
+                    category: '自动化测试',
+                    targets: ['inline'],
+                    className: 'vds-agent-persisted-accent',
+                    css: '.vds-agent-persisted-accent{color:#246813}'
+                }]
+            }
+        });
+        const stylePersistence = {
+            restoredAtStartup:
+                restoredStylePack.success === true
+                && restoredStylePack.pack.styles.length === 1,
+            agentCreateSucceeded:
+                createdStylePack.success === true
+                && createdStylePack.operation === 'create',
+            visibleGlobally:
+                current.getStylePack({
+                    packId: 'vcp.test.agent-persisted-style'
+                }).success === true
+        };
+
         const styles = current.listStylePacks();
         const svgPacks = current.listSvgAssetPacks();
         const svgAssets = current.listSvgAssets();
@@ -320,10 +394,18 @@ app.whenReady().then(async () => {
             structure,
             reading,
             media,
+            stylePersistence,
             capabilities
         };
     })()`);
 
+    result.stylePersistence.savedByIpc =
+        persistedStylePacks.some((pack) =>
+            pack.manifest?.id === 'vcp.test.persisted-style'
+        )
+        && persistedStylePacks.some((pack) =>
+            pack.manifest?.id === 'vcp.test.agent-persisted-style'
+        );
     console.log('[ScriptoriumSmoke] Snapshot:', JSON.stringify(result, null, 2));
     const failed = [];
     const inspect = (value, prefix = '') => {

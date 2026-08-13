@@ -67,6 +67,7 @@ let mainWindow = null;
 let openChildWindows = [];
 let projectRoot = null;
 let recentFilePath = null;
+let stylePackFilePath = null;
 let svgAssetFilePath = null;
 let initialized = false;
 let fontCache = null;
@@ -399,6 +400,54 @@ async function getSystemFonts(forceRefresh = false) {
         'Times New Roman',
     ]);
     return fontCache;
+}
+
+async function readStylePacks() {
+    try {
+        if (!stylePackFilePath || !await fs.pathExists(stylePackFilePath)) {
+            return [];
+        }
+        const stored = await fs.readJson(stylePackFilePath);
+        return Array.isArray(stored?.packs) ? stored.packs : [];
+    } catch (error) {
+        console.warn(
+            '[Scriptorium] Failed to read style packs:',
+            error.message
+        );
+        return [];
+    }
+}
+
+async function writeStylePacks(_event, packs = []) {
+    if (!Array.isArray(packs)) {
+        throw new Error('高级样式包持久化内容必须是数组。');
+    }
+    const documentValue = {
+        format: 'vcp-scriptorium-style-pack-storage',
+        version: 1,
+        updatedAt: new Date().toISOString(),
+        packs,
+    };
+    const content = JSON.stringify(documentValue, null, 2);
+    if (Buffer.byteLength(content, 'utf8') > 20 * 1024 * 1024) {
+        throw new Error('高级样式库超过 20 MB 持久化上限。');
+    }
+    await fs.ensureDir(path.dirname(stylePackFilePath));
+    const temporaryPath =
+        `${stylePackFilePath}.writing-${process.pid}-${Date.now()}`;
+    try {
+        await fs.writeFile(temporaryPath, content, 'utf8');
+        await fs.move(temporaryPath, stylePackFilePath, {
+            overwrite: true,
+        });
+    } finally {
+        await fs.remove(temporaryPath).catch(() => {});
+    }
+    return {
+        success: true,
+        count: packs.length,
+        size: Buffer.byteLength(content, 'utf8'),
+    };
 }
 
 async function readSvgAssetPacks() {
@@ -1141,6 +1190,11 @@ function initialize(params) {
         'Scriptorium',
         'recent.json'
     );
+    stylePackFilePath = path.join(
+        params.appDataRoot,
+        'Scriptorium',
+        'style-packs.json'
+    );
     svgAssetFilePath = path.join(
         params.appDataRoot,
         'Scriptorium',
@@ -1165,6 +1219,8 @@ function initialize(params) {
     ipcMain.handle('docx:save', saveDocument);
     ipcMain.handle('scriptorium:export-rich-document', exportRichDocument);
     ipcMain.handle('docx:recent-list', readRecentFiles);
+    ipcMain.handle('scriptorium:style-packs-load', readStylePacks);
+    ipcMain.handle('scriptorium:style-packs-save', writeStylePacks);
     ipcMain.handle('scriptorium:svg-assets-load', readSvgAssetPacks);
     ipcMain.handle('scriptorium:svg-assets-save', writeSvgAssetPacks);
     ipcMain.handle('docx:fonts-list', (_event, forceRefresh = false) => getSystemFonts(forceRefresh));

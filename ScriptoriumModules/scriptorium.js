@@ -66,6 +66,10 @@
         exportRichDocument: (payload) =>
             nativeApi.exportRichDocument(payload),
         listRecent: () => nativeApi.listRecent(),
+        loadStylePacks: () =>
+            nativeApi.loadStylePacks?.() || [],
+        saveStylePacks: (packs) =>
+            nativeApi.saveStylePacks?.(packs),
         loadSvgAssetPacks: () =>
             nativeApi.loadSvgAssetPacks?.() || [],
         saveSvgAssetPacks: (packs) =>
@@ -538,6 +542,7 @@
             window.ScriptoriumStyleUi.createStyleUiController({
                 elements,
                 styleLibrary,
+                persistencePort,
                 notificationPort,
                 getEditorPort: editorResolver,
                 onStyleUsed(style) {
@@ -634,7 +639,8 @@
                 getAdapter: adapterResolver,
                 persist: (reason) =>
                     sessionPort.persistCheckpoint(reason),
-                onStyleLibraryChange: () => {
+                onStyleLibraryChange: async () => {
+                    await stylePort.persist();
                     renderFacade.invalidate('style-library-changed');
                     renderFacade.renderCurrent({ force: true });
                 },
@@ -762,6 +768,7 @@
         await Promise.all([
             loadFonts(),
             sessionPort.renderRecent(),
+            stylePort.initialize(),
             svgAssetPort.initialize(),
         ]);
         initialized = true;

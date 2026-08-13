@@ -595,7 +595,7 @@
             };
         }
 
-        function upsertStylePack(options = {}) {
+        async function upsertStylePack(options = {}) {
             const author = normalizeAuthor(options.maid || options.author);
             if (!author) {
                 throw new Error('Agent 管理样式包必须提供 maid 署名。');
@@ -613,7 +613,7 @@
             const result = styleLibrary.registerPack(pack, {
                 conflict: 'replace',
             });
-            context.onStyleLibraryChange?.({
+            await context.onStyleLibraryChange?.({
                 operation: existed ? 'replace' : 'create',
                 pack: result,
             });
@@ -625,7 +625,7 @@
             };
         }
 
-        function deleteStylePack(options = {}) {
+        async function deleteStylePack(options = {}) {
             const author = normalizeAuthor(options.maid || options.author);
             if (!author) {
                 throw new Error('Agent 管理样式包必须提供 maid 署名。');
@@ -637,7 +637,7 @@
             const existing = styleLibrary.getPack(packId);
             if (!existing) throw new Error(`未找到高级样式包：${packId}`);
             styleLibrary.unregisterPack(packId);
-            context.onStyleLibraryChange?.({
+            await context.onStyleLibraryChange?.({
                 operation: 'delete',
                 pack: existing,
             });
