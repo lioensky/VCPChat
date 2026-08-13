@@ -184,7 +184,6 @@ svg {
     justify-content: center;
     gap: 8px;
     min-width: 0;
-    -webkit-app-region: no-drag;
 }
 
 .state-dot {
@@ -238,7 +237,6 @@ svg {
     justify-content: flex-end;
     height: 100%;
     gap: 2px;
-    -webkit-app-region: no-drag;
 }
 
 .titlebar-divider {
