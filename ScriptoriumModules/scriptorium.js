@@ -23,6 +23,8 @@
         deckEditor: window.ScriptoriumDeckEditor,
         formatting: window.ScriptoriumFormatting,
         primitives: window.ScriptoriumRenderPrimitives,
+        svgAssetLibrary: window.VDocSvgAssetLibrary,
+        svgAssets: window.ScriptoriumSvgAssets,
         renderedText: window.ScriptoriumRenderedText,
         flowRenderer: window.ScriptoriumFlowRenderer,
         deckRenderer: window.ScriptoriumDeckRenderer,
@@ -64,6 +66,10 @@
         exportRichDocument: (payload) =>
             nativeApi.exportRichDocument(payload),
         listRecent: () => nativeApi.listRecent(),
+        loadSvgAssetPacks: () =>
+            nativeApi.loadSvgAssetPacks?.() || [],
+        saveSvgAssetPacks: (packs) =>
+            nativeApi.saveSvgAssetPacks?.(packs),
         listSystemFonts: (force) => nativeApi.listSystemFonts(force),
         loadAgentsList: () => nativeApi.loadAgentsList?.() || [],
         loadUserAvatar: () => nativeApi.loadUserAvatar?.() || null,
@@ -107,6 +113,7 @@
     let prDiffPort = null;
     let agentPort = null;
     let objectPort = null;
+    let svgAssetPort = null;
     let shell = null;
     let pathRequestDisposer = null;
     let agentRequestDisposer = null;
@@ -618,6 +625,7 @@
                 containerModule,
                 hybridCompiler,
                 styleLibrary,
+                svgAssetLibrary: window.VDocSvgAssetLibrary,
                 programmableContent: window.ScriptoriumProgrammableContent,
                 prDiff: window.ScriptoriumPrDiff,
                 historyPort,
@@ -630,6 +638,10 @@
                     renderFacade.invalidate('style-library-changed');
                     renderFacade.renderCurrent({ force: true });
                 },
+                persistSvgAssets: () =>
+                    persistencePort.saveSvgAssetPacks(
+                        window.VDocSvgAssetLibrary.exportUserPacks()
+                    ),
             });
         window.ScriptoriumAgent = agentPort;
 
@@ -650,6 +662,20 @@
                 commitMutation: mutateObject,
             });
 
+        svgAssetPort =
+            window.ScriptoriumSvgAssets.createSvgAssetController({
+                elements,
+                library: window.VDocSvgAssetLibrary,
+                objects: window.ScriptoriumObjects,
+                persistencePort,
+                notificationPort,
+                canInsert: () =>
+                    documentPort.status().ready
+                    && shell.surfacePort.mode() === 'edit',
+                freeCanvas: () => activeAdapter?.kind === 'deck',
+                insertObject,
+            });
+
         [
             sessionPort,
             mediaPort,
@@ -658,6 +684,7 @@
             formattingPort,
             stylePort,
             lineageUiPort,
+            svgAssetPort,
         ].forEach(shell.register);
     }
 
@@ -735,6 +762,7 @@
         await Promise.all([
             loadFonts(),
             sessionPort.renderRecent(),
+            svgAssetPort.initialize(),
         ]);
         initialized = true;
     }

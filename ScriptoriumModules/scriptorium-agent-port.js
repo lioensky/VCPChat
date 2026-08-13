@@ -70,10 +70,11 @@
         const containerModule = context.containerModule;
         const programmableContent = context.programmableContent;
         const styleLibrary = context.styleLibrary;
+        const svgAssetLibrary = context.svgAssetLibrary;
         if (!documentPort || !lineagePort || !core || !diff
-            || !styleLibrary) {
+            || !styleLibrary || !svgAssetLibrary) {
             throw new TypeError(
-                'Agent controller requires DocumentPort, LineagePort, VDocCore, PR diff and VDocStyleLibrary.'
+                'Agent controller requires DocumentPort, LineagePort, VDocCore, PR diff, VDocStyleLibrary and VDocSvgAssetLibrary.'
             );
         }
 
@@ -645,6 +646,139 @@
                 operation: 'delete',
                 packId,
                 deletedStyleCount: existing.styles.length,
+                maid: author,
+            };
+        }
+
+        function listSvgAssetPacks(options = {}) {
+            const query = String(options.query || '').trim().toLowerCase();
+            const editableOnly = options.editableOnly === true;
+            const packs = svgAssetLibrary.listPacks()
+                .filter((pack) => !editableOnly || pack.editable)
+                .filter((pack) => !query || [
+                    pack.manifest.id,
+                    pack.manifest.name,
+                    pack.manifest.description,
+                    pack.manifest.author,
+                    ...pack.assets.flatMap((asset) => [
+                        asset.id,
+                        asset.name,
+                        asset.description,
+                        asset.category,
+                        ...(asset.tags || []),
+                    ]),
+                ].some((value) =>
+                    String(value || '').toLowerCase().includes(query)
+                ));
+            return {
+                success: true,
+                format: svgAssetLibrary.PACK_FORMAT,
+                version: svgAssetLibrary.PACK_VERSION,
+                builtinPackId: svgAssetLibrary.BUILTIN_PACK_ID,
+                count: packs.length,
+                packs,
+            };
+        }
+
+        function listSvgAssets(options = {}) {
+            const assets = svgAssetLibrary.list({
+                query: options.query,
+                packId: options.packId,
+                category: options.category,
+                kind: options.kind,
+            }).map((asset) => {
+                const { source, ...metadata } = asset;
+                return metadata;
+            });
+            return {
+                success: true,
+                count: assets.length,
+                assets,
+            };
+        }
+
+        function getSvgAsset(options = {}) {
+            const assetId = String(
+                options.assetId || options.id || ''
+            ).trim();
+            if (!assetId) throw new Error('GetSvgAsset 缺少 assetId。');
+            const asset = svgAssetLibrary.get(assetId);
+            if (!asset) throw new Error(`未找到 SVG 资产：${assetId}`);
+            const pack = svgAssetLibrary.getPack(asset.packId);
+            return {
+                success: true,
+                builtin: pack?.builtin === true,
+                editable: pack?.editable === true,
+                asset,
+                source: asset.source,
+            };
+        }
+
+        function getSvgAssetPack(options = {}) {
+            const packId = String(
+                options.packId || options.id || ''
+            ).trim();
+            if (!packId) {
+                throw new Error('GetSvgAssetPack 缺少 packId。');
+            }
+            const pack = svgAssetLibrary.getPack(packId);
+            if (!pack) throw new Error(`未找到 SVG 资产包：${packId}`);
+            return {
+                success: true,
+                pack,
+                source: svgAssetLibrary.serializePack(packId),
+            };
+        }
+
+        async function upsertSvgAssetPack(options = {}) {
+            const author = normalizeAuthor(options.maid || options.author);
+            if (!author) {
+                throw new Error('Agent 管理 SVG 资产包必须提供 maid 署名。');
+            }
+            const supplied = options.pack ?? options.source;
+            let pack = supplied;
+            if (typeof supplied === 'string') {
+                pack = svgAssetLibrary.parsePack(supplied);
+            }
+            if (!pack || typeof pack !== 'object' || Array.isArray(pack)) {
+                throw new Error(
+                    'UpsertSvgAssetPack 缺少 pack JSON 对象或源码。'
+                );
+            }
+            const packId = String(pack.manifest?.id || '').trim();
+            const existed = Boolean(svgAssetLibrary.getPack(packId));
+            const result = svgAssetLibrary.registerPack(pack, {
+                conflict: 'replace',
+            });
+            await context.persistSvgAssets?.();
+            return {
+                success: true,
+                operation: existed ? 'replace' : 'create',
+                maid: author,
+                pack: result,
+            };
+        }
+
+        async function deleteSvgAssetPack(options = {}) {
+            const author = normalizeAuthor(options.maid || options.author);
+            if (!author) {
+                throw new Error('Agent 管理 SVG 资产包必须提供 maid 署名。');
+            }
+            const packId = String(
+                options.packId || options.id || ''
+            ).trim();
+            if (!packId) {
+                throw new Error('DeleteSvgAssetPack 缺少 packId。');
+            }
+            const existing = svgAssetLibrary.getPack(packId);
+            if (!existing) throw new Error(`未找到 SVG 资产包：${packId}`);
+            svgAssetLibrary.unregisterPack(packId);
+            await context.persistSvgAssets?.();
+            return {
+                success: true,
+                operation: 'delete',
+                packId,
+                deletedAssetCount: existing.assets.length,
                 maid: author,
             };
         }
@@ -1435,6 +1569,12 @@
             getStylePack,
             upsertStylePack,
             deleteStylePack,
+            listSvgAssetPacks,
+            listSvgAssets,
+            getSvgAsset,
+            getSvgAssetPack,
+            upsertSvgAssetPack,
+            deleteSvgAssetPack,
             submitSourcePr,
             buildProjectArtifact,
         });
@@ -1478,7 +1618,7 @@
         }
 
         return Object.freeze({
-            version: 4,
+            version: 5,
             common,
             docx,
             pptx,

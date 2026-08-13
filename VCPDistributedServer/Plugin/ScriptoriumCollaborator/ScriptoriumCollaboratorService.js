@@ -223,9 +223,20 @@ const MARKDOWN_FIELD_LABELS = Object.freeze({
     packId: '样式主题包 ID',
     styleCount: '样式数量',
     deletedStyleCount: '已删除样式数量',
+    assets: 'SVG 资产',
+    asset: 'SVG 资产',
+    assetId: 'SVG 资产 ID',
+    assetCount: 'SVG 资产数量',
+    animatedCount: '动画资产数量',
+    deletedAssetCount: '已删除 SVG 资产数量',
+    kind: '类型',
+    category: '分类',
+    tags: '标签',
+    description: '描述',
+    defaultSize: '默认尺寸',
     builtin: '内置只读',
     editable: '允许编辑',
-    builtinPackId: '内置样式包 ID',
+    builtinPackId: '内置包 ID',
     format: '格式',
     version: '版本',
     maid: 'Maid 署名',
@@ -625,6 +636,77 @@ async function deleteStylePack(args, executionContext = {}) {
     }, 'common', executionContext);
 }
 
+async function listSvgAssetPacks(args) {
+    return call(args, 'listSvgAssetPacks', {
+        query: args.query,
+        editableOnly: booleanOf(args.editableOnly, false),
+    }, 'common');
+}
+
+async function listSvgAssets(args) {
+    return call(args, 'listSvgAssets', {
+        query: args.query,
+        packId: args.packId,
+        category: args.category,
+        kind: args.kind,
+    }, 'common');
+}
+
+async function getSvgAsset(args) {
+    const assetId = String(args.assetId || args.id || '').trim();
+    if (!assetId) {
+        throw new Error(
+            '[ScriptoriumCollaborator] GetSvgAsset 缺少 assetId。'
+        );
+    }
+    return call(args, 'getSvgAsset', { assetId }, 'common');
+}
+
+async function getSvgAssetPack(args) {
+    const packId = String(args.packId || args.id || '').trim();
+    if (!packId) {
+        throw new Error(
+            '[ScriptoriumCollaborator] GetSvgAssetPack 缺少 packId。'
+        );
+    }
+    return call(args, 'getSvgAssetPack', { packId }, 'common');
+}
+
+async function upsertSvgAssetPack(args, executionContext = {}) {
+    const supplied = args.pack ?? args.source;
+    if (supplied === undefined || supplied === null || supplied === '') {
+        throw new Error(
+            '[ScriptoriumCollaborator] UpsertSvgAssetPack 缺少 pack 或 source。'
+        );
+    }
+    const pack = typeof supplied === 'object'
+        ? parseObject(supplied, 'pack')
+        : parseObject(String(supplied), 'source');
+    const maid = authorFromMaid(args, executionContext);
+    return call(args, 'upsertSvgAssetPack', {
+        requestId: requestIdOf(args, executionContext),
+        pack,
+        maid,
+        author: maid,
+    }, 'common', executionContext);
+}
+
+async function deleteSvgAssetPack(args, executionContext = {}) {
+    const packId = String(args.packId || args.id || '').trim();
+    if (!packId) {
+        throw new Error(
+            '[ScriptoriumCollaborator] DeleteSvgAssetPack 缺少 packId。'
+        );
+    }
+    const maid = authorFromMaid(args, executionContext);
+    return call(args, 'deleteSvgAssetPack', {
+        requestId: requestIdOf(args, executionContext),
+        packId,
+        maid,
+        author: maid,
+    }, 'common', executionContext);
+}
+
 async function submitSourcePr(args, executionContext = {}) {
     const replacements = args.replacements === undefined
         ? [{
@@ -794,6 +876,19 @@ async function processSingleToolCall(args, executionContext = {}) {
             return upsertStylePack(args, executionContext);
         case 'deletestylepack':
             return deleteStylePack(args, executionContext);
+        case 'listsvgassetpacks':
+            return listSvgAssetPacks(args);
+        case 'listsvgassets':
+            return listSvgAssets(args);
+        case 'getsvgasset':
+            return getSvgAsset(args);
+        case 'getsvgassetpack':
+            return getSvgAssetPack(args);
+        case 'upsertsvgassetpack':
+        case 'savesvgassetpack':
+            return upsertSvgAssetPack(args, executionContext);
+        case 'deletesvgassetpack':
+            return deleteSvgAssetPack(args, executionContext);
         case 'submitsourcepr':
             return submitSourcePr(args, executionContext);
         case 'addslide':
@@ -816,7 +911,7 @@ async function processSingleToolCall(args, executionContext = {}) {
             );
         default:
             throw new Error(
-                '[ScriptoriumCollaborator] 不支持的 command。可用值：ListFonts、GetDocumentInfo、GetRenderedText、GetOutline、GetSection、GetSource、SearchSource、GetViewportSource、GetVisualContext、GetPrHistory、ListStylePacks、GetStylePack、UpsertStylePack、DeleteStylePack、SubmitSourcePr、AddSlide、InsertSlide、DeleteSlide、UpdatePresentationConfig、CreateProject、GetStorageInfo。'
+                '[ScriptoriumCollaborator] 不支持的 command。可用值：ListFonts、GetDocumentInfo、GetRenderedText、GetOutline、GetSection、GetSource、SearchSource、GetViewportSource、GetVisualContext、GetPrHistory、ListStylePacks、GetStylePack、UpsertStylePack、DeleteStylePack、ListSvgAssetPacks、ListSvgAssets、GetSvgAsset、GetSvgAssetPack、UpsertSvgAssetPack、DeleteSvgAssetPack、SubmitSourcePr、AddSlide、InsertSlide、DeleteSlide、UpdatePresentationConfig、CreateProject、GetStorageInfo。'
             );
     }
 }

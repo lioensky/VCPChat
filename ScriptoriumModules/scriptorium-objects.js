@@ -459,19 +459,28 @@
         const svg = node.querySelector(':scope > svg');
         if (!svg) return false;
         let geometry = svg.querySelector('[data-vdoc-shape-geometry]');
-        if (!geometry) geometry = shapeGeometry(kind, svg);
-        geometry.setAttribute('fill', kind === 'line' ? 'none' : fill);
-        geometry.setAttribute('stroke', stroke);
-        geometry.setAttribute('stroke-width', String(strokeWidth));
-        geometry.setAttribute('stroke-linejoin', 'round');
-        geometry.setAttribute('stroke-linecap', 'round');
-        if (geometry.tagName === 'rect') {
-            geometry.setAttribute('rx', String(radius));
-            geometry.setAttribute('ry', String(radius));
+        if (!geometry && node.dataset.vdocShapeSource !== 'asset'
+            && node.dataset.vdocShapeSource !== 'custom') {
+            geometry = shapeGeometry(kind, svg);
         }
-        if (dash === 'dash') geometry.setAttribute('stroke-dasharray', '9 6');
-        else if (dash === 'dot') geometry.setAttribute('stroke-dasharray', '2 6');
-        else geometry.removeAttribute('stroke-dasharray');
+        if (geometry) {
+            geometry.setAttribute('fill', kind === 'line' ? 'none' : fill);
+            geometry.setAttribute('stroke', stroke);
+            geometry.setAttribute('stroke-width', String(strokeWidth));
+            geometry.setAttribute('stroke-linejoin', 'round');
+            geometry.setAttribute('stroke-linecap', 'round');
+            if (geometry.tagName === 'rect') {
+                geometry.setAttribute('rx', String(radius));
+                geometry.setAttribute('ry', String(radius));
+            }
+            if (dash === 'dash') {
+                geometry.setAttribute('stroke-dasharray', '9 6');
+            } else if (dash === 'dot') {
+                geometry.setAttribute('stroke-dasharray', '2 6');
+            } else {
+                geometry.removeAttribute('stroke-dasharray');
+            }
+        }
         node.dataset.vdocShapeFill = fill;
         node.dataset.vdocShapeStroke = stroke;
         node.dataset.vdocShapeStrokeWidth = String(strokeWidth);
@@ -509,6 +518,57 @@
         if (options.deck) applySlideLayout(node, options);
         else applyFlowLayout(node, options.layout || 'block');
         applyShapeProperties(node, options);
+        return node;
+    }
+
+    function createShapeFromSvg(asset, source, options = {}) {
+        const result = sanitizeSvgSource(source || asset?.source);
+        if (!result.valid) throw new Error(result.message);
+        const template = document.createElement('template');
+        template.innerHTML = result.source;
+        const svg = template.content.firstElementChild;
+        if (!svg?.matches?.('svg')) {
+            throw new Error('SVG 资产没有有效根元素。');
+        }
+        const node = document.createElement('figure');
+        node.className = 'vdoc-object vdoc-shape';
+        node.dataset.vdocObject = 'shape';
+        node.dataset.vdocObjectId = createId('shape');
+        node.dataset.vdocShapeKind = 'asset';
+        node.dataset.vdocShapeSource = 'asset';
+        node.dataset.vdocSvgAssetId = String(asset?.id || '');
+        node.dataset.vdocSvgAssetVersion = String(asset?.version || 1);
+        node.dataset.vdocSvgAssetKind = String(asset?.kind || 'static');
+        node.dataset.vdocObjectName = String(asset?.name || 'SVG 图形');
+        node.dataset.vdocPagination = 'atomic';
+        const description = String(
+            options.description ?? asset?.description ?? asset?.name ?? 'SVG 图形'
+        );
+        node.setAttribute('description', description);
+        node.dataset.vdocDescription = description;
+        node.setAttribute('aria-label', description);
+        svg.setAttribute('aria-label', description);
+        node.appendChild(svg);
+        node.style.width = `${finite(
+            options.width,
+            asset?.defaultSize?.width || 260,
+            24,
+            4096
+        )}px`;
+        node.style.height = `${finite(
+            options.height,
+            asset?.defaultSize?.height || 180,
+            24,
+            4096
+        )}px`;
+        node.dataset.vdocObjectOpacity = String(
+            finite(options.opacity, 100, 0, 100)
+        );
+        node.style.opacity = String(
+            finite(options.opacity, 100, 0, 100) / 100
+        );
+        if (options.deck) applySlideLayout(node, options);
+        else applyFlowLayout(node, options.layout || 'block');
         return node;
     }
 
@@ -1349,6 +1409,7 @@ ${safeCss}
         normalizeSource,
         normalizeObjectNode,
         createShape,
+        createShapeFromSvg,
         applyFlowLayout,
         applySlideLayout,
         applyShapeProperties,
