@@ -263,9 +263,6 @@
                     return;
                 }
                 if (node.nodeType !== Node.ELEMENT_NODE) return;
-                if (node.dataset?.vdocMdMarker === 'terminal-line-ending') {
-                    return;
-                }
                 if (node.tagName === 'BR') {
                     output += '\n';
                     return;
@@ -276,11 +273,7 @@
                 if (block && output && !output.endsWith('\n')) output += '\n';
             };
             root.childNodes.forEach(visit);
-            const visible = output.replace(/\n$/, '');
-            const terminalLineEnding = root.querySelector?.(
-                '[data-vdoc-md-marker="terminal-line-ending"]'
-            )?.textContent || '';
-            return visible + terminalLineEnding;
+            return output.replace(/\n$/, '');
         }
 
         function editableSourceText(editable) {
@@ -389,9 +382,9 @@
         }
 
         function pastedMarkdownText(value) {
-            return String(value || '')
-                .replace(/\r\n?/g, '\n')
-                .replace(/\n/g, '  \n');
+            // 粘贴遵循与键盘 Enter 相同的记事本行模型：只规范化平台
+            // 换行符，不写入 Markdown 硬换行尾空格或零宽占位字符。
+            return String(value || '').replace(/\r\n?/g, '\n');
         }
 
         function refreshLocalMarkers(session, sourceStart, sourceEnd = sourceStart) {
@@ -813,32 +806,18 @@
 
         function createMarkdownVisualEditor(shell, raw) {
             const source = String(raw || '');
-            const terminalLineEnding =
-                source.match(/(?:\r?\n)+$/)?.[0] || '';
-            const terminalLinePrefix = terminalLineEnding
-                ? source.slice(0, -terminalLineEnding.length)
-                : source;
-            // Marked 或源码实时同步可能把块后的整个空白分隔（通常 \n\n）
-            // 纳入 region。它不是可见编辑行，必须整体隐藏；但用户 Enter
-            // 写入的硬换行前有两个空格，此时必须保留逐行编辑结构。
-            const trailingLineEnding = terminalLineEnding
-                && !terminalLinePrefix.endsWith('  ')
-                && !terminalLinePrefix.endsWith('\u200B  ')
-                ? terminalLineEnding
-                : '';
-            const visualSource = trailingLineEnding
-                ? terminalLinePrefix
-                : source;
-            const lines = source.split('\n');
             const renderedLines = renderedLineCandidates(shell);
-            const singleVisualLine = !visualSource.includes('\n')
-                && !visualSource.includes('\r');
+            const singleVisualLine = !/[\r\n]/.test(source);
+
+            // 编辑树严格一一投影全部源码行。即使首尾行为空也必须保留，
+            // 因为 Selection 偏移、退格合并行和无损序列化都依赖完整行列。
+            const lines = source.split(/\r?\n/);
 
             if (singleVisualLine) {
                 const renderedBlock = shell.firstElementChild;
                 const editor = renderedBlock
                     ? renderedBlock.cloneNode(true)
-                    : markdownLineElement(visualSource);
+                    : markdownLineElement(source);
                 editor.querySelectorAll?.('[contenteditable], [spellcheck]')
                     .forEach((node) => {
                         node.removeAttribute('contenteditable');
@@ -868,20 +847,9 @@
                         }
                     });
                 }
-                contentHost.replaceChildren(inlineHtmlSourceFragment(
-                    visualSource
-                ));
-                if (trailingLineEnding) {
-                    // Marked 的 blockquote/list token 常把块后的单个换行纳入
-                    // raw。它属于源码边界而非第二条可见行：隐藏保存该偏移，
-                    // 避免引用被误建成多行编辑器，同时保证无损序列化。
-                    contentHost.appendChild(concealedMarker(
-                        trailingLineEnding,
-                        'terminal-line-ending'
-                    ));
-                }
-                if (!compiler.markdownLiveMarkerRanges(visualSource).length
-                    && !inlineHtmlTagRecords(visualSource).length) {
+                contentHost.replaceChildren(inlineHtmlSourceFragment(source));
+                if (!compiler.markdownLiveMarkerRanges(source).length
+                    && !inlineHtmlTagRecords(source).length) {
                     // 裸文本编辑前后必须沿用相同的空白折叠和断行算法。
                     // 通用源码编辑规则中的 break-spaces/anywhere 会改变字宽、
                     // 两端对齐和换行点，导致获得焦点时发生轻微布局跳动。
@@ -892,6 +860,13 @@
 
             const editor = document.createElement('div');
             editor.className = 'vdoc-md-live-preview-run';
+            const whitespaceOnly = !source.trim() && /[\r\n]/.test(source);
+            const hasPreviousRegion = Boolean(
+                shell.previousElementSibling?.matches?.('[data-vdoc-edit-key]')
+            );
+            const hasFollowingRegion = Boolean(
+                shell.nextElementSibling?.matches?.('[data-vdoc-edit-key]')
+            );
             const renderedBlock = renderedLines[0] || shell.firstElementChild;
             if (renderedBlock) {
                 const style = getComputedStyle(renderedBlock);
@@ -924,6 +899,15 @@
                         line,
                         sourceOffset
                     ));
+                }
+                if (whitespaceOnly
+                    && ((lineIndex === 0 && hasPreviousRegion)
+                        || (lineIndex === lines.length - 1
+                            && hasFollowingRegion))) {
+                    // 相邻块自身占据首尾内容行；纯换行区域的首尾节点只
+                    // 承担源码边界偏移，不应再显示成额外空白行。
+                    lineElement.classList.add('vdoc-source-boundary-line');
+                    lineElement.setAttribute('aria-hidden', 'true');
                 }
                 editor.appendChild(lineElement);
                 sourceOffset += line.length;
@@ -1863,9 +1847,7 @@
             const boundary = before
                 ? session.region.sourceRange.start
                 : session.region.sourceRange.end;
-            const insertion = before
-                ? '\u200B  \n\n'
-                : '\n\n\u200B';
+            const insertion = '\n';
             const transaction = transact({
                 from: boundary,
                 to: boundary,
@@ -1885,15 +1867,11 @@
             return true;
         }
 
-        function markdownLineBreakInsertion(editable, offsets) {
-            const raw = editableSourceText(editable);
-            const before = raw.slice(0, offsets?.start || 0);
-            const lineStart = before.lastIndexOf('\n') + 1;
-            const currentLine = before.slice(lineStart);
-            // Markdown 会吞掉连续空白行。第二次及后续 Enter 在空行中
-            // 写入零宽占位符，使每个空行都能稳定编译为独立可编辑行，
-            // 并保证逐行编辑树始终存在可承载光标的文本位置。
-            return currentLine.length === 0 ? '\u200B  \n' : '  \n';
+        function markdownLineBreakInsertion() {
+            // 记事本级语义：一次 Enter 永远只对应一个真实换行字符。
+            // 空行可见性由源码行投影层负责，而不是通过 Markdown 尾空格
+            // 或零宽字符改变用户源码。
+            return '\n';
         }
 
         function handleEditorKeydown(event) {
@@ -1972,7 +1950,7 @@
                     session,
                     markdownLineBreakInsertion(editable, offsets),
                     offsets,
-                    'flow-keydown-hard-line-break'
+                    'flow-keydown-source-line-break'
                 );
             }
             return false;
@@ -2159,7 +2137,7 @@
                         session,
                         markdownLineBreakInsertion(editable, offsets),
                         offsets,
-                        'flow-beforeinput-hard-line-break'
+                        'flow-beforeinput-source-line-break'
                     );
                     return;
                 }
@@ -2177,24 +2155,11 @@
 
                     let deletionStart = offsets.start;
                     if (offsets.start === offsets.end) {
-                        const hardBreak = '  \n';
-                        const protectedEmptyBreak = `\u200B${hardBreak}`;
                         const prefix = raw.slice(0, offsets.start);
-                        if (prefix.endsWith(protectedEmptyBreak)) {
-                            // 连续 Enter 创建的受保护空行按一个动作删除，
-                            // 不能遗留零宽占位符污染源码或光标映射。
-                            deletionStart =
-                                offsets.start - protectedEmptyBreak.length;
-                        } else if (prefix.endsWith(hardBreak)) {
-                            // 首次 Enter 写入标准 Markdown 硬换行：两个尾随
-                            // 空格加换行符，退格时同样作为一个动作原子删除。
-                            deletionStart = offsets.start - hardBreak.length;
-                        } else {
-                            // 保持浏览器对普通文字的单字符退格语义，同时避免
-                            // 将代理对字符拆成无效的半个 UTF-16 序列。
-                            const previous = Array.from(prefix).at(-1) || '';
-                            deletionStart = offsets.start - previous.length;
-                        }
+                        // 普通字符按 Unicode 字符删除；行首退格时 previous
+                        // 就是一个 \n，因此自然合并相邻两行。
+                        const previous = Array.from(prefix).at(-1) || '';
+                        deletionStart = offsets.start - previous.length;
                     }
                     commitSessionInsertion(
                         session,

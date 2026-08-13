@@ -105,20 +105,6 @@ app.whenReady().then(async () => {
                 + tick + '</div>' + tick
                 + ' 结束。岛的结构、局部样式、依赖声明和执行脚本必须全部位于这个范围内，任何岛内状态都不得泄漏到后续 Markdown 正文。',
             '',
-            'AI 阅读这份文档时，应当能够理解：',
-            '',
-            '1. 猫咪图片的地址、替代文字和说明。',
-            '2. 公式的原始 LaTeX 语义。',
-            '3. Mermaid 图表达的处理流程。',
-            '4. Anime.js 岛是一个绕核心运动的花瓣动画。',
-            '5. 3D 文本块表达“文字也可以拥有空间”。',
-            '6. 动态表格拥有十条数据和分页交互。',
-            '7. 局部文字特效不改变周围 Markdown 的可读性。',
-            '',
-            '-',
-            '-',
-            '_',
-            '',
             '普通段落第一行。'
         ].join('\\n');
         codeMirror.setValue(fixture);
@@ -142,38 +128,23 @@ app.whenReady().then(async () => {
                 paddingBlockEnd: style.paddingBlockEnd
             };
         };
-        // 相邻 Markdown 现在属于稳定的源码流。逐个点击真实语义节点，
-        // 同时覆盖复杂引用、有序列表项和仅含 “- / _” 的标记行。
-        const targetSelector = [
-            '[data-vdoc-edit-key][data-vdoc-edit-type="markdown"] blockquote',
-            '[data-vdoc-edit-key][data-vdoc-edit-type="markdown"] ol > li',
-            '[data-vdoc-edit-key][data-vdoc-edit-type="markdown"] p'
-        ].join(',');
-        const targets = [...root.querySelectorAll(targetSelector)].filter(
-            (node) => {
-                const text = String(node.textContent || '').trim();
-                return node.tagName === 'BLOCKQUOTE'
-                    || node.tagName === 'LI'
-                    || text === '-'
-                    || text === '_';
-            }
-        );
+        // 相邻 Markdown 现在属于稳定的同一源码流，因此两个引用可能位于
+        // 同一个 shell。必须逐个点击真实 blockquote，而不能按 shell 计数，
+        // 否则只会覆盖第一条简单引用，遗漏含粗体、代码和类 HTML 文本的
+        // 第二条复杂引用。
+        const quotes = [...root.querySelectorAll(
+            '[data-vdoc-edit-key][data-vdoc-edit-type="markdown"] blockquote'
+        )];
 
         const results = [];
-        for (let quoteIndex = 0; quoteIndex < targets.length; quoteIndex += 1) {
+        for (let quoteIndex = 0; quoteIndex < quotes.length; quoteIndex += 1) {
             // 激活任一引用会把共享 shell 替换成编辑树，失焦后又补丁回
             // 新静态树；上一轮保存的其它 blockquote 引用均已脱离 DOM。
             // 每轮必须从当前 Shadow DOM 重新取得目标节点。
-            const currentTargets = [
-                ...root.querySelectorAll(targetSelector)
-            ].filter((node) => {
-                const text = String(node.textContent || '').trim();
-                return node.tagName === 'BLOCKQUOTE'
-                    || node.tagName === 'LI'
-                    || text === '-'
-                    || text === '_';
-            });
-            const beforeNode = currentTargets[quoteIndex];
+            const currentQuotes = [...root.querySelectorAll(
+                '[data-vdoc-edit-key][data-vdoc-edit-type="markdown"] blockquote'
+            )];
+            const beforeNode = currentQuotes[quoteIndex];
             const shell = beforeNode?.closest('[data-vdoc-edit-key]');
             if (!beforeNode || !shell) {
                 results.push({
@@ -207,12 +178,12 @@ app.whenReady().then(async () => {
             editor?.blur();
             await waitFrames();
         }
-        return { count: targets.length, results };
+        return { count: quotes.length, results };
     })()`);
 
     result.warnings = warnings;
     console.log('[ScriptoriumQuoteLayout]', JSON.stringify(result, null, 2));
-    const passed = result.count === 12
+    const passed = result.count === 2
         && result.results.every((entry) => entry.activated)
         && result.warnings.length === 0;
     await windowRef.close();

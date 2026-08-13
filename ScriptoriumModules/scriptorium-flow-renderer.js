@@ -63,6 +63,22 @@
     user-select: text;
     -webkit-user-select: text;
 }
+.vdoc-source-blank-line {
+    display: block;
+    box-sizing: border-box;
+    width: 100%;
+    min-height: 1lh;
+    height: 1lh;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    pointer-events: none;
+}
+.vdoc-edit-region[data-vdoc-edit-type="markdown"]:has(
+    > .vdoc-source-blank-line
+) {
+    cursor: text;
+}
 .vdoc-edit-region[data-vdoc-edit-active="true"] {
     z-index: 1;
 }
@@ -122,6 +138,9 @@
      */
     display: none !important;
 }
+.vdoc-md-live-preview-run > .vdoc-source-boundary-line {
+    display: none !important;
+}
 .vdoc-md-live-preview-run > .vdoc-md-live-preview-line {
     box-sizing: border-box;
     width: 100%;
@@ -130,7 +149,7 @@
     /*
      * 每个节点代表源码中的一行，而不是一个独立段落。静态段落的外边距
      * 已提升到 run 容器；这里必须清零，否则每次 Enter 都会叠加一组
-     * p/h*/blockquote margin，表现为输入态行距远大于最终渲染态。
+     * 段落、标题或引用外边距，表现为输入态行距远大于最终渲染态。
      */
     margin-block: 0;
     white-space: break-spaces;

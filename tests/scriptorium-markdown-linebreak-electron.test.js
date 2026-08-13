@@ -233,9 +233,9 @@ app.whenReady().then(async () => {
                 available: true,
                 editorActivated: true,
                 enterWasHandled: firstEnter?.handled === true,
-                enterAddsOneCompositeBreak:
-                    afterEnter.length === before.length + 3
-                    && afterEnter.includes('  \\n')
+                enterAddsOnePlainBreak:
+                    afterEnter.length === before.length + 1
+                    && !afterEnter.includes('  \\n')
                     && !afterEnter.includes('\\u200B'),
                 threeConsecutiveEntersHandled:
                     secondEnter?.handled === true
@@ -243,8 +243,8 @@ app.whenReady().then(async () => {
                 editorSurvivesConsecutiveEnterReflow: false
             };
         }
-        const protectedBreakCount = (
-            afterThreeEnters.match(/\\u200B  \\n/g) || []
+        const zeroWidthCount = (
+            afterThreeEnters.match(/\\u200B/g) || []
         ).length;
         const editorLineRects = [...editor.querySelectorAll(
             '.vdoc-md-live-preview-line'
@@ -296,6 +296,10 @@ app.whenReady().then(async () => {
         const editorAfterBackspace = root.querySelector(
             '[data-vdoc-flow-source-editor="true"]'
         );
+        const editorStateAfterBackspace = {
+            connected: Boolean(editorAfterBackspace?.isConnected),
+            focused: root.activeElement === editorAfterBackspace
+        };
         let enterAfterBackspace = null;
         if (editorAfterBackspace) {
             const retryEnterEvent = new KeyboardEvent('keydown', {
@@ -331,9 +335,9 @@ app.whenReady().then(async () => {
             available: true,
             editorActivated: true,
             enterWasHandled: firstEnter?.handled === true,
-            enterAddsOneCompositeBreak:
-                afterEnter.length === before.length + 3
-                && afterEnter.includes('  \\n')
+            enterAddsOnePlainBreak:
+                afterEnter.length === before.length + 1
+                && !afterEnter.includes('  \\n')
                 && !afterEnter.includes('\\u200B'),
             threeConsecutiveEntersHandled:
                 secondEnter?.handled === true
@@ -355,13 +359,16 @@ app.whenReady().then(async () => {
                 && firstCycleRetryEnter?.editorConnected === true
                 && firstCycleRetryEnter?.caretInEditor === true
                 && afterFirstCycleRetryEnter === afterEnter,
-            protectedEmptyLinesRendered: protectedBreakCount === 2,
+            plainLineBreaksPreserved:
+                afterThreeEnters.length === before.length + 3
+                && zeroWidthCount === 0
+                && !afterThreeEnters.includes('  \\n'),
             backspaceWasHandled: backspaceEvent.defaultPrevented,
-            oneBackspaceRemovesLastProtectedLine:
-                afterBackspace.length
-                === afterThreeEnters.length - '\\u200B  \\n'.length,
+            oneBackspaceRemovesOnePlainBreak:
+                afterBackspace.length === afterThreeEnters.length - 1,
             editorSurvivesBackspace:
-                Boolean(editorAfterBackspace?.isConnected),
+                editorStateAfterBackspace.connected === true
+                && editorStateAfterBackspace.focused === true,
             enterAfterBackspaceWorks:
                 enterAfterBackspace?.handled === true
                 && enterAfterBackspace?.editorConnected === true
@@ -374,7 +381,7 @@ app.whenReady().then(async () => {
                 selectionBeforeBackspace,
                 sourceDeltaAfterBackspace:
                     afterBackspace.length - before.length,
-                protectedBreakCount,
+                zeroWidthCount,
                 editorLineRects,
                 editorLineSteps,
                 firstEnter,
@@ -382,6 +389,7 @@ app.whenReady().then(async () => {
                 firstCycleRetryEnter,
                 secondEnter,
                 thirdEnter,
+                editorStateAfterBackspace,
                 enterAfterBackspace
             }
         };

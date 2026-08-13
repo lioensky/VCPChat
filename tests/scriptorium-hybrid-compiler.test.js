@@ -139,43 +139,28 @@ function run() {
         '结尾段落。',
     ].join('\n');
     const blockCompiled = compiler.compile(blockSource);
-    const tokenRegions = blockCompiled.editRegions.filter((region) =>
-        region.markdownTokenType
+    const markdownRegions = blockCompiled.editRegions.filter((region) =>
+        region.type === 'markdown'
     );
     assert(
-        tokenRegions.some((region) => region.markdownTokenType === 'heading'),
-        'heading should receive its own lexer-backed edit region'
-    );
-    assert(
-        tokenRegions.some((region) =>
-            region.markdownTokenType === 'list'
-            && blockSource.slice(
+        markdownRegions.some((region) => {
+            const raw = blockSource.slice(
                 region.sourceRange.start,
                 region.sourceRange.end
-            ).includes('- 列表二')
-        ),
-        'a continuous Markdown list must remain one edit region'
+            );
+            return raw.includes('# 标题')
+                && raw.includes('- 列表二')
+                && raw.includes('> 引用第二行')
+                && raw.includes('| 琥珀 | 98 |');
+        }),
+        'adjacent Markdown tokens must form one stable editable source stream'
     );
     assert(
-        tokenRegions.some((region) =>
-            region.markdownTokenType === 'blockquote'
-            && blockSource.slice(
-                region.sourceRange.start,
-                region.sourceRange.end
-            ).includes('> 引用第二行')
-        ),
-        'a continuous blockquote must remain one edit region'
-    );
-    assert(
-        tokenRegions.some((region) => region.markdownTokenType === 'table'),
-        'a GFM table must receive one lexer-backed edit region'
-    );
-    assert(
-        tokenRegions.some((region) =>
+        blockCompiled.editRegions.some((region) =>
             region.type === 'html'
             && region.markdownTokenType === 'html'
         ),
-        'a static HTML block must be classified as an HTML edit domain'
+        'a static HTML block must remain an independent HTML edit domain'
     );
     assert.equal(
         blockCompiled.diagnostics.some((item) =>
@@ -189,7 +174,11 @@ function run() {
             region.sourceRange.start,
             region.sourceRange.end
         );
-        assert(raw.trim(), 'edit regions must not contain whitespace only');
+        assert(
+            raw.trim()
+            || (region.type === 'markdown' && /[\r\n]/.test(raw)),
+            'only Markdown source-line regions may contain pure line breaks'
+        );
         assert.equal(
             compiler.simpleHash(raw),
             region.sourceHash,
@@ -203,6 +192,75 @@ function run() {
             );
         }
     });
+
+    const projectedSource = [
+        '> 第一条引用',
+        '',
+        '> **岛闭合规则：** 根 `<div>` 到 `</div>`',
+        '',
+        '普通段落',
+    ].join('\n');
+    const projected = compiler.compile(projectedSource);
+    assert.equal(
+        projected.source,
+        projectedSource,
+        'source-line projection must preserve original Markdown byte-for-byte'
+    );
+    assert.equal(
+        (projected.previewHtml.match(/<blockquote>/g) || []).length,
+        2,
+        'blank-line projection must not turn later blockquotes into raw text'
+    );
+    assert.match(
+        projected.previewHtml,
+        /<blockquote>[\s\S]*<strong>岛闭合规则：<\/strong>[\s\S]*<\/blockquote>/,
+        'complex quote semantics must survive blank-line projection'
+    );
+    assert.equal(
+        (projected.previewHtml.match(/<code>/g) || []).length,
+        2,
+        'code spans containing HTML-like text must remain semantic code nodes'
+    );
+    assert(
+        projected.previewHtml.includes('&' + 'lt;div&' + 'gt;')
+        && projected.previewHtml.includes('&' + 'lt;/div&' + 'gt;'),
+        'HTML-like code text must remain escaped'
+    );
+    assert.match(
+        projected.previewHtml,
+        /<p>普通段落<\/p>/,
+        'Markdown following a projected blank line must still be parsed'
+    );
+    assert.equal(
+        (
+            projected.previewHtml.match(
+                /data-vdoc-source-blank-line="true"/g
+            ) || []
+        ).length,
+        2,
+        'each source blank line must receive exactly one derived visual node'
+    );
+
+    const htmlSeparatedSource = [
+        '<h1>标题一</h1>',
+        '',
+        '',
+        '<h2>标题二</h2>',
+    ].join('\n');
+    const htmlSeparated = compiler.compile(htmlSeparatedSource);
+    const pureLineRegion = htmlSeparated.editRegions.find((region) => {
+        const raw = htmlSeparatedSource.slice(
+            region.sourceRange.start,
+            region.sourceRange.end
+        );
+        return region.type === 'markdown'
+            && !raw.trim()
+            && (raw.match(/\n/g) || []).length === 3;
+    });
+    assert(
+        pureLineRegion,
+        'pure line breaks between HTML domains must remain an editable region'
+    );
 
     const livePreviewSource = [
         '## 标题',

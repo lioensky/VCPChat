@@ -514,7 +514,7 @@
         const add = (from, to) => {
             if (to <= from) return;
             const raw = segment.slice(from, to);
-            if (!raw.trim()) return;
+            if (!raw.trim() && !/[\r\n]/.test(raw)) return;
             const type = /^\s*</.test(raw) ? 'html' : 'markdown';
             regions.push({
                 type,
@@ -576,7 +576,23 @@
         diagnostics = []
     ) {
         const segment = source.slice(start, end);
-        if (!segment.trim()) return [];
+        if (!segment.length) return [];
+        if (!segment.trim()) {
+            // HTML、代码、公式等独立语法域之间的换行不是可丢弃的
+            // token 间空白，而是记事本行模型中的真实源码行。尤其是
+            // “HTML\n\nHTML” 中间的第二个换行必须投影成一个可见空行；
+            // 若在这里返回空数组，进入编辑态时这些行会整体消失并导致
+            // 后续块向上堆叠。纯空格片段仍无需建立编辑区域。
+            if (!/[\r\n]/.test(segment)) return [];
+            return [{
+                type: 'markdown',
+                flowKind: 'text-flow',
+                start,
+                end,
+                source: segment,
+                markdownTokenType: null,
+            }];
+        }
         if (!lexer) {
             return fallbackMarkdownEditRegions(source, start, end);
         }
@@ -589,35 +605,42 @@
             });
             const regions = [];
             let cursor = 0;
-            const add = (from, to, token = null) => {
+            const addRegion = (from, to, type, token = null) => {
                 if (to <= from) return;
-                let regionEnd = to;
-                let raw = segment.slice(from, regionEnd);
-
-                // Marked 会把块后的空白分隔（通常 \n\n）纳入 token.raw。
-                // 分隔空行不是前一个块的可编辑内容；若保留在 region 内，
-                // 段尾 Enter 或 HTML 边界插入会改变下次编译的区域范围，
-                // 造成活动会话、光标及后续 shell key 全部失配。
-                //
-                // 这里只剥离两个及以上的普通尾换行。Markdown 硬换行
-                // “两个空格 + 单换行”和受保护可见空行仍完整保留。
-                const separator = raw.match(/(?:\r?\n){2,}$/)?.[0] || '';
-                if (separator) {
-                    regionEnd -= separator.length;
-                    raw = segment.slice(from, regionEnd);
-                }
-                if (regionEnd <= from || !raw.trim()) return;
-                const type = tokenEditType(token, raw);
+                const raw = segment.slice(from, to);
+                if (!raw.trim() && !/[\r\n]/.test(raw)) return;
                 regions.push({
                     type,
                     flowKind: type === 'html'
                         ? htmlEditFlowKind(raw)
                         : 'text-flow',
                     start: start + from,
-                    end: start + regionEnd,
+                    end: start + to,
                     source: raw,
                     markdownTokenType: token?.type || null,
                 });
+            };
+            const add = (from, to, token = null) => {
+                if (to <= from) return;
+                const raw = segment.slice(from, to);
+                const type = token
+                    ? tokenEditType(token, raw)
+                    : 'markdown';
+
+                if (type === 'html') {
+                    // Marked 的 HTML token 会吞入标签后的空白分隔。HTML
+                    // 区域只能拥有标签源码；尾部换行必须拆成独立 Markdown
+                    // 行区域，否则 Shift+Enter 会改变 HTML 区域范围，并使
+                    // 后续 shell 的源码映射和点击选择失效。
+                    const trailing = raw.match(/(?:\r?\n)+$/)?.[0] || '';
+                    if (trailing) {
+                        const htmlEnd = to - trailing.length;
+                        addRegion(from, htmlEnd, 'html', token);
+                        addRegion(htmlEnd, to, 'markdown');
+                        return;
+                    }
+                }
+                addRegion(from, to, type, token);
             };
 
             for (const token of tokens || []) {
@@ -635,7 +658,25 @@
                 cursor = tokenStart + raw.length;
             }
             add(cursor, segment.length);
-            return regions;
+
+            // Live Preview 的编辑稳定性不能依赖 Marked token 边界。
+            // 标题、段落、引用、列表和它们之间的空行都属于同一段连续
+            // Markdown 源码流；Enter/退格只改变流内字符，不应重签 shell。
+            // 仅 HTML 等其它语法域保留独立区域边界。
+            return regions.reduce((merged, region) => {
+                const previous = merged.at(-1);
+                if (previous
+                    && previous.type === 'markdown'
+                    && region.type === 'markdown'
+                    && previous.end === region.start) {
+                    previous.end = region.end;
+                    previous.source += region.source;
+                    previous.markdownTokenType = null;
+                    return merged;
+                }
+                merged.push({ ...region });
+                return merged;
+            }, []);
         } catch (error) {
             diagnostics.push(diagnostic(
                 'warn',
@@ -699,6 +740,32 @@
         }));
     }
 
+    function projectMarkdownSourceLines(raw, registry) {
+        const source = String(raw || '');
+        const lines = source.split(/\r?\n/);
+        if (lines.length < 3) return source;
+
+        return lines.map((line, index) => {
+            // 不能在送入 Marked 的 Markdown 流中直接注入裸 <div>。
+            // 裸块级 HTML 会开启 HTML block，使后续引用、标题和段落
+            // 退化为未经解析的纯文字，最终表现为内容虽可见却无法按其
+            // 语义节点点击。这里先放置受保护 token，并用额外空行将它
+            // 与两侧 Markdown 块隔离；解析完成后再恢复派生空行节点。
+            if (index > 0 && index < lines.length - 1 && !line.trim()) {
+                const html = '<div class="vdoc-source-blank-line" '
+                    + 'data-vdoc-source-blank-line="true" '
+                    + 'aria-hidden="true"></div>';
+                const token = reserve(
+                    registry,
+                    { type: 'source-blank-line' },
+                    html
+                );
+                return `\n${token}\n`;
+            }
+            return line;
+        }).join('\n');
+    }
+
     function renderEditRegion(source, region, parse, diagnostics) {
         const raw = source.slice(region.sourceRange.start, region.sourceRange.end);
         if (region.type === 'island' || region.type === 'style') return raw;
@@ -721,7 +788,10 @@
 
         const registry = [];
         const mathRegions = scanMathRegions(raw);
-        const protectedSource = protectStructuralRegions(raw, mathRegions, registry);
+        const protectedSource = projectMarkdownSourceLines(
+            protectStructuralRegions(raw, mathRegions, registry),
+            registry
+        );
         try {
             return restoreProtectedHtml(parse(protectedSource, {
                 gfm: true,
@@ -743,14 +813,48 @@
         }
     }
 
+    function trailingLineBreakCount(value) {
+        const matches = String(value || '').match(/\r?\n/g) || [];
+        const trailing = String(value || '').match(/(?:\r?\n)+$/)?.[0] || '';
+        return trailing
+            ? (trailing.match(/\r?\n/g) || []).length
+            : 0;
+    }
+
+    function projectedBlankLines(source, region, hasFollowingRegion) {
+        if (region.type !== 'markdown') return '';
+        const raw = source.slice(
+            region.sourceRange.start,
+            region.sourceRange.end
+        );
+        const trailingBreaks = trailingLineBreakCount(raw);
+        if (!trailingBreaks) return '';
+
+        // 中间空行已由 projectMarkdownSourceLines() 投影。这里只在
+        // 文档末尾保留最后一个换行产生的最终光标行。
+        const count = trailingBreaks && !hasFollowingRegion ? 1 : 0;
+        return Array.from(
+            { length: count },
+            (_, index) =>
+                `<div class="vdoc-source-blank-line" `
+                + `data-vdoc-source-blank-line="${index + 1}" `
+                + 'aria-hidden="true"></div>'
+        ).join('');
+    }
+
     function buildPreviewHtml(source, editRegions, parse, diagnostics) {
-        return editRegions.map((region) => {
+        return editRegions.map((region, index) => {
             const content = renderEditRegion(source, region, parse, diagnostics);
+            const blankLines = projectedBlankLines(
+                source,
+                region,
+                index < editRegions.length - 1
+            );
             return `<div class="vdoc-edit-region" data-vdoc-edit-key="${
                 escapeHtml(region.key)
             }" data-vdoc-edit-type="${escapeHtml(region.type)}" data-vdoc-flow-kind="${
                 escapeHtml(region.flowKind || 'stable-atomic')
-            }">${content}</div>`;
+            }">${content}${blankLines}</div>`;
         }).join('\n');
     }
 
