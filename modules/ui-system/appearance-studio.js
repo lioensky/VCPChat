@@ -689,10 +689,6 @@
                         </details>
                     </section>
                     <section class="vcp-appearance-studio-section vcp-appearance-studio-actions" aria-label="更多外观设置">
-                        <button type="button" data-studio-action="wallpaper">
-                            <span class="vcp-ui-icon" aria-hidden="true">movie</span><span>视频壁纸</span>
-                            <span class="vcp-ui-icon" aria-hidden="true">chevron_right</span>
-                        </button>
                         <button type="button" data-studio-action="settings">
                             <span class="vcp-ui-icon" aria-hidden="true">settings</span><span>完整设置</span>
                             <span class="vcp-ui-icon" aria-hidden="true">chevron_right</span>
@@ -742,7 +738,6 @@
         const dialog = root.querySelector('.vcp-appearance-studio');
         const status = root.querySelector('[data-studio-status]');
         const saveButton = root.querySelector('[data-studio-save]');
-        const wallpaperButton = root.querySelector('[data-studio-action="wallpaper"]');
         const closePrompt = root.querySelector('[data-unsaved-confirm]');
         const closePromptDialog = root.querySelector('.vcp-appearance-unsaved-dialog');
 
@@ -758,7 +753,6 @@
             dialog,
             status,
             saveButton,
-            wallpaperButton,
             closePrompt,
             closePromptDialog,
             themePreviewStyle,
@@ -948,7 +942,6 @@
         surface.status.textContent = changed ? '预览中' : '已同步';
         surface.status.classList.toggle('is-dirty', changed);
         surface.saveButton.disabled = saving || !changed;
-        surface.wallpaperButton.hidden = !document.getElementById('vchatDynamicWallpaperMenuButton');
         const customDetailCount = DETAIL_RADIUS_FIELDS.filter(field => draft.profile[field] !== 'tuned').length;
         const detailStatus = surface.root.querySelector('[data-radius-details-status]');
         if (detailStatus) {
@@ -1280,14 +1273,6 @@
         return true;
     }
 
-    async function openAccountSubmenu(buttonId) {
-        if (!await requestClose()) return;
-        window.topTabManager?.openAccountMenu?.();
-        if (buttonId === 'vchatDynamicWallpaperMenuButton') {
-            window.VCPFrontendPlugins?.get?.('vchat-dynamic-wallpaper')?.openMenu?.();
-        }
-    }
-
     async function handleClick(event) {
         const target = event.target.closest('button');
         if (!target || saving) return;
@@ -1378,8 +1363,6 @@
         if (target.dataset.studioAction === 'themes') {
             if (!await requestClose()) return;
             api()?.openThemesWindow?.();
-        } else if (target.dataset.studioAction === 'wallpaper') {
-            await openAccountSubmenu('vchatDynamicWallpaperMenuButton');
         } else if (target.dataset.studioAction === 'settings') {
             if (!await requestClose()) return;
             window.uiHelperFunctions?.openModal?.('globalSettingsModal');

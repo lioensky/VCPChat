@@ -471,6 +471,27 @@ html[data-ui-mode="next"] .next-ui-main-panel {
     -webkit-backdrop-filter: var(--next-surface-backdrop-filter);
 }
 
+/* Frontend plugins keep their upstream Classic DOM and behavior. The Next
+   shell only provides the geometry needed for the shared wallpaper video to
+   remain visible behind the main panel. */
+html[data-ui-mode="next"] #vchat-dynamic-wallpaper-video {
+    top: var(--next-topbar-height, 44px);
+    right: 0;
+    bottom: 0;
+    left: var(--next-sidebar-width, 260px);
+    width: auto;
+    height: auto;
+    border-radius: var(--vcp-ui-shell-radius) 0 0 0;
+}
+
+html[data-ui-mode="next"] body.vchat-dynamic-wallpaper-visible .next-ui-main-panel {
+    background-color: transparent;
+    background-image: linear-gradient(
+        color-mix(in srgb, var(--next-surface) 34%, transparent),
+        color-mix(in srgb, var(--next-surface) 34%, transparent)
+    );
+}
+
 html[data-ui-mode="next"] .sidebar {
     background: transparent;
     backdrop-filter: none;

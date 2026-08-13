@@ -456,6 +456,16 @@ try {
     assert.equal(brandAssets.fontLoaded, true, `VCPChat Orbitron wordmark font failed to load: ${JSON.stringify(brandAssets)}`);
     assert.match(brandAssets.computedFamily, /VCP Orbitron/, `VCPChat wordmark resolved to the wrong family: ${JSON.stringify(brandAssets)}`);
     assert.ok(brandAssets.novaWidth > 0 && brandAssets.novaHeight > 0, `Nova launch asset failed to decode: ${JSON.stringify(brandAssets)}`);
+    const nextWallpaperIntegration = await page.evaluate(() => ({
+        titlePanelPresent: Boolean(document.querySelector('.chat-header #vchat-dynamic-wallpaper-panel')),
+        titleGroupPresent: Boolean(document.querySelector('.chat-header #vchat-wallpaper-title-group')),
+        nextMenuPresent: Boolean(document.getElementById('vchatDynamicWallpaperMenuButton')),
+        studioActionPresent: Boolean(document.querySelector('[data-studio-action="wallpaper"]')),
+    }));
+    assert.equal(nextWallpaperIntegration.titlePanelPresent, true, `Next must use the upstream Classic wallpaper title control: ${JSON.stringify(nextWallpaperIntegration)}`);
+    assert.equal(nextWallpaperIntegration.titleGroupPresent, true, `Wallpaper title group is missing from the shared chat header: ${JSON.stringify(nextWallpaperIntegration)}`);
+    assert.equal(nextWallpaperIntegration.nextMenuPresent, false, `Next-only wallpaper account entry must not be injected: ${JSON.stringify(nextWallpaperIntegration)}`);
+    assert.equal(nextWallpaperIntegration.studioActionPresent, false, `Appearance Studio must not expose a plugin-specific wallpaper action: ${JSON.stringify(nextWallpaperIntegration)}`);
     const messageSemantics = await page.evaluate(() => {
         const originalMode = document.documentElement.dataset.uiMode || 'next';
         const host = document.createElement('div');

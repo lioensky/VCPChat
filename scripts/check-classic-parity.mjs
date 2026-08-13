@@ -51,11 +51,6 @@ for (const file of [
     });
 }
 
-const wallpaperPlugin = fs.readFileSync(
-    path.join(root, 'VCPDistributedServer', 'Plugin', 'VChatDynamicWallpaper', 'plugin.js'),
-    'utf8'
-);
-
 const nextComposerCss = fs.readFileSync(
     path.join(root, 'styles', 'ui-system', 'chat-input.css'),
     'utf8'
@@ -112,13 +107,6 @@ assert.match(
     nextNotificationsCss,
     /#appTrayDrawerGrid\s+\.notes-button-label\s*\{[\s\S]*?display:\s*block;/,
     'Next all-apps drawer must retain visible application labels'
-);
-
-assert.match(wallpaperPlugin, /const icons = \{[\s\S]*?movie:\s*'<svg/, 'Classic wallpaper entry must provide an inline SVG icon');
-assert.doesNotMatch(
-    wallpaperPlugin,
-    /id="vchat-dynamic-wallpaper-panel"[\s\S]*?<span class="vcp-ui-icon"[^>]*>movie<\/span>/,
-    'Classic wallpaper entry must not depend on the Next icon adapter'
 );
 
 console.log('Classic parity static gate passed (shared controls, settings navigation, icon independence, CSS isolation).');

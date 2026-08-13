@@ -188,6 +188,11 @@ assert.match(drawer.textContent, /阅读区布局/);
 assert.match(drawer.textContent, /消息宽度/);
 assert.match(drawer.textContent, /主页视觉文字/);
 assert.match(drawer.textContent, /侧栏列表尺寸/);
+assert.equal(
+    drawer.querySelector('[data-studio-action="wallpaper"]'),
+    null,
+    'Appearance Studio must not add a Next-only entry for an upstream Classic plugin'
+);
 assert.match(drawer.textContent, /头像大小/);
 assert.match(drawer.textContent, /侧栏列表圆角/);
 assert.match(drawer.textContent, /直角 · 0px/);
@@ -530,4 +535,9 @@ assert.match(source, />主题管理器</);
 assert.match(source, /nextUiAccountThemeToggleBtn/);
 assert.doesNotMatch(source, /nextUiAccountPresentationBtn/);
 assert.doesNotMatch(source, />使用新版 UI</);
+assert.doesNotMatch(
+    fs.readFileSync('modules/ui-system/appearance-studio.js', 'utf8'),
+    /vchatDynamicWallpaperMenuButton|data-studio-action="wallpaper"/,
+    'Next Appearance Studio must not depend on a plugin-specific wallpaper adapter'
+);
 console.log('appearance studio checks passed.');

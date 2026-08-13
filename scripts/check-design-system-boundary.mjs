@@ -141,8 +141,6 @@ const allowedSourceDifferences = new Set([
     'styles/ui-system/showcase.css',
     'styles/ui-system/tokens.css',
     'styles/ui-system/webawesome-adapter.css',
-    'VCPDistributedServer/Plugin/VChatDynamicWallpaper/plugin.js',
-    'VCPDistributedServer/Plugin/VChatDynamicWallpaper/plugin.css',
     'assets/nova_button.png',
     'assets/nova_button_light.png',
     'assets/svg/acrylic-noise.svg',
