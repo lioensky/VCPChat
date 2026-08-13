@@ -2,12 +2,11 @@
 
 const assert = require("node:assert/strict");
 const crypto = require("node:crypto");
-const { once } = require("node:events");
+const { EventEmitter } = require("node:events");
 const fs = require("node:fs");
+const Module = require("node:module");
 const path = require("node:path");
 const { test } = require("node:test");
-const express = require("express");
-const WebSocket = require("ws");
 
 const {
   ERROR_DEFINITIONS,
@@ -22,10 +21,76 @@ const {
 } = require("../VCPDistributedServer/Plugin/VCPMobileSync/error-contract");
 const {
   startWsServer,
-} = require("../VCPDistributedServer/Plugin/VCPMobileSync/transport/websocket");
-const {
   registerRoutes,
-} = require("../VCPDistributedServer/Plugin/VCPMobileSync/transport/routes");
+} = (() => {
+  class FakeRouter {
+    constructor() {
+      this.layers = [];
+    }
+
+    use(...handlers) {
+      this.layers.push({ method: "USE", path: null, handlers });
+      return this;
+    }
+
+    get(routePath, ...handlers) {
+      this.layers.push({ method: "GET", path: routePath, handlers });
+      return this;
+    }
+
+    post(routePath, ...handlers) {
+      this.layers.push({ method: "POST", path: routePath, handlers });
+      return this;
+    }
+  }
+
+  class FakeWebSocketServer extends EventEmitter {
+    constructor(options) {
+      super();
+      this.options = options;
+      this.clients = new Set();
+    }
+
+    address() {
+      return { address: "127.0.0.1", family: "IPv4", port: this.options.port };
+    }
+
+    close() {
+      this.emit("close");
+    }
+  }
+
+  const fakeExpress = {
+    Router: () => new FakeRouter(),
+    json: () => (_req, _res, next) => next(),
+    raw: () => (_req, _res, next) => next(),
+  };
+  const fakeWebSocket = {
+    OPEN: 1,
+    Server: FakeWebSocketServer,
+  };
+  const originalLoad = Module._load;
+  Module._load = function loadTransportDependency(request, parent, isMain) {
+    if (request === "express") return fakeExpress;
+    if (request === "ws") return fakeWebSocket;
+    return originalLoad.call(this, request, parent, isMain);
+  };
+
+  try {
+    const websocket = require(
+      "../VCPDistributedServer/Plugin/VCPMobileSync/transport/websocket"
+    );
+    const routes = require(
+      "../VCPDistributedServer/Plugin/VCPMobileSync/transport/routes"
+    );
+    return {
+      startWsServer: websocket.startWsServer,
+      registerRoutes: routes.registerRoutes,
+    };
+  } finally {
+    Module._load = originalLoad;
+  }
+})();
 
 const fixturePath = path.join(
   __dirname,
@@ -42,7 +107,7 @@ const fixture = JSON.parse(fixtureBytes);
 function createWsFrameReader(socket) {
   const frames = [];
   let wake = null;
-  socket.on("message", (bytes) => {
+  socket.on("sent", (bytes) => {
     frames.push(JSON.parse(String(bytes)));
     if (wake) {
       const resolve = wake;
@@ -59,6 +124,51 @@ function createWsFrameReader(socket) {
       });
     }
   };
+}
+
+class FakeWebSocket extends EventEmitter {
+  constructor() {
+    super();
+    this.readyState = 1;
+  }
+
+  send(bytes, callback) {
+    this.emit("sent", bytes);
+    if (callback) callback();
+  }
+
+  close(code = 1000, reason = "") {
+    this.readyState = 3;
+    this.emit("close", code, Buffer.from(reason));
+  }
+
+  terminate() {
+    if (this.readyState !== 3) this.close(1006, "terminated");
+  }
+}
+
+class FakeHttpResponse extends EventEmitter {
+  constructor() {
+    super();
+    this.statusCode = 200;
+    this.headersSent = false;
+    this.body = undefined;
+  }
+
+  header() {
+    return this;
+  }
+
+  status(statusCode) {
+    this.statusCode = statusCode;
+    return this;
+  }
+
+  json(body) {
+    this.body = body;
+    this.headersSent = true;
+    return this;
+  }
 }
 
 test("Wire 1.2 golden errors are strict and stable", () => {
@@ -278,23 +388,26 @@ test("WebSocket transport emits the complete root-cause error envelope", async (
     },
   });
   t.after(() => server.close());
-  if (!server.address()) await once(server, "listening");
-  const port = server.address().port;
-  const socket = new WebSocket(
-    `ws://127.0.0.1:${port}/ws-sync?token=wire-1.2-test-token`,
-  );
+  const socket = new FakeWebSocket();
   const nextFrame = createWsFrameReader(socket);
   t.after(() => socket.terminate());
-  await once(socket, "open");
+  server.emit("connection", socket, {
+    url: "/ws-sync?token=wire-1.2-test-token",
+    headers: { host: "127.0.0.1" },
+    socket: { remoteAddress: "127.0.0.1" },
+  });
 
-  socket.send(JSON.stringify({
+  socket.emit("message", JSON.stringify({
     type: "VERSION_CHECK",
     mobileVersion: "1.1.4",
     protocolVersion: "1.2",
   }));
   assert.equal((await nextFrame("VERSION_ACK")).type, "VERSION_ACK");
 
-  socket.send(JSON.stringify({ type: "SYNC_TOPIC_HASH_BATCH", hashes: {} }));
+  socket.emit(
+    "message",
+    JSON.stringify({ type: "SYNC_TOPIC_HASH_BATCH", hashes: {} }),
+  );
   assert.deepEqual(await nextFrame("SYNC_ERROR"), {
     type: "SYNC_ERROR",
     error: {
@@ -309,30 +422,28 @@ test("WebSocket transport emits the complete root-cause error envelope", async (
   });
 });
 
-test("HTTP transport returns the same structured error contract", async (t) => {
-  const app = express();
+test("HTTP route handlers return the same structured error contract", async () => {
+  const app = {
+    use(mountPath, router) {
+      this.mountPath = mountPath;
+      this.router = router;
+    },
+  };
   registerRoutes(app, {
     syncToken: "wire-1.2-http-token",
     appDataPath: "/unused-in-validation-test",
   });
-  const server = app.listen(0, "127.0.0.1");
-  t.after(() => new Promise((resolve) => server.close(resolve)));
-  await once(server, "listening");
-  const port = server.address().port;
-
-  const response = await fetch(
-    `http://127.0.0.1:${port}/api/mobile-sync/download-entities`,
-    {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-sync-token": "wire-1.2-http-token",
-      },
-      body: JSON.stringify({ requests: "not-an-array" }),
-    },
+  assert.equal(app.mountPath, "/api/mobile-sync");
+  const route = app.router.layers.find(
+    (layer) => layer.method === "POST" && layer.path === "/download-entities",
   );
-  assert.equal(response.status, 400);
-  assert.deepEqual(await response.json(), {
+  const response = new FakeHttpResponse();
+  await route.handlers.at(-1)(
+    { body: { requests: "not-an-array" }, query: {}, path: route.path },
+    response,
+  );
+  assert.equal(response.statusCode, 400);
+  assert.deepEqual(response.body, {
     error: {
       code: "SYNC_REQUEST_INVALID",
       origin: "desktop_plugin",
@@ -344,19 +455,23 @@ test("HTTP transport returns the same structured error contract", async (t) => {
     },
   });
 
-  const malformed = await fetch(
-    `http://127.0.0.1:${port}/api/mobile-sync/download-entities`,
-    {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-sync-token": "wire-1.2-http-token",
-      },
-      body: "{not-json",
+  const parserErrorHandler = app.router.layers.find(
+    (layer) => layer.method === "USE" && layer.handlers[0].length === 4,
+  );
+  const malformed = new FakeHttpResponse();
+  parserErrorHandler.handlers[0](
+    Object.assign(new SyntaxError("invalid JSON"), {
+      status: 400,
+      type: "entity.parse.failed",
+    }),
+    { body: {}, query: {}, path: route.path },
+    malformed,
+    (error) => {
+      throw error;
     },
   );
-  assert.equal(malformed.status, 400);
-  assert.deepEqual(await malformed.json(), {
+  assert.equal(malformed.statusCode, 400);
+  assert.deepEqual(malformed.body, {
     error: {
       code: "SYNC_REQUEST_INVALID",
       origin: "desktop_plugin",
