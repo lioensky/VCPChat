@@ -147,7 +147,7 @@
         return 'atomic';
     }
 
-    function createPage(index, options) {
+    function createPage(index, options, flowBody = false) {
         const page = document.createElement('section');
         page.className = 'vdoc-page';
         page.dataset.pageIndex = String(index);
@@ -155,49 +155,32 @@
         page.style.setProperty('--vdoc-zoom', String((options.zoom || 100) / 100));
         const content = document.createElement('div');
         content.className = 'vdoc-page-content';
+        if (flowBody) {
+            const body = document.createElement('div');
+            body.className = 'vdoc-page-body';
+            content.appendChild(body);
+        }
         page.appendChild(content);
         return page;
     }
 
-    function pageContent(page) {
+    function pageFrame(page) {
         return page.querySelector(':scope > .vdoc-page-content');
     }
 
-    function pageOverflows(page) {
-        const content = pageContent(page);
-        if (content.scrollHeight > content.clientHeight + 1
-            || content.scrollWidth > content.clientWidth + 1) {
-            return true;
-        }
+    function pageContent(page) {
+        const frame = pageFrame(page);
+        return frame?.querySelector(':scope > .vdoc-page-body') || frame;
+    }
 
-        // clientHeight 与外边界都包含页面 padding，但 padding 是页眉、页脚
-        // 和装订留白，不是正文可用空间。若直接与 boundary.bottom 比较，
-        // 列表和段落就会被允许进入底部 26mm 留白，直到纸张边缘才换页。
-        // 因此所有可见内容必须限制在扣除四侧 padding 后的内边界中。
-        const outer = content.getBoundingClientRect();
-        const computed = getComputedStyle(content);
-        const boundary = {
-            top: outer.top + numericCssLength(computed.paddingTop),
-            right: outer.right - numericCssLength(computed.paddingRight),
-            bottom: outer.bottom - numericCssLength(computed.paddingBottom),
-            left: outer.left + numericCssLength(computed.paddingLeft),
-        };
-        return [...content.querySelectorAll(
-            'h1,h2,h3,h4,h5,h6,p,blockquote,figcaption,li,'
-            + 'span,strong,em,code,a,mark,small,sub,sup,'
-            + 'img,svg,canvas,video,audio,table,figure,pre,hr,'
-            + '[data-vdoc-island],[data-vdoc-math],[data-vdoc-mermaid]'
-        )].some((node) => {
-            const rect = node.getBoundingClientRect();
-            return rect.width > 0
-                && rect.height > 0
-                && (
-                    rect.left < boundary.left - 1
-                    || rect.top < boundary.top - 1
-                    || rect.right > boundary.right + 1
-                    || rect.bottom > boundary.bottom + 1
-                );
-        });
+    function pageOverflows(page) {
+        const body = pageContent(page);
+        if (!body) return false;
+        // 分页只解决垂直容量。流式正文盒的 clientHeight 已经扣除页眉、
+        // 页脚和装订留白，因此 scrollHeight 是唯一分页依据。
+        // 横向装饰扩展不能靠换页解决；尤其 box-decoration-break:clone
+        // 可能增大 scrollWidth，却仍属于同一段连续内联文本。
+        return body.scrollHeight > body.clientHeight + 1;
     }
 
     function nodeHasVisibleContent(node, excludedRoot = null) {
@@ -228,6 +211,38 @@
         return [...pageContent(page).childNodes].some((node) =>
             nodeHasVisibleContent(node, excludedRoot)
         );
+    }
+
+    function pageContainsOnlyHeadings(page, excludedRoot = null) {
+        const visibleElements = [];
+        const visit = (node) => {
+            if (!node || node === excludedRoot
+                || excludedRoot?.contains?.(node)
+                || NON_VISUAL_TAGS.has(node.tagName)) {
+                return;
+            }
+            if (node.nodeType === Node.TEXT_NODE) {
+                if (node.nodeValue.trim()) visibleElements.push(node);
+                return;
+            }
+            if (node.nodeType !== Node.ELEMENT_NODE) return;
+            if (HEADING_TAGS.has(node.tagName)) {
+                visibleElements.push(node);
+                return;
+            }
+            if (node.classList.contains('vdoc-pagination-shell')
+                || FLOW_CONTAINER_TAGS.has(node.tagName)) {
+                [...node.childNodes].forEach(visit);
+                return;
+            }
+            if (nodeHasVisibleContent(node)) visibleElements.push(node);
+        };
+        [...pageContent(page).childNodes].forEach(visit);
+        return visibleElements.length > 0
+            && visibleElements.every((node) =>
+                node.nodeType === Node.ELEMENT_NODE
+                && HEADING_TAGS.has(node.tagName)
+            );
     }
 
     function cloneShell(element) {
@@ -318,7 +333,7 @@
 
     function createPaginator(runtime, options) {
         let pageIndex = 0;
-        let page = createPage(pageIndex, options);
+        let page = createPage(pageIndex, options, true);
         const containerStack = [];
         runtime.appendChild(page);
 
@@ -340,7 +355,7 @@
         };
 
         const newPage = () => {
-            page = createPage(pageIndex += 1, options);
+            page = createPage(pageIndex += 1, options, true);
             runtime.appendChild(page);
             appendTarget();
             return page;
@@ -373,6 +388,16 @@
                 if (!pageOverflows(page)) return;
                 clone.remove();
 
+                // 普通 Markdown 段落及其中带 CSS 的 span 是一个连续文本块。
+                // 当前页剩余空间不足时通常整段移页；但若页面中只有刚刚
+                // keep-with-next 移来的标题，就必须让正文留在标题后并允许
+                // 拆分，否则标题与正文会连续两次移页，形成标题独占页。
+                if (pageHasVisibleContent(page)
+                    && !pageContainsOnlyHeadings(page)) {
+                    newPage();
+                    continue;
+                }
+
                 const split = splitTextToFit(remainder, page, target);
                 if (split) {
                     target.appendChild(split.head);
@@ -381,10 +406,6 @@
                     continue;
                 }
 
-                if (pageHasVisibleContent(page)) {
-                    newPage();
-                    continue;
-                }
                 appendAtomic(remainder);
                 return;
             }
@@ -479,8 +500,23 @@
                     if (!pageOverflows(page)) return;
                     clone.remove();
 
-                    // 带 class/style/CSS 动画的 span 仍是行内文本。只要整棵
-                    // li 都由安全行内节点组成，就按字素拆分而不是原子移页。
+                    const target = appendTarget();
+                    const listIsOnlyCurrentShell = target.children.length === 1
+                        && target.firstElementChild === shell;
+                    const pageHasContentBeforeListItem = pageHasVisibleContent(
+                        page,
+                        listIsOnlyCurrentShell ? shell : null
+                    );
+
+                    // 列表项与普通段落遵循同一规则。只有标题位于列表前时，
+                    // 第一项必须继续留在标题页；否则标题会被单独遗留一页。
+                    if ((pageHasContentBeforeListItem
+                        && !pageContainsOnlyHeadings(page, shell))
+                        || shell.children.length) {
+                        createContinuedList(ordinal);
+                        continue;
+                    }
+
                     if ([...remainder.childNodes].every(isSafeInlineTree)) {
                         const split = splitTextToFit(remainder, page, shell);
                         if (split) {
@@ -489,16 +525,6 @@
                             createContinuedList(ordinal);
                             continue;
                         }
-                    }
-
-                    const target = appendTarget();
-                    const listIsOnlyCurrentShell = target.children.length === 1
-                        && target.firstElementChild === shell;
-                    if (pageHasVisibleContent(page, listIsOnlyCurrentShell
-                        ? shell
-                        : null)) {
-                        createContinuedList(ordinal);
-                        continue;
                     }
 
                     shell.appendChild(clone);

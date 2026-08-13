@@ -223,8 +223,17 @@ ${primitives.editDecorationsCss()}
     width: 100%;
     height: 100%;
     min-width: 0;
-    padding: var(--vdoc-page-padding-block) var(--vdoc-page-padding-inline);
+    padding-block: var(--vdoc-page-padding-block);
+    padding-inline: var(--vdoc-page-padding-inline);
     overflow: hidden;
+}
+.vdoc-page-body {
+    display: flow-root;
+    box-sizing: border-box;
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    overflow: visible;
 }
 .vdoc-page-content .vdoc-pagination-shell {
     display: flow-root;
@@ -370,8 +379,9 @@ ${primitives.editDecorationsCss()}
                 options
             );
             const resolvedHtml = primitives.resolveResources(compiled.html);
+            let paginationHtml = resolvedHtml;
             const paginate = () => pagination.paginate(
-                resolvedHtml,
+                paginationHtml,
                 runtime,
                 {
                     ensureIds: (html) => html,
@@ -386,6 +396,41 @@ ${primitives.editDecorationsCss()}
             ).catch(() => []);
             primitives.updateZoomLayout(root, options.zoom);
             let disposed = false;
+            let activationFrame = 0;
+            let settleFrame = 0;
+            let resolveActivation = null;
+            let resolveSettle = null;
+
+            const activateRuntime = () => context.runtimePort?.activate?.({
+                kind: 'flow',
+                surface: 'read',
+                root,
+                adapter,
+                scrollHost: options.scrollHost,
+            });
+
+            const activateRuntimeOnFrame = () => new Promise((resolve) => {
+                resolveActivation = resolve;
+                activationFrame = window.requestAnimationFrame(() => {
+                    activationFrame = 0;
+                    resolveActivation = null;
+                    if (disposed || !root.host?.isConnected) {
+                        resolve(false);
+                        return;
+                    }
+                    activateRuntime();
+                    resolve(true);
+                });
+            });
+
+            const waitForLayoutFrame = () => new Promise((resolve) => {
+                resolveSettle = resolve;
+                settleFrame = window.requestAnimationFrame(() => {
+                    settleFrame = 0;
+                    resolveSettle = null;
+                    resolve();
+                });
+            });
 
             const waitForImages = () => {
                 const pending = [...root.querySelectorAll('img')]
@@ -398,43 +443,92 @@ ${primitives.editDecorationsCss()}
                     })
                 ));
             };
+
+            const snapshotRenderedIslands = (sourceHtml) => {
+                const selector = [
+                    '[data-vdoc-island]',
+                    '[data-vdoc-interactive]',
+                    '[data-vdoc-component]',
+                ].join(',');
+                const template = document.createElement('template');
+                template.innerHTML = sourceHtml;
+                const sourceIslands = [...template.content.querySelectorAll(
+                    selector
+                )];
+                const renderedIslands = [...root.querySelectorAll(selector)];
+                const sourceByIslandId = new Map(
+                    sourceIslands
+                        .filter((island) => island.dataset.vdocIsland)
+                        .map((island) => [
+                            island.dataset.vdocIsland,
+                            island,
+                        ])
+                );
+                renderedIslands.forEach((renderedIsland, index) => {
+                    const islandId = renderedIsland.dataset.vdocIsland;
+                    const sourceIsland = (
+                        islandId
+                            ? sourceByIslandId.get(islandId)
+                            : sourceIslands[index]
+                    );
+                    if (sourceIsland) {
+                        sourceIsland.replaceWith(
+                            renderedIsland.cloneNode(true)
+                        );
+                    }
+                });
+                return template.innerHTML;
+            };
+
+            const removeRuntimeGeneratedNodes = () => {
+                root.querySelectorAll(
+                    '[data-vdoc-runtime-generated="true"]'
+                ).forEach((node) => node.remove());
+            };
+
             const timeout = (wait) => new Promise((resolve) =>
                 window.setTimeout(resolve, wait)
             );
-            const ready = Promise.race([
+            const initialRuntimeReady = activateRuntimeOnFrame();
+            const assetsReady = Promise.race([
                 Promise.allSettled([
                     document.fonts?.ready || Promise.resolve(),
                     waitForImages(),
                     mermaidReady,
                 ]),
                 timeout(1800),
+            ]);
+            const ready = Promise.all([
+                initialRuntimeReady,
+                assetsReady,
             ]).then(async () => {
                 if (disposed || !root.host?.isConnected) return result;
+
+                // 岛脚本可能在首帧同步创建内容，并在紧随其后的帧中完成
+                // 尺寸写入。二次等待图片和两个布局帧，确保快照反映最终高度。
+                await waitForImages();
+                await waitForLayoutFrame();
+                await waitForLayoutFrame();
+                if (disposed || !root.host?.isConnected) return result;
+
+                paginationHtml = snapshotRenderedIslands(resolvedHtml);
                 context.runtimePort?.disposeSurface?.('read');
                 result = paginate();
+
+                // 运行态快照只负责给分页器提供真实几何。最终页面重新执行
+                // 原始岛脚本前移除其生成节点，避免表格行、画布等被重复创建。
+                removeRuntimeGeneratedNodes();
                 primitives.renderMath(root);
                 await Promise.resolve(
                     primitives.renderMermaid(root)
                 ).catch(() => []);
                 primitives.updateZoomLayout(root, options.zoom);
                 if (!disposed && root.host?.isConnected) {
-                    context.runtimePort?.activate?.({
-                        kind: 'flow',
-                        surface: 'read',
-                        root,
-                        adapter,
-                        scrollHost: options.scrollHost,
-                    });
+                    activateRuntime();
                 }
                 return result;
             });
 
-            const cancelRuntimeActivation = scheduleRuntimeActivation(
-                root,
-                'read',
-                adapter,
-                options.scrollHost
-            );
             return Object.freeze({
                 root,
                 runtime,
@@ -444,7 +538,18 @@ ${primitives.editDecorationsCss()}
                 ready,
                 dispose() {
                     disposed = true;
-                    cancelRuntimeActivation();
+                    if (activationFrame) {
+                        window.cancelAnimationFrame(activationFrame);
+                        activationFrame = 0;
+                        resolveActivation?.(false);
+                        resolveActivation = null;
+                    }
+                    if (settleFrame) {
+                        window.cancelAnimationFrame(settleFrame);
+                        settleFrame = 0;
+                        resolveSettle?.();
+                        resolveSettle = null;
+                    }
                     context.runtimePort?.disposeSurface?.('read');
                 },
             });

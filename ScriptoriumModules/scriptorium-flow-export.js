@@ -102,8 +102,17 @@ body{
     width:100%;
     height:100%;
     min-width:0;
-    padding:var(--vdoc-page-padding-block) var(--vdoc-page-padding-inline);
+    padding-block:var(--vdoc-page-padding-block);
+    padding-inline:var(--vdoc-page-padding-inline);
     overflow:hidden;
+}
+.vdoc-page-body{
+    display:flow-root;
+    box-sizing:border-box;
+    width:100%;
+    height:100%;
+    min-width:0;
+    overflow:visible;
 }
 .vdoc-page-content .vdoc-pagination-shell{
     display:flow-root;
