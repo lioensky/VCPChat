@@ -138,18 +138,44 @@ app.whenReady().then(async () => {
         selection.addRange(endRange);
         editor.focus();
 
-        const enterEvent = new KeyboardEvent('keydown', {
-            key: 'Enter',
-            bubbles: true,
-            composed: true,
-            cancelable: true
-        });
-        editor.dispatchEvent(enterEvent);
-        await new Promise((resolve) =>
-            requestAnimationFrame(() => requestAnimationFrame(resolve))
-        );
+        const dispatchEnter = async () => {
+            const currentEditor = root.querySelector(
+                '[data-vdoc-flow-source-editor="true"]'
+            );
+            if (!currentEditor) return null;
+            const enterEvent = new KeyboardEvent('keydown', {
+                key: 'Enter',
+                bubbles: true,
+                composed: true,
+                cancelable: true
+            });
+            currentEditor.dispatchEvent(enterEvent);
+            await new Promise((resolve) =>
+                requestAnimationFrame(() => requestAnimationFrame(resolve))
+            );
+            const nextEditor = root.querySelector(
+                '[data-vdoc-flow-source-editor="true"]'
+            );
+            const currentSelection = root.getSelection
+                ? root.getSelection()
+                : window.getSelection();
+            return {
+                handled: enterEvent.defaultPrevented,
+                editorConnected: Boolean(nextEditor?.isConnected),
+                editorFocused: root.activeElement === nextEditor,
+                caretInEditor: Boolean(
+                    nextEditor
+                    && currentSelection?.anchorNode
+                    && nextEditor.contains(currentSelection.anchorNode)
+                )
+            };
+        };
 
+        const firstEnter = await dispatchEnter();
         const afterEnter = source();
+        const secondEnter = await dispatchEnter();
+        const thirdEnter = await dispatchEnter();
+        const afterThreeEnters = source();
         editor = root.querySelector(
             '[data-vdoc-flow-source-editor="true"]'
         );
@@ -157,14 +183,48 @@ app.whenReady().then(async () => {
             return {
                 available: true,
                 editorActivated: true,
-                enterWasHandled: enterEvent.defaultPrevented,
+                enterWasHandled: firstEnter?.handled === true,
                 enterAddsOneCompositeBreak:
                     afterEnter.length === before.length + 3
                     && afterEnter.includes('  \\n')
                     && !afterEnter.includes('\\u200B'),
-                editorSurvivesEnterReflow: false
+                threeConsecutiveEntersHandled:
+                    secondEnter?.handled === true
+                    && thirdEnter?.handled === true,
+                editorSurvivesConsecutiveEnterReflow: false
             };
         }
+        const protectedBreakCount = (
+            afterThreeEnters.match(/\\u200B  \\n/g) || []
+        ).length;
+        const editorLineRects = [...editor.querySelectorAll(
+            '.vdoc-md-live-preview-line'
+        )].map((line) => {
+            const rect = line.getBoundingClientRect();
+            const style = getComputedStyle(line);
+            const beforeStyle = getComputedStyle(line, '::before');
+            return {
+                tag: line.tagName,
+                kind: line.dataset.vdocMdLineKind,
+                className: line.className,
+                empty: line.matches(':empty'),
+                top: rect.top,
+                height: rect.height,
+                lineHeight: style.lineHeight,
+                marginBlockStart: style.marginBlockStart,
+                marginBlockEnd: style.marginBlockEnd,
+                paddingBlockStart: style.paddingBlockStart,
+                paddingBlockEnd: style.paddingBlockEnd,
+                borderBlockStartWidth: style.borderBlockStartWidth,
+                borderBlockEndWidth: style.borderBlockEndWidth,
+                beforeContent: beforeStyle.content,
+                beforeLineHeight: beforeStyle.lineHeight
+            };
+        });
+        const editorLineSteps = editorLineRects.slice(1).map((rect, index) =>
+            rect.top - editorLineRects[index].top
+        );
+
         const backspaceEvent = new InputEvent('beforeinput', {
             inputType: 'deleteContentBackward',
             bubbles: true,
@@ -188,20 +248,39 @@ app.whenReady().then(async () => {
         return {
             available: true,
             editorActivated: true,
-            enterWasHandled: enterEvent.defaultPrevented,
+            enterWasHandled: firstEnter?.handled === true,
             enterAddsOneCompositeBreak:
                 afterEnter.length === before.length + 3
                 && afterEnter.includes('  \\n')
                 && !afterEnter.includes('\\u200B'),
+            threeConsecutiveEntersHandled:
+                secondEnter?.handled === true
+                && thirdEnter?.handled === true,
+            editorSurvivesConsecutiveEnterReflow:
+                firstEnter?.editorConnected === true
+                && secondEnter?.editorConnected === true
+                && thirdEnter?.editorConnected === true
+                && firstEnter?.caretInEditor === true
+                && secondEnter?.caretInEditor === true
+                && thirdEnter?.caretInEditor === true,
+            protectedEmptyLinesRendered: protectedBreakCount === 2,
             backspaceWasHandled: backspaceEvent.defaultPrevented,
-            oneBackspaceRestoresSource: afterBackspace === before,
+            oneBackspaceRemovesLastProtectedLine:
+                afterBackspace.length
+                === afterThreeEnters.length - '\\u200B  \\n'.length,
             diagnostic: {
                 inputType: backspaceEvent.inputType,
                 editorConnected: editor.isConnected,
                 editorIsActive: root.activeElement === editor,
                 selectionBeforeBackspace,
                 sourceDeltaAfterBackspace:
-                    afterBackspace.length - before.length
+                    afterBackspace.length - before.length,
+                protectedBreakCount,
+                editorLineRects,
+                editorLineSteps,
+                firstEnter,
+                secondEnter,
+                thirdEnter
             }
         };
     })()`);

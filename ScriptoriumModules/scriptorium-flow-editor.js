@@ -166,6 +166,15 @@
 
         function inlineHtmlTagRecords(raw) {
             const source = String(raw || '');
+            const codeSpans = [];
+            const codePattern = /(`+)([\s\S]*?)\1/g;
+            let codeMatch;
+            while ((codeMatch = codePattern.exec(source))) {
+                codeSpans.push({
+                    start: codeMatch.index,
+                    end: codeMatch.index + codeMatch[0].length,
+                });
+            }
             const allowed = new Set([
                 // 行内 HTML 与静态块级 HTML 共用同一套无损标签骨架。
                 // script/style 以及媒体、表单控件不在此开放：它们要么拥有
@@ -187,6 +196,12 @@
             const pattern = /<\/?([a-z][\w:-]*)\b[^>]*>/gi;
             let match;
             while ((match = pattern.exec(source))) {
+                const matchEnd = match.index + match[0].length;
+                if (codeSpans.some((span) =>
+                    match.index < span.end && matchEnd > span.start
+                )) {
+                    continue;
+                }
                 const tag = String(match[1] || '').toLowerCase();
                 if (!allowed.has(tag)) continue;
                 records.push({
@@ -248,6 +263,9 @@
                     return;
                 }
                 if (node.nodeType !== Node.ELEMENT_NODE) return;
+                if (node.dataset?.vdocMdMarker === 'terminal-line-ending') {
+                    return;
+                }
                 if (node.tagName === 'BR') {
                     output += '\n';
                     return;
@@ -258,7 +276,11 @@
                 if (block && output && !output.endsWith('\n')) output += '\n';
             };
             root.childNodes.forEach(visit);
-            return output.replace(/\n$/, '');
+            const visible = output.replace(/\n$/, '');
+            const terminalLineEnding = root.querySelector?.(
+                '[data-vdoc-md-marker="terminal-line-ending"]'
+            )?.textContent || '';
+            return visible + terminalLineEnding;
         }
 
         function editableSourceText(editable) {
@@ -750,20 +772,93 @@
 
         function createMarkdownVisualEditor(shell, raw) {
             const source = String(raw || '');
+            const terminalLineEnding =
+                source.match(/(?:\r?\n)+$/)?.[0] || '';
+            const terminalLinePrefix = terminalLineEnding
+                ? source.slice(0, -terminalLineEnding.length)
+                : source;
+            // Marked 或源码实时同步可能把块后的整个空白分隔（通常 \n\n）
+            // 纳入 region。它不是可见编辑行，必须整体隐藏；但用户 Enter
+            // 写入的硬换行前有两个空格，此时必须保留逐行编辑结构。
+            const trailingLineEnding = terminalLineEnding
+                && !terminalLinePrefix.endsWith('  ')
+                && !terminalLinePrefix.endsWith('\u200B  ')
+                ? terminalLineEnding
+                : '';
+            const visualSource = trailingLineEnding
+                ? terminalLinePrefix
+                : source;
             const lines = source.split('\n');
             const renderedLines = renderedLineCandidates(shell);
+            const singleVisualLine = !visualSource.includes('\n')
+                && !visualSource.includes('\r');
 
-            if (lines.length === 1) {
-                const editor = markdownLineElement(
-                    source,
-                    renderedLines[0] || shell.firstElementChild
-                );
-                editor.replaceChildren(inlineHtmlSourceFragment(source));
+            if (singleVisualLine) {
+                const renderedBlock = shell.firstElementChild;
+                const editor = renderedBlock
+                    ? renderedBlock.cloneNode(true)
+                    : markdownLineElement(visualSource);
+                editor.querySelectorAll?.('[contenteditable], [spellcheck]')
+                    .forEach((node) => {
+                        node.removeAttribute('contenteditable');
+                        node.removeAttribute('spellcheck');
+                    });
+                editor.removeAttribute('contenteditable');
+                editor.removeAttribute('spellcheck');
+                editor.classList.add('vdoc-md-live-preview-line');
+                editor.dataset.vdocMdLineKind = markdownLineKind(source);
+
+                // 引用、单项列表等静态 Markdown 拥有 blockquote > p、
+                // ul > li 这样的布局骨架。编辑态必须保留完整骨架，只替换
+                // 最内层文字内容，否则段落 margin、列表缩进和行盒都会变化。
+                const contentHost = editor.matches('blockquote')
+                    ? editor.querySelector('p') || editor
+                    : editor.matches('ul,ol')
+                        ? editor.querySelector('li') || editor
+                        : editor;
+                if (contentHost !== editor) {
+                    // Marked 输出会在 blockquote/ul 与语义子元素之间放置
+                    // 格式化换行 Text 节点。它们不是 Markdown 源码内容；
+                    // 若克隆进编辑树，会让无损还原前后各多出一个换行。
+                    [...editor.childNodes].forEach((node) => {
+                        if (node.nodeType === Node.TEXT_NODE
+                            && !String(node.nodeValue || '').trim()) {
+                            node.remove();
+                        }
+                    });
+                }
+                contentHost.replaceChildren(inlineHtmlSourceFragment(
+                    visualSource
+                ));
+                if (trailingLineEnding) {
+                    // Marked 的 blockquote/list token 常把块后的单个换行纳入
+                    // raw。它属于源码边界而非第二条可见行：隐藏保存该偏移，
+                    // 避免引用被误建成多行编辑器，同时保证无损序列化。
+                    contentHost.appendChild(concealedMarker(
+                        trailingLineEnding,
+                        'terminal-line-ending'
+                    ));
+                }
+                if (!compiler.markdownLiveMarkerRanges(visualSource).length
+                    && !inlineHtmlTagRecords(visualSource).length) {
+                    // 裸文本编辑前后必须沿用相同的空白折叠和断行算法。
+                    // 通用源码编辑规则中的 break-spaces/anywhere 会改变字宽、
+                    // 两端对齐和换行点，导致获得焦点时发生轻微布局跳动。
+                    editor.classList.add('vdoc-md-plain-text-preview');
+                }
                 return editor;
             }
 
             const editor = document.createElement('div');
             editor.className = 'vdoc-md-live-preview-run';
+            const renderedBlock = renderedLines[0] || shell.firstElementChild;
+            if (renderedBlock) {
+                const style = getComputedStyle(renderedBlock);
+                editor.style.marginBlockStart = style.marginBlockStart;
+                editor.style.marginBlockEnd = style.marginBlockEnd;
+                editor.style.marginInlineStart = style.marginInlineStart;
+                editor.style.marginInlineEnd = style.marginInlineEnd;
+            }
             let sourceOffset = 0;
             let renderedIndex = 0;
             lines.forEach((line, lineIndex) => {
@@ -894,7 +989,19 @@
                 visualEditorForRegion(shell, region, raw),
                 region
             );
-            if (editableSourceText(editor) !== raw) {
+            const editorSource = editableSourceText(editor);
+            if (editorSource !== raw) {
+                console.warn(
+                    '[Scriptorium] Lossless edit mapping failed: '
+                    + JSON.stringify({
+                        regionKey: region.key,
+                        regionType: region.type,
+                        flowKind: region.flowKind,
+                        markdownTokenType: region.markdownTokenType,
+                        source: raw,
+                        restoredSource: editorSource,
+                    })
+                );
                 notificationPort.show?.(
                     '当前内容无法建立无损渲染态编辑映射。',
                     'error'
@@ -1703,6 +1810,17 @@
             return true;
         }
 
+        function markdownLineBreakInsertion(editable, offsets) {
+            const raw = editableSourceText(editable);
+            const before = raw.slice(0, offsets?.start || 0);
+            const lineStart = before.lastIndexOf('\n') + 1;
+            const currentLine = before.slice(lineStart);
+            // Markdown 会吞掉连续空白行。第二次及后续 Enter 在空行中
+            // 写入零宽占位符，使每个空行都能稳定编译为独立可编辑行，
+            // 并保证逐行编辑树始终存在可承载光标的文本位置。
+            return currentLine.length === 0 ? '\u200B  \n' : '  \n';
+        }
+
         function handleEditorKeydown(event) {
             if (event.defaultPrevented
                 || event.isComposing
@@ -1768,7 +1886,7 @@
                 // 硬换行直接提交到文档模型。beforeinput 保留为平台差异兜底。
                 return commitSessionInsertion(
                     session,
-                    '  \n',
+                    markdownLineBreakInsertion(editable, offsets),
                     offsets,
                     'flow-keydown-hard-line-break'
                 );
@@ -1955,7 +2073,7 @@
                     // contenteditable DOM，避免出现“UI 换行、源码没变”。
                     commitSessionInsertion(
                         session,
-                        '  \n',
+                        markdownLineBreakInsertion(editable, offsets),
                         offsets,
                         'flow-beforeinput-hard-line-break'
                     );
@@ -1976,11 +2094,16 @@
                     let deletionStart = offsets.start;
                     if (offsets.start === offsets.end) {
                         const hardBreak = '  \n';
+                        const protectedEmptyBreak = `\u200B${hardBreak}`;
                         const prefix = raw.slice(0, offsets.start);
-                        if (prefix.endsWith(hardBreak)) {
-                            // Enter 写入标准 Markdown 硬换行：两个尾随空格
-                            // 加一个换行符。退格时按一次编辑动作原子删除，
-                            // 空编辑行的光标高度由 CSS 伪元素提供。
+                        if (prefix.endsWith(protectedEmptyBreak)) {
+                            // 连续 Enter 创建的受保护空行按一个动作删除，
+                            // 不能遗留零宽占位符污染源码或光标映射。
+                            deletionStart =
+                                offsets.start - protectedEmptyBreak.length;
+                        } else if (prefix.endsWith(hardBreak)) {
+                            // 首次 Enter 写入标准 Markdown 硬换行：两个尾随
+                            // 空格加换行符，退格时同样作为一个动作原子删除。
                             deletionStart = offsets.start - hardBreak.length;
                         } else {
                             // 保持浏览器对普通文字的单字符退格语义，同时避免
