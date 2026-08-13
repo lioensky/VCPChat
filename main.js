@@ -46,8 +46,72 @@ const canvasHandlers = require('./modules/ipc/canvasHandlers'); // Import canvas
 const desktopHandlers = require('./modules/ipc/desktopHandlers'); // Import VCPdesktop handlers
 const desktopRemoteHandlers = require('./modules/ipc/desktopRemoteHandlers'); // Import desktop remote control handlers
 const tavernHandlers = require('./modules/ipc/tavernHandlers'); // Import VCPChatTarven (advanced reply) handlers
-const docxHandlers = require('./modules/ipc/docxHandlers'); // Import VCP Scriptorium handlers
 const { ScriptoriumAgentControlService } = require('./modules/services/scriptoriumAgentControlService');
+// docxHandlers 体积较大，在主窗口开始加载后异步预热；首次调用也会按需等待同一加载任务。
+let docxHandlersModule = null;
+let docxHandlersLoadPromise = null;
+let docxHandlersInitializeOptions = null;
+let docxOpenBootstrapRegistered = false;
+
+function loadDocxHandlers() {
+    if (docxHandlersModule) return Promise.resolve(docxHandlersModule);
+    if (docxHandlersLoadPromise) return docxHandlersLoadPromise;
+    if (!docxHandlersInitializeOptions) {
+        return Promise.reject(new Error('[Main] docxHandlers 尚未配置。'));
+    }
+
+    docxHandlersLoadPromise = new Promise((resolve, reject) => {
+        // 将同步 CommonJS 模块解析移出当前初始化调用栈，避免阻塞主窗口创建。
+        setImmediate(() => {
+            try {
+                // 初始化真实模块前移除临时打开桥接，避免重复注册同名 IPC。
+                if (docxOpenBootstrapRegistered) {
+                    ipcMain.removeHandler('open-docx-window');
+                    docxOpenBootstrapRegistered = false;
+                }
+                const handlers = require('./modules/ipc/docxHandlers');
+                handlers.initialize(docxHandlersInitializeOptions);
+                docxHandlersModule = handlers;
+                console.log('[Main] docxHandlers loaded asynchronously.');
+                resolve(handlers);
+            } catch (error) {
+                // 允许后续按需调用重试，同时恢复临时打开入口。
+                docxHandlersLoadPromise = null;
+                registerDocxOpenBootstrap();
+                console.error('[Main] Failed to load docxHandlers:', error);
+                reject(error);
+            }
+        });
+    });
+    return docxHandlersLoadPromise;
+}
+
+function registerDocxOpenBootstrap() {
+    if (docxOpenBootstrapRegistered || docxHandlersModule) return;
+    ipcMain.handle('open-docx-window', async (_event, options = {}) => {
+        const handlers = await loadDocxHandlers();
+        return handlers.openDocxWindow(options);
+    });
+    docxOpenBootstrapRegistered = true;
+}
+
+function configureDocxHandlers(options) {
+    docxHandlersInitializeOptions = options;
+    registerDocxOpenBootstrap();
+}
+
+// 提供稳定对象给控制服务；异步方法在真实模块就绪前自动等待。
+const docxHandlers = {
+    openDocxWindow: (...args) =>
+        loadDocxHandlers().then((handlers) => handlers.openDocxWindow(...args)),
+    requestAgentOperation: (...args) =>
+        loadDocxHandlers().then((handlers) => handlers.requestAgentOperation(...args)),
+    writeProjectArtifact: (...args) =>
+        loadDocxHandlers().then((handlers) => handlers.writeProjectArtifact(...args)),
+    getSystemFonts: (...args) =>
+        loadDocxHandlers().then((handlers) => handlers.getSystemFonts(...args)),
+    getDocxWindow: () => docxHandlersModule?.getDocxWindow() || null,
+};
 const loomManagerModule = require('./modules/loom/VCPLoomManager');
 const { PRELOAD_ROLES, resolveProjectPreload } = require('./modules/services/preloadPaths');
 const { ChatDataServiceFacade } = require('./modules/services/chatDataService');
@@ -1077,7 +1141,7 @@ if (!gotTheLock) {
         emoticonHandlers.initialize({ SETTINGS_FILE, APP_DATA_ROOT_IN_PROJECT });
         emoticonHandlers.setupEmoticonHandlers();
         canvasHandlers.initialize({ mainWindow, openChildWindows, CANVAS_CACHE_DIR });
-        docxHandlers.initialize({
+        configureDocxHandlers({
             mainWindow,
             openChildWindows,
             projectRoot: PROJECT_ROOT,
@@ -1181,7 +1245,19 @@ if (!gotTheLock) {
             return process.platform;
         });
 
-        loadMainWindow();
+        // 主窗口页面完成加载、触发展示后再后台预热 Scriptorium。
+        // 不 await：重型 CommonJS 解析不会延迟主窗口首屏；若用户更早打开
+        // 文坊，临时 IPC 桥接会立即启动并等待同一个单例加载 Promise。
+        void loadMainWindow()
+            .then(() => loadDocxHandlers())
+            .catch((error) => {
+                // 模块加载错误已由 loadDocxHandlers 记录；这里只记录页面加载错误。
+                if (!docxHandlersLoadPromise) {
+                    console.error('[Main] Main window load failed before docx prewarm:', error);
+                }
+            });
+
+        // --- 自动打开桌面窗口 ---
 
         // --- 自动打开桌面窗口 ---
         // 当使用 --desktop-only 参数启动时，在所有 IPC 初始化完成后自动打开桌面窗口

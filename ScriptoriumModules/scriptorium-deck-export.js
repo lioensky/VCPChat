@@ -70,23 +70,51 @@ ${parsed.html}
                 if (!parsed.script) return '';
                 const safeSlideId = String(slide.id).replace(/['\\\r\n]/g, '');
                 return `(() => {
-    const scene = document.querySelector('[data-slide-index="${index}"]');
-    if (!scene) return;
+    const slide = document.querySelector('[data-slide-index="${index}"]');
+    if (!slide) return;
+    const scene = slide.matches('.vdoc-slide-scene,[data-vdoc-slide]')
+        ? slide
+        : slide.querySelector('.vdoc-slide-scene,[data-vdoc-slide]')
+            || slide;
     try {
+        const matchesScene = (selector) => scene.matches?.(selector);
+        const currentScript = Object.freeze({
+            dataset: Object.freeze({ vdocRuntimeScript: 'true' }),
+            parentElement: scene,
+            previousElementSibling: scene,
+            closest(selector) {
+                if (matchesScene(selector)) return scene;
+                return scene.closest?.(selector) || null;
+            },
+            getRootNode: () => scene.getRootNode?.() || document,
+        });
         const scopedDocument = new Proxy(document, {
             get(target, property) {
+                if (property === 'currentScript') return currentScript;
                 if (property === 'querySelector') {
                     return (selector) =>
-                        scene.querySelector(selector)
+                        (matchesScene(selector) ? scene : null)
+                        || scene.querySelector(selector)
                         || target.querySelector(selector);
                 }
                 if (property === 'querySelectorAll') {
-                    return (selector) => scene.querySelectorAll(selector);
+                    return (selector) => {
+                        const descendants = [...scene.querySelectorAll(selector)];
+                        return matchesScene(selector)
+                            ? [scene, ...descendants]
+                            : descendants;
+                    };
                 }
                 if (property === 'getElementById') {
-                    return (id) =>
-                        scene.querySelector('#' + CSS.escape(String(id)))
-                        || target.getElementById(id);
+                    return (id) => {
+                        const normalizedId = String(id);
+                        return scene.id === normalizedId
+                            ? scene
+                            : scene.querySelector(
+                                '#' + CSS.escape(normalizedId)
+                            )
+                            || target.getElementById(normalizedId);
+                    };
                 }
                 const value = Reflect.get(target, property, target);
                 return typeof value === 'function'
