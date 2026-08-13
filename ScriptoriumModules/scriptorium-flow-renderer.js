@@ -104,6 +104,13 @@
     outline: 0;
     background: transparent;
 }
+.vdoc-md-live-preview-run > [data-vdoc-md-line-separator] {
+    /*
+     * 该节点只保存源码中的一个换行偏移。相邻编辑行本身已经是块级盒，
+     * 不应再让分隔符内的换行参与布局，否则 break-spaces 会额外占一行。
+     */
+    display: none !important;
+}
 .vdoc-md-live-preview-run > .vdoc-md-live-preview-line {
     box-sizing: border-box;
     width: 100%;

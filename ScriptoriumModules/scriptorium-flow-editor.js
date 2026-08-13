@@ -328,7 +328,7 @@
         function pastedMarkdownText(value) {
             return String(value || '')
                 .replace(/\r\n?/g, '\n')
-                .replace(/\n/g, '  \n\u200B');
+                .replace(/\n/g, '  \n');
         }
 
         function refreshLocalMarkers(session, sourceStart, sourceEnd = sourceStart) {
@@ -1768,7 +1768,7 @@
                 // 硬换行直接提交到文档模型。beforeinput 保留为平台差异兜底。
                 return commitSessionInsertion(
                     session,
-                    '  \n\u200B',
+                    '  \n',
                     offsets,
                     'flow-keydown-hard-line-break'
                 );
@@ -1955,7 +1955,7 @@
                     // contenteditable DOM，避免出现“UI 换行、源码没变”。
                     commitSessionInsertion(
                         session,
-                        '  \n\u200B',
+                        '  \n',
                         offsets,
                         'flow-beforeinput-hard-line-break'
                     );
@@ -1975,13 +1975,12 @@
 
                     let deletionStart = offsets.start;
                     if (offsets.start === offsets.end) {
-                        const hardBreak = '  \n\u200B';
+                        const hardBreak = '  \n';
                         const prefix = raw.slice(0, offsets.start);
                         if (prefix.endsWith(hardBreak)) {
-                            // Enter 写入的是一个不可拆分的 Markdown 硬换行：
-                            // 两个尾随空格、换行符和空行零宽占位符。浏览器若
-                            // 逐字符退格，会先删占位符，再删换行，造成一次
-                            // Enter 需要两次 Backspace。这里按编辑语义原子删除。
+                            // Enter 写入标准 Markdown 硬换行：两个尾随空格
+                            // 加一个换行符。退格时按一次编辑动作原子删除，
+                            // 空编辑行的光标高度由 CSS 伪元素提供。
                             deletionStart = offsets.start - hardBreak.length;
                         } else {
                             // 保持浏览器对普通文字的单字符退格语义，同时避免

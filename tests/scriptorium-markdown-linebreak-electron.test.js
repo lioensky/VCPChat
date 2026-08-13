@@ -159,8 +159,9 @@ app.whenReady().then(async () => {
                 editorActivated: true,
                 enterWasHandled: enterEvent.defaultPrevented,
                 enterAddsOneCompositeBreak:
-                    afterEnter.length === before.length + 4
-                    && afterEnter.includes('  \\n\\u200B'),
+                    afterEnter.length === before.length + 3
+                    && afterEnter.includes('  \\n')
+                    && !afterEnter.includes('\\u200B'),
                 editorSurvivesEnterReflow: false
             };
         }
@@ -189,8 +190,9 @@ app.whenReady().then(async () => {
             editorActivated: true,
             enterWasHandled: enterEvent.defaultPrevented,
             enterAddsOneCompositeBreak:
-                afterEnter.length === before.length + 4
-                && afterEnter.includes('  \\n\\u200B'),
+                afterEnter.length === before.length + 3
+                && afterEnter.includes('  \\n')
+                && !afterEnter.includes('\\u200B'),
             backspaceWasHandled: backspaceEvent.defaultPrevented,
             oneBackspaceRestoresSource: afterBackspace === before,
             diagnostic: {
