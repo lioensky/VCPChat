@@ -1,7 +1,7 @@
 'use strict';
 
 const assert = require('assert');
-const collaborator = require('../../VCPDistributedServer/Plugin/ScriptoriumCollaborator/ScriptoriumCollaboratorService');
+const collaborator = require('../VCPDistributedServer/Plugin/ScriptoriumCollaborator/ScriptoriumCollaboratorService');
 
 function createControl() {
     const calls = [];

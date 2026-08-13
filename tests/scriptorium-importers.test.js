@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict');
 const JSZip = require('jszip');
-const importer = require('../../modules/services/scriptoriumImportService');
+const importer = require('../modules/services/scriptoriumImportService');
 
 async function createMinimalDocx() {
     const zip = new JSZip();

@@ -41,6 +41,12 @@ function registerMinimalIpc() {
     ipcMain.handle('scriptorium:export-rich-document', () =>
         ({ success: false, canceled: true })
     );
+    ipcMain.handle('scriptorium:svg-assets-load', () => []);
+    ipcMain.handle('scriptorium:svg-assets-save', (_event, packs = []) => ({
+        success: true,
+        count: packs.length,
+        size: 0,
+    }));
     ipcMain.on('window-lifecycle:ready', () => {});
     ipcMain.on('minimize-window', () => {});
     ipcMain.on('maximize-window', () => {});
@@ -87,9 +93,10 @@ async function run() {
         await delay(500);
 
         await windowRef.webContents.executeJavaScript(`(() => {
+            const info = window.ScriptoriumAgent.pptx.getDocumentInfo();
             const payload = {
                 requestId: 'cdn-localization-add-slide-test',
-                expectedRevision: 1,
+                expectedRevision: info.revision,
                 author: {
                     id: 'nova',
                     name: 'Nova',
@@ -97,7 +104,10 @@ async function run() {
                 },
                 summary: '新增最小 Three.js 本地 URL 转换测试页',
                 name: 'Mini 3D 本地化测试',
-                html: \`<section class="vdoc-slide-scene mini-three-test">
+                source: \`<style>
+*{box-sizing:border-box}.mini-stage{width:600px;height:600px}
+</style>
+<section class="vdoc-slide-scene mini-three-test">
   <script src="${CDN_URL}"><\\/script>
   <div class="mini-copy">
     <span>LOCAL RUNTIME TEST</span>
@@ -105,9 +115,9 @@ async function run() {
     <p class="mini-state">等待 Three.js 本地运行时……</p>
   </div>
   <div class="mini-stage"></div>
-</section>\`,
-                css: '*{box-sizing:border-box}.mini-stage{width:600px;height:600px}',
-                script: \`(()=>{
+</section>
+<script>
+(()=>{
   const root=document.querySelector(".mini-three-test");
   if(!root||root.dataset.bound)return;
   root.dataset.bound="1";
@@ -117,7 +127,8 @@ async function run() {
     return;
   }
   state.textContent="OK · THREE 本地运行时已加载";
-})();\`,
+})();
+<\\/script>\`,
                 notes: '检查 Three.js CDN 是否转换为本地 URL。'
             };
             window.__cdnLocalizationPromise =
@@ -137,12 +148,23 @@ async function run() {
 
         assert.strictEqual(pending.status, 'pending');
         assert.ok(
-            pending.proposal.html.includes(`src="${LOCAL_URL}"`),
-            `待审 AddSlide PR 未转换为本地 URL：${pending.proposal.html}`
+            pending.proposal.source.includes(`src="${LOCAL_URL}"`),
+            `待审 AddSlide PR 未转换为本地 URL：${pending.proposal.source}`
         );
         assert.ok(
-            !pending.proposal.html.includes(CDN_URL),
-            '待审 AddSlide PR 仍包含原始 Three.js CDN URL'
+            pending.proposal.source.includes(
+                `data-vdoc-original-src="${CDN_URL}"`
+            ),
+            '待审 AddSlide PR 应保留原始 Three.js CDN URL 作为审计元数据'
+        );
+        assert.ok(
+            !new RegExp(
+                `<script\\b[^>]*\\ssrc="${CDN_URL.replace(
+                    /[.*+?^${}()|[\]\\]/g,
+                    '\\$&'
+                )}"`
+            ).test(pending.proposal.source),
+            '待审 AddSlide PR 的可执行 src 仍指向原始 Three.js CDN'
         );
         assert.deepStrictEqual(
             pending.proposal.programmableContent.dependencies,
@@ -166,11 +188,10 @@ async function run() {
         assert.strictEqual(approved.success, true);
 
         const result = await windowRef.webContents.executeJavaScript(`(async () => {
-            await window.__cdnLocalizationPromise;
+            const approvalOutcome = await window.__cdnLocalizationPromise;
             await new Promise((resolve) =>
                 requestAnimationFrame(() => requestAnimationFrame(resolve))
             );
-            const info = window.ScriptoriumAgent.pptx.getDocumentInfo();
             const source = window.ScriptoriumAgent.pptx.getSource({
                 sourceKind: 'html',
                 slideIndex: 1
@@ -178,7 +199,8 @@ async function run() {
             const root = document.getElementById('page-stream').shadowRoot;
             return {
                 source,
-                dependencies: info.programmableContent.dependencies,
+                dependencies:
+                    approvalOutcome.result?.programmableContent?.dependencies || [],
                 hasGlobalThree: typeof window.THREE !== 'undefined',
                 runtimeText:
                     root.querySelector('.mini-state')?.textContent || ''
@@ -190,8 +212,17 @@ async function run() {
             `批准后的页面源码未保留本地 URL：${result.source}`
         );
         assert.ok(
-            !result.source.includes(CDN_URL),
-            '批准后的页面源码仍包含原始 Three.js CDN URL'
+            result.source.includes(`data-vdoc-original-src="${CDN_URL}"`),
+            '批准后的页面源码应保留原始 Three.js CDN URL 作为审计元数据'
+        );
+        assert.ok(
+            !new RegExp(
+                `<script\\b[^>]*\\ssrc="${CDN_URL.replace(
+                    /[.*+?^${}()|[\]\\]/g,
+                    '\\$&'
+                )}"`
+            ).test(result.source),
+            '批准后的页面可执行 src 仍指向原始 Three.js CDN'
         );
         assert.ok(
             result.dependencies.includes('three'),
