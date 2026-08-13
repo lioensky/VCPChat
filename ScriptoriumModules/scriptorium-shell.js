@@ -258,6 +258,7 @@
             click('html-mode-btn', () => switchMode('source-html'));
             click('css-mode-btn', () => switchMode('source-css'));
             click('format-source-btn', () => context.sourcePort?.format?.());
+            click('insert-media-btn', () => context.mediaPort?.open?.());
             click('insert-block-btn', () =>
                 context.editorResolver?.()?.insertStructure?.(
                     elements['block-type-select']?.value || 'paragraph'
