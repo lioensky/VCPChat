@@ -81,7 +81,12 @@
     outline: 0;
     color: inherit;
     background: transparent;
-    white-space: normal;
+    /*
+     * 编辑态必须逐字符呈现源码空白。break-spaces 保留连续及行尾空格，
+     * 同时仍允许长行换行；阅读态不使用本规则，继续遵循 Markdown
+     * 渲染后的正常空白折叠语义。
+     */
+    white-space: break-spaces;
     overflow-wrap: anywhere;
     tab-size: 4;
     caret-color: #3a8b78;
@@ -104,7 +109,7 @@
     width: 100%;
     min-width: 0;
     max-width: 100%;
-    white-space: normal;
+    white-space: break-spaces;
     overflow-wrap: anywhere;
 }
 .vdoc-md-live-preview-line[data-vdoc-md-line-kind="quote"] {
