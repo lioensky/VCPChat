@@ -109,6 +109,8 @@
             switchMode: (nextMode, options) => switchMode(nextMode, options),
             renderRead: (options) =>
                 context.renderPort.renderRead(options),
+            disposeRead: () =>
+                context.renderPort.disposeSurface('read'),
         });
 
         function switchMode(nextMode, options = {}) {

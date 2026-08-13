@@ -222,8 +222,51 @@ ${primitives.editDecorationsCss()}
     box-sizing: border-box;
     width: 100%;
     height: 100%;
+    min-width: 0;
     padding: var(--vdoc-page-padding-block) var(--vdoc-page-padding-inline);
     overflow: hidden;
+}
+.vdoc-page-content .vdoc-pagination-shell {
+    display: flow-root;
+    min-width: 0;
+    max-width: 100%;
+}
+.vdoc-page-content img,
+.vdoc-page-content svg,
+.vdoc-page-content video,
+.vdoc-page-content canvas,
+.vdoc-page-content iframe,
+.vdoc-page-content object,
+.vdoc-page-content embed {
+    box-sizing: border-box;
+    max-width: 100% !important;
+}
+.vdoc-page-content img,
+.vdoc-page-content svg,
+.vdoc-page-content video {
+    width: auto;
+    height: auto;
+    max-height: calc(
+        var(--vdoc-page-height) - 50mm
+    ) !important;
+    object-fit: contain;
+}
+.vdoc-page-content figure {
+    box-sizing: border-box;
+    max-width: 100%;
+    margin-inline: 0;
+}
+.vdoc-page-content figure > img,
+.vdoc-page-content figure > svg,
+.vdoc-page-content figure > video {
+    display: block;
+    margin-inline: auto;
+}
+.vdoc-page-content [data-vdoc-island],
+.vdoc-page-content [data-vdoc-interactive],
+.vdoc-page-content [data-vdoc-component] {
+    box-sizing: border-box;
+    max-width: 100%;
 }
 `;
             return [
@@ -326,8 +369,9 @@ ${primitives.editDecorationsCss()}
                 'read',
                 options
             );
-            const result = pagination.paginate(
-                primitives.resolveResources(compiled.html),
+            const resolvedHtml = primitives.resolveResources(compiled.html);
+            const paginate = () => pagination.paginate(
+                resolvedHtml,
                 runtime,
                 {
                     ensureIds: (html) => html,
@@ -335,9 +379,56 @@ ${primitives.editDecorationsCss()}
                     zoom: options.zoom,
                 }
             );
+            let result = paginate();
             primitives.renderMath(root);
-            primitives.renderMermaid(root);
+            const mermaidReady = Promise.resolve(
+                primitives.renderMermaid(root)
+            ).catch(() => []);
             primitives.updateZoomLayout(root, options.zoom);
+            let disposed = false;
+
+            const waitForImages = () => {
+                const pending = [...root.querySelectorAll('img')]
+                    .filter((image) => !image.complete);
+                if (!pending.length) return Promise.resolve();
+                return Promise.allSettled(pending.map((image) =>
+                    new Promise((resolve) => {
+                        image.addEventListener('load', resolve, { once: true });
+                        image.addEventListener('error', resolve, { once: true });
+                    })
+                ));
+            };
+            const timeout = (wait) => new Promise((resolve) =>
+                window.setTimeout(resolve, wait)
+            );
+            const ready = Promise.race([
+                Promise.allSettled([
+                    document.fonts?.ready || Promise.resolve(),
+                    waitForImages(),
+                    mermaidReady,
+                ]),
+                timeout(1800),
+            ]).then(async () => {
+                if (disposed || !root.host?.isConnected) return result;
+                context.runtimePort?.disposeSurface?.('read');
+                result = paginate();
+                primitives.renderMath(root);
+                await Promise.resolve(
+                    primitives.renderMermaid(root)
+                ).catch(() => []);
+                primitives.updateZoomLayout(root, options.zoom);
+                if (!disposed && root.host?.isConnected) {
+                    context.runtimePort?.activate?.({
+                        kind: 'flow',
+                        surface: 'read',
+                        root,
+                        adapter,
+                        scrollHost: options.scrollHost,
+                    });
+                }
+                return result;
+            });
+
             const cancelRuntimeActivation = scheduleRuntimeActivation(
                 root,
                 'read',
@@ -347,8 +438,12 @@ ${primitives.editDecorationsCss()}
             return Object.freeze({
                 root,
                 runtime,
-                result,
+                get result() {
+                    return result;
+                },
+                ready,
                 dispose() {
+                    disposed = true;
                     cancelRuntimeActivation();
                     context.runtimePort?.disposeSurface?.('read');
                 },

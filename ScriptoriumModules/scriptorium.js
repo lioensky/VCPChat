@@ -128,6 +128,7 @@
         renderEdit: (...args) => renderPort?.renderEdit(...args),
         renderRead: (...args) => renderPort?.renderRead(...args),
         renderCurrent: (...args) => renderPort?.renderCurrent(...args),
+        disposeSurface: (...args) => renderPort?.disposeSurface(...args),
         patchRegion: (...args) =>
             activeAdapter?.kind === 'flow'
                 ? flowRenderer?.patchRegion?.(...args)

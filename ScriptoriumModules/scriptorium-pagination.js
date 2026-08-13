@@ -1,8 +1,16 @@
 'use strict';
 
 (() => {
-    const FLOW_CONTAINER_TAGS = new Set(['ARTICLE', 'MAIN', 'SECTION']);
-    const TEXT_TAGS = new Set(['P', 'BLOCKQUOTE', 'FIGCAPTION']);
+    const FLOW_CONTAINER_TAGS = new Set([
+        'ARTICLE', 'MAIN', 'SECTION', 'HEADER', 'FOOTER', 'ASIDE', 'NAV',
+        // Marked 将 Markdown 引用编译为 blockquote > p。引用外壳是文本
+        // 语义容器，不是不可拆分组件，必须递归分页其中的段落。
+        'BLOCKQUOTE',
+    ]);
+    const NON_VISUAL_TAGS = new Set([
+        'STYLE', 'SCRIPT', 'LINK', 'META', 'TEMPLATE', 'NOSCRIPT',
+    ]);
+    const TEXT_TAGS = new Set(['P', 'BLOCKQUOTE', 'FIGCAPTION', 'DIV']);
     const HEADING_TAGS = new Set(['H1', 'H2', 'H3', 'H4', 'H5', 'H6']);
     const SAFE_INLINE_TAGS = new Set([
         'A', 'ABBR', 'B', 'BDI', 'BDO', 'BR', 'CITE', 'CODE', 'DATA', 'DEL',
@@ -38,29 +46,88 @@
         return metrics;
     }
 
-    function isSafeInlineTree(node) {
-        if (node.nodeType === Node.TEXT_NODE) return true;
-        if (node.nodeType !== Node.ELEMENT_NODE) return false;
+    function isTextualInline(node) {
+        if (node?.nodeType === Node.TEXT_NODE) return true;
+        if (node?.nodeType !== Node.ELEMENT_NODE) return false;
         if (!SAFE_INLINE_TAGS.has(node.tagName)) return false;
-        if (node.matches(COMPLEX_SELECTOR)) return false;
         if (node.dataset.vdocPagination === 'atomic'
-            || node.dataset.vdocPagination === 'atomic-inline') return false;
-        return [...node.childNodes].every(isSafeInlineTree);
+            || node.dataset.vdocPagination === 'atomic-inline'
+            || node.matches(COMPLEX_SELECTOR)
+            || isInteractiveIsland(node)) {
+            return false;
+        }
+
+        // class、style、CSS 变量、背景、字体、颜色、padding 与纯 CSS 动画
+        // 都只是文字表现，不改变 span/strong/em/code 等节点的文本流身份。
+        // 只有显式原子声明或真实媒体/脚本交互内容才阻止字素级分页。
+        return !node.querySelector?.(
+            'script,canvas,video,audio,iframe,object,embed,'
+            + '[data-vdoc-island],'
+            + '[data-vdoc-interactive],'
+            + '[data-vdoc-component],'
+            + '[data-vdoc-pagination="atomic"],'
+            + '[data-vdoc-pagination="atomic-inline"]'
+        );
+    }
+
+    function isSafeInlineTree(node) {
+        if (!isTextualInline(node)) return false;
+        return node.nodeType === Node.TEXT_NODE
+            || [...node.childNodes].every(isSafeInlineTree);
     }
 
     function isSplittableText(node) {
-        if (!node?.matches?.(TEXT_TAGS.size ? [...TEXT_TAGS].join(',').toLowerCase() : 'p')) {
+        if (!node?.matches?.(
+            TEXT_TAGS.size ? [...TEXT_TAGS].join(',').toLowerCase() : 'p'
+        )) {
             return false;
         }
-        if (node.dataset.vdocPagination === 'atomic') return false;
+        if (node.dataset.vdocPagination === 'atomic'
+            || isInteractiveIsland(node)) {
+            return false;
+        }
+        // 带 class/style/CSS 背景与动画的文本 div 仍属于文字流。
+        // 只要后代全是安全行内节点，就保留外壳并按字素分页。
         return [...node.childNodes].every(isSafeInlineTree);
     }
 
-    function isFlowContainer(node) {
-        if (!node?.tagName) return false;
-        if (node.dataset.vdocPagination === 'atomic') return false;
+    function isInteractiveIsland(node) {
+        if (!node?.matches) return false;
+        if (node.matches('[data-vdoc-island],'
+            + '[data-vdoc-interactive],'
+            + '[data-vdoc-component],'
+            + '[data-vdoc-pagination="atomic"]')) {
+            return true;
+        }
+        return node.matches('canvas,video,audio,iframe,object,embed')
+            || Boolean(node.querySelector?.(
+                ':scope > script,'
+                + ':scope > canvas,'
+                + ':scope > video,'
+                + ':scope > audio,'
+                + ':scope > [data-vdoc-interactive]'
+            ));
+    }
+
+    function isSemanticTextContainer(node) {
+        if (!node?.tagName || isInteractiveIsland(node)) return false;
         if (node.dataset.vdocLayout === 'flow') return true;
-        return FLOW_CONTAINER_TAGS.has(node.tagName);
+        if (FLOW_CONTAINER_TAGS.has(node.tagName)) return true;
+        if (node.tagName !== 'DIV') return false;
+        if (!node.children.length) return Boolean(node.textContent?.trim());
+        return [...node.children].every((child) =>
+            NON_VISUAL_TAGS.has(child.tagName)
+            || HEADING_TAGS.has(child.tagName)
+            || TEXT_TAGS.has(child.tagName)
+            || child.matches?.(
+                'div,ul,ol,table,figure,pre,hr,'
+                + '[data-vdoc-math],[data-vdoc-mermaid]'
+            )
+        );
+    }
+
+    function isFlowContainer(node) {
+        return isSemanticTextContainer(node);
     }
 
     function classify(node) {
@@ -68,9 +135,10 @@
             return node.nodeValue.trim() ? 'text' : 'ignore';
         }
         if (node.nodeType !== Node.ELEMENT_NODE) return 'ignore';
+        if (NON_VISUAL_TAGS.has(node.tagName)) return 'resource';
         if (node.dataset.vdocPageBreakBefore === 'true'
             || node.dataset.vdocPageBreakAfter === 'true') return 'breakable';
-        if (node.dataset.vdocPagination === 'atomic') return 'atomic';
+        if (isInteractiveIsland(node)) return 'atomic';
         if (node.matches('table')) return 'table';
         if (node.matches('ul,ol')) return 'list';
         if (HEADING_TAGS.has(node.tagName)) return 'heading';
@@ -97,7 +165,69 @@
 
     function pageOverflows(page) {
         const content = pageContent(page);
-        return content.scrollHeight > content.clientHeight + 1;
+        if (content.scrollHeight > content.clientHeight + 1
+            || content.scrollWidth > content.clientWidth + 1) {
+            return true;
+        }
+
+        // clientHeight 与外边界都包含页面 padding，但 padding 是页眉、页脚
+        // 和装订留白，不是正文可用空间。若直接与 boundary.bottom 比较，
+        // 列表和段落就会被允许进入底部 26mm 留白，直到纸张边缘才换页。
+        // 因此所有可见内容必须限制在扣除四侧 padding 后的内边界中。
+        const outer = content.getBoundingClientRect();
+        const computed = getComputedStyle(content);
+        const boundary = {
+            top: outer.top + numericCssLength(computed.paddingTop),
+            right: outer.right - numericCssLength(computed.paddingRight),
+            bottom: outer.bottom - numericCssLength(computed.paddingBottom),
+            left: outer.left + numericCssLength(computed.paddingLeft),
+        };
+        return [...content.querySelectorAll(
+            'h1,h2,h3,h4,h5,h6,p,blockquote,figcaption,li,'
+            + 'span,strong,em,code,a,mark,small,sub,sup,'
+            + 'img,svg,canvas,video,audio,table,figure,pre,hr,'
+            + '[data-vdoc-island],[data-vdoc-math],[data-vdoc-mermaid]'
+        )].some((node) => {
+            const rect = node.getBoundingClientRect();
+            return rect.width > 0
+                && rect.height > 0
+                && (
+                    rect.left < boundary.left - 1
+                    || rect.top < boundary.top - 1
+                    || rect.right > boundary.right + 1
+                    || rect.bottom > boundary.bottom + 1
+                );
+        });
+    }
+
+    function nodeHasVisibleContent(node, excludedRoot = null) {
+        if (!node || node === excludedRoot
+            || excludedRoot?.contains?.(node)) {
+            return false;
+        }
+        if (node.nodeType === Node.TEXT_NODE) {
+            return Boolean(node.nodeValue.trim());
+        }
+        if (node.nodeType !== Node.ELEMENT_NODE
+            || NON_VISUAL_TAGS.has(node.tagName)) {
+            return false;
+        }
+        if (node.matches?.(
+            'img,svg,canvas,video,audio,iframe,object,embed,'
+            + 'table,figure,hr,'
+            + '[data-vdoc-island],[data-vdoc-math],[data-vdoc-mermaid]'
+        )) {
+            return true;
+        }
+        return [...node.childNodes].some((child) =>
+            nodeHasVisibleContent(child, excludedRoot)
+        );
+    }
+
+    function pageHasVisibleContent(page, excludedRoot = null) {
+        return [...pageContent(page).childNodes].some((node) =>
+            nodeHasVisibleContent(node, excludedRoot)
+        );
     }
 
     function cloneShell(element) {
@@ -189,22 +319,42 @@
     function createPaginator(runtime, options) {
         let pageIndex = 0;
         let page = createPage(pageIndex, options);
+        const containerStack = [];
         runtime.appendChild(page);
+
+        const appendTarget = () => {
+            let target = pageContent(page);
+            containerStack.forEach((source) => {
+                let shell = [...target.children].at(-1);
+                if (!shell || shell.dataset.vdocPaginationShell
+                    !== source.dataset.vdocPaginationShell) {
+                    shell = cloneShell(source);
+                    shell.classList.add('vdoc-pagination-shell');
+                    shell.dataset.vdocPaginationShell =
+                        source.dataset.vdocPaginationShell;
+                    target.appendChild(shell);
+                }
+                target = shell;
+            });
+            return target;
+        };
 
         const newPage = () => {
             page = createPage(pageIndex += 1, options);
             runtime.appendChild(page);
+            appendTarget();
             return page;
         };
 
         const appendAtomic = (node) => {
-            const target = pageContent(page);
+            const target = appendTarget();
             const clone = sanitizeDerivedTree(node.cloneNode(true));
             target.appendChild(clone);
-            if (pageOverflows(page) && target.children.length > 1) {
+            if (pageOverflows(page)
+                && pageHasVisibleContent(page, clone)) {
                 clone.remove();
                 newPage();
-                pageContent(page).appendChild(clone);
+                appendTarget().appendChild(clone);
             }
             if (pageOverflows(page)) {
                 page.dataset.vdocOverflow = 'true';
@@ -217,7 +367,7 @@
             let safety = 200;
             while (remainder && safety > 0) {
                 safety -= 1;
-                const target = pageContent(page);
+                const target = appendTarget();
                 const clone = sanitizeDerivedTree(remainder.cloneNode(true));
                 target.appendChild(clone);
                 if (!pageOverflows(page)) return;
@@ -231,7 +381,7 @@
                     continue;
                 }
 
-                if (target.children.length) {
+                if (pageHasVisibleContent(page)) {
                     newPage();
                     continue;
                 }
@@ -241,24 +391,25 @@
         };
 
         const appendHeading = (node, nextNode = null) => {
-            const target = pageContent(page);
+            const target = appendTarget();
             const heading = sanitizeDerivedTree(node.cloneNode(true));
             target.appendChild(heading);
-            if (nextNode) {
+            let overflow = pageOverflows(page);
+            if (nextNode && !overflow) {
                 const preview = sanitizeDerivedTree(nextNode.cloneNode(true));
                 preview.dataset.vdocKeepProbe = 'true';
                 target.appendChild(preview);
-                const overflow = pageOverflows(page);
+                overflow = pageOverflows(page);
                 preview.remove();
-                if (overflow && target.children.length > 1) {
-                    heading.remove();
-                    newPage();
-                    pageContent(page).appendChild(heading);
-                }
-            } else if (pageOverflows(page) && target.children.length > 1) {
+            }
+            if (overflow && pageHasVisibleContent(page, heading)) {
                 heading.remove();
                 newPage();
-                pageContent(page).appendChild(heading);
+                appendTarget().appendChild(heading);
+            }
+            if (pageOverflows(page)) {
+                page.dataset.vdocOverflow = 'true';
+                heading.dataset.vdocOverflow = 'true';
             }
         };
 
@@ -277,14 +428,14 @@
             if (thead) shell.appendChild(thead.cloneNode(true));
             let tbody = document.createElement('tbody');
             shell.appendChild(tbody);
-            pageContent(page).appendChild(shell);
+            appendTarget().appendChild(shell);
 
             rows.forEach((row) => {
                 const clone = sanitizeDerivedTree(row.cloneNode(true));
                 tbody.appendChild(clone);
                 if (!pageOverflows(page)) return;
                 clone.remove();
-                if (!tbody.children.length && pageContent(page).children.length === 1) {
+                if (!tbody.children.length && appendTarget().children.length === 1) {
                     tbody.appendChild(clone);
                     page.dataset.vdocOverflow = 'true';
                     return;
@@ -296,7 +447,7 @@
                 tbody = document.createElement('tbody');
                 continued.appendChild(tbody);
                 tbody.appendChild(clone);
-                pageContent(page).appendChild(continued);
+                appendTarget().appendChild(continued);
             });
         };
 
@@ -307,38 +458,76 @@
                 return;
             }
             let shell = cloneShell(list);
-            pageContent(page).appendChild(shell);
-            items.forEach((item) => {
-                const clone = sanitizeDerivedTree(item.cloneNode(true));
-                shell.appendChild(clone);
-                if (!pageOverflows(page)) return;
-                clone.remove();
-                if (!shell.children.length && pageContent(page).children.length === 1) {
-                    shell.appendChild(clone);
-                    page.dataset.vdocOverflow = 'true';
-                    return;
-                }
+            appendTarget().appendChild(shell);
+
+            const createContinuedList = (ordinal) => {
                 newPage();
                 shell = cloneShell(list);
                 if (list.tagName === 'OL') {
-                    const ordinal = items.indexOf(item);
                     shell.start = numericCssLength(list.start, 1) + ordinal;
                 }
-                shell.appendChild(clone);
-                pageContent(page).appendChild(shell);
+                appendTarget().appendChild(shell);
+            };
+
+            items.forEach((item, ordinal) => {
+                let remainder = item;
+                let safety = 200;
+                while (remainder && safety > 0) {
+                    safety -= 1;
+                    const clone = sanitizeDerivedTree(remainder.cloneNode(true));
+                    shell.appendChild(clone);
+                    if (!pageOverflows(page)) return;
+                    clone.remove();
+
+                    // 带 class/style/CSS 动画的 span 仍是行内文本。只要整棵
+                    // li 都由安全行内节点组成，就按字素拆分而不是原子移页。
+                    if ([...remainder.childNodes].every(isSafeInlineTree)) {
+                        const split = splitTextToFit(remainder, page, shell);
+                        if (split) {
+                            shell.appendChild(split.head);
+                            remainder = split.tail;
+                            createContinuedList(ordinal);
+                            continue;
+                        }
+                    }
+
+                    const target = appendTarget();
+                    const listIsOnlyCurrentShell = target.children.length === 1
+                        && target.firstElementChild === shell;
+                    if (pageHasVisibleContent(page, listIsOnlyCurrentShell
+                        ? shell
+                        : null)) {
+                        createContinuedList(ordinal);
+                        continue;
+                    }
+
+                    shell.appendChild(clone);
+                    page.dataset.vdocOverflow = 'true';
+                    clone.dataset.vdocOverflow = 'true';
+                    return;
+                }
             });
         };
 
+        let shellSequence = 0;
         const appendNodes = (nodes) => {
-            const relevant = nodes.filter((node) => classify(node) !== 'ignore');
+            const relevant = nodes.filter((node) =>
+                !['ignore', 'resource'].includes(classify(node))
+            );
             relevant.forEach((node, index) => {
                 const kind = classify(node);
                 const breakBefore = node.dataset?.vdocPageBreakBefore === 'true';
                 const breakAfter = node.dataset?.vdocPageBreakAfter === 'true';
-                if (breakBefore && pageContent(page).children.length) newPage();
+                if (breakBefore && appendTarget().children.length) newPage();
 
                 if (kind === 'flow-container') {
+                    const source = node.cloneNode(false);
+                    source.dataset.vdocPaginationShell =
+                        `shell-${shellSequence += 1}`;
+                    containerStack.push(source);
+                    appendTarget();
                     appendNodes([...node.childNodes]);
+                    containerStack.pop();
                 } else if (kind === 'splittable-text') {
                     appendSplittable(node);
                 } else if (kind === 'heading') {
@@ -351,7 +540,7 @@
                     appendAtomic(node);
                 }
 
-                if (breakAfter && pageContent(page).children.length) newPage();
+                if (breakAfter && appendTarget().children.length) newPage();
             });
         };
 
@@ -363,6 +552,20 @@
         template.innerHTML = options.ensureIds ? options.ensureIds(html) : String(html || '');
         runtime.replaceChildren();
         runtime.className = 'vdoc-runtime vdoc-paged-runtime';
+
+        template.content.querySelectorAll('style,link[rel="stylesheet"]').forEach(
+            (resource) => {
+                if (resource.closest(
+                    '[data-vdoc-island],'
+                    + '[data-vdoc-interactive],'
+                    + '[data-vdoc-component],'
+                    + '[data-vdoc-pagination="atomic"]'
+                )) {
+                    return;
+                }
+                runtime.appendChild(resource.cloneNode(true));
+            }
+        );
 
         if (options.scene?.kind === options.slideDeckKind) {
             const slides = [...template.content.querySelectorAll(':scope > [data-vdoc-slide]')];
@@ -377,16 +580,26 @@
 
         const pages = [...runtime.querySelectorAll(':scope > .vdoc-page')];
         const last = pages.at(-1);
-        if (last && !pageContent(last).children.length && pages.length > 1) last.remove();
+        if (last && !pageHasVisibleContent(last) && pages.length > 1) last.remove();
         [...runtime.querySelectorAll(':scope > .vdoc-page')].forEach((item, index) => {
             item.dataset.pageIndex = String(index);
         });
         return {
             pages: [...runtime.querySelectorAll(':scope > .vdoc-page')],
-            warnings: [...runtime.querySelectorAll('[data-vdoc-overflow="true"]')].map((node) => ({
-                type: 'oversized-atomic-block',
-                blockId: node.dataset.vdocText || node.dataset.vdocBlock || '',
-            })),
+            warnings: [...runtime.querySelectorAll('[data-vdoc-overflow="true"]')]
+                .filter((node) => !node.closest(
+                    '[data-vdoc-overflow="true"] [data-vdoc-overflow="true"]'
+                ))
+                .map((node) => ({
+                    type: node.matches('[data-vdoc-island]')
+                        ? 'oversized-interactive-island'
+                        : 'oversized-atomic-block',
+                    islandId: node.dataset.vdocIsland || null,
+                    blockId: node.dataset.vdocText
+                        || node.dataset.vdocBlock
+                        || node.dataset.vdocIsland
+                        || '',
+                })),
         };
     }
 
@@ -401,10 +614,16 @@
             `&#${character.charCodeAt(0)};`
         );
         const pages = options.runtime.cloneNode(true);
-        pages.querySelectorAll('[contenteditable], [spellcheck], [data-runtime-state]').forEach((node) => {
+        pages.querySelectorAll(
+            '[contenteditable],'
+            + '[spellcheck],'
+            + '[data-runtime-state],'
+            + '[data-vdoc-pagination-shell]'
+        ).forEach((node) => {
             node.removeAttribute('contenteditable');
             node.removeAttribute('spellcheck');
             node.removeAttribute('data-runtime-state');
+            node.removeAttribute('data-vdoc-pagination-shell');
         });
         return `<!doctype html>
 <html lang="${options.language || 'zh-CN'}">
@@ -422,6 +641,9 @@ ${pages.outerHTML}
 
     window.VDocPagination = Object.freeze({
         classify,
+        isInteractiveIsland,
+        isSemanticTextContainer,
+        isTextualInline,
         isSafeInlineTree,
         isSplittableText,
         paginate,
