@@ -257,7 +257,7 @@ app.whenReady().then(async () => {
                 activated: Boolean(headingEditor),
                 handled: enter.defaultPrevented,
                 insertedAfterElement: sourceAfterHeadingEnter.startsWith(
-                    htmlHeading + '\n\n\u200B'
+                    htmlHeading + '\\n\\n\\u200B'
                 ),
                 boundaryEditorActivated: Boolean(boundaryEditor),
                 boundaryFocused,
@@ -277,11 +277,18 @@ app.whenReady().then(async () => {
                 source: sourceAfterSecondEnter
             }
         };
-    })()`);
+    })().catch((error) => ({
+        executionError: {
+            name: error?.name || 'Error',
+            message: error?.message || String(error),
+            stack: error?.stack || ''
+        }
+    }))`);
 
     result.warnings = warnings;
     console.log('[ScriptoriumQuoteLayout]', JSON.stringify(result, null, 2));
-    const passed = result.count === 2
+    const passed = !result.executionError
+        && result.count === 2
         && result.results.every((entry) => entry.activated)
         && result.htmlHeadingEnter?.activated === true
         && result.htmlHeadingEnter?.handled === true

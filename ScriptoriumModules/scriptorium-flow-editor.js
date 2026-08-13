@@ -1924,9 +1924,13 @@
             const insertion = before
                 ? '\u200B  \n\n'
                 : '\n\n\u200B';
+            // 光标必须落在新建占位符之前，而不是占位符之后。这样下一次
+            // Enter 会在光标后始终保留一个真实 Text 节点作为选择锚点；
+            // 若落在区域末尾，首次 Markdown Enter 产生的末尾空行只有
+            // ::before 伪元素，Chromium 重建编辑树后会丢失 Selection。
             const focusOffset = before
                 ? boundary
-                : boundary + insertion.length;
+                : boundary + insertion.indexOf('\u200B');
             const transaction = transact({
                 from: boundary,
                 to: boundary,
