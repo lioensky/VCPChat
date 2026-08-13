@@ -40,6 +40,12 @@ function registerMinimalIpc() {
     ipcMain.handle('docx:read-path', () => ({ success: false, canceled: true }));
     ipcMain.handle('docx:save', () => ({ success: false, canceled: true }));
     ipcMain.handle('scriptorium:export-rich-document', () => ({ success: false, canceled: true }));
+    ipcMain.handle('scriptorium:svg-assets-load', () => []);
+    ipcMain.handle('scriptorium:svg-assets-save', (_event, packs = []) => ({
+        success: true,
+        count: packs.length,
+        size: 0,
+    }));
     ipcMain.handle('open-docx-window', () => ({ success: true }));
 
     ipcMain.on('window-lifecycle:ready', (_event, payload) => {

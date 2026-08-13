@@ -1136,7 +1136,8 @@
                 const localStart = start - region.sourceRange.start;
                 markers.filter((marker) => !inlineKinds.has(marker.kind))
                     .forEach((marker) => {
-                        if (marker.end === localStart) {
+                        const gap = raw.slice(marker.end, localStart);
+                        if (marker.end <= localStart && /^\s*$/.test(gap)) {
                             start = region.sourceRange.start + marker.start;
                         }
                     });
@@ -1903,6 +1904,43 @@
                 if (session.region.type !== 'markdown') return;
                 const offsets = editorSelectionOffsets(editable);
                 if (!offsets) return;
+
+                if (event.inputType === 'deleteContentBackward') {
+                    const raw = sourceForRegion(session.region);
+                    if (offsets.start === offsets.end && offsets.start <= 0) {
+                        return;
+                    }
+                    event.preventDefault();
+
+                    let deletionStart = offsets.start;
+                    if (offsets.start === offsets.end) {
+                        const hardBreak = '  \n\u200B';
+                        const prefix = raw.slice(0, offsets.start);
+                        if (prefix.endsWith(hardBreak)) {
+                            // Enter 写入的是一个不可拆分的 Markdown 硬换行：
+                            // 两个尾随空格、换行符和空行零宽占位符。浏览器若
+                            // 逐字符退格，会先删占位符，再删换行，造成一次
+                            // Enter 需要两次 Backspace。这里按编辑语义原子删除。
+                            deletionStart = offsets.start - hardBreak.length;
+                        } else {
+                            // 保持浏览器对普通文字的单字符退格语义，同时避免
+                            // 将代理对字符拆成无效的半个 UTF-16 序列。
+                            const previous = Array.from(prefix).at(-1) || '';
+                            deletionStart = offsets.start - previous.length;
+                        }
+                    }
+                    commitSessionInsertion(
+                        session,
+                        '',
+                        {
+                            start: deletionStart,
+                            end: offsets.end,
+                        },
+                        'flow-beforeinput-delete-backward'
+                    );
+                    return;
+                }
+
                 if (event.inputType !== 'insertText'
                     || event.data === null) {
                     return;

@@ -104,92 +104,120 @@ app.whenReady().then(async () => {
             requestAnimationFrame(() => requestAnimationFrame(resolve))
         );
 
-        const editor = shell.querySelector(
+        let editor = shell.querySelector(
             '[data-vdoc-flow-source-editor="true"]'
         );
         if (!editor) return { available: false, editorActivated: false };
 
-        const walker = document.createTreeWalker(
-            editor,
-            NodeFilter.SHOW_TEXT
-        );
-        let textNode = walker.nextNode();
-        while (textNode && (textNode.nodeValue || '').length < 4) {
-            textNode = walker.nextNode();
-        }
-        if (!textNode) {
-            return {
-                available: true,
-                editorActivated: true,
-                insertionPointAvailable: false
-            };
-        }
-
-        const offset = Math.max(
-            1,
-            Math.min(textNode.length - 1, Math.floor(textNode.length / 2))
-        );
-        const range = document.createRange();
-        range.setStart(textNode, offset);
-        range.collapse(true);
         const selection = root.getSelection
             ? root.getSelection()
             : window.getSelection();
+        const textNode = document.createTreeWalker(
+            editor,
+            NodeFilter.SHOW_TEXT
+        );
+        let caretNode = textNode.nextNode();
+        while (caretNode && (caretNode.nodeValue || '').length < 4) {
+            caretNode = textNode.nextNode();
+        }
+        if (!caretNode) {
+            return {
+                available: true,
+                editorActivated: true,
+                internalCaretAvailable: false
+            };
+        }
+        const caretOffset = Math.max(
+            1,
+            Math.min(caretNode.length - 1, Math.floor(caretNode.length / 2))
+        );
+        const endRange = document.createRange();
+        endRange.setStart(caretNode, caretOffset);
+        endRange.collapse(true);
         selection.removeAllRanges();
-        selection.addRange(range);
+        selection.addRange(endRange);
         editor.focus();
 
-        const clipboard = new DataTransfer();
-        clipboard.setData('text/plain', '粘贴甲\\r\\n粘贴乙');
-        clipboard.setData(
-            'text/html',
-            '<strong data-vdoc-text="should-not-persist">恶意格式</strong>'
-        );
-        const pasteEvent = new ClipboardEvent('paste', {
+        const enterEvent = new KeyboardEvent('keydown', {
+            key: 'Enter',
             bubbles: true,
             composed: true,
-            cancelable: true,
-            clipboardData: clipboard
+            cancelable: true
         });
-        editor.dispatchEvent(pasteEvent);
+        editor.dispatchEvent(enterEvent);
         await new Promise((resolve) =>
             requestAnimationFrame(() => requestAnimationFrame(resolve))
         );
 
-        const after = source();
-        const insertedMarkdown = '粘贴甲  \\n\\u200B粘贴乙';
+        const afterEnter = source();
+        editor = root.querySelector(
+            '[data-vdoc-flow-source-editor="true"]'
+        );
+        if (!editor) {
+            return {
+                available: true,
+                editorActivated: true,
+                enterWasHandled: enterEvent.defaultPrevented,
+                enterAddsOneCompositeBreak:
+                    afterEnter.length === before.length + 4
+                    && afterEnter.includes('  \\n\\u200B'),
+                editorSurvivesEnterReflow: false
+            };
+        }
+        const backspaceEvent = new InputEvent('beforeinput', {
+            inputType: 'deleteContentBackward',
+            bubbles: true,
+            composed: true,
+            cancelable: true
+        });
+        const selectionBeforeBackspace = selection.rangeCount
+            ? {
+                collapsed: selection.isCollapsed,
+                text: selection.toString(),
+                anchorInEditor: editor.contains(selection.anchorNode),
+                focusInEditor: editor.contains(selection.focusNode)
+            }
+            : null;
+        editor.dispatchEvent(backspaceEvent);
+        await new Promise((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(resolve))
+        );
+        const afterBackspace = source();
+
         return {
             available: true,
             editorActivated: true,
-            insertionPointAvailable: true,
-            pasteWasHandled: pasteEvent.defaultPrevented,
-            plainTextPersisted: after.includes('粘贴甲')
-                && after.includes('粘贴乙'),
-            multilinePasteUsesHardBreak: after.includes(insertedMarkdown),
-            sourceChangedOnce:
-                after.length === before.length + insertedMarkdown.length,
-            htmlClipboardIgnored:
-                !after.includes('should-not-persist')
-                && !after.includes('<strong')
-                && !after.includes('恶意格式'),
-            excludesDerivedDomMetadata:
-                !after.includes('data-vdoc-edit-key')
-                && !after.includes('contenteditable='),
+            enterWasHandled: enterEvent.defaultPrevented,
+            enterAddsOneCompositeBreak:
+                afterEnter.length === before.length + 4
+                && afterEnter.includes('  \\n\\u200B'),
+            backspaceWasHandled: backspaceEvent.defaultPrevented,
+            oneBackspaceRestoresSource: afterBackspace === before,
             diagnostic: {
-                insertedMarkdown,
-                sourceDelta: after.length - before.length
+                inputType: backspaceEvent.inputType,
+                editorConnected: editor.isConnected,
+                editorIsActive: root.activeElement === editor,
+                selectionBeforeBackspace,
+                sourceDeltaAfterBackspace:
+                    afterBackspace.length - before.length
             }
         };
     })()`);
 
-    console.log('[ScriptoriumPaste]', JSON.stringify(result, null, 2));
+    console.log(
+        '[ScriptoriumMarkdownLinebreak]',
+        JSON.stringify(result, null, 2)
+    );
     const passed = Object.entries(result)
         .filter(([key]) => key !== 'diagnostic')
         .every(([, value]) => Boolean(value));
     await windowRef.close();
     app.exit(passed ? 0 : 1);
 }).catch((error) => {
-    console.error('[ScriptoriumPaste] FAILED:', error?.stack || error);
+    console.error(
+        '[ScriptoriumMarkdownLinebreak] FAILED:',
+        error?.stack || error
+    );
     app.exit(1);
 });
 
