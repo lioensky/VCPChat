@@ -513,10 +513,11 @@ try {
         host.remove();
         return { classic, next };
     });
-    const { outerBubble: classicOuterBubble, ...classicMessageComponents } = messageSemantics.classic;
-    const { outerBubble: nextOuterBubble, ...nextMessageComponents } = messageSemantics.next;
-    assert.deepEqual(nextMessageComponents, classicMessageComponents, `Next must preserve upstream structured-message semantics: ${JSON.stringify(messageSemantics)}`);
-    assert.notDeepEqual(nextOuterBubble, classicOuterBubble, 'Next must retain its own outer message bubble presentation');
+    assert.deepEqual(
+        messageSemantics.next,
+        messageSemantics.classic,
+        `Next must preserve the complete Classic message presentation: ${JSON.stringify(messageSemantics)}`
+    );
     assert.notEqual(messageSemantics.next.before.borderLeftColor, messageSemantics.next.after.borderLeftColor, 'Diary before/after emphasis colors must remain distinct');
     const bootLucide = await page.evaluate(() => ({
         lucideIcons: document.querySelectorAll('[data-lucide]').length,

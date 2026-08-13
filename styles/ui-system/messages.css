@@ -1,4 +1,11 @@
 @layer vcp-ui.components {
+    /*
+     * Next owns the application shell around the conversation, but the
+     * conversation itself intentionally keeps the Classic message renderer
+     * and its visual contract. Keep this file limited to scroll-container
+     * chrome; message rows, avatars, metadata, bubbles and structured content
+     * must continue to come from chat.css and messageRenderer.css.
+     */
     html[data-ui-mode="next"] .vcp-ui-scope.chat-messages-container {
         scrollbar-color: var(--vcp-ui-scrollbar-thumb) transparent;
     }
@@ -15,113 +22,5 @@
 
     html[data-ui-mode="next"] .vcp-ui-scope.chat-messages-container::-webkit-scrollbar-thumb:hover {
         background: var(--vcp-ui-scrollbar-thumb-hover);
-    }
-
-    html[data-ui-mode="next"] .vcp-ui-scope .chat-messages {
-        gap: var(--vcp-ui-space-1);
-        padding: var(--vcp-ui-space-4) var(--vcp-ui-space-5) var(--vcp-ui-space-2);
-        font-family: 'Noto Sans SC Variable', var(--vcp-chat-font-family, sans-serif);
-    }
-
-    html[data-ui-mode="next"] .vcp-ui-scope .message-item {
-        gap: var(--vcp-ui-space-2);
-        margin-bottom: var(--vcp-ui-space-3);
-        padding-bottom: var(--vcp-ui-space-1);
-    }
-
-    html[data-ui-mode="next"] .vcp-ui-scope .chat-avatar {
-        width: var(--vcp-ui-message-avatar);
-        height: var(--vcp-ui-message-avatar);
-        border: 1px solid var(--dynamic-avatar-color, var(--vcp-ui-border));
-        transition: border-color var(--vcp-ui-transition-fast);
-    }
-
-    html[data-ui-mode="next"] .vcp-ui-scope .details-and-bubble-wrapper {
-        gap: var(--vcp-ui-space-1);
-    }
-
-    html[data-ui-mode="next"] .vcp-ui-scope .message-item .sender-name {
-        color: var(--dynamic-avatar-color, var(--vcp-ui-text-accent));
-        font-size: var(--vcp-ui-font-helper);
-        font-weight: 600;
-    }
-
-    html[data-ui-mode="next"] .vcp-ui-scope .message-item.user .sender-name,
-    html[data-ui-mode="next"] .vcp-ui-scope .message-item .message-timestamp {
-        color: var(--vcp-ui-text-2);
-        font-size: var(--vcp-ui-font-caption);
-        opacity: 1;
-    }
-
-    html[data-ui-mode="next"] .vcp-ui-scope .message-item .md-content {
-        max-width: var(--vcp-ui-message-max-width);
-        padding: var(--vcp-ui-space-3) var(--vcp-ui-space-4);
-        border: 1px solid var(--vcp-ui-border);
-        border-radius: var(--vcp-ui-radius-card);
-        background: var(--vcp-ui-message-assistant-bg);
-        color: var(--vcp-ui-message-assistant-text);
-        box-shadow: var(--vcp-ui-shadow-sm);
-        backdrop-filter: blur(12px) saturate(1.08);
-        transition: max-width var(--vcp-ui-transition-normal), border-color var(--vcp-ui-transition-fast), box-shadow var(--vcp-ui-transition-fast);
-    }
-
-    html[data-ui-mode="next"] .vcp-ui-scope .message-item.user .md-content {
-        border-color: color-mix(in srgb, var(--vcp-ui-message-user-bg) 45%, var(--vcp-ui-border));
-        border-bottom-right-radius: var(--vcp-ui-radius-sm);
-        background: var(--vcp-ui-message-user-bg);
-        color: var(--vcp-ui-message-user-text);
-    }
-
-    html[data-ui-mode="next"] .vcp-ui-scope .message-item.assistant .md-content,
-    html[data-ui-mode="next"] .vcp-ui-scope .message-item.user.user-bubble-ui-disabled .md-content {
-        border-bottom-left-radius: var(--vcp-ui-radius-sm);
-    }
-
-    html[data-ui-mode="next"] .vcp-ui-scope .main-content.notifications-sidebar-active .message-item .md-content {
-        max-width: var(--vcp-ui-message-max-width-notifications);
-    }
-
-    html[data-ui-mode="next"] body.chat-wide-layout .vcp-ui-scope .message-item .md-content {
-        max-width: var(--vcp-ui-message-max-width-wide);
-    }
-
-    html[data-ui-mode="next"] body.chat-wide-layout .vcp-ui-scope .main-content.notifications-sidebar-active .message-item .md-content {
-        max-width: var(--vcp-ui-message-max-width-wide-notifications);
-    }
-
-    html[data-ui-mode="next"] .vcp-ui-scope .message-item.system.system-message-layout {
-        max-width: min(100%, 640px);
-        padding: var(--vcp-ui-space-2) var(--vcp-ui-space-3);
-        border: 1px solid var(--vcp-ui-border);
-        border-radius: var(--vcp-ui-radius-card);
-        background: var(--vcp-ui-info-bg);
-        color: var(--vcp-ui-text-1);
-        font-size: var(--vcp-ui-font-helper);
-    }
-
-    html[data-ui-mode="next"] .vcp-ui-scope .message-item.system.welcome-bubble {
-        max-width: min(100%, 520px);
-        margin: var(--vcp-ui-space-7) auto;
-        padding: var(--vcp-ui-space-4) var(--vcp-ui-space-5);
-        border-color: var(--vcp-ui-border);
-        border-radius: var(--vcp-ui-radius-card);
-        background: var(--vcp-ui-bg-1);
-        box-shadow: var(--vcp-ui-shadow-md);
-        color: var(--vcp-ui-text-0);
-    }
-
-    @media (max-width: 768px) {
-        html[data-ui-mode="next"] .vcp-ui-scope .chat-messages {
-            padding-inline: var(--vcp-ui-space-3);
-        }
-
-        html[data-ui-mode="next"] .vcp-ui-scope .chat-avatar {
-            width: var(--vcp-ui-control-lg);
-            height: var(--vcp-ui-control-lg);
-        }
-
-        html[data-ui-mode="next"] .vcp-ui-scope .message-item .md-content {
-            max-width: var(--vcp-ui-message-max-width-narrow);
-        }
     }
 }

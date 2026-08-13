@@ -70,6 +70,29 @@ const nextNotificationsCss = fs.readFileSync(
     path.join(root, 'styles', 'ui-system', 'notifications.css'),
     'utf8'
 );
+const nextMessagesCss = postcss.parse(
+    fs.readFileSync(path.join(root, 'styles', 'ui-system', 'messages.css'), 'utf8')
+);
+const forbiddenNextMessageClasses = [
+    'chat-messages',
+    'message-item',
+    'chat-avatar',
+    'details-and-bubble-wrapper',
+    'sender-name',
+    'message-timestamp',
+    'md-content',
+    'vcp-thought-chain-bubble',
+];
+nextMessagesCss.walkRules(rule => {
+    for (const selector of rule.selectors) {
+        assert.ok(
+            forbiddenNextMessageClasses.every(className => (
+                !new RegExp(`\\.${className}(?![\\w-])`).test(selector)
+            )),
+            `Next must not restyle Classic conversation content: ${selector}`
+        );
+    }
+});
 assert.match(
     nextNotificationsCss,
     /notifications-sidebar\s*>\s*\.section-divider\s*\{[\s\S]*?display:\s*block;[\s\S]*?height:\s*1px;/,
