@@ -214,6 +214,10 @@ html[data-vdoc-pdf="true"] *::after {
                     language: documentModel.manifest.language,
                     runtime,
                     css: pagedCss(adapter, options),
+                    // 屏幕外分页测量会给岛留下暂停类和初始化哨兵。
+                    // 独立 HTML 需要恢复为待初始化状态，让内联脚本
+                    // 在新文档中重新建立动画、事件和动态内容。
+                    rehydrateRuntime: true,
                 });
             } finally {
                 options.surfacePort?.disposeRead?.();

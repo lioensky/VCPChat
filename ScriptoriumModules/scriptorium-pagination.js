@@ -651,6 +651,31 @@
             node.removeAttribute('data-runtime-state');
             node.removeAttribute('data-vdoc-pagination-shell');
         });
+
+        if (options.rehydrateRuntime === true) {
+            const islandSelector = [
+                '[data-vdoc-island]',
+                '[data-vdoc-interactive]',
+                '[data-vdoc-component]',
+            ].join(',');
+            pages.querySelectorAll(islandSelector).forEach((island) => {
+                island.classList.remove('vdoc-runtime-paused');
+                island.removeAttribute('data-runtime-state');
+                island.removeAttribute('data-vdoc-initialized');
+                island.removeAttribute('data-bound');
+                island.removeAttribute('data-vdoc-was-playing');
+                island.querySelectorAll(
+                    '[data-vdoc-initialized],'
+                    + '[data-bound],'
+                    + '[data-vdoc-was-playing]'
+                ).forEach((node) => {
+                    node.removeAttribute('data-vdoc-initialized');
+                    node.removeAttribute('data-bound');
+                    node.removeAttribute('data-vdoc-was-playing');
+                });
+            });
+        }
+
         return `<!doctype html>
 <html lang="${options.language || 'zh-CN'}">
 <head>
