@@ -27,24 +27,32 @@ const AGENT_ENDPOINT_METHODS = Object.freeze({
     common: new Set([
         'getDocumentInfo', 'getRenderedText', 'getOutline', 'getSource',
         'searchSource', 'getViewportSource', 'getVisualContext', 'getPrHistory',
-        'submitSourcePr', 'buildProjectArtifact',
+        'listStylePacks', 'getStylePack', 'upsertStylePack',
+        'deleteStylePack', 'submitSourcePr', 'buildProjectArtifact',
     ]),
     docx: new Set([
         'getDocumentInfo', 'getRenderedText', 'getOutline', 'getSource',
         'searchSource', 'getViewportSource', 'getVisualContext', 'getPrHistory',
-        'submitSourcePr', 'buildProjectArtifact', 'getFullText', 'getSection',
+        'listStylePacks', 'getStylePack', 'upsertStylePack',
+        'deleteStylePack', 'submitSourcePr', 'buildProjectArtifact',
+        'getFullText', 'getSection',
     ]),
     pptx: new Set([
         'getDocumentInfo', 'getRenderedText', 'getOutline', 'getSource',
         'searchSource', 'getViewportSource', 'getVisualContext', 'getPrHistory',
-        'submitSourcePr', 'buildProjectArtifact', 'getSlideCount', 'getSlide',
-        'getActiveSlide', 'selectSlide', 'addSlide', 'insertSlide', 'deleteSlide',
+        'listStylePacks', 'getStylePack', 'upsertStylePack',
+        'deleteStylePack', 'submitSourcePr', 'buildProjectArtifact',
+        'getSlideCount', 'getSlide', 'getActiveSlide', 'selectSlide',
+        'addSlide', 'insertSlide', 'deleteSlide',
         'updatePresentationConfig', 'updateSceneConfig',
     ]),
 });
 const AGENT_MUTATION_METHODS = new Set([
     'submitSourcePr', 'addSlide', 'insertSlide', 'deleteSlide',
     'updatePresentationConfig', 'updateSceneConfig',
+]);
+const AGENT_DIRECT_MUTATION_METHODS = new Set([
+    'upsertStylePack', 'deleteStylePack',
 ]);
 
 let docxWindow = null;
@@ -88,6 +96,21 @@ function validateAgentRequest(request = {}) {
         payload.summary = summary;
         payload.requestId = String(payload.requestId || request.requestId || '');
         if (!payload.requestId) throw new Error('Agent 写操作必须提供幂等键 requestId。');
+    } else if (AGENT_DIRECT_MUTATION_METHODS.has(method)) {
+        const maid = normalizeAgentAuthor(
+            payload.maid || payload.author || request.author
+        );
+        if (!maid) {
+            throw new Error('Agent 样式包写操作必须提供 maid 署名字段。');
+        }
+        payload.maid = maid;
+        payload.author = maid;
+        payload.requestId = String(
+            payload.requestId || request.requestId || ''
+        );
+        if (!payload.requestId) {
+            throw new Error('Agent 样式包写操作必须提供幂等键 requestId。');
+        }
     }
     return {
         requestId: String(request.requestId || payload.requestId

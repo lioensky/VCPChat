@@ -218,6 +218,16 @@ const MARKDOWN_FIELD_LABELS = Object.freeze({
     notes: '备注',
     note: '备注',
     summary: '摘要',
+    packs: '样式主题包',
+    pack: '样式主题包',
+    packId: '样式主题包 ID',
+    styleCount: '样式数量',
+    deletedStyleCount: '已删除样式数量',
+    builtin: '内置只读',
+    editable: '允许编辑',
+    builtinPackId: '内置样式包 ID',
+    format: '格式',
+    version: '版本',
     maid: 'Maid 署名',
     author: '作者',
     reviewer: '审阅者',
@@ -565,6 +575,56 @@ async function getPrHistory(args) {
     });
 }
 
+async function listStylePacks(args) {
+    return call(args, 'listStylePacks', {
+        query: args.query,
+        editableOnly: booleanOf(args.editableOnly, false),
+    }, 'common');
+}
+
+async function getStylePack(args) {
+    const packId = String(args.packId || args.id || '').trim();
+    if (!packId) {
+        throw new Error('[ScriptoriumCollaborator] GetStylePack 缺少 packId。');
+    }
+    return call(args, 'getStylePack', { packId }, 'common');
+}
+
+async function upsertStylePack(args, executionContext = {}) {
+    const supplied = args.pack ?? args.source;
+    if (supplied === undefined || supplied === null || supplied === '') {
+        throw new Error(
+            '[ScriptoriumCollaborator] UpsertStylePack 缺少 pack 或 source。'
+        );
+    }
+    const pack = typeof supplied === 'object'
+        ? parseObject(supplied, 'pack')
+        : parseObject(String(supplied), 'source');
+    const maid = authorFromMaid(args, executionContext);
+    return call(args, 'upsertStylePack', {
+        requestId: requestIdOf(args, executionContext),
+        pack,
+        maid,
+        author: maid,
+    }, 'common', executionContext);
+}
+
+async function deleteStylePack(args, executionContext = {}) {
+    const packId = String(args.packId || args.id || '').trim();
+    if (!packId) {
+        throw new Error(
+            '[ScriptoriumCollaborator] DeleteStylePack 缺少 packId。'
+        );
+    }
+    const maid = authorFromMaid(args, executionContext);
+    return call(args, 'deleteStylePack', {
+        requestId: requestIdOf(args, executionContext),
+        packId,
+        maid,
+        author: maid,
+    }, 'common', executionContext);
+}
+
 async function submitSourcePr(args, executionContext = {}) {
     const replacements = args.replacements === undefined
         ? [{
@@ -723,6 +783,17 @@ async function processSingleToolCall(args, executionContext = {}) {
             return getVisualContext(args, executionContext);
         case 'getprhistory':
             return getPrHistory(args);
+        case 'liststylepacks':
+        case 'liststyles':
+            return listStylePacks(args);
+        case 'getstylepack':
+        case 'getstylesource':
+            return getStylePack(args);
+        case 'upsertstylepack':
+        case 'savestylepack':
+            return upsertStylePack(args, executionContext);
+        case 'deletestylepack':
+            return deleteStylePack(args, executionContext);
         case 'submitsourcepr':
             return submitSourcePr(args, executionContext);
         case 'addslide':
@@ -745,7 +816,7 @@ async function processSingleToolCall(args, executionContext = {}) {
             );
         default:
             throw new Error(
-                '[ScriptoriumCollaborator] 不支持的 command。可用值：ListFonts、GetDocumentInfo、GetRenderedText、GetOutline、GetSection、GetSource、SearchSource、GetViewportSource、GetVisualContext、GetPrHistory、SubmitSourcePr、AddSlide、InsertSlide、DeleteSlide、UpdatePresentationConfig、CreateProject、GetStorageInfo。'
+                '[ScriptoriumCollaborator] 不支持的 command。可用值：ListFonts、GetDocumentInfo、GetRenderedText、GetOutline、GetSection、GetSource、SearchSource、GetViewportSource、GetVisualContext、GetPrHistory、ListStylePacks、GetStylePack、UpsertStylePack、DeleteStylePack、SubmitSourcePr、AddSlide、InsertSlide、DeleteSlide、UpdatePresentationConfig、CreateProject、GetStorageInfo。'
             );
     }
 }

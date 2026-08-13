@@ -69,9 +69,11 @@
         const diff = context.prDiff;
         const containerModule = context.containerModule;
         const programmableContent = context.programmableContent;
-        if (!documentPort || !lineagePort || !core || !diff) {
+        const styleLibrary = context.styleLibrary;
+        if (!documentPort || !lineagePort || !core || !diff
+            || !styleLibrary) {
             throw new TypeError(
-                'Agent controller requires DocumentPort, LineagePort, VDocCore and PR diff.'
+                'Agent controller requires DocumentPort, LineagePort, VDocCore, PR diff and VDocStyleLibrary.'
             );
         }
 
@@ -541,6 +543,110 @@
                         && options.slideIndex !== undefined,
                 },
             });
+        }
+
+        function listStylePacks(options = {}) {
+            const query = String(options.query || '').trim().toLowerCase();
+            const editableOnly = options.editableOnly === true;
+            const packs = styleLibrary.listPacks()
+                .filter((pack) => !editableOnly || pack.editable)
+                .filter((pack) => !query || [
+                    pack.manifest.id,
+                    pack.manifest.name,
+                    pack.manifest.description,
+                    pack.manifest.author,
+                    ...pack.styles.flatMap((style) => [
+                        style.id,
+                        style.name,
+                        style.description,
+                        style.category,
+                        ...(style.tags || []),
+                    ]),
+                ].some((value) =>
+                    String(value || '').toLowerCase().includes(query)
+                ));
+            return {
+                success: true,
+                format: styleLibrary.PACK_FORMAT,
+                version: styleLibrary.PACK_VERSION,
+                builtinPackId: styleLibrary.BUILTIN_PACK_ID,
+                count: packs.length,
+                packs,
+            };
+        }
+
+        function getStylePack(options = {}) {
+            const packId = String(
+                options.packId || options.id || ''
+            ).trim();
+            if (!packId) throw new Error('GetStylePack 缺少 packId。');
+            const pack = styleLibrary.getPack(packId);
+            if (!pack) throw new Error(`未找到高级样式包：${packId}`);
+            return {
+                success: true,
+                pack,
+                source: JSON.stringify({
+                    format: pack.format,
+                    version: pack.version,
+                    manifest: pack.manifest,
+                    styles: pack.styles,
+                }, null, 2),
+            };
+        }
+
+        function upsertStylePack(options = {}) {
+            const author = normalizeAuthor(options.maid || options.author);
+            if (!author) {
+                throw new Error('Agent 管理样式包必须提供 maid 署名。');
+            }
+            const supplied = options.pack ?? options.source;
+            let pack = supplied;
+            if (typeof supplied === 'string') {
+                pack = styleLibrary.parsePack(supplied);
+            }
+            if (!pack || typeof pack !== 'object' || Array.isArray(pack)) {
+                throw new Error('UpsertStylePack 缺少 pack JSON 对象或源码。');
+            }
+            const packId = String(pack.manifest?.id || '').trim();
+            const existed = Boolean(styleLibrary.getPack(packId));
+            const result = styleLibrary.registerPack(pack, {
+                conflict: 'replace',
+            });
+            context.onStyleLibraryChange?.({
+                operation: existed ? 'replace' : 'create',
+                pack: result,
+            });
+            return {
+                success: true,
+                operation: existed ? 'replace' : 'create',
+                maid: author,
+                pack: result,
+            };
+        }
+
+        function deleteStylePack(options = {}) {
+            const author = normalizeAuthor(options.maid || options.author);
+            if (!author) {
+                throw new Error('Agent 管理样式包必须提供 maid 署名。');
+            }
+            const packId = String(
+                options.packId || options.id || ''
+            ).trim();
+            if (!packId) throw new Error('DeleteStylePack 缺少 packId。');
+            const existing = styleLibrary.getPack(packId);
+            if (!existing) throw new Error(`未找到高级样式包：${packId}`);
+            styleLibrary.unregisterPack(packId);
+            context.onStyleLibraryChange?.({
+                operation: 'delete',
+                pack: existing,
+            });
+            return {
+                success: true,
+                operation: 'delete',
+                packId,
+                deletedStyleCount: existing.styles.length,
+                maid: author,
+            };
         }
 
         function publicRecord(record) {
@@ -1325,6 +1431,10 @@
             getViewportSource: viewportSource,
             getVisualContext: visualContext,
             getPrHistory: history,
+            listStylePacks,
+            getStylePack,
+            upsertStylePack,
+            deleteStylePack,
             submitSourcePr,
             buildProjectArtifact,
         });
@@ -1368,7 +1478,7 @@
         }
 
         return Object.freeze({
-            version: 3,
+            version: 4,
             common,
             docx,
             pptx,

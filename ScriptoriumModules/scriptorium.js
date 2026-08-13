@@ -544,6 +544,12 @@
                             .map((id) => styleLibrary.get(id))
                             .filter(Boolean);
                     }, { reason: 'advanced-style-used' });
+
+                    // 局部文字补丁只会更新内容节点，不会重建 Shadow DOM
+                    // 中的样式表。样式依赖写入后强制刷新编辑面，确保首次
+                    // 使用的高级样式无需手动刷新即可立即获得对应 CSS。
+                    renderFacade.invalidate('advanced-style-used');
+                    renderFacade.renderEdit({ force: true });
                 },
             });
 
@@ -611,6 +617,7 @@
                 core,
                 containerModule,
                 hybridCompiler,
+                styleLibrary,
                 programmableContent: window.ScriptoriumProgrammableContent,
                 prDiff: window.ScriptoriumPrDiff,
                 historyPort,
@@ -619,6 +626,10 @@
                 getAdapter: adapterResolver,
                 persist: (reason) =>
                     sessionPort.persistCheckpoint(reason),
+                onStyleLibraryChange: () => {
+                    renderFacade.invalidate('style-library-changed');
+                    renderFacade.renderCurrent({ force: true });
+                },
             });
         window.ScriptoriumAgent = agentPort;
 

@@ -1,0 +1,69 @@
+{
+  "format": "vcp-vdoc-style-pack",
+  "version": 1,
+  "manifest": {
+    "id": "vcp.scriptorium.import-test",
+    "name": "Scriptorium 导入测试样式包",
+    "description": "用于验证样式包导入、首次应用即时渲染以及不同目标类型。",
+    "author": "VCP Scriptorium Test",
+    "createdAt": "2026-08-13T04:04:00.000Z"
+  },
+  "styles": [
+    {
+      "id": "vcp.test.neon-marker",
+      "version": 1,
+      "name": "测试·青蓝荧光笔",
+      "description": "高辨识度行内样式，用于确认导入后首次应用能够立即渲染。",
+      "category": "导入测试",
+      "tags": [
+        "测试",
+        "行内",
+        "荧光"
+      ],
+      "targets": [
+        "inline"
+      ],
+      "previewText": "如果这段文字立即显示青蓝底色，说明行内样式测试成功。",
+      "className": "vds-test-neon-marker",
+      "css": ".vds-test-neon-marker {\n  color: #073642;\n  font-weight: 800;\n  padding: 0.08em 0.28em;\n  border-radius: 0.25em;\n  background: linear-gradient(100deg, #72f1d5, #79c7ff);\n  box-shadow: 0 0.08em 0.35em rgba(38, 198, 218, 0.35);\n}"
+    },
+    {
+      "id": "vcp.test.coral-note",
+      "version": 1,
+      "name": "测试·珊瑚提示框",
+      "description": "醒目的段落容器，用于验证 block 与 paragraph 目标。",
+      "category": "导入测试",
+      "tags": [
+        "测试",
+        "段落",
+        "容器"
+      ],
+      "targets": [
+        "block",
+        "paragraph"
+      ],
+      "previewText": "如果整段出现珊瑚色边框和浅色背景，说明段落样式测试成功。",
+      "className": "vds-test-coral-note",
+      "css": ".vds-test-coral-note {\n  position: relative;\n  margin: 1.2em 0;\n  padding: 1em 1.25em 1em 1.5em;\n  border: 2px solid #ff7f6e;\n  border-left-width: 0.5em;\n  border-radius: 0.65em;\n  color: #612d2a;\n  background: linear-gradient(135deg, #fff3ef, #ffe4dc);\n  box-shadow: 0 0.4em 1.2em rgba(180, 75, 58, 0.16);\n}\n.vds-test-coral-note::before {\n  content: \"TEST\";\n  display: inline-block;\n  margin-right: 0.75em;\n  color: #b64035;\n  font: 800 0.7em/1.4 system-ui, sans-serif;\n  letter-spacing: 0.12em;\n}"
+    },
+    {
+      "id": "vcp.test.violet-heading",
+      "version": 1,
+      "name": "测试·紫晶标题",
+      "description": "带渐变文字与下划线的标题样式，用于验证 heading 目标。",
+      "category": "导入测试",
+      "tags": [
+        "测试",
+        "标题",
+        "渐变"
+      ],
+      "targets": [
+        "heading",
+        "block"
+      ],
+      "previewText": "导入测试标题",
+      "className": "vds-test-violet-heading",
+      "css": ".vds-test-violet-heading {\n  margin: 1.4em 0 0.75em;\n  padding-bottom: 0.35em;\n  color: #6f42c1;\n  border-bottom: 3px solid #b794f4;\n  text-shadow: 0 0.08em 0.22em rgba(111, 66, 193, 0.2);\n  letter-spacing: 0.06em;\n}\n.vds-test-violet-heading::after {\n  content: \"\";\n  display: block;\n  width: 4em;\n  height: 0.16em;\n  margin-top: 0.35em;\n  border-radius: 999px;\n  background: linear-gradient(90deg, #6f42c1, #e879f9);\n}"
+    }
+  ]
+}

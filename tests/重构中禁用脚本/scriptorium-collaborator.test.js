@@ -1,7 +1,7 @@
 'use strict';
 
 const assert = require('assert');
-const collaborator = require('../VCPDistributedServer/Plugin/ScriptoriumCollaborator/ScriptoriumCollaboratorService');
+const collaborator = require('../../VCPDistributedServer/Plugin/ScriptoriumCollaborator/ScriptoriumCollaboratorService');
 
 function createControl() {
     const calls = [];
@@ -28,6 +28,61 @@ function createControl() {
                             type: 'human',
                         },
                     },
+                };
+            }
+            if (request.method === 'listStylePacks') {
+                return {
+                    success: true,
+                    builtinPackId: 'vcp.scriptorium.classics',
+                    count: 1,
+                    packs: [{
+                        manifest: {
+                            id: 'vcp.scriptorium.classics',
+                            name: '文坊经典样式',
+                        },
+                        builtin: true,
+                        editable: false,
+                        styleCount: 5,
+                        styles: [],
+                    }],
+                };
+            }
+            if (request.method === 'getStylePack') {
+                return {
+                    success: true,
+                    pack: {
+                        format: 'vcp-vdoc-style-pack',
+                        version: 1,
+                        manifest: {
+                            id: request.payload.packId,
+                            name: '测试主题',
+                        },
+                        editable: true,
+                        styles: [{
+                            id: 'vcp.test.accent',
+                            targets: ['inline'],
+                            className: 'vds-test-accent',
+                            css: '.vds-test-accent{color:#7651c9}',
+                        }],
+                    },
+                    source: '{\n  "format": "vcp-vdoc-style-pack"\n}',
+                };
+            }
+            if (request.method === 'upsertStylePack') {
+                return {
+                    success: true,
+                    operation: 'create',
+                    maid: request.payload.maid,
+                    pack: request.payload.pack,
+                };
+            }
+            if (request.method === 'deleteStylePack') {
+                return {
+                    success: true,
+                    operation: 'delete',
+                    packId: request.payload.packId,
+                    deletedStyleCount: 1,
+                    maid: request.payload.maid,
                 };
             }
             if (request.method === 'getSource') {
@@ -168,6 +223,84 @@ async function run() {
     assert.ok(submittedMarkdown.includes('## 审批回执'));
     assert.ok(submittedMarkdown.includes('- **消息**：人类确认通过。'));
     assert.ok(!submittedMarkdown.includes('```json'));
+
+    const styleList = await collaborator.processToolCall({
+        command: 'ListStylePacks',
+        query: '经典',
+    });
+    assert.strictEqual(styleList.details.count, 1);
+    assert.strictEqual(styleList.details.packs[0].editable, false);
+
+    const styleSource = await collaborator.processToolCall({
+        command: 'GetStylePack',
+        packId: 'vcp.test.theme',
+    });
+    assert.strictEqual(
+        styleSource.details.pack.manifest.id,
+        'vcp.test.theme'
+    );
+    assert.ok(styleSource.content[0].text.includes(
+        'vcp-vdoc-style-pack'
+    ));
+
+    const pack = {
+        format: 'vcp-vdoc-style-pack',
+        version: 1,
+        manifest: {
+            id: 'vcp.test.generated',
+            name: 'Agent 批量生成主题',
+        },
+        styles: [{
+            id: 'vcp.test.generated.accent',
+            name: '批量强调',
+            targets: ['inline'],
+            className: 'vds-generated-accent',
+            css: '.vds-generated-accent{color:#7651c9}',
+        }],
+    };
+    const upserted = await collaborator.processToolCall({
+        command: 'UpsertStylePack',
+        maid: 'Nova',
+        source: JSON.stringify(pack),
+    }, {
+        requestId: 'style-upsert-request',
+        vcpContext: { agentId: 'agent-nova' },
+    });
+    const upsertCall = control.calls.find((entry) =>
+        entry.type === 'call'
+        && entry.request.method === 'upsertStylePack'
+    );
+    assert.ok(upsertCall);
+    assert.strictEqual(
+        upsertCall.request.requestId,
+        'style-upsert-request'
+    );
+    assert.deepStrictEqual(upsertCall.request.payload.pack, pack);
+    assert.deepStrictEqual(upsertCall.request.payload.maid, {
+        id: 'agent-nova',
+        name: 'Nova',
+        type: 'agent',
+    });
+    assert.strictEqual(upserted.details.operation, 'create');
+
+    const deleted = await collaborator.processToolCall({
+        command: 'DeleteStylePack',
+        packId: 'vcp.test.generated',
+        maid: 'Nova',
+    }, {
+        requestId: 'style-delete-request',
+        vcpContext: { agentId: 'agent-nova' },
+    });
+    const deleteCall = control.calls.find((entry) =>
+        entry.type === 'call'
+        && entry.request.method === 'deleteStylePack'
+    );
+    assert.ok(deleteCall);
+    assert.strictEqual(
+        deleteCall.request.payload.packId,
+        'vcp.test.generated'
+    );
+    assert.strictEqual(deleted.details.deletedStyleCount, 1);
 
     const fenced = collaborator._test.markdownFence(
         'const example = `value`;\n```\nend',
