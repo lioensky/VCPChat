@@ -34,6 +34,7 @@ const { createCentralSyncAdapter } = require("./sync/central");
 const { isWriteLocked, sanitizeId, deleteEntity, deleteMessage } = require("./sync/entity");
 const { getLogger, resetLogger } = require("./core/logger");
 const { createPhaseAck, createVersionAck } = require("./protocol");
+const { withSyncErrorContext } = require("./error-contract");
 const {
   AGENT_SYNC_FIELDS,
   GROUP_SYNC_FIELDS,
@@ -286,9 +287,10 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
                 appDataPath,
               });
               if (!result?.success) {
-                const error = new Error(result?.error || "entity delete failed");
-                error.code = "SYNC_DELETE_FAILED";
-                throw error;
+                throw withSyncErrorContext(
+                  result?.error || "entity delete failed",
+                  { code: "SYNC_DELETE_FAILED", stage: "owner_metadata" },
+                );
               }
               await centralSync.reconcile();
             }
@@ -308,7 +310,16 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
               topicId: safeTopicId,
               appDataPath,
             });
-            if (!result?.success) throw new Error(result?.error || "message delete failed");
+            if (!result?.success) {
+              throw withSyncErrorContext(
+                result?.error || "message delete failed",
+                {
+                  code: "SYNC_DELETE_FAILED",
+                  stage: "messages",
+                  failedTopicIds: [safeTopicId],
+                },
+              );
+            }
             logger.logOperation("websocket", "delete_notify", safeId, "success", "type=message");
           } else if (dataType === "avatar") {
             const result = await deleteEntity({
@@ -318,11 +329,29 @@ async function registerRoutes(app, pluginConfig, projectBasePath, services = {})
               deletedAt,
               appDataPath,
             });
-            if (!result?.success) throw new Error(result?.error || "avatar delete failed");
+            if (!result?.success) {
+              throw withSyncErrorContext(
+                result?.error || "avatar delete failed",
+                { code: "SYNC_DELETE_FAILED", stage: "owner_metadata" },
+              );
+            }
             logger.logOperation("websocket", "delete_notify", rawId, "success", "type=avatar");
           } else {
             const result = await deleteEntity({ id: safeId, type: dataType, deletedAt, appDataPath });
-            if (!result?.success) throw new Error(result?.error || "entity delete failed");
+            if (!result?.success) {
+              throw withSyncErrorContext(
+                result?.error || "entity delete failed",
+                {
+                  code: "SYNC_DELETE_FAILED",
+                  stage: ["topic", "agent_topic", "group_topic"].includes(dataType)
+                    ? "topic_metadata"
+                    : "owner_metadata",
+                  failedTopicIds: ["topic", "agent_topic", "group_topic"].includes(dataType)
+                    ? [safeId]
+                    : [],
+                },
+              );
+            }
             logger.logOperation("websocket", "delete_notify", safeId, "success", `type=${dataType}`);
           }
 

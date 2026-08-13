@@ -1,0 +1,180 @@
+{
+  "schema": "vcp-sync-error-contract-1.2-golden",
+  "wireProtocol": "1.2",
+  "pluginVersion": "1.2.0",
+  "registeredSemantics": {
+    "AMBIGUOUS_IDENTITY": ["data", "manual"],
+    "ATTACHMENT_PATH_INVALID": ["storage", "after_user_action"],
+    "BATTERY_TOO_LOW": ["device", "after_user_action"],
+    "CANCELLED": ["internal", "never"],
+    "CDS_ERROR": ["internal", "manual"],
+    "CDS_PROTOCOL_MISMATCH": ["compatibility", "after_user_action"],
+    "CDS_UNAVAILABLE": ["internal", "manual"],
+    "FINAL_ACK_TIMEOUT": ["connection", "manual"],
+    "HEALTH_CHECK_FAILED": ["connection", "manual"],
+    "HISTORY_SOURCE_INVALID": ["data", "after_user_action"],
+    "HTTP_ERROR": ["connection", "manual"],
+    "INTERNAL_ERROR": ["internal", "manual"],
+    "INVALID_CONFIGURATION": ["configuration", "after_user_action"],
+    "INVALID_REQUEST": ["protocol", "after_user_action"],
+    "INVALID_RESPONSE": ["protocol", "after_user_action"],
+    "MANIFEST_RESPONSE_TIMEOUT": ["connection", "manual"],
+    "MESSAGE_DIFF_FAILED": ["storage", "manual"],
+    "MESSAGE_MANIFEST_FAILED": ["storage", "manual"],
+    "MOBILE_ATTACHMENT_INVALID": ["data", "after_user_action"],
+    "MOBILE_SYNC_ERROR": ["internal", "manual"],
+    "NOT_FOUND": ["data", "manual"],
+    "PHASE3_RESPONSE_TIMEOUT": ["connection", "manual"],
+    "PLUGIN_VERSION_MISMATCH": ["compatibility", "after_user_action"],
+    "POWER_SAVE_MODE": ["device", "after_user_action"],
+    "PROTOCOL_DUPLICATE_KEY": ["protocol", "after_user_action"],
+    "PROTOCOL_INVALID": ["protocol", "after_user_action"],
+    "PROTOCOL_MISMATCH": ["compatibility", "after_user_action"],
+    "RESPONSE_TOO_LARGE": ["data", "after_user_action"],
+    "SEARCH_UNAVAILABLE": ["storage", "manual"],
+    "SERVICE_BUSY": ["connection", "manual"],
+    "SYNC_ATTACHMENT_NOT_FOUND": ["data", "manual"],
+    "SYNC_ATTACHMENT_READ_FAILED": ["storage", "manual"],
+    "SYNC_ATTACHMENT_WRITE_FAILED": ["storage", "manual"],
+    "SYNC_ATTEMPT_FAILED": ["internal", "manual"],
+    "SYNC_AUTH_FAILED": ["configuration", "after_user_action"],
+    "SYNC_AVATAR_NOT_FOUND": ["data", "manual"],
+    "SYNC_AVATAR_READ_FAILED": ["storage", "manual"],
+    "SYNC_AVATAR_WRITE_FAILED": ["storage", "manual"],
+    "SYNC_BUDGET_EXCEEDED": ["data", "after_user_action"],
+    "SYNC_CHANGE_FEED_FAILED": ["storage", "manual"],
+    "SYNC_CHANGE_FEED_UNAVAILABLE": ["configuration", "after_user_action"],
+    "SYNC_DB_DRAIN_FAILED": ["storage", "manual"],
+    "SYNC_DB_QUERY_FAILED": ["storage", "manual"],
+    "SYNC_DB_UNAVAILABLE": ["storage", "manual"],
+    "SYNC_DELETE_FAILED": ["storage", "manual"],
+    "SYNC_DELETE_INVALID": ["protocol", "after_user_action"],
+    "SYNC_ENTITY_BATCH_FAILED": ["storage", "manual"],
+    "SYNC_ENTITY_NOT_FOUND": ["data", "manual"],
+    "SYNC_ENTITY_READ_FAILED": ["storage", "manual"],
+    "SYNC_ENTITY_WRITE_FAILED": ["storage", "manual"],
+    "SYNC_INDEX_INVALID": ["storage", "manual"],
+    "SYNC_MESSAGE_READ_FAILED": ["storage", "manual"],
+    "SYNC_MESSAGE_WRITE_FAILED": ["storage", "manual"],
+    "SYNC_OWNER_CONFLICT": ["data", "manual"],
+    "SYNC_PHASE_STALLED": ["internal", "manual"],
+    "SYNC_PREVIOUS_SESSION_EXIT_FAILED": ["internal", "manual"],
+    "SYNC_PROTOCOL_INVALID": ["protocol", "after_user_action"],
+    "SYNC_REQUEST_INVALID": ["protocol", "after_user_action"],
+    "SYNC_STREAM_FAILED": ["connection", "manual"],
+    "SYNC_VERSION_INCOMPATIBLE": ["compatibility", "after_user_action"],
+    "TIMEOUT": ["connection", "manual"],
+    "TOPIC_HASH_FAILED": ["storage", "manual"],
+    "TOPIC_HASH_RESPONSE_TIMEOUT": ["connection", "manual"],
+    "TOPIC_NOT_FOUND": ["data", "manual"],
+    "UNAUTHORIZED": ["configuration", "after_user_action"],
+    "UNAVAILABLE": ["connection", "manual"],
+    "VERSION_ACK_INVALID": ["protocol", "after_user_action"],
+    "VERSION_CHECK_DUPLICATE": ["protocol", "after_user_action"],
+    "VERSION_CHECK_INVALID": ["protocol", "after_user_action"],
+    "VERSION_CHECK_REQUIRED": ["protocol", "after_user_action"],
+    "VERSION_CHECK_TIMEOUT": ["connection", "manual"]
+  },
+  "validErrors": [
+    {
+      "name": "handshake_plugin_version_mismatch",
+      "error": {
+        "code": "PLUGIN_VERSION_MISMATCH",
+        "origin": "desktop_plugin",
+        "stage": "handshake",
+        "kind": "compatibility",
+        "retry": "after_user_action",
+        "message": "plugin package mismatch",
+        "failedTopicIds": []
+      }
+    },
+    {
+      "name": "desktop_cds_message_failure",
+      "error": {
+        "code": "SYNC_DB_QUERY_FAILED",
+        "origin": "desktop_cds",
+        "stage": "messages",
+        "kind": "storage",
+        "retry": "manual",
+        "message": "message diff query failed",
+        "failedTopicIds": ["topic-a"]
+      }
+    },
+    {
+      "name": "unknown_stable_upstream_code",
+      "error": {
+        "code": "UPSTREAM_EXTENSION_FAILED",
+        "origin": "desktop_plugin",
+        "stage": "finalize",
+        "kind": "internal",
+        "retry": "manual",
+        "message": "extension returned an unknown stable code",
+        "failedTopicIds": []
+      }
+    }
+  ],
+  "invalidErrors": [
+    {
+      "name": "legacy_string_error",
+      "error": "database failed"
+    },
+    {
+      "name": "missing_stage",
+      "error": {
+        "code": "SYNC_DB_QUERY_FAILED",
+        "origin": "desktop_plugin",
+        "kind": "storage",
+        "retry": "manual",
+        "message": "missing stage"
+      }
+    },
+    {
+      "name": "invalid_code",
+      "error": {
+        "code": "desktop raw code",
+        "origin": "desktop_plugin",
+        "stage": "messages",
+        "kind": "internal",
+        "retry": "manual",
+        "message": "invalid code"
+      }
+    },
+    {
+      "name": "platform_dns_code",
+      "error": {
+        "code": "EAI_AGAIN",
+        "origin": "desktop_plugin",
+        "stage": "connect",
+        "kind": "connection",
+        "retry": "manual",
+        "message": "platform DNS code must use a boundary code",
+        "failedTopicIds": []
+      }
+    },
+    {
+      "name": "unknown_field",
+      "error": {
+        "code": "SYNC_DB_QUERY_FAILED",
+        "origin": "desktop_plugin",
+        "stage": "messages",
+        "kind": "storage",
+        "retry": "manual",
+        "message": "unexpected extension",
+        "failedTopicIds": [],
+        "debug": "not part of the wire contract"
+      }
+    },
+    {
+      "name": "known_code_kind_mismatch",
+      "error": {
+        "code": "POWER_SAVE_MODE",
+        "origin": "mobile_native",
+        "stage": "preflight",
+        "kind": "compatibility",
+        "retry": "after_user_action",
+        "message": "known code claims the wrong category",
+        "failedTopicIds": []
+      }
+    }
+  ]
+}

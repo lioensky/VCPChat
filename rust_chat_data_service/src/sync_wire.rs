@@ -318,15 +318,15 @@ mod tests {
     use super::{canonicalize_message, message_fingerprint, normalize_integer, WireWarnings};
 
     const GOLDEN: &[u8] = include_bytes!(
-        "../../VCPDistributedServer/Plugin/VCPMobileSync/fixtures/protocol_1_1_golden.json"
+        "../../VCPDistributedServer/Plugin/VCPMobileSync/fixtures/protocol_1_2_golden.json"
     );
-    const GOLDEN_SHA256: &str = "3b5f56d0731c1babede9aba001d9664117fae6bbc8d97cae56882f12a48e8e60";
+    const GOLDEN_SHA256: &str = "7226118ea55766f952575032efc8cfff883a19c9d196f637ac267cb8795fcef8";
 
     #[test]
-    fn protocol_1_1_golden_bundle_matches_mobile() {
+    fn protocol_1_2_golden_bundle_matches_mobile() {
         assert_eq!(hex::encode(Sha256::digest(GOLDEN)), GOLDEN_SHA256);
         let bundle: serde_json::Value = serde_json::from_slice(GOLDEN).expect("golden JSON");
-        assert_eq!(bundle["wireProtocol"], "1.1");
+        assert_eq!(bundle["wireProtocol"], "1.2");
 
         for fixture in bundle["validFrames"].as_array().expect("valid frames") {
             let input = &fixture["input"];

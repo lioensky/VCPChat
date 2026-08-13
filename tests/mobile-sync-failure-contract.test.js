@@ -148,7 +148,12 @@ test("Phase 3 decision 只返回严格判别联合且不在 diff 中执行删除
     ok: false,
     error: {
       code: "TOPIC_NOT_FOUND",
+      origin: "desktop_plugin",
+      stage: "messages",
+      kind: "data",
+      retry: "manual",
       message: "Topic topic-missing was not found in the desktop index",
+      failedTopicIds: ["topic-missing"],
     },
   });
 });

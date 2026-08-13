@@ -1,8 +1,8 @@
 "use strict";
 
 const FINAL_ACK_IDENTITY_FIELDS = ["sessionId", "attemptId", "nonce"];
-const WIRE_PROTOCOL_VERSION = "1.1";
-const EXPECTED_PLUGIN_VERSION = "1.1.0";
+const WIRE_PROTOCOL_VERSION = "1.2";
+const EXPECTED_PLUGIN_VERSION = "1.2.0";
 
 function parseJsonWithoutDuplicateKeys(text) {
   if (typeof text !== "string") {

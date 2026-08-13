@@ -4,6 +4,12 @@
 
 const { getLogger, setWss } = require("../core/logger");
 const { parseJsonWithoutDuplicateKeys } = require("../protocol");
+const {
+  createSyncError,
+  createSyncErrorFrame,
+  parseSyncError,
+  withSyncErrorContext,
+} = require("../error-contract");
 const { TextDecoder } = require("node:util");
 
 let WebSocket;
@@ -15,6 +21,51 @@ try {
 
 let wss = null;
 let wsServerPort = null;
+
+function errorStageForPayload(payload, versionAccepted, currentStage) {
+  if (!versionAccepted || payload?.type === "VERSION_CHECK") return "handshake";
+  if (payload?.type === "SYNC_ERROR") return "shutdown";
+  if (payload?.type === "SYNC_MESSAGE_DIFF_BATCH") return "messages";
+  if (payload?.type === "GET_MESSAGE_MANIFEST") return "messages";
+  if (
+    payload?.type === "SYNC_TOPIC_HASH_BATCH" ||
+    payload?.type === "SYNC_TOPIC_HASH_BATCH_V2"
+  ) {
+    return "topic_validation";
+  }
+  if (payload?.type === "SYNC_MANIFEST") {
+    return ["topic", "agent_topic", "group_topic"].includes(payload.dataType)
+      ? "topic_metadata"
+      : "owner_metadata";
+  }
+  if (payload?.type === "SYNC_ENTITY_UPDATE" || payload?.type === "SYNC_ENTITY_DELETE") {
+    if (payload.dataType === "message") return "messages";
+    return ["topic", "agent_topic", "group_topic"].includes(payload.dataType)
+      ? "topic_metadata"
+      : "owner_metadata";
+  }
+  if (
+    (payload?.type === "PHASE_START" || payload?.type === "PHASE_COMPLETED") &&
+    [
+      "owner_metadata",
+      "topic_metadata",
+      "topic_validation",
+      "messages",
+      "finalize",
+    ].includes(payload.phase)
+  ) {
+    if (
+      payload.type === "PHASE_COMPLETED" &&
+      Number.isSafeInteger(payload.sessionId) &&
+      Number.isSafeInteger(payload.attemptId) &&
+      typeof payload.nonce === "string"
+    ) {
+      return "finalize";
+    }
+    return payload.phase;
+  }
+  return currentStage;
+}
 
 /**
  * 启动 WebSocket 服务器
@@ -99,48 +150,56 @@ function startWsServer({ port, syncToken, onMessage }) {
     );
 
     let versionAccepted = false;
+    let currentStage = "handshake";
     let terminated = false;
     let messageChain = Promise.resolve();
     const utf8Decoder = new TextDecoder("utf-8", { fatal: true });
 
     const handleMessage = async (message) => {
       if (terminated) return;
+      let payload = null;
       try {
         const text =
           typeof message === "string" ? message : utf8Decoder.decode(message);
-        const payload = parseJsonWithoutDuplicateKeys(text);
+        payload = parseJsonWithoutDuplicateKeys(text);
         if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
-          const error = new Error("WebSocket payload must be an object");
-          error.code = "PROTOCOL_INVALID";
-          throw error;
+          throw createSyncError(
+            "PROTOCOL_INVALID",
+            "WebSocket payload must be an object",
+            { stage: "handshake" },
+          );
         }
         if (!versionAccepted && payload.type !== "VERSION_CHECK") {
-          const error = new Error("VERSION_CHECK must be the first business frame");
-          error.code = "VERSION_CHECK_REQUIRED";
-          throw error;
+          throw createSyncError(
+            "VERSION_CHECK_REQUIRED",
+            "VERSION_CHECK must be the first business frame",
+          );
         }
         if (versionAccepted && payload.type === "VERSION_CHECK") {
-          const error = new Error("VERSION_CHECK may only appear once per connection");
-          error.code = "VERSION_CHECK_DUPLICATE";
-          throw error;
+          throw createSyncError(
+            "VERSION_CHECK_DUPLICATE",
+            "VERSION_CHECK may only appear once per connection",
+          );
         }
         if (payload.type === "SYNC_ERROR") {
-          const code = payload.error?.code;
-          const message = payload.error?.message;
-          const error = new Error(
-            typeof message === "string" && message.length > 0
-              ? message
-              : "Mobile reported a sync failure",
-          );
-          error.code =
-            typeof code === "string" && code.length > 0
-              ? code
-              : "MOBILE_SYNC_ERROR";
-          throw error;
+          throw withSyncErrorContext(parseSyncError(payload.error), {
+            code: "MOBILE_SYNC_ERROR",
+            origin: "mobile_sync",
+            stage: "shutdown",
+          });
         }
 
         const response = await onMessage(payload);
-        if (payload.type === "VERSION_CHECK") versionAccepted = true;
+        if (payload.type === "VERSION_CHECK") {
+          versionAccepted = true;
+          currentStage = "startup";
+        } else {
+          currentStage = errorStageForPayload(
+            payload,
+            versionAccepted,
+            currentStage,
+          );
+        }
         if (response) {
           const responseText = JSON.stringify(response);
           const logger = getLogger();
@@ -159,15 +218,20 @@ function startWsServer({ port, syncToken, onMessage }) {
       } catch (e) {
         terminated = true;
         const logger = getLogger();
-        logger.logOperation("websocket", "message_handler", "error", "error", e.message);
+        const error = withSyncErrorContext(e, {
+          code: "SYNC_ATTEMPT_FAILED",
+          origin: "desktop_plugin",
+          stage: errorStageForPayload(payload, versionAccepted, currentStage),
+        });
+        logger.logOperation(
+          "websocket",
+          "message_handler",
+          error.code,
+          "error",
+          `origin=${error.origin} stage=${error.stage} ${error.message}`,
+        );
         if (ws.readyState === WebSocket.OPEN) {
-          const frame = JSON.stringify({
-            type: "SYNC_ERROR",
-            error: {
-              code: e.code || "SYNC_ATTEMPT_FAILED",
-              message: e.message || "Desktop sync failed",
-            },
-          });
+          const frame = JSON.stringify(createSyncErrorFrame(error));
           try {
             await new Promise((resolve) => ws.send(frame, resolve));
           } catch {}

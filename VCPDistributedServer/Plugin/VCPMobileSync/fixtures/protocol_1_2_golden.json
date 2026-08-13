@@ -1,6 +1,6 @@
 {
-  "schema": "vcp-sync-protocol-1.1-golden",
-  "wireProtocol": "1.1",
+  "schema": "vcp-sync-protocol-1.2-golden",
+  "wireProtocol": "1.2",
   "validFrames": [
     {
       "name": "flat_nested_null_missing_conflict_unicode_html_empty",

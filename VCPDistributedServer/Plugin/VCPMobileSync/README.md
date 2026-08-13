@@ -1,15 +1,15 @@
 # VCPMobileSync (VCP 移动端双向增量同步服务插件)
 
-[![Version](https://img.shields.io/badge/Version-1.1.0-blue.svg?style=flat-square)](./plugin-manifest.json)
+[![Version](https://img.shields.io/badge/Version-1.2.0-blue.svg?style=flat-square)](./plugin-manifest.json)
 [![Platform](https://img.shields.io/badge/Platform-Node.js%20%7C%20Electron-brightgreen.svg?style=flat-square)](https://nodejs.org)
-[![Sync Protocol](https://img.shields.io/badge/Wire%20Protocol-1.1-orange.svg?style=flat-square)](#协议-11-硬切与兼容边界)
+[![Sync Protocol](https://img.shields.io/badge/Wire%20Protocol-1.2-orange.svg?style=flat-square)](#协议-12-硬切与兼容边界)
 
 **让 VCPChat 桌面端和 VCPMobile 手机端的数据进行可诊断、失败即停的双向增量同步。**
 
 VCPMobileSync 是 VCPChat 桌面端的专属分布式服务插件，采用 **Double-Track 3-Tier（双轨三层）** 同步架构。它不仅为普通用户提供直观的一键双向数据合并能力，其底层更设计了严苛的多层级 Merkle 聚合指纹算法与 NDJSON 流式吞吐防线，保障海量聊天数据与大文件附件在局域网内以极低延迟、强事务安全性进行无损传输。
 
 > [!IMPORTANT]
-> 本版本只修改 MobileSync 插件、VCP-CDS 同步接口及其启动/打包接线，不修改模型调用、提示词、消息渲染或普通聊天保存逻辑。中央模式的 Mobile→Desktop 消息同步本来就会投影并写入 `history.json`；1.1 对这条既有同步写入增加严格解析、来源 hash 校验、原子替换和失败传播，但不会回写桌面旧消息的附件结构。
+> 本版本只修改 MobileSync 插件、VCP-CDS 同步接口及其启动/打包接线，不修改模型调用、提示词、消息渲染或普通聊天保存逻辑。中央模式的 Mobile→Desktop 消息同步本来就会投影并写入 `history.json`；1.2 延续严格解析、来源 hash 校验、原子替换和失败传播，并把全部跨端错误统一为结构化对象，但不会回写桌面旧消息的附件结构。
 
 ---
 
@@ -99,29 +99,55 @@ pnpm exec electron-rebuild --only better-sqlite3
 
 ---
 
-## 协议 1.1 硬切与兼容边界
+## 协议 1.2 硬切与兼容边界
 
 公开握手固定为：
 
 ```text
-VERSION_CHECK { mobileVersion, protocolVersion: "1.1" }
-VERSION_ACK   { pluginVersion: "1.1.0", protocolVersion: "1.1" }
+VERSION_CHECK { mobileVersion, protocolVersion: "1.2" }
+VERSION_ACK   { pluginVersion: "1.2.0", protocolVersion: "1.2" }
 ```
 
 Phase 3 每个 Topic 的 decision 必须是以下判别联合之一；缺字段、错类型、重复 Topic、`ok:false` 或未知帧都会终止当前 attempt，不能进入完成态：
 
 ```text
 { ok: true, toPull: string[], toPush: boolean }
-{ ok: false, error: { code: string, message: string } }
+{ ok: false, error: SyncError }
 ```
 
-Wire 1.1 与 1.0 不支持混跑。插件 1.1.0、VCP-CDS internal protocol 2 和 VCPMobile 1.1.4 必须作为同一兼容批次发布或回滚。
+Wire 1.2 与 1.1 不支持混跑。插件 1.2.0、VCP-CDS internal protocol 2 和 VCPMobile 1.1.4 必须作为同一兼容批次发布或回滚。
 
-本次桌面批次配对的 Mobile 本地提交为 `b52d887aeb589a515a3c34ab5969919a6889ca07`；发布时必须以该提交或其无语义差异后继提交构建 APK。
+本次桌面批次配对的 Mobile 本地提交为 `226b79f546abc93d7878b33dc202f1c176bd8c4e`；发布时必须以该提交或其无语义差异后继提交构建 APK。
+
+错误在 WebSocket、HTTP、NDJSON 和逐 Topic 结果中复用同一个对象：
+
+```json
+{
+  "code": "SYNC_OWNER_CONFLICT",
+  "origin": "desktop_cds",
+  "stage": "messages",
+  "kind": "data",
+  "retry": "manual",
+  "message": "owner identity conflict",
+  "failedTopicIds": ["topic-a"]
+}
+```
+
+固定外壳分别是 `SYNC_ERROR.error`、HTTP `{error}`、NDJSON `_error` / `_stream_error` 以及 `success:false.error`。对象必须包含全部七个字段，未知字段与字符串错误均拒绝。捕获边界保留已有稳定根因码和类别，只能补充更准确的 `origin`、`stage` 与失败 Topic；`ENOENT`、`EAI_*`、`ERR_*`、`SQLITE_*` 等平台码不会提升为 wire code。`message` 是脱敏诊断信息，最终用户中文原因与唯一下一步由 Mobile 按 code 固定映射。
+
+VCP-CDS internal protocol 2 仍可返回 `{code,message,retryable}`、Phase 3 `{code,message}`、流式 Pull Topic 的字符串 `_error`，以及逐 Topic Push 的字符串 `error`；`sync/central.js` 在唯一适配边界保留已有 code，并补齐 `desktop_cds` 来源、实际阶段、分类、重试策略和失败 Topic。Pull/Push 字符串错误不按文案猜类型，分别固定映射为 `SYNC_MESSAGE_READ_FAILED` / `SYNC_MESSAGE_WRITE_FAILED` 与 `desktop_cds / messages / storage / manual`。未知但合法的 CDS code 不会被外层 `SYNC_ATTEMPT_FAILED` 覆盖，无法识别的分类以 `internal/manual` 安全兜底。
+
+中央适配器还会校验 CDS Manifest、消息 Manifest、Topic hash 与 Phase 3 的响应形状及请求集合覆盖。畸形“成功”响应在桌面边界直接转换为 `SYNC_PROTOCOL_INVALID / desktop_cds`，不会延迟到 Mobile 后误归为手机端协议错误。
+
+CDS internal protocol 返回的 `PROTOCOL_MISMATCH` 会在适配边界重命名为 `CDS_PROTOCOL_MISMATCH`，避免与 Mobile wire 版本不兼容混为同一用户故障。
+
+`SERVICE_BUSY` 会先在插件内部做有界退避；若最终仍需跨端上报，`retry=manual`，因为此时内部自动重试已经耗尽。
+
+双端通过字节一致的 `fixtures/error_contract_1_2_golden.json` 和 `fixtures/protocol_1_2_golden.json` 验证契约；对应 SHA-256 分别为 `434279b33a86a2206c1e4f47caccb4e72f05b2f9d48e093af95d5ebae6947adb` 与 `7226118ea55766f952575032efc8cfff883a19c9d196f637ac267cb8795fcef8`。错误 fixture 的 `registeredSemantics` 还会逐项锁定跨端 code 的 `kind/retry`，避免两端注册表静默漂移。
 
 消息在唯一 canonicalizer 边界转换为 wire DTO：附件 hash 只接受顶层或 `_fileManagerData.hash` 中一致的 64 位十六进制值，并转为小写；缺失、非法或冲突附件只产生有界 warning，消息本身保留。桌面路径及 `_fileManagerData` 不会穿过 wire，最终 `contentHash` 仅按规范化消息计算。
 
-Topic manifest 与消息流都使用 `ownerType + ownerId + topicId` 复合身份。协议 1.1 不再通过 `LIKE`、目录前缀或同名 Topic 猜 Owner；缺失身份、Owner 冲突或重复 Topic 会直接终止 attempt。
+Topic manifest 与消息流都使用 `ownerType + ownerId + topicId` 复合身份。协议 1.2 不通过 `LIKE`、目录前缀或同名 Topic 猜 Owner；缺失身份、Owner 冲突或重复 Topic 会直接终止 attempt。
 
 ## 🛡️ 三阶段增量同步协议
 
@@ -289,9 +315,9 @@ VCP 设计了精密的 **“墓碑拦截 (Tombstone Interceptor)”** 防线：
 
 ## 🚀 版本信息
 
-* **适配标准**：VCPChat 桌面插件 1.1.0 / wire protocol 1.1 / VCP-CDS internal protocol 2 / VCPMobile 1.1.4
-* **当前版本**：`1.1.0`
+* **适配标准**：VCPChat 桌面插件 1.2.0 / wire protocol 1.2 / VCP-CDS internal protocol 2 / VCPMobile 1.1.4
+* **当前版本**：`1.2.0`
 * **最终确认**：`PHASE_COMPLETED` 的 `PHASE_ACK` 原样回显 `phase`、`sessionId`、`attemptId` 与 `nonce`，避免迟到或重放 ACK 完成错误会话
-* **升级要求**：协议版本采用精确匹配，不支持 1.0/1.1 混跑；桌面和 Mobile 必须成对升级、成对回滚
+* **升级要求**：协议版本采用精确匹配，不支持 1.1/1.2 混跑；桌面和 Mobile 必须成对升级、成对回滚
 * **架构师 / 作者**：Nova
 * **开源许可**：VCP 闭环生态核心插件
