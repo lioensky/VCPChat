@@ -15,6 +15,9 @@ assert.ok(document.getElementById('toggleNotificationsBtn'), 'Classic notificati
 assert.ok(document.getElementById('openForumBtn'), 'Classic Forum shortcut must remain available');
 assert.ok(document.getElementById('doNotDisturbBtn'), 'Classic notification filter shortcut must remain available');
 assert.ok(document.getElementById('clearNotificationsBtn'), 'Classic notification clear shortcut must remain available');
+const rendererSource = fs.readFileSync(path.join(root, 'renderer.js'), 'utf8');
+assert.equal(rendererSource.includes('material-symbols-outlined vcp-ui-icon" aria-hidden="true">stop'), false,
+    'Classic interrupt button must not inject a Material Symbols text token');
 
 ['quickNewTopicBtn', 'attachFileBtn', 'emoticonTriggerBtn', 'sendMessageBtn'].forEach(id => {
     const button = document.getElementById(id);

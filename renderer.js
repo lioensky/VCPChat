@@ -150,7 +150,10 @@ const tabContentSettings = document.getElementById('tabContentSettings');
 const topicSearchInput = document.getElementById('topicSearchInput'); // Should be in tabContentTopics
 const DEFAULT_SEND_BUTTON_HTML = sendMessageBtn?.innerHTML || '';
 const INTERRUPT_SEND_BUTTON_HTML = `
-    <span class="material-symbols-outlined vcp-ui-icon" aria-hidden="true">stop</span>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+        stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="6" y="6" width="12" height="12" rx="1"></rect>
+    </svg>
 `;
 
 function isContextForCurrentChat(context) {
