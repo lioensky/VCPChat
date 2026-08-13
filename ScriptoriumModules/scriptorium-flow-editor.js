@@ -26,6 +26,7 @@
             compositionSession: null,
             compositionCommit: null,
             compositionCommitFrame: 0,
+            boundaryFocusFrame: 0,
             disposed: false,
         };
 
@@ -1851,6 +1852,63 @@
             return true;
         }
 
+        function activateSourceOffset(sourceOffset) {
+            if (!state.root) return false;
+            const offset = Math.max(
+                0,
+                Math.min(adapter.currentSource().length, Number(sourceOffset) || 0)
+            );
+            const regions = compiled().editRegions || [];
+            const region = regions.find((candidate) =>
+                candidate.flowKind !== 'stable-atomic'
+                && offset >= candidate.sourceRange.start
+                && offset <= candidate.sourceRange.end
+            ) || regions.find((candidate) =>
+                candidate.flowKind !== 'stable-atomic'
+                && candidate.sourceRange.start >= offset
+            );
+            if (!region) return false;
+            const shell = [...state.root.querySelectorAll(
+                '[data-vdoc-edit-key]'
+            )].find((candidate) =>
+                candidate.dataset.vdocEditKey === region.key
+            );
+            if (!shell) return false;
+
+            const nextSession = activateShell(shell);
+            if (!nextSession?.editable?.isConnected) return false;
+            const localOffset = Math.max(
+                0,
+                Math.min(
+                    sourceForRegion(region).length,
+                    offset - region.sourceRange.start
+                )
+            );
+            restoreEditorOffsets(
+                nextSession.editable,
+                sourceForRegion(region),
+                localOffset
+            );
+            refreshLocalMarkers(nextSession, localOffset);
+            return true;
+        }
+
+        function scheduleBoundaryFocus(sourceOffset) {
+            if (state.boundaryFocusFrame) {
+                window.cancelAnimationFrame(state.boundaryFocusFrame);
+            }
+            state.boundaryFocusFrame = window.requestAnimationFrame(() => {
+                state.boundaryFocusFrame = 0;
+                if (state.disposed || activateSourceOffset(sourceOffset)) return;
+                // 全量重渲染及 Shadow DOM 插件绑定可能跨越当前帧；若首帧尚未
+                // 建立新 shell，再等待一帧，避免 HTML 标题 Enter 后丢失焦点。
+                state.boundaryFocusFrame = window.requestAnimationFrame(() => {
+                    state.boundaryFocusFrame = 0;
+                    if (!state.disposed) activateSourceOffset(sourceOffset);
+                });
+            });
+        }
+
         function insertHtmlBoundaryBlankLine(session, editable) {
             if (!session || session.region.type !== 'html') return false;
             const raw = sourceForRegion(session.region);
@@ -1866,6 +1924,9 @@
             const insertion = before
                 ? '\u200B  \n\n'
                 : '\n\n\u200B';
+            const focusOffset = before
+                ? boundary
+                : boundary + insertion.length;
             const transaction = transact({
                 from: boundary,
                 to: boundary,
@@ -1882,6 +1943,7 @@
             state.activeSession = null;
             context.renderPort?.invalidate?.('flow-html-boundary-blank-line');
             context.renderPort?.renderEdit?.({ force: true });
+            scheduleBoundaryFocus(focusOffset);
             return true;
         }
 
@@ -1914,24 +1976,24 @@
                 ? state.activeSession
                 : beginSession(shell, editable);
             if (!session) return false;
-            // HTML 块内部不能直接插入浏览器原生换行。Shift+Enter 明确表示
-            // 在当前元素边界创建一个可见空白 Markdown 行；普通 Enter 仍然
-            // 提交并退出，Tab/Shift+Tab 切换相邻编辑区。
+            // HTML 块内部不能直接插入浏览器原生换行。Enter 根据源码光标
+            // 位于内容前半段还是后半段，在完整 HTML 元素边界外创建一条
+            // Markdown 编辑行。尤其是 <h1 style="...">标题</h1>，可见文本
+            // 尾部的光标实际位于隐藏闭合标签之前，不能再把 Enter 解释为
+            // “提交并退出”，否则标题之后天然没有可供继续输入的位置。
             if (session.region.type === 'html'
-                && event.key === 'Enter'
-                && event.shiftKey) {
+                && event.key === 'Enter') {
                 event.preventDefault();
                 event.stopPropagation();
                 return insertHtmlBoundaryBlankLine(session, editable);
             }
-            if (session.region.type === 'html'
-                && (event.key === 'Enter' || event.key === 'Tab')) {
+            if (session.region.type === 'html' && event.key === 'Tab') {
                 event.preventDefault();
                 event.stopPropagation();
-                const nextShell = event.key === 'Tab'
-                    ? adjacentEditableShell(shell, event.shiftKey)
-                    : null;
-                return finishHtmlSession(session, nextShell);
+                return finishHtmlSession(
+                    session,
+                    adjacentEditableShell(shell, event.shiftKey)
+                );
             }
             if (session.region.type !== 'markdown') return false;
 
@@ -2145,9 +2207,9 @@
                     || event.inputType === 'insertLineBreak') {
                     event.preventDefault();
                     if (session.region.type === 'html') {
-                        // 虚拟键盘及辅助输入设备可能绕过 keydown；HTML 块仍须
-                        // 保持单行，并把换行意图解释为“提交并退出编辑”。
-                        finishHtmlSession(session);
+                        // 虚拟键盘及辅助输入设备可能绕过 keydown；与键盘 Enter
+                        // 保持一致，在完整 HTML 元素边界外建立后续编辑行。
+                        insertHtmlBoundaryBlankLine(session, editable);
                         return;
                     }
                     if (session.region.type !== 'markdown') return;
@@ -2362,6 +2424,10 @@
             if (state.compositionCommitFrame) {
                 window.cancelAnimationFrame(state.compositionCommitFrame);
                 state.compositionCommitFrame = 0;
+            }
+            if (state.boundaryFocusFrame) {
+                window.cancelAnimationFrame(state.boundaryFocusFrame);
+                state.boundaryFocusFrame = 0;
             }
             state.compositionCommit = null;
             state.composing = false;

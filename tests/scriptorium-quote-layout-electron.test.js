@@ -96,7 +96,11 @@ app.whenReady().then(async () => {
             '.source-editor-shell .CodeMirror'
         )?.CodeMirror;
         const tick = String.fromCharCode(96);
+        const htmlHeading =
+            '<h1 style="text-align:center">于影升起的太陽</h1>';
         const fixture = [
+            htmlHeading,
+            '',
             '> 这是一份用于验证 Markdown-first、原生 HTML、LaTeX、Mermaid、网络媒体、Anime.js、CSS 3D、动态表格与局部文字特效能否在同一份源码中稳定共存的测试文档。',
             '',
             '> **岛闭合规则：** 每个可编程岛从带有 '
@@ -158,13 +162,137 @@ app.whenReady().then(async () => {
             editor?.blur();
             await waitFrames();
         }
-        return { count: shells.length, results };
+
+        const headingShell = [...root.querySelectorAll(
+            '[data-vdoc-edit-key][data-vdoc-edit-type="html"]'
+        )].find((candidate) =>
+            candidate.querySelector('h1')?.textContent === '于影升起的太陽'
+        );
+        const heading = headingShell?.querySelector('h1');
+        if (headingShell && heading) {
+            const rect = heading.getBoundingClientRect();
+            heading.dispatchEvent(new MouseEvent('click', {
+                button: 0,
+                bubbles: true,
+                composed: true,
+                cancelable: true,
+                clientX: rect.right - 2,
+                clientY: rect.top + rect.height / 2
+            }));
+            await waitFrames();
+        }
+        const headingEditor = headingShell?.querySelector(
+            '[data-vdoc-flow-source-editor="true"]'
+        );
+        const visibleHeadingText = headingEditor
+            ? [...headingEditor.querySelectorAll('h1')]
+                .flatMap((node) => [...node.childNodes])
+                .find((node) =>
+                    node.nodeType === Node.TEXT_NODE
+                    && node.nodeValue === '于影升起的太陽'
+                )
+            : null;
+        if (visibleHeadingText) {
+            const selection = root.getSelection
+                ? root.getSelection()
+                : window.getSelection();
+            const range = document.createRange();
+            range.setStart(visibleHeadingText, visibleHeadingText.length);
+            range.collapse(true);
+            selection.removeAllRanges();
+            selection.addRange(range);
+            headingEditor.focus();
+        }
+        const enter = new KeyboardEvent('keydown', {
+            key: 'Enter',
+            bubbles: true,
+            composed: true,
+            cancelable: true
+        });
+        headingEditor?.dispatchEvent(enter);
+        await waitFrames();
+        const sourceAfterHeadingEnter =
+            window.ScriptoriumAgent.common.getSource({
+                sourceKind: 'markdown-hybrid',
+                startLine: 1,
+                endLine: 20
+            }).source;
+        const boundaryEditor = root.querySelector(
+            '[data-vdoc-flow-source-editor="true"][data-vdoc-flow-domain="markdown"]'
+        );
+        const selectionAfterHeadingEnter = root.getSelection
+            ? root.getSelection()
+            : window.getSelection();
+        const boundaryFocused = root.activeElement === boundaryEditor;
+        const boundaryCaretRestored = Boolean(
+            boundaryEditor
+            && selectionAfterHeadingEnter?.anchorNode
+            && boundaryEditor.contains(selectionAfterHeadingEnter.anchorNode)
+        );
+        const secondEnter = new KeyboardEvent('keydown', {
+            key: 'Enter',
+            bubbles: true,
+            composed: true,
+            cancelable: true
+        });
+        boundaryEditor?.dispatchEvent(secondEnter);
+        await waitFrames();
+        const sourceAfterSecondEnter =
+            window.ScriptoriumAgent.common.getSource({
+                sourceKind: 'markdown-hybrid',
+                startLine: 1,
+                endLine: 20
+            }).source;
+        const editorAfterSecondEnter = root.querySelector(
+            '[data-vdoc-flow-source-editor="true"][data-vdoc-flow-domain="markdown"]'
+        );
+        const selectionAfterSecondEnter = root.getSelection
+            ? root.getSelection()
+            : window.getSelection();
+
+        return {
+            count: shells.length,
+            results,
+            htmlHeadingEnter: {
+                activated: Boolean(headingEditor),
+                handled: enter.defaultPrevented,
+                insertedAfterElement: sourceAfterHeadingEnter.startsWith(
+                    htmlHeading + '\n\n\u200B'
+                ),
+                boundaryEditorActivated: Boolean(boundaryEditor),
+                boundaryFocused,
+                boundaryCaretRestored,
+                secondEnterHandled: secondEnter.defaultPrevented,
+                secondEnterChangedSource:
+                    sourceAfterSecondEnter !== sourceAfterHeadingEnter,
+                editorSurvivesSecondEnter:
+                    Boolean(editorAfterSecondEnter?.isConnected),
+                caretSurvivesSecondEnter: Boolean(
+                    editorAfterSecondEnter
+                    && selectionAfterSecondEnter?.anchorNode
+                    && editorAfterSecondEnter.contains(
+                        selectionAfterSecondEnter.anchorNode
+                    )
+                ),
+                source: sourceAfterSecondEnter
+            }
+        };
     })()`);
 
     result.warnings = warnings;
     console.log('[ScriptoriumQuoteLayout]', JSON.stringify(result, null, 2));
     const passed = result.count === 2
         && result.results.every((entry) => entry.activated)
+        && result.htmlHeadingEnter?.activated === true
+        && result.htmlHeadingEnter?.handled === true
+        && result.htmlHeadingEnter?.insertedAfterElement === true
+        && result.htmlHeadingEnter?.boundaryEditorActivated === true
+        && result.htmlHeadingEnter?.boundaryFocused === true
+        && result.htmlHeadingEnter?.boundaryCaretRestored === true
+        && result.htmlHeadingEnter?.secondEnterHandled === true
+        && result.htmlHeadingEnter?.secondEnterChangedSource === true
+        && result.htmlHeadingEnter?.editorSurvivesSecondEnter === true
+        && result.htmlHeadingEnter?.caretSurvivesSecondEnter === true
         && result.warnings.length === 0;
     await windowRef.close();
     app.exit(passed ? 0 : 1);
