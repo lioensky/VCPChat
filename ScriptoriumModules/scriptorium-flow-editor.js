@@ -24,8 +24,8 @@
             textSourceMap: new WeakMap(),
             composing: false,
             compositionSession: null,
-            compositionOffsets: null,
-            skipNextCompositionInput: false,
+            compositionCommit: null,
+            compositionCommitFrame: 0,
             disposed: false,
         };
 
@@ -1928,6 +1928,10 @@
                 const editable = event.target.closest?.(
                     '[data-vdoc-flow-source-editor="true"]'
                 );
+                // Chromium/Windows IME 通常在 compositionend 之后再派发一次
+                // 最终 beforeinput/input。此阶段必须让浏览器完成候选文字
+                // 固化，不能 preventDefault，更不能重建 contenteditable DOM。
+                if (state.compositionCommit?.editable === editable) return;
                 const shell = event.target.closest?.('[data-vdoc-edit-key]');
                 if (!editable || !shell) return;
                 const session = state.activeSession?.editable === editable
@@ -2011,17 +2015,43 @@
                 );
             }, options);
 
+            const clearCompositionCommit = () => {
+                if (state.compositionCommitFrame) {
+                    window.cancelAnimationFrame(state.compositionCommitFrame);
+                    state.compositionCommitFrame = 0;
+                }
+                const pending = state.compositionCommit;
+                state.compositionCommit = null;
+                return pending;
+            };
+
+            const commitCompositionDom = (pending) => {
+                if (!pending?.session?.editable?.isConnected
+                    || pending.session.editable !== pending.editable) {
+                    return false;
+                }
+                return flushSession(
+                    pending.session,
+                    'flow-composition-input'
+                );
+            };
+
             root.addEventListener('input', (event) => {
                 if (event.isComposing || state.composing) return;
-                if (state.skipNextCompositionInput) {
-                    state.skipNextCompositionInput = false;
-                    return;
-                }
                 const editable = event.target.closest?.(
                     '[data-vdoc-flow-source-editor="true"]'
                 );
                 const shell = event.target.closest?.('[data-vdoc-edit-key]');
                 if (!editable || !shell) return;
+
+                if (state.compositionCommit?.editable === editable) {
+                    // 最终 input 表示候选文字已进入 DOM，但仍处于浏览器
+                    // 输入事件调用栈中。保留 compositionend 安排的下一帧
+                    // 提交，避免在 input 监听器内部替换其 event.target。
+                    state.compositionCommit.inputObserved = true;
+                    return;
+                }
+
                 const session = state.activeSession?.editable === editable
                     ? state.activeSession
                     : beginSession(shell, editable);
@@ -2029,7 +2059,7 @@
             }, options);
 
             root.addEventListener('compositionstart', (event) => {
-                state.skipNextCompositionInput = false;
+                clearCompositionCommit();
                 const editable = event.target.closest?.(
                     '[data-vdoc-flow-source-editor="true"]'
                 );
@@ -2040,27 +2070,31 @@
                         ? state.activeSession
                         : beginSession(shell, editable))
                     : null;
-                state.compositionOffsets = state.compositionSession
-                    ? editorSelectionOffsets(editable)
-                    : null;
             }, options);
             root.addEventListener('compositionend', (event) => {
                 const session = state.compositionSession;
-                const offsets = state.compositionOffsets;
+                const editable = event.target.closest?.(
+                    '[data-vdoc-flow-source-editor="true"]'
+                );
                 state.composing = false;
                 state.compositionSession = null;
-                state.compositionOffsets = null;
-                if (!session || !offsets
+                if (!session || !editable
                     || session.region.type !== 'markdown') {
-                    state.skipNextCompositionInput = false;
+                    clearCompositionCommit();
                     return;
                 }
-                state.skipNextCompositionInput = commitSessionInsertion(
-                    session,
-                    event.data || '',
-                    offsets,
-                    'flow-composition-insert-text'
-                ) === true;
+
+                // 不在 compositionend 中根据旧 Selection 手动插入 event.data。
+                // 此时平台 IME 仍可能继续派发最终 beforeinput/input；同步重建
+                // DOM 会关闭候选窗、丢字或重复提交。等待最终 input，从浏览器
+                // 已固化的 DOM 整体同步。少数不派发 input 的实现下一帧兜底。
+                state.compositionCommit = { session, editable };
+                state.compositionCommitFrame = window.requestAnimationFrame(() => {
+                    state.compositionCommitFrame = 0;
+                    const pending = state.compositionCommit;
+                    state.compositionCommit = null;
+                    commitCompositionDom(pending);
+                });
             }, options);
 
             root.addEventListener('focusout', (event) => {
@@ -2119,14 +2153,18 @@
         function disposeSurface() {
             state.abortController?.abort();
             state.abortController = null;
+            if (state.compositionCommitFrame) {
+                window.cancelAnimationFrame(state.compositionCommitFrame);
+                state.compositionCommitFrame = 0;
+            }
+            state.compositionCommit = null;
+            state.composing = false;
+            state.compositionSession = null;
             flushSession();
             state.root = null;
             state.activeSession = null;
             state.selectionRange = null;
             state.selectionText = '';
-            state.compositionSession = null;
-            state.compositionOffsets = null;
-            state.skipNextCompositionInput = false;
             state.domSourceMap = new WeakMap();
             state.textSourceMap = new WeakMap();
         }
