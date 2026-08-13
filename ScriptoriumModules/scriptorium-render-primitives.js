@@ -202,6 +202,49 @@ ${markdownBaseCss('.vdoc-runtime')}
             return styleLibrary?.compileCss?.([...ids]) || '';
         }
 
+        function referencedStyleIds(sources = []) {
+            const ids = new Set();
+            const pattern = /\bdata-vdoc-style\s*=\s*(["'])(.*?)\1/gi;
+            (Array.isArray(sources) ? sources : [sources]).forEach((source) => {
+                const html = String(source || '');
+                let match = null;
+                while ((match = pattern.exec(html))) {
+                    String(match[2] || '')
+                        .split(/\s+/)
+                        .map((id) => id.trim())
+                        .filter(Boolean)
+                        .forEach((id) => ids.add(id));
+                }
+            });
+            return [...ids];
+        }
+
+        function compiledDocumentStylesCss(documentModel, sources = []) {
+            const manifest = documentModel?.manifest || {};
+            const ids = new Set([
+                ...(manifest.styleDependencies || []).map(String),
+                ...referencedStyleIds(sources),
+            ]);
+            const embedded = new Map(
+                (Array.isArray(manifest.embeddedStyles)
+                    ? manifest.embeddedStyles
+                    : [])
+                    .filter((style) => style?.id && style?.css)
+                    .map((style) => [String(style.id), style])
+            );
+            return [...ids].map((id) => {
+                const registered = styleLibrary?.get?.(id);
+                if (registered) {
+                    return styleLibrary.compileCss([id]);
+                }
+                const style = embedded.get(id);
+                if (!style) return '';
+                return `/* ${style.name || id} · ${id}@${
+                    Math.max(1, Number(style.version) || 1)
+                } */\n${String(style.css)}`;
+            }).filter(Boolean).join('\n\n');
+        }
+
         function createStyle(css, dataset = {}) {
             const style = document.createElement('style');
             Object.entries(dataset).forEach(([key, value]) => {
@@ -359,6 +402,8 @@ ${markdownBaseCss('.vdoc-runtime')}
             baseCss,
             editDecorationsCss,
             compiledStyleIdsCss,
+            referencedStyleIds,
+            compiledDocumentStylesCss,
             createStyle,
             createRuntime,
             decodeMathSource,

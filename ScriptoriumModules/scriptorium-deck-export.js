@@ -43,6 +43,13 @@
                 documentModel.manifest.language || 'zh-CN'
             );
             const slides = adapter.slides();
+            const advancedCss = primitives.compiledDocumentStylesCss(
+                documentModel,
+                slides.flatMap((slide) => [
+                    slide?.source,
+                    adapter.parsedSlide(slide).html,
+                ])
+            );
             const ratioParts = String(
                 scene.presentation.aspectRatio || '16 / 9'
             ).match(/^(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)$/);
@@ -178,9 +185,7 @@ ${parsed.html}
 <title>${title}</title>
 <style>
 ${adapter.currentCss()}
-${primitives.compiledStyleIdsCss(
-        documentModel.manifest.styleDependencies || []
-    )}
+${advancedCss}
 *{box-sizing:border-box}
 html,body{
     width:100%;
@@ -542,9 +547,17 @@ window.VCPDeck.goTo(initialSlide);
             const scene = core.createSceneConfig(
                 documentModel.manifest.scene
             );
+            const advancedCss = primitives.compiledDocumentStylesCss(
+                documentModel,
+                adapter.slides().flatMap((slide) => [
+                    slide?.source,
+                    adapter.parsedSlide(slide).html,
+                ])
+            );
             const css = `${primitives.baseCss(scene, options)
                 .replace('@import url("../vendor/katex.min.css");', '')
                 .replace(':host {', ':root {')}
+${advancedCss}
 ${adapter.currentCss()}
 @page{
     size:${scene.page.width} ${scene.page.height};

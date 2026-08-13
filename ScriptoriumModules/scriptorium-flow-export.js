@@ -32,8 +32,9 @@
             const language = escapeHtml(
                 documentModel.manifest.language || 'zh-CN'
             );
-            const advancedCss = primitives.compiledStyleIdsCss(
-                documentModel.manifest.styleDependencies || []
+            const advancedCss = primitives.compiledDocumentStylesCss(
+                documentModel,
+                [adapter.currentSource(), compiled.html]
             );
             return `<!doctype html>
 <html lang="${language}">
@@ -62,9 +63,14 @@ ${compiled.html}
         function pagedCss(adapter, options = {}) {
             const documentModel = model();
             const scene = documentModel.manifest.scene;
+            const advancedCss = primitives.compiledDocumentStylesCss(
+                documentModel,
+                adapter.currentSource()
+            );
             return `${primitives.baseCss(scene, options)
                 .replace('@import url("../vendor/katex.min.css");', '')
                 .replace(':host {', ':root {')}
+${advancedCss}
 ${adapter.currentCss()}
 @page {
     size: ${scene.page.width} ${scene.page.height};
