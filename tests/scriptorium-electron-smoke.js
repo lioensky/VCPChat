@@ -358,6 +358,18 @@ app.whenReady().then(async () => {
         const styles = current.listStylePacks();
         const svgPacks = current.listSvgAssetPacks();
         const svgAssets = current.listSvgAssets();
+        const agentOutline = current.getOutline();
+        const smokeHeading = agentOutline.items.find((item) =>
+            item.text === '冒烟章节'
+        );
+        const smokeSection = smokeHeading
+            ? current.getSection({ id: smokeHeading.id })
+            : null;
+        const uiHeadingTexts = [
+            ...document.querySelectorAll(
+                '#outline-tree .outline-item-title'
+            )
+        ].map((node) => node.textContent.trim());
         const capabilities = {
             stylePacksAvailable:
                 styles.success === true && styles.count > 0,
@@ -365,7 +377,21 @@ app.whenReady().then(async () => {
                 svgPacks.success === true
                 && svgAssets.success === true,
             outlineAvailable:
-                current.getOutline().sourceKind === 'markdown-hybrid',
+                agentOutline.sourceKind === 'markdown-hybrid',
+            outlineHasLongDocumentMetadata:
+                agentOutline.count === agentOutline.items.length
+                && agentOutline.totalCharacters === source().length
+                && smokeHeading?.characterCount > 0
+                && smokeHeading?.sourceRange?.end
+                    > smokeHeading?.sourceRange?.start,
+            uiAndAgentOutlineAgree:
+                agentOutline.items.every((item) =>
+                    uiHeadingTexts.includes(item.text)
+                ),
+            sectionReadableByOutlineId:
+                smokeSection?.heading?.id === smokeHeading?.id
+                && smokeSection.source.includes('## 冒烟章节')
+                && smokeSection.renderedText.includes('正文第一行'),
             renderedTextAvailable:
                 current.getRenderedText().semanticFormat === 'compiled-html',
             deckRoundTrips: (() => {

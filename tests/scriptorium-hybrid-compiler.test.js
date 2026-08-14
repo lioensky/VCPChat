@@ -204,6 +204,100 @@ function run() {
         }
     });
 
+    const mixedHeadingSource = [
+        '# Markdown 总章',
+        '',
+        '总章导语。',
+        '',
+        'Setext 子章',
+        '-----------',
+        '',
+        '子章正文。',
+        '',
+        '<h3 class="native-heading">HTML 小节 <em>强调</em></h3>',
+        '',
+        'HTML 小节正文。',
+        '',
+        '```html',
+        '<h1>代码示例不是章节</h1>',
+        '```',
+        '',
+        '<style>',
+        'h1::before { content: "<h1>样式不是章节</h1>"; }',
+        '</style>',
+        '',
+        '<div data-vdoc-island="chapter-widget">',
+        '    <h2>岛内章节标题</h2>',
+        '    <p>岛内正文。</p>',
+        '</div>',
+        '',
+        '# 下一总章',
+        '',
+        '结尾。',
+    ].join('\n');
+    const mixedHeadings = compiler.compile(mixedHeadingSource).headings;
+    assert.deepEqual(
+        mixedHeadings.map(({ level, text }) => ({ level, text })),
+        [
+            { level: 1, text: 'Markdown 总章' },
+            { level: 2, text: 'Setext 子章' },
+            { level: 3, text: 'HTML 小节 强调' },
+            { level: 2, text: '岛内章节标题' },
+            { level: 1, text: '下一总章' },
+        ],
+        'Markdown、Setext 和真实 HTML 标题必须形成同一份语义目录'
+    );
+    assert.equal(
+        mixedHeadings.some((heading) =>
+            /代码示例|样式不是章节/.test(heading.text)
+        ),
+        false,
+        '代码围栏和样式内容中的伪标题不得进入目录'
+    );
+    mixedHeadings.forEach((heading, index) => {
+        assert.equal(heading.index, index);
+        assert(heading.id);
+        assert(heading.startLine >= 1);
+        assert(heading.endLine >= heading.startLine);
+        assert(heading.characterCount > 0);
+        assert(heading.contentCharacterCount >= 0);
+        assert(
+            heading.sourceRange.end > heading.sourceRange.start,
+            '每个目录项必须携带可直接读取的章节源码范围'
+        );
+        assert.equal(
+            mixedHeadingSource.slice(
+                heading.headingRange.start,
+                heading.headingRange.end
+            ).includes(heading.text.split(' ')[0]),
+            true
+        );
+    });
+    assert.equal(
+        mixedHeadingSource.slice(
+            mixedHeadings[0].sourceRange.start,
+            mixedHeadings[0].sourceRange.end
+        ).includes('# 下一总章'),
+        false,
+        '一级章节范围必须在下一个同级标题前结束'
+    );
+    assert.equal(
+        mixedHeadingSource.slice(
+            mixedHeadings[0].sourceRange.start,
+            mixedHeadings[0].sourceRange.end
+        ).includes('岛内章节标题'),
+        true,
+        '上级章节范围应包含其下属标题'
+    );
+    assert.equal(
+        mixedHeadingSource.slice(
+            mixedHeadings[1].sourceRange.start,
+            mixedHeadings[1].sourceRange.end
+        ).includes('岛内章节标题'),
+        false,
+        '同级章节范围必须在下一个同级标题前结束'
+    );
+
     const livePreviewSource = [
         '## 标题',
         '> 引用',

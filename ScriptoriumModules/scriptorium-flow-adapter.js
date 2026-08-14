@@ -194,7 +194,18 @@
         }
 
         function outline() {
-            return core.extractOutline(compile().html);
+            const compiled = compile();
+            const semanticItems = core.extractOutline(compiled.html);
+            const paragraphs = semanticItems.filter((item) =>
+                item.kind === 'paragraph'
+            );
+            return [
+                ...compiled.headings.map((heading) => ({
+                    ...heading,
+                    ordinal: heading.editRegionOrdinal,
+                })),
+                ...paragraphs,
+            ];
         }
 
         function proposalSource(proposal = {}) {

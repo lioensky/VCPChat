@@ -743,6 +743,137 @@
         }
     }
 
+    function decodeHeadingText(value) {
+        return String(value || '')
+            .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, '')
+            .replace(/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi, '')
+            .replace(/<[^>]+>/g, '')
+            .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
+            .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+            .replace(/[`*_~]/g, '')
+            .replace(/&nbsp;|&#160;/gi, ' ')
+            .replace(/&|&#38;/gi, '&')
+            .replace(/<|&#60;/gi, '<')
+            .replace(/>|&#62;/gi, '>')
+            .replace(/"|&#34;/gi, '"')
+            .replace(/'|'/gi, "'")
+            .replace(/&#(\d+);/g, (_match, code) =>
+                String.fromCodePoint(Number(code))
+            )
+            .replace(/\s+/g, ' ')
+            .trim();
+    }
+
+    function buildHeadingIndex(source, editRegions, lexer) {
+        const headings = [];
+        const add = (level, text, start, headingEnd, editRegionOrdinal) => {
+            const normalizedText = decodeHeadingText(text);
+            if (!normalizedText || level < 1 || level > 6) return;
+            headings.push({
+                id: `heading-${start}-${simpleHash(normalizedText)}`,
+                index: headings.length,
+                kind: 'heading',
+                level,
+                text: normalizedText,
+                start,
+                headingEnd,
+                editRegionOrdinal,
+            });
+        };
+
+        editRegions.forEach((region) => {
+            const regionStart = region.sourceRange.start;
+            const raw = source.slice(regionStart, region.sourceRange.end);
+
+            if (region.markdownTokenType === 'heading' && lexer) {
+                try {
+                    const token = lexer(raw, {
+                        gfm: true,
+                        breaks: false,
+                        async: false,
+                    })?.find((candidate) => candidate?.type === 'heading');
+                    if (token) {
+                        const tokenStart = Math.max(0, raw.indexOf(token.raw));
+                        add(
+                            Number(token.depth),
+                            token.text,
+                            regionStart + tokenStart,
+                            regionStart + tokenStart + token.raw.length,
+                            region.ordinal
+                        );
+                    }
+                } catch {}
+            }
+
+            if (!['html', 'island'].includes(region.type)) return;
+            const excluded = [
+                ...scanFences(raw),
+                ...scanStyleBlocks(raw),
+            ];
+            const scriptPattern = /<script\b[^>]*>[\s\S]*?<\/script\s*>/gi;
+            let scriptMatch;
+            while ((scriptMatch = scriptPattern.exec(raw))) {
+                excluded.push({
+                    start: scriptMatch.index,
+                    end: scriptMatch.index + scriptMatch[0].length,
+                });
+            }
+
+            const headingPattern =
+                /<h([1-6])\b[^>]*>([\s\S]*?)<\/h\1\s*>/gi;
+            let match;
+            while ((match = headingPattern.exec(raw))) {
+                const start = match.index;
+                const end = start + match[0].length;
+                if (overlapsRegion(start, end, excluded)) continue;
+                add(
+                    Number(match[1]),
+                    match[2],
+                    regionStart + start,
+                    regionStart + end,
+                    region.ordinal
+                );
+            }
+        });
+
+        headings.sort((left, right) => left.start - right.start);
+        headings.forEach((heading, index) => {
+            heading.index = index;
+            const next = headings.slice(index + 1).find((candidate) =>
+                candidate.level <= heading.level
+            );
+            heading.end = next ? next.start : source.length;
+            const startPosition = lineAndColumnAt(source, heading.start);
+            const headingEndPosition = lineAndColumnAt(
+                source,
+                heading.headingEnd
+            );
+            const endPosition = lineAndColumnAt(source, heading.end);
+            heading.startLine = startPosition.line;
+            heading.headingEndLine = headingEndPosition.line;
+            heading.endLine = endPosition.column === 1 && heading.end > 0
+                ? Math.max(heading.startLine, endPosition.line - 1)
+                : endPosition.line;
+            heading.characterCount = heading.end - heading.start;
+            heading.contentCharacterCount = Math.max(
+                0,
+                heading.end - heading.headingEnd
+            );
+            heading.headingRange = {
+                start: heading.start,
+                end: heading.headingEnd,
+            };
+            heading.sourceRange = {
+                start: heading.start,
+                end: heading.end,
+            };
+            delete heading.start;
+            delete heading.headingEnd;
+            delete heading.end;
+        });
+        return headings;
+    }
+
     function buildPreviewHtml(source, editRegions, parse, diagnostics) {
         return editRegions.map((region) => {
             const content = renderEditRegion(source, region, parse, diagnostics);
@@ -871,6 +1002,7 @@
             lexer,
             diagnostics
         );
+        const headings = buildHeadingIndex(source, editRegions, lexer);
         let previewHtml = buildPreviewHtml(
             source,
             editRegions,
@@ -890,6 +1022,7 @@
             previewHtml,
             blocks,
             editRegions,
+            headings,
             islands: islands.map((island) => ({
                 id: island.id,
                 sourceRange: { start: island.start, end: island.end },

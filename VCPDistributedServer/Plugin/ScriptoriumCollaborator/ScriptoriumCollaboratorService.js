@@ -196,6 +196,14 @@ const MARKDOWN_FIELD_LABELS = Object.freeze({
     renderedText: '渲染文本',
     pages: '页面',
     items: '目录项',
+    count: '数量',
+    totalCharacters: '文档总字符数',
+    index: '目录索引',
+    level: '标题级别',
+    characterCount: '章节字符数',
+    contentCharacterCount: '章节正文字数',
+    sourceRange: '章节源码范围',
+    headingRange: '标题源码范围',
     records: '历史记录',
     results: '检索结果',
     query: '检索词',
@@ -397,6 +405,49 @@ function resultText(title, result) {
     };
 }
 
+function outlineResultText(result = {}) {
+    const items = Array.isArray(result.items) ? result.items : [];
+    const docx = result.sourceKind === 'markdown-hybrid';
+    if (!docx) return resultText('Scriptorium · getOutline', result);
+
+    const lines = [
+        '# Scriptorium · 分层章节目录',
+        '',
+        `- **章节数**：${Number(result.count ?? items.length)}`,
+        `- **文档总字符数**：${Number(result.totalCharacters || 0)}`,
+        `- **修订号**：${Number(result.revision || 0)}`,
+        '',
+        '> 建议先按标题层级和章节字符数选择少量关键章节，再用 GetSection 按 ID 读取；需要人物、地点或情节细节时使用 SearchSource 全文检索。',
+        '',
+        '## 章节',
+        '',
+    ];
+    if (!items.length) {
+        lines.push('（未识别到章节标题）');
+    } else {
+        items.forEach((item) => {
+            const level = Math.max(1, Number(item.level) || 1);
+            const startLine = Number(item.startLine) || 1;
+            const endLine = Number(item.endLine) || startLine;
+            const characters = Number(item.characterCount) || 0;
+            lines.push(
+                `${'  '.repeat(level - 1)}- [${Number(item.index)}] ${
+                    escapeMarkdownInline(item.text || '未命名章节')
+                } · L${startLine}-${endLine} · ${characters} 字 · ID: \`${
+                    String(item.id || '').replace(/`/g, '')
+                }\``
+            );
+        });
+    }
+    return {
+        content: [{
+            type: 'text',
+            text: lines.join('\n'),
+        }],
+        details: result,
+    };
+}
+
 function internalSlideIndex(value, fieldName = 'slideIndex') {
     if (value === undefined || value === null || value === '') return undefined;
     const pageNumber = Number(value);
@@ -508,8 +559,18 @@ async function getRenderedText(args) {
     });
 }
 
-async function getOutline(args) {
-    return call(args, 'getOutline');
+async function getOutline(args, executionContext = {}) {
+    const endpoint = endpointFor(args);
+    const result = await requireControl().call({
+        requestId: requestIdOf(args, executionContext),
+        endpoint,
+        method: 'getOutline',
+        payload: {},
+    });
+    const externalized = externalizePageNumbers(result, {
+        deck: endpoint === 'pptx' || result?.documentKind === 'pptx',
+    });
+    return outlineResultText(externalized);
 }
 
 async function getSection(args) {
@@ -850,7 +911,7 @@ async function processSingleToolCall(args, executionContext = {}) {
         case 'getfulltext':
             return getRenderedText(args);
         case 'getoutline':
-            return getOutline(args);
+            return getOutline(args, executionContext);
         case 'getsection':
             return getSection(args);
         case 'getsource':
@@ -1050,6 +1111,7 @@ module.exports = {
         markdownFence,
         markdownObject,
         resultText,
+        outlineResultText,
         getSerialCommandEntries,
         extractSerialStepArgs,
         parseWaitMs,
