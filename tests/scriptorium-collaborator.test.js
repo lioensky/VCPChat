@@ -164,6 +164,77 @@ function createControl() {
                     maid: request.payload.maid,
                 };
             }
+            if (request.method === 'getOutline') {
+                return {
+                    success: true,
+                    documentId: 'document-test',
+                    documentKind: 'docx',
+                    revision: 7,
+                    sourceKind: 'markdown-hybrid',
+                    count: 3,
+                    totalCharacters: 380000,
+                    items: [{
+                        id: 'heading-0-opening',
+                        index: 0,
+                        kind: 'heading',
+                        level: 1,
+                        text: '第一卷 风起',
+                        startLine: 1,
+                        endLine: 4200,
+                        characterCount: 128000,
+                        contentCharacterCount: 127980,
+                        headingRange: { start: 0, end: 12 },
+                        sourceRange: { start: 0, end: 128000 },
+                    }, {
+                        id: 'heading-500-turn',
+                        index: 1,
+                        kind: 'heading',
+                        level: 2,
+                        text: '第十章 转折',
+                        startLine: 500,
+                        endLine: 930,
+                        characterCount: 18000,
+                        contentCharacterCount: 17982,
+                        headingRange: { start: 15000, end: 15014 },
+                        sourceRange: { start: 15000, end: 33000 },
+                    }, {
+                        id: 'heading-900-ending',
+                        index: 2,
+                        kind: 'heading',
+                        level: 1,
+                        text: '终卷 归途',
+                        startLine: 9000,
+                        endLine: 12000,
+                        characterCount: 96000,
+                        contentCharacterCount: 95980,
+                        headingRange: { start: 284000, end: 284012 },
+                        sourceRange: { start: 284000, end: 380000 },
+                    }],
+                };
+            }
+            if (request.method === 'getSection') {
+                return {
+                    success: true,
+                    documentId: 'document-test',
+                    documentKind: 'docx',
+                    revision: 7,
+                    sourceKind: 'markdown-hybrid',
+                    heading: {
+                        id: request.payload.id,
+                        index: 1,
+                        text: '第十章 转折',
+                        level: 2,
+                        characterCount: 18000,
+                        contentCharacterCount: 17982,
+                    },
+                    startLine: 500,
+                    endLine: 930,
+                    sourceRange: { start: 15000, end: 33000 },
+                    source: '## 第十章 转折\n\n关键剧情正文。',
+                    renderedText: '第十章 转折\n关键剧情正文。',
+                    diagnostics: [],
+                };
+            }
             if (request.method === 'getSource') {
                 return {
                     success: true,
@@ -262,6 +333,61 @@ async function run() {
         sourceResult.details.source,
         '<article data-title="原生文本">\n  <p>无需 JSON 反转义</p>\n</article>'
     );
+
+    const outline = await collaborator.processToolCall({
+        command: 'GetOutline',
+        endpoint: 'docx',
+    }, {
+        requestId: 'outline-request',
+    });
+    const outlineCall = control.calls.find((entry) =>
+        entry.type === 'call' && entry.request.method === 'getOutline'
+    );
+    assert.ok(outlineCall);
+    assert.strictEqual(outlineCall.request.endpoint, 'docx');
+    assert.strictEqual(outlineCall.request.requestId, 'outline-request');
+    assert.strictEqual(outline.details.count, 3);
+    assert.strictEqual(outline.details.totalCharacters, 380000);
+    assert.deepStrictEqual(
+        outline.details.items[1].sourceRange,
+        { start: 15000, end: 33000 }
+    );
+    const outlineMarkdown = outline.content[0].text;
+    assert.ok(outlineMarkdown.startsWith(
+        '# Scriptorium · 分层章节目录'
+    ));
+    assert.ok(outlineMarkdown.includes('- **章节数**：3'));
+    assert.ok(outlineMarkdown.includes(
+        '- [0] 第一卷 风起 · L1-4200 · 128000 字'
+    ));
+    assert.ok(outlineMarkdown.includes(
+        '  - [1] 第十章 转折 · L500-930 · 18000 字'
+    ));
+    assert.ok(outlineMarkdown.includes(
+        'ID: `heading-500-turn`'
+    ));
+    assert.ok(outlineMarkdown.includes(
+        '建议先按标题层级和章节字符数选择少量关键章节'
+    ));
+    assert.ok(!outlineMarkdown.includes('## 目录项 1'));
+
+    const section = await collaborator.processToolCall({
+        command: 'GetSection',
+        id: outline.details.items[1].id,
+    });
+    const sectionCall = control.calls.find((entry) =>
+        entry.type === 'call' && entry.request.method === 'getSection'
+    );
+    assert.ok(sectionCall);
+    assert.strictEqual(sectionCall.request.endpoint, 'docx');
+    assert.strictEqual(
+        sectionCall.request.payload.id,
+        'heading-500-turn'
+    );
+    assert.strictEqual(section.details.heading.characterCount, 18000);
+    assert.ok(section.content[0].text.includes('## 源码'));
+    assert.ok(section.content[0].text.includes('```markdown'));
+    assert.ok(section.content[0].text.includes('关键剧情正文'));
 
     const submitted = await collaborator.processToolCall({
         command: 'SubmitSourcePr',
