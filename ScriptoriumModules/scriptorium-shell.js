@@ -41,6 +41,32 @@
             return controller;
         }
 
+        function updateMetrics() {
+            const text = String(context.metricsPort?.text?.() || '');
+            const compact = text.replace(/\s/gu, '');
+            const cjkCharacters = (
+                text.match(/[\u3400-\u9fff\uf900-\ufaff]/gu) || []
+            ).length;
+            const nonCjkWords = (
+                text
+                    .replace(/[\u3400-\u9fff\uf900-\ufaff]/gu, ' ')
+                    .match(/[\p{L}\p{N}]+/gu) || []
+            ).length;
+            if (elements['word-count']) {
+                elements['word-count'].textContent =
+                    `${cjkCharacters + nonCjkWords} 字`;
+            }
+            if (elements['character-count']) {
+                elements['character-count'].textContent =
+                    `${Array.from(compact).length} 字符`;
+            }
+        }
+
+        function updateDocumentStatus() {
+            updateIdentity();
+            updateMetrics();
+        }
+
         function updateIdentity() {
             const status = context.documentPort.status();
             const homeVisible = elements['welcome-state']?.hidden === false;
@@ -378,9 +404,9 @@
             documentDisposer?.();
             documentDisposer = context.documentPort.subscribe(
                 '*',
-                updateIdentity
+                updateDocumentStatus
             ) || null;
-            updateIdentity();
+            updateDocumentStatus();
             syncFocusModeControls();
             try {
                 document.body.classList.toggle(
@@ -426,6 +452,7 @@
             register,
             cacheElements,
             updateIdentity,
+            updateMetrics,
             switchMode,
             setFocusMode,
             syncFocusModeControls,

@@ -429,6 +429,24 @@
     const styleFacade = Object.freeze({
         close: (...args) => stylePort?.close(...args),
     });
+    const metricsPort = Object.freeze({
+        text() {
+            const documentModel = documentPort.document();
+            if (!documentModel) return '';
+            const html = documentModel.manifest?.scene?.kind
+                === core.PROJECT_KINDS.SLIDE_DECK
+                ? (documentModel.source?.slides || [])
+                    .map((slide) => core.splitSlideSource(slide.source).html)
+                    .join('\n')
+                : hybridCompiler.compile(
+                    String(documentModel.source?.content || ''),
+                    { sanitizeHtml: core.sanitizeHtml }
+                ).html;
+            const template = document.createElement('template');
+            template.innerHTML = html;
+            return template.content.textContent || '';
+        },
+    });
 
     shell = window.ScriptoriumShell.createShell({
         core,
@@ -447,6 +465,7 @@
         findPort: findFacade,
         mediaPort: mediaFacade,
         stylePort: styleFacade,
+        metricsPort,
         editorResolver,
         bindElements,
         onInitialize,
