@@ -127,10 +127,29 @@ function run() {
         /已属于样式包/
     );
 
-    assert.strictEqual(library.unregisterPack(packId), true);
+    const exported = library.exportUserPacks();
+    assert.strictEqual(exported.length, 1);
+    assert.strictEqual(exported[0].manifest.id, packId);
+    assert.strictEqual(exported[0].styles.length, 2);
+    assert.ok(!Object.hasOwn(exported[0], 'builtin'));
+    assert.ok(!Object.hasOwn(exported[0], 'editable'));
+
+    const restoredPackId = 'vcp.test.restored-theme';
+    const restored = library.replaceUserPacks([
+        makePack(restoredPackId, [
+            makeStyle('vcp.test.restored-theme.first', '#246810'),
+        ]),
+    ]);
+    assert.strictEqual(restored.length, 1);
+    assert.strictEqual(restored[0].manifest.id, restoredPackId);
     assert.strictEqual(library.getPack(packId), null);
+    assert.ok(library.get('vcp.test.restored-theme.first'));
+    assert.ok(library.getPack(library.BUILTIN_PACK_ID));
+
+    assert.strictEqual(library.unregisterPack(restoredPackId), true);
+    assert.strictEqual(library.getPack(restoredPackId), null);
     assert.strictEqual(
-        library.get('vcp.test.agent-theme.first'),
+        library.get('vcp.test.restored-theme.first'),
         null
     );
     assert.ok(library.getPack(library.BUILTIN_PACK_ID));

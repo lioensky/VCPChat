@@ -326,6 +326,9 @@
             return runAfterUnsavedDecision(
                 '回到首页前，可以保存当前修改，或舍弃这些修改。',
                 async () => {
+                    context.surfacePort?.setFocusMode?.(false, {
+                        focusDock: false,
+                    });
                     context.editorResolver?.()?.flush?.();
                     context.historyPort.finalize();
                     context.navigationPort?.clear?.();
@@ -347,6 +350,7 @@
                     if (elements['welcome-state']) {
                         elements['welcome-state'].hidden = false;
                     }
+                    context.surfacePort?.refreshControls?.();
                     await renderRecent();
                     return true;
                 }

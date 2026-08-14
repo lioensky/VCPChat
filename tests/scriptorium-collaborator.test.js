@@ -1,7 +1,7 @@
 'use strict';
 
 const assert = require('assert');
-const collaborator = require('../../VCPDistributedServer/Plugin/ScriptoriumCollaborator/ScriptoriumCollaboratorService');
+const collaborator = require('../VCPDistributedServer/Plugin/ScriptoriumCollaborator/ScriptoriumCollaboratorService');
 
 function createControl() {
     const calls = [];
@@ -82,6 +82,85 @@ function createControl() {
                     operation: 'delete',
                     packId: request.payload.packId,
                     deletedStyleCount: 1,
+                    maid: request.payload.maid,
+                };
+            }
+            if (request.method === 'listSvgAssetPacks') {
+                return {
+                    success: true,
+                    builtinPackId: 'vcp.scriptorium.basic-shapes',
+                    count: 1,
+                    packs: [{
+                        manifest: {
+                            id: 'vcp.scriptorium.basic-shapes',
+                            name: 'Scriptorium 基础图形',
+                        },
+                        builtin: true,
+                        editable: false,
+                        assetCount: 7,
+                        animatedCount: 0,
+                        assets: [],
+                    }],
+                };
+            }
+            if (request.method === 'listSvgAssets') {
+                return {
+                    success: true,
+                    count: 1,
+                    assets: [{
+                        id: 'vcp.test.motion.spinner',
+                        name: '旋转加载器',
+                        packId: 'vcp.test.motion',
+                        category: '动画',
+                        kind: 'animated',
+                    }],
+                };
+            }
+            if (request.method === 'getSvgAsset') {
+                return {
+                    success: true,
+                    builtin: false,
+                    editable: true,
+                    asset: {
+                        id: request.payload.assetId,
+                        name: '旋转加载器',
+                        packId: 'vcp.test.motion',
+                        kind: 'animated',
+                        source: '<svg><circle><animate/></circle></svg>',
+                    },
+                    source: '<svg><circle><animate/></circle></svg>',
+                };
+            }
+            if (request.method === 'getSvgAssetPack') {
+                return {
+                    success: true,
+                    pack: {
+                        format: 'vcp-vdoc-svg-asset-pack',
+                        version: 1,
+                        manifest: {
+                            id: request.payload.packId,
+                            name: '测试 SVG 资产包',
+                        },
+                        editable: true,
+                        assets: [],
+                    },
+                    source: '{\n  "format": "vcp-vdoc-svg-asset-pack"\n}',
+                };
+            }
+            if (request.method === 'upsertSvgAssetPack') {
+                return {
+                    success: true,
+                    operation: 'create',
+                    maid: request.payload.maid,
+                    pack: request.payload.pack,
+                };
+            }
+            if (request.method === 'deleteSvgAssetPack') {
+                return {
+                    success: true,
+                    operation: 'delete',
+                    packId: request.payload.packId,
+                    deletedAssetCount: 1,
                     maid: request.payload.maid,
                 };
             }
@@ -301,6 +380,145 @@ async function run() {
         'vcp.test.generated'
     );
     assert.strictEqual(deleted.details.deletedStyleCount, 1);
+
+    const svgPackList = await collaborator.processToolCall({
+        command: 'ListSvgAssetPacks',
+        query: '基础',
+        editableOnly: false,
+    });
+    assert.strictEqual(svgPackList.details.count, 1);
+    assert.strictEqual(
+        svgPackList.details.builtinPackId,
+        'vcp.scriptorium.basic-shapes'
+    );
+    const svgPackListCall = control.calls.find((entry) =>
+        entry.type === 'call'
+        && entry.request.method === 'listSvgAssetPacks'
+    );
+    assert.deepStrictEqual(svgPackListCall.request.payload, {
+        query: '基础',
+        editableOnly: false,
+    });
+
+    const svgAssets = await collaborator.processToolCall({
+        command: 'ListSvgAssets',
+        query: '加载',
+        packId: 'vcp.test.motion',
+        category: '动画',
+        kind: 'animated',
+    });
+    assert.strictEqual(svgAssets.details.assets[0].kind, 'animated');
+    const svgAssetsCall = control.calls.find((entry) =>
+        entry.type === 'call'
+        && entry.request.method === 'listSvgAssets'
+    );
+    assert.deepStrictEqual(svgAssetsCall.request.payload, {
+        query: '加载',
+        packId: 'vcp.test.motion',
+        category: '动画',
+        kind: 'animated',
+    });
+
+    const svgAsset = await collaborator.processToolCall({
+        command: 'GetSvgAsset',
+        assetId: 'vcp.test.motion.spinner',
+    });
+    assert.strictEqual(
+        svgAsset.details.asset.id,
+        'vcp.test.motion.spinner'
+    );
+    assert.ok(svgAsset.content[0].text.includes('<animate/>'));
+
+    const svgPackSource = await collaborator.processToolCall({
+        command: 'GetSvgAssetPack',
+        packId: 'vcp.test.motion',
+    });
+    assert.strictEqual(
+        svgPackSource.details.pack.manifest.id,
+        'vcp.test.motion'
+    );
+    assert.ok(svgPackSource.content[0].text.includes(
+        'vcp-vdoc-svg-asset-pack'
+    ));
+
+    const svgPack = {
+        format: 'vcp-vdoc-svg-asset-pack',
+        version: 1,
+        manifest: {
+            id: 'vcp.test.generated-svg',
+            name: 'Agent SVG 资产包',
+        },
+        assets: [{
+            id: 'vcp.test.generated-svg.pulse',
+            name: '脉冲圆',
+            category: '动画',
+            source: '<svg xmlns="http://www.w3.org/2000/svg">'
+                + '<circle cx="50" cy="50" r="20">'
+                + '<animate attributeName="r" from="20" to="40" dur="1s"/>'
+                + '</circle></svg>',
+        }],
+    };
+    const svgUpserted = await collaborator.processToolCall({
+        command: 'UpsertSvgAssetPack',
+        maid: 'Nova',
+        source: JSON.stringify(svgPack),
+    }, {
+        requestId: 'svg-upsert-request',
+        vcpContext: { agentId: 'agent-nova' },
+    });
+    const svgUpsertCall = control.calls.find((entry) =>
+        entry.type === 'call'
+        && entry.request.method === 'upsertSvgAssetPack'
+    );
+    assert.ok(svgUpsertCall);
+    assert.strictEqual(
+        svgUpsertCall.request.requestId,
+        'svg-upsert-request'
+    );
+    assert.deepStrictEqual(svgUpsertCall.request.payload.pack, svgPack);
+    assert.deepStrictEqual(svgUpsertCall.request.payload.maid, {
+        id: 'agent-nova',
+        name: 'Nova',
+        type: 'agent',
+    });
+    assert.strictEqual(svgUpserted.details.operation, 'create');
+
+    const svgDeleted = await collaborator.processToolCall({
+        command: 'DeleteSvgAssetPack',
+        packId: 'vcp.test.generated-svg',
+        maid: 'Nova',
+    }, {
+        requestId: 'svg-delete-request',
+        vcpContext: { agentId: 'agent-nova' },
+    });
+    const svgDeleteCall = control.calls.find((entry) =>
+        entry.type === 'call'
+        && entry.request.method === 'deleteSvgAssetPack'
+    );
+    assert.ok(svgDeleteCall);
+    assert.strictEqual(
+        svgDeleteCall.request.requestId,
+        'svg-delete-request'
+    );
+    assert.strictEqual(
+        svgDeleteCall.request.payload.packId,
+        'vcp.test.generated-svg'
+    );
+    assert.strictEqual(svgDeleted.details.deletedAssetCount, 1);
+
+    await assert.rejects(
+        collaborator.processToolCall({
+            command: 'UpsertSvgAssetPack',
+            pack: svgPack,
+        }),
+        /缺少 maid 署名字段/
+    );
+    await assert.rejects(
+        collaborator.processToolCall({
+            command: 'GetSvgAsset',
+        }),
+        /缺少 assetId/
+    );
 
     const fenced = collaborator._test.markdownFence(
         'const example = `value`;\n```\nend',

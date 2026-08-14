@@ -35,6 +35,13 @@ import { createMessageSkeleton, formatMessageTimestamp } from './renderer/domBui
 import * as streamManager from './renderer/streamManager.js';
 import * as emoticonUrlFixer from './renderer/emoticonUrlFixer.js';
 import { createContentPipeline, PIPELINE_MODES } from './renderer/contentPipeline.js';
+import {
+    TOOL_REQUEST_START_MARKER as TOOL_START_MARKER,
+    TOOL_REQUEST_END_MARKER as TOOL_END_MARKER,
+    findToolRequestEnd,
+    isBacktickWrappedToolMarker as isBacktickWrappedMarker,
+    replaceToolRequestBlocks
+} from './renderer/toolRequestScanner.js';
 
 const colorExtractionPromises = new Map();
 
@@ -306,8 +313,6 @@ function restoreLatexBlocks(html, map) {
 
 // --- Pre-compiled Regular Expressions for Performance ---
 const TOOL_REGEX = /(?<!`)<<<\[TOOL_REQUEST\]>>>(.*?)<<<\[END_TOOL_REQUEST\]>>>(?!`)/gs;
-const TOOL_START_MARKER = '<<<[TOOL_REQUEST]>>>';
-const TOOL_END_MARKER = '<<<[END_TOOL_REQUEST]>>>';
 const NOTE_REGEX = /<<<DailyNoteStart>>>(.*?)<<<DailyNoteEnd>>>/gs;
 const TOOL_RESULT_REGEX = /\[\[VCP调用结果信息汇总:(.*?)VCP调用结果结束\]\]/gs;
 const TOOL_CALL_SUMMARY_REGEX = /\[本轮工具调用摘要:\]([\s\S]*?)\[本轮工具调用摘要结束\]/g;
@@ -324,79 +329,6 @@ const ROLE_DIVIDER_REGEX = /<<<\[(END_)?ROLE_DIVIDE_(SYSTEM|ASSISTANT|USER)\]>>>
 const DESKTOP_PUSH_REGEX = /(?<!`)<<<\[DESKTOP_PUSH\]>>>([\s\S]*?)<<<\[DESKTOP_PUSH_END\]>>>(?!`)/gs;
 const DESKTOP_PUSH_PARTIAL_REGEX = /(?<!`)<<<\[DESKTOP_PUSH\]>>>([\s\S]*)$/s; // 流式传输中未闭合的情况
 
-
-function isBacktickWrappedMarker(text, index, marker) {
-    return text[index - 1] === '`' || text[index + marker.length] === '`';
-}
-
-function findMarkedFieldEnd(text, contentStart, isEscape) {
-    const endRegex = isEscape
-        ? /[「{]末[Ee][Ss][Cc][Aa][Pp][Ee][」}]/gi
-        : /[「{]末[」}]/g;
-    endRegex.lastIndex = contentStart;
-    const endMatch = endRegex.exec(text);
-    return endMatch ? endMatch.index + endMatch[0].length : text.length;
-}
-
-function findToolRequestEnd(text, contentStart) {
-    const markerRegex = /<<<\[END_TOOL_REQUEST\]>>>|[「{]始(?:[Ee][Ss][Cc][Aa][Pp][Ee])?[」}]/gi;
-    markerRegex.lastIndex = contentStart;
-
-    while (true) {
-        const match = markerRegex.exec(text);
-        if (!match) return -1;
-
-        const marker = match[0];
-        if (marker === TOOL_END_MARKER) {
-            if (isBacktickWrappedMarker(text, match.index, marker)) {
-                markerRegex.lastIndex = match.index + marker.length;
-                continue;
-            }
-            return match.index + marker.length;
-        }
-
-        const isEscape = /escape/i.test(marker);
-        markerRegex.lastIndex = findMarkedFieldEnd(text, match.index + marker.length, isEscape);
-    }
-}
-
-function replaceToolRequestBlocks(text, replacer) {
-    if (typeof text !== 'string' || !text.includes(TOOL_START_MARKER)) {
-        return text;
-    }
-
-    let result = '';
-    let cursor = 0;
-
-    while (cursor < text.length) {
-        const startIndex = text.indexOf(TOOL_START_MARKER, cursor);
-        if (startIndex === -1) {
-            result += text.slice(cursor);
-            break;
-        }
-
-        if (isBacktickWrappedMarker(text, startIndex, TOOL_START_MARKER)) {
-            result += text.slice(cursor, startIndex + TOOL_START_MARKER.length);
-            cursor = startIndex + TOOL_START_MARKER.length;
-            continue;
-        }
-
-        const contentStart = startIndex + TOOL_START_MARKER.length;
-        const endIndex = findToolRequestEnd(text, contentStart);
-        if (endIndex === -1) {
-            result += text.slice(cursor);
-            break;
-        }
-
-        const fullMatch = text.slice(startIndex, endIndex);
-        const content = text.slice(contentStart, endIndex - TOOL_END_MARKER.length);
-        result += text.slice(cursor, startIndex);
-        result += replacer(fullMatch, content, startIndex, endIndex);
-        cursor = endIndex;
-    }
-
-    return result;
-}
 
 // --- Enhanced Rendering Styles (from UserScript) ---
 function injectEnhancedStyles() {
@@ -1163,7 +1095,12 @@ function transformSpecialBlocks(text, codeBlockMap, thoughtChainMap = null) {
                 toolName = extractedName;
             }
 
-            const escapedFullContent = escapeHtml(restoreBlocks(content));
+            // 工具气泡会在外层继续经过 marked.parse()。如果把参数中的真实换行直接放进
+            // <pre>，空行会终止 CommonMark raw HTML block，导致后续 Markdown 被浏览器
+            // 收进尚未闭合的 <pre>，表现为“后续渲染被吞”。用字符实体保存换行，使整个
+            // 气泡对 Markdown 解析器保持为单行、不可拆分 HTML；写入 DOM 后仍显示为换行。
+            const escapedFullContent = escapeHtml(restoreBlocks(content))
+                .replace(/\r\n?|\n/g, '&#10;');
             return `\n\n<div class="vcp-tool-use-bubble" data-vcp-block-type="tool-use" data-vcp-preserve-children="true">` +
                 `<div class="vcp-tool-summary">` +
                 `<span class="vcp-tool-label">VCP-ToolUse:</span> ` +

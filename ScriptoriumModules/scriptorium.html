@@ -216,24 +216,16 @@
             <button id="insert-block-btn" class="deck-button compact" type="button" title="在当前块后插入">
                 <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/><path d="M4 3h16M4 21h16"/></svg>
             </button>
-            <button class="deck-button compact" data-command="image" title="插入媒体" aria-label="插入媒体">
+            <button id="insert-media-btn" class="deck-button compact"
+                type="button" title="插入图片或媒体（可添加描述）"
+                aria-label="插入图片或媒体，可添加内容描述">
                 <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m4 18 5-5 4 4 3-3 4 4"/></svg>
             </button>
-            <label class="control-shell shape-kind-shell" title="选择 SVG 图形">
-                <span class="sr-only">图形类型</span>
-                <select id="shape-kind-select" aria-label="图形类型">
-                    <option value="rectangle">矩形</option>
-                    <option value="rounded">圆角矩形</option>
-                    <option value="ellipse">椭圆</option>
-                    <option value="triangle">三角形</option>
-                    <option value="star">星形</option>
-                    <option value="arrow">箭头</option>
-                    <option value="line">直线</option>
-                </select>
-            </label>
-            <button id="insert-shape-btn" class="deck-button compact" type="button"
-                title="插入所选 SVG 图形" aria-label="插入图形">
-                <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="3"/><circle cx="12" cy="12" r="4"/></svg>
+            <button id="svg-asset-picker-btn" class="deck-button compact"
+                type="button" title="打开 SVG 图形资产库"
+                aria-label="插入 SVG 图形资产" aria-haspopup="dialog"
+                aria-expanded="false">
+                <svg viewBox="0 0 24 24"><circle cx="7" cy="8" r="3"/><rect x="12" y="5" width="7" height="7" rx="1"/><path d="m5 19 4-7 4 7zM14 16h6M17 13v6"/></svg>
             </button>
             <button id="insert-table-btn" class="deck-button compact" title="插入 3 × 3 表格">
                 <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="1"/><path d="M3 10h18M3 15h18M9 4v16M15 4v16"/></svg>
@@ -457,6 +449,121 @@
                 title="关闭（Esc）" aria-label="关闭查找">×</button>
         </div>
     </section>
+
+    <section id="svg-asset-picker" class="svg-asset-picker" role="dialog"
+        aria-label="SVG 图形资产选择器" hidden>
+        <header class="svg-asset-picker-header">
+            <div>
+                <strong>图形资产</strong>
+                <small id="svg-asset-picker-count">0 个资产</small>
+            </div>
+            <button id="svg-asset-manage-btn" type="button">管理</button>
+        </header>
+        <div class="svg-asset-picker-tools">
+            <input id="svg-asset-picker-search" type="search"
+                placeholder="搜索图形" autocomplete="off">
+            <select id="svg-asset-picker-category" aria-label="图形分类">
+                <option value="">全部分类</option>
+            </select>
+        </div>
+        <div id="svg-asset-picker-grid" class="svg-asset-grid"
+            role="listbox" aria-label="可插入 SVG 资产"></div>
+        <button id="svg-asset-import-card" class="svg-asset-import-card"
+            type="button">
+            <span>＋</span>
+            <strong>批量导入 SVG</strong>
+        </button>
+        <input id="svg-asset-import-input" type="file"
+            accept=".svg,image/svg+xml" multiple hidden>
+    </section>
+
+    <div id="svg-asset-manager-dialog"
+        class="dialog-backdrop svg-asset-manager-backdrop"
+        role="dialog" aria-modal="true"
+        aria-labelledby="svg-asset-manager-title" hidden>
+        <section class="svg-asset-manager-dialog">
+            <header class="svg-asset-manager-header">
+                <div>
+                    <span class="dialog-kicker">SVG VISUAL ASSET LIBRARY</span>
+                    <h2 id="svg-asset-manager-title">图形资产管理</h2>
+                    <p>管理导入与 Agent 创建的静态或动画 SVG 资产；内置资产只读。</p>
+                </div>
+                <button id="svg-asset-manager-close-btn" type="button"
+                    aria-label="关闭">×</button>
+            </header>
+            <div class="svg-asset-manager-toolbar">
+                <input id="svg-asset-manager-search" type="search"
+                    placeholder="搜索名称、分类或标签" autocomplete="off">
+                <select id="svg-asset-manager-kind">
+                    <option value="">静态与动画</option>
+                    <option value="static">静态 SVG</option>
+                    <option value="animated">动画 SVG</option>
+                </select>
+                <button id="svg-asset-manager-import-btn"
+                    type="button">批量导入</button>
+                <button id="svg-asset-manager-export-btn"
+                    type="button">导出资产包</button>
+            </div>
+            <div class="svg-asset-manager-body">
+                <div id="svg-asset-manager-list"
+                    class="svg-asset-manager-list"></div>
+                <form id="svg-asset-editor-form" class="svg-asset-editor">
+                    <div class="svg-asset-editor-meta">
+                        <span id="svg-asset-editor-origin">选择一个资产</span>
+                        <h3 id="svg-asset-editor-heading">资产预览</h3>
+                    </div>
+                    <iframe id="svg-asset-preview-frame"
+                        class="svg-asset-preview-frame" sandbox=""
+                        title="SVG 资产隔离预览"></iframe>
+                    <div class="svg-asset-editor-fields">
+                        <label>
+                            <span>资产名称</span>
+                            <input id="svg-asset-name-input" maxlength="120">
+                        </label>
+                        <label>
+                            <span>分类</span>
+                            <input id="svg-asset-category-input" maxlength="80">
+                        </label>
+                        <label class="svg-asset-editor-wide">
+                            <span>内容描述</span>
+                            <textarea id="svg-asset-description-input"
+                                maxlength="1200"></textarea>
+                        </label>
+                        <label class="svg-asset-editor-wide">
+                            <span>标签（逗号分隔）</span>
+                            <input id="svg-asset-tags-input">
+                        </label>
+                        <label>
+                            <span>默认宽度</span>
+                            <input id="svg-asset-width-input" type="number"
+                                min="24" max="4096">
+                        </label>
+                        <label>
+                            <span>默认高度</span>
+                            <input id="svg-asset-height-input" type="number"
+                                min="24" max="4096">
+                        </label>
+                        <label class="svg-asset-editor-wide">
+                            <span>SVG 源码</span>
+                            <textarea id="svg-asset-source-input"
+                                class="object-code-input"
+                                spellcheck="false"></textarea>
+                        </label>
+                    </div>
+                    <div id="svg-asset-editor-diagnostics"
+                        class="object-source-diagnostics">
+                        等待选择资产
+                    </div>
+                    <footer class="svg-asset-editor-actions">
+                        <button id="svg-asset-delete-btn" type="button"
+                            class="dialog-danger" disabled>删除资产包</button>
+                        <button id="svg-asset-save-btn" type="submit"
+                            class="dialog-confirm" disabled>保存资产</button>
+                    </footer>
+                </form>
+            </div>
+        </section>
+    </div>
 
     <div id="style-library-dialog" class="style-library-backdrop" role="dialog" aria-modal="true" aria-labelledby="style-library-title" hidden>
         <section class="style-library-dialog">
@@ -931,6 +1038,8 @@
     <script src="scriptorium-async.js"></script>
     <script src="scriptorium-export-resources.js"></script>
     <script src="scriptorium-objects.js"></script>
+    <script src="vdoc-svg-asset-library.js"></script>
+    <script src="scriptorium-svg-assets.js"></script>
     <script src="scriptorium-rendered-text.js"></script>
 
     <script src="scriptorium-document-store.js"></script>

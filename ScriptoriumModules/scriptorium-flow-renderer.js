@@ -81,13 +81,29 @@
     outline: 0;
     color: inherit;
     background: transparent;
+    /*
+     * 单块 Markdown 与 HTML 编辑树必须沿用静态渲染的行盒。源码缩进、
+     * 标签间换行仍保留在 textContent 中，但不能用 break-spaces 将它们
+     * 变成额外可见行；真正的多行 Markdown 在下方逐行启用该规则。
+     */
     white-space: normal;
-    overflow-wrap: anywhere;
+    overflow-wrap: normal;
+    word-break: normal;
     tab-size: 4;
     caret-color: #3a8b78;
     cursor: text;
     user-select: text;
     -webkit-user-select: text;
+}
+/*
+ * 单行裸文本没有需要逐字符展示的源码空白，编辑态应与静态 Markdown
+ * 渲染完全共用普通空白折叠和换行策略。尤其不能使用 anywhere，否则
+ * 两端对齐段落在获得焦点时会重新计算换行机会并产生轻微几何跳动。
+ */
+.vdoc-md-live-preview.vdoc-md-plain-text-preview {
+    white-space: normal;
+    overflow-wrap: normal;
+    word-break: normal;
 }
 .vdoc-md-live-preview-run {
     display: flow-root;
@@ -99,16 +115,35 @@
     outline: 0;
     background: transparent;
 }
+.vdoc-md-live-preview-run > [data-vdoc-md-line-separator] {
+    /*
+     * 该节点只保存源码中的一个换行偏移。相邻编辑行本身已经是块级盒，
+     * 不应再让分隔符内的换行参与布局，否则 break-spaces 会额外占一行。
+     */
+    display: none !important;
+}
 .vdoc-md-live-preview-run > .vdoc-md-live-preview-line {
     box-sizing: border-box;
     width: 100%;
     min-width: 0;
     max-width: 100%;
-    white-space: normal;
+    /*
+     * 每个节点代表源码中的一行，而不是一个独立段落。静态段落的外边距
+     * 已提升到 run 容器；这里必须清零，否则每次 Enter 都会叠加一组
+     * p/h*/blockquote margin，表现为输入态行距远大于最终渲染态。
+     */
+    margin-block: 0;
+    white-space: break-spaces;
     overflow-wrap: anywhere;
+    line-height: inherit;
 }
-.vdoc-md-live-preview-line[data-vdoc-md-line-kind="quote"] {
-    margin-block: .55em;
+.vdoc-md-live-preview-run
+    > .vdoc-md-live-preview-line[data-vdoc-md-line-kind="quote"] {
+    /*
+     * 该节点只是逐行编辑树中的一行，不是独立 blockquote 块。
+     * 垂直 margin 会直接叠加到下一行，使编辑态基线步进大于渲染态。
+     */
+    margin-block: 0;
     padding-inline-start: 1em;
     border-inline-start: 3px solid color-mix(
         in srgb,
@@ -117,17 +152,21 @@
     );
     color: color-mix(in srgb, currentColor 82%, transparent);
 }
-.vdoc-md-live-preview-line[data-vdoc-md-line-kind="list"],
-.vdoc-md-live-preview-line[data-vdoc-md-line-kind="task-list"] {
+.vdoc-md-live-preview-run
+    > .vdoc-md-live-preview-line[data-vdoc-md-line-kind="list"],
+.vdoc-md-live-preview-run
+    > .vdoc-md-live-preview-line[data-vdoc-md-line-kind="task-list"] {
     position: relative;
     display: list-item;
     margin-inline-start: 1.65em;
     padding-inline-start: .2em;
 }
-.vdoc-md-live-preview-line[data-vdoc-md-line-kind="task-list"] {
+.vdoc-md-live-preview-run
+    > .vdoc-md-live-preview-line[data-vdoc-md-line-kind="task-list"] {
     list-style-type: square;
 }
-.vdoc-md-live-preview-line[data-vdoc-md-line-kind="table"] {
+.vdoc-md-live-preview-run
+    > .vdoc-md-live-preview-line[data-vdoc-md-line-kind="table"] {
     margin: 0;
     padding: .34em .55em;
     border-inline: 1px solid color-mix(
@@ -138,7 +177,8 @@
     background: color-mix(in srgb, currentColor 3.5%, transparent);
     font-family: Consolas, "Maple Mono", monospace;
 }
-.vdoc-md-live-preview-line[data-vdoc-md-line-kind="table"]
+.vdoc-md-live-preview-run
+    > .vdoc-md-live-preview-line[data-vdoc-md-line-kind="table"]
     + .vdoc-md-live-preview-line[data-vdoc-md-line-kind="table"] {
     border-top: 1px solid color-mix(
         in srgb,
@@ -161,13 +201,18 @@
     border: 0;
     color: color-mix(in srgb, currentColor 48%, #d97745);
     background: transparent;
-    font-family: Consolas, "Maple Mono", monospace;
-    font-size: .72em;
+    font-family: inherit;
+    /*
+     * Markdown 标记展开只允许影响当前行的横向占位。字号、字体和基线
+     * 全部继承正文，避免标记参与行盒计算后引发上下位移、行高变化，
+     * 或产生正文在获得焦点时字号轻微跳变的视觉错觉。
+     */
+    font-size: inherit;
     font-style: normal;
     font-weight: 600;
     line-height: inherit;
     text-decoration: none;
-    vertical-align: .06em;
+    vertical-align: baseline;
     opacity: .72;
 }
 .vdoc-md-marker-concealed { display: none !important; }

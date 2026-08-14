@@ -12,13 +12,14 @@ function createClient(overrides = {}) {
     reconcile: async () => ({ stats: {} }),
     syncManifest: async (request) => ({ type: "SYNC_DIFF_RESULTS", data: [], ...request }),
     syncMessageManifest: async () => ({
+      type: "MESSAGE_MANIFEST_RESULTS",
       topicId: "topic_1",
       ownerType: "agent",
       ownerId: "agent_1",
       messages: [
         {
           msgId: "msg_1",
-          contentHash: "hash_1",
+          contentHash: "a".repeat(64),
           updatedAt: 100,
           deletedAt: null,
         },
@@ -52,7 +53,7 @@ test("中央适配器保持旧消息 Manifest 字段格式", async () => {
   assert.deepEqual(result.messages, [
     {
       msg_id: "msg_1",
-      content_hash: "hash_1",
+      content_hash: "a".repeat(64),
       updated_at: 100,
       deleted_at: null,
     },
@@ -167,5 +168,140 @@ test("CDS 不可用时中央适配器显式失败而非静默写旧库", async (
   await assert.rejects(
     () => adapter.handleMessageDiffBatch({ topics: {} }),
     (error) => error.code === "CDS_UNAVAILABLE",
+  );
+});
+
+test("中央适配器保留未知 CDS 根因并补齐来源、阶段与 Topic", async () => {
+  const root = Object.assign(new Error("new CDS failure"), {
+    code: "UPSTREAM_EXTENSION_FAILED",
+  });
+  const adapter = createCentralSyncAdapter({
+    client: createClient({
+      syncMessageDiff: async () => {
+        throw root;
+      },
+    }),
+  });
+
+  await assert.rejects(
+    () => adapter.handleMessageDiffBatch({ topics: { "topic-a": {} } }),
+    (error) => {
+      assert.equal(error.code, "UPSTREAM_EXTENSION_FAILED");
+      assert.equal(error.origin, "desktop_cds");
+      assert.equal(error.stage, "messages");
+      assert.equal(error.kind, "internal");
+      assert.equal(error.retry, "manual");
+      assert.deepEqual(error.failedTopicIds, ["topic-a"]);
+      return true;
+    },
+  );
+});
+
+test("中央客户端通用 TIMEOUT 不会被误归为内部错误", async () => {
+  const adapter = createCentralSyncAdapter({
+    client: createClient({
+      syncTopicDiff: async () => {
+        throw Object.assign(new Error("CDS timed out"), { code: "TIMEOUT" });
+      },
+    }),
+  });
+
+  await assert.rejects(
+    () => adapter.handleTopicHashBatch({ hashes: {}, topics: [] }),
+    (error) => {
+      assert.equal(error.code, "TIMEOUT");
+      assert.equal(error.origin, "desktop_cds");
+      assert.equal(error.stage, "topic_validation");
+      assert.equal(error.kind, "connection");
+      return true;
+    },
+  );
+});
+
+test("CDS internal protocol mismatch 不会冒充 Mobile wire mismatch", async () => {
+  const adapter = createCentralSyncAdapter({
+    client: createClient({
+      syncTopicDiff: async () => {
+        throw Object.assign(new Error("CDS protocol 2 mismatch"), {
+          code: "PROTOCOL_MISMATCH",
+        });
+      },
+    }),
+  });
+
+  await assert.rejects(
+    () => adapter.handleTopicHashBatch({ hashes: {}, topics: [] }),
+    (error) => {
+      assert.equal(error.code, "CDS_PROTOCOL_MISMATCH");
+      assert.equal(error.origin, "desktop_cds");
+      assert.equal(error.stage, "topic_validation");
+      assert.equal(error.kind, "compatibility");
+      return true;
+    },
+  );
+});
+
+test("中央 Phase 3 的二字段错误会在插件边界补全而不改写根因", async () => {
+  const adapter = createCentralSyncAdapter({
+    client: createClient({
+      syncMessageDiff: async () => ({
+        type: "SYNC_DIFF_RESULTS_BATCH",
+        results: {
+          "topic-a": {
+            ok: false,
+            error: {
+              code: "TOPIC_HASH_FAILED",
+              message: "failed to read topic hash",
+            },
+          },
+        },
+      }),
+    }),
+  });
+
+  const response = await adapter.handleMessageDiffBatch({
+    topics: { "topic-a": {} },
+  });
+  assert.deepEqual(response.results["topic-a"], {
+    ok: false,
+    error: {
+      code: "TOPIC_HASH_FAILED",
+      origin: "desktop_cds",
+      stage: "messages",
+      kind: "storage",
+      retry: "manual",
+      message: "failed to read topic hash",
+      failedTopicIds: ["topic-a"],
+    },
+  });
+});
+
+test("中央适配器将畸形 CDS Phase 3 成功帧归为上游协议错误", async () => {
+  const adapter = createCentralSyncAdapter({
+    client: createClient({
+      syncMessageDiff: async () => ({
+        type: "SYNC_DIFF_RESULTS_BATCH",
+        results: {
+          "topic-a": {
+            ok: true,
+            toPull: [],
+            toPush: false,
+            error: { code: "INTERNAL_ERROR", message: "contradictory" },
+          },
+        },
+      }),
+    }),
+  });
+
+  await assert.rejects(
+    () => adapter.handleMessageDiffBatch({ topics: { "topic-a": {} } }),
+    (error) => {
+      assert.equal(error.code, "SYNC_PROTOCOL_INVALID");
+      assert.equal(error.origin, "desktop_cds");
+      assert.equal(error.stage, "messages");
+      assert.equal(error.kind, "protocol");
+      assert.deepEqual(error.failedTopicIds, ["topic-a"]);
+      return true;
+    },
   );
 });

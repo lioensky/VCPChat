@@ -28,20 +28,26 @@ const AGENT_ENDPOINT_METHODS = Object.freeze({
         'getDocumentInfo', 'getRenderedText', 'getOutline', 'getSource',
         'searchSource', 'getViewportSource', 'getVisualContext', 'getPrHistory',
         'listStylePacks', 'getStylePack', 'upsertStylePack',
-        'deleteStylePack', 'submitSourcePr', 'buildProjectArtifact',
+        'deleteStylePack', 'listSvgAssetPacks', 'listSvgAssets',
+        'getSvgAsset', 'getSvgAssetPack', 'upsertSvgAssetPack',
+        'deleteSvgAssetPack', 'submitSourcePr', 'buildProjectArtifact',
     ]),
     docx: new Set([
         'getDocumentInfo', 'getRenderedText', 'getOutline', 'getSource',
         'searchSource', 'getViewportSource', 'getVisualContext', 'getPrHistory',
         'listStylePacks', 'getStylePack', 'upsertStylePack',
-        'deleteStylePack', 'submitSourcePr', 'buildProjectArtifact',
+        'deleteStylePack', 'listSvgAssetPacks', 'listSvgAssets',
+        'getSvgAsset', 'getSvgAssetPack', 'upsertSvgAssetPack',
+        'deleteSvgAssetPack', 'submitSourcePr', 'buildProjectArtifact',
         'getFullText', 'getSection',
     ]),
     pptx: new Set([
         'getDocumentInfo', 'getRenderedText', 'getOutline', 'getSource',
         'searchSource', 'getViewportSource', 'getVisualContext', 'getPrHistory',
         'listStylePacks', 'getStylePack', 'upsertStylePack',
-        'deleteStylePack', 'submitSourcePr', 'buildProjectArtifact',
+        'deleteStylePack', 'listSvgAssetPacks', 'listSvgAssets',
+        'getSvgAsset', 'getSvgAssetPack', 'upsertSvgAssetPack',
+        'deleteSvgAssetPack', 'submitSourcePr', 'buildProjectArtifact',
         'getSlideCount', 'getSlide', 'getActiveSlide', 'selectSlide',
         'addSlide', 'insertSlide', 'deleteSlide',
         'updatePresentationConfig', 'updateSceneConfig',
@@ -53,6 +59,7 @@ const AGENT_MUTATION_METHODS = new Set([
 ]);
 const AGENT_DIRECT_MUTATION_METHODS = new Set([
     'upsertStylePack', 'deleteStylePack',
+    'upsertSvgAssetPack', 'deleteSvgAssetPack',
 ]);
 
 let docxWindow = null;
@@ -60,6 +67,8 @@ let mainWindow = null;
 let openChildWindows = [];
 let projectRoot = null;
 let recentFilePath = null;
+let stylePackFilePath = null;
+let svgAssetFilePath = null;
 let initialized = false;
 let fontCache = null;
 const pendingAgentRequests = new Map();
@@ -391,6 +400,102 @@ async function getSystemFonts(forceRefresh = false) {
         'Times New Roman',
     ]);
     return fontCache;
+}
+
+async function readStylePacks() {
+    try {
+        if (!stylePackFilePath || !await fs.pathExists(stylePackFilePath)) {
+            return [];
+        }
+        const stored = await fs.readJson(stylePackFilePath);
+        return Array.isArray(stored?.packs) ? stored.packs : [];
+    } catch (error) {
+        console.warn(
+            '[Scriptorium] Failed to read style packs:',
+            error.message
+        );
+        return [];
+    }
+}
+
+async function writeStylePacks(_event, packs = []) {
+    if (!Array.isArray(packs)) {
+        throw new Error('高级样式包持久化内容必须是数组。');
+    }
+    const documentValue = {
+        format: 'vcp-scriptorium-style-pack-storage',
+        version: 1,
+        updatedAt: new Date().toISOString(),
+        packs,
+    };
+    const content = JSON.stringify(documentValue, null, 2);
+    if (Buffer.byteLength(content, 'utf8') > 20 * 1024 * 1024) {
+        throw new Error('高级样式库超过 20 MB 持久化上限。');
+    }
+    await fs.ensureDir(path.dirname(stylePackFilePath));
+    const temporaryPath =
+        `${stylePackFilePath}.writing-${process.pid}-${Date.now()}`;
+    try {
+        await fs.writeFile(temporaryPath, content, 'utf8');
+        await fs.move(temporaryPath, stylePackFilePath, {
+            overwrite: true,
+        });
+    } finally {
+        await fs.remove(temporaryPath).catch(() => {});
+    }
+    return {
+        success: true,
+        count: packs.length,
+        size: Buffer.byteLength(content, 'utf8'),
+    };
+}
+
+async function readSvgAssetPacks() {
+    try {
+        if (!svgAssetFilePath || !await fs.pathExists(svgAssetFilePath)) {
+            return [];
+        }
+        const stored = await fs.readJson(svgAssetFilePath);
+        return Array.isArray(stored?.packs) ? stored.packs : [];
+    } catch (error) {
+        console.warn(
+            '[Scriptorium] Failed to read SVG asset packs:',
+            error.message
+        );
+        return [];
+    }
+}
+
+async function writeSvgAssetPacks(_event, packs = []) {
+    if (!Array.isArray(packs)) {
+        throw new Error('SVG 资产持久化内容必须是数组。');
+    }
+    const documentValue = {
+        format: 'vcp-scriptorium-svg-asset-storage',
+        version: 1,
+        updatedAt: new Date().toISOString(),
+        packs,
+    };
+    const content = JSON.stringify(documentValue, null, 2);
+    if (Buffer.byteLength(content, 'utf8') > 20 * 1024 * 1024) {
+        throw new Error('SVG 资产库超过 20 MB 持久化上限。');
+    }
+    await fs.ensureDir(path.dirname(svgAssetFilePath));
+    const temporaryPath =
+        `${svgAssetFilePath}.writing-${process.pid}-${Date.now()}`;
+    try {
+        await fs.writeFile(temporaryPath, content, 'utf8');
+        await fs.move(temporaryPath, svgAssetFilePath, {
+            overwrite: true,
+        });
+    } finally {
+        await fs.remove(temporaryPath).catch(() => {});
+    }
+    return {
+        success: true,
+        count: packs.length,
+        size: Buffer.byteLength(content, 'utf8'),
+    };
 }
 
 async function readRecentFiles() {
@@ -1080,7 +1185,21 @@ function initialize(params) {
     mainWindow = params.mainWindow;
     openChildWindows = params.openChildWindows || [];
     projectRoot = params.projectRoot;
-    recentFilePath = path.join(params.appDataRoot, 'Scriptorium', 'recent.json');
+    recentFilePath = path.join(
+        params.appDataRoot,
+        'Scriptorium',
+        'recent.json'
+    );
+    stylePackFilePath = path.join(
+        params.appDataRoot,
+        'Scriptorium',
+        'style-packs.json'
+    );
+    svgAssetFilePath = path.join(
+        params.appDataRoot,
+        'Scriptorium',
+        'svg-assets.json'
+    );
 
     windowService.register(WINDOW_APP_IDS.DOCX, {
         owner: 'docxHandlers',
@@ -1100,6 +1219,10 @@ function initialize(params) {
     ipcMain.handle('docx:save', saveDocument);
     ipcMain.handle('scriptorium:export-rich-document', exportRichDocument);
     ipcMain.handle('docx:recent-list', readRecentFiles);
+    ipcMain.handle('scriptorium:style-packs-load', readStylePacks);
+    ipcMain.handle('scriptorium:style-packs-save', writeStylePacks);
+    ipcMain.handle('scriptorium:svg-assets-load', readSvgAssetPacks);
+    ipcMain.handle('scriptorium:svg-assets-save', writeSvgAssetPacks);
     ipcMain.handle('docx:fonts-list', (_event, forceRefresh = false) => getSystemFonts(forceRefresh));
 }
 

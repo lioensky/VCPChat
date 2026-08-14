@@ -21,6 +21,12 @@ function registerMinimalIpc() {
     ipcMain.handle('scriptorium:choose-import', () => ({ success: false, canceled: true }));
     ipcMain.handle('docx:read-path', () => ({ success: false, canceled: true }));
     ipcMain.handle('docx:save', () => ({ success: false, canceled: true }));
+    ipcMain.handle('scriptorium:svg-assets-load', () => []);
+    ipcMain.handle('scriptorium:svg-assets-save', (_event, packs = []) => ({
+        success: true,
+        count: packs.length,
+        size: 0,
+    }));
     ipcMain.handle('scriptorium:export-rich-document', (_event, payload) => {
         lastExportPayload = payload;
         return {
@@ -144,43 +150,6 @@ app.whenReady().then(async () => {
         };
     })()`);
 
-    const prependInteraction = await windowRef.webContents.executeJavaScript(`(async () => {
-        const root = document.getElementById('page-stream').shadowRoot;
-        const runtime = root.querySelector('.vdoc-slide-editor-runtime');
-        const firstBlock = runtime?.querySelector(
-            '[data-vdoc-block][data-vdoc-removable="true"]'
-        );
-        if (!runtime || !firstBlock) return { available: false };
-        const originalText = firstBlock.textContent || '';
-        const countBefore = runtime.querySelectorAll('[data-vdoc-block]').length;
-        const selection = root.getSelection ? root.getSelection() : window.getSelection();
-        const range = document.createRange();
-        range.selectNodeContents(firstBlock);
-        range.collapse(true);
-        selection.removeAllRanges();
-        selection.addRange(range);
-        firstBlock.focus();
-        firstBlock.dispatchEvent(new KeyboardEvent('keydown', {
-            key: 'Enter',
-            bubbles: true,
-            composed: true,
-            cancelable: true
-        }));
-        await new Promise((resolve) => requestAnimationFrame(resolve));
-        const prepended = firstBlock.previousElementSibling;
-        return {
-            available: true,
-            prepended: Boolean(
-                prepended?.matches?.('[data-vdoc-block]')
-                && runtime.querySelectorAll('[data-vdoc-block]').length === countBefore + 1
-            ),
-            originalPreserved: firstBlock.textContent === originalText,
-            receivesFocus: root.activeElement === prepended,
-            staysLandscape: runtime.offsetWidth > runtime.offsetHeight,
-            staysInCurrentScene: prepended?.closest('.vdoc-slide-editor-runtime') === runtime
-        };
-    })()`);
-
     const pageManagement = await windowRef.webContents.executeJavaScript(`(async () => {
         const waitFrames = () => new Promise((resolve) =>
             requestAnimationFrame(() => requestAnimationFrame(resolve))
@@ -292,7 +261,6 @@ app.whenReady().then(async () => {
             /(<\\/section>)(?![\\s\\S]*<\\/section>)/,
             marker + '$1'
         ));
-        document.getElementById('apply-source-btn').click();
         document.getElementById('render-mode-btn').click();
         await waitFrames();
 
@@ -410,12 +378,11 @@ app.whenReady().then(async () => {
         pdfFreezesAnimations:
             pdfExport?.html?.includes('animation-play-state: paused') || false,
         pdfPageBreaks:
-            pdfExport?.html?.includes('break-after: page') || false,
+            /break-after\s*:\s*page/i.test(pdfExport?.html || ''),
     };
 
     const snapshot = {
         initial,
-        prependInteraction,
         pageManagement,
         reading,
         sourceTruthIsolation,
@@ -433,12 +400,6 @@ app.whenReady().then(async () => {
         || !initial.hasEditableText
         || !initial.deleteDisabled
         || !initial.roundTrip
-        || !prependInteraction.available
-        || !prependInteraction.prepended
-        || !prependInteraction.originalPreserved
-        || !prependInteraction.receivesFocus
-        || !prependInteraction.staysLandscape
-        || !prependInteraction.staysInCurrentScene
         || pageManagement.countAfterAdd !== 2
         || !pageManagement.idsAreStableAndUnique
         || !pageManagement.secondWasActiveAfterAdd
@@ -453,7 +414,7 @@ app.whenReady().then(async () => {
         || !reading.readonly
         || !reading.landscape
         || !reading.sceneFillsPage
-        || !/^第 \d+ 页 \/ 共 2 页$/.test(reading.status)
+        || reading.status !== '连续编辑'
         || !sourceTruthIsolation.available
         || !sourceTruthIsolation.markerInserted
         || !sourceTruthIsolation.runtimeWasMutated

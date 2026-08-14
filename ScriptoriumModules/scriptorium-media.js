@@ -223,7 +223,13 @@
                 card.append(name, remove, description);
                 return card;
             }));
-            elements['media-src-fields'].hidden = localItems.length > 0;
+            const localMode = localItems.length > 0;
+            elements['media-src-fields'].hidden = localMode;
+            if (elements['media-src-input']) {
+                // 隐藏 required 输入并不会退出浏览器约束校验。批量本地模式
+                // 必须同步禁用 src，否则 requestSubmit() 会被不可见字段拦截。
+                elements['media-src-input'].disabled = localMode;
+            }
         }
 
         function selectFiles(files) {

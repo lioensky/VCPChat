@@ -23,6 +23,8 @@
         deckEditor: window.ScriptoriumDeckEditor,
         formatting: window.ScriptoriumFormatting,
         primitives: window.ScriptoriumRenderPrimitives,
+        svgAssetLibrary: window.VDocSvgAssetLibrary,
+        svgAssets: window.ScriptoriumSvgAssets,
         renderedText: window.ScriptoriumRenderedText,
         flowRenderer: window.ScriptoriumFlowRenderer,
         deckRenderer: window.ScriptoriumDeckRenderer,
@@ -64,6 +66,14 @@
         exportRichDocument: (payload) =>
             nativeApi.exportRichDocument(payload),
         listRecent: () => nativeApi.listRecent(),
+        loadStylePacks: () =>
+            nativeApi.loadStylePacks?.() || [],
+        saveStylePacks: (packs) =>
+            nativeApi.saveStylePacks?.(packs),
+        loadSvgAssetPacks: () =>
+            nativeApi.loadSvgAssetPacks?.() || [],
+        saveSvgAssetPacks: (packs) =>
+            nativeApi.saveSvgAssetPacks?.(packs),
         listSystemFonts: (force) => nativeApi.listSystemFonts(force),
         loadAgentsList: () => nativeApi.loadAgentsList?.() || [],
         loadUserAvatar: () => nativeApi.loadUserAvatar?.() || null,
@@ -107,6 +117,7 @@
     let prDiffPort = null;
     let agentPort = null;
     let objectPort = null;
+    let svgAssetPort = null;
     let shell = null;
     let pathRequestDisposer = null;
     let agentRequestDisposer = null;
@@ -418,6 +429,24 @@
     const styleFacade = Object.freeze({
         close: (...args) => stylePort?.close(...args),
     });
+    const metricsPort = Object.freeze({
+        text() {
+            const documentModel = documentPort.document();
+            if (!documentModel) return '';
+            const html = documentModel.manifest?.scene?.kind
+                === core.PROJECT_KINDS.SLIDE_DECK
+                ? (documentModel.source?.slides || [])
+                    .map((slide) => core.splitSlideSource(slide.source).html)
+                    .join('\n')
+                : hybridCompiler.compile(
+                    String(documentModel.source?.content || ''),
+                    { sanitizeHtml: core.sanitizeHtml }
+                ).html;
+            const template = document.createElement('template');
+            template.innerHTML = html;
+            return template.content.textContent || '';
+        },
+    });
 
     shell = window.ScriptoriumShell.createShell({
         core,
@@ -436,6 +465,7 @@
         findPort: findFacade,
         mediaPort: mediaFacade,
         stylePort: styleFacade,
+        metricsPort,
         editorResolver,
         bindElements,
         onInitialize,
@@ -531,6 +561,7 @@
             window.ScriptoriumStyleUi.createStyleUiController({
                 elements,
                 styleLibrary,
+                persistencePort,
                 notificationPort,
                 getEditorPort: editorResolver,
                 onStyleUsed(style) {
@@ -618,6 +649,7 @@
                 containerModule,
                 hybridCompiler,
                 styleLibrary,
+                svgAssetLibrary: window.VDocSvgAssetLibrary,
                 programmableContent: window.ScriptoriumProgrammableContent,
                 prDiff: window.ScriptoriumPrDiff,
                 historyPort,
@@ -626,10 +658,15 @@
                 getAdapter: adapterResolver,
                 persist: (reason) =>
                     sessionPort.persistCheckpoint(reason),
-                onStyleLibraryChange: () => {
+                onStyleLibraryChange: async () => {
+                    await stylePort.persist();
                     renderFacade.invalidate('style-library-changed');
                     renderFacade.renderCurrent({ force: true });
                 },
+                persistSvgAssets: () =>
+                    persistencePort.saveSvgAssetPacks(
+                        window.VDocSvgAssetLibrary.exportUserPacks()
+                    ),
             });
         window.ScriptoriumAgent = agentPort;
 
@@ -650,6 +687,20 @@
                 commitMutation: mutateObject,
             });
 
+        svgAssetPort =
+            window.ScriptoriumSvgAssets.createSvgAssetController({
+                elements,
+                library: window.VDocSvgAssetLibrary,
+                objects: window.ScriptoriumObjects,
+                persistencePort,
+                notificationPort,
+                canInsert: () =>
+                    documentPort.status().ready
+                    && shell.surfacePort.mode() === 'edit',
+                freeCanvas: () => activeAdapter?.kind === 'deck',
+                insertObject,
+            });
+
         [
             sessionPort,
             mediaPort,
@@ -658,6 +709,7 @@
             formattingPort,
             stylePort,
             lineageUiPort,
+            svgAssetPort,
         ].forEach(shell.register);
     }
 
@@ -735,6 +787,8 @@
         await Promise.all([
             loadFonts(),
             sessionPort.renderRecent(),
+            stylePort.initialize(),
+            svgAssetPort.initialize(),
         ]);
         initialized = true;
     }

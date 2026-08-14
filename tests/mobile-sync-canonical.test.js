@@ -17,12 +17,12 @@ const FIXTURE_PATH = path.join(
   "Plugin",
   "VCPMobileSync",
   "fixtures",
-  "protocol_1_1_golden.json",
+  "protocol_1_2_golden.json",
 );
 const EXPECTED_FIXTURE_SHA256 =
-  "3b5f56d0731c1babede9aba001d9664117fae6bbc8d97cae56882f12a48e8e60";
+  "7226118ea55766f952575032efc8cfff883a19c9d196f637ac267cb8795fcef8";
 
-test("协议 1.1 golden bundle 与 Mobile 字节一致", () => {
+test("协议 1.2 golden bundle 与 Mobile 字节一致", () => {
   const bytes = fs.readFileSync(FIXTURE_PATH);
   assert.equal(
     crypto.createHash("sha256").update(bytes).digest("hex"),
@@ -32,7 +32,7 @@ test("协议 1.1 golden bundle 与 Mobile 字节一致", () => {
 
 test("canonicalizer 与 Mobile golden 输出和消息指纹一致", () => {
   const bundle = JSON.parse(fs.readFileSync(FIXTURE_PATH, "utf8"));
-  assert.equal(bundle.wireProtocol, "1.1");
+  assert.equal(bundle.wireProtocol, "1.2");
 
   for (const fixture of bundle.validFrames) {
     const result = canonicalizeTopicFrame(fixture.input, {
@@ -77,5 +77,49 @@ test("canonicalizer 保留完整复合 Owner 身份", () => {
         messages: [],
       }),
     /requires ownerType and ownerId together/,
+  );
+});
+
+test("canonicalizer 只接受 Wire 1.2 结构化 topic 错误", () => {
+  const error = {
+    code: "TOPIC_NOT_FOUND",
+    origin: "desktop_plugin",
+    stage: "messages",
+    kind: "data",
+    retry: "manual",
+    message: "topic not found",
+    failedTopicIds: ["topic-missing"],
+  };
+  assert.deepEqual(
+    canonicalizeTopicFrame({
+      topicId: "topic-missing",
+      ownerType: "agent",
+      ownerId: "agent-a",
+      messages: [],
+      _error: error,
+    }).frame,
+    {
+      topicId: "topic-missing",
+      ownerType: "agent",
+      ownerId: "agent-a",
+      messages: [],
+      _error: error,
+    },
+  );
+  assert.throws(
+    () => canonicalizeTopicFrame({
+      topicId: "topic-missing",
+      messages: [],
+      _error: "legacy string error",
+    }),
+    /error must be an object/,
+  );
+  assert.throws(
+    () => canonicalizeTopicFrame({
+      topicId: "topic-a",
+      messages: [{ id: "message-a" }],
+      _error: error,
+    }),
+    /must not contain live messages/,
   );
 });

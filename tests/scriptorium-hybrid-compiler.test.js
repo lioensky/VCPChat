@@ -53,7 +53,8 @@ function run() {
     assert.match(styleSource, /\.vdoc-test-signature/);
     assert.match(
         compiled.previewHtml,
-        /data-vdoc-edit-type="style"><style>[\s\S]*#ultimate-test-title[\s\S]*\.vdoc-test-signature[\s\S]*<\/style><\/div>/
+        /data-vdoc-edit-type="style"[^>]*><style>[\s\S]*#ultimate-test-title[\s\S]*\.vdoc-test-signature[\s\S]*<\/style><\/div>/,
+        'style edit regions may carry additional flow metadata while remaining atomic'
     );
     assert.doesNotMatch(
         compiled.previewHtml,

@@ -24,8 +24,9 @@
             textSourceMap: new WeakMap(),
             composing: false,
             compositionSession: null,
-            compositionOffsets: null,
-            skipNextCompositionInput: false,
+            compositionCommit: null,
+            compositionCommitFrame: 0,
+            boundaryFocusFrame: 0,
             disposed: false,
         };
 
@@ -166,6 +167,15 @@
 
         function inlineHtmlTagRecords(raw) {
             const source = String(raw || '');
+            const codeSpans = [];
+            const codePattern = /(`+)([\s\S]*?)\1/g;
+            let codeMatch;
+            while ((codeMatch = codePattern.exec(source))) {
+                codeSpans.push({
+                    start: codeMatch.index,
+                    end: codeMatch.index + codeMatch[0].length,
+                });
+            }
             const allowed = new Set([
                 // 行内 HTML 与静态块级 HTML 共用同一套无损标签骨架。
                 // script/style 以及媒体、表单控件不在此开放：它们要么拥有
@@ -187,6 +197,12 @@
             const pattern = /<\/?([a-z][\w:-]*)\b[^>]*>/gi;
             let match;
             while ((match = pattern.exec(source))) {
+                const matchEnd = match.index + match[0].length;
+                if (codeSpans.some((span) =>
+                    match.index < span.end && matchEnd > span.start
+                )) {
+                    continue;
+                }
                 const tag = String(match[1] || '').toLowerCase();
                 if (!allowed.has(tag)) continue;
                 records.push({
@@ -248,6 +264,9 @@
                     return;
                 }
                 if (node.nodeType !== Node.ELEMENT_NODE) return;
+                if (node.dataset?.vdocMdMarker === 'terminal-line-ending') {
+                    return;
+                }
                 if (node.tagName === 'BR') {
                     output += '\n';
                     return;
@@ -258,7 +277,11 @@
                 if (block && output && !output.endsWith('\n')) output += '\n';
             };
             root.childNodes.forEach(visit);
-            return output.replace(/\n$/, '');
+            const visible = output.replace(/\n$/, '');
+            const terminalLineEnding = root.querySelector?.(
+                '[data-vdoc-md-marker="terminal-line-ending"]'
+            )?.textContent || '';
+            return visible + terminalLineEnding;
         }
 
         function editableSourceText(editable) {
@@ -325,10 +348,51 @@
             });
         }
 
+        function resilientEditorSelectionOffsets(editable) {
+            const strict = editorSelectionOffsets(editable);
+            if (strict) return strict;
+            if (!editable?.isConnected
+                || editable.getRootNode()?.activeElement !== editable) {
+                return null;
+            }
+
+            // Chromium 在 contenteditable DOM 被同步重建后，可能短暂保留
+            // “一个端点在新树、另一个端点在旧树”的 Selection。此时界面
+            // 仍显示光标，但 cloneLiveRange() 会正确拒绝该跨树 Range。
+            // 对已聚焦编辑器只采用仍连接的有效端点，恢复为折叠光标。
+            const selection = selectionPrimitives.selectionFor(
+                editable.getRootNode()
+            );
+            const candidates = [
+                [selection?.focusNode, selection?.focusOffset],
+                [selection?.anchorNode, selection?.anchorOffset],
+            ];
+            for (const [node, offset] of candidates) {
+                if (!node || (node !== editable && !editable.contains(node))) {
+                    continue;
+                }
+                const textOffset = selectionPrimitives.textOffsetWithin(
+                    editable,
+                    node,
+                    offset
+                );
+                if (!Number.isFinite(textOffset)) continue;
+                const length = editableSourceText(editable).length;
+                const caret = Math.max(0, Math.min(length, textOffset));
+                selectionPrimitives.restoreOffsets(editable, caret);
+                return Object.freeze({
+                    start: caret,
+                    end: caret,
+                    collapsed: true,
+                });
+            }
+            return null;
+        }
+
         function pastedMarkdownText(value) {
             return String(value || '')
                 .replace(/\r\n?/g, '\n')
-                .replace(/\n/g, '  \n\u200B');
+                .replace(/\n/g, '  \n');
         }
 
         function refreshLocalMarkers(session, sourceStart, sourceEnd = sourceStart) {
@@ -750,20 +814,93 @@
 
         function createMarkdownVisualEditor(shell, raw) {
             const source = String(raw || '');
+            const terminalLineEnding =
+                source.match(/(?:\r?\n)+$/)?.[0] || '';
+            const terminalLinePrefix = terminalLineEnding
+                ? source.slice(0, -terminalLineEnding.length)
+                : source;
+            // Marked 或源码实时同步可能把块后的整个空白分隔（通常 \n\n）
+            // 纳入 region。它不是可见编辑行，必须整体隐藏；但用户 Enter
+            // 写入的硬换行前有两个空格，此时必须保留逐行编辑结构。
+            const trailingLineEnding = terminalLineEnding
+                && !terminalLinePrefix.endsWith('  ')
+                && !terminalLinePrefix.endsWith('\u200B  ')
+                ? terminalLineEnding
+                : '';
+            const visualSource = trailingLineEnding
+                ? terminalLinePrefix
+                : source;
             const lines = source.split('\n');
             const renderedLines = renderedLineCandidates(shell);
+            const singleVisualLine = !visualSource.includes('\n')
+                && !visualSource.includes('\r');
 
-            if (lines.length === 1) {
-                const editor = markdownLineElement(
-                    source,
-                    renderedLines[0] || shell.firstElementChild
-                );
-                editor.replaceChildren(inlineHtmlSourceFragment(source));
+            if (singleVisualLine) {
+                const renderedBlock = shell.firstElementChild;
+                const editor = renderedBlock
+                    ? renderedBlock.cloneNode(true)
+                    : markdownLineElement(visualSource);
+                editor.querySelectorAll?.('[contenteditable], [spellcheck]')
+                    .forEach((node) => {
+                        node.removeAttribute('contenteditable');
+                        node.removeAttribute('spellcheck');
+                    });
+                editor.removeAttribute('contenteditable');
+                editor.removeAttribute('spellcheck');
+                editor.classList.add('vdoc-md-live-preview-line');
+                editor.dataset.vdocMdLineKind = markdownLineKind(source);
+
+                // 引用、单项列表等静态 Markdown 拥有 blockquote > p、
+                // ul > li 这样的布局骨架。编辑态必须保留完整骨架，只替换
+                // 最内层文字内容，否则段落 margin、列表缩进和行盒都会变化。
+                const contentHost = editor.matches('blockquote')
+                    ? editor.querySelector('p') || editor
+                    : editor.matches('ul,ol')
+                        ? editor.querySelector('li') || editor
+                        : editor;
+                if (contentHost !== editor) {
+                    // Marked 输出会在 blockquote/ul 与语义子元素之间放置
+                    // 格式化换行 Text 节点。它们不是 Markdown 源码内容；
+                    // 若克隆进编辑树，会让无损还原前后各多出一个换行。
+                    [...editor.childNodes].forEach((node) => {
+                        if (node.nodeType === Node.TEXT_NODE
+                            && !String(node.nodeValue || '').trim()) {
+                            node.remove();
+                        }
+                    });
+                }
+                contentHost.replaceChildren(inlineHtmlSourceFragment(
+                    visualSource
+                ));
+                if (trailingLineEnding) {
+                    // Marked 的 blockquote/list token 常把块后的单个换行纳入
+                    // raw。它属于源码边界而非第二条可见行：隐藏保存该偏移，
+                    // 避免引用被误建成多行编辑器，同时保证无损序列化。
+                    contentHost.appendChild(concealedMarker(
+                        trailingLineEnding,
+                        'terminal-line-ending'
+                    ));
+                }
+                if (!compiler.markdownLiveMarkerRanges(visualSource).length
+                    && !inlineHtmlTagRecords(visualSource).length) {
+                    // 裸文本编辑前后必须沿用相同的空白折叠和断行算法。
+                    // 通用源码编辑规则中的 break-spaces/anywhere 会改变字宽、
+                    // 两端对齐和换行点，导致获得焦点时发生轻微布局跳动。
+                    editor.classList.add('vdoc-md-plain-text-preview');
+                }
                 return editor;
             }
 
             const editor = document.createElement('div');
             editor.className = 'vdoc-md-live-preview-run';
+            const renderedBlock = renderedLines[0] || shell.firstElementChild;
+            if (renderedBlock) {
+                const style = getComputedStyle(renderedBlock);
+                editor.style.marginBlockStart = style.marginBlockStart;
+                editor.style.marginBlockEnd = style.marginBlockEnd;
+                editor.style.marginInlineStart = style.marginInlineStart;
+                editor.style.marginInlineEnd = style.marginInlineEnd;
+            }
             let sourceOffset = 0;
             let renderedIndex = 0;
             lines.forEach((line, lineIndex) => {
@@ -894,7 +1031,19 @@
                 visualEditorForRegion(shell, region, raw),
                 region
             );
-            if (editableSourceText(editor) !== raw) {
+            const editorSource = editableSourceText(editor);
+            if (editorSource !== raw) {
+                console.warn(
+                    '[Scriptorium] Lossless edit mapping failed: '
+                    + JSON.stringify({
+                        regionKey: region.key,
+                        regionType: region.type,
+                        flowKind: region.flowKind,
+                        markdownTokenType: region.markdownTokenType,
+                        source: raw,
+                        restoredSource: editorSource,
+                    })
+                );
                 notificationPort.show?.(
                     '当前内容无法建立无损渲染态编辑映射。',
                     'error'
@@ -1011,22 +1160,48 @@
         }
 
         function sourceSelection() {
-            const range = selectionPrimitives.cloneLiveRange(
+            const liveRange = selectionPrimitives.cloneLiveRange(
                 state.root,
                 { expanded: true }
             ) || (
                 state.selectionRange?.startContainer?.isConnected
-                ? state.selectionRange.cloneRange()
-                : null
+                    ? state.selectionRange.cloneRange()
+                    : null
             );
-            if (!range || range.collapsed) return null;
-            const startElement = selectionPrimitives.elementOf(range.startContainer);
-            const endElement = selectionPrimitives.elementOf(range.endContainer);
-            const shell = startElement?.closest?.('[data-vdoc-edit-key]');
+            if (!liveRange || liveRange.collapsed) return null;
+
+            const startElement = selectionPrimitives.elementOf(
+                liveRange.startContainer
+            );
+            const endElement = selectionPrimitives.elementOf(
+                liveRange.endContainer
+            );
+            let shell = startElement?.closest?.('[data-vdoc-edit-key]');
+            let range = liveRange;
+
             if (!shell
                 || endElement?.closest?.('[data-vdoc-edit-key]') !== shell) {
-                return null;
+                // 浏览器在整段拖选、三击选段或从行尾向下拖动时，常把
+                // Selection 终点放在下一块的起始边界。只要裁剪后真正
+                // 含有可见文字的编辑块仍然只有一个，就应视为单块选区，
+                // 而不是因为无文本的边界溢出拒绝段落格式化。
+                const covered = [
+                    ...state.root.querySelectorAll('[data-vdoc-edit-key]'),
+                ].map((candidate) => ({
+                    shell: candidate,
+                    range: selectionPrimitives.rangeWithinNode(
+                        liveRange,
+                        candidate
+                    ),
+                })).filter((candidate) =>
+                    candidate.range
+                    && !candidate.range.collapsed
+                    && candidate.range.toString().length > 0
+                );
+                if (covered.length !== 1) return null;
+                [{ shell, range }] = covered;
             }
+
             const region = regionForShell(shell);
             if (!region || region.flowKind === 'stable-atomic') return null;
             const sourceStart = sourceEndpoint(
@@ -1136,7 +1311,8 @@
                 const localStart = start - region.sourceRange.start;
                 markers.filter((marker) => !inlineKinds.has(marker.kind))
                     .forEach((marker) => {
-                        if (marker.end === localStart) {
+                        const gap = raw.slice(marker.end, localStart);
+                        if (marker.end <= localStart && /^\s*$/.test(gap)) {
                             start = region.sourceRange.start + marker.start;
                         }
                     });
@@ -1267,19 +1443,44 @@
                     .replace(/[^a-zA-Z0-9_-]/g, '');
                 const styleId = String(value?.id || '')
                     .replace(/["<>&]/g, '');
+                const targets = Array.isArray(value?.targets)
+                    ? value.targets.map((target) => String(target))
+                    : [];
                 if (!className || !styleId) return false;
-                const source = adapter.currentSource();
-                const selectedSource = source.slice(
-                    selection.sourceStart,
-                    selection.sourceEnd
+
+                const selectedElement = selectionPrimitives.elementOf(
+                    selection.range.startContainer
                 );
+                const paragraphStyle = targets.includes('paragraph')
+                    && Boolean(selectedElement?.closest?.(
+                        'p,[data-vdoc-md-line-kind="paragraph"]'
+                    ));
+                const source = adapter.currentSource();
+                let from = selection.sourceStart;
+                let to = selection.sourceEnd;
+
+                if (paragraphStyle
+                    && selection.region.type === 'markdown'
+                    && selection.region.markdownTokenType === 'paragraph') {
+                    const regionSource = sourceForRegion(selection.region);
+                    const leading = regionSource.match(/^\s*/)?.[0].length || 0;
+                    const trailing = regionSource.match(/\s*$/)?.[0].length || 0;
+                    from = selection.region.sourceRange.start + leading;
+                    to = selection.region.sourceRange.end - trailing;
+                }
+
+                const selectedSource = source.slice(from, to);
+                if (!selectedSource) return false;
+                const targetAttribute = paragraphStyle
+                    ? ' data-vdoc-style-target="paragraph"'
+                    : '';
                 const transaction = transact({
-                    from: selection.sourceStart,
-                    to: selection.sourceEnd,
+                    from,
+                    to,
                     expected: selectedSource,
-                    insert: `<span class="${className}" data-vdoc-style="${styleId}">${
-                        selectedSource
-                    }</span>`,
+                    insert: `<span class="${className}" data-vdoc-style="${styleId}"${
+                        targetAttribute
+                    }>${selectedSource}</span>`,
                     reason: 'flow-advanced-style',
                 });
                 if (!transaction) return false;
@@ -1475,9 +1676,15 @@
                 textColor: context.colorToHex?.(computed.color) || '',
                 lineHeight: computed.lineHeight,
                 activeCommands,
-                selectionTarget: /^H[1-6]$/.test(element.tagName)
+                selectionTarget: /^H[1-6]$/.test(
+                    element.closest?.('h1,h2,h3,h4,h5,h6')?.tagName || ''
+                )
                     ? 'heading'
-                    : 'inline',
+                    : element.closest?.(
+                        'p,[data-vdoc-md-line-kind="paragraph"]'
+                    )
+                        ? 'paragraph'
+                        : 'inline',
             };
         }
 
@@ -1645,6 +1852,116 @@
             return true;
         }
 
+        function activateSourceOffset(sourceOffset) {
+            if (!state.root) return false;
+            const offset = Math.max(
+                0,
+                Math.min(adapter.currentSource().length, Number(sourceOffset) || 0)
+            );
+            const regions = compiled().editRegions || [];
+            const region = regions.find((candidate) =>
+                candidate.flowKind !== 'stable-atomic'
+                && offset >= candidate.sourceRange.start
+                && offset <= candidate.sourceRange.end
+            ) || regions.find((candidate) =>
+                candidate.flowKind !== 'stable-atomic'
+                && candidate.sourceRange.start >= offset
+            );
+            if (!region) return false;
+            const shell = [...state.root.querySelectorAll(
+                '[data-vdoc-edit-key]'
+            )].find((candidate) =>
+                candidate.dataset.vdocEditKey === region.key
+            );
+            if (!shell) return false;
+
+            const nextSession = activateShell(shell);
+            if (!nextSession?.editable?.isConnected) return false;
+            const localOffset = Math.max(
+                0,
+                Math.min(
+                    sourceForRegion(region).length,
+                    offset - region.sourceRange.start
+                )
+            );
+            restoreEditorOffsets(
+                nextSession.editable,
+                sourceForRegion(region),
+                localOffset
+            );
+            refreshLocalMarkers(nextSession, localOffset);
+            return true;
+        }
+
+        function scheduleBoundaryFocus(sourceOffset) {
+            if (state.boundaryFocusFrame) {
+                window.cancelAnimationFrame(state.boundaryFocusFrame);
+            }
+            state.boundaryFocusFrame = window.requestAnimationFrame(() => {
+                state.boundaryFocusFrame = 0;
+                if (state.disposed || activateSourceOffset(sourceOffset)) return;
+                // 全量重渲染及 Shadow DOM 插件绑定可能跨越当前帧；若首帧尚未
+                // 建立新 shell，再等待一帧，避免 HTML 标题 Enter 后丢失焦点。
+                state.boundaryFocusFrame = window.requestAnimationFrame(() => {
+                    state.boundaryFocusFrame = 0;
+                    if (!state.disposed) activateSourceOffset(sourceOffset);
+                });
+            });
+        }
+
+        function insertHtmlBoundaryBlankLine(session, editable) {
+            if (!session || session.region.type !== 'html') return false;
+            const raw = sourceForRegion(session.region);
+            const offsets = editorSelectionOffsets(editable);
+            if (!offsets) return false;
+
+            // HTML 标签源码由隐藏 marker 和可见文字共同构成。用源码光标
+            // 相对区域中点决定插入到块前或块后，符合标题开头/末尾操作习惯。
+            const before = offsets.start <= raw.length / 2;
+            const boundary = before
+                ? session.region.sourceRange.start
+                : session.region.sourceRange.end;
+            const insertion = before
+                ? '\u200B  \n\n'
+                : '\n\n\u200B';
+            // 光标必须落在新建占位符之前，而不是占位符之后。这样下一次
+            // Enter 会在光标后始终保留一个真实 Text 节点作为选择锚点；
+            // 若落在区域末尾，首次 Markdown Enter 产生的末尾空行只有
+            // ::before 伪元素，Chromium 重建编辑树后会丢失 Selection。
+            const focusOffset = before
+                ? boundary
+                : boundary + insertion.indexOf('\u200B');
+            const transaction = transact({
+                from: boundary,
+                to: boundary,
+                expected: '',
+                insert: insertion,
+                reason: before
+                    ? 'flow-html-blank-line-before'
+                    : 'flow-html-blank-line-after',
+            });
+            if (!transaction) return false;
+
+            // 插入新 Markdown 区域会改变编译器分区，不能继续复用旧 HTML
+            // 会话。强制重渲染后由新空白行承担后续编辑。
+            state.activeSession = null;
+            context.renderPort?.invalidate?.('flow-html-boundary-blank-line');
+            context.renderPort?.renderEdit?.({ force: true });
+            scheduleBoundaryFocus(focusOffset);
+            return true;
+        }
+
+        function markdownLineBreakInsertion(editable, offsets) {
+            const raw = editableSourceText(editable);
+            const before = raw.slice(0, offsets?.start || 0);
+            const lineStart = before.lastIndexOf('\n') + 1;
+            const currentLine = before.slice(lineStart);
+            // Markdown 会吞掉连续空白行。第二次及后续 Enter 在空行中
+            // 写入零宽占位符，使每个空行都能稳定编译为独立可编辑行，
+            // 并保证逐行编辑树始终存在可承载光标的文本位置。
+            return currentLine.length === 0 ? '\u200B  \n' : '  \n';
+        }
+
         function handleEditorKeydown(event) {
             if (event.defaultPrevented
                 || event.isComposing
@@ -1663,25 +1980,34 @@
                 ? state.activeSession
                 : beginSession(shell, editable);
             if (!session) return false;
-
-            // 独立 HTML 块采用单行提交语义。Enter 固化当前输入并退出；
-            // Tab/Shift+Tab 固化后切换到相邻可编辑文本区，不创建换行或缩进。
+            // HTML 块内部不能直接插入浏览器原生换行。Enter 根据源码光标
+            // 位于内容前半段还是后半段，在完整 HTML 元素边界外创建一条
+            // Markdown 编辑行。尤其是 <h1 style="...">标题</h1>，可见文本
+            // 尾部的光标实际位于隐藏闭合标签之前，不能再把 Enter 解释为
+            // “提交并退出”，否则标题之后天然没有可供继续输入的位置。
             if (session.region.type === 'html'
-                && (event.key === 'Enter' || event.key === 'Tab')) {
+                && event.key === 'Enter') {
                 event.preventDefault();
                 event.stopPropagation();
-                const nextShell = event.key === 'Tab'
-                    ? adjacentEditableShell(shell, event.shiftKey)
-                    : null;
-                return finishHtmlSession(session, nextShell);
+                return insertHtmlBoundaryBlankLine(session, editable);
+            }
+            if (session.region.type === 'html' && event.key === 'Tab') {
+                event.preventDefault();
+                event.stopPropagation();
+                return finishHtmlSession(
+                    session,
+                    adjacentEditableShell(shell, event.shiftKey)
+                );
             }
             if (session.region.type !== 'markdown') return false;
 
-            const offsets = editorSelectionOffsets(editable);
-            if (!offsets || !offsets.collapsed) return false;
+            const offsets = resilientEditorSelectionOffsets(editable);
+            if (!offsets) return false;
             const text = editableSourceText(editable);
 
-            if (event.key === 'Tab' && !event.shiftKey) {
+            if (event.key === 'Tab'
+                && !event.shiftKey
+                && offsets.collapsed) {
                 const lineStart = text.lastIndexOf(
                     '\n',
                     Math.max(0, offsets.start - 1)
@@ -1710,7 +2036,7 @@
                 // 硬换行直接提交到文档模型。beforeinput 保留为平台差异兜底。
                 return commitSessionInsertion(
                     session,
-                    '  \n\u200B',
+                    markdownLineBreakInsertion(editable, offsets),
                     offsets,
                     'flow-keydown-hard-line-break'
                 );
@@ -1870,6 +2196,10 @@
                 const editable = event.target.closest?.(
                     '[data-vdoc-flow-source-editor="true"]'
                 );
+                // Chromium/Windows IME 通常在 compositionend 之后再派发一次
+                // 最终 beforeinput/input。此阶段必须让浏览器完成候选文字
+                // 固化，不能 preventDefault，更不能重建 contenteditable DOM。
+                if (state.compositionCommit?.editable === editable) return;
                 const shell = event.target.closest?.('[data-vdoc-edit-key]');
                 if (!editable || !shell) return;
                 const session = state.activeSession?.editable === editable
@@ -1881,19 +2211,19 @@
                     || event.inputType === 'insertLineBreak') {
                     event.preventDefault();
                     if (session.region.type === 'html') {
-                        // 虚拟键盘及辅助输入设备可能绕过 keydown；HTML 块仍须
-                        // 保持单行，并把换行意图解释为“提交并退出编辑”。
-                        finishHtmlSession(session);
+                        // 虚拟键盘及辅助输入设备可能绕过 keydown；与键盘 Enter
+                        // 保持一致，在完整 HTML 元素边界外建立后续编辑行。
+                        insertHtmlBoundaryBlankLine(session, editable);
                         return;
                     }
                     if (session.region.type !== 'markdown') return;
-                    const offsets = editorSelectionOffsets(editable);
+                    const offsets = resilientEditorSelectionOffsets(editable);
                     if (!offsets) return;
                     // Markdown 硬换行直接进入文档模型；禁止浏览器仅修改
                     // contenteditable DOM，避免出现“UI 换行、源码没变”。
                     commitSessionInsertion(
                         session,
-                        '  \n\u200B',
+                        markdownLineBreakInsertion(editable, offsets),
                         offsets,
                         'flow-beforeinput-hard-line-break'
                     );
@@ -1901,8 +2231,49 @@
                 }
 
                 if (session.region.type !== 'markdown') return;
-                const offsets = editorSelectionOffsets(editable);
+                const offsets = resilientEditorSelectionOffsets(editable);
                 if (!offsets) return;
+
+                if (event.inputType === 'deleteContentBackward') {
+                    const raw = sourceForRegion(session.region);
+                    if (offsets.start === offsets.end && offsets.start <= 0) {
+                        return;
+                    }
+                    event.preventDefault();
+
+                    let deletionStart = offsets.start;
+                    if (offsets.start === offsets.end) {
+                        const hardBreak = '  \n';
+                        const protectedEmptyBreak = `\u200B${hardBreak}`;
+                        const prefix = raw.slice(0, offsets.start);
+                        if (prefix.endsWith(protectedEmptyBreak)) {
+                            // 连续 Enter 创建的受保护空行按一个动作删除，
+                            // 不能遗留零宽占位符污染源码或光标映射。
+                            deletionStart =
+                                offsets.start - protectedEmptyBreak.length;
+                        } else if (prefix.endsWith(hardBreak)) {
+                            // 首次 Enter 写入标准 Markdown 硬换行：两个尾随
+                            // 空格加换行符，退格时同样作为一个动作原子删除。
+                            deletionStart = offsets.start - hardBreak.length;
+                        } else {
+                            // 保持浏览器对普通文字的单字符退格语义，同时避免
+                            // 将代理对字符拆成无效的半个 UTF-16 序列。
+                            const previous = Array.from(prefix).at(-1) || '';
+                            deletionStart = offsets.start - previous.length;
+                        }
+                    }
+                    commitSessionInsertion(
+                        session,
+                        '',
+                        {
+                            start: deletionStart,
+                            end: offsets.end,
+                        },
+                        'flow-beforeinput-delete-backward'
+                    );
+                    return;
+                }
+
                 if (event.inputType !== 'insertText'
                     || event.data === null) {
                     return;
@@ -1916,17 +2287,43 @@
                 );
             }, options);
 
+            const clearCompositionCommit = () => {
+                if (state.compositionCommitFrame) {
+                    window.cancelAnimationFrame(state.compositionCommitFrame);
+                    state.compositionCommitFrame = 0;
+                }
+                const pending = state.compositionCommit;
+                state.compositionCommit = null;
+                return pending;
+            };
+
+            const commitCompositionDom = (pending) => {
+                if (!pending?.session?.editable?.isConnected
+                    || pending.session.editable !== pending.editable) {
+                    return false;
+                }
+                return flushSession(
+                    pending.session,
+                    'flow-composition-input'
+                );
+            };
+
             root.addEventListener('input', (event) => {
                 if (event.isComposing || state.composing) return;
-                if (state.skipNextCompositionInput) {
-                    state.skipNextCompositionInput = false;
-                    return;
-                }
                 const editable = event.target.closest?.(
                     '[data-vdoc-flow-source-editor="true"]'
                 );
                 const shell = event.target.closest?.('[data-vdoc-edit-key]');
                 if (!editable || !shell) return;
+
+                if (state.compositionCommit?.editable === editable) {
+                    // 最终 input 表示候选文字已进入 DOM，但仍处于浏览器
+                    // 输入事件调用栈中。保留 compositionend 安排的下一帧
+                    // 提交，避免在 input 监听器内部替换其 event.target。
+                    state.compositionCommit.inputObserved = true;
+                    return;
+                }
+
                 const session = state.activeSession?.editable === editable
                     ? state.activeSession
                     : beginSession(shell, editable);
@@ -1934,7 +2331,7 @@
             }, options);
 
             root.addEventListener('compositionstart', (event) => {
-                state.skipNextCompositionInput = false;
+                clearCompositionCommit();
                 const editable = event.target.closest?.(
                     '[data-vdoc-flow-source-editor="true"]'
                 );
@@ -1945,27 +2342,31 @@
                         ? state.activeSession
                         : beginSession(shell, editable))
                     : null;
-                state.compositionOffsets = state.compositionSession
-                    ? editorSelectionOffsets(editable)
-                    : null;
             }, options);
             root.addEventListener('compositionend', (event) => {
                 const session = state.compositionSession;
-                const offsets = state.compositionOffsets;
+                const editable = event.target.closest?.(
+                    '[data-vdoc-flow-source-editor="true"]'
+                );
                 state.composing = false;
                 state.compositionSession = null;
-                state.compositionOffsets = null;
-                if (!session || !offsets
+                if (!session || !editable
                     || session.region.type !== 'markdown') {
-                    state.skipNextCompositionInput = false;
+                    clearCompositionCommit();
                     return;
                 }
-                state.skipNextCompositionInput = commitSessionInsertion(
-                    session,
-                    event.data || '',
-                    offsets,
-                    'flow-composition-insert-text'
-                ) === true;
+
+                // 不在 compositionend 中根据旧 Selection 手动插入 event.data。
+                // 此时平台 IME 仍可能继续派发最终 beforeinput/input；同步重建
+                // DOM 会关闭候选窗、丢字或重复提交。等待最终 input，从浏览器
+                // 已固化的 DOM 整体同步。少数不派发 input 的实现下一帧兜底。
+                state.compositionCommit = { session, editable };
+                state.compositionCommitFrame = window.requestAnimationFrame(() => {
+                    state.compositionCommitFrame = 0;
+                    const pending = state.compositionCommit;
+                    state.compositionCommit = null;
+                    commitCompositionDom(pending);
+                });
             }, options);
 
             root.addEventListener('focusout', (event) => {
@@ -2024,14 +2425,22 @@
         function disposeSurface() {
             state.abortController?.abort();
             state.abortController = null;
+            if (state.compositionCommitFrame) {
+                window.cancelAnimationFrame(state.compositionCommitFrame);
+                state.compositionCommitFrame = 0;
+            }
+            if (state.boundaryFocusFrame) {
+                window.cancelAnimationFrame(state.boundaryFocusFrame);
+                state.boundaryFocusFrame = 0;
+            }
+            state.compositionCommit = null;
+            state.composing = false;
+            state.compositionSession = null;
             flushSession();
             state.root = null;
             state.activeSession = null;
             state.selectionRange = null;
             state.selectionText = '';
-            state.compositionSession = null;
-            state.compositionOffsets = null;
-            state.skipNextCompositionInput = false;
             state.domSourceMap = new WeakMap();
             state.textSourceMap = new WeakMap();
         }

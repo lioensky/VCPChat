@@ -32,8 +32,9 @@
             const language = escapeHtml(
                 documentModel.manifest.language || 'zh-CN'
             );
-            const advancedCss = primitives.compiledStyleIdsCss(
-                documentModel.manifest.styleDependencies || []
+            const advancedCss = primitives.compiledDocumentStylesCss(
+                documentModel,
+                [adapter.currentSource(), compiled.html]
             );
             return `<!doctype html>
 <html lang="${language}">
@@ -62,9 +63,14 @@ ${compiled.html}
         function pagedCss(adapter, options = {}) {
             const documentModel = model();
             const scene = documentModel.manifest.scene;
+            const advancedCss = primitives.compiledDocumentStylesCss(
+                documentModel,
+                adapter.currentSource()
+            );
             return `${primitives.baseCss(scene, options)
                 .replace('@import url("../vendor/katex.min.css");', '')
                 .replace(':host {', ':root {')}
+${advancedCss}
 ${adapter.currentCss()}
 @page {
     size: ${scene.page.width} ${scene.page.height};
@@ -214,6 +220,10 @@ html[data-vdoc-pdf="true"] *::after {
                     language: documentModel.manifest.language,
                     runtime,
                     css: pagedCss(adapter, options),
+                    // 屏幕外分页测量会给岛留下暂停类和初始化哨兵。
+                    // 独立 HTML 需要恢复为待初始化状态，让内联脚本
+                    // 在新文档中重新建立动画、事件和动态内容。
+                    rehydrateRuntime: true,
                 });
             } finally {
                 options.surfacePort?.disposeRead?.();

@@ -489,6 +489,30 @@
         return validatePack(JSON.parse(String(text || '')));
     }
 
+    function exportUserPacks() {
+        return [...packRegistry.keys()]
+            .filter((packId) => packId !== BUILTIN_PACK_ID)
+            .map((packId) => {
+                const pack = getPack(packId);
+                return {
+                    format: pack.format,
+                    version: pack.version,
+                    manifest: pack.manifest,
+                    styles: pack.styles,
+                };
+            });
+    }
+
+    function replaceUserPacks(packs = []) {
+        [...packRegistry.keys()]
+            .filter((packId) => packId !== BUILTIN_PACK_ID)
+            .forEach((packId) => unregisterPack(packId));
+        (Array.isArray(packs) ? packs : []).forEach((pack) =>
+            registerPack(pack, { conflict: 'replace' })
+        );
+        return exportUserPacks();
+    }
+
     function createPreviewDocument(styleId, options = {}) {
         const style = get(styleId);
         if (!style) throw new Error(`未找到高级样式：${styleId}`);
@@ -537,6 +561,8 @@
         exportPack,
         serializePack,
         parsePack,
+        exportUserPacks,
+        replaceUserPacks,
         createPreviewDocument,
         subscribe,
     });

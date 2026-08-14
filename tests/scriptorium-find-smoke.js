@@ -30,6 +30,12 @@ function registerMinimalIpc() {
         success: false,
         canceled: true,
     }));
+    ipcMain.handle('scriptorium:svg-assets-load', () => []);
+    ipcMain.handle('scriptorium:svg-assets-save', (_event, packs = []) => ({
+        success: true,
+        count: packs.length,
+        size: 0,
+    }));
     ipcMain.on('window-lifecycle:ready', () => {});
     ipcMain.on('minimize-window', () => {});
     ipcMain.on('maximize-window', () => {});
@@ -50,6 +56,23 @@ app.whenReady().then(async () => {
             nodeIntegration: false,
             sandbox: false,
         },
+    });
+    windowRef.webContents.on('console-message', (...args) => {
+        const details = args.find((value) =>
+            value && typeof value === 'object'
+            && typeof value.message === 'string'
+        );
+        const level = details?.level ?? args[1];
+        const message = details?.message ?? args[2] ?? '';
+        if (level === 'error' || level === 3) {
+            console.error('[ScriptoriumFindSmoke:Renderer]', message);
+        }
+    });
+    windowRef.webContents.on('render-process-gone', (_event, details) => {
+        console.error(
+            '[ScriptoriumFindSmoke:RendererGone]',
+            details?.reason || 'unknown'
+        );
     });
 
     await windowRef.loadFile(path.join(
@@ -92,14 +115,14 @@ app.whenReady().then(async () => {
 
         document.getElementById('html-mode-btn').click();
         await new Promise((resolve) => setTimeout(resolve, 80));
-        const sourceScope = scope.textContent === 'HTML 源码';
-        input.value = 'data-vdoc-text';
+        const sourceScope = scope.textContent === '混合源码';
+        input.value = '未命名文稿';
         input.dispatchEvent(new Event('input', { bubbles: true }));
         const sourceFound = /^1 \\/ \\d+$/.test(status.textContent);
         const editor = document.querySelector(
             '.source-editor-shell .CodeMirror'
         )?.CodeMirror;
-        const sourceSelection = editor?.getSelection() === 'data-vdoc-text';
+        const sourceSelection = editor?.getSelection() === '未命名文稿';
         const sourceMarks = document.querySelectorAll(
             '.source-editor-shell .cm-vdoc-find-match,'
             + '.source-editor-shell .cm-vdoc-find-current'
