@@ -49,6 +49,10 @@ const handleGetCurrentTheme = () => {
 
 const handleGetThemes = async () => {
     const themesDir = path.join(PROJECT_ROOT, 'styles', 'themes');
+    const activeThemePath = path.join(PROJECT_ROOT, 'styles', 'themes.css');
+    const activeThemeContent = await fs.pathExists(activeThemePath)
+        ? await fs.readFile(activeThemePath, 'utf-8')
+        : null;
     const files = await fs.readdir(themesDir);
     const themePromises = files
         .filter(file => file.startsWith('themes') && file.endsWith('.css'))
@@ -81,6 +85,7 @@ const handleGetThemes = async () => {
             return {
                 fileName: file,
                 name: name,
+                isActive: activeThemeContent !== null && content === activeThemeContent,
                 variables: {
                     dark: darkVariables,
                     light: lightVariables

@@ -1,0 +1,16 @@
+@layer vcp-ui.tokens, vcp-ui.base, vcp-ui.components, vcp-ui.utilities, vcp-ui.showcase;
+
+@import url('./fonts.css');
+@import url('./tokens.css');
+@import url('./components.css');
+@import url('./shell.css');
+@import url('./chat-input.css');
+@import url('./messages.css');
+@import url('./business-modals.css');
+@import url('./sidebar.css');
+@import url('./notifications.css');
+@import url('./settings.css');
+@import url('./appearance-studio.css');
+@import url('./ask-nova.css');
+@import url('./showcase.css');
+@import url('./webawesome-adapter.css');

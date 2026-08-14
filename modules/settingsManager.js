@@ -77,6 +77,27 @@ const settingsManager = (() => {
         preset: '预置'
     };
 
+    function syncRangeProgress(rangeInput) {
+        if (!rangeInput) return;
+        const min = Number(rangeInput.min || 0);
+        const max = Number(rangeInput.max || 100);
+        const value = Number(rangeInput.value || min);
+        const progress = max > min ? ((value - min) / (max - min)) * 100 : 0;
+        rangeInput.style.setProperty('--vcp-ui-range-progress', `${Math.max(0, Math.min(100, progress))}%`);
+    }
+
+    function reportSettingsSaveResult(form, success, error = '') {
+        form?.dispatchEvent(new CustomEvent('vcp-settings-save-result', {
+            detail: { success: Boolean(success), error }
+        }));
+    }
+
+    function reportSettingsDeleteResult(form, success, { cancelled = false, error = '' } = {}) {
+        form?.dispatchEvent(new CustomEvent('vcp-settings-delete-result', {
+            detail: { success: Boolean(success), cancelled: Boolean(cancelled), error }
+        }));
+    }
+
     /**
      * Displays the appropriate settings view (agent, group, or default prompt)
      * based on the currently selected item.
@@ -252,6 +273,7 @@ const settingsManager = (() => {
 
         agentTtsSpeedSlider.value = agentConfig.ttsSpeed !== undefined ? agentConfig.ttsSpeed : 1.0;
         ttsSpeedValueSpan.textContent = parseFloat(agentTtsSpeedSlider.value).toFixed(1);
+        syncRangeProgress(agentTtsSpeedSlider);
 
         // Load and render regex rules
         currentAgentRegexes = JSON.parse(JSON.stringify(agentConfig.stripRegexes || [])); // Deep copy
@@ -291,11 +313,13 @@ const settingsManager = (() => {
         if (!agentId) {
             console.error("[SettingsManager] Cannot save agent settings: agentId is missing.");
             uiHelper.showToastNotification("保存失败：未指定 Agent ID", 'error');
+            reportSettingsSaveResult(agentSettingsForm, false, 'missing-agent-id');
             return;
         }
         if (promptManager?.getAgentId?.() && promptManager.getAgentId() !== agentId) {
             console.warn(`[SettingsManager] Blocked save for ${agentId}: PromptManager is bound to ${promptManager.getAgentId()}.`);
             uiHelper.showToastNotification('Agent 正在切换，请稍后再保存。', 'warning');
+            reportSettingsSaveResult(agentSettingsForm, false, 'agent-switching');
             return;
         }
 
@@ -305,12 +329,14 @@ const settingsManager = (() => {
             await promptManager.saveCurrentModeData();
             if (editingAgentIdInput.value !== agentId || promptManager.getAgentId?.() !== agentId) {
                 console.debug(`[SettingsManager] Aborting stale save after prompt persistence for ${agentId}.`);
+                reportSettingsSaveResult(agentSettingsForm, false, 'stale-agent');
                 return;
             }
 
             const currentPrompt = await promptManager.getCurrentSystemPrompt();
             if (editingAgentIdInput.value !== agentId || promptManager.getAgentId?.() !== agentId) {
                 console.debug(`[SettingsManager] Aborting stale save after prompt read for ${agentId}.`);
+                reportSettingsSaveResult(agentSettingsForm, false, 'stale-agent');
                 return;
             }
             systemPromptData.systemPrompt = currentPrompt; // Keep for compatibility
@@ -344,6 +370,7 @@ const settingsManager = (() => {
 
         if (!newConfig.name) {
             uiHelper.showToastNotification("Agent名称不能为空！", 'error');
+            reportSettingsSaveResult(agentSettingsForm, false, 'missing-name');
             return;
         }
 
@@ -359,6 +386,7 @@ const settingsManager = (() => {
 
                 if (avatarResult.error) {
                     uiHelper.showToastNotification(`保存Agent头像失败: ${avatarResult.error}`, 'error');
+                    reportSettingsSaveResult(agentSettingsForm, false, avatarResult.error);
                     // 如果头像保存失败，视情况决定是否继续保存其他配置。这里选择报错并中断。
                     return;
                 } else {
@@ -387,14 +415,24 @@ const settingsManager = (() => {
             } catch (readError) {
                 console.error("读取Agent头像文件失败:", readError);
                 uiHelper.showToastNotification(`读取Agent头像文件失败: ${readError.message}`, 'error');
+                reportSettingsSaveResult(agentSettingsForm, false, readError.message);
                 return; // 中断保存
             }
         }
 
-        const result = await electronAPI.saveAgentConfig(agentId, newConfig);
+        let result;
+        try {
+            result = await electronAPI.saveAgentConfig(agentId, newConfig);
+        } catch (error) {
+            console.error('[SettingsManager] Failed to save agent settings:', error);
+            uiHelper.showToastNotification(`保存Agent设置时出错: ${error.message}`, 'error');
+            reportSettingsSaveResult(agentSettingsForm, false, error.message);
+            return;
+        }
         const saveButton = agentSettingsForm.querySelector('button[type="submit"]');
 
         if (result.success) {
+            reportSettingsSaveResult(agentSettingsForm, true);
             if (saveButton) uiHelper.showSaveFeedback(saveButton, true, '已保存!', '保存 Agent 设置');
             await window.itemListManager.loadItems();
 
@@ -432,6 +470,7 @@ const settingsManager = (() => {
                 }
             }
         } else {
+            reportSettingsSaveResult(agentSettingsForm, false, result.error || 'save-failed');
             if (saveButton) uiHelper.showSaveFeedback(saveButton, false, '保存失败', '保存 Agent 设置');
             uiHelper.showToastNotification(`保存Agent设置失败: ${result.error}`, 'error');
         }
@@ -444,13 +483,20 @@ const settingsManager = (() => {
         const currentSelectedItem = refs.currentSelectedItemRef.get();
         if (!currentSelectedItem.id) {
             uiHelper.showToastNotification("没有选中的项目可删除。", 'info');
+            reportSettingsDeleteResult(agentSettingsForm, false, { error: 'missing-selection' });
             return;
         }
 
         const itemTypeDisplay = currentSelectedItem.type === 'group' ? '群组' : 'Agent';
         const itemName = currentSelectedItem.name || '当前选中的项目';
 
-        if (await uiHelper.showConfirmDialog(`您确定要删除 ${itemTypeDisplay} "${itemName}" 吗？其所有聊天记录和设置都将被删除，此操作不可撤销！`, '删除确认', '删除', '取消', true)) {
+        const confirmed = await uiHelper.showConfirmDialog(`您确定要删除 ${itemTypeDisplay} "${itemName}" 吗？其所有聊天记录和设置都将被删除，此操作不可撤销！`, '删除确认', '删除', '取消', true);
+        if (!confirmed) {
+            reportSettingsDeleteResult(agentSettingsForm, false, { cancelled: true });
+            return;
+        }
+
+        try {
             let result;
             if (currentSelectedItem.type === 'agent') {
                 result = await electronAPI.deleteAgent(currentSelectedItem.id);
@@ -459,6 +505,7 @@ const settingsManager = (() => {
             }
 
             if (result && result.success) {
+                reportSettingsDeleteResult(agentSettingsForm, true);
                 // Reset state in renderer via refs
                 refs.currentSelectedItemRef.set({ id: null, type: null, name: null, avatarUrl: null, config: null });
                 refs.currentTopicIdRef.set(null);
@@ -469,8 +516,13 @@ const settingsManager = (() => {
                     mainRendererFunctions.onItemDeleted();
                 }
             } else {
+                reportSettingsDeleteResult(agentSettingsForm, false, { error: result?.error || 'unknown-error' });
                 uiHelper.showToastNotification(`删除${itemTypeDisplay}失败: ${result?.error || '未知错误'}`, 'error');
             }
+        } catch (error) {
+            console.error('[SettingsManager] Failed to delete item:', error);
+            reportSettingsDeleteResult(agentSettingsForm, false, { error: error.message });
+            uiHelper.showToastNotification(`删除${itemTypeDisplay}时出错: ${error.message}`, 'error');
         }
     }
 
@@ -764,22 +816,14 @@ const settingsManager = (() => {
                 deleteItemBtn.addEventListener('click', handleDeleteCurrentItem);
             }
             if (agentAvatarInput) {
-                agentAvatarInput.addEventListener('change', (event) => {
-                    const file = event.target.files[0];
-                    if (file) {
-                        uiHelper.openAvatarCropper(file, (croppedFileResult) => {
+                window.VCPAvatarPicker?.bindInput({
+                    input: agentAvatarInput,
+                    preview: agentAvatarPreview,
+                    cropType: 'agent',
+                    onError: (error) => console.error('[SettingsManager] Agent avatar crop failed:', error),
+                    onCommit: async (croppedFileResult, previewUrl) => {
                             mainRendererFunctions.setCroppedFile('agent', croppedFileResult);
                             if (agentAvatarPreview) {
-                                const previewUrl = URL.createObjectURL(croppedFileResult);
-                                agentAvatarPreview.src = previewUrl;
-                                agentAvatarPreview.style.display = 'block';
-
-                                // 上传新头像后移除 no-avatar 类
-                                const avatarWrapper = agentAvatarPreview.closest('.agent-avatar-wrapper');
-                                if (avatarWrapper) {
-                                    avatarWrapper.classList.remove('no-avatar');
-                                }
-
                                 // 只对用户上传的真实头像进行颜色提取，不对默认头像提取
                                 // 裁切完成后立即计算颜色并填充到输入框
                                 // 使用与全局设置相同的getDominantAvatarColor函数以保持一致性
@@ -839,11 +883,7 @@ const settingsManager = (() => {
                                     });
                                 }
                             }
-                        }, 'agent');
-                    } else {
-                        if (agentAvatarPreview) agentAvatarPreview.style.display = 'none';
-                        mainRendererFunctions.setCroppedFile('agent', null);
-                    }
+                    },
                 });
             }
 
@@ -870,14 +910,18 @@ const settingsManager = (() => {
                         }
                     } catch (e) { /* ignore */ }
                     populateModelList(models, currentModelSelectCallback, hotModelIds, favoriteModelIds);
-                    uiHelper.showToastNotification('模型列表已刷新', 'success');
+                    const available = Array.isArray(models) && models.length > 0;
+                    uiHelper.showToastNotification(available ? '模型列表已刷新' : '模型服务暂不可用',
+                        available ? 'success' : 'error');
                 });
             }
 
             if (agentTtsSpeedSlider && ttsSpeedValueSpan) {
                 agentTtsSpeedSlider.addEventListener('input', () => {
                     ttsSpeedValueSpan.textContent = parseFloat(agentTtsSpeedSlider.value).toFixed(1);
+                    syncRangeProgress(agentTtsSpeedSlider);
                 });
+                syncRangeProgress(agentTtsSpeedSlider);
             }
 
             if (refreshTtsModelsBtn) {
@@ -2005,6 +2049,8 @@ function setupParamsCollapsible() {
             avatar.className = 'agent-settings-summary-avatar';
             avatar.src = summaryValue.avatarSrc || 'assets/default_avatar.png';
             avatar.alt = '';
+            avatar.width = 30;
+            avatar.height = 30;
 
             const label = document.createElement('span');
             label.className = 'agent-settings-summary-label';
