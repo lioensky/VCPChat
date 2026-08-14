@@ -1694,7 +1694,11 @@ function focusable(dialog) {
 }
 
 function modalFactory(options = {}) {
-    const wa = waControl('dialog', {});
+    // Complex application dialogs may opt into the deterministic native DOM
+    // shell. This still uses the VCPUI Modal contract, but avoids custom
+    // element upgrade/hide-animation races for surfaces that own cancellable
+    // IPC work or native WebContentsView visibility leases.
+    const wa = options.native === true ? null : waControl('dialog', {});
     if (wa) {
         const previousFocus = document.activeElement;
         const state = { title: 'Dialog', size: 'md', content: '', actions: [], closeOnBackdrop: true, ...options };

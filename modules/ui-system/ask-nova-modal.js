@@ -139,11 +139,29 @@ export function createAskNovaController(options = {}) {
     if (!VCPUI?.create || !api?.askNovaQuery) return null;
 
     let activeModal = null;
+    let destroyed = false;
     const triggerRecords = [];
 
-    function open(targetId = 'frontend') {
+    async function open(targetId = 'frontend') {
+        if (destroyed) return null;
         const initialTarget = TARGETS[targetId] || TARGETS.frontend;
         if (activeModal) {
+            activeModal.switchTarget(initialTarget.id);
+            activeModal.focusComposer();
+            return activeModal;
+        }
+
+        // Native WebContentsViews always paint above renderer DOM. Acquire a
+        // visibility lease before mounting the dialog so a recently active
+        // embedded app cannot cover Ask Nova with an apparently blank page.
+        const overlayOwner = Symbol('ask-nova-overlay');
+        await window.topTabManager?.acquireOverlay?.(overlayOwner);
+        if (destroyed) {
+            window.topTabManager?.releaseOverlay?.(overlayOwner);
+            return null;
+        }
+        if (activeModal) {
+            window.topTabManager?.releaseOverlay?.(overlayOwner);
             activeModal.switchTarget(initialTarget.id);
             activeModal.focusComposer();
             return activeModal;
@@ -225,6 +243,7 @@ export function createAskNovaController(options = {}) {
             state.closed = true;
             if (state.activeRequest) api.cancelAskNovaQuery?.(state.activeRequest.requestId).catch?.(() => {});
             window.removeEventListener('ui-mode-changed', handleModeChange);
+            window.topTabManager?.releaseOverlay?.(overlayOwner);
             queueMicrotask(() => {
                 if (!modal.element.isConnected || modal.element.localName !== 'wa-dialog') scopeHost.remove();
             });
@@ -234,14 +253,20 @@ export function createAskNovaController(options = {}) {
             const mode = event?.detail?.mode || documentRef.documentElement.dataset.uiMode;
             if (mode !== 'next') modal.close(null);
         };
-        modal = VCPUI.create('Modal', {
-            title: 'Ask Nova about VCP',
-            size: 'lg',
-            content,
-            actions: [],
-            closeOnBackdrop: true,
-            onClose: cleanup
-        });
+        try {
+            modal = VCPUI.create('Modal', {
+                title: 'Ask Nova about VCP',
+                size: 'lg',
+                content,
+                actions: [],
+                native: true,
+                closeOnBackdrop: true,
+                onClose: cleanup
+            });
+        } catch (error) {
+            window.topTabManager?.releaseOverlay?.(overlayOwner);
+            throw error;
+        }
         modal.element.classList.add('ask-nova-modal-host');
         if (modal.element.localName === 'wa-dialog') {
             modal.element.addEventListener('wa-after-hide', () => scopeHost.remove(), { once: true });
@@ -431,9 +456,13 @@ export function createAskNovaController(options = {}) {
     function bindTriggers(root = documentRef) {
         root.querySelectorAll('[data-ask-nova-target]').forEach(trigger => {
             if (trigger.dataset.askNovaBound === 'true') return;
-            const handler = event => {
+            const handler = async event => {
                 event.preventDefault();
-                open(trigger.dataset.askNovaTarget);
+                try {
+                    await open(trigger.dataset.askNovaTarget);
+                } catch (error) {
+                    window.VCPUI?.feedback?.toast?.(error?.message || 'Ask Nova 打开失败', { variant: 'error' });
+                }
             };
             trigger.dataset.askNovaBound = 'true';
             trigger.addEventListener('click', handler);
@@ -450,6 +479,7 @@ export function createAskNovaController(options = {}) {
         bindTriggers,
         close: () => activeModal?.close(),
         destroy() {
+            destroyed = true;
             activeModal?.close();
             triggerRecords.splice(0).forEach(dispose => dispose());
         },

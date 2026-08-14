@@ -1161,7 +1161,7 @@ if (!gotTheLock) {
             logger: console,
         });
         desktopHandlers.initialize({ mainWindow, openChildWindows, settingsManager: appSettingsManager });
-        embeddedAppSessions?.closeAll();
+        await embeddedAppSessions?.closeAll();
         embeddedAppSessions = createEmbeddedAppSessionManager({
             mainWindow,
             launchStandalone: desktopHandlers.launchVchatApp,
@@ -1199,10 +1199,17 @@ if (!gotTheLock) {
             embeddedAppSessions.assertMainRenderer(event);
             return embeddedAppSessions.detach(appAction, point);
         });
-        ipcMain.handle('embedded-vchat-app:close-all', event => {
+        ipcMain.handle('embedded-vchat-app:close-all', async event => {
             embeddedAppSessions.assertMainRenderer(event);
-            embeddedAppSessions.closeAll();
+            await embeddedAppSessions.closeAll();
             return { success: true };
+        });
+        ipcMain.removeAllListeners('embedded-vchat-app:request-close');
+        ipcMain.on('embedded-vchat-app:request-close', async event => {
+            const result = await embeddedAppSessions?.closeBySender(event.sender);
+            if (!result?.success) {
+                console.warn('[EmbeddedApps] Rejected child close request:', result?.error || 'unknown sender');
+            }
         });
         loomManager = await loomManagerModule.initialize({
             projectRoot: PROJECT_ROOT,

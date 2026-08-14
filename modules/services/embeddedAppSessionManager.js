@@ -48,6 +48,7 @@ function createEmbeddedAppSessionManager({ mainWindow, launchStandalone, readSet
         throw new TypeError('Embedded application sessions require an authoritative readSettings function.');
     }
     const sessions = new Map();
+    const closingSessions = new Map();
     const appRoot = app.getAppPath();
     let activeAction = null;
     let lastUiMode = null;
@@ -84,6 +85,8 @@ function createEmbeddedAppSessionManager({ mainWindow, launchStandalone, readSet
         if (!embeddedAppAllowlist.isEmbeddable(appAction)) {
             return { success: false, embeddable: false, error: '此应用需要在独立窗口中运行。' };
         }
+        const pendingClose = closingSessions.get(appAction);
+        if (pendingClose) await pendingClose;
         const current = sessions.get(appAction);
         if (current && !current.view.webContents.isDestroyed()) {
             return { success: true, embeddable: true, action: appAction, reused: true };
@@ -132,7 +135,7 @@ function createEmbeddedAppSessionManager({ mainWindow, launchStandalone, readSet
             notify(appAction, 'ready');
             return { success: true, embeddable: true, action: appAction };
         } catch (error) {
-            close(appAction);
+            await close(appAction);
             return { success: false, embeddable: true, error: error.message };
         }
     }
@@ -162,21 +165,51 @@ function createEmbeddedAppSessionManager({ mainWindow, launchStandalone, readSet
     }
 
     function close(appAction) {
+        const pendingClose = closingSessions.get(appAction);
+        if (pendingClose) return pendingClose;
         const session = sessions.get(appAction);
-        if (!session) return { success: true };
+        if (!session) return Promise.resolve({ success: true });
         sessions.delete(appAction);
         if (activeAction === appAction) activeAction = null;
         try { mainWindow.contentView.removeChildView(session.view); } catch (_error) { /* already detached */ }
-        if (!session.view.webContents.isDestroyed()) {
-            session.view.webContents.close({ waitForBeforeUnload: false });
-        }
-        notify(appAction, 'closed');
-        return { success: true };
+        const closing = new Promise(resolve => {
+            const contents = session.view.webContents;
+            if (contents.isDestroyed()) {
+                resolve();
+                return;
+            }
+            let settled = false;
+            const finish = () => {
+                if (settled) return;
+                settled = true;
+                clearTimeout(timeout);
+                resolve();
+            };
+            const timeout = setTimeout(() => {
+                console.warn(`[EmbeddedApps] Timed out waiting for ${appAction} webContents destruction.`);
+                finish();
+            }, 5000);
+            contents.once('destroyed', finish);
+            contents.close({ waitForBeforeUnload: false });
+        }).then(() => {
+            notify(appAction, 'closed');
+            return { success: true };
+        }).finally(() => {
+            if (closingSessions.get(appAction) === closing) closingSessions.delete(appAction);
+        });
+        closingSessions.set(appAction, closing);
+        return closing;
+    }
+
+    function closeBySender(sender) {
+        const session = [...sessions.values()].find(candidate => candidate.view.webContents === sender);
+        if (!session) return { success: false, error: '未找到调用方对应的内嵌应用会话。' };
+        return close(session.action);
     }
 
     async function detach(appAction, point = {}) {
         if (!sessions.has(appAction)) return { success: false, error: '内嵌应用会话不存在。' };
-        close(appAction);
+        await close(appAction);
         const result = await launchStandalone(appAction);
         if (!result?.success) return result || { success: false, error: '独立窗口启动失败。' };
         if (result.appId && Number.isFinite(point.x) && Number.isFinite(point.y)) {
@@ -193,13 +226,14 @@ function createEmbeddedAppSessionManager({ mainWindow, launchStandalone, readSet
         return { ...result, detached: true };
     }
 
-    function closeAll() {
-        [...sessions.keys()].forEach(close);
+    async function closeAll() {
+        await Promise.all([...sessions.keys()].map(close));
+        await Promise.all([...closingSessions.values()]);
     }
 
     mainWindow.on('closed', () => {
         unsubscribeSettings?.();
-        closeAll();
+        void closeAll();
     });
 
     return {
@@ -208,6 +242,7 @@ function createEmbeddedAppSessionManager({ mainWindow, launchStandalone, readSet
         activate,
         setBounds,
         close,
+        closeBySender,
         detach,
         closeAll,
         assertMainRenderer,

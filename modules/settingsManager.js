@@ -39,6 +39,8 @@ const settingsManager = (() => {
 
     // --- Private Variables ---
     let electronAPI = null;
+    let initialized = false;
+    let modelsUpdatedDisposer = null;
     let uiHelper = null;
     let refs = {}; // To hold references to currentSelectedItem, etc.
     let mainRendererFunctions = {}; // To call back to renderer.js functions if needed
@@ -724,6 +726,11 @@ const settingsManager = (() => {
     // --- Public API ---
     return {
         init: (options) => {
+            if (initialized) {
+                console.warn('[SettingsManager] Ignored duplicate initialization.');
+                return;
+            }
+            initialized = true;
             electronAPI = options.electronAPI;
             uiHelper = options.uiHelper;
             refs = options.refs;
@@ -897,7 +904,7 @@ const settingsManager = (() => {
                 refreshModelsBtn.addEventListener('click', handleRefreshModels);
             }
             if (electronAPI.onModelsUpdated) {
-                electronAPI.onModelsUpdated(async (models) => {
+                modelsUpdatedDisposer = electronAPI.onModelsUpdated(async (models) => {
                     console.log('[SettingsManager] Received models-updated event. Repopulating list.');
                     let hotModelIds = [];
                     let favoriteModelIds = [];
@@ -915,6 +922,13 @@ const settingsManager = (() => {
                         available ? 'success' : 'error');
                 });
             }
+
+            window.addEventListener('pagehide', () => {
+                modelsUpdatedDisposer?.();
+                modelsUpdatedDisposer = null;
+                promptManager?.destroy?.();
+                promptManager = null;
+            }, { once: true });
 
             if (agentTtsSpeedSlider && ttsSpeedValueSpan) {
                 agentTtsSpeedSlider.addEventListener('input', () => {

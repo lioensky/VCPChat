@@ -1,8 +1,9 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
+const isEmbeddedSurface = new URLSearchParams(globalThis.location?.search || '').get('vcpEmbedded') === '1';
+
 function installEmbeddedSurfaceContract() {
-    const query = new URLSearchParams(globalThis.location?.search || '');
-    if (query.get('vcpEmbedded') !== '1') return;
+    if (!isEmbeddedSurface) return;
     const mount = () => {
         // A preload runs before the page document is guaranteed to have an
         // <html> element. Touching documentElement before DOMContentLoaded
@@ -152,7 +153,13 @@ function createCatalog(ops) {
         minimizeWindow: command(() => ops.send('minimize-window')),
         maximizeWindow: command(() => ops.send('maximize-window')),
         unmaximizeWindow: command(() => ops.send('unmaximize-window')),
-        closeWindow: command(() => ops.send('close-window')),
+        // A WebContentsView is owned by the main chat window. Sending the
+        // generic close-window channel from that child may resolve to the
+        // owner BrowserWindow and close the whole application. Embedded
+        // pages therefore request disposal of their own session instead.
+        closeWindow: command(() => ops.send(
+            isEmbeddedSurface ? 'embedded-vchat-app:request-close' : 'close-window'
+        )),
         hideWindow: command(() => ops.send('hide-window')),
         openDevTools: command(() => ops.send('open-dev-tools')),
         sendToggleNotificationsSidebar: command(() => ops.send('toggle-notifications-sidebar')),

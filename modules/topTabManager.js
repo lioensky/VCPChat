@@ -17,6 +17,7 @@
     let teardownPromise = null;
     let modeRequestGeneration = 0;
     let previewSuspended = false;
+    const overlayOwners = new Set();
     const suppressedTabClicks = new Set();
 
     function listen(target, type, handler, options = {}) {
@@ -146,7 +147,7 @@
 
     function syncEmbeddedActivation() {
         const activeView = views.get(activeViewId);
-        const action = activeView?.kind === 'embedded' ? activeView.action : null;
+        const action = overlayOwners.size === 0 && activeView?.kind === 'embedded' ? activeView.action : null;
         getDesktopApi()?.desktopActivateEmbeddedVchatApp?.(action).then(result => {
             if (result?.success && activeView?.kind === 'embedded') syncEmbeddedBounds(activeView);
         }).catch(error => console.warn('[NextUI] Failed to activate embedded app:', error));
@@ -840,7 +841,12 @@
         if (embeddedStateDisposer) return;
         embeddedStateDisposer = getDesktopApi()?.onEmbeddedVchatAppState?.(payload => {
             const view = [...views.values()].find(candidate => candidate.kind === 'embedded' && candidate.action === payload?.action);
-            if (!view || payload?.state !== 'error') return;
+            if (!view) return;
+            if (payload?.state === 'closed') {
+                closeView(`app:${view.app.id}`, { skipEmbeddedClose: true });
+                return;
+            }
+            if (payload?.state !== 'error') return;
             view.container.dataset.state = 'error';
             view.container.innerHTML = `<div class="next-ui-embedded-app-status is-error"><span class="vcp-ui-icon" aria-hidden="true">error</span><span>${payload.error || '应用运行异常'}</span></div>`;
         }) || null;
@@ -899,6 +905,7 @@
         pendingTabRestore = null;
         restoringTabs = false;
         closeCreateDialog();
+        overlayOwners.clear();
         const pending = closeAllInternalApps({ preserveSession: true });
         const wrapped = pending.finally(() => {
             if (teardownPromise === wrapped) teardownPromise = null;
@@ -924,6 +931,23 @@
         if (!previewSuspended) return;
         previewSuspended = false;
         updateVisibility();
+    }
+
+    async function acquireOverlay(owner = Symbol('next-ui-overlay')) {
+        overlayOwners.add(owner);
+        try {
+            await getDesktopApi()?.desktopActivateEmbeddedVchatApp?.(null);
+        } catch (error) {
+            overlayOwners.delete(owner);
+            console.warn('[NextUI] Failed to hide embedded app for overlay:', error);
+            throw error;
+        }
+        return owner;
+    }
+
+    function releaseOverlay(owner) {
+        if (!overlayOwners.delete(owner)) return;
+        syncEmbeddedActivation();
     }
 
     async function prepareForMode(mode, options = {}) {
@@ -985,6 +1009,8 @@
         openInternalApp,
         openEmbeddedApp,
         closeView,
-        setView
+        setView,
+        acquireOverlay,
+        releaseOverlay
     });
 })();
