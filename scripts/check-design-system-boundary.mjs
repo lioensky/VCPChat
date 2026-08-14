@@ -119,6 +119,7 @@ const allowedSourceDifferences = new Set([
     'scripts/test-electron-ui-apps-smoke.mjs',
     'scripts/test-settings-wa-electron.mjs',
     'tests/frontend-plugins.test.js',
+    'tests/topic-list-mode-lifecycle.test.js',
     'style.css',
     'styles/notifications.css',
     'styles/themes.css',

@@ -18,6 +18,7 @@ window.topicListManager = (() => {
     let availableTopics = [];
     let currentItemConfig = null;
     let managedItemKey = '';
+    let modeChangeListenerBound = false;
 
     const TOPIC_INITIAL_RENDER_COUNT = 40;
     const TOPIC_PROGRESSIVE_BATCH_SIZE = 30;
@@ -47,6 +48,7 @@ window.topicListManager = (() => {
         // 设置鼠标快捷键
         setupMouseShortcuts();
         setupNextUiTopicTools();
+        setupUiModeLifecycle();
 
         console.log('[TopicListManager] Initialized successfully.');
     }
@@ -728,6 +730,34 @@ window.topicListManager = (() => {
         exitButton?.addEventListener('click', () => setManageMode(false));
 
         syncManageUi();
+    }
+
+    function teardownNextManageMode() {
+        isManageMode = false;
+        selectedTopicIds.clear();
+
+        const container = document.getElementById('tabContentTopics');
+        container?.classList.remove('is-managing');
+        document.getElementById('nextUiManageTopicsBtn')?.classList.remove('active');
+        document.getElementById('nextUiManageTopicsBtn')?.setAttribute('aria-pressed', 'false');
+        container?.querySelector('.next-ui-topic-manage-panel')?.setAttribute('aria-hidden', 'true');
+
+        document.querySelectorAll('#topicList .topic-item').forEach(item => {
+            item.classList.remove('selected');
+            item.removeAttribute('aria-selected');
+            item.querySelector('.next-ui-topic-select-icon')?.remove();
+            item.querySelector('.unlocked-indicator')?.remove();
+        });
+    }
+
+    function setupUiModeLifecycle() {
+        if (modeChangeListenerBound) return;
+        modeChangeListenerBound = true;
+        window.addEventListener('ui-mode-changed', event => {
+            if (event.detail?.mode !== 'classic') return;
+            teardownNextManageMode();
+            loadTopicList();
+        });
     }
 
     function setManageMode(active) {
