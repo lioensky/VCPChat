@@ -75,6 +75,7 @@
 
         function restore(offset) {
             assertActive();
+            const viewState = context.editorPort?.captureViewState?.() || null;
             finalize();
             const nextIndex = state.index + Number(offset);
             if (!Number.isInteger(nextIndex)
@@ -100,6 +101,7 @@
                     offset < 0 ? 'history-undo' : 'history-redo'
                 );
                 context.renderPort?.renderCurrent?.({ force: true });
+                context.editorPort?.restoreViewState?.(viewState);
                 documentPort.markDirty({
                     reason: offset < 0 ? 'history-undo' : 'history-redo',
                     incrementRevision: false,

@@ -266,10 +266,11 @@
                 return false;
             }
             resetScrollPositionsIfDocumentChanged();
-            if (normalized === mode) return true;
             context.editorResolver?.()?.flush?.();
-            captureScrollPosition(mode);
-            scrollRestoreToken += 1;
+            if (normalized !== mode) {
+                captureScrollPosition(mode);
+                scrollRestoreToken += 1;
+            }
             mode = normalized;
             context.renderPort.setMode(normalized);
             const edit = normalized === 'edit';

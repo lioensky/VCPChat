@@ -150,6 +150,10 @@
 
     const editorFacade = Object.freeze({
         flush: (...args) => activeEditor?.flush?.(...args) ?? true,
+        captureViewState: (...args) =>
+            activeEditor?.captureViewState?.(...args) || null,
+        restoreViewState: (...args) =>
+            activeEditor?.restoreViewState?.(...args) ?? false,
         disposeSurface: (...args) =>
             activeEditor?.disposeSurface?.(...args),
     });

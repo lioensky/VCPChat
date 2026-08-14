@@ -1774,6 +1774,23 @@
             return true;
         }
 
+        function preserveBlankMarkdownRegion(raw, caret) {
+            const source = String(raw || '');
+            if (/[^\s]/u.test(source)) {
+                return { source, caret };
+            }
+            const offset = Math.max(
+                0,
+                Math.min(source.length, Number(caret) || 0)
+            );
+            return {
+                source: source.slice(0, offset)
+                    + '\u200B'
+                    + source.slice(offset),
+                caret: offset + 1,
+            };
+        }
+
         function commitSessionInsertion(
             session,
             insertion,
@@ -1795,10 +1812,15 @@
                 Math.min(currentRaw.length, Number(offsets.end) || start)
             );
             const inserted = String(insertion || '');
-            const nextRaw = currentRaw.slice(0, start)
+            const candidateRaw = currentRaw.slice(0, start)
                 + inserted
                 + currentRaw.slice(end);
-            const caret = start + inserted.length;
+            const preserved = preserveBlankMarkdownRegion(
+                candidateRaw,
+                start + inserted.length
+            );
+            const nextRaw = preserved.source;
+            const caret = preserved.caret;
             const transaction = transact({
                 from: session.region.sourceRange.start,
                 to: session.region.sourceRange.end,
@@ -1812,11 +1834,13 @@
                 end: caret,
             });
             if (!refreshed) {
+                const viewState = captureViewState();
                 state.activeSession = null;
                 context.renderPort?.invalidate?.(
                     'flow-edit-region-structure-changed'
                 );
                 context.renderPort?.renderEdit?.({ force: true });
+                restoreViewState(viewState);
             }
             return true;
         }
@@ -1890,6 +1914,47 @@
                 localOffset
             );
             refreshLocalMarkers(nextSession, localOffset);
+            return true;
+        }
+
+        function captureViewState() {
+            const session = state.activeSession;
+            const offsets = session?.editable?.isConnected
+                ? resilientEditorSelectionOffsets(session.editable)
+                : null;
+            const region = session?.shell?.isConnected
+                ? regionForShell(session.shell) || session.region
+                : null;
+            const scrollHost = state.root?.host?.parentElement;
+            return Object.freeze({
+                sourceOffset: offsets && region
+                    ? region.sourceRange.start + offsets.end
+                    : null,
+                focused: Boolean(
+                    session?.editable?.isConnected
+                    && state.root?.activeElement === session.editable
+                ),
+                scrollLeft: Number(scrollHost?.scrollLeft) || 0,
+                scrollTop: Number(scrollHost?.scrollTop) || 0,
+            });
+        }
+
+        function restoreViewState(viewState) {
+            if (!viewState || !state.root) return false;
+            const restoreScroll = () => {
+                const scrollHost = state.root?.host?.parentElement;
+                scrollHost?.scrollTo?.({
+                    left: Number(viewState.scrollLeft) || 0,
+                    top: Number(viewState.scrollTop) || 0,
+                    behavior: 'auto',
+                });
+            };
+            restoreScroll();
+            if (viewState.focused
+                && Number.isFinite(viewState.sourceOffset)) {
+                scheduleBoundaryFocus(viewState.sourceOffset);
+            }
+            window.requestAnimationFrame(restoreScroll);
             return true;
         }
 
@@ -2076,11 +2141,13 @@
                 transaction,
                 selectionOffsets
             )) {
+                const viewState = captureViewState();
                 state.activeSession = null;
                 context.renderPort?.invalidate?.(
                     'flow-edit-region-structure-changed'
                 );
                 context.renderPort?.renderEdit?.({ force: true });
+                restoreViewState(viewState);
             }
             return true;
         }
@@ -2467,6 +2534,8 @@
             insertStructure,
             canExecute,
             formattingState,
+            captureViewState,
+            restoreViewState,
             flush,
             flushSession,
             disposeSurface,
