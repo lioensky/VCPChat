@@ -11,6 +11,9 @@ const windowService = require('../services/windowService');
 const WINDOW_APP_IDS = require('../services/windowAppIds');
 const { PRELOAD_ROLES, resolveAppPreload } = require('../services/preloadPaths');
 const scriptoriumImportService = require('../services/scriptoriumImportService');
+const {
+    ScriptoriumFontCacheService,
+} = require('../services/scriptoriumFontCacheService');
 
 const MAX_DOCUMENT_BYTES = 100 * 1024 * 1024;
 const MAX_RESOURCE_BYTES = 80 * 1024 * 1024;
@@ -71,6 +74,7 @@ let stylePackFilePath = null;
 let svgAssetFilePath = null;
 let initialized = false;
 let fontCache = null;
+let networkFontCache = null;
 const pendingAgentRequests = new Map();
 
 function normalizeAgentAuthor(author) {
@@ -1183,6 +1187,15 @@ function initialize(params) {
     if (initialized) return;
     initialized = true;
     mainWindow = params.mainWindow;
+    networkFontCache = new ScriptoriumFontCacheService({
+        appDataRoot: params.appDataRoot,
+    });
+    void networkFontCache.initialize().catch((error) => {
+        console.warn(
+            '[Scriptorium] Network font cache initialization failed:',
+            error.message
+        );
+    });
     openChildWindows = params.openChildWindows || [];
     projectRoot = params.projectRoot;
     recentFilePath = path.join(
@@ -1216,6 +1229,16 @@ function initialize(params) {
     ipcMain.handle('scriptorium:choose-import', chooseAndImportDocument);
     ipcMain.handle('docx:read-path', (_event, filePath) => readDocument(filePath));
     ipcMain.handle('docx:read-external-resource', readExternalResource);
+    ipcMain.handle(
+        'scriptorium:resolve-font-stylesheet',
+        (_event, payload = {}) =>
+            networkFontCache.resolveStylesheet(payload.url)
+    );
+    ipcMain.handle(
+        'scriptorium:resolve-font-url',
+        (_event, payload = {}) =>
+            networkFontCache.resolveFont(payload.url)
+    );
     ipcMain.handle('docx:save', saveDocument);
     ipcMain.handle('scriptorium:export-rich-document', exportRichDocument);
     ipcMain.handle('docx:recent-list', readRecentFiles);

@@ -42,6 +42,7 @@
         prDiff: window.ScriptoriumPrDiff,
         agentPort: window.ScriptoriumAgentPort,
         runtime: window.ScriptoriumRuntime,
+        networkFonts: window.ScriptoriumNetworkFonts,
         sourceEditor: window.ScriptoriumSourceEditor,
         session: window.ScriptoriumSession,
         shell: window.ScriptoriumShell,
@@ -62,6 +63,10 @@
         readPath: (path) => nativeApi.readPath(path),
         readExternalResource: (payload) =>
             nativeApi.readExternalResource(payload),
+        resolveFontStylesheet: (payload) =>
+            nativeApi.resolveFontStylesheet(payload),
+        resolveFontUrl: (payload) =>
+            nativeApi.resolveFontUrl(payload),
         save: (payload) => nativeApi.save(payload),
         exportRichDocument: (payload) =>
             nativeApi.exportRichDocument(payload),
@@ -118,6 +123,7 @@
     let agentPort = null;
     let objectPort = null;
     let svgAssetPort = null;
+    let networkFontPort = null;
     let shell = null;
     let pathRequestDisposer = null;
     let agentRequestDisposer = null;
@@ -488,6 +494,14 @@
                 onRendered: () => navigationPort?.render?.(),
             });
 
+        networkFontPort =
+            window.ScriptoriumNetworkFonts.createNetworkFontController({
+                documentPort,
+                containerModule,
+                persistencePort,
+                notificationPort,
+            });
+
         sourcePort =
             window.ScriptoriumSourceEditor.createSourceEditorController({
                 core,
@@ -497,6 +511,7 @@
                 notificationPort,
                 historyPort,
                 renderPort: renderFacade,
+                networkFontPort,
                 getAdapter: adapterResolver,
             });
         sourcePort.initialize();
@@ -806,6 +821,7 @@
         agentCheckpointDisposer?.();
         visibilityPort.dispose();
         objectPort?.dispose?.();
+        networkFontPort?.dispose?.();
         renderedTextPort.dispose();
         shell.dispose();
         runtimePort.dispose();

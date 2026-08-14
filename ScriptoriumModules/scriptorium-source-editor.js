@@ -11,6 +11,7 @@
         let sourceMode = 'html';
         let colorMarks = [];
         let colorTimer = null;
+        let networkFontTimer = null;
         let documentDisposer = null;
         let syncingEditor = false;
         let disposed = false;
@@ -126,6 +127,48 @@
         function scheduleColorMarks() {
             window.clearTimeout(colorTimer);
             colorTimer = window.setTimeout(refreshColorMarks, 180);
+        }
+
+        function scheduleNetworkFonts() {
+            window.clearTimeout(networkFontTimer);
+            if (sourceMode !== 'css' || !context.networkFontPort) return;
+            const source = getValue();
+            if (!/@import|@font-face/i.test(source)
+                || !/https:\/\//i.test(source)) {
+                return;
+            }
+            networkFontTimer = window.setTimeout(async () => {
+                try {
+                    const result = await context.networkFontPort.processCss(
+                        source
+                    );
+                    if (!result || disposed || sourceMode !== 'css'
+                        || getValue() !== source) {
+                        return;
+                    }
+                    setValue(result.css, { preserveCursor: true });
+                    commitEditorValue('source-editor-network-fonts');
+                    validate();
+                    refreshColorMarks();
+                    context.historyPort?.capture?.({
+                        reason: 'source-editor-network-fonts',
+                    });
+                    context.renderPort?.invalidate?.(
+                        'source-editor-network-fonts'
+                    );
+                    context.renderPort?.renderCurrent?.({ force: true });
+                    notificationPort.show?.(
+                        `已本地化 ${result.resources.length} 项网络字体资源`,
+                        result.failures.length ? 'info' : 'success'
+                    );
+                } catch (error) {
+                    notificationPort.show?.(
+                        `网络字体处理失败：${error.message}`,
+                        'error',
+                        5000
+                    );
+                }
+            }, 450);
         }
 
         function validate() {
@@ -316,6 +359,7 @@
                 }
                 validate();
                 scheduleColorMarks();
+                scheduleNetworkFonts();
             });
             documentDisposer?.();
             if (typeof context.documentPort?.subscribe === 'function') {
@@ -354,6 +398,8 @@
         function dispose() {
             if (disposed) return;
             window.clearTimeout(colorTimer);
+            window.clearTimeout(networkFontTimer);
+            context.networkFontPort?.cancel?.();
             documentDisposer?.();
             documentDisposer = null;
             clearColorMarks();
