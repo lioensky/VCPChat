@@ -41,7 +41,7 @@
 - 主聊天设置、Appearance Studio、主题与动态壁纸；
 - 空会话 VCPChat/Nova 视觉；
 - 通用 Next 启动台和标签宿主；
-- Notes 与 Translator 的 Next presentation；
+- 通用标签宿主；业务子页面（包括 Notes 与 Translator）保持 Classic；
 - VCPUI、Web Awesome 离线 runtime、字体、图标和必要测试。
 
 Memo、Forum、Log、Plugin Manager、Task、Human ToolBox、VchatManager、RAG Observer 等页面保留上游 Classic 文件，不在仓库中保留禁用的 Next 重建。
@@ -64,7 +64,7 @@ Memo、Forum、Log、Plugin Manager、Task、Human ToolBox、VchatManager、RAG 
 - 静态 Next DOM 可以随 `main.html` 交付，但 Classic 下不得运行 Next 控制器。
 - `topTabManager.mount()` 只在进入 Next 后执行；`unmount()` 必须先隐藏原生 view，再等待关闭全部嵌入 session，随后完成 Observer、监听和过期异步任务清理。
 - 权威设置加载、保存和 Appearance Studio 使用 `uiModeManager.applyAsync()`；切回 Classic 必须等待原生 view teardown，快速连续切换由 generation 收敛到最后一次请求。
-- Notes/Translator 以“业务文档重载”作为 Classic/Next 的可逆边界：模式变化时使用更新后的 `uiMode` URL 重新载入原始页面，避免在同一 document 中逆向拼装已被移动的上游 DOM。
+- 通用标签宿主固定以 `uiMode=classic` 打开业务子页面；主界面选择 Next 不改变子页面 presentation。
 - 所有异步打开、恢复和 WA 加载都携带 generation；过期结果不得修改 DOM 或原生 view。
 
 ### 状态
@@ -102,7 +102,7 @@ Memo、Forum、Log、Plugin Manager、Task、Human ToolBox、VchatManager、RAG 
 - Classic → Next → Classic 后无残留监听、Observer、原生 view 或未决恢复任务。
 - Translator URL 不含服务器密钥；packaged 与 development 使用同一权威设置路径。
 - Appearance 的旧预览不能覆盖更新 revision 的设置。
-- 仅 Notes、Translator 和主聊天存在 Next 业务 presentation。
+- 仅主聊天和全局设置存在 Next presentation；业务子页面保持上游 Classic。
 - 业务源代码不存在新增的 `wa-*` 依赖。
 - 相对 `upstream-review/main` 的非设计文件差异为零；工作树行尾不制造无语义 diff。
 - UI、Electron、vendor、ASAR 和设计减法门禁全部通过。
@@ -115,15 +115,15 @@ Memo、Forum、Log、Plugin Manager、Task、Human ToolBox、VchatManager、RAG 
 2. `codex/design-foundation`：VCPUI、WA adapter、token、基础组件与隔离测试。
 3. `codex/design-main-shell`：主聊天 Next Shell、侧栏、消息区与输入区视觉。
 4. `codex/design-appearance`：Appearance Studio、主题、Nova 与动态壁纸体验。
-5. `codex/design-app-tabs`：可信内嵌 allowlist、AppTabHost、Notes 与 Translator。
+5. `codex/design-app-tabs`：可信内嵌 allowlist 与 AppTabHost；业务子页面保持 Classic。
 6. `codex/design-runtime-integration`：对最新上游主聊天业务 DOM、IPC 和设置生命周期的最小接线。
 7. `codex/design-system-upstream`：边界门禁、Electron smoke、插件回归与开发文档。
 
 ## 2026-08-07 验证结果
 
-- `npm run check:ui-system`：通过；页面门禁报告 `2 active rebuilt, 10 upstream classic`。
+- `npm run check:ui-system`：需通过；页面门禁报告 `0 active rebuilt, 12 upstream classic`。
 - `npm run pack:check`：通过；Web Awesome 3.11.0 离线闭包为 101 文件、0.46 MiB，生成结果可复现。
-- `npm run test:electron-ui-apps`：20/20 通过；覆盖主 Shell、全局设置、Notes/Translator Next、上游 Classic 标签宿主和全局 Classic 回退。
+- `npm run test:electron-ui-apps`：需覆盖主 Shell、全局设置、全部上游 Classic 子页面标签宿主和全局 Classic 回退。
 - `node --test tests/frontend-plugins.test.js`：5/5 通过。
 - Next/Classic 生命周期测试覆盖延迟关闭与快速回切：旧 teardown 完成前不会恢复新的原生 view。
 - `git -c core.whitespace=cr-at-eol diff --check upstream-review/main -- ':(exclude)vendor/webawesome-runtime/**'`：通过；vendor 保持上游 npm 产物原字节。

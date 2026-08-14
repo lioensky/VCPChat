@@ -134,5 +134,5 @@ npm run test:appearance-engine
 npm run check:ui-system
 ```
 
-Visual acceptance must cover classic and next modes, light and dark themes, narrow and wide windows, wallpaper enabled/disabled, and embedded Notes/Translator surfaces.
+Visual acceptance must cover classic and next modes, light and dark themes, narrow and wide windows, wallpaper enabled/disabled, and embedded child pages using their upstream Classic presentation.
 Global Settings acceptance must additionally verify category switching, search, close/reopen and layout changes while the dialog is open in both home layouts.

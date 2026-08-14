@@ -121,7 +121,7 @@ window.nextUiApps.register({
 
 下列状态以实际 Electron 检查为准，`partial` 不得视为完成：
 
-业务子页面采用显式 allowlist。当前只启用笔记与翻译；其余页面保持上游 Classic 文件，不在首个 PR 中保留禁用的 AppPageShell 重建，详见 `docs/ui-active-surface-policy.md`。
+业务子页面采用显式 allowlist。首个上游 PR 的 allowlist 为空；包括笔记与翻译在内的子页面均保持上游 Classic 文件，不保留禁用的 AppPageShell 重建，详见 `docs/ui-active-surface-policy.md`。
 
 | Surface | Status | Evidence required before stable |
 | --- | --- | --- |

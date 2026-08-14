@@ -25,11 +25,10 @@ const root = process.cwd();
 // detail behind VCPUI; strict sample pages are forbidden from reaching through
 // to VCPWebAwesome directly.
 const wiredPages = [];
-const activeRebuiltPages = [
+const activeRebuiltPages = [];
+const upstreamClassicPages = [
     { html: 'Translatormodules/translator.html', js: 'Translatormodules/translator.js' },
     { html: 'Notemodules/notes.html', js: 'Notemodules/notes.js' },
-];
-const upstreamClassicPages = [
     { html: 'Notemodules/notemini.html', js: 'Notemodules/notemini.js' },
     { html: 'Logmodules/log.html', js: 'Logmodules/log.js' },
     { html: 'PluginManagerModules/plugin-manager.html', js: 'PluginManagerModules/plugin-manager.js' },

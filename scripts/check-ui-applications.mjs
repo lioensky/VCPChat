@@ -31,10 +31,7 @@ const surfaceDirs = [
     'VchatManager',
 ];
 const singleFiles = ['main.html'];
-const SELECT_RUNTIME_ENTRYPOINTS = [
-    'Translatormodules/translator.html',
-    'Notemodules/notes.html',
-];
+const SELECT_RUNTIME_ENTRYPOINTS = [];
 
 const CDN_HOSTS = [
     /unpkg\.com/i,

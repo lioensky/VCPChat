@@ -2,10 +2,10 @@
 // next-UI presentation. Excluded pages remain byte-identical to upstream and
 // therefore always use their proven Classic presentation.
 
-const ACTIVE_NEXT_UI_SURFACES = Object.freeze([
-    'Notemodules/notes.html',
-    'Translatormodules/translator.html',
-]);
+// The first upstream design-system PR intentionally keeps every child
+// business page on its upstream Classic presentation. Child-page migrations
+// can be proposed independently after the shared shell has landed.
+const ACTIVE_NEXT_UI_SURFACES = Object.freeze([]);
 
 const ACTIVE_SUFFIXES = ACTIVE_NEXT_UI_SURFACES.map(value => `/${value.toLowerCase()}`);
 

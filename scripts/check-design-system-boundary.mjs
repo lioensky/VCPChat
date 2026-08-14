@@ -154,7 +154,9 @@ const allowedSourceDifferencePatterns = [
 
 const upstreamClassicPatterns = [
     /^(?:Agenttaskmodules|Forummodules|Logmodules|Memomodules|PluginManagerModules|VCPHumanToolBox|VchatManager)\//,
+    /^Notemodules\/notes\.(?:html|js|css)$/,
     /^Notemodules\/notemini\.(?:html|js|css)$/,
+    /^Translatormodules\/translator\.(?:html|js|css)$/,
     /^RAGmodules\/RAG_Observer\.html$/,
 ];
 
@@ -220,8 +222,6 @@ if (/\bgetAgentSidebar\b/.test(retainedEventListenersSource)) {
 const nextCommandConsumers = [
     'modules/topTabManager.js',
     'modules/ui-system/appearance-studio.js',
-    'Notemodules/notes.js',
-    'Translatormodules/translator.js',
 ];
 for (const file of nextCommandConsumers) {
     const source = fs.readFileSync(path.join(root, file), 'utf8');

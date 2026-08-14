@@ -26,8 +26,8 @@ const settingsSource = fs.readFileSync(path.join(root, 'modules', 'utils', 'appS
 const embeddedSource = fs.readFileSync(path.join(root, 'modules', 'services', 'embeddedAppSessionManager.js'), 'utf8');
 assert.match(rendererSource, /let globalSettings = \{[\s\S]*?uiMode:\s*'classic'/, 'renderer boot state must default to Classic');
 assert.match(settingsSource, /this\.defaultSettings = \{[\s\S]*?uiMode:\s*'classic'/, 'new settings files must default to Classic');
-assert.match(embeddedSource, /settings\?\.uiMode === 'next' \? 'next' : 'classic'/,
-    'embedded applications must enter Next only from an explicit saved preference');
+assert.match(embeddedSource, /const uiMode = 'classic'/,
+    'embedded business applications must remain on Classic in the first upstream PR');
 
 const dom = new JSDOM('<!doctype html><html><body></body></html>', {
     url: 'https://vcpchat.local/',

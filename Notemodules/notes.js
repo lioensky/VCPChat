@@ -137,19 +137,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // --- Confirmation Modal Logic ---
-    function isNextUiActive() {
-        return document.documentElement.dataset.uiMode === 'next' && Boolean(window.VCPUI?.feedback);
-    }
     function showConfirmationModal(title, message) {
-        if (isNextUiActive()) {
-            return window.VCPUI.feedback.confirm({
-                title,
-                message: String(message).replace(/<[^>]+>/g, ''),
-                confirmLabel: '确认',
-                cancelLabel: '取消',
-                danger: true,
-            });
-        }
         return new Promise((resolve) => {
             modalTitle.textContent = title;
             modalMessage.innerHTML = message; // Use innerHTML for simple formatting
@@ -228,19 +216,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     async function showInfoModal(title, message) {
-        if (isNextUiActive()) {
-            window.VCPUI.feedback.toast(String(message).replace(/<[^>]+>/g, ''), { variant: 'success' });
-            return;
-        }
         // We don't use the promise here, but it standardizes the interface
         await createModal(title, message, 'info-modal');
     }
 
     async function showErrorModal(title, message) {
-        if (isNextUiActive()) {
-            window.VCPUI.feedback.toast(String(message).replace(/<[^>]+>/g, ''), { variant: 'error' });
-            return;
-        }
         await createModal(title, `<span style="color:var(--error-color, #f44336);">${message}</span>`, 'error-modal');
     }
 
@@ -2205,148 +2185,5 @@ function handleListDragEnd(e) {
         }
     });
 
-    window.VCPNotesCommands = Object.freeze({
-        togglePreview: togglePreviewPanel,
-        findPrevious: () => findEditorMatch(-1),
-        findNext: () => findEditorMatch(1),
-        closeFind: closeEditorFindBar,
-        createMarkdown: () => createNewItem('note', '.md'),
-        createText: () => createNewItem('note', '.txt'),
-        createFolder: () => createNewItem('folder'),
-        save: () => saveCurrentNote(false),
-        remove: () => handleDirectDelete(false),
-    });
-
     initializeApp();
 });
-
-// --- 新版 UI：真实重建页面结构（AppPageShell + VCPUI 控件 + Web Awesome） ---
-// 经典模式保持原 DOM/CSS；next 模式将既有业务节点移入 VCPUI 外壳并增强：
-// 预览切换/查找栏按钮换成 VCPUI IconButton，编辑区工具栏按钮换成 VCPUI Button
-// （保留原点击逻辑，label/disabled 通过 MutationObserver 与业务逻辑同步），
-// 确认/提示弹窗走 VCPUI.feedback。
-function buildNextNotes() {
-    if (!window.VCPUI) return;
-    if (window.VCPUiModeController?.getCurrentMode() !== 'next') return;
-    if (document.body.classList.contains('vcp-ui-scope')) return;
-
-    const V = window.VCPUI;
-    const shell = window.VCPPageRebuild.rebuild({
-        title: '我的笔记',
-        containerSelector: '.container',
-        bodyClass: 'vcp-ui-page-body vcp-ui-notes-workbench',
-        navSelector: '#custom-title-bar',
-        actionSelectors: ['#preview-toggle-btn'],
-        onMinimize: () => api?.minimizeWindow?.(),
-        onMaximize: () => api?.maximizeWindow?.(),
-        onClose: () => (api?.closeWindow ? api.closeWindow() : window.close()),
-        enhanceSelectors: {
-            input: ['input:is(:not([type]),[type="text"],[type="number"],[type="search"],[type="url"],[type="email"],[type="password"])'],
-            select: ['select'],
-            textarea: ['textarea']
-        },
-        tooltipSelectors: ['#preview-toggle-btn']
-    });
-    if (!shell) return;
-    shell.element.classList.add('vcp-ui-notes-shell', 'vcp-ui-integrated-shell');
-    const notesWorkbench = shell.element.querySelector('.vcp-ui-notes-workbench');
-    notesWorkbench?.classList.add('vcp-ui-integrated-layout');
-    notesWorkbench?.setAttribute('data-layout', 'rail');
-    notesWorkbench?.querySelector(':scope > .sidebar')?.classList.add('vcp-ui-integrated-rail');
-    notesWorkbench?.querySelector(':scope > .main-content')?.classList.add('vcp-ui-integrated-main');
-
-    const searchInput = document.getElementById('searchInput');
-    if (searchInput?.isConnected && !searchInput.closest('.vcp-ui-notes-search')) {
-        const searchField = document.createElement('div');
-        searchField.className = 'vcp-ui-notes-search';
-        const searchIcon = document.createElement('span');
-        searchIcon.className = 'vcp-ui-icon vcp-ui-notes-search-icon';
-        searchIcon.setAttribute('aria-hidden', 'true');
-        searchIcon.textContent = 'search';
-        searchInput.before(searchField);
-        searchField.append(searchIcon, searchInput);
-        queueMicrotask(() => window.VCPIcons?.set?.(searchIcon, 'search'));
-    }
-
-    // 把图标按钮替换为 VCPUI IconButton（保留原点击逻辑）。
-    const replaceIconButton = (id, icon, label, command) => {
-        const original = document.getElementById(id);
-        if (!original || !original.isConnected) return null;
-        const button = V.create('IconButton', { icon, label, variant: 'ghost' });
-        button.element.title = original.title || label;
-        button.element.classList.add('vcp-ui-notes-icon-btn');
-        button.element.addEventListener('click', command);
-        original.replaceWith(button.element);
-        original.dataset.nextUiReplaced = 'true';
-        return button;
-    };
-
-    // 把文字按钮替换为 VCPUI Button（保留原点击逻辑；同步 label/disabled）。
-    const replaceButton = (id, fallbackLabel, icon, command, variant = 'secondary', size = 'sm') => {
-        const original = document.getElementById(id);
-        if (!original || !original.isConnected) return null;
-        const button = V.create('Button', {
-            label: original.textContent.replace(/[→←↑↓×🗑💾📝]/g, '').trim() || fallbackLabel,
-            icon,
-            variant,
-            size,
-        });
-        button.element.classList.add('vcp-ui-notes-action');
-        const syncState = () => {
-            const text = original.textContent.replace(/[→←↑↓×🗑💾📝]/g, '').trim();
-            if (text) button.update({ label: text });
-            button.element.disabled = original.disabled;
-        };
-        syncState();
-        new MutationObserver(syncState).observe(original, { childList: true, characterData: true, subtree: true, attributes: true, attributeFilter: ['disabled'] });
-        button.element.addEventListener('click', command);
-        original.replaceWith(button.element);
-        original.dataset.nextUiReplaced = 'true';
-        return button;
-    };
-
-    // 预览切换按钮（shell 动作区）。
-    const commands = window.VCPNotesCommands;
-    const previewToggle = replaceIconButton('preview-toggle-btn', 'panel_right', '切换预览区', commands.togglePreview);
-    if (previewToggle?.element) {
-        document.querySelector('.note-actions')?.prepend(previewToggle.element);
-    }
-
-    // 编辑器查找栏按钮。
-    replaceIconButton('editorFindPrev', 'chevron_up', '上一个匹配', commands.findPrevious);
-    replaceIconButton('editorFindNext', 'chevron_down', '下一个匹配', commands.findNext);
-    replaceIconButton('editorFindClose', 'close', '关闭查找', commands.closeFind);
-
-    // 编辑区工具栏按钮。
-    replaceButton('newMdBtn', '新建MD', 'note_add', commands.createMarkdown);
-    replaceButton('newTxtBtn', '新建TXT', 'description', commands.createText);
-    replaceButton('newFolderBtn', '新建文档', 'create_new_folder', commands.createFolder);
-    replaceButton('saveNoteBtn', '保存', 'save', commands.save, 'primary');
-    replaceButton('deleteNoteBtn', '删除', 'delete', commands.remove, 'danger');
-
-    // 空状态：笔记列表为空时显示 VCPUI EmptyState。
-    const noteListEl = document.getElementById('noteList');
-    const patchNoteListEmpty = () => {
-        const isEmpty = noteListEl.children.length === 0;
-        noteListEl.classList.toggle('vcp-ui-notes-empty-active', isEmpty);
-        let empty = noteListEl.querySelector('.vcp-ui-notes-empty');
-        if (isEmpty) {
-            if (!empty) {
-                empty = V.create('EmptyState', { icon: 'note_stack', title: '暂无笔记', description: '新建一个 MD / TXT 笔记开始记录。' });
-                empty.element.classList.add('vcp-ui-notes-empty');
-                noteListEl.appendChild(empty.element);
-            }
-        } else if (empty) {
-            empty.remove();
-        }
-    };
-    patchNoteListEmpty();
-    new MutationObserver(patchNoteListEmpty).observe(noteListEl, { childList: true, subtree: true });
-
-    // Tooltip 通过 VCPUI.create('Tooltip') 创建（由 VCPUI 委托 Web Awesome）。
-    document.querySelectorAll('.vcp-ui-notes-icon-btn, .vcp-ui-notes-action').forEach(el => {
-        const tip = V.create('Tooltip', { trigger: el, content: el.title || el.getAttribute('aria-label') || '操作', placement: 'top' });
-        document.body.append(tip.element);
-    });
-}
-window.addEventListener('vcp-ui-runtime-ready', buildNextNotes);

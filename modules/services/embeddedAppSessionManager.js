@@ -25,7 +25,10 @@ async function resolveDescriptor(appAction, appRoot, readSettings) {
     } catch (error) {
         console.warn('[EmbeddedApps] Failed to read authoritative settings:', error.message);
     }
-    const uiMode = settings?.uiMode === 'next' ? 'next' : 'classic';
+    // Embedded business pages stay on their upstream Classic presentation in
+    // this PR. The parent may use the Next shell, but it must not implicitly
+    // opt child documents into an unshipped presentation.
+    const uiMode = 'classic';
     const entry = embeddedAppAllowlist.get(appAction);
     return entry ? { url: toFileUrl(appRoot, entry.page, { uiMode }) } : null;
 }

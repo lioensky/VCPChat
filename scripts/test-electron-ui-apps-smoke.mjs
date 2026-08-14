@@ -5,8 +5,8 @@
 //   - the UI 组件库 internal app lazy-registers wa-* elements,
 //   - global settings modal (next): enhanced controls, save bar dirty state,
 //     injected search, focus/Escape keyboard flow; classic teardown,
-//   - Notes and Translator mount their active Next presentations,
-//   - other catalog applications open through the generic host but stay on
+//   - every child business application opens through the generic host but
+//     stays on
 //     their byte-identical upstream Classic pages,
 //   - switching the whole application to Classic leaves every business page
 //     on its original DOM with no VCPUI/Web Awesome surface mounted.
@@ -66,8 +66,8 @@ async function capture(page, name) {
 }
 
 // ── Embedded page manifest ────────────────────────────────────────────────
-// `nextEnabled` is intentionally limited to Notes and Translator. Every other
-// entry exercises host integration only; its page source is upstream Classic.
+// Every entry exercises host integration only; its page source and
+// presentation remain upstream Classic.
 const EMBEDDED_APPS = [
     {
         id: 'open-note-mini-window', action: 'open-note-mini-window', name: '便签', key: 'notemini.html',
@@ -76,7 +76,6 @@ const EMBEDDED_APPS = [
     },
     {
         id: 'open-translator-window', action: 'open-translator-window', name: '翻译', key: 'translator.html',
-        nextEnabled: true,
         shellTitle: '翻译助手', integrated: true, minWa: { 'wa-tooltip': 1, 'wa-select': 2 }, minHeaderRects: 0, minNativeEnhanced: 2,
         legacySelector: '.translator-container', bodyFocus: '.vcp-ui-page-shell-content textarea',
     },
@@ -97,7 +96,6 @@ const EMBEDDED_APPS = [
     },
     {
         id: 'open-notes-window', action: 'open-notes-window', name: '笔记', key: 'notes.html',
-        nextEnabled: true,
         shellTitle: '我的笔记', integrated: true, minWa: { 'wa-tooltip': 1 }, minHeaderRects: 0, minNativeEnhanced: 1,
         legacySelector: '.container', bodyFocus: '.vcp-ui-page-shell-content input',
     },
@@ -343,18 +341,42 @@ async function auditNextPage(page, app, captureName, { expectEmbedded = true } =
 async function auditUpstreamClassicPage(page, app, captureName) {
     await page.waitForFunction((selector) => document.querySelector(selector), { timeout: timeoutMs }, app.legacySelector || app.legacy);
     await sleep(300);
-    const state = await page.evaluate((legacySelector) => ({
-        uiMode: document.documentElement.dataset.uiMode || 'classic',
-        hasShell: Boolean(document.querySelector('.vcp-ui-page-shell')),
-        waCount: document.querySelectorAll('wa-button, wa-input, wa-select, wa-card, wa-tooltip').length,
-        bodyScope: document.body.classList.contains('vcp-ui-scope'),
-        legacyPresent: Boolean(document.querySelector(legacySelector)),
-    }), app.legacySelector || app.legacy);
+    const state = await page.evaluate(async ({ legacySelector, action }) => {
+        const utilityApi = window.utilityAPI;
+        let pluginListProbe = null;
+        if (action === 'open-plugin-manager-window' && typeof utilityApi?.pluginManagerListPlugins === 'function') {
+            pluginListProbe = await utilityApi.pluginManagerListPlugins();
+        }
+        return {
+            uiMode: document.documentElement.dataset.uiMode || 'classic',
+            hasShell: Boolean(document.querySelector('.vcp-ui-page-shell')),
+            waCount: document.querySelectorAll('wa-button, wa-input, wa-select, wa-card, wa-tooltip').length,
+            bodyScope: document.body.classList.contains('vcp-ui-scope'),
+            legacyPresent: Boolean(document.querySelector(legacySelector)),
+            embeddedFlag: document.documentElement.dataset.vcpEmbeddedApp || '',
+            hasUtilityApi: Boolean(utilityApi),
+            hasLoadSettings: typeof utilityApi?.loadSettings === 'function',
+            hasPluginManagerApi: typeof utilityApi?.pluginManagerListPlugins === 'function',
+            pluginListProbe,
+        };
+    }, { legacySelector: app.legacySelector || app.legacy, action: app.action });
     assert.equal(state.uiMode, 'classic', `${app.name} upstream Classic surface must resolve to classic: ${JSON.stringify(state)}`);
     assert.equal(state.hasShell, false, `${app.name} upstream Classic surface must not mount AppPageShell: ${JSON.stringify(state)}`);
     assert.equal(state.waCount, 0, `${app.name} upstream Classic surface must not register WA: ${JSON.stringify(state)}`);
     assert.equal(state.bodyScope, false, `${app.name} upstream Classic surface must not enter next scope: ${JSON.stringify(state)}`);
     assert.ok(state.legacyPresent, `${app.name} upstream Classic DOM missing: ${JSON.stringify(state)}`);
+    assert.equal(state.embeddedFlag, 'true', `${app.name} embedded preload contract missing: ${JSON.stringify(state)}`);
+    assert.equal(state.hasUtilityApi, true, `${app.name} utility preload did not expose its role API: ${JSON.stringify(state)}`);
+    assert.equal(state.hasLoadSettings, true, `${app.name} shared utility IPC is unavailable: ${JSON.stringify(state)}`);
+    if (app.action === 'open-plugin-manager-window') {
+        assert.equal(state.hasPluginManagerApi, true, `插件管理 IPC 未注入: ${JSON.stringify(state)}`);
+        assert.equal(state.pluginListProbe?.success, true, `插件目录读取失败: ${JSON.stringify(state)}`);
+        assert.ok(Array.isArray(state.pluginListProbe?.plugins), `插件目录返回值无效: ${JSON.stringify(state)}`);
+        await page.waitForFunction(
+            () => !document.getElementById('plugin-groups')?.textContent?.includes('IPC 尚未注入'),
+            { timeout: timeoutMs }
+        );
+    }
     await capture(page, captureName);
 }
 
@@ -456,6 +478,13 @@ try {
     assert.equal(brandAssets.fontLoaded, true, `VCPChat Orbitron wordmark font failed to load: ${JSON.stringify(brandAssets)}`);
     assert.match(brandAssets.computedFamily, /VCP Orbitron/, `VCPChat wordmark resolved to the wrong family: ${JSON.stringify(brandAssets)}`);
     assert.ok(brandAssets.novaWidth > 0 && brandAssets.novaHeight > 0, `Nova launch asset failed to decode: ${JSON.stringify(brandAssets)}`);
+    // Renderer readiness does not imply that the asynchronous frontend-plugin
+    // IPC scan has completed. Audit the plugin after its own readiness
+    // contract instead of racing it under a busy CI/Electron host.
+    await page.waitForFunction(
+        () => Boolean(window.VCPFrontendPlugins?.get?.('vchat-dynamic-wallpaper')),
+        { timeout: timeoutMs }
+    );
     const nextWallpaperIntegration = await page.evaluate(() => ({
         titlePanelPresent: Boolean(document.querySelector('.chat-header #vchat-dynamic-wallpaper-panel')),
         titleGroupPresent: Boolean(document.querySelector('.chat-header #vchat-wallpaper-title-group')),
@@ -983,7 +1012,7 @@ try {
     await page.evaluate(() => window.uiHelperFunctions.closeModal('globalSettingsModal'));
     summary.push({ surface: '主窗口与全局设置', mode: 'classic', pass: true, lucide: 0, note: '上游标题栏、输入按钮、通知、壁纸与设置导航保持可用' });
 
-    console.log('Electron UI apps smoke passed (boot WA gate, showcase, global settings, 2 active child Next surfaces, upstream-Classic host integration, classic regression).');
+    console.log('Electron UI apps smoke passed (boot WA gate, showcase, global settings, upstream-Classic child host integration, classic regression).');
 } catch (error) {
     console.error(`Electron UI apps smoke failed:\n${error?.stack || error}`);
     for (const [label, errors] of [...pageErrors, ...consoleErrors]) {

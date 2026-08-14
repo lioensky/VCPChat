@@ -68,14 +68,11 @@ function prepareStatefulMedia(window) {
     return { getState };
 }
 
-test('动态壁纸插件在 Next 使用左下角菜单并通过原生 IPC 选目录', async () => {
+test('动态壁纸插件在 Next 复用标题栏控件并通过原生 IPC 选目录', async () => {
     const wallpaperCss = readPlugin('VCPDistributedServer/Plugin/VChatDynamicWallpaper/plugin.css');
-    assert.match(wallpaperCss,
-        /html\[data-ui-mode="next"\] #vchat-dynamic-wallpaper-video\s*\{[\s\S]*top:\s*var\(--next-topbar-height, 44px\);[\s\S]*left:\s*var\(--next-sidebar-width, 260px\);[\s\S]*width:\s*calc\(100% - var\(--next-sidebar-width, 260px\)\);[\s\S]*height:\s*calc\(100% - var\(--next-topbar-height, 44px\)\);[\s\S]*border-radius:\s*14px 0 0 0;/s,
-        'the video layer must follow the shared main-panel offset and top-left radius');
-    assert.match(wallpaperCss,
-        /body\.vchat-dynamic-wallpaper-visible \.main-content,[\s\S]*body\.vchat-dynamic-wallpaper-visible \.notifications-sidebar\s*\{[\s\S]*background-color:\s*transparent;[\s\S]*background-image:\s*linear-gradient\(/s,
-        'visible video wallpaper must replace Next UI\'s opaque panel base with a readable scrim');
+    assert.match(wallpaperCss, /#vchat-dynamic-wallpaper-video\s*\{[\s\S]*inset:\s*0;/s);
+    assert.doesNotMatch(wallpaperCss, /data-ui-mode="next"/,
+        'the plugin must not carry a Next-specific presentation');
     const dom = new JSDOM(`<!doctype html><html data-ui-mode="next"><body>
         <header class="chat-header">
             <h3 id="currentChatAgentName">Agent A</h3>
@@ -104,29 +101,23 @@ test('动态壁纸插件在 Next 使用左下角菜单并通过原生 IPC 选目
     window.eval(readPlugin('VCPDistributedServer/Plugin/VChatDynamicWallpaper/plugin.js'));
 
     const header = window.document.querySelector('.chat-header');
-    const accountMenu = window.document.getElementById('nextUiAccountMenu');
-    const menuButton = window.document.getElementById('vchatDynamicWallpaperMenuButton');
-    const panel = window.document.getElementById('vchat-dynamic-wallpaper-menu');
+    const title = window.document.getElementById('currentChatAgentName');
+    const titleGroup = window.document.getElementById('vchat-wallpaper-title-group');
+    const panel = window.document.getElementById('vchat-dynamic-wallpaper-panel');
     const actions = window.document.querySelector('.chat-actions');
     const video = window.document.getElementById('vchat-dynamic-wallpaper-video');
     const globalEnabled = window.document.getElementById('vchatDynamicWallpaperEnabled');
-    const menuEnabled = window.document.getElementById('vchatDynamicWallpaperMenuEnabled');
     const wallpaperVisible = panel.querySelector('.vchat-wallpaper-visible input');
+    const collapse = panel.querySelector('[data-action="collapse"]');
 
-    assert.deepEqual(Array.from(header.children), [window.document.getElementById('currentChatAgentName'), actions]);
-    assert.equal(window.document.getElementById('vchat-wallpaper-title-group'), null);
-    assert.equal(window.document.getElementById('vchat-dynamic-wallpaper-panel'), null);
-    assert.equal(menuButton.nextElementSibling, panel);
-    assert.equal(panel.nextElementSibling.id, 'nextUiAccountThemeStoreBtn');
-    assert.equal(panel.hidden, true);
-    menuButton.click();
-    assert.equal(panel.hidden, false);
-    assert.equal(menuButton.getAttribute('aria-expanded'), 'true');
-    assert.equal(window.document.getElementById('nextUiAccountPresentationOptions').hidden, true);
-    assert.equal(window.document.getElementById('nextUiAccountPresentationBtn').getAttribute('aria-expanded'), 'false');
+    assert.deepEqual(Array.from(header.children), [titleGroup, actions]);
+    assert.equal(titleGroup.firstElementChild, title);
+    assert.equal(titleGroup.lastElementChild, panel);
+    assert.equal(window.document.getElementById('vchatDynamicWallpaperMenuButton'), null);
+    assert.equal(panel.classList.contains('collapsed'), true);
     assert.equal(actions.lastElementChild.id, 'original-action');
     assert.equal(window.document.querySelector('input[type="file"]'), null);
-    panel.querySelector('[data-action="select-folder"]').click();
+    collapse.dispatchEvent(new window.MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
     await new Promise((resolve) => setTimeout(resolve, 20));
     assert.deepEqual(directoryCalls, ['']);
     assert.equal(video.getAttribute('src'), 'file:///C:/Wallpapers/wallpaper.webm');
@@ -138,44 +129,22 @@ test('动态壁纸插件在 Next 使用左下角菜单并通过原生 IPC 选目
     assert.equal(Array.from(panel.querySelectorAll('[data-action="mode"] svg')).filter((icon) => icon.style.display !== 'none').length, 1);
     assert.equal(Array.from(panel.querySelectorAll('[data-action="mute"] svg')).filter((icon) => icon.style.display !== 'none').length, 1);
     assert.equal(globalEnabled.checked, true);
-    assert.equal(menuEnabled.checked, true);
     assert.equal(wallpaperVisible.checked, true);
 
     wallpaperVisible.checked = false;
     wallpaperVisible.dispatchEvent(new window.Event('change', { bubbles: true }));
     assert.equal(video.style.display, 'none');
     assert.equal(window.document.body.classList.contains('vchat-dynamic-wallpaper-visible'), false);
-    assert.equal(panel.hidden, false);
-    assert.equal(menuButton.querySelector('.vchat-wallpaper-menu-value').textContent, '已隐藏');
-
-    menuEnabled.checked = false;
-    menuEnabled.dispatchEvent(new window.Event('change', { bubbles: true }));
-    assert.equal(video.style.display, 'none');
-    assert.equal(globalEnabled.checked, false);
-    assert.equal(wallpaperVisible.disabled, true);
-    assert.equal(panel.hidden, false);
-    assert.equal(menuButton.querySelector('.vchat-wallpaper-menu-value').textContent, '已禁用');
-
-    globalEnabled.checked = true;
-    globalEnabled.dispatchEvent(new window.Event('change', { bubbles: true }));
-    assert.equal(menuEnabled.checked, true);
-    assert.equal(wallpaperVisible.disabled, false);
-    window.document.getElementById('nextUiAccountPresentationBtn').click();
-    assert.equal(panel.hidden, true, 'opening another account-menu item must close the wallpaper submenu');
-    menuButton.click();
-    accountMenu.hidden = true;
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    assert.equal(panel.hidden, true, 'closing the account menu must also collapse the wallpaper submenu');
     assert.ok(window.VCPFrontendPlugins.registry.has('vchat-dynamic-wallpaper'));
 
     window.VCPFrontendPlugins.get('vchat-dynamic-wallpaper').destroy();
-    assert.deepEqual(Array.from(header.children), [window.document.getElementById('currentChatAgentName'), actions]);
-    assert.equal(window.document.getElementById('vchatDynamicWallpaperMenuButton'), null);
-    assert.equal(window.document.getElementById('vchat-dynamic-wallpaper-menu'), null);
+    assert.deepEqual(Array.from(header.children), [title, actions]);
+    assert.equal(window.document.getElementById('vchat-wallpaper-title-group'), null);
+    assert.equal(window.document.getElementById('vchat-dynamic-wallpaper-panel'), null);
     dom.window.close();
 });
 
-test('动态壁纸插件在 Classic 恢复标题栏控制并与 Next 控件共享状态', async () => {
+test('动态壁纸插件切换 Classic/Next 时保持同一标题栏控件和状态', async () => {
     const dom = new JSDOM(`<!doctype html><html data-ui-mode="classic"><body>
         <header class="chat-header">
             <h3 id="currentChatAgentName">Agent A</h3>
@@ -210,7 +179,6 @@ test('动态壁纸插件在 Classic 恢复标题栏控制并与 Next 控件共�
     const classicPanel = window.document.getElementById('vchat-dynamic-wallpaper-panel');
     const collapse = classicPanel.querySelector('[data-action="collapse"]');
     const classicVisible = classicPanel.querySelector('.vchat-wallpaper-visible input');
-    const menuVisible = window.document.querySelector('#vchat-dynamic-wallpaper-menu .vchat-wallpaper-visible input');
     const video = window.document.getElementById('vchat-dynamic-wallpaper-video');
 
     assert.equal(titleGroup.firstElementChild, title);
@@ -232,11 +200,9 @@ test('动态壁纸插件在 Classic 恢复标题栏控制并与 Next 控件共�
 
     classicVisible.checked = false;
     classicVisible.dispatchEvent(new window.Event('change', { bubbles: true }));
-    assert.equal(menuVisible.checked, false, 'Classic and Next visibility controls must share state');
     assert.equal(video.style.display, 'none');
     classicVisible.checked = true;
     classicVisible.dispatchEvent(new window.Event('change', { bubbles: true }));
-    assert.equal(menuVisible.checked, true);
     assert.equal(media.getState(video).playCalls, 2);
 
     const previousMode = plugin.state.mode;
@@ -250,17 +216,18 @@ test('动态壁纸插件在 Classic 恢复标题栏控制并与 Next 控件共�
     window.dispatchEvent(new window.CustomEvent('ui-mode-changed', {
         detail: { mode: 'next', previousMode: 'classic' }
     }));
-    assert.deepEqual(Array.from(header.children), [title, window.document.querySelector('.chat-actions')],
-        'switching to Next must restore the untouched upstream title DOM');
-    assert.equal(window.document.getElementById('vchat-dynamic-wallpaper-panel'), null);
-    assert.equal(window.document.getElementById('vchatDynamicWallpaperMenuButton') !== null, true);
+    assert.equal(window.document.getElementById('vchat-wallpaper-title-group'), titleGroup,
+        'switching to Next must keep the shared title group');
+    assert.equal(window.document.getElementById('vchat-dynamic-wallpaper-panel'), classicPanel,
+        'switching to Next must not rebuild or move the plugin controls');
+    assert.equal(window.document.getElementById('vchatDynamicWallpaperMenuButton'), null);
 
     window.document.documentElement.dataset.uiMode = 'classic';
     window.dispatchEvent(new window.CustomEvent('ui-mode-changed', {
         detail: { mode: 'classic', previousMode: 'next' }
     }));
-    assert.equal(window.document.querySelector('#vchat-dynamic-wallpaper-panel .vchat-wallpaper-visible input').checked, true,
-        'returning to Classic must rebuild controls from the shared state');
+    assert.equal(window.document.getElementById('vchat-dynamic-wallpaper-panel'), classicPanel);
+    assert.equal(classicVisible.checked, true, 'the shared visibility state must survive mode changes');
 
     plugin.destroy();
     assert.deepEqual(Array.from(header.children), [title, window.document.querySelector('.chat-actions')]);

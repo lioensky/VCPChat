@@ -1,6 +1,6 @@
 # VCPChat 应用页面与全局设置 Web Awesome 路线图
 
-> 状态：分阶段实施（首个上游 PR 仅启用笔记与翻译；其余页面的实验实现已删除，不在分支内“归档”）
+> 状态：分阶段实施（首个上游 PR 不启用业务子页面；笔记与翻译的实验实现也已删除，不在分支内“归档”）
 > 基线日期：2026-08-01
 > 适用分支：`codex/vcpchat-codex-app-server`
 > 当前试验：UI 组件库中的“WA 对照”已完成真实 Electron 渲染验证，但不能据此宣称业务页面已迁移。
@@ -330,11 +330,11 @@
 
 | 页面 | 首个上游 PR 状态 | 说明 |
 |---|---|---|
-| 翻译 translator | Next 已启用 | 使用 VCPUI；保留原翻译业务与 IPC。 |
-| 笔记 notes | Next 已启用 | 使用 VCPUI；保留原笔记业务与存储。 |
+| 翻译 translator | 上游 Classic | 本 PR 不携带 Next 重建；业务文件与 `origin/main` 一致。 |
+| 笔记 notes | 上游 Classic | 本 PR 不携带 Next 重建；业务文件与 `origin/main` 一致。 |
 | 其余业务页面 | 上游 Classic | 实验性 Next HTML/CSS/JS、测试和截图均不随本 PR 交付。 |
 
-`test-page-runtime` 必须报告 `2 active rebuilt`；边界门禁逐文件校验未启用页面与 `upstream-review/main` 一致。未来页面迁移必须独立开 PR，不在本分支保存不可达实现。
+`test-page-runtime` 必须报告 `0 active rebuilt`；边界门禁逐文件校验所有业务子页面与 `origin/main` 一致。未来页面迁移必须独立开 PR，不在本分支保存不可达实现。
 
 ### 后续独立工作
 

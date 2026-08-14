@@ -98,11 +98,10 @@ async function bootstrap(options = {}) {
         unsubscribe = effectiveSubscribe(mode => {
             const next = normalizeMode(mode);
             if (next === currentMode()) return;
-            // Notes/Translator rebuild their presentation from the original
-            // business document. Crossing the mode boundary reloads that
-            // document instead of attempting to reverse destructive DOM
-            // moves in place. Explicit test/host subscriptions may still use
-            // the lightweight apply path.
+            // A child presentation that opts into this controller crosses
+            // mode boundaries by reloading its original business document.
+            // Explicit test/host subscriptions may still use the lightweight
+            // apply path.
             if (!subscribeMode && effectiveSubscribe === runtimeSubscribe) {
                 const url = new URL(window.location.href);
                 url.searchParams.set('uiMode', next);

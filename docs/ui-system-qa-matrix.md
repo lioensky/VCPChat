@@ -1,6 +1,6 @@
 # 新版 UI Electron QA 矩阵
 
-> 2026-08-07：业务子页面采用 allowlist。产品运行时仅笔记与翻译要求新版验收；其他页面已恢复上游 Classic 文件，不再携带禁用的 Next 重建。参见 `docs/ui-active-surface-policy.md`。
+> 2026-08-14：业务子页面采用空 allowlist。笔记与翻译也已恢复上游 Classic 文件，首个 PR 不再携带任何业务子页面 Next 重建。参见 `docs/ui-active-surface-policy.md`。
 
 本表只记录当前分支已经在真实 Electron 渲染器中执行过的检查。生成截图是本地诊断产物，不作为仓库内长期基线。
 
@@ -18,14 +18,14 @@
 | Agent/Group 设置 | 真实 Agent 选择、设置页、折叠区段；新旧模式样式隔离 | 保存、删除、校验、真实 Group 数据 |
 | 消息与富内容 | 壁纸透出；消息、代码、工具摘要、思考链、桌面推送、日记、表格；700px 表格不溢出 | 真实长流、错误、工具调用、媒体和最小窗口 |
 | 通知与快捷入口 | 三点菜单拆分 Forum 与 Memo；过滤项保留开关/设置的左右键语义；清空保留工具审批；铃铛保留监控右键 | 深浅主题真实鼠标复查 |
-| 页面运行时 | `test-page-runtime` 报告 `2 active rebuilt, 10 upstream classic`；Electron 20/20 验证 Notes/Translator Next、通用 Classic 标签宿主及全局 Classic 回退 | 未启用页面未来必须独立迁移，不在本 PR 保存实验实现 |
+| 页面运行时 | `test-page-runtime` 报告 `0 active rebuilt, 12 upstream classic`；Electron 验证通用 Classic 标签宿主及全局 Classic 回退 | 子页面未来必须独立迁移，不在本 PR 保存实验实现 |
 
 ### 当前逐页状态
 
 | 页面 | 状态 | 备注 |
 | --- | --- | --- |
-| 翻译 | Next Electron 通过 | VCPUI shell、Select/Tooltip、窄屏、长文本和 Classic 回退 |
-| 笔记 | Next Electron 通过 | VCPUI shell、控件增强、窄屏、长文本和 Classic 回退 |
+| 翻译 | 上游 Classic 宿主 | 业务 HTML/JS/CSS 与 `origin/main` 一致 |
+| 笔记 | 上游 Classic 宿主 | 业务 HTML/JS/CSS 与 `origin/main` 一致 |
 | 便签、日志、插件、任务、记忆、论坛 | 上游 Classic 宿主通过 | 主界面处于 Next 时仍由通用标签宿主打开原始 Classic 文档；无 WA/Next shell |
 | Canvas、RAG、Human ToolBox、VchatManager | 上游 Classic，非本 PR 验收面 | 业务文件由边界门禁验证与 `upstream-review/main` 一致 |
 | 全局设置 | Next Electron 通过 | 增强、保存栏、搜索、焦点和 Classic 拆除 |
