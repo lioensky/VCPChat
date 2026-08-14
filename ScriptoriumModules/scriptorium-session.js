@@ -46,6 +46,32 @@
                 });
                 const activeAdapter = context.resolveAdapter(normalized);
                 context.activateAdapter(activeAdapter);
+
+                // 导入的 Markdown/HTML 可能把网络字体声明放在混合源码的
+                // <style> 中。必须在首次 Surface 渲染前完成受控下载、工程
+                // 资源注册和 URL 改写，否则首屏只能使用回退字体。
+                if (metadata.imported && context.networkFontPort) {
+                    try {
+                        await context.networkFontPort.processDocument(
+                            activeAdapter,
+                            {
+                                dirty: false,
+                                notify: true,
+                            }
+                        );
+                    } catch (error) {
+                        console.warn(
+                            '[ScriptoriumSession] Imported network fonts could not be localized:',
+                            error
+                        );
+                        notificationPort.show?.(
+                            `网络字体本地化失败，将使用回退字体：${error.message}`,
+                            'info',
+                            5000
+                        );
+                    }
+                }
+
                 context.historyPort.reset({ capture: false });
                 context.renderPort.invalidate('document-opened');
 

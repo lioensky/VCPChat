@@ -36,6 +36,42 @@
         });
     }
 
+    async function localizeStyleElements(source, localize) {
+        const input = String(source || '');
+        const pattern = /<style\b([^>]*)>([\s\S]*?)<\/style>/gi;
+        let output = '';
+        let cursor = 0;
+        let changed = false;
+        const resources = [];
+        const failures = [];
+        let match;
+
+        while ((match = pattern.exec(input))) {
+            output += input.slice(cursor, match.index);
+            const css = match[2];
+            const hasRemoteFonts = /https:\/\//i.test(css)
+                && /@import|@font-face/i.test(css);
+            if (!hasRemoteFonts) {
+                output += match[0];
+            } else {
+                const result = await localize(css);
+                if (!result) return null;
+                output += `<style${match[1]}>${result.css}</style>`;
+                changed ||= result.changed === true;
+                resources.push(...(result.resources || []));
+                failures.push(...(result.failures || []));
+            }
+            cursor = pattern.lastIndex;
+        }
+
+        return {
+            source: output + input.slice(cursor),
+            changed,
+            resources,
+            failures,
+        };
+    }
+
     function familyNames(css) {
         const names = [];
         const pattern =
@@ -107,7 +143,7 @@
                         resources.push(resource);
                     }
                     if (result?.css) {
-                        localizedCss += `\n\n/* Network font: ${url} */\n${
+                        localizedCss += `\n\n/* Localized network font */\n${
                             result.css
                         }`;
                     }
@@ -178,6 +214,51 @@
             };
         }
 
+        async function processDocument(adapter, options = {}) {
+            if (disposed || !adapter) return null;
+            const resources = [];
+            const failures = [];
+            let changed = false;
+
+            const documentCss = String(adapter.currentCss?.() || '');
+            if (/@import|@font-face/i.test(documentCss)
+                && /https:\/\//i.test(documentCss)) {
+                const cssResult = await processCss(documentCss, options);
+                if (!cssResult) return null;
+                resources.push(...cssResult.resources);
+                failures.push(...cssResult.failures);
+                if (cssResult.changed) {
+                    adapter.replaceCurrentCss(cssResult.css, {
+                        reason: 'network-fonts-document-css',
+                        dirty: options.dirty !== false,
+                    });
+                    changed = true;
+                }
+            }
+
+            const currentSource = String(adapter.currentSource?.() || '');
+            const sourceResult = await localizeStyleElements(
+                currentSource,
+                (css) => processCss(css, options)
+            );
+            if (!sourceResult) return null;
+            resources.push(...sourceResult.resources);
+            failures.push(...sourceResult.failures);
+            if (sourceResult.changed && sourceResult.source !== currentSource) {
+                adapter.replaceCurrentSource(sourceResult.source, {
+                    reason: 'network-fonts-embedded-css',
+                    dirty: options.dirty !== false,
+                });
+                changed = true;
+            }
+
+            return {
+                changed,
+                resources,
+                failures,
+            };
+        }
+
         function cancel() {
             sequence += 1;
         }
@@ -189,6 +270,7 @@
 
         return Object.freeze({
             processCss,
+            processDocument,
             cancel,
             dispose,
         });
@@ -199,5 +281,6 @@
         importUrls,
         remoteFontFaceUrls,
         removeRemoteImports,
+        localizeStyleElements,
     });
 })();

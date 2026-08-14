@@ -614,6 +614,7 @@
                 renderPort: renderFacade,
                 surfacePort,
                 sourcePort,
+                networkFontPort,
                 historyPort,
                 lineagePort,
                 navigationPort,

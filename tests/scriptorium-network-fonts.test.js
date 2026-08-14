@@ -119,6 +119,104 @@ body { font-family: "Example"; }
     assert.match(cleaned, /@import url\("\.\/local\.css"\)/);
 });
 
+test('imported Markdown localizes fonts inside embedded style elements', async () => {
+    const windowObject = loadBrowserModule(
+        'ScriptoriumModules/scriptorium-network-fonts.js'
+    );
+    const module = windowObject.ScriptoriumNetworkFonts;
+    const hash = 'b'.repeat(64);
+    const model = {
+        manifest: {
+            fonts: [],
+        },
+    };
+    const resources = new Map();
+    const documentPort = {
+        document: () => model,
+        resourceData: () => resources,
+    };
+    const source = [
+        '<style>',
+        '@import url("https://fonts.googleapis.com/css2?family=Example");',
+        '.title { font-family: "Example", serif; }',
+        '</style>',
+        '',
+        '# 保持原样的 Markdown 标题',
+        '',
+        '<style>.local { color: red; }</style>',
+    ].join('\n');
+    let currentSource = source;
+    let currentCss = '';
+    const adapter = {
+        currentSource: () => currentSource,
+        currentCss: () => currentCss,
+        replaceCurrentSource(nextSource) {
+            currentSource = nextSource;
+            return true;
+        },
+        replaceCurrentCss(nextCss) {
+            currentCss = nextCss;
+            return true;
+        },
+    };
+    const controller = module.createNetworkFontController({
+        documentPort,
+        containerModule: {
+            async registerResource(_document, resourceData, input) {
+                resourceData.set(hash, input.bytes);
+                model.manifest.resources = [{
+                    id: hash,
+                    sha256: hash,
+                    kind: 'font',
+                    category: 'fonts',
+                    mime: input.mime,
+                }];
+                return model.manifest.resources[0];
+            },
+        },
+        persistencePort: {
+            async resolveFontStylesheet({ url }) {
+                assert.match(url, /fonts\.googleapis\.com/);
+                return {
+                    css: [
+                        '@font-face {',
+                        'font-family: "Example";',
+                        `src: url("vdoc-resource://fonts/${hash}") format("woff2");`,
+                        '}',
+                    ].join('\n'),
+                    resources: [{
+                        hash,
+                        mime: 'font/woff2',
+                        extension: 'woff2',
+                        size: 4,
+                        bytes: [0x77, 0x4f, 0x46, 0x32],
+                        url: 'https://fonts.example.com/example.woff2',
+                    }],
+                };
+            },
+            async resolveFontUrl() {
+                throw new Error('Unexpected direct font request');
+            },
+        },
+    });
+
+    const result = await controller.processDocument(adapter, {
+        dirty: false,
+        notify: false,
+    });
+
+    assert.equal(result.changed, true);
+    assert.doesNotMatch(currentSource, /fonts\.googleapis\.com/);
+    assert.match(
+        currentSource,
+        new RegExp(`vdoc-resource://fonts/${hash}`)
+    );
+    assert.match(currentSource, /# 保持原样的 Markdown 标题/);
+    assert.match(currentSource, /<style>\.local \{ color: red; \}<\/style>/);
+    assert.equal(resources.has(hash), true);
+    assert.equal(model.manifest.fonts[0].hash, hash);
+});
+
 test('document font resources resolve to Blob URLs and export Base64 URLs', () => {
     const created = [];
     const revoked = [];
