@@ -120,7 +120,7 @@ const askNovaApi = {
     sendOpenExternalLink: url => askNovaCalls.push({ external: url })
 };
 const askNovaController = createAskNovaController({ document, api: askNovaApi, VCPUI, marked: { parse: value => `<p>${value}</p>` } });
-const askNovaModal = askNovaController.open('backend');
+const askNovaModal = await askNovaController.open('backend');
 assert.equal(askNovaModal.getState().targetId, 'backend');
 assert.ok(askNovaModal.element.querySelector('.ask-nova-dialog'), 'Ask Nova modal must mount through VCPUI');
 const askNovaTextarea = askNovaModal.element.querySelector('.ask-nova-composer textarea');
@@ -158,7 +158,7 @@ const pendingAskNovaController = createAskNovaController({
         sendOpenExternalLink: () => {}
     }
 });
-const pendingAskNovaModal = pendingAskNovaController.open('frontend');
+const pendingAskNovaModal = await pendingAskNovaController.open('frontend');
 const pendingTextarea = pendingAskNovaModal.element.querySelector('.ask-nova-composer textarea');
 pendingTextarea.value = 'Long query';
 pendingTextarea.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
@@ -168,6 +168,10 @@ pendingAskNovaModal.close();
 await new Promise(resolve => setTimeout(resolve, 0));
 assert.equal(pendingAskNovaCalls.at(-1).cancel, pendingRequestId, 'closing Ask Nova must cancel its active request');
 pendingAskNovaResolve({ success: false, cancelled: true });
+const reopenedAskNovaModal = await pendingAskNovaController.open('backend');
+assert.equal(reopenedAskNovaModal.getState().targetId, 'backend', 'Ask Nova must reopen on a different target after cancellation');
+assert.equal(document.querySelectorAll('.ask-nova-modal-host').length, 1, 'Ask Nova rapid reopen must leave exactly one modal host');
+reopenedAskNovaModal.close();
 pendingAskNovaController.destroy();
 
 const expected = ['button', 'iconbutton', 'input', 'textarea', 'select', 'range', 'checkbox', 'switch', 'field', 'settingssection', 'settingsactionbar', 'badge', 'alert', 'card', 'tabs', 'toolbar', 'list', 'listitem', 'tableframe', 'emptystate', 'divider', 'tooltip', 'skeleton', 'segmentedcontrol', 'pagination', 'scrollarea', 'modal', 'toast', 'confirmdialog', 'inputdialog', 'apppageshell', 'windowcontrols', 'asyncboundary'];

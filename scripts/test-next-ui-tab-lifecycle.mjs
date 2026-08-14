@@ -22,6 +22,7 @@ let activates = 0;
 let closes = 0;
 const lifecycleEvents = [];
 let resolveDeferredClose = null;
+let embeddedStateListener = null;
 window.chatAPI = {
     desktopCreateEmbeddedVchatApp: async () => { creates += 1; lifecycleEvents.push('create'); return { success: true }; },
     desktopActivateEmbeddedVchatApp: async action => {
@@ -38,7 +39,10 @@ window.chatAPI = {
         lifecycleEvents.push('close-all:done');
         return { success: true };
     },
-    onEmbeddedVchatAppState: () => () => {},
+    onEmbeddedVchatAppState: listener => {
+        embeddedStateListener = listener;
+        return () => { embeddedStateListener = null; };
+    },
 };
 window.trayManager = {
     getApps: () => [{ id: 'translator', action: 'open-translator-window', name: '翻译', icon: 'translator', embed: true }],
@@ -70,6 +74,16 @@ const activationsBeforeKeyboard = activates;
 restoredTab.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
 await new Promise(resolve => setTimeout(resolve, 0));
 assert.ok(activates > activationsBeforeKeyboard, 'Enter must activate a focused dynamic tab');
+
+const overlayOwner = Symbol('test-overlay');
+await window.topTabManager.acquireOverlay(overlayOwner);
+assert.equal(lifecycleEvents.at(-1), 'activate:none', 'DOM overlays must hide native WebContentsViews before mounting');
+window.topTabManager.setView('app:translator');
+await new Promise(resolve => setTimeout(resolve, 0));
+assert.equal(lifecycleEvents.at(-1), 'activate:none', 'view changes must not reactivate native content while an overlay lease is held');
+window.topTabManager.releaseOverlay(overlayOwner);
+await new Promise(resolve => setTimeout(resolve, 0));
+assert.equal(lifecycleEvents.at(-1), 'activate:open-translator-window', 'releasing the final overlay lease must restore the active embedded view');
 
 const closesBeforePreview = closes;
 window.document.documentElement.dataset.uiMode = 'classic';

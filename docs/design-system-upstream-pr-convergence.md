@@ -231,3 +231,24 @@ Memo、Forum、Log、Plugin Manager、Task、Human ToolBox、VchatManager、RAG 
 - `npm run test:electron-ui-apps`：20/20 通过。
 - `node --test tests/frontend-plugins.test.js`：6/6 通过。
 - 最终 PR 三点 diff 为 342 个文件：109 个设计资产、102 个 Web Awesome vendor 文件，其余为 UI 源码、样式、测试、文档和窄 preload/IPC 集成。未发现 Agent/Codex/Rust runtime、生成截图、数据库、日志、原生二进制或构建目录。
+
+## 2026-08-14 Next UI 稳定性根治
+
+作者在真实操作中报告了 Ask Nova 白屏/重开卡死、内嵌便签按 Escape 级联关闭主窗口、Agent 设置后进程数上涨，以及窄通知栏 Dock 文字挤压图标。四项现象共享两个底层问题：原生 `WebContentsView` 与 renderer DOM 没有统一的可见性所有权；内嵌页面仍沿用独立 `BrowserWindow` 的关闭语义。
+
+### 根因与不变量
+
+- `WebContentsView` 始终绘制在 renderer DOM 之上。启动台或模态窗即使具有更高 `z-index`，也无法覆盖尚未由主进程隐藏的子视图。所有 DOM 覆盖层必须先取得 overlay lease，等待活动子视图隐藏后才能显示，最后一个 lease 释放后才允许恢复子视图。
+- `BrowserWindow.fromWebContents()` 可能把子视图解析到其 owner。内嵌页面不得发送通用 `close-window`；它只能请求关闭自己的 session。通用窗口控制同时校验 `event.sender === win.webContents`，作为纵深防御。
+- `webContents.close()` 只发起异步销毁。Session 不能在 `destroyed` 前被视为可重新创建；同一 action 的新建必须等待旧 close promise 完成，防止快速开关累积 renderer 进程。
+- Ask Nova 使用 VCPUI 的确定性原生 DOM Modal。复杂、带取消 IPC 的应用模态窗不参与 Web Awesome custom-element upgrade 和 hide animation，避免关闭/换目标重开时出现两个异步 dialog 生命周期。
+- Agent 设置初始化必须幂等，订阅和 PromptManager 在 page lifecycle 结束时释放。设置页本身不创建 WebContents；压力测试必须把设置 DOM/adapter 计数与内嵌 app 进程计数分开测量。
+- 通知栏宽度不超过 280px 时，固定 Dock 是纯图标栏。文字强制隐藏，按钮取消胶囊 padding/gap，SVG 保持 18px 不收缩。该规则与旧胶囊 `!important` 声明放在同一 cascade layer，避免层叠反转。
+
+### 回归门禁
+
+- Ask Nova：关闭一个进行中的目标后立即打开另一目标，只允许存在一个 modal host；旧请求取消不能污染新请求。
+- 内嵌便签：连续五次打开并按 Escape，每次只销毁对应 WebContents/标签，主窗口持续存在。
+- 进程生命周期：同一内嵌 action 必须等待前一 session 的 `destroyed`；退出 Next 时等待所有 close promise。
+- Agent 设置：连续十二次 Agent/设置页往返，Browser target 数、VCPUI adapter 数及提示词 DOM 不增长。
+- 窄 Dock：240px 通知栏中固定应用文字不可见、四个图标均保持可见且按钮无横向溢出。
