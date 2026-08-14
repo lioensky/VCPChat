@@ -38,6 +38,7 @@ modules/itemListManager.js
 modules/settingsManager.js
 package-lock.json
 package.json
+!vendor/webawesome-runtime/package.json
 styles/themes.css
 
 # LibreHardwareMonitor 官方二进制由开发者本地自行准备，不进入仓库
@@ -61,6 +62,9 @@ loudness_cache.db-shm
 
 /开发文档/
 
+# UI QA screenshots captured by Electron smoke tests; never commit generated
+# visual artifacts as source baselines.
+/screenshots/
 
 # 本机字体名称表兼容副本（可能受第三方字体许可证约束，不进入仓库）
 /font-compat-output/
