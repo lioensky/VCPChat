@@ -24,6 +24,7 @@ const groupChat = require('./Groupmodules/groupchat'); // Import the group chat 
 const windowHandlers = require('./modules/ipc/windowHandlers'); // Import window IPC handlers
 const settingsHandlers = require('./modules/ipc/settingsHandlers'); // Import settings IPC handlers
 const fileDialogHandlers = require('./modules/ipc/fileDialogHandlers'); // Import file dialog handlers
+const deepWikiHandlers = require('./modules/ipc/deepWikiHandlers'); // Ask Nova DeepWiki MCP handlers
 const { getAgentConfigById, ...agentHandlers } = require('./modules/ipc/agentHandlers'); // Import agent handlers
 const regexHandlers = require('./modules/ipc/regexHandlers'); // Import regex handlers
 const chatHandlers = require('./modules/ipc/chatHandlers'); // Import chat handlers
@@ -114,11 +115,13 @@ const docxHandlers = {
 };
 const loomManagerModule = require('./modules/loom/VCPLoomManager');
 const { PRELOAD_ROLES, resolveProjectPreload } = require('./modules/services/preloadPaths');
+const { createEmbeddedAppSessionManager } = require('./modules/services/embeddedAppSessionManager');
 const { ChatDataServiceFacade } = require('./modules/services/chatDataService');
 // chokidar is now lazy-loaded
 
 // --- File Watcher ---
 let historyWatcher = null;
+let embeddedAppSessions = null;
 let lastInternalSaveTime = 0; // 🔧 改为时间戳记录
 let internalSaveTimeout = null; // 🔧 超时保护
 let isEditingInProgress = false; // 🔧 编辑状态标识
@@ -191,7 +194,11 @@ const fileWatcher = {
 // --- Configuration Paths ---
 // Data storage will be within the project's 'AppData' directory
 const PROJECT_ROOT = __dirname; // __dirname is the directory of main.js
-const APP_DATA_ROOT_IN_PROJECT = path.join(PROJECT_ROOT, 'AppData');
+const isolatedAppDataRoot = process.env.VCPCHAT_APP_DATA_DIR?.trim();
+if (isolatedAppDataRoot) app.setPath('userData', path.resolve(isolatedAppDataRoot));
+const APP_DATA_ROOT_IN_PROJECT = isolatedAppDataRoot
+    ? path.resolve(isolatedAppDataRoot)
+    : path.join(PROJECT_ROOT, 'AppData');
 
 const AGENT_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'Agents');
 const USER_DATA_DIR = path.join(APP_DATA_ROOT_IN_PROJECT, 'UserData'); // For chat histories and attachments
@@ -625,7 +632,7 @@ function createTray() {
 
 
 // --- App Lifecycle ---
-const gotTheLock = app.requestSingleInstanceLock();
+const gotTheLock = process.argv.includes('--allow-multiple-instances') || app.requestSingleInstanceLock();
 
 if (!gotTheLock) {
     // 排除内部静默调用（内部调用时闪屏早已关闭，无需重复创建，防止破坏冷启动状态）
@@ -724,7 +731,7 @@ if (!gotTheLock) {
         // The native splash screen is started by the batch file, so no action is needed here.
 
         // Pre-warm the audio engine in the background. This doesn't block the main window.
-        startAudioEngine().catch(err => {
+        if (process.env.VCPCHAT_E2E_TEST !== '1') startAudioEngine().catch(err => {
             console.error('[Main] Failed to pre-warm audio engine on startup:', err);
             // We don't need to show a dialog here, as it will be handled when the
             // music window is actually opened.
@@ -1073,6 +1080,7 @@ if (!gotTheLock) {
             startSelectionListener: assistantHandlers.startSelectionListener,
             openChildWindows
         });
+        deepWikiHandlers.initialize({ mainWindow });
         groupChatHandlers.initialize(mainWindow, {
             AGENT_DIR,
             USER_DATA_DIR,
@@ -1153,6 +1161,49 @@ if (!gotTheLock) {
             logger: console,
         });
         desktopHandlers.initialize({ mainWindow, openChildWindows, settingsManager: appSettingsManager });
+        embeddedAppSessions?.closeAll();
+        embeddedAppSessions = createEmbeddedAppSessionManager({
+            mainWindow,
+            launchStandalone: desktopHandlers.launchVchatApp,
+            readSettings: () => appSettingsManager.readSettings(),
+            subscribeSettings: listener => {
+                appSettingsManager.on('settings-updated', listener);
+                return () => appSettingsManager.off('settings-updated', listener);
+            },
+        });
+        [
+            'embedded-vchat-app:create',
+            'embedded-vchat-app:activate',
+            'embedded-vchat-app:set-bounds',
+            'embedded-vchat-app:close',
+            'embedded-vchat-app:detach',
+            'embedded-vchat-app:close-all',
+        ].forEach(channel => ipcMain.removeHandler(channel));
+        ipcMain.handle('embedded-vchat-app:create', (event, appAction) => {
+            embeddedAppSessions.assertMainRenderer(event);
+            return embeddedAppSessions.create(appAction);
+        });
+        ipcMain.handle('embedded-vchat-app:activate', (event, appAction) => {
+            embeddedAppSessions.assertMainRenderer(event);
+            return embeddedAppSessions.activate(appAction || null);
+        });
+        ipcMain.handle('embedded-vchat-app:set-bounds', (event, appAction, bounds) => {
+            embeddedAppSessions.assertMainRenderer(event);
+            return embeddedAppSessions.setBounds(appAction, bounds);
+        });
+        ipcMain.handle('embedded-vchat-app:close', (event, appAction) => {
+            embeddedAppSessions.assertMainRenderer(event);
+            return embeddedAppSessions.close(appAction);
+        });
+        ipcMain.handle('embedded-vchat-app:detach', (event, appAction, point) => {
+            embeddedAppSessions.assertMainRenderer(event);
+            return embeddedAppSessions.detach(appAction, point);
+        });
+        ipcMain.handle('embedded-vchat-app:close-all', event => {
+            embeddedAppSessions.assertMainRenderer(event);
+            embeddedAppSessions.closeAll();
+            return { success: true };
+        });
         loomManager = await loomManagerModule.initialize({
             projectRoot: PROJECT_ROOT,
             appDataRoot: APP_DATA_ROOT_IN_PROJECT,

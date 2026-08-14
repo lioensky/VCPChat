@@ -324,7 +324,13 @@ const trayManager = (function () {
     }
 
     return {
-        init: init
+        init: init,
+        getApps: () => VCHAT_APPS.map(app => ({
+            ...app,
+            embed: window.VCPEmbeddedAppAllowlist?.isEmbeddable?.(app.action) === true,
+        })),
+        getIcon: (iconName) => SVG_ICONS[iconName] || '',
+        launchApp: launchApp
     };
 })();
 

@@ -1,12 +1,18 @@
 /* style.css - Main Entry Point */
-@import url('./vendor/atom-one-dark.min.css');
-@import url('./vendor/atom-one-light.min.css');
-@import url('./styles/base.css');
-@import url('./styles/layout.css');
-@import url('./styles/components.css');
-@import url('./styles/chat.css');
-@import url('./styles/notifications.css');
-@import url('./styles/settings.css');
-@import url('./styles/animations.css');
-@import url('./styles/search.css');
+@layer vcp-ui.legacy, vcp-ui.next-shell, vcp-ui.tokens, vcp-ui.base, vcp-ui.components, vcp-ui.utilities, vcp-ui.showcase, vcp-ui.appearance;
+
+@import url('./vendor/atom-one-dark.min.css') layer(vcp-ui.legacy);
+@import url('./vendor/atom-one-light.min.css') layer(vcp-ui.legacy);
+@import url('./styles/base.css') layer(vcp-ui.legacy);
+@import url('./styles/layout.css') layer(vcp-ui.legacy);
+@import url('./styles/components.css') layer(vcp-ui.legacy);
+@import url('./styles/chat.css') layer(vcp-ui.legacy);
+@import url('./styles/notifications.css') layer(vcp-ui.legacy);
+@import url('./styles/settings.css') layer(vcp-ui.legacy);
+@import url('./styles/animations.css') layer(vcp-ui.legacy);
+@import url('./styles/search.css') layer(vcp-ui.legacy);
+@import url('./styles/messageRenderer.css') layer(vcp-ui.legacy);
 @import url('./styles/themes.css'); /* 移动到末尾以获得最高优先级 */
+@import url('./styles/ui-next.css') layer(vcp-ui.next-shell);
+@import url('./styles/ui-system/index.css');
+@import url('./styles/appearance.css');
