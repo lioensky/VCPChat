@@ -2,7 +2,7 @@
 
 > 当前审计（2026-08-01）：UI 组件库已加入 Web Awesome 3.11.0 受控对照页，并在真实 Electron 中验证 Button、Input、Select、Tooltip 与 Dialog。该结果只证明混合设计系统可行，不代表业务页面已经迁移。应用页与全局设置的后续范围、批次和门槛见 [Web Awesome 全量重构计划](./ui-applications-webawesome-migration-plan.md)。
 
-> 当前权威架构（2026-08-07）：Next UI 采用与 Classic 并行的低侵入 presentation，Web Awesome 只作为 `VCPUI` 背后的可替换内核。旧 DOM 增强不再是默认建设路线。生命周期、竞态、定制边界与 vendor 精简阶段见 [Next UI 与 Web Awesome 低侵入建设路线](./next-ui-webawesome-roadmap.md)。
+> 当前权威架构（2026-08-15）：Next UI 采用与 Classic 并行的低侵入 presentation，Web Awesome 只作为 `VCPUI` 背后的可替换内核。整体阶段顺序与合并门槛见 [Next UI 完整开发路线](./next-ui-development-roadmap.md)，生命周期与竞态规则见 [Next UI 生命周期与可撤销注册架构](./next-ui-lifecycle-architecture.md)，Web Awesome 定制与 vendor 精简见 [Next UI 与 Web Awesome 低侵入建设路线](./next-ui-webawesome-roadmap.md)。
 
 `VCPUI` 组件库只服务于 `data-ui-mode="next"`，不迁移或覆盖经典 UI。跨模式的字体、圆角、密度、内容宽度和表面材质由上层 Appearance Profile 负责，参见 `docs/appearance-design-system.md`。公共 API 仍使用原生 DOM、CSS Layer 和 ES Module；基础控件允许在 `VCPUI` 内部受控采用 Web Awesome Web Components，但业务页面不得直接依赖 `<wa-*>`。系统不引入 Vue、React 或新的构建步骤。
 

@@ -1,5 +1,7 @@
 # Next UI 生命周期与可撤销注册架构
 
+> 本文负责生命周期实现细节；后续阶段顺序、模块拆分、可取消 IPC、贡献协议和 Classic 收敛门槛见 [`next-ui-development-roadmap.md`](./next-ui-development-roadmap.md)。
+
 ## 目标
 
 Next UI 会反复打开和关闭模态窗、菜单、应用标签、原生 `WebContentsView` 与设置增强层，也允许在 Classic/Next 间运行时切换。这里的主要风险不是单个组件实现，而是副作用跨越了其界面寿命：界面已经消失，listener、timer、IPC、Observer、异步请求或注册项仍然存活。

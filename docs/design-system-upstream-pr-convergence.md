@@ -1,6 +1,6 @@
 # 设计系统上游 PR 架构收敛
 
-> 状态：Classic/Next 功能对等整改中，完成本节门禁前不得重新提交上游审阅
+> 状态：Classic/Next 功能对等整改已完成；本节门禁作为后续重构与上游 PR 的持续回归基线
 > 上游基线：`origin/main`
 > 减法源快照：`a1f76dffea8105999e465da45d8e52558cd80c47`
 > 原则：只修复本设计分支新增或显著放大的问题，不借设计 PR 重构上游 Classic。
@@ -230,7 +230,7 @@ Memo、Forum、Log、Plugin Manager、Task、Human ToolBox、VchatManager、RAG 
 
 ## 2026-08-14 Next UI 稳定性根治
 
-Next 动态资源的统一所有权、可撤销 Registry、串行模式切换、资源归零门禁及 2026-08-15 对抗审查结论见 [`next-ui-lifecycle-architecture.md`](./next-ui-lifecycle-architecture.md)。
+Next 后续完整阶段与合并门槛见 [`next-ui-development-roadmap.md`](./next-ui-development-roadmap.md)；动态资源所有权、可撤销 Registry、串行模式切换、资源归零门禁及 2026-08-15 对抗审查结论见 [`next-ui-lifecycle-architecture.md`](./next-ui-lifecycle-architecture.md)。
 
 作者在真实操作中报告了 Ask Nova 白屏/重开卡死、内嵌便签按 Escape 级联关闭主窗口、Agent 设置后进程数上涨，以及窄通知栏 Dock 文字挤压图标。四项现象共享两个底层问题：原生 `WebContentsView` 与 renderer DOM 没有统一的可见性所有权；内嵌页面仍沿用独立 `BrowserWindow` 的关闭语义。
 
