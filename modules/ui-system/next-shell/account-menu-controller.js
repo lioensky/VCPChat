@@ -23,12 +23,14 @@
             this.setIcon = options.setIcon || null;
             this.getMenuRegistry = options.getMenuRegistry || (() => this.window.VCPContributions?.menus);
             this.executeCommand = options.executeCommand || ((id) => this.window.VCPContributions?.commands.execute(id));
+            this.subscribeTheme = options.subscribeTheme || null;
             this.scope = null;
             this.abortController = null;
             this.observer = null;
             this.elements = null;
             this.mounted = false;
             this.menuSubscriptionDisposer = null;
+            this.themeSubscriptionDisposer = null;
         }
 
         mount(scope = null) {
@@ -96,11 +98,17 @@
                 if (event.detail?.active === true) this.setOpen(false);
             });
             listen(this.window, 'global-settings-updated', () => this.sync());
-            const Observer = this.window.MutationObserver;
-            if (Observer) {
-                this.observer = new Observer(() => this.sync());
-                if (scope) scope.observe(this.observer, this.document.body, { attributes: true, attributeFilter: ['class'] }, 'account-theme-observer');
-                else this.observer.observe(this.document.body, { attributes: true, attributeFilter: ['class'] });
+            if (this.subscribeTheme) {
+                const subscribe = () => this.subscribeTheme(() => this.sync(), { immediate: false });
+                if (scope) scope.subscribe(subscribe, 'account-theme-state');
+                else this.themeSubscriptionDisposer = subscribe();
+            } else {
+                const Observer = this.window.MutationObserver;
+                if (Observer) {
+                    this.observer = new Observer(() => this.sync());
+                    if (scope) scope.observe(this.observer, this.document.body, { attributes: true, attributeFilter: ['class'] }, 'account-theme-observer');
+                    else this.observer.observe(this.document.body, { attributes: true, attributeFilter: ['class'] });
+                }
             }
             if (scope) scope.own(() => this.dispose(), 'account-menu-controller', 'controller');
             const menuRegistry = this.getMenuRegistry();
@@ -183,10 +191,12 @@
             this.abortController?.abort();
             this.observer?.disconnect();
             this.menuSubscriptionDisposer?.();
+            this.themeSubscriptionDisposer?.();
             this.elements?.contributionHost?.remove();
             this.abortController = null;
             this.observer = null;
             this.menuSubscriptionDisposer = null;
+            this.themeSubscriptionDisposer = null;
             this.elements = null;
             this.scope = null;
         }

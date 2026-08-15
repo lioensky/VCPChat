@@ -487,6 +487,7 @@
             setIcon: (element, icon) => window.VCPIcons?.set?.(element, icon),
             getMenuRegistry: () => window.VCPContributions?.menus,
             executeCommand: id => window.VCPContributions?.commands.execute(id),
+            subscribeTheme: (listener, options) => window.uiManager?.subscribeTheme?.(listener, options),
         });
         accountMenuController.mount(mountScope);
         launchpadController = new LaunchpadController({
