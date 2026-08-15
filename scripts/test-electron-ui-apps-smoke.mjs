@@ -270,7 +270,7 @@ async function auditNextPage(page, app, captureName, { expectEmbedded = true } =
     assert.equal(state.waRuntime?.locale, 'zh-CN', `${app.name} WA locale is not zh-CN: ${JSON.stringify(state)}`);
     assert.equal(state.waScope, 'true', `${app.name} WA token scope is not mounted: ${JSON.stringify(state)}`);
     assert.equal(state.waThemeOwners, 1, `${app.name} WA theme ownership leaked or duplicated: ${JSON.stringify(state)}`);
-    assert.equal(state.hasSelectObserver, true, `${app.name} Select observer was not mounted: ${JSON.stringify(state)}`);
+    assert.equal(state.hasSelectObserver, false, `${app.name} mounted a document-wide Select observer: ${JSON.stringify(state)}`);
     if (expectEmbedded && app.integrated) {
         assert.equal(state.integratedShell, true, `${app.name} must use the shared integrated shell: ${JSON.stringify(state)}`);
         assert.equal(state.shellHeaderDisplay, 'none', `${app.name} embedded duplicate header must be hidden: ${JSON.stringify(state)}`);
@@ -633,18 +633,14 @@ try {
             && presentationButton?.getAttribute('aria-expanded') === 'false'
             && document.activeElement === presentationButton;
 
-        const bodyWasDark = document.body.classList.contains('dark-theme');
-        const bodyWasLight = document.body.classList.contains('light-theme');
-        document.body.classList.remove('light-theme');
-        document.body.classList.add('dark-theme');
+        const originalTheme = document.body.classList.contains('dark-theme') ? 'dark' : 'light';
+        window.uiManager.applyTheme('dark');
         await tick();
         const darkThemeActionLabel = document.getElementById('nextUiThemeBtn')?.getAttribute('aria-label');
-        document.body.classList.remove('dark-theme');
-        document.body.classList.add('light-theme');
+        window.uiManager.applyTheme('light');
         await tick();
         const lightThemeActionLabel = document.getElementById('nextUiThemeBtn')?.getAttribute('aria-label');
-        document.body.classList.toggle('dark-theme', bodyWasDark);
-        document.body.classList.toggle('light-theme', bodyWasLight);
+        window.uiManager.applyTheme(originalTheme);
         await tick();
 
         document.getElementById('nextUiThemeBtn')?.click();
