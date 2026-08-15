@@ -224,6 +224,7 @@
             core,
             styleLibrary,
             hybridCompiler,
+            settingsPort,
             resourceResolver: () => documentPort.resourceResolver(),
         });
 

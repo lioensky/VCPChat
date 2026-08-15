@@ -327,6 +327,61 @@ test('document font resources resolve to Blob URLs and export Base64 URLs', () =
     assert.deepEqual(revoked, ['blob:vdoc-font']);
 });
 
+test('trusted Google Fonts imports are hoisted before internal Shadow DOM rules', () => {
+    const windowObject = loadBrowserModule(
+        'ScriptoriumModules/scriptorium-render-primitives.js'
+    );
+    const module = windowObject.ScriptoriumRenderPrimitives;
+    let trusted = true;
+    const primitives = module.createRenderPrimitives({
+        core: {
+            createSceneConfig: (scene) => scene,
+        },
+        hybridCompiler: {
+            simpleHash: () => 'hash',
+        },
+        settingsPort: {
+            get: (name) => name === 'trustNetworkFonts' && trusted,
+        },
+    });
+    const googleImport =
+        '@import url("https://fonts.googleapis.com/css2?'
+        + 'family=Ma+Shan+Zheng&family=Noto+Serif+SC:'
+        + 'wght@400;600;800&display=swap");';
+    const combinedCss = [
+        ':host { display: block; }',
+        '.internal-rule { color: red; }',
+        googleImport,
+        '.document-rule { font-family: "Ma Shan Zheng"; }',
+    ].join('\n');
+
+    const trustedCss = primitives.hoistTrustedImports(combinedCss);
+    assert.equal(trustedCss.indexOf('@import'), 0);
+    assert.ok(
+        trustedCss.indexOf('@import') < trustedCss.indexOf(':host'),
+        'Google Fonts import must precede internal rules'
+    );
+    assert.equal(
+        (trustedCss.match(/fonts\.googleapis\.com/g) || []).length,
+        1
+    );
+
+    const embeddedImports = primitives.trustedNetworkFontImports([
+        `<style>${googleImport}</style>`,
+    ]);
+    assert.match(embeddedImports, /^@import url\("https:\/\/fonts\.googleapis/);
+
+    trusted = false;
+    assert.equal(
+        primitives.trustedNetworkFontImports([googleImport]),
+        ''
+    );
+    assert.doesNotMatch(
+        primitives.hoistTrustedImports(combinedCss),
+        /fonts\.googleapis\.com/
+    );
+});
+
 test('trusted cached fonts dynamically resolve and export as HTTPS URLs', () => {
     let trusted = false;
     let base64Calls = 0;
