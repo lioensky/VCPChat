@@ -10,7 +10,7 @@
     let mountScope = null;
     let accountMenuController = null;
     let sidebarResizeObserver = null;
-    let activeCreateModal = null;
+    let creationController = null;
     let embeddedAppController = null;
     let restoringTabs = false;
     let pendingTabRestore = null;
@@ -419,257 +419,9 @@
         }
     }
 
-    function normalizeModelOptions(payload) {
-        let models = payload;
-        if (!Array.isArray(models)) models = payload?.data || payload?.models || (payload?.id ? [payload] : []);
-        if (!Array.isArray(models)) return [];
-        const seen = new Set();
-        return models.reduce((options, item) => {
-            const id = typeof item === 'string' ? item : item?.id;
-            if (!id || seen.has(id)) return options;
-            seen.add(id);
-            options.push({
-                value: id,
-                label: typeof item === 'string' ? item : item.name || item.displayName || id
-            });
-            return options;
-        }, []);
-    }
+    function closeCreateDialog() { creationController?.close(); }
 
-    function closeCreateDialog() {
-        activeCreateModal?.close(null);
-    }
-
-    async function openCreateDialog() {
-        if (activeCreateModal?.element?.isConnected) {
-            activeCreateModal.focus();
-            return;
-        }
-        const ui = window.VCPUI;
-        const api = window.chatAPI || window.electronAPI;
-        const generation = mountGeneration;
-        if (!ui || !window.MainChatCommands?.createAgent || !window.MainChatCommands?.createGroup) {
-            window.uiHelperFunctions?.showToastNotification?.('创建功能尚未准备好，请稍后重试。', 'error');
-            return;
-        }
-
-        const host = document.createElement('div');
-        host.className = 'next-ui-create-dialog-host vcp-ui-scope';
-        host.dataset.density = getDensity();
-        const form = document.createElement('form');
-        form.className = 'next-ui-create-dialog-form';
-
-        const typeControl = ui.create('SegmentedControl', {
-            label: '创建类型',
-            value: 'agent',
-            items: [
-                { value: 'agent', label: '助手', icon: 'person' },
-                { value: 'group', label: '群组', icon: 'group' }
-            ]
-        });
-        const typeField = ui.create('Field', {
-            label: '类型',
-            required: true,
-            helper: '创建一个可以独立对话的助手。',
-            control: typeControl
-        });
-        typeField.element.classList.add('next-ui-create-dialog-type');
-
-        const nameControl = ui.create('Input', {
-            placeholder: '例如：旅行助手',
-            leadingIcon: 'edit',
-            required: true
-        });
-        const nameField = ui.create('Field', {
-            label: '名称',
-            required: true,
-            helper: '创建后仍可在设置中修改名称和详细配置。',
-            control: nameControl
-        });
-        const nameInput = nameControl.control;
-
-        const modelControl = ui.create('Select', {
-            value: '',
-            disabled: true,
-            options: [{ value: '', label: '使用默认模型' }]
-        });
-        const modelField = ui.create('Field', {
-            label: '模型',
-            helper: '正在读取可用模型…',
-            control: modelControl
-        });
-
-        const error = document.createElement('div');
-        error.className = 'next-ui-create-dialog-error';
-        error.setAttribute('role', 'alert');
-        error.setAttribute('aria-live', 'polite');
-        form.append(typeField.element, nameField.element, modelField.element, error);
-
-        const cancelButton = ui.create('Button', { label: '取消', variant: 'ghost' });
-        const createButton = ui.create('Button', { label: '创建', variant: 'primary', type: 'submit' });
-        const ownedControllers = [typeControl, typeField, nameControl, nameField, modelControl, modelField, cancelButton, createButton];
-        const dialogScope = mountScope?.child('next:create-item-modal') || null;
-        dialogScope?.own(() => host.remove(), 'create-modal-host', 'dom');
-        ownedControllers.forEach((controller, index) => {
-            dialogScope?.own(() => controller.destroy(), `create-control:${index}`, 'ui-registration');
-        });
-        let kind = 'agent';
-        let submitting = false;
-        let cleaned = false;
-        let modal;
-        const overlayOwner = Symbol('create-item-modal-overlay');
-        try {
-            await acquireOverlay(overlayOwner);
-        } catch (overlayError) {
-            if (dialogScope) await dialogScope.dispose('create-overlay-failed');
-            else ownedControllers.forEach(controller => controller.destroy());
-            throw overlayError;
-        }
-        // Switching to Classic can dispose the parent while the native view
-        // hide request is still in flight.  A lease acquired for a dead dialog
-        // must be returned directly instead of being registered on that Scope.
-        if (dialogScope && !dialogScope.active) {
-            releaseOverlay(overlayOwner);
-            return;
-        }
-        dialogScope?.own(() => releaseOverlay(overlayOwner), 'create-overlay-lease', 'overlay');
-        if (!mounted || generation !== mountGeneration || document.documentElement.dataset.uiMode !== 'next') {
-            if (dialogScope) await dialogScope.dispose('create-open-cancelled');
-            else {
-                releaseOverlay(overlayOwner);
-                ownedControllers.forEach(controller => controller.destroy());
-            }
-            return;
-        }
-
-        const cleanup = () => {
-            if (cleaned) return;
-            cleaned = true;
-            if (activeCreateModal === modal) activeCreateModal = null;
-            if (dialogScope) {
-                void dialogScope.dispose('create-modal-closed').catch(error => {
-                    console.error('[NextUI] Failed to dispose create dialog:', error);
-                });
-            } else {
-                releaseOverlay(overlayOwner);
-                ownedControllers.forEach(controller => controller.destroy());
-                host.remove();
-            }
-        };
-
-        try {
-            modal = ui.create('Modal', {
-                title: '创建助手或群组',
-                size: 'sm',
-                content: form,
-                actions: [cancelButton, createButton],
-                onClose: cleanup
-            });
-        } catch (error) {
-            if (dialogScope) await dialogScope.dispose('create-modal-failed');
-            else {
-                releaseOverlay(overlayOwner);
-                ownedControllers.forEach(controller => controller.destroy());
-            }
-            throw error;
-        }
-        activeCreateModal = modal;
-        host.append(modal.element);
-        document.body.append(host);
-
-        const syncType = () => {
-            const checked = typeControl.element.querySelector('[role="radio"][aria-checked="true"]');
-            kind = checked?.dataset.value === 'group' ? 'group' : 'agent';
-            typeField.update({
-                helper: kind === 'group'
-                    ? '创建一个由多个助手参与的群组会话。'
-                    : '创建一个可以独立对话的助手。'
-            });
-            nameInput.placeholder = kind === 'group' ? '例如：项目讨论组' : '例如：旅行助手';
-            modelField.update({
-                helper: kind === 'group'
-                    ? '选中的模型将作为群组统一模型；也可以沿用默认设置。'
-                    : '选择助手的初始模型；也可以使用系统默认模型。'
-            });
-        };
-
-        const submit = async () => {
-            if (submitting) return;
-            const name = nameInput.value.trim();
-            if (!name) {
-                nameField.update({ error: '请输入名称。' });
-                nameInput.focus();
-                return;
-            }
-
-            submitting = true;
-            error.textContent = '';
-            nameField.update({ error: '' });
-            createButton.update({ label: '创建中', loading: true });
-            cancelButton.update({ disabled: true });
-            const model = modelControl.getValue();
-
-            try {
-                const request = kind === 'group'
-                    ? window.MainChatCommands.createGroup({ name, model })
-                    : window.MainChatCommands.createAgent({ name, model });
-                const result = dialogScope ? await dialogScope.track(request, `create-${kind}`) : await request;
-                if (!result?.success) throw new Error(result?.error || '创建失败，请稍后重试。');
-                window.VCPUI?.feedback?.toast(
-                    result.navigationSuccess === false
-                        ? `${kind === 'group' ? '群组' : '助手'}“${name}”已创建，请刷新列表查看`
-                        : `${kind === 'group' ? '群组' : '助手'}“${name}”已创建`,
-                    { variant: result.navigationSuccess === false ? 'warning' : 'success' }
-                );
-                if (modal.element.isConnected) modal.close(true);
-            } catch (creationError) {
-                console.error('[NextUI] Failed to create item:', creationError);
-                if (modal.element.isConnected) {
-                    error.textContent = creationError.message || '创建失败，请稍后重试。';
-                    createButton.update({ label: '创建', loading: false });
-                    cancelButton.update({ disabled: false });
-                    submitting = false;
-                } else {
-                    window.VCPUI?.feedback?.toast(creationError.message || '创建失败，请稍后重试。', { variant: 'error' });
-                }
-            }
-        };
-
-        const listenDialog = (target, type, handler, options) => dialogScope
-            ? dialogScope.listen(target, type, handler, options, `create-modal:${type}`)
-            : target.addEventListener(type, handler, options);
-        listenDialog(typeControl.element, 'change', syncType);
-        listenDialog(nameInput, 'input', () => {
-            if (nameField.element.dataset.state === 'error') nameField.update({ error: '' });
-        });
-        listenDialog(cancelButton.element, 'click', () => modal.close(null));
-        listenDialog(createButton.element, 'click', submit);
-        listenDialog(form, 'submit', event => {
-            event.preventDefault();
-            submit();
-        });
-        if (dialogScope) dialogScope.animationFrame(() => nameInput.focus(), 'focus-create-name');
-        else requestAnimationFrame(() => nameInput.focus());
-
-        try {
-            const modelRequest = api.getCachedModels?.();
-            const modelPayload = dialogScope && modelRequest
-                ? await dialogScope.track(modelRequest, 'load-create-models')
-                : await modelRequest;
-            const options = normalizeModelOptions(modelPayload);
-            if (activeCreateModal !== modal || !modal.element.isConnected) return;
-            modelControl.update({
-                disabled: false,
-                options: [{ value: '', label: '使用默认模型' }, ...options]
-            });
-            syncType();
-        } catch (modelError) {
-            console.warn('[NextUI] Failed to load cached models:', modelError);
-            if (activeCreateModal !== modal || !modal.element.isConnected) return;
-            modelControl.update({ disabled: false, options: [{ value: '', label: '使用默认模型' }] });
-            modelField.update({ helper: '模型列表暂不可用，将使用系统默认模型。' });
-        }
-    }
+    function openCreateDialog() { return creationController?.open(); }
 
     function setupEmbeddedAppState() {
         embeddedAppController?.mount(mountScope, payload => {
@@ -694,12 +446,14 @@
         const AssistantSearchController = window.VCPNextShell?.AssistantSearchController;
         const AccountMenuController = window.VCPNextShell?.AccountMenuController;
         const LaunchpadController = window.VCPNextShell?.LaunchpadController;
+        const CreationController = window.VCPNextShell?.CreationController;
         if (!OverlayCoordinator) throw new Error('OverlayCoordinator is unavailable.');
         if (!EmbeddedAppController) throw new Error('EmbeddedAppController is unavailable.');
         if (!AppTabHost) throw new Error('AppTabHost is unavailable.');
         if (!AssistantSearchController) throw new Error('AssistantSearchController is unavailable.');
         if (!AccountMenuController) throw new Error('AccountMenuController is unavailable.');
         if (!LaunchpadController) throw new Error('LaunchpadController is unavailable.');
+        if (!CreationController) throw new Error('CreationController is unavailable.');
         mounted = true;
         mountGeneration += 1;
         const LifecycleScope = window.VCPLifecycle?.LifecycleScope;
@@ -750,6 +504,19 @@
             reconcileEmbeddedView: syncEmbeddedActivation,
         });
         overlayCoordinator.mount(mountScope);
+        const creationOverlayCoordinator = overlayCoordinator;
+        creationController = new CreationController({
+            window,
+            document,
+            getUi: () => window.VCPUI,
+            getApi: getDesktopApi,
+            commands: () => window.MainChatCommands,
+            getDensity,
+            acquireOverlay: owner => creationOverlayCoordinator.acquire(owner),
+            releaseOverlay: owner => creationOverlayCoordinator.release(owner),
+            showUnavailable: () => window.uiHelperFunctions?.showToastNotification?.('创建功能尚未准备好，请稍后重试。', 'error'),
+        });
+        creationController.mount(mountScope);
         syncDensity();
         observeSidebarWidth();
         setupEmbeddedAppState();
@@ -793,6 +560,7 @@
             assistantSearchController?.dispose();
             accountMenuController?.dispose();
             launchpadController?.dispose();
+            creationController?.dispose();
         }
         pendingTabRestore = null;
         restoringTabs = false;
