@@ -1171,8 +1171,8 @@ export function setupEventListeners(deps) {
         && nextUiNotificationClear
         && doNotDisturbBtn
     ) {
-        const syncNotificationFilterState = () => {
-            const isActive = window.filterManager?.isFilterEnabled?.()
+        const syncNotificationFilterState = (state = null) => {
+            const isActive = typeof state?.enabled === 'boolean' ? state.enabled : window.filterManager?.isFilterEnabled?.()
                 ?? doNotDisturbBtn.classList.contains('active');
             doNotDisturbBtn.classList.toggle('active', isActive);
             nextUiNotificationFilterToggle.setAttribute('aria-checked', String(isActive));
@@ -1282,12 +1282,12 @@ export function setupEventListeners(deps) {
             menuItems[nextIndex]?.focus();
         });
 
-        new MutationObserver(syncNotificationFilterState).observe(doNotDisturbBtn, {
-            attributes: true,
-            attributeFilter: ['class']
-        });
-        window.addEventListener('notification-filter-changed', syncNotificationFilterState);
-        syncNotificationFilterState();
+        if (window.filterManager?.subscribe) {
+            window.filterManager.subscribe(syncNotificationFilterState);
+        } else {
+            window.addEventListener('notification-filter-changed', event => syncNotificationFilterState(event.detail));
+            syncNotificationFilterState();
+        }
     }
 
     if (openForumBtn) {

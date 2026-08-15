@@ -5,12 +5,21 @@
     let transitionGeneration = 0;
     let transitionQueue = Promise.resolve();
     let transitionState = Object.freeze({ phase: 'settled', mode: null, generation: 0 });
+    let stateChannel = null;
+
+    function publishState(source = 'ui-mode-manager') {
+        stateChannel?.publish(Object.freeze({
+            mode: getCurrentMode(),
+            transition: transitionState,
+        }), { source });
+    }
 
     function publishTransition(phase, mode, generation, error = null) {
         transitionState = Object.freeze({ phase, mode, generation, error });
         window.dispatchEvent(new CustomEvent('ui-mode-transition-state', {
             detail: transitionState
         }));
+        publishState(`transition:${phase}`);
     }
 
     function normalize(mode) {
@@ -42,6 +51,7 @@
                 }
             }));
         }
+        if (previousMode !== normalizedMode) publishState(options.preview === true ? 'preview' : 'apply');
 
         return normalizedMode;
     }
@@ -83,6 +93,10 @@
     // will reconcile it with the authoritative settings file.
     const cachedMode = localStorage.getItem(STORAGE_KEY) ?? CLASSIC_MODE;
     apply(cachedMode, { cache: false });
+    stateChannel = window.VCPStateChannels?.create('ui-mode', Object.freeze({
+        mode: getCurrentMode(),
+        transition: transitionState,
+    })) || null;
 
     window.uiModeManager = Object.freeze({
         CLASSIC_MODE,
@@ -92,6 +106,8 @@
         whenSettled: () => transitionQueue,
         getTransitionState: () => transitionState,
         getCurrentMode,
-        normalize
+        normalize,
+        getState: () => stateChannel?.get() || Object.freeze({ mode: getCurrentMode(), transition: transitionState }),
+        subscribe: (listener, options) => stateChannel?.subscribe(listener, options) || (() => false)
     });
 })();

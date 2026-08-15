@@ -7,6 +7,7 @@ const uiManager = (() => {
     // --- Private Variables ---
     let globalSettingsRef = { get: () => ({}) }; // Reference to global settings
     let electronAPI = null;
+    const themeChannel = window.VCPStateChannels?.create('theme', Object.freeze({ ready: false, effective: 'light' })) || null;
 
     // DOM Elements (will be initialized in init)
     let leftSidebar, rightNotificationsSidebar, resizerLeft, resizerRight;
@@ -107,6 +108,7 @@ const uiManager = (() => {
         // Apply class to body for CSS styling
         document.body.classList.remove('light-theme', 'dark-theme');
         document.body.classList.add(`${theme}-theme`);
+        themeChannel?.publish(Object.freeze({ ready: true, effective: theme }), { source: 'ui-manager' });
 
         // Update the toggle button icon
         if (themeToggleBtn) {
@@ -530,6 +532,8 @@ const uiManager = (() => {
             console.log('uiManager initialized.');
         },
         applyTheme: applyTheme, // Expose applyTheme if needed externally
+        getThemeState: () => themeChannel?.get() || Object.freeze({ ready: true, effective: document.body.classList.contains('dark-theme') ? 'dark' : 'light' }),
+        subscribeTheme: (listener, options) => themeChannel?.subscribe(listener, options) || (() => false),
         switchToTab: switchToTab // Expose switchToTab for external use
     };
 })();
