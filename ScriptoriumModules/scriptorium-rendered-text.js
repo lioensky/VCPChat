@@ -310,7 +310,8 @@
                 if (!value || value.length < 2) continue;
                 if (/^[.#\[\]()[\]{}:_-]+$/.test(value)) continue;
                 if (!/[\u3400-\u9fff]|[A-Za-z]{2,}/.test(value)) continue;
-                push(value, 'script', bodyStart + match.index);
+                const valueStart = bodyStart + match.index + match[0].indexOf(match[2]);
+                push(value, 'script', valueStart);
             }
         });
 
