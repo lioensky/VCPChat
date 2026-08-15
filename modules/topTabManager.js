@@ -1,14 +1,13 @@
 (() => {
-    const APP_TONES = ['purple', 'green', 'pink', 'cyan', 'amber', 'charcoal', 'red', 'orange'];
     const TAB_SESSION_KEY = 'vcpchat.nextUi.openTabs.v1';
     let appTabHost = null;
     let assistantSearchController = null;
+    let launchpadController = null;
     let initialized = false;
     let mounted = false;
     let mountGeneration = 0;
     let mountAbortController = null;
     let mountScope = null;
-    let appGridScope = null;
     let accountMenuController = null;
     let sidebarResizeObserver = null;
     let activeCreateModal = null;
@@ -111,7 +110,7 @@
 
     function openLaunchpad() {
         if (!mounted) return;
-        renderApps();
+        launchpadController?.render();
         setView('launchpad');
     }
 
@@ -420,54 +419,6 @@
         }
     }
 
-    function renderApps() {
-        const grid = document.getElementById('nextUiAppGrid');
-        const trayManager = window.trayManager;
-        if (!grid || !trayManager?.getApps) return;
-        if (appGridScope) {
-            const previousScope = appGridScope;
-            appGridScope = null;
-            void previousScope.dispose('app-grid-rerender').catch(error => {
-                console.error('[NextUI] Failed to dispose app-grid listeners:', error);
-            });
-        }
-        appGridScope = mountScope?.child('next:app-grid') || null;
-        const listenApp = (target, handler) => appGridScope
-            ? appGridScope.listen(target, 'click', handler, undefined, 'app-grid:click')
-            : target.addEventListener('click', handler);
-        grid.replaceChildren();
-        const externalApps = trayManager.getApps().filter(app => app.id !== 'vchat-app-main');
-        externalApps.forEach((app, index) => {
-            const button = document.createElement('button');
-            button.type = 'button';
-            button.className = 'next-ui-app-item';
-            button.title = app.name;
-            button.innerHTML = `<span class="next-ui-app-icon" data-tone="${APP_TONES[index % APP_TONES.length]}">${trayManager.getIcon(app.icon)}</span><span>${app.name}</span>`;
-            button.dataset.openMode = app.embed ? 'embedded' : 'window';
-            button.title = app.embed ? `${app.name}（在标签页中打开）` : `${app.name}（在独立窗口中打开）`;
-            listenApp(button, () => app.embed ? openEmbeddedApp(app) : trayManager.launchApp(app));
-            grid.append(button);
-        });
-        window.nextUiApps?.list().forEach(app => {
-            const button = document.createElement('button');
-            button.type = 'button';
-            button.className = 'next-ui-app-item next-ui-internal-app-item';
-            button.title = app.title;
-            const appIcon = document.createElement('span');
-            appIcon.className = 'next-ui-app-icon vcp-ui-internal-app-icon vcp-ui-scope';
-            if (app.icon) {
-                appIcon.append(Object.assign(document.createElement('span'), { className: 'vcp-ui-icon', textContent: app.icon }));
-            } else if (app.iconSvg) {
-                appIcon.innerHTML = app.iconSvg;
-            }
-            const label = document.createElement('span');
-            label.textContent = app.title;
-            button.append(appIcon, label);
-            listenApp(button, () => openInternalApp(app.id));
-            grid.append(button);
-        });
-    }
-
     function normalizeModelOptions(payload) {
         let models = payload;
         if (!Array.isArray(models)) models = payload?.data || payload?.models || (payload?.id ? [payload] : []);
@@ -742,11 +693,13 @@
         const AppTabHost = window.VCPNextShell?.AppTabHost;
         const AssistantSearchController = window.VCPNextShell?.AssistantSearchController;
         const AccountMenuController = window.VCPNextShell?.AccountMenuController;
+        const LaunchpadController = window.VCPNextShell?.LaunchpadController;
         if (!OverlayCoordinator) throw new Error('OverlayCoordinator is unavailable.');
         if (!EmbeddedAppController) throw new Error('EmbeddedAppController is unavailable.');
         if (!AppTabHost) throw new Error('AppTabHost is unavailable.');
         if (!AssistantSearchController) throw new Error('AssistantSearchController is unavailable.');
         if (!AccountMenuController) throw new Error('AccountMenuController is unavailable.');
+        if (!LaunchpadController) throw new Error('LaunchpadController is unavailable.');
         mounted = true;
         mountGeneration += 1;
         const LifecycleScope = window.VCPLifecycle?.LifecycleScope;
@@ -780,6 +733,16 @@
             setIcon: (element, icon) => window.VCPIcons?.set?.(element, icon),
         });
         accountMenuController.mount(mountScope);
+        launchpadController = new LaunchpadController({
+            document,
+            getExternalApps: () => window.trayManager?.getApps?.() || [],
+            getInternalApps: () => window.nextUiApps?.list?.() || [],
+            getIcon: icon => window.trayManager?.getIcon?.(icon) || '',
+            openExternal: app => window.trayManager?.launchApp?.(app),
+            openEmbedded: openEmbeddedApp,
+            openInternal: openInternalApp,
+        });
+        launchpadController.mount(mountScope);
         embeddedAppController = new EmbeddedAppController({ getApi: getDesktopApi });
         overlayCoordinator = new OverlayCoordinator({
             document,
@@ -787,7 +750,6 @@
             reconcileEmbeddedView: syncEmbeddedActivation,
         });
         overlayCoordinator.mount(mountScope);
-        renderApps();
         syncDensity();
         observeSidebarWidth();
         setupEmbeddedAppState();
@@ -804,7 +766,7 @@
         listen(document.getElementById('nextUiCloseBtn'), 'click', () => window.MainChatCommands?.close?.());
         listen(window, 'next-ui-apps-changed', event => {
             if (event.detail?.action === 'unregistered') closeView(`app:${event.detail.id}`);
-            renderApps();
+            launchpadController?.render();
             void restoreTabSession();
         });
         listen(window, 'vcp-ui-density-changed', event => {
@@ -830,6 +792,7 @@
             appTabHost?.dispose();
             assistantSearchController?.dispose();
             accountMenuController?.dispose();
+            launchpadController?.dispose();
         }
         pendingTabRestore = null;
         restoringTabs = false;
@@ -839,7 +802,6 @@
         coordinatorToDispose?.dispose();
         const scopeToDispose = mountScope;
         mountScope = null;
-        appGridScope = null;
         const pending = Promise.allSettled([
             closeAllInternalApps({ preserveSession: true }),
             scopeToDispose?.dispose('leave-next') || Promise.resolve(),
