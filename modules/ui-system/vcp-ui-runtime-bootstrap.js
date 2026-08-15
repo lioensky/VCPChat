@@ -112,7 +112,15 @@ async function mountRuntime() {
         await waitForDocumentReady();
         if (generation !== runtimeGeneration || document.documentElement.dataset.uiMode !== 'next') return;
         releaseScope = window.VCPWebAwesome?.mountScope?.(document.body) || null;
-        selectObserver = VCPUI.observeControls(document.body, { kinds: ['Select'] });
+        selectObserver = VCPUI.observeControls(document.body, {
+            kinds: ['Select'],
+            // Settings surfaces preserve upstream native Select identity and
+            // are owned by settings-bridge. Letting the document-wide
+            // observer win this race creates Web Awesome proxies before the
+            // bridge can request kernel:native, and repeated model refreshes
+            // then retain discarded <option> nodes.
+            filter: select => !select.closest('#agentSettingsForm, #groupSettingsForm, #globalSettingsModal')
+        });
         window.VCPUISelectObserver = selectObserver;
     } catch (error) {
         if (generation !== runtimeGeneration) return;

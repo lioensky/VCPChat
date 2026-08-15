@@ -563,6 +563,17 @@ const settingsManager = (() => {
 
         const globalSettings = window.globalSettings || {};
         const isNetworkMode = globalSettings.voiceMode === 'network';
+        const commitOptions = (select, options, selectedValue = '') => {
+            const current = [...select.options];
+            const sameStructure = current.length === options.length
+                && options.every((option, index) => (
+                    current[index]?.value === option.value
+                    && current[index]?.textContent === option.textContent
+                    && current[index]?.disabled === option.disabled
+                ));
+            if (!sameStructure) select.replaceChildren(...options);
+            select.value = selectedValue || '';
+        };
 
         try {
             let optionList = [];
@@ -650,8 +661,8 @@ const settingsManager = (() => {
                 primaryOptions.push(createOption('', emptyLabel, { disabled: true }));
                 secondaryOptions.push(createOption('', emptyLabel, { disabled: true }));
             }
-            agentTtsVoicePrimarySelect.replaceChildren(...primaryOptions);
-            agentTtsVoiceSecondarySelect.replaceChildren(...secondaryOptions);
+            commitOptions(agentTtsVoicePrimarySelect, primaryOptions, currentPrimaryVoice);
+            commitOptions(agentTtsVoiceSecondarySelect, secondaryOptions, currentSecondaryVoice);
         } catch (error) {
             console.error('Failed to get TTS models:', error);
             const errorLabel = isNetworkMode ? '获取网络音色失败' : '获取模型失败';
@@ -663,8 +674,8 @@ const settingsManager = (() => {
             secondaryErrorOption.disabled = true;
             primaryErrorOption.textContent = errorLabel;
             secondaryErrorOption.textContent = errorLabel;
-            agentTtsVoicePrimarySelect.replaceChildren(primaryErrorOption);
-            agentTtsVoiceSecondarySelect.replaceChildren(secondaryErrorOption);
+            commitOptions(agentTtsVoicePrimarySelect, [primaryErrorOption]);
+            commitOptions(agentTtsVoiceSecondarySelect, [secondaryErrorOption]);
             uiHelper.showToastNotification(isNetworkMode ? '获取网络音色失败' : '获取Sovits语音模型失败', 'error');
         }
     }

@@ -118,7 +118,12 @@ function normalizeFormIcons(root) {
         icon.setAttribute('aria-hidden', 'true');
         icon.textContent = lucideName;
         svg.replaceWith(icon);
-        replaced.push({ container, original: svg, icon });
+        // lucide-adapter replaces this temporary span with an SVG. Retaining
+        // the span in the restoration record keeps an already-detached node
+        // alive for the whole Next surface lifetime and, across repeated mode
+        // round-trips, makes Chromium report a linear detached-node chain.
+        // Restoration only needs the container and upstream SVG.
+        replaced.push({ container, original: svg });
     };
     replaceIcon(root.querySelector('#resetUserAvatarColorsBtn'), 'refresh');
     replaceIcon(root.querySelector('.avatar-upload-overlay'), 'camera');
