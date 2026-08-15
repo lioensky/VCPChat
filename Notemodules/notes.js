@@ -236,47 +236,63 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (overlay) overlay.style.display = "none";
   }
 
-  function createModal(title, message, id) {
+  function createModal(title, message, id, { isError = false } = {}) {
     return new Promise((resolve) => {
       const existingModal = document.getElementById(id);
       if (existingModal) existingModal.remove();
 
       const modal = document.createElement("div");
       modal.id = id;
-      modal.className = "confirmation-modal"; // Reuse existing styles if possible
-      modal.style.display = "flex";
-      // Inlined some styles to ensure it's visible without external CSS
+      modal.className = "modal-overlay";
+      modal.setAttribute("role", "dialog");
+      modal.setAttribute("aria-modal", "true");
       modal.innerHTML = `
-                <div class="modal-content" style="background:var(--bg-color, #222); border: 1px solid var(--border-color, #444); padding: 20px; border-radius: 5px; box-shadow: 0 5px 15px rgba(0,0,0,0.5);">
-                    <h2 class="modal-title" style="margin-top:0;">${title}</h2>
-                    <p class="modal-message">${message}</p>
-                    <div class="modal-buttons" style="text-align: right; margin-top: 20px;">
-                        <button class="modal-ok-btn a-button">好</button>
-                    </div>
-                </div>
-            `;
-      document.body.appendChild(modal);
+        <div class="modal-content">
+          <h3 class="modal-title"></h3>
+          <p class="modal-message"></p>
+          <div class="modal-actions">
+            <button class="modal-ok-btn button" type="button">好</button>
+          </div>
+        </div>
+      `;
 
+      const titleElement = modal.querySelector(".modal-title");
+      const messageElement = modal.querySelector(".modal-message");
       const okButton = modal.querySelector(".modal-ok-btn");
+      titleElement.textContent = String(title || "");
+      if (isError) {
+        messageElement.textContent = String(message || "");
+        messageElement.style.color = "var(--danger-color, #f44336)";
+      } else {
+        // 信息窗内容由本模块提供，允许帮助文本中的基础格式。
+        messageElement.innerHTML = message;
+      }
+
       const closeHandler = () => {
+        document.removeEventListener("keydown", keydownHandler);
         modal.remove();
         resolve();
       };
+      const keydownHandler = (event) => {
+        if (event.key === "Escape") closeHandler();
+      };
+
       okButton.addEventListener("click", closeHandler);
+      modal.addEventListener("click", (event) => {
+        if (event.target === modal) closeHandler();
+      });
+      document.addEventListener("keydown", keydownHandler);
+      document.body.appendChild(modal);
+      okButton.focus();
     });
   }
 
   async function showInfoModal(title, message) {
-    // We don't use the promise here, but it standardizes the interface
     await createModal(title, message, "info-modal");
   }
 
   async function showErrorModal(title, message) {
-    await createModal(
-      title,
-      `<span style="color:var(--error-color, #f44336);">${message}</span>`,
-      "error-modal"
-    );
+    await createModal(title, message, "error-modal", { isError: true });
   }
 
   // --- Theme Management ---
@@ -791,27 +807,37 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   function getTagsForNote(note) {
-    const source = `${note.title || ""}\n${note.content || ""}`;
     const tags = new Set();
-    const patterns = [
-      /(?:^|\s)#([\p{L}\p{N}_-]+)/gu,
-      /(?:^|\n)标签[：:]\s*([^\n]+)/gi,
-    ];
+    const lines = String(note.content || "").split(/\r?\n/);
+    let activeFence = null;
 
-    patterns.forEach((pattern, index) => {
-      let match;
-      while ((match = pattern.exec(source))) {
-        if (index === 0) {
-          tags.add(match[1].trim());
-        } else {
-          match[1]
-            .split(/[，,、\s]+/)
-            .map((tag) => tag.replace(/^#/, "").trim())
-            .filter(Boolean)
-            .forEach((tag) => tags.add(tag));
+    for (const line of lines) {
+      const fenceMatch = line.match(/^\s*(`{3,}|~{3,})/);
+      if (fenceMatch) {
+        const marker = fenceMatch[1][0];
+        if (activeFence === marker) {
+          activeFence = null;
+        } else if (!activeFence) {
+          activeFence = marker;
         }
+        continue;
       }
-    });
+
+      // 仅识别代码围栏外的完整标签行：
+      // 标签：#学习
+      // 标签：#学习 #项目
+      if (activeFence) continue;
+      const tagLine = line.match(
+        /^\s*标签[：:]\s*(#[\p{L}\p{N}_-]+(?:\s*(?:[，,、]|\s)\s*#[\p{L}\p{N}_-]+)*)\s*$/u
+      );
+      if (!tagLine) continue;
+
+      const tagPattern = /#([\p{L}\p{N}_-]+)/gu;
+      let tagMatch;
+      while ((tagMatch = tagPattern.exec(tagLine[1]))) {
+        tags.add(tagMatch[1]);
+      }
+    }
 
     return [...tags].slice(0, 12);
   }
@@ -1308,8 +1334,25 @@ document.addEventListener("DOMContentLoaded", async () => {
       quote: { prefix: "> ", suffix: "", placeholder: "引用内容" },
       code: { prefix: "```text\n", suffix: "\n```", placeholder: "代码" },
       link: { prefix: "[", suffix: "](https://)", placeholder: "链接文字" },
-      tag: { prefix: "#", suffix: " ", placeholder: "标签" },
     };
+
+    if (action === "tag") {
+      const tagName = (selectedText || "标签").replace(/^#+/, "").trim();
+      const selectionStart = noteContentInput.selectionStart;
+      const selectionEnd = noteContentInput.selectionEnd;
+      const value = noteContentInput.value;
+      const needsLeadingNewline =
+        selectionStart > 0 && value[selectionStart - 1] !== "\n";
+      const needsTrailingNewline =
+        selectionEnd < value.length && value[selectionEnd] !== "\n";
+      insertTextAtSelection(
+        `${needsLeadingNewline ? "\n" : ""}标签：#${tagName}${
+          needsTrailingNewline ? "\n" : ""
+        }`
+      );
+      return;
+    }
+
     const config = actions[action];
     if (!config) return;
 
@@ -1326,7 +1369,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         <strong>从这里开始</strong><br>
         • 点击“新建笔记”创建 Markdown 笔记，“新建文件夹”整理内容。<br>
         • 顶部工具栏可插入加粗、列表、代码、链接和图片。<br>
-        • 在笔记中输入 <code>#标签</code> 或 <code>标签：学习, 项目</code>，即可自动归类和筛选。<br>
+        • 使用独立标签行 <code>标签：#学习 #项目</code>，即可自动归类和筛选；正文或源码中的井号词不会被识别。<br>
         • 使用“分屏 / 编辑 / 预览”切换专注模式。<br>
         • 本地与网络笔记会分别显示；可通过来源、标签、排序筛选。<br><br>
         <strong>常用语法</strong><br>
