@@ -217,6 +217,54 @@ test('imported Markdown localizes fonts inside embedded style elements', async (
     assert.equal(model.manifest.fonts[0].hash, hash);
 });
 
+test('trusted network fonts bypass localization and preserve CSS URLs', async () => {
+    const windowObject = loadBrowserModule(
+        'ScriptoriumModules/scriptorium-network-fonts.js'
+    );
+    const module = windowObject.ScriptoriumNetworkFonts;
+    const css = [
+        '@import url("https://fonts.example.com/family.css");',
+        '@font-face {',
+        'font-family: "Direct";',
+        'src: url("https://cdn.example.com/direct.woff2");',
+        '}',
+    ].join('\n');
+    let stylesheetRequests = 0;
+    let fontRequests = 0;
+    let registered = 0;
+    const controller = module.createNetworkFontController({
+        documentPort: {
+            document: () => ({ manifest: {} }),
+            resourceData: () => new Map(),
+        },
+        containerModule: {
+            async registerResource() {
+                registered += 1;
+            },
+        },
+        persistencePort: {
+            async resolveFontStylesheet() {
+                stylesheetRequests += 1;
+            },
+            async resolveFontUrl() {
+                fontRequests += 1;
+            },
+        },
+        settingsPort: {
+            get: (name) => name === 'trustNetworkFonts',
+        },
+    });
+
+    const result = await controller.processCss(css);
+
+    assert.equal(result.css, css);
+    assert.equal(result.changed, false);
+    assert.equal(result.trusted, true);
+    assert.equal(stylesheetRequests, 0);
+    assert.equal(fontRequests, 0);
+    assert.equal(registered, 0);
+});
+
 test('document font resources resolve to Blob URLs and export Base64 URLs', () => {
     const created = [];
     const revoked = [];
@@ -277,4 +325,105 @@ test('document font resources resolve to Blob URLs and export Base64 URLs', () =
     assert.equal(created.length, 1);
     resolver.revoke();
     assert.deepEqual(revoked, ['blob:vdoc-font']);
+});
+
+test('trusted cached fonts dynamically resolve and export as HTTPS URLs', () => {
+    let trusted = false;
+    let base64Calls = 0;
+    class TestBlob {
+        constructor(parts, options) {
+            this.parts = parts;
+            this.type = options.type;
+        }
+    }
+    const windowObject = loadBrowserModule(
+        'ScriptoriumModules/vdoc-container.js',
+        {
+            Blob: TestBlob,
+            URL: {
+                createObjectURL() {
+                    return 'blob:vdoc-cached-font';
+                },
+                revokeObjectURL() {},
+            },
+            btoa(value) {
+                base64Calls += 1;
+                return Buffer.from(value, 'binary').toString('base64');
+            },
+            crypto: {
+                subtle: {
+                    digest: async () => new ArrayBuffer(32),
+                },
+            },
+        }
+    );
+    const container = windowObject.VDocContainer;
+    const hash = 'c'.repeat(64);
+    const sourceUrl = 'https://cdn.example.com/cached.woff2';
+    const resolver = container.createRuntimeResolver(
+        {
+            manifest: {
+                resources: [{
+                    id: hash,
+                    sha256: hash,
+                    kind: 'font',
+                    category: 'fonts',
+                    mime: 'font/woff2',
+                    sourceUrl,
+                }],
+            },
+        },
+        new Map([[hash, Uint8Array.from([0x77, 0x4f, 0x46, 0x32])]]),
+        new Map(),
+        {
+            trustNetworkFonts: () => trusted,
+        }
+    );
+    const css = `src:url("vdoc-resource://fonts/${hash}")`;
+
+    assert.match(resolver.resolveHtml(css), /blob:vdoc-cached-font/);
+    assert.match(resolver.resolveExportHtml(css), /data:font\/woff2;base64/);
+    const untrustedBase64Calls = base64Calls;
+    assert.ok(untrustedBase64Calls > 0);
+
+    trusted = true;
+    assert.equal(resolver.resolveHtml(css), `src:url("${sourceUrl}")`);
+    assert.equal(resolver.resolveExportHtml(css), `src:url("${sourceUrl}")`);
+    assert.equal(base64Calls, untrustedBase64Calls);
+});
+
+test('Scriptorium settings persist network font trust and default to off', () => {
+    const values = new Map();
+    const storage = {
+        getItem(key) {
+            return values.get(key) || null;
+        },
+        setItem(key, value) {
+            values.set(key, value);
+        },
+    };
+    const windowObject = loadBrowserModule(
+        'ScriptoriumModules/scriptorium-settings.js',
+        {
+            localStorage: storage,
+        }
+    );
+    const settingsModule = windowObject.ScriptoriumSettings;
+    const settings = settingsModule.createSettingsStore({ storage });
+    const changes = [];
+    settings.subscribe(
+        'trustNetworkFonts',
+        (value) => changes.push(value)
+    );
+
+    assert.equal(settings.get('trustNetworkFonts'), false);
+    assert.equal(settings.set('trustNetworkFonts', true), true);
+    assert.deepEqual(changes, [true]);
+    assert.equal(
+        JSON.parse(values.get(settingsModule.STORAGE_KEY)).trustNetworkFonts,
+        true
+    );
+
+    const restored = settingsModule.createSettingsStore({ storage });
+    assert.equal(restored.get('trustNetworkFonts'), true);
 });

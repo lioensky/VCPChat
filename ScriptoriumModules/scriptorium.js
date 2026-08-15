@@ -15,6 +15,7 @@
         hybridCompiler,
         styleLibrary,
         pagination,
+        settings: window.ScriptoriumSettings,
         documentStore: window.ScriptoriumDocumentStore,
         flowAdapter: window.ScriptoriumFlowAdapter,
         deckAdapter: window.ScriptoriumDeckAdapter,
@@ -101,10 +102,14 @@
             nativeApi.respondAgentRequest?.(payload),
     });
 
+    const settingsPort =
+        window.ScriptoriumSettings.createSettingsStore();
+
     const documentPort =
         window.ScriptoriumDocumentStore.createDocumentStore({
             core,
             containerModule,
+            settingsPort,
         });
 
     let activeAdapter = null;
@@ -476,6 +481,7 @@
         mediaPort: mediaFacade,
         stylePort: styleFacade,
         metricsPort,
+        settingsPort,
         editorResolver,
         bindElements,
         onInitialize,
@@ -500,6 +506,7 @@
                 containerModule,
                 persistencePort,
                 notificationPort,
+                settingsPort,
             });
 
         sourcePort =
@@ -835,6 +842,7 @@
         historyPort.dispose();
         lineagePort.dispose();
         documentPort.dispose();
+        settingsPort.dispose();
         disposed = true;
     }
 

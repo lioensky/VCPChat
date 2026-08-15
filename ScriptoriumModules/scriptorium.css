@@ -5350,3 +5350,169 @@ body.light-theme .object-inspector-fields .object-code-input {
         grid-column: 1;
     }
 }
+
+/* ── Scriptorium local preferences ───────────────────────── */
+.settings-dialog {
+    width: min(620px, calc(100vw - 40px));
+    overflow: hidden;
+    border: 1px solid var(--scriptorium-hairline);
+    border-radius: 5px 24px 5px 24px;
+    color: var(--primary-text);
+    background:
+        radial-gradient(circle at 86% 7%, var(--scriptorium-accent-soft), transparent 32%),
+        var(--scriptorium-glass-solid);
+    box-shadow: var(--scriptorium-shadow);
+}
+
+.settings-dialog-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 18px;
+    padding: 24px 26px 18px;
+    border-bottom: 1px solid var(--scriptorium-hairline);
+}
+
+.settings-dialog-header h2 {
+    margin: 5px 0 3px;
+    font: 500 28px var(--scriptorium-serif);
+}
+
+.settings-dialog-header p {
+    margin: 0;
+    color: var(--secondary-text);
+    font-size: 10px;
+}
+
+.settings-dialog-header > button {
+    display: grid;
+    width: 34px;
+    height: 34px;
+    flex: 0 0 auto;
+    padding: 0;
+    place-items: center;
+    border: 1px solid var(--scriptorium-hairline);
+    border-radius: 50%;
+    color: var(--secondary-text);
+    background: transparent;
+    font-size: 23px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.settings-dialog-header > button:hover,
+.settings-dialog-header > button:focus-visible {
+    border-color: var(--scriptorium-accent-mid);
+    outline: 0;
+    color: var(--highlight-text);
+    background: var(--scriptorium-accent-soft);
+}
+
+.settings-dialog-body {
+    padding: 20px 24px 26px;
+}
+
+.settings-group {
+    display: grid;
+    gap: 12px;
+}
+
+.settings-group-kicker {
+    color: var(--highlight-text);
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+}
+
+.settings-toggle-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 18px;
+    padding: 16px;
+    border: 1px solid var(--scriptorium-hairline);
+    border-radius: 4px 14px 4px 14px;
+    background: color-mix(in srgb, var(--input-bg) 58%, transparent);
+    cursor: pointer;
+}
+
+.settings-toggle-copy {
+    display: grid;
+    gap: 5px;
+}
+
+.settings-toggle-copy strong {
+    color: var(--primary-text);
+    font: 650 14px var(--scriptorium-serif);
+}
+
+.settings-toggle-copy small {
+    color: var(--secondary-text);
+    font-size: 9px;
+    line-height: 1.65;
+}
+
+.settings-toggle-row input {
+    width: 38px;
+    height: 20px;
+    margin: 0;
+    accent-color: var(--highlight-text);
+    cursor: pointer;
+}
+
+.settings-toggle-row:has(input:checked) {
+    border-color: color-mix(
+        in srgb,
+        var(--danger-color) 48%,
+        var(--scriptorium-hairline)
+    );
+    background: color-mix(in srgb, var(--danger-color) 7%, transparent);
+}
+
+.settings-status {
+    padding: 9px 11px;
+    border: 1px solid color-mix(
+        in srgb,
+        var(--success-color) 42%,
+        var(--scriptorium-hairline)
+    );
+    border-radius: 7px;
+    color: var(--success-color);
+    background: color-mix(in srgb, var(--success-color) 7%, transparent);
+    font-size: 9px;
+    line-height: 1.5;
+}
+
+.settings-status.trusted {
+    border-color: color-mix(
+        in srgb,
+        var(--danger-color) 48%,
+        var(--scriptorium-hairline)
+    );
+    color: var(--danger-color);
+    background: color-mix(in srgb, var(--danger-color) 7%, transparent);
+}
+
+.settings-risk-note {
+    margin: 0;
+    color: var(--secondary-text);
+    font-size: 9px;
+    line-height: 1.7;
+}
+
+@media (max-width: 620px) {
+    .settings-dialog {
+        width: calc(100vw - 20px);
+    }
+
+    .settings-dialog-header,
+    .settings-dialog-body {
+        padding-right: 18px;
+        padding-left: 18px;
+    }
+
+    .settings-toggle-row {
+        align-items: start;
+    }
+}

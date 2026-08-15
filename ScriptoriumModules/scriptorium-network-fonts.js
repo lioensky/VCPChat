@@ -91,6 +91,7 @@
         const containerModule = context.containerModule;
         const persistencePort = context.persistencePort;
         const notificationPort = context.notificationPort || {};
+        const settingsPort = context.settingsPort || {};
         if (!documentPort || !containerModule || !persistencePort) {
             throw new TypeError(
                 'Network font controller requires document, container and persistence ports.'
@@ -99,6 +100,14 @@
 
         let sequence = 0;
         let disposed = false;
+        const settingsDisposer = settingsPort.subscribe?.(
+            'trustNetworkFonts',
+            () => cancel()
+        ) || null;
+
+        function trustsNetworkFonts() {
+            return settingsPort.get?.('trustNetworkFonts') === true;
+        }
 
         async function registerFont(resource) {
             const bytes = resource?.bytes instanceof Uint8Array
@@ -127,6 +136,15 @@
             if (disposed) return null;
             const source = String(css || '');
             const operation = ++sequence;
+            if (trustsNetworkFonts()) {
+                return {
+                    css: source,
+                    resources: [],
+                    failures: [],
+                    changed: false,
+                    trusted: true,
+                };
+            }
             const imports = importUrls(source);
             const directUrls = remoteFontFaceUrls(source);
             let localizedCss = removeRemoteImports(source);
@@ -265,6 +283,7 @@
 
         function dispose() {
             cancel();
+            settingsDisposer?.();
             disposed = true;
         }
 
