@@ -28,6 +28,7 @@ const warmupCycles = positiveInteger(process.env.VCPCHAT_STRESS_WARMUP, 3);
 const checkpointEvery = Math.max(2, positiveInteger(process.env.VCPCHAT_STRESS_CHECKPOINT_EVERY, 5));
 const debugDetached = ['1', 'verbose'].includes(process.env.VCPCHAT_STRESS_DEBUG_DETACHED);
 const verboseDetached = process.env.VCPCHAT_STRESS_DEBUG_DETACHED === 'verbose';
+const skipDestructivePreflight = process.env.VCPCHAT_STRESS_SKIP_PREFLIGHT === '1';
 const sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
 
 function positiveInteger(value, fallback) {
@@ -161,8 +162,15 @@ async function assertClassicSurface(page, browser, label) {
 }
 
 async function collectRendererSnapshot(page, cdp, browserCdp, browser, label) {
-    await cdp.send('HeapProfiler.collectGarbage');
-    await sleep(100);
+    // Chromium releases cross-realm DOM wrappers and custom-element/shadow
+    // finalizers over more than one task. A single forced GC can therefore
+    // report already-unreachable nodes as a linear leak when several UI
+    // cycles run between checkpoints. Settle repeatedly; thresholds below
+    // remain unchanged, so genuinely retained nodes still fail the gate.
+    for (let pass = 0; pass < 3; pass += 1) {
+        await cdp.send('HeapProfiler.collectGarbage');
+        await sleep(50);
+    }
     const [heap, dom, detachedResult, metricsResult, processResult, rendererState, pages] = await Promise.all([
         cdp.send('Runtime.getHeapUsage'),
         cdp.send('Memory.getDOMCounters'),
@@ -775,11 +783,13 @@ try {
         await assertMainSurface(page, browser, label);
     };
 
-    await cycleRendererReload(page, browser, pluginApp, 'reload preflight');
-    await cycleOverlayOwnership(page, browser, pluginApp, 'overlay preflight');
-    const pageBeforeCrash = page;
-    page = await cycleRendererCrash(page, browser, pluginApp, 'crash preflight');
-    if (page !== pageBeforeCrash) trackRendererPage(page);
+    if (!skipDestructivePreflight) {
+        await cycleRendererReload(page, browser, pluginApp, 'reload preflight');
+        await cycleOverlayOwnership(page, browser, pluginApp, 'overlay preflight');
+        const pageBeforeCrash = page;
+        page = await cycleRendererCrash(page, browser, pluginApp, 'crash preflight');
+        if (page !== pageBeforeCrash) trackRendererPage(page);
+    }
     cdp = await page.createCDPSession();
     browserCdp = await browser.target().createCDPSession();
     await cdp.send('HeapProfiler.enable');
