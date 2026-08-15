@@ -6,9 +6,10 @@ import postcss from 'postcss';
 const root = process.cwd();
 // Pin the source snapshot used for the original Agent-runtime subtraction.
 // A moving development branch makes every later Codex change look like a
-// design-system boundary violation. Resolve the PR target independently so
-// the guard works both in contributor clones (upstream/next-ui) and upstream
-// CI checkouts (origin/next-ui).
+// design-system boundary violation. Compare retained Classic surfaces with
+// the latest main baseline first: next-ui may intentionally lag behind main,
+// and a main -> next-ui sync must not be reported as a design-system change.
+// Fall back to next-ui for shallow or branch-only CI checkouts.
 const sourceRef = process.env.VCP_DESIGN_SOURCE_REF || 'a1f76dffea8105999e465da45d8e52558cd80c47';
 const upstreamRef = resolveUpstreamRef();
 const failures = [];
@@ -173,7 +174,7 @@ function git(args) {
 function resolveUpstreamRef() {
     const candidates = process.env.VCP_UPSTREAM_REF
         ? [process.env.VCP_UPSTREAM_REF]
-        : ['upstream/next-ui', 'origin/next-ui', 'origin/main'];
+        : ['upstream/main', 'origin/main', 'upstream/next-ui', 'origin/next-ui'];
     for (const candidate of candidates) {
         try {
             git(['rev-parse', '--verify', candidate]);
