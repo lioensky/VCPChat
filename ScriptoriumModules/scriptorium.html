@@ -8,7 +8,7 @@
     <link rel="stylesheet" href="../styles/themes.css">
     <link rel="stylesheet" href="scriptorium.css">
 </head>
-<body>
+<body class="home-state">
     <header class="scriptorium-titlebar">
         <div class="brand-lockup">
             <div class="brand-sigil" aria-hidden="true">S</div>
@@ -265,7 +265,32 @@
     </div>
 
     <main class="scriptorium-stage">
-        <aside id="outline-panel" class="outline-panel" aria-label="文档篇章导航">
+        <aside id="outline-panel" class="outline-panel" aria-label="文档导航">
+            <section id="document-library" class="document-library"
+                aria-label="文档系统">
+                <header class="library-header">
+                    <div>
+                        <span class="outline-kicker">DOCUMENT SYSTEM</span>
+                        <h2>文档</h2>
+                    </div>
+                    <button id="library-refresh-btn" class="library-refresh"
+                        type="button" title="刷新文档目录"
+                        aria-label="刷新文档目录">
+                        <svg viewBox="0 0 24 24"><path d="M20 6v5h-5"/><path d="M4 18v-5h5"/><path d="M6.1 9a7 7 0 0 1 11.6-2.6L20 9M4 15l2.3 2.6A7 7 0 0 0 17.9 15"/></svg>
+                    </button>
+                </header>
+                <p class="library-intro">集中访问笔记、文档与演示。展开目录，选择文件即可载入。</p>
+                <div id="document-library-tree" class="document-library-tree"
+                    role="tree" aria-label="笔记、文档和演示目录">
+                    <div class="library-loading" role="status">
+                        正在整理文档目录…
+                    </div>
+                </div>
+                <footer class="library-formats">
+                    VDOCX · DOCX · VPPTX · PPTX · MD · TXT · HTML
+                </footer>
+            </section>
+
             <div class="outline-header">
                 <div>
                     <span class="outline-kicker">DOCUMENT MAP</span>
@@ -1111,6 +1136,7 @@
     <script src="scriptorium-runtime.js"></script>
     <script src="scriptorium-network-fonts.js"></script>
     <script src="scriptorium-source-editor.js"></script>
+    <script src="scriptorium-library.js"></script>
     <script src="scriptorium-session.js"></script>
     <script src="scriptorium-flow-adapter.js"></script>
     <script src="scriptorium-deck-adapter.js"></script>

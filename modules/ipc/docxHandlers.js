@@ -23,6 +23,9 @@ const PROJECT_EXTENSIONS = new Set(['.vdocx', '.vpptx']);
 const EXPORT_FORMATS = new Set(['html-flow', 'html-paged', 'pdf']);
 const IMPORT_EXTENSIONS = new Set(scriptoriumImportService.SUPPORTED_EXTENSIONS);
 const OPEN_EXTENSIONS = new Set([...PROJECT_EXTENSIONS, ...IMPORT_EXTENSIONS]);
+const LIBRARY_EXTENSIONS = new Set([
+    '.vdocx', '.vpptx', '.docx', '.pptx', '.txt', '.html', '.md',
+]);
 const RECENT_LIMIT = 12;
 const AGENT_REQUEST_TIMEOUT_MS = 30000;
 const AGENT_REVIEW_TIMEOUT_MS = 5 * 60 * 1000;
@@ -72,6 +75,7 @@ let projectRoot = null;
 let recentFilePath = null;
 let stylePackFilePath = null;
 let svgAssetFilePath = null;
+let documentLibraryRoots = [];
 let initialized = false;
 let fontCache = null;
 let networkFontCache = null;
@@ -499,6 +503,76 @@ async function writeSvgAssetPacks(_event, packs = []) {
         success: true,
         count: packs.length,
         size: Buffer.byteLength(content, 'utf8'),
+    };
+}
+
+function compareLibraryEntries(left, right) {
+    if (left.type !== right.type) return left.type === 'directory' ? -1 : 1;
+    return left.name.localeCompare(right.name, 'zh-CN', {
+        sensitivity: 'base',
+        numeric: true,
+    });
+}
+
+async function scanDocumentLibraryDirectory(directoryPath) {
+    let directoryEntries = [];
+    try {
+        directoryEntries = await fs.readdir(directoryPath, {
+            withFileTypes: true,
+        });
+    } catch (error) {
+        if (error.code === 'ENOENT' || error.code === 'EACCES') return [];
+        throw error;
+    }
+
+    const entries = [];
+    for (const entry of directoryEntries) {
+        if (entry.name.startsWith('.') || entry.isSymbolicLink()) continue;
+        const entryPath = path.join(directoryPath, entry.name);
+        if (entry.isDirectory()) {
+            const children = await scanDocumentLibraryDirectory(entryPath);
+            if (children.length) {
+                entries.push({
+                    type: 'directory',
+                    name: entry.name,
+                    path: entryPath,
+                    children,
+                });
+            }
+            continue;
+        }
+        const extension = path.extname(entry.name).toLowerCase();
+        if (!entry.isFile() || !LIBRARY_EXTENSIONS.has(extension)) continue;
+        const stat = await fs.stat(entryPath);
+        entries.push({
+            type: 'file',
+            name: entry.name,
+            path: entryPath,
+            extension: extension.slice(1),
+            size: stat.size,
+            modifiedAt: stat.mtimeMs,
+        });
+    }
+    return entries.sort(compareLibraryEntries);
+}
+
+async function readDocumentLibrary() {
+    const roots = [];
+    for (const root of documentLibraryRoots) {
+        await fs.ensureDir(root.path);
+        const children = await scanDocumentLibraryDirectory(root.path);
+        roots.push({
+            id: root.id,
+            label: root.label,
+            description: root.description,
+            path: root.path,
+            children,
+        });
+    }
+    return {
+        success: true,
+        extensions: [...LIBRARY_EXTENSIONS].map((item) => item.slice(1)),
+        roots,
     };
 }
 
@@ -1213,6 +1287,34 @@ function initialize(params) {
         'Scriptorium',
         'svg-assets.json'
     );
+    documentLibraryRoots = [
+        {
+            id: 'documents',
+            label: '用户文档',
+            description: 'VDOCX 与导入文档',
+            path: path.join(
+                params.appDataRoot,
+                'ScriptoriumDocument',
+                'VDOCX'
+            ),
+        },
+        {
+            id: 'presentations',
+            label: '用户演示',
+            description: 'VPPTX 与 PowerPoint 演示',
+            path: path.join(
+                params.projectRoot,
+                'ScriptoriumDocument',
+                'VPPTX'
+            ),
+        },
+        {
+            id: 'notes',
+            label: '用户笔记',
+            description: 'Markdown 与纯文本笔记',
+            path: path.join(params.appDataRoot, 'Notemodules'),
+        },
+    ];
 
     windowService.register(WINDOW_APP_IDS.DOCX, {
         owner: 'docxHandlers',
@@ -1241,6 +1343,7 @@ function initialize(params) {
     );
     ipcMain.handle('docx:save', saveDocument);
     ipcMain.handle('scriptorium:export-rich-document', exportRichDocument);
+    ipcMain.handle('scriptorium:document-library', readDocumentLibrary);
     ipcMain.handle('docx:recent-list', readRecentFiles);
     ipcMain.handle('scriptorium:style-packs-load', readStylePacks);
     ipcMain.handle('scriptorium:style-packs-save', writeStylePacks);
@@ -1253,6 +1356,8 @@ module.exports = {
     initialize,
     openDocxWindow,
     requestAgentOperation,
+    scanDocumentLibraryDirectory,
+    readDocumentLibrary,
     writeProjectArtifact: (filePath, bytes) =>
         atomicWrite(filePath, Buffer.from(bytes || [])),
     getDocxWindow: () => docxWindow,

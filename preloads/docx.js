@@ -22,6 +22,8 @@ const scriptoriumAPI = Object.freeze({
         ipcRenderer.invoke('scriptorium:resolve-font-url', payload),
     save: (payload) => ipcRenderer.invoke('docx:save', payload),
     exportRichDocument: (payload) => ipcRenderer.invoke('scriptorium:export-rich-document', payload),
+    listDocumentLibrary: () =>
+        ipcRenderer.invoke('scriptorium:document-library'),
     listRecent: () => ipcRenderer.invoke('docx:recent-list'),
     loadStylePacks: () =>
         ipcRenderer.invoke('scriptorium:style-packs-load'),

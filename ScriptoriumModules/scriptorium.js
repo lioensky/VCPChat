@@ -45,6 +45,7 @@
         runtime: window.ScriptoriumRuntime,
         networkFonts: window.ScriptoriumNetworkFonts,
         sourceEditor: window.ScriptoriumSourceEditor,
+        library: window.ScriptoriumLibrary,
         session: window.ScriptoriumSession,
         shell: window.ScriptoriumShell,
     };
@@ -71,6 +72,8 @@
         save: (payload) => nativeApi.save(payload),
         exportRichDocument: (payload) =>
             nativeApi.exportRichDocument(payload),
+        listDocumentLibrary: () =>
+            nativeApi.listDocumentLibrary(),
         listRecent: () => nativeApi.listRecent(),
         loadStylePacks: () =>
             nativeApi.loadStylePacks?.() || [],
@@ -118,6 +121,7 @@
     let sourcePort = null;
     let exportPort = null;
     let sessionPort = null;
+    let libraryPort = null;
     let mediaPort = null;
     let findPort = null;
     let navigationPort = null;
@@ -473,6 +477,7 @@
         createDeck: (...args) => sessionPort?.createDeck(...args),
         showHome: (...args) => sessionPort?.showHome(...args),
         open: (...args) => sessionPort?.open(...args),
+        openPath: (...args) => sessionPort?.openPath(...args),
         import: (...args) => sessionPort?.import(...args),
         save: (...args) => sessionPort?.save(...args),
         close: (...args) => sessionPort?.close(...args),
@@ -658,6 +663,14 @@
                 },
             });
 
+        libraryPort =
+            window.ScriptoriumLibrary.createLibraryController({
+                elements,
+                persistencePort,
+                openPath: (filePath) =>
+                    sessionFacade.openPath(filePath),
+            });
+
         sessionPort =
             window.ScriptoriumSession.createSessionController({
                 documentPort,
@@ -674,6 +687,7 @@
                 lineagePort,
                 navigationPort,
                 lineageUiPort,
+                libraryPort,
                 editorResolver,
                 getAdapter: adapterResolver,
                 resolveAdapter,
@@ -778,6 +792,7 @@
 
         [
             sessionPort,
+            libraryPort,
             mediaPort,
             findPort,
             navigationPort,
@@ -862,6 +877,7 @@
         await Promise.all([
             loadFonts(),
             sessionPort.renderRecent(),
+            libraryPort.refresh(),
             stylePort.initialize(),
             svgAssetPort.initialize(),
         ]);
