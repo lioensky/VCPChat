@@ -13,7 +13,7 @@
     let activeViewId = 'home';
     let sidebarResizeObserver = null;
     let activeCreateModal = null;
-    let embeddedStateDisposer = null;
+    let embeddedAppController = null;
     let restoringTabs = false;
     let pendingTabRestore = null;
     let teardownPromise = null;
@@ -147,7 +147,7 @@
 
     function syncEmbeddedBounds(view) {
         if (view?.kind !== 'embedded' || !view.container.isConnected) return;
-        getDesktopApi()?.desktopSetEmbeddedVchatAppBounds?.(view.action, getEmbeddedBounds(view.container)).catch(error => {
+        embeddedAppController?.setBounds(view.action, getEmbeddedBounds(view.container))?.catch(error => {
             console.warn(`[NextUI] Failed to resize embedded app ${view.action}:`, error);
         });
     }
@@ -157,7 +157,7 @@
         const action = mounted && !previewSuspended && !restoringTabs && !overlayCoordinator?.active && activeView?.kind === 'embedded'
             ? activeView.action
             : null;
-        getDesktopApi()?.desktopActivateEmbeddedVchatApp?.(action).then(result => {
+        embeddedAppController?.activate(action)?.then(result => {
             if (result?.success && activeView?.kind === 'embedded') syncEmbeddedBounds(activeView);
         }).catch(error => console.warn('[NextUI] Failed to activate embedded app:', error));
     }
@@ -330,8 +330,7 @@
     async function openEmbeddedApp(app) {
         if (!mounted) return;
         const generation = mountGeneration;
-        const api = getDesktopApi();
-        if (!api?.desktopCreateEmbeddedVchatApp) {
+        if (!embeddedAppController?.supported) {
             await window.trayManager?.launchApp(app);
             return;
         }
@@ -370,16 +369,16 @@
         setView(viewId);
 
         try {
-            const result = await api.desktopCreateEmbeddedVchatApp(app.action);
+            const result = await embeddedAppController.create(app.action);
             if (!mounted || generation !== mountGeneration || !views.has(viewId)) {
-                if (result?.success) await api.desktopCloseEmbeddedVchatApp?.(app.action);
+                if (result?.success) await embeddedAppController.close(app.action);
                 return;
             }
             if (!result?.success) throw new Error(result?.error || '应用无法内嵌打开。');
             container.dataset.state = 'ready';
             if (activeViewId === viewId && !restoringTabs) {
                 syncEmbeddedBounds(view);
-                await api.desktopActivateEmbeddedVchatApp?.(app.action);
+                await embeddedAppController.activate(app.action);
             }
         } catch (error) {
             console.error(`[NextUI] Failed to open embedded app ${app.id}:`, error);
@@ -393,7 +392,7 @@
         if (!view || view.kind !== 'embedded') return;
         view.tab.classList.add('is-detaching');
         try {
-            const result = await getDesktopApi()?.desktopDetachEmbeddedVchatApp?.(view.action, point);
+            const result = await embeddedAppController?.detach(view.action, point);
             if (!result?.success) throw new Error(result?.error || '无法打开独立窗口。');
             closeView(viewId, { skipEmbeddedClose: true });
         } catch (error) {
@@ -415,7 +414,7 @@
             if (view.kind === 'embedded') {
                 if (!view.scope) view.resizeObserver?.disconnect();
                 if (!options.skipEmbeddedClose) {
-                    getDesktopApi()?.desktopCloseEmbeddedVchatApp?.(view.action).catch(error => {
+                    embeddedAppController?.close(view.action)?.catch(error => {
                         console.warn(`[NextUI] Failed to close embedded app ${view.action}:`, error);
                     });
                 }
@@ -452,7 +451,7 @@
             const apps = window.trayManager?.getApps?.() || [];
             let authoritative = { sessions: [], activeAction: null };
             try {
-                authoritative = await getDesktopApi()?.desktopListEmbeddedVchatApps?.() || authoritative;
+                authoritative = await embeddedAppController?.list() || authoritative;
             } catch (error) {
                 console.warn('[NextUI] Failed to reconcile embedded app sessions:', error);
             }
@@ -511,16 +510,13 @@
             activeViewId,
             tabs: [...views.values()].map(view => ({ kind: view.kind, id: view.app.id })),
         } : null;
-        const desktopApi = getDesktopApi();
         const embeddedActions = [...views.values()]
             .filter(view => view.kind === 'embedded')
             .map(view => view.action);
         // Native WebContentsViews paint above the renderer DOM. Hide them in
         // Main before the page is allowed to cross back to Classic, then
         // destroy the sessions. The local host can be removed immediately.
-        const hidePromise = desktopApi?.desktopActivateEmbeddedVchatApp
-            ? desktopApi.desktopActivateEmbeddedVchatApp(null)
-            : Promise.resolve({ success: true });
+        const hidePromise = embeddedAppController?.hide?.() || Promise.resolve({ success: true });
         if (preservedSession) restoringTabs = true;
         [...views.keys()].forEach(viewId => closeView(viewId, { skipEmbeddedClose: true }));
         closeLaunchpad();
@@ -537,11 +533,7 @@
             console.warn('[NextUI] Failed to hide embedded apps before teardown:', error);
         }
         try {
-            if (desktopApi?.desktopCloseAllEmbeddedVchatApps) {
-                await desktopApi.desktopCloseAllEmbeddedVchatApps();
-            } else if (desktopApi?.desktopCloseEmbeddedVchatApp) {
-                await Promise.all(embeddedActions.map(action => desktopApi.desktopCloseEmbeddedVchatApp(action)));
-            }
+            await embeddedAppController?.closeAll(embeddedActions);
         } catch (error) {
             console.warn('[NextUI] Failed to close all embedded apps:', error);
         }
@@ -983,8 +975,7 @@
     }
 
     function setupEmbeddedAppState() {
-        if (embeddedStateDisposer) return;
-        embeddedStateDisposer = getDesktopApi()?.onEmbeddedVchatAppState?.(payload => {
+        embeddedAppController?.mount(mountScope, payload => {
             const view = [...views.values()].find(candidate => candidate.kind === 'embedded' && candidate.action === payload?.action);
             if (!view) return;
             if (payload?.state === 'closed') {
@@ -994,28 +985,25 @@
             if (payload?.state !== 'error') return;
             view.container.dataset.state = 'error';
             view.container.innerHTML = `<div class="next-ui-embedded-app-status is-error"><span class="vcp-ui-icon" aria-hidden="true">error</span><span>${payload.error || '应用运行异常'}</span></div>`;
-        }) || null;
-        if (embeddedStateDisposer && mountScope) {
-            mountScope.own(() => {
-                embeddedStateDisposer?.();
-                embeddedStateDisposer = null;
-            }, 'embedded-state-subscription', 'subscription');
-        }
+        });
     }
 
     function mount() {
         if (mounted || document.documentElement.dataset.uiMode !== 'next') return;
         if (teardownPromise) return;
         const OverlayCoordinator = window.VCPNextShell?.OverlayCoordinator;
+        const EmbeddedAppController = window.VCPNextShell?.EmbeddedAppController;
         if (!OverlayCoordinator) throw new Error('OverlayCoordinator is unavailable.');
+        if (!EmbeddedAppController) throw new Error('EmbeddedAppController is unavailable.');
         mounted = true;
         mountGeneration += 1;
         const LifecycleScope = window.VCPLifecycle?.LifecycleScope;
         mountScope = LifecycleScope ? new LifecycleScope('next:tab-host') : null;
         mountAbortController = mountScope ? null : new AbortController();
+        embeddedAppController = new EmbeddedAppController({ getApi: getDesktopApi });
         overlayCoordinator = new OverlayCoordinator({
             document,
-            hideEmbeddedView: () => getDesktopApi()?.desktopActivateEmbeddedVchatApp?.(null),
+            hideEmbeddedView: () => embeddedAppController?.hide(),
             reconcileEmbeddedView: syncEmbeddedActivation,
         });
         overlayCoordinator.mount(mountScope);
@@ -1062,10 +1050,7 @@
         accountMenuController = null;
         sidebarResizeObserver?.disconnect();
         sidebarResizeObserver = null;
-        if (!mountScope) {
-            embeddedStateDisposer?.();
-            embeddedStateDisposer = null;
-        }
+        if (!mountScope) embeddedAppController?.dispose();
         pendingTabRestore = null;
         restoringTabs = false;
         closeCreateDialog();
@@ -1099,7 +1084,7 @@
         const host = document.getElementById('nextUiInternalAppHost');
         if (host) host.hidden = true;
         try {
-            await getDesktopApi()?.desktopActivateEmbeddedVchatApp?.(null);
+            await embeddedAppController?.hide();
         } catch (error) {
             console.warn('[NextUI] Failed to suspend embedded app preview:', error);
         }

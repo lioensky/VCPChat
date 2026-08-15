@@ -73,6 +73,7 @@ window.sessionStorage.setItem('vcpchat.nextUi.openTabs.v1', JSON.stringify({
 
 window.eval(fs.readFileSync(path.join(root, 'modules/ui-system/lifecycle-scope.js'), 'utf8'));
 window.eval(fs.readFileSync(path.join(root, 'modules/ui-system/next-shell/overlay-coordinator.js'), 'utf8'));
+window.eval(fs.readFileSync(path.join(root, 'modules/ui-system/next-shell/embedded-app-controller.js'), 'utf8'));
 window.eval(fs.readFileSync(path.join(root, 'modules/topTabManager.js'), 'utf8'));
 window.topTabManager.init();
 await new Promise(resolve => setTimeout(resolve, 0));
