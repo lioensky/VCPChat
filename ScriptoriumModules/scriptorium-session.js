@@ -78,6 +78,7 @@
                 // 工作区必须先进入可布局状态，再建立依赖宿主尺寸、ShadowRoot
                 // 和可见区域的编辑 Surface。禁止在 hidden 祖先中预渲染后仅凭
                 // 模式切换返回值推断画布已经可用。
+                document.body.classList.remove('home-state');
                 if (elements['welcome-state']) {
                     elements['welcome-state'].hidden = true;
                 }
@@ -376,8 +377,12 @@
                     if (elements['welcome-state']) {
                         elements['welcome-state'].hidden = false;
                     }
+                    document.body.classList.add('home-state');
                     context.surfacePort?.refreshControls?.();
-                    await renderRecent();
+                    await Promise.all([
+                        renderRecent(),
+                        context.libraryPort?.refresh?.(),
+                    ]);
                     return true;
                 }
             );

@@ -226,6 +226,13 @@ ${product.css}
                 notificationPort.show?.('请先选择一段文字。', 'info');
                 return false;
             }
+
+            // “高级样式”按钮位于文字右键菜单内部，点击它不会触发菜单的
+            // 外部 pointerdown 自动关闭逻辑。模态窗口打开前显式收起菜单，
+            // 避免浮层继续拦截交互或遮挡样式库。
+            if (elements['text-context-menu']) {
+                elements['text-context-menu'].hidden = true;
+            }
             elements['style-library-dialog'].hidden = false;
             populateCategories();
             renderList();

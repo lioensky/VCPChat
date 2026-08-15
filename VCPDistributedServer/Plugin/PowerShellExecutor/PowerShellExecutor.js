@@ -355,6 +355,7 @@ const childProcesses = new Set();
 let guiDataListener = null; // 新增：保存GUI监听器的引用
 let isExecutingCommand = false; // 仅表示 AI 短命令执行中；不要用于交互式 TUI 会话
 let interactiveMode = false; // 表示当前 PTY 被 snow/codex/claude 等交互式程序占用
+let activeCommandAbort = null; // 当前同步命令的本地等待中止器；供并发 interrupt 工具调用解除阻塞
 let lastKnownSize = { cols: 80, rows: 24 }; // GUI 最近一次 fit 出来的尺寸，用作 PTY 初始尺寸
 
 // --- 配置加载 ---
@@ -685,6 +686,7 @@ function createNewPtySession() {
     // newSession 是交互模式的一期低成本复位入口。
     interactiveMode = false;
     isExecutingCommand = false;
+    activeCommandAbort = null;
 
     // 如果已存在旧进程，先销毁它
     if (ptyProcess) {
@@ -750,6 +752,7 @@ function createNewPtySession() {
         guiDataListener = null;
         isExecutingCommand = false;
         interactiveMode = false;
+        activeCommandAbort = null;
     });
 }
 
@@ -878,16 +881,34 @@ function executeSingleCommandInPty(ptyProcess, singleCommand) {
         let hasSeenStartBoundary = false;
         let settled = false;
         let tempScriptPath = null;
+        let listenerDisposable = null;
+        let timeoutId = null;
 
         const startBoundary = `__VCP_COMMAND_START_${crypto.randomUUID()}__`;
         const endBoundary = `__VCP_COMMAND_END_${crypto.randomUUID()}__`;
 
-        const cleanupListener = (listenerDisposable, timeoutId) => {
-            if (timeoutId) {
-                clearTimeout(timeoutId);
+        const abortThisCommand = () => {
+            if (settled) {
+                return false;
             }
-            if (listenerDisposable && typeof listenerDisposable.dispose === 'function') {
-                listenerDisposable.dispose();
+
+            settled = true;
+            // ETX 等价于用户在真实终端按下 Ctrl+C，用于中断当前前台命令。
+            ptyProcess.write('\x03');
+            cleanupListener(listenerDisposable, timeoutId);
+            reject(new Error('命令已被 interrupt 动作中止。'));
+            return true;
+        };
+
+        const cleanupListener = (disposable, commandTimeoutId) => {
+            if (commandTimeoutId) {
+                clearTimeout(commandTimeoutId);
+            }
+            if (disposable && typeof disposable.dispose === 'function') {
+                disposable.dispose();
+            }
+            if (activeCommandAbort === abortThisCommand) {
+                activeCommandAbort = null;
             }
             if (tempScriptPath) {
                 try {
@@ -905,7 +926,7 @@ function executeSingleCommandInPty(ptyProcess, singleCommand) {
             }
         };
 
-        const listenerDisposable = ptyProcess.onData((data) => {
+        listenerDisposable = ptyProcess.onData((data) => {
             if (settled) {
                 return;
             }
@@ -939,7 +960,7 @@ function executeSingleCommandInPty(ptyProcess, singleCommand) {
             flushToGui(chunk);
         });
 
-        const timeoutId = setTimeout(() => {
+        timeoutId = setTimeout(() => {
             if (settled) {
                 return;
             }
@@ -947,6 +968,8 @@ function executeSingleCommandInPty(ptyProcess, singleCommand) {
             cleanupListener(listenerDisposable, timeoutId);
             reject(new Error(`Command "${singleCommand}" timed out after 60 seconds.`));
         }, 60000);
+
+        activeCommandAbort = abortThisCommand;
 
         try {
             const tempScriptName = `vcp-powershell-${crypto.randomUUID()}.ps1`;
@@ -982,13 +1005,39 @@ function executeSingleCommandInPty(ptyProcess, singleCommand) {
 
 
 async function processToolCall(args) {
-    const action = typeof args.action === 'string' ? args.action.trim() : 'execute';
+    const declaredCommands = new Set([
+        'ExecutePowerShell',
+        'StartInteractive',
+        'QueryVisible',
+        'InterruptPowerShell',
+        'EndInteractive'
+    ]);
+    const declaredCommand = typeof args.command === 'string' && declaredCommands.has(args.command.trim())
+        ? args.command.trim()
+        : null;
+
+    // 新清单格式使用 command 选择能力、powershell 传递脚本文本。
+    // 同时保留旧 action + command 调用格式，避免已有提示词和调用方立即失效。
+    const actionByDeclaredCommand = {
+        ExecutePowerShell: 'execute',
+        StartInteractive: 'startInteractive',
+        QueryVisible: 'queryVisible',
+        InterruptPowerShell: 'interrupt',
+        EndInteractive: 'endInteractive'
+    };
+    const action = declaredCommand
+        ? actionByDeclaredCommand[declaredCommand]
+        : (typeof args.action === 'string' ? args.action.trim() : 'execute');
 
     if (action.startsWith('queryVisible')) {
         ensureGuiWindow();
-        
-        const match = action.match(/^queryVisible(\d+)?$/);
-        const maxLines = match && match[1] ? parseInt(match[1], 10) : null;
+
+        const legacyMatch = action.match(/^queryVisible(\d+)?$/);
+        const requestedMaxLines = declaredCommand === 'QueryVisible' ? args.maxLines : (legacyMatch && legacyMatch[1]);
+        const parsedMaxLines = requestedMaxLines === undefined || requestedMaxLines === null || requestedMaxLines === ''
+            ? null
+            : Number.parseInt(requestedMaxLines, 10);
+        const maxLines = Number.isInteger(parsedMaxLines) && parsedMaxLines > 0 ? parsedMaxLines : null;
         
         return new Promise((resolve, reject) => {
             const timeout = setTimeout(() => {
@@ -1010,19 +1059,51 @@ async function processToolCall(args) {
         return { content: [{ type: 'text', text: 'Interactive mode flag cleared. The existing PTY session was not terminated.' }] };
     }
 
-    // --- 1. 解析和排序命令 ---
+    if (action === 'interrupt') {
+        if (!ptyProcess) {
+            return { content: [{ type: 'text', text: 'No active PowerShell session to interrupt.' }] };
+        }
+
+        if (activeCommandAbort) {
+            const interrupted = activeCommandAbort();
+            return { content: [{ type: 'text', text: interrupted
+                ? 'Interrupt signal sent. The active synchronous command wait was cancelled.'
+                : 'The synchronous command had already completed before it could be interrupted.' }] };
+        }
+
+        if (interactiveMode) {
+            ptyProcess.write('\x03');
+            return { content: [{ type: 'text', text: 'Ctrl+C was sent to the interactive foreground program. The interactive mode flag remains set.' }] };
+        }
+
+        return { content: [{ type: 'text', text: 'The PowerShell session is active, but no AI-started foreground command is currently running.' }] };
+    }
+
+    // --- 1. 解析和排序 PowerShell 脚本 ---
+    // 新格式：powershell, powershell1, powershell2...
+    // 旧格式：command, command1, command2...
+    const scriptParameterPrefix = declaredCommand ? 'powershell' : 'command';
     const commandEntries = Object.entries(args)
-        .filter(([key]) => key.startsWith('command'))
+        .filter(([key]) => key.startsWith(scriptParameterPrefix))
         .map(([key, value]) => {
-            const match = key.match(/^command(\d*)$/);
+            const match = key.match(new RegExp(`^${scriptParameterPrefix}(\\d*)$`));
             const index = match ? (match[1] === '' ? 0 : parseInt(match[1], 10)) : -1;
             return { key, value, index };
         })
-        .filter(item => item.index !== -1)
+        .filter(item => item.index !== -1 && typeof item.value === 'string' && item.value.trim())
         .sort((a, b) => a.index - b.index);
 
+    // 新格式中的 args.command 是能力选择器，绝不能作为待执行脚本。
+    if (declaredCommand) {
+        commandEntries.forEach(entry => {
+            entry.value = entry.value.trim();
+        });
+    }
+
     if (commandEntries.length === 0) {
-        throw new Error('未提供任何有效的 command 参数 (例如 command, command1, command2)。');
+        throw new Error(declaredCommand
+            ? '未提供任何有效的 powershell 参数 (例如 powershell, powershell1, powershell2)。'
+            : '未提供任何有效的 command 参数 (例如 command, command1, command2)。');
     }
 
     if (action !== 'execute' && action !== 'startInteractive') {
@@ -1198,6 +1279,7 @@ function cleanup() {
     guiDataListener = null;
     isExecutingCommand = false;
     interactiveMode = false;
+    activeCommandAbort = null;
 }
 
 // 导出 processToolCall 函数、GUI 打开函数和 cleanup 函数

@@ -35,6 +35,11 @@ function registerMinimalIpc() {
         success: false,
         canceled: true,
     }));
+    ipcMain.handle('scriptorium:style-packs-load', () => []);
+    ipcMain.handle('scriptorium:style-packs-save', (_event, packs = []) => ({
+        success: true,
+        count: packs.length,
+    }));
     ipcMain.handle('scriptorium:svg-assets-load', () => []);
     ipcMain.handle('scriptorium:svg-assets-save', (_event, packs = []) => ({
         success: true,
@@ -80,7 +85,10 @@ app.whenReady().then(async () => {
             '[data-vdoc-edit-key][data-vdoc-edit-type="markdown"]'
         )].find((node) =>
             node.dataset.vdocFlowKind !== 'stable-atomic'
-            && Boolean(node.querySelector('p'))
+            // 必须命中普通 paragraph token。旧条件 querySelector('p')
+            // 会优先选中 blockquote > p，使测试完全绕过“静态 p 被拆成
+            // 多个逐行 p，段级 margin 重复执行”的真实回归。
+            && node.firstElementChild?.matches('p')
             && (node.textContent || '').trim().length > 4
         );
         if (!shell) return { available: false };
@@ -116,9 +124,15 @@ app.whenReady().then(async () => {
             editor,
             NodeFilter.SHOW_TEXT
         );
-        let caretNode = textNode.nextNode();
-        while (caretNode && (caretNode.nodeValue || '').length < 4) {
-            caretNode = textNode.nextNode();
+        let caretNode = null;
+        let candidate = textNode.nextNode();
+        while (candidate) {
+            const parent = candidate.parentElement;
+            if ((candidate.nodeValue || '').length
+                && !parent?.closest?.('[data-vdoc-md-marker]')) {
+                caretNode = candidate;
+            }
+            candidate = textNode.nextNode();
         }
         if (!caretNode) {
             return {
@@ -127,10 +141,10 @@ app.whenReady().then(async () => {
                 internalCaretAvailable: false
             };
         }
-        const caretOffset = Math.max(
-            1,
-            Math.min(caretNode.length - 1, Math.floor(caretNode.length / 2))
-        );
+        // 核心回归：光标必须位于段落短尾，而不是正文中部。末端 Enter
+        // 只写入真换行与显式 ↵ 锚点，使 Markdown、渲染、拖选与源码
+        // 使用同一条可观察的换行语义。
+        const caretOffset = caretNode.length;
         const endRange = document.createRange();
         endRange.setStart(caretNode, caretOffset);
         endRange.collapse(true);
@@ -234,17 +248,16 @@ app.whenReady().then(async () => {
                 editorActivated: true,
                 enterWasHandled: firstEnter?.handled === true,
                 enterAddsOneCompositeBreak:
-                    afterEnter.length === before.length + 3
-                    && afterEnter.includes('  \\n')
-                    && !afterEnter.includes('\\u200B'),
+                    afterEnter.length === before.length + 2
+                    && afterEnter.includes('\\n↵'),
                 threeConsecutiveEntersHandled:
                     secondEnter?.handled === true
                     && thirdEnter?.handled === true,
                 editorSurvivesConsecutiveEnterReflow: false
             };
         }
-        const protectedBreakCount = (
-            afterThreeEnters.match(/\\u200B  \\n/g) || []
+        const paragraphBreakCount = (
+            afterThreeEnters.match(/^↵$/gm) || []
         ).length;
         const editorLineRects = [...editor.querySelectorAll(
             '.vdoc-md-live-preview-line'
@@ -273,6 +286,9 @@ app.whenReady().then(async () => {
         const editorLineSteps = editorLineRects.slice(1).map((rect, index) =>
             rect.top - editorLineRects[index].top
         );
+        const paragraphLinesAreNeutralBoxes = editorLineRects
+            .filter((line) => line.kind === 'paragraph')
+            .every((line) => line.tag === 'DIV');
 
         const backspaceEvent = new InputEvent('beforeinput', {
             inputType: 'deleteContentBackward',
@@ -296,7 +312,13 @@ app.whenReady().then(async () => {
         const editorAfterBackspace = root.querySelector(
             '[data-vdoc-flow-source-editor="true"]'
         );
+        // 后续 retry Enter 会同步重建编辑树，使这里保存的旧节点断开。
+        // 必须在派发下一次 Enter 前快照退格后的实际存活状态。
+        const editorSurvivedBackspace =
+            Boolean(editorAfterBackspace?.isConnected);
         let enterAfterBackspace = null;
+        let placeholderInput = null;
+        let repeatedPlaceholderTyping = null;
         if (editorAfterBackspace) {
             const retryEnterEvent = new KeyboardEvent('keydown', {
                 key: 'Enter',
@@ -325,6 +347,95 @@ app.whenReady().then(async () => {
                 ),
                 sourceChanged: source() !== afterBackspace
             };
+
+            const beforePlaceholderInput = source();
+            const insertTextEvent = new InputEvent('beforeinput', {
+                inputType: 'insertText',
+                data: '新行文字',
+                bubbles: true,
+                composed: true,
+                cancelable: true
+            });
+            editorAfterRetry?.dispatchEvent(insertTextEvent);
+            await new Promise((resolve) =>
+                requestAnimationFrame(() => requestAnimationFrame(resolve))
+            );
+            const afterPlaceholderInput = source();
+            placeholderInput = {
+                handled: insertTextEvent.defaultPrevented,
+                inserted: afterPlaceholderInput.includes('新行文字'),
+                placeholderReplaced:
+                    afterPlaceholderInput.length
+                    === beforePlaceholderInput.length - 1 + '新行文字'.length
+                    && !afterPlaceholderInput.includes('↵新行文字')
+                    && !afterPlaceholderInput.includes('新行文字↵')
+            };
+
+            const stressFailures = [];
+            for (let index = 0; index < 24; index += 1) {
+                const activeEditor = root.querySelector(
+                    '[data-vdoc-flow-source-editor="true"]'
+                );
+                const stressEnter = new KeyboardEvent('keydown', {
+                    key: 'Enter',
+                    bubbles: true,
+                    composed: true,
+                    cancelable: true
+                });
+                activeEditor?.dispatchEvent(stressEnter);
+                await new Promise((resolve) =>
+                    requestAnimationFrame(() => requestAnimationFrame(resolve))
+                );
+
+                const editorWithPlaceholder = root.querySelector(
+                    '[data-vdoc-flow-source-editor="true"]'
+                );
+                const value = ' 压力输入' + index;
+                const stressInput = new InputEvent('beforeinput', {
+                    inputType: 'insertText',
+                    data: value,
+                    bubbles: true,
+                    composed: true,
+                    cancelable: true
+                });
+                editorWithPlaceholder?.dispatchEvent(stressInput);
+                await new Promise((resolve) =>
+                    requestAnimationFrame(() => requestAnimationFrame(resolve))
+                );
+
+                const currentSource = source();
+                const expected = '压力输入' + index;
+                const currentEditor = root.querySelector(
+                    '[data-vdoc-flow-source-editor="true"]'
+                );
+                const currentSelection = root.getSelection
+                    ? root.getSelection()
+                    : window.getSelection();
+                const valid = stressEnter.defaultPrevented
+                    && stressInput.defaultPrevented
+                    && currentSource.includes('\\n' + expected)
+                    && !currentSource.includes('\\n↵' + value)
+                    && !currentSource.includes('\\n' + value)
+                    && root.activeElement === currentEditor
+                    && Boolean(
+                        currentEditor
+                        && currentSelection?.anchorNode
+                        && currentEditor.contains(currentSelection.anchorNode)
+                    );
+                if (!valid) {
+                    stressFailures.push({
+                        index,
+                        stressEnterHandled: stressEnter.defaultPrevented,
+                        stressInputHandled: stressInput.defaultPrevented,
+                        sourceTail: currentSource.slice(-120)
+                    });
+                    break;
+                }
+            }
+            repeatedPlaceholderTyping = {
+                passed: stressFailures.length === 0,
+                failures: stressFailures
+            };
         }
 
         return {
@@ -332,9 +443,8 @@ app.whenReady().then(async () => {
             editorActivated: true,
             enterWasHandled: firstEnter?.handled === true,
             enterAddsOneCompositeBreak:
-                afterEnter.length === before.length + 3
-                && afterEnter.includes('  \\n')
-                && !afterEnter.includes('\\u200B'),
+                afterEnter.length === before.length + 2
+                && afterEnter.includes('\\n↵'),
             threeConsecutiveEntersHandled:
                 secondEnter?.handled === true
                 && thirdEnter?.handled === true,
@@ -355,18 +465,25 @@ app.whenReady().then(async () => {
                 && firstCycleRetryEnter?.editorConnected === true
                 && firstCycleRetryEnter?.caretInEditor === true
                 && afterFirstCycleRetryEnter === afterEnter,
-            protectedEmptyLinesRendered: protectedBreakCount === 2,
+            protectedEmptyLinesRendered: paragraphBreakCount === 3,
+            paragraphLinesDoNotRepeatParagraphBoxes:
+                paragraphLinesAreNeutralBoxes,
             backspaceWasHandled: backspaceEvent.defaultPrevented,
             oneBackspaceRemovesLastProtectedLine:
                 afterBackspace.length
-                === afterThreeEnters.length - '\\u200B  \\n'.length,
-            editorSurvivesBackspace:
-                Boolean(editorAfterBackspace?.isConnected),
+                === afterThreeEnters.length - '\\n↵'.length,
+            editorSurvivesBackspace: editorSurvivedBackspace,
             enterAfterBackspaceWorks:
                 enterAfterBackspace?.handled === true
                 && enterAfterBackspace?.editorConnected === true
                 && enterAfterBackspace?.caretInEditor === true
                 && enterAfterBackspace?.sourceChanged === true,
+            typingReplacesParagraphBreak:
+                placeholderInput?.handled === true
+                && placeholderInput?.inserted === true
+                && placeholderInput?.placeholderReplaced === true,
+            repeatedPlaceholderTypingIsStable:
+                repeatedPlaceholderTyping?.passed === true,
             diagnostic: {
                 inputType: backspaceEvent.inputType,
                 editorConnected: editor.isConnected,
@@ -374,7 +491,7 @@ app.whenReady().then(async () => {
                 selectionBeforeBackspace,
                 sourceDeltaAfterBackspace:
                     afterBackspace.length - before.length,
-                protectedBreakCount,
+                paragraphBreakCount,
                 editorLineRects,
                 editorLineSteps,
                 firstEnter,
@@ -382,7 +499,9 @@ app.whenReady().then(async () => {
                 firstCycleRetryEnter,
                 secondEnter,
                 thirdEnter,
-                enterAfterBackspace
+                enterAfterBackspace,
+                placeholderInput,
+                repeatedPlaceholderTyping
             }
         };
     })()`);

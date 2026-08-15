@@ -12,6 +12,7 @@
     function createDocumentStore(options = {}) {
         const core = options.core;
         const containerModule = options.containerModule;
+        const settingsPort = options.settingsPort || {};
         if (!core) throw new TypeError('Document store requires VDocCore.');
 
         const listeners = new Map();
@@ -143,7 +144,11 @@
             state.resourceResolver = containerModule?.createRuntimeResolver?.(
                 normalized,
                 state.resourceData,
-                state.resourceObjectUrls
+                state.resourceObjectUrls,
+                {
+                    trustNetworkFonts: () =>
+                        settingsPort.get?.('trustNetworkFonts') === true,
+                }
             ) || null;
             state.dirty = metadata.dirty === true;
             state.ready = true;

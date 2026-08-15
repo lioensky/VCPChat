@@ -1,9 +1,9 @@
 {
   "manifestVersion": "1.0.0",
   "name": "PowerShellExecutor",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "displayName": "PowerShell命令执行器",
-  "description": "一个允许AI执行PowerShell命令并返回其输出的插件。支持阻塞式、后台式以及管理员权限执行。注意：后台式或管理员权限执行会打开一个新的PowerShell窗口，且不会将执行结果直接返回VCP，只会返回任务提交状态。",
+  "description": "在持久化 PowerShell PTY 会话中执行命令，并提供真实 xterm + node-pty 双向交互终端 GUI。支持同步执行、交互式程序、可见文本查询和异步 Ctrl+C 中止。",
   "author": "Your Name",
   "pluginType": "hybridservice",
   "entryPoint": {
@@ -17,8 +17,24 @@
   "capabilities": {
     "invocationCommands": [
       {
-        "commandIdentifier": "PowerShellExecutor",
-        "description": "在一个持久化的PowerShell会话中执行命令，并提供真实 xterm + node-pty 双向交互终端 GUI。\n参数:\n- command (字符串, execute/startInteractive 时必需): 要在PowerShell会话中执行或启动的命令。\n- action (字符串, 可选): execute(默认) 执行普通短命令并等待返回；startInteractive 启动 snow/codex/claude/vim/fzf 等交互式 CLI 后立即返回并由用户在 GUI 终端接管；queryVisible[N] 查询终端可见文本（从 xterm.js buffer 提取），可选数字 N 指定最多返回最新 N 行（如 queryVisible200 返回最新200行，queryVisible 返回全部）；endInteractive 仅清除交互模式占用标志，不杀 PTY。\n- requireAdmin (布尔值, 可选): 如果为 true，将尝试以管理员权限启动一个全新的PowerShell会话。这会向用户显示一个GUI确认对话框。默认为 false。\n- newSession (布尔值, 可选): 如果为 true，将强制关闭当前的PowerShell会话（如果存在）并启动一个全新的会话；也会复位 interactiveMode。这对于重置环境或从交互式程序占用状态恢复非常有用。默认为 false。\n- returnMode (字符串, 可选): 控制返回内容的模式。'delta' (默认) 只返回最新命令的输出；'full' 返回本次执行路径的最终输出。此参数可覆盖在config.env中设置的默认值。\n\n重要限制与安全声明:\n- startInteractive 不等待命令结束，不包裹 start/end boundary，不返回 TUI 屏幕内容。\n- startInteractive 后当前 PTY 会被标记为 interactiveMode，普通 execute 会被拒绝，直到 action:endInteractive、newSession:true、关闭窗口或 PTY 退出。\n- interactiveMode 一期不会自动检测 snow/codex/claude 是否已经退出；如果已回到 shell 但仍被拒绝，请调用 action:endInteractive 或 newSession:true。\n- queryVisible[N] 用于在 TUI 交互期间查询终端当前显示内容，不干扰 PTY 会话本身。建议使用行数限制（如200-500行）避免上下文爆炸。\n- forbiddenCommands/authRequiredCommands 仅约束 AI 工具调用路径；GUI 终端内的人类直接输入通过 powershell-input 原样写入 PTY，不经过命令黑名单检查，权限等价于本机真实终端。\n\n标准调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」PowerShellExecutor「末」,\ncommand:「始」cd $env:USERPROFILE/Desktop; ls「末」\n<<<[END_TOOL_REQUEST]>>>\n\n启动交互式 CLI 并立即返回:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」PowerShellExecutor「末」,\naction:「始」startInteractive「末」,\ncommand:「始」snow「末」\n<<<[END_TOOL_REQUEST]>>>\n\n查询终端最新200行文本:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」PowerShellExecutor「末」,\naction:「始」queryVisible200「末」\n<<<[END_TOOL_REQUEST]>>>\n\n查询终端全部文本:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」PowerShellExecutor「末」,\naction:「始」queryVisible「末」\n<<<[END_TOOL_REQUEST]>>>\n\n清除交互模式占用标志:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」PowerShellExecutor「末」,\naction:「始」endInteractive「末」\n<<<[END_TOOL_REQUEST]>>>\n\n启动新会话并请求管理员权限:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」PowerShellExecutor「末」,\ncommand:「始」Get-Process -Name 'winlogon'「末」,\nrequireAdmin:「始」true「末」,\nnewSession:「始」true「末」\n<<<[END_TOOL_REQUEST]>>>"
+        "command": "ExecutePowerShell",
+        "description": "功能: 在持久化 PowerShell PTY 会话中执行普通命令并同步等待输出。适合会在合理时间内结束的命令。\n参数:\n- powershell (字符串, 必需): 要执行的 PowerShell 命令或脚本。\n- powershell1、powershell2... (字符串, 可选): 按数字顺序继续执行多条命令。\n- requireAdmin (布尔值, 可选, 默认 false): 使用管理员确认窗口执行单条命令。管理员模式不支持多命令链，也不属于可由 InterruptPowerShell 中止的主 PTY 执行路径。\n- newSession (布尔值, 可选, 默认 false): 关闭当前 PTY 并创建全新会话，同时复位交互模式。\n- returnMode (字符串, 可选): delta 仅返回本次命令输出；full 返回本次执行路径的最终输出。默认读取 config.env。\n\n重要提示:\n- 本命令是同步调用，长时间运行的命令会阻塞当前工具响应。\n- 如果命令可能长时间运行，AI 可在需要时另行调用 InterruptPowerShell，并为该中止调用添加全局参数 archery:「始」no_reply「末」。后端会异步投递中止请求，AI 只收到调用成功回执，不等待中止命令的插件结果。\n- 当前 PTY 被交互式程序占用时，本命令会被拒绝。应先使用 EndInteractive，或设置 newSession:true。\n- AI 工具调用会经过 forbiddenCommands/authRequiredCommands 安全检查。\n\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」PowerShellExecutor「末」,\ncommand:「始」ExecutePowerShell「末」,\npowershell:「始」cd $env:USERPROFILE/Desktop; Get-ChildItem「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "StartInteractive",
+        "description": "功能: 启动 snow、codex、claude、vim、fzf 等交互式 CLI，立即返回，由用户在 xterm GUI 中接管。\n参数:\n- powershell (字符串, 必需): 要启动的单条交互式命令。\n- newSession (布尔值, 可选, 默认 false): 启动前重建 PTY 会话。\n\n重要提示:\n- 不等待交互式程序结束，不返回 TUI 屏幕内容，也不使用同步命令边界。\n- 启动后 PTY 会被标记为 interactiveMode，ExecutePowerShell 将被拒绝。\n- 插件不会自动判断交互式程序是否已退出。程序退出并回到 shell 后，应调用 EndInteractive 清除标志。\n- 可使用 QueryVisible 获取当前终端显示文本；可使用 InterruptPowerShell 向前台程序发送 Ctrl+C，但该操作不会自动清除 interactiveMode。\n\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」PowerShellExecutor「末」,\ncommand:「始」StartInteractive「末」,\npowershell:「始」snow「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "QueryVisible",
+        "description": "功能: 从 xterm.js buffer 查询终端当前可见文本，不向 PTY 发送任何命令，也不干扰正在运行的同步或交互式程序。\n参数:\n- maxLines (正整数, 可选): 最多返回最新多少行；省略时返回全部可见文本。建议设置为 200-500，避免上下文过大。\n\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」PowerShellExecutor「末」,\ncommand:「始」QueryVisible「末」,\nmaxLines:「始」200「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "InterruptPowerShell",
+        "description": "功能: 向当前 PTY 前台程序发送 Ctrl+C。若 ExecutePowerShell 正在同步等待，还会撤销其输出监听与超时等待，使原同步调用尽快解除阻塞。本命令不需要 powershell 参数。\n\n推荐用法:\n- 当另一个 ExecutePowerShell 调用正在阻塞时，应使用 VCP 全局异步参数 archery:「始」no_reply「末」投递本命令。\n- archery 由 VCP 后端处理，不会传递为 PowerShell 参数；AI 将只收到后端调用成功回执，不等待本插件的中止结果。\n- 对交互式程序调用时只发送 Ctrl+C，不自动清除 interactiveMode；确认程序已退出后再调用 EndInteractive。\n- 没有活动 PTY 或前台任务时，此命令安全返回状态，不创建新会话。\n\n异步中止调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」PowerShellExecutor「末」,\ncommand:「始」InterruptPowerShell「末」,\narchery:「始」no_reply「末」\n<<<[END_TOOL_REQUEST]>>>"
+      },
+      {
+        "command": "EndInteractive",
+        "description": "功能: 清除当前 PTY 的 interactiveMode 占用标志，不终止 PTY，也不向终端发送按键。本命令不需要 powershell 参数。\n\n使用条件:\n- 仅应在交互式程序已经退出并回到 PowerShell 提示符后调用。\n- 若交互式程序仍在运行，应先由用户退出，或调用 InterruptPowerShell 发送 Ctrl+C，再根据终端状态调用本命令。\n\n调用格式:\n<<<[TOOL_REQUEST]>>>\ntool_name:「始」PowerShellExecutor「末」,\ncommand:「始」EndInteractive「末」\n<<<[END_TOOL_REQUEST]>>>"
       }
     ]
   }

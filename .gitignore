@@ -3,8 +3,9 @@ gitignore
 # 不忽略 .gitignore 文件本身（这是Git的常见实践）
 !.gitignore
 
-# AppData 默认为本地运行数据，仅追踪 VCP Loom 官方测试应用。
+# AppData 默认为本地运行数据，仅追踪脱敏示例配置和 VCP Loom 官方测试应用。
 AppData/*
+!AppData/VCPChatTarven.json.example
 !AppData/LoomApps/
 AppData/LoomApps/*
 !AppData/LoomApps/example-mobile/

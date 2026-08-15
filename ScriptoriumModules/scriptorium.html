@@ -3,12 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self' data: blob: file:; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: file: http: https:; media-src 'self' data: blob: file: http: https:; font-src 'self' data: blob: file: http: https:; connect-src 'self' blob: data:;">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' data: blob: file:; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: blob: file: http: https:; media-src 'self' data: blob: file: http: https:; font-src 'self' data: blob: file: http: https:; connect-src 'self' blob: data: https:;">
     <title>VCP Scriptorium · 共笔文坊</title>
     <link rel="stylesheet" href="../styles/themes.css">
     <link rel="stylesheet" href="scriptorium.css">
 </head>
-<body>
+<body class="home-state">
     <header class="scriptorium-titlebar">
         <div class="brand-lockup">
             <div class="brand-sigil" aria-hidden="true">S</div>
@@ -34,6 +34,11 @@
             </button>
             <button id="lineage-toggle-btn" class="icon-button titlebar-tool active" title="显示或收起文脉" aria-label="切换文脉" aria-pressed="true">
                 <svg viewBox="0 0 24 24"><path d="M6 3v12"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="6" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
+            </button>
+            <button id="settings-btn" class="icon-button titlebar-tool"
+                type="button" title="Scriptorium 设置" aria-label="打开设置"
+                aria-haspopup="dialog" aria-expanded="false">
+                <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.6v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z"/></svg>
             </button>
             <span class="titlebar-divider"></span>
             <button id="minimize-btn" class="window-button" title="最小化" aria-label="最小化">
@@ -260,7 +265,32 @@
     </div>
 
     <main class="scriptorium-stage">
-        <aside id="outline-panel" class="outline-panel" aria-label="文档篇章导航">
+        <aside id="outline-panel" class="outline-panel" aria-label="文档导航">
+            <section id="document-library" class="document-library"
+                aria-label="文档系统">
+                <header class="library-header">
+                    <div>
+                        <span class="outline-kicker">DOCUMENT SYSTEM</span>
+                        <h2>文档</h2>
+                    </div>
+                    <button id="library-refresh-btn" class="library-refresh"
+                        type="button" title="刷新文档目录"
+                        aria-label="刷新文档目录">
+                        <svg viewBox="0 0 24 24"><path d="M20 6v5h-5"/><path d="M4 18v-5h5"/><path d="M6.1 9a7 7 0 0 1 11.6-2.6L20 9M4 15l2.3 2.6A7 7 0 0 0 17.9 15"/></svg>
+                    </button>
+                </header>
+                <p class="library-intro">集中访问笔记、文档与演示。展开目录，选择文件即可载入。</p>
+                <div id="document-library-tree" class="document-library-tree"
+                    role="tree" aria-label="笔记、文档和演示目录">
+                    <div class="library-loading" role="status">
+                        正在整理文档目录…
+                    </div>
+                </div>
+                <footer class="library-formats">
+                    VDOCX · DOCX · VPPTX · PPTX · MD · TXT · HTML
+                </footer>
+            </section>
+
             <div class="outline-header">
                 <div>
                     <span class="outline-kicker">DOCUMENT MAP</span>
@@ -921,6 +951,41 @@
         </section>
     </div>
 
+    <div id="settings-dialog" class="dialog-backdrop" role="dialog"
+        aria-modal="true" aria-labelledby="settings-dialog-title" hidden>
+        <section class="settings-dialog">
+            <header class="settings-dialog-header">
+                <div>
+                    <span class="dialog-kicker">SCRIPTORIUM PREFERENCES</span>
+                    <h2 id="settings-dialog-title">设置</h2>
+                    <p>这些偏好只保存在本机，不会写入文档工程。</p>
+                </div>
+                <button id="settings-close-btn" type="button"
+                    aria-label="关闭设置">×</button>
+            </header>
+            <div class="settings-dialog-body">
+                <section class="settings-group">
+                    <span class="settings-group-kicker">网络与字体</span>
+                    <label class="settings-toggle-row">
+                        <span class="settings-toggle-copy">
+                            <strong>信任网络字体</strong>
+                            <small>直接加载文档中的 HTTPS 字体 URL，不下载、不建立本地字体索引，HTML 导出也保留网络 URL。</small>
+                        </span>
+                        <input id="trust-network-fonts-toggle"
+                            type="checkbox" role="switch">
+                    </label>
+                    <div id="network-font-trust-status"
+                        class="settings-status" role="status">
+                        受控模式：下载字体并收纳到本地工程
+                    </div>
+                    <p class="settings-risk-note">
+                        开启后渲染与离线可用性依赖字体服务器，服务器也可能获知网络请求信息。仅对可信文档与可信字体提供方启用。
+                    </p>
+                </section>
+            </div>
+        </section>
+    </div>
+
     <div id="security-review-dialog" class="dialog-backdrop" role="dialog"
         aria-modal="true" aria-labelledby="security-review-dialog-title" hidden>
         <section class="security-review-dialog">
@@ -1042,6 +1107,7 @@
     <script src="scriptorium-svg-assets.js"></script>
     <script src="scriptorium-rendered-text.js"></script>
 
+    <script src="scriptorium-settings.js"></script>
     <script src="scriptorium-document-store.js"></script>
     <script src="scriptorium-dom-selection.js"></script>
     <script src="scriptorium-edit-history.js"></script>
@@ -1070,6 +1136,7 @@
     <script src="scriptorium-runtime.js"></script>
     <script src="scriptorium-network-fonts.js"></script>
     <script src="scriptorium-source-editor.js"></script>
+    <script src="scriptorium-library.js"></script>
     <script src="scriptorium-session.js"></script>
     <script src="scriptorium-flow-adapter.js"></script>
     <script src="scriptorium-deck-adapter.js"></script>

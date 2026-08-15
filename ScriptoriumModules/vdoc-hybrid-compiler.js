@@ -4,6 +4,7 @@
     const COMPILER_VERSION = 'vdoc-hybrid-compiler/3';
     const ISLAND_ATTRIBUTE = 'data-vdoc-island';
     const TOKEN_PREFIX = 'VDOC_PROTECTED_BLOCK_';
+    const PARAGRAPH_BREAK_PLACEHOLDER = '↵';
 
     function lineEndingOf(source) {
         const text = String(source || '');
@@ -280,9 +281,17 @@
             return true;
         };
 
+        // 独占一行的 ↵ 是 Scriptorium 显式回车占位符。它在编辑 DOM 中
+        // 保留真实源码字符和光标映射，但由专用样式压缩为透明零宽节点。
+        const paragraphBreakPattern = /^[ \t]*(↵)[ \t]*$/gm;
+        let match;
+        while ((match = paragraphBreakPattern.exec(source))) {
+            const start = match.index + match[0].indexOf(match[1]);
+            add(start, start + match[1].length, 'paragraph-break');
+        }
+
         // 块级前缀保持源码字符本身，只附加编辑态着色信息。
         const linePattern = /^(?: {0,3})(#{1,6}(?=\s)|>\s?|(?:[-+*]|\d+\.)\s+(?:\[[ xX]\]\s*)?)/gm;
-        let match;
         while ((match = linePattern.exec(source))) {
             const delimiter = match[1];
             const start = match.index + match[0].indexOf(delimiter);
@@ -452,6 +461,15 @@
         return output;
     }
 
+    function protectParagraphBreakPlaceholders(source) {
+        return String(source || '').replace(
+            /^([ \t]*)↵[ \t]*$/gm,
+            '$1<span class="vdoc-paragraph-break-placeholder" '
+                + 'data-vdoc-paragraph-break-placeholder="true" '
+                + 'aria-label="空白行">↵</span>'
+        );
+    }
+
     function markedApi() {
         const candidate = global.marked;
         if (typeof candidate === 'function') return candidate;
@@ -599,8 +617,8 @@
                 // 段尾 Enter 或 HTML 边界插入会改变下次编译的区域范围，
                 // 造成活动会话、光标及后续 shell key 全部失配。
                 //
-                // 这里只剥离两个及以上的普通尾换行。Markdown 硬换行
-                // “两个空格 + 单换行”和受保护可见空行仍完整保留。
+                // 这里只剥离两个及以上的普通尾换行。由编辑器创建的空白行
+                // 含有显式 ↵，不会进入该分支，也不会再被归一化吞掉。
                 const separator = raw.match(/(?:\r?\n){2,}$/)?.[0] || '';
                 if (separator) {
                     regionEnd -= separator.length;
@@ -721,7 +739,13 @@
 
         const registry = [];
         const mathRegions = scanMathRegions(raw);
-        const protectedSource = protectStructuralRegions(raw, mathRegions, registry);
+        const structuralSource = protectStructuralRegions(
+            raw,
+            mathRegions,
+            registry
+        );
+        const protectedSource =
+            protectParagraphBreakPlaceholders(structuralSource);
         try {
             return restoreProtectedHtml(parse(protectedSource, {
                 gfm: true,
@@ -952,11 +976,13 @@
         ].sort((left, right) => left.start - right.start);
 
         const registry = [];
-        const protectedSource = protectStructuralRegions(
+        const structuralSource = protectStructuralRegions(
             source,
             protectedRegions,
             registry
         );
+        const protectedSource =
+            protectParagraphBreakPlaceholders(structuralSource);
 
         const parse = markedApi();
         const lexer = markedLexerApi();
@@ -1047,6 +1073,7 @@
     global.VDocHybridCompiler = Object.freeze({
         COMPILER_VERSION,
         ISLAND_ATTRIBUTE,
+        PARAGRAPH_BREAK_PLACEHOLDER,
         compile,
         lineEndingOf,
         markdownLiveMarkerRanges,

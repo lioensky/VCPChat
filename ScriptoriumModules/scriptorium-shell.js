@@ -268,10 +268,16 @@
             resetScrollPositionsIfDocumentChanged();
             context.editorResolver?.()?.flush?.();
             if (normalized !== mode) {
+                context.historyPort?.finalize?.({
+                    reason: 'surface-history-finalized',
+                });
                 captureScrollPosition(mode);
                 scrollRestoreToken += 1;
             }
             mode = normalized;
+            context.historyPort?.activate?.(undefined, {
+                reason: 'surface-history-activated',
+            });
             context.renderPort.setMode(normalized);
             const edit = normalized === 'edit';
             const read = normalized === 'read';
@@ -302,6 +308,40 @@
             syncFocusModeControls();
             context.findPort?.refresh?.();
             return true;
+        }
+
+        function syncSettingsControls() {
+            const trusted =
+                context.settingsPort?.get?.('trustNetworkFonts') === true;
+            if (elements['trust-network-fonts-toggle']) {
+                elements['trust-network-fonts-toggle'].checked = trusted;
+            }
+            if (elements['network-font-trust-status']) {
+                elements['network-font-trust-status'].textContent = trusted
+                    ? '已信任：直接使用并导出 HTTPS 字体 URL'
+                    : '受控模式：下载字体并收纳到本地工程';
+                elements['network-font-trust-status'].classList.toggle(
+                    'trusted',
+                    trusted
+                );
+            }
+            return trusted;
+        }
+
+        function setSettingsOpen(open) {
+            if (!elements['settings-dialog']) return false;
+            elements['settings-dialog'].hidden = !open;
+            elements['settings-btn']?.setAttribute(
+                'aria-expanded',
+                String(open)
+            );
+            if (open) {
+                syncSettingsControls();
+                elements['settings-close-btn']?.focus({
+                    preventScroll: true,
+                });
+            }
+            return open;
         }
 
         function updateZoom(value) {
@@ -378,6 +418,33 @@
             click('minimize-btn', context.persistencePort.minimizeWindow);
             click('maximize-btn', context.persistencePort.maximizeWindow);
             click('close-btn', () => context.sessionPort.close());
+            click('settings-btn', () => setSettingsOpen(true));
+            click('settings-close-btn', () => setSettingsOpen(false));
+            elements['settings-dialog']?.addEventListener('click', (event) => {
+                if (event.target === elements['settings-dialog']) {
+                    setSettingsOpen(false);
+                }
+            }, options);
+            elements['trust-network-fonts-toggle']?.addEventListener(
+                'change',
+                (event) => {
+                    const trusted = context.settingsPort?.set?.(
+                        'trustNetworkFonts',
+                        event.target.checked
+                    ) === true;
+                    syncSettingsControls();
+                    context.renderPort.invalidate('network-font-trust-changed');
+                    context.renderPort.renderCurrent?.({ force: true });
+                    showToast(
+                        trusted
+                            ? '已信任网络字体；渲染和导出将直接使用 HTTPS URL'
+                            : '已恢复网络字体本地化与便携导出',
+                        trusted ? 'info' : 'success',
+                        4200
+                    );
+                },
+                options
+            );
             click('new-btn', () =>
                 runStartMenuAction(() => context.sessionPort.create())
             );
@@ -454,6 +521,10 @@
                     event.preventDefault();
                     context.findPort?.open?.();
                 } else if (event.key === 'Escape') {
+                    if (elements['settings-dialog']?.hidden === false) {
+                        event.preventDefault();
+                        setSettingsOpen(false);
+                    }
                     if (focusMode) {
                         event.preventDefault();
                         setFocusMode(false);
@@ -478,6 +549,7 @@
             ) || null;
             updateDocumentStatus();
             syncFocusModeControls();
+            syncSettingsControls();
             try {
                 document.body.classList.toggle(
                     'light-theme',

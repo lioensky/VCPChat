@@ -202,6 +202,23 @@
             input.value = value;
         }
 
+        function syncHistoryControls() {
+            const history = context.historyPort?.status?.() || {};
+            document.querySelectorAll(
+                '[data-command="undo"], [data-command="redo"]'
+            ).forEach((control) => {
+                const command = control.dataset.command;
+                control.disabled = command === 'undo'
+                    ? history.canUndo !== true
+                    : history.canRedo !== true;
+                control.setAttribute(
+                    'aria-disabled',
+                    String(control.disabled)
+                );
+            });
+            return history;
+        }
+
         function present(rawState = {}) {
             const state = normalizeUiState(rawState);
             const controls = [
@@ -212,7 +229,9 @@
             controls.forEach((control) => {
                 const command = control.dataset.command
                     || control.dataset.selectionCommand;
-                if (!command) return;
+                if (!command || command === 'undo' || command === 'redo') {
+                    return;
+                }
                 control.disabled = !state.available
                     || state.disabledCommands.has(command);
                 if (INLINE_COMMANDS.includes(command)) {
@@ -221,6 +240,7 @@
                     control.setAttribute('aria-pressed', String(active));
                 }
             });
+            syncHistoryControls();
 
             const fontSelects = [
                 elements['font-family-select'],
@@ -379,6 +399,7 @@
             sync,
             scheduleSync,
             present,
+            syncHistoryControls,
             openContextMenu,
             contextMenuOpen,
             hideContextMenu,

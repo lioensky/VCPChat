@@ -496,8 +496,8 @@ function createOrFocusNotesWindow() {
     console.log('[Main Process] Creating new notes window instance.');
     startLocalNotesWatcher();
     notesWindow = new BrowserWindow({
-        width: 1000,
-        height: 700,
+        width: 1120,
+        height: 760,
         minWidth: 800,
         minHeight: 600,
         title: '我的笔记',

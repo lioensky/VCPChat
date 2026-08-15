@@ -18,6 +18,11 @@
         }
 
         function flowCss(surface, options = {}) {
+            const networkFontImports =
+                primitives.trustedNetworkFontImports?.([
+                    model().source?.content || '',
+                    model().source?.documentCss || '',
+                ]) || '';
             const customCss = primitives.cssForShadow(
                 model().source?.documentCss || ''
             );
@@ -324,6 +329,7 @@ ${primitives.editDecorationsCss()}
 }
 `;
             return [
+                networkFontImports,
                 primitives.baseCss(model().manifest.scene, options),
                 customCss,
                 advancedCss,

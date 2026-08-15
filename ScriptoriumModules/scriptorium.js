@@ -15,6 +15,7 @@
         hybridCompiler,
         styleLibrary,
         pagination,
+        settings: window.ScriptoriumSettings,
         documentStore: window.ScriptoriumDocumentStore,
         flowAdapter: window.ScriptoriumFlowAdapter,
         deckAdapter: window.ScriptoriumDeckAdapter,
@@ -44,6 +45,7 @@
         runtime: window.ScriptoriumRuntime,
         networkFonts: window.ScriptoriumNetworkFonts,
         sourceEditor: window.ScriptoriumSourceEditor,
+        library: window.ScriptoriumLibrary,
         session: window.ScriptoriumSession,
         shell: window.ScriptoriumShell,
     };
@@ -70,6 +72,8 @@
         save: (payload) => nativeApi.save(payload),
         exportRichDocument: (payload) =>
             nativeApi.exportRichDocument(payload),
+        listDocumentLibrary: () =>
+            nativeApi.listDocumentLibrary(),
         listRecent: () => nativeApi.listRecent(),
         loadStylePacks: () =>
             nativeApi.loadStylePacks?.() || [],
@@ -101,10 +105,14 @@
             nativeApi.respondAgentRequest?.(payload),
     });
 
+    const settingsPort =
+        window.ScriptoriumSettings.createSettingsStore();
+
     const documentPort =
         window.ScriptoriumDocumentStore.createDocumentStore({
             core,
             containerModule,
+            settingsPort,
         });
 
     let activeAdapter = null;
@@ -113,6 +121,7 @@
     let sourcePort = null;
     let exportPort = null;
     let sessionPort = null;
+    let libraryPort = null;
     let mediaPort = null;
     let findPort = null;
     let navigationPort = null;
@@ -164,12 +173,56 @@
             activeEditor?.disposeSurface?.(...args),
     });
 
+    function historyBranchKey() {
+        const mode = shell?.surfacePort?.mode?.() || 'edit';
+        if (activeAdapter?.kind !== 'deck') {
+            return `${mode}|flow|document`;
+        }
+        if (mode === 'source-css') return `${mode}|deck|global-css`;
+        const slideId = activeAdapter.activeSlide?.()?.id
+            || `index-${activeAdapter.activeSlideIndex?.() ?? 0}`;
+        return `${mode}|deck|slide:${encodeURIComponent(slideId)}`;
+    }
+
+    function restoreHistorySnapshot(serialized, branchKey) {
+        const captured = core.parse(serialized);
+        if (activeAdapter?.kind !== 'deck') return captured;
+
+        const current = documentPort.document();
+        if (!current) return captured;
+        const merged = core.parse(core.serialize(current));
+        if (branchKey === 'source-css|deck|global-css') {
+            merged.source.deckCss = String(captured.source?.deckCss || '');
+            return merged;
+        }
+
+        const encodedSlideId = String(branchKey || '')
+            .match(/\|deck\|slide:(.*)$/)?.[1];
+        const slideId = encodedSlideId
+            ? decodeURIComponent(encodedSlideId)
+            : '';
+        const capturedSlide = (captured.source?.slides || []).find(
+            (slide) => slide.id === slideId
+        );
+        const currentIndex = (merged.source?.slides || []).findIndex(
+            (slide) => slide.id === slideId
+        );
+        if (capturedSlide && currentIndex >= 0) {
+            merged.source.slides[currentIndex] =
+                JSON.parse(JSON.stringify(capturedSlide));
+        }
+        return merged;
+    }
+
     const historyPort = window.ScriptoriumEditHistory.createEditHistory({
         documentPort,
         core,
         editorPort: editorFacade,
         adapterResolver,
         renderPort: renderFacade,
+        branchKeyResolver: historyBranchKey,
+        restoreSnapshot: restoreHistorySnapshot,
+        onChange: () => formattingPort?.syncHistoryControls?.(),
     });
 
     const lineagePort =
@@ -219,6 +272,7 @@
             core,
             styleLibrary,
             hybridCompiler,
+            settingsPort,
             resourceResolver: () => documentPort.resourceResolver(),
         });
 
@@ -237,6 +291,9 @@
             core,
             onActiveSlideChange: () => {
                 renderFacade.invalidate('active-slide-changed');
+                historyPort.activate(undefined, {
+                    reason: 'active-slide-changed',
+                });
                 if (initialized) {
                     renderFacade.renderEdit({ force: true });
                     navigationPort?.render?.();
@@ -420,6 +477,7 @@
         createDeck: (...args) => sessionPort?.createDeck(...args),
         showHome: (...args) => sessionPort?.showHome(...args),
         open: (...args) => sessionPort?.open(...args),
+        openPath: (...args) => sessionPort?.openPath(...args),
         import: (...args) => sessionPort?.import(...args),
         save: (...args) => sessionPort?.save(...args),
         close: (...args) => sessionPort?.close(...args),
@@ -476,6 +534,7 @@
         mediaPort: mediaFacade,
         stylePort: styleFacade,
         metricsPort,
+        settingsPort,
         editorResolver,
         bindElements,
         onInitialize,
@@ -500,6 +559,7 @@
                 containerModule,
                 persistencePort,
                 notificationPort,
+                settingsPort,
             });
 
         sourcePort =
@@ -603,6 +663,14 @@
                 },
             });
 
+        libraryPort =
+            window.ScriptoriumLibrary.createLibraryController({
+                elements,
+                persistencePort,
+                openPath: (filePath) =>
+                    sessionFacade.openPath(filePath),
+            });
+
         sessionPort =
             window.ScriptoriumSession.createSessionController({
                 documentPort,
@@ -619,6 +687,7 @@
                 lineagePort,
                 navigationPort,
                 lineageUiPort,
+                libraryPort,
                 editorResolver,
                 getAdapter: adapterResolver,
                 resolveAdapter,
@@ -723,6 +792,7 @@
 
         [
             sessionPort,
+            libraryPort,
             mediaPort,
             findPort,
             navigationPort,
@@ -807,6 +877,7 @@
         await Promise.all([
             loadFonts(),
             sessionPort.renderRecent(),
+            libraryPort.refresh(),
             stylePort.initialize(),
             svgAssetPort.initialize(),
         ]);
@@ -835,6 +906,7 @@
         historyPort.dispose();
         lineagePort.dispose();
         documentPort.dispose();
+        settingsPort.dispose();
         disposed = true;
     }
 
