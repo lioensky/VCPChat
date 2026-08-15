@@ -87,9 +87,25 @@
             const cancelButton = ui.create('Button', { label: '取消', variant: 'ghost' });
             const createButton = ui.create('Button', { label: '创建', variant: 'primary', type: 'submit' });
             const controls = [typeControl, typeField, nameControl, nameField, modelControl, modelField, cancelButton, createButton];
-            const dialogScope = this.scope?.child('next:create-item-modal') || null;
-            dialogScope?.own(() => host.remove(), 'create-modal-host', 'dom');
-            controls.forEach((control, index) => dialogScope?.own(() => control.destroy(), `create-control:${index}`, 'ui-registration'));
+            const SurfaceController = this.window.VCPUISurface?.SurfaceController;
+            const surface = SurfaceController ? new SurfaceController({
+                window: this.window,
+                document: this.document,
+                label: 'next:create-item-modal',
+                ownerScope: this.scope,
+                getUi: this.getUi,
+            }) : null;
+            if (surface) {
+                await surface.mount(host, context => {
+                    controls.forEach((control, index) => context.own(control, `create-control:${index}`, 'ui-registration'));
+                });
+            }
+            const dialogScope = surface?.scope || this.scope?.child('next:create-item-modal') || null;
+            if (!surface) {
+                dialogScope?.own(() => host.remove(), 'create-modal-host', 'dom');
+                controls.forEach((control, index) => dialogScope?.own(() => control.destroy(), `create-control:${index}`, 'ui-registration'));
+            }
+            const disposeDialog = reason => surface?.dispose(reason) || dialogScope?.dispose(reason) || Promise.resolve();
             let kind = 'agent';
             let submitting = false;
             let cleaned = false;
@@ -98,7 +114,7 @@
             try {
                 await this.acquireOverlay(overlayOwner);
             } catch (overlayError) {
-                if (dialogScope) await dialogScope.dispose('create-overlay-failed');
+                if (surface || dialogScope) await disposeDialog('create-overlay-failed');
                 else controls.forEach(control => control.destroy());
                 throw overlayError;
             }
@@ -108,7 +124,7 @@
             }
             dialogScope?.own(() => this.releaseOverlay(overlayOwner), 'create-overlay-lease', 'overlay');
             if (!this.mounted || generation !== this.generation || this.document.documentElement.dataset.uiMode !== 'next') {
-                if (dialogScope) await dialogScope.dispose('create-open-cancelled');
+                if (surface || dialogScope) await disposeDialog('create-open-cancelled');
                 else {
                     this.releaseOverlay(overlayOwner);
                     controls.forEach(control => control.destroy());
@@ -119,7 +135,7 @@
                 if (cleaned) return;
                 cleaned = true;
                 if (this.activeModal === modal) this.activeModal = null;
-                if (dialogScope) void dialogScope.dispose('create-modal-closed').catch(reason => console.error('[NextUI] Failed to dispose create dialog:', reason));
+                if (surface || dialogScope) void disposeDialog('create-modal-closed').catch(reason => console.error('[NextUI] Failed to dispose create dialog:', reason));
                 else {
                     this.releaseOverlay(overlayOwner);
                     controls.forEach(control => control.destroy());
@@ -129,13 +145,14 @@
             try {
                 modal = ui.create('Modal', { title: '创建助手或群组', size: 'sm', content: form, actions: [cancelButton, createButton], onClose: cleanup });
             } catch (modalError) {
-                if (dialogScope) await dialogScope.dispose('create-modal-failed');
+                if (surface || dialogScope) await disposeDialog('create-modal-failed');
                 else {
                     this.releaseOverlay(overlayOwner);
                     controls.forEach(control => control.destroy());
                 }
                 throw modalError;
             }
+            surface?.own(modal, 'create-modal', 'ui-registration');
             this.activeModal = modal;
             host.append(modal.element);
             this.document.body.append(host);
