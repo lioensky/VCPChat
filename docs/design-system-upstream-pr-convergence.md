@@ -38,7 +38,7 @@
 首个上游 PR 只交付：
 
 - 主聊天 Classic/Next presentation；
-- 主聊天设置、Appearance Studio、主题与动态壁纸；
+- 主聊天设置、Appearance Studio 与主题；
 - 空会话 VCPChat/Nova 视觉；
 - 通用 Next 启动台和标签宿主；
 - 通用标签宿主；业务子页面（包括 Notes 与 Translator）保持 Classic；
@@ -114,7 +114,7 @@ Memo、Forum、Log、Plugin Manager、Task、Human ToolBox、VchatManager、RAG 
 1. `codex/design-vendor-assets`：离线字体、图像辅助资源和可复现 Web Awesome runtime。
 2. `codex/design-foundation`：VCPUI、WA adapter、token、基础组件与隔离测试。
 3. `codex/design-main-shell`：主聊天 Next Shell、侧栏、消息区与输入区视觉。
-4. `codex/design-appearance`：Appearance Studio、主题、Nova 与动态壁纸体验。
+4. `codex/design-appearance`：Appearance Studio、主题与 Nova 体验。
 5. `codex/design-app-tabs`：可信内嵌 allowlist 与 AppTabHost；业务子页面保持 Classic。
 6. `codex/design-runtime-integration`：对最新上游主聊天业务 DOM、IPC 和设置生命周期的最小接线。
 7. `codex/design-system-upstream`：边界门禁、Electron smoke、插件回归与开发文档。
@@ -169,12 +169,11 @@ Memo、Forum、Log、Plugin Manager、Task、Human ToolBox、VchatManager、RAG 
 
 1. vendored Web Awesome 的 `package.json` 被上游通用 ignore 规则吞掉，导致干净 clone 和打包门禁失败。
 2. Appearance Studio 使用部分对象调用通用 `save-settings`，触发 IPC 对缺失字段补默认值，可能重置续写延迟和分布式日志开关。
-3. 视频壁纸完整控制只注入 Next 账户菜单，Classic 丢失上游原有的目录、播放、模式和音量入口。
-4. 布局预览真实切换 UI mode，离开 Next 时会关闭内嵌 WebContentsView，只恢复标签 ID，无法保证未保存页面状态。
-5. 全局设置在 Classic 下仍被强制重建为 Next SettingsShell，违反 Classic 上游基线约束。
-6. Appearance Studio 先持久化再应用本地状态；后续应用失败时只回滚界面，磁盘与当前界面可能分叉。
-7. Next 最大化按钮没有同步最大化/还原图标、标题和无障碍状态。
-8. Next 动态标签关闭按钮使用嵌套交互元素，缺少有效键盘关闭路径和 tab 语义。
+3. 布局预览真实切换 UI mode，离开 Next 时会关闭内嵌 WebContentsView，只恢复标签 ID，无法保证未保存页面状态。
+4. 全局设置在 Classic 下仍被强制重建为 Next SettingsShell，违反 Classic 上游基线约束。
+5. Appearance Studio 先持久化再应用本地状态；后续应用失败时只回滚界面，磁盘与当前界面可能分叉。
+6. Next 最大化按钮没有同步最大化/还原图标、标题和无障碍状态。
+7. Next 动态标签关闭按钮使用嵌套交互元素，缺少有效键盘关闭路径和 tab 语义。
 
 ### 修复策略
 
@@ -182,7 +181,6 @@ Memo、Forum、Log、Plugin Manager、Task、Human ToolBox、VchatManager、RAG 
 - Appearance Studio 的保存必须成为可恢复事务；持久化成功后若本地应用失败，要把原持久化字段写回磁盘。
 - UI mode 预览不得销毁内嵌应用。预览只切换 presentation，持久化提交或明确离开 Next 时才允许执行原生 view teardown。
 - Classic 全局设置只保留上游 DOM 与样式；布局切换字段仍可存在，但 VCPUI SettingsShell 仅在 Next 挂载。
-- 动态壁纸共享一个播放状态层，Classic 标题栏和 Next 账户菜单分别提供 presentation，切换模式不重置播放或目录配置。
 - 所有新 vendor 文件必须能从 `git archive HEAD` 重建并通过离线资源门禁。
 - 窗口按钮和动态标签必须具备状态同步、合法 DOM 语义和完整键盘路径。
 
@@ -190,7 +188,6 @@ Memo、Forum、Log、Plugin Manager、Task、Human ToolBox、VchatManager、RAG 
 
 - 从 `git archive HEAD` 解包后运行 Web Awesome pack check 必须通过。
 - 用部分外观 patch 保存时，未包含的设置字段逐项保持原值。
-- Classic/Next 来回切换后，视频壁纸两套入口均可操作同一播放状态。
 - Appearance Studio 预览 Classic 后取消，已打开的内嵌页面实例和未保存状态保持不变。
 - Classic 打开全局设置时不得出现 `.vcp-ui-settings-shell`、Web Awesome proxy 或 `vcp-global-settings-next`。
 - 模拟“磁盘保存成功、本地应用失败”时，磁盘设置必须恢复到保存前快照。
@@ -198,16 +195,15 @@ Memo、Forum、Log、Plugin Manager、Task、Human ToolBox、VchatManager、RAG 
 
 ### 2026-08-10 整改结果
 
-上述八项阻塞问题均已关闭：
+上述七项阻塞问题均已关闭：
 
 1. `.gitignore` 明确放行 `vendor/webawesome-runtime/package.json`；模拟干净归档补入该文件后离线 pack check 通过。
 2. `save-settings` 已改为真正的 patch 语义，缺失的续写延迟和分布式日志字段不会被补默认值。
-3. 动态壁纸保留单一播放状态；Next 仅挂载账户菜单入口，Classic 仅挂载标题栏控制，模式切换会恢复原始标题 DOM，不在隐藏 presentation 中保留包装节点。
-4. Next → Classic 的外观预览只隐藏原生 view，不关闭 WebContentsView 或销毁标签；返回 Next 时复用原实例。
-5. Classic 全局设置不挂载 SettingsShell、VCPUI proxy 或 Next host class，teardown 后重新绑定上游导航。
-6. Appearance Studio 保存失败会同时补偿回写磁盘与 `window.globalSettings`，随后恢复界面快照，避免三份状态分叉。
-7. Next 最大化按钮订阅真实窗口状态，切换最大化/还原图标、名称和 `aria-pressed`。
-8. 动态标签使用 `div[role=tab]`、roving tabindex 和原生关闭按钮；Enter/Space 可激活标签，不再嵌套交互元素。
+3. Next → Classic 的外观预览只隐藏原生 view，不关闭 WebContentsView 或销毁标签；返回 Next 时复用原实例。
+4. Classic 全局设置不挂载 SettingsShell、VCPUI proxy 或 Next host class，teardown 后重新绑定上游导航。
+5. Appearance Studio 保存失败会同时补偿回写磁盘与 `window.globalSettings`，随后恢复界面快照，避免三份状态分叉。
+6. Next 最大化按钮订阅真实窗口状态，切换最大化/还原图标、名称和 `aria-pressed`。
+7. 动态标签使用 `div[role=tab]`、roving tabindex 和原生关闭按钮；Enter/Space 可激活标签，不再嵌套交互元素。
 
 最新上游已刷新至 `b735b3ff`。新增的 8 个提交仅涉及 Scriptorium 的 14 个文件，与设计系统整改没有重叠；当前工作文件树已接收这些文件，后续提交时应单独整理为上游同步提交。
 
@@ -255,7 +251,7 @@ Memo、Forum、Log、Plugin Manager、Task、Human ToolBox、VchatManager、RAG 
 
 ### 2026-08-15 生命周期第二轮对抗审查
 
-本轮明确排除 `VChatDynamicWallpaper` 插件，不改变其入口、IPC、持久化或播放生命周期。审查只覆盖 Next 主窗口、通用内嵌应用、模态层和主 renderer。
+本轮审查只覆盖 Next 主窗口、通用内嵌应用、模态层和主 renderer。
 
 - 内嵌会话以主进程为权威。renderer reload 或 crash 时先隐藏而不销毁 `WebContentsView`；新 renderer 通过 `embedded-vchat-app:list` 对账标签、活动 action 和已有 session，禁止遗留一个“无标签但仍覆盖窗口”的原生页面。
 - 主 renderer 非正常退出后自动恢复，但使用有界策略：60 秒内最多三次，成功运行 30 秒后清零；超过阈值停止 reload loop，并由原生错误框让用户选择重试或退出。

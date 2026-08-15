@@ -20,14 +20,12 @@
 | 结构化消息 | 上游代码、引用、工具和日记样式 | 直接继承上游内部组件样式 | 左侧强调线、状态色、动画、复制与预览 | Electron + 人工 |
 | Classic 外观隔离 | 上游字体、15px 基准字号、原内容宽度 | Appearance Profile 只在 Next 生效 | Classic computed style 不受 Next 预览或已保存配置污染 | Electron + computed style |
 | 创建默认配置 | 主进程权威默认值 | 同一默认值，仅传模型 override | 创建成功与后续导航失败分开报告，避免重复创建 | IPC + Electron |
-| 视频壁纸插件 | Classic 标题栏完整控制 | Next 账户菜单完整控制 | 两套入口共享目录、播放、模式、显隐、静音和音量状态 | 插件 + Electron |
 | 全局设置 | 上游 Classic 模态框 | Next SettingsShell | Classic 不挂载 VCPUI shell；两种模式均可选择布局 | Electron + computed style |
 | 外观保存 | 完整表单保存 | Appearance Studio patch 保存 | 不重置未提交字段；本地应用失败时恢复磁盘快照 | IPC + Electron |
 | 动态标签 | 不适用 | 标签打开、关闭、拖出、恢复 | 合法 tab 语义、键盘关闭、切换预览不销毁实例 | Electron |
 
 ## 第二轮整改状态
 
-- 视频壁纸已恢复 Classic 标题栏入口；切到 Next 时标题 DOM 完全恢复，Next 账户菜单继续操作同一播放状态。
 - Classic 全局设置已恢复上游 presentation，不再被 Next SettingsShell 接管。
 - Appearance Studio 的部分保存、失败补偿和内存回滚已经覆盖自动测试。
 - Classic 预览不会关闭内嵌应用；真正保存 Classic 后才执行 teardown。
@@ -36,8 +34,8 @@
 
 ## PR 门禁
 
-- `npm run guard:classic-parity`：静态检查 Classic 共享控件、八个设置分类、输入区 SVG、Classic 视频壁纸入口和 Next CSS 作用域。
-- `npm run test:electron-ui-apps`：以 `uiMode: classic` 启动主窗口，验证 Classic 标题栏、输入按钮、通知快捷按钮、视频壁纸入口、全局设置导航和 Next runtime 隔离；再验证允许的 Notes/Translator Classic 页面。
+- `npm run guard:classic-parity`：静态检查 Classic 共享控件、八个设置分类、输入区 SVG 和 Next CSS 作用域。
+- `npm run test:electron-ui-apps`：以 `uiMode: classic` 启动主窗口，验证 Classic 标题栏、输入按钮、通知快捷按钮、全局设置导航和 Next runtime 隔离；再验证允许的 Notes/Translator Classic 页面。
 - 深色和浅色模式分别检查所有可见入口。
 - 在完整、头像窄栏、左栏隐藏和通知栏展开状态下重复检查。
 - 对标记了左右键或长按的控件执行真实鼠标操作。
