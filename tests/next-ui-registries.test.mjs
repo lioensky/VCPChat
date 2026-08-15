@@ -9,12 +9,13 @@ const require = createRequire(import.meta.url);
 const { LifecycleScope } = require('../modules/ui-system/lifecycle-scope.js');
 
 test('Next app registrations retract with their owner without changing the register return value', async () => {
-    const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://vcpchat.local/' });
+    const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://vcpchat.local/', runScripts: 'outside-only' });
     Object.assign(globalThis, {
         window: dom.window,
         document: dom.window.document,
         CustomEvent: dom.window.CustomEvent,
     });
+    window.eval(fs.readFileSync('modules/ui-system/contribution-registry.js', 'utf8'));
     const moduleUrl = `${pathToFileURL(`${process.cwd()}/modules/ui-system/next-ui-apps.js`).href}?registry-test=${Date.now()}`;
     const registry = await import(moduleUrl);
     const owner = new LifecycleScope('registry-owner');
@@ -42,6 +43,7 @@ test('frontend plugin loader owns registration, instance, script and style lifet
     });
     const { window } = dom;
     window.eval(fs.readFileSync('modules/ui-system/lifecycle-scope.js', 'utf8'));
+    window.eval(fs.readFileSync('modules/ui-system/contribution-registry.js', 'utf8'));
     window.chatAPI = { listEnabledFrontendPlugins: async () => ({ success: true, plugins: [] }) };
     window.eval(fs.readFileSync('VCPDistributedServer/frontend-plugin-loader.js', 'utf8'));
     let destroyed = 0;
@@ -49,8 +51,14 @@ test('frontend plugin loader owns registration, instance, script and style lifet
     assert.equal(window.VCPFrontendPlugins.register('owned-plugin', instance), true);
     assert.strictEqual(window.VCPFrontendPlugins.get('owned-plugin'), instance);
     assert.ok(window.VCPFrontendPlugins.getScope('owned-plugin'));
+    const contributions = window.VCPFrontendPlugins.getContributions('owned-plugin');
+    contributions.registerCommand({ id: 'owned-plugin.run', handler: () => 'ok' });
+    contributions.registerMenuItem({ id: 'owned-plugin.menu', title: 'Owned', location: 'account', command: 'owned-plugin.run' });
+    assert.equal(window.VCPContributions.commands.execute('owned-plugin.run'), 'ok');
     assert.equal(await window.VCPFrontendPlugins.unregister('owned-plugin'), true);
     assert.equal(window.VCPFrontendPlugins.get('owned-plugin'), undefined);
+    assert.equal(window.VCPContributions.commands.get('owned-plugin.run'), null);
+    assert.equal(window.VCPContributions.menus.get('owned-plugin.menu'), null);
     assert.equal(destroyed, 1);
     assert.equal(await window.VCPFrontendPlugins.unregister('owned-plugin'), false);
     let orphanResourceDisposed = 0;

@@ -21,11 +21,14 @@
             this.toggleTheme = options.toggleTheme || (() => {});
             this.syncAppearance = options.syncAppearance || (() => {});
             this.setIcon = options.setIcon || null;
+            this.getMenuRegistry = options.getMenuRegistry || (() => this.window.VCPContributions?.menus);
+            this.executeCommand = options.executeCommand || ((id) => this.window.VCPContributions?.commands.execute(id));
             this.scope = null;
             this.abortController = null;
             this.observer = null;
             this.elements = null;
             this.mounted = false;
+            this.menuSubscriptionDisposer = null;
         }
 
         mount(scope = null) {
@@ -44,6 +47,10 @@
             };
             if (!elements.dock || !elements.menu || !elements.trigger || !elements.avatar || !elements.userName) return false;
             elements.topbarThemeIcon = elements.topbarThemeButton?.querySelector('.vcp-ui-icon');
+            elements.contributionHost = this.document.createElement('div');
+            elements.contributionHost.className = 'next-ui-account-menu-contributions';
+            elements.contributionHost.dataset.contributionLocation = 'account';
+            elements.menu.append(elements.contributionHost);
             this.mounted = true;
             this.scope = scope;
             this.elements = elements;
@@ -68,6 +75,14 @@
                 this.setOpen(false);
                 if (!this.setThemeMode(nextTheme)) this.toggleTheme();
             });
+            listen(elements.contributionHost, 'click', event => {
+                const button = event.target.closest('[data-contribution-command]');
+                if (!button) return;
+                this.setOpen(false);
+                Promise.resolve(this.executeCommand(button.dataset.contributionCommand)).catch(error => {
+                    console.error('[NextUI] Account menu contribution failed:', error);
+                });
+            });
             listen(this.document, 'pointerdown', event => {
                 if (!elements.menu.hidden && !elements.dock.contains(event.target)) this.setOpen(false);
             });
@@ -88,6 +103,15 @@
                 else this.observer.observe(this.document.body, { attributes: true, attributeFilter: ['class'] });
             }
             if (scope) scope.own(() => this.dispose(), 'account-menu-controller', 'controller');
+            const menuRegistry = this.getMenuRegistry();
+            if (menuRegistry?.subscribe) {
+                const subscribe = () => menuRegistry.subscribe(change => {
+                    if (change.contribution?.location === 'account') this.renderContributions();
+                });
+                if (scope) scope.subscribe(subscribe, 'account-menu-contributions');
+                else this.menuSubscriptionDisposer = subscribe();
+            }
+            this.renderContributions();
             this.sync();
             return true;
         }
@@ -112,6 +136,36 @@
             e.topbarThemeButton?.setAttribute('title', label);
         }
 
+        renderContributions() {
+            if (!this.mounted || !this.elements?.contributionHost) return;
+            const host = this.elements.contributionHost;
+            host.replaceChildren();
+            const items = this.getMenuRegistry()?.list?.(item => item.location === 'account') || [];
+            items.sort((left, right) => (Number(left.order) || 0) - (Number(right.order) || 0) || left.title.localeCompare(right.title));
+            items.forEach(item => {
+                const button = this.document.createElement('button');
+                button.type = 'button';
+                button.className = 'next-ui-account-menu-item';
+                button.setAttribute('role', 'menuitem');
+                button.dataset.contributionId = item.id;
+                button.dataset.contributionCommand = item.command;
+                if (item.icon) {
+                    const icon = this.document.createElement('span');
+                    icon.className = 'vcp-ui-icon';
+                    icon.setAttribute('aria-hidden', 'true');
+                    if (this.setIcon) this.setIcon(icon, item.icon);
+                    else icon.textContent = item.icon;
+                    button.append(icon);
+                }
+                const label = this.document.createElement('span');
+                label.className = 'next-ui-account-menu-label';
+                label.textContent = item.title;
+                button.append(label);
+                host.append(button);
+            });
+            host.hidden = items.length === 0;
+        }
+
         setOpen(open) {
             if (!this.mounted) return;
             this.elements.menu.hidden = !open;
@@ -128,8 +182,11 @@
             this.mounted = false;
             this.abortController?.abort();
             this.observer?.disconnect();
+            this.menuSubscriptionDisposer?.();
+            this.elements?.contributionHost?.remove();
             this.abortController = null;
             this.observer = null;
+            this.menuSubscriptionDisposer = null;
             this.elements = null;
             this.scope = null;
         }

@@ -485,6 +485,8 @@
             toggleTheme: () => window.MainChatCommands?.toggleTheme?.(),
             syncAppearance: () => window.VCPAppearanceStudio?.syncAccountMenuValue?.(),
             setIcon: (element, icon) => window.VCPIcons?.set?.(element, icon),
+            getMenuRegistry: () => window.VCPContributions?.menus,
+            executeCommand: id => window.VCPContributions?.commands.execute(id),
         });
         accountMenuController.mount(mountScope);
         launchpadController = new LaunchpadController({

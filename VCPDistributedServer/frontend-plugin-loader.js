@@ -5,6 +5,7 @@
 
     const registry = new Map();
     const pluginScopes = new Map();
+    const contributionFacades = new Map();
     const LifecycleScope = window.VCPLifecycle?.LifecycleScope;
     const loaderScope = LifecycleScope ? new LifecycleScope('frontend-plugin-loader') : null;
     let destroyed = false;
@@ -70,6 +71,22 @@
         getScope(id) {
             return ensurePluginScope(id);
         },
+        getContributions(id) {
+            if (destroyed || !id || !window.VCPContributions) return null;
+            if (contributionFacades.has(id)) return contributionFacades.get(id);
+            const owner = ensurePluginScope(id);
+            if (!owner) return null;
+            const options = { owner, ownerId: `plugin:${id}` };
+            const facade = Object.freeze({
+                registerApp: definition => window.VCPContributions.apps.register(definition, options),
+                registerCommand: definition => window.VCPContributions.commands.register(definition, options),
+                registerMenuItem: definition => window.VCPContributions.menus.register(definition, options),
+                registerSettingsEntry: definition => window.VCPContributions.settings.register(definition, options),
+            });
+            contributionFacades.set(id, facade);
+            owner.own(() => contributionFacades.delete(id), `plugin-contributions:${id}`, 'contribution');
+            return facade;
+        },
         async destroy() {
             if (destroyed) return;
             destroyed = true;
@@ -83,6 +100,7 @@
             } finally {
                 registry.clear();
                 pluginScopes.clear();
+                contributionFacades.clear();
             }
         }
     };
