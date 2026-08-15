@@ -266,3 +266,7 @@ Memo、Forum、Log、Plugin Manager、Task、Human ToolBox、VchatManager、RAG 
 - 内嵌 session 在 renderer 已 crash 时不再发送状态 IPC；状态保留在主进程，待新 renderer 主动读取，避免恢复期间的二次异常。
 
 自动化现在真实执行：便签拖出独立窗口与 Escape、renderer reload、CDP `Page.crash`、内嵌页上依次打开托盘设置/全局设置/Appearance、未保存确认的 Escape 所有权、Ask Nova 请求取消、Classic ↔ Next 往返及 Agent 设置 DOM/adapter 计数。20 个完整循环后 heap、listener、page、process 和 renderer process 均保持在允许范围内。
+
+后续 detached DOM 专项诊断把长压测中的线性增长定位到全局设置图标规范化：恢复记录保存了已经被 Lucide adapter 替换掉的临时 `<span class="vcp-ui-icon">`。该字段不参与恢复，却让每次 Classic → Next 往返多保留三个 span 及其属性节点。恢复记录现只持有容器和上游原始 SVG；压力门禁单独统计 `detachedVcpIcons` 并要求不得高于预热基线。原始设置导航节点是 Classic 可逆恢复所需的固定快照；Ask Nova 首次加载产生的单个 `<template>` 在对照采样中保持固定，不属于线性泄漏。
+
+进一步 Classic/Next 对照发现 Agent 设置的两个 TTS Select 也曾被 document-wide `VCPUI.observeControls()` 越权捕获。该页面明确声明 `data-settings-presentation="classic"`，本应由上游原生 DOM 独占；全局 observer 现在排除 Agent、Group 和全局设置表单。TTS 模型列表同时改为结构相同时只更新 `select.value`，不再无条件重建相同 options。Classic 连续三轮保持零 controller，Next 压测也保持 `detachedOptions` 为零；门禁现同时禁止 detached VCP icon 与 Select option 高于预热基线。

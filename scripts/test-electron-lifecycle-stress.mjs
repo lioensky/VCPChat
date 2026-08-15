@@ -26,6 +26,8 @@ const timeoutMs = 90_000;
 const cycles = positiveInteger(process.env.VCPCHAT_STRESS_CYCLES, 20);
 const warmupCycles = positiveInteger(process.env.VCPCHAT_STRESS_WARMUP, 3);
 const checkpointEvery = Math.max(2, positiveInteger(process.env.VCPCHAT_STRESS_CHECKPOINT_EVERY, 5));
+const debugDetached = ['1', 'verbose'].includes(process.env.VCPCHAT_STRESS_DEBUG_DETACHED);
+const verboseDetached = process.env.VCPCHAT_STRESS_DEBUG_DETACHED === 'verbose';
 const sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
 
 function positiveInteger(value, fallback) {
@@ -190,10 +192,43 @@ async function collectRendererSnapshot(page, cdp, browserCdp, browser, label) {
         processes: processes.length,
         rendererProcesses: rendererProcesses.length,
         detachedRoots: detachedSignatures.length,
+        detachedVcpIcons: detachedSignatures.filter(signature => signature === 'SPAN.vcp-ui-icon').length,
+        detachedOptions: detachedSignatures.filter(signature => signature === 'OPTION').length,
         detachedSignatures: detachedSignatures.slice(0, 12),
         detachedKinds,
         ...rendererState,
     };
+}
+
+async function collectDetachedDiagnostic(cdp, label) {
+    if (!debugDetached || !cdp) return;
+    await cdp.send('HeapProfiler.collectGarbage');
+    await sleep(50);
+    const result = await cdp.send('DOM.getDetachedDomNodes').catch(() => ({ detachedNodes: [] }));
+    const entries = (result.detachedNodes || []).map(entry => {
+        const node = entry.treeNode || entry.node || {};
+        const attributes = Object.fromEntries(Array.from({ length: Math.floor((node.attributes || []).length / 2) }, (_unused, index) => [
+            node.attributes[index * 2], node.attributes[index * 2 + 1]
+        ]));
+        return {
+            nodeName: node.nodeName,
+            backendNodeId: node.backendNodeId,
+            id: attributes.id,
+            class: attributes.class,
+            retainedNodeIds: entry.retainedNodeIds || [],
+        };
+    });
+    const groups = Object.entries(entries.reduce((counts, entry) => {
+        const key = `${entry.nodeName || 'unknown'}${entry.id ? `#${entry.id}` : ''}${entry.class ? `.${entry.class}` : ''}`;
+        counts[key] = (counts[key] || 0) + 1;
+        return counts;
+    }, {})).sort((left, right) => right[1] - left[1]);
+    console.log(`Detached diagnostic: ${JSON.stringify({
+        label,
+        count: entries.length,
+        groups,
+        ...(verboseDetached ? { entries } : {})
+    })}`);
 }
 
 function formatBytes(value) {
@@ -250,6 +285,10 @@ function assertNoSustainedLeak(baseline, checkpoints) {
         `VCPUI settings controllers accumulated: ${baseline.enhancedSettingsControls} -> ${final.enhancedSettingsControls}`);
     assert.equal(final.promptNodes, baseline.promptNodes,
         `prompt editor DOM accumulated: ${baseline.promptNodes} -> ${final.promptNodes}`);
+    assert.ok(final.detachedVcpIcons <= baseline.detachedVcpIcons,
+        `detached VCP icon hosts accumulated: ${baseline.detachedVcpIcons} -> ${final.detachedVcpIcons}`);
+    assert.ok(final.detachedOptions <= baseline.detachedOptions,
+        `detached Select options accumulated: ${baseline.detachedOptions} -> ${final.detachedOptions}`);
 
     // Absolute ceilings catch large one-off retention. Positive slopes catch a
     // smaller leak that grows at every checkpoint but still fits the ceiling.
@@ -302,7 +341,7 @@ async function cycleSettings(page, label) {
     assert.equal(page.isClosed(), false, `${label}: settings Escape closed the main renderer`);
 }
 
-async function cycleAgentSettings(page, label) {
+async function cycleAgentSettings(page, label, { expectEnhanced = true } = {}) {
     await page.evaluate(async () => {
         window.topTabManager.setView('home');
         window.uiManager.switchToTab('agents');
@@ -316,12 +355,39 @@ async function cycleAgentSettings(page, label) {
             && panel?.classList.contains('active')
             && panel.getBoundingClientRect().height > 40;
     }, { timeout: timeoutMs });
+    if (expectEnhanced) {
+        // MutationObserver -> queueMicrotask is the bridge's documented
+        // enhancement boundary. Yield once, then report the complete kernel
+        // distribution in the assertion below instead of hiding a mismatch
+        // behind a long generic wait timeout.
+        await sleep(100);
+    }
     const state = await page.evaluate(() => ({
         promptNodes: document.querySelectorAll('#systemPromptContainer *').length,
         enhanced: window.VCPUISettingsBridge?.enhancedCount || 0,
+        settingsPresentation: document.getElementById('tabContentSettings')?.dataset.settingsPresentation || 'next',
+        settingsSelects: document.querySelectorAll('#agentSettingsForm select').length,
+        controlledSettingsSelects: [...document.querySelectorAll('#agentSettingsForm select')]
+            .filter(select => Boolean(window.VCPUI?.getController?.(select))).length,
+        nativeSettingsSelects: [...document.querySelectorAll('#agentSettingsForm select')]
+            .filter(select => window.VCPUI?.getController?.(select)?.kernel === 'native').length,
+        settingsSelectProxies: document.querySelectorAll('#agentSettingsForm .vcp-ui-select-proxy').length,
     }));
     assert.ok(state.promptNodes > 0, `${label}: agent settings prompt editor disappeared: ${JSON.stringify(state)}`);
-    assert.ok(state.enhanced > 0, `${label}: agent settings adapters disappeared: ${JSON.stringify(state)}`);
+    if (expectEnhanced) {
+        assert.ok(state.enhanced > 0, `${label}: agent settings adapters disappeared: ${JSON.stringify(state)}`);
+        if (state.settingsPresentation === 'classic') {
+            assert.equal(state.controlledSettingsSelects, 0,
+                `${label}: VCPUI crossed the Classic settings presentation boundary: ${JSON.stringify(state)}`);
+        } else {
+            assert.equal(state.nativeSettingsSelects, state.settingsSelects,
+                `${label}: document-wide Select observer captured a settings control: ${JSON.stringify(state)}`);
+        }
+        assert.equal(state.settingsSelectProxies, 0,
+            `${label}: settings form retained Web Awesome Select proxies: ${JSON.stringify(state)}`);
+    } else {
+        assert.equal(state.enhanced, 0, `${label}: Next settings adapters leaked into Classic: ${JSON.stringify(state)}`);
+    }
     await page.evaluate(() => window.uiManager.switchToTab('agents'));
     assert.equal(page.isClosed(), false, `${label}: agent settings transition closed the main renderer`);
 }
@@ -661,12 +727,18 @@ try {
     const runCycle = async (cycle, phase) => {
         const label = `${phase} cycle ${cycle + 1}`;
         await cycleAskNova(page, targets[cycle % targets.length], label);
+        await collectDetachedDiagnostic(cdp, `${label}: Ask Nova`);
         await cycleSettings(page, label);
+        await collectDetachedDiagnostic(cdp, `${label}: global settings`);
         await cycleAgentSettings(page, label);
+        await collectDetachedDiagnostic(cdp, `${label}: Agent settings`);
         if (cycle % 2 === 0) await cycleEmbeddedEscape(page, browser, noteApp, label);
         else await cycleAskNovaOverEmbedded(page, browser, pluginApp, targets[(cycle + 1) % targets.length], label);
+        await collectDetachedDiagnostic(cdp, `${label}: embedded overlay`);
         if (cycle % 4 === 0) await cycleDetachedApp(page, browser, noteApp, label);
+        await collectDetachedDiagnostic(cdp, `${label}: detached app`);
         await cycleUiMode(page, browser, label);
+        await collectDetachedDiagnostic(cdp, `${label}: mode round-trip`);
         await assertMainSurface(page, browser, label);
     };
 
@@ -678,6 +750,20 @@ try {
     cdp = await page.createCDPSession();
     browserCdp = await browser.target().createCDPSession();
     await cdp.send('HeapProfiler.enable');
+    await collectDetachedDiagnostic(cdp, 'diagnostic no-op A');
+    await collectDetachedDiagnostic(cdp, 'diagnostic no-op B');
+    if (debugDetached) {
+        await page.evaluate(() => window.uiModeManager.applyAsync('classic', { cache: false }));
+        await page.waitForFunction(() => document.documentElement.dataset.uiMode === 'classic', { timeout: timeoutMs });
+        await collectDetachedDiagnostic(cdp, 'Classic Agent baseline');
+        for (let diagnosticCycle = 0; diagnosticCycle < 3; diagnosticCycle += 1) {
+            await cycleAgentSettings(page, `Classic Agent diagnostic ${diagnosticCycle + 1}`, { expectEnhanced: false });
+            await collectDetachedDiagnostic(cdp, `Classic Agent cycle ${diagnosticCycle + 1}`);
+        }
+        await page.evaluate(() => window.uiModeManager.applyAsync('next', { cache: false }));
+        await page.waitForFunction(() => document.documentElement.dataset.uiMode === 'next', { timeout: timeoutMs });
+        await assertMainSurface(page, browser, 'Classic Agent diagnostic cleanup');
+    }
     for (let cycle = 0; cycle < warmupCycles; cycle += 1) await runCycle(cycle, 'warmup');
     const baseline = await collectRendererSnapshot(page, cdp, browserCdp, browser, 'baseline');
     checkpoints.push(baseline);
@@ -706,6 +792,8 @@ try {
         enhanced: point.enhancedSettingsControls,
         promptNodes: point.promptNodes,
         detachedRoots: point.detachedRoots,
+        detachedIcons: point.detachedVcpIcons,
+        detachedOptions: point.detachedOptions,
     })));
 } catch (error) {
     console.error(error?.stack || error);
