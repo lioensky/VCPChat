@@ -11,6 +11,7 @@
 // DOM and controls untouched.
 
 const controllers = new Set();
+const controllerReleases = new Map();
 const injectedNodes = new Set();
 // Per-modal shell state: { layout, nav, listHost, originalNavHtml, meta,
 // active, query, list } keyed by the modal root so teardown can restore the
@@ -23,6 +24,19 @@ const shellRoots = new Set();
 const iconReplacements = new Set();
 let observer = null;
 let refreshQueued = false;
+const LifecycleScope = window.VCPLifecycle?.LifecycleScope;
+const bridgeScope = LifecycleScope ? new LifecycleScope('next:settings-bridge-controller') : null;
+let presentationScope = null;
+let destroyed = false;
+let destroyPromise = null;
+
+function ensurePresentationScope() {
+    if (destroyed) return null;
+    if (!presentationScope && document.documentElement.dataset.uiMode === 'next') {
+        presentationScope = bridgeScope?.child('next:settings-presentation') || null;
+    }
+    return presentationScope;
+}
 
 function isNextUi() {
     return document.documentElement.dataset.uiMode === 'next'
@@ -46,7 +60,12 @@ function syncGlobalSettingsHost() {
 function enhance(name, element, options = {}) {
     if (!element || window.VCPUI.getController(element)) return;
     try {
-        controllers.add(window.VCPUI.enhance(name, element, options));
+        const controller = window.VCPUI.enhance(name, element, options);
+        controllers.add(controller);
+        const scope = ensurePresentationScope();
+        if (scope) {
+            controllerReleases.set(controller, scope.own(() => controller.destroy(), `settings:${name}`, 'ui-registration'));
+        }
     } catch (error) {
         console.warn(`[VCPUI SettingsBridge] Could not enhance ${name}:`, error);
     }
@@ -180,6 +199,7 @@ function mountSettingsShell(root) {
         active: initial,
         query: '',
         list: null,
+        listRelease: null,
     };
     shellState.set(root, state);
     shellRoots.add(root);
@@ -204,6 +224,7 @@ function mountSettingsShell(root) {
         if (state.list) state.list.update({ items });
         else {
             state.list = window.VCPUI.create('List', { items });
+            state.listRelease = ensurePresentationScope()?.own(() => state.list?.destroy(), 'settings-navigation-list', 'ui-registration') || null;
             state.listHost.replaceChildren(state.list.element);
         }
     };
@@ -243,7 +264,9 @@ function mountSettingsShell(root) {
     enhance('Input', searchInput);
     nav.prepend(search);
     injectedNodes.add(search);
-    searchInput.addEventListener('input', () => onQuery(searchInput.value));
+    const onInput = () => onQuery(searchInput.value);
+    if (ensurePresentationScope()) presentationScope.listen(searchInput, 'input', onInput, undefined, 'settings-search-input');
+    else searchInput.addEventListener('input', onInput);
 
     renderList();
 }
@@ -270,7 +293,7 @@ function mountLegacySearch(root) {
     content.prepend(search);
     injectedNodes.add(search);
 
-    input.addEventListener('input', () => {
+    const handleInput = () => {
         const query = input.value.trim().toLowerCase();
         navItems.forEach(item => {
             const section = root.querySelector(`#section-${item.dataset.section}`);
@@ -283,19 +306,26 @@ function mountLegacySearch(root) {
             const firstVisible = navItems.find(item => !item.hidden);
             if (firstVisible) firstVisible.click();
         }
-    });
+    };
+    if (ensurePresentationScope()) presentationScope.listen(input, 'input', handleInput, undefined, 'legacy-settings-search-input');
+    else input.addEventListener('input', handleInput);
 }
 
 function cleanupDisconnectedControllers() {
     [...controllers].forEach(controller => {
         if (controller.element.isConnected) return;
-        controller.destroy();
+        const release = controllerReleases.get(controller);
+        if (release) void release();
+        else controller.destroy();
+        controllerReleases.delete(controller);
         controllers.delete(controller);
     });
 }
 
 function refresh() {
     refreshQueued = false;
+    if (destroyed) return;
+    if (document.documentElement.dataset.uiMode === 'next') ensurePresentationScope();
     cleanupDisconnectedControllers();
     const globalSettingsModal = syncGlobalSettingsHost();
     if (isNextUi()) {
@@ -308,21 +338,42 @@ function refresh() {
 }
 
 function scheduleRefresh() {
-    if (refreshQueued) return;
+    if (destroyed || refreshQueued) return;
     refreshQueued = true;
     queueMicrotask(refresh);
 }
 
 function teardown() {
-    [...controllers].reverse().forEach(controller => controller.destroy());
+    const scope = presentationScope;
+    presentationScope = null;
+    // Retract enhanced controller identity synchronously before a rapid
+    // Classic -> Next round-trip can schedule the next refresh.  The Scope
+    // disposal below still owns error isolation and all non-controller
+    // resources, but must not leave stale VCPUI proxies visible to the next
+    // presentation generation.
+    [...controllers].reverse().forEach(controller => {
+        const release = controllerReleases.get(controller);
+        if (release) {
+            void release().catch(error => {
+                console.error('[VCPUI SettingsBridge] Failed to release controller:', error);
+            });
+        } else controller.destroy();
+    });
+    if (scope) {
+        void scope.dispose('settings-presentation-teardown').catch(error => {
+            console.error('[VCPUI SettingsBridge] Failed to dispose presentation:', error);
+        });
+    }
     controllers.clear();
+    controllerReleases.clear();
     injectedNodes.forEach(node => node.remove());
     injectedNodes.clear();
     [...shellRoots].forEach(root => {
         const state = shellState.get(root);
         if (!state) return;
         state.layout.classList.remove('vcp-ui-settings-shell');
-        state.list?.destroy();
+        if (state.listRelease) void state.listRelease();
+        else state.list?.destroy();
         const activeSection = state.active || root.querySelector('.settings-section.active')?.id?.replace(/^section-/, '');
         state.originalNavNodes
             .filter(node => node.nodeType === 1 && node.matches('.settings-nav-item'))
@@ -349,21 +400,30 @@ const settingsHost = document.getElementById('tabContentSettings');
 if (settingsHost) observer.observe(settingsHost, { childList: true, subtree: true });
 const modalContainer = document.getElementById('modal-container');
 if (modalContainer) observer.observe(modalContainer, { childList: true, subtree: true });
-window.addEventListener('ui-mode-changed', syncMode);
+bridgeScope?.own(() => observer?.disconnect(), 'settings-observer', 'observer');
+if (bridgeScope) bridgeScope.listen(window, 'ui-mode-changed', syncMode, undefined, 'settings-mode-change');
+else window.addEventListener('ui-mode-changed', syncMode);
 const handleModalVisibility = event => {
     if (event.detail?.modalId === 'globalSettingsModal') scheduleRefresh();
 };
-document.addEventListener('modal-visibility-changed', handleModalVisibility);
+if (bridgeScope) bridgeScope.listen(document, 'modal-visibility-changed', handleModalVisibility, undefined, 'settings-modal-visibility');
+else document.addEventListener('modal-visibility-changed', handleModalVisibility);
 syncMode();
 
 window.VCPUISettingsBridge = Object.freeze({
     refresh: scheduleRefresh,
     destroy() {
+        if (destroyPromise) return destroyPromise;
+        destroyed = true;
         observer?.disconnect();
         observer = null;
-        window.removeEventListener('ui-mode-changed', syncMode);
-        document.removeEventListener('modal-visibility-changed', handleModalVisibility);
+        if (!bridgeScope) {
+            window.removeEventListener('ui-mode-changed', syncMode);
+            document.removeEventListener('modal-visibility-changed', handleModalVisibility);
+        }
         teardown();
+        destroyPromise = bridgeScope?.dispose('settings-bridge-destroyed') || Promise.resolve();
+        return destroyPromise;
     },
     get enhancedCount() {
         return controllers.size;

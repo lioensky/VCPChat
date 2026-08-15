@@ -47,9 +47,11 @@ function listen(records, target, type, handler, options) {
 
 function makeController(element, state, render, cleanup = () => {}, { removeOnDestroy = true } = {}) {
     const records = [];
+    let destroyed = false;
     const controller = {
         element,
         update(patch = {}) {
+            if (destroyed) return controller;
             Object.assign(state, patch);
             render(state, records);
             return controller;
@@ -62,14 +64,22 @@ function makeController(element, state, render, cleanup = () => {}, { removeOnDe
             return controller;
         },
         destroy() {
-            records.splice(0).forEach(dispose => dispose());
-            cleanup();
+            if (destroyed) return;
+            destroyed = true;
+            const errors = [];
+            records.splice(0).forEach(dispose => {
+                try { dispose(); } catch (error) { errors.push(error); }
+            });
+            try { cleanup(); } catch (error) { errors.push(error); }
             controllerByElement.delete(element);
             if (removeOnDestroy) element.remove();
+            if (errors.length) throw new AggregateError(errors, 'VCPUI controller cleanup failed.');
         },
         _listen(target, type, handler, options) {
+            if (destroyed) throw new Error('Cannot add a listener to a destroyed VCPUI controller.');
             listen(records, target, type, handler, options);
-        }
+        },
+        get destroyed() { return destroyed; }
     };
     controllerByElement.set(element, controller);
     render(state, records);

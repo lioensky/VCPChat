@@ -230,6 +230,8 @@ Memo、Forum、Log、Plugin Manager、Task、Human ToolBox、VchatManager、RAG 
 
 ## 2026-08-14 Next UI 稳定性根治
 
+Next 动态资源的统一所有权、可撤销 Registry、串行模式切换、资源归零门禁及 2026-08-15 对抗审查结论见 [`next-ui-lifecycle-architecture.md`](./next-ui-lifecycle-architecture.md)。
+
 作者在真实操作中报告了 Ask Nova 白屏/重开卡死、内嵌便签按 Escape 级联关闭主窗口、Agent 设置后进程数上涨，以及窄通知栏 Dock 文字挤压图标。四项现象共享两个底层问题：原生 `WebContentsView` 与 renderer DOM 没有统一的可见性所有权；内嵌页面仍沿用独立 `BrowserWindow` 的关闭语义。
 
 ### 根因与不变量

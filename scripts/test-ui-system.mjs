@@ -91,6 +91,8 @@ window.VCPWebAwesome = Object.freeze({
 });
 
 const { VCPUI } = window;
+const lifecycleApi = createRequire(import.meta.url)('../modules/ui-system/lifecycle-scope.js');
+window.VCPLifecycle = lifecycleApi;
 const scope = document.querySelector('.vcp-ui-scope');
 assert.ok(VCPUI, 'VCPUI should be exposed on window');
 
@@ -137,8 +139,10 @@ assert.equal(askNovaModal.getState().sessions.frontend.messages.length, 1, 'Ask 
 askNovaModal.element.querySelector('.ask-nova-open-external').click();
 assert.match(askNovaCalls.at(-1).external, /VCPChat/);
 askNovaModal.close();
+await new Promise(resolve => setTimeout(resolve, 0));
 assert.equal(askNovaController.activeModal, null, 'Ask Nova close must clean up modal state');
-askNovaController.destroy();
+assert.equal(lifecycleApi.diagnostics.find('next:ask-nova-modal:backend').length, 0, 'Ask Nova close must dispose its modal scope');
+await askNovaController.destroy();
 
 let pendingAskNovaResolve;
 const pendingAskNovaCalls = [];
@@ -173,7 +177,69 @@ const reopenedAskNovaModal = await pendingAskNovaController.open('backend');
 assert.equal(reopenedAskNovaModal.getState().targetId, 'backend', 'Ask Nova must reopen on a different target after cancellation');
 assert.equal(document.querySelectorAll('.ask-nova-modal-host').length, 1, 'Ask Nova rapid reopen must leave exactly one modal host');
 reopenedAskNovaModal.close();
-pendingAskNovaController.destroy();
+await new Promise(resolve => setTimeout(resolve, 0));
+await pendingAskNovaController.destroy();
+assert.equal(
+    lifecycleApi.diagnostics.snapshot().filter(item => item.label.startsWith('next:ask-nova')).length,
+    0,
+    'Ask Nova destroy must retract controller and modal resources'
+);
+
+// Concurrent opens may settle in either native IPC order, but the most recent
+// user request must select the final target and only one modal may survive.
+const previousConcurrentTopTabManager = window.topTabManager;
+const concurrentOverlayResolvers = [];
+const concurrentOverlayReleases = [];
+window.topTabManager = {
+    acquireOverlay: () => new Promise(resolve => concurrentOverlayResolvers.push(resolve)),
+    releaseOverlay: owner => concurrentOverlayReleases.push(owner)
+};
+const concurrentAskNovaController = createAskNovaController({
+    document,
+    VCPUI,
+    marked: { parse: value => `<p>${value}</p>` },
+    api: askNovaApi
+});
+const firstConcurrentOpen = concurrentAskNovaController.open('frontend');
+const latestConcurrentOpen = concurrentAskNovaController.open('backend');
+await new Promise(resolve => setTimeout(resolve, 0));
+assert.equal(concurrentOverlayResolvers.length, 2);
+concurrentOverlayResolvers[1]();
+const latestConcurrentModal = await latestConcurrentOpen;
+concurrentOverlayResolvers[0]();
+const firstConcurrentResult = await firstConcurrentOpen;
+assert.strictEqual(firstConcurrentResult, latestConcurrentModal);
+assert.equal(latestConcurrentModal.getState().targetId, 'backend', 'latest Ask Nova target must win regardless of acquire order');
+assert.equal(document.querySelectorAll('.ask-nova-modal-host').length, 1, 'concurrent Ask Nova opens must mount one host');
+latestConcurrentModal.close();
+await new Promise(resolve => setTimeout(resolve, 0));
+await concurrentAskNovaController.destroy();
+assert.equal(concurrentOverlayReleases.length, 2, 'both concurrent overlay leases must be returned');
+window.topTabManager = previousConcurrentTopTabManager;
+
+// Destroying the controller while the native WebContentsView hide request is
+// pending must return the just-acquired overlay lease instead of attaching it
+// to an already disposed modal Scope.
+const previousTopTabManager = window.topTabManager;
+let resolveOverlayAcquire;
+const overlayReleases = [];
+window.topTabManager = {
+    acquireOverlay: () => new Promise(resolve => { resolveOverlayAcquire = resolve; }),
+    releaseOverlay: owner => overlayReleases.push(owner)
+};
+const interruptedAskNovaController = createAskNovaController({
+    document,
+    VCPUI,
+    marked: { parse: value => `<p>${value}</p>` },
+    api: askNovaApi
+});
+const interruptedOpen = interruptedAskNovaController.open('frontend');
+await new Promise(resolve => setTimeout(resolve, 0));
+await interruptedAskNovaController.destroy();
+resolveOverlayAcquire();
+assert.equal(await interruptedOpen, null, 'destroyed Ask Nova must not mount after overlay acquisition settles');
+assert.equal(overlayReleases.length, 1, 'destroyed Ask Nova must return its late overlay lease exactly once');
+window.topTabManager = previousTopTabManager;
 
 const expected = ['button', 'iconbutton', 'input', 'textarea', 'select', 'range', 'checkbox', 'switch', 'field', 'settingssection', 'settingsactionbar', 'badge', 'alert', 'card', 'tabs', 'toolbar', 'list', 'listitem', 'tableframe', 'emptystate', 'divider', 'tooltip', 'skeleton', 'segmentedcontrol', 'pagination', 'scrollarea', 'modal', 'toast', 'confirmdialog', 'inputdialog', 'apppageshell', 'windowcontrols', 'asyncboundary'];
 expected.forEach(name => assert.ok(VCPUI.components.includes(name), `missing public component ${name}`));
@@ -475,11 +541,11 @@ assert.equal(globalModal.querySelector('.vcp-ui-settings-search'), null,
     'Classic global settings must remove the injected SettingsShell search');
 assert.equal(document.documentElement.classList.contains('vcp-global-settings-host'), false,
     'Classic must not retain the Next global-settings host state');
-window.VCPUISettingsBridge.destroy();
+await window.VCPUISettingsBridge.destroy();
 modalContainer.remove();
 
 assert.ok(!document.getElementById('bridgeInput').classList.contains('vcp-ui-native-input'));
-window.VCPUISettingsBridge.destroy();
+await window.VCPUISettingsBridge.destroy();
 settingsHost.remove();
 document.documentElement.dataset.uiMode = 'next';
 
@@ -492,7 +558,7 @@ await import(`${pathToFileURL(`${process.cwd()}/modules/ui-system/settings-bridg
 await new Promise(resolve => setTimeout(resolve, 0));
 assert.ok(!document.getElementById('classicPresentationInput').classList.contains('vcp-ui-native-input'));
 assert.equal(window.VCPUISettingsBridge.enhancedCount, 0);
-window.VCPUISettingsBridge.destroy();
+await window.VCPUISettingsBridge.destroy();
 classicPresentationSettingsHost.remove();
 
 assert.equal(VCPUI.setDensity(scope, 'compact'), 'compact');

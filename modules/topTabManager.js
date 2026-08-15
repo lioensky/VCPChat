@@ -6,6 +6,8 @@
     let mounted = false;
     let mountGeneration = 0;
     let mountAbortController = null;
+    let mountScope = null;
+    let appGridScope = null;
     let accountMenuObserver = null;
     let accountMenuController = null;
     let activeViewId = 'home';
@@ -22,7 +24,8 @@
     const suppressedTabClicks = new Set();
 
     function listen(target, type, handler, options = {}) {
-        if (!target || !mountAbortController) return;
+        if (!target || (!mountScope && !mountAbortController)) return;
+        if (mountScope) return mountScope.listen(target, type, handler, options, `tab-host:${type}`);
         target.addEventListener(type, handler, { ...options, signal: mountAbortController.signal });
     }
 
@@ -74,10 +77,11 @@
         const syncWidth = () => document.documentElement.style.setProperty('--next-sidebar-width', `${Math.max(0, sidebar.getBoundingClientRect().width)}px`);
         syncWidth();
         sidebarResizeObserver = new ResizeObserver(syncWidth);
-        sidebarResizeObserver.observe(sidebar);
+        if (mountScope) mountScope.observe(sidebarResizeObserver, sidebar, undefined, 'sidebar-resize');
+        else sidebarResizeObserver.observe(sidebar);
     }
 
-    function createTab({ id, title, icon, iconSvg, closeLabel }) {
+    function createTab({ id, title, icon, iconSvg, closeLabel, scope = mountScope }) {
         const tab = document.createElement('div');
         tab.className = 'next-ui-tab';
         tab.dataset.viewId = id;
@@ -109,7 +113,10 @@
         close.title = '关闭标签';
         close.innerHTML = '<span class="vcp-ui-icon" aria-hidden="true">close</span>';
         tab.append(label, close);
-        tab.addEventListener('click', event => {
+        const listenTab = (type, handler) => scope
+            ? scope.listen(tab, type, handler, undefined, `tab:${id}:${type}`)
+            : tab.addEventListener(type, handler);
+        listenTab('click', event => {
             if (suppressedTabClicks.delete(id)) {
                 event.preventDefault();
                 return;
@@ -119,7 +126,7 @@
                 closeView(id);
             } else setView(id);
         });
-        tab.addEventListener('keydown', event => {
+        listenTab('keydown', event => {
             if (event.target.closest('.next-ui-tab-close')) return;
             if (event.key !== 'Enter' && event.key !== ' ') return;
             event.preventDefault();
@@ -258,7 +265,8 @@
         container.dataset.appId = app.id;
         container.hidden = true;
         host.append(container);
-        const tab = createTab({ id: viewId, title: app.title, icon: app.icon, iconSvg: app.iconSvg });
+        const viewScope = mountScope?.child(`next:internal-app:${app.id}`) || null;
+        const tab = createTab({ id: viewId, title: app.title, icon: app.icon, iconSvg: app.iconSvg, scope: viewScope });
         const context = Object.freeze({
             close: () => closeView(viewId),
             activate: () => setView(viewId),
@@ -271,7 +279,13 @@
             console.error(`[NextUiApps] Failed to mount ${app.id}:`, error);
             container.textContent = `应用加载失败：${error.message}`;
         }
-        views.set(viewId, { kind: 'internal', app, tab, container, disposer });
+        if (viewScope) {
+            viewScope.own(() => app.unmount?.(), `app-unmount:${app.id}`, 'ui-registration');
+            if (typeof disposer === 'function' || typeof disposer?.dispose === 'function') {
+                viewScope.own(disposer, `app-disposer:${app.id}`, 'ui-registration');
+            }
+        }
+        views.set(viewId, { kind: 'internal', app, tab, container, disposer, scope: viewScope });
         setView(viewId);
     }
 
@@ -289,9 +303,12 @@
         return outsideWindow || pulledAwayFromStrip;
     }
 
-    function installDetachDrag(tab, viewId) {
+    function installDetachDrag(tab, viewId, scope = mountScope) {
         tab.title = '拖出标签可在独立窗口中打开';
-        tab.addEventListener('pointerdown', event => {
+        const bind = (target, type, handler, options) => scope
+            ? scope.listen(target, type, handler, options, `detach:${viewId}:${type}`)
+            : target.addEventListener(type, handler, options);
+        bind(tab, 'pointerdown', event => {
             if (event.button !== 0 || event.target.closest('.next-ui-tab-close')) return;
             const startPoint = {
                 clientX: event.clientX,
@@ -300,12 +317,21 @@
                 screenY: event.screenY
             };
             let dragging = false;
+            let releaseMove;
+            let releaseUp;
+            let releaseCancel;
             tab.setPointerCapture?.(event.pointerId);
 
             const finish = async (finishEvent, cancelled = false) => {
-                tab.removeEventListener('pointermove', move);
-                tab.removeEventListener('pointerup', up);
-                tab.removeEventListener('pointercancel', cancel);
+                if (scope) {
+                    void releaseMove?.();
+                    void releaseUp?.();
+                    void releaseCancel?.();
+                } else {
+                    tab.removeEventListener('pointermove', move);
+                    tab.removeEventListener('pointerup', up);
+                    tab.removeEventListener('pointercancel', cancel);
+                }
                 tab.classList.remove('is-dragging');
                 document.body.classList.remove('next-ui-tab-dragging');
                 if (!dragging || cancelled || !shouldDetachTab(finishEvent, startPoint)) return;
@@ -321,9 +347,9 @@
             };
             const up = upEvent => finish(upEvent);
             const cancel = cancelEvent => finish(cancelEvent, true);
-            tab.addEventListener('pointermove', move);
-            tab.addEventListener('pointerup', up, { once: true });
-            tab.addEventListener('pointercancel', cancel, { once: true });
+            releaseMove = bind(tab, 'pointermove', move);
+            releaseUp = bind(tab, 'pointerup', up, { once: true });
+            releaseCancel = bind(tab, 'pointercancel', cancel, { once: true });
         });
     }
 
@@ -348,11 +374,13 @@
         container.hidden = true;
         container.innerHTML = '<div class="next-ui-embedded-app-status"><span class="vcp-ui-icon" aria-hidden="true">progress_activity</span><span>正在打开应用…</span></div>';
         host.append(container);
+        const viewScope = mountScope?.child(`next:embedded-app:${app.id}`) || null;
         const tab = createTab({
             id: viewId,
             title: app.name,
             iconSvg: window.trayManager?.getIcon(app.icon),
-            closeLabel: `关闭${app.name}标签`
+            closeLabel: `关闭${app.name}标签`,
+            scope: viewScope
         });
         const resizeObserver = typeof ResizeObserver === 'undefined'
             ? null
@@ -360,10 +388,11 @@
                 const view = views.get(viewId);
                 if (view && activeViewId === viewId) syncEmbeddedBounds(view);
             });
-        const view = { kind: 'embedded', app, action: app.action, tab, container, resizeObserver };
+        const view = { kind: 'embedded', app, action: app.action, tab, container, resizeObserver, scope: viewScope };
         views.set(viewId, view);
-        resizeObserver?.observe(container);
-        installDetachDrag(tab, viewId);
+        if (resizeObserver && viewScope) viewScope.observe(resizeObserver, container, undefined, `embedded-resize:${app.id}`);
+        else resizeObserver?.observe(container);
+        installDetachDrag(tab, viewId, viewScope);
         setView(viewId);
 
         try {
@@ -410,18 +439,25 @@
         const tabIndex = tabs.indexOf(view.tab);
         try {
             if (view.kind === 'embedded') {
-                view.resizeObserver?.disconnect();
+                if (!view.scope) view.resizeObserver?.disconnect();
                 if (!options.skipEmbeddedClose) {
                     getDesktopApi()?.desktopCloseEmbeddedVchatApp?.(view.action).catch(error => {
                         console.warn(`[NextUI] Failed to close embedded app ${view.action}:`, error);
                     });
                 }
             } else {
-                if (typeof view.disposer === 'function') view.disposer();
-                view.app.unmount?.();
+                if (!view.scope) {
+                    if (typeof view.disposer === 'function') view.disposer();
+                    view.app.unmount?.();
+                }
             }
         } catch (error) {
             console.error(`[NextUiApps] Failed to unmount ${view.app?.id || view.action}:`, error);
+        }
+        if (view.scope) {
+            void view.scope.dispose(`view-closed:${viewId}`).catch(error => {
+                console.error(`[NextUiApps] Failed to dispose ${viewId}:`, error);
+            });
         }
         view.tab.remove();
         view.container.remove();
@@ -541,6 +577,17 @@
         const grid = document.getElementById('nextUiAppGrid');
         const trayManager = window.trayManager;
         if (!grid || !trayManager?.getApps) return;
+        if (appGridScope) {
+            const previousScope = appGridScope;
+            appGridScope = null;
+            void previousScope.dispose('app-grid-rerender').catch(error => {
+                console.error('[NextUI] Failed to dispose app-grid listeners:', error);
+            });
+        }
+        appGridScope = mountScope?.child('next:app-grid') || null;
+        const listenApp = (target, handler) => appGridScope
+            ? appGridScope.listen(target, 'click', handler, undefined, 'app-grid:click')
+            : target.addEventListener('click', handler);
         grid.replaceChildren();
         const externalApps = trayManager.getApps().filter(app => app.id !== 'vchat-app-main');
         externalApps.forEach((app, index) => {
@@ -551,7 +598,7 @@
             button.innerHTML = `<span class="next-ui-app-icon" data-tone="${APP_TONES[index % APP_TONES.length]}">${trayManager.getIcon(app.icon)}</span><span>${app.name}</span>`;
             button.dataset.openMode = app.embed ? 'embedded' : 'window';
             button.title = app.embed ? `${app.name}（在标签页中打开）` : `${app.name}（在独立窗口中打开）`;
-            button.addEventListener('click', () => app.embed ? openEmbeddedApp(app) : trayManager.launchApp(app));
+            listenApp(button, () => app.embed ? openEmbeddedApp(app) : trayManager.launchApp(app));
             grid.append(button);
         });
         window.nextUiApps?.list().forEach(app => {
@@ -569,7 +616,7 @@
             const label = document.createElement('span');
             label.textContent = app.title;
             button.append(appIcon, label);
-            button.addEventListener('click', () => openInternalApp(app.id));
+            listenApp(button, () => openInternalApp(app.id));
             grid.append(button);
         });
     }
@@ -617,6 +664,7 @@
             if (open) sync();
         };
         accountMenuController = Object.freeze({ open: () => setOpen(true), close: () => setOpen(false) });
+        mountScope?.own(() => setOpen(false), 'account-menu-state', 'dom-state');
 
         listen(avatar, 'error', () => {
             if (!avatar.src.endsWith('/assets/default_user_avatar.png')) {
@@ -659,7 +707,8 @@
             if (event.detail?.active === true) setOpen(false);
         });
         accountMenuObserver = new MutationObserver(sync);
-        accountMenuObserver.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+        if (mountScope) mountScope.observe(accountMenuObserver, document.body, { attributes: true, attributeFilter: ['class'] }, 'account-theme-observer');
+        else accountMenuObserver.observe(document.body, { attributes: true, attributeFilter: ['class'] });
         listen(window, 'global-settings-updated', sync);
         sync();
     }
@@ -753,25 +802,53 @@
         const cancelButton = ui.create('Button', { label: '取消', variant: 'ghost' });
         const createButton = ui.create('Button', { label: '创建', variant: 'primary', type: 'submit' });
         const ownedControllers = [typeControl, typeField, nameControl, nameField, modelControl, modelField, cancelButton, createButton];
+        const dialogScope = mountScope?.child('next:create-item-modal') || null;
+        dialogScope?.own(() => host.remove(), 'create-modal-host', 'dom');
+        ownedControllers.forEach((controller, index) => {
+            dialogScope?.own(() => controller.destroy(), `create-control:${index}`, 'ui-registration');
+        });
         let kind = 'agent';
         let submitting = false;
         let cleaned = false;
         let modal;
         const overlayOwner = Symbol('create-item-modal-overlay');
-        await acquireOverlay(overlayOwner);
-        if (!mounted || generation !== mountGeneration || document.documentElement.dataset.uiMode !== 'next') {
+        try {
+            await acquireOverlay(overlayOwner);
+        } catch (overlayError) {
+            if (dialogScope) await dialogScope.dispose('create-overlay-failed');
+            else ownedControllers.forEach(controller => controller.destroy());
+            throw overlayError;
+        }
+        // Switching to Classic can dispose the parent while the native view
+        // hide request is still in flight.  A lease acquired for a dead dialog
+        // must be returned directly instead of being registered on that Scope.
+        if (dialogScope && !dialogScope.active) {
             releaseOverlay(overlayOwner);
-            ownedControllers.forEach(controller => controller.destroy());
+            return;
+        }
+        dialogScope?.own(() => releaseOverlay(overlayOwner), 'create-overlay-lease', 'overlay');
+        if (!mounted || generation !== mountGeneration || document.documentElement.dataset.uiMode !== 'next') {
+            if (dialogScope) await dialogScope.dispose('create-open-cancelled');
+            else {
+                releaseOverlay(overlayOwner);
+                ownedControllers.forEach(controller => controller.destroy());
+            }
             return;
         }
 
         const cleanup = () => {
             if (cleaned) return;
             cleaned = true;
-            releaseOverlay(overlayOwner);
             if (activeCreateModal === modal) activeCreateModal = null;
-            ownedControllers.forEach(controller => controller.destroy());
-            host.remove();
+            if (dialogScope) {
+                void dialogScope.dispose('create-modal-closed').catch(error => {
+                    console.error('[NextUI] Failed to dispose create dialog:', error);
+                });
+            } else {
+                releaseOverlay(overlayOwner);
+                ownedControllers.forEach(controller => controller.destroy());
+                host.remove();
+            }
         };
 
         try {
@@ -783,8 +860,11 @@
                 onClose: cleanup
             });
         } catch (error) {
-            releaseOverlay(overlayOwner);
-            ownedControllers.forEach(controller => controller.destroy());
+            if (dialogScope) await dialogScope.dispose('create-modal-failed');
+            else {
+                releaseOverlay(overlayOwner);
+                ownedControllers.forEach(controller => controller.destroy());
+            }
             throw error;
         }
         activeCreateModal = modal;
@@ -824,9 +904,10 @@
             const model = modelControl.getValue();
 
             try {
-                const result = kind === 'group'
-                    ? await window.MainChatCommands.createGroup({ name, model })
-                    : await window.MainChatCommands.createAgent({ name, model });
+                const request = kind === 'group'
+                    ? window.MainChatCommands.createGroup({ name, model })
+                    : window.MainChatCommands.createAgent({ name, model });
+                const result = dialogScope ? await dialogScope.track(request, `create-${kind}`) : await request;
                 if (!result?.success) throw new Error(result?.error || '创建失败，请稍后重试。');
                 window.VCPUI?.feedback?.toast(
                     result.navigationSuccess === false
@@ -848,20 +929,28 @@
             }
         };
 
-        typeControl.element.addEventListener('change', syncType);
-        nameInput.addEventListener('input', () => {
+        const listenDialog = (target, type, handler, options) => dialogScope
+            ? dialogScope.listen(target, type, handler, options, `create-modal:${type}`)
+            : target.addEventListener(type, handler, options);
+        listenDialog(typeControl.element, 'change', syncType);
+        listenDialog(nameInput, 'input', () => {
             if (nameField.element.dataset.state === 'error') nameField.update({ error: '' });
         });
-        cancelButton.element.addEventListener('click', () => modal.close(null));
-        createButton.element.addEventListener('click', submit);
-        form.addEventListener('submit', event => {
+        listenDialog(cancelButton.element, 'click', () => modal.close(null));
+        listenDialog(createButton.element, 'click', submit);
+        listenDialog(form, 'submit', event => {
             event.preventDefault();
             submit();
         });
-        requestAnimationFrame(() => nameInput.focus());
+        if (dialogScope) dialogScope.animationFrame(() => nameInput.focus(), 'focus-create-name');
+        else requestAnimationFrame(() => nameInput.focus());
 
         try {
-            const options = normalizeModelOptions(await api.getCachedModels?.());
+            const modelRequest = api.getCachedModels?.();
+            const modelPayload = dialogScope && modelRequest
+                ? await dialogScope.track(modelRequest, 'load-create-models')
+                : await modelRequest;
+            const options = normalizeModelOptions(modelPayload);
             if (activeCreateModal !== modal || !modal.element.isConnected) return;
             modelControl.update({
                 disabled: false,
@@ -890,9 +979,19 @@
                 input.value = '';
                 window.uiHelperFunctions?.filterAgentList?.('');
             }
-            if (active) requestAnimationFrame(() => input.focus());
+            if (active) {
+                if (mountScope) mountScope.animationFrame(() => input.focus(), 'focus-agent-search');
+                else requestAnimationFrame(() => input.focus());
+            }
             else if (document.activeElement === input) trigger.focus();
         };
+
+        mountScope?.own(() => {
+            header.classList.remove('is-searching');
+            trigger.setAttribute('aria-expanded', 'false');
+            input.value = '';
+            window.uiHelperFunctions?.filterAgentList?.('');
+        }, 'agent-search-state', 'dom-state');
 
         listen(trigger, 'click', () => setSearchMode(true, false));
         listen(close, 'click', () => setSearchMode(false));
@@ -922,6 +1021,12 @@
             view.container.dataset.state = 'error';
             view.container.innerHTML = `<div class="next-ui-embedded-app-status is-error"><span class="vcp-ui-icon" aria-hidden="true">error</span><span>${payload.error || '应用运行异常'}</span></div>`;
         }) || null;
+        if (embeddedStateDisposer && mountScope) {
+            mountScope.own(() => {
+                embeddedStateDisposer?.();
+                embeddedStateDisposer = null;
+            }, 'embedded-state-subscription', 'subscription');
+        }
     }
 
     function mount() {
@@ -929,7 +1034,9 @@
         if (teardownPromise) return;
         mounted = true;
         mountGeneration += 1;
-        mountAbortController = new AbortController();
+        const LifecycleScope = window.VCPLifecycle?.LifecycleScope;
+        mountScope = LifecycleScope ? new LifecycleScope('next:tab-host') : null;
+        mountAbortController = mountScope ? null : new AbortController();
         renderApps();
         syncDensity();
         observeSidebarWidth();
@@ -949,7 +1056,8 @@
         listen(document.getElementById('nextUiMinimizeBtn'), 'click', () => window.MainChatCommands?.minimize?.());
         listen(document.getElementById('nextUiMaximizeBtn'), 'click', () => window.MainChatCommands?.toggleMaximize?.());
         listen(document.getElementById('nextUiCloseBtn'), 'click', () => window.MainChatCommands?.close?.());
-        listen(window, 'next-ui-apps-changed', () => {
+        listen(window, 'next-ui-apps-changed', event => {
+            if (event.detail?.action === 'unregistered') closeView(`app:${event.detail.id}`);
             renderApps();
             void restoreTabSession();
         });
@@ -967,15 +1075,17 @@
         mounted = false;
         previewSuspended = false;
         mountGeneration += 1;
-        mountAbortController?.abort();
+        if (!mountScope) mountAbortController?.abort();
         mountAbortController = null;
         accountMenuObserver?.disconnect();
         accountMenuObserver = null;
         accountMenuController = null;
         sidebarResizeObserver?.disconnect();
         sidebarResizeObserver = null;
-        embeddedStateDisposer?.();
-        embeddedStateDisposer = null;
+        if (!mountScope) {
+            embeddedStateDisposer?.();
+            embeddedStateDisposer = null;
+        }
         pendingTabRestore = null;
         restoringTabs = false;
         closeCreateDialog();
@@ -984,7 +1094,19 @@
             document.dispatchEvent(new CustomEvent('next-ui-overlay-changed', { detail: { active: false } }));
         }
         overlayOwners.clear();
-        const pending = closeAllInternalApps({ preserveSession: true });
+        const scopeToDispose = mountScope;
+        mountScope = null;
+        appGridScope = null;
+        const pending = Promise.allSettled([
+            closeAllInternalApps({ preserveSession: true }),
+            scopeToDispose?.dispose('leave-next') || Promise.resolve(),
+        ]).then(results => {
+            results.forEach(result => {
+                if (result.status === 'rejected') {
+                    console.error('[NextUI] Teardown resource failed; mode transition will continue:', result.reason);
+                }
+            });
+        });
         const wrapped = pending.finally(() => {
             if (teardownPromise === wrapped) teardownPromise = null;
         });
@@ -1020,12 +1142,17 @@
         try {
             await getDesktopApi()?.desktopActivateEmbeddedVchatApp?.(null);
         } catch (error) {
-            overlayOwners.delete(owner);
-            if (overlayOwners.size === 0) {
+            const removed = overlayOwners.delete(owner);
+            if (removed && overlayOwners.size === 0) {
                 document.dispatchEvent(new CustomEvent('next-ui-overlay-changed', { detail: { active: false } }));
             }
             console.warn('[NextUI] Failed to hide embedded app for overlay:', error);
             throw error;
+        } finally {
+            // The lease can be released while the native hide IPC is still in
+            // flight. Reconcile after it settles so a late hide completion
+            // cannot become the final native-view state.
+            if (!overlayOwners.has(owner)) syncEmbeddedActivation();
         }
         return owner;
     }
@@ -1073,6 +1200,7 @@
         if (initialized) return;
         initialized = true;
         window.addEventListener('ui-mode-changed', event => {
+            if (event.detail?.coordinated === true) return;
             void syncMode(event.detail?.mode, { preview: event.detail?.preview === true });
         });
         void syncMode(document.documentElement.dataset.uiMode);

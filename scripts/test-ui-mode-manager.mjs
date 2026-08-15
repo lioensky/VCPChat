@@ -68,4 +68,21 @@ await transition;
 assert.equal(dom.window.document.documentElement.dataset.uiMode, 'classic');
 assert.deepEqual(lifecycle, ['prepare:classic', 'sync:classic']);
 
+dom.window.uiModeManager.apply('next');
+lifecycle.length = 0;
+let releaseStaleTransition;
+const staleGate = new Promise(resolve => { releaseStaleTransition = resolve; });
+dom.window.topTabManager.prepareForMode = async mode => {
+    lifecycle.push(`prepare:${mode}`);
+    if (mode === 'classic') await staleGate;
+};
+const staleClassic = dom.window.uiModeManager.applyAsync('classic');
+await Promise.resolve();
+const latestNext = dom.window.uiModeManager.applyAsync('next');
+releaseStaleTransition();
+await Promise.all([staleClassic, latestNext]);
+assert.equal(dom.window.document.documentElement.dataset.uiMode, 'next', 'a stale transition must not overwrite the latest requested mode');
+assert.deepEqual(lifecycle, ['prepare:classic', 'prepare:next', 'sync:next'], 'mode transitions must serialize and stale work must stop before commit');
+assert.equal(dom.window.uiModeManager.getTransitionState().phase, 'settled');
+
 console.log('UI mode authority contract passed.');

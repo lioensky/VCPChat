@@ -104,6 +104,9 @@ async function assertMainSurface(page, browser, label) {
             topbar: visible('#nextUiTopbar'),
             askNovaHosts: document.querySelectorAll('.ask-nova-modal-host').length,
             globalSettingsActive: document.getElementById('globalSettingsModal')?.classList.contains('active') === true,
+            transientLifecycleScopes: (window.VCPLifecycle?.diagnostics?.snapshot?.() || [])
+                .filter(scope => /next:(?:ask-nova-modal|appearance-studio-open|create-item-modal|internal-app|embedded-app)(?=$|:)/.test(scope.label))
+                .map(scope => scope.label),
             bodyText: document.body?.innerText?.length || 0,
         };
     });
@@ -116,6 +119,7 @@ async function assertMainSurface(page, browser, label) {
     assert.equal(state.topbar, true, `${label}: Next top bar disappeared: ${JSON.stringify(state)}`);
     assert.equal(state.askNovaHosts, 0, `${label}: Ask Nova overlay was retained: ${JSON.stringify(state)}`);
     assert.equal(state.globalSettingsActive, false, `${label}: settings modal remained active: ${JSON.stringify(state)}`);
+    assert.deepEqual(state.transientLifecycleScopes, [], `${label}: transient Next lifecycle owners survived close: ${JSON.stringify(state)}`);
     assert.ok(state.bodyText > 20, `${label}: renderer became visually empty: ${JSON.stringify(state)}`);
 }
 
@@ -139,6 +143,9 @@ async function assertClassicSurface(page, browser, label) {
             classicHeader: visible('.chat-header'),
             nextTopbar: visible('#nextUiTopbar'),
             dynamicTabs: document.querySelectorAll('#nextUiDynamicTabs > .next-ui-tab').length,
+            dynamicLifecycleScopes: (window.VCPLifecycle?.diagnostics?.snapshot?.() || [])
+                .filter(scope => /next:(?:tab-host|main-ui-runtime|settings-presentation|ask-nova-modal|appearance-studio-open|create-item-modal|internal-app|embedded-app)(?=$|:)/.test(scope.label))
+                .map(scope => scope.label),
             bodyText: document.body?.innerText?.length || 0,
         };
     });
@@ -149,6 +156,7 @@ async function assertClassicSurface(page, browser, label) {
     assert.equal(state.classicHeader, true, `${label}: Classic chat header disappeared: ${JSON.stringify(state)}`);
     assert.equal(state.nextTopbar, false, `${label}: Next top bar remained visible: ${JSON.stringify(state)}`);
     assert.equal(state.dynamicTabs, 0, `${label}: Next tabs survived teardown: ${JSON.stringify(state)}`);
+    assert.deepEqual(state.dynamicLifecycleScopes, [], `${label}: dynamic Next lifecycle owners survived Classic teardown: ${JSON.stringify(state)}`);
     assert.ok(state.bodyText > 20, `${label}: renderer became visually empty: ${JSON.stringify(state)}`);
 }
 
@@ -164,6 +172,10 @@ async function collectRendererSnapshot(page, cdp, browserCdp, browser, label) {
         page.evaluate(() => ({
             enhancedSettingsControls: window.VCPUISettingsBridge?.enhancedCount || 0,
             promptNodes: document.querySelectorAll('#systemPromptContainer *').length,
+            lifecycle: window.VCPLifecycle?.diagnostics?.summary?.() || null,
+            transientLifecycleScopes: (window.VCPLifecycle?.diagnostics?.snapshot?.() || [])
+                .filter(scope => /next:(?:ask-nova-modal|appearance-studio-open|create-item-modal|internal-app|embedded-app)(?=$|:)/.test(scope.label))
+                .map(scope => scope.label),
         })),
         browser.pages(),
     ]);
@@ -196,6 +208,9 @@ async function collectRendererSnapshot(page, cdp, browserCdp, browser, label) {
         detachedOptions: detachedSignatures.filter(signature => signature === 'OPTION').length,
         detachedSignatures: detachedSignatures.slice(0, 12),
         detachedKinds,
+        lifecycleActiveScopes: rendererState.lifecycle?.activeScopes ?? 0,
+        lifecycleActiveResources: rendererState.lifecycle?.activeResources ?? 0,
+        lifecycleResourcesByType: rendererState.lifecycle?.resourcesByType || {},
         ...rendererState,
     };
 }
@@ -289,6 +304,12 @@ function assertNoSustainedLeak(baseline, checkpoints) {
         `detached VCP icon hosts accumulated: ${baseline.detachedVcpIcons} -> ${final.detachedVcpIcons}`);
     assert.ok(final.detachedOptions <= baseline.detachedOptions,
         `detached Select options accumulated: ${baseline.detachedOptions} -> ${final.detachedOptions}`);
+    assert.equal(final.lifecycleActiveScopes, baseline.lifecycleActiveScopes,
+        `owned lifecycle scopes accumulated: ${baseline.lifecycleActiveScopes} -> ${final.lifecycleActiveScopes}`);
+    assert.equal(final.lifecycleActiveResources, baseline.lifecycleActiveResources,
+        `owned lifecycle resources accumulated: ${baseline.lifecycleActiveResources} -> ${final.lifecycleActiveResources}`);
+    assert.deepEqual(final.transientLifecycleScopes, [],
+        `transient Next scopes survived their surface: ${JSON.stringify(final.transientLifecycleScopes)}`);
 
     // Absolute ceilings catch large one-off retention. Positive slopes catch a
     // smaller leak that grows at every checkpoint but still fits the ceiling.
@@ -794,6 +815,8 @@ try {
         detachedRoots: point.detachedRoots,
         detachedIcons: point.detachedVcpIcons,
         detachedOptions: point.detachedOptions,
+        lifecycleScopes: point.lifecycleActiveScopes,
+        lifecycleResources: point.lifecycleActiveResources,
     })));
 } catch (error) {
     console.error(error?.stack || error);
