@@ -24,6 +24,8 @@
     "test:appearance-studio": "node scripts/test-appearance-studio.mjs",
     "test:vcp-ui-select-proxy": "node scripts/test-vcp-ui-select-proxy.mjs",
     "test:electron-ui-apps": "node scripts/test-electron-ui-apps-smoke.mjs",
+    "test:electron-lifecycle-stress": "node scripts/test-electron-lifecycle-stress.mjs",
+    "test:electron-stability": "npm run test:electron-ui-apps && npm run test:electron-lifecycle-stress",
     "pack": "npm run build && electron-builder --dir",
     "dist": "npm run build && electron-builder",
     "test:mobile-sync": "node --test tests/mobile-sync-protocol.test.js tests/mobile-sync-error-contract.test.js tests/mobile-sync-central-adapter.test.js tests/mobile-sync-canonical.test.js tests/mobile-sync-failure-contract.test.js tests/mobile-sync-streaming.test.js tests/mobile-sync-package.test.js",

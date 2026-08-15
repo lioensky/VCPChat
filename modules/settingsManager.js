@@ -565,10 +565,6 @@ const settingsManager = (() => {
         const isNetworkMode = globalSettings.voiceMode === 'network';
 
         try {
-            // Clear existing options
-            agentTtsVoicePrimarySelect.innerHTML = '<option value="">不使用语音</option>';
-            agentTtsVoiceSecondarySelect.innerHTML = '<option value="">不使用</option>';
-
             let optionList = [];
 
             if (isNetworkMode && electronAPI.loadWebindexModels) {
@@ -621,41 +617,54 @@ const settingsManager = (() => {
                     return true;
                 });
 
+            // Build the complete option trees off-DOM and commit each Select
+            // once. Clearing before the async model lookup exposed an
+            // intermediate option set to the Next Web Awesome proxy. Repeated
+            // settings visits then made the custom element retain discarded
+            // wa-option instances and listeners.
+            const createOption = (value, label, { disabled = false, selected = false } = {}) => {
+                const option = document.createElement('option');
+                option.value = value;
+                option.textContent = label;
+                option.disabled = disabled;
+                option.selected = selected;
+                return option;
+            };
+            const primaryOptions = [createOption('', '不使用语音')];
+            const secondaryOptions = [createOption('', '不使用')];
             if (optionList.length > 0) {
                 optionList.forEach(item => {
                     const optionValue = item.voice || item.id;
                     const optionLabel = item.displayName || item.voice || item.id;
-
-                    const primaryOption = document.createElement('option');
-                    primaryOption.value = optionValue;
-                    primaryOption.textContent = optionLabel;
-                    if (optionValue === currentPrimaryVoice) {
-                        primaryOption.selected = true;
-                    }
-                    agentTtsVoicePrimarySelect.appendChild(primaryOption);
-
-                    const secondaryOption = document.createElement('option');
-                    secondaryOption.value = optionValue;
-                    secondaryOption.textContent = optionLabel;
-                    if (optionValue === currentSecondaryVoice) {
-                        secondaryOption.selected = true;
-                    }
-                    agentTtsVoiceSecondarySelect.appendChild(secondaryOption);
+                    primaryOptions.push(createOption(optionValue, optionLabel, {
+                        selected: optionValue === currentPrimaryVoice
+                    }));
+                    secondaryOptions.push(createOption(optionValue, optionLabel, {
+                        selected: optionValue === currentSecondaryVoice
+                    }));
                 });
             } else {
-                const disabledOption = isNetworkMode
-                    ? '<option value="" disabled>未找到网络音色，请先获取列表并刷新 webindexmodel.json</option>'
-                    : '<option value="" disabled>未找到模型,请启动Sovits</option>';
-                agentTtsVoicePrimarySelect.innerHTML += disabledOption;
-                agentTtsVoiceSecondarySelect.innerHTML += disabledOption;
+                const emptyLabel = isNetworkMode
+                    ? '未找到网络音色，请先获取列表并刷新 webindexmodel.json'
+                    : '未找到模型,请启动Sovits';
+                primaryOptions.push(createOption('', emptyLabel, { disabled: true }));
+                secondaryOptions.push(createOption('', emptyLabel, { disabled: true }));
             }
+            agentTtsVoicePrimarySelect.replaceChildren(...primaryOptions);
+            agentTtsVoiceSecondarySelect.replaceChildren(...secondaryOptions);
         } catch (error) {
             console.error('Failed to get TTS models:', error);
-            const errorOption = isNetworkMode
-                ? '<option value="" disabled>获取网络音色失败</option>'
-                : '<option value="" disabled>获取模型失败</option>';
-            agentTtsVoicePrimarySelect.innerHTML = errorOption;
-            agentTtsVoiceSecondarySelect.innerHTML = errorOption;
+            const errorLabel = isNetworkMode ? '获取网络音色失败' : '获取模型失败';
+            const primaryErrorOption = document.createElement('option');
+            const secondaryErrorOption = document.createElement('option');
+            primaryErrorOption.value = '';
+            secondaryErrorOption.value = '';
+            primaryErrorOption.disabled = true;
+            secondaryErrorOption.disabled = true;
+            primaryErrorOption.textContent = errorLabel;
+            secondaryErrorOption.textContent = errorLabel;
+            agentTtsVoicePrimarySelect.replaceChildren(primaryErrorOption);
+            agentTtsVoiceSecondarySelect.replaceChildren(secondaryErrorOption);
             uiHelper.showToastNotification(isNetworkMode ? '获取网络音色失败' : '获取Sovits语音模型失败', 'error');
         }
     }

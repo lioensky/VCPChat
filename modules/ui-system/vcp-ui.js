@@ -1772,12 +1772,16 @@ function modalFactory(options = {}) {
     controller._listen(overlay, 'mousedown', event => {
         if (event.target === overlay && state.closeOnBackdrop) close(null);
     });
+    controller._listen(document, 'keydown', event => {
+        if (event.key !== 'Escape' || !overlay.isConnected) return;
+        const openOverlays = [...document.querySelectorAll('.vcp-ui-modal-overlay')]
+            .filter(candidate => candidate.isConnected);
+        if (openOverlays.at(-1) !== overlay) return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        close(null);
+    }, true);
     controller._listen(overlay, 'keydown', event => {
-        if (event.key === 'Escape') {
-            event.preventDefault();
-            close(null);
-            return;
-        }
         if (event.key !== 'Tab') return;
         const items = focusable(dialog);
         if (!items.length) return;
@@ -2064,6 +2068,15 @@ function observeControls(root = document, options = {}) {
     const kinds = new Set(options.kinds || ['Select']);
     const filter = typeof options.filter === 'function' ? options.filter : () => true;
     const owned = new Set();
+    const cleanupDisconnected = () => {
+        owned.forEach(controller => {
+            const proxyConnected = controller.element?.isConnected === true;
+            const nativeConnected = controller.nativeElement?.isConnected === true;
+            if (proxyConnected || nativeConnected) return;
+            controller.destroy?.();
+            owned.delete(controller);
+        });
+    };
     const enhanceTree = candidate => {
         if (document.documentElement.dataset.uiMode !== 'next') return;
         const scope = candidate?.nodeType === 1 ? candidate : root;
@@ -2083,11 +2096,20 @@ function observeControls(root = document, options = {}) {
     };
     enhanceTree(root);
     const observer = typeof MutationObserver === 'undefined' ? null : new MutationObserver(records => {
-        records.forEach(record => record.addedNodes.forEach(enhanceTree));
+        // Wait until the current DOM transaction has settled. A business
+        // renderer may replace a native Select and its Web Awesome proxy in
+        // separate mutations; cleaning synchronously could race that move.
+        queueMicrotask(() => {
+            cleanupDisconnected();
+            records.forEach(record => record.addedNodes.forEach(enhanceTree));
+        });
     });
     observer?.observe(root === document ? document.documentElement : root, { childList: true, subtree: true });
     return Object.freeze({
-        refresh: () => enhanceTree(root),
+        refresh: () => {
+            cleanupDisconnected();
+            enhanceTree(root);
+        },
         destroy() {
             observer?.disconnect();
             owned.forEach(controller => controller.destroy?.());
