@@ -2,780 +2,1244 @@
 
 /* General body styling */
 body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
-    /* background-color: var(--primary-bg); */ /* 让壁纸透出来 */
-    color: var(--primary-text);
-    margin: 0;
-    padding: 0;
-    overflow: hidden; /* Prevent body scroll, containers will scroll */
-    line-height: 1.6;
-    display: flex;
-    flex-direction: column;
-    height: 100vh;
-    font-size: 14px; /* Base font size */
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
+    Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+  /* background-color: var(--primary-bg); */ /* 让壁纸透出来 */
+  color: var(--primary-text);
+  margin: 0;
+  padding: 0;
+  overflow: hidden; /* Prevent body scroll, containers will scroll */
+  line-height: 1.6;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  font-size: 14px; /* Base font size */
 }
 
 /* Decorative top light effect */
 .top-light-effect {
-    display: none; /* Disabled for now to rely on main theme */
+  display: none; /* Disabled for now to rely on main theme */
 }
 
 /* Main container for sidebar and content */
 .container {
-    display: flex;
-    flex: 1; /* Take up remaining vertical space */
-    overflow: hidden; /* Prevent container itself from scrolling */
-    padding: 15px;
-    /* gap: 15px; */ /* Let resizer handle the spacing */
-    position: relative; /* For z-index context if needed */
-    z-index: 1;
+  display: flex;
+  flex: 1; /* Take up remaining vertical space */
+  overflow: hidden; /* Prevent container itself from scrolling */
+  padding: 15px;
+  /* gap: 15px; */ /* Let resizer handle the spacing */
+  position: relative; /* For z-index context if needed */
+  z-index: 1;
 }
 
 .resizer {
-    width: 5px;
-    flex-shrink: 0; /* Prevent shrinking */
-    cursor: col-resize;
-    background-color: var(--border-color);
-    z-index: 2;
-    transition: background-color 0.2s;
-    border-radius: 3px;
-    margin: 0 7px; /* Creates a ~19px gap total */
+  width: 5px;
+  flex-shrink: 0; /* Prevent shrinking */
+  cursor: col-resize;
+  background-color: var(--border-color);
+  z-index: 2;
+  transition: background-color 0.2s;
+  border-radius: 3px;
+  margin: 0 7px; /* Creates a ~19px gap total */
 }
 
 .resizer:hover {
-    background-color: var(--highlight-text);
+  background-color: var(--highlight-text);
 }
 
 /* Sidebar styling */
 .sidebar {
-    width: 260px; /* Initial width for the sidebar */
-    min-width: 200px; /* Prevent it from becoming too small */
-    max-width: 500px; /* Prevent it from becoming too large */
-    /* --- 磨砂玻璃效果 --- */
-    background-color: var(--panel-bg);
-    backdrop-filter: blur(12px) saturate(150%);
-    -webkit-backdrop-filter: blur(12px) saturate(150%);
-    border-radius: 12px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
-    display: flex;
-    flex-direction: column;
-    overflow: hidden; /* Important for internal scrolling */
+  width: 260px; /* Initial width for the sidebar */
+  min-width: 200px; /* Prevent it from becoming too small */
+  max-width: 500px; /* Prevent it from becoming too large */
+  /* --- 磨砂玻璃效果 --- */
+  background-color: var(--panel-bg);
+  backdrop-filter: blur(12px) saturate(150%);
+  -webkit-backdrop-filter: blur(12px) saturate(150%);
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden; /* Important for internal scrolling */
 }
 
 .sidebar-header {
-    padding: 12px;
-    border-bottom: 1px solid var(--border-color);
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
+  padding: 12px;
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
 .sidebar-actions {
-    display: flex;
-    gap: 10px;
-    width: 100%;
+  display: flex;
+  gap: 10px;
+  width: 100%;
 }
 
 .sidebar-actions .button {
-    flex: 1; /* Each button takes a third of the space */
-    padding: 3px 10px; /* Reduced padding for a more compact look */
-    font-size: 0.9em; /* Slightly smaller font size */
-    color: var(--secondary-text);
+  flex: 1; /* Each button takes a third of the space */
+  padding: 3px 10px; /* Reduced padding for a more compact look */
+  font-size: 0.9em; /* Slightly smaller font size */
 }
 
 /* Common input styling */
 input[type="text"],
 textarea {
-    width: 100%; /* Full width within parent */
-    padding: 10px 12px;
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    background-color: var(--input-bg);
-    color: var(--primary-text);
-    font-size: 1em; /* Relative to body font size */
-    box-sizing: border-box; /* Include padding and border in element's total width and height */
-    transition: border-color 0.2s, box-shadow 0.2s;
+  width: 100%; /* Full width within parent */
+  padding: 10px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background-color: var(--input-bg);
+  color: var(--primary-text);
+  font-size: 1em; /* Relative to body font size */
+  box-sizing: border-box; /* Include padding and border in element's total width and height */
+  transition: border-color 0.2s, box-shadow 0.2s;
 }
 
 input[type="text"]:focus,
 textarea:focus {
-    outline: none;
-    border-color: var(--highlight-text);
-    box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.3); /* Fallback color, ideally use a rgb variable */
+  outline: none;
+  border-color: var(--highlight-text);
+  box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.3); /* Fallback color, ideally use a rgb variable */
 }
 
 /* Common button styling */
 .button {
-    padding: 10px 15px;
-    background-color: var(--button-bg);
-    color: var(--primary-text);
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    cursor: pointer;
-    font-size: 1em;
-    font-weight: 500;
-    text-align: center;
-    transition: background-color 0.2s, border-color 0.2s, color 0.2s;
-    width: 100%; /* Full width for sidebar buttons */
-    box-sizing: border-box;
+  padding: 10px 15px;
+  background-color: var(--button-bg);
+  color: var(--text-on-accent);
+  border: 1px solid var(--button-bg);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 1em;
+  font-weight: 500;
+  text-align: center;
+  transition: background-color 0.2s, border-color 0.2s, color 0.2s;
+  width: 100%; /* Full width for sidebar buttons */
+  box-sizing: border-box;
 }
 
 .button:hover {
-    background-color: var(--button-hover-bg);
+  background-color: var(--button-hover-bg);
+  border-color: var(--button-hover-bg);
+  color: var(--text-on-accent);
 }
 
 .button:active {
-    background-color: var(--accent-bg);
+  background-color: var(--button-hover-bg);
+  border-color: var(--button-hover-bg);
+  color: var(--text-on-accent);
+  filter: brightness(0.92);
 }
 
 .button-primary {
-    background-color: var(--button-bg);
-    border-color: var(--border-color);
-    color: var(--secondary-text);
+  background-color: var(--button-bg);
+  border-color: var(--button-bg);
+  color: var(--text-on-accent);
 }
 
 .button-primary:hover {
-    background-color: var(--button-hover-bg);
-    border-color: var(--border-color);
+  background-color: var(--button-hover-bg);
+  border-color: var(--button-hover-bg);
 }
 
 .button-danger {
-    background-color: var(--danger-color);
-    border-color: var(--danger-color);
-    color: var(--text-on-accent);
+  background-color: var(--danger-color);
+  border-color: var(--danger-color);
+  color: var(--text-on-accent);
 }
 
 .button-danger:hover {
-    background-color: var(--danger-hover-bg);
-    border-color: var(--danger-hover-bg);
+  background-color: var(--danger-hover-bg);
+  border-color: var(--danger-hover-bg);
 }
 
 /* Note list panel in the sidebar */
 .note-list-panel {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-    overflow-y: auto; /* Allow vertical scrolling for the list */
-    flex-grow: 1; /* Take remaining space in sidebar */
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  overflow-y: auto; /* Allow vertical scrolling for the list */
+  flex-grow: 1; /* Take remaining space in sidebar */
 }
 
 .note-list-panel li {
-    list-style: none;
-    padding: 0;
-    margin: 0;
+  list-style: none;
+  padding: 0;
+  margin: 0;
 }
 
 .note-list-panel .folder-header-row,
 .note-list-panel .note-item {
-    padding: 6px 8px;
-    cursor: pointer;
-    transition: background-color 0.2s, color 0.2s;
-    font-size: 0.95em;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    position: relative; /* For inline editing */
-    border-radius: 4px;
-    margin: 1px 4px;
+  padding: 6px 8px;
+  cursor: pointer;
+  transition: background-color 0.2s, color 0.2s;
+  font-size: 0.95em;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  position: relative; /* For inline editing */
+  border-radius: 4px;
+  margin: 1px 4px;
 }
 
 .note-list-panel .folder-item {
-    /* This is now just a container, no direct styling needed */
+  /* This is now just a container, no direct styling needed */
 }
 
 .note-list-panel .folder-header-row {
-    font-weight: 600;
+  font-weight: 600;
 }
 
 /* Special style for the VCP core memory folder */
 .note-list-panel .dailynote-folder {
-    background: linear-gradient(45deg, rgba(118, 75, 162, 0.3), rgba(102, 126, 234, 0.3));
-    box-shadow: 0 0 8px rgba(102, 126, 234, 0.5);
-    border-radius: 4px;
+  background: linear-gradient(
+    45deg,
+    rgba(118, 75, 162, 0.3),
+    rgba(102, 126, 234, 0.3)
+  );
+  box-shadow: 0 0 8px rgba(102, 126, 234, 0.5);
+  border-radius: 4px;
 }
 
 .note-list-panel .dailynote-folder .item-name {
-    color: #E6E6FA; /* Lavender color for the text */
-    font-weight: bold;
+  color: #e6e6fa; /* Lavender color for the text */
+  font-weight: bold;
 }
 
 .folder-toggle {
-    width: 16px;
-    height: 16px;
-    flex-shrink: 0;
-    transition: transform 0.2s ease-in-out;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  transition: transform 0.2s ease-in-out;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .folder-toggle.collapsed {
-    transform: rotate(-90deg);
+  transform: rotate(-90deg);
 }
 
 .folder-content {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-    padding-left: 24px; /* Indent notes inside a folder */
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  padding-left: 24px; /* Indent notes inside a folder */
 }
 
 .folder-content.collapsed {
-    display: none;
+  display: none;
 }
 
 .note-list-panel .note-item {
-    justify-content: space-between; /* 标题和时间戳两端对齐 */
-    gap: 10px; /* 标题和时间戳之间的间距 */
-    font-weight: 500;
+  justify-content: space-between; /* 标题和时间戳两端对齐 */
+  gap: 10px; /* 标题和时间戳之间的间距 */
+  font-weight: 500;
 }
 
 .item-icon {
-    width: 16px;
-    height: 16px;
-    flex-shrink: 0;
-    margin-right: 4px;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  margin-right: 4px;
 }
 
 .note-list-panel .item-name {
-    flex-grow: 1;
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
+  flex-grow: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 /* Inline editing input */
 .inline-edit-input {
-    flex-grow: 1;
-    border: none;
-    background-color: var(--input-bg);
-    color: var(--primary-text);
-    font-size: 0.95em; /* Match the parent font-size */
-    font-family: inherit;
-    padding: 2px 4px;
-    margin: 0;
-    outline: none;
-    border-radius: 3px;
-    box-shadow: 0 0 0 1px var(--highlight-text);
-    line-height: 1.4; /* Explicit line-height */
+  flex-grow: 1;
+  border: none;
+  background-color: var(--input-bg);
+  color: var(--primary-text);
+  font-size: 0.95em; /* Match the parent font-size */
+  font-family: inherit;
+  padding: 2px 4px;
+  margin: 0;
+  outline: none;
+  border-radius: 3px;
+  box-shadow: 0 0 0 1px var(--highlight-text);
+  line-height: 1.4; /* Explicit line-height */
 }
 
 .note-list-panel li .note-timestamp-display {
-    flex-shrink: 0; /* 防止时间戳收缩 */
-    font-size: 0.85em; /* 时间戳字体小一点 */
-    color: var(--secondary-text); /* 时间戳颜色 */
-    opacity: 0.7; /* 时间戳透明度 */
+  flex-shrink: 0; /* 防止时间戳收缩 */
+  font-size: 0.85em; /* 时间戳字体小一点 */
+  color: var(--secondary-text); /* 时间戳颜色 */
+  opacity: 0.7; /* 时间戳透明度 */
 }
 
 .note-list-panel .folder-header-row:hover,
 .note-list-panel .note-item:hover {
-    background-color: var(--accent-bg);
+  background-color: var(--accent-bg);
 }
 
 .note-list-panel .folder-header-row.active,
 .note-list-panel .note-item.active {
-    background-color: var(--user-bubble-bg);
-    color: var(--text-on-accent);
+  background-color: var(--user-bubble-bg);
+  color: var(--text-on-accent);
 }
 
 .note-list-panel .folder-header-row.active .item-name,
 .note-list-panel .note-item.active .item-name,
 .note-list-panel .note-item.active .note-timestamp-display {
-    color: var(--text-on-accent);
+  color: var(--text-on-accent);
 }
-
 
 /* Multi-selection style */
 .note-list-panel .folder-header-row.selected,
 .note-list-panel .note-item.selected {
-    background-color: var(--accent-bg);
-    box-shadow: inset 0 0 0 1px var(--highlight-text);
+  background-color: var(--accent-bg);
+  box-shadow: inset 0 0 0 1px var(--highlight-text);
 }
 
 .note-list-panel .folder-header-row.selected.active,
 .note-list-panel .note-item.selected.active {
-    background-color: var(--user-bubble-bg); /* Active selection should be more prominent */
-    box-shadow: inset 0 0 0 1px var(--highlight-text);
+  background-color: var(
+    --user-bubble-bg
+  ); /* Active selection should be more prominent */
+  box-shadow: inset 0 0 0 1px var(--highlight-text);
 }
 
 /* Styles for drag and drop */
 .note-list-panel li.dragging {
-    opacity: 0.5; /* Make the dragged item semi-transparent */
-    background-color: var(--accent-bg); /* Optional: change background while dragging */
+  opacity: 0.5; /* Make the dragged item semi-transparent */
+  background-color: var(
+    --accent-bg
+  ); /* Optional: change background while dragging */
 }
 
 .note-list-panel .note-item.drag-over-target-top {
-    border-top: 2px solid var(--highlight-text);
+  border-top: 2px solid var(--highlight-text);
 }
 
 .note-list-panel .note-item.drag-over-target-bottom {
-    border-bottom: 2px solid var(--highlight-text);
+  border-bottom: 2px solid var(--highlight-text);
 }
 
 .note-list-panel .folder-header-row.drag-over-folder {
-    background-color: var(--accent-bg);
-    box-shadow: inset 0 0 0 2px var(--highlight-text);
+  background-color: var(--accent-bg);
+  box-shadow: inset 0 0 0 2px var(--highlight-text);
 }
-
 
 /* Main content area styling */
 .main-content {
-    flex: 1; /* Take up remaining horizontal space */
-    /* --- 磨砂玻璃效果 --- */
-    background-color: var(--panel-bg);
-    backdrop-filter: blur(12px) saturate(150%);
-    -webkit-backdrop-filter: blur(12px) saturate(150%);
-    border-radius: 12px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
-    display: flex;
-    flex-direction: column;
-    overflow: hidden; /* Crucial for internal scrolling of note body */
+  flex: 1; /* Take up remaining horizontal space */
+  /* --- 磨砂玻璃效果 --- */
+  background-color: var(--panel-bg);
+  backdrop-filter: blur(12px) saturate(150%);
+  -webkit-backdrop-filter: blur(12px) saturate(150%);
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden; /* Crucial for internal scrolling of note body */
 }
 
 .note-editor-header {
-    padding: 12px;
-    border-bottom: 1px solid var(--border-color);
-    display: flex;
-    align-items: center;
-    gap: 10px;
+  padding: 12px;
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 #noteTitle {
-    flex-grow: 1; /* Title input takes available space */
-    font-size: 1.1em;
-    font-weight: bold;
+  flex-grow: 1; /* Title input takes available space */
+  font-size: 1.1em;
+  font-weight: bold;
 }
 
 .note-actions {
-    display: flex;
-    gap: 8px;
-    flex-shrink: 0; /* 防止按钮组被压缩 */
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0; /* 防止按钮组被压缩 */
 }
 
 .note-actions .button {
-    width: auto; /* Buttons in header don't need to be full width */
-    padding: 8px 12px; /* Slightly smaller padding for header buttons */
+  width: auto; /* Buttons in header don't need to be full width */
+  padding: 8px 12px; /* Slightly smaller padding for header buttons */
 }
 
 /* Container for textarea and preview */
 .note-body {
-    flex: 1; /* This makes the body take up all available vertical space */
-    display: flex; /* Use flex to arrange editor and preview side-by-side or stacked */
-    overflow: hidden; /* Important: Prevents this container from scrolling */
-    padding: 12px;
-    gap: 12px;
+  flex: 1; /* This makes the body take up all available vertical space */
+  display: flex; /* Use flex to arrange editor and preview side-by-side or stacked */
+  overflow: hidden; /* Important: Prevents this container from scrolling */
+  padding: 12px;
+  gap: 0;
+}
+
+.note-body.is-resizing,
+.note-body.is-resizing * {
+  cursor: col-resize !important;
+  user-select: none;
+}
+
+.note-body.is-resizing #previewContent,
+.note-body.is-resizing #noteContent {
+  pointer-events: none;
 }
 
 /* Containers for editor and preview areas */
 .editor-container,
 .preview-container {
-    flex: 1; /* Each takes half the space */
-    display: flex;
-    flex-direction: column; /* Stack content and bubble vertically */
-    position: relative; /* For positioning the bubble */
-    overflow: hidden; /* Prevent internal content from overflowing this container */
-    background-color: var(--input-bg); /* Give them a distinct background */
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
+  flex: 0 0 50%; /* Split ratio is controlled by JS and persisted in localStorage */
+  min-width: 0;
+  display: flex;
+  flex-direction: column; /* Stack content and bubble vertically */
+  position: relative; /* For positioning the bubble */
+  overflow: hidden; /* Prevent internal content from overflowing this container */
+  background-color: var(--input-bg); /* Give them a distinct background */
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  transition: flex-basis 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+    width 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+    max-width 0.32s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.22s ease,
+    transform 0.32s cubic-bezier(0.22, 1, 0.36, 1), border-width 0.22s ease,
+    margin 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+    padding 0.32s cubic-bezier(0.22, 1, 0.36, 1), visibility 0s linear;
+}
+
+.editor-preview-resizer {
+  flex: 0 0 12px;
+  align-self: stretch;
+  cursor: col-resize;
+  position: relative;
+  z-index: 3;
+  margin: 0 8px;
+  border-radius: 999px;
+  transition: flex-basis 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+    width 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+    min-width 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+    max-width 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+    margin 0.32s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.2s ease,
+    background-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.editor-preview-resizer::before {
+  content: "";
+  position: absolute;
+  top: 12px;
+  bottom: 12px;
+  left: 50%;
+  width: 4px;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  background-color: var(--border-color);
+}
+
+.editor-preview-resizer::after {
+  content: "⋮";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: var(--secondary-text);
+  font-size: 18px;
+  line-height: 1;
+  opacity: 0.75;
+}
+
+.editor-preview-resizer:hover::before,
+.note-body.is-resizing .editor-preview-resizer::before {
+  background-color: var(--highlight-text);
+  box-shadow: 0 0 10px rgba(52, 152, 219, 0.35);
+}
+
+body.preview-collapsed .note-body {
+  gap: 0;
+}
+
+body.preview-collapsed .editor-container {
+  /*
+     * initEditorPreviewResizer() writes an inline flex value to keep the split ratio.
+     * The collapsed state must override that inline value, otherwise the editor keeps
+     * its previous split width and the hidden preview leaves an empty column.
+     */
+  flex: 1 1 100% !important;
+  width: 100%;
+  max-width: none;
+}
+
+body.preview-collapsed .preview-container {
+  /*
+     * Also override the inline flex value written by the split resizer so the preview
+     * fully releases its layout space while collapsed.
+     */
+  flex: 0 0 0 !important;
+  flex-basis: 0 !important;
+  width: 0;
+  min-width: 0;
+  max-width: 0;
+  opacity: 0;
+  transform: translateX(16px) scaleX(0.98);
+  border-width: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: flex-basis 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+    width 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+    max-width 0.32s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.22s ease,
+    transform 0.32s cubic-bezier(0.22, 1, 0.36, 1), border-width 0.22s ease,
+    margin 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+    padding 0.32s cubic-bezier(0.22, 1, 0.36, 1), visibility 0s linear 0.32s;
+}
+
+body.preview-collapsed .editor-preview-resizer {
+  flex: 0 0 0;
+  flex-basis: 0;
+  width: 0;
+  min-width: 0;
+  max-width: 0;
+  margin: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+body.preview-collapsed .preview-container > * {
+  visibility: hidden;
+  transition: visibility 0s linear 0.32s;
 }
 
 #noteContent,
 #previewContent {
-    flex: 1; /* Takes up available space within its container (.editor-container or .preview-container) */
-    width: 100%;
-    box-sizing: border-box;
-    overflow-y: auto; /* Allow individual scrolling */
-    padding: 10px; /* Internal padding */
-    line-height: 1.7;
-    font-size: 1em;
-    /* Remove background, border, radius from here as it's on parent now */
-    background-color: transparent;
-    border: none;
+  flex: 1; /* Takes up available space within its container (.editor-container or .preview-container) */
+  width: 100%;
+  box-sizing: border-box;
+  overflow-y: auto; /* Allow individual scrolling */
+  padding: 10px; /* Internal padding */
+  line-height: 1.7;
+  font-size: 1em;
+  /* Remove background, border, radius from here as it's on parent now */
+  background-color: transparent;
+  border: none;
+}
+
+.editor-find-bar {
+  position: absolute;
+  top: 8px;
+  left: auto;
+  right: 18px;
+  width: min(520px, calc(100% - 36px));
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background-color: var(--secondary-bg);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
+  z-index: 5;
+}
+
+.editor-find-bar[hidden] {
+  display: none;
+}
+
+#editorFindInput {
+  flex: 1;
+  min-width: 80px;
+  padding: 6px 8px;
+}
+
+.editor-find-status {
+  min-width: 44px;
+  color: var(--secondary-text);
+  font-size: 0.85em;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.editor-find-button {
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--button-bg);
+  border-radius: 6px;
+  background-color: var(--button-bg);
+  color: var(--text-on-accent);
+  cursor: pointer;
+  line-height: 1;
+}
+
+.editor-find-button:hover {
+  background-color: var(--button-hover-bg);
+  border-color: var(--button-hover-bg);
+  color: var(--text-on-accent);
+}
+
+.editor-find-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.editor-context-menu {
+  min-width: 128px;
 }
 
 #noteContent {
-    resize: none; /* Disable manual resize, rely on flex */
-    color: var(--primary-text);
-    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+  resize: none; /* Disable manual resize, rely on flex */
+  color: var(--primary-text);
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier,
+    monospace;
 }
 
 #previewContent {
-    color: var(--primary-text);
+  color: var(--primary-text);
 }
 
 /* Styling for the content bubbles */
 .content-bubble {
-    position: absolute;
-    bottom: 10px; /* Adjusted for better placement */
-    right: 10px;  /* Adjusted for better placement */
-    background-color: var(--tool-bubble-bg);
-    color: var(--primary-text);
-    padding: 5px 10px; /* Slightly larger padding */
-    border-radius: 6px;
-    font-size: 0.8em; /* Slightly larger font */
-    opacity: 0.9; /* Slightly more opaque */
-    pointer-events: none;
-    z-index: 2;
-    white-space: nowrap;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1); /* Add a subtle shadow */
+  position: absolute;
+  bottom: 10px; /* Adjusted for better placement */
+  right: 10px; /* Adjusted for better placement */
+  background-color: var(--tool-bubble-bg);
+  color: var(--primary-text);
+  padding: 5px 10px; /* Slightly larger padding */
+  border-radius: 6px;
+  font-size: 0.8em; /* Slightly larger font */
+  opacity: 0.9; /* Slightly more opaque */
+  pointer-events: none;
+  z-index: 2;
+  white-space: nowrap;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1); /* Add a subtle shadow */
 }
 
 /* Markdown specific styles */
-.markdown-preview h1, .markdown-preview h2, .markdown-preview h3,
-.markdown-preview h4, .markdown-preview h5, .markdown-preview h6 {
-    color: var(--primary-text);
-    border-bottom: 1px solid var(--border-color);
-    padding-bottom: 0.3em;
-    margin-top: 1.2em;
-    margin-bottom: 0.6em;
+.markdown-preview h1,
+.markdown-preview h2,
+.markdown-preview h3,
+.markdown-preview h4,
+.markdown-preview h5,
+.markdown-preview h6 {
+  color: var(--primary-text);
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 0.3em;
+  margin-top: 1.2em;
+  margin-bottom: 0.6em;
 }
-.markdown-preview h1 { font-size: 1.8em; }
-.markdown-preview h2 { font-size: 1.5em; }
-.markdown-preview h3 { font-size: 1.3em; }
+.markdown-preview h1 {
+  font-size: 1.8em;
+}
+.markdown-preview h2 {
+  font-size: 1.5em;
+}
+.markdown-preview h3 {
+  font-size: 1.3em;
+}
 
 .markdown-preview a {
-    color: var(--highlight-text);
-    text-decoration: none;
+  color: var(--highlight-text);
+  text-decoration: none;
 }
 
 .markdown-preview a:hover {
-    text-decoration: underline;
+  text-decoration: underline;
 }
 
 .markdown-preview p {
-    margin-top: 0;
-    margin-bottom: 1em;
-    white-space: pre-line; /* 修复换行问题 */
+  margin-top: 0;
+  margin-bottom: 1em;
+  white-space: pre-line; /* 修复换行问题 */
 }
 
-.markdown-preview ul, .markdown-preview ol {
-    margin-left: 25px;
-    margin-bottom: 1em;
-    padding-left: 0; /* Reset browser default */
+.markdown-preview table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.2em 0;
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background-color: rgba(255, 255, 255, 0.03);
+  display: table;
+}
+
+.markdown-preview thead {
+  background-color: var(--tertiary-bg);
+}
+
+.markdown-preview th,
+.markdown-preview td {
+  border: 1px solid var(--border-color);
+  padding: 8px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.markdown-preview th {
+  color: var(--primary-text);
+  font-weight: 700;
+}
+
+.markdown-preview tbody tr:nth-child(even) {
+  background-color: rgba(255, 255, 255, 0.035);
+}
+
+.markdown-preview tbody tr:hover {
+  background-color: var(--accent-bg);
+}
+
+body.light-theme .markdown-preview table {
+  background-color: rgba(255, 250, 240, 0.85);
+  border-color: rgba(0, 0, 0, 0.12);
+}
+
+body.light-theme .markdown-preview thead {
+  background-color: rgba(0, 0, 0, 0.05);
+}
+
+body.light-theme .markdown-preview tbody tr:nth-child(even) {
+  background-color: rgba(0, 0, 0, 0.035);
+}
+
+.markdown-preview ul,
+.markdown-preview ol {
+  margin-left: 25px;
+  margin-bottom: 1em;
+  padding-left: 0; /* Reset browser default */
 }
 
 .markdown-preview li {
-    margin-bottom: 0.3em;
+  margin-bottom: 0.3em;
 }
 
 .markdown-preview blockquote {
-    border-left: 4px solid var(--highlight-text);
-    padding-left: 1em;
-    margin: 1.2em 0;
-    color: var(--secondary-text);
-    font-style: italic;
+  border-left: 4px solid var(--highlight-text);
+  padding-left: 1em;
+  margin: 1.2em 0;
+  color: var(--secondary-text);
+  font-style: italic;
 }
 /* 限制预览区图片宽度，防止溢出 */
 .markdown-preview img {
-    max-width: 100%;
-    height: auto;
-    display: block; /* 确保图片是块级元素，避免底部多余空间 */
+  max-width: 100%;
+  height: auto;
+  display: block; /* 确保图片是块级元素，避免底部多余空间 */
 }
 
 .markdown-preview pre {
-    background-color: var(--tertiary-bg);
-    color: var(--primary-text);
-    padding: 1em;
-    border-radius: 6px;
-    overflow-x: auto;
-    white-space: pre-wrap; /* Allow wrapping of long lines */
-    word-wrap: break-word; /* Break words if necessary */
-    position: relative; /* For copy button */
-    border: 1px solid var(--border-color);
-    margin: 1em 0;
+  background-color: var(--tertiary-bg);
+  color: var(--primary-text);
+  padding: 1em;
+  border-radius: 6px;
+  overflow-x: auto;
+  white-space: pre-wrap; /* Allow wrapping of long lines */
+  word-wrap: break-word; /* Break words if necessary */
+  position: relative; /* For copy button */
+  border: 1px solid var(--border-color);
+  margin: 1em 0;
 }
 
-.markdown-preview code:not(pre code) { /* Inline code */
-    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
-    background-color: var(--tertiary-bg);
-    color: var(--highlight-text);
-    padding: 0.2em 0.4em;
-    border-radius: 3px;
-    font-size: 0.9em;
+.markdown-preview code:not(pre code) {
+  /* Inline code */
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier,
+    monospace;
+  background-color: var(--tertiary-bg);
+  color: var(--highlight-text);
+  padding: 0.2em 0.4em;
+  border-radius: 3px;
+  font-size: 0.9em;
 }
 
 /* Copy button for code blocks in preview */
 .markdown-preview pre .copy-button {
-    position: absolute;
-    top: 8px;
-    right: 8px;
-    padding: 6px;
-    background-color: var(--button-bg);
-    color: var(--primary-text);
-    border: 1px solid var(--border-color);
-    border-radius: 4px;
-    cursor: pointer;
-    opacity: 0; /* Hidden by default, shown on pre:hover */
-    transition: opacity 0.2s, background-color 0.2s, border-color 0.2s;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  padding: 6px;
+  background-color: var(--button-bg);
+  color: var(--text-on-accent);
+  border: 1px solid var(--button-bg);
+  border-radius: 4px;
+  cursor: pointer;
+  opacity: 0; /* Hidden by default, shown on pre:hover */
+  transition: opacity 0.2s, background-color 0.2s, border-color 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
 .markdown-preview pre:hover .copy-button {
-    opacity: 1;
+  opacity: 1;
 }
 
 .markdown-preview pre .copy-button:hover {
-    background-color: var(--button-hover-bg);
+  background-color: var(--button-hover-bg);
+  border-color: var(--button-hover-bg);
+  color: var(--text-on-accent);
 }
 
 .markdown-preview pre .copy-button svg {
-    width: 16px;
-    height: 16px;
-    fill: currentColor;
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
 }
 
 .markdown-preview pre .copy-button:active {
-    background-color: var(--accent-bg);
+  background-color: var(--button-hover-bg);
+  border-color: var(--button-hover-bg);
+  color: var(--text-on-accent);
+  filter: brightness(0.92);
 }
 
 /* Scrollbar styling (optional, for a more consistent look) */
 ::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
+  width: 8px;
+  height: 8px;
 }
 
 /* Custom Context Menu Styling */
 .custom-context-menu {
-    position: absolute;
-    background-color: var(--secondary-bg);
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
-    z-index: 1000;
-    display: none; /* Hidden by default */
-    padding: 5px 0;
+  position: absolute;
+  background-color: var(--secondary-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+  z-index: 1000;
+  display: none; /* Hidden by default */
+  padding: 5px 0;
 }
 
 .custom-context-menu ul {
-    list-style: none;
-    padding: 0;
-    margin: 0;
+  list-style: none;
+  padding: 0;
+  margin: 0;
 }
 
 .custom-context-menu ul li {
-    padding: 8px 15px;
-    cursor: pointer;
-    color: var(--primary-text);
-    font-size: 0.95em;
-    white-space: nowrap;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    position: relative; /* For sub-menu */
+  padding: 8px 15px;
+  cursor: pointer;
+  color: var(--primary-text);
+  font-size: 0.95em;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  position: relative; /* For sub-menu */
 }
 
 .custom-context-menu ul li.separator {
-    height: 1px;
-    background-color: var(--border-color);
-    margin: 4px 0;
-    padding: 0;
+  height: 1px;
+  background-color: var(--border-color);
+  margin: 4px 0;
+  padding: 0;
 }
 
 .custom-context-menu .submenu {
-    display: none;
-    position: absolute;
-    left: 100%;
-    top: -5px; /* Align with parent item */
-    background-color: var(--secondary-bg);
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-    z-index: 1001;
-    padding: 5px 0;
-    min-width: 150px;
+  display: none;
+  position: absolute;
+  left: 100%;
+  top: -5px; /* Align with parent item */
+  background-color: var(--secondary-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+  z-index: 1001;
+  padding: 5px 0;
+  min-width: 150px;
 }
 
 .custom-context-menu li:hover > .submenu {
-    display: block;
+  display: block;
 }
 
 .custom-context-menu ul li:hover {
-    background-color: var(--accent-bg);
+  background-color: var(--accent-bg);
 }
 
 .custom-context-menu ul li:active {
-    background-color: var(--accent-bg);
+  background-color: var(--accent-bg);
 }
 
 /* Disabled state for context menu items */
 .custom-context-menu ul li.disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-    background-color: transparent;
+  opacity: 0.5;
+  cursor: not-allowed;
+  background-color: transparent;
 }
 
 ::-webkit-scrollbar-track {
-    background: var(--scrollbar-track);
+  background: var(--scrollbar-track);
 }
 
 ::-webkit-scrollbar-thumb {
-    background: var(--scrollbar-thumb);
-    border-radius: 6px;
+  background: var(--scrollbar-thumb);
+  border-radius: 6px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-    background: var(--scrollbar-thumb-hover);
+  background: var(--scrollbar-thumb-hover);
+}
+
+/* --- Mermaid diagram rendering --- */
+.markdown-preview .mermaid {
+  background-color: var(--tertiary-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 1em;
+  margin: 1em 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow-x: auto;
+}
+
+.markdown-preview .mermaid svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.markdown-preview .mermaid-error {
+  background-color: rgba(244, 67, 54, 0.12);
+  color: var(--danger-color, #f44336);
+  border: 1px solid var(--danger-color, #f44336);
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  font-size: 0.9em;
+}
+
+body.light-theme .markdown-preview .mermaid {
+  background-color: rgba(255, 250, 240, 0.85);
+  border-color: rgba(0, 0, 0, 0.1);
 }
 
 /* 针对只包含一个 .katex-display 元素的 p 标签 (KaTeX 显示模式公式的容器) */
 .markdown-preview p:has(> .katex-display:only-child) {
-    margin-block-start: 0; /* 移除上边距 (逻辑属性) */
-    margin-block-end: 0;   /* 可选：同时移除下边距，或设置为一个较小的值 */
+  margin-block-start: 0; /* 移除上边距 (逻辑属性) */
+  margin-block-end: 0; /* 可选：同时移除下边距，或设置为一个较小的值 */
 }
 
 .button-success {
-    background-color: var(--success-color);
-    border-color: var(--success-color);
-    color: var(--text-on-accent);
+  background-color: var(--success-color);
+  border-color: var(--success-color);
+  color: var(--text-on-accent);
 }
 
 .button-error {
-    background-color: var(--danger-color);
-    border-color: var(--danger-color);
-    color: var(--text-on-accent);
+  background-color: var(--danger-color);
+  border-color: var(--danger-color);
+  color: var(--text-on-accent);
 }
 
 .button-confirm-delete {
-    background-color: var(--danger-hover-bg);
-    border-color: var(--danger-hover-bg);
-    color: var(--text-on-accent);
+  background-color: var(--danger-hover-bg);
+  border-color: var(--danger-hover-bg);
+  color: var(--text-on-accent);
 }
 
 .button-autosave-feedback {
-    transition: background-color 0.3s ease-in-out;
-    background-color: var(--success-color) !important;
+  transition: background-color 0.3s ease-in-out;
+  background-color: var(--success-color) !important;
+  border-color: var(--success-color) !important;
+  color: var(--text-on-accent) !important;
 }
 
 /* Light theme specific adjustments for better contrast */
 .light-theme .sidebar input[type="text"],
 .light-theme #noteTitle {
-    background-color: #f5f5f5; /* Matching background for inputs */
+  background-color: #f5f5f5; /* Matching background for inputs */
 }
 
 .light-theme .editor-container,
 .light-theme .preview-container {
-    background-color: #f5f5f5; /* A light grey for better separation */
+  background-color: #f5f5f5; /* A light grey for better separation */
+}
+
+/* Beginner-friendly note controls */
+.sidebar-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.95em;
+  font-weight: 600;
+}
+
+.text-button {
+  width: auto;
+  border: 0;
+  background: transparent;
+  color: var(--highlight-text);
+  cursor: pointer;
+  padding: 2px 0;
+  font: inherit;
+}
+
+.notes-filter-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.notes-filter-row select,
+.template-toolbar select {
+  min-width: 0;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--input-bg);
+  color: var(--primary-text);
+  padding: 6px 8px;
+  font: inherit;
+}
+
+.notes-filter-row #noteSortSelect {
+  grid-column: 1 / -1;
+}
+
+.note-source-group {
+  padding: 8px 0 4px;
+}
+
+.note-source-heading {
+  padding: 0 10px 5px;
+  color: var(--secondary-text);
+  font-size: 0.8em;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+.note-source-content {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.note-source-empty {
+  margin: 0;
+  padding: 4px 12px 8px;
+  color: var(--secondary-text);
+  font-size: 0.85em;
+}
+
+.note-item-details {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.note-tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+
+.note-tag {
+  display: inline-flex;
+  width: fit-content;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: rgba(52, 152, 219, 0.16);
+  color: var(--highlight-text);
+  font-size: 0.75em;
+  line-height: 1.45;
+}
+
+.note-workspace-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 12px 6px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.view-mode-group,
+.formatting-toolbar,
+.template-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.toolbar-button {
+  width: auto;
+  min-height: 28px;
+  border: 1px solid var(--border-color);
+  border-radius: 5px;
+  background: var(--input-bg);
+  color: var(--primary-text);
+  cursor: pointer;
+  padding: 4px 8px;
+  font: inherit;
+  font-size: 0.85em;
+}
+
+.toolbar-button:hover,
+.toolbar-button.is-active {
+  border-color: var(--highlight-text);
+  background: var(--button-bg);
+  color: var(--text-on-accent);
+}
+
+.toolbar-divider {
+  width: 1px;
+  height: 22px;
+  background: var(--border-color);
+  margin: 0 2px;
+}
+
+.template-toolbar {
+  margin-left: auto;
+  color: var(--secondary-text);
+  font-size: 0.85em;
+}
+
+.markdown-hint {
+  margin: 0;
+  padding: 4px 12px;
+  color: var(--secondary-text);
+  font-size: 0.82em;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.markdown-hint code {
+  color: var(--highlight-text);
+}
+
+body[data-note-view-mode="editor"] .preview-container,
+body[data-note-view-mode="editor"] .editor-preview-resizer {
+  display: none;
+}
+
+body[data-note-view-mode="editor"] .editor-container {
+  flex: 1 1 100% !important;
+}
+
+body[data-note-view-mode="preview"] .editor-container,
+body[data-note-view-mode="preview"] .editor-preview-resizer {
+  display: none;
+}
+
+body[data-note-view-mode="preview"] .preview-container {
+  flex: 1 1 100% !important;
 }
 
 /* Confirmation Modal Styles */
 .modal-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background-color: rgba(0, 0, 0, 0.6);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 2000; /* Ensure it's on top of everything */
-    backdrop-filter: blur(5px);
-    -webkit-backdrop-filter: blur(5px);
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000; /* Ensure it's on top of everything */
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
 }
 
 .modal-content {
-    background-color: var(--panel-bg);
-    padding: 25px;
-    border-radius: 12px;
-    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    width: 90%;
-    max-width: 400px;
-    text-align: center;
-    animation: modal-fade-in 0.3s ease-out;
+  background-color: var(--panel-bg);
+  padding: 25px;
+  border-radius: 12px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  width: 90%;
+  max-width: 400px;
+  text-align: center;
+  animation: modal-fade-in 0.3s ease-out;
 }
 
 .modal-content h3 {
-    margin-top: 0;
-    color: var(--primary-text);
-    font-size: 1.4em;
+  margin-top: 0;
+  color: var(--primary-text);
+  font-size: 1.4em;
 }
 
 .modal-content p {
-    margin: 15px 0;
-    color: var(--secondary-text);
-    font-size: 1em;
-    line-height: 1.6;
+  margin: 15px 0;
+  color: var(--secondary-text);
+  font-size: 1em;
+  line-height: 1.6;
 }
 
 .modal-actions {
-    display: flex;
-    justify-content: center;
-    gap: 15px;
-    margin-top: 25px;
+  display: flex;
+  justify-content: center;
+  gap: 15px;
+  margin-top: 25px;
 }
 
 .modal-actions .button {
-    width: 120px; /* Give buttons a fixed width */
-    padding: 10px;
+  width: 120px; /* Give buttons a fixed width */
+  padding: 10px;
+  color: var(--text-on-accent);
 }
 
 @keyframes modal-fade-in {
-    from {
-        opacity: 0;
-        transform: scale(0.9);
-    }
-    to {
-        opacity: 1;
-        transform: scale(1);
-    }
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 /* --- Custom Code Block Styles --- */
 .markdown-preview pre {
-    background-color: rgba(42, 45, 53, 0.85); /* Bluish-dark from chat.css */
-    color: #abb2bf; /* A common light text color for dark themes */
-    padding: 1em;
-    border-radius: 8px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    overflow-x: auto;
-    white-space: pre-wrap;
-    word-wrap: break-word;
-    position: relative;
-    margin: 1em 0;
+  background-color: rgba(42, 45, 53, 0.85); /* Bluish-dark from chat.css */
+  color: #abb2bf; /* A common light text color for dark themes */
+  padding: 1em;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  position: relative;
+  margin: 1em 0;
 }
 
 /* --- Light Theme Code Block Overrides --- */
 body.light-theme .markdown-preview pre {
-    background-color: rgba(255, 250, 240, 0.85); /* 米白磨砂背景 */
-    color: #333333; /* 深灰色基础文字 */
-    border-color: rgba(0, 0, 0, 0.1);
+  background-color: rgba(255, 250, 240, 0.85); /* 米白磨砂背景 */
+  color: #333333; /* 深灰色基础文字 */
+  border-color: rgba(0, 0, 0, 0.1);
 }
 
 /* --- Light Theme Syntax Highlighting Overrides --- */
 body.light-theme .markdown-preview pre code.hljs {
-    color: #333333;
+  color: #333333;
 }
 body.light-theme .markdown-preview pre .hljs-keyword {
-    color: #d73a49; /* Dark Red */
+  color: #d73a49; /* Dark Red */
 }
 body.light-theme .markdown-preview pre .hljs-built_in {
-    color: #6f42c1; /* Dark Purple */
+  color: #6f42c1; /* Dark Purple */
 }
 body.light-theme .markdown-preview pre .hljs-string {
-    color: #032f62; /* Dark Blue */
+  color: #032f62; /* Dark Blue */
 }
 body.light-theme .markdown-preview pre .hljs-comment {
-    color: #6a737d; /* Grey */
-    font-style: italic;
+  color: #6a737d; /* Grey */
+  font-style: italic;
 }
 body.light-theme .markdown-preview pre .hljs-number {
-    color: #005cc5; /* Blue */
+  color: #005cc5; /* Blue */
 }
 body.light-theme .markdown-preview pre .hljs-title,
 body.light-theme .markdown-preview pre .hljs-class .hljs-title {
-    color: #6f42c1; /* Dark Purple */
+  color: #6f42c1; /* Dark Purple */
 }
 body.light-theme .markdown-preview pre .hljs-params {
-    color: #24292e; /* Almost black */
+  color: #24292e; /* Almost black */
 }
 body.light-theme .markdown-preview pre .hljs-meta {
-    color: #e36209; /* Dark Orange */
+  color: #e36209; /* Dark Orange */
 }
 
 /* ------------------------- */
@@ -783,87 +1247,112 @@ body.light-theme .markdown-preview pre .hljs-meta {
 /* ------------------------- */
 
 #custom-title-bar {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 40px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0 15px;
-    background-color: transparent;
-    z-index: 1000;
-    -webkit-app-region: drag;
-    user-select: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 40px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 15px;
+  background-color: transparent;
+  z-index: 1000;
+  -webkit-app-region: drag;
+  user-select: none;
 }
 
 #custom-title-bar .title {
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--primary-text);
-    -webkit-app-region: no-drag;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--primary-text);
+  -webkit-app-region: no-drag;
+}
+
+#custom-title-bar .titlebar-actions,
+#custom-title-bar .window-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  -webkit-app-region: no-drag;
+}
+
+#custom-title-bar .titlebar-actions {
+  margin-left: auto;
 }
 
 #custom-title-bar .window-controls {
-    display: flex;
-    gap: 10px;
-    -webkit-app-region: no-drag;
+  padding-left: 2px;
 }
 
 .window-control-btn {
-    width: 30px;
-    height: 30px;
-    border: none;
-    background-color: transparent;
-    color: var(--music-text-secondary, var(--secondary-text)); /* Fallback to secondary-text */
-    border-radius: 8px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transition: background-color 0.2s ease, color 0.2s ease;
+  width: 30px;
+  height: 30px;
+  border: none;
+  background-color: transparent;
+  color: var(
+    --music-text-secondary,
+    var(--secondary-text)
+  ); /* Fallback to secondary-text */
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease, transform 0.2s ease;
 }
 
 .window-control-btn:hover {
-    background-color: var(--hover-bg, rgba(255, 255, 255, 0.08)); /* Fallback hover color */
-    color: var(--music-text, var(--primary-text)); /* Fallback text color */
+  background-color: var(
+    --hover-bg,
+    rgba(255, 255, 255, 0.08)
+  ); /* Fallback hover color */
+  color: var(--music-text, var(--primary-text)); /* Fallback text color */
+}
+
+.preview-toggle-btn svg {
+  transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+  transform-origin: center;
+}
+
+.preview-toggle-btn.is-collapsed svg {
+  transform: rotate(180deg);
 }
 
 #close-notes-btn:hover {
-    background-color: #e81123;
-    color: white;
+  background-color: var(--danger-color);
+  color: var(--text-on-accent);
 }
 
 /* 调整主容器，为标题栏留出空间 */
 .container {
-    padding-top: 40px; /* 5px 间距 + 40px 标题栏高度 */
+  padding-top: 40px; /* 5px 间距 + 40px 标题栏高度 */
 }
 
 /* Loading Overlay */
 #loading-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0, 0, 0, 0.7);
-    display: none;
-    justify-content: center;
-    align-items: center;
-    z-index: 10000;
-    flex-direction: column;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.7);
+  display: none;
+  justify-content: center;
+  align-items: center;
+  z-index: 10000;
+  flex-direction: column;
 }
 
 #loading-overlay p {
-    color: white;
-    font-size: 18px;
-    margin-top: 20px;
+  color: white;
+  font-size: 18px;
+  margin-top: 20px;
 }
 
 /* Info/Error Modal - 复用现有的 confirmation-modal 样式 */
 #info-modal .modal-content,
 #error-modal .modal-content {
-    min-width: 300px;
-    max-width: 500px;
+  min-width: 300px;
+  max-width: 500px;
 }
