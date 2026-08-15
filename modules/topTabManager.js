@@ -19,8 +19,7 @@
     let teardownPromise = null;
     let modeRequestGeneration = 0;
     let previewSuspended = false;
-    const overlayOwners = new Set();
-    const modalOverlayOwners = new Map();
+    let overlayCoordinator = null;
     const suppressedTabClicks = new Set();
 
     function listen(target, type, handler, options = {}) {
@@ -155,37 +154,12 @@
 
     function syncEmbeddedActivation() {
         const activeView = views.get(activeViewId);
-        const action = mounted && !previewSuspended && !restoringTabs && overlayOwners.size === 0 && activeView?.kind === 'embedded'
+        const action = mounted && !previewSuspended && !restoringTabs && !overlayCoordinator?.active && activeView?.kind === 'embedded'
             ? activeView.action
             : null;
         getDesktopApi()?.desktopActivateEmbeddedVchatApp?.(action).then(result => {
             if (result?.success && activeView?.kind === 'embedded') syncEmbeddedBounds(activeView);
         }).catch(error => console.warn('[NextUI] Failed to activate embedded app:', error));
-    }
-
-    function handleModalVisibilityChanged(event) {
-        const modalId = event.detail?.modalId;
-        if (typeof modalId !== 'string' || !modalId) return;
-        if (event.detail?.active === true) {
-            if (modalOverlayOwners.has(modalId)) return;
-            const owner = Symbol(`modal-overlay:${modalId}`);
-            modalOverlayOwners.set(modalId, owner);
-            void acquireOverlay(owner).catch(error => {
-                if (modalOverlayOwners.get(modalId) === owner) modalOverlayOwners.delete(modalId);
-                console.warn(`[NextUI] Failed to acquire overlay for modal ${modalId}:`, error);
-            });
-            return;
-        }
-        const owner = modalOverlayOwners.get(modalId);
-        if (!owner) return;
-        modalOverlayOwners.delete(modalId);
-        releaseOverlay(owner);
-    }
-
-    function reconcileVisibleModals() {
-        document.querySelectorAll('.modal.active[id]').forEach(modal => {
-            handleModalVisibilityChanged({ detail: { modalId: modal.id, active: true } });
-        });
     }
 
     function ensureInternalHost() {
@@ -1032,19 +1006,25 @@
     function mount() {
         if (mounted || document.documentElement.dataset.uiMode !== 'next') return;
         if (teardownPromise) return;
+        const OverlayCoordinator = window.VCPNextShell?.OverlayCoordinator;
+        if (!OverlayCoordinator) throw new Error('OverlayCoordinator is unavailable.');
         mounted = true;
         mountGeneration += 1;
         const LifecycleScope = window.VCPLifecycle?.LifecycleScope;
         mountScope = LifecycleScope ? new LifecycleScope('next:tab-host') : null;
         mountAbortController = mountScope ? null : new AbortController();
+        overlayCoordinator = new OverlayCoordinator({
+            document,
+            hideEmbeddedView: () => getDesktopApi()?.desktopActivateEmbeddedVchatApp?.(null),
+            reconcileEmbeddedView: syncEmbeddedActivation,
+        });
+        overlayCoordinator.mount(mountScope);
         renderApps();
         syncDensity();
         observeSidebarWidth();
         setupAgentSearch();
         setupAccountMenu();
         setupEmbeddedAppState();
-        listen(document, 'modal-visibility-changed', handleModalVisibilityChanged);
-        reconcileVisibleModals();
         pendingTabRestore = readTabSession();
         listen(document.getElementById('nextUiCreateItemBtn'), 'click', openCreateDialog);
         listen(document.getElementById('nextUiHomeTab'), 'click', () => setView('home'));
@@ -1089,11 +1069,9 @@
         pendingTabRestore = null;
         restoringTabs = false;
         closeCreateDialog();
-        modalOverlayOwners.clear();
-        if (overlayOwners.size > 0) {
-            document.dispatchEvent(new CustomEvent('next-ui-overlay-changed', { detail: { active: false } }));
-        }
-        overlayOwners.clear();
+        const coordinatorToDispose = overlayCoordinator;
+        overlayCoordinator = null;
+        coordinatorToDispose?.dispose();
         const scopeToDispose = mountScope;
         mountScope = null;
         appGridScope = null;
@@ -1134,35 +1112,12 @@
     }
 
     async function acquireOverlay(owner = Symbol('next-ui-overlay')) {
-        const wasEmpty = overlayOwners.size === 0;
-        overlayOwners.add(owner);
-        if (wasEmpty) {
-            document.dispatchEvent(new CustomEvent('next-ui-overlay-changed', { detail: { active: true } }));
-        }
-        try {
-            await getDesktopApi()?.desktopActivateEmbeddedVchatApp?.(null);
-        } catch (error) {
-            const removed = overlayOwners.delete(owner);
-            if (removed && overlayOwners.size === 0) {
-                document.dispatchEvent(new CustomEvent('next-ui-overlay-changed', { detail: { active: false } }));
-            }
-            console.warn('[NextUI] Failed to hide embedded app for overlay:', error);
-            throw error;
-        } finally {
-            // The lease can be released while the native hide IPC is still in
-            // flight. Reconcile after it settles so a late hide completion
-            // cannot become the final native-view state.
-            if (!overlayOwners.has(owner)) syncEmbeddedActivation();
-        }
-        return owner;
+        if (!overlayCoordinator) throw new Error('Next UI overlay coordinator is not mounted.');
+        return overlayCoordinator.acquire(owner);
     }
 
     function releaseOverlay(owner) {
-        if (!overlayOwners.delete(owner)) return;
-        if (overlayOwners.size === 0) {
-            document.dispatchEvent(new CustomEvent('next-ui-overlay-changed', { detail: { active: false } }));
-        }
-        syncEmbeddedActivation();
+        overlayCoordinator?.release(owner);
     }
 
     async function prepareForMode(mode, options = {}) {
