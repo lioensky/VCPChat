@@ -9,7 +9,6 @@
     let mountAbortController = null;
     let mountScope = null;
     let appGridScope = null;
-    let accountMenuObserver = null;
     let accountMenuController = null;
     let sidebarResizeObserver = null;
     let activeCreateModal = null;
@@ -469,98 +468,6 @@
         });
     }
 
-    function setupAccountMenu() {
-        const dock = document.querySelector('.next-ui-account-dock');
-        const menu = document.getElementById('nextUiAccountMenu');
-        const trigger = document.getElementById('nextUiAccountMenuTrigger');
-        const avatar = document.getElementById('nextUiAccountAvatar');
-        const userName = document.getElementById('nextUiAccountName');
-        const settingsButton = document.getElementById('nextUiAccountSettingsBtn');
-        const appearanceStudioButton = document.getElementById('nextUiAccountAppearanceStudioBtn');
-        const themeStoreButton = document.getElementById('nextUiAccountThemeStoreBtn');
-        const themeToggleButton = document.getElementById('nextUiAccountThemeToggleBtn');
-        const themeIcon = document.getElementById('nextUiAccountThemeIcon');
-        const themeLabel = document.getElementById('nextUiAccountThemeLabel');
-        const topbarThemeButton = document.getElementById('nextUiThemeBtn');
-        const topbarThemeIcon = topbarThemeButton?.querySelector('.vcp-ui-icon');
-        if (!dock || !menu || !trigger || !avatar || !userName) return;
-
-        const sync = () => {
-            const settings = window.globalSettings || {};
-            userName.textContent = settings.userName?.trim() || '用户';
-            const nextAvatar = settings.userAvatarUrl || 'assets/default_user_avatar.png';
-            if (avatar.getAttribute('src') !== nextAvatar) avatar.src = nextAvatar;
-            window.VCPAppearanceStudio?.syncAccountMenuValue?.();
-            const isDark = document.body.classList.contains('dark-theme');
-            const nextThemeLabel = isDark ? '切换为浅色模式' : '切换为深色模式';
-            const currentThemeIcon = isDark ? 'dark_mode' : 'light_mode';
-            if (themeIcon) window.VCPIcons?.set(themeIcon, currentThemeIcon);
-            if (themeLabel) themeLabel.textContent = nextThemeLabel;
-            themeToggleButton?.setAttribute('aria-label', nextThemeLabel);
-            themeToggleButton?.setAttribute('aria-pressed', String(isDark));
-            if (topbarThemeIcon) {
-                if (window.VCPIcons?.set) window.VCPIcons.set(topbarThemeIcon, currentThemeIcon);
-                else topbarThemeIcon.textContent = currentThemeIcon;
-            }
-            topbarThemeButton?.setAttribute('aria-label', nextThemeLabel);
-            topbarThemeButton?.setAttribute('title', nextThemeLabel);
-        };
-
-        const setOpen = (open) => {
-            menu.hidden = !open;
-            trigger.setAttribute('aria-expanded', String(open));
-            if (open) sync();
-        };
-        accountMenuController = Object.freeze({ open: () => setOpen(true), close: () => setOpen(false) });
-        mountScope?.own(() => setOpen(false), 'account-menu-state', 'dom-state');
-
-        listen(avatar, 'error', () => {
-            if (!avatar.src.endsWith('/assets/default_user_avatar.png')) {
-                avatar.src = 'assets/default_user_avatar.png';
-            }
-        });
-        listen(trigger, 'click', event => {
-            event.stopPropagation();
-            setOpen(menu.hidden);
-        });
-        listen(settingsButton, 'click', () => {
-            setOpen(false);
-            window.uiHelperFunctions?.openModal?.('globalSettingsModal');
-        });
-        listen(appearanceStudioButton, 'click', () => {
-            setOpen(false);
-            window.VCPAppearanceStudio?.open?.({ trigger: appearanceStudioButton });
-        });
-        listen(themeStoreButton, 'click', () => {
-            setOpen(false);
-            (window.chatAPI || window.electronAPI)?.openThemesWindow?.();
-        });
-        listen(themeToggleButton, 'click', () => {
-            const nextTheme = document.body.classList.contains('dark-theme') ? 'light' : 'dark';
-            setOpen(false);
-            if (!window.VCPAppearanceStudio?.setThemeMode?.(nextTheme, { source: 'account-menu' })) {
-                window.MainChatCommands?.toggleTheme?.();
-            }
-        });
-        listen(document, 'pointerdown', event => {
-            if (!menu.hidden && !dock.contains(event.target)) setOpen(false);
-        });
-        listen(document, 'keydown', event => {
-            if (event.key !== 'Escape' || menu.hidden) return;
-            event.preventDefault();
-            setOpen(false);
-            trigger.focus();
-        });
-        listen(document, 'next-ui-overlay-changed', event => {
-            if (event.detail?.active === true) setOpen(false);
-        });
-        accountMenuObserver = new MutationObserver(sync);
-        if (mountScope) mountScope.observe(accountMenuObserver, document.body, { attributes: true, attributeFilter: ['class'] }, 'account-theme-observer');
-        else accountMenuObserver.observe(document.body, { attributes: true, attributeFilter: ['class'] });
-        listen(window, 'global-settings-updated', sync);
-        sync();
-    }
-
     function normalizeModelOptions(payload) {
         let models = payload;
         if (!Array.isArray(models)) models = payload?.data || payload?.models || (payload?.id ? [payload] : []);
@@ -834,10 +741,12 @@
         const EmbeddedAppController = window.VCPNextShell?.EmbeddedAppController;
         const AppTabHost = window.VCPNextShell?.AppTabHost;
         const AssistantSearchController = window.VCPNextShell?.AssistantSearchController;
+        const AccountMenuController = window.VCPNextShell?.AccountMenuController;
         if (!OverlayCoordinator) throw new Error('OverlayCoordinator is unavailable.');
         if (!EmbeddedAppController) throw new Error('EmbeddedAppController is unavailable.');
         if (!AppTabHost) throw new Error('AppTabHost is unavailable.');
         if (!AssistantSearchController) throw new Error('AssistantSearchController is unavailable.');
+        if (!AccountMenuController) throw new Error('AccountMenuController is unavailable.');
         mounted = true;
         mountGeneration += 1;
         const LifecycleScope = window.VCPLifecycle?.LifecycleScope;
@@ -858,6 +767,19 @@
             filter: value => window.uiHelperFunctions?.filterAgentList?.(value),
         });
         assistantSearchController.mount(mountScope);
+        accountMenuController = new AccountMenuController({
+            window,
+            document,
+            getSettings: () => window.globalSettings || {},
+            openSettings: () => window.uiHelperFunctions?.openModal?.('globalSettingsModal'),
+            openAppearance: trigger => window.VCPAppearanceStudio?.open?.({ trigger }),
+            openThemes: () => (window.chatAPI || window.electronAPI)?.openThemesWindow?.(),
+            setThemeMode: mode => window.VCPAppearanceStudio?.setThemeMode?.(mode, { source: 'account-menu' }),
+            toggleTheme: () => window.MainChatCommands?.toggleTheme?.(),
+            syncAppearance: () => window.VCPAppearanceStudio?.syncAccountMenuValue?.(),
+            setIcon: (element, icon) => window.VCPIcons?.set?.(element, icon),
+        });
+        accountMenuController.mount(mountScope);
         embeddedAppController = new EmbeddedAppController({ getApi: getDesktopApi });
         overlayCoordinator = new OverlayCoordinator({
             document,
@@ -868,7 +790,6 @@
         renderApps();
         syncDensity();
         observeSidebarWidth();
-        setupAccountMenu();
         setupEmbeddedAppState();
         pendingTabRestore = readTabSession();
         listen(document.getElementById('nextUiCreateItemBtn'), 'click', openCreateDialog);
@@ -902,15 +823,13 @@
         mountGeneration += 1;
         if (!mountScope) mountAbortController?.abort();
         mountAbortController = null;
-        accountMenuObserver?.disconnect();
-        accountMenuObserver = null;
-        accountMenuController = null;
         sidebarResizeObserver?.disconnect();
         sidebarResizeObserver = null;
         if (!mountScope) {
             embeddedAppController?.dispose();
             appTabHost?.dispose();
             assistantSearchController?.dispose();
+            accountMenuController?.dispose();
         }
         pendingTabRestore = null;
         restoringTabs = false;

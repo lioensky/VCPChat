@@ -610,6 +610,7 @@ const eventListenersSource = fs.readFileSync(new URL('../modules/event-listeners
 const rendererSource = fs.readFileSync(new URL('../renderer.js', import.meta.url), 'utf8');
 const topTabManagerSource = fs.readFileSync(new URL('../modules/topTabManager.js', import.meta.url), 'utf8');
 const appTabHostSource = fs.readFileSync(new URL('../modules/ui-system/next-shell/app-tab-host.js', import.meta.url), 'utf8');
+const accountMenuControllerSource = fs.readFileSync(new URL('../modules/ui-system/next-shell/account-menu-controller.js', import.meta.url), 'utf8');
 const agentHandlersSource = fs.readFileSync(new URL('../modules/ipc/agentHandlers.js', import.meta.url), 'utf8');
 const settingsHandlersSource = fs.readFileSync(new URL('../modules/ipc/settingsHandlers.js', import.meta.url), 'utf8');
 const appearanceStyles = fs.readFileSync(new URL('../styles/appearance.css', import.meta.url), 'utf8');
@@ -661,8 +662,10 @@ assert.doesNotMatch(nextUiCss, /next-ui-presentation-switcher:focus-within[^\{]*
     'the Next presentation popup must not use focus-within as its state authority');
 assert.match(rendererSource, /usesExplicitState[\s\S]*setOpen\(false\)[\s\S]*trigger\?\.focus\(\)/,
     'the presentation popup must close explicitly and restore trigger focus');
-assert.match(topTabManagerSource, /topbarThemeButton[\s\S]*nextThemeLabel[\s\S]*setAttribute\('aria-label', nextThemeLabel\)/,
+assert.match(accountMenuControllerSource, /topbarThemeButton[\s\S]*setAttribute\('aria-label', label\)/,
     'the Next topbar theme shortcut must synchronize its action label');
+assert.doesNotMatch(topTabManagerSource, /nextUiAccountThemeLabel[\s\S]*setAttribute\('aria-label'/,
+    'topTabManager must delegate account and theme presentation state');
 assert.match(eventListenersSource, /const runMenuAction = async[\s\S]*catch \(error\)[\s\S]*finally \{[\s\S]*closeNotificationMenu/,
     'notification menu actions must close and restore focus even after rejection');
 assert.match(mainHtml, /id="nextUiNotificationForum"[\s\S]*id="nextUiNotificationMemo"[\s\S]*id="nextUiNotificationFilterToggle"[\s\S]*id="nextUiNotificationClear"/,
