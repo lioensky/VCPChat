@@ -160,6 +160,7 @@ const CHAT_KEYS = [
     'desktopSetEmbeddedVchatAppBounds',
     'desktopCloseEmbeddedVchatApp',
     'desktopDetachEmbeddedVchatApp',
+    'desktopCancelEmbeddedVchatAppTask',
     'desktopCloseAllEmbeddedVchatApps',
     'onEmbeddedVchatAppState',
     'getThemes',

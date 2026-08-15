@@ -116,12 +116,14 @@ const docxHandlers = {
 const loomManagerModule = require('./modules/loom/VCPLoomManager');
 const { PRELOAD_ROLES, resolveProjectPreload } = require('./modules/services/preloadPaths');
 const { createEmbeddedAppSessionManager } = require('./modules/services/embeddedAppSessionManager');
+const { SenderTaskRegistry } = require('./modules/services/senderTaskRegistry');
 const { ChatDataServiceFacade } = require('./modules/services/chatDataService');
 // chokidar is now lazy-loaded
 
 // --- File Watcher ---
 let historyWatcher = null;
 let embeddedAppSessions = null;
+let embeddedAppTasks = null;
 let lastInternalSaveTime = 0; // 🔧 改为时间戳记录
 let internalSaveTimeout = null; // 🔧 超时保护
 let isEditingInProgress = false; // 🔧 编辑状态标识
@@ -1247,6 +1249,8 @@ if (!gotTheLock) {
         });
         desktopHandlers.initialize({ mainWindow, openChildWindows, settingsManager: appSettingsManager });
         await embeddedAppSessions?.closeAll();
+        embeddedAppTasks?.dispose('main-window-reinitialized');
+        embeddedAppTasks = new SenderTaskRegistry({ label: 'embedded-app-tasks' });
         embeddedAppSessions = createEmbeddedAppSessionManager({
             mainWindow,
             launchStandalone: desktopHandlers.launchVchatApp,
@@ -1264,10 +1268,27 @@ if (!gotTheLock) {
             'embedded-vchat-app:close',
             'embedded-vchat-app:detach',
             'embedded-vchat-app:close-all',
+            'embedded-vchat-app:cancel',
         ].forEach(channel => ipcMain.removeHandler(channel));
-        ipcMain.handle('embedded-vchat-app:create', (event, appAction) => {
+        const normalizeEmbeddedRequest = (payload, fallbackPoint = undefined) => (
+            payload && typeof payload === 'object' && !Array.isArray(payload)
+                ? { requestId: String(payload.requestId || ''), action: payload.action, point: payload.point }
+                : { requestId: '', action: payload, point: fallbackPoint }
+        );
+        const runEmbeddedTask = async (event, request, operation, execute) => {
+            if (!request.requestId) return execute(null);
+            try {
+                return await embeddedAppTasks.run(event.sender, request.requestId, operation, execute);
+            } catch (error) {
+                return { success: false, error: error.message };
+            }
+        };
+        ipcMain.handle('embedded-vchat-app:create', (event, payload) => {
             embeddedAppSessions.assertMainRenderer(event);
-            return embeddedAppSessions.create(appAction);
+            const request = normalizeEmbeddedRequest(payload);
+            return runEmbeddedTask(event, request, 'embedded:create', signal => (
+                embeddedAppSessions.create(request.action, { signal })
+            ));
         });
         ipcMain.handle('embedded-vchat-app:list', event => {
             embeddedAppSessions.assertMainRenderer(event);
@@ -1281,13 +1302,21 @@ if (!gotTheLock) {
             embeddedAppSessions.assertMainRenderer(event);
             return embeddedAppSessions.setBounds(appAction, bounds);
         });
-        ipcMain.handle('embedded-vchat-app:close', (event, appAction) => {
+        ipcMain.handle('embedded-vchat-app:close', (event, payload) => {
             embeddedAppSessions.assertMainRenderer(event);
-            return embeddedAppSessions.close(appAction);
+            const request = normalizeEmbeddedRequest(payload);
+            return runEmbeddedTask(event, request, 'embedded:close', () => embeddedAppSessions.close(request.action));
         });
-        ipcMain.handle('embedded-vchat-app:detach', (event, appAction, point) => {
+        ipcMain.handle('embedded-vchat-app:detach', (event, payload, legacyPoint) => {
             embeddedAppSessions.assertMainRenderer(event);
-            return embeddedAppSessions.detach(appAction, point);
+            const request = normalizeEmbeddedRequest(payload, legacyPoint);
+            return runEmbeddedTask(event, request, 'embedded:detach', signal => (
+                embeddedAppSessions.detach(request.action, request.point, { signal })
+            ));
+        });
+        ipcMain.handle('embedded-vchat-app:cancel', (event, requestId) => {
+            embeddedAppSessions.assertMainRenderer(event);
+            return { success: true, cancelled: embeddedAppTasks.cancel(event.sender, requestId, 'renderer-cancelled') };
         });
         ipcMain.handle('embedded-vchat-app:close-all', async event => {
             embeddedAppSessions.assertMainRenderer(event);

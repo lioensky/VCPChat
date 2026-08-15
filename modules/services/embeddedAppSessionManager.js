@@ -43,6 +43,10 @@ function normalizeBounds(bounds, parentBounds) {
     return { x, y, width, height };
 }
 
+function cancelledResult() {
+    return { success: false, embeddable: true, cancelled: true, error: '操作已取消。' };
+}
+
 function createEmbeddedAppSessionManager({ mainWindow, launchStandalone, readSettings, subscribeSettings }) {
     if (typeof readSettings !== 'function') {
         throw new TypeError('Embedded application sessions require an authoritative readSettings function.');
@@ -107,18 +111,22 @@ function createEmbeddedAppSessionManager({ mainWindow, launchStandalone, readSet
         return { success: true };
     }
 
-    async function create(appAction) {
+    async function create(appAction, options = {}) {
+        const signal = options.signal || null;
+        if (signal?.aborted) return cancelledResult();
         if (!embeddedAppAllowlist.isEmbeddable(appAction)) {
             return { success: false, embeddable: false, error: '此应用需要在独立窗口中运行。' };
         }
         const pendingClose = closingSessions.get(appAction);
         if (pendingClose) await pendingClose;
+        if (signal?.aborted) return cancelledResult();
         const current = sessions.get(appAction);
         if (current && !current.view.webContents.isDestroyed()) {
             return { success: true, embeddable: true, action: appAction, reused: true };
         }
 
         const descriptor = await resolveDescriptor(appAction, appRoot, readSettings);
+        if (signal?.aborted) return cancelledResult();
         if (!descriptor) return { success: false, embeddable: false, error: '没有可用的内嵌应用描述。' };
 
         const view = new WebContentsView({
@@ -156,13 +164,26 @@ function createEmbeddedAppSessionManager({ mainWindow, launchStandalone, readSet
             if (activeAction === appAction) activeAction = null;
         });
 
+        const abortLoad = () => {
+            try { view.webContents.stop(); } catch (_error) { /* already destroyed */ }
+            void close(appAction);
+        };
+        signal?.addEventListener('abort', abortLoad, { once: true });
+
         try {
             await view.webContents.loadURL(descriptor.url);
+            if (signal?.aborted || sessions.get(appAction)?.view !== view) {
+                await close(appAction);
+                return cancelledResult();
+            }
             notify(appAction, 'ready');
             return { success: true, embeddable: true, action: appAction };
         } catch (error) {
             await close(appAction);
+            if (signal?.aborted) return cancelledResult();
             return { success: false, embeddable: true, error: error.message };
+        } finally {
+            signal?.removeEventListener('abort', abortLoad);
         }
     }
 
@@ -233,8 +254,12 @@ function createEmbeddedAppSessionManager({ mainWindow, launchStandalone, readSet
         return close(session.action);
     }
 
-    async function detach(appAction, point = {}) {
+    async function detach(appAction, point = {}, options = {}) {
+        if (options.signal?.aborted) return { success: false, cancelled: true, error: '操作已取消。' };
         if (!sessions.has(appAction)) return { success: false, error: '内嵌应用会话不存在。' };
+        // Closing the embedded view is the detach commit point. Once it has
+        // started we always finish launching the standalone window so a late
+        // cancellation cannot make the user's application disappear.
         await close(appAction);
         const result = await launchStandalone(appAction);
         if (!result?.success) return result || { success: false, error: '独立窗口启动失败。' };

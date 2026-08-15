@@ -263,7 +263,7 @@
         setView(viewId);
 
         try {
-            const result = await embeddedAppController.create(app.action);
+            const result = await embeddedAppController.create(app.action, viewScope);
             if (!mounted || generation !== mountGeneration || !appTabHost.views.has(viewId)) {
                 if (result?.success) await embeddedAppController.close(app.action);
                 return;
@@ -286,7 +286,7 @@
         if (!view || view.kind !== 'embedded') return;
         view.tab.classList.add('is-detaching');
         try {
-            const result = await embeddedAppController?.detach(view.action, point);
+            const result = await embeddedAppController?.detach(view.action, point, view.scope || mountScope);
             if (!result?.success) throw new Error(result?.error || '无法打开独立窗口。');
             closeView(viewId, { skipEmbeddedClose: true });
         } catch (error) {

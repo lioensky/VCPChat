@@ -97,6 +97,7 @@ if (!componentCss.includes(':focus-visible')) report(path.join(styleDir, 'compon
 
 const inlineStyleCompatibilityAllowlist = new Set([
     path.join(moduleDir, 'vcp-ui.js'), // Per-instance Range progress cannot be expressed as a static token.
+    path.join(moduleDir, 'next-shell', 'next-shell-controller.js'), // Measured native-view bounds require a runtime sidebar width token.
 ]);
 
 for (const file of filesIn(moduleDir, '.js')) {
