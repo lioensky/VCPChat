@@ -106,27 +106,49 @@
                 return;
             }
             const script = document.createElement('script');
+            const pluginScope = ensurePluginScope(plugin.id);
+            let settled = false;
+            let releaseCancellation = null;
+            const finish = result => {
+                if (settled) return false;
+                settled = true;
+                script.onload = null;
+                script.onerror = null;
+                resolve(result);
+                void releaseCancellation?.();
+                return true;
+            };
             script.src = plugin.script;
             script.defer = true;
             script.dataset.vcpPlugin = plugin.id;
-            script.onload = () => resolve({ id: plugin.id, loaded: true });
+            script.onload = () => finish({ id: plugin.id, loaded: true });
             script.onerror = () => {
                 console.error(`[FrontendPlugins] 加载失败: ${plugin.id}`);
+                finish({ id: plugin.id, loaded: false });
                 void unregister(plugin.id, null, 'script-load-failed')
                     .catch(error => {
                         console.error(`[FrontendPlugins] 清理失败资源: ${plugin.id}`, error);
-                    })
-                    .finally(() => resolve({ id: plugin.id, loaded: false }));
+                    });
             };
+            releaseCancellation = pluginScope?.own(() => {
+                finish({ id: plugin.id, loaded: false, cancelled: true });
+            }, `plugin-script-load:${plugin.id}`, 'task-cancel');
             document.body.appendChild(script);
-            ensurePluginScope(plugin.id)?.own(() => script.remove(), `plugin-script:${plugin.id}`, 'script');
+            pluginScope?.own(() => script.remove(), `plugin-script:${plugin.id}`, 'script');
         });
     }
 
     async function start() {
         const results = [];
         try {
-            const response = await window.chatAPI?.listEnabledFrontendPlugins?.();
+            const tasks = window.VCPTasks;
+            const discoveryTask = window.chatAPI?.listEnabledFrontendPlugins && tasks?.createTask?.({
+                id: tasks.createTaskId?.('frontend-plugin-discovery') || `frontend-plugin-discovery:${Date.now()}`,
+                start: () => window.chatAPI.listEnabledFrontendPlugins(),
+            });
+            const response = discoveryTask && loaderScope
+                ? await discoveryTask.own(loaderScope, 'frontend-plugin-discovery')
+                : await window.chatAPI?.listEnabledFrontendPlugins?.();
             if (destroyed) return;
             const plugins = response?.success && Array.isArray(response.plugins) ? response.plugins : [];
             for (const plugin of plugins) {
