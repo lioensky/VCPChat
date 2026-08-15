@@ -117,12 +117,19 @@
         return { success: true, removed };
     }
 
-    async function createAgent({ name, model = '' }) {
+    function isAborted(signal) {
+        return Boolean(signal?.aborted);
+    }
+
+    async function createAgent({ name, model = '', signal = null }) {
         const result = await api()?.createAgent?.(name, model ? { model } : undefined);
         if (!result?.success) return result || { success: false, error: '创建功能不可用' };
+        if (isAborted(signal)) return { ...result, navigationSuccess: false, cancelled: true };
         try {
             await window.itemListManager?.loadItems?.();
+            if (isAborted(signal)) return { ...result, navigationSuccess: false, cancelled: true };
             await window.chatManager?.selectItem?.(result.agentId, 'agent', result.agentName, null, result.config);
+            if (isAborted(signal)) return { ...result, navigationSuccess: false, cancelled: true };
             window.uiManager?.switchToTab?.('settings');
             return { ...result, navigationSuccess: true };
         } catch (error) {
@@ -132,15 +139,18 @@
         }
     }
 
-    async function createGroup({ name, model = '' }) {
+    async function createGroup({ name, model = '', signal = null }) {
         const initialConfig = model ? { useUnifiedModel: true, unifiedModel: model } : undefined;
         const result = await api()?.createAgentGroup?.(name, initialConfig);
         if (!result?.success) return result || { success: false, error: '创建功能不可用' };
         const group = result.agentGroup;
         if (!group?.id) return { success: false, error: '群组已创建，但返回数据不完整。' };
+        if (isAborted(signal)) return { ...result, navigationSuccess: false, cancelled: true };
         try {
             await window.itemListManager?.loadItems?.();
+            if (isAborted(signal)) return { ...result, navigationSuccess: false, cancelled: true };
             await window.chatManager?.selectItem?.(group.id, 'group', group.name, group.avatarUrl, group);
+            if (isAborted(signal)) return { ...result, navigationSuccess: false, cancelled: true };
             window.uiManager?.switchToTab?.('settings');
             return { ...result, navigationSuccess: true };
         } catch (error) {

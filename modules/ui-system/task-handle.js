@@ -12,9 +12,10 @@
             if (typeof options.start !== 'function') throw new TypeError('TaskHandle requires start().');
             this.id = String(options.id);
             this.cancelOperation = typeof options.cancel === 'function' ? options.cancel : null;
+            this.controller = new AbortController();
             this.state = 'pending';
             this.cancelPromise = null;
-            this.promise = Promise.resolve().then(() => options.start(this.id)).then(
+            this.promise = Promise.resolve().then(() => options.start(this.id, this.controller.signal)).then(
                 value => {
                     if (this.state === 'pending') this.state = 'fulfilled';
                     return value;
@@ -33,6 +34,7 @@
             if (this.settled || this.state === 'cancelled') return this.cancelPromise || Promise.resolve(false);
             if (this.cancelPromise) return this.cancelPromise;
             this.state = 'cancelling';
+            this.controller.abort(reason);
             this.cancelPromise = Promise.resolve(this.cancelOperation?.(this.id, reason)).then(
                 () => { this.state = 'cancelled'; return true; },
                 error => { this.state = 'cancelled'; throw error; }
@@ -43,11 +45,22 @@
         own(scope, label = `task:${this.id}`) {
             if (!scope) return this.promise;
             const tracked = scope.track(this.promise, label);
-            scope.own(() => this.cancel('scope-disposed').catch(() => {}), `${label}:cancel`, 'task-cancel');
-            return tracked;
+            const releaseCancellation = scope.own(
+                () => this.cancel('scope-disposed').catch(() => {}),
+                `${label}:cancel`,
+                'task-cancel'
+            );
+            return tracked.finally(() => releaseCancellation());
         }
     }
 
+    let nextTaskSequence = 1;
+    function createTaskId(operation = 'task') {
+        const prefix = String(operation || 'task').replace(/[^a-z0-9._-]+/gi, '-').slice(0, 48) || 'task';
+        const uuid = globalThis.crypto?.randomUUID?.();
+        return `${prefix}:${uuid || `${Date.now().toString(36)}-${nextTaskSequence++}`}`;
+    }
+
     const createTask = options => new TaskHandle(options);
-    return { TaskHandle, createTask };
+    return { TaskHandle, createTask, createTaskId };
 });

@@ -29,6 +29,7 @@
             this.document = options.document || this.window.document;
             this.getUi = options.getUi || (() => this.window.VCPUI);
             this.getApi = options.getApi || (() => this.window.chatAPI || this.window.electronAPI);
+            this.getTasks = options.getTasks || (() => this.window.VCPTasks);
             this.commands = options.commands || (() => this.window.MainChatCommands);
             this.getDensity = options.getDensity || (() => 'comfortable');
             this.acquireOverlay = options.acquireOverlay || (() => Promise.resolve());
@@ -161,8 +162,23 @@
                 cancelButton.update({ disabled: true });
                 const model = modelControl.getValue();
                 try {
-                    const request = kind === 'group' ? commands.createGroup({ name, model }) : commands.createAgent({ name, model });
-                    const result = dialogScope ? await dialogScope.track(request, `create-${kind}`) : await request;
+                    const tasks = this.getTasks();
+                    const taskId = tasks?.createTaskId?.(`create-${kind}`) || `create-${kind}:${Date.now()}`;
+                    const task = tasks?.createTask?.({
+                        id: taskId,
+                        start: (_id, signal) => kind === 'group'
+                            ? commands.createGroup({ name, model, signal })
+                            : commands.createAgent({ name, model, signal }),
+                    });
+                    const request = task?.promise || (kind === 'group'
+                        ? commands.createGroup({ name, model })
+                        : commands.createAgent({ name, model }));
+                    const result = task && dialogScope
+                        ? await task.own(dialogScope, `create-${kind}`)
+                        : dialogScope
+                            ? await dialogScope.track(request, `create-${kind}`)
+                            : await request;
+                    if ((dialogScope && !dialogScope.active) || this.activeModal !== modal || !modal.element.isConnected) return;
                     if (!result?.success) throw new Error(result?.error || '创建失败，请稍后重试。');
                     ui.feedback?.toast(
                         result.navigationSuccess === false
@@ -194,8 +210,17 @@
             if (dialogScope) dialogScope.animationFrame(() => nameInput.focus(), 'focus-create-name');
             else this.window.requestAnimationFrame(() => nameInput.focus());
             try {
-                const modelRequest = api?.getCachedModels?.();
-                const payload = dialogScope && modelRequest ? await dialogScope.track(modelRequest, 'load-create-models') : await modelRequest;
+                const tasks = this.getTasks();
+                const modelTask = api?.getCachedModels && tasks?.createTask?.({
+                    id: tasks.createTaskId?.('create-models') || `create-models:${Date.now()}`,
+                    start: () => api.getCachedModels(),
+                });
+                const modelRequest = modelTask?.promise || api?.getCachedModels?.();
+                const payload = modelTask && dialogScope
+                    ? await modelTask.own(dialogScope, 'load-create-models')
+                    : dialogScope && modelRequest
+                        ? await dialogScope.track(modelRequest, 'load-create-models')
+                        : await modelRequest;
                 const options = normalizeModelOptions(payload);
                 if (this.activeModal !== modal || !modal.element.isConnected) return;
                 modelControl.update({ disabled: false, options: [{ value: '', label: '使用默认模型' }, ...options] });

@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { TaskHandle } = require('../modules/ui-system/task-handle.js');
+const { TaskHandle, createTaskId } = require('../modules/ui-system/task-handle.js');
 const { LifecycleScope } = require('../modules/ui-system/lifecycle-scope.js');
 
 test('task handle starts once and cancellation is idempotent', async () => {
@@ -48,4 +48,34 @@ test('settled tasks do not issue redundant cancellation', async () => {
     assert.equal(await task.promise, 42);
     assert.equal(await task.cancel(), false);
     assert.equal(cancelled, 0);
+});
+
+test('cancellation aborts the renderer signal and releases scope bookkeeping', async () => {
+    let resolveTask;
+    let observedSignal;
+    const scope = new LifecycleScope('task-release');
+    const task = new TaskHandle({
+        id: 'request-4',
+        start: (_id, signal) => {
+            observedSignal = signal;
+            return new Promise(resolve => { resolveTask = resolve; });
+        },
+    });
+    const result = task.own(scope, 'short-task');
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(observedSignal.aborted, false);
+    await task.cancel('user-closed');
+    assert.equal(observedSignal.aborted, true);
+    assert.equal(observedSignal.reason, 'user-closed');
+    resolveTask('late-result');
+    assert.equal(await result, 'late-result');
+    assert.equal(scope.snapshot().resourceCount, 0);
+    await scope.dispose('test');
+});
+
+test('task ids are operation-scoped and unique', () => {
+    const first = createTaskId('embedded create');
+    const second = createTaskId('embedded create');
+    assert.match(first, /^embedded-create:/);
+    assert.notEqual(first, second);
 });
