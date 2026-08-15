@@ -334,6 +334,16 @@ assert.ok(legacySelect.isConnected, 'destroy restores the native select');
 assert.ok(!legacySelect.classList.contains('vcp-ui-select-source'));
 legacySelect.remove();
 
+const retainedNativeSelect = document.createElement('select');
+retainedNativeSelect.add(new Option('Retained', 'retained'));
+scope.append(retainedNativeSelect);
+const retainedNativeController = VCPUI.enhance('Select', retainedNativeSelect, { kernel: 'native' });
+assert.equal(retainedNativeController.kernel, 'native', 'legacy surfaces can keep Select on the native lifecycle');
+assert.equal(retainedNativeController.element, retainedNativeSelect);
+assert.equal(scope.querySelectorAll('wa-select.vcp-ui-select-proxy').length, 0, 'native Select opt-out creates no WA shadow tree');
+retainedNativeController.destroy();
+retainedNativeSelect.remove();
+
 const dynamicSelectRoot = document.createElement('div');
 scope.append(dynamicSelectRoot);
 const selectObserver = VCPUI.observeControls(dynamicSelectRoot, { kinds: ['Select'] });

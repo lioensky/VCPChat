@@ -60,7 +60,7 @@ function enhanceForm(form) {
         enhance('Input', input);
     });
     form.querySelectorAll('textarea').forEach(textarea => enhance('Textarea', textarea));
-    form.querySelectorAll('select').forEach(select => enhance('Select', select));
+    form.querySelectorAll('select').forEach(select => enhance('Select', select, { kernel: 'native' }));
     form.querySelectorAll('input[type="range"]').forEach(range => enhance('Range', range));
     form.querySelectorAll('label.switch').forEach(control => enhance('Switch', control));
     form.querySelectorAll('.agent-name-wrapper, .group-name-wrapper, .group-settings-field-shell, .style-control-item, .params-content > div:not(.form-group-inline)').forEach(field => {
@@ -92,7 +92,7 @@ function enhanceGlobalSettings(root, form) {
         enhance('Input', input);
     });
     form.querySelectorAll('textarea').forEach(textarea => enhance('Textarea', textarea));
-    form.querySelectorAll('select').forEach(select => enhance('Select', select));
+    form.querySelectorAll('select').forEach(select => enhance('Select', select, { kernel: 'native' }));
     form.querySelectorAll('input[type="range"]').forEach(range => enhance('Range', range));
     form.querySelectorAll('label.switch').forEach(control => enhance('Switch', control));
     form.querySelectorAll('.agent-name-wrapper').forEach(field => {

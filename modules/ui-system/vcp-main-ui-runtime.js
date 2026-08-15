@@ -1,10 +1,8 @@
-import VCPUI from './vcp-ui.js';
 import UiModeController from './ui-mode-controller.js';
 import './webawesome-adapter.js';
 
 let generation = 0;
 let releaseScope = null;
-let selectObserver = null;
 let activating = false;
 
 function hasActiveTarget() {
@@ -14,17 +12,16 @@ function hasActiveTarget() {
 }
 
 async function activateKernel() {
-    if (activating || selectObserver || !hasActiveTarget()) return;
+    if (activating || releaseScope || !hasActiveTarget()) return;
     activating = true;
     const currentGeneration = ++generation;
     try {
         await window.VCPWebAwesome?.loadComponents?.();
         if (currentGeneration !== generation || document.documentElement.dataset.uiMode !== 'next') return;
         releaseScope = window.VCPWebAwesome?.mountScope?.(document.body) || null;
-        selectObserver = VCPUI.observeControls(document, {
-            kinds: ['Select'],
-            filter: select => Boolean(select.closest('#tabContentSettings, #globalSettingsModal')),
-        });
+        // The settings bridge owns legacy form controls. In particular it
+        // keeps upstream Select elements native so Classic/Next round-trips
+        // do not repeatedly construct and detach large WA shadow trees.
         window.VCPUISettingsBridge?.refresh?.();
     } catch (error) {
         console.warn('[VCPUI Main Runtime] Web Awesome preload failed; native controls remain active:', error);
@@ -53,8 +50,6 @@ function leaveNextMode() {
     activating = false;
     document.removeEventListener('click', handleSettingsTabClick);
     document.removeEventListener('modal-visibility-changed', handleSurfaceVisibility);
-    selectObserver?.destroy();
-    selectObserver = null;
     releaseScope?.();
     releaseScope = null;
 }

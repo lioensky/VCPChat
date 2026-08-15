@@ -117,6 +117,39 @@ async function assertMainSurface(page, browser, label) {
     assert.ok(state.bodyText > 20, `${label}: renderer became visually empty: ${JSON.stringify(state)}`);
 }
 
+async function assertClassicSurface(page, browser, label) {
+    assert.equal(page.isClosed(), false, `${label}: main renderer was closed`);
+    const mainPages = (await browser.pages()).filter(candidate => !candidate.isClosed() && candidate.url().includes('main.html'));
+    assert.equal(mainPages.length, 1, `${label}: expected exactly one main renderer, found ${mainPages.length}`);
+    const state = await page.evaluate(() => {
+        const visible = selector => {
+            const element = document.querySelector(selector);
+            if (!element?.isConnected) return false;
+            const rect = element.getBoundingClientRect();
+            const style = getComputedStyle(element);
+            return rect.width > 40 && rect.height > 30 && style.display !== 'none' && style.visibility !== 'hidden';
+        };
+        return {
+            mode: document.documentElement.dataset.uiMode,
+            mounted: window.topTabManager?.isMounted?.() === true,
+            container: visible('.container'),
+            chat: visible('.main-content'),
+            classicHeader: visible('.chat-header'),
+            nextTopbar: visible('#nextUiTopbar'),
+            dynamicTabs: document.querySelectorAll('#nextUiDynamicTabs > .next-ui-tab').length,
+            bodyText: document.body?.innerText?.length || 0,
+        };
+    });
+    assert.equal(state.mode, 'classic', `${label}: Classic mode did not apply: ${JSON.stringify(state)}`);
+    assert.equal(state.mounted, false, `${label}: Next tab host remained mounted: ${JSON.stringify(state)}`);
+    assert.equal(state.container, true, `${label}: application container disappeared: ${JSON.stringify(state)}`);
+    assert.equal(state.chat, true, `${label}: Classic chat surface disappeared: ${JSON.stringify(state)}`);
+    assert.equal(state.classicHeader, true, `${label}: Classic chat header disappeared: ${JSON.stringify(state)}`);
+    assert.equal(state.nextTopbar, false, `${label}: Next top bar remained visible: ${JSON.stringify(state)}`);
+    assert.equal(state.dynamicTabs, 0, `${label}: Next tabs survived teardown: ${JSON.stringify(state)}`);
+    assert.ok(state.bodyText > 20, `${label}: renderer became visually empty: ${JSON.stringify(state)}`);
+}
+
 async function collectRendererSnapshot(page, cdp, browserCdp, browser, label) {
     await cdp.send('HeapProfiler.collectGarbage');
     await sleep(100);
@@ -321,6 +354,22 @@ async function cycleAskNovaOverEmbedded(page, browser, app, target, label) {
     await page.evaluate(() => window.topTabManager.setView('home'));
 }
 
+async function cycleUiMode(page, browser, label) {
+    await page.evaluate(() => window.uiModeManager.applyAsync('classic', { cache: false }));
+    await page.waitForFunction(() => (
+        document.documentElement.dataset.uiMode === 'classic'
+        && window.topTabManager?.isMounted?.() === false
+    ), { timeout: timeoutMs });
+    await assertClassicSurface(page, browser, `${label}: Classic`);
+
+    await page.evaluate(() => window.uiModeManager.applyAsync('next', { cache: false }));
+    await page.waitForFunction(() => (
+        document.documentElement.dataset.uiMode === 'next'
+        && window.topTabManager?.isMounted?.() === true
+    ), { timeout: timeoutMs });
+    await assertMainSurface(page, browser, `${label}: Next`);
+}
+
 const appData = await fs.mkdtemp(path.join(os.tmpdir(), 'vcpchat-lifecycle-stress-'));
 await fs.writeFile(path.join(appData, 'settings.json'), JSON.stringify({
     uiMode: 'next',
@@ -393,6 +442,7 @@ try {
         await cycleAgentSettings(page, label);
         if (cycle % 2 === 0) await cycleEmbeddedEscape(page, browser, noteApp, label);
         else await cycleAskNovaOverEmbedded(page, browser, pluginApp, targets[(cycle + 1) % targets.length], label);
+        await cycleUiMode(page, browser, label);
         await assertMainSurface(page, browser, label);
     };
 

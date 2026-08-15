@@ -888,15 +888,15 @@ try {
     const settingsSelectState = await page.evaluate(() => {
         const modal = document.getElementById('globalSettingsModal');
         return {
-            native: modal?.querySelectorAll('select.vcp-ui-select-source').length || 0,
+            native: modal?.querySelectorAll('select.vcp-ui-native-select').length || 0,
             proxies: modal?.querySelectorAll('wa-select.vcp-ui-select-proxy').length || 0,
-            visibleNative: [...(modal?.querySelectorAll('select.vcp-ui-select-source') || [])]
+            visibleNative: [...(modal?.querySelectorAll('select.vcp-ui-native-select') || [])]
                 .filter(select => !select.hidden && getComputedStyle(select).display !== 'none').length,
         };
     });
-    assert.ok(settingsSelectState.native > 0, `global settings Select sources missing: ${JSON.stringify(settingsSelectState)}`);
-    assert.equal(settingsSelectState.proxies, settingsSelectState.native, `global settings Select proxies mismatch: ${JSON.stringify(settingsSelectState)}`);
-    assert.equal(settingsSelectState.visibleNative, 0, `global settings native Select is still visible: ${JSON.stringify(settingsSelectState)}`);
+    assert.ok(settingsSelectState.native > 0, `global settings native Select controls missing: ${JSON.stringify(settingsSelectState)}`);
+    assert.equal(settingsSelectState.proxies, 0, `legacy settings unexpectedly created WA Select proxies: ${JSON.stringify(settingsSelectState)}`);
+    assert.ok(settingsSelectState.visibleNative > 0, `global settings native Select controls are not usable: ${JSON.stringify(settingsSelectState)}`);
     await capture(page, 'main-settings-next.png');
     // Focus lands on the first field inside the open modal.
     const settingsFocus = await page.evaluate(() => {

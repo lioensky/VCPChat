@@ -63,6 +63,7 @@ const allowedSourceDifferences = new Set([
     'modules/ipc/windowHandlers.js',
     'modules/mainChatCommands.js',
     'modules/messageRenderer.js',
+    'modules/searchManager.js',
     'modules/settingsManager.js',
     'modules/services/deepWikiService.js',
     'modules/services/embeddedAppSessionManager.js',

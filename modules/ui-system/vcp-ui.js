@@ -196,6 +196,12 @@ function selectEnhancer(element, options = {}) {
         throw new TypeError('VCPUI select enhancement received an incompatible element.');
     }
 
+    // Existing business forms can opt out of a replacement custom element.
+    // This keeps their native DOM identity and lifecycle intact while still
+    // applying the shared VCPUI sizing, focus and validation contract. New
+    // VCPUI-owned controls continue to use Web Awesome through selectFactory.
+    if (options.kernel === 'native') return nativeControlEnhancer(element, 'select', options);
+
     const wa = waControl('select', {});
     if (!wa) return nativeControlEnhancer(element, 'select', options);
 
