@@ -781,6 +781,52 @@
             return candidates;
         }
 
+        function renderedLineStyleCandidates(shell) {
+            return renderedLineCandidates(shell).flatMap((element) => {
+                // Marked 在 breaks:true 下把一个 paragraph token 的源码行
+                // 渲染为单个 <p>，行边界则是其中的 <br>。逐行编辑树不能
+                // 只把这个 <p> 分配给第一行、让其余行退回无样式的 <div>；
+                // 否则 p 专属的行高、字体和字距会从第二行开始全部丢失。
+                const visualLineCount = Math.max(
+                    1,
+                    element.querySelectorAll?.('br').length + 1
+                );
+                return Array.from({ length: visualLineCount }, (_, index) => ({
+                    element,
+                    continuation: index > 0,
+                }));
+            });
+        }
+
+        function copyRenderedLineTypography(target, rendered) {
+            if (!target || !rendered) return target;
+            const style = getComputedStyle(rendered);
+            [
+                'color',
+                'font-family',
+                'font-size',
+                'font-style',
+                'font-variant',
+                'font-weight',
+                'font-stretch',
+                'line-height',
+                'letter-spacing',
+                'word-spacing',
+                'text-align',
+                'text-justify',
+                'text-transform',
+                'text-autospace',
+                'text-decoration-line',
+                'text-decoration-style',
+                'text-decoration-thickness',
+                'text-underline-offset',
+            ].forEach((property) => {
+                const value = style.getPropertyValue(property);
+                if (value) target.style.setProperty(property, value);
+            });
+            return target;
+        }
+
         function markdownLineElement(line, rendered = null) {
             const kind = markdownLineKind(line);
             const headingLevel = kind === 'heading'
@@ -800,11 +846,15 @@
                     ? rendered.cloneNode(false)
                     : document.createElement('div');
             } else {
-                // 普通文本行只能复用块级文本容器。行间 separator 是 span；
-                // 若把它克隆成下一行，第二次输入后该行会退化为 inline，
-                // 视觉上与上一行重新合并。
+                // 多行编辑树中的节点代表“源码行”，而不是 Markdown 段落。
+                // 绝不能在这里克隆静态 <p>：一旦一个静态段落被按源码换行
+                // 拆为多个节点，p 的 margin/padding/text-indent 等段级规则
+                // 就会在每一行重新执行，表现为从激活点开始行距突然膨胀。
+                //
+                // <p> 仅作为计算排版样式与 run 外边距的来源；普通行始终
+                // 使用中性 div。原本就是中性容器的节点仍可保留其结构属性。
                 element = rendered?.matches(
-                    'address,article,aside,div,footer,header,main,p,section'
+                    'address,article,aside,div,footer,header,main,section'
                 )
                     ? rendered.cloneNode(false)
                     : document.createElement('div');
@@ -832,6 +882,7 @@
                 : source;
             const lines = source.split('\n');
             const renderedLines = renderedLineCandidates(shell);
+            const renderedLineStyles = renderedLineStyleCandidates(shell);
             const singleVisualLine = !visualSource.includes('\n')
                 && !visualSource.includes('\r');
 
@@ -900,6 +951,7 @@
                 editor.style.marginBlockEnd = style.marginBlockEnd;
                 editor.style.marginInlineStart = style.marginInlineStart;
                 editor.style.marginInlineEnd = style.marginInlineEnd;
+                copyRenderedLineTypography(editor, renderedBlock);
             }
             let sourceOffset = 0;
             let renderedIndex = 0;
@@ -913,14 +965,24 @@
                     editor.appendChild(separator);
                     sourceOffset += 1;
                 }
+                const renderedStyle = line.length
+                    ? renderedLineStyles[renderedIndex] || null
+                    : null;
                 const lineElement = markdownLineElement(
                     line,
-                    line.length
-                        ? renderedLines[renderedIndex] || null
+                    renderedStyle && !renderedStyle.continuation
+                        ? renderedStyle.element
                         : null
                 );
                 if (line.length) {
                     renderedIndex += 1;
+                    // 同一静态 <p> 中 <br> 后的行继续使用其最终计算排版，
+                    // 但不克隆 <p> 标签本身，避免 text-indent 等“段落首行”
+                    // 规则错误地重复应用到每条源码行。
+                    copyRenderedLineTypography(
+                        lineElement,
+                        renderedStyle?.element
+                    );
                     lineElement.replaceChildren(inlineHtmlSourceFragment(
                         line,
                         sourceOffset

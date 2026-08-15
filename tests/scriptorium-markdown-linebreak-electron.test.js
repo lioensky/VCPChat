@@ -85,7 +85,10 @@ app.whenReady().then(async () => {
             '[data-vdoc-edit-key][data-vdoc-edit-type="markdown"]'
         )].find((node) =>
             node.dataset.vdocFlowKind !== 'stable-atomic'
-            && Boolean(node.querySelector('p'))
+            // 必须命中普通 paragraph token。旧条件 querySelector('p')
+            // 会优先选中 blockquote > p，使测试完全绕过“静态 p 被拆成
+            // 多个逐行 p，段级 margin 重复执行”的真实回归。
+            && node.firstElementChild?.matches('p')
             && (node.textContent || '').trim().length > 4
         );
         if (!shell) return { available: false };
@@ -283,6 +286,9 @@ app.whenReady().then(async () => {
         const editorLineSteps = editorLineRects.slice(1).map((rect, index) =>
             rect.top - editorLineRects[index].top
         );
+        const paragraphLinesAreNeutralBoxes = editorLineRects
+            .filter((line) => line.kind === 'paragraph')
+            .every((line) => line.tag === 'DIV');
 
         const backspaceEvent = new InputEvent('beforeinput', {
             inputType: 'deleteContentBackward',
@@ -460,6 +466,8 @@ app.whenReady().then(async () => {
                 && firstCycleRetryEnter?.caretInEditor === true
                 && afterFirstCycleRetryEnter === afterEnter,
             protectedEmptyLinesRendered: paragraphBreakCount === 3,
+            paragraphLinesDoNotRepeatParagraphBoxes:
+                paragraphLinesAreNeutralBoxes,
             backspaceWasHandled: backspaceEvent.defaultPrevented,
             oneBackspaceRemovesLastProtectedLine:
                 afterBackspace.length
