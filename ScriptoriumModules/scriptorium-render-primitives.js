@@ -41,6 +41,26 @@
 
         function markdownBaseCss(scope = '.vdoc-runtime') {
             return `
+${scope} [data-vdoc-paragraph-break-placeholder="true"],
+${scope} [data-vdoc-md-marker="paragraph-break"] {
+    display: inline !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    color: transparent !important;
+    caret-color: #3a8b78 !important;
+    background: transparent !important;
+    font-family: inherit !important;
+    font-size: inherit !important;
+    font-weight: inherit !important;
+    line-height: inherit !important;
+    letter-spacing: -.92em !important;
+    white-space: nowrap !important;
+    opacity: 1 !important;
+    vertical-align: baseline !important;
+    pointer-events: auto !important;
+    user-select: text !important;
+    -webkit-user-select: text !important;
+}
 ${scope} table {
     box-sizing: border-box;
     width: 100%;
@@ -107,6 +127,30 @@ ${scope} table code {
 .vdoc-runtime [data-vdoc-island] {
     user-select: text;
     -webkit-user-select: text;
+}
+/*
+ * 独占一行的 ↵ 是 Scriptorium 内部回车占位符。节点必须留在排版树和
+ * Selection 映射中，但字符本身在编辑、阅读、分页和导出中均不可见。
+ */
+.vdoc-runtime [data-vdoc-paragraph-break-placeholder="true"],
+.vdoc-runtime [data-vdoc-md-marker="paragraph-break"] {
+    display: inline !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    color: transparent !important;
+    caret-color: #3a8b78 !important;
+    background: transparent !important;
+    font-family: inherit !important;
+    font-size: inherit !important;
+    font-weight: inherit !important;
+    line-height: inherit !important;
+    letter-spacing: -.92em !important;
+    white-space: nowrap !important;
+    opacity: 1 !important;
+    vertical-align: baseline !important;
+    pointer-events: auto !important;
+    user-select: text !important;
+    -webkit-user-select: text !important;
 }
 .vdoc-runtime [data-vdoc-style-target="paragraph"] {
     display: block;

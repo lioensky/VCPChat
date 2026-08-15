@@ -359,6 +359,51 @@ function run() {
         'Live Preview decoration must never leak into compiled preview HTML'
     );
 
+    const paragraphBreakSource = [
+        '短尾',
+        '↵',
+        '↵',
+        '下一行',
+    ].join('\n');
+    const paragraphBreakCompiled = compiler.compile(paragraphBreakSource);
+    assert.equal(
+        paragraphBreakCompiled.source,
+        paragraphBreakSource,
+        '显式回车占位协议不得改写原始 Markdown 源码'
+    );
+    assert.equal(
+        (
+            paragraphBreakCompiled.html.match(
+                /data-vdoc-paragraph-break-placeholder="true"/g
+            ) || []
+        ).length,
+        2,
+        '每个独占行 ↵ 都必须编译为一个可圈选的回车占位节点'
+    );
+    assert.equal(
+        (paragraphBreakCompiled.html.match(/<br\s*\/?>/g) || []).length,
+        3,
+        '连续 ↵ 行必须绕过 Markdown 空白归一化并保留全部真换行'
+    );
+    assert.match(
+        paragraphBreakCompiled.html,
+        /data-vdoc-paragraph-break-placeholder="true"[^>]*>↵<\/span>/,
+        '渲染态必须保留真实 ↵ 文本，使拖选和源码使用相同语义'
+    );
+    assert.equal(
+        compiler.markdownLiveMarkerRanges(paragraphBreakSource)
+            .filter((marker) => marker.kind === 'paragraph-break').length,
+        2,
+        '编辑态必须为每个独占行 ↵ 建立精确源码标记'
+    );
+    const literalParagraphSign = compiler.compile('正文↵符号');
+    assert.doesNotMatch(
+        literalParagraphSign.html,
+        /data-vdoc-paragraph-break-placeholder/,
+        '正文中的普通 ↵ 不得被误判为回车占位符'
+    );
+    assert.match(literalParagraphSign.html, /正文↵符号/);
+
     const duplicated = compiler.validate([
         '<div data-vdoc-island="same"></div>',
         '',

@@ -390,9 +390,7 @@
         }
 
         function pastedMarkdownText(value) {
-            return String(value || '')
-                .replace(/\r\n?/g, '\n')
-                .replace(/\n/g, '  \n');
+            return String(value || '').replace(/\r\n?/g, '\n');
         }
 
         function refreshLocalMarkers(session, sourceStart, sourceEnd = sourceStart) {
@@ -438,6 +436,12 @@
             const visible = new Set();
 
             markers.forEach((marker) => {
+                if (marker.kind === 'paragraph-break') {
+                    // 回车占位符必须在所有编辑行中始终参与布局、拖选与
+                    // 源码映射；它仅由低透明度样式弱化，不能 display:none。
+                    visible.add(marker.node);
+                    return;
+                }
                 if (!inlineKinds.has(marker.kind)
                     && marker.start >= lineStart
                     && marker.start <= lineEnd) {
@@ -819,14 +823,10 @@
             const terminalLinePrefix = terminalLineEnding
                 ? source.slice(0, -terminalLineEnding.length)
                 : source;
-            // Marked 或源码实时同步可能把块后的整个空白分隔（通常 \n\n）
-            // 纳入 region。它不是可见编辑行，必须整体隐藏；但用户 Enter
-            // 写入的硬换行前有两个空格，此时必须保留逐行编辑结构。
-            const trailingLineEnding = terminalLineEnding
-                && !terminalLinePrefix.endsWith('  ')
-                && !terminalLinePrefix.endsWith('\u200B  ')
-                ? terminalLineEnding
-                : '';
+            // 纯尾换行只代表块边界，不建立可见编辑行。用户创建的每一条
+            // 空白行都由独占行 ↵ 显式表达，因此无需再根据两个尾随空格或
+            // 零宽字符猜测该换行是否可见。
+            const trailingLineEnding = terminalLineEnding;
             const visualSource = trailingLineEnding
                 ? terminalLinePrefix
                 : source;
@@ -1561,7 +1561,7 @@
                     '| 内容 | 内容 | 内容 |',
                 ].join('\n');
             }
-            return '\u200B';
+            return compiler.PARAGRAPH_BREAK_PLACEHOLDER || '↵';
         }
 
         function insertionOffset() {
@@ -1783,12 +1783,140 @@
                 0,
                 Math.min(source.length, Number(caret) || 0)
             );
+            const placeholder =
+                compiler.PARAGRAPH_BREAK_PLACEHOLDER || '↵';
             return {
                 source: source.slice(0, offset)
-                    + '\u200B'
+                    + placeholder
                     + source.slice(offset),
-                caret: offset + 1,
+                caret: offset + placeholder.length,
             };
+        }
+
+        function paragraphBreakTextInsertionOffsets(raw, offsets) {
+            const source = String(raw || '');
+            const start = Math.max(
+                0,
+                Math.min(source.length, Number(offsets?.start) || 0)
+            );
+            const end = Math.max(
+                start,
+                Math.min(source.length, Number(offsets?.end) || start)
+            );
+            if (start !== end) return { start, end };
+            const lineStart =
+                source.lastIndexOf('\n', Math.max(0, start - 1)) + 1;
+            const lineBreak = source.indexOf('\n', start);
+            const lineEnd = lineBreak < 0 ? source.length : lineBreak;
+            const placeholder =
+                compiler.PARAGRAPH_BREAK_PLACEHOLDER || '↵';
+
+            // Chromium 可能把视觉上相同的光标放在 ↵ 前侧、文本节点内部
+            // 或 ↵ 后侧。占位行上的文字输入统一规范到 ↵ 后方；这里只移动
+            // 插入点，不提前删除源码。随后由局部归一化执行唯一一次清理。
+            return source.slice(lineStart, lineEnd).trim() === placeholder
+                ? { start: lineEnd, end: lineEnd }
+                : { start, end };
+        }
+
+        function normalizeParagraphBreaksInChangedLines(
+            raw,
+            changeStart,
+            changeEnd,
+            selectionStart = changeEnd,
+            selectionEnd = selectionStart
+        ) {
+            const source = String(raw || '');
+            const from = Math.max(
+                0,
+                Math.min(source.length, Number(changeStart) || 0)
+            );
+            const to = Math.max(
+                from,
+                Math.min(source.length, Number(changeEnd) || from)
+            );
+            const windowStart =
+                source.lastIndexOf('\n', Math.max(0, from - 1)) + 1;
+            const followingBreak = source.indexOf('\n', to);
+            const windowEnd = followingBreak < 0
+                ? source.length
+                : followingBreak;
+            const windowSource = source.slice(windowStart, windowEnd);
+            const placeholder =
+                compiler.PARAGRAPH_BREAK_PLACEHOLDER || '↵';
+            const escapedPlaceholder = placeholder.replace(
+                /[.*+?^${}()|[\]\\]/g,
+                '\\$&'
+            );
+            const pattern = new RegExp(
+                `^([ \\t]*)${escapedPlaceholder}[ \\t]*(?=\\S)`,
+                'gm'
+            );
+            const removals = [];
+            const normalizedWindow = windowSource.replace(
+                pattern,
+                (match, indentation, offset) => {
+                    const indentationLength = String(indentation).length;
+                    const removedStart =
+                        windowStart + offset + indentationLength;
+                    removals.push({
+                        start: removedStart,
+                        end: windowStart + offset + String(match).length,
+                    });
+                    return indentation;
+                }
+            );
+            if (!removals.length) {
+                return {
+                    source,
+                    selectionStart,
+                    selectionEnd,
+                    changed: false,
+                };
+            }
+            const adjust = (offset) => {
+                const value = Math.max(
+                    0,
+                    Math.min(source.length, Number(offset) || 0)
+                );
+                const removedBefore = removals.reduce((total, removed) => {
+                    if (value <= removed.start) return total;
+                    return total + Math.min(
+                        value,
+                        removed.end
+                    ) - removed.start;
+                }, 0);
+                return value - removedBefore;
+            };
+            return {
+                source: source.slice(0, windowStart)
+                    + normalizedWindow
+                    + source.slice(windowEnd),
+                selectionStart: adjust(selectionStart),
+                selectionEnd: adjust(selectionEnd),
+                changed: true,
+            };
+        }
+
+        function paragraphBreakEnterSelection(raw, offsets) {
+            const source = String(raw || '');
+            const start = Math.max(
+                0,
+                Math.min(source.length, Number(offsets?.start) || 0)
+            );
+            const end = Math.max(
+                start,
+                Math.min(source.length, Number(offsets?.end) || start)
+            );
+            if (start !== end) return { start, end };
+            const lineStart = source.lastIndexOf('\n', Math.max(0, start - 1)) + 1;
+            const lineBreak = source.indexOf('\n', start);
+            const lineEnd = lineBreak < 0 ? source.length : lineBreak;
+            const placeholder =
+                compiler.PARAGRAPH_BREAK_PLACEHOLDER || '↵';
+            return source.slice(lineStart, lineEnd).trim() === placeholder
+                ? { start: lineEnd, end: lineEnd }
+                : { start, end };
         }
 
         function commitSessionInsertion(
@@ -1803,21 +1931,39 @@
                 return false;
             }
             const currentRaw = sourceForRegion(session.region);
+            const inserted = String(insertion || '');
+            const effectiveOffsets = /\S/u.test(inserted)
+                && !inserted.includes('\n')
+                ? paragraphBreakTextInsertionOffsets(currentRaw, offsets)
+                : offsets;
             const start = Math.max(
                 0,
-                Math.min(currentRaw.length, Number(offsets.start) || 0)
+                Math.min(
+                    currentRaw.length,
+                    Number(effectiveOffsets.start) || 0
+                )
             );
             const end = Math.max(
                 start,
-                Math.min(currentRaw.length, Number(offsets.end) || start)
+                Math.min(
+                    currentRaw.length,
+                    Number(effectiveOffsets.end) || start
+                )
             );
-            const inserted = String(insertion || '');
             const candidateRaw = currentRaw.slice(0, start)
                 + inserted
                 + currentRaw.slice(end);
-            const preserved = preserveBlankMarkdownRegion(
+            const candidateCaret = start + inserted.length;
+            const normalized = normalizeParagraphBreaksInChangedLines(
                 candidateRaw,
-                start + inserted.length
+                start,
+                candidateCaret,
+                candidateCaret,
+                candidateCaret
+            );
+            const preserved = preserveBlankMarkdownRegion(
+                normalized.source,
+                normalized.selectionStart
             );
             const nextRaw = preserved.source;
             const caret = preserved.caret;
@@ -2016,15 +2162,85 @@
             return true;
         }
 
+        function deleteLineBoundaryBeforeSession(session) {
+            if (!session?.region || session.region.type !== 'markdown') {
+                return false;
+            }
+            const source = adapter.currentSource();
+            const boundary = session.region.sourceRange.start;
+            if (boundary <= 0) return false;
+
+            const prefix = source.slice(0, boundary);
+            const placeholder =
+                compiler.PARAGRAPH_BREAK_PLACEHOLDER || '↵';
+            const escapedPlaceholder = placeholder.replace(
+                /[.*+?^${}()|[\]\\]/g,
+                '\\$&'
+            );
+
+            // Marked 会把段落之间的整个空白分隔带排除在两个编辑区域之外。
+            // 区域头部退格若只删最后一个换行，剩余 \n\n 仍会维持段落分区，
+            // 视觉上就像退格完全无效。这里一次消费紧邻区域的完整分隔带：
+            // 连续 LF/CRLF、空白行以及独占 ↵ 行。
+            const separatorPattern = new RegExp(
+                `(?:(?:\\r\\n|\\n)[ \\t]*(?:${
+                    escapedPlaceholder
+                }[ \\t]*)?)+$`
+            );
+            const separator = prefix.match(separatorPattern)?.[0] || '';
+            if (!separator) return false;
+            const from = boundary - separator.length;
+
+            const transaction = transact({
+                from,
+                to: boundary,
+                expected: source.slice(from, boundary),
+                insert: '',
+                reason: 'flow-delete-line-boundary',
+            });
+            if (!transaction) return false;
+
+            state.activeSession = null;
+            context.renderPort?.invalidate?.('flow-line-boundary-deleted');
+            context.renderPort?.renderEdit?.({ force: true });
+            scheduleBoundaryFocus(from);
+            return true;
+        }
+
         function markdownLineBreakInsertion(editable, offsets) {
             const raw = editableSourceText(editable);
-            const before = raw.slice(0, offsets?.start || 0);
-            const lineStart = before.lastIndexOf('\n') + 1;
-            const currentLine = before.slice(lineStart);
-            // Markdown 会吞掉连续空白行。第二次及后续 Enter 在空行中
-            // 写入零宽占位符，使每个空行都能稳定编译为独立可编辑行，
-            // 并保证逐行编辑树始终存在可承载光标的文本位置。
-            return currentLine.length === 0 ? '\u200B  \n' : '  \n';
+            const start = Math.max(
+                0,
+                Math.min(raw.length, Number(offsets?.start) || 0)
+            );
+            const end = Math.max(
+                start,
+                Math.min(raw.length, Number(offsets?.end) || start)
+            );
+            const lineStart =
+                raw.lastIndexOf('\n', Math.max(0, start - 1)) + 1;
+            const followingBreak = raw.indexOf('\n', end);
+            const lineEnd = followingBreak < 0
+                ? raw.length
+                : followingBreak;
+            const placeholder =
+                compiler.PARAGRAPH_BREAK_PLACEHOLDER || '↵';
+            const currentLine = raw.slice(lineStart, lineEnd);
+
+            // 空占位行继续拆分时保留当前 ↵，并在下一行创建新 ↵。
+            if (currentLine.trim() === placeholder) {
+                return `\n${placeholder}`;
+            }
+
+            // 统一拆行协议：
+            // 行首：↵\n正文
+            // 行中：前文\n后文
+            // 行尾：正文\n↵
+            const atLineStart = start === lineStart;
+            const atLineEnd = end === lineEnd;
+            if (atLineStart) return `${placeholder}\n`;
+            if (atLineEnd) return `\n${placeholder}`;
+            return '\n';
         }
 
         function handleEditorKeydown(event) {
@@ -2098,12 +2314,18 @@
                 event.preventDefault();
                 // keydown 是 Electron 中最稳定的 Enter 入口。只要处于 Markdown
                 // 编辑会话，就禁止浏览器原生修改 contenteditable DOM，并将
-                // 硬换行直接提交到文档模型。beforeinput 保留为平台差异兜底。
+                // 真换行与必要的 ↵ 直接提交模型。beforeinput 保留为平台兜底。
+                const raw = editableSourceText(editable);
+                const insertionOffsets =
+                    paragraphBreakEnterSelection(raw, offsets);
                 return commitSessionInsertion(
                     session,
-                    markdownLineBreakInsertion(editable, offsets),
-                    offsets,
-                    'flow-keydown-hard-line-break'
+                    markdownLineBreakInsertion(
+                        editable,
+                        insertionOffsets
+                    ),
+                    insertionOffsets,
+                    'flow-keydown-paragraph-break'
                 );
             }
             return false;
@@ -2117,10 +2339,25 @@
                 || !session.editable?.isConnected) {
                 return false;
             }
-            const nextText = editableSourceText(session.editable);
-            if (nextText === session.previousText) return false;
+            const domText = editableSourceText(session.editable);
+            if (domText === session.previousText) return false;
             const selectionOffsets =
                 editorSelectionOffsets(session.editable);
+            const normalized = normalizeParagraphBreaksInChangedLines(
+                domText,
+                selectionOffsets?.start ?? 0,
+                selectionOffsets?.end ?? selectionOffsets?.start ?? 0,
+                selectionOffsets?.start,
+                selectionOffsets?.end
+            );
+            const nextText = normalized.source;
+            const normalizedSelectionOffsets = selectionOffsets
+                ? {
+                    ...selectionOffsets,
+                    start: normalized.selectionStart,
+                    end: normalized.selectionEnd,
+                }
+                : null;
             if (!sourceHashValid(session.region)) {
                 notificationPort.show?.(
                     '当前编辑区源码映射已过期，输入未写入源码。',
@@ -2139,7 +2376,7 @@
             if (!refreshSessionRegion(
                 session,
                 transaction,
-                selectionOffsets
+                normalizedSelectionOffsets
             )) {
                 const viewState = captureViewState();
                 state.activeSession = null;
@@ -2286,13 +2523,19 @@
                     if (session.region.type !== 'markdown') return;
                     const offsets = resilientEditorSelectionOffsets(editable);
                     if (!offsets) return;
-                    // Markdown 硬换行直接进入文档模型；禁止浏览器仅修改
+                    // 真换行与必要的 ↵ 直接进入文档模型；禁止浏览器仅修改
                     // contenteditable DOM，避免出现“UI 换行、源码没变”。
+                    const raw = editableSourceText(editable);
+                    const insertionOffsets =
+                        paragraphBreakEnterSelection(raw, offsets);
                     commitSessionInsertion(
                         session,
-                        markdownLineBreakInsertion(editable, offsets),
-                        offsets,
-                        'flow-beforeinput-hard-line-break'
+                        markdownLineBreakInsertion(
+                            editable,
+                            insertionOffsets
+                        ),
+                        insertionOffsets,
+                        'flow-beforeinput-paragraph-break'
                     );
                     return;
                 }
@@ -2304,27 +2547,47 @@
                 if (event.inputType === 'deleteContentBackward') {
                     const raw = sourceForRegion(session.region);
                     if (offsets.start === offsets.end && offsets.start <= 0) {
+                        event.preventDefault();
+                        deleteLineBoundaryBeforeSession(session);
                         return;
                     }
                     event.preventDefault();
 
                     let deletionStart = offsets.start;
+                    let deletionEnd = offsets.end;
                     if (offsets.start === offsets.end) {
-                        const hardBreak = '  \n';
-                        const protectedEmptyBreak = `\u200B${hardBreak}`;
+                        const placeholder =
+                            compiler.PARAGRAPH_BREAK_PLACEHOLDER || '↵';
+                        const lfParagraphBreak = `\n${placeholder}`;
+                        const crlfParagraphBreak = `\r\n${placeholder}`;
                         const prefix = raw.slice(0, offsets.start);
-                        if (prefix.endsWith(protectedEmptyBreak)) {
-                            // 连续 Enter 创建的受保护空行按一个动作删除，
-                            // 不能遗留零宽占位符污染源码或光标映射。
+                        const suffix = raw.slice(offsets.end);
+                        if (prefix.endsWith(crlfParagraphBreak)) {
+                            // 光标位于 CRLF 占位行的 ↵ 后方。
                             deletionStart =
-                                offsets.start - protectedEmptyBreak.length;
-                        } else if (prefix.endsWith(hardBreak)) {
-                            // 首次 Enter 写入标准 Markdown 硬换行：两个尾随
-                            // 空格加换行符，退格时同样作为一个动作原子删除。
-                            deletionStart = offsets.start - hardBreak.length;
+                                offsets.start - crlfParagraphBreak.length;
+                        } else if (prefix.endsWith(lfParagraphBreak)) {
+                            // 光标位于 LF 占位行的 ↵ 后方。
+                            deletionStart =
+                                offsets.start - lfParagraphBreak.length;
+                        } else if (prefix.endsWith('\r\n')
+                            && suffix.startsWith(placeholder)) {
+                            // 光标位于 CRLF 占位行的 ↵ 前方：合并上一行时
+                            // 必须同时删除当前占位符，不能留下“正文↵”。
+                            deletionStart = offsets.start - 2;
+                            deletionEnd = offsets.end + placeholder.length;
+                        } else if (prefix.endsWith('\n')
+                            && suffix.startsWith(placeholder)) {
+                            // 光标位于 LF 占位行的 ↵ 前方。
+                            deletionStart = offsets.start - 1;
+                            deletionEnd = offsets.end + placeholder.length;
+                        } else if (prefix.endsWith('\r\n')) {
+                            // 普通 CRLF 真换行后的行首退格。
+                            deletionStart = offsets.start - 2;
+                        } else if (prefix.endsWith('\n')) {
+                            // 普通 LF 真换行后的行首退格。
+                            deletionStart = offsets.start - 1;
                         } else {
-                            // 保持浏览器对普通文字的单字符退格语义，同时避免
-                            // 将代理对字符拆成无效的半个 UTF-16 序列。
                             const previous = Array.from(prefix).at(-1) || '';
                             deletionStart = offsets.start - previous.length;
                         }
@@ -2334,7 +2597,7 @@
                         '',
                         {
                             start: deletionStart,
-                            end: offsets.end,
+                            end: deletionEnd,
                         },
                         'flow-beforeinput-delete-backward'
                     );
@@ -2365,14 +2628,53 @@
             };
 
             const commitCompositionDom = (pending) => {
-                if (!pending?.session?.editable?.isConnected
-                    || pending.session.editable !== pending.editable) {
+                if (!pending?.session) return false;
+                if (pending.editable?.isConnected
+                    && pending.session.editable === pending.editable) {
+                    return flushSession(
+                        pending.session,
+                        'flow-composition-input'
+                    );
+                }
+
+                // Enter 后的重排、插件刷新或焦点同步可能在最终提交帧前
+                // 替换 contenteditable。旧 DOM 即使断开，compositionend/input
+                // 保存的文本快照仍是本次候选词的唯一可靠载体，不能直接丢弃。
+                const snapshotText = String(pending.text ?? '');
+                if (!snapshotText
+                    || !pending.session.region
+                    || !sourceHashValid(pending.session.region)) {
                     return false;
                 }
-                return flushSession(
-                    pending.session,
-                    'flow-composition-input'
+                const currentRaw = sourceForRegion(pending.session.region);
+                const offsets = pending.offsets || {
+                    start: snapshotText.length,
+                    end: snapshotText.length,
+                };
+                const normalized = normalizeParagraphBreaksInChangedLines(
+                    snapshotText,
+                    offsets.start,
+                    offsets.end,
+                    offsets.start,
+                    offsets.end
                 );
+                const transaction = transact({
+                    from: pending.session.region.sourceRange.start,
+                    to: pending.session.region.sourceRange.end,
+                    expected: currentRaw,
+                    insert: normalized.source,
+                    reason: 'flow-composition-snapshot',
+                });
+                if (!transaction) return false;
+                state.activeSession = null;
+                context.renderPort?.invalidate?.(
+                    'flow-composition-snapshot-committed'
+                );
+                context.renderPort?.renderEdit?.({ force: true });
+                scheduleBoundaryFocus(
+                    transaction.from + normalized.selectionEnd
+                );
+                return true;
             };
 
             root.addEventListener('input', (event) => {
@@ -2384,10 +2686,13 @@
                 if (!editable || !shell) return;
 
                 if (state.compositionCommit?.editable === editable) {
-                    // 最终 input 表示候选文字已进入 DOM，但仍处于浏览器
-                    // 输入事件调用栈中。保留 compositionend 安排的下一帧
-                    // 提交，避免在 input 监听器内部替换其 event.target。
+                    // 最终 input 到达时刷新快照，但仍等到下一帧提交，避免在
+                    // 浏览器输入事件调用栈中替换 event.target。
                     state.compositionCommit.inputObserved = true;
+                    state.compositionCommit.text =
+                        editableSourceText(editable);
+                    state.compositionCommit.offsets =
+                        editorSelectionOffsets(editable);
                     return;
                 }
 
@@ -2427,7 +2732,12 @@
                 // 此时平台 IME 仍可能继续派发最终 beforeinput/input；同步重建
                 // DOM 会关闭候选窗、丢字或重复提交。等待最终 input，从浏览器
                 // 已固化的 DOM 整体同步。少数不派发 input 的实现下一帧兜底。
-                state.compositionCommit = { session, editable };
+                state.compositionCommit = {
+                    session,
+                    editable,
+                    text: editableSourceText(editable),
+                    offsets: editorSelectionOffsets(editable),
+                };
                 state.compositionCommitFrame = window.requestAnimationFrame(() => {
                     state.compositionCommitFrame = 0;
                     const pending = state.compositionCommit;
