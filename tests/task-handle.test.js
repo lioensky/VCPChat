@@ -50,7 +50,7 @@ test('settled tasks do not issue redundant cancellation', async () => {
     assert.equal(cancelled, 0);
 });
 
-test('cancellation aborts the renderer signal and releases scope bookkeeping', async () => {
+test('cancellation aborts the renderer token and settled tasks release teardown bookkeeping', async () => {
     let resolveTask;
     let observedSignal;
     const scope = new LifecycleScope('task-release');

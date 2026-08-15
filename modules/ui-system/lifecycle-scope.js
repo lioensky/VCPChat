@@ -80,10 +80,12 @@
         own(disposable, label = 'resource', type = 'custom') {
             const record = this._register(disposable, label, type);
             let releasePromise = null;
-            return () => {
+            const release = () => {
                 if (!releasePromise) releasePromise = this._release(record, true);
                 return releasePromise;
             };
+            release.forget = () => this._release(record, false);
+            return release;
         }
 
         listen(target, type, handler, options = undefined, label = `event:${type}`) {

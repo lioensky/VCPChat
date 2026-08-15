@@ -6,16 +6,40 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function createTaskHandleApi() {
     'use strict';
 
+    function createCancellationToken() {
+        let aborted = false;
+        let reason;
+        const token = Object.freeze({
+            get aborted() { return aborted; },
+            get reason() { return reason; },
+            throwIfCancelled() {
+                if (!aborted) return;
+                const error = new Error(String(reason || 'Task cancelled.'));
+                error.name = 'TaskCancelledError';
+                throw error;
+            },
+        });
+        return {
+            token,
+            cancel(nextReason) {
+                if (aborted) return false;
+                aborted = true;
+                reason = nextReason;
+                return true;
+            },
+        };
+    }
+
     class TaskHandle {
         constructor(options = {}) {
             if (!options.id) throw new TypeError('TaskHandle requires a stable id.');
             if (typeof options.start !== 'function') throw new TypeError('TaskHandle requires start().');
             this.id = String(options.id);
             this.cancelOperation = typeof options.cancel === 'function' ? options.cancel : null;
-            this.controller = new AbortController();
+            this.cancellation = createCancellationToken();
             this.state = 'pending';
             this.cancelPromise = null;
-            this.promise = Promise.resolve().then(() => options.start(this.id, this.controller.signal)).then(
+            this.promise = Promise.resolve().then(() => options.start(this.id, this.cancellation.token)).then(
                 value => {
                     if (this.state === 'pending') this.state = 'fulfilled';
                     return value;
@@ -34,7 +58,7 @@
             if (this.settled || this.state === 'cancelled') return this.cancelPromise || Promise.resolve(false);
             if (this.cancelPromise) return this.cancelPromise;
             this.state = 'cancelling';
-            this.controller.abort(reason);
+            this.cancellation.cancel(reason);
             this.cancelPromise = Promise.resolve(this.cancelOperation?.(this.id, reason)).then(
                 () => { this.state = 'cancelled'; return true; },
                 error => { this.state = 'cancelled'; throw error; }
@@ -50,7 +74,8 @@
                 `${label}:cancel`,
                 'task-cancel'
             );
-            return tracked.finally(() => releaseCancellation());
+            void tracked.then(releaseCancellation.forget, releaseCancellation.forget);
+            return tracked;
         }
     }
 

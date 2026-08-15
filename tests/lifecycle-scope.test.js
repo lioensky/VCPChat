@@ -133,6 +133,18 @@ test('settled timeouts and tracked tasks leave diagnostics', async () => {
     await scope.dispose();
 });
 
+test('owned resources can be forgotten after natural settlement without running cleanup', async () => {
+    const scope = new LifecycleScope('forgotten-resource');
+    let cleanup = 0;
+    const release = scope.own(() => { cleanup += 1; }, 'settled-task', 'task-cancel');
+    await release.forget();
+    assert.equal(cleanup, 0);
+    assert.equal(scope.snapshot().resourceCount, 0);
+    await release();
+    assert.equal(cleanup, 0, 'forgotten cleanup cannot run later');
+    await scope.dispose();
+});
+
 test('animation frames are owned and suppressed after disposal', async () => {
     const scope = new LifecycleScope('animation-frame');
     let fired = 0;
