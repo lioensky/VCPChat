@@ -2,6 +2,7 @@
     const APP_TONES = ['purple', 'green', 'pink', 'cyan', 'amber', 'charcoal', 'red', 'orange'];
     const TAB_SESSION_KEY = 'vcpchat.nextUi.openTabs.v1';
     let appTabHost = null;
+    let assistantSearchController = null;
     let initialized = false;
     let mounted = false;
     let mountGeneration = 0;
@@ -812,49 +813,6 @@
         }
     }
 
-    function setupAgentSearch() {
-        const header = document.querySelector('#tabContentAgents .agents-header');
-        const trigger = document.getElementById('nextUiAgentSearchTrigger');
-        const close = document.getElementById('nextUiAgentSearchClose');
-        const input = document.getElementById('agentSearchInput');
-        if (!header || !trigger || !close || !input) return;
-
-        const setSearchMode = (active, clear = !active) => {
-            header.classList.toggle('is-searching', active);
-            trigger.setAttribute('aria-expanded', String(active));
-            if (clear) {
-                input.value = '';
-                window.uiHelperFunctions?.filterAgentList?.('');
-            }
-            if (active) {
-                if (mountScope) mountScope.animationFrame(() => input.focus(), 'focus-agent-search');
-                else requestAnimationFrame(() => input.focus());
-            }
-            else if (document.activeElement === input) trigger.focus();
-        };
-
-        mountScope?.own(() => {
-            header.classList.remove('is-searching');
-            trigger.setAttribute('aria-expanded', 'false');
-            input.value = '';
-            window.uiHelperFunctions?.filterAgentList?.('');
-        }, 'agent-search-state', 'dom-state');
-
-        listen(trigger, 'click', () => setSearchMode(true, false));
-        listen(close, 'click', () => setSearchMode(false));
-        listen(input, 'keydown', event => {
-            if (event.key !== 'Escape') return;
-            event.preventDefault();
-            event.stopPropagation();
-            setSearchMode(false);
-        });
-        document.querySelectorAll('.sidebar-tab-button').forEach(button => {
-            listen(button, 'click', () => {
-                if (button.dataset.tab !== 'agents') setSearchMode(false);
-            });
-        });
-    }
-
     function setupEmbeddedAppState() {
         embeddedAppController?.mount(mountScope, payload => {
             const view = [...appTabHost.views.values()].find(candidate => candidate.kind === 'embedded' && candidate.action === payload?.action);
@@ -875,9 +833,11 @@
         const OverlayCoordinator = window.VCPNextShell?.OverlayCoordinator;
         const EmbeddedAppController = window.VCPNextShell?.EmbeddedAppController;
         const AppTabHost = window.VCPNextShell?.AppTabHost;
+        const AssistantSearchController = window.VCPNextShell?.AssistantSearchController;
         if (!OverlayCoordinator) throw new Error('OverlayCoordinator is unavailable.');
         if (!EmbeddedAppController) throw new Error('EmbeddedAppController is unavailable.');
         if (!AppTabHost) throw new Error('AppTabHost is unavailable.');
+        if (!AssistantSearchController) throw new Error('AssistantSearchController is unavailable.');
         mounted = true;
         mountGeneration += 1;
         const LifecycleScope = window.VCPLifecycle?.LifecycleScope;
@@ -893,6 +853,11 @@
             suppressedClicks: suppressedTabClicks,
         });
         appTabHost.mount(mountScope);
+        assistantSearchController = new AssistantSearchController({
+            document,
+            filter: value => window.uiHelperFunctions?.filterAgentList?.(value),
+        });
+        assistantSearchController.mount(mountScope);
         embeddedAppController = new EmbeddedAppController({ getApi: getDesktopApi });
         overlayCoordinator = new OverlayCoordinator({
             document,
@@ -903,7 +868,6 @@
         renderApps();
         syncDensity();
         observeSidebarWidth();
-        setupAgentSearch();
         setupAccountMenu();
         setupEmbeddedAppState();
         pendingTabRestore = readTabSession();
@@ -946,6 +910,7 @@
         if (!mountScope) {
             embeddedAppController?.dispose();
             appTabHost?.dispose();
+            assistantSearchController?.dispose();
         }
         pendingTabRestore = null;
         restoringTabs = false;
