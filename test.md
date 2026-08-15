@@ -305,13 +305,15 @@ flowchart LR
     <style>
         [data-vdoc-island="three-dimensional-text-card"] {
             display: grid;
-            min-height: 300px;
+            min-height: 420px;
             margin: 2rem 0;
             overflow: hidden;
             place-items: center;
             perspective: 1100px;
             border-radius: 24px;
-            background: linear-gradient(145deg, #e8f5ef, #f9e8dc);
+            background:
+                radial-gradient(circle at 72% 32%, rgba(255, 255, 255, 0.82), transparent 24%),
+                linear-gradient(145deg, #e8f5ef, #f9e8dc);
         }
 
         [data-vdoc-island="three-dimensional-text-card"] .three-d-card {
@@ -352,6 +354,80 @@ flowchart LR
             border-radius: 18px;
             transform: translateZ(-28px);
         }
+
+        [data-vdoc-island="three-dimensional-text-card"] .three-d-cube-stage {
+            position: absolute;
+            right: 12%;
+            bottom: 30px;
+            width: 112px;
+            height: 112px;
+            perspective: 700px;
+        }
+
+        [data-vdoc-island="three-dimensional-text-card"] .three-d-cube {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            transform-style: preserve-3d;
+            animation: three-d-cube-spin 10s linear infinite;
+        }
+
+        [data-vdoc-island="three-dimensional-text-card"] .three-d-cube-face {
+            position: absolute;
+            display: grid;
+            width: 112px;
+            height: 112px;
+            place-items: center;
+            padding: 0.7rem;
+            box-sizing: border-box;
+            border: 1px solid rgba(255, 255, 255, 0.7);
+            color: #fffdf7;
+            font: 700 0.9rem "Noto Serif SC", serif;
+            letter-spacing: 0.08em;
+            text-align: center;
+            text-shadow: 0 2px 8px rgba(35, 47, 44, 0.32);
+            background: linear-gradient(135deg, rgba(46, 117, 103, 0.9), rgba(148, 95, 133, 0.84));
+            box-shadow: inset 0 0 24px rgba(255, 255, 255, 0.16);
+            backface-visibility: visible;
+        }
+
+        [data-vdoc-island="three-dimensional-text-card"] .cube-front {
+            transform: rotateY(0deg) translateZ(56px);
+        }
+
+        [data-vdoc-island="three-dimensional-text-card"] .cube-back {
+            transform: rotateY(180deg) translateZ(56px);
+        }
+
+        [data-vdoc-island="three-dimensional-text-card"] .cube-right {
+            transform: rotateY(90deg) translateZ(56px);
+        }
+
+        [data-vdoc-island="three-dimensional-text-card"] .cube-left {
+            transform: rotateY(-90deg) translateZ(56px);
+        }
+
+        [data-vdoc-island="three-dimensional-text-card"] .cube-top {
+            transform: rotateX(90deg) translateZ(56px);
+        }
+
+        [data-vdoc-island="three-dimensional-text-card"] .cube-bottom {
+            transform: rotateX(-90deg) translateZ(56px);
+        }
+
+        @keyframes three-d-cube-spin {
+            from { transform: rotateX(-18deg) rotateY(0deg) rotateZ(0deg); }
+            to { transform: rotateX(342deg) rotateY(360deg) rotateZ(18deg); }
+        }
+
+        @media (max-width: 700px) {
+            [data-vdoc-island="three-dimensional-text-card"] .three-d-cube-stage {
+                right: 8%;
+                bottom: 18px;
+                transform: scale(0.72);
+                transform-origin: bottom right;
+            }
+        }
     </style>
 
     <div class="three-d-card" tabindex="0">
@@ -360,6 +436,17 @@ flowchart LR
             移动鼠标观察景深；离屏后它应保持静态且不产生后台 I/O。
         </p>
         <div class="three-d-depth"></div>
+    </div>
+
+    <div class="three-d-cube-stage" aria-label="通过 JavaScript 注入文字的旋转 3D 立方体">
+        <div class="three-d-cube">
+            <div class="three-d-cube-face cube-front"></div>
+            <div class="three-d-cube-face cube-back"></div>
+            <div class="three-d-cube-face cube-right"></div>
+            <div class="three-d-cube-face cube-left"></div>
+            <div class="three-d-cube-face cube-top"></div>
+            <div class="three-d-cube-face cube-bottom"></div>
+        </div>
     </div>
 
     <script>
@@ -374,6 +461,20 @@ flowchart LR
         }
 
         island.dataset.vdocInitialized = 'true';
+
+        const cubeTexts = [
+            ['cube-front', '文字'],
+            ['cube-back', '空间'],
+            ['cube-right', '旋转'],
+            ['cube-left', '注入'],
+            ['cube-top', 'CSS 3D'],
+            ['cube-bottom', 'JS TEXT']
+        ];
+
+        cubeTexts.forEach(([faceClass, text]) => {
+            const face = island.querySelector(`.${faceClass}`);
+            if (face) face.textContent = text;
+        });
 
         const move = (event) => {
             const rect = island.getBoundingClientRect();

@@ -235,6 +235,9 @@
         window.ScriptoriumRenderedText.createRenderedTextController({
             historyPort,
             notificationPort: notificationFacade,
+            // 延迟读取，避免在 visibilityPort 声明前触发词法作用域暂存死区；
+            // 编辑事件发生时该端口已经完成初始化。
+            getVisibilityPort: () => visibilityPort,
         });
 
     const runtimePort =
@@ -244,6 +247,22 @@
 
     const visibilityObservers = new Map();
     const visibilityPort = Object.freeze({
+        pause(surface) {
+            if (!surface) return false;
+            window.ScriptoriumVisibility.pause(surface);
+            return true;
+        },
+        resume(surface) {
+            if (!surface) return false;
+            window.ScriptoriumVisibility.resume(surface);
+            return true;
+        },
+        isPaused(surface) {
+            return Boolean(
+                surface
+                && window.ScriptoriumVisibility.isPaused(surface)
+            );
+        },
         observe(root, host, options = {}) {
             const previous = visibilityObservers.get(root);
             previous?.disconnect?.();
