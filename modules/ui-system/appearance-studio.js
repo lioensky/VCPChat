@@ -892,7 +892,15 @@
         themesLoadError = null;
         renderThemePalette();
         try {
-            const themes = await api()?.getThemes?.();
+            const tasks = window.VCPTasks;
+            const ownerScope = openScope;
+            const themeTask = api()?.getThemes && tasks?.createTask?.({
+                id: tasks.createTaskId?.('appearance-themes') || `appearance-themes:${Date.now()}`,
+                start: () => api().getThemes(),
+            });
+            const themes = themeTask && ownerScope
+                ? await themeTask.own(ownerScope, 'appearance-theme-list')
+                : await api()?.getThemes?.();
             if (sequence !== themesLoadSequence || !surface || surface.root.hidden) return;
             installedThemes = Array.isArray(themes)
                 ? themes.slice().sort((left, right) => Number(right.isActive) - Number(left.isActive)
