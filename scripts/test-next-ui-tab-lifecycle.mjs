@@ -79,6 +79,7 @@ window.eval(fs.readFileSync(path.join(root, 'modules/ui-system/next-shell/assist
 window.eval(fs.readFileSync(path.join(root, 'modules/ui-system/next-shell/account-menu-controller.js'), 'utf8'));
 window.eval(fs.readFileSync(path.join(root, 'modules/ui-system/next-shell/launchpad-controller.js'), 'utf8'));
 window.eval(fs.readFileSync(path.join(root, 'modules/ui-system/next-shell/creation-controller.js'), 'utf8'));
+window.eval(fs.readFileSync(path.join(root, 'modules/ui-system/next-shell/next-shell-controller.js'), 'utf8'));
 window.eval(fs.readFileSync(path.join(root, 'modules/topTabManager.js'), 'utf8'));
 window.topTabManager.init();
 await new Promise(resolve => setTimeout(resolve, 0));

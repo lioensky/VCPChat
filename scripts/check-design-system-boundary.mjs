@@ -86,6 +86,7 @@ const allowedSourceDifferences = new Set([
     'modules/ui-system/next-shell/account-menu-controller.js',
     'modules/ui-system/next-shell/launchpad-controller.js',
     'modules/ui-system/next-shell/creation-controller.js',
+    'modules/ui-system/next-shell/next-shell-controller.js',
     'modules/ui-system/next-ui-apps.js',
     'modules/ui-system/appearance-engine.js',
     'modules/ui-system/appearance-studio.js',
