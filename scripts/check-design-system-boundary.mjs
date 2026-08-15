@@ -6,10 +6,11 @@ import postcss from 'postcss';
 const root = process.cwd();
 // Pin the source snapshot used for the original Agent-runtime subtraction.
 // A moving development branch makes every later Codex change look like a
-// design-system boundary violation. The upstream comparison intentionally
-// follows origin/main so newly merged upstream files remain admissible.
+// design-system boundary violation. Resolve the PR target independently so
+// the guard works both in contributor clones (upstream/next-ui) and upstream
+// CI checkouts (origin/next-ui).
 const sourceRef = process.env.VCP_DESIGN_SOURCE_REF || 'a1f76dffea8105999e465da45d8e52558cd80c47';
-const upstreamRef = process.env.VCP_UPSTREAM_REF || 'origin/main';
+const upstreamRef = resolveUpstreamRef();
 const failures = [];
 
 const forbiddenPaths = [
@@ -119,6 +120,7 @@ const allowedSourceDifferences = new Set([
     'scripts/test-webawesome-adapter.mjs',
     'scripts/test-vcp-ui-select-proxy.mjs',
     'scripts/test-electron-ui-apps-smoke.mjs',
+    'scripts/test-electron-lifecycle-stress.mjs',
     'scripts/test-settings-wa-electron.mjs',
     'tests/frontend-plugins.test.js',
     'tests/topic-list-mode-lifecycle.test.js',
@@ -165,6 +167,22 @@ const upstreamClassicPatterns = [
 
 function git(args) {
     return execFileSync('git', ['-c', 'core.quotepath=false', ...args], { cwd: root, encoding: 'utf8' }).trim();
+}
+
+function resolveUpstreamRef() {
+    const candidates = process.env.VCP_UPSTREAM_REF
+        ? [process.env.VCP_UPSTREAM_REF]
+        : ['upstream/next-ui', 'origin/next-ui', 'origin/main'];
+    for (const candidate of candidates) {
+        try {
+            git(['rev-parse', '--verify', candidate]);
+            return candidate;
+        } catch {
+            // Try the next checkout topology. A final missing ref is handled
+            // by the existing parity-audit warnings below.
+        }
+    }
+    return candidates[0];
 }
 
 const trackedFiles = git(['ls-files']).split('\n').filter(Boolean);
