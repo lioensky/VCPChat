@@ -1430,6 +1430,71 @@
             });
         }
 
+        function deleteClipboardSourceSelection(
+            payload = clipboardSourceSelection(),
+            reason = 'flow-delete-source-selection'
+        ) {
+            if (!payload
+                || !Number.isFinite(payload.sourceStart)
+                || !Number.isFinite(payload.sourceEnd)
+                || payload.sourceEnd <= payload.sourceStart) {
+                return false;
+            }
+
+            const source = adapter.currentSource();
+            const candidate = source.slice(0, payload.sourceStart)
+                + source.slice(payload.sourceEnd);
+            const normalized = normalizeParagraphBreaksInChangedLines(
+                candidate,
+                payload.sourceStart,
+                payload.sourceStart,
+                payload.sourceStart,
+                payload.sourceStart
+            );
+            const preserved = preserveBlankMarkdownRegion(
+                normalized.source,
+                normalized.selectionStart
+            );
+            const nextSource = preserved.source;
+            const caret = preserved.caret;
+
+            // 归一化可能顺带清除删除边界处与正文粘连的 ↵。计算原源码与
+            // 最终源码的最小差异，只提交必要范围，避免把一次圈选删除
+            // 扩大成整篇文档替换，也继续服从稳定原子区域保护。
+            let from = 0;
+            const prefixLimit = Math.min(source.length, nextSource.length);
+            while (from < prefixLimit && source[from] === nextSource[from]) {
+                from += 1;
+            }
+            let sourceTail = source.length;
+            let nextTail = nextSource.length;
+            while (sourceTail > from
+                && nextTail > from
+                && source[sourceTail - 1] === nextSource[nextTail - 1]) {
+                sourceTail -= 1;
+                nextTail -= 1;
+            }
+
+            const transaction = transact({
+                from,
+                to: sourceTail,
+                expected: source.slice(from, sourceTail),
+                insert: nextSource.slice(from, nextTail),
+                reason,
+            });
+            if (!transaction) return false;
+
+            state.activeSession = null;
+            state.selectionRange = null;
+            state.selectionText = '';
+            selectionPrimitives.selectionFor(state.root)?.removeAllRanges?.();
+            context.onSelectionChange?.(selectionState());
+            context.renderPort?.invalidate?.(reason);
+            context.renderPort?.renderEdit?.({ force: true });
+            scheduleBoundaryFocus(caret);
+            return true;
+        }
+
         function captureSelection() {
             const range = selectionPrimitives.cloneLiveRange(
                 state.root,
@@ -2194,16 +2259,11 @@
             const boundary = before
                 ? session.region.sourceRange.start
                 : session.region.sourceRange.end;
+            const placeholder =
+                compiler.PARAGRAPH_BREAK_PLACEHOLDER || '↵';
             const insertion = before
-                ? '\u200B  \n\n'
-                : '\n\n\u200B';
-            // 光标必须落在新建占位符之前，而不是占位符之后。这样下一次
-            // Enter 会在光标后始终保留一个真实 Text 节点作为选择锚点；
-            // 若落在区域末尾，首次 Markdown Enter 产生的末尾空行只有
-            // ::before 伪元素，Chromium 重建编辑树后会丢失 Selection。
-            const focusOffset = before
-                ? boundary
-                : boundary + insertion.indexOf('\u200B');
+                ? `${placeholder}\n\n`
+                : `\n\n${placeholder}`;
             const transaction = transact({
                 from: boundary,
                 to: boundary,
@@ -2215,12 +2275,74 @@
             });
             if (!transaction) return false;
 
-            // 插入新 Markdown 区域会改变编译器分区，不能继续复用旧 HTML
-            // 会话。强制重渲染后由新空白行承担后续编辑。
+            // 标题边界只新增一个相邻 Markdown 区域。禁止调用全量
+            // renderEdit()：它会销毁整个 Shadow DOM、滚动锚点和运行态节点。
+            const nextCompiled = compiled(true);
+            const template = document.createElement('template');
+            template.innerHTML = nextCompiled.previewHtml || '';
+            const replacements = [...template.content.querySelectorAll(
+                '[data-vdoc-edit-key]'
+            )];
+            const existing = [...state.root.querySelectorAll(
+                '[data-vdoc-edit-key]'
+            )];
+            const oldOrdinal = session.region.ordinal;
+            const htmlOrdinal = before ? oldOrdinal + 1 : oldOrdinal;
+            const markdownOrdinal = before ? oldOrdinal : oldOrdinal + 1;
+            const htmlReplacement = replacements[htmlOrdinal];
+            const markdownReplacement = replacements[markdownOrdinal];
+
+            if (!htmlReplacement || !markdownReplacement) {
+                // 只有编译结果无法建立局部对应关系时才安全降级为全量重建。
+                state.activeSession = null;
+                context.renderPort?.invalidate?.(
+                    'flow-html-boundary-local-patch-failed'
+                );
+                context.renderPort?.renderEdit?.({ force: true });
+                scheduleBoundaryFocus(transaction.caret);
+                return true;
+            }
+
+            const syncShellMetadata = (target, replacement) => {
+                target.className = replacement.className;
+                target.dataset.vdocEditKey =
+                    replacement.dataset.vdocEditKey;
+                target.dataset.vdocEditType =
+                    replacement.dataset.vdocEditType;
+                target.dataset.vdocFlowKind =
+                    replacement.dataset.vdocFlowKind;
+            };
+
+            // 当前标题仅恢复自己的静态内容，不触碰页面中的其它节点。
+            session.shell.replaceChildren(...[
+                ...htmlReplacement.childNodes,
+            ].map((node) => node.cloneNode(true)));
+            syncShellMetadata(session.shell, htmlReplacement);
+            session.shell.removeAttribute('data-vdoc-edit-active');
+
+            const markdownShell = markdownReplacement.cloneNode(true);
+            if (before) session.shell.before(markdownShell);
+            else session.shell.after(markdownShell);
+
+            // 新区域会令原标题之后的 ordinal 整体后移一位。保留这些 shell
+            // 的 DOM 身份和运行状态，只同步编译器重新签发的区域元数据。
+            existing.slice(oldOrdinal + 1).forEach((shell, index) => {
+                const replacement = replacements[oldOrdinal + 2 + index];
+                if (replacement) syncShellMetadata(shell, replacement);
+            });
+
             state.activeSession = null;
-            context.renderPort?.invalidate?.('flow-html-boundary-blank-line');
-            context.renderPort?.renderEdit?.({ force: true });
-            scheduleBoundaryFocus(focusOffset);
+            installMappings(state.root);
+            const nextSession = activateShell(markdownShell);
+            if (!nextSession?.editable?.isConnected) return true;
+
+            const markdownRaw = sourceForRegion(nextSession.region);
+            const placeholderOffset = markdownRaw.indexOf(placeholder);
+            const caret = placeholderOffset < 0
+                ? markdownRaw.length
+                : placeholderOffset + placeholder.length;
+            restoreEditorOffsets(nextSession.editable, markdownRaw, caret);
+            refreshLocalMarkers(nextSession, caret);
             return true;
         }
 
@@ -2356,10 +2478,26 @@
                     Math.max(0, offsets.start - 1)
                 ) + 1;
                 const lineBreak = text.indexOf('\n', lineStart);
-                const line = text.slice(
-                    lineStart,
-                    lineBreak < 0 ? text.length : lineBreak
-                );
+                const lineEnd = lineBreak < 0 ? text.length : lineBreak;
+                const line = text.slice(lineStart, lineEnd);
+                const placeholder =
+                    compiler.PARAGRAPH_BREAK_PLACEHOLDER || '↵';
+
+                if (line.trim() === placeholder) {
+                    // Enter 创建的独占 ↵ 行第一次按 Tab 时，缩进直接取代
+                    // 占位符，不能形成“　　↵”并把透明符号重新显露出来。
+                    event.preventDefault();
+                    return commitSessionInsertion(
+                        session,
+                        '　　',
+                        {
+                            start: lineStart,
+                            end: lineEnd,
+                        },
+                        'flow-keyboard-placeholder-indent'
+                    );
+                }
+
                 if (offsets.start !== lineStart
                     || markdownLineKind(line) !== 'paragraph') {
                     return false;
@@ -2504,6 +2642,19 @@
                 event.preventDefault();
             }, options);
 
+            root.addEventListener('cut', (event) => {
+                const payload = clipboardSourceSelection();
+                if (!payload) return;
+                event.clipboardData?.setData('text/plain', payload.text);
+                event.clipboardData?.setData('text/markdown', payload.text);
+                if (deleteClipboardSourceSelection(
+                    payload,
+                    'flow-cut-source-selection'
+                )) {
+                    event.preventDefault();
+                }
+            }, options);
+
             root.addEventListener('paste', (event) => {
                 const editable = event.target.closest?.(
                     '[data-vdoc-flow-source-editor="true"]'
@@ -2551,7 +2702,65 @@
                 }
             }, options);
 
-            root.addEventListener('keydown', handleEditorKeydown, options);
+            root.addEventListener('keydown', (event) => {
+                if (handleEditorKeydown(event) || event.defaultPrevented) return;
+                if (event.isComposing
+                    || state.composing
+                    || event.ctrlKey
+                    || event.metaKey
+                    || event.altKey
+                    || !['Backspace', 'Delete'].includes(event.key)) {
+                    return;
+                }
+
+                // 被动渲染树不是 contenteditable，跨 shell 圈选后浏览器不会
+                // 可靠派发 beforeinput。键盘删除必须直接消费完整源码选区。
+                const payload = clipboardSourceSelection();
+                if (!payload) return;
+                event.preventDefault();
+                event.stopPropagation();
+                deleteClipboardSourceSelection(
+                    payload,
+                    event.key === 'Backspace'
+                        ? 'flow-keydown-delete-selection-backward'
+                        : 'flow-keydown-delete-selection-forward'
+                );
+            }, options);
+
+            document.addEventListener('keydown', (event) => {
+                if (event.defaultPrevented
+                    || event.isComposing
+                    || state.composing
+                    || event.ctrlKey
+                    || event.metaKey
+                    || event.altKey
+                    || !['Backspace', 'Delete'].includes(event.key)) {
+                    return;
+                }
+
+                // 静态渲染文字不可聚焦。鼠标圈选后，键盘焦点通常仍停留在
+                // Scriptorium 外壳，Backspace 因而不会进入 ShadowRoot。
+                // 活动 contenteditable 继续由 ShadowRoot keydown/beforeinput
+                // 负责；这里只接管静态树及跨 shell 的展开源码选区。
+                const activeEditor = state.root?.activeElement?.closest?.(
+                    '[data-vdoc-flow-source-editor="true"]'
+                );
+                if (activeEditor) return;
+
+                const payload = clipboardSourceSelection();
+                if (!payload) return;
+                event.preventDefault();
+                event.stopPropagation();
+                deleteClipboardSourceSelection(
+                    payload,
+                    event.key === 'Backspace'
+                        ? 'flow-document-delete-selection-backward'
+                        : 'flow-document-delete-selection-forward'
+                );
+            }, {
+                signal: state.abortController.signal,
+                capture: true,
+            });
 
             root.addEventListener('beforeinput', (event) => {
                 if (event.defaultPrevented
@@ -2605,6 +2814,31 @@
                 if (session.region.type !== 'markdown') return;
                 const offsets = resilientEditorSelectionOffsets(editable);
                 if (!offsets) return;
+
+                const selectionDeletionTypes = new Set([
+                    'deleteByCut',
+                    'deleteByDrag',
+                    'deleteContent',
+                    'deleteContentBackward',
+                    'deleteContentForward',
+                    'deleteWordBackward',
+                    'deleteWordForward',
+                    'deleteSoftLineBackward',
+                    'deleteSoftLineForward',
+                    'deleteHardLineBackward',
+                    'deleteHardLineForward',
+                ]);
+                if (!offsets.collapsed
+                    && selectionDeletionTypes.has(event.inputType)) {
+                    event.preventDefault();
+                    commitSessionInsertion(
+                        session,
+                        '',
+                        offsets,
+                        `flow-beforeinput-${event.inputType}`
+                    );
+                    return;
+                }
 
                 if (event.inputType === 'deleteContentBackward') {
                     const raw = sourceForRegion(session.region);
