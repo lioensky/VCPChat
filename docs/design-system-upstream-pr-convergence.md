@@ -252,3 +252,17 @@ Memo、Forum、Log、Plugin Manager、Task、Human ToolBox、VchatManager、RAG 
 - 进程生命周期：同一内嵌 action 必须等待前一 session 的 `destroyed`；退出 Next 时等待所有 close promise。
 - Agent 设置：连续十二次 Agent/设置页往返，Browser target 数、VCPUI adapter 数及提示词 DOM 不增长。
 - 窄 Dock：240px 通知栏中固定应用文字不可见、四个图标均保持可见且按钮无横向溢出。
+
+### 2026-08-15 生命周期第二轮对抗审查
+
+本轮明确排除 `VChatDynamicWallpaper` 插件，不改变其入口、IPC、持久化或播放生命周期。审查只覆盖 Next 主窗口、通用内嵌应用、模态层和主 renderer。
+
+- 内嵌会话以主进程为权威。renderer reload 或 crash 时先隐藏而不销毁 `WebContentsView`；新 renderer 通过 `embedded-vchat-app:list` 对账标签、活动 action 和已有 session，禁止遗留一个“无标签但仍覆盖窗口”的原生页面。
+- 主 renderer 非正常退出后自动恢复，但使用有界策略：60 秒内最多三次，成功运行 30 秒后清零；超过阈值停止 reload loop，并由原生错误框让用户选择重试或退出。
+- 所有 renderer DOM 覆盖层使用 owner lease。全局设置、创建助手、Appearance Studio、Ask Nova 和应用托盘设置只有在原生内嵌页隐藏后才展示；多个覆盖层并存时，只有最后一个 owner 释放才恢复内嵌页。
+- Appearance Studio 的未保存确认属于同一个 owner。第一次 Escape 只能打开确认层，不能恢复底层 WebContentsView；回滚异常也通过 `finally` 释放 owner，避免页面永久隐藏。
+- 新覆盖层出现时先收起通知三点菜单和账户菜单，避免一个 Escape 同时落到多个 surface。应用托盘抽屉取消延迟绑定时同步取消 timer，避免残留 document click listener。
+- 标签恢复期间禁止逐个激活原生 view，待 renderer 完成全部对账后只激活最终选中的 action，避免隐藏标签在启动/reload 时短暂闪到前台。
+- 内嵌 session 在 renderer 已 crash 时不再发送状态 IPC；状态保留在主进程，待新 renderer 主动读取，避免恢复期间的二次异常。
+
+自动化现在真实执行：便签拖出独立窗口与 Escape、renderer reload、CDP `Page.crash`、内嵌页上依次打开托盘设置/全局设置/Appearance、未保存确认的 Escape 所有权、Ask Nova 请求取消、Classic ↔ Next 往返及 Agent 设置 DOM/adapter 计数。20 个完整循环后 heap、listener、page、process 和 renderer process 均保持在允许范围内。
