@@ -407,14 +407,21 @@ export function createAskNovaController(options = {}) {
             state.activeRequest = activeRequest;
             render();
             try {
-                const request = api.askNovaQuery({
+                const payload = {
                     requestId: activeRequest.requestId,
                     target: targetIdAtSubmit,
                     question,
                     history,
                     deepResearch: state.deepResearch
+                };
+                const task = window.VCPTasks?.createTask({
+                    id: activeRequest.requestId,
+                    start: () => api.askNovaQuery(payload),
+                    cancel: id => api.cancelAskNovaQuery?.(id),
                 });
-                const result = modalScope ? await modalScope.track(request, `request:${targetIdAtSubmit}`) : await request;
+                const result = task
+                    ? await task.own(modalScope, `request:${targetIdAtSubmit}`)
+                    : await api.askNovaQuery(payload);
                 if (state.closed || state.activeRequest !== activeRequest) return;
                 if (!result?.success) {
                     if (!result?.cancelled) {
