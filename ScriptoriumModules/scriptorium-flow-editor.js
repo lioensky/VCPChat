@@ -979,9 +979,19 @@
                     // 同一静态 <p> 中 <br> 后的行继续使用其最终计算排版，
                     // 但不克隆 <p> 标签本身，避免 text-indent 等“段落首行”
                     // 规则错误地重复应用到每条源码行。
+                    //
+                    // 标题末尾 Enter 创建的 ↵ 普通行没有对应的静态渲染节点。
+                    // run 容器为了保留首行几何会继承标题排版；若这里不显式
+                    // 重置，新行会临时显示成标题字重。无静态来源的普通行应
+                    // 使用编辑区域父级的正文排版，标题行仍由自身来源控制。
+                    const typographySource = renderedStyle?.element || (
+                        lineElement.dataset.vdocMdLineKind === 'paragraph'
+                            ? shell.parentElement
+                            : null
+                    );
                     copyRenderedLineTypography(
                         lineElement,
-                        renderedStyle?.element
+                        typographySource
                     );
                     lineElement.replaceChildren(inlineHtmlSourceFragment(
                         line,
@@ -2282,7 +2292,14 @@
                     'flow-edit-region-structure-changed'
                 );
                 context.renderPort?.renderEdit?.({ force: true });
-                restoreViewState(viewState);
+                // 标题末尾 Enter 会把原 heading token 与新建的 ↵ 段落
+                // 编译成两个 edit region。旧编辑树仍保存 Enter 前的 Selection，
+                // 不能再从它反推焦点，否则区域边界会优先命中原标题末尾。
+                // 事务已经给出了新源码中的确定光标，直接定位新段落。
+                restoreViewState({
+                    ...viewState,
+                    sourceOffset: transaction.from + caret,
+                });
             }
             return true;
         }
@@ -2753,7 +2770,14 @@
                     'flow-edit-region-structure-changed'
                 );
                 context.renderPort?.renderEdit?.({ force: true });
-                restoreViewState(viewState);
+                // 原区域被本次 DOM 输入拆成多个 Markdown token 时，旧 DOM
+                // Selection 已不再代表新编译树；使用归一化后的模型偏移恢复。
+                restoreViewState({
+                    ...viewState,
+                    sourceOffset: transaction.from
+                        + (normalizedSelectionOffsets?.end
+                            ?? transaction.insertion.length),
+                });
             }
             return true;
         }
