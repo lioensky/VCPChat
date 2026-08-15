@@ -1543,10 +1543,220 @@
             ) ?? false;
         }
 
+        function advancedStyleSourceRuns(raw, baseOffset, from, to) {
+            const source = String(raw || '');
+            const localFrom = Math.max(
+                0,
+                Math.min(source.length, Number(from) - baseOffset)
+            );
+            const localTo = Math.max(
+                localFrom,
+                Math.min(source.length, Number(to) - baseOffset)
+            );
+            const placeholder =
+                compiler.PARAGRAPH_BREAK_PLACEHOLDER || '↵';
+            const runs = [];
+            let runStart = null;
+            let cursor = 0;
+
+            // 一个 Marked paragraph region 内仍可能包含单换行和独占 ↵ 行。
+            // 因此不能把 region 直接当成段落；按源码物理行识别几何空白，
+            // 但普通非空单换行继续保留在同一个样式目标内。
+            const lines = source.match(/[^\r\n]*(?:\r\n|\n|$)/g) || [];
+            lines.forEach((line) => {
+                if (!line && cursor >= source.length) return;
+                const lineEnding = line.match(/(?:\r\n|\n)$/)?.[0] || '';
+                const content = line.slice(
+                    0,
+                    line.length - lineEnding.length
+                );
+                const separator = !content.trim()
+                    || content.trim() === placeholder;
+                if (separator) {
+                    if (runStart !== null && cursor > runStart) {
+                        runs.push({ start: runStart, end: cursor });
+                    }
+                    runStart = null;
+                } else if (runStart === null) {
+                    runStart = cursor;
+                }
+                cursor += line.length;
+            });
+            if (runStart !== null && cursor > runStart) {
+                runs.push({ start: runStart, end: cursor });
+            }
+
+            return runs.map((run) => {
+                const clippedStart = Math.max(run.start, localFrom);
+                const clippedEnd = Math.min(run.end, localTo);
+                const selected = source.slice(clippedStart, clippedEnd);
+                const leading =
+                    selected.match(/^[ \t\r\n]*/)?.[0].length || 0;
+                const trailing =
+                    selected.match(/[ \t\r\n]*$/)?.[0].length || 0;
+                return {
+                    from: baseOffset + clippedStart + leading,
+                    to: baseOffset + clippedEnd - trailing,
+                };
+            }).filter((run) => run.to > run.from);
+        }
+
+        function advancedStyleSelectionTargets(targets = []) {
+            const range = selectionPrimitives.cloneLiveRange(
+                state.root,
+                { expanded: true }
+            ) || (
+                state.selectionRange?.startContainer?.isConnected
+                    ? state.selectionRange.cloneRange()
+                    : null
+            );
+            if (!range || range.collapsed) return null;
+
+            const covered = [
+                ...state.root.querySelectorAll('[data-vdoc-edit-key]'),
+            ].map((shell) => {
+                const region = regionForShell(shell);
+                const clippedRange = selectionPrimitives.rangeWithinNode(
+                    range,
+                    shell
+                );
+                if (!region
+                    || region.flowKind === 'stable-atomic'
+                    || !clippedRange
+                    || clippedRange.collapsed
+                    || !clippedRange.toString().length) {
+                    return null;
+                }
+                const sourceStart = sourceEndpoint(
+                    shell,
+                    clippedRange.startContainer,
+                    clippedRange.startOffset
+                );
+                const sourceEnd = sourceEndpoint(
+                    shell,
+                    clippedRange.endContainer,
+                    clippedRange.endOffset
+                );
+                if (!Number.isFinite(sourceStart)
+                    || !Number.isFinite(sourceEnd)
+                    || sourceEnd <= sourceStart) {
+                    return null;
+                }
+                return {
+                    shell,
+                    region,
+                    range: clippedRange,
+                    sourceStart,
+                    sourceEnd,
+                };
+            }).filter(Boolean);
+            if (!covered.length) return null;
+
+            const paragraphStyle = targets.includes('paragraph')
+                && covered.every(({ region }) =>
+                    region.type === 'markdown'
+                    && region.markdownTokenType === 'paragraph'
+                );
+            const selections = covered.flatMap((candidate) => {
+                const regionStart = candidate.region.sourceRange.start;
+                const regionEnd = candidate.region.sourceRange.end;
+                const runs = advancedStyleSourceRuns(
+                    sourceForRegion(candidate.region),
+                    regionStart,
+                    paragraphStyle ? regionStart : candidate.sourceStart,
+                    paragraphStyle ? regionEnd : candidate.sourceEnd
+                );
+                return runs.map((run) => ({
+                    shell: candidate.shell,
+                    region: candidate.region,
+                    from: run.from,
+                    to: run.to,
+                    paragraph: paragraphStyle,
+                }));
+            });
+            return selections.length ? selections : null;
+        }
+
+        function applyAdvancedStyle(value) {
+            const className = String(value?.className || '')
+                .replace(/[^a-zA-Z0-9_-]/g, '');
+            const styleId = String(value?.id || '')
+                .replace(/["<>&]/g, '');
+            const targets = Array.isArray(value?.targets)
+                ? value.targets.map((target) => String(target))
+                : [];
+            if (!className || !styleId) return false;
+
+            const selections = advancedStyleSelectionTargets(targets);
+            if (!selections) {
+                notificationPort.show?.('请先在正文中选择文字。', 'info');
+                return false;
+            }
+            if (selections.some(({ region }) => !sourceHashValid(region))) {
+                notificationPort.show?.(
+                    '当前块源码映射已过期，请重新选择文字。',
+                    'error'
+                );
+                return false;
+            }
+
+            const source = adapter.currentSource();
+            const ordered = [...selections].sort((left, right) =>
+                left.from - right.from
+            );
+            const from = ordered[0].from;
+            const to = ordered.at(-1).to;
+            let insertion = source.slice(from, to);
+
+            // 从源码尾部向前包装，保证前方标签插入不会改变后方目标偏移。
+            [...ordered].reverse().forEach((selection) => {
+                const localFrom = selection.from - from;
+                const localTo = selection.to - from;
+                const selectedSource = insertion.slice(localFrom, localTo);
+                const targetAttribute = selection.paragraph
+                    ? ' data-vdoc-style-target="paragraph"'
+                    : '';
+                insertion = insertion.slice(0, localFrom)
+                    + `<span class="${className}" data-vdoc-style="${styleId}"${
+                        targetAttribute
+                    }>${selectedSource}</span>`
+                    + insertion.slice(localTo);
+            });
+
+            const transaction = transact({
+                from,
+                to,
+                expected: source.slice(from, to),
+                insert: insertion,
+                reason: 'flow-advanced-style',
+            });
+            if (!transaction) return false;
+
+            if (ordered.length === 1) {
+                patchFormattedRegion({
+                    shell: ordered[0].shell,
+                    region: ordered[0].region,
+                }, transaction);
+            } else {
+                state.activeSession = null;
+                state.selectionRange = null;
+                state.selectionText = '';
+                selectionPrimitives.selectionFor(state.root)?.removeAllRanges?.();
+                context.onSelectionChange?.(selectionState());
+                context.renderPort?.invalidate?.('flow-advanced-style');
+                context.renderPort?.renderEdit?.({ force: true });
+            }
+            return true;
+        }
+
         function executeFormatting(command, value) {
             if (command === 'image') {
                 return context.mediaPort?.open?.() ?? false;
             }
+            if (command === 'advanced-style') {
+                return applyAdvancedStyle(value);
+            }
+
             const selection = sourceSelection();
             if (!selection) {
                 notificationPort.show?.('请先在正文中选择文字。', 'info');
@@ -1565,55 +1775,6 @@
                 italic: '*',
                 strikethrough: '~~',
             };
-            if (command === 'advanced-style') {
-                const className = String(value?.className || '')
-                    .replace(/[^a-zA-Z0-9_-]/g, '');
-                const styleId = String(value?.id || '')
-                    .replace(/["<>&]/g, '');
-                const targets = Array.isArray(value?.targets)
-                    ? value.targets.map((target) => String(target))
-                    : [];
-                if (!className || !styleId) return false;
-
-                const selectedElement = selectionPrimitives.elementOf(
-                    selection.range.startContainer
-                );
-                const paragraphStyle = targets.includes('paragraph')
-                    && Boolean(selectedElement?.closest?.(
-                        'p,[data-vdoc-md-line-kind="paragraph"]'
-                    ));
-                const source = adapter.currentSource();
-                let from = selection.sourceStart;
-                let to = selection.sourceEnd;
-
-                if (paragraphStyle
-                    && selection.region.type === 'markdown'
-                    && selection.region.markdownTokenType === 'paragraph') {
-                    const regionSource = sourceForRegion(selection.region);
-                    const leading = regionSource.match(/^\s*/)?.[0].length || 0;
-                    const trailing = regionSource.match(/\s*$/)?.[0].length || 0;
-                    from = selection.region.sourceRange.start + leading;
-                    to = selection.region.sourceRange.end - trailing;
-                }
-
-                const selectedSource = source.slice(from, to);
-                if (!selectedSource) return false;
-                const targetAttribute = paragraphStyle
-                    ? ' data-vdoc-style-target="paragraph"'
-                    : '';
-                const transaction = transact({
-                    from,
-                    to,
-                    expected: selectedSource,
-                    insert: `<span class="${className}" data-vdoc-style="${styleId}"${
-                        targetAttribute
-                    }>${selectedSource}</span>`,
-                    reason: 'flow-advanced-style',
-                });
-                if (!transaction) return false;
-                patchFormattedRegion(selection, transaction);
-                return true;
-            }
             if (command === 'bullet-list' || command === 'numbered-list') {
                 const source = adapter.currentSource();
                 const selectedSource = source.slice(
@@ -1767,6 +1928,14 @@
 
         function canExecute(command) {
             if (['undo', 'redo', 'image'].includes(command)) return true;
+            if (command === 'advanced-style') {
+                return Boolean(
+                    selectionPrimitives.cloneLiveRange(
+                        state.root,
+                        { expanded: true }
+                    ) || state.selectionRange
+                );
+            }
             return Boolean(sourceSelection());
         }
 

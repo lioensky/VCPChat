@@ -1761,7 +1761,9 @@ body.lineage-collapsed .lineage-panel {
     position: fixed;
     right: 20px;
     bottom: 50px;
-    z-index: 500;
+    /* 通知属于应用级反馈，必须覆盖高级样式库、对象检查器、
+       文脉详情及二次确认等所有模态层。 */
+    z-index: 2200;
     display: flex;
     flex-direction: column;
     align-items: flex-end;
@@ -2599,7 +2601,7 @@ body.focus-mode .chamber-aura {
 
 .style-library-backdrop {
     position: fixed;
-    z-index: 180;
+    z-index: 1820;
     inset: 0;
     display: grid;
     padding: 48px;

@@ -268,10 +268,16 @@
             resetScrollPositionsIfDocumentChanged();
             context.editorResolver?.()?.flush?.();
             if (normalized !== mode) {
+                context.historyPort?.finalize?.({
+                    reason: 'surface-history-finalized',
+                });
                 captureScrollPosition(mode);
                 scrollRestoreToken += 1;
             }
             mode = normalized;
+            context.historyPort?.activate?.(undefined, {
+                reason: 'surface-history-activated',
+            });
             context.renderPort.setMode(normalized);
             const edit = normalized === 'edit';
             const read = normalized === 'read';

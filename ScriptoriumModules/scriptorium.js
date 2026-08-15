@@ -169,12 +169,56 @@
             activeEditor?.disposeSurface?.(...args),
     });
 
+    function historyBranchKey() {
+        const mode = shell?.surfacePort?.mode?.() || 'edit';
+        if (activeAdapter?.kind !== 'deck') {
+            return `${mode}|flow|document`;
+        }
+        if (mode === 'source-css') return `${mode}|deck|global-css`;
+        const slideId = activeAdapter.activeSlide?.()?.id
+            || `index-${activeAdapter.activeSlideIndex?.() ?? 0}`;
+        return `${mode}|deck|slide:${encodeURIComponent(slideId)}`;
+    }
+
+    function restoreHistorySnapshot(serialized, branchKey) {
+        const captured = core.parse(serialized);
+        if (activeAdapter?.kind !== 'deck') return captured;
+
+        const current = documentPort.document();
+        if (!current) return captured;
+        const merged = core.parse(core.serialize(current));
+        if (branchKey === 'source-css|deck|global-css') {
+            merged.source.deckCss = String(captured.source?.deckCss || '');
+            return merged;
+        }
+
+        const encodedSlideId = String(branchKey || '')
+            .match(/\|deck\|slide:(.*)$/)?.[1];
+        const slideId = encodedSlideId
+            ? decodeURIComponent(encodedSlideId)
+            : '';
+        const capturedSlide = (captured.source?.slides || []).find(
+            (slide) => slide.id === slideId
+        );
+        const currentIndex = (merged.source?.slides || []).findIndex(
+            (slide) => slide.id === slideId
+        );
+        if (capturedSlide && currentIndex >= 0) {
+            merged.source.slides[currentIndex] =
+                JSON.parse(JSON.stringify(capturedSlide));
+        }
+        return merged;
+    }
+
     const historyPort = window.ScriptoriumEditHistory.createEditHistory({
         documentPort,
         core,
         editorPort: editorFacade,
         adapterResolver,
         renderPort: renderFacade,
+        branchKeyResolver: historyBranchKey,
+        restoreSnapshot: restoreHistorySnapshot,
+        onChange: () => formattingPort?.syncHistoryControls?.(),
     });
 
     const lineagePort =
@@ -243,6 +287,9 @@
             core,
             onActiveSlideChange: () => {
                 renderFacade.invalidate('active-slide-changed');
+                historyPort.activate(undefined, {
+                    reason: 'active-slide-changed',
+                });
                 if (initialized) {
                     renderFacade.renderEdit({ force: true });
                     navigationPort?.render?.();
