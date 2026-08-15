@@ -1,4 +1,5 @@
-const apps = new Map();
+const apps = window.VCPContributions?.apps;
+if (!apps) throw new Error('VCP contribution registry must load before Next UI applications.');
 
 function validate(definition) {
     if (!definition || typeof definition !== 'object') throw new TypeError('App definition is required.');
@@ -9,47 +10,32 @@ function validate(definition) {
 }
 
 function unregister(id, expectedApp = null) {
-    const app = apps.get(id);
-    if (!app || (expectedApp && app !== expectedApp)) return false;
-    apps.delete(id);
-    window.dispatchEvent(new CustomEvent('next-ui-apps-changed', {
-        detail: { id, action: 'unregistered', app }
-    }));
-    return true;
+    return apps.unregister(id, expectedApp);
 }
 
 function register(definition, options = {}) {
     validate(definition);
-    if (apps.has(definition.id)) throw new Error(`Next UI app id already registered: ${definition.id}`);
     const app = Object.freeze({
         icon: definition.iconSvg ? undefined : 'widgets',
         unmount: () => {},
         ...definition,
     });
-    const owner = options.owner;
-    if (owner?.active === false) throw new Error(`Cannot register Next UI app "${app.id}" on an inactive owner.`);
-    apps.set(app.id, app);
-    try {
-        if (owner && typeof owner.own === 'function') {
-            owner.own(() => unregister(app.id, app), `next-app:${app.id}`, 'ui-registration');
-        }
-    } catch (error) {
-        apps.delete(app.id);
-        throw error;
-    }
-    window.dispatchEvent(new CustomEvent('next-ui-apps-changed', {
-        detail: { id: app.id, action: 'registered', app }
-    }));
-    return app;
+    return apps.register(app, options).contribution;
 }
 
 function get(id) {
-    return apps.get(id) || null;
+    return apps.get(id);
 }
 
 function list() {
-    return [...apps.values()];
+    return apps.list();
 }
+
+apps.subscribe(change => {
+    window.dispatchEvent(new CustomEvent('next-ui-apps-changed', {
+        detail: { id: change.id, action: change.action, app: change.contribution }
+    }));
+});
 
 window.nextUiApps = Object.freeze({ register, unregister, get, list });
 window.dispatchEvent(new CustomEvent('next-ui-apps-ready'));
