@@ -1,7 +1,7 @@
 (() => {
     const APP_TONES = ['purple', 'green', 'pink', 'cyan', 'amber', 'charcoal', 'red', 'orange'];
     const TAB_SESSION_KEY = 'vcpchat.nextUi.openTabs.v1';
-    const views = new Map();
+    let appTabHost = null;
     let initialized = false;
     let mounted = false;
     let mountGeneration = 0;
@@ -10,7 +10,6 @@
     let appGridScope = null;
     let accountMenuObserver = null;
     let accountMenuController = null;
-    let activeViewId = 'home';
     let sidebarResizeObserver = null;
     let activeCreateModal = null;
     let embeddedAppController = null;
@@ -29,31 +28,11 @@
     }
 
     function readTabSession() {
-        try {
-            const parsed = JSON.parse(sessionStorage.getItem(TAB_SESSION_KEY) || 'null');
-            if (!parsed || !Array.isArray(parsed.tabs)) return null;
-            return {
-                activeViewId: typeof parsed.activeViewId === 'string' ? parsed.activeViewId : 'home',
-                tabs: parsed.tabs.filter(tab => tab && typeof tab.id === 'string' && (tab.kind === 'internal' || tab.kind === 'embedded')),
-            };
-        } catch {
-            return null;
-        }
+        return appTabHost?.readSession() || null;
     }
 
     function persistTabSession() {
-        if (restoringTabs) return;
-        try {
-            sessionStorage.setItem(TAB_SESSION_KEY, JSON.stringify({
-                activeViewId,
-                tabs: [...views.values()].map(view => ({
-                    kind: view.kind,
-                    id: view.kind === 'internal' ? view.app.id : view.app.id,
-                })),
-            }));
-        } catch {
-            // Tab restoration is a convenience; storage failure must not block navigation.
-        }
+        appTabHost?.persist();
     }
 
     function getDesktopApi() {
@@ -81,58 +60,7 @@
     }
 
     function createTab({ id, title, icon, iconSvg, closeLabel, scope = mountScope }) {
-        const tab = document.createElement('div');
-        tab.className = 'next-ui-tab';
-        tab.dataset.viewId = id;
-        tab.setAttribute('role', 'tab');
-        tab.setAttribute('aria-selected', 'false');
-        tab.tabIndex = -1;
-        const label = document.createElement('span');
-        label.className = 'next-ui-tab-label vcp-ui-scope';
-        if (icon) {
-            const symbol = document.createElement('span');
-            symbol.className = 'vcp-ui-icon next-ui-tab-symbol';
-            symbol.setAttribute('aria-hidden', 'true');
-            symbol.textContent = icon;
-            label.append(symbol);
-        } else if (iconSvg) {
-            const symbol = document.createElement('span');
-            symbol.className = 'next-ui-tab-symbol next-ui-tab-svg';
-            symbol.setAttribute('aria-hidden', 'true');
-            symbol.innerHTML = iconSvg;
-            label.append(symbol);
-        }
-        const text = document.createElement('span');
-        text.textContent = title;
-        label.append(text);
-        const close = document.createElement('button');
-        close.type = 'button';
-        close.className = 'next-ui-tab-close';
-        close.setAttribute('aria-label', closeLabel || `关闭${title}标签`);
-        close.title = '关闭标签';
-        close.innerHTML = '<span class="vcp-ui-icon" aria-hidden="true">close</span>';
-        tab.append(label, close);
-        const listenTab = (type, handler) => scope
-            ? scope.listen(tab, type, handler, undefined, `tab:${id}:${type}`)
-            : tab.addEventListener(type, handler);
-        listenTab('click', event => {
-            if (suppressedTabClicks.delete(id)) {
-                event.preventDefault();
-                return;
-            }
-            if (event.target.closest('.next-ui-tab-close')) {
-                event.stopPropagation();
-                closeView(id);
-            } else setView(id);
-        });
-        listenTab('keydown', event => {
-            if (event.target.closest('.next-ui-tab-close')) return;
-            if (event.key !== 'Enter' && event.key !== ' ') return;
-            event.preventDefault();
-            setView(id);
-        });
-        document.getElementById('nextUiDynamicTabs')?.append(tab);
-        return tab;
+        return appTabHost.createTab({ id, title, icon, iconSvg, closeLabel, scope });
     }
 
     function getEmbeddedBounds(container) {
@@ -153,7 +81,7 @@
     }
 
     function syncEmbeddedActivation() {
-        const activeView = views.get(activeViewId);
+        const activeView = appTabHost.views.get(appTabHost.activeViewId);
         const action = mounted && !previewSuspended && !restoringTabs && !overlayCoordinator?.active && activeView?.kind === 'embedded'
             ? activeView.action
             : null;
@@ -175,43 +103,10 @@
         return host;
     }
 
-    function updateVisibility() {
-        const isHome = activeViewId === 'home';
-        const isLaunchpad = activeViewId === 'launchpad';
-        const isInternal = activeViewId.startsWith('app:');
-        document.body.classList.toggle('next-ui-launchpad-open', isLaunchpad);
-        document.body.classList.toggle('next-ui-internal-app-open', isInternal);
-        const homeTab = document.getElementById('nextUiHomeTab');
-        const addTabButton = document.getElementById('nextUiAddTabBtn');
-        const launchpad = document.getElementById('nextUiLaunchpad');
-        const host = document.getElementById('nextUiInternalAppHost');
-        const activeInternalView = isInternal ? views.get(activeViewId) : null;
-        homeTab?.classList.toggle('active', isHome);
-        homeTab?.setAttribute('aria-selected', String(isHome));
-        launchpad?.setAttribute('aria-hidden', String(!isLaunchpad));
-        host?.setAttribute('aria-hidden', String(!isInternal));
-        if (host) {
-            host.hidden = !isInternal;
-            host.dataset.activeAppId = activeInternalView?.app?.id || '';
-        }
-        addTabButton?.classList.toggle('active', isLaunchpad);
-        addTabButton?.setAttribute('aria-selected', String(isLaunchpad));
-        addTabButton?.setAttribute('aria-expanded', String(isLaunchpad));
-        views.forEach((view, id) => {
-            const active = id === activeViewId;
-            view.tab.classList.toggle('active', active);
-            view.tab.setAttribute('aria-selected', String(active));
-            view.tab.tabIndex = active ? 0 : -1;
-            view.container.hidden = !active;
-        });
-        syncEmbeddedActivation();
-    }
+    function updateVisibility() { appTabHost?.updateVisibility(); }
 
     function setView(viewId) {
-        if (viewId !== 'home' && viewId !== 'launchpad' && !views.has(viewId)) viewId = 'home';
-        activeViewId = viewId;
-        updateVisibility();
-        persistTabSession();
+        appTabHost?.setView(viewId);
     }
 
     function openLaunchpad() {
@@ -221,7 +116,7 @@
     }
 
     function closeLaunchpad() {
-        if (activeViewId === 'launchpad') setView('home');
+        if (appTabHost?.activeViewId === 'launchpad') setView('home');
     }
 
     function openInternalApp(appId) {
@@ -229,7 +124,7 @@
         const app = window.nextUiApps?.get(appId);
         if (!app) return;
         const viewId = `app:${app.id}`;
-        if (views.has(viewId)) {
+        if (appTabHost.views.has(viewId)) {
             setView(viewId);
             return;
         }
@@ -259,7 +154,7 @@
                 viewScope.own(disposer, `app-disposer:${app.id}`, 'ui-registration');
             }
         }
-        views.set(viewId, { kind: 'internal', app, tab, container, disposer, scope: viewScope });
+        appTabHost.register(viewId, { kind: 'internal', app, tab, container, disposer, scope: viewScope });
         setView(viewId);
     }
 
@@ -335,7 +230,7 @@
             return;
         }
         const viewId = `app:${app.id}`;
-        if (views.has(viewId)) {
+        if (appTabHost.views.has(viewId)) {
             setView(viewId);
             return;
         }
@@ -358,11 +253,11 @@
         const resizeObserver = typeof ResizeObserver === 'undefined'
             ? null
             : new ResizeObserver(() => {
-                const view = views.get(viewId);
-                if (view && activeViewId === viewId) syncEmbeddedBounds(view);
+                const view = appTabHost.views.get(viewId);
+                if (view && appTabHost.activeViewId === viewId) syncEmbeddedBounds(view);
             });
         const view = { kind: 'embedded', app, action: app.action, tab, container, resizeObserver, scope: viewScope };
-        views.set(viewId, view);
+        appTabHost.register(viewId, view);
         if (resizeObserver && viewScope) viewScope.observe(resizeObserver, container, undefined, `embedded-resize:${app.id}`);
         else resizeObserver?.observe(container);
         installDetachDrag(tab, viewId, viewScope);
@@ -370,13 +265,13 @@
 
         try {
             const result = await embeddedAppController.create(app.action);
-            if (!mounted || generation !== mountGeneration || !views.has(viewId)) {
+            if (!mounted || generation !== mountGeneration || !appTabHost.views.has(viewId)) {
                 if (result?.success) await embeddedAppController.close(app.action);
                 return;
             }
             if (!result?.success) throw new Error(result?.error || '应用无法内嵌打开。');
             container.dataset.state = 'ready';
-            if (activeViewId === viewId && !restoringTabs) {
+            if (appTabHost.activeViewId === viewId && !restoringTabs) {
                 syncEmbeddedBounds(view);
                 await embeddedAppController.activate(app.action);
             }
@@ -388,7 +283,7 @@
     }
 
     async function detachView(viewId, point) {
-        const view = views.get(viewId);
+        const view = appTabHost.views.get(viewId);
         if (!view || view.kind !== 'embedded') return;
         view.tab.classList.add('is-detaching');
         try {
@@ -406,10 +301,8 @@
             closeLaunchpad();
             return;
         }
-        const view = views.get(viewId);
+        const view = appTabHost.views.get(viewId);
         if (!view) return;
-        const tabs = [...document.querySelectorAll('#nextUiDynamicTabs > .next-ui-tab')];
-        const tabIndex = tabs.indexOf(view.tab);
         try {
             if (view.kind === 'embedded') {
                 if (!view.scope) view.resizeObserver?.disconnect();
@@ -432,15 +325,7 @@
                 console.error(`[NextUiApps] Failed to dispose ${viewId}:`, error);
             });
         }
-        view.tab.remove();
-        view.container.remove();
-        views.delete(viewId);
-        if (activeViewId === viewId) {
-            const remaining = [...document.querySelectorAll('#nextUiDynamicTabs > .next-ui-tab')];
-            const left = tabIndex > 0 ? remaining[tabIndex - 1] : null;
-            setView(left?.dataset.viewId || 'home');
-        }
-        persistTabSession();
+        appTabHost.unregister(viewId);
     }
 
     async function restoreTabSession() {
@@ -494,9 +379,8 @@
                 if (!mounted || generation !== mountGeneration) return;
             }
             pendingTabRestore = unresolved.length ? { ...restoreState, tabs: unresolved } : null;
-            if (requestedActive === 'home' || requestedActive === 'launchpad' || views.has(requestedActive)) {
-                activeViewId = requestedActive;
-                updateVisibility();
+            if (requestedActive === 'home' || requestedActive === 'launchpad' || appTabHost.views.has(requestedActive)) {
+                appTabHost.setView(requestedActive, { persist: false });
             }
         } finally {
             restoringTabs = false;
@@ -506,11 +390,8 @@
     }
 
     async function closeAllInternalApps(options = {}) {
-        const preservedSession = options.preserveSession ? {
-            activeViewId,
-            tabs: [...views.values()].map(view => ({ kind: view.kind, id: view.app.id })),
-        } : null;
-        const embeddedActions = [...views.values()]
+        const preservedSession = options.preserveSession ? appTabHost.snapshot() : null;
+        const embeddedActions = [...appTabHost.views.values()]
             .filter(view => view.kind === 'embedded')
             .map(view => view.action);
         // Native WebContentsViews paint above the renderer DOM. Hide them in
@@ -518,7 +399,7 @@
         // destroy the sessions. The local host can be removed immediately.
         const hidePromise = embeddedAppController?.hide?.() || Promise.resolve({ success: true });
         if (preservedSession) restoringTabs = true;
-        [...views.keys()].forEach(viewId => closeView(viewId, { skipEmbeddedClose: true }));
+        [...appTabHost.views.keys()].forEach(viewId => closeView(viewId, { skipEmbeddedClose: true }));
         closeLaunchpad();
         window.VCPUI?.feedback.cancelAll();
         document.getElementById('nextUiInternalAppHost')?.remove();
@@ -976,7 +857,7 @@
 
     function setupEmbeddedAppState() {
         embeddedAppController?.mount(mountScope, payload => {
-            const view = [...views.values()].find(candidate => candidate.kind === 'embedded' && candidate.action === payload?.action);
+            const view = [...appTabHost.views.values()].find(candidate => candidate.kind === 'embedded' && candidate.action === payload?.action);
             if (!view) return;
             if (payload?.state === 'closed') {
                 closeView(`app:${view.app.id}`, { skipEmbeddedClose: true });
@@ -993,13 +874,25 @@
         if (teardownPromise) return;
         const OverlayCoordinator = window.VCPNextShell?.OverlayCoordinator;
         const EmbeddedAppController = window.VCPNextShell?.EmbeddedAppController;
+        const AppTabHost = window.VCPNextShell?.AppTabHost;
         if (!OverlayCoordinator) throw new Error('OverlayCoordinator is unavailable.');
         if (!EmbeddedAppController) throw new Error('EmbeddedAppController is unavailable.');
+        if (!AppTabHost) throw new Error('AppTabHost is unavailable.');
         mounted = true;
         mountGeneration += 1;
         const LifecycleScope = window.VCPLifecycle?.LifecycleScope;
         mountScope = LifecycleScope ? new LifecycleScope('next:tab-host') : null;
         mountAbortController = mountScope ? null : new AbortController();
+        appTabHost = new AppTabHost({
+            document,
+            storage: sessionStorage,
+            sessionKey: TAB_SESSION_KEY,
+            canPersist: () => !restoringTabs,
+            onActivate: syncEmbeddedActivation,
+            onCloseRequested: closeView,
+            suppressedClicks: suppressedTabClicks,
+        });
+        appTabHost.mount(mountScope);
         embeddedAppController = new EmbeddedAppController({ getApi: getDesktopApi });
         overlayCoordinator = new OverlayCoordinator({
             document,
@@ -1050,7 +943,10 @@
         accountMenuController = null;
         sidebarResizeObserver?.disconnect();
         sidebarResizeObserver = null;
-        if (!mountScope) embeddedAppController?.dispose();
+        if (!mountScope) {
+            embeddedAppController?.dispose();
+            appTabHost?.dispose();
+        }
         pendingTabRestore = null;
         restoringTabs = false;
         closeCreateDialog();

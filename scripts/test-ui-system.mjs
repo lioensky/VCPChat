@@ -609,6 +609,7 @@ const mainChatCommandsSource = fs.readFileSync(new URL('../modules/mainChatComma
 const eventListenersSource = fs.readFileSync(new URL('../modules/event-listeners.js', import.meta.url), 'utf8');
 const rendererSource = fs.readFileSync(new URL('../renderer.js', import.meta.url), 'utf8');
 const topTabManagerSource = fs.readFileSync(new URL('../modules/topTabManager.js', import.meta.url), 'utf8');
+const appTabHostSource = fs.readFileSync(new URL('../modules/ui-system/next-shell/app-tab-host.js', import.meta.url), 'utf8');
 const agentHandlersSource = fs.readFileSync(new URL('../modules/ipc/agentHandlers.js', import.meta.url), 'utf8');
 const settingsHandlersSource = fs.readFileSync(new URL('../modules/ipc/settingsHandlers.js', import.meta.url), 'utf8');
 const appearanceStyles = fs.readFileSync(new URL('../styles/appearance.css', import.meta.url), 'utf8');
@@ -627,8 +628,10 @@ assert.match(mainChatCommandsSource, /maximized \? 'filter_none' : 'crop_square'
     'Next maximize control must expose a restore icon when maximized');
 assert.match(mainHtml, /id="nextUiDynamicTabs"[^>]*role="tablist"/,
     'the dynamic application strip must expose tablist semantics');
-assert.match(topTabManagerSource, /createElement\('div'\)[\s\S]*setAttribute\('role', 'tab'\)[\s\S]*createElement\('button'\)[\s\S]*next-ui-tab-close/,
+assert.match(appTabHostSource, /createElement\('div'\)[\s\S]*setAttribute\('role', 'tab'\)[\s\S]*createElement\('button'\)[\s\S]*next-ui-tab-close/,
     'dynamic tabs must avoid nested buttons and use a real close button');
+assert.doesNotMatch(topTabManagerSource, /createElement\('div'\)[\s\S]*next-ui-tab-close/,
+    'topTabManager must delegate tab presentation to AppTabHost');
 const saveSettingsHandler = settingsHandlersSource.match(/ipcMain\.handle\('save-settings',[\s\S]*?\n\s*}\);/)?.[0] || '';
 assert.match(saveSettingsHandler, /'flowlockContinueDelay' in settingsToSave/,
     'partial settings patches may validate flowlock delay only when supplied');
