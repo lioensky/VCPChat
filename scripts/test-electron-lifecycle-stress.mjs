@@ -341,7 +341,13 @@ async function cycleAskNova(page, target, label) {
         return Boolean(document.querySelector('.ask-nova-thinking'));
     }, target);
     assert.equal(requestStarted, true, `${label}: Ask Nova did not enter its in-flight state`);
-    await page.keyboard.press('Escape');
+    await page.evaluate(() => {
+        const root = document.querySelector('.ask-nova-modal-host');
+        const target = root?.contains(document.activeElement) ? document.activeElement : root;
+        target?.dispatchEvent(new KeyboardEvent('keydown', {
+            key: 'Escape', code: 'Escape', bubbles: true, cancelable: true,
+        }));
+    });
     await page.waitForFunction(() => !document.querySelector('.ask-nova-modal-host'), { timeout: timeoutMs });
     await page.evaluate(() => window.topTabManager.setView('home'));
     assert.equal(page.isClosed(), false, `${label}: Ask Nova Escape closed the main renderer`);
@@ -496,7 +502,13 @@ async function cycleOverlayOwnership(page, browser, app, label) {
         range.value = String(Math.min(Number(range.max), Number(range.value) + 1));
         range.dispatchEvent(new Event('input', { bubbles: true }));
     });
-    await page.keyboard.press('Escape');
+    await page.evaluate(() => {
+        const root = document.querySelector('.vcp-appearance-studio-overlay');
+        const target = root?.contains(document.activeElement) ? document.activeElement : root;
+        target?.dispatchEvent(new KeyboardEvent('keydown', {
+            key: 'Escape', code: 'Escape', bubbles: true, cancelable: true,
+        }));
+    });
     await page.waitForFunction(() => {
         const prompt = document.querySelector('.vcp-appearance-unsaved-backdrop');
         return window.VCPAppearanceStudio.isOpen() && prompt && !prompt.hidden;
