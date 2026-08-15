@@ -326,6 +326,9 @@ window.GroupRenderer = (() => {
         });
 
         updateAllGroupSectionSummaries();
+        document.dispatchEvent(new CustomEvent('vcp-settings-surface-updated', {
+            detail: { kind: 'group', root: groupSettingsForm }
+        }));
     }
 
 

@@ -22,10 +22,10 @@ const shellRoots = new Set();
 // Replaced inline SVGs inside the global form, keyed by container, so teardown
 // restores the original Lucide-style paths (classic must not lose them).
 const iconReplacements = new Set();
-let observer = null;
 let refreshQueued = false;
 const LifecycleScope = window.VCPLifecycle?.LifecycleScope;
 const bridgeScope = LifecycleScope ? new LifecycleScope('next:settings-bridge-controller') : null;
+const settingsHost = document.getElementById('tabContentSettings');
 let presentationScope = null;
 let destroyed = false;
 let destroyPromise = null;
@@ -395,19 +395,23 @@ function syncMode() {
     scheduleRefresh();
 }
 
-observer = new window.MutationObserver(scheduleRefresh);
-const settingsHost = document.getElementById('tabContentSettings');
-if (settingsHost) observer.observe(settingsHost, { childList: true, subtree: true });
-const modalContainer = document.getElementById('modal-container');
-if (modalContainer) observer.observe(modalContainer, { childList: true, subtree: true });
-bridgeScope?.own(() => observer?.disconnect(), 'settings-observer', 'observer');
-if (bridgeScope) bridgeScope.listen(window, 'ui-mode-changed', syncMode, undefined, 'settings-mode-change');
-else window.addEventListener('ui-mode-changed', syncMode);
+const unsubscribeMode = window.uiModeManager?.subscribe?.(() => syncMode(), { immediate: false }) || null;
+if (unsubscribeMode && bridgeScope) bridgeScope.own(unsubscribeMode, 'settings-mode-state', 'subscription');
+else if (!unsubscribeMode && bridgeScope) bridgeScope.listen(window, 'ui-mode-changed', syncMode, undefined, 'settings-mode-change');
+else if (!unsubscribeMode) window.addEventListener('ui-mode-changed', syncMode);
 const handleModalVisibility = event => {
     if (event.detail?.modalId === 'globalSettingsModal') scheduleRefresh();
 };
+const handleSurfaceUpdated = () => scheduleRefresh();
 if (bridgeScope) bridgeScope.listen(document, 'modal-visibility-changed', handleModalVisibility, undefined, 'settings-modal-visibility');
 else document.addEventListener('modal-visibility-changed', handleModalVisibility);
+if (bridgeScope) {
+    bridgeScope.listen(document, 'modal-ready', handleModalVisibility, undefined, 'settings-modal-ready');
+    bridgeScope.listen(document, 'vcp-settings-surface-updated', handleSurfaceUpdated, undefined, 'settings-surface-updated');
+} else {
+    document.addEventListener('modal-ready', handleModalVisibility);
+    document.addEventListener('vcp-settings-surface-updated', handleSurfaceUpdated);
+}
 syncMode();
 
 window.VCPUISettingsBridge = Object.freeze({
@@ -415,11 +419,12 @@ window.VCPUISettingsBridge = Object.freeze({
     destroy() {
         if (destroyPromise) return destroyPromise;
         destroyed = true;
-        observer?.disconnect();
-        observer = null;
         if (!bridgeScope) {
-            window.removeEventListener('ui-mode-changed', syncMode);
+            if (unsubscribeMode) unsubscribeMode();
+            else window.removeEventListener('ui-mode-changed', syncMode);
             document.removeEventListener('modal-visibility-changed', handleModalVisibility);
+            document.removeEventListener('modal-ready', handleModalVisibility);
+            document.removeEventListener('vcp-settings-surface-updated', handleSurfaceUpdated);
         }
         teardown();
         destroyPromise = bridgeScope?.dispose('settings-bridge-destroyed') || Promise.resolve();

@@ -495,6 +495,9 @@ const dynamicGroupForm = document.createElement('form');
 dynamicGroupForm.id = 'groupSettingsForm';
 dynamicGroupForm.innerHTML = '<textarea id="dynamicGroupPrompt"></textarea>';
 settingsHost.append(dynamicGroupForm);
+document.dispatchEvent(new CustomEvent('vcp-settings-surface-updated', {
+    detail: { kind: 'group', root: dynamicGroupForm }
+}));
 await new Promise(resolve => setTimeout(resolve, 0));
 assert.ok(document.getElementById('dynamicGroupPrompt').classList.contains('vcp-ui-native-textarea'));
 

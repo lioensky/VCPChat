@@ -285,6 +285,9 @@ const settingsManager = (() => {
             restoreCollapseStates(agentConfig);
             updateAllSectionSummaries();
             scheduleStickyButtonsRefresh();
+            document.dispatchEvent(new CustomEvent('vcp-settings-surface-updated', {
+                detail: { kind: 'agent', root: agentSettingsForm }
+            }));
         };
 
         const queuedTask = agentSettingsPopulateQueue
