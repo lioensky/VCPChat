@@ -155,6 +155,7 @@ const CHAT_KEYS = [
     'minimizeToTray',
     'closeApp',
     'desktopCreateEmbeddedVchatApp',
+    'desktopListEmbeddedVchatApps',
     'desktopActivateEmbeddedVchatApp',
     'desktopSetEmbeddedVchatAppBounds',
     'desktopCloseEmbeddedVchatApp',

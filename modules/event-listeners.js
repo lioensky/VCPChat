@@ -1252,6 +1252,10 @@ export function setupEventListeners(deps) {
             }
         });
 
+        document.addEventListener('next-ui-overlay-changed', (event) => {
+            if (event.detail?.active === true) closeNotificationMenu();
+        });
+
         nextUiNotificationMenu.addEventListener('keydown', (event) => {
             if ((event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10'))
                 && document.activeElement === nextUiNotificationFilterToggle) {

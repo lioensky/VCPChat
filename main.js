@@ -234,6 +234,77 @@ let audioEngineStopPromise = null;
 let isAudioEngineStopping = false;
 let appQuitCleanupPromise = null;
 let isFinalizingQuit = false;
+const MAIN_RENDERER_CRASH_WINDOW_MS = 60_000;
+const MAIN_RENDERER_STABLE_RESET_MS = 30_000;
+const MAIN_RENDERER_MAX_RECOVERIES = 3;
+let mainRendererCrashTimes = [];
+let mainRendererRecoveryTimer = null;
+let mainRendererStableTimer = null;
+let mainRendererFailurePromptOpen = false;
+
+function clearMainRendererRecoveryTimers() {
+    if (mainRendererRecoveryTimer) clearTimeout(mainRendererRecoveryTimer);
+    if (mainRendererStableTimer) clearTimeout(mainRendererStableTimer);
+    mainRendererRecoveryTimer = null;
+    mainRendererStableTimer = null;
+}
+
+function markMainRendererStable() {
+    if (mainRendererStableTimer) clearTimeout(mainRendererStableTimer);
+    mainRendererStableTimer = setTimeout(() => {
+        mainRendererCrashTimes = [];
+        mainRendererStableTimer = null;
+    }, MAIN_RENDERER_STABLE_RESET_MS);
+}
+
+async function showMainRendererFailurePrompt(details) {
+    if (mainRendererFailurePromptOpen || isFinalizingQuit || app.isQuitting) return;
+    mainRendererFailurePromptOpen = true;
+    try {
+        const options = {
+            type: 'error',
+            title: 'VCPChat 界面连续崩溃',
+            message: '主界面在短时间内多次异常退出，已停止自动恢复以避免崩溃循环。',
+            detail: details?.reason ? `最后一次退出原因：${details.reason}` : '',
+            buttons: ['重试一次', '退出应用'],
+            defaultId: 0,
+            cancelId: 1,
+            noLink: true,
+        };
+        const result = mainWindow && !mainWindow.isDestroyed()
+            ? await dialog.showMessageBox(mainWindow, options)
+            : await dialog.showMessageBox(options);
+        if (result.response === 0 && mainWindow && !mainWindow.isDestroyed()) {
+            mainRendererCrashTimes = [];
+            scheduleMainRendererRecovery({ reason: 'manual-retry' });
+        } else {
+            app.quit();
+        }
+    } finally {
+        mainRendererFailurePromptOpen = false;
+    }
+}
+
+function scheduleMainRendererRecovery(details = {}) {
+    if (isFinalizingQuit || app.isQuitting || !mainWindow || mainWindow.isDestroyed()) return;
+    if (mainRendererRecoveryTimer) return;
+    const now = Date.now();
+    mainRendererCrashTimes = mainRendererCrashTimes.filter(timestamp => now - timestamp < MAIN_RENDERER_CRASH_WINDOW_MS);
+    if (mainRendererCrashTimes.length >= MAIN_RENDERER_MAX_RECOVERIES) {
+        void showMainRendererFailurePrompt(details);
+        return;
+    }
+    mainRendererCrashTimes.push(now);
+    mainRendererRecoveryTimer = setTimeout(() => {
+        mainRendererRecoveryTimer = null;
+        if (isFinalizingQuit || app.isQuitting || !mainWindow || mainWindow.isDestroyed()) return;
+        console.warn(`[Main] Recovering main renderer (${mainRendererCrashTimes.length}/${MAIN_RENDERER_MAX_RECOVERIES}) after ${details.reason || 'unknown failure'}.`);
+        mainWindow.loadFile('main.html').catch(error => {
+            console.error('[Main] Failed to recover main renderer:', error);
+            scheduleMainRendererRecovery({ reason: 'reload-failed' });
+        });
+    }, 250);
+}
 
 function toggleDevToolsForWindow(focusedWindow) {
     if (!focusedWindow || focusedWindow.isDestroyed()) return;
@@ -471,6 +542,8 @@ function createWindow({ deferLoad = false } = {}) {
     mainWindow.on('closed', () => {
         // When the main window is closed, we should only quit on non-macOS
         // when there are no remaining windows (e.g. RAG Observer may still be open).
+        clearMainRendererRecoveryTimers();
+        mainRendererCrashTimes = [];
         mainWindow = null;
         if (process.platform !== 'darwin' && BrowserWindow.getAllWindows().length === 0) {
             app.quit();
@@ -481,9 +554,21 @@ function createWindow({ deferLoad = false } = {}) {
         console.error('[Main] Main window did-fail-load', errorCode, errorDescription, validatedURL);
     });
 
-    mainWindow.webContents.on('render-process-gone', (event, details) => {
-        console.error('[Main] Main window render-process-gone', details);
+    mainWindow.webContents.on('did-start-loading', () => {
+        embeddedAppSessions?.suspend?.();
     });
+
+    mainWindow.webContents.on('render-process-gone', (event, details) => {
+        embeddedAppSessions?.suspend?.();
+        if (mainRendererStableTimer) {
+            clearTimeout(mainRendererStableTimer);
+            mainRendererStableTimer = null;
+        }
+        console.error('[Main] Main window render-process-gone', details);
+        if (details?.reason !== 'clean-exit') scheduleMainRendererRecovery(details);
+    });
+
+    mainWindow.webContents.on('did-finish-load', markMainRendererStable);
 
     // mainWindow.setMenu(null); // 移除应用程序菜单栏 - 注释掉以启用macOS的标准菜单
 
@@ -1173,6 +1258,7 @@ if (!gotTheLock) {
         });
         [
             'embedded-vchat-app:create',
+            'embedded-vchat-app:list',
             'embedded-vchat-app:activate',
             'embedded-vchat-app:set-bounds',
             'embedded-vchat-app:close',
@@ -1182,6 +1268,10 @@ if (!gotTheLock) {
         ipcMain.handle('embedded-vchat-app:create', (event, appAction) => {
             embeddedAppSessions.assertMainRenderer(event);
             return embeddedAppSessions.create(appAction);
+        });
+        ipcMain.handle('embedded-vchat-app:list', event => {
+            embeddedAppSessions.assertMainRenderer(event);
+            return embeddedAppSessions.list();
         });
         ipcMain.handle('embedded-vchat-app:activate', (event, appAction) => {
             embeddedAppSessions.assertMainRenderer(event);

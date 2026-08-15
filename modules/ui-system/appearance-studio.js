@@ -1233,21 +1233,43 @@
         return closePromptPromise;
     }
 
+    const overlayOwner = Symbol('appearance-studio-overlay');
+    let ownsOverlay = false;
+
+    function acquireStudioOverlay() {
+        if (ownsOverlay) return;
+        ownsOverlay = true;
+        Promise.resolve(window.topTabManager?.acquireOverlay?.(overlayOwner)).catch(error => {
+            ownsOverlay = false;
+            console.warn('[AppearanceStudio] Failed to hide embedded app:', error);
+        });
+    }
+
+    function releaseStudioOverlay() {
+        if (!ownsOverlay) return;
+        ownsOverlay = false;
+        window.topTabManager?.releaseOverlay?.(overlayOwner);
+    }
+
     async function close({ rollback = true } = {}) {
         if (!surface || surface.root.hidden || (saving && rollback)) return;
         if (surface.closePrompt && !surface.closePrompt.hidden) settleClosePrompt(false);
         surface.root.hidden = true;
         surface.root.classList.remove('active');
         document.body.classList.remove('vcp-appearance-studio-open');
-        if (rollback) await restoreSnapshot();
         const nextFocus = sourceTrigger?.isConnected ? sourceTrigger : null;
-        sourceTrigger = null;
-        snapshot = null;
-        snapshotRevision = 0;
-        draft = null;
-        themesLoadSequence += 1;
-        document.documentElement.classList.remove('vcp-appearance-studio-host');
-        nextFocus?.focus?.();
+        try {
+            if (rollback) await restoreSnapshot();
+        } finally {
+            sourceTrigger = null;
+            snapshot = null;
+            snapshotRevision = 0;
+            draft = null;
+            themesLoadSequence += 1;
+            document.documentElement.classList.remove('vcp-appearance-studio-host');
+            releaseStudioOverlay();
+            nextFocus?.focus?.();
+        }
     }
 
     function open(options = {}) {
@@ -1258,6 +1280,7 @@
             return true;
         }
         sourceTrigger = options.trigger || document.activeElement;
+        acquireStudioOverlay();
         snapshot = readState();
         snapshotRevision = window.VCPAppearance?.getRevision?.() || 0;
         draft = normalizeState(options.initialState, snapshot);
@@ -1427,6 +1450,7 @@
     function handleKeydown(event) {
         if (event.key === 'Escape') {
             event.preventDefault();
+            event.stopPropagation();
             if (surface?.closePrompt && !surface.closePrompt.hidden) settleClosePrompt(false);
             else void requestClose();
             return;

@@ -156,7 +156,7 @@ export function createAskNovaController(options = {}) {
         // embedded app cannot cover Ask Nova with an apparently blank page.
         const overlayOwner = Symbol('ask-nova-overlay');
         await window.topTabManager?.acquireOverlay?.(overlayOwner);
-        if (destroyed) {
+        if (destroyed || documentRef.documentElement.dataset.uiMode !== 'next') {
             window.topTabManager?.releaseOverlay?.(overlayOwner);
             return null;
         }

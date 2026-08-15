@@ -74,11 +74,37 @@ function createEmbeddedAppSessionManager({ mainWindow, launchStandalone, readSet
 
     function notify(action, state, detail = {}) {
         if (!mainWindow || mainWindow.isDestroyed()) return;
-        mainWindow.webContents.send('embedded-vchat-app-state', { action, state, ...detail });
+        const contents = mainWindow.webContents;
+        if (!contents || contents.isDestroyed() || contents.isCrashed?.()) return;
+        try {
+            contents.send('embedded-vchat-app-state', { action, state, ...detail });
+        } catch (error) {
+            // A renderer can disappear between the liveness check and send().
+            // Main retains the authoritative session; the replacement
+            // renderer reconciles it through list() after recovery.
+            console.warn(`[EmbeddedApps] Deferred ${state} notification for ${action}:`, error.message);
+        }
     }
 
     function hideAll() {
         sessions.forEach(session => session.view.setVisible(false));
+    }
+
+    function list() {
+        return {
+            sessions: [...sessions.values()]
+                .filter(session => !session.view.webContents.isDestroyed())
+                .map(session => ({ action: session.action })),
+            activeAction,
+        };
+    }
+
+    function suspend() {
+        // A renderer reload/crash destroys the DOM host before it can release
+        // the native child view. Hide native surfaces immediately, but retain
+        // ownership so the replacement renderer can reconcile and reuse them.
+        hideAll();
+        return { success: true };
     }
 
     async function create(appAction) {
@@ -238,6 +264,8 @@ function createEmbeddedAppSessionManager({ mainWindow, launchStandalone, readSet
 
     return {
         isEmbeddable: appAction => embeddedAppAllowlist.isEmbeddable(appAction),
+        list,
+        suspend,
         create,
         activate,
         setBounds,

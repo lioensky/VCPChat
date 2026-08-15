@@ -18,6 +18,7 @@
     let modeRequestGeneration = 0;
     let previewSuspended = false;
     const overlayOwners = new Set();
+    const modalOverlayOwners = new Map();
     const suppressedTabClicks = new Set();
 
     function listen(target, type, handler, options = {}) {
@@ -147,10 +148,37 @@
 
     function syncEmbeddedActivation() {
         const activeView = views.get(activeViewId);
-        const action = overlayOwners.size === 0 && activeView?.kind === 'embedded' ? activeView.action : null;
+        const action = mounted && !previewSuspended && !restoringTabs && overlayOwners.size === 0 && activeView?.kind === 'embedded'
+            ? activeView.action
+            : null;
         getDesktopApi()?.desktopActivateEmbeddedVchatApp?.(action).then(result => {
             if (result?.success && activeView?.kind === 'embedded') syncEmbeddedBounds(activeView);
         }).catch(error => console.warn('[NextUI] Failed to activate embedded app:', error));
+    }
+
+    function handleModalVisibilityChanged(event) {
+        const modalId = event.detail?.modalId;
+        if (typeof modalId !== 'string' || !modalId) return;
+        if (event.detail?.active === true) {
+            if (modalOverlayOwners.has(modalId)) return;
+            const owner = Symbol(`modal-overlay:${modalId}`);
+            modalOverlayOwners.set(modalId, owner);
+            void acquireOverlay(owner).catch(error => {
+                if (modalOverlayOwners.get(modalId) === owner) modalOverlayOwners.delete(modalId);
+                console.warn(`[NextUI] Failed to acquire overlay for modal ${modalId}:`, error);
+            });
+            return;
+        }
+        const owner = modalOverlayOwners.get(modalId);
+        if (!owner) return;
+        modalOverlayOwners.delete(modalId);
+        releaseOverlay(owner);
+    }
+
+    function reconcileVisibleModals() {
+        document.querySelectorAll('.modal.active[id]').forEach(modal => {
+            handleModalVisibilityChanged({ detail: { modalId: modal.id, active: true } });
+        });
     }
 
     function ensureInternalHost() {
@@ -346,7 +374,7 @@
             }
             if (!result?.success) throw new Error(result?.error || '应用无法内嵌打开。');
             container.dataset.state = 'ready';
-            if (activeViewId === viewId) {
+            if (activeViewId === viewId && !restoringTabs) {
                 syncEmbeddedBounds(view);
                 await api.desktopActivateEmbeddedVchatApp?.(app.action);
             }
@@ -407,12 +435,38 @@
     }
 
     async function restoreTabSession() {
-        if (!mounted || !pendingTabRestore || restoringTabs) return;
+        if (!mounted || restoringTabs) return;
         const generation = mountGeneration;
         restoringTabs = true;
         try {
+            const apps = window.trayManager?.getApps?.() || [];
+            let authoritative = { sessions: [], activeAction: null };
+            try {
+                authoritative = await getDesktopApi()?.desktopListEmbeddedVchatApps?.() || authoritative;
+            } catch (error) {
+                console.warn('[NextUI] Failed to reconcile embedded app sessions:', error);
+            }
+            if (!mounted || generation !== mountGeneration) return;
+
+            const restoreState = pendingTabRestore || { activeViewId: 'home', tabs: [] };
+            const descriptors = [...restoreState.tabs];
+            for (const session of authoritative.sessions || []) {
+                const app = apps.find(candidate => candidate.action === session.action && candidate.embed);
+                if (!app || descriptors.some(descriptor => descriptor.kind === 'embedded' && descriptor.id === app.id)) continue;
+                descriptors.push({ kind: 'embedded', id: app.id });
+            }
+            if (!descriptors.length) {
+                pendingTabRestore = null;
+                return;
+            }
+            const authoritativeActiveApp = apps.find(candidate => (
+                candidate.action === authoritative.activeAction && candidate.embed
+            ));
+            const requestedActive = authoritativeActiveApp
+                ? `app:${authoritativeActiveApp.id}`
+                : restoreState.activeViewId;
             const unresolved = [];
-            for (const descriptor of pendingTabRestore.tabs) {
+            for (const descriptor of descriptors) {
                 if (!mounted || generation !== mountGeneration) return;
                 if (descriptor.kind === 'internal') {
                     if (!window.nextUiApps?.get(descriptor.id)) {
@@ -430,8 +484,7 @@
                 await openEmbeddedApp(app);
                 if (!mounted || generation !== mountGeneration) return;
             }
-            const requestedActive = pendingTabRestore.activeViewId;
-            pendingTabRestore = unresolved.length ? { ...pendingTabRestore, tabs: unresolved } : null;
+            pendingTabRestore = unresolved.length ? { ...restoreState, tabs: unresolved } : null;
             if (requestedActive === 'home' || requestedActive === 'launchpad' || views.has(requestedActive)) {
                 activeViewId = requestedActive;
                 updateVisibility();
@@ -439,6 +492,7 @@
         } finally {
             restoringTabs = false;
             persistTabSession();
+            if (mounted && generation === mountGeneration) syncEmbeddedActivation();
         }
     }
 
@@ -601,6 +655,9 @@
             setOpen(false);
             trigger.focus();
         });
+        listen(document, 'next-ui-overlay-changed', event => {
+            if (event.detail?.active === true) setOpen(false);
+        });
         accountMenuObserver = new MutationObserver(sync);
         accountMenuObserver.observe(document.body, { attributes: true, attributeFilter: ['class'] });
         listen(window, 'global-settings-updated', sync);
@@ -635,6 +692,7 @@
         }
         const ui = window.VCPUI;
         const api = window.chatAPI || window.electronAPI;
+        const generation = mountGeneration;
         if (!ui || !window.MainChatCommands?.createAgent || !window.MainChatCommands?.createGroup) {
             window.uiHelperFunctions?.showToastNotification?.('创建功能尚未准备好，请稍后重试。', 'error');
             return;
@@ -699,22 +757,36 @@
         let submitting = false;
         let cleaned = false;
         let modal;
+        const overlayOwner = Symbol('create-item-modal-overlay');
+        await acquireOverlay(overlayOwner);
+        if (!mounted || generation !== mountGeneration || document.documentElement.dataset.uiMode !== 'next') {
+            releaseOverlay(overlayOwner);
+            ownedControllers.forEach(controller => controller.destroy());
+            return;
+        }
 
         const cleanup = () => {
             if (cleaned) return;
             cleaned = true;
+            releaseOverlay(overlayOwner);
             if (activeCreateModal === modal) activeCreateModal = null;
             ownedControllers.forEach(controller => controller.destroy());
             host.remove();
         };
 
-        modal = ui.create('Modal', {
-            title: '创建助手或群组',
-            size: 'sm',
-            content: form,
-            actions: [cancelButton, createButton],
-            onClose: cleanup
-        });
+        try {
+            modal = ui.create('Modal', {
+                title: '创建助手或群组',
+                size: 'sm',
+                content: form,
+                actions: [cancelButton, createButton],
+                onClose: cleanup
+            });
+        } catch (error) {
+            releaseOverlay(overlayOwner);
+            ownedControllers.forEach(controller => controller.destroy());
+            throw error;
+        }
         activeCreateModal = modal;
         host.append(modal.element);
         document.body.append(host);
@@ -864,6 +936,8 @@
         setupAgentSearch();
         setupAccountMenu();
         setupEmbeddedAppState();
+        listen(document, 'modal-visibility-changed', handleModalVisibilityChanged);
+        reconcileVisibleModals();
         pendingTabRestore = readTabSession();
         listen(document.getElementById('nextUiCreateItemBtn'), 'click', openCreateDialog);
         listen(document.getElementById('nextUiHomeTab'), 'click', () => setView('home'));
@@ -905,6 +979,10 @@
         pendingTabRestore = null;
         restoringTabs = false;
         closeCreateDialog();
+        modalOverlayOwners.clear();
+        if (overlayOwners.size > 0) {
+            document.dispatchEvent(new CustomEvent('next-ui-overlay-changed', { detail: { active: false } }));
+        }
         overlayOwners.clear();
         const pending = closeAllInternalApps({ preserveSession: true });
         const wrapped = pending.finally(() => {
@@ -934,11 +1012,18 @@
     }
 
     async function acquireOverlay(owner = Symbol('next-ui-overlay')) {
+        const wasEmpty = overlayOwners.size === 0;
         overlayOwners.add(owner);
+        if (wasEmpty) {
+            document.dispatchEvent(new CustomEvent('next-ui-overlay-changed', { detail: { active: true } }));
+        }
         try {
             await getDesktopApi()?.desktopActivateEmbeddedVchatApp?.(null);
         } catch (error) {
             overlayOwners.delete(owner);
+            if (overlayOwners.size === 0) {
+                document.dispatchEvent(new CustomEvent('next-ui-overlay-changed', { detail: { active: false } }));
+            }
             console.warn('[NextUI] Failed to hide embedded app for overlay:', error);
             throw error;
         }
@@ -947,6 +1032,9 @@
 
     function releaseOverlay(owner) {
         if (!overlayOwners.delete(owner)) return;
+        if (overlayOwners.size === 0) {
+            document.dispatchEvent(new CustomEvent('next-ui-overlay-changed', { detail: { active: false } }));
+        }
         syncEmbeddedActivation();
     }
 
