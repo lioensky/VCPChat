@@ -4,7 +4,7 @@
 
 本文是 VCPChat Next UI 后续演进的总路线。它规定阶段顺序、模块边界、合并门槛和长期收敛方向，不替代具体子系统文档：Web Awesome 的加载、定制和离线闭包由 [`next-ui-webawesome-roadmap.md`](./next-ui-webawesome-roadmap.md) 负责，动态资源所有权和竞态规则由 [`next-ui-lifecycle-architecture.md`](./next-ui-lifecycle-architecture.md) 负责，上游 PR 的减法边界由 [`design-system-upstream-pr-convergence.md`](./design-system-upstream-pr-convergence.md) 负责。
 
-当前基线是提交 `fc938e3e`：Classic 默认，Next 可选；Classic / Next 功能对等整改已经完成并由 [`upstream-function-parity.md`](./upstream-function-parity.md) 持续回归；动态 Next 表面已接入 `LifecycleScope`，模式切换已串行化，Next App 与前端插件注册可撤销，真实 Electron 压力测试能够检查 Scope、listener、DOM、page 和 process 是否归零。
+当前实现基线已推进至 M8：Classic 默认，Next 可选；Classic / Next 功能对等整改由 [`upstream-function-parity.md`](./upstream-function-parity.md) 持续回归；动态 Next 表面已接入 `LifecycleScope`，模式切换已串行化，Next App 与前端插件注册可撤销，并具备可取消任务、权威状态订阅、只读生命周期诊断、性能预算、受限原生 session 和真实 Electron 恢复/压力门禁。
 
 ## 产品与架构目标
 
@@ -49,14 +49,14 @@ Next UI 的目标不是维护第二套聊天业务，也不是把上游代码迁
 | 阶段 | 目标 | 进入条件 | 退出证据 |
 |---|---|---|---|
 | M0 | 生命周期稳定基线 | 已完成 | 20 轮 Electron 压测资源恒定 |
-| M1 | 发布前稳定化 | M0 | 人工竞态矩阵和长时间 soak 通过 |
-| M2 | 拆分 Next Shell 协调器 | M1 | `topTabManager` 退化为兼容 facade |
-| M3 | 可取消异步与 IPC 任务 | M2 的 Overlay/Embedded 边界稳定 | 请求可取消，迟到结果无提交权 |
-| M4 | 统一贡献与前端插件协议 | M3 | App/Menu/Command/Setting 注册均可撤销 |
-| M5 | 状态权威与显式订阅 | M2–M4 | 无新增隐藏 DOM 代理和全局扫描 |
-| M6 | VCPUI 与 Surface 收敛 | M5 | Next 自有表面统一 create/fallback 生命周期 |
-| M7 | 诊断、故障注入与持续门禁 | 与 M2–M6 同步 | CI 可定位 owner、任务和原生 session |
-| M8 | 性能、安全和恢复能力 | M3、M7 | 崩溃、休眠、断网与长时运行可恢复 |
+| M1 | 发布前稳定化（已完成） | M0 | 竞态矩阵和稳定性门禁通过 |
+| M2 | 拆分 Next Shell 协调器（已完成） | M1 | `topTabManager` 退化为兼容 facade |
+| M3 | 可取消异步与 IPC 任务（已完成） | M2 的 Overlay/Embedded 边界稳定 | 请求可取消，迟到结果无提交权 |
+| M4 | 统一贡献与前端插件协议（已完成） | M3 | App/Menu/Command/Setting 注册均可撤销 |
+| M5 | 状态权威与显式订阅（已完成） | M2–M4 | 无新增隐藏 DOM 代理和全局扫描 |
+| M6 | VCPUI 与 Surface 收敛（已完成） | M5 | Next 自有表面统一 create/fallback 生命周期 |
+| M7 | 诊断、故障注入与持续门禁（已完成） | 与 M2–M6 同步 | 可定位 owner、任务和原生 session |
+| M8 | 性能、安全和恢复能力（已完成） | M3、M7 | 崩溃、休眠、断网与长时运行可恢复 |
 | M9 | Classic 去留决策 | M1–M8，功能对等已完成 | 有稳定性和维护成本证据决定继续并行或覆盖 Classic |
 
 M2–M7 可以按小 PR 交错推进，但不能跳过各自进入条件。M9 是产品决策，不由代码完成度自动触发。
@@ -256,7 +256,7 @@ owner.own(registerSettingsEntry(...));
 - 不在业务模块中直接创建 WA 标签或读取 WA 私有结构。
 - 不通过全局 CSS 修补单个组件生命周期问题。
 
-## M7：诊断、故障注入与持续门禁
+## M7：诊断、故障注入与持续门禁（已完成）
 
 ### 目标
 
@@ -289,7 +289,15 @@ owner.own(registerSettingsEntry(...));
 - detached icon、option、Modal host 和 Overlay owner 不高于预热基线。
 - 失败 disposer 可观测，但不阻断其他清理和模式收敛。
 
-## M8：性能、安全和恢复能力
+### 已交付证据
+
+- `window.VCPLifecycleInspector` 汇总 Scope 树、资源年龄、超时 disposing owner、TaskHandle、贡献注册、状态订阅、Overlay、原生 session、最近模式事务和性能样本。
+- 主进程诊断 IPC 只允许主 renderer 调用，只返回 action、任务身份和时长，不返回 API Key、聊天正文、路径或文件内容。
+- Agent Prompt 模式按钮从每次 render 创建 15 个 listener 收敛为持久 host 上的 5 个委托 listener；20 轮压力测试 listener 固定为 426。
+- 正常门禁不调用 Chromium 实验性的 `DOM.getDetachedDomNodes`，因为该命令会改变被测对象的原生包装器寿命；它仅保留为显式 debug 模式。常规门禁检查活动 Surface、heap、listener、Scope、资源、page、renderer process 和 WebContentsView。
+- 完整 Electron 压力测试通过 3 次预热加 20 次测量，并包含 renderer reload、renderer crash、Overlay、Ask Nova、设置、Agent 设置、应用拖出和 Classic/Next 往返。
+
+## M8：性能、安全和恢复能力（已完成）
 
 ### 性能
 
@@ -311,6 +319,15 @@ owner.own(registerSettingsEntry(...));
 - 模式切换、窗口关闭和 app detach 在任一步失败后都能重新对账。
 - 恢复策略必须有界，避免 crash/reload loop。
 - 断网、服务未配置和插件失败时保留主聊天可用，不让可选能力阻塞 Shell。
+
+### 已交付证据
+
+- `VCPPerformance` 使用 100 条有界环形历史记录 `next.mount`、`ui-mode.transition`、`settings.open`、`embedded.create` 和 `embedded.activate`；元数据只接受少量标量，不记录用户正文或凭据。
+- 默认诊断预算分别为 500ms、1500ms、500ms、10000ms 和 500ms；超预算进入 Inspector，不在真实机器上用脆弱的绝对耗时直接阻塞功能。
+- embedded IPC 继续验证主 renderer sender；action 必须来自中央 allowlist，请求 ID/operation 受长度与字符集约束，拖出坐标必须是绝对值不超过 1,000,000 的有限数。
+- 同一窗口最多保留 6 个内嵌 `WebContentsView`；重复 action 复用既有 session，超过上限返回确定性错误，不创建第七个进程。
+- renderer reload/crash 从主进程 session 权威恢复且不重复创建 View；60 秒内最多自动恢复 3 次，之后停止循环并提示用户。
+- 系统 suspend 隐藏原生 View，resume 按最后的 active action 重新校准 bounds/visible；断网后的 Ask Nova 请求可在网络恢复后重新成功，不污染后续 target。
 
 ## M9：Classic 去留决策
 
@@ -382,8 +399,7 @@ Classic / Next 的入口和交互对等整改已经完成，权威清单见 [`up
 
 ## 当前推荐的下一步
 
-1. 重启提交 `fc938e3e` 后的最新应用，完成人工竞态矩阵和一次长时间 soak。
-2. 修复真实测试发现的问题，不立即扩大架构范围。
-3. 从 `OverlayCoordinator` 开始拆分 `topTabManager`，因为它同时是 Ask Nova 白屏、内嵌 View 覆盖和多 Overlay 互斥的共同边界。
-4. Overlay 拆分稳定后提取 `EmbeddedAppController`，随后才开始通用可取消 IPC 任务协议。
-5. 贡献 Registry、状态权威和诊断平台按独立 PR 推进；已完成的功能对等作为全程回归基线，Classic 替代决策留到稳定性门槛满足之后。
+1. 冻结构，只接收真实测试发现的稳定性修复；继续运行发布前 30–60 分钟 soak、GPU/视频壁纸和第三方插件组合测试。
+2. 将快速单元/边界门禁用于每次提交，将 20 轮 Electron 压测、打包与 Classic 回归用于 PR。
+3. 保持 Classic 默认和 Next 可选至少一个完整发布周期，收集真实用户的崩溃、恢复和维护成本证据。
+4. M9 由上游作者与产品验证共同决定；无论继续双布局还是由 Next 覆盖 Classic，都不得恢复隐藏 DOM click 代理或第二份业务状态。

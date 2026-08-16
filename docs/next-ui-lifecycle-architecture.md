@@ -109,13 +109,22 @@ request generation
 
 Electron 压力测试在真实 renderer 中反复执行 Ask Nova、设置、Agent 设置、内嵌应用、拖出窗口、Overlay、renderer reload/crash 与 Classic/Next 往返，同时检查：
 
-- Heap、DOM node、listener、page、process 与 renderer process 无持续增长。
-- detached icon/select option 不高于预热基线。
+- Heap、listener、page、process 与 renderer process 无持续增长。
+- Ask Nova host、动态标签、内嵌 view 和临时 Overlay 在每轮结束时不存在于活动 DOM。
 - 动态 Scope 在表面关闭后为零。
 - Classic 中不存在 Tab Host、Main Runtime、Settings Presentation 或动态 Overlay/App Scope。
 - 预热后活动 Scope 总数与资源总数在所有 checkpoint 完全相等。
 
-2026-08-15 对抗审查后的完整压力验收为 3 次预热加 20 次测量；所有 checkpoint 保持 13 个活动 Scope、170 项受管资源，listener、page、process 与 renderer process 无增长。相较审查前新增的 4 项受管资源是 Appearance Studio 设置摘要的 3 个 listener 与 1 个绑定标记，它们此前存在但没有进入 owner 诊断。
+`Memory.getDOMCounters().nodes` 仍作为趋势诊断输出，但不单独判定泄漏：Electron 当前 Chromium 的 Blink 原生 node wrapper 会在 JavaScript 已不可达后延迟回收，而实验性的 `DOM.getDetachedDomNodes` 本身还会延长其寿命。需要定位时显式开启 detached debug；正常门禁使用活动 DOM 不变量、JS heap、listener 和所有权资源共同判定，不能用单一原生计数制造假阳性。
+
+2026-08-16 完整压力验收为 3 次预热加 20 次测量；所有 checkpoint 保持 13 个活动 Scope、178 项受管资源、426 个 listener、2 个 page 和 5 个 Electron process。JS heap 从 9.1 MiB 到 9.6 MiB 后趋稳；reload、crash、Overlay 和 View session 均完成恢复与对账。
+
+## 生命周期检查器与性能诊断
+
+- `window.VCPLifecycleInspector.snapshot()` 返回 renderer Scope、TaskHandle、Contribution、State Channel、Shell/Overlay、最近模式事务和有界性能样本。
+- `snapshotMain()` 通过受限 preload 查询主进程 embedded session 与 sender-owned task；返回值不包含聊天内容、凭据或文件数据。
+- `VCPPerformance` 最多保留 100 条标量记录，并给 Next mount、模式切换、设置打开、原生 View 创建和激活附加诊断预算。
+- Inspector 是只读观察面，不提供 dispose、cancel、register 或 session mutation 能力。
 
 ## 2026-08-15 对抗审查
 
