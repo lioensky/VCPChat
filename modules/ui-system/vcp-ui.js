@@ -1768,14 +1768,29 @@ function modalFactory(options = {}) {
         controller.destroy();
         if (previousFocus instanceof HTMLElement && previousFocus.isConnected) previousFocus.focus();
     };
-    controller = makeController(overlay, state, current => {
+    controller = makeController(overlay, state, (current, records) => {
         dialog.dataset.size = normalize(current.size, ['sm', 'md', 'lg'], 'md', 'size');
         dialog.replaceChildren();
         const header = document.createElement('header');
         const title = document.createElement('h2');
         title.textContent = current.title;
-        const closeButton = iconButtonFactory({ icon: 'close', label: '关闭对话框', size: 'sm' });
-        closeButton.element.addEventListener('click', () => close(null), { once: true });
+        const closeButton = options.native === true
+            ? (() => {
+                const element = document.createElement('button');
+                element.type = 'button';
+                element.className = 'vcp-ui-icon-button';
+                element.setAttribute('aria-label', '关闭对话框');
+                element.title = '关闭对话框';
+                element.append(icon('close'));
+                return { element, destroy: () => element.remove() };
+            })()
+            : iconButtonFactory({ icon: 'close', label: '关闭对话框', size: 'sm' });
+        const closeFromButton = () => close(null);
+        closeButton.element.addEventListener('click', closeFromButton, { once: true });
+        records.push(() => {
+            closeButton.element?.removeEventListener('click', closeFromButton);
+            closeButton.destroy();
+        });
         header.append(title, closeButton.element);
         const body = document.createElement('div');
         body.className = 'vcp-ui-modal-body';

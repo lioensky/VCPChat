@@ -266,6 +266,13 @@ export function createAskNovaController(options = {}) {
             if (state.closed) return;
             state.closed = true;
             if (state.activeRequest) api.cancelAskNovaQuery?.(state.activeRequest.requestId).catch?.(() => {});
+            // Sever the large dialog subtree synchronously. The controller and
+            // lifecycle scope still remove their listeners below, while this
+            // prevents a delayed native DOM finalizer from retaining message,
+            // Markdown and form descendants as one graph.
+            content.replaceChildren();
+            modal?.element?.replaceChildren();
+            scopeHost.replaceChildren();
             if (modalScope) {
                 void modalScope.dispose('modal-closed').catch(error => {
                     console.error('[AskNova] Failed to dispose modal resources:', error);
@@ -331,25 +338,9 @@ export function createAskNovaController(options = {}) {
                     const copy = documentRef.createElement('button');
                     copy.type = 'button';
                     copy.className = 'ask-nova-copy';
+                    copy.dataset.messageId = message.id;
                     copy.setAttribute('aria-label', '复制 Nova 回复');
                     copy.textContent = state.copiedMessageId === message.id ? '已复制' : '复制';
-                    copy.addEventListener('click', async () => {
-                        try {
-                            await navigator.clipboard.writeText(message.content);
-                            state.copiedMessageId = message.id;
-                            renderMessages();
-                            const resetCopied = () => {
-                                if (!state.closed && state.copiedMessageId === message.id) {
-                                    state.copiedMessageId = null;
-                                    renderMessages();
-                                }
-                            };
-                            if (modalScope) modalScope.timeout(resetCopied, 1600, 'copy-feedback');
-                            else window.setTimeout(resetCopied, 1600);
-                        } catch {
-                            window.VCPUI?.feedback?.toast?.('复制失败', { variant: 'error' });
-                        }
-                    });
                     bubbleWrap.append(copy);
                 }
                 item.append(meta, bubbleWrap);
@@ -379,7 +370,6 @@ export function createAskNovaController(options = {}) {
                 button.type = 'button';
                 button.textContent = prompt;
                 button.disabled = state.isAsking;
-                button.addEventListener('click', () => submitQuestion(prompt));
                 prompts.append(button);
             });
             textarea.placeholder = `询问 ${target.repo} 的源码细节...`;
@@ -462,6 +452,32 @@ export function createAskNovaController(options = {}) {
         listen(tabs, 'click', event => {
             const button = event.target.closest('[data-target]');
             if (button) switchTarget(button.dataset.target);
+        });
+        listen(prompts, 'click', event => {
+            const button = event.target.closest('button');
+            if (button && prompts.contains(button)) submitQuestion(button.textContent);
+        });
+        listen(messages, 'click', async event => {
+            const button = event.target.closest('.ask-nova-copy[data-message-id]');
+            if (!button || !messages.contains(button)) return;
+            const messageId = button.dataset.messageId;
+            const message = sessions[state.targetId].messages.find(candidate => candidate.id === messageId);
+            if (!message) return;
+            try {
+                await navigator.clipboard.writeText(message.content);
+                state.copiedMessageId = message.id;
+                renderMessages();
+                const resetCopied = () => {
+                    if (!state.closed && state.copiedMessageId === message.id) {
+                        state.copiedMessageId = null;
+                        renderMessages();
+                    }
+                };
+                if (modalScope) modalScope.timeout(resetCopied, 1600, 'copy-feedback');
+                else window.setTimeout(resetCopied, 1600);
+            } catch {
+                window.VCPUI?.feedback?.toast?.('复制失败', { variant: 'error' });
+            }
         });
         listen(clearButton, 'click', () => {
             sessions[state.targetId] = createSession(currentTarget());
