@@ -2222,9 +2222,21 @@ export async function finalizeStreamedMessage(messageId, finishReason, context, 
     
     // Get the correct history
     let historyForThisMessage;
-    // For assistant chat, always use the in-memory history from the ref
-    if (storedContext.topicId === 'assistant_chat' || storedContext.topicId?.startsWith('voicechat_')) {
-        historyForThisMessage = refs.currentChatHistoryRef.get();
+    const currentViewHistory = refs.currentChatHistoryRef.get();
+    const currentViewOwnsPendingMessage = isForCurrentView
+        && Array.isArray(currentViewHistory)
+        && currentViewHistory.some(message => message?.id === messageId);
+    // The thinking placeholder is committed to renderer memory before the
+    // request starts, but intentionally is not written to disk. When a fast
+    // stream finishes, disk can therefore lag behind and not contain the
+    // message yet. Prefer the owned in-memory transaction for the current
+    // view; background topics still read their own persisted history.
+    if (
+        currentViewOwnsPendingMessage
+        || storedContext.topicId === 'assistant_chat'
+        || storedContext.topicId?.startsWith('voicechat_')
+    ) {
+        historyForThisMessage = currentViewHistory;
     } else {
         // For all other chats, always fetch the latest history from the source of truth
         // to avoid race conditions with the UI state (currentChatHistoryRef).
@@ -2348,7 +2360,6 @@ export async function finalizeStreamedMessage(messageId, finishReason, context, 
             uiHelper.scrollToBottom();
         }
 
-        window.updateSendButtonState?.();
     }
     
     // 🟢 使用防抖保存
@@ -2362,6 +2373,13 @@ export async function finalizeStreamedMessage(messageId, finishReason, context, 
     accumulatedStreamText.delete(messageId);
     streamSegmentStates.delete(messageId);
     cleanupDesktopPushState(messageId);
+
+    // Finalization can start in a background topic and finish after the user
+    // has navigated again. Refreshing only inside isForCurrentView leaves the
+    // shared send button stuck in interrupt mode even though all stream state
+    // is already gone. The updater derives state from the *current* chat, so
+    // it is safe and necessary to run after cleanup for every finalization.
+    window.updateSendButtonState?.();
 
     // Delayed cleanup
     const existingCleanupTimer = delayedCleanupTimers.get(messageId);
