@@ -988,6 +988,7 @@ import { setupEventListeners } from './modules/event-listeners.js';
         setupChatPresentationQuickSwitcher();
         await loadAndApplyGlobalSettings();
         await window.itemListManager.loadItems(); // Load both agents and groups
+        await window.chatManager.restoreLastOpenState(globalSettings);
 
         // Initialize UI Manager after settings are loaded to ensure correct theme, widths, etc.
         if (window.uiManager) {
