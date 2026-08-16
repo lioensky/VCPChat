@@ -66,27 +66,41 @@
             const host = this.document.createElement('div');
             host.className = 'next-ui-create-dialog-host vcp-ui-scope';
             host.dataset.density = this.getDensity();
-            const form = this.document.createElement('form');
-            form.className = 'next-ui-create-dialog-form';
-            const typeControl = ui.create('SegmentedControl', {
-                label: '创建类型', value: 'agent',
-                items: [{ value: 'agent', label: '助手', icon: 'person' }, { value: 'group', label: '群组', icon: 'group' }]
-            });
-            const typeField = ui.create('Field', { label: '类型', required: true, helper: '创建一个可以独立对话的助手。', control: typeControl });
-            typeField.element.classList.add('next-ui-create-dialog-type');
-            const nameControl = ui.create('Input', { placeholder: '例如：旅行助手', leadingIcon: 'edit', required: true });
-            const nameField = ui.create('Field', { label: '名称', required: true, helper: '创建后仍可在设置中修改名称和详细配置。', control: nameControl });
-            const nameInput = nameControl.control;
-            const modelControl = ui.create('Select', { value: '', disabled: true, options: [{ value: '', label: '使用默认模型' }] });
-            const modelField = ui.create('Field', { label: '模型', helper: '正在读取可用模型…', control: modelControl });
-            const error = this.document.createElement('div');
-            error.className = 'next-ui-create-dialog-error';
-            error.setAttribute('role', 'alert');
-            error.setAttribute('aria-live', 'polite');
-            form.append(typeField.element, nameField.element, modelField.element, error);
-            const cancelButton = ui.create('Button', { label: '取消', variant: 'ghost' });
-            const createButton = ui.create('Button', { label: '创建', variant: 'primary', type: 'submit' });
-            const controls = [typeControl, typeField, nameControl, nameField, modelControl, modelField, cancelButton, createButton];
+            let form;
+            let typeControl;
+            let typeField;
+            let nameControl;
+            let nameField;
+            let nameInput;
+            let modelControl;
+            let modelField;
+            let error;
+            let cancelButton;
+            let createButton;
+            let controls = [];
+            const buildControls = create => {
+                form = this.document.createElement('form');
+                form.className = 'next-ui-create-dialog-form';
+                typeControl = create('SegmentedControl', {
+                    label: '创建类型', value: 'agent',
+                    items: [{ value: 'agent', label: '助手', icon: 'person' }, { value: 'group', label: '群组', icon: 'group' }]
+                });
+                typeField = create('Field', { label: '类型', required: true, helper: '创建一个可以独立对话的助手。', control: typeControl });
+                typeField.element.classList.add('next-ui-create-dialog-type');
+                nameControl = create('Input', { placeholder: '例如：旅行助手', leadingIcon: 'edit', required: true });
+                nameField = create('Field', { label: '名称', required: true, helper: '创建后仍可在设置中修改名称和详细配置。', control: nameControl });
+                nameInput = nameControl.control;
+                modelControl = create('Select', { value: '', disabled: true, options: [{ value: '', label: '使用默认模型' }] });
+                modelField = create('Field', { label: '模型', helper: '正在读取可用模型…', control: modelControl });
+                error = this.document.createElement('div');
+                error.className = 'next-ui-create-dialog-error';
+                error.setAttribute('role', 'alert');
+                error.setAttribute('aria-live', 'polite');
+                form.append(typeField.element, nameField.element, modelField.element, error);
+                cancelButton = create('Button', { label: '取消', variant: 'ghost' });
+                createButton = create('Button', { label: '创建', variant: 'primary', type: 'submit' });
+                controls = [typeControl, typeField, nameControl, nameField, modelControl, modelField, cancelButton, createButton];
+            };
             const SurfaceController = this.window.VCPUISurface?.SurfaceController;
             const surface = SurfaceController ? new SurfaceController({
                 window: this.window,
@@ -97,8 +111,19 @@
             }) : null;
             if (surface) {
                 await surface.mount(host, context => {
-                    controls.forEach((control, index) => context.own(control, `create-control:${index}`, 'ui-registration'));
+                    buildControls((name, options) => context.create(name, options));
+                }, {
+                    renderFallback: target => {
+                        target.textContent = '创建界面暂时无法加载。';
+                    },
                 });
+                if (surface.fallback) {
+                    await surface.dispose('create-surface-fallback');
+                    this.showUnavailable();
+                    return;
+                }
+            } else {
+                buildControls((name, options) => ui.create(name, options));
             }
             const dialogScope = surface?.scope || this.scope?.child('next:create-item-modal') || null;
             if (!surface) {

@@ -224,6 +224,8 @@
     let openScope = null;
     let destroyed = false;
     let destroyPromise = null;
+    let closePromise = null;
+    let queuedOpenOptions = null;
 
     const clone = value => JSON.parse(JSON.stringify(value));
     const api = () => window.chatAPI || window.electronAPI;
@@ -1263,61 +1265,76 @@
         return closePromptPromise;
     }
 
-    const overlayOwner = Symbol('appearance-studio-overlay');
-    let ownsOverlay = false;
+    let activeOverlayOwner = null;
 
     function acquireStudioOverlay() {
-        if (ownsOverlay) return;
-        ownsOverlay = true;
+        if (activeOverlayOwner) return;
+        const owner = Symbol('appearance-studio-overlay');
+        activeOverlayOwner = owner;
         if (!openScope && moduleScope) openScope = moduleScope.child('next:appearance-studio-open');
         openScope?.own(() => {
-            if (!ownsOverlay) return;
-            ownsOverlay = false;
-            window.topTabManager?.releaseOverlay?.(overlayOwner);
+            if (activeOverlayOwner !== owner) return;
+            activeOverlayOwner = null;
+            window.topTabManager?.releaseOverlay?.(owner);
         }, 'appearance-overlay-lease', 'overlay');
-        Promise.resolve(window.topTabManager?.acquireOverlay?.(overlayOwner)).catch(error => {
-            ownsOverlay = false;
+        Promise.resolve(window.topTabManager?.acquireOverlay?.(owner)).catch(error => {
+            if (activeOverlayOwner === owner) activeOverlayOwner = null;
             console.warn('[AppearanceStudio] Failed to hide embedded app:', error);
         });
     }
 
-    function releaseStudioOverlay() {
-        if (!ownsOverlay) return;
+    async function releaseStudioOverlay() {
         if (openScope) {
             const scope = openScope;
             openScope = null;
-            void scope.dispose('appearance-closed').catch(error => {
+            try {
+                await scope.dispose('appearance-closed');
+            } catch (error) {
                 console.error('[AppearanceStudio] Failed to dispose open resources:', error);
-            });
-        } else {
-            ownsOverlay = false;
-            window.topTabManager?.releaseOverlay?.(overlayOwner);
+            }
+        } else if (activeOverlayOwner) {
+            const owner = activeOverlayOwner;
+            activeOverlayOwner = null;
+            window.topTabManager?.releaseOverlay?.(owner);
         }
     }
 
-    async function close({ rollback = true } = {}) {
-        if (!surface || surface.root.hidden || (saving && rollback)) return;
-        if (surface.closePrompt && !surface.closePrompt.hidden) settleClosePrompt(false);
-        surface.root.hidden = true;
-        surface.root.classList.remove('active');
-        document.body.classList.remove('vcp-appearance-studio-open');
-        const nextFocus = sourceTrigger?.isConnected ? sourceTrigger : null;
-        try {
-            if (rollback) await restoreSnapshot();
-        } finally {
-            sourceTrigger = null;
-            snapshot = null;
-            snapshotRevision = 0;
-            draft = null;
-            themesLoadSequence += 1;
-            document.documentElement.classList.remove('vcp-appearance-studio-host');
-            releaseStudioOverlay();
-            nextFocus?.focus?.();
-        }
+    function close({ rollback = true } = {}) {
+        if (closePromise) return closePromise;
+        if (!surface || surface.root.hidden || (saving && rollback)) return Promise.resolve();
+        closePromise = (async () => {
+            if (surface.closePrompt && !surface.closePrompt.hidden) settleClosePrompt(false);
+            surface.root.hidden = true;
+            surface.root.classList.remove('active');
+            document.body.classList.remove('vcp-appearance-studio-open');
+            const nextFocus = sourceTrigger?.isConnected ? sourceTrigger : null;
+            try {
+                if (rollback) await restoreSnapshot();
+            } finally {
+                sourceTrigger = null;
+                snapshot = null;
+                snapshotRevision = 0;
+                draft = null;
+                themesLoadSequence += 1;
+                document.documentElement.classList.remove('vcp-appearance-studio-host');
+                await releaseStudioOverlay();
+                nextFocus?.focus?.();
+            }
+        })().finally(() => {
+            closePromise = null;
+            const pendingOptions = queuedOpenOptions;
+            queuedOpenOptions = null;
+            if (pendingOptions && !destroyed) queueMicrotask(() => open(pendingOptions));
+        });
+        return closePromise;
     }
 
     function open(options = {}) {
         if (destroyed) return false;
+        if (closePromise) {
+            queuedOpenOptions = options;
+            return true;
+        }
         document.documentElement.classList.add('vcp-appearance-studio-host');
         const currentSurface = createSurface();
         if (!currentSurface.root.hidden) {
