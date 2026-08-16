@@ -16,6 +16,7 @@ test('lifecycle inspector reports ownership metadata without payload content', a
     window.chatAPI = { getMainLifecycleSnapshot: async () => ({
         embeddedSessions: [{ action: 'open-notes-window' }], activeEmbeddedAction: null,
         tasks: [{ requestId: 'request-1', operation: 'embedded:create', state: 'running', ageMs: 2 }],
+        chatTasks: [{ requestId: 'message-1', operation: 'chat:stream', state: 'running', ageMs: 1 }],
     }) };
     window.eval(fs.readFileSync('modules/ui-system/lifecycle-inspector.js', 'utf8'));
     window.dispatchEvent(new window.CustomEvent('ui-mode-transition-state', { detail: { phase: 'settled', mode: 'next', generation: 3 } }));
@@ -25,6 +26,7 @@ test('lifecycle inspector reports ownership metadata without payload content', a
     assert.equal(renderer.transitions[0].generation, 3);
     assert.equal(renderer.performance[0].name, 'next.mount');
     assert.equal(main.tasks[0].operation, 'embedded:create');
+    assert.equal(main.chatTasks[0].operation, 'chat:stream');
     const serialized = JSON.stringify({ renderer, main });
     assert.doesNotMatch(serialized, /apiKey|chatHistory|fileContent|secret/i);
     const originalSnapshot = window.VCPLifecycleInspector.snapshot;

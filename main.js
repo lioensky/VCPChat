@@ -1374,6 +1374,7 @@ if (!gotTheLock) {
                 embeddedSessions: embedded.sessions,
                 activeEmbeddedAction: embedded.activeAction,
                 tasks: embeddedAppTasks.snapshot(),
+                chatTasks: chatHandlers.getVcpStreamTaskSnapshot(),
             };
         });
         ipcMain.handle('embedded-vchat-app:close-all', async event => {

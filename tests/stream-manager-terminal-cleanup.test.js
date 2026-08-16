@@ -3,6 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const { JSDOM } = require('jsdom');
 
 const source = fs.readFileSync('modules/renderer/streamManager.js', 'utf8');
 
@@ -63,4 +64,67 @@ test('discardStreamingMessage releases every strong stream owner', () => {
     }
     assert.match(body, /cleanupDesktopPushState\(messageId\)/);
     assert.match(body, /updateSendButtonState/);
+});
+
+test('a runtime background-history failure releases every stream owner', async () => {
+    const dom = new JSDOM('<!doctype html><div id="chat"></div>', {
+        runScripts: 'outside-only',
+        url: 'https://vcpchat.local/',
+    });
+    const executableSource = source
+        .replace(/^import .*;$/gm, '')
+        .replace(/\bexport\s+(?=(?:async\s+)?function\b)/g, '');
+    dom.window.formatMessageTimestamp = () => 'now';
+    dom.window.PIPELINE_MODES = { STREAM_FAST: 'stream-fast' };
+    dom.window.createContentPipeline = () => ({ process: text => ({ text }) });
+    dom.window.updateSendButtonState = () => {};
+    dom.window.eval(`
+        const formatMessageTimestamp = window.formatMessageTimestamp;
+        const PIPELINE_MODES = window.PIPELINE_MODES;
+        const createContentPipeline = window.createContentPipeline;
+        ${executableSource}
+    `);
+
+    const history = [];
+    const selected = { id: 'visible-agent', type: 'agent' };
+    const api = dom.window.streamManager;
+    api.initStreamManager({
+        electronAPI: {
+            getChatHistory: async () => { throw new Error('controlled history failure'); },
+        },
+        currentSelectedItemRef: { get: () => selected },
+        currentTopicIdRef: { get: () => 'visible-topic' },
+        currentChatHistoryRef: { get: () => history, set() {} },
+        globalSettingsRef: { get: () => ({ enableSmoothStreaming: false }) },
+        chatMessagesDiv: dom.window.document.getElementById('chat'),
+        renderMessage: () => null,
+        uiHelper: {},
+    });
+
+    api.appendStreamChunk('background-message', { content: 'buffered-before-init' }, {
+        agentId: 'background-agent',
+        topicId: 'background-topic',
+    });
+    await api.startStreamingMessage({
+        id: 'background-message',
+        agentId: 'background-agent',
+        topicId: 'background-topic',
+        content: '',
+    });
+
+    assert.deepEqual({ ...api.getDiagnostics() }, {
+        activeMessageId: null,
+        initialization: 0,
+        activeInitializations: 0,
+        contexts: 0,
+        pendingHistory: 0,
+        prebuffered: 0,
+        pendingFinalizations: 0,
+        chunkQueues: 0,
+        renderTimers: 0,
+        delayedCleanupTimers: 0,
+        historySaveQueue: 0,
+        desktopPushStates: 0,
+    });
+    dom.window.close();
 });

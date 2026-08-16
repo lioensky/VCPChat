@@ -2502,6 +2502,24 @@ export function cleanupTransientState() {
         console.debug('[StreamManager] Transient state cleared');
     }
 
+export function getStreamDiagnostics() {
+    return Object.freeze({
+        activeMessageId: activeStreamingMessageId,
+        initialization: messageInitializationStatus.size,
+        activeInitializations: [...messageInitializationStatus.values()]
+            .filter(status => status === 'pending' || status === 'ready').length,
+        contexts: messageContextMap.size,
+        pendingHistory: pendingHistoryEntries.size,
+        prebuffered: preBufferedChunks.size,
+        pendingFinalizations: pendingFinalizationEvents.size,
+        chunkQueues: streamingChunkQueues.size,
+        renderTimers: streamingTimers.size,
+        delayedCleanupTimers: delayedCleanupTimers.size,
+        historySaveQueue: historySaveQueue.size,
+        desktopPushStates: desktopPushStates.size,
+    });
+}
+
 // Expose to global scope for classic scripts
 window.streamManager = {
     initStreamManager,
@@ -2510,6 +2528,7 @@ window.streamManager = {
     finalizeStreamedMessage,
     discardStreamingMessage,
     cleanupTransientState,
+    getDiagnostics: getStreamDiagnostics,
     isMessageActive,
     getActiveStreamingMessageId: () => activeStreamingMessageId,
     getActiveStreamingContext: () => {

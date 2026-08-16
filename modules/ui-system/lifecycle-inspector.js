@@ -30,6 +30,7 @@
             contributions: globalObject.VCPContributions?.diagnostics?.snapshot?.() || null,
             states: Object.freeze(globalObject.VCPStateChannels?.diagnostics?.() || []),
             shell: globalObject.VCPNextShellController?.getDiagnostics?.() || null,
+            streams: globalObject.streamManager?.getDiagnostics?.() || null,
             performance: Object.freeze(globalObject.VCPPerformance?.snapshot?.() || []),
             transitions: Object.freeze([...transitionHistory]),
         });
@@ -42,6 +43,7 @@
             embeddedSessions: Object.freeze(result?.embeddedSessions || []),
             activeEmbeddedAction: result?.activeEmbeddedAction || null,
             tasks: Object.freeze(result?.tasks || []),
+            chatTasks: Object.freeze(result?.chatTasks || []),
         });
     }
 
