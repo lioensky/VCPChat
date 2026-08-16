@@ -20,6 +20,7 @@ const electron = process.platform === 'darwin'
     : path.join(root, 'node_modules', 'electron', 'dist', process.platform === 'win32' ? 'electron.exe' : 'electron');
 const timeout = 45_000;
 const sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
+const safeFilePart = value => String(value).replace(/[^a-z0-9._-]+/gi, '-').slice(0, 80) || 'unknown';
 const requestedUiMode = process.env.VCPCHAT_SEQUENCE_UI_MODE || 'next';
 if (!['classic', 'next'].includes(requestedUiMode)) {
     throw new Error(`Unsupported VCPCHAT_SEQUENCE_UI_MODE: ${requestedUiMode}`);
@@ -30,6 +31,24 @@ function deferred() {
     let reject;
     const promise = new Promise((done, fail) => { resolve = done; reject = fail; });
     return { promise, resolve, reject };
+}
+
+function positiveInteger(value, fallback) {
+    const parsed = Number.parseInt(value || '', 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function regressionSlope(values) {
+    if (values.length < 2) return 0;
+    const xMean = (values.length - 1) / 2;
+    const yMean = values.reduce((sum, value) => sum + value, 0) / values.length;
+    let numerator = 0;
+    let denominator = 0;
+    values.forEach((value, index) => {
+        numerator += (index - xMean) * (value - yMean);
+        denominator += (index - xMean) ** 2;
+    });
+    return denominator ? numerator / denominator : 0;
 }
 
 async function waitForChildExit(child, waitMs = 3_000) {
@@ -157,6 +176,7 @@ const topics = {
     SequenceAgentA: ['a-one', 'a-two'],
     SequenceAgentB: ['b-one', 'b-two'],
 };
+let remainingCrashScenarioBudget = positiveInteger(process.env.VCPCHAT_SEQUENCE_CRASH_BUDGET, 2);
 const catalog = [
     {
         id: 'select-agent', weight: 5,
@@ -247,6 +267,26 @@ const catalog = [
         run: ({ driver }) => driver.sendFault('disconnect'),
     },
     {
+        id: 'reload-during-stream', weight: 1,
+        canRun: model => Boolean(model.identity && model.topicId) && Number(model.rendererReloads || 0) < 1,
+        generate: random => ({ nonce: random.integer(0, 0xFFFFFFFF).toString(36) }),
+        transition: model => ({ ...model, rendererReloads: Number(model.rendererReloads || 0) + 1 }),
+        run: ({ driver, params }) => driver.recoverDuringHeldStream('reload', params.nonce),
+    },
+    {
+        id: 'crash-during-stream', weight: 1,
+        canRun: model => Boolean(model.identity && model.topicId)
+            && Number(model.rendererCrashes || 0) < 1
+            && Number(model.crashBudget || 0) > 0,
+        generate: random => ({ nonce: random.integer(0, 0xFFFFFFFF).toString(36) }),
+        transition: model => ({
+            ...model,
+            rendererCrashes: Number(model.rendererCrashes || 0) + 1,
+            crashBudget: Math.max(0, Number(model.crashBudget || 0) - 1),
+        }),
+        run: ({ driver, params }) => driver.recoverDuringHeldStream('crash', params.nonce),
+    },
+    {
         id: 'settings-escape', weight: 2,
         transition: model => model,
         run: ({ driver }) => driver.settingsEscape(),
@@ -255,6 +295,12 @@ const catalog = [
         id: 'notification-roundtrip', weight: 2,
         transition: model => model,
         run: ({ driver }) => driver.notificationRoundtrip(),
+    },
+    {
+        id: 'embedded-open-close-reverse', weight: 1,
+        canRun: () => requestedUiMode === 'next',
+        transition: model => model,
+        run: ({ driver }) => driver.embeddedOpenCloseReverse(),
     },
 ];
 
@@ -288,11 +334,42 @@ try {
     }
     assert.ok(page, `Main renderer missing: ${stderr.value}`);
     const errors = [];
-    page.on('pageerror', error => errors.push(error?.stack || String(error)));
+    const consoleMessages = [];
+    const trackedPages = new WeakSet();
+    const trackPage = candidate => {
+        if (!candidate || trackedPages.has(candidate)) return;
+        trackedPages.add(candidate);
+        candidate.on('pageerror', error => errors.push(error?.stack || String(error)));
+        candidate.on('console', message => {
+            const entry = { at: Date.now(), type: message.type(), text: message.text().slice(0, 2_000) };
+            consoleMessages.push(entry);
+            if (consoleMessages.length > 200) consoleMessages.splice(0, consoleMessages.length - 200);
+        });
+    };
+    trackPage(page);
     await page.waitForFunction(() => document.documentElement.dataset.vcpRendererReady === 'true', { timeout });
     await page.waitForFunction(ids => ids.every(id => document.querySelector(`#agentList > [data-item-id="${id}"][data-item-type="agent"]`)), { timeout }, identities);
 
     const click = async selector => page.evaluate(value => document.querySelector(value)?.click(), selector);
+    const waitForRecoveredMainPage = async () => {
+        const recoveryDeadline = Date.now() + 12_000;
+        while (Date.now() < recoveryDeadline) {
+            for (const candidate of await browser.pages()) {
+                if (candidate.isClosed() || !candidate.url().includes('main.html')) continue;
+                try {
+                    const ready = await candidate.evaluate(() => document.documentElement.dataset.vcpRendererReady === 'true');
+                    if (ready) {
+                        trackPage(candidate);
+                        return candidate;
+                    }
+                } catch {
+                    // The old execution context can disappear while recovery is loading.
+                }
+            }
+            await sleep(100);
+        }
+        throw new Error('Main renderer did not recover after reload/crash.');
+    };
     const waitState = async (id, topicId) => {
         try {
             await page.waitForFunction((expectedId, expectedTopic) => (
@@ -310,6 +387,36 @@ try {
             }));
             throw new Error(`Timed out waiting for ${id}/${topicId}; actual=${JSON.stringify(actual)}`, { cause: error });
         }
+    };
+    const openCloseSettings = async () => {
+        await page.evaluate(() => window.uiHelperFunctions.openModal('globalSettingsModal'));
+        await page.waitForFunction(() => document.getElementById('globalSettingsModal')?.classList.contains('active'), { timeout });
+        await page.keyboard.press('Escape');
+        await page.evaluate(() => {
+            if (document.getElementById('globalSettingsModal')?.classList.contains('active')) {
+                window.uiHelperFunctions.closeModal('globalSettingsModal');
+            }
+        });
+        await page.waitForFunction(() => !document.getElementById('globalSettingsModal')?.classList.contains('active'), { timeout });
+    };
+    const warmRendererLifecycleBaseline = async () => {
+        await openCloseSettings();
+        await click('#toggleNotificationsBtn');
+        await sleep(20);
+        await click('#toggleNotificationsBtn');
+    };
+    const waitForStreamQuiescence = async () => {
+        await page.waitForFunction(() => {
+            const streams = window.streamManager?.getDiagnostics?.();
+            return !streams
+                || (
+                    streams.activeMessageId === null
+                    && streams.activeInitializations === 0
+                    && streams.prebuffered === 0
+                    && streams.pendingFinalizations === 0
+                );
+        }, { timeout: 8_000 });
+        return page.evaluate(() => window.streamManager?.getDiagnostics?.() || null);
     };
     const driver = {
         async selectAgent(id, topicId) {
@@ -475,21 +582,90 @@ try {
                 && document.querySelectorAll('.message-item.streaming').length === 0
             ), { timeout: 8_000 });
         },
-        async settingsEscape() {
-            await page.evaluate(() => window.uiHelperFunctions.openModal('globalSettingsModal'));
-            await page.waitForFunction(() => document.getElementById('globalSettingsModal')?.classList.contains('active'), { timeout });
-            await page.keyboard.press('Escape');
-            await page.evaluate(() => {
-                if (document.getElementById('globalSettingsModal')?.classList.contains('active')) {
-                    window.uiHelperFunctions.closeModal('globalSettingsModal');
+        async recoverDuringHeldStream(kind, nonce) {
+            const expected = await page.evaluate(() => ({
+                id: window.currentSelectedItem?.id,
+                topicId: window.currentTopicId,
+            }));
+            assert.ok(expected.id && expected.topicId, `${kind}: no selected conversation`);
+            const key = `${kind}-${nonce}`;
+            await page.evaluate(holdKey => {
+                const input = document.getElementById('messageInput');
+                input.value = `sequence-hold-${holdKey}`;
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+                document.getElementById('sendMessageBtn').click();
+            }, key);
+            await fixture.waitPending(key);
+
+            try {
+                if (kind === 'reload') {
+                    await page.reload({ waitUntil: 'domcontentloaded', timeout: 12_000 });
+                } else {
+                    const crashSession = await page.createCDPSession();
+                    try {
+                        await crashSession.send('Page.crash');
+                    } catch (error) {
+                        if (!/Target closed|Session closed|crash/i.test(String(error?.message || error))) throw error;
+                    }
+                    try { await crashSession.detach(); } catch { /* crashed target */ }
                 }
-            });
-            await page.waitForFunction(() => !document.getElementById('globalSettingsModal')?.classList.contains('active'), { timeout });
+                page = await waitForRecoveredMainPage();
+                await page.waitForFunction(ids => ids.every(id => document.querySelector(`#agentList > [data-item-id="${id}"][data-item-type="agent"]`)), { timeout: 12_000 }, identities);
+                await waitState(expected.id, expected.topicId);
+                // A reload creates a new renderer epoch. Re-open every lazily
+                // registered surface used by the baseline before comparing
+                // ownership counts across epochs.
+                await warmRendererLifecycleBaseline();
+            } finally {
+                if (fixture.pending.has(key)) fixture.release(key);
+            }
+
+            const settleDeadline = Date.now() + 8_000;
+            while (fixture.pending.has(key) && Date.now() < settleDeadline) await sleep(20);
+            assert.equal(fixture.pending.has(key), false, `${kind}: held request did not settle`);
+            await page.waitForFunction(() => (
+                document.getElementById('sendMessageBtn')?.dataset.mode !== 'interrupt'
+                && document.querySelectorAll('.message-item.streaming').length === 0
+                && !window.streamManager?.getActiveStreamingMessageId?.()
+            ), { timeout: 8_000 });
+
+            const historySource = await fs.readFile(
+                path.join(appData, 'UserData', expected.id, 'topics', expected.topicId, 'history.json'),
+                'utf8'
+            );
+            const durableHistory = JSON.parse(historySource);
+            assert.equal(
+                durableHistory.some(message => message.isThinking || message.isPendingStream),
+                false,
+                `${kind}: transient stream state survived renderer recovery`
+            );
+        },
+        async settingsEscape() {
+            await openCloseSettings();
         },
         async notificationRoundtrip() {
             await click('#toggleNotificationsBtn');
             await sleep(20);
             await click('#toggleNotificationsBtn');
+        },
+        async embeddedOpenCloseReverse() {
+            const result = await page.evaluate(async () => {
+                const app = window.trayManager?.getApps?.().find(candidate => candidate.id === 'vchat-app-notes');
+                if (!app) return { error: 'notes app missing' };
+                const opening = window.topTabManager.openEmbeddedApp(app);
+                window.topTabManager.closeView(`app:${app.id}`);
+                await opening;
+                return {
+                    viewPresent: Boolean(document.querySelector(`[data-view-id="app:${app.id}"]`)),
+                    internalPresent: Boolean(document.querySelector(`[data-app-id="${app.id}"]`)),
+                    main: await window.VCPLifecycleInspector?.snapshotMain?.(),
+                };
+            });
+            assert.equal(result.error, undefined, result.error);
+            assert.equal(result.viewPresent, false, 'reverse embedded completion restored a closed tab');
+            assert.equal(result.internalPresent, false, 'reverse embedded completion restored a closed host');
+            assert.deepEqual(result.main?.embeddedSessions || [], [], 'reverse embedded completion retained a main-process session');
+            assert.equal(result.main?.activeEmbeddedAction || null, null, 'reverse embedded completion retained overlay ownership');
         },
     };
     const observe = () => page.evaluate(() => ({
@@ -502,55 +678,237 @@ try {
         settingsActive: document.getElementById('globalSettingsModal')?.classList.contains('active') === true,
         mainConnected: Boolean(document.querySelector('.container')?.isConnected && document.querySelector('.main-content')?.isConnected),
         streamingMessages: document.querySelectorAll('.message-item.streaming').length,
+        streams: window.streamManager?.getDiagnostics?.() || null,
         lifecycle: window.VCPLifecycle?.diagnostics?.summary?.() || null,
     }));
+    const collectResourceCheckpoint = async label => {
+        const rendererSession = await page.createCDPSession();
+        const browserSession = await browser.target().createCDPSession();
+        try {
+            for (let pass = 0; pass < 3; pass += 1) {
+                await rendererSession.send('HeapProfiler.collectGarbage');
+                await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 0)));
+                await sleep(25);
+            }
+            const [heap, dom, processInfo, snapshot, mainLifecycle, pages] = await Promise.all([
+                rendererSession.send('Runtime.getHeapUsage'),
+                rendererSession.send('Memory.getDOMCounters'),
+                browserSession.send('SystemInfo.getProcessInfo'),
+                observe(),
+                page.evaluate(() => window.VCPLifecycleInspector?.snapshotMain?.() || null),
+                browser.pages(),
+            ]);
+            const processes = processInfo.processInfo || [];
+            return {
+                label,
+                heapUsed: heap.usedSize,
+                documents: dom.documents,
+                nodes: dom.nodes,
+                listeners: dom.jsEventListeners,
+                pages: pages.filter(candidate => !candidate.isClosed()).length,
+                processes: processes.length,
+                rendererProcesses: processes.filter(process => /renderer/i.test(process.type || '')).length,
+                lifecycle: snapshot.lifecycle,
+                mainLifecycle,
+            };
+        } finally {
+            await rendererSession.detach().catch(() => {});
+            await browserSession.detach().catch(() => {});
+        }
+    };
+    const writeFailureArtifacts = async ({ error, trace, seed, runIndex = 0, snapshot = null }) => {
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const directory = path.join(
+            root,
+            'screenshots',
+            'main-chat-sequences',
+            `${timestamp}-${safeFilePart(seed)}-run-${runIndex + 1}`
+        );
+        await fs.mkdir(directory, { recursive: true });
+
+        let rendererLifecycle = null;
+        let mainLifecycle = null;
+        let pageUrls = [];
+        try { rendererLifecycle = await page.evaluate(() => window.VCPLifecycleInspector?.snapshot?.() || null); } catch { /* renderer unavailable */ }
+        try { mainLifecycle = await page.evaluate(() => window.VCPLifecycleInspector?.snapshotMain?.() || null); } catch { /* main bridge unavailable */ }
+        try { pageUrls = (await browser.pages()).filter(candidate => !candidate.isClosed()).map(candidate => candidate.url()); } catch { /* browser unavailable */ }
+        try { await page.screenshot({ path: path.join(directory, 'main-renderer.png'), fullPage: true }); } catch { /* renderer unavailable */ }
+
+        const errorText = `${error?.stack || error}\n`;
+        await Promise.all([
+            fs.writeFile(path.join(directory, 'trace.json'), serializeTrace(trace), 'utf8'),
+            fs.writeFile(path.join(directory, 'error.txt'), errorText, 'utf8'),
+            fs.writeFile(path.join(directory, 'business-snapshot.json'), `${JSON.stringify(snapshot, null, 2)}\n`, 'utf8'),
+            fs.writeFile(path.join(directory, 'renderer-lifecycle.json'), `${JSON.stringify(rendererLifecycle, null, 2)}\n`, 'utf8'),
+            fs.writeFile(path.join(directory, 'main-lifecycle.json'), `${JSON.stringify(mainLifecycle, null, 2)}\n`, 'utf8'),
+            fs.writeFile(path.join(directory, 'page-urls.json'), `${JSON.stringify(pageUrls, null, 2)}\n`, 'utf8'),
+            fs.writeFile(path.join(directory, 'renderer-console-tail.json'), `${JSON.stringify(consoleMessages.slice(-100), null, 2)}\n`, 'utf8'),
+            fs.writeFile(path.join(directory, 'renderer-errors.txt'), `${errors.join('\n\n')}\n`, 'utf8'),
+            fs.writeFile(path.join(directory, 'electron-stderr.txt'), `${stderr.value}\n`, 'utf8'),
+        ]);
+        console.error(`Main-chat sequence failure artifacts: ${directory}`);
+        return directory;
+    };
     // Freeze the resource baseline only after lazy settings, notification and
     // streaming paths have each initialized once. Measuring at renderer-ready
     // would classify legitimate first-use registration as a leak.
-    await driver.selectAgent(identities[0], topics[identities[0]][0]);
-    await driver.settingsEscape();
-    await driver.notificationRoundtrip();
-    await driver.sendFault('fail');
-    const baselineSnapshot = await observe();
-    const seed = process.env.VCPCHAT_SEQUENCE_SEED || `${requestedUiMode}-main-chat-default`;
-    const trace = createTrace({
-        seed,
-        steps: Number.parseInt(process.env.VCPCHAT_SEQUENCE_STEPS || '24', 10),
-        initialModel: createInitialModel({
-            identity: { id: identities[0], type: 'agent' },
-            topicId: topics[identities[0]][0],
-            lastTopics: { [identities[0]]: topics[identities[0]][0] },
-            conversation: 'history',
-        }),
-        catalog,
-    });
-    try {
-        await runTrace({
-            trace, catalog, driver, observe,
-            assertInvariant: ({ model, snapshot, index }) => {
-                assert.equal(snapshot.rendererReady, 'true', `step ${index}: renderer lost readiness`);
-                assert.equal(snapshot.mode, requestedUiMode, `step ${index}: mode changed`);
-                assert.equal(snapshot.settingsActive, false, `step ${index}: modal retained`);
-                assert.equal(snapshot.mainConnected, true, `step ${index}: main chat surface disappeared`);
-                assert.equal(snapshot.streamingMessages, 0, `step ${index}: stream owner survived settle`);
-                if (model.identity) {
-                    assert.equal(snapshot.identity, model.identity.id, `step ${index}: selected identity diverged`);
-                    assert.equal(snapshot.topicId, model.topicId, `step ${index}: selected topic diverged`);
-                    assert.deepEqual(snapshot.activeItems, [model.identity.id], `step ${index}: active item DOM diverged`);
-                    assert.deepEqual(snapshot.activeTopics, [model.topicId], `step ${index}: active topic DOM diverged`);
+    const ensureInitialConversation = async () => {
+        const itemId = identities[0];
+        const topicId = topics[itemId][0];
+        await click(`#agentList > [data-item-id="${itemId}"][data-item-type="agent"]`);
+        await page.waitForFunction(expectedId => window.currentSelectedItem?.id === expectedId, { timeout: 8_000 }, itemId);
+        const activeTopic = await page.evaluate(() => window.currentTopicId);
+        if (activeTopic !== topicId) {
+            await page.evaluate(expectedTopicId => window.chatManager.selectTopic(expectedTopicId), topicId);
+        }
+        await waitState(itemId, topicId);
+    };
+    const resetFixtureConversationState = async () => {
+        await page.evaluate(async fixtureTopics => {
+            for (const [itemId, topicIds] of Object.entries(fixtureTopics)) {
+                window.localStorage.setItem(`lastActiveTopic_${itemId}_agent`, topicIds[0]);
+                for (const topicId of topicIds) {
+                    await window.chatAPI.saveChatHistory(itemId, topicId, [{
+                        id: `history-${itemId}-${topicId}`,
+                        role: 'assistant',
+                        content: `${itemId}/${topicId}`,
+                        timestamp: 1,
+                    }]);
                 }
-            },
+            }
+        }, topics);
+        await ensureInitialConversation();
+        await page.evaluate(({ itemId, topicId }) => (
+            window.chatManager.loadChatHistory(itemId, 'agent', topicId)
+        ), { itemId: identities[0], topicId: topics[identities[0]][0] });
+        await page.evaluate(() => window.streamManager?.cleanupTransientState?.());
+    };
+    await ensureInitialConversation();
+    await warmRendererLifecycleBaseline();
+    await driver.sendFault('fail');
+    await resetFixtureConversationState();
+    const baselineSnapshot = await observe();
+    const baselineLifecycleDetails = await page.evaluate(() => window.VCPLifecycleInspector?.snapshot?.() || null);
+    const baseResourceCheckpoint = await collectResourceCheckpoint('baseline');
+    const seed = process.env.VCPCHAT_SEQUENCE_SEED || `${requestedUiMode}-main-chat-default`;
+    const runCount = positiveInteger(process.env.VCPCHAT_SEQUENCE_RUNS, 1);
+    const stepCount = positiveInteger(process.env.VCPCHAT_SEQUENCE_STEPS, 24);
+    const checkpoints = [];
+    let totalActions = 0;
+    let lastTrace = null;
+    let lastRunSeed = seed;
+    let lastRunIndex = 0;
+    for (let runIndex = 0; runIndex < runCount; runIndex += 1) {
+        await resetFixtureConversationState();
+        const runSeed = runCount === 1 ? seed : `${seed}:${runIndex + 1}`;
+        const trace = createTrace({
+            seed: runSeed,
+            steps: stepCount,
+            initialModel: createInitialModel({
+                identity: { id: identities[0], type: 'agent' },
+                topicId: topics[identities[0]][0],
+                lastTopics: { [identities[0]]: topics[identities[0]][0] },
+                conversation: 'history',
+                crashBudget: remainingCrashScenarioBudget > 0 ? 1 : 0,
+            }),
+            catalog,
         });
+        lastTrace = trace;
+        lastRunSeed = runSeed;
+        lastRunIndex = runIndex;
+        if (trace.actions.some(action => action.id === 'crash-during-stream')) {
+            remainingCrashScenarioBudget -= 1;
+        }
+        totalActions += trace.actions.length;
+        try {
+            await runTrace({
+                trace, catalog, driver, observe,
+                assertInvariant: async ({ model, snapshot, index }) => {
+                    const settledStreams = await waitForStreamQuiescence();
+                    assert.equal(snapshot.rendererReady, 'true', `run ${runIndex + 1}, step ${index}: renderer lost readiness`);
+                    assert.equal(snapshot.mode, requestedUiMode, `run ${runIndex + 1}, step ${index}: mode changed`);
+                    assert.equal(snapshot.settingsActive, false, `run ${runIndex + 1}, step ${index}: modal retained`);
+                    assert.equal(snapshot.mainConnected, true, `run ${runIndex + 1}, step ${index}: main chat surface disappeared`);
+                    assert.equal(snapshot.streamingMessages, 0, `run ${runIndex + 1}, step ${index}: stream owner survived settle`);
+                    assert.equal(settledStreams?.activeInitializations || 0, 0, `run ${runIndex + 1}, step ${index}: active stream initialization survived settle`);
+                    assert.equal(settledStreams?.prebuffered || 0, 0, `run ${runIndex + 1}, step ${index}: stream prebuffer survived settle`);
+                    assert.equal(settledStreams?.pendingFinalizations || 0, 0, `run ${runIndex + 1}, step ${index}: deferred finalization survived settle`);
+                    if (model.identity) {
+                        assert.equal(snapshot.identity, model.identity.id, `run ${runIndex + 1}, step ${index}: selected identity diverged`);
+                        assert.equal(snapshot.topicId, model.topicId, `run ${runIndex + 1}, step ${index}: selected topic diverged`);
+                        assert.deepEqual(snapshot.activeItems, [model.identity.id], `run ${runIndex + 1}, step ${index}: active item DOM diverged`);
+                        assert.deepEqual(snapshot.activeTopics, [model.topicId], `run ${runIndex + 1}, step ${index}: active topic DOM diverged`);
+                    }
+                },
+            });
+        } catch (error) {
+            const failedSnapshot = await observe().catch(() => null);
+            await writeFailureArtifacts({ error, trace, seed: runSeed, runIndex, snapshot: failedSnapshot }).catch(artifactError => {
+                error.message += `\nFailure artifact capture also failed: ${artifactError?.stack || artifactError}`;
+            });
+            error.message += `\nReplay trace (${runSeed}):\n${serializeTrace(trace)}`;
+            throw error;
+        }
+        await waitForStreamQuiescence();
+        await resetFixtureConversationState();
+        const checkpoint = await collectResourceCheckpoint(`run-${runIndex + 1}`);
+        checkpoints.push(checkpoint);
+        if (
+            process.env.VCPCHAT_SEQUENCE_DEBUG === '1'
+            && checkpoint.lifecycle?.activeResources !== baselineSnapshot.lifecycle?.activeResources
+        ) {
+            const finalLifecycleDetails = await page.evaluate(() => window.VCPLifecycleInspector?.snapshot?.() || null);
+            console.error(JSON.stringify({ baselineLifecycleDetails, finalLifecycleDetails }, null, 2));
+        }
+        try {
+            assert.equal(checkpoint.lifecycle?.activeScopes, baselineSnapshot.lifecycle?.activeScopes, 'lifecycle scope count drifted across a trace');
+            assert.equal(checkpoint.lifecycle?.activeResources, baselineSnapshot.lifecycle?.activeResources, 'managed resource count drifted across a trace');
+            assert.equal(checkpoint.pages, baseResourceCheckpoint.pages, 'WebContents/page count drifted across a trace');
+            assert.equal(checkpoint.processes, baseResourceCheckpoint.processes, 'Electron process count drifted across a trace');
+            assert.equal(checkpoint.rendererProcesses, baseResourceCheckpoint.rendererProcesses, 'renderer process count drifted across a trace');
+            assert.deepEqual(checkpoint.mainLifecycle?.embeddedSessions || [], [], 'main-process embedded sessions survived a trace');
+            assert.equal(checkpoint.mainLifecycle?.activeEmbeddedAction || null, null, 'main-process overlay ownership survived a trace');
+            assert.deepEqual(checkpoint.mainLifecycle?.tasks || [], [], 'main-process IPC tasks survived a trace');
+            assert.deepEqual(checkpoint.mainLifecycle?.chatTasks || [], [], 'main-process chat stream tasks survived a trace');
+        } catch (error) {
+            await writeFailureArtifacts({ error, trace, seed: runSeed, runIndex, snapshot: checkpoint }).catch(artifactError => {
+                error.message += `\nFailure artifact capture also failed: ${artifactError?.stack || artifactError}`;
+            });
+            throw error;
+        }
+    }
+    try {
+        if (checkpoints.length > 1) {
+            const finalCheckpoint = checkpoints.at(-1);
+            const heapAllowance = Math.max(16 * 1024 * 1024, baseResourceCheckpoint.heapUsed * 0.5);
+            assert.ok(finalCheckpoint.heapUsed <= baseResourceCheckpoint.heapUsed + heapAllowance,
+                `renderer heap retained too much memory: ${baseResourceCheckpoint.heapUsed} -> ${finalCheckpoint.heapUsed}`);
+            if (checkpoints.length >= 5) {
+                assert.ok(regressionSlope(checkpoints.map(checkpoint => checkpoint.heapUsed)) < 2 * 1024 * 1024,
+                    'renderer heap shows sustained multi-seed growth');
+                const listenerValues = checkpoints.map(checkpoint => checkpoint.listeners);
+                const nodeValues = checkpoints.map(checkpoint => checkpoint.nodes);
+                assert.ok(regressionSlope(listenerValues) < 4,
+                    `renderer listeners show sustained multi-seed growth: ${listenerValues.join(' -> ')}`);
+                assert.ok(regressionSlope(nodeValues) < 120,
+                    `renderer DOM nodes show sustained multi-seed growth: ${nodeValues.join(' -> ')}`);
+            }
+        }
+        assert.deepEqual(errors, [], `Renderer errors:\n${errors.join('\n')}`);
+        assert.ok(fixture.requests.length > 0, 'default sequence must exercise the controlled VCP fixture');
     } catch (error) {
-        error.message += `\nReplay trace (${seed}):\n${serializeTrace(trace)}`;
+        await writeFailureArtifacts({
+            error,
+            trace: lastTrace,
+            seed: lastRunSeed,
+            runIndex: lastRunIndex,
+            snapshot: { baseline: baseResourceCheckpoint, checkpoints },
+        }).catch(artifactError => {
+            error.message += `\nFailure artifact capture also failed: ${artifactError?.stack || artifactError}`;
+        });
         throw error;
     }
-    const finalSnapshot = await observe();
-    assert.equal(finalSnapshot.lifecycle?.activeScopes, baselineSnapshot.lifecycle?.activeScopes, 'lifecycle scope count drifted across the trace');
-    assert.equal(finalSnapshot.lifecycle?.activeResources, baselineSnapshot.lifecycle?.activeResources, 'managed resource count drifted across the trace');
-    assert.deepEqual(errors, [], `Renderer errors:\n${errors.join('\n')}`);
-    assert.ok(fixture.requests.length > 0, 'default sequence must exercise the controlled VCP fixture');
-    console.log(`Main-chat Electron sequence passed: mode=${requestedUiMode}, seed=${trace.seed}, steps=${trace.actions.length}, VCP requests=${fixture.requests.length}`);
+    console.log(`Main-chat Electron sequence passed: mode=${requestedUiMode}, seed=${seed}, runs=${runCount}, actions=${totalActions}, VCP requests=${fixture.requests.length}`);
 } finally {
     try { await browser?.disconnect(); } catch { /* noop */ }
     if (child.exitCode === null && child.signalCode === null) child.kill('SIGTERM');
