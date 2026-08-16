@@ -253,4 +253,36 @@ fixture 只在 `VCPCHAT_E2E_TEST=1` 的临时 AppData 中使用，不向生产 p
 
 阻塞项固定验证：聊天选择/发送和 watcher lease 单元回归共 11 条；Next 与 Classic 各自 36 步 Electron 序列通过，且历史文件不含 `isThinking` 或 `isPendingStream` 临时记录。
 
-尚未宣称完成的部分：renderer reload/crash 与非聊天 IPC 逆序故障 action，失败截图/console 工件目录，以及 20 条 30-step 的资源斜率验收。HTTP/SSE hold-release 与双流逆序已经进入固定回归，但不应把当前短 seed 基线描述成完整随机验证。
+第四阶段已完成的 S2 能力：
+
+- 增加 `reload-during-stream` 与 `crash-during-stream`。恢复后同时检查助手/话题、活动 DOM、磁盘临时标记、renderer Stream Manager 和主进程 chat task；多种子运行主动 crash 总预算低于产品的 60 秒三次熔断，reload 仍可逐 trace 覆盖。
+- 增加内嵌应用 create 尚未完成就 close 的逆序场景，验证迟到完成不会复活标签、host、主进程 session 或 overlay owner。
+- 失败自动写入忽略目录 `screenshots/main-chat-sequences/<time>-<seed>/`：版本化 trace、错误栈、业务 snapshot、renderer/main 生命周期、console/page errors、活动页面 URL、截图与 Electron stderr。工件不写消息正文、API Key 或真实用户 AppData。
+- renderer Stream Manager 提供只读、无正文的资源计数；运行时故障测试验证后台历史读取异常会释放 prebuffer、context、pending finalization 等全部强 owner。消息编辑则通过真实 DOM 保存路径验证 watcher 恢复失败不能回滚已落盘内容。
+- 多种子模式由 `VCPCHAT_SEQUENCE_RUNS` 启用。每个 checkpoint 先恢复相同测试历史、清理已完成流的延迟表并执行三轮 GC，再比较 heap/listener/DOM 回归斜率以及 Scope、WebContents、renderer/Electron process、embedded/chat IPC task 的精确基线。
+
+第四阶段发现并修复三个共享主聊天缺陷：
+
+13. 设置文件一直保存 `lastOpenItemId/lastOpenTopicId`，但 renderer 启动从未读取。现在启动通过共享 `chatManager.restoreLastOpenState()` 恢复，删除目标安全降级；恢复途中发生的显式用户选择通过同一 generation owner 取胜。
+14. renderer reload/crash 后，旧 SSE 会继续向复用的 WebContents 新 document 发送 chunk/end，形成不可见 prebuffer 与 deferred finalization。主进程流任务现在绑定 sender document，在 navigation 或 `render-process-gone` 时 Abort，并在终态解除 sender 引用。
+15. 上次选择采用 fire-and-forget 整份 settings 写入，且重复选择当前助手/话题直接 return，导致可见话题与重载恢复话题不一致。last-open 提交现在有序且被选择事务等待；幂等选择也会重新确认持久状态。
+
+快速回归：
+
+```bash
+npm run test:electron-main-chat-sequences
+VCPCHAT_SEQUENCE_UI_MODE=classic npm run test:electron-main-chat-sequences
+```
+
+发布前资源斜率：
+
+```bash
+VCPCHAT_SEQUENCE_SEED=m9-resource-slope \
+VCPCHAT_SEQUENCE_RUNS=20 \
+VCPCHAT_SEQUENCE_STEPS=30 \
+npm run test:electron-main-chat-sequences
+```
+
+2026-08-16 验收：`m9-final-normalized` 在 Next 下完成 20×30，共 600 个动作、216 次受控 VCP 请求；heap/listener/DOM 斜率、Scope、WebContents/page、renderer/Electron process、embedded task 与 chat stream task 均通过。Classic 的 reload/crash 固定 40 步种子也通过。
+
+尚未宣称整个 M9 完成：群组、附件、重生成、输入草稿以及更多通知/侧栏动作仍需逐步进入模型。当前 S2 已覆盖本轮约定的 reload/crash、关键非聊天 IPC 逆序、失败工件和资源斜率基础设施；插件运行时与动态壁纸继续明确排除。
