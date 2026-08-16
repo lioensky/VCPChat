@@ -468,6 +468,6 @@ App
 
 1. 当前稳定性 PR 冻结构，只接收操作序列稳定复现的 P0/P1 修复。
 2. M9 的第一阶段已落地：主聊天纯模型、seed/trace/minimizer、真实 Electron adapter 和受控 JSON/SSE fixture 已能发现并回归选择与流式竞态。
-3. 下一阶段补齐 hold/fail/disconnect、reload/crash、IPC 逆序完成和失败工件，再执行资源斜率长测；不扩大到插件专属行为。
+3. hold/release、fail/disconnect、发送前置切换、双流逆序、话题增删、草稿保存失败和 watcher lease 失效已进入回归；临时流状态不再落盘，主进程 watcher 会拒绝旧 renderer operation。下一阶段补齐 reload/crash、非聊天 IPC 逆序完成和失败工件，再执行资源斜率长测，不扩大到插件专属行为。
 4. 用同一业务 trace 对照 Classic/Next；每收敛一个布局区域，就把该区域从差分测试切换为唯一实现的模型测试。
 5. 区域全部收敛并通过完整发布验证后，再迁移 `uiMode` 并清理分叉、兼容 facade 与 `nextUi*` 命名。

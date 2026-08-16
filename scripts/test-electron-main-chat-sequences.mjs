@@ -25,6 +25,13 @@ if (!['classic', 'next'].includes(requestedUiMode)) {
     throw new Error(`Unsupported VCPCHAT_SEQUENCE_UI_MODE: ${requestedUiMode}`);
 }
 
+function deferred() {
+    let resolve;
+    let reject;
+    const promise = new Promise((done, fail) => { resolve = done; reject = fail; });
+    return { promise, resolve, reject };
+}
+
 async function waitForChildExit(child, waitMs = 3_000) {
     if (child.exitCode !== null || child.signalCode !== null) return true;
     return new Promise(resolve => {
@@ -44,6 +51,7 @@ async function freePort() {
 
 async function startVcpFixture() {
     const requests = [];
+    const pending = new Map();
     const server = http.createServer(async (request, response) => {
         if (request.url === '/v1/interrupt') {
             response.writeHead(200, { 'content-type': 'application/json' });
@@ -54,7 +62,16 @@ async function startVcpFixture() {
         for await (const chunk of request) raw += chunk;
         const body = JSON.parse(raw || '{}');
         requests.push(body);
-        const requestText = JSON.stringify(body.messages || []);
+        const latestUserMessage = [...(body.messages || [])].reverse().find(message => message?.role === 'user');
+        const requestText = JSON.stringify(latestUserMessage?.content || '');
+        const holdMatch = requestText.match(/sequence-hold-([a-z0-9-]+)/i);
+        let heldRequest = null;
+        if (holdMatch) {
+            heldRequest = deferred();
+            pending.set(holdMatch[1], heldRequest);
+            await heldRequest.promise;
+            pending.delete(holdMatch[1]);
+        }
         if (requestText.includes('sequence-fail')) {
             response.writeHead(503, { 'content-type': 'application/json' });
             response.end(JSON.stringify({ error: { message: 'controlled fixture failure' } }));
@@ -68,7 +85,8 @@ async function startVcpFixture() {
         }
         if (body.stream) {
             response.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' });
-            for (const content of ['fixture ', 'stream ', 'complete']) {
+            const responsePrefix = holdMatch ? `${holdMatch[1]} ` : 'fixture ';
+            for (const content of [responsePrefix, 'stream ', 'complete']) {
                 response.write(`data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\n`);
                 await sleep(120);
             }
@@ -82,7 +100,22 @@ async function startVcpFixture() {
     return {
         url: `http://127.0.0.1:${server.address().port}/v1/chat/completions`,
         requests,
-        close: () => new Promise(resolve => server.close(resolve)),
+        pending,
+        release(key) {
+            const heldRequest = pending.get(key);
+            if (!heldRequest) throw new Error(`No held VCP request: ${key}`);
+            heldRequest.resolve();
+        },
+        async waitPending(key, waitMs = 8_000) {
+            const deadline = Date.now() + waitMs;
+            while (!pending.has(key) && Date.now() < deadline) await sleep(10);
+            assert.ok(pending.has(key), `VCP request did not enter hold state: ${key}`);
+        },
+        close: () => {
+            for (const heldRequest of pending.values()) heldRequest.resolve();
+            pending.clear();
+            return new Promise(resolve => server.close(resolve));
+        },
     };
 }
 
@@ -175,6 +208,31 @@ const catalog = [
         canRun: model => Boolean(model.identity && model.topicId),
         transition: model => model,
         run: ({ driver }) => driver.sendStreamThenCancel(),
+    },
+    {
+        id: 'concurrent-streams-reverse', weight: 2,
+        canRun: model => Boolean(model.identity && model.topicId),
+        generate: (random, model) => ({
+            target: topics[model.identity.id].find(topicId => topicId !== model.topicId) || model.topicId,
+            nonce: random.integer(0, 0xFFFFFFFF).toString(36),
+        }),
+        transition: (model, { target }) => ({
+            ...model,
+            topicId: target,
+            lastTopics: { ...(model.lastTopics || {}), [model.identity.id]: target },
+        }),
+        run: ({ driver, params }) => driver.concurrentStreamsReverse(params.target, params.nonce),
+    },
+    {
+        id: 'create-delete-topic-roundtrip', weight: 1,
+        canRun: model => Boolean(model.identity && model.topicId),
+        generate: (_random, model) => ({ target: topics[model.identity.id][1] }),
+        transition: (model, { target }) => ({
+            ...model,
+            topicId: target,
+            lastTopics: { ...(model.lastTopics || {}), [model.identity.id]: target },
+        }),
+        run: ({ driver, params }) => driver.createDeleteTopicRoundtrip(params.target),
     },
     {
         id: 'send-failure', weight: 1,
@@ -293,6 +351,88 @@ try {
             await click(`[data-topic-id="${targetTopic}"][data-item-id="${id}"]`);
             await waitState(id, targetTopic);
             await sleep(500);
+        },
+        async concurrentStreamsReverse(targetTopic, nonce) {
+            const itemId = await page.evaluate(() => window.currentSelectedItem.id);
+            const sourceTopic = await page.evaluate(() => window.currentTopicId);
+            const firstKey = `first-${nonce}`;
+            const secondKey = `second-${nonce}`;
+            const sendHeld = key => page.evaluate(holdKey => {
+                const input = document.getElementById('messageInput');
+                input.value = `sequence-hold-${holdKey}`;
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+                document.getElementById('sendMessageBtn').click();
+            }, key);
+
+            await sendHeld(firstKey);
+            await fixture.waitPending(firstKey);
+            await click(`[data-topic-id="${targetTopic}"][data-item-id="${itemId}"]`);
+            await waitState(itemId, targetTopic);
+
+            await sendHeld(secondKey);
+            await fixture.waitPending(secondKey);
+            fixture.release(secondKey);
+            const secondDeadline = Date.now() + 8_000;
+            while (fixture.pending.has(secondKey) && Date.now() < secondDeadline) await sleep(10);
+            assert.equal(fixture.pending.has(secondKey), false, 'second stream did not complete after release');
+
+            fixture.release(firstKey);
+            const firstDeadline = Date.now() + 8_000;
+            while (fixture.pending.has(firstKey) && Date.now() < firstDeadline) await sleep(10);
+            assert.equal(fixture.pending.has(firstKey), false, 'first stream did not complete after release');
+            await page.waitForFunction(() => (
+                document.getElementById('sendMessageBtn')?.dataset.mode !== 'interrupt'
+                && document.querySelectorAll('.message-item.streaming').length === 0
+            ), { timeout: 8_000 });
+
+            const readHistories = () => Promise.all([sourceTopic, targetTopic].map(async topicId => {
+                const source = await fs.readFile(path.join(appData, 'UserData', itemId, 'topics', topicId, 'history.json'), 'utf8');
+                return JSON.parse(source);
+            }));
+            let histories = await readHistories();
+            const persistenceDeadline = Date.now() + 4_000;
+            const historiesAreSettled = () => histories.every(topicHistory => (
+                !topicHistory.some(message => message.isThinking || message.isPendingStream)
+                && topicHistory.some(message => message.role === 'assistant' && /complete/.test(message.content || ''))
+            ));
+            while (!historiesAreSettled() && Date.now() < persistenceDeadline) {
+                await sleep(50);
+                histories = await readHistories();
+            }
+            for (const topicHistory of histories) {
+                assert.equal(
+                    topicHistory.some(message => message.isThinking || message.isPendingStream),
+                    false,
+                    'concurrent stream left a transient message on disk'
+                );
+                assert.ok(
+                    topicHistory.some(message => message.role === 'assistant' && /complete/.test(message.content || '')),
+                    `concurrent stream response was not persisted: ${JSON.stringify(histories)}`
+                );
+            }
+        },
+        async createDeleteTopicRoundtrip(expectedTopic) {
+            const item = await page.evaluate(() => ({
+                id: window.currentSelectedItem.id,
+                type: window.currentSelectedItem.type,
+            }));
+            const createdTopicId = await page.evaluate(async ({ itemId, itemType }) => {
+                const before = new Set((await window.chatAPI.getAgentTopics(itemId)).map(topic => topic.id));
+                await window.chatManager.createNewTopicForItem(itemId, itemType);
+                const after = await window.chatAPI.getAgentTopics(itemId);
+                return after.find(topic => !before.has(topic.id))?.id || null;
+            }, { itemId: item.id, itemType: item.type });
+            assert.ok(createdTopicId, 'topic creation roundtrip did not produce a topic');
+            await waitState(item.id, createdTopicId);
+
+            const deletion = await page.evaluate(async ({ itemId, itemType, topicId }) => {
+                const result = await window.chatAPI.deleteTopic(itemId, topicId);
+                if (!result?.success) return result;
+                await window.chatManager.handleTopicDeletion(result.remainingTopics, { id: itemId, type: itemType });
+                return result;
+            }, { itemId: item.id, itemType: item.type, topicId: createdTopicId });
+            assert.equal(deletion?.success, true, `topic deletion roundtrip failed: ${JSON.stringify(deletion)}`);
+            await waitState(item.id, expectedTopic);
         },
         async sendStreamThenCancel() {
             const before = fixture.requests.length;

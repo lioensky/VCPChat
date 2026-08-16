@@ -118,6 +118,7 @@ const { PRELOAD_ROLES, resolveProjectPreload } = require('./modules/services/pre
 const { createEmbeddedAppSessionManager } = require('./modules/services/embeddedAppSessionManager');
 const { SenderTaskRegistry } = require('./modules/services/senderTaskRegistry');
 const { ChatDataServiceFacade } = require('./modules/services/chatDataService');
+const { createHistoryWatcherLeaseManager } = require('./modules/services/historyWatcherLeaseManager');
 // chokidar is now lazy-loaded
 
 // --- File Watcher ---
@@ -130,9 +131,11 @@ let isEditingInProgress = false; // 🔧 编辑状态标识
 const INTERNAL_SAVE_WINDOW_MS = 2000; // 🔧 内部保存时间窗口（2秒）
 
 const fileWatcher = {
-    watchFile: (filePath, callback) => {
+    watchFile: async (filePath, callback) => {
         if (historyWatcher) {
-            historyWatcher.close();
+            const watcherToClose = historyWatcher;
+            historyWatcher = null;
+            await watcherToClose.close();
         }
         console.log(`[FileWatcher] Watching new file: ${filePath}`);
         const chokidar = require('chokidar'); // Lazy load
@@ -158,11 +161,12 @@ const fileWatcher = {
         });
         historyWatcher.on('error', error => console.error(`[FileWatcher] Error: ${error}`));
     },
-    stopWatching: () => {
+    stopWatching: async () => {
         if (historyWatcher) {
             console.log('[FileWatcher] Stopping file watch.');
-            historyWatcher.close();
+            const watcherToClose = historyWatcher;
             historyWatcher = null;
+            await watcherToClose.close();
         }
         // 🔧 清理状态
         isEditingInProgress = false;
@@ -193,6 +197,28 @@ const fileWatcher = {
         console.log(`[FileWatcher] Editing mode set to: ${editing}`);
     }
 };
+
+const historyWatcherLeases = createHistoryWatcherLeaseManager({
+    startWatching: ({ filePath, callback }) => fileWatcher.watchFile(filePath, callback),
+    stopWatching: () => fileWatcher.stopWatching()
+});
+const historyWatcherSenderOwners = new WeakMap();
+let historyWatcherSenderSequence = 0;
+
+function getHistoryWatcherOwner(sender) {
+    const existing = historyWatcherSenderOwners.get(sender);
+    if (existing) return existing;
+    // Electron may reuse numeric WebContents IDs. Include a main-process
+    // generation so a late destroyed event cannot revoke a newer renderer.
+    const ownerId = `${sender.id}:${++historyWatcherSenderSequence}`;
+    historyWatcherSenderOwners.set(sender, ownerId);
+    sender.once('destroyed', () => {
+        void historyWatcherLeases.revoke(ownerId).catch((error) => {
+            console.warn('[FileWatcher] Failed to release destroyed renderer lease:', error);
+        });
+    });
+    return ownerId;
+}
 // --- Configuration Paths ---
 // Data storage will be within the project's 'AppData' directory
 const PROJECT_ROOT = __dirname; // __dirname is the directory of main.js
@@ -447,6 +473,8 @@ async function performQuitCleanup() {
     }
 
     appQuitCleanupPromise = (async () => {
+        await historyWatcherLeases.dispose();
+
         if (distributedServer) {
             console.log('[Main] Stopping distributed server...');
             try {
@@ -1190,26 +1218,45 @@ if (!gotTheLock) {
             agentConfigManager
         });
 
-        // New dedicated watcher IPC handlers
-        ipcMain.handle('watcher:start', (event, filePath, agentId, topicId) => {
-            if (fileWatcher) {
-                fileWatcher.watchFile(filePath, (changedPath) => {
-                    if (mainWindow && !mainWindow.isDestroyed()) {
-                        // Pass back the agentId and topicId to the renderer for context
-                        mainWindow.webContents.send('history-file-updated', { path: changedPath, agentId, topicId });
-                    }
-                });
-                return { success: true, watching: filePath };
-            }
-            return { success: false, error: 'File watcher not initialized.' };
+        // A renderer claims a lease before beginning asynchronous selection.
+        // Late start/stop completions from older selections are rejected in
+        // the main process, where the single chokidar watcher is actually
+        // owned.
+        ipcMain.handle('watcher:begin', async (event) => {
+            const ownerId = getHistoryWatcherOwner(event.sender);
+            const lease = historyWatcherLeases.claim(ownerId);
+            const stopped = await lease.stopped;
+            return { success: stopped.success, stale: stopped.stale === true, token: lease.token };
         });
 
-        ipcMain.handle('watcher:stop', () => {
-            if (fileWatcher) {
-                fileWatcher.stopWatching();
-                return { success: true };
+        ipcMain.handle('watcher:start', async (event, filePath, agentId, topicId, leaseToken = null) => {
+            const ownerId = getHistoryWatcherOwner(event.sender);
+            let token = leaseToken;
+            if (!token) {
+                const lease = historyWatcherLeases.claim(ownerId);
+                token = lease.token;
+                await lease.stopped;
             }
-            return { success: false, error: 'File watcher not initialized.' };
+            const sender = event.sender;
+            const result = await historyWatcherLeases.start(ownerId, token, {
+                filePath,
+                callback: (changedPath) => {
+                    if (!sender.isDestroyed()) {
+                        sender.send('history-file-updated', { path: changedPath, agentId, topicId });
+                    }
+                }
+            });
+            return { ...result, token, watching: result.success ? filePath : null };
+        });
+
+        ipcMain.handle('watcher:stop', async (event, leaseToken = null) => {
+            const ownerId = getHistoryWatcherOwner(event.sender);
+            if (!leaseToken) {
+                const lease = historyWatcherLeases.claim(ownerId);
+                const result = await lease.stopped;
+                return { ...result, token: lease.token };
+            }
+            return historyWatcherLeases.stop(ownerId, leaseToken);
         });
         ipcMain.handle('chat-data-service-status', async () => {
             if (!chatDataService) {

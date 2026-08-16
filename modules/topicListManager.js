@@ -871,7 +871,10 @@ window.topicListManager = (() => {
         }
 
         if (activeTopicDeleted) {
-            mainRendererFunctions.handleTopicDeletion(remainingTopics);
+            mainRendererFunctions.handleTopicDeletion(remainingTopics, {
+                id: currentSelectedItem.id,
+                type: currentSelectedItem.type
+            });
         }
 
         setManageMode(false);
@@ -1141,7 +1144,10 @@ window.topicListManager = (() => {
 
                 if (result && result.success) {
                     if (currentTopicIdRef.get() === topic.id) {
-                        mainRendererFunctions.handleTopicDeletion(result.remainingTopics);
+                        mainRendererFunctions.handleTopicDeletion(result.remainingTopics, {
+                            id: itemFullConfig.id,
+                            type: itemType
+                        });
                     }
                     loadTopicList();
                 } else {

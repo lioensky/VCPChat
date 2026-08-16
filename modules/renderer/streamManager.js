@@ -184,6 +184,10 @@ const delayedCleanupTimers = new Map(); // messageId -> timerId
 const preBufferedChunks = new Map(); // messageId -> array of chunks waiting for initialization
 const messageInitializationStatus = new Map(); // messageId -> 'pending' | 'ready' | 'finalized'
 const pendingFinalizationEvents = new Map(); // messageId -> { finishReason, context, finalPayload }
+// Renderer-owned pending entries are deliberately not persisted. They carry
+// enough ordering metadata to finalize a stream after its source topic has
+// moved to the background without leaving crash-residue in history.json.
+const pendingHistoryEntries = new Map(); // messageId -> pending assistant message
 
 // --- 新增：消息上下文映射 ---
 const messageContextMap = new Map(); // messageId -> {agentId, groupId, topicId, isGroupMessage}
@@ -386,7 +390,7 @@ async function saveHistoryForContext(context, history) {
     
     if (!agentId || !topicId) return;
     
-    const historyToSave = history.filter(msg => !msg.isThinking);
+    const historyToSave = history.filter(msg => !msg.isThinking && !msg.isPendingStream);
     
     try {
         await electronAPI.saveChatHistory(agentId, topicId, historyToSave);
@@ -1678,7 +1682,7 @@ export async function startStreamingMessage(message, passedMessageItem = null) {
         historyForThisMessage = await getHistoryForContext(context);
         if (!historyForThisMessage) {
             console.error(`[StreamManager] Could not load history for background message ${messageId}`, context);
-            messageInitializationStatus.set(messageId, 'finalized');
+            discardStreamingMessage(messageId);
             return null;
         }
     }
@@ -1698,7 +1702,7 @@ export async function startStreamingMessage(message, passedMessageItem = null) {
             messageItem = refs.renderMessage(placeholderMessage, false);
             if (!messageItem) {
                 console.error(`[StreamManager] Failed to render message item for ${message.id}`);
-                messageInitializationStatus.set(messageId, 'finalized');
+                discardStreamingMessage(messageId);
                 return null;
             }
         }
@@ -1733,11 +1737,13 @@ export async function startStreamingMessage(message, passedMessageItem = null) {
         ...message,
         content: shouldSkipGroupThinkingSeed ? '' : (message.content || ''),
         isThinking: false,
+        isPendingStream: true,
         timestamp: message.timestamp || Date.now(),
         isGroupMessage: context.isGroupMessage,
         name: context.agentName,
         agentId: context.agentId
     };
+    pendingHistoryEntries.set(messageId, { ...placeholderForHistory });
     
     // Update the appropriate history
     const historyIndex = historyForThisMessage.findIndex(m => m.id === message.id);
@@ -2214,6 +2220,7 @@ export async function finalizeStreamedMessage(messageId, finishReason, context, 
     const storedContext = messageContextMap.get(messageId) || context;
     if (!storedContext) {
         console.error(`[StreamManager] No context available for message ${messageId}`);
+        discardStreamingMessage(messageId);
         return;
     }
     
@@ -2243,6 +2250,7 @@ export async function finalizeStreamedMessage(messageId, finishReason, context, 
         historyForThisMessage = await getHistoryForContext(storedContext);
         if (!historyForThisMessage) {
             console.error(`[StreamManager] Could not load history for finalization`, storedContext);
+            discardStreamingMessage(messageId);
             return;
         }
     }
@@ -2269,19 +2277,35 @@ export async function finalizeStreamedMessage(messageId, finishReason, context, 
             finalFullText = "";
         }
     }
-    const messageIndex = historyForThisMessage.findIndex(msg => msg.id === messageId);
+    let messageIndex = historyForThisMessage.findIndex(msg => msg.id === messageId);
+
+    // A background stream can finish before its debounced history save. The
+    // pending entry lives in renderer memory rather than on disk; reconstruct
+    // it at the position owned by its user message before applying the final
+    // response. This also preserves conversational order when two streams
+    // finish in reverse order.
+    if (messageIndex === -1) {
+        const pendingEntry = pendingHistoryEntries.get(messageId);
+        if (pendingEntry) {
+            const replyIndex = pendingEntry.replyToMessageId
+                ? historyForThisMessage.findIndex(message => message.id === pendingEntry.replyToMessageId)
+                : -1;
+            const insertionIndex = replyIndex >= 0 ? replyIndex + 1 : historyForThisMessage.length;
+            historyForThisMessage.splice(insertionIndex, 0, { ...pendingEntry });
+            messageIndex = insertionIndex;
+        }
+    }
     
     if (messageIndex === -1) {
         // If it's an assistant chat and the message is not found,
         // it's likely the window was reset. Ignore gracefully.
         if (storedContext && storedContext.topicId === 'assistant_chat') {
             console.warn(`[StreamManager] Message ${messageId} not found in assistant history, likely due to reset. Ignoring.`);
-            // Clean up just in case
-            streamingChunkQueues.delete(messageId);
-            accumulatedStreamText.delete(messageId);
+            discardStreamingMessage(messageId);
             return;
         }
         console.error(`[StreamManager] Message ${messageId} not found in history`, storedContext);
+        discardStreamingMessage(messageId);
         return;
     }
     
@@ -2289,6 +2313,7 @@ export async function finalizeStreamedMessage(messageId, finishReason, context, 
     message.content = finalFullText;
     message.finishReason = finishReason;
     message.isThinking = false;
+    delete message.isPendingStream;
     if (message.isGroupMessage && storedContext) {
         message.name = storedContext.agentName || message.name;
         message.agentId = storedContext.agentId || message.agentId;
@@ -2372,6 +2397,7 @@ export async function finalizeStreamedMessage(messageId, finishReason, context, 
     pendingDirectRenderMessages.delete(messageId);
     accumulatedStreamText.delete(messageId);
     streamSegmentStates.delete(messageId);
+    pendingHistoryEntries.delete(messageId);
     cleanupDesktopPushState(messageId);
 
     // Finalization can start in a background topic and finish after the user
@@ -2391,6 +2417,7 @@ export async function finalizeStreamedMessage(messageId, finishReason, context, 
         messageInitializationStatus.delete(messageId);
         preBufferedChunks.delete(messageId);
         messageContextMap.delete(messageId);
+        pendingHistoryEntries.delete(messageId);
         viewContextCache.delete(messageId);
         delayedCleanupTimers.delete(messageId);
     }, 5000);
@@ -2403,6 +2430,30 @@ export async function finalizeStreamedMessage(messageId, finishReason, context, 
         content: finalFullText,
         finishReason
     };
+}
+
+export function discardStreamingMessage(messageId) {
+    const scrollTimer = scrollThrottleTimers.get(messageId);
+    if (scrollTimer) clearTimeout(scrollTimer);
+    scrollThrottleTimers.delete(messageId);
+    const cleanupTimer = delayedCleanupTimers.get(messageId);
+    if (cleanupTimer) clearTimeout(cleanupTimer);
+    delayedCleanupTimers.delete(messageId);
+    streamingChunkQueues.delete(messageId);
+    streamingTimers.delete(messageId);
+    pendingDirectRenderMessages.delete(messageId);
+    accumulatedStreamText.delete(messageId);
+    streamSegmentStates.delete(messageId);
+    messageDomCache.delete(messageId);
+    preBufferedChunks.delete(messageId);
+    messageInitializationStatus.delete(messageId);
+    pendingFinalizationEvents.delete(messageId);
+    pendingHistoryEntries.delete(messageId);
+    messageContextMap.delete(messageId);
+    viewContextCache.delete(messageId);
+    cleanupDesktopPushState(messageId);
+    if (activeStreamingMessageId === messageId) activeStreamingMessageId = null;
+    window.updateSendButtonState?.();
 }
 
 export function cleanupTransientState() {
@@ -2440,6 +2491,7 @@ export function cleanupTransientState() {
         preBufferedChunks.clear();
         messageInitializationStatus.clear();
         pendingFinalizationEvents.clear();
+        pendingHistoryEntries.clear();
         messageContextMap.clear();
         viewContextCache.clear();
     
@@ -2456,6 +2508,7 @@ window.streamManager = {
     startStreamingMessage,
     appendStreamChunk,
     finalizeStreamedMessage,
+    discardStreamingMessage,
     cleanupTransientState,
     isMessageActive,
     getActiveStreamingMessageId: () => activeStreamingMessageId,

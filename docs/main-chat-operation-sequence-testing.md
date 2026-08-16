@@ -235,4 +235,22 @@ fixture 只在 `VCPCHAT_E2E_TEST=1` 的临时 AppData 中使用，不向生产 p
 3. 话题视觉状态已切换、但持久化等到历史加载结束；快速离开会丢失“最后话题”。现在选择意图与可见状态同步提交，历史加载仍可取消。
 4. 快速 SSE 完成/取消时，磁盘历史尚未包含仅存在于内存的 thinking placeholder，finalize 会找不到消息并让发送按钮永久停在中止态。当前视图现在优先完成其拥有的内存事务，并在所有流清理后重新计算按钮状态。
 
-尚未宣称完成的部分：可由 runner 主动 release 的 hold、renderer reload/crash 与 IPC 逆序故障 action，失败截图/console 工件目录，以及 20 条 30-step 的资源斜率验收。这些属于 S2/S3，不应把当前短 seed 基线描述成完整随机验证。
+第二阶段继续发现并修复：
+
+5. 用户消息保存期间切换会话，旧发送流程会清空新会话草稿，并从新的 `currentChatHistoryRef` 借用历史、插入旧 thinking。发送现在持有源 Agent/Topic、历史快照和独立持久化事务；迟到 UI 投影会被撤回。
+6. 两个话题同时流式并逆序完成时，测试可通过 fixture 的 `hold/release` 精确控制完成顺序，并验证两个历史各自落盘、无 thinking 残留。
+7. 旧助手的新建话题请求迟到后会抢占当前助手；旧助手的删除回调也会改写当前助手。创建使用 item/topic generation，删除回调显式携带源身份并拒绝迟到提交。
+8. 新话题创建时若话题页签隐藏，权威 topic ID 已改变但列表仍高亮旧行。创建完成现在始终刷新列表投影。
+
+第二阶段验证证据：Next 下 5 个 phase2 seed 各 36 步通过；包含并发流、失败、断连、取消和切换，共 97 次受控请求。创建/删除固定 seed 的 40 步序列在 Next 与 Classic 均通过，各包含 20 次受控请求。
+
+第三阶段阻塞项收敛：
+
+9. 发送事务现在先以源 Agent/Topic 为 owner 串行合并并持久化用户消息，成功后才消费完全相同的文字与附件快照；保存失败撤回该消息的乐观投影并保留草稿，同话题重复启动会被明确拒绝。
+10. thinking/stream placeholder 不再写入 `history.json`。Stream Manager 在 renderer 内存保存带 `replyToMessageId` 的 pending entry，后台流完成时按所属用户消息位置重建并提交最终回复；失败或 setup 中止会按 message ID 精确释放，不再删除其他请求的 thinking。
+11. history watcher 从 Renderer 的“返回后丢弃”升级为主进程 lease：新选择在异步工作前 claim，主进程串行 start/stop，拒绝旧 lease，并在 renderer destroyed 时撤销 owner。Chokidar 的 `close()` 现在被真正等待。
+12. 同一助手并发创建话题拥有独立 creation generation；只有最后一次操作能选择其结果。双流测试键也全部由版本化 PRNG 生成，相同 seed/trace 不再混入 `Date.now()` 或 `Math.random()`。
+
+阻塞项固定验证：聊天选择/发送和 watcher lease 单元回归共 11 条；Next 与 Classic 各自 36 步 Electron 序列通过，且历史文件不含 `isThinking` 或 `isPendingStream` 临时记录。
+
+尚未宣称完成的部分：renderer reload/crash 与非聊天 IPC 逆序故障 action，失败截图/console 工件目录，以及 20 条 30-step 的资源斜率验收。HTTP/SSE hold-release 与双流逆序已经进入固定回归，但不应把当前短 seed 基线描述成完整随机验证。
