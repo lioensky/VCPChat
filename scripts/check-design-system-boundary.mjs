@@ -174,6 +174,7 @@ const allowedSourceDifferences = new Set([
     'tests/topic-list-mode-lifecycle.test.js',
     'tests/chat-manager-selection-race.test.js',
     'tests/history-watcher-lease-manager.test.js',
+    'tests/stream-manager-terminal-cleanup.test.js',
     'tests/main-chat-sequence-model.test.js',
     'tests/support/main-chat-sequence.js',
     'style.css',
@@ -224,7 +225,7 @@ function git(args) {
 function resolveUpstreamRef() {
     const candidates = process.env.VCP_UPSTREAM_REF
         ? [process.env.VCP_UPSTREAM_REF]
-        : ['upstream/main', 'origin/main', 'upstream/next-ui', 'origin/next-ui'];
+        : ['upstream/next-ui', 'origin/next-ui', 'upstream/main', 'origin/main'];
     for (const candidate of candidates) {
         try {
             git(['rev-parse', '--verify', candidate]);
