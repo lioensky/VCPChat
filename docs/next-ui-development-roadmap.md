@@ -2,9 +2,11 @@
 
 ## 文档定位
 
-本文是 VCPChat Next UI 后续演进的总路线。它规定阶段顺序、模块边界、合并门槛和长期收敛方向，不替代具体子系统文档：Web Awesome 的加载、定制和离线闭包由 [`next-ui-webawesome-roadmap.md`](./next-ui-webawesome-roadmap.md) 负责，动态资源所有权和竞态规则由 [`next-ui-lifecycle-architecture.md`](./next-ui-lifecycle-architecture.md) 负责，上游 PR 的减法边界由 [`design-system-upstream-pr-convergence.md`](./design-system-upstream-pr-convergence.md) 负责。
+本文是 VCPChat Next UI 后续演进的总路线。它规定阶段顺序、模块边界、合并门槛和长期收敛方向，不替代具体子系统文档：Web Awesome 的加载、定制和离线闭包由 [`next-ui-webawesome-roadmap.md`](./next-ui-webawesome-roadmap.md) 负责，动态资源所有权和竞态规则由 [`next-ui-lifecycle-architecture.md`](./next-ui-lifecycle-architecture.md) 负责，主聊天操作序列测试由 [`main-chat-operation-sequence-testing.md`](./main-chat-operation-sequence-testing.md) 负责，上游 PR 的减法边界由 [`design-system-upstream-pr-convergence.md`](./design-system-upstream-pr-convergence.md) 负责。
 
 当前实现已交付 M0、M2、M3、M5 和 M7 的主要代码；M1、M6、M8 仍处于验证或收敛阶段。Classic 默认，Next 可选；Classic / Next 功能对等整改由 [`upstream-function-parity.md`](./upstream-function-parity.md) 持续回归。动态 Next 表面已接入 `LifecycleScope`，模式切换已串行化，并具备可取消任务、权威状态订阅、只读生命周期诊断、性能预算、受限原生 session 和真实 Electron 恢复/压力门禁。前端插件运行时保持上游实现，不属于本路线的改造范围。
+
+双布局是验证期策略，不是长期目标。终态是把 Classic 的成熟业务行为与 Next 的工作台结构逐区域收敛成一套规范布局，而不是用一份全新实现整体替换另一份。收敛完成后，失去用途的模式分支、重复入口和重复样式才会被清理；上游聊天、会话、助手、通知、设置和插件业务始终只有一份。
 
 ## 产品与架构目标
 
@@ -57,9 +59,13 @@ Next UI 的目标不是维护第二套聊天业务，也不是把上游代码迁
 | M6 | VCPUI 与 Surface 收敛（进行中） | M5 | Next 自有表面统一 create/fallback 生命周期 |
 | M7 | 诊断、故障注入与持续门禁（已完成） | 与 M2–M6 同步 | 可定位 owner、任务和原生 session |
 | M8 | 性能、安全和恢复能力（验证中） | M3、M7 | 崩溃、休眠、断网与长时运行可恢复 |
-| M9 | Classic 去留决策（待定） | M1–M8 验收完成 | 有稳定性和维护成本证据决定继续并行或覆盖 Classic |
+| M9 | 主聊天状态模型与差分验证 | 可与 M1、M8 并行 | 可重放操作序列覆盖主要聊天状态与竞态 |
+| M10 | 共享业务契约收口 | M9 建立业务 oracle | 两种 presentation 产生同一业务结果 |
+| M11 | 区域级布局收敛 | M10 | 顶栏、侧栏、聊天、通知和设置逐个只剩一个实现 |
+| M12 | 单一布局切换 | M11 验收完成 | `uiMode` 不再选择两套 presentation，用户配置无损迁移 |
+| M13 | 分叉清理与长期门禁 | M12 | 重复 DOM/CSS/facade 被删除，唯一布局基线固定 |
 
-M2–M7 可以按小 PR 交错推进，但不能跳过各自进入条件。M9 是产品决策，不由代码完成度自动触发。
+M2–M7 可以按小 PR 交错推进，但不能跳过各自进入条件。M9 应在双布局仍可对照时尽早开始；它既寻找竞态，也为后续布局收敛提供业务 oracle。M11–M13 必须按区域渐进推进，不能把全局 DOM 删除、视觉调整和命名重写塞进一次切换。
 
 ## M0：生命周期稳定基线（已完成）
 
@@ -329,37 +335,93 @@ owner.own(registerSettingsEntry(...));
 - renderer reload/crash 从主进程 session 权威恢复且不重复创建 View；60 秒内最多自动恢复 3 次，之后停止循环并提示用户。
 - 系统 suspend 隐藏原生 View，resume 按最后的 active action 重新校准 bounds/visible；断网后的 Ask Nova 请求可在网络恢复后重新成功，不污染后续 target。
 
-## M9：Classic 去留决策
+## M9：主聊天状态模型与差分验证
 
-### 已完成的功能对等基线
+### 目标
 
-Classic / Next 的入口和交互对等整改已经完成，权威清单见 [`upstream-function-parity.md`](./upstream-function-parity.md)。下列能力不再是待开发项目，而是后续每个阶段都必须保持的回归基线：
+把“主聊天在任意操作顺序后仍正确”定义成可执行模型，而不是继续为已知弹窗逐个编写固定脚本。Ask Nova、Appearance Studio 和内嵌应用是 Overlay/异步故障样本；测试权重必须以助手、群组、话题、消息、流式生成、输入区、左右侧栏和通知为主。
 
-- 左键、右键、长按和悬停语义。
-- 快捷入口的位置和可发现性，而不仅是功能在某个菜单中存在。
-- 通知、主题、聊天显示模式和应用托盘。
-- 助手/群组创建、搜索、选择、设置和模型状态。
-- 输入区、消息结构化内容、附件、工具、日记和流式状态。
-- 窄侧栏、左右面板、窗口控制、键盘和无障碍行为。
-- 无配置、首次配置、断网、失败和恢复路径。
+### 参考状态模型
 
-新增功能若只存在于 Next，必须明确属于 Next 的增量能力；上游 Classic 原有能力则不得在拆分或协议演进中退化。自动门禁与真实 Electron 人工检查继续共同执行，不能因为“已完成功能对等”而删除回归矩阵。
+```text
+App
+├── boot: fresh | unconfigured | ready | reconnecting
+├── identity: no-selection | agent(id) | group(id)
+├── topic: none | selected(id) | creating | deleting
+├── conversation: empty | history | sending | streaming | cancelling | failed
+├── shell: left-panel × right-panel × active-tab
+├── overlay: none | settings | appearance | create | ask-nova | confirm
+└── embedded: none | active(action) | hidden | crashed | recovering
+```
 
-### 决策门槛
+状态模型只保存可观察业务事实，不复制应用实现。每个 action 定义前置条件、执行适配器、期望状态和 settle 条件；例如没有选中助手时不能发送，流式响应期间可以取消但不能产生第二个活动请求。
 
-在以下条件全部满足前，Classic 保持默认：
+### 操作集合
 
-- 已完成的功能对等清单持续无 P0/P1 回归。
-- 至少一个完整发布周期没有资源增长或主窗口卡死类回归。
-- 上游作者和实际用户完成真实工作流验证。
-- Classic/Next 双维护成本已经高于迁移成本，并有明确回退方案。
+- 主聊天高权重：选择/切换助手或群组、创建、切换/创建/删除话题、发送、停止、重新生成、加载历史、删除最后一条消息、附件和输入草稿。
+- Shell 中权重：左右侧栏、通知、窄栏、搜索、主题、聊天显示模式、应用标签和设置。
+- Overlay 低权重：Ask Nova、Appearance Studio、创建弹窗、确认框与 Escape 栈。
+- 故障注入：IPC 延迟/拒绝/逆序返回、断网、renderer reload/crash、原生 View crash、系统 suspend/resume。
 
-满足门槛后只有两种明确选择：
+### 每步不变量
 
-1. 继续并行：Classic 是长期产品选项，两套 presentation 都进入正式测试矩阵。
-2. Next 覆盖 Classic：先把共享业务接口稳定，再分阶段删除 Classic presentation；不保留隐藏 Classic DOM 作为永久后端。
+- 选中的助手/群组、标题、列表选中态和 manager 权威 ID 一致；任意时刻只有一个活动会话和话题。
+- 空状态只在“没有真实消息且没有发送/流式任务”时出现，不能覆盖历史或首条流式消息。
+- 输入区只有一个，发送产生至多一个活动请求；停止后任务、按钮和流式状态最终一致。
+- 左右面板的可见性、宽度、`aria` 状态和实际 bounds 一致，拖拽不能产生负数或不可恢复宽度。
+- Escape 只关闭当前最上层 Overlay/子页面，不能级联关闭主窗口；Overlay owner 最终归零。
+- 活动应用标签与主进程可见 `WebContentsView` 一致；关闭、崩溃和恢复不产生重复 session。
+- 到达 quiescent checkpoint 后，Scope、listener、IPC Task、Overlay owner、活动 DOM、WebContentsView、renderer/page/process 不随序列增长。
 
-不能长期处于“Next 默认但依赖隐藏 Classic、Classic 又无人维护”的中间状态。
+### 执行与可重放
+
+- 使用固定 seed 的轻量序列生成器，不因测试引入完整应用框架；失败时输出 seed、最短操作 trace、模型状态和真实 snapshot。
+- 先执行前置条件过滤，再通过事件、状态订阅或显式 `whenSettled()` 等待；禁止用固定 sleep 猜测完成。
+- 自动缩短失败 trace：删除操作块并重放，直到获得仍可复现的最短序列。
+- 双布局阶段对同一 trace 运行 Classic 和 Next，比较业务 snapshot 而不是像素；布局区域完成收敛后改为唯一实现的模型验证。
+
+### 测试分层
+
+- 每次提交：纯模型与 controller 测试，数百条短序列。
+- PR：真实 Electron 运行固定回归 seed 加 10–20 条生成序列。
+- 定期/发布前：30–60 分钟长序列、GPU、休眠和断网；失败 seed 永久加入回归集合。
+
+## M10：共享业务契约收口
+
+- 以 M9 的业务 snapshot 作为 oracle，将剩余入口收敛到 `command / query / subscribe`。
+- 把通知清理、主题状态、助手/群组选择、设置导航等仍含 DOM 业务逻辑的 command 移到对应 manager/service。
+- 为聊天列表、输入区、助手列表、话题列表、通知列表和设置内容定义稳定 host；布局只摆放业务 surface，不成为状态权威。
+- 前端插件 Loader 和插件行为保持上游边界；本路线不增加插件专属场景，也不借布局或操作序列测试改造插件运行方式。
+- 建立依赖门禁，禁止新的 `presentation -> 隐藏控件`、`business -> nextUi*` 和 renderer 任意 IPC channel 依赖。
+
+## M11：区域级布局收敛
+
+布局按区域合并，不做一次性 Classic 删除：
+
+1. 主聊天与输入区：保留上游消息、工具、附件和流式语义，统一空状态和输入控制器。
+2. 左侧栏：统一助手/群组、话题、搜索、创建、窄栏和账户入口的 DOM 与行为。
+3. 顶栏：统一窗口、主题、显示模式和应用标签入口。
+4. 右侧栏：统一通知数据、过滤、清空、拖拽和快捷操作。
+5. 设置：统一 navigation、表单 host、Appearance Studio 和保存/回滚事务。
+6. Overlay/应用：统一 Escape 栈、焦点、AppTabHost 和原生 View 对账。
+
+每个区域遵循同一循环：冻结 Classic/Next 行为 snapshot → 选择最终结构与交互 → 两种模式临时路由到同一实现 → 运行 M9 序列 → 删除该区域重复实现。Classic 中仍值得保留的密度、颜色或紧凑观感进入 Appearance preset，而不是继续维持第二套布局。
+
+## M12：单一布局切换
+
+- 全部区域收敛后，`uiMode` 不再选择两套 DOM；布局设置只剩唯一规范布局，外观差异由主题、密度和 Appearance profile 表达。
+- 旧 `uiMode` 配置做无损迁移，保留主题、壁纸、侧栏宽度、字体和聊天数据；不静默重置用户外观。
+- `uiModeManager` 收缩为兼容读取与一次性迁移，模式 preview/切换事务和子页面广播按真实调用方逐步退出。
+- 回滚依赖上一稳定安装包和向后兼容配置，不在生产包中永久隐藏第二套 Shell。
+- 主 Shell 收敛不强迫 Notes、Translator 等独立页面在同一提交完成迁移。
+
+## M13：分叉清理与长期门禁
+
+- 在调用方归零后删除重复 DOM、条件 CSS、Classic/Next facade 和只验证双模式往返的测试。
+- `nextUi*` ID、`.next-ui-*` class 和模块名最后单独机械重命名；不与功能收敛混在同一提交。
+- 根 Shell 使用页面级 owner，Modal、Menu、App Tab、Overlay 和原生 View 继续使用动态子 Scope。
+- 固定唯一布局的启动、内存、listener、进程与 WebContentsView 基线，M9 状态序列成为长期回归门禁。
+- 产品和代码命名最终从 “Next UI” 收敛为普通 “VCPChat UI”。
 
 ## 建议 PR 序列
 
@@ -376,7 +438,12 @@ Classic / Next 的入口和交互对等整改已经完成，权威清单见 [`up
 9. 状态权威与全局 Observer 减法。
 10. Lifecycle Inspector 与 CI 分层。
 11. 性能、安全和恢复专项。
-12. 功能对等回归复核；Classic 决策单独提案，不再安排一轮功能补做。
+12. 主聊天纯状态模型、snapshot oracle 和固定 seed runner。
+13. Electron 操作适配器、故障注入、trace 重放与最小化。
+14. 共享业务契约和插件 DOM 锚点收口。
+15. 主聊天、左栏、顶栏、右栏、设置和应用区域分别收敛。
+16. 单一布局配置迁移与完整发布验证。
+17. `nextUi*` 命名、兼容 facade 和条件 CSS 的独立机械清理。
 
 模块拆分 PR 不夹带视觉调整；协议 PR 不夹带 Web Awesome 升级；功能对等回归修复不借机重写上游业务组件。每个 PR 必须可以独立 revert，并在 PR 描述中列出用户可见变化、生命周期 owner、失败策略和验证命令。
 
@@ -389,7 +456,7 @@ Classic / Next 的入口和交互对等整改已经完成，权威清单见 [`up
 3. listener、Observer、timer、IPC subscription、Object URL 和注册贡献归谁？
 4. 异步请求如何取消，迟到结果如何失去提交权？
 5. Overlay 与原生 WebContentsView 如何对账？
-6. Classic 是否完全不挂载该 surface，或者共享 DOM 如何恢复原身份？
+6. 该功能是否只依赖共享业务契约，所在区域收敛后是否无需 Classic/Next 模式分支？
 7. Web Awesome 失败时 native fallback 是否完整？
 8. setup 中途失败如何回滚已取得的资源？
 9. 是否有 register → use → dispose → absent、快速往返和失败注入测试？
@@ -399,7 +466,8 @@ Classic / Next 的入口和交互对等整改已经完成，权威清单见 [`up
 
 ## 当前推荐的下一步
 
-1. 冻结构，只接收真实测试发现的稳定性修复；继续运行发布前 30–60 分钟 soak 与 GPU 环境测试。
-2. 将快速单元/边界门禁用于每次提交，将 20 轮 Electron 压测、打包与 Classic 回归用于 PR。
-3. 保持 Classic 默认和 Next 可选至少一个完整发布周期，收集真实用户的崩溃、恢复和维护成本证据。
-4. M9 由上游作者与产品验证共同决定；无论继续双布局还是由 Next 覆盖 Classic，都不得恢复隐藏 DOM click 代理或第二份业务状态。
+1. 当前稳定性 PR 冻结构，只接收操作序列稳定复现的 P0/P1 修复。
+2. M9 的第一阶段已落地：主聊天纯模型、seed/trace/minimizer、真实 Electron adapter 和受控 JSON/SSE fixture 已能发现并回归选择与流式竞态。
+3. 下一阶段补齐 hold/fail/disconnect、reload/crash、IPC 逆序完成和失败工件，再执行资源斜率长测；不扩大到插件专属行为。
+4. 用同一业务 trace 对照 Classic/Next；每收敛一个布局区域，就把该区域从差分测试切换为唯一实现的模型测试。
+5. 区域全部收敛并通过完整发布验证后，再迁移 `uiMode` 并清理分叉、兼容 facade 与 `nextUi*` 命名。
