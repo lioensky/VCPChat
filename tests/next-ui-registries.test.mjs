@@ -36,66 +36,20 @@ test('Next app registrations retract with their owner without changing the regis
     dom.window.close();
 });
 
-test('frontend plugin loader owns registration, instance, script and style lifetime', async () => {
+test('frontend plugin loader keeps the upstream registration contract unchanged', async () => {
     const dom = new JSDOM('<!doctype html><html><head></head><body></body></html>', {
         url: 'https://vcpchat.local/',
         runScripts: 'outside-only',
     });
     const { window } = dom;
-    window.eval(fs.readFileSync('modules/ui-system/lifecycle-scope.js', 'utf8'));
-    window.eval(fs.readFileSync('modules/ui-system/contribution-registry.js', 'utf8'));
     window.chatAPI = { listEnabledFrontendPlugins: async () => ({ success: true, plugins: [] }) };
     window.eval(fs.readFileSync('VCPDistributedServer/frontend-plugin-loader.js', 'utf8'));
-    let destroyed = 0;
-    const instance = { destroy() { destroyed += 1; } };
-    assert.equal(window.VCPFrontendPlugins.register('owned-plugin', instance), true);
-    assert.strictEqual(window.VCPFrontendPlugins.get('owned-plugin'), instance);
-    assert.ok(window.VCPFrontendPlugins.getScope('owned-plugin'));
-    const contributions = window.VCPFrontendPlugins.getContributions('owned-plugin');
-    contributions.registerCommand({ id: 'owned-plugin.run', handler: () => 'ok' });
-    contributions.registerMenuItem({ id: 'owned-plugin.menu', title: 'Owned', location: 'account', command: 'owned-plugin.run' });
-    assert.equal(window.VCPContributions.commands.execute('owned-plugin.run'), 'ok');
-    assert.equal(await window.VCPFrontendPlugins.unregister('owned-plugin'), true);
-    assert.equal(window.VCPFrontendPlugins.get('owned-plugin'), undefined);
-    assert.equal(window.VCPContributions.commands.get('owned-plugin.run'), null);
-    assert.equal(window.VCPContributions.menus.get('owned-plugin.menu'), null);
-    assert.equal(destroyed, 1);
-    assert.equal(await window.VCPFrontendPlugins.unregister('owned-plugin'), false);
-    let orphanResourceDisposed = 0;
-    const orphanScope = window.VCPFrontendPlugins.getScope('failed-plugin');
-    orphanScope.own(() => { orphanResourceDisposed += 1; }, 'failed-script-resource');
-    assert.equal(await window.VCPFrontendPlugins.unregister('failed-plugin'), true, 'failed loads must be retractable before registration');
-    assert.equal(orphanResourceDisposed, 1);
-    await window.VCPFrontendPlugins.destroy();
-    assert.equal(window.VCPFrontendPlugins.register('after-destroy', {}), false, 'destroyed loaders must reject late registrations');
-    assert.equal(window.VCPFrontendPlugins.getScope('after-destroy'), null, 'destroyed loaders must not create orphan scopes');
-    await window.VCPFrontendPlugins.destroy();
-    dom.window.close();
-});
-
-test('frontend plugin discovery cannot append resources after loader destruction', async () => {
-    const dom = new JSDOM('<!doctype html><html><head></head><body></body></html>', {
-        url: 'https://vcpchat.local/',
-        runScripts: 'outside-only',
-    });
-    const { window } = dom;
-    window.eval(fs.readFileSync('modules/ui-system/lifecycle-scope.js', 'utf8'));
-    let resolvePlugins;
-    window.chatAPI = {
-        listEnabledFrontendPlugins: () => new Promise(resolve => { resolvePlugins = resolve; })
-    };
-    let loadedEvents = 0;
-    window.document.addEventListener('vcp-frontend-plugins-loaded', () => { loadedEvents += 1; });
-    window.eval(fs.readFileSync('VCPDistributedServer/frontend-plugin-loader.js', 'utf8'));
-    window.document.dispatchEvent(new window.Event('DOMContentLoaded'));
-    await new Promise(resolve => setTimeout(resolve, 0));
-    await window.VCPFrontendPlugins.destroy();
-    resolvePlugins({
-        success: true,
-        plugins: [{ id: 'late-plugin', style: '/late.css', script: '/late.js' }]
-    });
-    await new Promise(resolve => setTimeout(resolve, 0));
-    assert.equal(window.document.querySelector('[data-vcp-plugin="late-plugin"]'), null);
-    assert.equal(loadedEvents, 0, 'destroyed discovery must not emit a misleading loaded event');
+    const instance = { destroy() {} };
+    assert.equal(window.VCPFrontendPlugins.register('legacy-plugin', instance), true);
+    assert.strictEqual(window.VCPFrontendPlugins.get('legacy-plugin'), instance);
+    assert.equal(window.VCPFrontendPlugins.register('legacy-plugin', {}), false);
+    assert.equal('getScope' in window.VCPFrontendPlugins, false);
+    assert.equal('getContributions' in window.VCPFrontendPlugins, false);
+    assert.equal('unregister' in window.VCPFrontendPlugins, false);
     dom.window.close();
 });
