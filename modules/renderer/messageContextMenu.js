@@ -515,19 +515,33 @@ function toggleEditMode(messageItem, message) {
             // 🔧 保存原始状态以便回滚
             const originalContent = currentChatHistoryArray[messageIndex].content;
             const originalMessageContent = message.content;
-            
+            let watcherLeaseToken = null;
+
+            // Watching is ancillary to the edit transaction. Failure to pause
+            // or resume it must not turn a durable save into an apparent
+            // failure or roll the renderer back behind disk state.
             try {
-                // 🔧 先临时禁用文件监控，避免竞态条件
-                if (electronAPI.watcherStop) {
+                if (electronAPI.watcherBegin) {
+                    console.log('[EditMode] Claiming file watcher lease to prevent race condition');
+                    const lease = await electronAPI.watcherBegin();
+                    if (lease?.stale) return;
+                    if (lease?.success === false) {
+                        console.warn('[EditMode] History watcher unavailable; continuing with edit:', lease.error || lease);
+                    } else {
+                        watcherLeaseToken = lease?.token || null;
+                    }
+                } else if (electronAPI.watcherStop) {
                     console.log('[EditMode] Temporarily stopping file watcher to prevent race condition');
                     await electronAPI.watcherStop();
                 }
+            } catch (watcherError) {
+                console.warn('[EditMode] Failed to pause history watcher; continuing with edit:', watcherError);
+            }
 
-                // 🔧 更新内存状态
-                currentChatHistoryArray[messageIndex].content = newContent;
-                message.content = newContent;
-                
-                // 🔧 尝试保存到文件
+            currentChatHistoryArray[messageIndex].content = newContent;
+            message.content = newContent;
+
+            try {
                 if (currentSelectedItemVal.id && currentTopicIdVal) {
                     let saveResult;
                     if (currentSelectedItemVal.type === 'agent') {
@@ -541,34 +555,7 @@ function toggleEditMode(messageItem, message) {
                         throw new Error(saveResult.error || '保存失败');
                     }
                 }
-                
-                // 🔧 保存成功后更新UI
-                mainRefs.currentChatHistoryRef.set([...currentChatHistoryArray]);
-                
-                // 🟢 修复：使用 updateMessageContent 确保正则规则被应用
-                if (contextMenuDependencies.updateMessageContent) {
-                    contextMenuDependencies.updateMessageContent(message.id, newContent);
-                } else {
-                    // Fallback for safety
-                    const ppResult2 = contextMenuDependencies.preprocessFullContent(newContent);
-                    const rawHtml = markedInstance.parse(ppResult2.text || ppResult2);
-                    contextMenuDependencies.setContentAndProcessImages(contentDiv, rawHtml, message.id);
-                    contextMenuDependencies.processRenderedContent(contentDiv);
-                    contextMenuDependencies.renderAttachments(message, contentDiv);
-                }
-                
-                // 🔧 重新启动文件监控
-                if (electronAPI.watcherStart && currentSelectedItemVal.config?.agentDataPath) {
-                    const historyFilePath = `${currentSelectedItemVal.config.agentDataPath}\\topics\\${currentTopicIdVal}\\history.json`;
-                    await electronAPI.watcherStart(historyFilePath, currentSelectedItemVal.id, currentTopicIdVal);
-                }
-                
-                if (uiHelper && typeof uiHelper.showToastNotification === 'function') {
-                    uiHelper.showToastNotification("消息编辑已保存。", "success");
-                }
-                
             } catch (error) {
-                // 🔧 保存失败时回滚状态
                 console.error('[EditMode] Save failed, rolling back:', error);
                 currentChatHistoryArray[messageIndex].content = originalContent;
                 message.content = originalMessageContent;
@@ -578,7 +565,7 @@ function toggleEditMode(messageItem, message) {
                 if (electronAPI.watcherStart && currentSelectedItemVal.config?.agentDataPath) {
                     try {
                         const historyFilePath = `${currentSelectedItemVal.config.agentDataPath}\\topics\\${currentTopicIdVal}\\history.json`;
-                        await electronAPI.watcherStart(historyFilePath, currentSelectedItemVal.id, currentTopicIdVal);
+                        await electronAPI.watcherStart(historyFilePath, currentSelectedItemVal.id, currentTopicIdVal, watcherLeaseToken);
                     } catch (watcherError) {
                         console.error('[EditMode] Failed to restart watcher after save failure:', watcherError);
                     }
@@ -589,7 +576,40 @@ function toggleEditMode(messageItem, message) {
                 }
                 return; // 不退出编辑模式，让用户重试
             }
-            
+
+            mainRefs.currentChatHistoryRef.set([...currentChatHistoryArray]);
+
+            if (contextMenuDependencies.updateMessageContent) {
+                contextMenuDependencies.updateMessageContent(message.id, newContent);
+            } else {
+                const ppResult2 = contextMenuDependencies.preprocessFullContent(newContent);
+                const rawHtml = markedInstance.parse(ppResult2.text || ppResult2);
+                contextMenuDependencies.setContentAndProcessImages(contentDiv, rawHtml, message.id);
+                contextMenuDependencies.processRenderedContent(contentDiv);
+                contextMenuDependencies.renderAttachments(message, contentDiv);
+            }
+
+            if (electronAPI.watcherStart && currentSelectedItemVal.config?.agentDataPath) {
+                try {
+                    const historyFilePath = `${currentSelectedItemVal.config.agentDataPath}\\topics\\${currentTopicIdVal}\\history.json`;
+                    const watcherResult = await electronAPI.watcherStart(
+                        historyFilePath,
+                        currentSelectedItemVal.id,
+                        currentTopicIdVal,
+                        watcherLeaseToken
+                    );
+                    if (watcherResult?.success === false && !watcherResult?.stale) {
+                        console.warn('[EditMode] Failed to restart watcher after successful save:', watcherResult.error || watcherResult);
+                    }
+                } catch (watcherError) {
+                    console.warn('[EditMode] Failed to restart watcher after successful save:', watcherError);
+                }
+            }
+
+            if (uiHelper && typeof uiHelper.showToastNotification === 'function') {
+                uiHelper.showToastNotification("消息编辑已保存。", "success");
+            }
+
             // 🔧 只有在保存成功后才退出编辑模式
             toggleEditMode(messageItem, message);
         };

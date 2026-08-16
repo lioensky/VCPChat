@@ -149,6 +149,7 @@ const CHAT_KEYS = [
     'getLatestCanvasContent',
     'watcherStart',
     'watcherStop',
+    'watcherBegin',
     'onFlowlockCommand',
     'onFlowlockRequest',
     'sendFlowlockRpcResponse',

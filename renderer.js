@@ -842,9 +842,9 @@ import { setupEventListeners } from './modules/event-listeners.js';
                         Object.assign(currentSelectedItem, newConfig);
                     }
                 },
-                handleTopicDeletion: (remainingTopics) => {
+                handleTopicDeletion: (remainingTopics, deletionContext) => {
                     if (window.chatManager) {
-                        return window.chatManager.handleTopicDeletion(remainingTopics);
+                        return window.chatManager.handleTopicDeletion(remainingTopics, deletionContext);
                     } else {
                         console.error('[TopicListManager] chatManager not available for handleTopicDeletion');
                     }
