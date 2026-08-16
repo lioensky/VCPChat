@@ -30,25 +30,49 @@ function findFieldEnd(text, field) {
         : null;
 }
 
+function createFieldStartResult(match, matchIndex, declarationPrefixLength = 0) {
+    const marker = match[4];
+    const markerOffset = match[0].lastIndexOf(marker);
+    const markerStart = matchIndex + markerOffset;
+
+    return {
+        fieldName: match[3],
+        declarationStart: matchIndex + declarationPrefixLength + match[1].length,
+        markerStart,
+        markerEnd: markerStart + marker.length,
+        startMarker: marker,
+        endMarker: getFieldEndMarker(marker)
+    };
+}
+
 function findNextFieldStart(text, fromIndex) {
+    // 工具开始标记后字段可能直接紧接在同一位置，例如：
+    // <<<[TOOL_REQUEST]>>>tool_name:「始」Demo「末」
+    // 这种首字段没有行首/逗号前缀，但其匹配范围必须严格从当前游标开始，
+    // 不放宽正文中任意位置的字段识别。
+    const atCursorMatch = text.slice(fromIndex).match(
+        /^[ \t]*([^\s,:：「」{}]+)[ \t]*[:：][ \t]*(「始(?:escape)?」|\{始(?:escape)?\})/i
+    );
+    if (atCursorMatch) {
+        const marker = atCursorMatch[2];
+        const markerStart = fromIndex + atCursorMatch[0].lastIndexOf(marker);
+        return {
+            fieldName: atCursorMatch[1],
+            declarationStart: fromIndex,
+            markerStart,
+            markerEnd: markerStart + marker.length,
+            startMarker: marker,
+            endMarker: getFieldEndMarker(marker)
+        };
+    }
+
     FIELD_START_REGEX.lastIndex = fromIndex;
     const match = FIELD_START_REGEX.exec(text);
     FIELD_START_REGEX.lastIndex = 0;
 
     if (!match) return null;
 
-    const marker = match[4];
-    const markerOffset = match[0].lastIndexOf(marker);
-    const markerStart = match.index + markerOffset;
-
-    return {
-        fieldName: match[3],
-        declarationStart: match.index + match[1].length,
-        markerStart,
-        markerEnd: markerStart + marker.length,
-        startMarker: marker,
-        endMarker: getFieldEndMarker(marker)
-    };
+    return createFieldStartResult(match, match.index, match[1].length);
 }
 
 function findUnwrappedRequestEnd(text, fromIndex) {
@@ -177,7 +201,25 @@ function replaceToolRequestBlocks(text, replacer) {
         const fullMatch = text.slice(startIndex, scan.endIndex);
         const content = text.slice(contentStart, scan.requestMarkerStart);
         result += text.slice(cursor, startIndex);
-        result += replacer(fullMatch, content, startIndex, scan.endIndex, scan);
+
+        const replacement = replacer(fullMatch, content, startIndex, scan.endIndex, scan);
+        if (typeof replacement === 'string' && replacement !== fullMatch) {
+            // 工具请求可能与普通正文直接相邻。统一在替换结果边界补换行，
+            // 避免 HTML 气泡/占位符与相邻 Markdown 粘连，导致流式尾部或
+            // Markdown 解析器无法把两侧内容识别为独立块。
+            const beforeReplacement = result[result.length - 1] || '';
+            const afterReplacement = text[scan.endIndex] || '';
+            if (beforeReplacement && beforeReplacement !== '\n' && !replacement.startsWith('\n')) {
+                result += '\n';
+            }
+            result += replacement;
+            if (afterReplacement && afterReplacement !== '\n' && !replacement.endsWith('\n')) {
+                result += '\n';
+            }
+        } else {
+            result += replacement ?? fullMatch;
+        }
+
         cursor = scan.endIndex;
     }
 
