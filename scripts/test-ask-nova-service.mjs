@@ -117,4 +117,16 @@ await assert.rejects(cancelled, error => error?.code === 'ASK_NOVA_CANCELLED');
 const afterCancel = await cancelService.ask({ target: 'backend', question: 'new target' });
 assert.equal(afterCancel.answer, 'Backend after cancel', 'a cancelled frontend request must not poison the next backend request');
 
+let offline = true;
+const reconnectService = createDeepWikiService({
+    fetchImpl: async () => {
+        if (offline) throw new TypeError('fetch failed');
+        return response({ json: { result: { content: [{ type: 'text', text: 'Recovered after reconnect' }] } } });
+    },
+});
+await assert.rejects(() => reconnectService.ask({ target: 'frontend', question: 'offline probe' }), /fetch failed/);
+offline = false;
+const reconnected = await reconnectService.ask({ target: 'frontend', question: 'retry after reconnect' });
+assert.equal(reconnected.answer, 'Recovered after reconnect', 'an offline failure must not poison later Ask Nova requests');
+
 console.log('Ask Nova DeepWiki service tests passed.');

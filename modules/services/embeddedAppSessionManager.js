@@ -6,6 +6,8 @@ const { pathToFileURL } = require('url');
 const { PRELOAD_ROLES, resolveAppPreload } = require('./preloadPaths');
 const windowService = require('./windowService');
 const embeddedAppAllowlist = require('../shared/embeddedAppAllowlist');
+const MAX_EMBEDDED_SESSIONS = 6;
+const MAX_DETACH_COORDINATE = 1_000_000;
 
 function toFileUrl(appRoot, relativePath, query = {}) {
     const url = pathToFileURL(path.join(appRoot, relativePath));
@@ -47,7 +49,25 @@ function cancelledResult() {
     return { success: false, embeddable: true, cancelled: true, error: '操作已取消。' };
 }
 
-function createEmbeddedAppSessionManager({ mainWindow, launchStandalone, readSettings, subscribeSettings }) {
+function normalizeEmbeddedAction(appAction, { optional = false } = {}) {
+    if (optional && (appAction === null || appAction === undefined || appAction === '')) return null;
+    if (typeof appAction !== 'string' || !embeddedAppAllowlist.get(appAction)) {
+        throw new TypeError('内嵌应用操作无效。');
+    }
+    return appAction;
+}
+
+function normalizeDetachPoint(point) {
+    const x = Number(point?.x);
+    const y = Number(point?.y);
+    if (!Number.isFinite(x) || !Number.isFinite(y)
+        || Math.abs(x) > MAX_DETACH_COORDINATE || Math.abs(y) > MAX_DETACH_COORDINATE) {
+        return null;
+    }
+    return { x: Math.round(x), y: Math.round(y) };
+}
+
+function createEmbeddedAppSessionManager({ mainWindow, launchStandalone, readSettings, subscribeSettings, powerMonitor = null }) {
     if (typeof readSettings !== 'function') {
         throw new TypeError('Embedded application sessions require an authoritative readSettings function.');
     }
@@ -111,7 +131,16 @@ function createEmbeddedAppSessionManager({ mainWindow, launchStandalone, readSet
         return { success: true };
     }
 
+    function resume() {
+        if (!activeAction) return { success: true, restored: false };
+        const result = activate(activeAction);
+        if (result.success) notify(activeAction, 'resumed');
+        return { ...result, restored: result.success };
+    }
+
     async function create(appAction, options = {}) {
+        try { appAction = normalizeEmbeddedAction(appAction); }
+        catch (error) { return { success: false, embeddable: false, error: error.message }; }
         const signal = options.signal || null;
         if (signal?.aborted) return cancelledResult();
         if (!embeddedAppAllowlist.isEmbeddable(appAction)) {
@@ -123,6 +152,9 @@ function createEmbeddedAppSessionManager({ mainWindow, launchStandalone, readSet
         const current = sessions.get(appAction);
         if (current && !current.view.webContents.isDestroyed()) {
             return { success: true, embeddable: true, action: appAction, reused: true };
+        }
+        if (sessions.size >= MAX_EMBEDDED_SESSIONS) {
+            return { success: false, embeddable: true, error: `最多同时打开 ${MAX_EMBEDDED_SESSIONS} 个内嵌应用。` };
         }
 
         const descriptor = await resolveDescriptor(appAction, appRoot, readSettings);
@@ -188,6 +220,8 @@ function createEmbeddedAppSessionManager({ mainWindow, launchStandalone, readSet
     }
 
     function activate(appAction) {
+        try { appAction = normalizeEmbeddedAction(appAction, { optional: true }); }
+        catch (error) { return { success: false, error: error.message }; }
         hideAll();
         activeAction = null;
         if (!appAction) return { success: true };
@@ -202,6 +236,8 @@ function createEmbeddedAppSessionManager({ mainWindow, launchStandalone, readSet
     }
 
     function setBounds(appAction, bounds) {
+        try { appAction = normalizeEmbeddedAction(appAction); }
+        catch (error) { return { success: false, error: error.message }; }
         const session = sessions.get(appAction);
         if (!session || session.view.webContents.isDestroyed()) {
             return { success: false, error: '内嵌应用会话不存在。' };
@@ -212,6 +248,8 @@ function createEmbeddedAppSessionManager({ mainWindow, launchStandalone, readSet
     }
 
     function close(appAction) {
+        try { appAction = normalizeEmbeddedAction(appAction); }
+        catch (error) { return Promise.resolve({ success: false, error: error.message }); }
         const pendingClose = closingSessions.get(appAction);
         if (pendingClose) return pendingClose;
         const session = sessions.get(appAction);
@@ -255,6 +293,10 @@ function createEmbeddedAppSessionManager({ mainWindow, launchStandalone, readSet
     }
 
     async function detach(appAction, point = {}, options = {}) {
+        try { appAction = normalizeEmbeddedAction(appAction); }
+        catch (error) { return { success: false, error: error.message }; }
+        const normalizedPoint = normalizeDetachPoint(point);
+        if (!normalizedPoint) return { success: false, error: '标签拖出坐标无效。' };
         if (options.signal?.aborted) return { success: false, cancelled: true, error: '操作已取消。' };
         if (!sessions.has(appAction)) return { success: false, error: '内嵌应用会话不存在。' };
         // Closing the embedded view is the detach commit point. Once it has
@@ -263,14 +305,14 @@ function createEmbeddedAppSessionManager({ mainWindow, launchStandalone, readSet
         await close(appAction);
         const result = await launchStandalone(appAction);
         if (!result?.success) return result || { success: false, error: '独立窗口启动失败。' };
-        if (result.appId && Number.isFinite(point.x) && Number.isFinite(point.y)) {
+        if (result.appId) {
             const standaloneWindow = windowService.getWindow(result.appId);
             if (standaloneWindow && !standaloneWindow.isDestroyed()) {
                 const windowBounds = standaloneWindow.getBounds();
-                const display = screen.getDisplayNearestPoint({ x: Math.round(point.x), y: Math.round(point.y) });
+                const display = screen.getDisplayNearestPoint(normalizedPoint);
                 const area = display.workArea;
-                const x = Math.min(area.x + area.width - windowBounds.width, Math.max(area.x, Math.round(point.x - 80)));
-                const y = Math.min(area.y + area.height - windowBounds.height, Math.max(area.y, Math.round(point.y - 18)));
+                const x = Math.min(area.x + area.width - windowBounds.width, Math.max(area.x, normalizedPoint.x - 80));
+                const y = Math.min(area.y + area.height - windowBounds.height, Math.max(area.y, normalizedPoint.y - 18));
                 standaloneWindow.setPosition(x, y, false);
             }
         }
@@ -282,8 +324,15 @@ function createEmbeddedAppSessionManager({ mainWindow, launchStandalone, readSet
         await Promise.all([...closingSessions.values()]);
     }
 
+    const handleSystemSuspend = () => suspend();
+    const handleSystemResume = () => resume();
+    powerMonitor?.on?.('suspend', handleSystemSuspend);
+    powerMonitor?.on?.('resume', handleSystemResume);
+
     mainWindow.on('closed', () => {
         unsubscribeSettings?.();
+        powerMonitor?.off?.('suspend', handleSystemSuspend);
+        powerMonitor?.off?.('resume', handleSystemResume);
         void closeAll();
     });
 
@@ -291,6 +340,7 @@ function createEmbeddedAppSessionManager({ mainWindow, launchStandalone, readSet
         isEmbeddable: appAction => embeddedAppAllowlist.isEmbeddable(appAction),
         list,
         suspend,
+        resume,
         create,
         activate,
         setBounds,
@@ -304,5 +354,9 @@ function createEmbeddedAppSessionManager({ mainWindow, launchStandalone, readSet
 
 module.exports = {
     EMBEDDED_APP_ACTIONS: new Set(embeddedAppAllowlist.entries.map(entry => entry.action)),
+    MAX_EMBEDDED_SESSIONS,
+    MAX_DETACH_COORDINATE,
+    normalizeEmbeddedAction,
+    normalizeDetachPoint,
     createEmbeddedAppSessionManager,
 };

@@ -12,7 +12,7 @@ require = function (id) {
     return result;
 };
 
-const { app, BrowserWindow, ipcMain, nativeTheme, globalShortcut, screen, clipboard, shell, dialog, protocol, Tray, Menu } = require('electron'); // Added screen, clipboard, and shell
+const { app, BrowserWindow, ipcMain, nativeTheme, globalShortcut, screen, clipboard, shell, dialog, protocol, Tray, Menu, powerMonitor } = require('electron'); // Added screen, clipboard, and shell
 const path = require('path');
 const crypto = require('crypto');
 const fs = require('fs-extra'); // Using fs-extra for convenience
@@ -1253,6 +1253,7 @@ if (!gotTheLock) {
         embeddedAppTasks = new SenderTaskRegistry({ label: 'embedded-app-tasks' });
         embeddedAppSessions = createEmbeddedAppSessionManager({
             mainWindow,
+            powerMonitor,
             launchStandalone: desktopHandlers.launchVchatApp,
             readSettings: () => appSettingsManager.readSettings(),
             subscribeSettings: listener => {
