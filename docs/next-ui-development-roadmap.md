@@ -4,7 +4,7 @@
 
 本文是 VCPChat Next UI 后续演进的总路线。它规定阶段顺序、模块边界、合并门槛和长期收敛方向，不替代具体子系统文档：Web Awesome 的加载、定制和离线闭包由 [`next-ui-webawesome-roadmap.md`](./next-ui-webawesome-roadmap.md) 负责，动态资源所有权和竞态规则由 [`next-ui-lifecycle-architecture.md`](./next-ui-lifecycle-architecture.md) 负责，上游 PR 的减法边界由 [`design-system-upstream-pr-convergence.md`](./design-system-upstream-pr-convergence.md) 负责。
 
-当前实现基线已推进至 M8：Classic 默认，Next 可选；Classic / Next 功能对等整改由 [`upstream-function-parity.md`](./upstream-function-parity.md) 持续回归；动态 Next 表面已接入 `LifecycleScope`，模式切换已串行化，Next App 与前端插件注册可撤销，并具备可取消任务、权威状态订阅、只读生命周期诊断、性能预算、受限原生 session 和真实 Electron 恢复/压力门禁。
+当前实现已交付 M0、M2、M3、M5 和 M7 的主要代码；M1、M6、M8 仍处于验证或收敛阶段。Classic 默认，Next 可选；Classic / Next 功能对等整改由 [`upstream-function-parity.md`](./upstream-function-parity.md) 持续回归。动态 Next 表面已接入 `LifecycleScope`，模式切换已串行化，并具备可取消任务、权威状态订阅、只读生命周期诊断、性能预算、受限原生 session 和真实 Electron 恢复/压力门禁。前端插件运行时保持上游实现，不属于本路线的改造范围。
 
 ## 产品与架构目标
 
@@ -40,7 +40,7 @@ Next UI 的目标不是维护第二套聊天业务，也不是把上游代码迁
 - 不把所有静态 DOM、CSS 和页面级 singleton 强行迁入 `LifecycleScope`。
 - 不把 Classic 隐藏起来再通过 `.click()` 作为 Next 的业务层。
 - 不让业务模块直接依赖 `<wa-*>`、Shadow DOM 私有结构或 Web Awesome Token。
-- 不在没有卸载、异常和资源归零测试前开放前端插件热重载。
+- 不在本路线中改变前端插件加载、卸载或热重载协议。
 - 不同时进行模块拆分、视觉重设计、Vendor 更新和业务协议修改。
 - 不以测试阈值放宽代替泄漏根因修复。
 
@@ -49,15 +49,15 @@ Next UI 的目标不是维护第二套聊天业务，也不是把上游代码迁
 | 阶段 | 目标 | 进入条件 | 退出证据 |
 |---|---|---|---|
 | M0 | 生命周期稳定基线 | 已完成 | 20 轮 Electron 压测资源恒定 |
-| M1 | 发布前稳定化（已完成） | M0 | 竞态矩阵和稳定性门禁通过 |
+| M1 | 发布前稳定化（验证中） | M0 | 竞态矩阵、长时 soak 和稳定性门禁通过 |
 | M2 | 拆分 Next Shell 协调器（已完成） | M1 | `topTabManager` 退化为兼容 facade |
 | M3 | 可取消异步与 IPC 任务（已完成） | M2 的 Overlay/Embedded 边界稳定 | 请求可取消，迟到结果无提交权 |
-| M4 | 统一贡献与前端插件协议（已完成） | M3 | App/Menu/Command/Setting 注册均可撤销 |
+| M4 | 统一 Next 贡献协议（部分完成） | M3 | Next App/Menu/Command/Setting 注册均可撤销；不改变插件协议 |
 | M5 | 状态权威与显式订阅（已完成） | M2–M4 | 无新增隐藏 DOM 代理和全局扫描 |
-| M6 | VCPUI 与 Surface 收敛（已完成） | M5 | Next 自有表面统一 create/fallback 生命周期 |
+| M6 | VCPUI 与 Surface 收敛（进行中） | M5 | Next 自有表面统一 create/fallback 生命周期 |
 | M7 | 诊断、故障注入与持续门禁（已完成） | 与 M2–M6 同步 | 可定位 owner、任务和原生 session |
-| M8 | 性能、安全和恢复能力（已完成） | M3、M7 | 崩溃、休眠、断网与长时运行可恢复 |
-| M9 | Classic 去留决策 | M1–M8，功能对等已完成 | 有稳定性和维护成本证据决定继续并行或覆盖 Classic |
+| M8 | 性能、安全和恢复能力（验证中） | M3、M7 | 崩溃、休眠、断网与长时运行可恢复 |
+| M9 | Classic 去留决策（待定） | M1–M8 验收完成 | 有稳定性和维护成本证据决定继续并行或覆盖 Classic |
 
 M2–M7 可以按小 PR 交错推进，但不能跳过各自进入条件。M9 是产品决策，不由代码完成度自动触发。
 
@@ -66,8 +66,8 @@ M2–M7 可以按小 PR 交错推进，但不能跳过各自进入条件。M9 �
 ### 已交付
 
 - `LifecycleScope` 与资源诊断。
-- Ask Nova、Appearance Studio、设置增强、应用标签、创建弹窗、应用托盘和前端插件的 owner。
-- 可撤销 Next App/前端插件 Registry。
+- Ask Nova、Appearance Studio、设置增强、应用标签、创建弹窗和应用托盘的 owner。
+- 可撤销 Next App Registry。
 - Classic/Next 串行切换和 stale generation fence。
 - 原生 overlay lease、延迟 hide 最终对账和嵌入 session 压力测试。
 - Classic 隔离、Web Awesome 离线闭包和打包门禁。
@@ -165,7 +165,7 @@ renderer 侧使用一个小型 `TaskHandle`：`requestId`、`promise`、`cancel(
 2. 模型列表和主题清单查询。
 3. 创建助手/群组后的刷新与导航。
 4. 内嵌应用 create/close/detach。
-5. 前端插件 discovery 和其他长请求。
+5. 其他 Next 自有长请求。
 
 ### 兼容与安全
 
@@ -174,7 +174,7 @@ renderer 侧使用一个小型 `TaskHandle`：`requestId`、`promise`、`cancel(
 - cancel 必须幂等；完成、取消和超时只能产生一个终态。
 - 断网、主进程拒绝和 renderer 销毁都有确定性测试。
 
-## M4：统一贡献与前端插件协议
+## M4：统一 Next 贡献协议
 
 ### 目标
 
@@ -183,14 +183,14 @@ renderer 侧使用一个小型 `TaskHandle`：`requestId`、`promise`、`cancel(
 ### 推荐模型
 
 ```js
-const owner = pluginContext.scope;
+const owner = nextSurfaceScope;
 owner.own(registerApp(...));
 owner.own(registerCommand(...));
 owner.own(registerMenuItem(...));
 owner.own(registerSettingsEntry(...));
 ```
 
-现有 `VCPFrontendPlugins.register(id, instance)` 保持布尔返回兼容。新能力通过附加 API 和 `getScope(id)` 提供，不能破坏动态壁纸、Auto TTS 或第三方插件的既有启动路径。
+`VCPFrontendPlugins` 保持上游接口和行为，不接入上述 Registry。插件 contribution、卸载和热重载若有需求，必须作为独立方案验证，不能由 Next Shell 生命周期隐式接管。
 
 ### 工作项
 
@@ -198,13 +198,13 @@ owner.own(registerSettingsEntry(...));
 - `MainChatCommands` 建立可枚举命令目录；Next presentation 调用命令，不点击 Classic DOM。
 - Menu/App/Settings contribution 包含稳定 ID、owner、展示元数据和 action，不携带任意 HTML。
 - Registry 注销时关闭仍打开的对应 UI，并删除恢复状态中的失效 contribution。
-- 插件开发文档要求 `destroy()` 幂等；外部卸载使用 Loader `unregister()`，不直接调用实例 `destroy()`。
+- Next contribution 的 disposer 必须幂等，并由创建它的 Next Scope 统一持有。
 
 ### 暂不开放
 
 - 运行时安装任意远程前端代码。
 - 无隔离的第三方 HTML/React 组件贡献。
-- 前端插件 HMR。只有 register → use → unregister → absent、失败 setup 回滚和重复 reload 测试全部具备后，才单独评估 HMR。
+- 前端插件 HMR；它不属于 Next UI 稳定化范围。
 
 ## M5：状态权威与显式订阅
 
@@ -219,7 +219,7 @@ owner.own(registerSettingsEntry(...));
 - Embedded session 与 active action。
 - 通知过滤、未读和侧栏状态。
 - 助手/群组目录与当前选择。
-- 主题模式、壁纸可见性和插件状态。
+- 主题模式和 Next 自有界面状态。
 
 ### 规则
 
@@ -277,8 +277,8 @@ owner.own(registerSettingsEntry(...));
 ### 测试分层
 
 - 每次提交：单元、静态边界、5 轮快速生命周期循环。
-- PR：完整 UI、Classic 回归、插件、打包和 20 轮 Electron 压力测试。
-- 定期或发布前：30–60 分钟 soak、renderer crash/reload、网络抖动、系统休眠恢复、GPU/视频壁纸和插件组合。
+- PR：完整 UI、Classic 回归、打包和 20 轮 Electron 压力测试。
+- 定期或发布前：30–60 分钟 soak、renderer crash/reload、网络抖动、系统休眠恢复和 GPU 环境验证。
 - 所有历史竞态使用延迟/逆序/failure injection 确定性复现，不使用只依赖时间概率的测试。
 
 ### 不变量
@@ -293,11 +293,11 @@ owner.own(registerSettingsEntry(...));
 
 - `window.VCPLifecycleInspector` 汇总 Scope 树、资源年龄、超时 disposing owner、TaskHandle、贡献注册、状态订阅、Overlay、原生 session、最近模式事务和性能样本。
 - 主进程诊断 IPC 只允许主 renderer 调用，只返回 action、任务身份和时长，不返回 API Key、聊天正文、路径或文件内容。
-- Agent Prompt 模式按钮从每次 render 创建 15 个 listener 收敛为持久 host 上的 5 个委托 listener；20 轮压力测试 listener 固定为 426。
+- Agent Prompt 模式按钮从每次 render 创建 15 个 listener 收敛为持久 host 上的 5 个委托 listener；恢复上游插件 Loader 后，20 轮压力测试 listener 固定为 405。
 - 正常门禁不调用 Chromium 实验性的 `DOM.getDetachedDomNodes`，因为该命令会改变被测对象的原生包装器寿命；它仅保留为显式 debug 模式。常规门禁检查活动 Surface、heap、listener、Scope、资源、page、renderer process 和 WebContentsView。
 - 完整 Electron 压力测试通过 3 次预热加 20 次测量，并包含 renderer reload、renderer crash、Overlay、Ask Nova、设置、Agent 设置、应用拖出和 Classic/Next 往返。
 
-## M8：性能、安全和恢复能力（已完成）
+## M8：性能、安全和恢复能力（验证中）
 
 ### 性能
 
@@ -310,7 +310,7 @@ owner.own(registerSettingsEntry(...));
 
 - 所有新增 IPC 验证 sender、operation 枚举和参数边界。
 - Renderer 不获得任意 Node、文件系统或 BrowserWindow 控制能力。
-- 插件 contribution 使用数据和受限 action，不接受未净化 HTML、URL 或任意 channel。
+- Next contribution 使用数据和受限 action，不接受未净化 HTML、URL 或任意 channel。
 - Ask Nova、Markdown 和外链继续执行安全渲染与 URL allowlist。
 
 ### 恢复
@@ -318,7 +318,7 @@ owner.own(registerSettingsEntry(...));
 - renderer reload/crash 后由主进程 session 权威恢复标签，不重复创建 WebContentsView。
 - 模式切换、窗口关闭和 app detach 在任一步失败后都能重新对账。
 - 恢复策略必须有界，避免 crash/reload loop。
-- 断网、服务未配置和插件失败时保留主聊天可用，不让可选能力阻塞 Shell。
+- 断网和服务未配置时保留主聊天可用，不让可选能力阻塞 Shell。
 
 ### 已交付证据
 
@@ -337,7 +337,7 @@ Classic / Next 的入口和交互对等整改已经完成，权威清单见 [`up
 
 - 左键、右键、长按和悬停语义。
 - 快捷入口的位置和可发现性，而不仅是功能在某个菜单中存在。
-- 通知、主题、聊天显示模式、壁纸和应用托盘。
+- 通知、主题、聊天显示模式和应用托盘。
 - 助手/群组创建、搜索、选择、设置和模型状态。
 - 输入区、消息结构化内容、附件、工具、日记和流式状态。
 - 窄侧栏、左右面板、窗口控制、键盘和无障碍行为。
@@ -393,13 +393,13 @@ Classic / Next 的入口和交互对等整改已经完成，权威清单见 [`up
 7. Web Awesome 失败时 native fallback 是否完整？
 8. setup 中途失败如何回滚已取得的资源？
 9. 是否有 register → use → dispose → absent、快速往返和失败注入测试？
-10. 是否改变用户数据、插件协议或 IPC；若改变，迁移与回滚是什么？
+10. 是否改变用户数据或 IPC；若改变，迁移与回滚是什么？插件协议禁止在本路线中改变。
 
 无法回答其中任一项时，功能仍处于原型阶段，不进入上游 PR。
 
 ## 当前推荐的下一步
 
-1. 冻结构，只接收真实测试发现的稳定性修复；继续运行发布前 30–60 分钟 soak、GPU/视频壁纸和第三方插件组合测试。
+1. 冻结构，只接收真实测试发现的稳定性修复；继续运行发布前 30–60 分钟 soak 与 GPU 环境测试。
 2. 将快速单元/边界门禁用于每次提交，将 20 轮 Electron 压测、打包与 Classic 回归用于 PR。
 3. 保持 Classic 默认和 Next 可选至少一个完整发布周期，收集真实用户的崩溃、恢复和维护成本证据。
 4. M9 由上游作者与产品验证共同决定；无论继续双布局还是由 Next 覆盖 Classic，都不得恢复隐藏 DOM click 代理或第二份业务状态。
