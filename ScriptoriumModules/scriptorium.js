@@ -562,10 +562,11 @@
     function bindElements(elements, notificationPort, surfacePort) {
         renderPort =
             window.ScriptoriumRenderCoordinator.createRenderCoordinator({
-                documentPort,
-                primitives,
-                runtimePort,
-                editHost: elements['page-stream'],
+            documentPort,
+            primitives,
+            runtimePort,
+            editorPort: flowEditor,
+            editHost: elements['page-stream'],
                 readHost: elements['read-page-stream'],
                 editScrollHost: elements['render-host'],
                 readScrollHost: elements['read-host'],
