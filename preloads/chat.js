@@ -421,11 +421,24 @@ function createCatalog(ops) {
         loomOpenManager: query(() => ops.invoke('loom:open-manager')),
         listEnabledFrontendPlugins: query(() => ops.invoke('list-enabled-frontend-plugins')),
         selectVchatWallpaperDirectory: query((directoryPath = '') => ops.invoke('vchat-wallpaper-select-directory', directoryPath)),
-        desktopCreateEmbeddedVchatApp: query((appAction) => ops.invoke('embedded-vchat-app:create', appAction)),
+        desktopCreateEmbeddedVchatApp: query((appAction, requestId = '') => ops.invoke(
+            'embedded-vchat-app:create',
+            requestId ? { requestId, action: appAction } : appAction
+        )),
+        desktopListEmbeddedVchatApps: query(() => ops.invoke('embedded-vchat-app:list')),
         desktopActivateEmbeddedVchatApp: query((appAction) => ops.invoke('embedded-vchat-app:activate', appAction)),
         desktopSetEmbeddedVchatAppBounds: query((appAction, bounds) => ops.invoke('embedded-vchat-app:set-bounds', appAction, bounds)),
-        desktopCloseEmbeddedVchatApp: query((appAction) => ops.invoke('embedded-vchat-app:close', appAction)),
-        desktopDetachEmbeddedVchatApp: query((appAction, point) => ops.invoke('embedded-vchat-app:detach', appAction, point)),
+        desktopCloseEmbeddedVchatApp: query((appAction, requestId = '') => ops.invoke(
+            'embedded-vchat-app:close',
+            requestId ? { requestId, action: appAction } : appAction
+        )),
+        desktopDetachEmbeddedVchatApp: query((appAction, point, requestId = '') => ops.invoke(
+            'embedded-vchat-app:detach',
+            requestId ? { requestId, action: appAction, point } : appAction,
+            requestId ? undefined : point
+        )),
+        desktopCancelEmbeddedVchatAppTask: query((requestId) => ops.invoke('embedded-vchat-app:cancel', requestId)),
+        getMainLifecycleSnapshot: query(() => ops.invoke('lifecycle:get-main-snapshot')),
         desktopCloseAllEmbeddedVchatApps: query(() => ops.invoke('embedded-vchat-app:close-all')),
         onEmbeddedVchatAppState: subscription(ops.subscribe('embedded-vchat-app-state', (_event, data) => data)),
         desktopSelectWallpaper: query(() => ops.invoke('desktop-select-wallpaper')),
@@ -612,10 +625,13 @@ const ALLOWED_KEYS = [
     "listEnabledFrontendPlugins",
     "selectVchatWallpaperDirectory",
     "desktopCreateEmbeddedVchatApp",
+    "desktopListEmbeddedVchatApps",
     "desktopActivateEmbeddedVchatApp",
     "desktopSetEmbeddedVchatAppBounds",
     "desktopCloseEmbeddedVchatApp",
     "desktopDetachEmbeddedVchatApp",
+    "desktopCancelEmbeddedVchatAppTask",
+    "getMainLifecycleSnapshot",
     "desktopCloseAllEmbeddedVchatApps",
     "onEmbeddedVchatAppState",
     "desktopOpenSystemTool",

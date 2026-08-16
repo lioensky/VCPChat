@@ -140,6 +140,7 @@ window.applyChatPresentationMode = async mode => {
     return { success: true, mode: normalized };
 };
 
+window.eval(fs.readFileSync('modules/ui-system/lifecycle-scope.js', 'utf8'));
 window.eval(fs.readFileSync('modules/ui-system/appearance-engine.js', 'utf8'));
 window.eval(fs.readFileSync('modules/ui-system/appearance-studio.js', 'utf8'));
 document.dispatchEvent(new CustomEvent('modal-ready', { detail: { modalId: 'globalSettingsModal' } }));
@@ -528,6 +529,48 @@ assert.equal(
     'a pending preview must not overwrite the snapshot after the drawer closes'
 );
 
+const originalTopTabManager = window.topTabManager;
+let rejectFirstOverlay;
+const overlayOwners = [];
+const releasedOverlayOwners = [];
+window.topTabManager = {
+    acquireOverlay: owner => {
+        overlayOwners.push(owner);
+        if (overlayOwners.length === 1) {
+            return new Promise((_, reject) => { rejectFirstOverlay = reject; });
+        }
+        return Promise.resolve(owner);
+    },
+    releaseOverlay: owner => { releasedOverlayOwners.push(owner); },
+};
+studio.open();
+await new Promise(resolve => setImmediate(resolve));
+await studio.close({ rollback: true });
+studio.open();
+await new Promise(resolve => setImmediate(resolve));
+rejectFirstOverlay(new Error('simulated stale overlay acquisition failure'));
+await new Promise(resolve => setImmediate(resolve));
+assert.equal(studio.isOpen(), true, 'a stale overlay failure must not invalidate a newer open');
+await studio.close({ rollback: true });
+await new Promise(resolve => setImmediate(resolve));
+assert.equal(overlayOwners.length, 2);
+assert.notStrictEqual(overlayOwners[0], overlayOwners[1], 'each Appearance open needs an isolated overlay identity');
+assert.deepEqual(releasedOverlayOwners, overlayOwners, 'both old and current overlay leases must be released exactly once');
+assert.equal(
+    window.VCPLifecycle.diagnostics.find('next:appearance-studio-open').length,
+    0,
+    'failed overlay acquisition must not retain the per-open Appearance Studio scope'
+);
+window.topTabManager = originalTopTabManager;
+
+studio.open();
+const closeBeforeReopen = studio.close({ rollback: true });
+assert.equal(studio.open(), true, 'an open requested during teardown should be queued');
+await closeBeforeReopen;
+await new Promise(resolve => setImmediate(resolve));
+assert.equal(studio.isOpen(), true, 'queued open should mount only after prior teardown completes');
+await studio.close({ rollback: true });
+
 const source = fs.readFileSync('main.html', 'utf8');
 assert.match(source, /nextUiAccountAppearanceStudioBtn/);
 assert.match(source, /nextUiAccountThemeStoreBtn/);
@@ -540,4 +583,5 @@ assert.doesNotMatch(
     /vchatDynamicWallpaperMenuButton|data-studio-action="wallpaper"/,
     'Next Appearance Studio must not depend on a plugin-specific wallpaper adapter'
 );
+await studio.destroy();
 console.log('appearance studio checks passed.');

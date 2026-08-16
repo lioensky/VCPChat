@@ -5,6 +5,7 @@
         const core = context.core;
         const styleLibrary = context.styleLibrary;
         const hybridCompiler = context.hybridCompiler;
+        const settingsPort = context.settingsPort || {};
         if (!core || !hybridCompiler) {
             throw new TypeError(
                 'Render primitives require VDocCore and VDocHybridCompiler.'
@@ -12,6 +13,8 @@
         }
 
         let mermaidSequence = 0;
+        const TRUSTED_FONT_STYLE_ID =
+            'scriptorium-trusted-network-font-imports';
 
         function ensureShadowRoot(host) {
             if (!host) throw new TypeError('A surface host is required.');
@@ -38,6 +41,26 @@
 
         function markdownBaseCss(scope = '.vdoc-runtime') {
             return `
+${scope} [data-vdoc-paragraph-break-placeholder="true"],
+${scope} [data-vdoc-md-marker="paragraph-break"] {
+    display: inline !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    color: transparent !important;
+    caret-color: #3a8b78 !important;
+    background: transparent !important;
+    font-family: inherit !important;
+    font-size: inherit !important;
+    font-weight: inherit !important;
+    line-height: inherit !important;
+    letter-spacing: -.92em !important;
+    white-space: nowrap !important;
+    opacity: 1 !important;
+    vertical-align: baseline !important;
+    pointer-events: auto !important;
+    user-select: text !important;
+    -webkit-user-select: text !important;
+}
 ${scope} table {
     box-sizing: border-box;
     width: 100%;
@@ -104,6 +127,30 @@ ${scope} table code {
 .vdoc-runtime [data-vdoc-island] {
     user-select: text;
     -webkit-user-select: text;
+}
+/*
+ * 独占一行的 ↵ 是 Scriptorium 内部回车占位符。节点必须留在排版树和
+ * Selection 映射中，但字符本身在编辑、阅读、分页和导出中均不可见。
+ */
+.vdoc-runtime [data-vdoc-paragraph-break-placeholder="true"],
+.vdoc-runtime [data-vdoc-md-marker="paragraph-break"] {
+    display: inline !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    color: transparent !important;
+    caret-color: #3a8b78 !important;
+    background: transparent !important;
+    font-family: inherit !important;
+    font-size: inherit !important;
+    font-weight: inherit !important;
+    line-height: inherit !important;
+    letter-spacing: -.92em !important;
+    white-space: nowrap !important;
+    opacity: 1 !important;
+    vertical-align: baseline !important;
+    pointer-events: auto !important;
+    user-select: text !important;
+    -webkit-user-select: text !important;
 }
 .vdoc-runtime [data-vdoc-style-target="paragraph"] {
     display: block;
@@ -245,12 +292,101 @@ ${markdownBaseCss('.vdoc-runtime')}
             }).filter(Boolean).join('\n\n');
         }
 
+        function extractHttpsImports(css) {
+            const imports = [];
+            String(css || '').replace(
+                /@import\s+(?:url\(\s*)?(?:"([^"]+)"|'([^']+)'|([^'")\s;]+))\s*\)?([^;]*);?/gi,
+                (_source, doubleQuoted, singleQuoted, bare, suffix = '') => {
+                    const url = String(
+                        doubleQuoted || singleQuoted || bare || ''
+                    ).trim();
+                    if (/^https:\/\//i.test(url)) {
+                        imports.push(
+                            `@import url("${url.replace(/["\\]/g, '\\$&')}")${
+                                String(suffix || '').trim()
+                                    ? ` ${String(suffix).trim()}`
+                                    : ''
+                            };`
+                        );
+                    }
+                    return _source;
+                }
+            );
+            return [...new Set(imports)];
+        }
+
+        function installTrustedNetworkFontImports(imports) {
+            const css = String(imports || '').trim();
+            if (typeof document === 'undefined' || !document.head) return css;
+            const id = TRUSTED_FONT_STYLE_ID;
+            let style = document.getElementById(id);
+            if (!css || settingsPort.get?.('trustNetworkFonts') !== true) {
+                style?.remove();
+                return '';
+            }
+            if (!style) {
+                style = document.createElement('style');
+                style.id = id;
+                style.dataset.scriptoriumTrustedNetworkFonts = 'true';
+                document.head.appendChild(style);
+            }
+            if (style.textContent !== css) style.textContent = css;
+            return css;
+        }
+
+        function trustedNetworkFontImports(sources = []) {
+            const imports = settingsPort.get?.('trustNetworkFonts') === true
+                ? [...new Set(
+                    (Array.isArray(sources) ? sources : [sources])
+                        .flatMap(extractHttpsImports)
+                )].join('\n')
+                : '';
+            // Chromium 会请求 ShadowRoot 内的 @import，却可能不把其中的
+            // @font-face 注册到宿主页 FontFaceSet。同步安装到 document.head，
+            // 使字体面全局注册后再供 Shadow DOM 中的排版规则使用。
+            return installTrustedNetworkFontImports(imports);
+        }
+
+        function hoistTrustedImports(css) {
+            const imports = [];
+            const body = String(css || '').replace(
+                /@import\s+(?:url\(\s*)?(?:"([^"]+)"|'([^']+)'|([^'")\s;]+))\s*\)?([^;]*);?/gi,
+                (source, doubleQuoted, singleQuoted, bare, suffix = '') => {
+                    const url = String(
+                        doubleQuoted || singleQuoted || bare || ''
+                    ).trim();
+                    const remote = /^[a-z][a-z0-9+.-]*:/i.test(url)
+                        || /^\/\//.test(url);
+                    const allowed = !remote
+                        || (
+                            /^https:\/\//i.test(url)
+                            && settingsPort.get?.('trustNetworkFonts') === true
+                        );
+                    if (allowed) {
+                        imports.push(
+                            `@import url("${url.replace(/["\\]/g, '\\$&')}")${
+                                String(suffix || '').trim()
+                                    ? ` ${String(suffix).trim()}`
+                                    : ''
+                            };`
+                        );
+                    }
+                    // 本地依赖始终可用；HTTPS 仅在显式信任后提升到普通规则前。
+                    // 其它远程协议继续按安全策略移除。
+                    return '';
+                }
+            );
+            return imports.length
+                ? `${[...new Set(imports)].join('\n')}\n${body}`
+                : body;
+        }
+
         function createStyle(css, dataset = {}) {
             const style = document.createElement('style');
             Object.entries(dataset).forEach(([key, value]) => {
                 style.dataset[key] = String(value);
             });
-            style.textContent = resolveResources(css);
+            style.textContent = hoistTrustedImports(resolveResources(css));
             return style;
         }
 
@@ -404,6 +540,10 @@ ${markdownBaseCss('.vdoc-runtime')}
             compiledStyleIdsCss,
             referencedStyleIds,
             compiledDocumentStylesCss,
+            extractHttpsImports,
+            installTrustedNetworkFontImports,
+            trustedNetworkFontImports,
+            hoistTrustedImports,
             createStyle,
             createRuntime,
             decodeMathSource,

@@ -1,4 +1,5 @@
-const apps = new Map();
+const apps = window.VCPContributions?.apps;
+if (!apps) throw new Error('VCP contribution registry must load before Next UI applications.');
 
 function validate(definition) {
     if (!definition || typeof definition !== 'object') throw new TypeError('App definition is required.');
@@ -8,28 +9,35 @@ function validate(definition) {
     if (typeof definition.mount !== 'function') throw new TypeError(`App "${definition.id}" requires mount(container, context).`);
 }
 
-function register(definition) {
+function unregister(id, expectedApp = null) {
+    return apps.unregister(id, expectedApp);
+}
+
+function register(definition, options = {}) {
     validate(definition);
-    if (apps.has(definition.id)) throw new Error(`Next UI app id already registered: ${definition.id}`);
     const app = Object.freeze({
         icon: definition.iconSvg ? undefined : 'widgets',
         unmount: () => {},
         ...definition,
     });
-    apps.set(app.id, app);
-    window.dispatchEvent(new CustomEvent('next-ui-apps-changed', { detail: { id: app.id } }));
-    return app;
+    return apps.register(app, options).contribution;
 }
 
 function get(id) {
-    return apps.get(id) || null;
+    return apps.get(id);
 }
 
 function list() {
-    return [...apps.values()];
+    return apps.list();
 }
 
-window.nextUiApps = Object.freeze({ register, get, list });
+apps.subscribe(change => {
+    window.dispatchEvent(new CustomEvent('next-ui-apps-changed', {
+        detail: { id: change.id, action: change.action, app: change.contribution }
+    }));
+});
+
+window.nextUiApps = Object.freeze({ register, unregister, get, list });
 window.dispatchEvent(new CustomEvent('next-ui-apps-ready'));
 
-export { get, list, register };
+export { get, list, register, unregister };

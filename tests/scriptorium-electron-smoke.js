@@ -31,6 +31,85 @@ function registerMinimalIpc() {
         () => nativeTheme.shouldUseDarkColors ? 'dark' : 'light'
     );
     ipcMain.handle('docx:recent-list', () => []);
+    ipcMain.handle('scriptorium:document-library', () => ({
+        success: true,
+        extensions: [
+            'vdocx', 'docx', 'vpptx', 'pptx', 'txt', 'html', 'md',
+        ],
+        roots: [
+            {
+                id: 'documents',
+                label: '用户文档',
+                description: 'VDOCX 与导入文档',
+                path: 'AppData/ScriptoriumDocument/VDOCX',
+                children: [
+                    {
+                        type: 'file',
+                        name: '原生文稿.vdocx',
+                        path: 'AppData/ScriptoriumDocument/VDOCX/原生文稿.vdocx',
+                        extension: 'vdocx',
+                        size: 256,
+                    },
+                    {
+                        type: 'file',
+                        name: 'Word文稿.docx',
+                        path: 'AppData/ScriptoriumDocument/VDOCX/Word文稿.docx',
+                        extension: 'docx',
+                        size: 256,
+                    },
+                    {
+                        type: 'file',
+                        name: '纯文本.txt',
+                        path: 'AppData/ScriptoriumDocument/VDOCX/纯文本.txt',
+                        extension: 'txt',
+                        size: 128,
+                    },
+                    {
+                        type: 'file',
+                        name: '网页.html',
+                        path: 'AppData/ScriptoriumDocument/VDOCX/网页.html',
+                        extension: 'html',
+                        size: 128,
+                    },
+                ],
+            },
+            {
+                id: 'presentations',
+                label: '用户演示',
+                description: 'VPPTX 与 PowerPoint 演示',
+                path: 'ScriptoriumDocument/VPPTX',
+                children: [
+                    {
+                        type: 'file',
+                        name: '原生演示.vpptx',
+                        path: 'ScriptoriumDocument/VPPTX/原生演示.vpptx',
+                        extension: 'vpptx',
+                        size: 256,
+                    },
+                    {
+                        type: 'file',
+                        name: '传统演示.pptx',
+                        path: 'ScriptoriumDocument/VPPTX/传统演示.pptx',
+                        extension: 'pptx',
+                        size: 256,
+                    },
+                ],
+            },
+            {
+                id: 'notes',
+                label: '用户笔记',
+                description: 'Markdown 与纯文本笔记',
+                path: 'AppData/Notemodules',
+                children: [{
+                    type: 'file',
+                    name: '测试笔记.md',
+                    path: 'AppData/Notemodules/测试笔记.md',
+                    extension: 'md',
+                    size: 128,
+                }],
+            },
+        ],
+    }));
     ipcMain.handle('load-agents-list', () => []);
     ipcMain.handle('load-user-avatar', () => null);
     ipcMain.handle('load-agent-avatar', () => null);
@@ -154,8 +233,31 @@ app.whenReady().then(async () => {
         }).source;
 
         const initialSource = source();
+        const libraryExtensions = [
+            ...document.querySelectorAll(
+                '#document-library-tree .library-file'
+            )
+        ].map((node) => node.dataset.extension).sort();
         const shell = {
             apiVersion: window.ScriptoriumAgent.version,
+            libraryModuleAvailable:
+                Boolean(window.ScriptoriumLibrary?.createLibraryController),
+            libraryRootCount:
+                document.querySelectorAll(
+                    '#document-library-tree .library-root'
+                ).length,
+            libraryRootOrder: [
+                ...document.querySelectorAll(
+                    '#document-library-tree .library-root-copy strong'
+                )
+            ].map((node) => node.textContent).join(' > '),
+            librarySupportsAllFormats:
+                libraryExtensions.join(',') ===
+                    'docx,html,md,pptx,txt,vdocx,vpptx',
+            libraryNotBusy:
+                !document.getElementById(
+                    'document-library-tree'
+                ).hasAttribute('aria-busy'),
             currentApiIsDocx: current === api.docx,
             title: document.getElementById('document-title').textContent,
             workspaceVisible:
@@ -451,6 +553,8 @@ app.whenReady().then(async () => {
 
     const exact = {
         'shell.apiVersion': 5,
+        'shell.libraryRootCount': 3,
+        'shell.libraryRootOrder': '用户文档 > 用户演示 > 用户笔记',
         'shell.sourceKind': 'markdown-hybrid',
         'agentReview.pendingAuthor': '冒烟测试 Agent',
         'agentReview.receiptDecision': 'approved',

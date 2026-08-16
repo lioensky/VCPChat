@@ -6,10 +6,12 @@ import postcss from 'postcss';
 const root = process.cwd();
 // Pin the source snapshot used for the original Agent-runtime subtraction.
 // A moving development branch makes every later Codex change look like a
-// design-system boundary violation. The upstream comparison intentionally
-// follows origin/main so newly merged upstream files remain admissible.
+// design-system boundary violation. Compare retained Classic surfaces with
+// the latest main baseline first: next-ui may intentionally lag behind main,
+// and a main -> next-ui sync must not be reported as a design-system change.
+// Fall back to next-ui for shallow or branch-only CI checkouts.
 const sourceRef = process.env.VCP_DESIGN_SOURCE_REF || 'a1f76dffea8105999e465da45d8e52558cd80c47';
-const upstreamRef = process.env.VCP_UPSTREAM_REF || 'origin/main';
+const upstreamRef = resolveUpstreamRef();
 const failures = [];
 
 const forbiddenPaths = [
@@ -37,6 +39,8 @@ const allowedSourceDifferences = new Set([
     'README.md',
     'RAGmodules/RAG_Observer.html',
     'docs/next-ui-webawesome-roadmap.md',
+    'docs/next-ui-lifecycle-architecture.md',
+    'docs/next-ui-development-roadmap.md',
     'docs/design-system-upstream-pr-convergence.md',
     'docs/ui-active-surface-policy.md',
     'docs/appearance-design-system.md',
@@ -54,22 +58,45 @@ const allowedSourceDifferences = new Set([
     'modules/event-listeners.js',
     'modules/filterManager.js',
     'modules/global-settings-manager.js',
+    'modules/itemListManager.js',
     'modules/ipc/deepWikiHandlers.js',
     'modules/ipc/desktopHandlers.js',
     'modules/ipc/agentHandlers.js',
     'modules/ipc/settingsHandlers.js',
     'modules/ipc/themeHandlers.js',
+    'modules/ipc/windowHandlers.js',
     'modules/mainChatCommands.js',
     'modules/messageRenderer.js',
+    'modules/searchManager.js',
+    'modules/settingsManager.js',
     'modules/services/deepWikiService.js',
     'modules/services/embeddedAppSessionManager.js',
+    'modules/services/senderTaskRegistry.js',
     'modules/shared/embeddedAppAllowlist.js',
     'modules/topTabManager.js',
     'modules/topicListManager.js',
     'modules/trayManager.js',
     'modules/ui-helpers.js',
+    'modules/uiManager.js',
+    'VCPDistributedServer/frontend-plugin-loader.js',
     'modules/ipc/ipcContracts.js',
     'modules/ui-system/vcp-main-ui-runtime.js',
+    'modules/ui-system/lifecycle-scope.js',
+    'modules/ui-system/lifecycle-inspector.js',
+    'modules/ui-system/performance-recorder.js',
+    'modules/ui-system/task-handle.js',
+    'modules/ui-system/contribution-registry.js',
+    'modules/ui-system/state-channel.js',
+    'modules/ui-system/surface-controller.js',
+    'modules/ui-system/next-shell/overlay-coordinator.js',
+    'modules/ui-system/next-shell/embedded-app-controller.js',
+    'modules/ui-system/next-shell/app-tab-host.js',
+    'modules/ui-system/next-shell/assistant-search-controller.js',
+    'modules/ui-system/next-shell/account-menu-controller.js',
+    'modules/ui-system/next-shell/launchpad-controller.js',
+    'modules/ui-system/next-shell/creation-controller.js',
+    'modules/ui-system/next-shell/next-shell-controller.js',
+    'modules/ui-system/next-ui-apps.js',
     'modules/ui-system/appearance-engine.js',
     'modules/ui-system/appearance-studio.js',
     'modules/ui-system/ask-nova-modal.js',
@@ -84,6 +111,7 @@ const allowedSourceDifferences = new Set([
     'modules/ui-system/webawesome-runtime-manifest.js',
     'modules/utils/appSettingsManager.js',
     'modules/uiModeManager.js',
+    'Promptmodules/prompt-manager.js',
     'package-lock.json',
     'package.json',
     'preloads/chat.js',
@@ -117,8 +145,27 @@ const allowedSourceDifferences = new Set([
     'scripts/test-webawesome-adapter.mjs',
     'scripts/test-vcp-ui-select-proxy.mjs',
     'scripts/test-electron-ui-apps-smoke.mjs',
+    'scripts/test-electron-lifecycle-stress.mjs',
     'scripts/test-settings-wa-electron.mjs',
     'tests/frontend-plugins.test.js',
+    'tests/lifecycle-scope.test.js',
+    'tests/lifecycle-inspector.test.js',
+    'tests/performance-recorder.test.js',
+    'tests/embedded-app-security.test.js',
+    'tests/task-handle.test.js',
+    'tests/sender-task-registry.test.js',
+    'tests/contribution-registry.test.js',
+    'tests/state-channel.test.js',
+    'tests/state-authority.test.js',
+    'tests/surface-controller.test.js',
+    'tests/app-tab-host.test.js',
+    'tests/assistant-search-controller.test.js',
+    'tests/account-menu-controller.test.js',
+    'tests/launchpad-controller.test.js',
+    'tests/creation-controller.test.js',
+    'tests/embedded-app-controller.test.js',
+    'tests/overlay-coordinator.test.js',
+    'tests/next-ui-registries.test.mjs',
     'tests/topic-list-mode-lifecycle.test.js',
     'style.css',
     'styles/notifications.css',
@@ -165,6 +212,22 @@ function git(args) {
     return execFileSync('git', ['-c', 'core.quotepath=false', ...args], { cwd: root, encoding: 'utf8' }).trim();
 }
 
+function resolveUpstreamRef() {
+    const candidates = process.env.VCP_UPSTREAM_REF
+        ? [process.env.VCP_UPSTREAM_REF]
+        : ['upstream/main', 'origin/main', 'upstream/next-ui', 'origin/next-ui'];
+    for (const candidate of candidates) {
+        try {
+            git(['rev-parse', '--verify', candidate]);
+            return candidate;
+        } catch {
+            // Try the next checkout topology. A final missing ref is handled
+            // by the existing parity-audit warnings below.
+        }
+    }
+    return candidates[0];
+}
+
 const trackedFiles = git(['ls-files']).split('\n').filter(Boolean);
 for (const file of trackedFiles) {
     if (forbiddenPaths.some(pattern => pattern.test(file))) failures.push(`${file}: forbidden Build/Codex path remains`);
@@ -196,6 +259,7 @@ const requiredRetainedFiles = [
     'assets/nova_button_light.png',
     'styles/ui-next.css',
     'modules/topTabManager.js',
+    'modules/ui-system/lifecycle-scope.js',
     'modules/services/deepWikiService.js',
     'modules/services/embeddedAppSessionManager.js',
     'modules/ui-system/ask-nova-modal.js',

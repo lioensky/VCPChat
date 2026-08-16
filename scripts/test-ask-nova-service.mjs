@@ -98,14 +98,35 @@ const timeoutService = createDeepWikiService({
 await assert.rejects(() => timeoutService.ask({ target: 'frontend', question: 'timeout' }), /请求超时/);
 
 const cancelController = new AbortController();
+let cancelFetchCalls = 0;
 const cancelService = createDeepWikiService({
     timeoutMs: 1000,
-    fetchImpl: async (_url, options) => new Promise((_resolve, reject) => {
-        options.signal.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' })), { once: true });
-    })
+    fetchImpl: async (_url, options) => {
+        cancelFetchCalls += 1;
+        if (cancelFetchCalls > 1) {
+            return response({ json: { result: { content: [{ type: 'text', text: 'Backend after cancel' }] } } });
+        }
+        return new Promise((_resolve, reject) => {
+            options.signal.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' })), { once: true });
+        });
+    }
 });
 const cancelled = cancelService.ask({ target: 'frontend', question: 'cancel' }, { signal: cancelController.signal });
 cancelController.abort();
 await assert.rejects(cancelled, error => error?.code === 'ASK_NOVA_CANCELLED');
+const afterCancel = await cancelService.ask({ target: 'backend', question: 'new target' });
+assert.equal(afterCancel.answer, 'Backend after cancel', 'a cancelled frontend request must not poison the next backend request');
+
+let offline = true;
+const reconnectService = createDeepWikiService({
+    fetchImpl: async () => {
+        if (offline) throw new TypeError('fetch failed');
+        return response({ json: { result: { content: [{ type: 'text', text: 'Recovered after reconnect' }] } } });
+    },
+});
+await assert.rejects(() => reconnectService.ask({ target: 'frontend', question: 'offline probe' }), /fetch failed/);
+offline = false;
+const reconnected = await reconnectService.ask({ target: 'frontend', question: 'retry after reconnect' });
+assert.equal(reconnected.answer, 'Recovered after reconnect', 'an offline failure must not poison later Ask Nova requests');
 
 console.log('Ask Nova DeepWiki service tests passed.');

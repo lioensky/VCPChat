@@ -9,10 +9,7 @@
         }
 
         const state = {
-            entries: [],
-            index: -1,
-            burstTimer: null,
-            burstDirty: false,
+            branches: new Map(),
             restoring: false,
             limit: Math.max(1, Number(context.limit) || 80),
             disposed: false,
@@ -27,63 +24,129 @@
             return model ? core.serialize(model) : '';
         }
 
+        function resolvedBranchKey() {
+            const resolved = context.branchKeyResolver?.();
+            return String(resolved || 'document:edit');
+        }
+
+        function branchFor(key = resolvedBranchKey(), options = {}) {
+            const normalizedKey = String(key || 'document:edit');
+            let branch = state.branches.get(normalizedKey);
+            if (!branch && options.create !== false) {
+                branch = {
+                    key: normalizedKey,
+                    entries: [],
+                    index: -1,
+                    burstTimer: null,
+                    burstDirty: false,
+                };
+                state.branches.set(normalizedKey, branch);
+            }
+            return branch || null;
+        }
+
+        function notify(reason = 'history-status-changed', key = resolvedBranchKey()) {
+            const current = status(key);
+            context.onChange?.({ ...current, reason });
+            return current;
+        }
+
         function capture(options = {}) {
             assertActive();
             if (state.restoring || !documentPort.document()) return false;
             context.editorPort?.flush?.();
+            const key = String(options.branchKey || resolvedBranchKey());
+            const branch = branchFor(key);
             const serialized = snapshot();
-            if (!serialized || state.entries[state.index] === serialized) {
-                state.burstDirty = false;
+            if (!serialized || branch.entries[branch.index] === serialized) {
+                branch.burstDirty = false;
+                notify(options.reason || 'capture-unchanged', key);
                 return false;
             }
-            state.entries = state.entries.slice(0, state.index + 1);
-            state.entries.push(serialized);
-            if (state.entries.length > state.limit) state.entries.shift();
-            state.index = state.entries.length - 1;
-            state.burstDirty = false;
-            context.onCapture?.({
-                index: state.index,
-                length: state.entries.length,
+            branch.entries = branch.entries.slice(0, branch.index + 1);
+            branch.entries.push(serialized);
+            if (branch.entries.length > state.limit) branch.entries.shift();
+            branch.index = branch.entries.length - 1;
+            branch.burstDirty = false;
+            const detail = {
+                branchKey: key,
+                index: branch.index,
+                length: branch.entries.length,
                 reason: options.reason || 'capture',
-            });
+            };
+            context.onCapture?.(detail);
+            notify(detail.reason, key);
             return true;
         }
 
         function schedule(options = {}) {
             assertActive();
-            state.burstDirty = true;
-            window.clearTimeout(state.burstTimer);
-            state.burstTimer = window.setTimeout(
-                () => finalize(options),
+            const key = String(options.branchKey || resolvedBranchKey());
+            const branch = branchFor(key);
+            branch.burstDirty = true;
+            window.clearTimeout(branch.burstTimer);
+            branch.burstTimer = window.setTimeout(
+                () => finalize({ ...options, branchKey: key }),
                 Math.max(0, Number(options.delay) || 2000)
             );
+            notify(options.reason || 'history-edit-scheduled', key);
             return true;
         }
 
         function finalize(options = {}) {
             assertActive();
-            window.clearTimeout(state.burstTimer);
-            state.burstTimer = null;
+            const key = String(options.branchKey || resolvedBranchKey());
+            const branch = branchFor(key, { create: options.force === true });
+            if (!branch) return false;
+            window.clearTimeout(branch.burstTimer);
+            branch.burstTimer = null;
             context.editorPort?.flush?.();
-            if (!state.burstDirty && options.force !== true) return false;
+            if (!branch.burstDirty && options.force !== true) {
+                notify(options.reason || 'history-finalize-unchanged', key);
+                return false;
+            }
             const captured = capture({
+                branchKey: key,
                 reason: options.reason || 'edit-burst-finalized',
             });
-            context.onFinalize?.({ captured });
+            context.onFinalize?.({ branchKey: key, captured });
             return captured;
+        }
+
+        function activate(key = resolvedBranchKey(), options = {}) {
+            assertActive();
+            const normalizedKey = String(key || 'document:edit');
+            const branch = branchFor(normalizedKey);
+            if (!branch.entries.length
+                && options.capture !== false
+                && documentPort.document()) {
+                capture({
+                    branchKey: normalizedKey,
+                    reason: options.reason || 'history-branch-activated',
+                });
+            } else {
+                notify(options.reason || 'history-branch-activated', normalizedKey);
+            }
+            return normalizedKey;
         }
 
         function restore(offset) {
             assertActive();
+            const key = resolvedBranchKey();
+            const branch = branchFor(key, { create: false });
             const viewState = context.editorPort?.captureViewState?.() || null;
-            finalize();
-            const nextIndex = state.index + Number(offset);
-            if (!Number.isInteger(nextIndex)
+            finalize({ branchKey: key });
+            const nextIndex = (branch?.index ?? -1) + Number(offset);
+            if (!branch
+                || !Number.isInteger(nextIndex)
                 || nextIndex < 0
-                || nextIndex >= state.entries.length) {
+                || nextIndex >= branch.entries.length) {
+                notify('history-restore-unavailable', key);
                 return false;
             }
-            const restored = core.parse(state.entries[nextIndex]);
+            const serialized = branch.entries[nextIndex];
+            const restored = context.restoreSnapshot?.(serialized, key)
+                || core.parse(serialized);
             const currentStatus = documentPort.status();
             state.restoring = true;
             try {
@@ -95,7 +158,7 @@
                     reason: offset < 0 ? 'history-undo' : 'history-redo',
                     previousDocumentId: currentStatus.documentId,
                 });
-                state.index = nextIndex;
+                branch.index = nextIndex;
                 context.adapterResolver?.()?.invalidate?.();
                 context.renderPort?.invalidate?.(
                     offset < 0 ? 'history-undo' : 'history-redo'
@@ -107,9 +170,11 @@
                     incrementRevision: false,
                 });
                 context.onRestore?.({
-                    index: state.index,
+                    branchKey: key,
+                    index: branch.index,
                     offset,
                 });
+                notify(offset < 0 ? 'history-undo' : 'history-redo', key);
                 return true;
             } finally {
                 state.restoring = false;
@@ -124,33 +189,42 @@
 
         function reset(options = {}) {
             assertActive();
-            window.clearTimeout(state.burstTimer);
-            state.burstTimer = null;
-            state.entries = [];
-            state.index = -1;
-            state.burstDirty = false;
+            state.branches.forEach((branch) =>
+                window.clearTimeout(branch.burstTimer)
+            );
+            state.branches.clear();
             if (options.capture !== false && documentPort.document()) {
                 capture({ reason: 'history-reset' });
+            } else {
+                notify('history-reset');
             }
         }
 
-        function status() {
+        function status(key = resolvedBranchKey()) {
+            const normalizedKey = String(key || 'document:edit');
+            const branch = branchFor(normalizedKey, { create: false });
             return Object.freeze({
-                index: state.index,
-                length: state.entries.length,
-                canUndo: state.index > 0,
-                canRedo: state.index >= 0
-                    && state.index < state.entries.length - 1,
-                burstDirty: state.burstDirty,
+                branchKey: normalizedKey,
+                index: branch?.index ?? -1,
+                length: branch?.entries.length ?? 0,
+                canUndo: (branch?.index ?? -1) > 0
+                    || (
+                        branch?.burstDirty === true
+                        && (branch?.index ?? -1) >= 0
+                    ),
+                canRedo: branch?.burstDirty !== true
+                    && (branch?.index ?? -1) >= 0
+                    && branch.index < branch.entries.length - 1,
+                burstDirty: branch?.burstDirty === true,
             });
         }
 
         function dispose() {
             if (state.disposed) return;
-            window.clearTimeout(state.burstTimer);
-            state.burstTimer = null;
-            state.entries = [];
-            state.index = -1;
+            state.branches.forEach((branch) =>
+                window.clearTimeout(branch.burstTimer)
+            );
+            state.branches.clear();
             state.disposed = true;
         }
 
@@ -158,6 +232,7 @@
             capture,
             schedule,
             finalize,
+            activate,
             restore,
             execute,
             reset,

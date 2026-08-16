@@ -204,12 +204,28 @@
         return btoa(binary);
     }
 
-    function createRuntimeResolver(documentModel, resourceData, objectUrls = new Map()) {
+    function createRuntimeResolver(
+        documentModel,
+        resourceData,
+        objectUrls = new Map(),
+        options = {}
+    ) {
+        const trustedFontUrl = (resource, category) => {
+            if (category !== 'fonts'
+                || options.trustNetworkFonts?.() !== true) {
+                return '';
+            }
+            const sourceUrl = String(resource?.sourceUrl || '').trim();
+            return /^https:\/\//i.test(sourceUrl) ? sourceUrl : '';
+        };
         const urlFor = (category, id) => {
             // 清单会在编辑期间动态增加资源，因此不能在创建解析器时复制成静态 Map。
             const resource = resourceMetadata(documentModel, id);
+            if (!resource || resource.category !== category) return '';
+            const trustedUrl = trustedFontUrl(resource, category);
+            if (trustedUrl) return trustedUrl;
             const bytes = resourceData.get(id);
-            if (!resource || !bytes || resource.category !== category) return '';
+            if (!bytes) return '';
             if (objectUrls.has(id)) return objectUrls.get(id);
             const url = URL.createObjectURL(new Blob([bytes], { type: resource.mime }));
             objectUrls.set(id, url);
@@ -236,8 +252,11 @@
         );
         const dataUrlFor = (category, id) => {
             const resource = resourceMetadata(documentModel, id);
+            if (!resource || resource.category !== category) return '';
+            const trustedUrl = trustedFontUrl(resource, category);
+            if (trustedUrl) return trustedUrl;
             const bytes = resourceData.get(id);
-            if (!resource || !bytes || resource.category !== category) return '';
+            if (!bytes) return '';
             return `data:${resource.mime || 'application/octet-stream'};base64,${
                 bytesToBase64(bytes)
             }`;

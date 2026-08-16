@@ -233,6 +233,16 @@ async function ensureChildPageClosed(browser, key, deadline, label) {
     throw new Error(`${label} page (${key}) never closed before reopen`);
 }
 
+async function pressEscapeAndAllowTargetClose(page) {
+    try {
+        await page.keyboard.press('Escape');
+    } catch (error) {
+        // Closing an embedded WebContents can destroy its CDP target before
+        // Input.dispatchKeyEvent receives an acknowledgement.
+        if (!/TargetCloseError|Target closed/i.test(`${error?.name || ''} ${error?.message || ''}`)) throw error;
+    }
+}
+
 // Known-benign console noise: the legacy pages load some Font Awesome SVG via
 // data: URLs which the app's CSP (connect-src without data:) rejects. This is
 // pre-existing main-renderer/legacy behaviour, reported separately; it is not
@@ -260,7 +270,7 @@ async function auditNextPage(page, app, captureName, { expectEmbedded = true } =
     assert.equal(state.waRuntime?.locale, 'zh-CN', `${app.name} WA locale is not zh-CN: ${JSON.stringify(state)}`);
     assert.equal(state.waScope, 'true', `${app.name} WA token scope is not mounted: ${JSON.stringify(state)}`);
     assert.equal(state.waThemeOwners, 1, `${app.name} WA theme ownership leaked or duplicated: ${JSON.stringify(state)}`);
-    assert.equal(state.hasSelectObserver, true, `${app.name} Select observer was not mounted: ${JSON.stringify(state)}`);
+    assert.equal(state.hasSelectObserver, false, `${app.name} mounted a document-wide Select observer: ${JSON.stringify(state)}`);
     if (expectEmbedded && app.integrated) {
         assert.equal(state.integratedShell, true, `${app.name} must use the shared integrated shell: ${JSON.stringify(state)}`);
         assert.equal(state.shellHeaderDisplay, 'none', `${app.name} embedded duplicate header must be hidden: ${JSON.stringify(state)}`);
@@ -389,6 +399,16 @@ const nextSettings = {
 };
 const classicSettings = { ...nextSettings, uiMode: 'classic' };
 await fs.writeFile(path.join(appData, 'settings.json'), JSON.stringify(nextSettings), 'utf8');
+const smokeAgentDir = path.join(appData, 'Agents', 'SmokeAgent');
+await fs.mkdir(smokeAgentDir, { recursive: true });
+await fs.writeFile(path.join(smokeAgentDir, 'config.json'), JSON.stringify({
+    name: 'Smoke Agent',
+    model: 'smoke-model',
+    promptMode: 'original',
+    originalSystemPrompt: 'Smoke prompt',
+    systemPrompt: 'Smoke prompt',
+    stripRegexes: [],
+}), 'utf8');
 
 // Keep the project-root mirror for older packaged/runtime paths while the
 // primary hermetic authority remains VCPCHAT_APP_DATA_DIR.
@@ -613,18 +633,14 @@ try {
             && presentationButton?.getAttribute('aria-expanded') === 'false'
             && document.activeElement === presentationButton;
 
-        const bodyWasDark = document.body.classList.contains('dark-theme');
-        const bodyWasLight = document.body.classList.contains('light-theme');
-        document.body.classList.remove('light-theme');
-        document.body.classList.add('dark-theme');
+        const originalTheme = document.body.classList.contains('dark-theme') ? 'dark' : 'light';
+        window.uiManager.applyTheme('dark');
         await tick();
         const darkThemeActionLabel = document.getElementById('nextUiThemeBtn')?.getAttribute('aria-label');
-        document.body.classList.remove('dark-theme');
-        document.body.classList.add('light-theme');
+        window.uiManager.applyTheme('light');
         await tick();
         const lightThemeActionLabel = document.getElementById('nextUiThemeBtn')?.getAttribute('aria-label');
-        document.body.classList.toggle('dark-theme', bodyWasDark);
-        document.body.classList.toggle('light-theme', bodyWasLight);
+        window.uiManager.applyTheme(originalTheme);
         await tick();
 
         document.getElementById('nextUiThemeBtn')?.click();
@@ -733,6 +749,35 @@ try {
         protectedPreserved: true,
         removed: 1,
     }, `notification clear must preserve tool approvals: ${JSON.stringify(parityControls)}`);
+    const narrowDock = await page.evaluate(async () => {
+        const sidebar = document.getElementById('notificationsSidebar');
+        const previousWidth = sidebar.style.width;
+        sidebar.classList.add('active');
+        sidebar.style.width = '240px';
+        await new Promise(resolve => setTimeout(resolve, 420));
+        const buttons = [...document.querySelectorAll('#appTrayPinnedApps > .capsule-button')];
+        const state = {
+            labelsHidden: buttons.every(button => getComputedStyle(button.querySelector('.notes-button-label')).display === 'none'),
+            iconsVisible: buttons.every(button => {
+                const icon = button.querySelector('svg');
+                const rect = icon?.getBoundingClientRect();
+                return rect?.width >= 17 && rect?.height >= 17;
+            }),
+            buttonOverflow: buttons.some(button => button.scrollWidth > button.clientWidth + 1),
+            geometry: buttons.map(button => ({
+                clientWidth: button.clientWidth,
+                scrollWidth: button.scrollWidth,
+                width: getComputedStyle(button).width,
+                padding: getComputedStyle(button).padding,
+                gap: getComputedStyle(button).gap,
+            })),
+        };
+        sidebar.style.width = previousWidth;
+        return state;
+    });
+    assert.equal(narrowDock.labelsHidden, true, `narrow notification dock labels are visible: ${JSON.stringify(narrowDock)}`);
+    assert.equal(narrowDock.iconsVisible, true, `narrow notification dock icons are clipped: ${JSON.stringify(narrowDock)}`);
+    assert.equal(narrowDock.buttonOverflow, false, `narrow notification dock buttons overflow: ${JSON.stringify(narrowDock)}`);
     await page.waitForFunction(() => Boolean(window.askNovaController), { timeout: timeoutMs });
     const askNovaEntryState = await page.evaluate(() => ({
         buttons: document.querySelectorAll('button[data-ask-nova-target]').length,
@@ -775,6 +820,14 @@ try {
     assert.equal(askNovaModalState.isDialog, true, `Ask Nova modal semantics missing: ${JSON.stringify(askNovaModalState)}`);
     assert.equal(askNovaModalState.visibleOverlay, true, `Ask Nova modal is mounted but not visibly covering the window: ${JSON.stringify(askNovaModalState)}`);
     await capture(page, 'main-ask-nova.png');
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => !document.querySelector('.ask-nova-modal-host'), { timeout: timeoutMs });
+    await page.click('button[data-ask-nova-target="backend"]');
+    await page.waitForFunction(() => {
+        const hosts = document.querySelectorAll('.ask-nova-modal-host');
+        return hosts.length === 1
+            && document.querySelector('.ask-nova-target-tab.active')?.dataset.target === 'backend';
+    }, { timeout: timeoutMs });
     await page.keyboard.press('Escape');
     await page.waitForFunction(() => !document.querySelector('.ask-nova-modal-host'), { timeout: timeoutMs });
     summary.push({ surface: '主界面 shell', mode: 'next', pass: true, lucide: bootLucide.lucideIcons, note: 'boot: WA 零请求/零注册，Orbitron/Nova/lucide 已载入，上游消息组件语义保留，应用托盘与 Ask Nova 可用' });
@@ -831,15 +884,15 @@ try {
     const settingsSelectState = await page.evaluate(() => {
         const modal = document.getElementById('globalSettingsModal');
         return {
-            native: modal?.querySelectorAll('select.vcp-ui-select-source').length || 0,
+            native: modal?.querySelectorAll('select.vcp-ui-native-select').length || 0,
             proxies: modal?.querySelectorAll('wa-select.vcp-ui-select-proxy').length || 0,
-            visibleNative: [...(modal?.querySelectorAll('select.vcp-ui-select-source') || [])]
+            visibleNative: [...(modal?.querySelectorAll('select.vcp-ui-native-select') || [])]
                 .filter(select => !select.hidden && getComputedStyle(select).display !== 'none').length,
         };
     });
-    assert.ok(settingsSelectState.native > 0, `global settings Select sources missing: ${JSON.stringify(settingsSelectState)}`);
-    assert.equal(settingsSelectState.proxies, settingsSelectState.native, `global settings Select proxies mismatch: ${JSON.stringify(settingsSelectState)}`);
-    assert.equal(settingsSelectState.visibleNative, 0, `global settings native Select is still visible: ${JSON.stringify(settingsSelectState)}`);
+    assert.ok(settingsSelectState.native > 0, `global settings native Select controls missing: ${JSON.stringify(settingsSelectState)}`);
+    assert.equal(settingsSelectState.proxies, 0, `legacy settings unexpectedly created WA Select proxies: ${JSON.stringify(settingsSelectState)}`);
+    assert.ok(settingsSelectState.visibleNative > 0, `global settings native Select controls are not usable: ${JSON.stringify(settingsSelectState)}`);
     await capture(page, 'main-settings-next.png');
     // Focus lands on the first field inside the open modal.
     const settingsFocus = await page.evaluate(() => {
@@ -852,6 +905,35 @@ try {
     assert.ok(settingsFocus.focused, `global settings did not take focus: ${JSON.stringify(settingsFocus)}`);
     await page.evaluate(() => window.uiHelperFunctions.closeModal('globalSettingsModal'));
     summary.push({ surface: '全局设置', mode: 'next', pass: true, lucide: 0, note: '增强输入/保存栏 dirty 态/搜索注入/焦点' });
+
+    // Agent settings are a renderer-owned surface and must not create child
+    // WebContents or accumulate VCPUI adapters when repeatedly revisited.
+    await page.evaluate(() => window.topTabManager.setView('home'));
+    await page.waitForSelector('#agentList [data-item-id="SmokeAgent"]', { timeout: timeoutMs });
+    await page.click('#agentList [data-item-id="SmokeAgent"]');
+    await page.evaluate(() => window.uiManager.switchToTab('settings'));
+    await page.waitForFunction(() => document.getElementById('editingAgentId')?.value === 'SmokeAgent', { timeout: timeoutMs });
+    const settingsProcessBaseline = (await browser.pages()).length;
+    const settingsDomBaseline = await page.evaluate(() => ({
+        enhanced: window.VCPUISettingsBridge?.enhancedCount || 0,
+        promptNodes: document.querySelectorAll('#systemPromptContainer *').length,
+    }));
+    for (let cycle = 0; cycle < 12; cycle += 1) {
+        await page.evaluate(() => {
+            window.uiManager.switchToTab('agents');
+            window.uiManager.switchToTab('settings');
+            return window.settingsManager.displaySettingsForItem();
+        });
+    }
+    await sleep(250);
+    const settingsDomAfter = await page.evaluate(() => ({
+        enhanced: window.VCPUISettingsBridge?.enhancedCount || 0,
+        promptNodes: document.querySelectorAll('#systemPromptContainer *').length,
+    }));
+    assert.equal((await browser.pages()).length, settingsProcessBaseline, 'agent settings visits leaked renderer/WebContents processes');
+    assert.equal(settingsDomAfter.enhanced, settingsDomBaseline.enhanced, `agent settings adapters accumulated: ${JSON.stringify({ settingsDomBaseline, settingsDomAfter })}`);
+    assert.ok(settingsDomAfter.promptNodes <= settingsDomBaseline.promptNodes + 4, `agent prompt DOM accumulated: ${JSON.stringify({ settingsDomBaseline, settingsDomAfter })}`);
+    summary.push({ surface: 'Agent 设置生命周期', mode: 'next', pass: true, lucide: 0, note: '12 次往返不增加 WebContents、VCPUI adapter 或提示词 DOM' });
 
     // 4. Active child presentations plus upstream-Classic host integration.
     for (const app of EMBEDDED_APPS) {
@@ -871,6 +953,30 @@ try {
         summary.push(app.nextEnabled
             ? { surface: app.name, mode: 'next', pass: true, lucide: 0, note: `shell + ${Object.entries(app.minWa || {}).map(([t, n]) => `${n}+<${t}>`).join(', ')}，native增强>=${app.minNativeEnhanced || 0}，无溢出/重叠/报错` }
             : { surface: app.name, mode: 'upstream-classic', pass: true, lucide: 0, note: '通用宿主打开上游经典页面，未携带实验性 Next 实现' });
+        if (app.action === 'open-note-mini-window') {
+            // The upstream sticky-note page maps Escape to closeWindow(). In
+            // an embedded WebContentsView that must dispose only its tab,
+            // never the owning VCPChat BrowserWindow. Repeat the path to catch
+            // delayed renderer destruction/process accumulation.
+            await pressEscapeAndAllowTargetClose(childPage);
+            await ensureChildPageClosed(browser, app.key, Date.now() + timeoutMs, app.name);
+            await page.waitForFunction(
+                viewId => !document.querySelector(`[data-view-id="${viewId}"]`),
+                { timeout: timeoutMs },
+                `app:${app.id}`
+            );
+            assert.equal(page.isClosed(), false, 'embedded Escape cascaded into the main window');
+            for (let cycle = 0; cycle < 4; cycle += 1) {
+                await page.evaluate((appDefinition) => window.topTabManager.openEmbeddedApp(appDefinition), {
+                    id: app.id, action: app.action, name: app.name,
+                });
+                const reopened = await waitForChildPage(browser, app.key, Date.now() + timeoutMs, `${app.name} cycle ${cycle + 1}`);
+                await pressEscapeAndAllowTargetClose(reopened);
+                await ensureChildPageClosed(browser, app.key, Date.now() + timeoutMs, `${app.name} cycle ${cycle + 1}`);
+                assert.equal(page.isClosed(), false, `embedded Escape closed main window in cycle ${cycle + 1}`);
+            }
+            continue;
+        }
         await page.evaluate((appDefinition) => window.topTabManager.closeView(`app:${appDefinition.id}`), { id: app.id });
         await ensureChildPageClosed(browser, app.key, Date.now() + timeoutMs, app.name);
     }

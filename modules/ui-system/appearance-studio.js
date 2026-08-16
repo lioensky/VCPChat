@@ -1,6 +1,9 @@
 (() => {
     'use strict';
 
+    const LifecycleScope = window.VCPLifecycle?.LifecycleScope;
+    const moduleScope = LifecycleScope ? new LifecycleScope('next:appearance-studio-controller') : null;
+
     const DEFAULT_HOME_TAGLINE = '语义级打穿 AI、UI/UX、APP 与人类想象力的边界';
 
     const MATERIAL_FIELDS = Object.freeze([
@@ -217,6 +220,12 @@
     let themesLoading = false;
     let themesLoadError = null;
     let themesLoadSequence = 0;
+    let surfaceScope = null;
+    let openScope = null;
+    let destroyed = false;
+    let destroyPromise = null;
+    let closePromise = null;
+    let queuedOpenOptions = null;
 
     const clone = value => JSON.parse(JSON.stringify(value));
     const api = () => window.chatAPI || window.electronAPI;
@@ -472,7 +481,10 @@
         const trigger = document.getElementById('openAppearanceStudioFromSettings');
         if (!card || !form || !trigger) return;
         if (!card.dataset.appearanceSummaryBound) {
-            form.addEventListener('change', event => {
+            const bindSummary = (target, type, handler) => moduleScope
+                ? moduleScope.listen(target, type, handler, undefined, `appearance-settings-summary:${type}`)
+                : target.addEventListener(type, handler);
+            bindSummary(form, 'change', event => {
                 if (event.target.matches('input[name="appearanceUiMode"]')) {
                     const compatibilityControl = document.getElementById('enableNextUi');
                     if (compatibilityControl) compatibilityControl.checked = event.target.value === 'next';
@@ -485,7 +497,7 @@
                     syncSettingsSummary();
                 }
             });
-            form.addEventListener('input', event => {
+            bindSummary(form, 'input', event => {
                 if (event.target.id === 'appearanceCustomRadius') {
                     const output = document.getElementById('appearanceCustomRadiusValue');
                     if (output) output.value = `${event.target.value}px`;
@@ -494,10 +506,13 @@
                 if (!['appearanceSidebarRowHeight', 'appearanceSidebarAvatarSize'].includes(event.target.id)) return;
                 syncSettingsGeometryControls(event.target.id);
             });
-            trigger.addEventListener('click', () => {
+            bindSummary(trigger, 'click', () => {
                 open({ trigger, initialState: readSettingsFormState() });
             });
             card.dataset.appearanceSummaryBound = 'true';
+            moduleScope?.own(() => {
+                delete card.dataset.appearanceSummaryBound;
+            }, 'appearance-settings-summary-marker', 'dom-state');
         }
         syncSettingsGeometryControls();
         syncSettingsSummary();
@@ -505,6 +520,8 @@
 
     function createSurface() {
         if (surface?.root?.isConnected) return surface;
+
+        surfaceScope = moduleScope?.child('next:appearance-studio-surface') || null;
 
         const root = document.createElement('div');
         root.id = 'vcpAppearanceStudio';
@@ -729,8 +746,11 @@
         });
 
         document.body.append(root);
+        surfaceScope?.own(() => root.remove(), 'appearance-root', 'dom');
         root.querySelectorAll('input[type="range"]').forEach(control => {
-            if (!window.VCPUI?.getController?.(control)) window.VCPUI?.enhance?.('Range', control);
+            if (window.VCPUI?.getController?.(control)) return;
+            const controller = window.VCPUI?.enhance?.('Range', control);
+            if (controller && surfaceScope) surfaceScope.own(() => controller.destroy(), 'appearance-range', 'ui-registration');
         });
         const themePreviewStyle = document.createElement('style');
         themePreviewStyle.dataset.appearanceThemeSwatches = 'true';
@@ -741,11 +761,14 @@
         const closePrompt = root.querySelector('[data-unsaved-confirm]');
         const closePromptDialog = root.querySelector('.vcp-appearance-unsaved-dialog');
 
-        root.addEventListener('click', handleClick);
-        root.addEventListener('change', handleChange);
-        root.addEventListener('input', handleInput);
-        root.addEventListener('keydown', handleKeydown);
-        root.addEventListener('pointerdown', event => {
+        const listenSurface = (type, handler) => surfaceScope
+            ? surfaceScope.listen(root, type, handler, undefined, `appearance:${type}`)
+            : root.addEventListener(type, handler);
+        listenSurface('click', handleClick);
+        listenSurface('change', handleChange);
+        listenSurface('input', handleInput);
+        listenSurface('keydown', handleKeydown);
+        listenSurface('pointerdown', event => {
             if (event.target === root && closePrompt.hidden) void requestClose();
         });
         surface = {
@@ -871,7 +894,15 @@
         themesLoadError = null;
         renderThemePalette();
         try {
-            const themes = await api()?.getThemes?.();
+            const tasks = window.VCPTasks;
+            const ownerScope = openScope;
+            const themeTask = api()?.getThemes && tasks?.createTask?.({
+                id: tasks.createTaskId?.('appearance-themes') || `appearance-themes:${Date.now()}`,
+                start: () => api().getThemes(),
+            });
+            const themes = themeTask && ownerScope
+                ? await themeTask.own(ownerScope, 'appearance-theme-list')
+                : await api()?.getThemes?.();
             if (sequence !== themesLoadSequence || !surface || surface.root.hidden) return;
             installedThemes = Array.isArray(themes)
                 ? themes.slice().sort((left, right) => Number(right.isActive) - Number(left.isActive)
@@ -1229,28 +1260,81 @@
         surface.dialog.inert = true;
         surface.root.classList.add('is-confirming-close');
         closePromptPromise = new Promise(resolve => { resolveClosePrompt = resolve; });
-        requestAnimationFrame(() => surface.closePromptDialog.focus());
+        if (openScope) openScope.animationFrame(() => surface.closePromptDialog.focus(), 'focus-close-prompt');
+        else requestAnimationFrame(() => surface.closePromptDialog.focus());
         return closePromptPromise;
     }
 
-    async function close({ rollback = true } = {}) {
-        if (!surface || surface.root.hidden || (saving && rollback)) return;
-        if (surface.closePrompt && !surface.closePrompt.hidden) settleClosePrompt(false);
-        surface.root.hidden = true;
-        surface.root.classList.remove('active');
-        document.body.classList.remove('vcp-appearance-studio-open');
-        if (rollback) await restoreSnapshot();
-        const nextFocus = sourceTrigger?.isConnected ? sourceTrigger : null;
-        sourceTrigger = null;
-        snapshot = null;
-        snapshotRevision = 0;
-        draft = null;
-        themesLoadSequence += 1;
-        document.documentElement.classList.remove('vcp-appearance-studio-host');
-        nextFocus?.focus?.();
+    let activeOverlayOwner = null;
+
+    function acquireStudioOverlay() {
+        if (activeOverlayOwner) return;
+        const owner = Symbol('appearance-studio-overlay');
+        activeOverlayOwner = owner;
+        if (!openScope && moduleScope) openScope = moduleScope.child('next:appearance-studio-open');
+        openScope?.own(() => {
+            if (activeOverlayOwner !== owner) return;
+            activeOverlayOwner = null;
+            window.topTabManager?.releaseOverlay?.(owner);
+        }, 'appearance-overlay-lease', 'overlay');
+        Promise.resolve(window.topTabManager?.acquireOverlay?.(owner)).catch(error => {
+            if (activeOverlayOwner === owner) activeOverlayOwner = null;
+            console.warn('[AppearanceStudio] Failed to hide embedded app:', error);
+        });
+    }
+
+    async function releaseStudioOverlay() {
+        if (openScope) {
+            const scope = openScope;
+            openScope = null;
+            try {
+                await scope.dispose('appearance-closed');
+            } catch (error) {
+                console.error('[AppearanceStudio] Failed to dispose open resources:', error);
+            }
+        } else if (activeOverlayOwner) {
+            const owner = activeOverlayOwner;
+            activeOverlayOwner = null;
+            window.topTabManager?.releaseOverlay?.(owner);
+        }
+    }
+
+    function close({ rollback = true } = {}) {
+        if (closePromise) return closePromise;
+        if (!surface || surface.root.hidden || (saving && rollback)) return Promise.resolve();
+        closePromise = (async () => {
+            if (surface.closePrompt && !surface.closePrompt.hidden) settleClosePrompt(false);
+            surface.root.hidden = true;
+            surface.root.classList.remove('active');
+            document.body.classList.remove('vcp-appearance-studio-open');
+            const nextFocus = sourceTrigger?.isConnected ? sourceTrigger : null;
+            try {
+                if (rollback) await restoreSnapshot();
+            } finally {
+                sourceTrigger = null;
+                snapshot = null;
+                snapshotRevision = 0;
+                draft = null;
+                themesLoadSequence += 1;
+                document.documentElement.classList.remove('vcp-appearance-studio-host');
+                await releaseStudioOverlay();
+                nextFocus?.focus?.();
+            }
+        })().finally(() => {
+            closePromise = null;
+            const pendingOptions = queuedOpenOptions;
+            queuedOpenOptions = null;
+            if (pendingOptions && !destroyed) queueMicrotask(() => open(pendingOptions));
+        });
+        return closePromise;
     }
 
     function open(options = {}) {
+        if (destroyed) return false;
+        if (closePromise) {
+            queuedOpenOptions = options;
+            return true;
+        }
         document.documentElement.classList.add('vcp-appearance-studio-host');
         const currentSurface = createSurface();
         if (!currentSurface.root.hidden) {
@@ -1258,6 +1342,8 @@
             return true;
         }
         sourceTrigger = options.trigger || document.activeElement;
+        if (!openScope && moduleScope) openScope = moduleScope.child('next:appearance-studio-open');
+        acquireStudioOverlay();
         snapshot = readState();
         snapshotRevision = window.VCPAppearance?.getRevision?.() || 0;
         draft = normalizeState(options.initialState, snapshot);
@@ -1266,10 +1352,12 @@
         if (statesEqual(snapshot, draft)) syncControls();
         else void preview();
         void loadThemes();
-        requestAnimationFrame(() => {
+        const reveal = () => {
             currentSurface.root.classList.add('active');
             currentSurface.dialog.focus();
-        });
+        };
+        if (openScope) openScope.animationFrame(reveal, 'appearance-reveal');
+        else requestAnimationFrame(reveal);
         return true;
     }
 
@@ -1427,6 +1515,7 @@
     function handleKeydown(event) {
         if (event.key === 'Escape') {
             event.preventDefault();
+            event.stopPropagation();
             if (surface?.closePrompt && !surface.closePrompt.hidden) settleClosePrompt(false);
             else void requestClose();
             return;
@@ -1448,7 +1537,10 @@
         }
     }
 
-    window.addEventListener('global-settings-updated', () => {
+    const listenModule = (target, type, handler, options) => moduleScope
+        ? moduleScope.listen(target, type, handler, options, `appearance-controller:${type}`)
+        : target.addEventListener(type, handler, options);
+    listenModule(window, 'global-settings-updated', () => {
         if (!draft) {
             const state = readState();
             applyHomeVisual(state.homeVisual);
@@ -1457,18 +1549,20 @@
         if (!surface || surface.root.hidden) syncAccountMenuValue();
         syncSettingsSummary();
     });
-    window.addEventListener('ui-mode-changed', () => {
+    listenModule(window, 'ui-mode-changed', () => {
         if (!surface || surface.root.hidden) syncSettingsSummary();
     });
-    document.addEventListener('DOMContentLoaded', () => {
+    listenModule(document, 'DOMContentLoaded', () => {
         const state = readState();
         applyHomeVisual(state.homeVisual);
         applyHomeTagline(state.homeTagline, state.homeTaglineText);
         syncAccountMenuValue();
         bindSettingsSummary();
-    });
-    document.addEventListener('modal-ready', event => {
-        if (event.detail?.modalId === 'globalSettingsModal') requestAnimationFrame(bindSettingsSummary);
+    }, { once: true });
+    listenModule(document, 'modal-ready', event => {
+        if (event.detail?.modalId !== 'globalSettingsModal') return;
+        if (moduleScope) moduleScope.animationFrame(bindSettingsSummary, 'bind-settings-summary');
+        else requestAnimationFrame(bindSettingsSummary);
     });
 
     window.VCPAppearanceStudio = Object.freeze({
@@ -1480,6 +1574,15 @@
         readState,
         syncAccountMenuValue,
         syncSettingsSummary,
-        setThemeMode
+        setThemeMode,
+        destroy() {
+            if (destroyPromise) return destroyPromise;
+            destroyed = true;
+            destroyPromise = (async () => {
+                await close({ rollback: true });
+                await moduleScope?.dispose('appearance-controller-destroyed');
+            })();
+            return destroyPromise;
+        }
     });
 })();

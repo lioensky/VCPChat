@@ -39,6 +39,8 @@ const settingsManager = (() => {
 
     // --- Private Variables ---
     let electronAPI = null;
+    let initialized = false;
+    let modelsUpdatedDisposer = null;
     let uiHelper = null;
     let refs = {}; // To hold references to currentSelectedItem, etc.
     let mainRendererFunctions = {}; // To call back to renderer.js functions if needed
@@ -283,6 +285,9 @@ const settingsManager = (() => {
             restoreCollapseStates(agentConfig);
             updateAllSectionSummaries();
             scheduleStickyButtonsRefresh();
+            document.dispatchEvent(new CustomEvent('vcp-settings-surface-updated', {
+                detail: { kind: 'agent', root: agentSettingsForm }
+            }));
         };
 
         const queuedTask = agentSettingsPopulateQueue
@@ -561,12 +566,19 @@ const settingsManager = (() => {
 
         const globalSettings = window.globalSettings || {};
         const isNetworkMode = globalSettings.voiceMode === 'network';
+        const commitOptions = (select, options, selectedValue = '') => {
+            const current = [...select.options];
+            const sameStructure = current.length === options.length
+                && options.every((option, index) => (
+                    current[index]?.value === option.value
+                    && current[index]?.textContent === option.textContent
+                    && current[index]?.disabled === option.disabled
+                ));
+            if (!sameStructure) select.replaceChildren(...options);
+            select.value = selectedValue || '';
+        };
 
         try {
-            // Clear existing options
-            agentTtsVoicePrimarySelect.innerHTML = '<option value="">不使用语音</option>';
-            agentTtsVoiceSecondarySelect.innerHTML = '<option value="">不使用</option>';
-
             let optionList = [];
 
             if (isNetworkMode && electronAPI.loadWebindexModels) {
@@ -619,41 +631,54 @@ const settingsManager = (() => {
                     return true;
                 });
 
+            // Build the complete option trees off-DOM and commit each Select
+            // once. Clearing before the async model lookup exposed an
+            // intermediate option set to the Next Web Awesome proxy. Repeated
+            // settings visits then made the custom element retain discarded
+            // wa-option instances and listeners.
+            const createOption = (value, label, { disabled = false, selected = false } = {}) => {
+                const option = document.createElement('option');
+                option.value = value;
+                option.textContent = label;
+                option.disabled = disabled;
+                option.selected = selected;
+                return option;
+            };
+            const primaryOptions = [createOption('', '不使用语音')];
+            const secondaryOptions = [createOption('', '不使用')];
             if (optionList.length > 0) {
                 optionList.forEach(item => {
                     const optionValue = item.voice || item.id;
                     const optionLabel = item.displayName || item.voice || item.id;
-
-                    const primaryOption = document.createElement('option');
-                    primaryOption.value = optionValue;
-                    primaryOption.textContent = optionLabel;
-                    if (optionValue === currentPrimaryVoice) {
-                        primaryOption.selected = true;
-                    }
-                    agentTtsVoicePrimarySelect.appendChild(primaryOption);
-
-                    const secondaryOption = document.createElement('option');
-                    secondaryOption.value = optionValue;
-                    secondaryOption.textContent = optionLabel;
-                    if (optionValue === currentSecondaryVoice) {
-                        secondaryOption.selected = true;
-                    }
-                    agentTtsVoiceSecondarySelect.appendChild(secondaryOption);
+                    primaryOptions.push(createOption(optionValue, optionLabel, {
+                        selected: optionValue === currentPrimaryVoice
+                    }));
+                    secondaryOptions.push(createOption(optionValue, optionLabel, {
+                        selected: optionValue === currentSecondaryVoice
+                    }));
                 });
             } else {
-                const disabledOption = isNetworkMode
-                    ? '<option value="" disabled>未找到网络音色，请先获取列表并刷新 webindexmodel.json</option>'
-                    : '<option value="" disabled>未找到模型,请启动Sovits</option>';
-                agentTtsVoicePrimarySelect.innerHTML += disabledOption;
-                agentTtsVoiceSecondarySelect.innerHTML += disabledOption;
+                const emptyLabel = isNetworkMode
+                    ? '未找到网络音色，请先获取列表并刷新 webindexmodel.json'
+                    : '未找到模型,请启动Sovits';
+                primaryOptions.push(createOption('', emptyLabel, { disabled: true }));
+                secondaryOptions.push(createOption('', emptyLabel, { disabled: true }));
             }
+            commitOptions(agentTtsVoicePrimarySelect, primaryOptions, currentPrimaryVoice);
+            commitOptions(agentTtsVoiceSecondarySelect, secondaryOptions, currentSecondaryVoice);
         } catch (error) {
             console.error('Failed to get TTS models:', error);
-            const errorOption = isNetworkMode
-                ? '<option value="" disabled>获取网络音色失败</option>'
-                : '<option value="" disabled>获取模型失败</option>';
-            agentTtsVoicePrimarySelect.innerHTML = errorOption;
-            agentTtsVoiceSecondarySelect.innerHTML = errorOption;
+            const errorLabel = isNetworkMode ? '获取网络音色失败' : '获取模型失败';
+            const primaryErrorOption = document.createElement('option');
+            const secondaryErrorOption = document.createElement('option');
+            primaryErrorOption.value = '';
+            secondaryErrorOption.value = '';
+            primaryErrorOption.disabled = true;
+            secondaryErrorOption.disabled = true;
+            primaryErrorOption.textContent = errorLabel;
+            secondaryErrorOption.textContent = errorLabel;
+            commitOptions(agentTtsVoicePrimarySelect, [primaryErrorOption]);
+            commitOptions(agentTtsVoiceSecondarySelect, [secondaryErrorOption]);
             uiHelper.showToastNotification(isNetworkMode ? '获取网络音色失败' : '获取Sovits语音模型失败', 'error');
         }
     }
@@ -724,6 +749,11 @@ const settingsManager = (() => {
     // --- Public API ---
     return {
         init: (options) => {
+            if (initialized) {
+                console.warn('[SettingsManager] Ignored duplicate initialization.');
+                return;
+            }
+            initialized = true;
             electronAPI = options.electronAPI;
             uiHelper = options.uiHelper;
             refs = options.refs;
@@ -897,7 +927,7 @@ const settingsManager = (() => {
                 refreshModelsBtn.addEventListener('click', handleRefreshModels);
             }
             if (electronAPI.onModelsUpdated) {
-                electronAPI.onModelsUpdated(async (models) => {
+                modelsUpdatedDisposer = electronAPI.onModelsUpdated(async (models) => {
                     console.log('[SettingsManager] Received models-updated event. Repopulating list.');
                     let hotModelIds = [];
                     let favoriteModelIds = [];
@@ -915,6 +945,13 @@ const settingsManager = (() => {
                         available ? 'success' : 'error');
                 });
             }
+
+            window.addEventListener('pagehide', () => {
+                modelsUpdatedDisposer?.();
+                modelsUpdatedDisposer = null;
+                promptManager?.destroy?.();
+                promptManager = null;
+            }, { once: true });
 
             if (agentTtsSpeedSlider && ttsSpeedValueSpan) {
                 agentTtsSpeedSlider.addEventListener('input', () => {

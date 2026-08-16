@@ -47,9 +47,11 @@ function listen(records, target, type, handler, options) {
 
 function makeController(element, state, render, cleanup = () => {}, { removeOnDestroy = true } = {}) {
     const records = [];
+    let destroyed = false;
     const controller = {
         element,
         update(patch = {}) {
+            if (destroyed) return controller;
             Object.assign(state, patch);
             render(state, records);
             return controller;
@@ -62,14 +64,22 @@ function makeController(element, state, render, cleanup = () => {}, { removeOnDe
             return controller;
         },
         destroy() {
-            records.splice(0).forEach(dispose => dispose());
-            cleanup();
+            if (destroyed) return;
+            destroyed = true;
+            const errors = [];
+            records.splice(0).forEach(dispose => {
+                try { dispose(); } catch (error) { errors.push(error); }
+            });
+            try { cleanup(); } catch (error) { errors.push(error); }
             controllerByElement.delete(element);
             if (removeOnDestroy) element.remove();
+            if (errors.length) throw new AggregateError(errors, 'VCPUI controller cleanup failed.');
         },
         _listen(target, type, handler, options) {
+            if (destroyed) throw new Error('Cannot add a listener to a destroyed VCPUI controller.');
             listen(records, target, type, handler, options);
-        }
+        },
+        get destroyed() { return destroyed; }
     };
     controllerByElement.set(element, controller);
     render(state, records);
@@ -195,6 +205,12 @@ function selectEnhancer(element, options = {}) {
     if (!element?.matches?.('select')) {
         throw new TypeError('VCPUI select enhancement received an incompatible element.');
     }
+
+    // Existing business forms can opt out of a replacement custom element.
+    // This keeps their native DOM identity and lifecycle intact while still
+    // applying the shared VCPUI sizing, focus and validation contract. New
+    // VCPUI-owned controls continue to use Web Awesome through selectFactory.
+    if (options.kernel === 'native') return nativeControlEnhancer(element, 'select', options);
 
     const wa = waControl('select', {});
     if (!wa) return nativeControlEnhancer(element, 'select', options);
@@ -1694,7 +1710,11 @@ function focusable(dialog) {
 }
 
 function modalFactory(options = {}) {
-    const wa = waControl('dialog', {});
+    // Complex application dialogs may opt into the deterministic native DOM
+    // shell. This still uses the VCPUI Modal contract, but avoids custom
+    // element upgrade/hide-animation races for surfaces that own cancellable
+    // IPC work or native WebContentsView visibility leases.
+    const wa = options.native === true ? null : waControl('dialog', {});
     if (wa) {
         const previousFocus = document.activeElement;
         const state = { title: 'Dialog', size: 'md', content: '', actions: [], closeOnBackdrop: true, ...options };
@@ -1748,14 +1768,29 @@ function modalFactory(options = {}) {
         controller.destroy();
         if (previousFocus instanceof HTMLElement && previousFocus.isConnected) previousFocus.focus();
     };
-    controller = makeController(overlay, state, current => {
+    controller = makeController(overlay, state, (current, records) => {
         dialog.dataset.size = normalize(current.size, ['sm', 'md', 'lg'], 'md', 'size');
         dialog.replaceChildren();
         const header = document.createElement('header');
         const title = document.createElement('h2');
         title.textContent = current.title;
-        const closeButton = iconButtonFactory({ icon: 'close', label: '关闭对话框', size: 'sm' });
-        closeButton.element.addEventListener('click', () => close(null), { once: true });
+        const closeButton = options.native === true
+            ? (() => {
+                const element = document.createElement('button');
+                element.type = 'button';
+                element.className = 'vcp-ui-icon-button';
+                element.setAttribute('aria-label', '关闭对话框');
+                element.title = '关闭对话框';
+                element.append(icon('close'));
+                return { element, destroy: () => element.remove() };
+            })()
+            : iconButtonFactory({ icon: 'close', label: '关闭对话框', size: 'sm' });
+        const closeFromButton = () => close(null);
+        closeButton.element.addEventListener('click', closeFromButton, { once: true });
+        records.push(() => {
+            closeButton.element?.removeEventListener('click', closeFromButton);
+            closeButton.destroy();
+        });
         header.append(title, closeButton.element);
         const body = document.createElement('div');
         body.className = 'vcp-ui-modal-body';
@@ -1768,12 +1803,16 @@ function modalFactory(options = {}) {
     controller._listen(overlay, 'mousedown', event => {
         if (event.target === overlay && state.closeOnBackdrop) close(null);
     });
+    controller._listen(document, 'keydown', event => {
+        if (event.key !== 'Escape' || !overlay.isConnected) return;
+        const openOverlays = [...document.querySelectorAll('.vcp-ui-modal-overlay')]
+            .filter(candidate => candidate.isConnected);
+        if (openOverlays.at(-1) !== overlay) return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        close(null);
+    }, true);
     controller._listen(overlay, 'keydown', event => {
-        if (event.key === 'Escape') {
-            event.preventDefault();
-            close(null);
-            return;
-        }
         if (event.key !== 'Tab') return;
         const items = focusable(dialog);
         if (!items.length) return;
@@ -2060,6 +2099,15 @@ function observeControls(root = document, options = {}) {
     const kinds = new Set(options.kinds || ['Select']);
     const filter = typeof options.filter === 'function' ? options.filter : () => true;
     const owned = new Set();
+    const cleanupDisconnected = () => {
+        owned.forEach(controller => {
+            const proxyConnected = controller.element?.isConnected === true;
+            const nativeConnected = controller.nativeElement?.isConnected === true;
+            if (proxyConnected || nativeConnected) return;
+            controller.destroy?.();
+            owned.delete(controller);
+        });
+    };
     const enhanceTree = candidate => {
         if (document.documentElement.dataset.uiMode !== 'next') return;
         const scope = candidate?.nodeType === 1 ? candidate : root;
@@ -2079,11 +2127,20 @@ function observeControls(root = document, options = {}) {
     };
     enhanceTree(root);
     const observer = typeof MutationObserver === 'undefined' ? null : new MutationObserver(records => {
-        records.forEach(record => record.addedNodes.forEach(enhanceTree));
+        // Wait until the current DOM transaction has settled. A business
+        // renderer may replace a native Select and its Web Awesome proxy in
+        // separate mutations; cleaning synchronously could race that move.
+        queueMicrotask(() => {
+            cleanupDisconnected();
+            records.forEach(record => record.addedNodes.forEach(enhanceTree));
+        });
     });
     observer?.observe(root === document ? document.documentElement : root, { childList: true, subtree: true });
     return Object.freeze({
-        refresh: () => enhanceTree(root),
+        refresh: () => {
+            cleanupDisconnected();
+            enhanceTree(root);
+        },
         destroy() {
             observer?.disconnect();
             owned.forEach(controller => controller.destroy?.());

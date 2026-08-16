@@ -1,6 +1,6 @@
 # 设计系统上游 PR 架构收敛
 
-> 状态：Classic/Next 功能对等整改中，完成本节门禁前不得重新提交上游审阅
+> 状态：Classic/Next 功能对等整改已完成；本节门禁作为后续重构与上游 PR 的持续回归基线
 > 上游基线：`origin/main`
 > 减法源快照：`a1f76dffea8105999e465da45d8e52558cd80c47`
 > 原则：只修复本设计分支新增或显著放大的问题，不借设计 PR 重构上游 Classic。
@@ -38,7 +38,7 @@
 首个上游 PR 只交付：
 
 - 主聊天 Classic/Next presentation；
-- 主聊天设置、Appearance Studio、主题与动态壁纸；
+- 主聊天设置、Appearance Studio 与主题；
 - 空会话 VCPChat/Nova 视觉；
 - 通用 Next 启动台和标签宿主；
 - 通用标签宿主；业务子页面（包括 Notes 与 Translator）保持 Classic；
@@ -114,7 +114,7 @@ Memo、Forum、Log、Plugin Manager、Task、Human ToolBox、VchatManager、RAG 
 1. `codex/design-vendor-assets`：离线字体、图像辅助资源和可复现 Web Awesome runtime。
 2. `codex/design-foundation`：VCPUI、WA adapter、token、基础组件与隔离测试。
 3. `codex/design-main-shell`：主聊天 Next Shell、侧栏、消息区与输入区视觉。
-4. `codex/design-appearance`：Appearance Studio、主题、Nova 与动态壁纸体验。
+4. `codex/design-appearance`：Appearance Studio、主题与 Nova 体验。
 5. `codex/design-app-tabs`：可信内嵌 allowlist 与 AppTabHost；业务子页面保持 Classic。
 6. `codex/design-runtime-integration`：对最新上游主聊天业务 DOM、IPC 和设置生命周期的最小接线。
 7. `codex/design-system-upstream`：边界门禁、Electron smoke、插件回归与开发文档。
@@ -169,12 +169,11 @@ Memo、Forum、Log、Plugin Manager、Task、Human ToolBox、VchatManager、RAG 
 
 1. vendored Web Awesome 的 `package.json` 被上游通用 ignore 规则吞掉，导致干净 clone 和打包门禁失败。
 2. Appearance Studio 使用部分对象调用通用 `save-settings`，触发 IPC 对缺失字段补默认值，可能重置续写延迟和分布式日志开关。
-3. 视频壁纸完整控制只注入 Next 账户菜单，Classic 丢失上游原有的目录、播放、模式和音量入口。
-4. 布局预览真实切换 UI mode，离开 Next 时会关闭内嵌 WebContentsView，只恢复标签 ID，无法保证未保存页面状态。
-5. 全局设置在 Classic 下仍被强制重建为 Next SettingsShell，违反 Classic 上游基线约束。
-6. Appearance Studio 先持久化再应用本地状态；后续应用失败时只回滚界面，磁盘与当前界面可能分叉。
-7. Next 最大化按钮没有同步最大化/还原图标、标题和无障碍状态。
-8. Next 动态标签关闭按钮使用嵌套交互元素，缺少有效键盘关闭路径和 tab 语义。
+3. 布局预览真实切换 UI mode，离开 Next 时会关闭内嵌 WebContentsView，只恢复标签 ID，无法保证未保存页面状态。
+4. 全局设置在 Classic 下仍被强制重建为 Next SettingsShell，违反 Classic 上游基线约束。
+5. Appearance Studio 先持久化再应用本地状态；后续应用失败时只回滚界面，磁盘与当前界面可能分叉。
+6. Next 最大化按钮没有同步最大化/还原图标、标题和无障碍状态。
+7. Next 动态标签关闭按钮使用嵌套交互元素，缺少有效键盘关闭路径和 tab 语义。
 
 ### 修复策略
 
@@ -182,7 +181,6 @@ Memo、Forum、Log、Plugin Manager、Task、Human ToolBox、VchatManager、RAG 
 - Appearance Studio 的保存必须成为可恢复事务；持久化成功后若本地应用失败，要把原持久化字段写回磁盘。
 - UI mode 预览不得销毁内嵌应用。预览只切换 presentation，持久化提交或明确离开 Next 时才允许执行原生 view teardown。
 - Classic 全局设置只保留上游 DOM 与样式；布局切换字段仍可存在，但 VCPUI SettingsShell 仅在 Next 挂载。
-- 动态壁纸共享一个播放状态层，Classic 标题栏和 Next 账户菜单分别提供 presentation，切换模式不重置播放或目录配置。
 - 所有新 vendor 文件必须能从 `git archive HEAD` 重建并通过离线资源门禁。
 - 窗口按钮和动态标签必须具备状态同步、合法 DOM 语义和完整键盘路径。
 
@@ -190,7 +188,6 @@ Memo、Forum、Log、Plugin Manager、Task、Human ToolBox、VchatManager、RAG 
 
 - 从 `git archive HEAD` 解包后运行 Web Awesome pack check 必须通过。
 - 用部分外观 patch 保存时，未包含的设置字段逐项保持原值。
-- Classic/Next 来回切换后，视频壁纸两套入口均可操作同一播放状态。
 - Appearance Studio 预览 Classic 后取消，已打开的内嵌页面实例和未保存状态保持不变。
 - Classic 打开全局设置时不得出现 `.vcp-ui-settings-shell`、Web Awesome proxy 或 `vcp-global-settings-next`。
 - 模拟“磁盘保存成功、本地应用失败”时，磁盘设置必须恢复到保存前快照。
@@ -198,16 +195,15 @@ Memo、Forum、Log、Plugin Manager、Task、Human ToolBox、VchatManager、RAG 
 
 ### 2026-08-10 整改结果
 
-上述八项阻塞问题均已关闭：
+上述七项阻塞问题均已关闭：
 
 1. `.gitignore` 明确放行 `vendor/webawesome-runtime/package.json`；模拟干净归档补入该文件后离线 pack check 通过。
 2. `save-settings` 已改为真正的 patch 语义，缺失的续写延迟和分布式日志字段不会被补默认值。
-3. 动态壁纸保留单一播放状态；Next 仅挂载账户菜单入口，Classic 仅挂载标题栏控制，模式切换会恢复原始标题 DOM，不在隐藏 presentation 中保留包装节点。
-4. Next → Classic 的外观预览只隐藏原生 view，不关闭 WebContentsView 或销毁标签；返回 Next 时复用原实例。
-5. Classic 全局设置不挂载 SettingsShell、VCPUI proxy 或 Next host class，teardown 后重新绑定上游导航。
-6. Appearance Studio 保存失败会同时补偿回写磁盘与 `window.globalSettings`，随后恢复界面快照，避免三份状态分叉。
-7. Next 最大化按钮订阅真实窗口状态，切换最大化/还原图标、名称和 `aria-pressed`。
-8. 动态标签使用 `div[role=tab]`、roving tabindex 和原生关闭按钮；Enter/Space 可激活标签，不再嵌套交互元素。
+3. Next → Classic 的外观预览只隐藏原生 view，不关闭 WebContentsView 或销毁标签；返回 Next 时复用原实例。
+4. Classic 全局设置不挂载 SettingsShell、VCPUI proxy 或 Next host class，teardown 后重新绑定上游导航。
+5. Appearance Studio 保存失败会同时补偿回写磁盘与 `window.globalSettings`，随后恢复界面快照，避免三份状态分叉。
+6. Next 最大化按钮订阅真实窗口状态，切换最大化/还原图标、名称和 `aria-pressed`。
+7. 动态标签使用 `div[role=tab]`、roving tabindex 和原生关闭按钮；Enter/Space 可激活标签，不再嵌套交互元素。
 
 最新上游已刷新至 `b735b3ff`。新增的 8 个提交仅涉及 Scriptorium 的 14 个文件，与设计系统整改没有重叠；当前工作文件树已接收这些文件，后续提交时应单独整理为上游同步提交。
 
@@ -231,3 +227,44 @@ Memo、Forum、Log、Plugin Manager、Task、Human ToolBox、VchatManager、RAG 
 - `npm run test:electron-ui-apps`：20/20 通过。
 - `node --test tests/frontend-plugins.test.js`：6/6 通过。
 - 最终 PR 三点 diff 为 342 个文件：109 个设计资产、102 个 Web Awesome vendor 文件，其余为 UI 源码、样式、测试、文档和窄 preload/IPC 集成。未发现 Agent/Codex/Rust runtime、生成截图、数据库、日志、原生二进制或构建目录。
+
+## 2026-08-14 Next UI 稳定性根治
+
+Next 后续完整阶段与合并门槛见 [`next-ui-development-roadmap.md`](./next-ui-development-roadmap.md)；动态资源所有权、可撤销 Registry、串行模式切换、资源归零门禁及 2026-08-15 对抗审查结论见 [`next-ui-lifecycle-architecture.md`](./next-ui-lifecycle-architecture.md)。
+
+作者在真实操作中报告了 Ask Nova 白屏/重开卡死、内嵌便签按 Escape 级联关闭主窗口、Agent 设置后进程数上涨，以及窄通知栏 Dock 文字挤压图标。四项现象共享两个底层问题：原生 `WebContentsView` 与 renderer DOM 没有统一的可见性所有权；内嵌页面仍沿用独立 `BrowserWindow` 的关闭语义。
+
+### 根因与不变量
+
+- `WebContentsView` 始终绘制在 renderer DOM 之上。启动台或模态窗即使具有更高 `z-index`，也无法覆盖尚未由主进程隐藏的子视图。所有 DOM 覆盖层必须先取得 overlay lease，等待活动子视图隐藏后才能显示，最后一个 lease 释放后才允许恢复子视图。
+- `BrowserWindow.fromWebContents()` 可能把子视图解析到其 owner。内嵌页面不得发送通用 `close-window`；它只能请求关闭自己的 session。通用窗口控制同时校验 `event.sender === win.webContents`，作为纵深防御。
+- `webContents.close()` 只发起异步销毁。Session 不能在 `destroyed` 前被视为可重新创建；同一 action 的新建必须等待旧 close promise 完成，防止快速开关累积 renderer 进程。
+- Ask Nova 使用 VCPUI 的确定性原生 DOM Modal。复杂、带取消 IPC 的应用模态窗不参与 Web Awesome custom-element upgrade 和 hide animation，避免关闭/换目标重开时出现两个异步 dialog 生命周期。
+- Agent 设置初始化必须幂等，订阅和 PromptManager 在 page lifecycle 结束时释放。设置页本身不创建 WebContents；压力测试必须把设置 DOM/adapter 计数与内嵌 app 进程计数分开测量。
+- 通知栏宽度不超过 280px 时，固定 Dock 是纯图标栏。文字强制隐藏，按钮取消胶囊 padding/gap，SVG 保持 18px 不收缩。该规则与旧胶囊 `!important` 声明放在同一 cascade layer，避免层叠反转。
+
+### 回归门禁
+
+- Ask Nova：关闭一个进行中的目标后立即打开另一目标，只允许存在一个 modal host；旧请求取消不能污染新请求。
+- 内嵌便签：连续五次打开并按 Escape，每次只销毁对应 WebContents/标签，主窗口持续存在。
+- 进程生命周期：同一内嵌 action 必须等待前一 session 的 `destroyed`；退出 Next 时等待所有 close promise。
+- Agent 设置：连续十二次 Agent/设置页往返，Browser target 数、VCPUI adapter 数及提示词 DOM 不增长。
+- 窄 Dock：240px 通知栏中固定应用文字不可见、四个图标均保持可见且按钮无横向溢出。
+
+### 2026-08-15 生命周期第二轮对抗审查
+
+本轮审查只覆盖 Next 主窗口、通用内嵌应用、模态层和主 renderer。
+
+- 内嵌会话以主进程为权威。renderer reload 或 crash 时先隐藏而不销毁 `WebContentsView`；新 renderer 通过 `embedded-vchat-app:list` 对账标签、活动 action 和已有 session，禁止遗留一个“无标签但仍覆盖窗口”的原生页面。
+- 主 renderer 非正常退出后自动恢复，但使用有界策略：60 秒内最多三次，成功运行 30 秒后清零；超过阈值停止 reload loop，并由原生错误框让用户选择重试或退出。
+- 所有 renderer DOM 覆盖层使用 owner lease。全局设置、创建助手、Appearance Studio、Ask Nova 和应用托盘设置只有在原生内嵌页隐藏后才展示；多个覆盖层并存时，只有最后一个 owner 释放才恢复内嵌页。
+- Appearance Studio 的未保存确认属于同一个 owner。第一次 Escape 只能打开确认层，不能恢复底层 WebContentsView；回滚异常也通过 `finally` 释放 owner，避免页面永久隐藏。
+- 新覆盖层出现时先收起通知三点菜单和账户菜单，避免一个 Escape 同时落到多个 surface。应用托盘抽屉取消延迟绑定时同步取消 timer，避免残留 document click listener。
+- 标签恢复期间禁止逐个激活原生 view，待 renderer 完成全部对账后只激活最终选中的 action，避免隐藏标签在启动/reload 时短暂闪到前台。
+- 内嵌 session 在 renderer 已 crash 时不再发送状态 IPC；状态保留在主进程，待新 renderer 主动读取，避免恢复期间的二次异常。
+
+自动化现在真实执行：便签拖出独立窗口与 Escape、renderer reload、CDP `Page.crash`、内嵌页上依次打开托盘设置/全局设置/Appearance、未保存确认的 Escape 所有权、Ask Nova 请求取消、Classic ↔ Next 往返及 Agent 设置 DOM/adapter 计数。20 个完整循环后 heap、listener、page、process 和 renderer process 均保持在允许范围内。
+
+后续 detached DOM 专项诊断把长压测中的线性增长定位到全局设置图标规范化：恢复记录保存了已经被 Lucide adapter 替换掉的临时 `<span class="vcp-ui-icon">`。该字段不参与恢复，却让每次 Classic → Next 往返多保留三个 span 及其属性节点。恢复记录现只持有容器和上游原始 SVG；压力门禁单独统计 `detachedVcpIcons` 并要求不得高于预热基线。原始设置导航节点是 Classic 可逆恢复所需的固定快照；Ask Nova 首次加载产生的单个 `<template>` 在对照采样中保持固定，不属于线性泄漏。
+
+进一步 Classic/Next 对照发现 Agent 设置的两个 TTS Select 也曾被 document-wide `VCPUI.observeControls()` 越权捕获。该页面明确声明 `data-settings-presentation="classic"`，本应由上游原生 DOM 独占；全局 observer 现在排除 Agent、Group 和全局设置表单。TTS 模型列表同时改为结构相同时只更新 `select.value`，不再无条件重建相同 options。Classic 连续三轮保持零 controller，Next 压测也保持 `detachedOptions` 为零；门禁现同时禁止 detached VCP icon 与 Select option 高于预热基线。

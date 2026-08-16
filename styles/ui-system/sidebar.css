@@ -500,6 +500,10 @@
         cursor: pointer;
     }
 
+    html[data-ui-mode="next"] .vcp-ui-scope .next-ui-account-menu-contributions {
+        display: contents;
+    }
+
     html[data-ui-mode="next"] .vcp-ui-scope .next-ui-account-trigger {
         height: var(--vcp-ui-sidebar-row-height);
         min-width: 0;

@@ -82,7 +82,6 @@ if (document.documentElement.dataset.uiMode === 'next' && !window.lucide) {
 let waPreloaded = false;
 let runtimeGeneration = 0;
 let releaseScope = null;
-let selectObserver = null;
 
 // Dispatch after DOMContentLoaded (module eval happens in the interactive
 // phase, before page DOMContentLoaded handlers attach their ready listeners).
@@ -112,8 +111,6 @@ async function mountRuntime() {
         await waitForDocumentReady();
         if (generation !== runtimeGeneration || document.documentElement.dataset.uiMode !== 'next') return;
         releaseScope = window.VCPWebAwesome?.mountScope?.(document.body) || null;
-        selectObserver = VCPUI.observeControls(document.body, { kinds: ['Select'] });
-        window.VCPUISelectObserver = selectObserver;
     } catch (error) {
         if (generation !== runtimeGeneration) return;
         console.warn('[VCPUI Runtime] Web Awesome preload failed, using native controls:', error);
@@ -126,9 +123,6 @@ async function mountRuntime() {
 function unmountRuntime() {
     runtimeGeneration += 1;
     waPreloaded = false;
-    selectObserver?.destroy();
-    selectObserver = null;
-    window.VCPUISelectObserver = null;
     releaseScope?.();
     releaseScope = null;
 }

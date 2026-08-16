@@ -1001,6 +1001,343 @@ body.lineage-collapsed .writing-chamber::after {
     transition: opacity 0.28s ease, transform 0.42s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
+.document-library {
+    display: none;
+    min-width: 0;
+    min-height: 0;
+    height: 100%;
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
+    overflow: hidden;
+}
+
+body.home-state .document-library {
+    display: grid;
+}
+
+body.home-state .outline-panel > :not(.document-library) {
+    display: none !important;
+}
+
+.library-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 22px 16px 8px 18px;
+}
+
+.library-header h2 {
+    margin: 4px 0 0;
+    font: 500 26px var(--scriptorium-serif);
+}
+
+.library-refresh {
+    display: grid;
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    place-items: center;
+    border: 1px solid var(--scriptorium-hairline);
+    border-radius: 50%;
+    color: var(--secondary-text);
+    background: color-mix(in srgb, var(--input-bg) 58%, transparent);
+    cursor: pointer;
+    transition: color .16s ease, border-color .16s ease,
+        background .16s ease, transform .2s ease;
+}
+
+.library-refresh:hover,
+.library-refresh:focus-visible {
+    border-color: var(--scriptorium-accent-mid);
+    outline: 0;
+    color: var(--highlight-text);
+    background: var(--scriptorium-accent-soft);
+    transform: rotate(18deg);
+}
+
+.library-refresh:disabled {
+    opacity: .45;
+    cursor: wait;
+}
+
+.library-refresh:disabled svg {
+    animation: libraryRefreshSpin .8s linear infinite;
+}
+
+@keyframes libraryRefreshSpin {
+    to { transform: rotate(360deg); }
+}
+
+.library-intro {
+    margin: 0;
+    padding: 0 18px 14px;
+    border-bottom: 1px solid var(--scriptorium-hairline);
+    color: var(--secondary-text);
+    font: 9px/1.65 var(--scriptorium-ui);
+}
+
+.document-library-tree {
+    min-height: 0;
+    padding: 10px 8px 24px;
+    overflow-x: hidden;
+    overflow-y: auto;
+}
+
+.library-loading,
+.library-error {
+    margin: 8px;
+    padding: 14px 12px;
+    border: 1px dashed var(--scriptorium-hairline);
+    border-radius: 4px 12px 4px 12px;
+    color: var(--secondary-text);
+    font-size: 9px;
+    line-height: 1.6;
+}
+
+.library-error {
+    border-color: color-mix(
+        in srgb,
+        var(--danger-color) 44%,
+        var(--scriptorium-hairline)
+    );
+    color: var(--danger-color);
+}
+
+.library-root {
+    margin-bottom: 7px;
+    overflow: hidden;
+    border: 1px solid var(--scriptorium-hairline);
+    border-radius: 4px 13px 4px 13px;
+    background: color-mix(in srgb, var(--input-bg) 44%, transparent);
+}
+
+.library-root[open] {
+    border-color: color-mix(
+        in srgb,
+        var(--highlight-text) 24%,
+        var(--scriptorium-hairline)
+    );
+    background: color-mix(
+        in srgb,
+        var(--input-bg) 60%,
+        var(--scriptorium-accent-soft)
+    );
+}
+
+.library-root-summary,
+.library-directory-summary {
+    list-style: none;
+    cursor: pointer;
+}
+
+.library-root-summary::-webkit-details-marker,
+.library-directory-summary::-webkit-details-marker {
+    display: none;
+}
+
+.library-root-summary {
+    display: grid;
+    grid-template-columns: 28px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+    min-height: 51px;
+    padding: 7px 10px;
+}
+
+.library-root-summary:hover,
+.library-root-summary:focus-visible {
+    outline: 0;
+    background: var(--scriptorium-accent-soft);
+}
+
+.library-root-icon {
+    display: grid;
+    width: 28px;
+    height: 30px;
+    place-items: center;
+    border: 1px solid var(--scriptorium-accent-mid);
+    border-radius: 3px 9px 3px 9px;
+    color: var(--highlight-text);
+    background: var(--scriptorium-accent-soft);
+    font: 750 9px/1 var(--scriptorium-serif);
+}
+
+.library-root-copy {
+    display: grid;
+    min-width: 0;
+    gap: 2px;
+}
+
+.library-root-copy strong {
+    overflow: hidden;
+    color: var(--primary-text);
+    font: 650 12px/1.3 var(--scriptorium-serif);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.library-root-copy small {
+    overflow: hidden;
+    color: var(--secondary-text);
+    font-size: 7px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.library-chevron {
+    width: 14px;
+    height: 14px;
+    color: var(--secondary-text);
+    transition: transform .16s ease;
+}
+
+details[open] > summary > .library-chevron {
+    transform: rotate(90deg);
+}
+
+.library-children {
+    position: relative;
+    padding: 2px 5px 8px 11px;
+}
+
+.library-root > .library-children {
+    border-top: 1px solid var(--scriptorium-hairline);
+}
+
+.library-directory {
+    position: relative;
+}
+
+.library-directory .library-children {
+    margin-left: 10px;
+    padding: 0 0 1px 7px;
+    border-left: 1px solid var(--scriptorium-hairline);
+}
+
+.library-directory-summary,
+.library-file {
+    position: relative;
+    display: grid;
+    grid-template-columns: 14px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 5px;
+    width: 100%;
+    min-height: 29px;
+    padding: 3px 5px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    color: var(--secondary-text);
+    background: transparent;
+    text-align: left;
+}
+
+.library-directory-summary:hover,
+.library-directory-summary:focus-visible,
+.library-file:hover,
+.library-file:focus-visible {
+    border-color: var(--scriptorium-hairline);
+    outline: 0;
+    color: var(--primary-text);
+    background: var(--scriptorium-accent-soft);
+}
+
+.library-directory-summary .library-chevron {
+    width: 11px;
+    height: 11px;
+}
+
+.library-node-name {
+    min-width: 0;
+    overflow: hidden;
+    font-size: 9px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.library-directory-summary .library-node-name {
+    font-weight: 650;
+}
+
+.library-directory-count {
+    color: var(--placeholder-text);
+    font-size: 7px;
+    font-variant-numeric: tabular-nums;
+}
+
+.library-file {
+    grid-template-columns: 28px minmax(0, 1fr);
+    min-height: 35px;
+    padding-right: 7px;
+    cursor: pointer;
+}
+
+.library-file-badge {
+    display: grid;
+    width: 27px;
+    height: 23px;
+    place-items: center;
+    border: 1px solid var(--scriptorium-hairline);
+    border-radius: 3px 7px 3px 7px;
+    color: var(--secondary-text);
+    background: color-mix(in srgb, var(--input-bg) 70%, transparent);
+    font: 800 6px/1 var(--scriptorium-ui);
+    letter-spacing: -.02em;
+}
+
+.library-file[data-extension="vdocx"] .library-file-badge,
+.library-file[data-extension="docx"] .library-file-badge {
+    border-color: color-mix(in srgb, #5a8fd8 55%, var(--scriptorium-hairline));
+    color: #79aaf0;
+}
+
+.library-file[data-extension="vpptx"] .library-file-badge,
+.library-file[data-extension="pptx"] .library-file-badge {
+    border-color: color-mix(in srgb, #d77b55 58%, var(--scriptorium-hairline));
+    color: #e99a72;
+}
+
+.library-file[data-extension="md"] .library-file-badge,
+.library-file[data-extension="txt"] .library-file-badge,
+.library-file[data-extension="html"] .library-file-badge {
+    border-color: var(--scriptorium-accent-mid);
+    color: var(--highlight-text);
+}
+
+.library-file-copy {
+    display: grid;
+    min-width: 0;
+    gap: 2px;
+}
+
+.library-file-copy strong {
+    overflow: hidden;
+    color: inherit;
+    font: 550 9px/1.25 var(--scriptorium-ui);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.library-file-copy small {
+    color: var(--placeholder-text);
+    font-size: 7px;
+}
+
+.library-root-empty {
+    padding: 11px 8px 9px;
+    color: var(--secondary-text);
+    font-size: 8px;
+    line-height: 1.55;
+}
+
+.library-formats {
+    padding: 9px 12px;
+    border-top: 1px solid var(--scriptorium-hairline);
+    color: var(--placeholder-text);
+    font-size: 6px;
+    font-weight: 750;
+    letter-spacing: .08em;
+    text-align: center;
+}
+
 body.outline-collapsed .outline-panel {
     opacity: 0;
     transform: translateX(-100%);
@@ -1761,7 +2098,9 @@ body.lineage-collapsed .lineage-panel {
     position: fixed;
     right: 20px;
     bottom: 50px;
-    z-index: 500;
+    /* 通知属于应用级反馈，必须覆盖高级样式库、对象检查器、
+       文脉详情及二次确认等所有模态层。 */
+    z-index: 2200;
     display: flex;
     flex-direction: column;
     align-items: flex-end;
@@ -2599,7 +2938,7 @@ body.focus-mode .chamber-aura {
 
 .style-library-backdrop {
     position: fixed;
-    z-index: 180;
+    z-index: 1820;
     inset: 0;
     display: grid;
     padding: 48px;
@@ -5348,5 +5687,171 @@ body.light-theme .object-inspector-fields .object-code-input {
 
     .svg-asset-editor-wide {
         grid-column: 1;
+    }
+}
+
+/* ── Scriptorium local preferences ───────────────────────── */
+.settings-dialog {
+    width: min(620px, calc(100vw - 40px));
+    overflow: hidden;
+    border: 1px solid var(--scriptorium-hairline);
+    border-radius: 5px 24px 5px 24px;
+    color: var(--primary-text);
+    background:
+        radial-gradient(circle at 86% 7%, var(--scriptorium-accent-soft), transparent 32%),
+        var(--scriptorium-glass-solid);
+    box-shadow: var(--scriptorium-shadow);
+}
+
+.settings-dialog-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 18px;
+    padding: 24px 26px 18px;
+    border-bottom: 1px solid var(--scriptorium-hairline);
+}
+
+.settings-dialog-header h2 {
+    margin: 5px 0 3px;
+    font: 500 28px var(--scriptorium-serif);
+}
+
+.settings-dialog-header p {
+    margin: 0;
+    color: var(--secondary-text);
+    font-size: 10px;
+}
+
+.settings-dialog-header > button {
+    display: grid;
+    width: 34px;
+    height: 34px;
+    flex: 0 0 auto;
+    padding: 0;
+    place-items: center;
+    border: 1px solid var(--scriptorium-hairline);
+    border-radius: 50%;
+    color: var(--secondary-text);
+    background: transparent;
+    font-size: 23px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.settings-dialog-header > button:hover,
+.settings-dialog-header > button:focus-visible {
+    border-color: var(--scriptorium-accent-mid);
+    outline: 0;
+    color: var(--highlight-text);
+    background: var(--scriptorium-accent-soft);
+}
+
+.settings-dialog-body {
+    padding: 20px 24px 26px;
+}
+
+.settings-group {
+    display: grid;
+    gap: 12px;
+}
+
+.settings-group-kicker {
+    color: var(--highlight-text);
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+}
+
+.settings-toggle-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 18px;
+    padding: 16px;
+    border: 1px solid var(--scriptorium-hairline);
+    border-radius: 4px 14px 4px 14px;
+    background: color-mix(in srgb, var(--input-bg) 58%, transparent);
+    cursor: pointer;
+}
+
+.settings-toggle-copy {
+    display: grid;
+    gap: 5px;
+}
+
+.settings-toggle-copy strong {
+    color: var(--primary-text);
+    font: 650 14px var(--scriptorium-serif);
+}
+
+.settings-toggle-copy small {
+    color: var(--secondary-text);
+    font-size: 9px;
+    line-height: 1.65;
+}
+
+.settings-toggle-row input {
+    width: 38px;
+    height: 20px;
+    margin: 0;
+    accent-color: var(--highlight-text);
+    cursor: pointer;
+}
+
+.settings-toggle-row:has(input:checked) {
+    border-color: color-mix(
+        in srgb,
+        var(--danger-color) 48%,
+        var(--scriptorium-hairline)
+    );
+    background: color-mix(in srgb, var(--danger-color) 7%, transparent);
+}
+
+.settings-status {
+    padding: 9px 11px;
+    border: 1px solid color-mix(
+        in srgb,
+        var(--success-color) 42%,
+        var(--scriptorium-hairline)
+    );
+    border-radius: 7px;
+    color: var(--success-color);
+    background: color-mix(in srgb, var(--success-color) 7%, transparent);
+    font-size: 9px;
+    line-height: 1.5;
+}
+
+.settings-status.trusted {
+    border-color: color-mix(
+        in srgb,
+        var(--danger-color) 48%,
+        var(--scriptorium-hairline)
+    );
+    color: var(--danger-color);
+    background: color-mix(in srgb, var(--danger-color) 7%, transparent);
+}
+
+.settings-risk-note {
+    margin: 0;
+    color: var(--secondary-text);
+    font-size: 9px;
+    line-height: 1.7;
+}
+
+@media (max-width: 620px) {
+    .settings-dialog {
+        width: calc(100vw - 20px);
+    }
+
+    .settings-dialog-header,
+    .settings-dialog-body {
+        padding-right: 18px;
+        padding-left: 18px;
+    }
+
+    .settings-toggle-row {
+        align-items: start;
     }
 }

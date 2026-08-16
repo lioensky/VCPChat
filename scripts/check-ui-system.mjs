@@ -97,6 +97,7 @@ if (!componentCss.includes(':focus-visible')) report(path.join(styleDir, 'compon
 
 const inlineStyleCompatibilityAllowlist = new Set([
     path.join(moduleDir, 'vcp-ui.js'), // Per-instance Range progress cannot be expressed as a static token.
+    path.join(moduleDir, 'next-shell', 'next-shell-controller.js'), // Measured native-view bounds require a runtime sidebar width token.
 ]);
 
 for (const file of filesIn(moduleDir, '.js')) {
@@ -108,6 +109,14 @@ for (const file of filesIn(moduleDir, '.js')) {
 
 const runtimeFile = path.join(moduleDir, 'vcp-ui.js');
 const runtime = fs.readFileSync(runtimeFile, 'utf8');
+const pageRuntimeBootstrap = fs.readFileSync(path.join(moduleDir, 'vcp-ui-runtime-bootstrap.js'), 'utf8');
+if (/observeControls\s*\(\s*document\.body/.test(pageRuntimeBootstrap)) {
+    report(path.join(moduleDir, 'vcp-ui-runtime-bootstrap.js'), 'must not mount a document-wide control observer');
+}
+const settingsBridgeSource = fs.readFileSync(path.join(moduleDir, 'settings-bridge.js'), 'utf8');
+if (/new\s+(?:window\.)?MutationObserver/.test(settingsBridgeSource)) {
+    report(path.join(moduleDir, 'settings-bridge.js'), 'must use explicit settings surface lifecycle events');
+}
 const registrations = [...runtime.matchAll(/\['([A-Za-z]+)',\s*[a-zA-Z]/g)].map(match => match[1]);
 const duplicateComponents = registrations.filter((name, index) => registrations.indexOf(name) !== index);
 if (duplicateComponents.length) report(runtimeFile, `duplicate component registrations: ${[...new Set(duplicateComponents)].join(', ')}`);

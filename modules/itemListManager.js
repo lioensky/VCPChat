@@ -181,6 +181,16 @@ window.itemListManager = (() => {
 
     // To hold the loaded items in memory for quick access
     let loadedItemsCache = [];
+    const catalogChannel = window.VCPStateChannels?.create('assistant-catalog', Object.freeze({
+        status: 'idle', items: Object.freeze([]), error: null
+    })) || null;
+
+    function publishCatalog(status, error = null, source = 'item-list-manager') {
+        const items = Object.freeze(loadedItemsCache.map(item => Object.freeze({ ...item })));
+        const state = Object.freeze({ status, items, error });
+        catalogChannel?.publish(state, { source });
+        return state;
+    }
 
     function escapeHtml(str) {
         return (str || '')
@@ -918,6 +928,7 @@ window.itemListManager = (() => {
 
         const loadToken = ++activeLoadItemsToken;
         const hadPreviousItems = loadedItemsCache.length > 0;
+        publishCatalog('loading', null, 'load-started');
 
         if (!hadPreviousItems) {
             itemListUl.innerHTML = '<li><div class="loading-spinner-small"></div>加载列表中...</li>';
@@ -980,14 +991,17 @@ window.itemListManager = (() => {
         if (items.length > 0) {
             loadedItemsCache = [...items]; // Cache the loaded items only when we have valid fresh data
             renderItems(items);
+            publishCatalog('ready', null, 'load-completed');
         } else if (errors.length > 0) {
             console.warn('[ItemListManager] Failed to fully reload items, preserving previous list where possible:', errors.join(' | '));
             if (!hadPreviousItems) {
                 itemListUl.innerHTML = errors.map(error => `<li>${error}</li>`).join('');
             }
+            publishCatalog('error', errors.join(' | '), 'load-failed');
         } else {
             loadedItemsCache = [];
             renderItems([], '<li>没有找到Agent或群组。请创建一个。</li>');
+            publishCatalog('ready', null, 'load-empty');
         }
 
         fetchOpenHerPersonaStatus({ force: false });
@@ -1261,6 +1275,8 @@ window.itemListManager = (() => {
             ...partialConfig
         };
 
+        publishCatalog('ready', null, 'item-updated');
+
         return true;
     }
 
@@ -1271,6 +1287,8 @@ window.itemListManager = (() => {
         highlightActiveItem,
         resetMouseEventStates,
         findItemById, // Expose the new function
+        getCatalogState: () => catalogChannel?.get() || publishCatalog('ready', null, 'query'),
+        subscribe: (listener, options) => catalogChannel?.subscribe(listener, options) || (() => false),
         updateLoadedItemConfig,
         updateUnreadBadges, // Part C: 暴露更新徽章函数供外部调用
         refreshUnreadCounts

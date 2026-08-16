@@ -3,6 +3,24 @@
     const CLASSIC_MODE = 'classic';
     const NEXT_MODE = 'next';
     let transitionGeneration = 0;
+    let transitionQueue = Promise.resolve();
+    let transitionState = Object.freeze({ phase: 'settled', mode: null, generation: 0 });
+    let stateChannel = null;
+
+    function publishState(source = 'ui-mode-manager') {
+        stateChannel?.publish(Object.freeze({
+            mode: getCurrentMode(),
+            transition: transitionState,
+        }), { source });
+    }
+
+    function publishTransition(phase, mode, generation, error = null) {
+        transitionState = Object.freeze({ phase, mode, generation, error });
+        window.dispatchEvent(new CustomEvent('ui-mode-transition-state', {
+            detail: transitionState
+        }));
+        publishState(`transition:${phase}`);
+    }
 
     function normalize(mode) {
         return mode === NEXT_MODE ? NEXT_MODE : CLASSIC_MODE;
@@ -27,10 +45,13 @@
                 detail: {
                     mode: normalizedMode,
                     previousMode,
-                    preview: options.preview === true
+                    preview: options.preview === true,
+                    coordinated: options.coordinated === true,
+                    transitionGeneration: options.transitionGeneration || null
                 }
             }));
         }
+        if (previousMode !== normalizedMode) publishState(options.preview === true ? 'preview' : 'apply');
 
         return normalizedMode;
     }
@@ -42,24 +63,63 @@
     async function applyAsync(mode, options = {}) {
         const normalizedMode = normalize(mode);
         const generation = ++transitionGeneration;
-        await window.topTabManager?.prepareForMode?.(normalizedMode, options);
-        if (generation !== transitionGeneration) return getCurrentMode();
-        const appliedMode = apply(normalizedMode, options);
-        await window.topTabManager?.syncMode?.(appliedMode, options);
-        return appliedMode;
+        const run = async () => {
+            const finishTiming = window.VCPPerformance?.begin?.('ui-mode.transition', {
+                from: getCurrentMode(),
+                to: normalizedMode,
+            });
+            if (generation !== transitionGeneration) {
+                finishTiming?.({ status: 'stale' });
+                return getCurrentMode();
+            }
+            publishTransition('preparing', normalizedMode, generation);
+            const transitionOptions = {
+                ...options,
+                coordinated: true,
+                transitionGeneration: generation
+            };
+            try {
+                await window.topTabManager?.prepareForMode?.(normalizedMode, transitionOptions);
+                if (generation !== transitionGeneration) {
+                    finishTiming?.({ status: 'stale' });
+                    return getCurrentMode();
+                }
+                publishTransition('committing', normalizedMode, generation);
+                const appliedMode = apply(normalizedMode, transitionOptions);
+                await window.topTabManager?.syncMode?.(appliedMode, transitionOptions);
+                if (generation === transitionGeneration) publishTransition('settled', appliedMode, generation);
+                finishTiming?.({ status: 'settled' });
+                return appliedMode;
+            } catch (error) {
+                if (generation === transitionGeneration) publishTransition('failed', getCurrentMode(), generation, error?.message || String(error));
+                finishTiming?.({ status: 'failed' });
+                throw error;
+            }
+        };
+        const result = transitionQueue.then(run, run);
+        transitionQueue = result.catch(() => {});
+        return result;
     }
 
     // The cache never writes back by itself. `loadAndApplyGlobalSettings()`
     // will reconcile it with the authoritative settings file.
     const cachedMode = localStorage.getItem(STORAGE_KEY) ?? CLASSIC_MODE;
     apply(cachedMode, { cache: false });
+    stateChannel = window.VCPStateChannels?.create('ui-mode', Object.freeze({
+        mode: getCurrentMode(),
+        transition: transitionState,
+    })) || null;
 
     window.uiModeManager = Object.freeze({
         CLASSIC_MODE,
         NEXT_MODE,
         apply,
         applyAsync,
+        whenSettled: () => transitionQueue,
+        getTransitionState: () => transitionState,
         getCurrentMode,
-        normalize
+        normalize,
+        getState: () => stateChannel?.get() || Object.freeze({ mode: getCurrentMode(), transition: transitionState }),
+        subscribe: (listener, options) => stateChannel?.subscribe(listener, options) || (() => false)
     });
 })();

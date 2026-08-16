@@ -323,6 +323,21 @@ function createCatalog(ops) {
         desktopIconsetListIcons: query((params) => ops.invoke('desktop-iconset-list-icons', params)),
         desktopIconsetGetIconData: query((relativePath) => ops.invoke('desktop-iconset-get-icon-data', relativePath)),
         desktopLaunchVchatApp: query((appAction) => ops.invoke('desktop-launch-vchat-app', appAction)),
+        desktopCreateEmbeddedVchatApp: query((appAction, requestId = '') => ops.invoke(
+            'embedded-vchat-app:create',
+            requestId ? { requestId, action: appAction } : appAction
+        )),
+        desktopCloseEmbeddedVchatApp: query((appAction, requestId = '') => ops.invoke(
+            'embedded-vchat-app:close',
+            requestId ? { requestId, action: appAction } : appAction
+        )),
+        desktopDetachEmbeddedVchatApp: query((appAction, point, requestId = '') => ops.invoke(
+            'embedded-vchat-app:detach',
+            requestId ? { requestId, action: appAction, point } : appAction,
+            requestId ? undefined : point
+        )),
+        desktopCancelEmbeddedVchatAppTask: query((requestId) => ops.invoke('embedded-vchat-app:cancel', requestId)),
+        getMainLifecycleSnapshot: query(() => ops.invoke('lifecycle:get-main-snapshot')),
         desktopSelectWallpaper: query(() => ops.invoke('desktop-select-wallpaper')),
         desktopReadWallpaperThumbnail: query((filePath) => ops.invoke('desktop-read-wallpaper-thumbnail', filePath)),
         setAlwaysOnBottom: query((enabled) => ops.invoke('desktop-set-always-on-bottom', enabled)),

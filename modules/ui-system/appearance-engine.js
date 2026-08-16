@@ -32,6 +32,8 @@
     ));
     let materialOpticsMountPending = false;
     let revision = 0;
+    let currentProfile = null;
+    let stateChannel = null;
     const PRESETS = Object.freeze({
         classic: Object.freeze({
             density: 'comfortable', radius: 'small', typography: 'system',
@@ -214,6 +216,11 @@
         window.dispatchEvent(new CustomEvent('vcp-appearance-changed', {
             detail: { profile: resolved, source: options.source || 'runtime', revision }
         }));
+        currentProfile = resolved;
+        stateChannel?.publish(Object.freeze({ profile: resolved, revision }), {
+            source: options.source || 'runtime',
+            force: options.force === true,
+        });
         return resolved;
     }
 
@@ -236,8 +243,13 @@
 
     const bootMode = document.documentElement.dataset.uiMode || 'classic';
     apply(readCache(bootMode), { uiMode: bootMode, source: 'boot-cache' });
+    stateChannel = window.VCPStateChannels?.create('appearance', Object.freeze({ profile: currentProfile, revision })) || null;
     window.addEventListener('ui-mode-changed', event => {
         syncMaterialOptics(event.detail?.mode || document.documentElement.dataset.uiMode);
     });
-    window.VCPAppearance = Object.freeze({ PRESETS, MATERIAL_RANGES, LAYOUT_RANGES, normalize, apply, commit, getRevision, readCache });
+    window.VCPAppearance = Object.freeze({
+        PRESETS, MATERIAL_RANGES, LAYOUT_RANGES, normalize, apply, commit, getRevision, readCache,
+        getCurrent: () => currentProfile,
+        subscribe: (listener, options) => stateChannel?.subscribe(listener, options) || (() => false),
+    });
 })();

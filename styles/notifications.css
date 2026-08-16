@@ -442,6 +442,30 @@ body.light-theme .app-tray-drawer-item:hover {
     width: 100%;
 }
 
+/* A narrow notification rail is an icon dock, not a compressed text list.
+ * Keep this in the legacy layer beside the original !important capsule
+ * geometry so the Next layer cannot lose the cascade to those declarations. */
+@container notifications-sidebar (max-width: 280px) {
+    html[data-ui-mode="next"] #vchatAppTray #appTrayPinnedApps > .capsule-button {
+        min-width: 0;
+        padding: 0 !important;
+        gap: 0 !important;
+    }
+
+    html[data-ui-mode="next"] #vchatAppTray #appTrayPinnedApps .notes-button-label {
+        display: none !important;
+    }
+
+    html[data-ui-mode="next"] #vchatAppTray #appTrayPinnedApps svg,
+    html[data-ui-mode="next"] #vchatAppTray > .app-tray-more-btn svg {
+        display: block;
+        width: 18px;
+        min-width: 18px;
+        height: 18px;
+        flex: 0 0 18px;
+    }
+}
+
 /* "更多" 按钮样式 */
 .app-tray-more-btn {
     flex: 0 0 34px;

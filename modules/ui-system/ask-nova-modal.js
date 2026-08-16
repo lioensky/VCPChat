@@ -136,14 +136,56 @@ export function createAskNovaController(options = {}) {
     const api = options.api || window.chatAPI || window.electronAPI;
     const VCPUI = options.VCPUI || window.VCPUI;
     const markedInstance = options.marked || window.marked;
+    const LifecycleScope = options.LifecycleScope || window.VCPLifecycle?.LifecycleScope;
     if (!VCPUI?.create || !api?.askNovaQuery) return null;
 
     let activeModal = null;
-    const triggerRecords = [];
+    let destroyed = false;
+    let openGeneration = 0;
+    const controllerScope = LifecycleScope ? new LifecycleScope('next:ask-nova-controller') : null;
 
-    function open(targetId = 'frontend') {
+    async function open(targetId = 'frontend') {
+        if (destroyed) return null;
+        const requestGeneration = ++openGeneration;
         const initialTarget = TARGETS[targetId] || TARGETS.frontend;
         if (activeModal) {
+            activeModal.switchTarget(initialTarget.id);
+            activeModal.focusComposer();
+            return activeModal;
+        }
+
+        // Native WebContentsViews always paint above renderer DOM. Acquire a
+        // visibility lease before mounting the dialog so a recently active
+        // embedded app cannot cover Ask Nova with an apparently blank page.
+        const overlayOwner = Symbol('ask-nova-overlay');
+        const modalScope = controllerScope?.child(`next:ask-nova-modal:${initialTarget.id}`) || null;
+        try {
+            await window.topTabManager?.acquireOverlay?.(overlayOwner);
+        } catch (error) {
+            if (modalScope) await modalScope.dispose('overlay-acquire-failed');
+            throw error;
+        }
+        // The controller (or the whole Next presentation) may have been
+        // destroyed while the native view was being hidden.  Do not attach a
+        // lease to a dead owner: return it immediately instead.
+        if (modalScope && !modalScope.active) {
+            window.topTabManager?.releaseOverlay?.(overlayOwner);
+            return null;
+        }
+        modalScope?.own(() => window.topTabManager?.releaseOverlay?.(overlayOwner), 'overlay-lease', 'overlay');
+        if (requestGeneration !== openGeneration) {
+            if (modalScope) await modalScope.dispose('superseded-open');
+            else window.topTabManager?.releaseOverlay?.(overlayOwner);
+            return activeModal;
+        }
+        if (destroyed || documentRef.documentElement.dataset.uiMode !== 'next') {
+            if (modalScope) await modalScope.dispose('open-cancelled');
+            else window.topTabManager?.releaseOverlay?.(overlayOwner);
+            return null;
+        }
+        if (activeModal) {
+            if (modalScope) await modalScope.dispose('duplicate-open');
+            else window.topTabManager?.releaseOverlay?.(overlayOwner);
             activeModal.switchTarget(initialTarget.id);
             activeModal.focusComposer();
             return activeModal;
@@ -224,31 +266,53 @@ export function createAskNovaController(options = {}) {
             if (state.closed) return;
             state.closed = true;
             if (state.activeRequest) api.cancelAskNovaQuery?.(state.activeRequest.requestId).catch?.(() => {});
-            window.removeEventListener('ui-mode-changed', handleModeChange);
-            queueMicrotask(() => {
-                if (!modal.element.isConnected || modal.element.localName !== 'wa-dialog') scopeHost.remove();
-            });
+            // Sever the large dialog subtree synchronously. The controller and
+            // lifecycle scope still remove their listeners below, while this
+            // prevents a delayed native DOM finalizer from retaining message,
+            // Markdown and form descendants as one graph.
+            content.replaceChildren();
+            modal?.element?.replaceChildren();
+            scopeHost.replaceChildren();
+            if (modalScope) {
+                void modalScope.dispose('modal-closed').catch(error => {
+                    console.error('[AskNova] Failed to dispose modal resources:', error);
+                });
+            } else {
+                window.removeEventListener('ui-mode-changed', handleModeChange);
+                window.topTabManager?.releaseOverlay?.(overlayOwner);
+                queueMicrotask(() => scopeHost.remove());
+            }
             activeModal = null;
         };
         const handleModeChange = event => {
             const mode = event?.detail?.mode || documentRef.documentElement.dataset.uiMode;
             if (mode !== 'next') modal.close(null);
         };
-        modal = VCPUI.create('Modal', {
-            title: 'Ask Nova about VCP',
-            size: 'lg',
-            content,
-            actions: [],
-            closeOnBackdrop: true,
-            onClose: cleanup
-        });
+        try {
+            modal = VCPUI.create('Modal', {
+                title: 'Ask Nova about VCP',
+                size: 'lg',
+                content,
+                actions: [],
+                native: true,
+                closeOnBackdrop: true,
+                onClose: cleanup
+            });
+        } catch (error) {
+            if (modalScope) await modalScope.dispose('modal-create-failed');
+            else window.topTabManager?.releaseOverlay?.(overlayOwner);
+            throw error;
+        }
         modal.element.classList.add('ask-nova-modal-host');
         if (modal.element.localName === 'wa-dialog') {
-            modal.element.addEventListener('wa-after-hide', () => scopeHost.remove(), { once: true });
+            if (modalScope) modalScope.listen(modal.element, 'wa-after-hide', () => scopeHost.remove(), { once: true }, 'wa-after-hide');
+            else modal.element.addEventListener('wa-after-hide', () => scopeHost.remove(), { once: true });
         }
         scopeHost.append(modal.element);
         documentRef.body.append(scopeHost);
-        window.addEventListener('ui-mode-changed', handleModeChange);
+        modalScope?.own(() => scopeHost.remove(), 'modal-host', 'dom');
+        if (modalScope) modalScope.listen(window, 'ui-mode-changed', handleModeChange, undefined, 'ui-mode-change');
+        else window.addEventListener('ui-mode-changed', handleModeChange);
 
         function currentTarget() {
             return TARGETS[state.targetId];
@@ -274,23 +338,9 @@ export function createAskNovaController(options = {}) {
                     const copy = documentRef.createElement('button');
                     copy.type = 'button';
                     copy.className = 'ask-nova-copy';
+                    copy.dataset.messageId = message.id;
                     copy.setAttribute('aria-label', '复制 Nova 回复');
                     copy.textContent = state.copiedMessageId === message.id ? '已复制' : '复制';
-                    copy.addEventListener('click', async () => {
-                        try {
-                            await navigator.clipboard.writeText(message.content);
-                            state.copiedMessageId = message.id;
-                            renderMessages();
-                            window.setTimeout(() => {
-                                if (!state.closed && state.copiedMessageId === message.id) {
-                                    state.copiedMessageId = null;
-                                    renderMessages();
-                                }
-                            }, 1600);
-                        } catch {
-                            window.VCPUI?.feedback?.toast?.('复制失败', { variant: 'error' });
-                        }
-                    });
                     bubbleWrap.append(copy);
                 }
                 item.append(meta, bubbleWrap);
@@ -320,7 +370,6 @@ export function createAskNovaController(options = {}) {
                 button.type = 'button';
                 button.textContent = prompt;
                 button.disabled = state.isAsking;
-                button.addEventListener('click', () => submitQuestion(prompt));
                 prompts.append(button);
             });
             textarea.placeholder = `询问 ${target.repo} 的源码细节...`;
@@ -348,13 +397,21 @@ export function createAskNovaController(options = {}) {
             state.activeRequest = activeRequest;
             render();
             try {
-                const result = await api.askNovaQuery({
+                const payload = {
                     requestId: activeRequest.requestId,
                     target: targetIdAtSubmit,
                     question,
                     history,
                     deepResearch: state.deepResearch
+                };
+                const task = window.VCPTasks?.createTask({
+                    id: activeRequest.requestId,
+                    start: () => api.askNovaQuery(payload),
+                    cancel: id => api.cancelAskNovaQuery?.(id),
                 });
+                const result = task
+                    ? await task.own(modalScope, `request:${targetIdAtSubmit}`)
+                    : await api.askNovaQuery(payload);
                 if (state.closed || state.activeRequest !== activeRequest) return;
                 if (!result?.success) {
                     if (!result?.cancelled) {
@@ -387,29 +444,60 @@ export function createAskNovaController(options = {}) {
             render();
         }
 
-        tabs.addEventListener('click', event => {
+        const listen = (target, type, handler, options) => {
+            if (modalScope) return modalScope.listen(target, type, handler, options, `modal:${type}`);
+            target.addEventListener(type, handler, options);
+            return null;
+        };
+        listen(tabs, 'click', event => {
             const button = event.target.closest('[data-target]');
             if (button) switchTarget(button.dataset.target);
         });
-        clearButton.addEventListener('click', () => {
+        listen(prompts, 'click', event => {
+            const button = event.target.closest('button');
+            if (button && prompts.contains(button)) submitQuestion(button.textContent);
+        });
+        listen(messages, 'click', async event => {
+            const button = event.target.closest('.ask-nova-copy[data-message-id]');
+            if (!button || !messages.contains(button)) return;
+            const messageId = button.dataset.messageId;
+            const message = sessions[state.targetId].messages.find(candidate => candidate.id === messageId);
+            if (!message) return;
+            try {
+                await navigator.clipboard.writeText(message.content);
+                state.copiedMessageId = message.id;
+                renderMessages();
+                const resetCopied = () => {
+                    if (!state.closed && state.copiedMessageId === message.id) {
+                        state.copiedMessageId = null;
+                        renderMessages();
+                    }
+                };
+                if (modalScope) modalScope.timeout(resetCopied, 1600, 'copy-feedback');
+                else window.setTimeout(resetCopied, 1600);
+            } catch {
+                window.VCPUI?.feedback?.toast?.('复制失败', { variant: 'error' });
+            }
+        });
+        listen(clearButton, 'click', () => {
             sessions[state.targetId] = createSession(currentTarget());
             render();
             textarea.focus();
         });
-        externalButton.addEventListener('click', () => api.sendOpenExternalLink?.(currentTarget().url));
-        deepResearchInput.addEventListener('change', () => {
+        listen(externalButton, 'click', () => api.sendOpenExternalLink?.(currentTarget().url));
+        listen(deepResearchInput, 'change', () => {
             state.deepResearch = deepResearchInput.checked;
             render();
         });
-        textarea.addEventListener('input', () => {
+        listen(textarea, 'input', () => {
             sendButton.disabled = state.isAsking || !textarea.value.trim();
         });
-        textarea.addEventListener('keydown', event => {
+        listen(textarea, 'keydown', event => {
             if (event.key !== 'Enter' || event.shiftKey || event.ctrlKey || event.metaKey) return;
             event.preventDefault();
             composer.requestSubmit();
         });
-        composer.addEventListener('submit', event => {
+        listen(composer, 'submit', event => {
             event.preventDefault();
             submitQuestion(textarea.value);
         });
@@ -431,16 +519,30 @@ export function createAskNovaController(options = {}) {
     function bindTriggers(root = documentRef) {
         root.querySelectorAll('[data-ask-nova-target]').forEach(trigger => {
             if (trigger.dataset.askNovaBound === 'true') return;
-            const handler = event => {
+            const handler = async event => {
                 event.preventDefault();
-                open(trigger.dataset.askNovaTarget);
+                try {
+                    await open(trigger.dataset.askNovaTarget);
+                } catch (error) {
+                    window.VCPUI?.feedback?.toast?.(error?.message || 'Ask Nova 打开失败', { variant: 'error' });
+                }
             };
             trigger.dataset.askNovaBound = 'true';
-            trigger.addEventListener('click', handler);
-            triggerRecords.push(() => {
-                trigger.removeEventListener('click', handler);
-                delete trigger.dataset.askNovaBound;
-            });
+            if (controllerScope) {
+                controllerScope.listen(trigger, 'click', handler, undefined, 'ask-nova-trigger');
+                controllerScope.own(() => {
+                    delete trigger.dataset.askNovaBound;
+                }, 'ask-nova-trigger-marker', 'dom-state');
+            } else {
+                trigger.addEventListener('click', handler);
+            }
+            if (!controllerScope) {
+                trigger._askNovaDispose = () => {
+                    trigger.removeEventListener('click', handler);
+                    delete trigger._askNovaDispose;
+                    delete trigger.dataset.askNovaBound;
+                };
+            }
         });
     }
 
@@ -450,8 +552,12 @@ export function createAskNovaController(options = {}) {
         bindTriggers,
         close: () => activeModal?.close(),
         destroy() {
+            destroyed = true;
+            openGeneration += 1;
             activeModal?.close();
-            triggerRecords.splice(0).forEach(dispose => dispose());
+            if (controllerScope) return controllerScope.dispose('controller-destroyed');
+            documentRef.querySelectorAll('[data-ask-nova-bound="true"]').forEach(trigger => trigger._askNovaDispose?.());
+            return Promise.resolve();
         },
         get activeModal() { return activeModal; }
     };

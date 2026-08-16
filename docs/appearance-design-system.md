@@ -115,7 +115,7 @@ At that point `uiMode` becomes an internal compatibility profile rather than a u
 - Both account menus retain a direct light/dark toggle for the high-frequency theme switch; the full studio remains the entry for multi-setting changes.
 - It provides system presets plus independent theme, profile and chat-presentation overrides.
 - Preview is transactional: cancel restores the opening snapshot and save writes through Main.
-- Theme Store, dynamic wallpaper and the complete settings dialog remain separate authorities reached from the drawer.
+- Theme Store and the complete settings dialog remain separate authorities reached from the drawer.
 - Global Settings mounts SettingsShell only in Next. Classic keeps the upstream modal DOM, controls and navigation behavior.
 - Global Settings exposes a dedicated “界面与外观” category for appearance profile, typography and chat presentation; the former standalone UI-version switch is now a hidden compatibility field synchronized by the drawer.
 - The category presents a live appearance summary and opens Appearance Studio with the current form draft; applying in the studio synchronizes the legacy form controls and their visual proxies.
