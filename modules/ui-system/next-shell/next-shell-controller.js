@@ -444,6 +444,7 @@
     function mount() {
         if (mounted || document.documentElement.dataset.uiMode !== 'next') return;
         if (teardownPromise) return;
+        const finishMountTiming = window.VCPPerformance?.begin?.('next.mount');
         const OverlayCoordinator = window.VCPNextShell?.OverlayCoordinator;
         const EmbeddedAppController = window.VCPNextShell?.EmbeddedAppController;
         const AppTabHost = window.VCPNextShell?.AppTabHost;
@@ -550,6 +551,7 @@
             syncDensity(density);
         });
         queueMicrotask(() => { void restoreTabSession(); });
+        finishMountTiming?.({ status: 'mounted' });
     }
 
     function unmount() {
