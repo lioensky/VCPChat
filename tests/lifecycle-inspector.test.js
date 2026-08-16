@@ -11,6 +11,7 @@ test('lifecycle inspector reports ownership metadata without payload content', a
     window.VCPContributions = { diagnostics: { snapshot: () => ({ apps: [{ id: 'safe-app', ownerId: 'test' }] }) } };
     window.VCPStateChannels = { diagnostics: () => [{ name: 'ui-mode', revision: 1, subscribers: 1 }] };
     window.VCPNextShellController = { getDiagnostics: () => ({ mounted: true, openViews: ['app:safe'] }) };
+    window.VCPPerformance = { snapshot: () => [{ name: 'next.mount', durationMs: 12, metadata: { mode: 'next' } }] };
     window.uiModeManager = { getCurrentMode: () => 'next' };
     window.chatAPI = { getMainLifecycleSnapshot: async () => ({
         embeddedSessions: [{ action: 'open-notes-window' }], activeEmbeddedAction: null,
@@ -22,6 +23,7 @@ test('lifecycle inspector reports ownership metadata without payload content', a
     const main = await window.VCPLifecycleInspector.snapshotMain();
     assert.equal(renderer.mode, 'next');
     assert.equal(renderer.transitions[0].generation, 3);
+    assert.equal(renderer.performance[0].name, 'next.mount');
     assert.equal(main.tasks[0].operation, 'embedded:create');
     const serialized = JSON.stringify({ renderer, main });
     assert.doesNotMatch(serialized, /apiKey|chatHistory|fileContent|secret/i);

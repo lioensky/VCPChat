@@ -47,7 +47,10 @@
     }
 
     function openSettings() {
-        window.uiHelperFunctions?.openModal?.('globalSettingsModal');
+        const open = () => window.uiHelperFunctions?.openModal?.('globalSettingsModal');
+        return window.VCPPerformance?.measure
+            ? window.VCPPerformance.measure('settings.open', open, { source: 'main-chat-command' })
+            : open();
     }
 
     function openThemes() {

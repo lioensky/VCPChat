@@ -13,6 +13,7 @@
         constructor(options = {}) {
             this.getApi = options.getApi || (() => null);
             this.getTasks = options.getTasks || (() => globalThis.VCPTasks);
+            this.getPerformance = options.getPerformance || (() => globalThis.VCPPerformance);
             this.warn = options.warn || ((...args) => console.warn(...args));
             this.stateDisposer = null;
             this.mounted = false;
@@ -56,6 +57,11 @@
                 cancel: id => api?.desktopCancelEmbeddedVchatAppTask?.(id),
             });
             return ownerScope ? task.own(ownerScope, `embedded:${operation}`) : task.promise;
+        }
+
+        measure(name, operation, metadata) {
+            const recorder = this.getPerformance();
+            return recorder?.measure ? recorder.measure(name, operation, metadata) : operation();
         }
 
         publishState(value, source) {
@@ -106,19 +112,23 @@
         }
 
         create(action, ownerScope = this.scope) {
-            return Promise.resolve(this.runTask('create', ownerScope, (requestId, api) => (
-                api?.desktopCreateEmbeddedVchatApp?.(action, requestId)
-            ))).then(result => {
-                if (result?.success && result.reused) this.applyEvent({ action, state: 'ready', reused: true });
-                return result;
-            });
+            return this.measure('embedded.create', () => (
+                Promise.resolve(this.runTask('create', ownerScope, (requestId, api) => (
+                    api?.desktopCreateEmbeddedVchatApp?.(action, requestId)
+                ))).then(result => {
+                    if (result?.success && result.reused) this.applyEvent({ action, state: 'ready', reused: true });
+                    return result;
+                })
+            ), { action });
         }
 
         activate(action) {
-            return Promise.resolve(this.getApi()?.desktopActivateEmbeddedVchatApp?.(action)).then(result => {
-                if (result?.success) this.publishState({ ...this.getState(), activeAction: action || null }, 'embedded-activate');
-                return result;
-            });
+            return this.measure('embedded.activate', () => (
+                Promise.resolve(this.getApi()?.desktopActivateEmbeddedVchatApp?.(action)).then(result => {
+                    if (result?.success) this.publishState({ ...this.getState(), activeAction: action || null }, 'embedded-activate');
+                    return result;
+                })
+            ), { action: action || 'none' });
         }
 
         hide() {

@@ -64,7 +64,14 @@
         const normalizedMode = normalize(mode);
         const generation = ++transitionGeneration;
         const run = async () => {
-            if (generation !== transitionGeneration) return getCurrentMode();
+            const finishTiming = window.VCPPerformance?.begin?.('ui-mode.transition', {
+                from: getCurrentMode(),
+                to: normalizedMode,
+            });
+            if (generation !== transitionGeneration) {
+                finishTiming?.({ status: 'stale' });
+                return getCurrentMode();
+            }
             publishTransition('preparing', normalizedMode, generation);
             const transitionOptions = {
                 ...options,
@@ -73,14 +80,19 @@
             };
             try {
                 await window.topTabManager?.prepareForMode?.(normalizedMode, transitionOptions);
-                if (generation !== transitionGeneration) return getCurrentMode();
+                if (generation !== transitionGeneration) {
+                    finishTiming?.({ status: 'stale' });
+                    return getCurrentMode();
+                }
                 publishTransition('committing', normalizedMode, generation);
                 const appliedMode = apply(normalizedMode, transitionOptions);
                 await window.topTabManager?.syncMode?.(appliedMode, transitionOptions);
                 if (generation === transitionGeneration) publishTransition('settled', appliedMode, generation);
+                finishTiming?.({ status: 'settled' });
                 return appliedMode;
             } catch (error) {
                 if (generation === transitionGeneration) publishTransition('failed', getCurrentMode(), generation, error?.message || String(error));
+                finishTiming?.({ status: 'failed' });
                 throw error;
             }
         };
