@@ -20,6 +20,41 @@ test('owned resources dispose once in reverse order and await async cleanup', as
     assert.equal(diagnostics.find('reverse-order').length, 0);
 });
 
+test('dispose waits for a cleanup already started by manual release', async () => {
+    const scope = new LifecycleScope('manual-release-race');
+    let finishCleanup;
+    let cleanupFinished = false;
+    const release = scope.own(() => new Promise(resolve => {
+        finishCleanup = () => {
+            cleanupFinished = true;
+            resolve();
+        };
+    }), 'slow-cleanup');
+
+    const releasePromise = release();
+    await Promise.resolve();
+    let disposeFinished = false;
+    const disposePromise = scope.dispose().then(() => { disposeFinished = true; });
+    await Promise.resolve();
+    assert.equal(disposeFinished, false, 'scope cannot dispose before in-flight cleanup settles');
+    finishCleanup();
+    await Promise.all([releasePromise, disposePromise]);
+    assert.equal(cleanupFinished, true);
+    assert.equal(scope.disposed, true);
+});
+
+test('dispose reports a failure from cleanup already started by manual release', async () => {
+    const scope = new LifecycleScope('manual-release-failure');
+    let rejectCleanup;
+    const release = scope.own(() => new Promise((_, reject) => { rejectCleanup = reject; }), 'failing-cleanup');
+    const releasePromise = release();
+    await Promise.resolve();
+    const disposePromise = scope.dispose();
+    rejectCleanup(new Error('late cleanup failure'));
+    await assert.rejects(releasePromise, /late cleanup failure/);
+    await assert.rejects(disposePromise, error => error instanceof AggregateError && /cleanup failed/.test(error.message));
+});
+
 test('one cleanup failure does not prevent remaining resources from releasing', async () => {
     const scope = new LifecycleScope('aggregate-errors');
     const calls = [];

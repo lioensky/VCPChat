@@ -38,6 +38,7 @@
             this.disposingAt = null;
             this._generation = 0;
             this._records = [];
+            this._releasingRecords = new Set();
             this._disposePromise = null;
             this._parentRecord = null;
             activeScopes.set(this.id, this);
@@ -74,10 +75,27 @@
         }
 
         async _release(record, run = true) {
-            if (!record?.active) return;
+            if (!record) return;
+            // forget() only retracts ownership. It must not join an in-flight
+            // disposer because parent/child teardown would otherwise await itself.
+            if (!record.active) return run ? record.releasePromise : Promise.resolve();
             record.active = false;
             this._removeRecord(record);
-            if (run) await record.dispose();
+            if (!run) {
+                record.releasePromise = Promise.resolve();
+                return record.releasePromise;
+            }
+            record.releasePromise = Promise.resolve().then(() => record.dispose());
+            // Keep a rejected cleanup observable by dispose() without allowing an
+            // ignored manual release to become an unhandled rejection first.
+            record.releasePromise.catch(() => {});
+            this._releasingRecords.add(record);
+            try {
+                await record.releasePromise;
+            } finally {
+                this._releasingRecords.delete(record);
+            }
+            return record.releasePromise;
         }
 
         own(disposable, label = 'resource', type = 'custom') {
@@ -233,6 +251,16 @@
                     } catch (error) {
                         errors.push(error);
                     }
+                }
+                // A caller may have started release() immediately before dispose().
+                // Such a record is no longer in _records, but the scope still owns
+                // the completion of that cleanup and must not report disposed early.
+                while (this._releasingRecords.size) {
+                    const releasing = [...this._releasingRecords];
+                    const results = await Promise.allSettled(releasing.map(record => record.releasePromise));
+                    results.forEach(result => {
+                        if (result.status === 'rejected' && !errors.includes(result.reason)) errors.push(result.reason);
+                    });
                 }
                 this.state = 'disposed';
                 activeScopes.delete(this.id);

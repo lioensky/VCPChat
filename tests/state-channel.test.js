@@ -29,3 +29,13 @@ test('duplicate channels and publishing after disposal are rejected', () => {
     assert.equal(states.get('appearance'), null);
     assert.throws(() => channel.publish({}), /disposed/);
 });
+
+test('a failing immediate subscriber is rolled back transactionally', () => {
+    const states = api();
+    const channel = states.create('failing-state', 'initial');
+    const listener = () => { throw new Error('immediate failure'); };
+    assert.throws(() => channel.subscribe(listener), /immediate failure/);
+    assert.equal(channel.listeners.size, 0);
+    assert.equal(states.diagnostics()[0].subscribers, 0);
+    assert.doesNotThrow(() => channel.publish('next'));
+});

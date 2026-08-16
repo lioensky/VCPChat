@@ -41,7 +41,14 @@
             if (this.disposed) throw new Error(`State channel "${this.name}" is disposed.`);
             if (typeof listener !== 'function') throw new TypeError('State subscriber must be a function.');
             this.listeners.add(listener);
-            if (options.immediate !== false) listener(this.value, this.getSnapshot());
+            try {
+                if (options.immediate !== false) listener(this.value, this.getSnapshot());
+            } catch (error) {
+                // Subscription is transactional: a caller that never receives an
+                // unsubscribe handle must never leave a hidden listener behind.
+                this.listeners.delete(listener);
+                throw error;
+            }
             let active = true;
             return () => {
                 if (!active) return false;

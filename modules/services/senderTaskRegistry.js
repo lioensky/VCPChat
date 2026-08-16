@@ -17,7 +17,7 @@ class SenderTaskRegistry {
             if (owner.sender !== sender) throw new Error(`${this.label} sender identity changed.`);
             return owner;
         }
-        const onDestroyed = () => this.cancelSender(sender, 'sender-destroyed');
+        const onDestroyed = () => this.cancelSender(sender, 'sender-destroyed', { releaseOwner: true });
         owner = { sender, tasks: new Map(), onDestroyed };
         this.owners.set(sender.id, owner);
         sender.once?.('destroyed', onDestroyed);
@@ -79,7 +79,7 @@ class SenderTaskRegistry {
         return true;
     }
 
-    cancelSender(sender, reason = 'sender-disposed') {
+    cancelSender(sender, reason = 'sender-disposed', options = {}) {
         const owner = this.owners.get(sender?.id);
         if (!owner || owner.sender !== sender) return 0;
         let count = 0;
@@ -90,6 +90,10 @@ class SenderTaskRegistry {
             }
             entry.state = 'cancelling';
         });
+        if (options.releaseOwner === true) {
+            sender.removeListener?.('destroyed', owner.onDestroyed);
+            this.owners.delete(sender.id);
+        }
         return count;
     }
 

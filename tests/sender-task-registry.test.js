@@ -49,6 +49,12 @@ test('cancel is idempotent and sender destruction aborts all owned work', async 
     assert.equal(firstSignal.reason, 'closed');
     owner.emit('destroyed');
     assert.equal(secondSignal.aborted, true);
+    assert.deepEqual(registry.snapshot(), [], 'destroyed senders must be released even if work ignores cancellation');
+    assert.equal(owner.listenerCount('destroyed'), 0);
+    const replacement = sender(2);
+    const replacementEntry = registry.begin(replacement, 'replacement', 'embedded:create');
+    assert.equal(replacementEntry.controller.signal.aborted, false, 'a recycled Electron sender id must not inherit stale ownership');
+    registry.finish(replacement, 'replacement');
     finishFirst({ cancelled: true });
     finishSecond({ cancelled: true });
     await Promise.all([first, second]);
