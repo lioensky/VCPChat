@@ -5,6 +5,7 @@
     if (globalObject) globalObject.VCPTasks = Object.freeze(api);
 })(typeof globalThis !== 'undefined' ? globalThis : this, function createTaskHandleApi() {
     'use strict';
+    const activeTasks = new Map();
 
     function createCancellationToken() {
         let aborted = false;
@@ -35,10 +36,14 @@
             if (!options.id) throw new TypeError('TaskHandle requires a stable id.');
             if (typeof options.start !== 'function') throw new TypeError('TaskHandle requires start().');
             this.id = String(options.id);
+            if (activeTasks.has(this.id)) throw new Error(`TaskHandle id already active: ${this.id}`);
             this.cancelOperation = typeof options.cancel === 'function' ? options.cancel : null;
             this.cancellation = createCancellationToken();
             this.state = 'pending';
             this.cancelPromise = null;
+            this.startedAt = Date.now();
+            this.ownerLabel = null;
+            activeTasks.set(this.id, this);
             this.promise = Promise.resolve().then(() => options.start(this.id, this.cancellation.token)).then(
                 value => {
                     if (this.state === 'pending') this.state = 'fulfilled';
@@ -49,6 +54,7 @@
                     throw error;
                 }
             );
+            void this.promise.then(() => activeTasks.delete(this.id), () => activeTasks.delete(this.id));
         }
 
         get settled() { return this.state === 'fulfilled' || this.state === 'rejected'; }
@@ -68,6 +74,7 @@
 
         own(scope, label = `task:${this.id}`) {
             if (!scope) return this.promise;
+            this.ownerLabel = scope.label || null;
             const tracked = scope.track(this.promise, label);
             const releaseCancellation = scope.own(
                 () => this.cancel('scope-disposed').catch(() => {}),
@@ -87,5 +94,14 @@
     }
 
     const createTask = options => new TaskHandle(options);
-    return { TaskHandle, createTask, createTaskId };
+    const diagnostics = Object.freeze({
+        snapshot: () => [...activeTasks.values()].map(task => Object.freeze({
+            id: task.id,
+            state: task.state,
+            owner: task.ownerLabel,
+            ageMs: Math.max(0, Date.now() - task.startedAt),
+            cancelled: task.cancelled,
+        })),
+    });
+    return { TaskHandle, createTask, createTaskId, diagnostics };
 });

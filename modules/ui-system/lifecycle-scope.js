@@ -34,6 +34,8 @@
             this.parent = options.parent || null;
             this.state = 'active';
             this.reason = null;
+            this.createdAt = Date.now();
+            this.disposingAt = null;
             this._generation = 0;
             this._records = [];
             this._disposePromise = null;
@@ -65,6 +67,7 @@
                 dispose: normalizeDisposer(disposable),
                 label: String(label || type),
                 type: String(type || 'custom'),
+                createdAt: Date.now(),
             };
             this._records.push(record);
             return record;
@@ -200,6 +203,7 @@
             const resources = this._records.filter(record => record.active).map(record => ({
                 label: record.label,
                 type: record.type,
+                ageMs: Math.max(0, Date.now() - record.createdAt),
             }));
             return Object.freeze({
                 id: this.id,
@@ -207,6 +211,9 @@
                 parentId: this.parent?.id || null,
                 state: this.state,
                 generation: this._generation,
+                reason: this.reason,
+                ageMs: Math.max(0, Date.now() - this.createdAt),
+                disposingMs: this.disposingAt ? Math.max(0, Date.now() - this.disposingAt) : 0,
                 resourceCount: resources.length,
                 resources,
             });
@@ -216,6 +223,7 @@
             if (this._disposePromise) return this._disposePromise;
             this.state = 'disposing';
             this.reason = reason;
+            this.disposingAt = Date.now();
             this._generation += 1;
             this._disposePromise = (async () => {
                 const errors = [];

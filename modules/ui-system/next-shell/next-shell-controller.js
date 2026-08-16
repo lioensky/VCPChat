@@ -304,12 +304,16 @@
         if (!view) return;
         try {
             if (view.kind === 'embedded') {
-                if (!view.scope) view.resizeObserver?.disconnect();
+                // Disconnect before detaching the observed container. Waiting
+                // for asynchronous Scope unwinding lets ResizeObserver queue a
+                // final record that retains the removed view subtree.
+                view.resizeObserver?.disconnect();
                 if (!options.skipEmbeddedClose) {
                     embeddedAppController?.close(view.action)?.catch(error => {
                         console.warn(`[NextUI] Failed to close embedded app ${view.action}:`, error);
                     });
                 }
+                view.container.replaceChildren();
             } else {
                 if (!view.scope) {
                     if (typeof view.disposer === 'function') view.disposer();
@@ -680,6 +684,14 @@
         closeView,
         setView,
         acquireOverlay,
-        releaseOverlay
+        releaseOverlay,
+        getDiagnostics: () => Object.freeze({
+            mounted,
+            generation: mountGeneration,
+            activeViewId: appTabHost?.activeViewId || 'home',
+            openViews: Object.freeze([...(appTabHost?.views?.keys?.() || [])]),
+            overlay: overlayCoordinator?.snapshot?.() || null,
+            embedded: embeddedAppController?.getState?.() || null,
+        })
     });
 })();

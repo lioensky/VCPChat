@@ -337,6 +337,7 @@ function createCatalog(ops) {
             requestId ? undefined : point
         )),
         desktopCancelEmbeddedVchatAppTask: query((requestId) => ops.invoke('embedded-vchat-app:cancel', requestId)),
+        getMainLifecycleSnapshot: query(() => ops.invoke('lifecycle:get-main-snapshot')),
         desktopSelectWallpaper: query(() => ops.invoke('desktop-select-wallpaper')),
         desktopReadWallpaperThumbnail: query((filePath) => ops.invoke('desktop-read-wallpaper-thumbnail', filePath)),
         setAlwaysOnBottom: query((enabled) => ops.invoke('desktop-set-always-on-bottom', enabled)),

@@ -126,5 +126,14 @@
     const menus = new ContributionRegistry('menu');
     const settings = new ContributionRegistry('setting');
 
-    return Object.freeze({ ContributionRegistry, CommandRegistry, commands, apps, menus, settings });
+    const diagnostics = Object.freeze({
+        snapshot: () => Object.freeze(Object.fromEntries(
+            Object.entries({ commands, apps, menus, settings }).map(([name, registry]) => [
+                name,
+                Object.freeze(registry.list().map(entry => Object.freeze({ id: entry.id, ownerId: entry.ownerId }))),
+            ])
+        )),
+    });
+
+    return Object.freeze({ ContributionRegistry, CommandRegistry, commands, apps, menus, settings, diagnostics });
 });

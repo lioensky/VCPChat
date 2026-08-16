@@ -1269,6 +1269,7 @@ if (!gotTheLock) {
             'embedded-vchat-app:detach',
             'embedded-vchat-app:close-all',
             'embedded-vchat-app:cancel',
+            'lifecycle:get-main-snapshot',
         ].forEach(channel => ipcMain.removeHandler(channel));
         const normalizeEmbeddedRequest = (payload, fallbackPoint = undefined) => (
             payload && typeof payload === 'object' && !Array.isArray(payload)
@@ -1317,6 +1318,15 @@ if (!gotTheLock) {
         ipcMain.handle('embedded-vchat-app:cancel', (event, requestId) => {
             embeddedAppSessions.assertMainRenderer(event);
             return { success: true, cancelled: embeddedAppTasks.cancel(event.sender, requestId, 'renderer-cancelled') };
+        });
+        ipcMain.handle('lifecycle:get-main-snapshot', event => {
+            embeddedAppSessions.assertMainRenderer(event);
+            const embedded = embeddedAppSessions.list();
+            return {
+                embeddedSessions: embedded.sessions,
+                activeEmbeddedAction: embedded.activeAction,
+                tasks: embeddedAppTasks.snapshot(),
+            };
         });
         ipcMain.handle('embedded-vchat-app:close-all', async event => {
             embeddedAppSessions.assertMainRenderer(event);

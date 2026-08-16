@@ -107,6 +107,15 @@
             });
         }
 
+        snapshot() {
+            return Object.freeze({
+                mounted: this.mounted,
+                active: this.active,
+                owners: Object.freeze([...this.owners].map(owner => typeof owner === 'symbol' ? owner.description || 'symbol' : String(owner))),
+                modalIds: Object.freeze([...this.modalOwners.keys()]),
+            });
+        }
+
         dispose() {
             if (!this.mounted) return;
             this.mounted = false;

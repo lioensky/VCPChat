@@ -438,6 +438,7 @@ function createCatalog(ops) {
             requestId ? undefined : point
         )),
         desktopCancelEmbeddedVchatAppTask: query((requestId) => ops.invoke('embedded-vchat-app:cancel', requestId)),
+        getMainLifecycleSnapshot: query(() => ops.invoke('lifecycle:get-main-snapshot')),
         desktopCloseAllEmbeddedVchatApps: query(() => ops.invoke('embedded-vchat-app:close-all')),
         onEmbeddedVchatAppState: subscription(ops.subscribe('embedded-vchat-app-state', (_event, data) => data)),
         desktopSelectWallpaper: query(() => ops.invoke('desktop-select-wallpaper')),
@@ -630,6 +631,7 @@ const ALLOWED_KEYS = [
     "desktopCloseEmbeddedVchatApp",
     "desktopDetachEmbeddedVchatApp",
     "desktopCancelEmbeddedVchatAppTask",
+    "getMainLifecycleSnapshot",
     "desktopCloseAllEmbeddedVchatApps",
     "onEmbeddedVchatAppState",
     "desktopOpenSystemTool",
