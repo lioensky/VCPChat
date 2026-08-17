@@ -3184,24 +3184,45 @@
                 return pending;
             };
 
+            const finishCompositionCommit = () => {
+                state.compositionCommitTimer = 0;
+                state.compositionCommitFrame = 0;
+                const pending = state.compositionCommit;
+                state.compositionCommit = null;
+                try {
+                    commitCompositionDom(pending);
+                } finally {
+                    releaseDeferredRender();
+                }
+            };
+
             const scheduleCompositionCommit = () => {
                 if (state.compositionCommitTimer) {
                     window.clearTimeout(state.compositionCommitTimer);
-                }
-                // compositionend 后的最终 beforeinput/input 在不同输入法、
-                // 不同 Chromium 版本中可能跨越一帧到达。这里保留一个很短的
-                // 静默窗口，把渲染态 DOM 作为输入缓冲区，直到浏览器完成整次
-                // 候选词固化后再一次性对齐源码。
-                state.compositionCommitTimer = window.setTimeout(() => {
                     state.compositionCommitTimer = 0;
-                    const pending = state.compositionCommit;
-                    state.compositionCommit = null;
-                    try {
-                        commitCompositionDom(pending);
-                    } finally {
-                        releaseDeferredRender();
-                    }
-                }, 80);
+                }
+                if (state.compositionCommitFrame) {
+                    window.cancelAnimationFrame(state.compositionCommitFrame);
+                    state.compositionCommitFrame = 0;
+                }
+
+                const pending = state.compositionCommit;
+                if (!pending) return;
+                if (pending.inputObserved) {
+                    // 已经收到 compositionend 后的最终 input。不要在 input
+                    // 事件调用栈中重建 DOM；下一帧提交即可，既让 Chromium
+                    // 完成原生 Selection 更新，也避免固定等待 80ms。
+                    state.compositionCommitFrame =
+                        window.requestAnimationFrame(finishCompositionCommit);
+                    return;
+                }
+
+                // 某些输入法只派发 compositionend，不派发可观察的最终
+                // input。保留兜底窗口，避免过早提交截断候选词。
+                state.compositionCommitTimer = window.setTimeout(
+                    finishCompositionCommit,
+                    80
+                );
             };
 
             const commitCompositionDom = (pending) => {
@@ -3282,6 +3303,48 @@
                     reason: 'flow-composition-snapshot',
                 });
                 if (!transaction) return false;
+
+                // 旧 editable 已断开不等于整个编辑面都失效。先尝试在
+                // 原 shell 内局部重建：若编译后的源码仍对应单一 edit
+                // region，refreshSessionRegion() 会只替换该 shell 的编辑子树，
+                // 并保留 Shadow DOM、其它 shell 和运行态节点。
+                const locallyRefreshed = refreshSessionRegion(
+                    pending.session,
+                    transaction,
+                    {
+                        start: normalized.selectionStart,
+                        end: normalized.selectionEnd,
+                    }
+                );
+                if (locallyRefreshed
+                    && pending.session.editable?.isConnected) {
+                    state.activeSession = pending.session;
+                    state.compositionRetiredEditable =
+                        pending.session.editable;
+                    try {
+                        pending.session.editable.focus({
+                            preventScroll: true,
+                        });
+                    } catch {
+                        pending.session.editable.focus();
+                    }
+                    restoreEditorOffsets(
+                        pending.session.editable,
+                        normalized.source,
+                        normalized.selectionStart,
+                        normalized.selectionEnd
+                    );
+                    refreshLocalMarkers(
+                        pending.session,
+                        normalized.selectionStart,
+                        normalized.selectionEnd
+                    );
+                    return true;
+                }
+
+                // 只有当前源码确实拆分/合并了 edit region，局部映射失败时
+                // 才升级为全局编辑面重建；这是结构变化兜底，不是普通 IME
+                // 输入的默认路径。
                 state.compositionRetiredEditable = pending.editable;
                 state.activeSession = null;
                 context.renderPort?.invalidate?.(
