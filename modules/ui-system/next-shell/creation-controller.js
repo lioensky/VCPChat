@@ -9,6 +9,8 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function createCreationControllerApi() {
     'use strict';
 
+    const REQUIRED_WEB_AWESOME_COMPONENTS = Object.freeze(['dialog', 'button', 'input', 'select', 'option']);
+
     function normalizeModelOptions(payload) {
         let models = payload;
         if (!Array.isArray(models)) models = payload?.data || payload?.models || (payload?.id ? [payload] : []);
@@ -69,8 +71,13 @@
             const api = this.getApi();
             const commands = this.commands();
             const generation = this.generation;
-            if (!ui || !commands?.createAgent || !commands?.createGroup) {
-                this.showUnavailable();
+            const webAwesome = this.window.VCPWebAwesome;
+            const SurfaceController = this.window.VCPUISurface?.SurfaceController;
+            if (!ui || !commands?.createAgent || !commands?.createGroup
+                || typeof webAwesome?.loadComponents !== 'function'
+                || typeof webAwesome?.isDefined !== 'function'
+                || typeof SurfaceController !== 'function') {
+                this.showUnavailable('创建界面运行时不完整，请按 Ctrl+R 重新加载应用。');
                 return;
             }
 
@@ -81,7 +88,9 @@
             // A genuine load failure is an application-integrity error in the
             // packaged desktop app. Do not disguise it as a second UI.
             try {
-                await this.window.VCPWebAwesome?.loadComponents?.();
+                await webAwesome.loadComponents();
+                const missing = REQUIRED_WEB_AWESOME_COMPONENTS.filter(tag => !webAwesome.isDefined(tag));
+                if (missing.length) throw new Error(`Web Awesome components were not defined: ${missing.join(', ')}`);
             } catch (kernelError) {
                 console.error('[NextUI] Web Awesome creation kernel unavailable:', kernelError);
                 this.showUnavailable('创建界面组件加载失败，请按 Ctrl+R 重新加载应用。');
@@ -103,7 +112,6 @@
             let error;
             let cancelButton;
             let createButton;
-            let controls = [];
             const buildControls = create => {
                 form = this.document.createElement('form');
                 form.className = 'next-ui-create-dialog-form';
@@ -125,43 +133,33 @@
                 form.append(typeField.element, nameField.element, modelField.element, error);
                 cancelButton = create('Button', { label: '取消', variant: 'ghost' });
                 createButton = create('Button', { label: '创建', variant: 'primary', type: 'submit' });
-                controls = [typeControl, typeField, nameControl, nameField, modelControl, modelField, cancelButton, createButton];
             };
-            const SurfaceController = this.window.VCPUISurface?.SurfaceController;
-            const surface = SurfaceController ? new SurfaceController({
+            const surface = new SurfaceController({
                 window: this.window,
                 document: this.document,
                 label: 'next:create-item-modal',
                 ownerScope: this.scope,
                 getUi: this.getUi,
-            }) : null;
-            if (surface) {
-                await surface.mount(host, context => {
-                    buildControls((name, options) => context.create(name, options));
-                }, {
-                    renderFallback: target => {
-                        target.textContent = '创建界面暂时无法加载。';
-                    },
-                });
-                if (surface.fallback) {
-                    await surface.dispose('create-surface-fallback');
-                    this.showUnavailable();
-                    return;
-                }
-                if (surface.kernel !== 'web-awesome') {
-                    await surface.dispose('create-kernel-unavailable');
-                    this.showUnavailable('创建界面组件尚未就绪，请按 Ctrl+R 重新加载应用。');
-                    return;
-                }
-            } else {
-                buildControls((name, options) => ui.create(name, options));
+            });
+            await surface.mount(host, context => {
+                buildControls((name, options) => context.create(name, options));
+            }, {
+                renderFallback: target => {
+                    target.textContent = '创建界面暂时无法加载。';
+                },
+            });
+            if (surface.fallback) {
+                await surface.dispose('create-surface-fallback');
+                this.showUnavailable();
+                return;
             }
-            const dialogScope = surface?.scope || this.scope?.child('next:create-item-modal') || null;
-            if (!surface) {
-                dialogScope?.own(() => host.remove(), 'create-modal-host', 'dom');
-                controls.forEach((control, index) => dialogScope?.own(() => control.destroy(), `create-control:${index}`, 'ui-registration'));
+            if (surface.kernel !== 'web-awesome') {
+                await surface.dispose('create-kernel-unavailable');
+                this.showUnavailable('创建界面组件尚未就绪，请按 Ctrl+R 重新加载应用。');
+                return;
             }
-            const disposeDialog = reason => surface?.dispose(reason) || dialogScope?.dispose(reason) || Promise.resolve();
+            const dialogScope = surface.scope;
+            const disposeDialog = reason => surface.dispose(reason);
             let kind = 'agent';
             let submitting = false;
             let cleaned = false;
@@ -170,8 +168,7 @@
             try {
                 await this.acquireOverlay(overlayOwner);
             } catch (overlayError) {
-                if (surface || dialogScope) await disposeDialog('create-overlay-failed');
-                else controls.forEach(control => control.destroy());
+                await disposeDialog('create-overlay-failed');
                 throw overlayError;
             }
             if (dialogScope && !dialogScope.active) {
@@ -180,35 +177,22 @@
             }
             dialogScope?.own(() => this.releaseOverlay(overlayOwner), 'create-overlay-lease', 'overlay');
             if (!this.mounted || generation !== this.generation) {
-                if (surface || dialogScope) await disposeDialog('create-open-cancelled');
-                else {
-                    this.releaseOverlay(overlayOwner);
-                    controls.forEach(control => control.destroy());
-                }
+                await disposeDialog('create-open-cancelled');
                 return;
             }
             const cleanup = () => {
                 if (cleaned) return;
                 cleaned = true;
                 if (this.activeModal === modal) this.activeModal = null;
-                if (surface || dialogScope) void disposeDialog('create-modal-closed').catch(reason => console.error('[NextUI] Failed to dispose create dialog:', reason));
-                else {
-                    this.releaseOverlay(overlayOwner);
-                    controls.forEach(control => control.destroy());
-                    host.remove();
-                }
+                void disposeDialog('create-modal-closed').catch(reason => console.error('[NextUI] Failed to dispose create dialog:', reason));
             };
             try {
                 modal = ui.create('Modal', { title: '创建助手或群组', size: 'sm', content: form, actions: [cancelButton, createButton], onClose: cleanup });
             } catch (modalError) {
-                if (surface || dialogScope) await disposeDialog('create-modal-failed');
-                else {
-                    this.releaseOverlay(overlayOwner);
-                    controls.forEach(control => control.destroy());
-                }
+                await disposeDialog('create-modal-failed');
                 throw modalError;
             }
-            surface?.own(modal, 'create-modal', 'ui-registration');
+            surface.own(modal, 'create-modal', 'ui-registration');
             this.activeModal = modal;
             host.append(modal.element);
             this.document.body.append(host);

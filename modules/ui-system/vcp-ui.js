@@ -1716,6 +1716,7 @@ function modalFactory(options = {}) {
     // IPC work or native WebContentsView visibility leases.
     const wa = options.native === true ? null : waControl('dialog', {});
     if (wa) {
+        wa.className = 'vcp-ui-wa-dialog';
         const previousFocus = document.activeElement;
         const state = {
             title: 'Dialog', size: 'md', content: '', actions: [],
@@ -1738,6 +1739,7 @@ function modalFactory(options = {}) {
         };
         controller = makeController(wa, state, current => {
             wa.setAttribute('label', current.title);
+            wa.dataset.size = normalize(current.size, ['sm', 'md', 'lg'], 'md', 'size');
             if (current.closeOnBackdrop) wa.setAttribute('light-dismiss', '');
             else wa.removeAttribute('light-dismiss');
             wa.replaceChildren();
@@ -1747,6 +1749,7 @@ function modalFactory(options = {}) {
             wa.append(body);
             const footer = document.createElement('div');
             footer.setAttribute('slot', 'footer');
+            footer.className = 'vcp-ui-modal-actions';
             (current.actions || []).forEach(action => footer.append(action.element || action));
             wa.append(footer);
             let frames = 0;

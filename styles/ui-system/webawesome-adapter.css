@@ -184,6 +184,58 @@ html .vcp-ui-scope wa-select.vcp-ui-select-proxy[aria-invalid="true"]::part(comb
 html .vcp-ui-scope wa-select.vcp-ui-select-proxy::part(listbox) {
     z-index: 10020;
 }
+html .vcp-ui-scope wa-button.vcp-ui-wa-button[data-variant="primary"]::part(base) {
+    color: var(--vcp-ui-on-accent);
+    border-color: var(--vcp-ui-accent);
+    background: var(--vcp-ui-accent);
+}
+html .vcp-ui-scope wa-button.vcp-ui-wa-button[data-variant="ghost"]::part(base) {
+    color: var(--vcp-ui-text-accent);
+    border-color: transparent;
+    background: transparent;
+}
+
+/* A WA dialog is the behavior kernel; VCPUI remains the visual contract. */
+html .vcp-ui-scope wa-dialog.vcp-ui-wa-dialog {
+    --width: min(520px, calc(100vw - (2 * var(--vcp-ui-space-4))));
+    --spacing: var(--vcp-ui-space-4);
+    --backdrop-filter: blur(2px);
+}
+html .vcp-ui-scope wa-dialog.vcp-ui-wa-dialog[data-size="sm"] {
+    --width: min(400px, calc(100vw - (2 * var(--vcp-ui-space-4))));
+}
+html .vcp-ui-scope wa-dialog.vcp-ui-wa-dialog[data-size="lg"] {
+    --width: min(720px, calc(100vw - (2 * var(--vcp-ui-space-4))));
+}
+html .vcp-ui-scope wa-dialog.vcp-ui-wa-dialog::part(dialog) {
+    max-height: min(760px, calc(100vh - (2 * var(--vcp-ui-space-4))));
+    border: 1px solid var(--vcp-ui-border);
+    border-radius: var(--vcp-ui-radius-lg);
+    background: var(--vcp-ui-bg-secondary);
+    box-shadow: var(--vcp-ui-shadow-lg);
+    overflow: hidden;
+}
+html .vcp-ui-scope wa-dialog.vcp-ui-wa-dialog::part(header) {
+    min-height: var(--vcp-ui-control-lg);
+    padding: var(--vcp-ui-space-3) var(--vcp-ui-space-4);
+    border-bottom: 1px solid var(--vcp-ui-border);
+}
+html .vcp-ui-scope wa-dialog.vcp-ui-wa-dialog::part(title) {
+    font-size: var(--vcp-ui-font-heading);
+    font-weight: 700;
+}
+html .vcp-ui-scope wa-dialog.vcp-ui-wa-dialog::part(body) {
+    padding: 0;
+}
+html .vcp-ui-scope wa-dialog.vcp-ui-wa-dialog::part(footer) {
+    padding: var(--vcp-ui-space-3) var(--vcp-ui-space-4);
+    border-top: 1px solid var(--vcp-ui-border);
+}
+html .vcp-ui-scope wa-dialog.vcp-ui-wa-dialog .vcp-ui-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--vcp-ui-space-2);
+}
 
 html .vcp-ui-scope wa-select.vcp-ui-select-proxy wa-option[data-group-start="true"] {
     border-top: 1px solid var(--vcp-ui-border);

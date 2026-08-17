@@ -37,6 +37,18 @@ function createUi(window) {
     return { create, controls, feedback: { toast() {} } };
 }
 
+function installSurfaceRuntime(window, overrides = {}) {
+    window.VCPLifecycle = { LifecycleScope };
+    window.VCPUISurface = { SurfaceController };
+    window.VCPWebAwesome = {
+        getRuntimeState: () => ({ state: 'ready' }),
+        loadComponents: async () => {},
+        isDefined: () => true,
+        mountScope: () => () => {},
+        ...overrides,
+    };
+}
+
 test('model options normalize supported payloads and remove duplicates', () => {
     assert.deepEqual(normalizeModelOptions({ models: [
         'gpt-a', { id: 'gpt-b', displayName: 'Model B' }, { id: 'gpt-a', name: 'duplicate' }, {},
@@ -68,9 +80,7 @@ test('creation controller refuses unavailable commands and disposes idempotently
 
 test('creation surface failure destroys partial controls and does not continue with a broken modal', async () => {
     const dom = new JSDOM('<!doctype html><html data-ui-mode="next"><body></body></html>');
-    dom.window.VCPLifecycle = { LifecycleScope };
-    dom.window.VCPUISurface = { SurfaceController };
-    dom.window.VCPWebAwesome = { getRuntimeState: () => ({ state: 'ready' }) };
+    installSurfaceRuntime(dom.window);
     let creates = 0;
     let destroys = 0;
     let unavailable = 0;
@@ -117,6 +127,7 @@ test('creation waits for its own Web Awesome kernel and coalesces repeated opens
             loadCalls += 1;
             return new Promise(resolve => { resolveKernel = () => { runtimeState = 'ready'; resolve(); }; });
         },
+        isDefined: () => runtimeState === 'ready',
         mountScope: host => {
             mountCalls += 1;
             host.dataset.waTestScope = 'true';
@@ -151,10 +162,11 @@ test('creation waits for its own Web Awesome kernel and coalesces repeated opens
 test('disposing while the creation kernel loads prevents a late surface mount', async () => {
     const dom = new JSDOM('<!doctype html><html data-ui-mode="next"><body></body></html>');
     let resolveKernel;
-    dom.window.VCPWebAwesome = {
+    installSurfaceRuntime(dom.window, {
         getRuntimeState: () => ({ state: 'loading' }),
         loadComponents: () => new Promise(resolve => { resolveKernel = resolve; }),
-    };
+        isDefined: () => true,
+    });
     const ui = createUi(dom.window);
     const controller = new CreationController({
         window: dom.window,
@@ -176,10 +188,10 @@ test('a terminal Web Awesome load failure exposes an error without mounting a se
     const dom = new JSDOM('<!doctype html><html data-ui-mode="next"><body></body></html>');
     const ui = createUi(dom.window);
     const unavailable = [];
-    dom.window.VCPWebAwesome = {
+    installSurfaceRuntime(dom.window, {
         getRuntimeState: () => ({ state: 'failed' }),
         loadComponents: async () => { throw new Error('controlled kernel failure'); },
-    };
+    });
     const controller = new CreationController({
         window: dom.window,
         document: dom.window.document,
@@ -198,6 +210,7 @@ test('a terminal Web Awesome load failure exposes an error without mounting a se
 test('creation submission waits for the command promise and restores controls after failure', async () => {
     const dom = new JSDOM('<!doctype html><html data-ui-mode="next"><body></body></html>', { pretendToBeVisual: true });
     const ui = createUi(dom.window);
+    installSurfaceRuntime(dom.window);
     let resolveCreation;
     const creation = new Promise(resolve => { resolveCreation = resolve; });
     const controller = new CreationController({

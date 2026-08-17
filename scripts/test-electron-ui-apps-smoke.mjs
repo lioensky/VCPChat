@@ -1065,6 +1065,41 @@ try {
     assert.equal(createEntryState.dialogTag, 'wa-dialog',
         `creation entry did not select the Web Awesome dialog kernel: ${JSON.stringify(createEntryState)}`);
     await page.waitForFunction(() => Boolean(document.querySelector('.next-ui-create-dialog-host wa-dialog')), { timeout: timeoutMs });
+    const creationVisualContract = await page.evaluate(() => {
+        const modal = document.querySelector('.next-ui-create-dialog-host wa-dialog');
+        const dialog = modal?.shadowRoot?.querySelector('[part~="dialog"]');
+        const header = modal?.shadowRoot?.querySelector('[part~="header"]');
+        const body = modal?.shadowRoot?.querySelector('[part~="body"]');
+        const footer = modal?.shadowRoot?.querySelector('[part~="footer"]');
+        const buttons = [...(modal?.querySelectorAll('wa-button') || [])];
+        const primary = buttons.find(button => button.dataset.variant === 'primary');
+        const cancel = buttons.find(button => button.dataset.variant === 'ghost');
+        const rect = dialog?.getBoundingClientRect();
+        const primaryBase = primary?.shadowRoot?.querySelector('[part~="base"]');
+        const cancelBase = cancel?.shadowRoot?.querySelector('[part~="base"]');
+        return {
+            size: modal?.dataset.size,
+            width: rect?.width || 0,
+            viewportWidth: innerWidth,
+            centerOffset: rect ? Math.abs((rect.left + rect.width / 2) - innerWidth / 2) : Infinity,
+            headerDivider: header ? getComputedStyle(header).borderBottomWidth : '0px',
+            footerDivider: footer ? getComputedStyle(footer).borderTopWidth : '0px',
+            bodyOverflow: body ? getComputedStyle(body).overflowY : '',
+            primaryBackground: primaryBase ? getComputedStyle(primaryBase).backgroundColor : '',
+            cancelBackground: cancelBase ? getComputedStyle(cancelBase).backgroundColor : '',
+        };
+    });
+    assert.equal(creationVisualContract.size, 'sm', `creation size contract was lost: ${JSON.stringify(creationVisualContract)}`);
+    assert.ok(creationVisualContract.width > 300 && creationVisualContract.width <= 410,
+        `creation dialog leaked the Web Awesome default width: ${JSON.stringify(creationVisualContract)}`);
+    assert.ok(creationVisualContract.centerOffset <= 2,
+        `creation dialog is not centered: ${JSON.stringify(creationVisualContract)}`);
+    assert.notEqual(creationVisualContract.headerDivider, '0px',
+        `creation header divider is missing: ${JSON.stringify(creationVisualContract)}`);
+    assert.notEqual(creationVisualContract.footerDivider, '0px',
+        `creation footer divider is missing: ${JSON.stringify(creationVisualContract)}`);
+    assert.notEqual(creationVisualContract.primaryBackground, creationVisualContract.cancelBackground,
+        `creation primary action lost its accent treatment: ${JSON.stringify(creationVisualContract)}`);
     await page.evaluate(() => window.uiManager?.applyTheme?.('dark'));
     await page.waitForFunction(() => document.querySelector('.next-ui-create-dialog-host')?.classList.contains('wa-dark'), { timeout: timeoutMs });
     const readCreationTheme = () => page.evaluate(() => {
