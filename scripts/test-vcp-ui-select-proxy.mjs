@@ -179,6 +179,8 @@ try {
         customizableProvider: window.customizableController.provider,
         customizableAppearance: getComputedStyle(window.customizableController.element).appearance,
         capability: window.VCPUI.selectProviders.detectCustomizableNative(),
+        sourceOwnProperties: ['value', 'selectedIndex', 'add', 'remove', 'focus']
+            .filter(property => Object.hasOwn(window.selectController.nativeElement, property)),
     }));
     assert.equal(state.nativeValue, 'always-approve');
     assert.equal(state.proxyValue, 'always-approve');
@@ -193,6 +195,7 @@ try {
     assert.equal(typeof state.capability.supported, 'boolean');
     assert.equal(typeof state.capability.baseSelect, 'boolean');
     assert.equal(typeof state.capability.picker, 'boolean');
+    assert.deepEqual(state.sourceOwnProperties, [], 'proxy must not patch business Select properties');
     if (state.capability.supported) {
         assert.equal(state.customizableProvider, 'customizable-native');
         assert.equal(state.customizableAppearance, 'base-select');

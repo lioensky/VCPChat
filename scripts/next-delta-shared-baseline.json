@@ -24,8 +24,8 @@
     "reason": "upstream group business surface with retired toolbar binding removed"
   },
   "modules/settingsManager.js": {
-    "sha256": "3cfe7e5ca2fa60e1cbbb7eeb663da19c19866a87c6cc2e2dd44bbbd36fb93ac8",
-    "reason": "reviewed Agent settings save settlement after fallible UI projection"
+    "sha256": "912f62f0a3ffe5eb67a1783feb5d9a004d19d95730e8fa45adde8acd53b1ed25",
+    "reason": "reviewed assistant select hydration now accepts a modal-session commit guard"
   },
   "modules/filterManager.js": {
     "sha256": "8b632c78f2d0bd525cbe24022b8883c8e6a4c3565352779c5ebc49be9350c17f",

@@ -386,8 +386,12 @@ assert.ok(legacySelect.classList.contains('vcp-ui-select-source'));
 assert.equal(enhancedSelect.element.querySelectorAll('wa-option').length, 2);
 assert.equal(enhancedSelect.element.value, 'one');
 legacySelect.value = 'two';
+enhancedSelect.refresh();
 await new Promise(resolve => setTimeout(resolve, 0));
-assert.equal(enhancedSelect.element.value, 'two', 'native value writes sync to WA');
+assert.equal(enhancedSelect.element.value, 'two', 'explicit presentation refresh syncs a native value write to WA');
+['value', 'selectedIndex', 'add', 'remove', 'focus'].forEach(property => {
+    assert.equal(Object.hasOwn(legacySelect, property), false, `Select proxy must not patch source ${property}`);
+});
 legacySelect.add(new Option('Three', 'three'));
 await new Promise(resolve => setTimeout(resolve, 0));
 assert.equal(enhancedSelect.element.querySelectorAll('wa-option').length, 3, 'native option additions sync to WA');
@@ -526,6 +530,29 @@ await new Promise(resolve => setTimeout(resolve, 0));
 assert.ok(document.getElementById('globalUserName').classList.contains('vcp-ui-native-input'), 'global input enhanced');
 assert.ok(document.getElementById('globalSelect').classList.contains('vcp-ui-native-select'), 'global select enhanced');
 assert.ok(globalModal.querySelector('wa-select.vcp-ui-select-proxy'), 'global select uses the loaded Web Awesome kernel');
+const globalBusinessSelect = document.getElementById('globalSelect');
+let globalBusinessSelectChanges = 0;
+globalBusinessSelect.addEventListener('change', () => { globalBusinessSelectChanges += 1; });
+globalBusinessSelect.value = 'B';
+document.dispatchEvent(new CustomEvent('vcp-settings-surface-updated', {
+    detail: { reason: 'business-controls-synchronized' }
+}));
+await new Promise(resolve => setTimeout(resolve, 0));
+assert.equal(globalModal.querySelector('wa-select.vcp-ui-select-proxy').value, 'B',
+    'settings lifecycle refreshes the presentation after canonical business synchronization');
+globalBusinessSelect.value = 'A';
+document.dispatchEvent(new CustomEvent('vcp-settings-surface-updated', {
+    detail: { reason: 'rust-controls-synchronized' }
+}));
+await new Promise(resolve => setTimeout(resolve, 0));
+assert.equal(globalModal.querySelector('wa-select.vcp-ui-select-proxy').value, 'A',
+    'an independently settled settings producer refreshes the same presentation');
+assert.equal(globalBusinessSelectChanges, 0,
+    'presentation refresh must not manufacture a business change event');
+['value', 'selectedIndex', 'add', 'remove', 'focus'].forEach(property => {
+    assert.equal(Object.hasOwn(globalBusinessSelect, property), false,
+        `settings Select keeps its native ${property} descriptor`);
+});
 const globalFooter = globalModal.querySelector('.global-settings-footer');
 assert.ok(globalFooter.classList.contains('vcp-ui-settings-action-bar'), 'global save bar enhanced');
 assert.ok(globalModal.querySelector('.vcp-ui-settings-search'), 'settings search injected');

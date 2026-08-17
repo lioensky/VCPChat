@@ -62,7 +62,7 @@
 |---|---|---|
 | 0 保护现场与事实基线 | 已完成 | 分支、远程、工作区、文档与测试证据对齐 |
 | 1 固化 Select Provider | 已完成 | Provider、WA proxy、原子回滚和测试已形成独立提交 |
-| 2 清除 Select property bridge | 未开始 | 原业务 Select 不再被 patch descriptor |
+| 2 清除 Select property bridge | 进行中 | 原业务 Select 不再被 patch descriptor，并为复用设置 Surface 建立异步提交代次 |
 | 3 跨平台 Select 决策 | 未开始 | 用双平台证据决定默认 Provider |
 | 4 Input / Textarea Provider | 未开始 | 删除文本控件 shim 与查询伪装 |
 | 5 Toggle / Range / Form | 未开始 | 单一状态 owner 与可逆增强 |
@@ -118,12 +118,15 @@
 - Next 消费者迁移到 controller API 或真实 DOM operation + 标准事件。
 - 上游不能立即修改的调用只保留最窄、显式、可销毁适配。
 - 删除 proxy 对业务 Select 的 own property descriptor patch。
+- 设置模态框关闭后仍复用同一业务 DOM；为每次打开建立 generation/owner，异步 `getAgents`、Rust 配置和业务表单同步在 `await` 后检查当前 Surface 与精确 root，迟到结果不得写入下一次打开。
+- 将 Rust 配置 hydration 收敛为单一 writer，终态 presentation 事件携带 `surface`、`root` 和 `generation`；Settings bridge 只接受当前代次的通知。
 
 ### 退出条件
 
 - mount 前后原 Select property descriptors 一致。
 - 表单提交、reset、事件顺序、label 和焦点行为不变。
 - 反复 mount/destroy 不增加 detached options、listener 或 Observer。
+- open → close → reopen → 乱序完成的 deferred 测试通过；关闭或替换 root 后不产生刷新事件、不写入新 Surface。
 
 ## 8. 阶段 3：跨平台 Select 决策
 

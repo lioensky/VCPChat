@@ -30,16 +30,16 @@ export function mountWebAwesomeSelectProxy({
     const originalTabIndex = element.getAttribute('tabindex');
     const originallyHidden = element.hidden;
     const state = { size: element.dataset.size || 'md', ...options };
-    const propertyRestorers = [];
     let syncing = false;
     let observer;
     let renderedOptionsSignature = null;
     let controller;
+    let active = true;
 
     const restoreSource = () => {
+        active = false;
         observer?.disconnect();
         observer = null;
-        propertyRestorers.splice(0).reverse().forEach(restore => restore());
         forgetController(element);
         if (!originallyNativeSelect) element.classList.remove('vcp-ui-native-select');
         if (!originallySelectSource) element.classList.remove('vcp-ui-select-source');
@@ -63,7 +63,7 @@ export function mountWebAwesomeSelectProxy({
     element.setAttribute('tabindex', '-1');
 
     const insertProxy = () => {
-        if (!wa.isConnected && element.parentNode) element.after(wa);
+        if (active && !wa.isConnected && element.parentNode) element.after(wa);
     };
 
     const nativeOptionRecords = () => [...element.options].map(option => ({
@@ -74,7 +74,7 @@ export function mountWebAwesomeSelectProxy({
     }));
 
     const syncNativeToProxy = () => {
-        if (syncing) return;
+        if (!active || syncing) return;
         syncing = true;
         try {
             insertProxy();
@@ -137,13 +137,17 @@ export function mountWebAwesomeSelectProxy({
     };
 
     const syncProxyToNative = event => {
-        if (syncing) return;
-        syncing = true;
-        const nextValue = wa.value == null ? '' : String(wa.value);
-        const changed = element.value !== nextValue;
-        element.value = nextValue;
-        syncing = false;
+        if (!active || syncing) return;
         event?.stopPropagation?.();
+        syncing = true;
+        let changed = false;
+        try {
+            const nextValue = wa.value == null ? '' : String(wa.value);
+            changed = element.value !== nextValue;
+            element.value = nextValue;
+        } finally {
+            syncing = false;
+        }
         if (event?.type === 'input' && changed) {
             element.dispatchEvent(new EventCtor('input', { bubbles: true }));
         } else if (event?.type === 'change') {
@@ -151,58 +155,6 @@ export function mountWebAwesomeSelectProxy({
             element.dispatchEvent(new EventCtor('change', { bubbles: true }));
         }
     };
-
-    const patchProperty = property => {
-        const prototype = Object.getPrototypeOf(element);
-        const descriptor = Object.getOwnPropertyDescriptor(prototype, property);
-        if (!descriptor?.get || !descriptor?.set) return;
-        const own = Object.getOwnPropertyDescriptor(element, property);
-        Object.defineProperty(element, property, {
-            configurable: true,
-            enumerable: descriptor.enumerable,
-            get: () => descriptor.get.call(element),
-            set: value => {
-                descriptor.set.call(element, value);
-                queueMicrotask(syncNativeToProxy);
-            },
-        });
-        propertyRestorers.push(() => {
-            if (own) Object.defineProperty(element, property, own);
-            else delete element[property];
-        });
-    };
-
-    const patchMethod = method => {
-        if (typeof element[method] !== 'function') return;
-        const own = Object.getOwnPropertyDescriptor(element, method);
-        const original = element[method].bind(element);
-        Object.defineProperty(element, method, {
-            configurable: true,
-            value: (...args) => {
-                const result = original(...args);
-                queueMicrotask(syncNativeToProxy);
-                return result;
-            },
-        });
-        propertyRestorers.push(() => {
-            if (own) Object.defineProperty(element, method, own);
-            else delete element[method];
-        });
-    };
-
-    patchProperty('value');
-    patchProperty('selectedIndex');
-    patchMethod('add');
-    patchMethod('remove');
-    const ownFocus = Object.getOwnPropertyDescriptor(element, 'focus');
-    Object.defineProperty(element, 'focus', {
-        configurable: true,
-        value: (...args) => wa.focus?.(...args),
-    });
-    propertyRestorers.push(() => {
-        if (ownFocus) Object.defineProperty(element, 'focus', ownFocus);
-        else delete element.focus;
-    });
 
     controller = makeController(wa, state, current => {
         if (current.value !== undefined && element.value !== String(current.value)) element.value = String(current.value);

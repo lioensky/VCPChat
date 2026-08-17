@@ -90,7 +90,7 @@ unmounted → decision frozen → mounting → mounted → disposing → dispose
 - mounting 失败原子回滚；不暴露半初始化 controller。
 - dispose 幂等，并等待已经开始的异步释放。
 - 请求、listener、MutationObserver、弹层、WA proxy 和临时 property descriptor 都由同一 controller 释放。
-- 迟到的 runtime、option 或异步结果必须检查 generation/owner 后才能提交。
+- 迟到的 runtime、option 或异步结果必须检查 generation/owner 后才能提交。可复用的 global-settings modal 还必须核对精确 root 与 `.active`，不能只依赖 `isConnected`。
 
 ## 7. 当前技术债与迁移顺序
 

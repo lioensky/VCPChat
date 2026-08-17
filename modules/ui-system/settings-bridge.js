@@ -1,6 +1,8 @@
 // settings-bridge — Next UI enhancement bridge for the settings surfaces.
 //
 // The sidebar settings forms (agent/group) and the global settings modal keep
+import { isCurrentSettingsSurfaceSession } from './settings-surface-session.js';
+
 // their original business DOM, form ids, defaults and IPC; this module only
 // layers the VCPUI presentation on top of the canonical main-window shell.
 //
@@ -112,7 +114,11 @@ function enhanceGlobalSettings(root, form) {
     // not lock them into VCPUI's native fallback while the lazy runtime is
     // still loading; vcp-main-ui-runtime refreshes this bridge once ready.
     if (window.VCPWebAwesome?.isLoaded?.('select')) {
-        form.querySelectorAll('select').forEach(select => enhance('Select', select));
+        form.querySelectorAll('select').forEach(select => {
+            const existing = window.VCPUI.getController(select);
+            if (existing?.kind === 'select') existing.refresh?.();
+            else enhance('Select', select);
+        });
     }
     form.querySelectorAll('input[type="range"]').forEach(range => enhance('Range', range));
     form.querySelectorAll('label.switch').forEach(control => enhance('Switch', control));
@@ -395,7 +401,20 @@ function teardown() {
 const handleModalVisibility = event => {
     if (event.detail?.modalId === 'globalSettingsModal') scheduleRefresh();
 };
-const handleSurfaceUpdated = () => scheduleRefresh();
+const handleSurfaceUpdated = event => {
+    const detail = event?.detail || {};
+    if (detail.surface === 'global-settings') {
+        const modal = document.getElementById('globalSettingsModal');
+        if (detail.modalId !== 'globalSettingsModal'
+            || detail.active === false
+            || !modal?.classList.contains('active')
+            || detail.root !== modal
+            || !isCurrentSettingsSurfaceSession({ generation: detail.generation, root: detail.root })) {
+            return;
+        }
+    }
+    scheduleRefresh();
+};
 if (bridgeScope) bridgeScope.listen(document, 'modal-visibility-changed', handleModalVisibility, undefined, 'settings-modal-visibility');
 else document.addEventListener('modal-visibility-changed', handleModalVisibility);
 if (bridgeScope) {

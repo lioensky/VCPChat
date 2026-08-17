@@ -109,6 +109,15 @@ for (const file of filesIn(moduleDir, '.js')) {
 
 const runtimeFile = path.join(moduleDir, 'vcp-ui.js');
 const runtime = fs.readFileSync(runtimeFile, 'utf8');
+const selectProxyFile = path.join(moduleDir, 'select-webawesome-proxy.js');
+const selectProxySource = fs.readFileSync(selectProxyFile, 'utf8');
+[
+    ['Object.defineProperty(element', 'must not patch own properties on the business Select'],
+    ['element.querySelector =', 'must not replace querySelector on the business Select'],
+    ['element.querySelectorAll =', 'must not replace querySelectorAll on the business Select'],
+].forEach(([needle, message]) => {
+    if (selectProxySource.includes(needle)) report(selectProxyFile, message);
+});
 const settingsBridgeSource = fs.readFileSync(path.join(moduleDir, 'settings-bridge.js'), 'utf8');
 if (/new\s+(?:window\.)?MutationObserver/.test(settingsBridgeSource)) {
     report(path.join(moduleDir, 'settings-bridge.js'), 'must use explicit settings surface lifecycle events');

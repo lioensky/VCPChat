@@ -1,3 +1,5 @@
+import { captureSettingsSurfaceSession, isCurrentSettingsSurfaceSession } from './modules/ui-system/settings-surface-session.js';
+
 // --- Globals ---
 let globalSettings = {
     sidebarWidth: 260,
@@ -1622,10 +1624,31 @@ async function loadAndApplyGlobalSettings() {
         let filterEnabled = globalSettings.filterEnabled ?? globalSettings.doNotDisturbLogMode ?? (localStorage.getItem('doNotDisturbLogMode') === 'true');
         globalSettings.filterEnabled = filterEnabled;
         // 🟢 核心逻辑：监听模态框就绪事件，届时再同步模态框内部 UI
-        document.addEventListener('modal-ready', (e) => {
+        document.addEventListener('modal-visibility-changed', (e) => {
             const { modalId } = e.detail;
-            if (modalId === 'globalSettingsModal') {
-                syncGlobalSettingsToUI();
+            if (modalId === 'globalSettingsModal' && e.detail.active === true) {
+                const session = captureSettingsSurfaceSession();
+                void syncGlobalSettingsToUI(session)
+                    .catch(error => {
+                        console.error('[Renderer] Failed to synchronize global settings controls:', error);
+                    })
+                    .finally(() => {
+                        if (!isCurrentSettingsSurfaceSession(session)) return;
+                        // Presentation adapters may mirror the canonical
+                        // business controls, but the renderer does not know
+                        // which Provider they use. Publish one terminal event
+                        // after async option/value population settles.
+                        document.dispatchEvent(new CustomEvent('vcp-settings-surface-updated', {
+                            detail: {
+                                surface: 'global-settings',
+                                modalId: 'globalSettingsModal',
+                                active: true,
+                                root: session.root,
+                                reason: 'business-controls-synchronized',
+                                generation: session.generation
+                            }
+                        }));
+                    });
             }
         });
 
@@ -2129,12 +2152,15 @@ function applyChatBubbleLayoutSettings(settings = globalSettings) {
 /**
  * 🟢 将全局设置同步到 UI 元素（仅在模态框实例化后调用）
  */
-async function syncGlobalSettingsToUI() {
+async function syncGlobalSettingsToUI(session = captureSettingsSurfaceSession()) {
+    const canCommit = () => isCurrentSettingsSurfaceSession(session);
     const safeSet = (id, value, prop = 'value') => {
+        if (!canCommit()) return;
         const el = document.getElementById(id);
         if (el) el[prop] = value;
     };
     const safeCheck = (id, checked) => {
+        if (!canCommit()) return;
         const el = document.getElementById(id);
         if (el) el.checked = !!checked;
     };
@@ -2190,6 +2216,7 @@ async function syncGlobalSettingsToUI() {
     // Network Notes Paths
     const networkNotesPathsContainer = document.getElementById('networkNotesPathsContainer');
     if (networkNotesPathsContainer) {
+        if (!canCommit()) return;
         networkNotesPathsContainer.innerHTML = '';
         const paths = Array.isArray(globalSettings.networkNotesPaths) ? globalSettings.networkNotesPaths : (globalSettings.networkNotesPath ? [globalSettings.networkNotesPath] : []);
         if (paths.length === 0) {
@@ -2349,7 +2376,8 @@ async function syncGlobalSettingsToUI() {
     // Assistant Select
     const assistantAgentSelect = document.getElementById('assistantAgent');
     if (assistantAgentSelect) {
-        await window.settingsManager.populateAssistantAgentSelect();
+        await window.settingsManager.populateAssistantAgentSelect({ canCommit });
+        if (!canCommit()) return;
         assistantAgentSelect.value = globalSettings.assistantAgent || '';
     }
 
@@ -2372,39 +2400,10 @@ async function syncGlobalSettingsToUI() {
     safeSet('middleClickAdvancedDelay', Math.max(1000, globalSettings.middleClickAdvancedDelay ?? 1000));
     safeCheck('enableRegenerateConfirmation', globalSettings.enableRegenerateConfirmation !== false);
 
-    if (chatAPI?.getRustAssistantConfig) {
-        try {
-            const rustConfig = await chatAPI.getRustAssistantConfig();
-            if (rustConfig && !rustConfig.error) {
-                safeCheck('rustUseAssistant', rustConfig.useRustAssistant === true);
-                safeCheck('rustDebugMode', rustConfig.debugMode === true);
-                safeSet('rustWhitelistKeywords', joinKeywords(rustConfig.whitelist || []));
-                safeSet('rustBlacklistKeywords', joinKeywords(rustConfig.blacklist || []));
-                safeSet('rustScreenshotApps', joinKeywords(rustConfig.screenshotApps || []));
-                syncRustDebugPanelVisibility();
-                syncRustGuardRulesVisibility();
-
-                const rustDebugModeEl = document.getElementById('rustDebugMode');
-                if (rustDebugModeEl && !rustDebugModeEl.dataset.debugPanelBound) {
-                    rustDebugModeEl.addEventListener('change', syncRustDebugPanelVisibility);
-                    rustDebugModeEl.dataset.debugPanelBound = 'true';
-                }
-
-                const rustUseAssistantEl = document.getElementById('rustUseAssistant');
-                if (rustUseAssistantEl && !rustUseAssistantEl.dataset.guardPanelBound) {
-                    rustUseAssistantEl.addEventListener('change', syncRustGuardRulesVisibility);
-                    rustUseAssistantEl.dataset.guardPanelBound = 'true';
-                }
-
-            }
-        } catch (error) {
-            console.warn('[Renderer] Failed to sync Rust assistant config:', error);
-        }
-    }
-
     if (chatAPI?.getAssistantRuntimeStatus && document.getElementById('rustDebugMode')?.checked) {
         try {
             const runtime = await chatAPI.getAssistantRuntimeStatus();
+            if (!canCommit()) return;
             if (runtime && runtime.success) {
                 const modeText = runtime.mode === 'rust'
                     ? 'Rust'
