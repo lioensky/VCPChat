@@ -146,8 +146,10 @@
                     this.showUnavailable();
                     return;
                 }
+                host.classList.toggle('is-native-fallback', surface.kernel === 'native');
             } else {
                 buildControls((name, options) => ui.create(name, options));
+                host.classList.toggle('is-native-fallback', !this.window.VCPWebAwesome?.isDefined?.('dialog'));
             }
             const dialogScope = surface?.scope || this.scope?.child('next:create-item-modal') || null;
             if (!surface) {

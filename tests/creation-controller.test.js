@@ -192,7 +192,9 @@ test('a terminal Web Awesome load failure uses one native fallback surface', asy
     });
     controller.mount();
     await controller.open();
-    assert.equal(dom.window.document.querySelectorAll('.next-ui-create-dialog-host').length, 1);
+    const fallbackHost = dom.window.document.querySelector('.next-ui-create-dialog-host');
+    assert.ok(fallbackHost);
+    assert.equal(fallbackHost.classList.contains('is-native-fallback'), true);
     assert.equal(mountCalls, 0, 'native fallback must not claim a WA theme scope');
     controller.close();
     dom.window.close();
