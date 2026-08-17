@@ -1077,6 +1077,10 @@ try {
         const rect = dialog?.getBoundingClientRect();
         const primaryBase = primary?.shadowRoot?.querySelector('[part~="base"]');
         const cancelBase = cancel?.shadowRoot?.querySelector('[part~="base"]');
+        const input = modal?.querySelector('wa-input');
+        const select = modal?.querySelector('wa-select');
+        const inputRect = input?.shadowRoot?.querySelector('[part~="input-wrapper"]')?.getBoundingClientRect();
+        const selectRect = select?.shadowRoot?.querySelector('[part~="combobox"]')?.getBoundingClientRect();
         return {
             size: modal?.dataset.size,
             width: rect?.width || 0,
@@ -1087,6 +1091,10 @@ try {
             bodyOverflow: body ? getComputedStyle(body).overflowY : '',
             primaryBackground: primaryBase ? getComputedStyle(primaryBase).backgroundColor : '',
             cancelBackground: cancelBase ? getComputedStyle(cancelBase).backgroundColor : '',
+            inputLeft: inputRect?.left || 0,
+            inputWidth: inputRect?.width || 0,
+            selectLeft: selectRect?.left || 0,
+            selectWidth: selectRect?.width || 0,
         };
     });
     assert.equal(creationVisualContract.size, 'sm', `creation size contract was lost: ${JSON.stringify(creationVisualContract)}`);
@@ -1100,6 +1108,9 @@ try {
         `creation footer divider is missing: ${JSON.stringify(creationVisualContract)}`);
     assert.notEqual(creationVisualContract.primaryBackground, creationVisualContract.cancelBackground,
         `creation primary action lost its accent treatment: ${JSON.stringify(creationVisualContract)}`);
+    assert.ok(Math.abs(creationVisualContract.inputLeft - creationVisualContract.selectLeft) <= 1
+        && Math.abs(creationVisualContract.inputWidth - creationVisualContract.selectWidth) <= 1,
+    `creation Input and Select are not aligned: ${JSON.stringify(creationVisualContract)}`);
     await page.evaluate(() => window.uiManager?.applyTheme?.('dark'));
     await page.waitForFunction(() => document.querySelector('.next-ui-create-dialog-host')?.classList.contains('wa-dark'), { timeout: timeoutMs });
     const readCreationTheme = () => page.evaluate(() => {

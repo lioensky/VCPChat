@@ -127,6 +127,16 @@ html .vcp-ui-scope wa-input.vcp-ui-wa-input,
 html .vcp-ui-scope wa-textarea.vcp-ui-wa-textarea,
 html .vcp-ui-scope wa-select.vcp-ui-wa-select {
     width: 100%;
+    min-width: 0;
+    padding: 0;
+}
+
+/* Neutralize native .vcp-ui-input/.vcp-ui-textarea host geometry. WA owns
+   the internal padding and height; applying both contracts creates an inset,
+   narrower control beside a full-width WA Select. */
+html .vcp-ui-scope wa-input.vcp-ui-wa-input,
+html .vcp-ui-scope wa-textarea.vcp-ui-wa-textarea {
+    height: auto;
 }
 
 html .vcp-ui-scope select.vcp-ui-select-source {
