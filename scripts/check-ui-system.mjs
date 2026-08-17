@@ -109,10 +109,6 @@ for (const file of filesIn(moduleDir, '.js')) {
 
 const runtimeFile = path.join(moduleDir, 'vcp-ui.js');
 const runtime = fs.readFileSync(runtimeFile, 'utf8');
-const pageRuntimeBootstrap = fs.readFileSync(path.join(moduleDir, 'vcp-ui-runtime-bootstrap.js'), 'utf8');
-if (/observeControls\s*\(\s*document\.body/.test(pageRuntimeBootstrap)) {
-    report(path.join(moduleDir, 'vcp-ui-runtime-bootstrap.js'), 'must not mount a document-wide control observer');
-}
 const settingsBridgeSource = fs.readFileSync(path.join(moduleDir, 'settings-bridge.js'), 'utf8');
 if (/new\s+(?:window\.)?MutationObserver/.test(settingsBridgeSource)) {
     report(path.join(moduleDir, 'settings-bridge.js'), 'must use explicit settings surface lifecycle events');

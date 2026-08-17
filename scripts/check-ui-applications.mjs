@@ -31,7 +31,6 @@ const surfaceDirs = [
     'VchatManager',
 ];
 const singleFiles = ['main.html'];
-const SELECT_RUNTIME_ENTRYPOINTS = [];
 
 const CDN_HOSTS = [
     /unpkg\.com/i,
@@ -47,7 +46,6 @@ const CDN_SCHEMES = [/^https?:[/\\]{2}/i];
 // the adapter), never by loading the lucide runtime itself.
 const LUCIDE_SANCTIONED_ENTRIES = new Set([
     path.normalize('main.html'),
-    path.normalize('modules/ui-system/vcp-ui-runtime-bootstrap.js'),
 ]);
 
 const failures = [];
@@ -131,23 +129,9 @@ if (!fs.existsSync(adapterCssPath)) {
 const adapterCss = fs.readFileSync(adapterCssPath, 'utf8');
 const registeredParts = [...adapterCss.matchAll(/::part\(([\w-]+)\)/g)].map(match => match[1]);
 
-for (const entrypoint of SELECT_RUNTIME_ENTRYPOINTS) {
-    const entryPath = path.join(root, entrypoint);
-    const source = fs.existsSync(entryPath) ? fs.readFileSync(entryPath, 'utf8') : '';
-    if (!source.includes('vcp-ui-runtime-bootstrap.js')) {
-        failures.push(`${entrypoint}: Select-bearing next-mode page must load vcp-ui-runtime-bootstrap.js`);
-    }
-}
 const mainSource = fs.readFileSync(path.join(root, 'main.html'), 'utf8');
 if (!mainSource.includes('modules/ui-system/vcp-main-ui-runtime.js')) {
     failures.push('main.html: global settings Select migration requires vcp-main-ui-runtime.js');
-}
-const runtimeSource = fs.readFileSync(path.join(root, 'modules/ui-system/vcp-ui-runtime-bootstrap.js'), 'utf8');
-if (runtimeSource.includes('VCPUI.observeControls')) {
-    failures.push('vcp-ui-runtime-bootstrap.js: document-wide dynamic control observers are forbidden');
-}
-if (!runtimeSource.includes('UiModeController.createSurfaceController') || !runtimeSource.includes('mountScope')) {
-    failures.push('vcp-ui-runtime-bootstrap.js: explicit mode surface lifecycle is missing');
 }
 const vcpUiSource = fs.readFileSync(path.join(root, 'modules/ui-system/vcp-ui.js'), 'utf8');
 if (!vcpUiSource.includes("ENHANCERS.set('select', selectEnhancer)")) {
