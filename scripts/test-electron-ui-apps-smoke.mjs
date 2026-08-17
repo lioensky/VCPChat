@@ -1070,6 +1070,37 @@ try {
     assert.equal(createEntryState.dialogTag, 'wa-dialog',
         `creation entry did not select the Web Awesome dialog kernel: ${JSON.stringify(createEntryState)}`);
     await page.waitForFunction(() => Boolean(document.querySelector('.next-ui-create-dialog-host wa-dialog')), { timeout: timeoutMs });
+    await page.evaluate(() => window.uiManager?.applyTheme?.('dark'));
+    await page.waitForFunction(() => document.body.classList.contains('wa-dark'), { timeout: timeoutMs });
+    const readCreationTheme = () => page.evaluate(() => {
+        const host = document.querySelector('.next-ui-create-dialog-host');
+        const probe = document.createElement('div');
+        probe.style.background = 'var(--wa-color-surface-raised)';
+        probe.style.color = 'var(--wa-color-text-normal)';
+        host?.append(probe);
+        const style = getComputedStyle(probe);
+        const result = {
+            background: style.backgroundColor,
+            color: style.color,
+            light: document.body.classList.contains('wa-light'),
+            dark: document.body.classList.contains('wa-dark'),
+        };
+        probe.remove();
+        return result;
+    });
+    const channel = value => Number(value.match(/[\d.]+/g)?.[0] || 0);
+    const darkCreationTheme = await readCreationTheme();
+    assert.equal(darkCreationTheme.dark, true, `dark creation theme class missing: ${JSON.stringify(darkCreationTheme)}`);
+    assert.ok(channel(darkCreationTheme.background) < 100,
+        `dark creation surface resolved to a light background: ${JSON.stringify(darkCreationTheme)}`);
+    await page.evaluate(() => window.uiManager?.applyTheme?.('light'));
+    await page.waitForFunction(() => document.body.classList.contains('wa-light'), { timeout: timeoutMs });
+    const lightCreationTheme = await readCreationTheme();
+    assert.equal(lightCreationTheme.light, true, `light creation theme class missing: ${JSON.stringify(lightCreationTheme)}`);
+    assert.ok(channel(lightCreationTheme.background) > 180,
+        `light creation surface did not resolve to a light background: ${JSON.stringify(lightCreationTheme)}`);
+    await page.evaluate(() => window.uiManager?.applyTheme?.('dark'));
+    await page.waitForFunction(() => document.body.classList.contains('wa-dark'), { timeout: timeoutMs });
     await page.keyboard.press('Escape');
     await page.waitForFunction(() => !document.querySelector('.next-ui-create-dialog-host'), { timeout: timeoutMs });
 
@@ -1125,7 +1156,7 @@ try {
         delete window.__nextDeltaOriginalCommands;
         delete window.__nextDeltaResolveCreate;
     });
-    summary.push({ surface: '创建助手 Modal', mode: 'next', pass: true, lucide: 0, note: 'WA Escape 释放资源，提交中禁止用户关闭，成功提交可完成关闭' });
+    summary.push({ surface: '创建助手 Modal', mode: 'next', pass: true, lucide: 0, note: 'WA 深浅主题同步，Escape 释放资源，提交中禁止用户关闭，成功提交可完成关闭' });
 
     // 3. Global settings modal is enhanced in next mode + keyboard flow.
     await page.waitForFunction(() => document.documentElement.dataset.uiMode === 'next', { timeout: timeoutMs });

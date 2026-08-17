@@ -11,6 +11,7 @@ globalThis.customElements = dom.window.customElements;
 globalThis.CustomEvent = dom.window.CustomEvent;
 globalThis.Event = dom.window.Event;
 globalThis.HTMLElement = dom.window.HTMLElement;
+globalThis.MutationObserver = dom.window.MutationObserver;
 
 const adapter = (await import('../modules/ui-system/webawesome-adapter.js')).default;
 const adapterWin = dom.window;
@@ -74,8 +75,11 @@ check('applyTokens marks an adapter scope in next mode and unmarks on release', 
     const root = scopeRoot();
     const release = adapter.applyTokens(root);
     assert.equal(root.dataset.waScope, 'true');
+    assert.equal(root.classList.contains('wa-dark'), true);
+    assert.equal(root.classList.contains('wa-light'), false);
     release();
     assert.equal(root.hasAttribute('data-wa-scope'), false);
+    assert.equal(root.classList.contains('wa-dark'), false);
 });
 
 check('registerTheme is ref-counted', () => {
@@ -178,6 +182,21 @@ async function checkAsync(name, fn) {
         console.error(`FAIL - ${name}\n    ${error.message}`);
     }
 }
+
+await checkAsync('mounted scope follows runtime light and dark theme changes', async () => {
+    const root = scopeRoot();
+    const release = adapter.applyTokens(root);
+    adapterWin.document.body.classList.add('light-theme');
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(root.classList.contains('wa-light'), true);
+    assert.equal(root.classList.contains('wa-dark'), false);
+    adapterWin.document.body.classList.remove('light-theme');
+    adapterWin.document.body.classList.add('dark-theme');
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(root.classList.contains('wa-dark'), true);
+    assert.equal(root.classList.contains('wa-light'), false);
+    release();
+});
 
 await checkAsync('loadComponents failure is deterministic and observable', async () => {
     adapterWin.document.documentElement.dataset.uiMode = 'next';

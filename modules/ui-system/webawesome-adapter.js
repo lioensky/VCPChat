@@ -177,8 +177,25 @@ async function awaitUpdate(element) {
 // styles/ui-system/webawesome-adapter.css (kept as the single visual authority).
 function applyTokens(scopeRoot) {
     if (!isNextUi() || !scopeRoot) return () => {};
+    const hadLightClass = scopeRoot.classList.contains('wa-light');
+    const hadDarkClass = scopeRoot.classList.contains('wa-dark');
+    const syncTheme = () => {
+        const isLight = document.body.classList.contains('light-theme');
+        scopeRoot.classList.toggle('wa-light', isLight);
+        scopeRoot.classList.toggle('wa-dark', !isLight);
+    };
     scopeRoot.dataset.waScope = 'true';
-    return () => { scopeRoot.removeAttribute('data-wa-scope'); };
+    syncTheme();
+    const observer = typeof MutationObserver === 'function'
+        ? new MutationObserver(syncTheme)
+        : null;
+    observer?.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+    return () => {
+        observer?.disconnect();
+        scopeRoot.removeAttribute('data-wa-scope');
+        scopeRoot.classList.toggle('wa-light', hadLightClass);
+        scopeRoot.classList.toggle('wa-dark', hadDarkClass);
+    };
 }
 
 function registerTheme() {
