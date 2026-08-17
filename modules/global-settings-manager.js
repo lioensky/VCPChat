@@ -1,10 +1,19 @@
 /**
  * This module handles the logic for saving global settings.
  */
-export async function handleSaveGlobalSettings(e, deps) {
-    const chatAPI = window.chatAPI || window.electronAPI;
+export function handleSaveGlobalSettings(e, deps) {
     e.preventDefault();
     const settingsForm = e.currentTarget || document.getElementById('globalSettingsForm');
+    if (settingsForm?.dataset.globalSettingsSaving === 'true') return;
+    if (settingsForm) settingsForm.dataset.globalSettingsSaving = 'true';
+
+    return saveGlobalSettings(deps, settingsForm).finally(() => {
+        if (settingsForm) delete settingsForm.dataset.globalSettingsSaving;
+    });
+}
+
+async function saveGlobalSettings(deps, settingsForm) {
+    const chatAPI = window.chatAPI || window.electronAPI;
     const reportSaveResult = (success, error = '') => {
         settingsForm?.dispatchEvent(new CustomEvent('vcp-settings-save-result', {
             detail: { success, error: error || undefined }
