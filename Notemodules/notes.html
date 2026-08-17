@@ -7,6 +7,12 @@
     <!-- 确保这个路径对于你的项目结构是正确的 -->
     <!-- <link rel="stylesheet" href="../style.css"> -->
     <link rel="stylesheet" href="../styles/themes.css" />
+    <!-- App Surface 共享视觉层 -->
+    <link rel="stylesheet" href="../styles/app-surfaces/app-surfaces.css" />
+    <link
+      rel="stylesheet"
+      href="../styles/app-surfaces/app-surface-notes.css"
+    />
     <!-- 引用主题样式 -->
     <link rel="stylesheet" href="notes.css" />
     <!-- 用于语法高亮的 Highlight.js -->
@@ -30,11 +36,11 @@
       crossorigin="anonymous"
     ></script>
   </head>
-  <body>
+  <body class="vcp-app-surface">
     <!-- Custom Title Bar -->
-    <div id="custom-title-bar">
-      <div class="title">VCP - 笔记</div>
-      <div class="titlebar-actions">
+    <div id="custom-title-bar" class="vcp-app-header">
+      <div class="title vcp-app-header-title">VCP - 笔记</div>
+      <div class="titlebar-actions vcp-app-header-actions">
         <button
           id="preview-toggle-btn"
           class="window-control-btn preview-toggle-btn"
@@ -113,13 +119,14 @@
           <input
             type="text"
             id="searchInput"
+            class="vcp-app-input"
             placeholder="搜索标题、内容或标签..."
             aria-label="搜索笔记"
           />
           <div class="sidebar-actions">
             <button
               id="newMdBtn"
-              class="button"
+              class="button vcp-app-btn vcp-app-btn--sm"
               type="button"
               title="创建 Markdown 笔记"
             >
@@ -127,13 +134,17 @@
             </button>
             <button
               id="newTxtBtn"
-              class="button"
+              class="button vcp-app-btn vcp-app-btn--sm"
               type="button"
               title="创建纯文本笔记"
             >
               新建文本
             </button>
-            <button id="newFolderBtn" class="button" type="button">
+            <button
+              id="newFolderBtn"
+              class="button vcp-app-btn vcp-app-btn--sm"
+              type="button"
+            >
               新建文档
             </button>
           </div>
@@ -174,24 +185,24 @@
           <div class="note-actions">
             <button
               id="saveNoteBtn"
-              class="button button-primary"
+              class="button button-primary vcp-app-btn vcp-app-btn--primary"
               type="button"
             >
               保存
             </button>
             <button
               id="deleteNoteBtn"
-              class="button button-danger"
+              class="button button-danger vcp-app-btn vcp-app-btn--danger"
               type="button"
             >
               删除
             </button>
           </div>
         </div>
-        <div class="note-workspace-toolbar" aria-label="笔记编辑工具">
-          <div class="view-mode-group" role="group" aria-label="编辑视图">
+        <div class="note-workspace-toolbar vcp-app-toolbar" aria-label="笔记编辑工具">
+          <div class="view-mode-group vcp-app-toolbar-group" role="group" aria-label="编辑视图">
             <button
-              class="toolbar-button view-mode-button is-active"
+              class="toolbar-button view-mode-button vcp-app-btn vcp-app-btn--sm is-active"
               type="button"
               data-view-mode="split"
               aria-pressed="true"
@@ -199,7 +210,7 @@
               分屏
             </button>
             <button
-              class="toolbar-button view-mode-button"
+              class="toolbar-button view-mode-button vcp-app-btn vcp-app-btn--sm"
               type="button"
               data-view-mode="editor"
               aria-pressed="false"
@@ -207,7 +218,7 @@
               编辑
             </button>
             <button
-              class="toolbar-button view-mode-button"
+              class="toolbar-button view-mode-button vcp-app-btn vcp-app-btn--sm"
               type="button"
               data-view-mode="preview"
               aria-pressed="false"
@@ -217,12 +228,12 @@
           </div>
           <span class="toolbar-divider" aria-hidden="true"></span>
           <div
-            class="formatting-toolbar"
+            class="formatting-toolbar vcp-app-toolbar-group"
             role="toolbar"
             aria-label="Markdown 格式工具"
           >
             <button
-              class="toolbar-button"
+              class="toolbar-button vcp-app-btn vcp-app-btn--sm"
               type="button"
               data-markdown-action="bold"
               title="加粗（Ctrl+B）"
@@ -230,7 +241,7 @@
               <strong>B</strong>
             </button>
             <button
-              class="toolbar-button"
+              class="toolbar-button vcp-app-btn vcp-app-btn--sm"
               type="button"
               data-markdown-action="italic"
               title="斜体（Ctrl+I）"
@@ -238,7 +249,7 @@
               <em>I</em>
             </button>
             <button
-              class="toolbar-button"
+              class="toolbar-button vcp-app-btn vcp-app-btn--sm"
               type="button"
               data-markdown-action="heading"
               title="插入标题"
@@ -246,7 +257,7 @@
               标题
             </button>
             <button
-              class="toolbar-button"
+              class="toolbar-button vcp-app-btn vcp-app-btn--sm"
               type="button"
               data-markdown-action="bulletList"
               title="插入无序列表"
@@ -254,7 +265,7 @@
               列表
             </button>
             <button
-              class="toolbar-button"
+              class="toolbar-button vcp-app-btn vcp-app-btn--sm"
               type="button"
               data-markdown-action="quote"
               title="插入引用"
@@ -262,7 +273,7 @@
               引用
             </button>
             <button
-              class="toolbar-button"
+              class="toolbar-button vcp-app-btn vcp-app-btn--sm"
               type="button"
               data-markdown-action="code"
               title="插入代码块"
@@ -270,7 +281,7 @@
               代码
             </button>
             <button
-              class="toolbar-button"
+              class="toolbar-button vcp-app-btn vcp-app-btn--sm"
               type="button"
               data-markdown-action="link"
               title="插入链接"
@@ -278,7 +289,7 @@
               链接
             </button>
             <button
-              class="toolbar-button"
+              class="toolbar-button vcp-app-btn vcp-app-btn--sm"
               type="button"
               data-markdown-action="tag"
               title="插入标签"
@@ -287,7 +298,7 @@
             </button>
             <button
               id="insertImageBtn"
-              class="toolbar-button"
+              class="toolbar-button vcp-app-btn vcp-app-btn--sm"
               type="button"
               title="选择并插入图片"
             >
@@ -295,7 +306,7 @@
             </button>
             <input id="imageFileInput" type="file" accept="image/*" hidden />
           </div>
-          <div class="template-toolbar">
+          <div class="template-toolbar vcp-app-toolbar-group vcp-app-toolbar-group--end">
             <label for="noteTemplateSelect">模板</label>
             <select id="noteTemplateSelect" aria-label="笔记模板">
               <option value="">选择模板...</option>
@@ -410,10 +421,13 @@
         <h3 id="modalTitle">确认操作</h3>
         <p id="modalMessage">你确定要执行这个操作吗？</p>
         <div class="modal-actions">
-          <button id="modalConfirmBtn" class="button button-danger">
+          <button
+            id="modalConfirmBtn"
+            class="button button-danger vcp-app-btn vcp-app-btn--danger"
+          >
             确认
           </button>
-          <button id="modalCancelBtn" class="button">取消</button>
+          <button id="modalCancelBtn" class="button vcp-app-btn">取消</button>
         </div>
       </div>
     </div>

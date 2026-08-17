@@ -59,6 +59,7 @@
         --vcp-app-control-lg: 36px;
         --vcp-app-control-radius: 6px;
         --vcp-app-card-radius: 8px;
+        --vcp-app-radius-xs: 4px;
 
         /* --- 间距阶梯 --- */
         --vcp-app-space-1: 4px;
