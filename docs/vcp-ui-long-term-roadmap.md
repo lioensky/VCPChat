@@ -38,11 +38,11 @@
 核对时间：2026-08-17。
 
 - 工作分支：`codex/design-system-upstream-no-workflow-20260817`。
-- 基线 HEAD：`d93328a6`。
+- 基线 HEAD：`0923efd4`（Stage 2 Select bridge/session guard 已提交）。
 - 跟踪分支：`origin/codex/design-system-upstream-no-workflow-20260817`，本地已提交历史与远程一致。
 - `upstream/next-ui`：`8a18b1f0`；当前 HEAD 领先 44、落后 0。
 - `upstream/main`：`51d519c4`；相对当前 merge-base 新增 8 个 Scriptorium 提交。本批只修改 `ScriptoriumModules/**` 和相应测试，与当前 Select 工作区不重叠。目标分支仍是 `next-ui`，因此阶段 0 不直接合并 `main`。
-- 本轮开始时工作树干净；当前未提交文件均属于 Provider 架构、Select 实现、测试和文档，不包含 workflow、插件或动态壁纸改造。
+- 本轮 Stage 2 提交后工作树干净；提交内容属于 Provider 架构、Select 实现、设置 Surface 代次保护、测试和文档，不包含 workflow、插件或动态壁纸改造。
 - `vcp-ui.js` 当前约 2,208 行；Select policy 和 WA sibling proxy 已拆为独立模块。
 
 最近一次证据：

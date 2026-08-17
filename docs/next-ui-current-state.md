@@ -2,6 +2,7 @@
 
 > 状态：当前权威事实文档<br>
 > 核对日期：2026-08-17<br>
+> 当前 HEAD：`0923efd4`（Select Provider Stage 2）<br>
 > 核对范围：`codex/design-system-upstream-no-workflow-20260817` 已提交文件树相对 `upstream/main`<br>
 > 后续施工顺序：[`next-ui-development-roadmap.md`](./next-ui-development-roadmap.md)
 
@@ -52,7 +53,7 @@
 | 前端插件兼容边界 | 已完成 | Loader 恢复上游合同；Next 生命周期不接管插件运行时 |
 | 上游消息组件视觉语义 | 已保护 | Next 不重绘结构化消息内部组件，边界门禁存在 |
 
-最近一次完整证据基线（2026-08-17，P3）：UI System 74/74、Electron UI Apps 22/22、24 步主聊天序列通过；生命周期压力测试 3 次预热加 20 次测量后保持 407 个 listener、8 个 Scope、162 项受管资源和 5 个 Electron process，detached root/icon/option 为 0。该结果证明已覆盖路径稳定，不代表任意服务、GPU、休眠或第三方插件组合绝对无缺陷。
+最近一次完整证据基线（2026-08-17，Stage 2 提交前后）：UI System contract 87/87、Electron UI Apps 22/22、24 步主聊天序列通过；生命周期压力测试 3 次预热加 20 次测量后保持 861 个 listener、8 个 Scope、162 项受管资源和 5 个 Electron process，detached root/icon/option 为 0。该结果证明已覆盖路径稳定，不代表任意服务、GPU、休眠或第三方插件组合绝对无缺陷。
 
 ## 4. 公共能力收口状态
 
