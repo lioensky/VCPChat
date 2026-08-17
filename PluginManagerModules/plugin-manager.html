@@ -6,32 +6,35 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src * data: file:; connect-src *;">
     <title>VCP 插件管理器</title>
     <link rel="stylesheet" href="../styles/themes.css">
+    <!-- App Surface 共享视觉层 -->
+    <link rel="stylesheet" href="../styles/app-surfaces/app-surfaces.css">
+    <link rel="stylesheet" href="../styles/app-surfaces/app-surface-plugin-manager.css">
     <link rel="stylesheet" href="plugin-manager.css">
 </head>
-<body>
-    <nav id="top-nav-bar" class="glass">
+<body class="vcp-app-surface">
+    <nav id="top-nav-bar" class="vcp-app-header">
         <div class="nav-left">
-            <div class="nav-title">VCP Plugin Manager</div>
+            <div class="nav-title vcp-app-header-title">VCP Plugin Manager</div>
         </div>
-        <div class="nav-right">
-            <button id="refresh-btn" class="nav-icon-btn" title="刷新插件">
+        <div class="nav-right vcp-app-header-actions">
+            <button id="refresh-btn" class="nav-icon-btn vcp-app-icon-btn" title="刷新插件">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
             </button>
             <div class="nav-divider"></div>
-            <button id="minimize-btn" class="nav-icon-btn" title="最小化">
+            <button id="minimize-btn" class="nav-icon-btn vcp-app-icon-btn" title="最小化">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
             </button>
-            <button id="maximize-btn" class="nav-icon-btn" title="最大化">
+            <button id="maximize-btn" class="nav-icon-btn vcp-app-icon-btn" title="最大化">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect></svg>
             </button>
-            <button id="close-btn" class="nav-icon-btn close-nav-btn" title="关闭">
+            <button id="close-btn" class="nav-icon-btn vcp-app-icon-btn close-nav-btn" title="关闭">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
             </button>
         </div>
     </nav>
 
     <main class="app-container">
-        <section class="hero-card glass">
+        <section class="hero-card">
             <div class="hero-copy">
                 <div class="eyebrow">Distributed Runtime</div>
                 <h1>插件管理器</h1>
@@ -46,12 +49,12 @@
                         <small id="distributed-server-status">读取中...</small>
                     </span>
                 </label>
-                <button id="save-server-toggle-btn" class="glass-btn success">保存开关</button>
+                <button id="save-server-toggle-btn" class="glass-btn success vcp-app-btn vcp-app-btn--success">保存开关</button>
             </div>
         </section>
 
-        <section class="toolbar glass">
-            <div class="search-box">
+        <section class="toolbar vcp-app-toolbar">
+            <div class="search-box vcp-app-toolbar-search">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>
                 <input id="plugin-search-input" type="search" placeholder="搜索插件、命令、描述或配置项...">
             </div>
@@ -73,23 +76,23 @@
             </select>
         </section>
 
-        <section id="summary-dashboard" class="summary-dashboard glass">
+        <section id="summary-dashboard" class="summary-dashboard">
             <div class="empty-state">正在读取插件目录...</div>
         </section>
 
         <section id="plugin-groups" class="plugin-groups">
-            <div class="empty-state glass">正在扫描 VCPDistributedServer/Plugin ...</div>
+            <div class="empty-state">正在扫描 VCPDistributedServer/Plugin ...</div>
         </section>
     </main>
 
     <div id="plugin-modal" class="modal-overlay">
-        <div class="modal-content glass plugin-modal-content">
+        <div class="modal-content plugin-modal-content">
             <div class="modal-header">
                 <div>
                     <h3 id="plugin-modal-title">编辑插件</h3>
                     <p id="plugin-modal-subtitle" class="modal-subtitle"></p>
                 </div>
-                <button class="modal-close-btn">&times;</button>
+                <button class="modal-close-btn vcp-app-icon-btn">&times;</button>
             </div>
             <div class="modal-tabs">
                 <button class="modal-tab active" data-target="manifest-panel">Manifest</button>
@@ -112,12 +115,12 @@
             </div>
             <div class="modal-footer">
                 <div class="modal-left-actions">
-                    <button id="toggle-plugin-btn" class="glass-btn warning">切换启用状态</button>
-                    <button id="open-plugin-folder-btn" class="glass-btn">打开目录</button>
+                    <button id="toggle-plugin-btn" class="glass-btn warning vcp-app-btn vcp-app-btn--warning">切换启用状态</button>
+                    <button id="open-plugin-folder-btn" class="glass-btn vcp-app-btn">打开目录</button>
                 </div>
                 <div class="modal-right-actions">
-                    <button id="save-env-btn" class="glass-btn primary">保存 config.env</button>
-                    <button id="save-manifest-btn" class="glass-btn success">保存 Manifest</button>
+                    <button id="save-env-btn" class="glass-btn primary vcp-app-btn vcp-app-btn--primary">保存 config.env</button>
+                    <button id="save-manifest-btn" class="glass-btn success vcp-app-btn vcp-app-btn--success">保存 Manifest</button>
                 </div>
             </div>
         </div>

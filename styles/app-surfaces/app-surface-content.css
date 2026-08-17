@@ -60,6 +60,22 @@
         background: var(--vcp-app-danger-bg);
     }
 
+    body.vcp-app-surface .vcp-app-btn--success {
+        color: var(--vcp-app-success);
+    }
+
+    body.vcp-app-surface .vcp-app-btn--success:hover {
+        background: var(--vcp-app-success-bg);
+    }
+
+    body.vcp-app-surface .vcp-app-btn--warning {
+        color: var(--vcp-app-warning);
+    }
+
+    body.vcp-app-surface .vcp-app-btn--warning:hover {
+        background: var(--vcp-app-warning-bg);
+    }
+
     body.vcp-app-surface .vcp-app-btn:disabled {
         opacity: 0.5;
         cursor: default;

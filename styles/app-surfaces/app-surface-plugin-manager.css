@@ -1,0 +1,14 @@
+/* ============================================================
+   Plugin Manager — 页面专属样式（vcp.page 层）
+   仅放共享层无法表达、且必须压过 vcp.components 的页面语义；
+   不得重定义 token。
+   ============================================================ */
+
+@layer vcp.page {
+  /* 卡片网格内的空态占位横跨整行 */
+  body.vcp-app-surface .plugin-groups > .empty-state,
+  body.vcp-app-surface .summary-dashboard > .empty-state {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+}
