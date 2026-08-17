@@ -7,8 +7,11 @@
         const selectionPrimitives = context.selectionPrimitives;
         const compiler = context.hybridCompiler;
         const notificationPort = context.notificationPort || {};
+        const inputSyncModule = context.inputSync
+            || window.ScriptoriumInputSync;
         if (!adapter || adapter.kind !== 'flow' || !documentPort
-            || !selectionPrimitives || !compiler) {
+            || !selectionPrimitives || !compiler
+            || !inputSyncModule?.createInputSync) {
             throw new TypeError(
                 'Flow editor requires a flow adapter, DocumentPort, DOM selection primitives and compiler.'
             );
@@ -17,6 +20,7 @@
         const state = {
             root: null,
             abortController: null,
+            inputSync: null,
             activeSession: null,
             selectionRange: null,
             selectionText: '',
@@ -2759,9 +2763,10 @@
 
             if (event.key === 'Enter') {
                 event.preventDefault();
-                // keydown 是 Electron 中最稳定的 Enter 入口。只要处于 Markdown
-                // 编辑会话，就禁止浏览器原生修改 contenteditable DOM，并将
-                // 真换行与必要的 ↵ 直接提交模型。beforeinput 保留为平台兜底。
+                // 结构性 Enter 必须保持单一事务协议：先阻止浏览器原生
+                // DOM 修改，再由 commitSessionInsertion() 一次性完成源码
+                // 写入、区域刷新和光标恢复。普通文字/IME 仍走共享输入
+                // 解耦路径，不能把结构换行伪装成普通 input 快照。
                 const raw = editableSourceText(editable);
                 const insertionOffsets =
                     paragraphBreakEnterSelection(raw, offsets);
@@ -2794,18 +2799,7 @@
 
         function scheduleTextInputFlush(session) {
             if (!session?.editable?.isConnected) return false;
-            window.clearTimeout(state.textInputFlushTimer);
-            state.textInputFlushTimer = window.setTimeout(() => {
-                state.textInputFlushTimer = 0;
-                if (state.disposed
-                    || inputPending()
-                    || state.activeSession !== session
-                    || !session.editable?.isConnected) {
-                    return;
-                }
-                flushSession(session, 'flow-text-input');
-            }, 120);
-            return true;
+            return state.inputSync?.markInput(session.editable) ?? false;
         }
 
         function flushSession(
@@ -2887,6 +2881,40 @@
             assertActive();
             disposeSurface();
             state.root = root;
+            state.inputSync = inputSyncModule.createInputSync({
+                delay: 0,
+                snapshot: (editable) => ({
+                    editable,
+                    text: editableSourceText(editable),
+                    offsets: editorSelectionOffsets(editable),
+                    session: state.activeSession?.editable === editable
+                        ? state.activeSession
+                        : null,
+                }),
+                onVisualInput: ({ snapshot }) => {
+                    const session = snapshot?.session;
+                    if (!session || inputPending()) return;
+                    const offsets = snapshot.offsets;
+                    if (offsets) {
+                        refreshLocalMarkers(
+                            session,
+                            offsets.start,
+                            offsets.end
+                        );
+                    }
+                },
+                commit: ({ snapshot }) => {
+                    const session = snapshot?.session;
+                    if (state.disposed
+                        || inputPending()
+                        || !session
+                        || state.activeSession !== session
+                        || !session.editable?.isConnected) {
+                        return;
+                    }
+                    flushSession(session, 'flow-text-input');
+                },
+            });
             installMappings(root);
             state.abortController = new AbortController();
             const options = { signal: state.abortController.signal };
@@ -3091,16 +3119,10 @@
                     || event.inputType === 'insertLineBreak') {
                     if (state.enterInputGuardEditable === editable
                         && state.enterInputGuardCount > 0) {
-                        // keydown 已经消费了同一轮 Enter；部分输入法、虚拟
-                        // 键盘或合成测试仍会补发 beforeinput。按次数逐个
-                        // 消费对应令牌，避免覆盖令牌后误吞快速连续 Enter。
+                        // keydown 已完成这一轮 Enter。浏览器可能派发多个
+                        // beforeinput 回执；它们都属于同一轮操作，不能按次数
+                        // 消费，否则后续回执会再次进入下面的兜底插入路径。
                         event.preventDefault();
-                        state.enterInputGuardCount -= 1;
-                        if (state.enterInputGuardCount === 0) {
-                            state.enterInputGuardEditable = null;
-                            window.clearTimeout(state.enterInputGuardTimer);
-                            state.enterInputGuardTimer = 0;
-                        }
                         return;
                     }
                     event.preventDefault();
@@ -3192,7 +3214,9 @@
                                 && suffix.startsWith(placeholder)
                             );
                         if (!atStructuralBoundary) {
-                            scheduleTextInputFlush(session);
+                            // 普通退格由浏览器先完成视觉删除；随后由
+                            // input 事件统一交给共享输入同步核心读取新 DOM。
+                            // beforeinput 阶段不能读取快照，否则拿到的是删除前内容。
                             return;
                         }
                     }
@@ -3250,15 +3274,10 @@
                     return;
                 }
 
-                if (event.inputType !== 'insertText'
-                    || event.data === null) {
-                    return;
-                }
-
-                // 普通文本交给浏览器直接修改当前编辑 DOM；input 事件
-                // 只负责刷新短输入脉冲。这样连续文字和 IME 组合都不会
-                // 在每个字符处触发源码事务、编译或编辑树重建。
-                scheduleTextInputFlush(session);
+                // 普通文本不能在 beforeinput 阶段读取快照：
+                // 此时浏览器尚未完成 DOM 修改，读取到的仍是旧内容。
+                // 统一等待 input 事件，由共享同步核心读取修改后的视觉 DOM。
+                return;
             }, options);
 
             const clearCompositionCommit = () => {
@@ -3461,6 +3480,18 @@
                 // 否则会用旧 Selection/旧映射重复写入源码。
                 if (state.compositionRetiredEditable === editable) return;
 
+                if (state.enterInputGuardEditable === editable
+                    && state.enterInputGuardCount > 0
+                    && (
+                        event.inputType === 'insertParagraph'
+                        || event.inputType === 'insertLineBreak'
+                    )) {
+                    // keydown 已经完成了 Enter 的视觉补丁；浏览器随后补发
+                    // 的结构性 input 只是同一次操作的回执，不能再次进入
+                    // 普通输入队列，否则会额外生成一行。
+                    return;
+                }
+
                 if (state.compositionCommit?.editable === editable) {
                     // 最终 input 到达时只更新渲染态缓冲，并重新开始静默窗口。
                     // 绝不在 input 调用栈中提交源码或替换 event.target。
@@ -3476,7 +3507,7 @@
                 const session = state.activeSession?.editable === editable
                     ? state.activeSession
                     : beginSession(shell, editable);
-                scheduleTextInputFlush(session);
+                if (session) state.inputSync?.markInput(editable, event);
             }, options);
 
             root.addEventListener('compositionstart', (event) => {
@@ -3579,15 +3610,19 @@
         }
 
         function flush() {
-            // 保存、历史快照等后台调用不能穿透活动 IME 会话。源码将在
-            // composition 静默窗口结束后一次性对齐。
+            // 保存、历史快照等后台调用不能穿透活动 IME 会话。共享输入核心
+            // 先排空普通输入的最新 DOM 快照；composition 期间它会自行保持
+            // pending，待 composition 提交器完成后再同步源码。
             if (inputPending()) return true;
+            state.inputSync?.flush();
             return flushSession() || true;
         }
 
         function disposeSurface() {
             window.clearTimeout(state.textInputFlushTimer);
             state.textInputFlushTimer = 0;
+            state.inputSync?.dispose();
+            state.inputSync = null;
             window.clearTimeout(state.enterInputGuardTimer);
             state.enterInputGuardTimer = 0;
             state.enterInputGuardEditable = null;
