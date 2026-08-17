@@ -139,6 +139,15 @@ html .vcp-ui-scope wa-textarea.vcp-ui-wa-textarea {
     height: auto;
 }
 
+/* VCPUI Field owns the visible label and required marker. Keep the WA
+   control required for validation, but suppress its otherwise empty label
+   row (which renders as a second, orphaned asterisk). */
+html .vcp-ui-scope .vcp-ui-field-control > wa-input.vcp-ui-wa-input::part(form-control-label),
+html .vcp-ui-scope .vcp-ui-field-control > wa-textarea.vcp-ui-wa-textarea::part(form-control-label),
+html .vcp-ui-scope .vcp-ui-field-control > wa-select.vcp-ui-wa-select::part(form-control-label) {
+    display: none;
+}
+
 html .vcp-ui-scope select.vcp-ui-select-source {
     display: none;
     width: 0;
