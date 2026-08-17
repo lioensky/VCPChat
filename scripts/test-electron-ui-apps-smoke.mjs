@@ -1039,15 +1039,10 @@ try {
 
     // Production WA Modal dismissal must release the creation surface, while
     // the durable create commit point blocks Escape/header/backdrop dismissal.
-    // Activate the main-window kernel through its real settings lifecycle;
-    // the component showcase deliberately owns an isolated comparison loader
-    // and therefore does not make VCPUI switch kernels by side effect.
-    await page.evaluate(() => window.uiHelperFunctions.openModal('globalSettingsModal'));
-    await page.waitForFunction(
-        () => window.VCPWebAwesome?.getRuntimeState?.().state === 'ready',
-        { timeout: timeoutMs }
-    );
-    await page.evaluate(() => window.uiHelperFunctions.closeModal('globalSettingsModal'));
+    // Exercise the real cold path: creation itself owns kernel readiness and
+    // must not depend on a prior settings visit to select Web Awesome.
+    const preCreationKernel = await page.evaluate(() => window.VCPWebAwesome?.getRuntimeState?.().state || 'missing');
+    assert.equal(preCreationKernel, 'idle', `creation test was not a cold WA start: ${preCreationKernel}`);
     const createEntryState = await page.evaluate(async () => {
         window.__nextDeltaOriginalCommands = window.MainChatCommands;
         window.MainChatCommands = {
@@ -1071,7 +1066,7 @@ try {
         `creation entry did not select the Web Awesome dialog kernel: ${JSON.stringify(createEntryState)}`);
     await page.waitForFunction(() => Boolean(document.querySelector('.next-ui-create-dialog-host wa-dialog')), { timeout: timeoutMs });
     await page.evaluate(() => window.uiManager?.applyTheme?.('dark'));
-    await page.waitForFunction(() => document.body.classList.contains('wa-dark'), { timeout: timeoutMs });
+    await page.waitForFunction(() => document.querySelector('.next-ui-create-dialog-host')?.classList.contains('wa-dark'), { timeout: timeoutMs });
     const readCreationTheme = () => page.evaluate(() => {
         const host = document.querySelector('.next-ui-create-dialog-host');
         const probe = document.createElement('div');
@@ -1082,8 +1077,8 @@ try {
         const result = {
             background: style.backgroundColor,
             color: style.color,
-            light: document.body.classList.contains('wa-light'),
-            dark: document.body.classList.contains('wa-dark'),
+            light: host?.classList.contains('wa-light') === true,
+            dark: host?.classList.contains('wa-dark') === true,
         };
         probe.remove();
         return result;
@@ -1094,13 +1089,13 @@ try {
     assert.ok(channel(darkCreationTheme.background) < 100,
         `dark creation surface resolved to a light background: ${JSON.stringify(darkCreationTheme)}`);
     await page.evaluate(() => window.uiManager?.applyTheme?.('light'));
-    await page.waitForFunction(() => document.body.classList.contains('wa-light'), { timeout: timeoutMs });
+    await page.waitForFunction(() => document.querySelector('.next-ui-create-dialog-host')?.classList.contains('wa-light'), { timeout: timeoutMs });
     const lightCreationTheme = await readCreationTheme();
     assert.equal(lightCreationTheme.light, true, `light creation theme class missing: ${JSON.stringify(lightCreationTheme)}`);
     assert.ok(channel(lightCreationTheme.background) > 180,
         `light creation surface did not resolve to a light background: ${JSON.stringify(lightCreationTheme)}`);
     await page.evaluate(() => window.uiManager?.applyTheme?.('dark'));
-    await page.waitForFunction(() => document.body.classList.contains('wa-dark'), { timeout: timeoutMs });
+    await page.waitForFunction(() => document.querySelector('.next-ui-create-dialog-host')?.classList.contains('wa-dark'), { timeout: timeoutMs });
     await page.keyboard.press('Escape');
     await page.waitForFunction(() => !document.querySelector('.next-ui-create-dialog-host'), { timeout: timeoutMs });
 

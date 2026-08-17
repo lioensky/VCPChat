@@ -101,6 +101,103 @@ test('creation surface failure destroys partial controls and does not continue w
     await owner.dispose();
 });
 
+test('creation waits for its own Web Awesome kernel and coalesces repeated opens', async () => {
+    const dom = new JSDOM('<!doctype html><html data-ui-mode="next"><body></body></html>', { pretendToBeVisual: true });
+    dom.window.VCPLifecycle = { LifecycleScope };
+    dom.window.VCPUISurface = { SurfaceController };
+    const ui = createUi(dom.window);
+    let resolveKernel;
+    let runtimeState = 'loading';
+    let loadCalls = 0;
+    let mountCalls = 0;
+    let releaseCalls = 0;
+    dom.window.VCPWebAwesome = {
+        getRuntimeState: () => ({ state: runtimeState }),
+        loadComponents: () => {
+            loadCalls += 1;
+            return new Promise(resolve => { resolveKernel = () => { runtimeState = 'ready'; resolve(); }; });
+        },
+        mountScope: host => {
+            mountCalls += 1;
+            host.dataset.waTestScope = 'true';
+            return () => { releaseCalls += 1; delete host.dataset.waTestScope; };
+        },
+    };
+    const owner = new LifecycleScope('creation-kernel-owner');
+    const controller = new CreationController({
+        window: dom.window,
+        document: dom.window.document,
+        getUi: () => ui,
+        getApi: () => ({ getCachedModels: async () => [] }),
+        commands: () => ({ createAgent: async () => ({ success: true }), createGroup: async () => ({ success: true }) }),
+    });
+    controller.mount(owner);
+    const firstOpen = controller.open();
+    const repeatedOpen = controller.open();
+    await repeatedOpen;
+    assert.equal(loadCalls, 1, 'repeated clicks must share the in-flight open operation');
+    assert.equal(dom.window.document.querySelector('.next-ui-create-dialog-host'), null, 'native controls must not mount while WA is loading');
+    resolveKernel();
+    await firstOpen;
+    assert.equal(dom.window.document.querySelectorAll('.next-ui-create-dialog-host').length, 1);
+    assert.equal(mountCalls, 1, 'the WA Surface must own its theme/token scope');
+    controller.close();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(releaseCalls, 1, 'closing the Surface must release its WA scope');
+    await owner.dispose();
+    dom.window.close();
+});
+
+test('disposing while the creation kernel loads prevents a late surface mount', async () => {
+    const dom = new JSDOM('<!doctype html><html data-ui-mode="next"><body></body></html>');
+    let resolveKernel;
+    dom.window.VCPWebAwesome = {
+        getRuntimeState: () => ({ state: 'loading' }),
+        loadComponents: () => new Promise(resolve => { resolveKernel = resolve; }),
+    };
+    const ui = createUi(dom.window);
+    const controller = new CreationController({
+        window: dom.window,
+        document: dom.window.document,
+        getUi: () => ui,
+        commands: () => ({ createAgent() {}, createGroup() {} }),
+    });
+    controller.mount();
+    const opening = controller.open();
+    controller.dispose();
+    resolveKernel();
+    await opening;
+    assert.equal(dom.window.document.querySelector('.next-ui-create-dialog-host'), null);
+    assert.equal(ui.controls.length, 0, 'a disposed owner must retain authority over late kernel completion');
+    dom.window.close();
+});
+
+test('a terminal Web Awesome load failure uses one native fallback surface', async () => {
+    const dom = new JSDOM('<!doctype html><html data-ui-mode="next"><body></body></html>');
+    dom.window.VCPLifecycle = { LifecycleScope };
+    dom.window.VCPUISurface = { SurfaceController };
+    const ui = createUi(dom.window);
+    let mountCalls = 0;
+    dom.window.VCPWebAwesome = {
+        getRuntimeState: () => ({ state: 'failed' }),
+        loadComponents: async () => { throw new Error('controlled kernel failure'); },
+        mountScope: () => { mountCalls += 1; return () => {}; },
+    };
+    const controller = new CreationController({
+        window: dom.window,
+        document: dom.window.document,
+        getUi: () => ui,
+        getApi: () => ({ getCachedModels: async () => [] }),
+        commands: () => ({ createAgent() {}, createGroup() {} }),
+    });
+    controller.mount();
+    await controller.open();
+    assert.equal(dom.window.document.querySelectorAll('.next-ui-create-dialog-host').length, 1);
+    assert.equal(mountCalls, 0, 'native fallback must not claim a WA theme scope');
+    controller.close();
+    dom.window.close();
+});
+
 test('creation submission waits for the command promise and restores controls after failure', async () => {
     const dom = new JSDOM('<!doctype html><html data-ui-mode="next"><body></body></html>', { pretendToBeVisual: true });
     const ui = createUi(dom.window);

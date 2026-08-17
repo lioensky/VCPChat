@@ -38,6 +38,7 @@
             this.scope = null;
             this.activeModal = null;
             this.mounted = false;
+            this.opening = false;
             this.generation = 0;
         }
 
@@ -52,7 +53,13 @@
         close() { this.activeModal?.close(null); }
 
         async open() {
-            return this.openInternal();
+            if (this.opening) return;
+            this.opening = true;
+            try {
+                return await this.openInternal();
+            } finally {
+                this.opening = false;
+            }
         }
 
         async openInternal() {
@@ -66,6 +73,19 @@
                 this.showUnavailable();
                 return;
             }
+
+            // This production Surface is a Web Awesome consumer in its own
+            // right. Do not let an unrelated settings visit decide whether it
+            // receives the WA or native kernel: wait for the shared component
+            // load to reach a terminal state before SurfaceController chooses.
+            // A genuine load failure deliberately falls through to the native
+            // fallback for this document.
+            try {
+                await this.window.VCPWebAwesome?.loadComponents?.();
+            } catch (kernelError) {
+                console.warn('[NextUI] Web Awesome creation kernel unavailable; using native fallback:', kernelError);
+            }
+            if (!this.mounted || generation !== this.generation) return;
 
             const host = this.document.createElement('div');
             host.className = 'next-ui-create-dialog-host vcp-ui-scope';
