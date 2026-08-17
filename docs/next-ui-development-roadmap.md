@@ -35,7 +35,7 @@
 |---|---|---|---|
 | P0 事实基线与文档收敛 | 已完成 | 让代码、测试、文档对当前拓扑使用同一套描述 | 权威关系明确；旧文档不再声明冲突架构 |
 | P1 所有权缺陷修复 | 已完成 | 修复展示页跨 owner 清理和 timer 泄漏 | 故障注入可证明只清理本 owner |
-| P2 无消费者架构减法 | 待开始 | 删除子页面 runtime、无用 preload API 和多余 settlement 公共面 | 生产消费者报告无孤儿 API；行为门禁不退化 |
+| P2 无消费者架构减法 | 已完成 | 删除子页面 runtime、无用 preload API 和多余 settlement 公共面 | 生产消费者报告无孤儿 API；行为门禁不退化 |
 | P3 VCPUI 与 Registry 收口 | 待开始 | 校正 stable 组件和 contribution kinds | 每个公共能力至少一个真实消费者 |
 | P4 PR 证据与交付 | 待开始 | 完整验证、人工 soak、形成可审查提交 | 全部门禁通过，工作树边界清楚，PR diff 可解释 |
 | P5 合入后稳定周期 | 未开始 | 观察真实环境，不扩张架构 | 一个稳定发布周期无资源和恢复阻塞 |
@@ -99,6 +99,8 @@ await feedback.dispose();
 
 ## 6. P2：无消费者架构减法
 
+> 状态：已完成（2026-08-17）。休眠子页面 runtime、无 sender 的 mode preload API、静态 `uiModeManager` 以及 Settings/Creation/item list 的测试专用 settlement 公共面均已删除。页面 gate 保持 `0 active rebuilt / 12 upstream classic`；测试改为等待业务 Promise、保存结果事件和 DOM 终态，`AppTabHost.whenSettled()` 因存在真实 Electron 消费者而保留。
+
 ### 6.1 删除休眠的子页面 Next runtime
 
 在当前业务子页面 allowlist 为空的前提下删除：
@@ -117,10 +119,10 @@ await feedback.dispose();
 | 接口 | 当前决定 |
 |---|---|
 | `AppTabHost.whenSettled()` | 保留；Electron 操作序列真实使用 |
-| Settings settlement 全局 facade | 优先删除；测试等待真实保存 Promise/结果事件 |
-| Creation settlement | 优先返回本次创建 operation promise，不公开全局 idle |
-| Identity/item list revision channel | 若无 presentation 消费者，移动到受限 diagnostics 或删除 |
-| `uiModeManager` state channel | 确认外部消费者；无兼容对象则删除 |
+| Settings settlement 全局 facade | 已删除；测试等待真实保存 Promise/结果事件 |
+| Creation settlement | 已删除；创建行为等待本次 command promise，不公开全局 idle |
+| Identity/item list revision channel | 已删除；保留 `loadItems()` Promise 与旧结果防覆盖 token |
+| `uiModeManager` state channel | 已删除；主窗口在 HTML 静态声明 canonical `next` |
 
 禁止新增全局 `whenIdle()`。后台 watcher、动画、插件和网络服务不能被混成一个无法定义的“全应用空闲”。
 

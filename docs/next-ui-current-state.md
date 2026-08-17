@@ -13,7 +13,7 @@
 
 ## 2. 当前产品拓扑
 
-主窗口只有一套规范 presentation。历史 `uiMode` 值仍可兼容读取，但不再切换主窗口的两棵 UI；`uiModeManager` 当前只是兼容 facade。
+主窗口只有一套规范 presentation，并由 `main.html` 静态声明 `data-ui-mode="next"`。历史 `uiMode` 值只在 settings schema 中兼容归一化，不再对应运行时 manager、状态通道或可切换 UI。
 
 ```text
 上游聊天、助手、通知、设置与插件业务
@@ -52,29 +52,13 @@
 | 前端插件兼容边界 | 已完成 | Loader 恢复上游合同；Next 生命周期不接管插件运行时 |
 | 上游消息组件视觉语义 | 已保护 | Next 不重绘结构化消息内部组件，边界门禁存在 |
 
-最近一次完整证据基线：UI System 75/75、Electron UI Apps 22/22、36 步主聊天序列通过；生命周期压力测试 3 次预热加 20 次测量后 listener、Scope、受管资源、process 和 renderer process 均保持恒定，detached root/icon/option 为 0。该结果证明已覆盖路径稳定，不代表任意服务、GPU、休眠或第三方插件组合绝对无缺陷。
+最近一次完整证据基线（2026-08-17，P2）：UI System 75/75、Electron UI Apps 22/22、24 步主聊天序列通过；生命周期压力测试 3 次预热加 20 次测量后保持 408 个 listener、8 个 Scope、164 项受管资源和 5 个 Electron process，detached root/icon/option 为 0。该结果证明已覆盖路径稳定，不代表任意服务、GPU、休眠或第三方插件组合绝对无缺陷。
 
 ## 4. 当前未完成或名不副实的能力
 
-### 4.1 子页面 Next runtime 没有生产消费者
+P2 已删除休眠子页面 Next runtime、mode 传播和测试专用 settlement/state facade。中央策略仍报告 `0 active rebuilt, 12 upstream classic`；未来只有在首个真实页面消费者与测试同时进入时才重新引入最小 runtime。设置、创建和 item list 测试改为等待真实 Promise、结果事件或 DOM 终态；具有真实 Electron 消费者的 `AppTabHost.whenSettled()` 继续保留。
 
-以下能力已进入产品文件树，但当前没有生产页面使用：
-
-- `vcp-ui-runtime-bootstrap.js`
-- `vcp-page-rebuild.js`
-- 子页面 mode controller 传播
-- preload `onUiModeUpdated`
-- runtime CSS 与对应测试/文档
-
-中央策略报告 `0 wired, 0 active rebuilt, 12 upstream classic`。这些代码不能以“以后可能迁移页面”为理由留在首个主窗口 PR；应先删除，待第一个真实业务页面迁移时与消费者一起引入。
-
-### 4.2 Settlement 接口扩张超过生产需要
-
-`AppTabHost.whenSettled()` 已被真实 Electron 操作序列使用，应保留。Settings、Creation、Identity 和 item list 的部分 revision/settlement API 目前主要或完全只有测试消费者，却被安装到生产窗口并暴露为全局接口。
-
-测试需要确定性等待是合理目标，但默认方案应是等待真实 operation promise，或使用受限 diagnostics/test seam；不能仅为了测试方便扩大共享业务 manager 的公共合同。
-
-### 4.3 Contribution Registry 只有部分种类成立
+### 4.1 Contribution Registry 只有部分种类成立
 
 - `commands`：有真实业务消费者，应保留。
 - `apps`：目前主要服务组件展示应用，需要随展示页产品定位重新判断。
@@ -83,13 +67,9 @@
 
 Registry 应遵循“第一个真实消费者与抽象同时进入”的规则。没有消费者的 contribution kind 不视为已完成能力。
 
-### 4.4 VCPUI 组件成熟度声明过宽
+### 4.2 VCPUI 组件成熟度声明过宽
 
 组件清单中部分 `stable` 组件只有展示页、测试或文档消费者，与“至少一个真实业务界面使用”的工程规则冲突。首次主 PR 前需要生成消费者报告，只有具备业务使用和 Electron 验证的组件可保持 `stable`；其余降为 `candidate` 或退出公共 API。
-
-### 4.5 兼容 facade 尚未确定退役条件
-
-`uiModeManager` 始终归一到 `next`，状态不会变化。若上游从未发布过其旧 API，应直接删除；若确有外部兼容对象，必须记录消费者、兼容期限和删除条件。不能让静态空壳永久成为第二状态源的外观。
 
 ## 5. 明确边界
 
@@ -109,12 +89,12 @@ Registry 应遵循“第一个真实消费者与抽象同时进入”的规则�
 当前分支适合继续稳定化开发，但尚未达到干净的上游主 PR 门槛。阻塞项是：
 
 1. 让 `git diff --check upstream/main...HEAD` 对生成 vendor 文件采用安全、限定范围的 whitespace 策略并通过。
-2. 删除或隔离零消费者的子页面 Next runtime 和 preload mode API。
-3. 缩减测试专用 settlement/state 公共面。
-4. 校正 contribution kinds 与 VCPUI `stable` 声明。
+2. 校正 contribution kinds 与 VCPUI `stable` 声明。
 当前文档权威关系已在 2026-08-17 收敛；历史文档可以保留当时的双 presentation 描述，但已明确标记为历史记录。
 
 P1 所有权缺陷已于 2026-08-17 关闭：组件展示页不再调用全局 `cancelAll()`，其 Feedback 与 timer 均由页面 Scope 持有。Windows 验证为 UI System 75/75、Electron UI Apps 22/22、生命周期压力 3 次预热 + 20 次测量通过；压力 checkpoint 保持 8 个 Scope、164 项受管资源、410 个 listener、5 个 Electron process，detached root/icon/option 为 0。
+
+P2 无消费者架构减法已于 2026-08-17 关闭：产品文件树不再携带休眠子页面 runtime、静态 mode facade 或 Settings/Creation/item list 测试 Store；负向边界门禁阻止这些接口在无生产消费者时回归。完整 Windows 验证为 UI System 75/75、Electron UI Apps 22/22、24 步主聊天序列和生命周期压力 3 次预热 + 20 次测量通过。
 
 上述四项阻塞关闭后，还需要重新运行完整 UI、Electron smoke、主聊天序列、生命周期压力和离线打包门禁。用户本地 `styles/themes.css` 修改必须继续独立处理，不得误入架构收敛提交。
 

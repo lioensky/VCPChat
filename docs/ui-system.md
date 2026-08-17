@@ -2,7 +2,7 @@
 
 > 定位：实现参考。当前拓扑、消费者和完成度以 [`next-ui-current-state.md`](./next-ui-current-state.md) 为准，后续施工以 [`next-ui-development-roadmap.md`](./next-ui-development-roadmap.md) 为准。
 
-主窗口当前只有一套规范 presentation。`VCPUI` 服务于该主窗口及明确启用的新增 Surface；业务子页面目前全部继续使用上游页面，并不因主窗口采用 VCPUI 而自动加载 Web Awesome。历史 `data-ui-mode` 与 `uiModeManager` 只是兼容缝，不再代表两套可运行时切换的主窗口。
+主窗口当前只有一套规范 presentation，`main.html` 静态声明 `data-ui-mode="next"`，不再存在 `uiModeManager`。`VCPUI` 服务于该主窗口及明确启用的新增 Surface；业务子页面目前全部继续使用上游页面，并不因主窗口采用 VCPUI 而自动加载 Web Awesome。
 
 公共 API 继续使用原生 DOM、CSS Layer 和 ES Module。基础控件允许在 `VCPUI` 内部受控采用 Web Awesome Web Components，但业务页面不得直接依赖 `<wa-*>`。系统不引入 Vue、React 或新的构建步骤。
 

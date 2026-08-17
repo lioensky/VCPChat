@@ -71,8 +71,8 @@ renderer page
 
 ## 规范主窗口与兼容模式读取
 
-主窗口现在只有一个规范 presentation。`uiModeManager` 是只读兼容 facade：旧配置中的
-`classic` / `next` 值仍可被安全读取，但不得触发主窗口拆卸、换壳或第二套 listener。
+主窗口现在只有一个规范 presentation，由 `main.html` 静态声明 `data-ui-mode="next"`。旧配置中的
+`classic` / `next` 值只在 settings schema 中兼容归一化；不存在运行时 mode manager、状态通道、拆卸换壳或第二套 listener。
 Appearance Studio、全局设置和启动加载不再把 `uiMode` 当作可预览、可提交的运行时状态。
 
 内嵌业务页面拥有独立产品策略。当前 allowlist 中的页面显式以 `uiMode=classic` 打开，主窗口设置

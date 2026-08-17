@@ -1,12 +1,14 @@
 # VCPUI 组件 × Web Awesome 支撑矩阵
 
-本表描述 **VCPUI 每个组件**在三种环境下的实际行为内核：
+> P2 更新：子页面预载 runtime 已因零生产消费者删除。下列组件矩阵仍描述 VCPUI 的 WA/native 内核能力；子页面预载时序属于历史方案，不是当前产品拓扑。
 
-- **next（WA 已预载）**：`html[data-ui-mode="next"]` 且 `vcp-ui-runtime-bootstrap` 预载成功，`customElements.get('wa-*')` 已定义 —— 组件由 Web Awesome 提供行为/无障碍内核。
+本表描述 **VCPUI 每个组件**在主窗口按需加载和原生回落时的实际行为内核：
+
+- **next（WA 已加载）**：`html[data-ui-mode="next"]` 且主窗口 runtime 已按需定义对应 `wa-*` —— 组件由 Web Awesome 提供行为/无障碍内核。
 - **next（WA 预载失败）**：`loadComponents` 拒绝（`vcp-webawesome-failed` 已派发），全部 `wa-*` 保持未注册 —— 与经典模式相同的原生 DOM 回落。
 - **classic / 无预载上下文**：主渲染器或经典模式，从不获取 WA bundle —— 原生 DOM 回落。
 
-判定开关只有一处：`vcp-ui.js` 的 `waControl(tag)` —— 每次调用时检查 `VCPWebAwesome.isDefined(tag)`，**不存在“随机回落”**。预载成功与否由 `vcp-ui-runtime-ready` 的 `detail.waKernel`（`'web-awesome' | 'native'`）暴露。
+判定开关只有一处：`vcp-ui.js` 的 `waControl(tag)` —— 每次调用时检查 `VCPWebAwesome.isDefined(tag)`，**不存在“随机回落”**。
 
 ## 组件矩阵
 
@@ -30,10 +32,10 @@
 
 ## 加载时序与降级路径
 
-1. 独立应用加载 `vcp-ui-runtime-bootstrap.js` 后预载组件并启动动态 Select observer；主 Renderer 保持启动零注册，只在主聊天设置表面实际打开时由 `vcp-main-ui-runtime.js` 懒加载。
+1. 主 Renderer 保持启动零注册，只在主聊天设置表面实际打开时由 `vcp-main-ui-runtime.js` 懒加载；当前没有业务子页面加载 VCPUI/WA runtime。
 2. 成功：`vcp-webawesome-loaded`（tags）→ `waKernel: 'web-awesome'`。
 3. 失败：`vcp-webawesome-failed`（tags + error）→ 所有 tag 保持未定义 → 每个 `VCPUI.create` 走原生回落 → `waKernel: 'native'`。
-4. `vcp-ui-runtime-ready`（DOMContentLoaded 后派发）携带 `{ mode, waKernel }`；业务页在此监听后构建 UI 树，内核选择恒定可测。
+4. 业务 Surface 通过 VCPUI adapter 创建控件，并以 adapter runtime 状态验证 WA 或 native fallback；不依赖子页面 ready 事件。
 
 ## 验证证据
 
