@@ -88,6 +88,7 @@ assert.ok(window.VCPWebAwesome, 'WebAwesomeAdapter must be exposed on window');
 window.VCPWebAwesome = Object.freeze({
     ...window.VCPWebAwesome,
     isDefined: tag => Boolean(customElements.get(`wa-${String(tag).toLowerCase()}`)),
+    isLoaded: tag => Boolean(customElements.get(`wa-${String(tag).toLowerCase()}`)),
 });
 
 const { VCPUI } = window;
@@ -524,6 +525,7 @@ window.VCPUISettingsBridge.refresh();
 await new Promise(resolve => setTimeout(resolve, 0));
 assert.ok(document.getElementById('globalUserName').classList.contains('vcp-ui-native-input'), 'global input enhanced');
 assert.ok(document.getElementById('globalSelect').classList.contains('vcp-ui-native-select'), 'global select enhanced');
+assert.ok(globalModal.querySelector('wa-select.vcp-ui-select-proxy'), 'global select uses the loaded Web Awesome kernel');
 const globalFooter = globalModal.querySelector('.global-settings-footer');
 assert.ok(globalFooter.classList.contains('vcp-ui-settings-action-bar'), 'global save bar enhanced');
 assert.ok(globalModal.querySelector('.vcp-ui-settings-search'), 'settings search injected');
