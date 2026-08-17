@@ -1313,15 +1313,22 @@ function processAndInjectScopedCss(content, scopeId) {
     if (cssContent.length > 0) {
         try {
             const scopedCss = contentProcessor.scopeCss(cssContent, scopeId);
+            const styleSelector = `style[data-vcp-scope-id="${escapeCssAttributeValue(scopeId)}"]`;
+            let styleElement = document.head.querySelector(styleSelector);
 
-            const styleElement = document.createElement('style');
-            styleElement.type = 'text/css';
-            styleElement.setAttribute('data-vcp-scope-id', scopeId);
+            if (!styleElement) {
+                styleElement = document.createElement('style');
+                styleElement.type = 'text/css';
+                styleElement.setAttribute('data-vcp-scope-id', scopeId);
+                document.head.appendChild(styleElement);
+            }
+
+            // 流式渲染会多次经过此函数：复用节点并原子替换文本，
+            // 避免同一消息累积多个样式节点或出现旧规则覆盖新规则。
             styleElement.textContent = scopedCss;
-            document.head.appendChild(styleElement);
             styleInjected = true;
 
-            console.debug(`[ScopedCSS] Injected scoped styles for ID: #${scopeId}`);
+            console.debug(`[ScopedCSS] Updated scoped styles for ID: #${scopeId}`);
         } catch (error) {
             console.error(`[ScopedCSS] Failed to scope or inject CSS for ID: ${scopeId}`, error);
         }
@@ -2535,6 +2542,7 @@ function initializeMessageRenderer(refs) {
         processRenderedContent: wrappedProcessRenderedContent,
         runTextHighlights: contentProcessor.highlightAllPatternsInMessage,
         preprocessFullContent: preprocessFullContent,
+        processAssistantScopedHtmlContent,
         findToolRequestEnd: (text, startIndex) => findToolRequestEnd(text, startIndex),
         removeSpeakerTags: contentProcessor.removeSpeakerTags,
         ensureNewlineAfterCodeBlock: contentProcessor.ensureNewlineAfterCodeBlock,
