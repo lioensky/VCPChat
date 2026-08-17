@@ -1152,7 +1152,21 @@ try {
         `light creation surface did not resolve to a light background: ${JSON.stringify(lightCreationTheme)}`);
     await page.evaluate(() => window.uiManager?.applyTheme?.('dark'));
     await page.waitForFunction(() => document.querySelector('.next-ui-create-dialog-host')?.classList.contains('wa-dark'), { timeout: timeoutMs });
-    await page.keyboard.press('Escape');
+    const creationDismissPoints = await page.evaluate(() => {
+        const modal = document.querySelector('.next-ui-create-dialog-host wa-dialog');
+        modal?.querySelector('wa-select')?.click();
+        const dialog = modal?.shadowRoot?.querySelector('[part~="dialog"]')?.getBoundingClientRect();
+        const body = modal?.shadowRoot?.querySelector('[part~="body"]')?.getBoundingClientRect();
+        return {
+            inside: { x: (body?.right || 0) - 4, y: (body?.top || 0) + 4 },
+            outside: { x: Math.max(2, (dialog?.left || 30) - 16), y: (dialog?.top || 0) + (dialog?.height || 0) / 2 },
+        };
+    });
+    await page.mouse.click(creationDismissPoints.inside.x, creationDismissPoints.inside.y);
+    await new Promise(resolve => setTimeout(resolve, 100));
+    assert.equal(await page.evaluate(() => Boolean(document.querySelector('.next-ui-create-dialog-host'))), true,
+        'clicking dialog whitespace after opening Select must not dismiss the creation modal');
+    await page.mouse.click(creationDismissPoints.outside.x, creationDismissPoints.outside.y);
     await page.waitForFunction(() => !document.querySelector('.next-ui-create-dialog-host'), { timeout: timeoutMs });
 
     await page.evaluate(() => document.getElementById('nextUiCreateItemBtn')?.click());

@@ -1740,8 +1740,10 @@ function modalFactory(options = {}) {
         controller = makeController(wa, state, current => {
             wa.setAttribute('label', current.title);
             wa.dataset.size = normalize(current.size, ['sm', 'md', 'lg'], 'md', 'size');
-            if (current.closeOnBackdrop) wa.setAttribute('light-dismiss', '');
-            else wa.removeAttribute('light-dismiss');
+            // WA's target-only light-dismiss check can confuse dialog surface
+            // whitespace with the backdrop after a top-layer Select opens.
+            // VCPUI owns the stricter geometry-based dismissal contract below.
+            wa.removeAttribute('light-dismiss');
             wa.replaceChildren();
             const body = document.createElement('div');
             body.className = 'vcp-ui-modal-body';
@@ -1771,6 +1773,17 @@ function modalFactory(options = {}) {
             queueMicrotask(ensureOpen);
         });
         controller.close = close;
+        controller._listen(wa, 'pointerdown', event => {
+            if (!state.closeOnBackdrop || !state.dismissible) return;
+            const path = event.composedPath?.() || [];
+            if (path.some(node => node?.localName === 'wa-select' || node?.localName === 'wa-option')) return;
+            const dialog = wa.shadowRoot?.querySelector('[part~="dialog"]');
+            const rect = dialog?.getBoundingClientRect();
+            if (!rect) return;
+            const outside = event.clientX < rect.left || event.clientX > rect.right
+                || event.clientY < rect.top || event.clientY > rect.bottom;
+            if (outside) close(null);
+        });
         controller._listen(wa, 'wa-hide', event => {
             if (!state.dismissible && !programmaticClose) {
                 event.preventDefault();
