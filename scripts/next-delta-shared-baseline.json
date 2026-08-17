@@ -4,12 +4,12 @@
     "reason": "upstream chat core plus separately reviewed M9 ownership fixes"
   },
   "modules/messageRenderer.js": {
-    "sha256": "7ff51b5821969b2ff43f0fbdd4c4b9ba40d9ab859de2f4fd53f053b39e80d135",
-    "reason": "upstream message semantics; Next may not restyle or fork it"
+    "sha256": "8334f93f39e11c0f3b342a8b8546f4e032a9e7627eff966051fc976083c7b41f",
+    "reason": "upstream message semantics with idempotent scoped-style reuse; Next may not restyle or fork it"
   },
   "modules/renderer/streamManager.js": {
-    "sha256": "bf8549417f1882ae5304cc1c0b983b60e4d962d47d2112eea67f0ef84866dbe3",
-    "reason": "shared stream core plus separately reviewed M9 terminal ownership fixes"
+    "sha256": "42a850a2a53b59ef43200e6edf35af222bac33aa7b110b90fe66e675ec7dfcb2",
+    "reason": "shared stream core with reviewed scoped-HTML streaming and M9 terminal ownership fixes"
   },
   "modules/topicListManager.js": {
     "sha256": "69e9bee1fdb65f2e899e28e24df77093888327386a77a756a3e355275ab5c52f",
