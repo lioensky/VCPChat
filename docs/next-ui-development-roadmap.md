@@ -3,6 +3,7 @@
 > 状态：当前权威施工路线<br>
 > 基线日期：2026-08-17<br>
 > 当前事实与完成度：[`next-ui-current-state.md`](./next-ui-current-state.md)
+> VCPUI 长期拆分与跨平台路线：[`vcp-ui-long-term-roadmap.md`](./vcp-ui-long-term-roadmap.md)
 
 ## 1. 路线目标
 
@@ -37,11 +38,16 @@
 | P1 所有权缺陷修复 | 已完成 | 修复展示页跨 owner 清理和 timer 泄漏 | 故障注入可证明只清理本 owner |
 | P2 无消费者架构减法 | 已完成 | 删除子页面 runtime、无用 preload API 和多余 settlement 公共面 | 生产消费者报告无孤儿 API；行为门禁不退化 |
 | P3 VCPUI 与 Registry 收口 | 已完成 | 校正 stable 组件和 contribution kinds | 每个公共能力至少一个真实消费者 |
+| P3.5 VCPUI Provider 收敛 | 第一阶段完成；跨平台待验 | 固化 Provider 边界，先从 Select 消除脆弱兼容 | Provider 不可变；Select shim 消失；跨平台证据完整 |
 | P4 PR 证据与交付 | 自动化完成；人工待验 | 完整验证、人工 soak、形成可审查提交 | 全部门禁通过，工作树边界清楚，PR diff 可解释 |
 | P5 合入后稳定周期 | 未开始 | 观察真实环境，不扩张架构 | 一个稳定发布周期无资源和恢复阻塞 |
 | P6 按业务逐页演进 | 条件式远期 | 只在真实需求出现时迁移一个子页面 | 页面独立 PR，consumer/runtime/test 同时进入 |
 
 P0–P4 是当前上游 PR 的实际路线。P5–P6 不阻塞当前施工，也不得提前把实现放入本 PR。
+
+P3.5 是在真实消费者审查中发现的窄幅架构修复。它不引入框架、不迁移页面、不改插件；详细决策与退出条件见 [`vcp-ui-provider-architecture.md`](./vcp-ui-provider-architecture.md)。施工必须拆成文档、基线测试、行为保持提取和经验证的 Provider 调整，不能以一次大规模重写替代。
+
+P3.5 之后的 Input/Textarea、表单组件、Feedback、Patterns、WA Runtime、性能、操作序列和双平台长稳不在本文重复维护；其唯一阶段顺序见 [`vcp-ui-long-term-roadmap.md`](./vcp-ui-long-term-roadmap.md)。
 
 ## 4. P0：事实基线与文档收敛
 

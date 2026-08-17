@@ -118,6 +118,8 @@ P4 自动门禁已关闭；同步后 Windows 复验和人工 soak 仍待补齐�
 | 本文 | 当前实现、真实消费者、完成度与 PR 状态的唯一权威 |
 | `next-ui-development-roadmap.md` | 从当前状态继续施工的唯一权威顺序 |
 | `next-ui-lifecycle-architecture.md` | 生命周期合同和所有权规则 |
+| `vcp-ui-provider-architecture.md` | VCPUI、Native、Web Awesome 与控件 Provider 的当前权威决策 |
+| `vcp-ui-long-term-roadmap.md` | VCPUI 从当前 Select 阶段到跨平台交付的长期权威路线 |
 | `main-chat-operation-sequence-testing.md` | 操作序列模型、覆盖与故障注入规则 |
 | `ui-engineering-standard.md` | 新代码的工程 Definition of Done |
 | `classic-retirement-architecture.md` | 已完成的主窗口收敛决策与历史施工记录 |
@@ -131,3 +133,11 @@ P4 自动门禁已关闭；同步后 Windows 复验和人工 soak 仍待补齐�
 - 任何阶段只有全部退出条件满足后才能标为完成，不能用“按需完成”替代状态。
 - 新发现的问题先归因于上游或 Next delta，再决定是否进入本路线。
 - 路线变化必须保留删除项和非目标，防止后续会话重新扩张范围。
+
+## 9. VCPUI Provider 收敛增量
+
+2026-08-17 开始的 Provider 收敛不改变“VCPUI 是 adapter、Web Awesome 是私有内核”的既有边界，而是把它变成可执行合同。Select 已新增独立纯决策模块与 WA sibling proxy 模块，区分 existing/owned 与 native/customizable-native/WA proxy/WA owned，并禁止已挂载 controller 因 WA 迟到而原地升级。VCPUI-owned WA Select 已不再创建 detached native Select shim，也不再 monkey-patch WA `querySelector()` 来伪造 native Select。
+
+当前仍保留的 Select 技术债是 legacy proxy 对原业务 Select 的 `value/selectedIndex/add/remove/focus` property bridge；它用于兼容不派发事件的旧写入点，应在生产调用盘点和跨平台 Electron 证据完成后逐个删除。Customizable Native 目前只有能力检测和显式 Provider，不是默认路径。
+
+Select Provider 第一阶段已在独立提交 `d999d945` 固化；后续 property bridge 清理和默认 Provider 决策不得回写或混入该提交。
