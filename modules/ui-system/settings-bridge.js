@@ -107,7 +107,13 @@ function enhanceGlobalSettings(root, form) {
         enhance('Input', input);
     });
     form.querySelectorAll('textarea').forEach(textarea => enhance('Textarea', textarea));
-    form.querySelectorAll('select').forEach(select => enhance('Select', select, { kernel: 'native' }));
+    // The canonical global settings modal is a real Next surface; its Select
+    // controls use the Web Awesome kernel like the other VCPUI controls. Do
+    // not lock them into VCPUI's native fallback while the lazy runtime is
+    // still loading; vcp-main-ui-runtime refreshes this bridge once ready.
+    if (window.VCPWebAwesome?.isLoaded?.('select')) {
+        form.querySelectorAll('select').forEach(select => enhance('Select', select));
+    }
     form.querySelectorAll('input[type="range"]').forEach(range => enhance('Range', range));
     form.querySelectorAll('label.switch').forEach(control => enhance('Switch', control));
     form.querySelectorAll('.agent-name-wrapper').forEach(field => {
