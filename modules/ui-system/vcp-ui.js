@@ -1,4 +1,11 @@
 import { COMPONENT_MANIFEST } from './component-manifest.js';
+import {
+    SELECT_PROVIDER,
+    createSelectProviderDecision,
+    detectCustomizableNativeSelect,
+    selectProviderRequest,
+} from './select-provider.js';
+import { mountWebAwesomeSelectProxy } from './select-webawesome-proxy.js';
 
 const COMPONENTS = new Map();
 const ENHANCERS = new Map();
@@ -206,226 +213,55 @@ function selectEnhancer(element, options = {}) {
         throw new TypeError('VCPUI select enhancement received an incompatible element.');
     }
 
-    // Existing business forms can opt out of a replacement custom element.
-    // This keeps their native DOM identity and lifecycle intact while still
-    // applying the shared VCPUI sizing, focus and validation contract. New
-    // VCPUI-owned controls continue to use Web Awesome through selectFactory.
-    if (options.kernel === 'native') return nativeControlEnhancer(element, 'select', options);
+    const providerDecision = createSelectProviderDecision({
+        ownership: 'existing',
+        requested: selectProviderRequest(options),
+        webAwesomeReady: Boolean(window.VCPWebAwesome?.isDefined?.('select')),
+        customizableNative: detectCustomizableNativeSelect(window.CSS),
+    });
+    if (![SELECT_PROVIDER.WEB_AWESOME_PROXY].includes(providerDecision.provider)) {
+        const originallyCustomizable = element.classList.contains('vcp-ui-customizable-select');
+        const controller = nativeControlEnhancer(element, 'select', options);
+        controller.provider = providerDecision.provider;
+        controller.providerDecision = providerDecision;
+        if (providerDecision.provider === SELECT_PROVIDER.CUSTOMIZABLE_NATIVE) {
+            element.classList.add('vcp-ui-customizable-select');
+            const destroy = controller.destroy.bind(controller);
+            controller.destroy = () => {
+                try { return destroy(); } finally {
+                    if (!originallyCustomizable) element.classList.remove('vcp-ui-customizable-select');
+                }
+            };
+        }
+        return controller;
+    }
 
     const wa = waControl('select', {});
-    if (!wa) return nativeControlEnhancer(element, 'select', options);
-
-    const originallyNativeSelect = element.classList.contains('vcp-ui-native-select');
-    const originallySelectSource = element.classList.contains('vcp-ui-select-source');
-    const originalSize = element.getAttribute('data-size');
-    const originalAriaHidden = element.getAttribute('aria-hidden');
-    const originalTabIndex = element.getAttribute('tabindex');
-    const originallyHidden = element.hidden;
-    const state = { size: element.dataset.size || 'md', ...options };
-    const propertyRestorers = [];
-    let syncing = false;
-    let observer;
-    let renderedOptionsSignature = null;
-
-    wa.className = 'vcp-ui-select vcp-ui-wa-select vcp-ui-select-proxy';
-    wa.dataset.vcpSelectProxyFor = element.id || '';
-    wa.setAttribute('data-vcp-select-proxy', 'true');
-    element.classList.add('vcp-ui-native-select', 'vcp-ui-select-source');
-    element.hidden = true;
-    element.setAttribute('aria-hidden', 'true');
-    element.setAttribute('tabindex', '-1');
-
-    const insertProxy = () => {
-        if (!wa.isConnected && element.parentNode) element.after(wa);
-    };
-
-    const nativeOptionRecords = () => [...element.options].map(option => ({
-        value: option.value,
-        label: option.label || option.textContent || option.value,
-        disabled: option.disabled || Boolean(option.closest('optgroup')?.disabled),
-        group: option.closest('optgroup')?.label || '',
-    }));
-
-    const syncNativeToProxy = () => {
-        if (syncing) return;
-        syncing = true;
-        insertProxy();
-        const businessClasses = [...element.classList]
-            .filter(name => !['vcp-ui-native-select', 'vcp-ui-select-source'].includes(name));
-        wa.className = ['vcp-ui-select', 'vcp-ui-wa-select', 'vcp-ui-select-proxy', ...businessClasses].join(' ');
-        wa.removeAttribute('style');
-        [
-            'display', 'width', 'minWidth', 'maxWidth', 'height', 'minHeight', 'maxHeight',
-            'margin', 'marginTop', 'marginRight', 'marginBottom', 'marginLeft',
-            'flex', 'flexGrow', 'flexShrink', 'flexBasis', 'alignSelf', 'justifySelf',
-            'gridArea', 'gridColumn', 'gridRow', 'order', 'boxSizing', 'fontSize',
-        ].forEach(property => {
-            const value = element.style[property];
-            if (value) wa.style[property] = value;
+    if (!wa) {
+        const fallbackDecision = createSelectProviderDecision({
+            ownership: 'existing',
+            requested: 'webawesome',
+            webAwesomeReady: false,
+            customizableNative: providerDecision.customizableNative,
         });
-        waSize(wa, element.dataset.size || state.size);
-        wa.disabled = Boolean(element.disabled);
-        wa.required = Boolean(element.required);
-        wa.name = '';
-        const label = state.label || element.getAttribute('aria-label') || element.labels?.[0]?.textContent?.trim() || '';
-        if (label) wa.setAttribute('aria-label', label);
-        else wa.removeAttribute('aria-label');
-        ['aria-describedby', 'aria-labelledby', 'title'].forEach(attribute => {
-            const value = element.getAttribute(attribute);
-            if (value) wa.setAttribute(attribute, value);
-            else wa.removeAttribute(attribute);
-        });
-        const invalid = state.invalid ?? element.getAttribute('aria-invalid') === 'true';
-        if (invalid) wa.setAttribute('aria-invalid', 'true');
-        else wa.removeAttribute('aria-invalid');
-        if (typeof wa.setCustomValidity === 'function') {
-            wa.setCustomValidity(invalid ? (state.invalidMessage || element.validationMessage || ' ') : '');
-        }
-        const optionRecords = nativeOptionRecords();
-        const optionsSignature = JSON.stringify(optionRecords);
-        if (optionsSignature !== renderedOptionsSignature) {
-            wa.replaceChildren();
-            let previousGroup = null;
-            optionRecords.forEach(record => {
-                const option = document.createElement('wa-option');
-                option.value = record.value;
-                option.disabled = record.disabled;
-                option.textContent = record.label;
-                if (record.group) {
-                    option.dataset.group = record.group;
-                    option.setAttribute('aria-label', `${record.group}: ${record.label}`);
-                    if (record.group !== previousGroup) option.dataset.groupStart = 'true';
-                }
-                previousGroup = record.group;
-                wa.append(option);
-            });
-            renderedOptionsSignature = optionsSignature;
-        }
-        const proxyValue = wa.value == null ? '' : String(wa.value);
-        if (proxyValue !== element.value) wa.value = element.value;
-        syncing = false;
-    };
-
-    const syncProxyToNative = event => {
-        if (syncing) return;
-        syncing = true;
-        const nextValue = wa.value == null ? '' : String(wa.value);
-        const changed = element.value !== nextValue;
-        element.value = nextValue;
-        syncing = false;
-        event?.stopPropagation?.();
-        if (event?.type === 'input' && changed) {
-            element.dispatchEvent(new Event('input', { bubbles: true }));
-        } else if (event?.type === 'change') {
-            // Web Awesome normally emits input followed by change. If a
-            // component/version emits only change, retain native ordering by
-            // synthesizing the missing input before the committed change.
-            if (changed) element.dispatchEvent(new Event('input', { bubbles: true }));
-            element.dispatchEvent(new Event('change', { bubbles: true }));
-        }
-    };
-
-    const patchProperty = property => {
-        const prototype = Object.getPrototypeOf(element);
-        const descriptor = Object.getOwnPropertyDescriptor(prototype, property);
-        if (!descriptor?.get || !descriptor?.set) return;
-        const own = Object.getOwnPropertyDescriptor(element, property);
-        Object.defineProperty(element, property, {
-            configurable: true,
-            enumerable: descriptor.enumerable,
-            get: () => descriptor.get.call(element),
-            set: value => {
-                descriptor.set.call(element, value);
-                queueMicrotask(syncNativeToProxy);
-            },
-        });
-        propertyRestorers.push(() => {
-            if (own) Object.defineProperty(element, property, own);
-            else delete element[property];
-        });
-    };
-
-    const patchMethod = method => {
-        if (typeof element[method] !== 'function') return;
-        const own = Object.getOwnPropertyDescriptor(element, method);
-        const original = element[method].bind(element);
-        Object.defineProperty(element, method, {
-            configurable: true,
-            value: (...args) => {
-                const result = original(...args);
-                queueMicrotask(syncNativeToProxy);
-                return result;
-            },
-        });
-        propertyRestorers.push(() => {
-            if (own) Object.defineProperty(element, method, own);
-            else delete element[method];
-        });
-    };
-
-    patchProperty('value');
-    patchProperty('selectedIndex');
-    patchMethod('add');
-    patchMethod('remove');
-    const ownFocus = Object.getOwnPropertyDescriptor(element, 'focus');
-    Object.defineProperty(element, 'focus', {
-        configurable: true,
-        value: (...args) => wa.focus?.(...args),
-    });
-    propertyRestorers.push(() => {
-        if (ownFocus) Object.defineProperty(element, 'focus', ownFocus);
-        else delete element.focus;
-    });
-
-    let controller;
-    controller = makeController(wa, state, current => {
-        if (current.value !== undefined && element.value !== String(current.value)) element.value = String(current.value);
-        if (current.disabled !== undefined) element.disabled = Boolean(current.disabled);
-        if (current.required !== undefined) element.required = Boolean(current.required);
-        syncNativeToProxy();
-    }, () => {
-        observer?.disconnect();
-        propertyRestorers.splice(0).reverse().forEach(restore => restore());
-        controllerByElement.delete(element);
-        if (!originallyNativeSelect) element.classList.remove('vcp-ui-native-select');
-        if (!originallySelectSource) element.classList.remove('vcp-ui-select-source');
-        if (originalSize === null) element.removeAttribute('data-size');
-        else element.setAttribute('data-size', originalSize);
-        if (originalAriaHidden === null) element.removeAttribute('aria-hidden');
-        else element.setAttribute('aria-hidden', originalAriaHidden);
-        if (originalTabIndex === null) element.removeAttribute('tabindex');
-        else element.setAttribute('tabindex', originalTabIndex);
-        element.hidden = originallyHidden;
-    });
-    controller.nativeElement = element;
-    attachControlApi(controller, element);
-    controller.kernel = 'webawesome-proxy';
-    controller.kind = 'select';
-    controller.refresh = () => {
-        syncNativeToProxy();
+        const controller = nativeControlEnhancer(element, 'select', options);
+        controller.provider = fallbackDecision.provider;
+        controller.providerDecision = fallbackDecision;
         return controller;
-    };
-    controllerByElement.set(element, controller);
-    controller._listen(wa, 'input', syncProxyToNative);
-    controller._listen(wa, 'change', syncProxyToNative);
-    // Refresh just before the listbox opens. Do not refresh on focus or every
-    // pointerdown: Web Awesome restores focus before it emits the committed
-    // input/change pair, so a focus refresh would overwrite the user's new
-    // choice with the old native value. Pointerdown also fires for options and
-    // must never rebuild the option being clicked.
-    controller._listen(wa, 'wa-show', syncNativeToProxy);
-    controller._listen(element, 'input', syncNativeToProxy);
-    controller._listen(element, 'change', syncNativeToProxy);
-    [...(element.labels || [])].forEach(label => controller._listen(label, 'click', event => {
-        event.preventDefault();
-        wa.focus?.();
-    }));
-    if (typeof MutationObserver !== 'undefined') {
-        observer = new MutationObserver(() => queueMicrotask(syncNativeToProxy));
-        observer.observe(element, { attributes: true, childList: true, subtree: true, characterData: true });
     }
-    queueMicrotask(syncNativeToProxy);
-    return waFocus(controller, wa);
+
+    return mountWebAwesomeSelectProxy({
+        element,
+        wa,
+        options,
+        providerDecision,
+        makeController,
+        attachControlApi,
+        waSize,
+        waFocus,
+        rememberController: (source, controller) => controllerByElement.set(source, controller),
+        forgetController: source => controllerByElement.delete(source),
+    });
 }
 
 function nativeSwitchEnhancer(element, options = {}) {
@@ -760,21 +596,21 @@ function nextFrame(callback) {
     return setTimeout(callback, 16);
 }
 
-// Legacy callers of Input/Textarea/Select reach the control through
-// `element.querySelector('input'|'textarea'|'select')` and then read/write
-// `.value` (and sometimes `.options`/`.selectedIndex`). A Web Awesome control
-// keeps its native input inside a shadow root, so those paths would silently
-// return null and crash. This bridge keeps them working:
+// Legacy callers of Input/Textarea reach the control through
+// `element.querySelector('input'|'textarea')` and then read/write `.value`.
+// A Web Awesome control keeps its native input inside a shadow root, so those
+// paths would silently return null and crash. This compatibility bridge keeps
+// them working until those two factories can expose only the controller API:
 //   - `querySelector`/`querySelectorAll` first search the light DOM, then the
 //     WA shadow root (the real internal control once connected), then fall back
 //     to a detached native shim.
-//   - the shim is a real `<input>`/`<textarea>`/`<select>` element, so `.value`,
-//     `.options`, `.selectedIndex`, `.addEventListener(...)` and `.disabled` /
-//     `.required` / `.readOnly` never throw even before the WA element is
+//   - the shim is a real `<input>`/`<textarea>` element, so `.value`,
+//     `.addEventListener(...)` and `.disabled` / `.required` / `.readOnly`
+//     never throw even before the WA element is
 //     connected; `.value`/`.disabled`/`.required`/`.readOnly` forward to the
 //     WA control, and WA `input`/`change` events are relayed onto the shim.
-function bridgeNativeControl(wa, kind) {
-    const tag = kind === 'textarea' ? 'textarea' : kind === 'select' ? 'select' : 'input';
+function bridgeTextControl(wa, kind) {
+    const tag = kind === 'textarea' ? 'textarea' : 'input';
     const shim = document.createElement(tag);
     if (kind === 'input') shim.type = 'text';
     if (kind === 'textarea') shim.rows = 4;
@@ -799,41 +635,11 @@ function bridgeNativeControl(wa, kind) {
             set: next => { wa[property] = Boolean(next); }
         });
     });
-    if (kind !== 'select') {
-        Object.defineProperty(shim, 'readOnly', {
-            configurable: true,
-            get: () => Boolean(wa.readonly),
-            set: next => { wa.readonly = Boolean(next); }
-        });
-    }
-    if (kind === 'select') {
-        const options = () => [...wa.querySelectorAll('wa-option')];
-        const findSelectedIndex = () => {
-            const value = wa.value;
-            return options().findIndex(option => String(option.value) === String(value));
-        };
-        const selectByIndex = index => {
-            const option = options()[Number(index)];
-            if (option) wa.value = option.value;
-        };
-        ['options', 'selectedIndex'].forEach(property => {
-            if (property in wa) return;
-            Object.defineProperty(wa, property, {
-                configurable: true,
-                get: property === 'options' ? options : findSelectedIndex,
-                set: property === 'options' ? undefined : selectByIndex
-            });
-        });
-        Object.defineProperty(shim, 'options', {
-            configurable: true,
-            get: options
-        });
-        Object.defineProperty(shim, 'selectedIndex', {
-            configurable: true,
-            get: findSelectedIndex,
-            set: selectByIndex
-        });
-    }
+    Object.defineProperty(shim, 'readOnly', {
+        configurable: true,
+        get: () => Boolean(wa.readonly),
+        set: next => { wa.readonly = Boolean(next); }
+    });
     ['input', 'change'].forEach(type => {
         wa.addEventListener(type, () => {
             shim.dispatchEvent(new Event(type, { bubbles: true }));
@@ -1007,7 +813,7 @@ function textControlFactory(kind, options = {}) {
             }
         });
         controller._listen(wa, 'input', () => { state.value = wa.value; });
-        bridgeNativeControl(wa, kind);
+        bridgeTextControl(wa, kind);
         attachControlApi(controller, wa);
         return waFocus(controller, wa);
     }
@@ -1040,7 +846,15 @@ function textControlFactory(kind, options = {}) {
 }
 
 function selectFactory(options = {}) {
-    const wa = waControl('select', { value: options.value ?? '', disabled: options.disabled });
+    const providerDecision = createSelectProviderDecision({
+        ownership: 'owned',
+        requested: selectProviderRequest(options),
+        webAwesomeReady: Boolean(window.VCPWebAwesome?.isDefined?.('select')),
+        customizableNative: detectCustomizableNativeSelect(window.CSS),
+    });
+    const wa = providerDecision.provider === SELECT_PROVIDER.WEB_AWESOME_OWNED
+        ? waControl('select', { value: options.value ?? '', disabled: options.disabled })
+        : null;
     if (wa) {
         const state = { size: 'md', options: [], value: '', placeholder: '', ...options };
         const controller = makeController(wa, state, current => {
@@ -1078,9 +892,11 @@ function selectFactory(options = {}) {
             // (RangeError: call stack size exceeded).
             if (event.isTrusted) emit(wa, 'change');
         });
-        bridgeNativeControl(wa, 'select');
         waFocus(controller, wa);
         attachControlApi(controller, wa);
+        controller.kernel = 'webawesome';
+        controller.provider = providerDecision.provider;
+        controller.providerDecision = providerDecision;
         return controller;
     }
     const element = document.createElement('select');
@@ -1105,6 +921,12 @@ function selectFactory(options = {}) {
         element.value = String(current.value ?? '');
     });
     attachControlApi(controller, element);
+    controller.kernel = 'native';
+    controller.provider = providerDecision.provider;
+    controller.providerDecision = providerDecision;
+    if (providerDecision.provider === SELECT_PROVIDER.CUSTOMIZABLE_NATIVE) {
+        element.classList.add('vcp-ui-customizable-select');
+    }
     return controller;
 }
 
@@ -2338,12 +2160,11 @@ const VCPUI = Object.freeze({
         if (!enhancer) throw new Error(`Unknown VCPUI enhancer: ${name}`);
         const existing = controllerByElement.get(element);
         if (existing) {
-            const canUpgradeSelect = normalized === 'select'
-                && existing.kernel === 'native'
-                && document.documentElement.dataset.uiMode === 'next'
-                && window.VCPWebAwesome?.isDefined?.('select');
-            if (!canUpgradeSelect) return existing.update(options);
-            existing.destroy();
+            // Provider selection is immutable for a mounted controller. A
+            // surface that wants a different provider must explicitly destroy
+            // and remount it; late runtime registration must not swap DOM,
+            // focus or event ownership underneath business code.
+            return existing.update(options);
         }
         return enhancer(element, options);
     },
@@ -2368,6 +2189,11 @@ const VCPUI = Object.freeze({
         return controllerByElement.get(element) || null;
     },
     observeControls,
+    selectProviders: Object.freeze({
+        kinds: SELECT_PROVIDER,
+        detectCustomizableNative: () => detectCustomizableNativeSelect(window.CSS),
+        decide: options => createSelectProviderDecision(options),
+    }),
     getComponentMeta(name) {
         const normalized = String(name).toLowerCase();
         return COMPONENT_MANIFEST.find(item => item.name.toLowerCase() === normalized || item.aliases.some(alias => alias.toLowerCase() === normalized)) || null;

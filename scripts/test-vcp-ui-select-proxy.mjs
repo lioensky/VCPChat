@@ -50,8 +50,8 @@ const mime = new Map([
 
 const html = `<!doctype html>
 <html data-ui-mode="next">
-<head><meta charset="utf-8"><style>body{padding:40px}wa-select{width:320px}</style></head>
-<body>
+<head><meta charset="utf-8"><link rel="stylesheet" href="/styles/ui-system/components.css"><style>body{padding:40px}wa-select{width:320px}</style></head>
+<body class="vcp-ui-scope">
 <script type="module">
 import '/modules/ui-system/webawesome-adapter.js';
 await window.VCPWebAwesome.loadComponents(['select', 'option']);
@@ -70,9 +70,29 @@ window.nativeInputs = 0;
 select.addEventListener('input', () => { window.nativeInputs += 1; });
 select.addEventListener('change', () => { window.nativeChanges += 1; });
 document.body.append(select);
-VCPUI.enhance('Select', select);
+window.selectController = VCPUI.enhance('Select', select);
+
+const large = document.createElement('select');
+large.setAttribute('aria-label', '模型列表');
+for (let index = 0; index < 250; index += 1) {
+    large.add(new Option(\`模型 \${index}\`, \`model-\${index}\`));
+}
+large.value = 'model-100';
+document.body.append(large);
+window.largeController = VCPUI.enhance('Select', large);
+
+const pinnedNative = document.createElement('select');
+pinnedNative.add(new Option('固定 Native', 'native'));
+document.body.append(pinnedNative);
+window.pinnedNativeController = VCPUI.enhance('Select', pinnedNative, { provider: 'native' });
+window.pinnedNativeAgain = VCPUI.enhance('Select', pinnedNative, { provider: 'webawesome' });
+
+const customizable = document.createElement('select');
+customizable.add(new Option('Customizable Native', 'customizable'));
+document.body.append(customizable);
+window.customizableController = VCPUI.enhance('Select', customizable, { provider: 'customizable-native' });
 await customElements.whenDefined('wa-select');
-await document.querySelector('wa-select').updateComplete;
+await Promise.all([...document.querySelectorAll('wa-select')].map(element => element.updateComplete));
 window.selectTestReady = true;
 </script>
 </body>
@@ -150,14 +170,55 @@ try {
         proxyValue: document.querySelector('wa-select')?.value,
         nativeInputs: window.nativeInputs,
         nativeChanges: window.nativeChanges,
+        provider: window.selectController.provider,
+        largeProvider: window.largeController.provider,
+        largeOptions: window.largeController.element.querySelectorAll('wa-option').length,
+        largeValue: window.largeController.element.value,
+        pinnedProvider: window.pinnedNativeController.provider,
+        pinnedIdentityStable: window.pinnedNativeController === window.pinnedNativeAgain,
+        customizableProvider: window.customizableController.provider,
+        customizableAppearance: getComputedStyle(window.customizableController.element).appearance,
+        capability: window.VCPUI.selectProviders.detectCustomizableNative(),
     }));
-    assert.deepEqual(state, {
-        nativeValue: 'always-approve',
-        proxyValue: 'always-approve',
-        nativeInputs: 1,
-        nativeChanges: 1,
+    assert.equal(state.nativeValue, 'always-approve');
+    assert.equal(state.proxyValue, 'always-approve');
+    assert.equal(state.nativeInputs, 1);
+    assert.equal(state.nativeChanges, 1);
+    assert.equal(state.provider, 'webawesome-proxy');
+    assert.equal(state.largeProvider, 'webawesome-proxy');
+    assert.equal(state.largeOptions, 250);
+    assert.equal(state.largeValue, 'model-100');
+    assert.equal(state.pinnedProvider, 'native');
+    assert.equal(state.pinnedIdentityStable, true, 'mounted provider must not change on repeat enhancement');
+    assert.equal(typeof state.capability.supported, 'boolean');
+    assert.equal(typeof state.capability.baseSelect, 'boolean');
+    assert.equal(typeof state.capability.picker, 'boolean');
+    if (state.capability.supported) {
+        assert.equal(state.customizableProvider, 'customizable-native');
+        assert.equal(state.customizableAppearance, 'base-select');
+    } else {
+        assert.equal(state.customizableProvider, 'native');
+    }
+
+    const teardown = await page.evaluate(() => {
+        const source = window.largeController.nativeElement;
+        const customizableSource = window.customizableController.element;
+        window.largeController.destroy();
+        window.customizableController.destroy();
+        return {
+            sourceVisible: !source.hidden,
+            sourceConnected: source.isConnected,
+            remainingLargeProxy: document.querySelectorAll('wa-select[aria-label="模型列表"]').length,
+            customizableClassRestored: !customizableSource.classList.contains('vcp-ui-customizable-select'),
+        };
     });
-    console.log('VCPUI visible Web Awesome Select proxy interaction passed.');
+    assert.deepEqual(teardown, {
+        sourceVisible: true,
+        sourceConnected: true,
+        remainingLargeProxy: 0,
+        customizableClassRestored: true,
+    });
+    console.log(`VCPUI Select providers passed in Electron (customizable native: ${state.capability.supported}).`);
 } finally {
     browser?.disconnect();
     child.kill();

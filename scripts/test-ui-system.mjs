@@ -438,8 +438,8 @@ assert.equal(nativeSelectController.kernel, 'native');
 document.documentElement.dataset.uiMode = 'next';
 const upgradedSelectController = VCPUI.enhance('Select', lateUpgradeSelect);
 await new Promise(resolve => setTimeout(resolve, 0));
-assert.equal(upgradedSelectController.kernel, 'webawesome-proxy', 'native Select upgrades after WA becomes available');
-assert.notEqual(upgradedSelectController, nativeSelectController);
+assert.equal(upgradedSelectController.kernel, 'native', 'mounted Select keeps its original provider after WA becomes available');
+assert.equal(upgradedSelectController, nativeSelectController, 'provider changes require an explicit surface remount');
 upgradedSelectController.destroy();
 lateUpgradeSelect.remove();
 
@@ -1118,9 +1118,8 @@ waSelect.update({ size: 'sm' });
 assert.equal(waSelect.getValue(), 'A', 'unrelated WA Select updates preserve setValue state');
 assert.equal(waSelect.element.querySelectorAll('wa-option').length, 2);
 assert.equal(waSelect.element.value, 'A');
-assert.equal(waSelect.element.selectedIndex, 0);
-assert.equal(waSelect.element.options.length, 2);
-assert.equal(waSelect.element.querySelector('select').value, 'A');
+assert.equal(waSelect.provider, 'webawesome-owned');
+assert.equal(waSelect.element.querySelector('select'), null, 'VCPUI-owned Select does not fabricate a detached native shim');
 
 const waCheckbox = VCPUI.create('Checkbox', { label: '同意', checked: true });
 assert.equal(waCheckbox.element.tagName.toLowerCase(), 'wa-checkbox');
