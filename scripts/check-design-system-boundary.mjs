@@ -4,14 +4,13 @@ import { execFileSync } from 'node:child_process';
 import postcss from 'postcss';
 
 const root = process.cwd();
-// Pin the source snapshot used for the original Agent-runtime subtraction.
-// A moving development branch makes every later Codex change look like a
-// design-system boundary violation. Compare retained Classic surfaces with
-// the latest main baseline first: next-ui may intentionally lag behind main,
-// and a main -> next-ui sync must not be reported as a design-system change.
-// Fall back to next-ui for shallow or branch-only CI checkouts.
-const sourceRef = process.env.VCP_DESIGN_SOURCE_REF || 'a1f76dffea8105999e465da45d8e52558cd80c47';
-const upstreamRef = resolveUpstreamRef();
+// Pin the reviewed, workflow-free product snapshot. The former subtraction
+// anchor predates several months of upstream product work, while a leftover
+// local `upstream/main` ref may be older still. Both make accepted product
+// changes look like design-system violations. Environment overrides remain
+// available when a PR intentionally audits against a newly reviewed snapshot.
+const sourceRef = process.env.VCP_DESIGN_SOURCE_REF || 'b5931a69d0815a1dfd60c079093ed5518a73dc77';
+const upstreamRef = process.env.VCP_UPSTREAM_REF || sourceRef;
 const failures = [];
 
 const forbiddenPaths = [
@@ -42,6 +41,7 @@ const allowedSourceDifferences = new Set([
     'docs/next-ui-webawesome-roadmap.md',
     'docs/next-ui-lifecycle-architecture.md',
     'docs/next-ui-development-roadmap.md',
+    'docs/next-ui-current-state.md',
     'docs/classic-retirement-architecture.md',
     'docs/classic-retirement-inventory.md',
     'docs/main-chat-operation-sequence-testing.md',
@@ -96,6 +96,7 @@ const allowedSourceDifferences = new Set([
     'modules/ui-system/performance-recorder.js',
     'modules/ui-system/task-handle.js',
     'modules/ui-system/contribution-registry.js',
+    'modules/ui-system/component-showcase.js',
     'modules/ui-system/state-channel.js',
     'modules/ui-system/settlement.js',
     'modules/ui-system/settings-settlement.js',
@@ -244,22 +245,6 @@ const upstreamClassicPatterns = [
 
 function git(args) {
     return execFileSync('git', ['-c', 'core.quotepath=false', ...args], { cwd: root, encoding: 'utf8' }).trim();
-}
-
-function resolveUpstreamRef() {
-    const candidates = process.env.VCP_UPSTREAM_REF
-        ? [process.env.VCP_UPSTREAM_REF]
-        : ['upstream/main', 'origin/main', 'upstream/next-ui', 'origin/next-ui'];
-    for (const candidate of candidates) {
-        try {
-            git(['rev-parse', '--verify', candidate]);
-            return candidate;
-        } catch {
-            // Try the next checkout topology. A final missing ref is handled
-            // by the existing parity-audit warnings below.
-        }
-    }
-    return candidates[0];
 }
 
 const trackedFiles = git(['ls-files']).split('\n').filter(Boolean);
