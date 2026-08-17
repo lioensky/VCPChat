@@ -52,3 +52,13 @@ Classic 页面内部的共享样式，因此放在平级目录，避免污染 Ne
 - 禁 `!important`；颜色、字号、圆角、间距、控件高度只能来自 token。
 - 卡片不嵌套；选中态用弱强调背景；加载态用 Skeleton 保持布局稳定。
 - 页面专属文件命名 `app-surface-<page>.css`，只含该页面真正独特的内容布局。
+
+## 回归覆盖
+
+- 静态门禁 `npm run check:app-surfaces`（已并入 `check:ui-applications`）：
+  六个页面必须引入 `app-surfaces.css` 且 `<body>` 带 `vcp-app-surface`；
+  页面 CSS 不得重定义 `--vcp-app-*` token、不得自带 `::-webkit-scrollbar`；
+  页面层文件必须挂在 `@layer vcp.page`。
+- 运行时审计 `npm run test:electron-ui-apps`：六个已刷新页面断言
+  `body.vcp-app-surface` 存在且 `--vcp-app-header-height` 解析为有效像素值；
+  未刷新的便签/任务页断言不携带该类，防止共享层意外泄漏。

@@ -78,16 +78,19 @@ const EMBEDDED_APPS = [
         id: 'open-translator-window', action: 'open-translator-window', name: '翻译', key: 'translator.html',
         shellTitle: '翻译助手', integrated: true, minWa: { 'wa-tooltip': 1, 'wa-select': 2 }, minHeaderRects: 0, minNativeEnhanced: 2,
         legacySelector: '.translator-container', bodyFocus: '.vcp-ui-page-shell-content textarea',
+        appSurface: true,
     },
     {
         id: 'open-log-window', action: 'open-log-window', name: '日志', key: 'log.html',
         shellTitle: 'VCP日志中心', integrated: true, minWa: { 'wa-tooltip': 1, 'wa-select': 1 }, minHeaderRects: 0, minNativeEnhanced: 1,
         legacySelector: '.log-app', bodyFocus: '.vcp-ui-page-shell-content input',
+        appSurface: true,
     },
     {
         id: 'open-plugin-manager-window', action: 'open-plugin-manager-window', name: '插件', key: 'plugin-manager.html',
         shellTitle: '插件管理器', integrated: true, minWa: { 'wa-tooltip': 1, 'wa-select': 2 }, minHeaderRects: 0, minNativeEnhanced: 2,
         legacySelector: '.app-container', bodyFocus: '.vcp-ui-page-shell-content input',
+        appSurface: true,
     },
     {
         id: 'open-task-window', action: 'open-task-window', name: '任务', key: 'task.html',
@@ -98,16 +101,19 @@ const EMBEDDED_APPS = [
         id: 'open-notes-window', action: 'open-notes-window', name: '笔记', key: 'notes.html',
         shellTitle: '我的笔记', integrated: true, minWa: { 'wa-tooltip': 1 }, minHeaderRects: 0, minNativeEnhanced: 1,
         legacySelector: '.container', bodyFocus: '.vcp-ui-page-shell-content input',
+        appSurface: true,
     },
     {
         id: 'open-memo-window', action: 'open-memo-window', name: '记忆', key: 'memo.html',
         shellTitle: '记忆工作台', integrated: true, minWa: { 'wa-tooltip': 1, 'wa-select': 1 }, minHeaderRects: 0, minNativeEnhanced: 1,
         legacySelector: 'main.main-content', bodyFocus: null,
+        appSurface: true,
     },
     {
         id: 'open-forum-window', action: 'open-forum-window', name: '论坛', key: 'forum.html',
         shellTitle: 'VCP 论坛', integrated: true, minWa: { 'wa-tooltip': 1, 'wa-select': 1 }, minHeaderRects: 0, minNativeEnhanced: 1,
         legacySelector: '.app-container', bodyFocus: '.vcp-ui-page-shell-content input',
+        appSurface: true,
     },
 ];
 
@@ -374,6 +380,8 @@ async function auditUpstreamClassicPage(page, app, captureName) {
             hasUtilityApi: Boolean(utilityApi),
             hasLoadSettings: typeof utilityApi?.loadSettings === 'function',
             hasPluginManagerApi: typeof utilityApi?.pluginManagerListPlugins === 'function',
+            appSurfaceScope: document.body.classList.contains('vcp-app-surface'),
+            appSurfaceToken: getComputedStyle(document.body).getPropertyValue('--vcp-app-header-height').trim(),
             pluginListProbe,
         };
     }, { legacySelector: app.legacySelector || app.legacy, action: app.action });
@@ -385,6 +393,19 @@ async function auditUpstreamClassicPage(page, app, captureName) {
     assert.equal(state.embeddedFlag, 'true', `${app.name} embedded preload contract missing: ${JSON.stringify(state)}`);
     assert.equal(state.hasUtilityApi, true, `${app.name} utility preload did not expose its role API: ${JSON.stringify(state)}`);
     assert.equal(state.hasLoadSettings, true, `${app.name} shared utility IPC is unavailable: ${JSON.stringify(state)}`);
+    // App Surface 视觉刷新契约：六个已刷新页面必须 opt-in 共享层并解析出共享
+    // token；未刷新页面（便签/任务）必须保持完全不受影响。
+    assert.equal(
+        state.appSurfaceScope,
+        Boolean(app.appSurface),
+        `${app.name} app-surface opt-in drifted: ${JSON.stringify(state)}`
+    );
+    if (app.appSurface) {
+        assert.ok(
+            /^\d+(\.\d+)?px$/.test(state.appSurfaceToken),
+            `${app.name} shared app-surface tokens did not resolve: ${JSON.stringify(state)}`
+        );
+    }
     if (app.action === 'open-plugin-manager-window') {
         assert.equal(state.hasPluginManagerApi, true, `插件管理 IPC 未注入: ${JSON.stringify(state)}`);
         assert.equal(state.pluginListProbe?.success, true, `插件目录读取失败: ${JSON.stringify(state)}`);
