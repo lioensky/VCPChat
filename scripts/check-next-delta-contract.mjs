@@ -5,7 +5,13 @@ import { JSDOM } from 'jsdom';
 
 const read = file => fs.readFileSync(new URL(`../${file}`, import.meta.url), 'utf8');
 const exists = file => fs.existsSync(new URL(`../${file}`, import.meta.url));
+const canonicalTextDigest = source => crypto.createHash('sha256')
+    .update(source.replace(/\r\n/g, '\n'))
+    .digest('hex');
 const document = new JSDOM(read('main.html')).window.document;
+
+assert.equal(canonicalTextDigest('line one\nline two\n'), canonicalTextDigest('line one\r\nline two\r\n'),
+    'reviewed text baselines must be independent from the checkout line-ending policy');
 
 for (const retiredFile of [
     'modules/uiModeManager.js',
@@ -128,7 +134,7 @@ const sharedBaseline = JSON.parse(read('scripts/next-delta-shared-baseline.json'
 for (const [file, entry] of Object.entries(sharedBaseline)) {
     assert.equal(typeof entry.reason, 'string');
     assert.ok(entry.reason.length >= 12, `${file} requires a review rationale`);
-    const digest = crypto.createHash('sha256').update(read(file)).digest('hex');
+    const digest = canonicalTextDigest(read(file));
     assert.equal(digest, entry.sha256,
         `${file} changed across the Next/upstream business boundary; review it explicitly and update its rationale/hash`);
 }
