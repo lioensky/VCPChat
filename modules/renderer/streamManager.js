@@ -559,7 +559,14 @@ function appendNewStableRange(stableBlocksRoot, segmentState, textForRendering, 
     const sourceText = textForRendering.slice(segmentState.stableRenderedCutoff, nextStableCutoff);
     if (!sourceText) return [];
 
-    const html = parseFullStreamContent(sourceText);
+    const renderSourceText = typeof refs.processAssistantScopedHtmlContent === 'function'
+        ? refs.processAssistantScopedHtmlContent(
+            sourceText,
+            options.scopeId || null,
+            options.messageItem || null
+        )
+        : sourceText;
+    const html = parseFullStreamContent(renderSourceText);
     const blockRecord = appendStableBlockFragment(stableBlocksRoot, segmentState, sourceText, html, options);
     return blockRecord ? [blockRecord] : [];
 }
@@ -1384,7 +1391,9 @@ function renderStreamFrame(messageId) {
     const segmentState = getOrCreateStreamSegmentState(messageId);
     const streamRenderOptions = {
         messageId,
-        settings: refs.globalSettingsRef?.get?.()
+        settings: refs.globalSettingsRef?.get?.(),
+        scopeId: messageItem.id || null,
+        messageItem
     };
 
     // 切回仍在流式输出的会话时，消息 DOM 已重建而稳定区状态仍在。
@@ -1410,7 +1419,14 @@ function renderStreamFrame(messageId) {
     }
 
     const tailText = textForRendering.slice(segmentState.stableCutoff);
-    const rawHtml = parseStreamTail(tailText);
+    const renderTailText = typeof refs.processAssistantScopedHtmlContent === 'function'
+        ? refs.processAssistantScopedHtmlContent(
+            tailText,
+            streamRenderOptions.scopeId,
+            streamRenderOptions.messageItem
+        )
+        : tailText;
+    const rawHtml = parseStreamTail(renderTailText);
 
     if (refs.morphdom) {
         try {
