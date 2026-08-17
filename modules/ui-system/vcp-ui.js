@@ -1755,7 +1755,15 @@ function modalFactory(options = {}) {
             let frames = 0;
             const ensureOpen = () => {
                 if (wa.isConnected) {
-                    wa.open = true;
+                    // Establish the declared initial focus before showModal's
+                    // native autofocus algorithm and WA's follow-up frame run.
+                    // All three paths then retain the same focus owner.
+                    const initialFocus = wa.querySelector('[autofocus]');
+                    Promise.resolve(initialFocus?.updateComplete).then(() => {
+                        if (!wa.isConnected) return;
+                        initialFocus?.focus();
+                        wa.open = true;
+                    });
                     return;
                 }
                 if (frames++ < 60) nextFrame(ensureOpen);

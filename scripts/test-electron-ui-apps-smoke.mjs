@@ -1097,6 +1097,8 @@ try {
             selectLeft: selectRect?.left || 0,
             selectWidth: selectRect?.width || 0,
             inputInternalLabelDisplay: inputInternalLabel ? getComputedStyle(inputInternalLabel).display : '',
+            inputAutofocus: input?.hasAttribute('autofocus') === true,
+            activeTag: document.activeElement?.localName || '',
         };
     });
     assert.equal(creationVisualContract.size, 'sm', `creation size contract was lost: ${JSON.stringify(creationVisualContract)}`);
@@ -1115,6 +1117,10 @@ try {
     `creation Input and Select are not aligned: ${JSON.stringify(creationVisualContract)}`);
     assert.equal(creationVisualContract.inputInternalLabelDisplay, 'none',
         `Field-owned WA Input exposed a duplicate required marker: ${JSON.stringify(creationVisualContract)}`);
+    assert.equal(creationVisualContract.inputAutofocus, true,
+        `creation input does not own initial focus: ${JSON.stringify(creationVisualContract)}`);
+    assert.equal(creationVisualContract.activeTag, 'wa-input',
+        `creation focus moved after opening: ${JSON.stringify(creationVisualContract)}`);
     await page.evaluate(() => window.uiManager?.applyTheme?.('dark'));
     await page.waitForFunction(() => document.querySelector('.next-ui-create-dialog-host')?.classList.contains('wa-dark'), { timeout: timeoutMs });
     const readCreationTheme = () => page.evaluate(() => {

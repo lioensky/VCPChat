@@ -122,6 +122,9 @@
                 typeField = create('Field', { label: '类型', required: true, helper: '创建一个可以独立对话的助手。', control: typeControl });
                 typeField.element.classList.add('next-ui-create-dialog-type');
                 nameControl = create('Input', { placeholder: '例如：旅行助手', leadingIcon: 'edit', required: true });
+                // One explicit initial-focus owner prevents showModal(), WA and
+                // this controller from moving focus across successive frames.
+                nameControl.element.setAttribute('autofocus', '');
                 nameField = create('Field', { label: '名称', required: true, helper: '创建后仍可在设置中修改名称和详细配置。', control: nameControl });
                 nameInput = nameControl.control;
                 modelControl = create('Select', { value: '', disabled: true, options: [{ value: '', label: '使用默认模型' }] });
@@ -266,8 +269,6 @@
             listen(cancelButton.element, 'click', () => modal.close(null));
             listen(createButton.element, 'click', submit);
             listen(form, 'submit', event => { event.preventDefault(); submit(); });
-            if (dialogScope) dialogScope.animationFrame(() => nameInput.focus(), 'focus-create-name');
-            else this.window.requestAnimationFrame(() => nameInput.focus());
             try {
                 const tasks = this.getTasks();
                 const modelTask = api?.getCachedModels && tasks?.createTask?.({
