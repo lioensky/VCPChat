@@ -7,7 +7,7 @@ import { JSDOM } from 'jsdom';
 
 await import('./test-ask-nova-service.mjs');
 
-const composerSafeFocusSelector = /:focus-visible:not\(#messageInput\):not\(\.chat-message-input\)\s*\{/;
+const composerSafeFocusSelector = /:focus-visible:not\(#messageInput\):not\(\.chat-message-input\):not\(\.vcp-ui-scope \*\)\s*\{/;
 const paperThemeSource = fs.readFileSync('styles/themes/themes纸墨与机芯.css', 'utf8');
 const componentStyles = fs.readFileSync('styles/ui-system/components.css', 'utf8');
 const sidebarStyles = fs.readFileSync('styles/ui-system/sidebar.css', 'utf8');

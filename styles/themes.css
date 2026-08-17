@@ -336,7 +336,7 @@ body.light-theme .message-item.streaming.assistant .message-bubble {
 }
 
 /* Keyboard focus remains visible in both modes. */
-:focus-visible:not(#messageInput):not(.chat-message-input) {
+:focus-visible:not(#messageInput):not(.chat-message-input):not(.vcp-ui-scope *) {
     outline: 2px solid var(--highlight-text);
     outline-offset: 2px;
 }
