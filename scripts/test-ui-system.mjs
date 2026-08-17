@@ -895,6 +895,55 @@ assert.equal(VCPUI.feedback.setLoading(false), 0);
 VCPUI.feedback.cancelAll();
 assert.equal(document.querySelector('.vcp-ui-feedback-host'), null);
 
+// Feedback resources belong to their surface. Disposing one owner must not
+// close another owner's dialog/toast/loading state, including queued dialogs.
+const mainFeedbackScope = new lifecycleApi.LifecycleScope('test:main-feedback');
+const showcaseFeedbackScope = new lifecycleApi.LifecycleScope('test:showcase-feedback');
+const mainFeedback = VCPUI.feedback.owner(mainFeedbackScope);
+const showcaseFeedback = VCPUI.feedback.owner(showcaseFeedbackScope);
+const mainToast = mainFeedback.toast('Main owner toast', { duration: 0 });
+const showcaseToast = showcaseFeedback.toast('Showcase toast', { duration: 0 });
+mainFeedback.setLoading(true, 'Main owner loading');
+showcaseFeedback.setLoading(true, 'Showcase loading');
+const mainDialogPromise = mainFeedback.confirm({ title: 'Main owner dialog', message: 'Keep open' });
+const showcaseDialogPromise = showcaseFeedback.confirm({ title: 'Showcase dialog', message: 'Dispose me' });
+await new Promise(resolve => setTimeout(resolve, 0));
+assert.match(document.querySelector('.vcp-ui-modal h2')?.textContent || '', /Main owner dialog/);
+await showcaseFeedbackScope.dispose('showcase-closed');
+assert.equal(await showcaseDialogPromise, null, 'disposing an owner settles its queued dialog');
+assert.ok(mainToast.element.isConnected, 'another owner toast survives showcase disposal');
+assert.ok(!showcaseToast.element.isConnected, 'showcase toast is removed with its owner');
+assert.match(document.querySelector('.vcp-ui-modal h2')?.textContent || '', /Main owner dialog/, 'another owner dialog remains open');
+assert.equal(document.querySelector('.vcp-ui-loading-label')?.textContent, 'Main owner loading', 'loading falls back to the surviving owner');
+await showcaseFeedback.dispose();
+await mainFeedbackScope.dispose('main-closed');
+assert.equal(await mainDialogPromise, null, 'disposing an owner settles its active dialog');
+assert.ok(!mainToast.element.isConnected);
+assert.equal(document.querySelector('.vcp-ui-loading-layer')?.hidden, true);
+await mainFeedback.dispose();
+
+let lateShowcaseMutation = 0;
+const timerFeedbackScope = new lifecycleApi.LifecycleScope('test:showcase-timer');
+const timerFeedback = VCPUI.feedback.owner(timerFeedbackScope);
+timerFeedback.setLoading(true, 'Timer loading');
+timerFeedbackScope.timeout(() => {
+    lateShowcaseMutation += 1;
+    timerFeedback.setLoading(false);
+}, 5, 'showcase-loading-demo');
+await timerFeedbackScope.dispose('showcase-closed-before-timer');
+await timerFeedbackScope.dispose('duplicate-dispose');
+await new Promise(resolve => setTimeout(resolve, 15));
+assert.equal(lateShowcaseMutation, 0, 'a disposed showcase timer cannot mutate feedback state');
+assert.equal(document.querySelector('.vcp-ui-loading-layer')?.hidden, true);
+
+assert.throws(
+    () => VCPUI.feedback.owner({ label: 'failed-owner', own() { throw new Error('controlled owner registration failure'); } }),
+    /controlled owner registration failure/,
+    'owner setup failure rolls back without publishing a usable handle'
+);
+VCPUI.feedback.cancelAll();
+assert.equal(document.querySelector('.vcp-ui-feedback-host'), null);
+
 cases.reverse().forEach(controller => controller.destroy());
 assert.equal(scope.querySelectorAll('[class^="vcp-ui-"]').length, 0);
 

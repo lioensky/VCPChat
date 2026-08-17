@@ -13,7 +13,11 @@ const CATEGORIES = [
     { id: 'webawesome', label: 'WA 对照', icon: 'compare' }
 ];
 
-function mountShowcase(container) {
+function mountShowcase(container, context = {}) {
+    const LifecycleScope = window.VCPLifecycle?.LifecycleScope;
+    const scope = context.scope?.child?.('next:component-showcase')
+        || (LifecycleScope ? new LifecycleScope('next:component-showcase') : null);
+    const feedback = VCPUI.feedback.owner(scope);
     const controllers = [];
     const disposers = [];
     const create = (name, options) => {
@@ -368,7 +372,7 @@ function mountShowcase(container) {
     group = row(demo, 'Variants');
     ['info', 'success', 'warning', 'error'].forEach(variant => {
         const trigger = create('Button', { label: variant, variant: 'secondary', size: 'sm' });
-        on(trigger.element, 'click', () => VCPUI.feedback.toast(`${variant} 通知已触发`, { variant }));
+        on(trigger.element, 'click', () => feedback.toast(`${variant} 通知已触发`, { variant }));
         group.append(trigger.element);
     });
 
@@ -377,7 +381,8 @@ function mountShowcase(container) {
     confirmResult.className = 'vcp-ui-showcase-result';
     const confirmTrigger = create('Button', { label: '删除项目', variant: 'danger', icon: 'delete' });
     on(confirmTrigger.element, 'click', async () => {
-        const accepted = await VCPUI.feedback.confirm({ title: '删除项目', message: '此操作无法撤销，确定继续吗？', danger: true, confirmLabel: '删除' });
+        const accepted = await feedback.confirm({ title: '删除项目', message: '此操作无法撤销，确定继续吗？', danger: true, confirmLabel: '删除' });
+        if (feedback.disposed) return;
         confirmResult.textContent = accepted ? '已确认删除' : '已取消';
     });
     group = row(demo, 'Interactive');
@@ -389,17 +394,18 @@ function mountShowcase(container) {
     const promptTrigger = create('Button', { label: '输入项目名', icon: 'edit' });
     const multilineTrigger = create('Button', { label: '输入说明', variant: 'outline' });
     on(promptTrigger.element, 'click', async () => {
-        const value = await VCPUI.feedback.prompt({ title: '新项目', placeholder: '至少 3 个字符', required: true, validate: input => input.length < 3 ? '至少输入 3 个字符' : '' });
+        const value = await feedback.prompt({ title: '新项目', placeholder: '至少 3 个字符', required: true, validate: input => input.length < 3 ? '至少输入 3 个字符' : '' });
+        if (feedback.disposed) return;
         promptResult.textContent = value ? `结果：${value}` : '已取消';
     });
-    on(multilineTrigger.element, 'click', () => VCPUI.feedback.prompt({ title: '项目说明', multiline: true, rows: 5, placeholder: '输入详细说明' }));
+    on(multilineTrigger.element, 'click', () => feedback.prompt({ title: '项目说明', multiline: true, rows: 5, placeholder: '输入详细说明' }));
     group = row(demo, 'Interactive');
     group.append(promptTrigger.element, multilineTrigger.element, promptResult);
 
     const loadingTrigger = create('Button', { label: '模拟加载 1.2 秒', variant: 'secondary', icon: 'hourglass_top' });
     on(loadingTrigger.element, 'click', () => {
-        VCPUI.feedback.setLoading(true, '正在同步组件状态');
-        setTimeout(() => VCPUI.feedback.setLoading(false), 1200);
+        feedback.setLoading(true, '正在同步组件状态');
+        if (scope) scope.timeout(() => feedback.setLoading(false), 1200, 'showcase-loading-demo');
     });
     group.append(loadingTrigger.element);
 
@@ -421,7 +427,7 @@ function mountShowcase(container) {
     group.append(embeddedToggle.element);
 
     demo = section('WindowControls', 'WindowControls', '仅独立窗口渲染的最小化 / 最大化 / 关闭，内嵌态由外壳隐藏。');
-    demo.append(create('WindowControls', { onMinimize: () => VCPUI.feedback.toast('最小化'), onMaximize: () => VCPUI.feedback.toast('最大化'), onClose: () => VCPUI.feedback.toast('关闭') }).element);
+    demo.append(create('WindowControls', { onMinimize: () => feedback.toast('最小化'), onMaximize: () => feedback.toast('最大化'), onClose: () => feedback.toast('关闭') }).element);
 
     demo = section('AsyncBoundary', 'AsyncBoundary', '统一的 loading / error / empty / 内容四态，避免内容区跳变。');
     const boundary = create('AsyncBoundary', { status: 'idle', content: document.createTextNode('数据已就绪。') });
@@ -469,11 +475,12 @@ function mountShowcase(container) {
         });
     });
 
-    return () => {
+    return async () => {
         observer.disconnect();
         disposers.splice(0).forEach(dispose => dispose());
         controllers.splice(0).reverse().forEach(controller => controller.destroy());
-        VCPUI.feedback.cancelAll();
+        await feedback.dispose();
+        if (scope?.active) await scope.dispose('component-showcase-unmounted');
         container.replaceChildren();
         container.classList.remove('vcp-ui-showcase-root');
     };

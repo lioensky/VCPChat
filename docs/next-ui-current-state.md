@@ -42,6 +42,7 @@
 | 单一主窗口 presentation | 已完成 | Classic retirement 与 Next delta guard；主窗口不再运行时换壳 |
 | Shell 控制器拆分 | 已完成 | `next-shell/` 下 8 个窄控制器；`topTabManager` 为兼容 facade |
 | 动态 Surface 生命周期 | 已完成核心范围 | `LifecycleScope`、owner tree、幂等和异步 dispose 测试 |
+| Feedback Surface 所有权 | 已完成 | `feedback.owner(scope)` 隔离 Toast/Dialog/Loading；展示页 timer 归属 Scope |
 | Overlay 与原生 View 对账 | 已完成 | overlay lease、session 恢复、renderer reload/crash 测试 |
 | Ask Nova 取消与迟到结果隔离 | 已完成 | sender-owned task、取消、逆序完成和重开回归 |
 | WebContentsView 会话清理 | 已完成 | close/destroy 对账、Escape 隔离、进程与 View 压力测试 |
@@ -55,11 +56,7 @@
 
 ## 4. 当前未完成或名不副实的能力
 
-### 4.1 组件展示页的反馈所有权错误
-
-组件展示页销毁时调用全局 `VCPUI.feedback.cancelAll()`，会取消其他 Surface 拥有的 Dialog、Toast 和 Loading；展示页的模拟 Loading timer 也没有属于页面 Scope。这是实际生命周期缺陷，必须在 PR 前修复。
-
-### 4.2 子页面 Next runtime 没有生产消费者
+### 4.1 子页面 Next runtime 没有生产消费者
 
 以下能力已进入产品文件树，但当前没有生产页面使用：
 
@@ -71,13 +68,13 @@
 
 中央策略报告 `0 wired, 0 active rebuilt, 12 upstream classic`。这些代码不能以“以后可能迁移页面”为理由留在首个主窗口 PR；应先删除，待第一个真实业务页面迁移时与消费者一起引入。
 
-### 4.3 Settlement 接口扩张超过生产需要
+### 4.2 Settlement 接口扩张超过生产需要
 
 `AppTabHost.whenSettled()` 已被真实 Electron 操作序列使用，应保留。Settings、Creation、Identity 和 item list 的部分 revision/settlement API 目前主要或完全只有测试消费者，却被安装到生产窗口并暴露为全局接口。
 
 测试需要确定性等待是合理目标，但默认方案应是等待真实 operation promise，或使用受限 diagnostics/test seam；不能仅为了测试方便扩大共享业务 manager 的公共合同。
 
-### 4.4 Contribution Registry 只有部分种类成立
+### 4.3 Contribution Registry 只有部分种类成立
 
 - `commands`：有真实业务消费者，应保留。
 - `apps`：目前主要服务组件展示应用，需要随展示页产品定位重新判断。
@@ -86,11 +83,11 @@
 
 Registry 应遵循“第一个真实消费者与抽象同时进入”的规则。没有消费者的 contribution kind 不视为已完成能力。
 
-### 4.5 VCPUI 组件成熟度声明过宽
+### 4.4 VCPUI 组件成熟度声明过宽
 
 组件清单中部分 `stable` 组件只有展示页、测试或文档消费者，与“至少一个真实业务界面使用”的工程规则冲突。首次主 PR 前需要生成消费者报告，只有具备业务使用和 Electron 验证的组件可保持 `stable`；其余降为 `candidate` 或退出公共 API。
 
-### 4.6 兼容 facade 尚未确定退役条件
+### 4.5 兼容 facade 尚未确定退役条件
 
 `uiModeManager` 始终归一到 `next`，状态不会变化。若上游从未发布过其旧 API，应直接删除；若确有外部兼容对象，必须记录消费者、兼容期限和删除条件。不能让静态空壳永久成为第二状态源的外观。
 
@@ -111,14 +108,15 @@ Registry 应遵循“第一个真实消费者与抽象同时进入”的规则�
 
 当前分支适合继续稳定化开发，但尚未达到干净的上游主 PR 门槛。阻塞项是：
 
-1. 修复组件展示页跨 owner 的全局反馈清理和未受管 timer。
-2. 让 `git diff --check upstream/main...HEAD` 对生成 vendor 文件采用安全、限定范围的 whitespace 策略并通过。
-3. 删除或隔离零消费者的子页面 Next runtime 和 preload mode API。
-4. 缩减测试专用 settlement/state 公共面。
-5. 校正 contribution kinds 与 VCPUI `stable` 声明。
+1. 让 `git diff --check upstream/main...HEAD` 对生成 vendor 文件采用安全、限定范围的 whitespace 策略并通过。
+2. 删除或隔离零消费者的子页面 Next runtime 和 preload mode API。
+3. 缩减测试专用 settlement/state 公共面。
+4. 校正 contribution kinds 与 VCPUI `stable` 声明。
 当前文档权威关系已在 2026-08-17 收敛；历史文档可以保留当时的双 presentation 描述，但已明确标记为历史记录。
 
-上述五项阻塞关闭后，还需要重新运行完整 UI、Electron smoke、主聊天序列、生命周期压力和离线打包门禁。用户本地 `styles/themes.css` 修改必须继续独立处理，不得误入架构收敛提交。
+P1 所有权缺陷已于 2026-08-17 关闭：组件展示页不再调用全局 `cancelAll()`，其 Feedback 与 timer 均由页面 Scope 持有。Windows 验证为 UI System 75/75、Electron UI Apps 22/22、生命周期压力 3 次预热 + 20 次测量通过；压力 checkpoint 保持 8 个 Scope、164 项受管资源、410 个 listener、5 个 Electron process，detached root/icon/option 为 0。
+
+上述四项阻塞关闭后，还需要重新运行完整 UI、Electron smoke、主聊天序列、生命周期压力和离线打包门禁。用户本地 `styles/themes.css` 修改必须继续独立处理，不得误入架构收敛提交。
 
 ## 7. 文档权威关系
 

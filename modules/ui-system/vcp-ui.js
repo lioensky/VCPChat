@@ -2050,10 +2050,23 @@ ENHANCERS.set('settingssection', settingsSectionEnhancer);
 ENHANCERS.set('settingsactionbar', settingsActionBarEnhancer);
 
 let feedbackHost;
-let loadingCount = 0;
 let activeDialog = null;
 const dialogQueue = [];
 const toastTimers = new Map();
+const loadingTokens = new Map();
+const feedbackOwners = new Set();
+const rootFeedbackOwner = createFeedbackOwnerRecord('root');
+let loadingSequence = 0;
+
+function createFeedbackOwnerRecord(label) {
+    return {
+        label: String(label || 'feedback-owner'),
+        active: true,
+        dialogs: new Set(),
+        toasts: new Set(),
+        loading: [],
+    };
+}
 
 function ensureFeedbackHost() {
     if (feedbackHost?.isConnected) return feedbackHost;
@@ -2064,38 +2077,142 @@ function ensureFeedbackHost() {
     return feedbackHost;
 }
 
-function runDialog(factory) {
+function runDialog(factory, owner = rootFeedbackOwner) {
+    if (!owner.active) return Promise.resolve(null);
     return new Promise(resolve => {
-        dialogQueue.push({ factory, resolve });
+        const item = { factory, owner, settled: false, resolve };
+        owner.dialogs.add(item);
+        dialogQueue.push(item);
         processDialogQueue();
     });
+}
+
+function settleDialog(item, result) {
+    if (!item || item.settled) return;
+    item.settled = true;
+    item.owner.dialogs.delete(item);
+    item.resolve(result);
 }
 
 function processDialogQueue() {
     if (activeDialog || !dialogQueue.length) return;
     const item = dialogQueue.shift();
+    if (!item.owner.active) {
+        settleDialog(item, null);
+        processDialogQueue();
+        return;
+    }
     const dialog = item.factory(result => {
-        activeDialog = null;
-        item.resolve(result);
+        if (activeDialog?.item === item) activeDialog = null;
+        settleDialog(item, result);
         processDialogQueue();
     });
-    activeDialog = dialog;
+    activeDialog = { controller: dialog, item };
     ensureFeedbackHost().querySelector('.vcp-ui-dialog-host').append(dialog.element);
 }
 
-const feedback = Object.freeze({
-    toast(message, options = {}) {
-        const controller = toastFactory({ ...options, message });
-        ensureFeedbackHost().querySelector('.vcp-ui-toast-stack').append(controller.element);
-        const duration = options.duration ?? 4200;
-        if (duration > 0) {
-            const timer = setTimeout(() => {
-                toastTimers.delete(controller);
-                controller.destroy();
-            }, duration);
-            toastTimers.set(controller, timer);
+function removeToast(owner, controller) {
+    owner.toasts.delete(controller);
+    const timer = toastTimers.get(controller);
+    if (timer !== undefined) clearTimeout(timer);
+    toastTimers.delete(controller);
+}
+
+function createOwnedToast(owner, message, options = {}) {
+    if (!owner.active) return null;
+    const controller = toastFactory({ ...options, message });
+    const originalDestroy = controller.destroy.bind(controller);
+    controller.destroy = () => {
+        removeToast(owner, controller);
+        return originalDestroy();
+    };
+    owner.toasts.add(controller);
+    ensureFeedbackHost().querySelector('.vcp-ui-toast-stack').append(controller.element);
+    const duration = options.duration ?? 4200;
+    if (duration > 0) {
+        const timer = setTimeout(() => controller.destroy(), duration);
+        toastTimers.set(controller, timer);
+    }
+    return controller;
+}
+
+function updateLoadingLayer() {
+    const host = loadingTokens.size ? ensureFeedbackHost() : feedbackHost;
+    const layer = host?.querySelector('.vcp-ui-loading-layer');
+    if (!layer) return loadingTokens.size;
+    layer.hidden = loadingTokens.size === 0;
+    if (loadingTokens.size) {
+        const latest = [...loadingTokens.values()].reduce((current, candidate) => (
+            !current || candidate.sequence > current.sequence ? candidate : current
+        ), null);
+        layer.querySelector('.vcp-ui-loading-label').textContent = latest?.label || '正在处理';
+    }
+    return loadingTokens.size;
+}
+
+function setOwnedLoading(owner, visible, label = '正在处理') {
+    if (visible) {
+        if (!owner.active) return loadingTokens.size;
+        const token = Symbol(owner.label);
+        owner.loading.push(token);
+        loadingTokens.set(token, { owner, label: String(label || '正在处理'), sequence: ++loadingSequence });
+    } else {
+        const token = owner.loading.pop();
+        if (token) loadingTokens.delete(token);
+    }
+    return updateLoadingLayer();
+}
+
+async function disposeFeedbackOwner(owner) {
+    if (!owner.active) return;
+    owner.active = false;
+    feedbackOwners.delete(owner);
+    const queued = dialogQueue.filter(item => item.owner === owner);
+    queued.forEach(item => {
+        const index = dialogQueue.indexOf(item);
+        if (index >= 0) dialogQueue.splice(index, 1);
+        settleDialog(item, null);
+    });
+    if (activeDialog?.item.owner === owner) activeDialog.controller.close(null);
+    [...owner.toasts].forEach(controller => controller.destroy());
+    owner.loading.splice(0).forEach(token => loadingTokens.delete(token));
+    updateLoadingLayer();
+    processDialogQueue();
+}
+
+function createFeedbackHandle(scope) {
+    const label = scope?.label ? `feedback:${scope.label}` : 'feedback-owner';
+    const owner = createFeedbackOwnerRecord(label);
+    feedbackOwners.add(owner);
+    let disposePromise = null;
+    const handle = Object.freeze({
+        toast: (message, options = {}) => createOwnedToast(owner, message, options),
+        confirm: (options = {}) => runDialog(onClose => confirmFactory({ title: '请确认', ...options, onClose }), owner),
+        prompt: (options = {}) => runDialog(onClose => inputDialogFactory({ title: '请输入', ...options, onClose }), owner),
+        setLoading: (visible, label = '正在处理') => setOwnedLoading(owner, visible, label),
+        dispose() {
+            if (!disposePromise) disposePromise = disposeFeedbackOwner(owner);
+            return disposePromise;
+        },
+        get disposed() { return !owner.active; }
+    });
+    if (scope?.own) {
+        try {
+            scope.own(() => handle.dispose(), label, 'feedback-owner');
+        } catch (error) {
+            void handle.dispose();
+            throw error;
         }
-        return controller;
+    }
+    return handle;
+}
+
+const feedback = Object.freeze({
+    owner(scope) {
+        return createFeedbackHandle(scope);
+    },
+    toast(message, options = {}) {
+        return createOwnedToast(rootFeedbackOwner, message, options);
     },
     confirm(options = {}) {
         return runDialog(onClose => confirmFactory({ title: '请确认', ...options, onClose }));
@@ -2104,23 +2221,17 @@ const feedback = Object.freeze({
         return runDialog(onClose => inputDialogFactory({ title: '请输入', ...options, onClose }));
     },
     setLoading(visible, label = '正在处理') {
-        loadingCount = Math.max(0, loadingCount + (visible ? 1 : -1));
-        const layer = ensureFeedbackHost().querySelector('.vcp-ui-loading-layer');
-        layer.hidden = loadingCount === 0;
-        layer.querySelector('.vcp-ui-loading-label').textContent = label;
-        return loadingCount;
+        return setOwnedLoading(rootFeedbackOwner, visible, label);
     },
     cancelAll() {
         const queued = dialogQueue.splice(0);
-        queued.forEach(item => item.resolve(null));
-        toastTimers.forEach((timer, controller) => {
-            clearTimeout(timer);
-            controller.destroy();
+        queued.forEach(item => settleDialog(item, null));
+        [...feedbackOwners, rootFeedbackOwner].forEach(owner => {
+            [...owner.toasts].forEach(controller => controller.destroy());
+            owner.loading.splice(0).forEach(token => loadingTokens.delete(token));
         });
-        toastTimers.clear();
-        activeDialog?.close(null);
+        activeDialog?.controller.close(null);
         activeDialog = null;
-        loadingCount = 0;
         feedbackHost?.remove();
         feedbackHost = null;
     }

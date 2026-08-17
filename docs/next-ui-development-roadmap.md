@@ -34,7 +34,7 @@
 | 阶段 | 状态 | 目标 | 退出条件 |
 |---|---|---|---|
 | P0 事实基线与文档收敛 | 已完成 | 让代码、测试、文档对当前拓扑使用同一套描述 | 权威关系明确；旧文档不再声明冲突架构 |
-| P1 所有权缺陷修复 | 待开始 | 修复展示页跨 owner 清理和 timer 泄漏 | 故障注入可证明只清理本 owner |
+| P1 所有权缺陷修复 | 已完成 | 修复展示页跨 owner 清理和 timer 泄漏 | 故障注入可证明只清理本 owner |
 | P2 无消费者架构减法 | 待开始 | 删除子页面 runtime、无用 preload API 和多余 settlement 公共面 | 生产消费者报告无孤儿 API；行为门禁不退化 |
 | P3 VCPUI 与 Registry 收口 | 待开始 | 校正 stable 组件和 contribution kinds | 每个公共能力至少一个真实消费者 |
 | P4 PR 证据与交付 | 待开始 | 完整验证、人工 soak、形成可审查提交 | 全部门禁通过，工作树边界清楚，PR diff 可解释 |
@@ -60,6 +60,8 @@ P0–P4 是当前上游 PR 的实际路线。P5–P6 不阻塞当前施工，也
 - `uiMode` 的兼容读取与业务子页面 Classic policy 被明确区分。
 
 ## 5. P1：所有权缺陷修复
+
+> 状态：已完成（2026-08-17）。`VCPUI.feedback.owner(scope)` 已提供按 Surface 隔离的 Toast、Dialog 和 Loading 所有权；组件展示页使用子 `LifecycleScope` 管理反馈与模拟 Loading timer。契约测试覆盖跨 owner 隔离、活动/排队 Dialog、重复销毁、timer 迟到和注册失败回滚；Electron UI Apps 22/22 与生命周期压力 3 次预热 + 20 次测量通过。
 
 ### 5.1 Feedback owner
 

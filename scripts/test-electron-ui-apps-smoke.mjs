@@ -979,7 +979,63 @@ try {
     );
     assert.ok(webAwesomeRuntimeRequests.some(url => url.includes('vendor/webawesome-runtime/dist-cdn/components/button')), 'lazy load fetched the generated button runtime');
     await capture(page, 'main-showcase.png');
-    summary.push({ surface: 'UI 组件库', mode: 'next', pass: true, lucide: 0, note: 'lazy-registers WA + 拉取 vendored bundle' });
+
+    // A component-library surface owns only the feedback it creates. Closing
+    // it must retract its toast/loading/queued dialog without touching feedback
+    // already owned by the main surface.
+    const feedbackIsolation = await page.evaluate(async () => {
+        window.__p1MainToast = window.VCPUI.feedback.toast('P1 main owner toast', { duration: 0 });
+        window.VCPUI.feedback.setLoading(true, 'P1 main owner loading');
+        window.__p1MainDialog = window.VCPUI.feedback.confirm({ title: 'P1 main owner dialog', message: 'Must survive showcase close' });
+        await new Promise(resolve => setTimeout(resolve, 0));
+        const showcase = document.querySelector('.vcp-ui-showcase-root');
+        const clickByText = text => {
+            const button = [...showcase.querySelectorAll('button')].find(candidate => candidate.textContent.trim() === text);
+            button?.click();
+            return Boolean(button);
+        };
+        const clickedToast = clickByText('info');
+        const clickedDialog = clickByText('删除项目');
+        const clickedLoading = clickByText('模拟加载 1.2 秒');
+        await new Promise(resolve => setTimeout(resolve, 0));
+        await window.topTabManager.closeView('app:ui-component-library');
+        await new Promise(resolve => setTimeout(resolve, 0));
+        return {
+            clickedToast,
+            clickedDialog,
+            clickedLoading,
+            showcaseClosed: !document.querySelector('.vcp-ui-showcase-root'),
+            mainToastPresent: [...document.querySelectorAll('.vcp-ui-toast')].some(item => item.textContent.includes('P1 main owner toast')),
+            showcaseToastPresent: [...document.querySelectorAll('.vcp-ui-toast')].some(item => item.textContent.includes('info 通知已触发')),
+            dialogTitle: document.querySelector('.vcp-ui-modal h2, wa-dialog')?.getAttribute('label')
+                || document.querySelector('.vcp-ui-modal h2')?.textContent
+                || '',
+            loadingLabel: document.querySelector('.vcp-ui-loading-label')?.textContent || '',
+            showcaseScopePresent: window.VCPLifecycle.diagnostics.snapshot().some(item => item.label === 'next:component-showcase'),
+        };
+    });
+    assert.deepEqual(
+        { toast: feedbackIsolation.clickedToast, dialog: feedbackIsolation.clickedDialog, loading: feedbackIsolation.clickedLoading },
+        { toast: true, dialog: true, loading: true },
+        `showcase feedback controls missing: ${JSON.stringify(feedbackIsolation)}`
+    );
+    assert.equal(feedbackIsolation.showcaseClosed, true, `showcase did not close: ${JSON.stringify(feedbackIsolation)}`);
+    assert.equal(feedbackIsolation.mainToastPresent, true, `main toast was removed by showcase: ${JSON.stringify(feedbackIsolation)}`);
+    assert.equal(feedbackIsolation.showcaseToastPresent, false, `showcase toast leaked: ${JSON.stringify(feedbackIsolation)}`);
+    assert.match(feedbackIsolation.dialogTitle, /P1 main owner dialog/, `main dialog was replaced: ${JSON.stringify(feedbackIsolation)}`);
+    assert.equal(feedbackIsolation.loadingLabel, 'P1 main owner loading', `main loading state was replaced: ${JSON.stringify(feedbackIsolation)}`);
+    assert.equal(feedbackIsolation.showcaseScopePresent, false, `showcase scope leaked: ${JSON.stringify(feedbackIsolation)}`);
+    await page.evaluate(async () => {
+        document.querySelector('.vcp-ui-modal footer .vcp-ui-button')?.click();
+        await window.__p1MainDialog;
+        window.__p1MainToast?.destroy();
+        window.VCPUI.feedback.setLoading(false);
+        delete window.__p1MainDialog;
+        delete window.__p1MainToast;
+        window.topTabManager.openInternalApp('ui-component-library');
+    });
+    await page.waitForFunction(() => document.querySelector('.vcp-ui-showcase-root'), { timeout: timeoutMs });
+    summary.push({ surface: 'UI 组件库', mode: 'next', pass: true, lucide: 0, note: 'lazy-registers WA；feedback owner 关闭后不影响主 Surface' });
 
     // Production WA Modal dismissal must release the creation surface, while
     // the durable create commit point blocks Escape/header/backdrop dismissal.

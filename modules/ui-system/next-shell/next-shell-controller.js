@@ -220,7 +220,8 @@
         const context = Object.freeze({
             close: () => closeView(viewId),
             activate: () => setView(viewId),
-            feedback: window.VCPUI?.feedback
+            feedback: window.VCPUI?.feedback,
+            scope: viewScope
         });
         let disposer = null;
         try {
