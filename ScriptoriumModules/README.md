@@ -38,7 +38,8 @@ Scriptorium 没有走这条路。
 它实现的是一条 **源码保持型渲染编辑管线**：
 
 ```text
-Markdown-first 唯一真源
+Markdown 主导的混合源码唯一真源
+（Markdown / HTML / CSS / LaTeX / Mermaid / 可编程岛）
         │
         ▼
 混合源码扫描与受保护区域识别
@@ -155,7 +156,9 @@ KaTeX 输出、Mermaid SVG、脚本创建的 Canvas、运行时 class、动画 s
 
 ## Flow 编辑引擎：渲染态编辑的近期迭代
 
-VDOCX 的连续流编辑已经从“渲染结果上挂一个 `contenteditable`”升级为编译器、源码映射、浏览器 Selection 和局部渲染协同工作的编辑引擎：
+VDOCX 的连续流编辑已经从“渲染结果上挂一个 `contenteditable`”升级为编译器、源码映射、浏览器 Selection 和局部渲染协同工作的编辑引擎。
+
+这里的“连续流”并不等于“纯 Markdown 编辑器”。VDOCX 使用的是**以 Markdown 作为普通正文默认表达、同时原生容纳 HTML / CSS / LaTeX / Mermaid / 可编程岛的混合文档源码**。机器字段名 `markdown-hybrid` 描述的是这套源码格式，而不是把文档能力限制为 Markdown：
 
 - 当前混合编译器版本为 `vdoc-hybrid-compiler/3`。它先扫描并保护代码 / Mermaid 围栏、可编程岛、样式块、块级公式和行内公式，再使用 GFM lexer 建立 Markdown token 级编辑区；
 - 每个编辑区同时拥有临时 key、类型、flow kind、源码字符区间、内容哈希、Markdown token 类型和岛 ID。普通文字是 `text-flow`，HTML 块拥有独立布局边界，代码、Mermaid、样式、块级公式和可编程岛是 `stable-atomic`；
@@ -174,16 +177,18 @@ VDOCX 的连续流编辑已经从“渲染结果上挂一个 `contenteditable`�
 
 Scriptorium 使用自己的 VDOC 工程模型，不是 OOXML 原位编辑器。
 
-### VDOCX：Markdown-first 连续流文稿
+### VDOCX：Markdown 主导的混合连续流文稿
 
-VDOCX 的正文真源是 `markdown-hybrid`：
+VDOCX 不是“Markdown 加几个插件”，而是一种**Markdown 主导的混合文档源码**：
 
-- 标题、段落、列表、任务列表、引文和表格优先使用 CommonMark / GFM Markdown；
-- 行内与块级 LaTeX 保留原始公式；
-- Mermaid 保留为 `mermaid` 围栏；
-- Markdown 无法无损表达的静态版式可以嵌入 HTML；
-- 文档级样式独立保存为 `document-css`；
-- 需要脚本、Canvas、WebGL、运行时依赖或长期身份的内容进入可编程岛。
+- 标题、段落、列表、任务列表、引文和表格通常优先使用 CommonMark / GFM Markdown；
+- 原生 HTML 是与 Markdown 并列的源码表达，用于复杂静态结构、语义标签、布局和局部文字表现；
+- 文档级样式独立保存为 `document-css`；源码中的受控 `<style>` 也可以作为被保护的结构区域存在；
+- 行内与块级 LaTeX 保留原始公式，由编译器识别并以稳定区域交给公式渲染器；
+- Mermaid 保留为 `mermaid` 围栏，由编译器识别并以稳定区域交给 Mermaid 渲染器；
+- 需要脚本、Canvas、WebGL、运行时依赖或长期身份的内容进入具有唯一语义 ID 的可编程岛；
+- `markdown-hybrid` 是 VDOCX 的源码格式标识，不意味着 HTML、CSS、LaTeX、Mermaid 或可编程岛是 Markdown 的附属扩展；
+- 不同语法域拥有各自的边界、编译策略、编辑策略和生命周期，但最终仍保存在同一份可审阅源码真源中。
 
 普通正文不需要也不应被随机永久 ID 淹没。编译块 key 和章节 ID 都是当前修订的临时寻址信息，不会写回正文。
 
@@ -399,7 +404,7 @@ resources/fonts/<sha256>.<ext>
 mimetype
 ```
 
-VDOCX 的 Markdown 正文和文档 CSS 是独立真实文件，不再埋在一个难以 diff 的 JSON 字符串中。VPPTX 的页面场景由清单中的正式页面模型承载。
+VDOCX 的混合文档源码和文档 CSS 是独立真实文件，不再埋在一个难以 diff 的 JSON 字符串中。这里的混合文档源码通常以 Markdown 为普通正文入口，但也可以原生包含 HTML、LaTeX、Mermaid、受控样式和可编程岛。VPPTX 的页面场景由清单中的正式页面模型承载。
 
 资源系统使用 SHA-256 内容寻址：
 
@@ -526,7 +531,7 @@ Scriptorium 中的图形不局限于内置形状集合。系统既提供参数�
 `CreateProject` 不需要先打开一个空白窗口再逐段修改。Agent 可以一次提交完整 VDOCX 或 VPPTX，由 Scriptorium 内核执行：
 
 1. 工程模型规范化；
-2. Markdown 混合源码与岛身份校验；
+2. Markdown 主导的混合源码与岛身份校验；
 3. 可编程内容审查；
 4. 依赖识别；
 5. v2 容器打包；
@@ -602,6 +607,7 @@ Scriptorium 重新定义了自己的文档系统，但不假装已经解决所�
 
 - VDOCX / VPPTX 是 VCP 自有 v2 ZIP 工程，不与 DOCX / PPTX 二进制兼容；
 - Office 文件导入是语义或静态版式转换，不保证无损往返；
+- VDOCX 虽以 Markdown 作为普通正文的优先表达，但不是纯 Markdown 格式；HTML、CSS、LaTeX、Mermaid 和可编程岛的边界与运行语义属于格式本身；
 - 分页器遵循 Web 富文档语义，不追求 Word 排版引擎逐像素一致；
 - Markdown 渲染态编辑以“可证明还原原源码”为准，无法建立安全映射的区域会保持原子或拒绝编辑；
 - 可编程岛、代码、Mermaid 与块级公式不会像普通段落一样任意跨边界编辑；
