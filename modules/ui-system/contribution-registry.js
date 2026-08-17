@@ -29,19 +29,6 @@
             if (definition.kind !== 'internal') throw new TypeError(`App "${definition.id}" must use kind "internal".`);
             if (typeof definition.mount !== 'function') throw new TypeError(`App "${definition.id}" requires mount().`);
         }
-        if (type === 'menu') {
-            if (!['account', 'notification'].includes(definition.location)) {
-                throw new TypeError(`Menu item "${definition.id}" has an invalid location.`);
-            }
-            if (!definition.title || !ID_PATTERN.test(String(definition.command || ''))) {
-                throw new TypeError(`Menu item "${definition.id}" requires title and command.`);
-            }
-        }
-        if (type === 'setting') {
-            if (!definition.title || !ID_PATTERN.test(String(definition.command || '')) || !definition.section) {
-                throw new TypeError(`Setting "${definition.id}" requires title, section and command.`);
-            }
-        }
     }
 
     class ContributionRegistry {
@@ -123,17 +110,15 @@
 
     const commands = new CommandRegistry();
     const apps = new ContributionRegistry('app');
-    const menus = new ContributionRegistry('menu');
-    const settings = new ContributionRegistry('setting');
 
     const diagnostics = Object.freeze({
         snapshot: () => Object.freeze(Object.fromEntries(
-            Object.entries({ commands, apps, menus, settings }).map(([name, registry]) => [
+            Object.entries({ commands, apps }).map(([name, registry]) => [
                 name,
                 Object.freeze(registry.list().map(entry => Object.freeze({ id: entry.id, ownerId: entry.ownerId }))),
             ])
         )),
     });
 
-    return Object.freeze({ ContributionRegistry, CommandRegistry, commands, apps, menus, settings, diagnostics });
+    return Object.freeze({ ContributionRegistry, CommandRegistry, commands, apps, diagnostics });
 });

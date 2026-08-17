@@ -77,9 +77,19 @@ const failingInternalApp = {
     mount: () => () => { throw new Error('expected fixture cleanup failure'); },
     unmount() {}
 };
+let removableDisposed = 0;
+const removableInternalApp = {
+    id: 'removable-fixture',
+    title: 'Removable fixture',
+    icon: 'close',
+    kind: 'internal',
+    mount: () => () => { removableDisposed += 1; },
+    unmount() {}
+};
+const availableInternalApps = new Set([failingInternalApp.id, removableInternalApp.id]);
 window.nextUiApps = {
-    list: () => [failingInternalApp],
-    get: id => id === failingInternalApp.id ? failingInternalApp : null,
+    list: () => [failingInternalApp, removableInternalApp].filter(app => availableInternalApps.has(app.id)),
+    get: id => [failingInternalApp, removableInternalApp].find(app => availableInternalApps.has(app.id) && app.id === id) || null,
 };
 window.sessionStorage.setItem('vcpchat.nextUi.openTabs.v1', JSON.stringify({
     activeViewId: 'app:translator',
@@ -166,6 +176,16 @@ await new Promise(resolve => setTimeout(resolve, 10));
 assert.equal(creates, 2, 'remount must restore the preserved tab session once');
 assert.equal(window.VCPLifecycle.diagnostics.find('next:tab-host').length, 1, 'remount must create one fresh owner');
 
+window.topTabManager.openInternalApp(removableInternalApp.id);
+assert.ok(window.document.querySelector('[data-view-id="app:removable-fixture"]'), 'registered internal app must open in the tab host');
+availableInternalApps.delete(removableInternalApp.id);
+window.dispatchEvent(new window.CustomEvent('next-ui-apps-changed', {
+    detail: { action: 'unregistered', id: removableInternalApp.id }
+}));
+await new Promise(resolve => setTimeout(resolve, 0));
+assert.equal(window.document.querySelector('[data-view-id="app:removable-fixture"]'), null,
+    'unregistering an open internal app must close its view and surface');
+assert.equal(removableDisposed, 1, 'unregistering an open app must dispose its mounted surface exactly once');
 window.topTabManager.openInternalApp(failingInternalApp.id);
 const originalConsoleError = window.console.error;
 const expectedTeardownErrors = [];

@@ -102,6 +102,19 @@ const itemListSource = read('modules/itemListManager.js');
 assert.doesNotMatch(itemListSource, /assistant-catalog|getCatalogState|getCatalogSnapshot|whenSettled|catalogChannel/,
     'item list must not publish a test-only catalog store');
 
+const contributionSource = read('modules/ui-system/contribution-registry.js');
+assert.doesNotMatch(contributionSource, /new ContributionRegistry\(['"](?:menu|setting)['"]\)|\bmenus\b|\bsettings\b/,
+    'contribution registry must not expose kinds without production producers and consumers');
+assert.match(contributionSource, /Object\.freeze\(\{ ContributionRegistry, CommandRegistry, commands, apps, diagnostics \}\)/,
+    'contribution registry must retain only the production command/app contract');
+const accountMenuSource = read('modules/ui-system/next-shell/account-menu-controller.js');
+assert.doesNotMatch(accountMenuSource, /getMenuRegistry|renderContributions|data-contribution|account-menu-contributions/,
+    'account menu must not retain an empty dynamic contribution surface');
+assert.match(read('modules/ui-system/component-showcase.js'), /id: 'ui-component-library'/,
+    'the user-visible component library must remain a registered internal application');
+assert.match(read('modules/ui-system/next-shell/launchpad-controller.js'), /getInternalApps\(\)\.forEach/,
+    'Launchpad must continue exposing registered internal applications to users');
+
 const eventSource = read('modules/event-listeners.js');
 for (const id of [
     'enableMiddleClickQuickAction', 'middleClickQuickAction',

@@ -43,29 +43,3 @@ test('account menu synchronizes identity/theme and owns dismissal behavior', () 
     document.getElementById('nextUiAccountMenuTrigger').click();
     assert.equal(document.getElementById('nextUiAccountMenu').hidden, true);
 });
-
-test('account menu renders data-only contributions and retracts them on unregister', async () => {
-    const { dom, controller } = fixture();
-    let items = [{ id: 'plugin.wallpaper', title: '视频壁纸', icon: 'movie', location: 'account', command: 'plugin.open', order: 10 }];
-    let listener;
-    let unsubscribed = 0;
-    const executed = [];
-    controller.getMenuRegistry = () => ({
-        list: predicate => items.filter(predicate),
-        subscribe: next => { listener = next; return () => { unsubscribed += 1; }; },
-    });
-    controller.executeCommand = id => executed.push(id);
-    assert.equal(controller.mount(), true);
-    const document = dom.window.document;
-    const button = document.querySelector('[data-contribution-id="plugin.wallpaper"]');
-    assert.equal(button.textContent.includes('视频壁纸'), true);
-    button.click();
-    await Promise.resolve();
-    assert.deepEqual(executed, ['plugin.open']);
-    items = [];
-    listener({ contribution: { location: 'account' } });
-    assert.equal(document.querySelector('[data-contribution-id="plugin.wallpaper"]'), null);
-    controller.dispose();
-    assert.equal(unsubscribed, 1);
-    assert.equal(document.querySelector('.next-ui-account-menu-contributions'), null);
-});
