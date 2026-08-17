@@ -300,8 +300,11 @@ export function createAskNovaController(options = {}) {
         }
         modal.element.classList.add('ask-nova-modal-host');
         if (modal.element.localName === 'wa-dialog') {
-            if (modalScope) modalScope.listen(modal.element, 'wa-after-hide', () => scopeHost.remove(), { once: true }, 'wa-after-hide');
-            else modal.element.addEventListener('wa-after-hide', () => scopeHost.remove(), { once: true });
+            const removeClosedHost = event => {
+                if (event.target === modal.element) scopeHost.remove();
+            };
+            if (modalScope) modalScope.listen(modal.element, 'wa-after-hide', removeClosedHost, {}, 'wa-after-hide');
+            else modal.element.addEventListener('wa-after-hide', removeClosedHost);
         }
         scopeHost.append(modal.element);
         documentRef.body.append(scopeHost);

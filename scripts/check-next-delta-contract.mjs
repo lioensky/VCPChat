@@ -87,6 +87,8 @@ assert.doesNotMatch(embeddedSource, /settings-updated|ui-mode-updated|subscribeS
 const vcpUiSource = read('modules/ui-system/vcp-ui.js');
 assert.match(vcpUiSource, /_listen\(wa, 'wa-hide',[\s\S]*?event\.preventDefault\(\)[\s\S]*?finalize\(null\)/,
     'Web Awesome Modal dismissal must honor dismissibility and finalize the shared close contract');
+assert.match(vcpUiSource, /_listen\(wa, 'wa-hide', event => \{[\s\S]*?event\.target !== wa[\s\S]*?_listen\(wa, 'wa-after-hide', event => \{[\s\S]*?event\.target !== wa/,
+    'Web Awesome Modal must reject lifecycle events bubbled by nested components');
 assert.match(vcpUiSource, /_listen\(wa, 'wa-after-hide',[\s\S]*?finalize\(null\)[\s\S]*?controller\.destroy\(\)/,
     'Web Awesome Modal teardown must defensively finalize before destroying resources');
 

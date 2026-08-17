@@ -1354,6 +1354,7 @@ function tabsFactory(options = {}) {
             if (current.value) wa.active = String(current.value);
         });
         controller._listen(wa, 'wa-tab-show', event => {
+            if (event.target !== wa) return;
             if (event.detail?.name !== undefined) state.value = event.detail.name;
             emit(wa, 'change');
         });

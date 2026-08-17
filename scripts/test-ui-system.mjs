@@ -1149,6 +1149,10 @@ let waTabChanges = 0;
 waTabs.element.addEventListener('change', () => { waTabChanges += 1; });
 waTabs.element.dispatchEvent(new CustomEvent('wa-tab-show', { detail: { name: 'a' }, bubbles: true }));
 assert.equal(waTabChanges, 1, 'wa-tab-show must be translated to change');
+const nestedTabs = document.createElement('wa-tab-group');
+waTabs.element.append(nestedTabs);
+nestedTabs.dispatchEvent(new CustomEvent('wa-tab-show', { detail: { name: 'nested' }, bubbles: true }));
+assert.equal(waTabChanges, 1, 'nested tab lifecycle events must not mutate an ancestor Tabs controller');
 
 let waModalCloseCount = 0;
 const waModal = VCPUI.create('Modal', {
@@ -1160,6 +1164,12 @@ assert.equal(waModal.element.tagName.toLowerCase(), 'wa-dialog');
 waHost.append(waModal.element);
 await new Promise(resolve => setTimeout(resolve, 40));
 assert.equal(waModal.element.open, true, 'wa-dialog must open once connected');
+const nestedWaControl = document.createElement('wa-select');
+waModal.element.append(nestedWaControl);
+nestedWaControl.dispatchEvent(new CustomEvent('wa-hide', { bubbles: true, cancelable: true }));
+nestedWaControl.dispatchEvent(new CustomEvent('wa-after-hide', { bubbles: true }));
+assert.equal(waModalCloseCount, 0, 'nested WA lifecycle events must not close their owning Modal');
+assert.equal(waModal.element.isConnected, true, 'nested WA teardown must not destroy the Modal Surface');
 waModal.close(null);
 assert.equal(waModal.element.open, false);
 waModal.element.dispatchEvent(new CustomEvent('wa-hide', { bubbles: true, cancelable: true }));
