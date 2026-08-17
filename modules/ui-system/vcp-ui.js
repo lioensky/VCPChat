@@ -1743,6 +1743,7 @@ function modalFactory(options = {}) {
             // WA's target-only light-dismiss check can confuse dialog surface
             // whitespace with the backdrop after a top-layer Select opens.
             // VCPUI owns the stricter geometry-based dismissal contract below.
+            wa.lightDismiss = false;
             wa.removeAttribute('light-dismiss');
             wa.replaceChildren();
             const body = document.createElement('div');
@@ -1775,6 +1776,11 @@ function modalFactory(options = {}) {
         controller.close = close;
         controller._listen(wa, 'pointerdown', event => {
             if (!state.closeOnBackdrop || !state.dismissible) return;
+            // A Select listbox is rendered outside the dialog box by wa-popup.
+            // Its pointerdown precedes the option's mouseup selection. Treat
+            // the entire interaction as owned by the open Select, even when
+            // top-layer retargeting removes wa-select from composedPath().
+            if ([...wa.querySelectorAll('wa-select')].some(select => select.open)) return;
             const path = event.composedPath?.() || [];
             if (path.some(node => node?.localName === 'wa-select' || node?.localName === 'wa-option')) return;
             const dialog = wa.shadowRoot?.querySelector('[part~="dialog"]');
@@ -1785,13 +1791,17 @@ function modalFactory(options = {}) {
             if (outside) close(null);
         });
         controller._listen(wa, 'wa-hide', event => {
+            // WA lifecycle events bubble. A nested Select closing its listbox
+            // must not be mistaken for the owning Dialog closing.
+            if (event.target !== wa) return;
             if (!state.dismissible && !programmaticClose) {
                 event.preventDefault();
                 return;
             }
             finalize(null);
         });
-        controller._listen(wa, 'wa-after-hide', () => {
+        controller._listen(wa, 'wa-after-hide', event => {
+            if (event.target !== wa) return;
             // Defensive fallback for runtimes that omit the cancellable hide
             // event. All user and programmatic close paths share one finalizer.
             finalize(null);

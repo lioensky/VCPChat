@@ -1152,9 +1152,31 @@ try {
         `light creation surface did not resolve to a light background: ${JSON.stringify(lightCreationTheme)}`);
     await page.evaluate(() => window.uiManager?.applyTheme?.('dark'));
     await page.waitForFunction(() => document.querySelector('.next-ui-create-dialog-host')?.classList.contains('wa-dark'), { timeout: timeoutMs });
+    const creationSelectPoint = await page.evaluate(async () => {
+        const modal = document.querySelector('.next-ui-create-dialog-host wa-dialog');
+        const select = modal?.querySelector('wa-select');
+        select.disabled = false;
+        const option = document.createElement('wa-option');
+        option.value = 'dismiss-regression-model';
+        option.textContent = 'Dismiss regression model';
+        select.append(option);
+        await select.updateComplete;
+        await select.show();
+        const rect = option.getBoundingClientRect();
+        return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    });
+    await page.mouse.click(creationSelectPoint.x, creationSelectPoint.y);
+    await new Promise(resolve => setTimeout(resolve, 100));
+    const creationSelectionState = await page.evaluate(() => {
+        const host = document.querySelector('.next-ui-create-dialog-host');
+        return { connected: Boolean(host), value: host?.querySelector('wa-select')?.value || '' };
+    });
+    assert.equal(creationSelectionState.connected, true,
+        `selecting a WA option dismissed the creation modal: ${JSON.stringify(creationSelectionState)}`);
+    assert.equal(creationSelectionState.value, 'dismiss-regression-model',
+        `selecting a WA option dismissed the creation modal: ${JSON.stringify(creationSelectionState)}`);
     const creationDismissPoints = await page.evaluate(() => {
         const modal = document.querySelector('.next-ui-create-dialog-host wa-dialog');
-        modal?.querySelector('wa-select')?.click();
         const dialog = modal?.shadowRoot?.querySelector('[part~="dialog"]')?.getBoundingClientRect();
         const body = modal?.shadowRoot?.querySelector('[part~="body"]')?.getBoundingClientRect();
         return {
